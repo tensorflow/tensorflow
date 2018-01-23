@@ -48,25 +48,27 @@ def CreateInferenceGraph(input_graph_def, outputs,max_batch_size=1,max_workspace
   #   output_graph_def_string = trt_convert(
   #       input_graph_def_string,outputs,
   #       max_batch_size,max_workspace_size, status)
-  g = tf.Graph()
-  with g.as_default():
-    tf.import_graph_def(input_graph_def, name="")
-  rewriter_config = rewriter_config_pb2.RewriterConfig()
-  rewriter_config.optimizers.append('layout')
-  rewriter_config.optimizers.append('constfold')
+  # g = tf.Graph()
+  # with g.as_default():
+  #   tf.import_graph_def(input_graph_def, name="")
+  # rewriter_config = rewriter_config_pb2.RewriterConfig()
+  # rewriter_config.optimizers.append('layout')
+  # rewriter_config.optimizers.append('constfold')
 
-  # mark output nodes as fetch
-  train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-  for node_name in outputs:
-    out_node = g.get_operation_by_name(node_name)
-    for i in range(0,len(out_node.outputs)):
-      train_op.append(out_node.outputs[0])
+  # # mark output nodes as fetch
+  # train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
+  # for node_name in outputs:
+  #   out_node = g.get_operation_by_name(node_name)
+  #   for i in range(0,len(out_node.outputs)):
+  #     train_op.append(out_node.outputs[0])
 
-  # constant folding
-  mg = meta_graph.create_meta_graph_def(graph=g)
-  meta_graph.add_collection_def(mg, ops.GraphKeys.TRAIN_OP)
-  optimized_graph_def_str = \
-    tf_optimizer.OptimizeGraph(rewriter_config, mg).SerializeToString()
+  # # constant folding
+  # mg = meta_graph.create_meta_graph_def(graph=g)
+  # meta_graph.add_collection_def(mg, ops.GraphKeys.TRAIN_OP)
+  # optimized_graph_def_str = \
+  #   tf_optimizer.OptimizeGraph(rewriter_config, mg).SerializeToString()
+
+  optimized_graph_def_str = input_graph_def.SerializeToString()
 
   # TODO(sami): Fix this when we can return status from C++ library
   # There is a problem with the TF internal library setup that doesn't allow us to return a status object from C++.

@@ -40,6 +40,15 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 #define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
+#include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/layout_optimizer.h" 
+#include "tensorflow/core/grappler/devices.h"
+//#include "tensorflow/core/grappler/clusters/single_machine.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/utils.h"
+
 //------------------------------------------------------------------------------
 namespace tensorrt {
 namespace convert {
@@ -199,9 +208,48 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<std::string>& output_names, size_t max_batch_size,
     size_t max_workspace_size, tensorflow::GraphDef* new_graph_def) {
+
+  // optimization pass
+  tensorflow::grappler::GrapplerItem item;
+  item.fetch = output_names;
+  tensorflow::GraphDef gdef;
+
+  // layout optimization
+  item.graph = graph_def;
+  tensorflow::grappler::LayoutOptimizer optimizer;
+  tensorflow::grappler::Cluster* gCluster;
+
+  // virtual cluster
+  tensorflow::DeviceProperties device_properties;
+  device_properties.set_type("GPU");
+  device_properties.mutable_environment()->insert({"architecture", "6"});
+  gCluster =
+    new tensorflow::grappler::VirtualCluster({{"/GPU:0", device_properties}});
+
+  // single machine
+  int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
+  int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
+  LOG(DEBUG) << "cpu_cores: " << num_cpu_cores;
+  LOG(DEBUG) << "gpus: " << num_gpus;
+  // int timeout_s = 60 * 10;
+  // gCluster = new tensorflow::grappler::SingleMachine(
+  //                  timeout_s, num_cpu_cores, num_gpus);
+
+  tensorflow::Status status = optimizer.Optimize(gCluster, item, &gdef);
+
+  if (status !=tensorflow::Status::OK())
+    return status;
+ 
+  // constant folding
+  item.graph = gdef;
+  tensorflow::grappler::ConstantFolding fold(nullptr);
+  status = fold.Optimize(nullptr, item, &gdef);
+  if (status !=tensorflow::Status::OK())
+    return status;
+
   ShapeMap shape_map;
   TF_RETURN_IF_ERROR(
-      tensorflow::trt::inferShapes(graph_def, output_names, shape_map));
+      tensorflow::trt::inferShapes(gdef, output_names, shape_map));
   std::stringstream oss;
   for (auto& n : shape_map) {  // nodes
     oss << " Node= " << n.first << ", ";
@@ -213,10 +261,10 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   }
   // Build full graph
   tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
-                                             graph_def.library());
+                                             gdef.library());
   tensorflow::Graph graph(flib);
   TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToGraph(
-      tensorflow::GraphConstructorOptions(), graph_def, &graph));
+      tensorflow::GraphConstructorOptions(), gdef, &graph));
 
   // Segment the graph into subgraphs that can be converted to TensorRT
   tensorrt::segment::SegmentOptions segment_options;
@@ -227,7 +275,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   segment_options.minimum_segment_size = 2;
   tensorrt::segment::SegmentNodesVector segments;
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      graph_def, IsTensorRTCandidate, segment_options, &segments));
+      gdef, IsTensorRTCandidate, segment_options, &segments));
   if (segments.size() > 1) {
     // LOG(WARNING) << "Multiple TensorRT candidate subgraphs were found, "
     //<< "but only the first can be converted.";
