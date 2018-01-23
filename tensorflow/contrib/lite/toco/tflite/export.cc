@@ -62,7 +62,7 @@ namespace details {
 void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
   // First find a list of unique array names.
   std::set<string> names;
-  for (const auto& array_pair : model.arrays) {
+  for (const auto& array_pair : model.GetArrayMap()) {
     names.insert(array_pair.first);
   }
 
@@ -96,7 +96,7 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
   // tensors in the tensors_map.
   std::map<int, Offset<Tensor>> ordered_tensors;
 
-  for (const auto& array_pair : model.arrays) {
+  for (const auto& array_pair : model.GetArrayMap()) {
     const string& tensor_name = array_pair.first;
     const toco::Array& array = *array_pair.second;
 

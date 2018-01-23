@@ -133,7 +133,7 @@ void SetFinalDataTypeOnInputs(const TocoFlags& toco_flags, Model* model) {
 
   for (int i = 0; i < model->flags.input_arrays_size(); i++) {
     string const& array_name = model->flags.input_arrays(i).name();
-    auto* array = model->arrays[array_name].get();
+    auto* array = &model->GetArray(array_name);
     // Note that the notion of changing data types only applies to real-numbers
     // arrays (see the documentation for inference_input_type).
     // TODO(benoitjacob) this is assuming that uint8 arrays are quantized,

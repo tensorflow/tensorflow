@@ -1652,7 +1652,7 @@ void StripCaretFromArrayNames(Model* model) {
       output = string(absl::StripPrefix(output, "^"));
     }
   }
-  for (auto& array : model->arrays) {
+  for (auto& array : model->GetArrayMap()) {
     if (absl::StartsWith(array.first, "^")) {
       LOG(FATAL) << "What?";
     }

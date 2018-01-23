@@ -31,13 +31,13 @@ bool ResolveStridedSliceAttributes::Run(Model* model, std::size_t op_index) {
   }
 
   CHECK_EQ(op->inputs.size(), 4);
-  const auto& start_array = *model->arrays[op->inputs[1]];
+  const auto& start_array = model->GetArray(op->inputs[1]);
   if (!start_array.has_shape()) return false;
 
-  const auto& stop_array = *model->arrays[op->inputs[2]];
+  const auto& stop_array = model->GetArray(op->inputs[2]);
   if (!stop_array.has_shape()) return false;
 
-  const auto& stride_array = *model->arrays[op->inputs[3]];
+  const auto& stride_array = model->GetArray(op->inputs[3]);
   if (!stride_array.has_shape()) return false;
 
   if (!IsConstantParameterArray(*model, op->inputs[1])) return false;

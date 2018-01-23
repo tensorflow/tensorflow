@@ -91,7 +91,7 @@ bool FuseActivationFunctions::Run(Model* model, std::size_t op_index) {
   } else {
     LOG(FATAL) << "Unhandled activation function type";
   }
-  model->arrays.erase(ac_op->inputs[0]);
+  model->EraseArray(ac_op->inputs[0]);
   op->outputs[0] = ac_op->outputs[0];
   model->operators.erase(ac_it);
   return true;
