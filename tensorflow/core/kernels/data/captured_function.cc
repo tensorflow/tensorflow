@@ -35,20 +35,6 @@ Status CapturedFunction::Create(
 
 CapturedFunction::~CapturedFunction() {}
 
-Status CapturedFunction::set_lib(FunctionLibraryRuntime* lib) {
-  mutex_lock l(mu_);
-  if (lib_ == nullptr) {
-    lib_ = lib;
-    return Status::OK();
-  }
-  if (lib != lib_) {
-    return errors::Internal(
-        "Captured function was called with a different "
-        "FunctionLibraryRuntime*, which is not permitted.");
-  }
-  return Status::OK();
-}
-
 namespace {
 class CallFrameBase : public CallFrameInterface {
  public:
@@ -170,99 +156,129 @@ class BorrowedArgsCallFrame : public CallFrameBase {
 }  // namespace
 
 Status CapturedFunction::MaybeInstantiate(
-    FunctionLibraryRuntime* lib,
-    FunctionLibraryRuntime::InstantiateOptions inst_opts) {
-  TF_RETURN_IF_ERROR(set_lib(lib));
-  inst_opts.state_handle = std::to_string(random::New64());
+    IteratorContext* ctx, FunctionLibraryRuntime::Handle* out_handle) {
   mutex_lock l(mu_);
-  if (f_handle_ == kInvalidHandle) {
+  if (lib_ == nullptr) {
+    // The context's runtime will be used for all subsequent calls.
+    lib_ = ctx->lib();
+    DCHECK(f_handle_ == kInvalidHandle);
+    FunctionLibraryRuntime::InstantiateOptions inst_opts;
+    inst_opts.overlay_lib = ctx->function_library().get();
+    inst_opts.state_handle = std::to_string(random::New64());
     TF_RETURN_IF_ERROR(lib_->Instantiate(func_.name(), AttrSlice(&func_.attr()),
                                          inst_opts, &f_handle_));
+    const FunctionBody* fbody = lib_->GetFunctionBody(f_handle_);
+    if (fbody == nullptr) {
+      return errors::Internal("Failed to instantiate function body.");
+    }
+    ret_types_ = fbody->ret_types;
+  } else {
+    // TODO(mrry): Consider moving this under a shared lock, as it is
+    // the common case.
+    if (ctx->lib() != lib_) {
+      return errors::Internal(
+          "Captured function was called with a different "
+          "FunctionLibraryRuntime*, which is not permitted.");
+    }
   }
-  const FunctionBody* fbody = lib_->GetFunctionBody(f_handle_);
-  if (fbody == nullptr) {
-    return errors::Internal("Failed to instantiate function body.");
-  }
-  ret_types_ = fbody->ret_types;
+  *out_handle = f_handle_;
   return Status::OK();
 }
 
 Status CapturedFunction::Run(IteratorContext* ctx,
-                             FunctionLibraryRuntime::Options f_opts,
                              std::vector<Tensor>&& args,
                              std::vector<Tensor>* rets) {
-  FunctionLibraryRuntime::InstantiateOptions inst_opts;
-  inst_opts.overlay_lib = ctx->function_library().get();
-  TF_RETURN_IF_ERROR(MaybeInstantiate(ctx->lib(), inst_opts));
+  FunctionLibraryRuntime::Handle handle;
+  TF_RETURN_IF_ERROR(MaybeInstantiate(ctx, &handle));
+
+  FunctionLibraryRuntime::Options f_opts;
+  f_opts.step_id = CapturedFunction::generate_step_id();
+  ScopedStepContainer step_container(f_opts.step_id, [ctx](const string& name) {
+    ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
+  });
+  f_opts.step_container = &step_container;
+  f_opts.runner = ctx->runner();
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels
   // (such as queue kernels) that depend on the non-nullness of
   // `OpKernelContext::cancellation_manager()`, but additional effort
   // will be required to plumb it through the `IteratorContext`.
-  auto c_mgr = new CancellationManager;
-  auto frame =
-      new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_);
-  f_opts.cancellation_manager = c_mgr;
+  CancellationManager c_mgr;
+  f_opts.cancellation_manager = &c_mgr;
+
+  OwnedArgsCallFrame frame(std::move(args), &captured_inputs_, ret_types_);
   Notification n;
   Status s;
-  mutex_lock l(mu_);
-  lib_->Run(f_opts, f_handle_, frame,
-            [rets, c_mgr, frame, &n, &s](Status func_status) {
-              delete c_mgr;
-              s.Update(func_status);
-              if (s.ok()) {
-                s = frame->ConsumeRetvals(rets);
-              }
-              delete frame;
-              n.Notify();
-            });
+  ctx->lib()->Run(f_opts, handle, &frame, [&n, &s](Status func_status) {
+    s.Update(func_status);
+    n.Notify();
+  });
   n.WaitForNotification();
-  return s;
+  TF_RETURN_IF_ERROR(s);
+  return frame.ConsumeRetvals(rets);
 }
 
-Status CapturedFunction::RunWithBorrowedArgs(
-    IteratorContext* ctx, FunctionLibraryRuntime::Options f_opts,
-    const std::vector<Tensor>& args, std::vector<Tensor>* rets) {
-  FunctionLibraryRuntime::InstantiateOptions inst_opts;
-  inst_opts.overlay_lib = ctx->function_library().get();
-  TF_RETURN_IF_ERROR(MaybeInstantiate(ctx->lib(), inst_opts));
+Status CapturedFunction::RunWithBorrowedArgs(IteratorContext* ctx,
+                                             const std::vector<Tensor>& args,
+                                             std::vector<Tensor>* rets) {
+  FunctionLibraryRuntime::Handle handle;
+  TF_RETURN_IF_ERROR(MaybeInstantiate(ctx, &handle));
+
+  FunctionLibraryRuntime::Options f_opts;
+  f_opts.step_id = CapturedFunction::generate_step_id();
+  ScopedStepContainer step_container(f_opts.step_id, [ctx](const string& name) {
+    ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
+  });
+  f_opts.step_container = &step_container;
+  f_opts.runner = ctx->runner();
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels
   // (such as queue kernels) that depend on the non-nullness of
   // `OpKernelContext::cancellation_manager()`, but additional effort
   // will be required to plumb it through the `IteratorContext`.
-  auto c_mgr = new CancellationManager;
+  CancellationManager c_mgr;
+  f_opts.cancellation_manager = &c_mgr;
+
   BorrowedArgsCallFrame frame(args, &captured_inputs_, ret_types_);
-  f_opts.cancellation_manager = c_mgr;
   Notification n;
   Status s;
-  mutex_lock l(mu_);
 
-  lib_->Run(f_opts, f_handle_, &frame,
-            [rets, c_mgr, &frame, &n, &s](Status func_status) {
-              delete c_mgr;
-              s.Update(func_status);
-              if (s.ok()) {
-                s = frame.ConsumeRetvals(rets);
-              }
-              n.Notify();
-            });
+  ctx->lib()->Run(f_opts, handle, &frame, [&n, &s](Status func_status) {
+    s.Update(func_status);
+    n.Notify();
+  });
   n.WaitForNotification();
-  return s;
+  TF_RETURN_IF_ERROR(s);
+  return frame.ConsumeRetvals(rets);
 }
 
-void CapturedFunction::RunAsync(
-    FunctionLibraryRuntime* lib,
-    FunctionLibraryRuntime::InstantiateOptions inst_opts,
-    FunctionLibraryRuntime::Options f_opts, std::vector<Tensor>&& args,
-    std::vector<Tensor>* rets, FunctionLibraryRuntime::DoneCallback done) {
-  Status s = MaybeInstantiate(lib, inst_opts);
+void CapturedFunction::RunAsync(IteratorContext* ctx,
+                                std::vector<Tensor>&& args,
+                                std::vector<Tensor>* rets,
+                                FunctionLibraryRuntime::DoneCallback done) {
+  // NOTE(mrry): This method does not transfer ownership of `ctx`, and it may
+  // be deleted before `done` is called. Take care not to capture `ctx` in any
+  // code that may execute asynchronously in this function.
+  FunctionLibraryRuntime::Handle handle;
+  Status s = MaybeInstantiate(ctx, &handle);
   if (!s.ok()) {
     done(s);
     return;
   }
+  auto frame =
+      new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_);
+
+  FunctionLibraryRuntime::Options f_opts;
+  f_opts.step_id = CapturedFunction::generate_step_id();
+  ResourceMgr* resource_mgr = ctx->lib()->device()->resource_manager();
+  auto step_container = new ScopedStepContainer(
+      f_opts.step_id, [resource_mgr](const string& name) {
+        resource_mgr->Cleanup(name).IgnoreError();
+      });
+  f_opts.step_container = step_container;
+  f_opts.runner = ctx->runner();
   // TODO(mrry): Add cancellation manager support to IteratorContext
   // so that we can cancel running map functions. The local
   // cancellation manager here is created so that we can run kernels
@@ -270,24 +286,24 @@ void CapturedFunction::RunAsync(
   // `OpKernelContext::cancellation_manager()`, but additional effort
   // will be required to plumb it through the `IteratorContext`.
   auto c_mgr = new CancellationManager;
-  auto frame =
-      new OwnedArgsCallFrame(std::move(args), &captured_inputs_, ret_types_);
   f_opts.cancellation_manager = c_mgr;
-  mutex_lock l(mu_);
 
-  lib_->Run(f_opts, f_handle_, frame,
-            std::bind(
-                [rets, c_mgr, frame](FunctionLibraryRuntime::DoneCallback done,
-                                     // Begin unbound arguments.
-                                     Status s) {
-                  delete c_mgr;
-                  if (s.ok()) {
-                    s = frame->ConsumeRetvals(rets);
-                  }
-                  delete frame;
-                  done(s);
-                },
-                std::move(done), std::placeholders::_1));
+  tf_shared_lock l(mu_);
+  ctx->lib()->Run(f_opts, handle, frame,
+                  std::bind(
+                      [rets, step_container, c_mgr, frame](
+                          FunctionLibraryRuntime::DoneCallback done,
+                          // Begin unbound arguments.
+                          Status s) {
+                        delete step_container;
+                        delete c_mgr;
+                        if (s.ok()) {
+                          s = frame->ConsumeRetvals(rets);
+                        }
+                        delete frame;
+                        done(s);
+                      },
+                      std::move(done), std::placeholders::_1));
 }
 
 CapturedFunction::CapturedFunction(const NameAttrList& func,

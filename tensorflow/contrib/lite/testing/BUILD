@@ -45,6 +45,7 @@ gen_zipped_test_files(
         "softmax.zip",
         "space_to_batch_nd.zip",
         "space_to_depth.zip",
+        "squeeze.zip",
         "sub.zip",
         "transpose.zip",
     ],

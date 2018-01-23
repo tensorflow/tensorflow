@@ -451,6 +451,7 @@ py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",

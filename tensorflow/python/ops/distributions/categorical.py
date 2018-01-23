@@ -29,6 +29,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _broadcast_cat_event_and_params(event, params, base_dtype=dtypes.int32):
@@ -58,6 +59,7 @@ def _broadcast_cat_event_and_params(event, params, base_dtype=dtypes.int32):
   return event, params
 
 
+@tf_export("distributions.Categorical")
 class Categorical(distribution.Distribution):
   """Categorical distribution.
 

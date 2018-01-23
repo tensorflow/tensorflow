@@ -41,7 +41,7 @@ class CallTreesTest(test.TestCase):
     node = parser.parse_object(test_fn)
     node = access.resolve(node)
     node = live_values.resolve(node, namespace, {})
-    node = type_info.resolve(node, None)
+    node = type_info.resolve(node, {})
     return node
 
   def test_basic(self):
@@ -56,12 +56,12 @@ class CallTreesTest(test.TestCase):
       return test_fn_1(a) + 1
 
     node = self._parse_and_analyze(test_fn_2, {'test_fn_1': test_fn_1})
-    node = call_trees.transform(node, TestNamer(), set())
+    node = call_trees.transform(node, TestNamer(), {}, (), ())
     result = compiler.ast_to_object(node)
     # Only test_fn_2 is transformed, so we'll insert renamed_test_fn_1 manually.
     setattr(result, 'renamed_test_fn_1', renamed_test_fn_1)
 
-    self.assertEquals(3, result.renamed_test_fn_2(1))
+    self.assertEquals(3, result.test_fn_2(1))
 
   def test_uncompiled_modules(self):
 
@@ -74,15 +74,17 @@ class CallTreesTest(test.TestCase):
         'math_ops': math_ops,
         'constant_op': constant_op
     })
-    node = call_trees.transform(node, TestNamer(),
+    node = call_trees.transform(node, TestNamer(), {},
                                 set(((math_ops.__name__,),
-                                     (constant_op.__name__,))))
+                                     (constant_op.__name__,))), ())
     result = compiler.ast_to_object(node)
     setattr(result, 'math_ops', math_ops)
     setattr(result, 'constant_op', constant_op)
 
     with self.test_session() as sess:
-      result_tensor = result.renamed_test_fn(constant_op.constant(1))
+      # Not renamed, because the converter doesn't rename the definition itself.
+      # (the caller is responsible for that).
+      result_tensor = result.test_fn(constant_op.constant(1))
       result_val = sess.run(result_tensor)
 
     self.assertEquals(3, result_val)

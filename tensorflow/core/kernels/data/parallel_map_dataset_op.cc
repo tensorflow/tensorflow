@@ -109,10 +109,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
 
       // Input: other_arguments
-      DataTypeVector other_arguments_types(
-          captured_func_->captured_inputs().size());
-      std::vector<Node*> other_arguments(
-          captured_func_->captured_inputs().size());
+      DataTypeVector other_arguments_types;
+      other_arguments_types.reserve(captured_func_->captured_inputs().size());
+      std::vector<Node*> other_arguments;
+      other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
         TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
@@ -326,25 +326,9 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           // `result->return_values`, and notify `result->notification`
           // to unblock a consumer.
           result->notification.reset(new Notification);
-
-          FunctionLibraryRuntime::Options opts;
-          opts.step_id = CapturedFunction::generate_step_id();
-          ResourceMgr* resource_manager =
-              ctx->lib()->device()->resource_manager();
-          ScopedStepContainer* step_container = new ScopedStepContainer(
-              opts.step_id, [resource_manager](const string& name) {
-                resource_manager->Cleanup(name).IgnoreError();
-              });
-          opts.step_container = step_container;
-          opts.runner = ctx->runner();
-          FunctionLibraryRuntime::InstantiateOptions inst_opts;
-          inst_opts.overlay_lib = ctx->function_library().get();
-
           dataset()->captured_func_->RunAsync(
-              ctx->lib(), inst_opts, opts, std::move(input_element),
-              &result->return_values,
-              [result, step_container, result_index](Status ret_status) {
-                delete step_container;
+              ctx, std::move(input_element), &result->return_values,
+              [result, result_index](Status ret_status) {
                 result->status.Update(ret_status);
                 result->notification->Notify();
               });

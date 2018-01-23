@@ -89,6 +89,9 @@ enum BuiltinOperator : byte {
   MAX_POOL_2D = 17,
   MUL = 18,
   RELU = 19,
+  // NOTE(aselle): RELU_N1_TO_1 used to be called RELU1, but it was renamed
+  // since different model developers use RELU1 in different ways. Never
+  // create another op called RELU1.
   RELU_N1_TO_1 = 20,
   RELU6 = 21,
   RESHAPE = 22,
@@ -113,6 +116,7 @@ enum BuiltinOperator : byte {
   MEAN = 40,
   SUB = 41,
   DIV = 42,
+  SQUEEZE = 43,
 }
 
 // Options for the builtin operators.
@@ -146,6 +150,8 @@ union BuiltinOptions {
   MeanOptions,
   SubOptions,
   DivOptions,
+  SqueezeOptions,
+  SequenceRNNOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -206,6 +212,12 @@ table SVDFOptions {
 
 // An implementation of TensorFlow RNNCell.
 table RNNOptions {
+  fused_activation_function:ActivationFunctionType;
+}
+
+// An implementation of TensorFlow dynamic_rnn with RNNCell.
+table SequenceRNNOptions {
+  time_major:bool;
   fused_activation_function:ActivationFunctionType;
 }
 
@@ -321,6 +333,10 @@ table TransposeOptions {
 table MeanOptions {
   axis:[int];
   keep_dims: bool;
+}
+
+table SqueezeOptions {
+  squeeze_dims:[int];
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

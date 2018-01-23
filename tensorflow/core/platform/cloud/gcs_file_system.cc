@@ -117,6 +117,9 @@ constexpr char kReadRequestTimeout[] = "GCS_READ_REQUEST_TIMEOUT_SECS";
 // The environment variable to configure the overall request timeout for
 // upload requests.
 constexpr char kWriteRequestTimeout[] = "GCS_WRITE_REQUEST_TIMEOUT_SECS";
+// The environment variable to configure an additional header to send with
+// all requests to GCS (format HEADERNAME:HEADERCONTENT)
+constexpr char kAdditionalRequestHeader[] = "GCS_ADDITIONAL_REQUEST_HEADER";
 
 // TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
@@ -607,6 +610,11 @@ bool GetEnvVar(const char* varname, bool (*convert)(StringPiece, T*),
   return convert(env_value, value);
 }
 
+bool StringPieceIdentity(StringPiece str, StringPiece* value) {
+  *value = str;
+  return true;
+}
+
 }  // namespace
 
 GcsFileSystem::GcsFileSystem()
@@ -668,6 +676,36 @@ GcsFileSystem::GcsFileSystem()
     VLOG(1) << "GCS DNS cache is disabled, because " << kResolveCacheSecs
             << " = 0 (or is not set)";
   }
+
+  // Get the additional header
+  StringPiece add_header_contents;
+  if (GetEnvVar(kAdditionalRequestHeader, StringPieceIdentity,
+                &add_header_contents)) {
+    size_t split = add_header_contents.find(':', 0);
+
+    if (split != StringPiece::npos) {
+      StringPiece header_name = add_header_contents.substr(0, split);
+      StringPiece header_value = add_header_contents.substr(split + 1);
+
+      if (!header_name.empty() && !header_value.empty()) {
+        additional_header_.reset(new std::pair<const string, const string>(
+            header_name.ToString(), header_value.ToString()));
+
+        VLOG(1) << "GCS additional header ENABLED. "
+                << "Name: " << additional_header_->first << ", "
+                << "Value: " << additional_header_->second;
+      } else {
+        LOG(ERROR) << "GCS additional header DISABLED. Invalid contents: "
+                   << add_header_contents;
+      }
+    } else {
+      LOG(ERROR) << "GCS additional header DISABLED. Invalid contents: "
+                 << add_header_contents;
+    }
+  } else {
+    VLOG(1) << "GCS additional header DISABLED. No environment variable set.";
+  }
+
   // Apply the overrides for request timeouts
   uint32 timeout_value;
   if (GetEnvVar(kRequestConnectionTimeout, strings::safe_strtou32,
@@ -696,7 +734,8 @@ GcsFileSystem::GcsFileSystem(
     uint64 stat_cache_max_age, size_t stat_cache_max_entries,
     uint64 matching_paths_cache_max_age,
     size_t matching_paths_cache_max_entries, int64 initial_retry_delay_usec,
-    TimeoutConfig timeouts)
+    TimeoutConfig timeouts,
+    std::pair<const string, const string>* additional_header)
     : auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
       file_block_cache_(
@@ -705,7 +744,8 @@ GcsFileSystem::GcsFileSystem(
       matching_paths_cache_(new MatchingPathsCache(
           matching_paths_cache_max_age, matching_paths_cache_max_entries)),
       timeouts_(timeouts),
-      initial_retry_delay_usec_(initial_retry_delay_usec) {}
+      initial_retry_delay_usec_(initial_retry_delay_usec),
+      additional_header_(additional_header) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
@@ -1396,6 +1436,11 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
   TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
   new_request->AddAuthBearerHeader(auth_token);
+
+  if (additional_header_) {
+    new_request->AddHeader(additional_header_->first,
+                           additional_header_->second);
+  }
 
   *request = std::move(new_request);
   return Status::OK();

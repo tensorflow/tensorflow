@@ -884,6 +884,35 @@ class EstimatorTest(test.TestCase):
     self.assertTrue('MSE' in output_values)
     self.assertTrue(output_values['MSE'].HasField('histo'))
 
+  def testSummaryWritingWithTensor(self):
+
+    def _streaming_precition_mean_tensor(predictions,
+                                         weights=None,
+                                         metrics_collections=None,
+                                         updates_collections=None,
+                                         name=None):
+      return metric_ops.streaming_mean_tensor(
+          predictions,
+          weights=weights,
+          metrics_collections=metrics_collections,
+          updates_collections=updates_collections,
+          name=name)
+
+    est = estimator.Estimator(model_fn=linear_model_fn)
+    est.fit(input_fn=boston_input_fn, steps=200)
+    est.evaluate(
+        input_fn=boston_input_fn,
+        steps=200,
+        metrics={'PMT': _streaming_precition_mean_tensor})
+    events = util_test.latest_events(est.model_dir + '/eval')
+    output_values = {}
+    for e in events:
+      if e.HasField('summary'):
+        for v in e.summary.value:
+          output_values[v.tag] = v
+    self.assertTrue('PMT' in output_values)
+    self.assertTrue(output_values['PMT'].HasField('tensor'))
+
   def testLossInGraphCollection(self):
 
     class _LossCheckerHook(session_run_hook.SessionRunHook):

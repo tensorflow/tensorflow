@@ -376,6 +376,7 @@ package_group(
         "//learning/meta_rank/...",
         "//tensorflow/...",
         "//tensorflow_fold/llgtm/...",
+        "//third_party/py/tensor2tensor/...",
     ],
 )
 
@@ -582,6 +583,7 @@ filegroup(
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/contrib/verbs:all_files",
         "//tensorflow/core:all_files",
+        "//tensorflow/core/api_def:all_files",
         "//tensorflow/core/debug:all_files",
         "//tensorflow/core/distributed_runtime:all_files",
         "//tensorflow/core/distributed_runtime/rpc:all_files",

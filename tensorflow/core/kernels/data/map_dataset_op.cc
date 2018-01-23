@@ -95,10 +95,10 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
 
-      DataTypeVector other_arguments_types(
-          captured_func_->captured_inputs().size());
-      std::vector<Node*> other_arguments(
-          captured_func_->captured_inputs().size());
+      DataTypeVector other_arguments_types;
+      other_arguments_types.reserve(captured_func_->captured_inputs().size());
+      std::vector<Node*> other_arguments;
+      other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
         TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
@@ -140,19 +140,10 @@ class MapDatasetOp : public UnaryDatasetOpKernel {
           return Status::OK();
         }
 
-        FunctionLibraryRuntime::Options opts;
-        opts.step_id = CapturedFunction::generate_step_id();
-
-        ScopedStepContainer step_container(opts.step_id, [ctx](const string&
-                                                                   name) {
-          ctx->lib()->device()->resource_manager()->Cleanup(name).IgnoreError();
-        });
-        opts.step_container = &step_container;
-        opts.runner = ctx->runner();
         // TODO(mrry): Avoid blocking a threadpool thread. We will need to
         // stack-rip the iterators and use async kernels.
-        Status s = dataset()->captured_func_->Run(ctx, opts, std::move(args),
-                                                  out_tensors);
+        Status s =
+            dataset()->captured_func_->Run(ctx, std::move(args), out_tensors);
         if (errors::IsOutOfRange(s)) {
           // `f` may deliberately raise `errors::OutOfRange` to indicate
           // that we should terminate the iteration early.

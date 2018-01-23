@@ -575,7 +575,10 @@ void GenPythonOp::AddExport() {
     } else {
       first_endpoint = false;
     }
-    strings::StrAppend(&result_, "'", endpoint.name(), "'");
+    string endpoint_name;
+    python_op_gen_internal::GenerateLowerCaseOpName(endpoint.name(),
+                                                    &endpoint_name);
+    strings::StrAppend(&result_, "'", endpoint_name, "'");
   }
   strings::StrAppend(&result_, ")\n");
 }

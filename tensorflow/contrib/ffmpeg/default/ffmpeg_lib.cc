@@ -73,7 +73,9 @@ std::vector<string> FfmpegVideoCommandLine(const string& input_filename,
           "-probesize",
           StrCat(kDefaultProbeSize),
           "-loglevel",
-          "error",  // Print errors only.
+          // Info is needed to get the information about stream, etc.
+          // It is generated to a separate file, not stdout/stderr.
+          "info",
           "-hide_banner",  // Skip printing build options, version, etc.
           "-vcodec",
           "rawvideo",
