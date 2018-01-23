@@ -2218,6 +2218,7 @@ cc_library(
         ":save_restore_v2_ops",
         ":text_line_reader_op",
         ":tf_record_reader_op",
+        ":tf_sequence_file_reader_op",
         ":whole_file_read_ops",
     ],
 )
@@ -2304,6 +2305,14 @@ tf_kernel_library(
     name = "tf_record_reader_op",
     prefix = "tf_record_reader_op",
     deps = IO_DEPS,
+)
+
+tf_kernel_library(
+    name = "tf_sequence_file_reader_op",
+    prefix = "tf_sequence_file_reader_op",
+    deps = IO_DEPS + [
+        "//tensorflow/core/kernels/hadoop_sequence_file:reader",
+    ],
 )
 
 tf_kernel_library(
@@ -4947,6 +4956,7 @@ filegroup(
             # not used on Android. Those ops also do not compile if included,
             # unless we add the additional deps they need.
             "tf_record_reader_op.*",
+            "tf_sequence_file_reader_op.*",
             "lmdb_reader_op.*",
             "string_to_hash_bucket_op.*",
             "sdca_ops.*",

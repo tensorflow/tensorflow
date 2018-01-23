@@ -26,6 +26,7 @@ See the @{$python/io_ops} guide.
 @@WholeFileReader
 @@IdentityReader
 @@TFRecordReader
+@@TFSequenceFileReader
 @@LMDBReader
 @@FixedLengthRecordReader
 @@decode_csv
@@ -480,6 +481,34 @@ class TFRecordReader(ReaderBase):
 
 
 ops.NotDifferentiable("TFRecordReader")
+
+
+class TFSequenceFileReader(ReaderBase):
+  """A Reader that outputs the records from a Hadoop sequence file.
+
+  See tensorflow/core/kernels/hadoop_sequence_file/reader.h for limitations.
+
+  See ReaderBase for supported methods.
+
+  @compatibility(eager)
+  Readers are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
+  """
+  # TODO(josh11b): Support serializing and restoring state.
+
+  def __init__(self, name=None, options=None):
+    """Create a TFSequenceFileReader.
+
+    Args:
+      name: A name for the operation (optional).
+      options: A TFRecordOptions object (optional).
+    """
+    rr = gen_io_ops._tf_sequence_file_reader(name=name)
+    super(TFSequenceFileReader, self).__init__(rr)
+
+
+ops.NotDifferentiable("TFSequenceFileReader")
 
 
 class LMDBReader(ReaderBase):
