@@ -258,6 +258,36 @@ class NestTest(test.TestCase):
                                  "don't have the same set of keys"):
       nest.assert_same_structure({"a": 1}, {"b": 1})
 
+    same_name_type_0 = collections.namedtuple("same_name", ("a", "b"))
+    same_name_type_1 = collections.namedtuple("same_name", ("a", "b"))
+    nest.assert_same_structure(same_name_type_0(0, 1), same_name_type_1(2, 3))
+
+    # This assertion is expected to pass: two namedtuples with the same
+    # name and field names are considered to be identical.
+    same_name_type_2 = collections.namedtuple("same_name_1", ("x", "y"))
+    same_name_type_3 = collections.namedtuple("same_name_1", ("x", "y"))
+    nest.assert_same_structure(
+        same_name_type_0(same_name_type_2(0, 1), 2),
+        same_name_type_1(same_name_type_3(2, 3), 4))
+
+    expected_message = "The two structures don't have the same.*"
+    with self.assertRaisesRegexp(ValueError, expected_message):
+      nest.assert_same_structure(same_name_type_0(0, same_name_type_1(1, 2)),
+                                 same_name_type_1(same_name_type_0(0, 1), 2))
+
+    same_name_type_1 = collections.namedtuple("not_same_name", ("a", "b"))
+    self.assertRaises(TypeError, nest.assert_same_structure,
+                      same_name_type_0(0, 1), same_name_type_1(2, 3))
+
+    same_name_type_1 = collections.namedtuple("same_name", ("x", "y"))
+    self.assertRaises(TypeError, nest.assert_same_structure,
+                      same_name_type_0(0, 1), same_name_type_1(2, 3))
+
+    class SameNamedType1(collections.namedtuple("same_name", ("a", "b"))):
+      pass
+    self.assertRaises(TypeError, nest.assert_same_structure,
+                      same_name_type_0(0, 1), SameNamedType1(2, 3))
+
   def testMapStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
     structure2 = (((7, 8), 9), 10, (11, 12))
