@@ -1399,7 +1399,7 @@ def convolution3d_transpose(
 
 
 @add_arg_scope
-def dense_to_sparse(tensor, eos_token=0, output_collections=None, scope=None):
+def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
   """Converts a dense tensor into a sparse tensor.
   An example use would be to convert dense labels to sparse ones
   so that they can be fed to the ctc_loss.
@@ -1412,13 +1412,13 @@ def dense_to_sparse(tensor, eos_token=0, output_collections=None, scope=None):
      scope: Optional scope for name_scope.
   """
   with variable_scope.variable_scope(
-      scope, 'dense_to_sparse', [inputs]) as sc:
-    inputs = ops.convert_to_tensor(inputs)
-    indices = array_ops.where(math_ops.not_equal(labels, constant_op.constant(eos_token, labels.dtype)))
-    values = array_ops.gather_nd(labels, indices)
-    shape = array_ops.shape(labels, out_type=dtypes.int64)
+      scope, 'dense_to_sparse', [tensor]) as sc:
+    tensor = ops.convert_to_tensor(tensor)
+    indices = array_ops.where(math_ops.not_equal(tensor, constant_op.constant(eos_token, tensor.dtype)))
+    values = array_ops.gather_nd(tensor, indices)
+    shape = array_ops.shape(tensor, out_type=dtypes.int64)
     outputs = sparse_tensor.SparseTensor(indices, values, shape)
-    return utils.collect_named_outputs(output_collections, sc.name, outputs)
+    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
