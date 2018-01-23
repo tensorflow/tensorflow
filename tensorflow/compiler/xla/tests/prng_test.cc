@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -87,7 +86,8 @@ XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(
   for (int64 seed = 0; seed < 100; ++seed) {
     // The largest negative number smaller than zero in bf16 that's not
     // denormalized.
-    float low = bit_cast<float>(0x80800000);
+    int32 low_raw = 0x80800000;
+    const float low = reinterpret_cast<const float&>(low_raw);
     float high = 0.0f;
     UniformTest<bfloat16>(static_cast<bfloat16>(low),
                           static_cast<bfloat16>(high), {}, /*seed=*/seed);
