@@ -192,7 +192,10 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
       targets * -log(sigmoid(logits)) +
           (1 - targets) * -log(1 - sigmoid(logits))
 
-  The argument `pos_weight` is used as a multiplier for the positive targets:
+  A value `pos_weights > 1` decreases the false negative count, hence increasing the recall.
+  Conversely setting `pos_weights < 1` decreases the false positive count and increases the precision.
+  This can be seen from the fact that `pos_weight` is introduced as a multiplicative coefficient for the positive targets term 
+  in the loss expression:
 
       targets * -log(sigmoid(logits)) * pos_weight +
           (1 - targets) * -log(1 - sigmoid(logits))
