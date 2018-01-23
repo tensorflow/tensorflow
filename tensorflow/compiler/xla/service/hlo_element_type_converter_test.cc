@@ -43,8 +43,8 @@ TEST_F(HloElementTypeConverterTest, CustomCallsNotConverted) {
   )";
   auto module = CreateModuleFromHloString(hlo_string);
   HloElementTypeConverter type_converter(BF16, F32);
-  auto converted = type_converter.Run(module.get()).ConsumeValueOrDie();
-  EXPECT_TRUE(converted == false);
+  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  EXPECT_FALSE(converted);
 }
 
 TEST_F(HloElementTypeConverterTest, InfeedsOutfeedsNotConverted) {
@@ -57,8 +57,8 @@ TEST_F(HloElementTypeConverterTest, InfeedsOutfeedsNotConverted) {
   )";
   auto module = CreateModuleFromHloString(hlo_string);
   HloElementTypeConverter type_converter(BF16, F32);
-  auto converted = type_converter.Run(module.get()).ConsumeValueOrDie();
-  EXPECT_TRUE(converted == false);
+  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  EXPECT_FALSE(converted);
 }
 
 TEST_F(HloElementTypeConverterTest, OperationsInNestedTuplesConverted) {
@@ -77,9 +77,8 @@ TEST_F(HloElementTypeConverterTest, OperationsInNestedTuplesConverted) {
 
   auto module = CreateModuleFromHloString(hlo_string);
   HloElementTypeConverter type_converter(BF16, F32);
-  auto converted = type_converter.Run(module.get()).ConsumeValueOrDie();
-  EXPECT_TRUE(converted == true);
-
+  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  EXPECT_TRUE(converted);
   const HloInstruction* bf16_op =
       module->entry_computation()->root_instruction()->operand(0)->operand(1);
   EXPECT_THAT(bf16_op, op::Convert(op::Add(op::Constant(), op::Convert())));
@@ -106,9 +105,8 @@ TEST_F(HloElementTypeConverterTest, BatchNormGradBF16Converted) {
 
   auto module = CreateModuleFromHloString(hlo_string);
   HloElementTypeConverter type_converter(BF16, F32);
-  auto converted = type_converter.Run(module.get()).ConsumeValueOrDie();
-  EXPECT_TRUE(converted == true);
-
+  TF_ASSERT_OK_AND_ASSIGN(bool converted, type_converter.Run(module.get()));
+  EXPECT_TRUE(converted);
   const HloInstruction* tuple_instr =
       module->entry_computation()->root_instruction();
   ::testing::Matcher<const ::xla::HloInstruction*> batch_norm =
