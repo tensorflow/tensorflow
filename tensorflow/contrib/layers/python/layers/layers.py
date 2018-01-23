@@ -70,7 +70,7 @@ __all__ = ['avg_pool2d',
            'convolution2d_transpose',
            'convolution3d',
            'convolution3d_transpose',
-           'ctc_loss_dense_labels',
+           'dense_to_sparse',
            'dropout',
            'elu',
            'flatten',
@@ -1399,44 +1399,25 @@ def convolution3d_transpose(
 
 
 @add_arg_scope
-def ctc_loss_dense_labels(labels, inputs, sequence_length, eos_token,
-                          preprocess_collapse_repeated=False,
-                          ctc_merge_repeated=True,
-                          ignore_longer_outputs_than_inputs=False,
-                          time_major=True,
-                          output_collections=None,
-                          scope=None):
-  """Computes the CTC (Connectionist Temporal Classification) Loss
-  using dense labels, and an end of sentence token.
-
+def dense_to_sparse(tensor, eos_token=0, output_collections=None, scope=None):
+  """Converts a dense tensor into a sparse tensor.
+  An example use would be to convert dense labels to sparse ones
+  so that they can be fed to the ctc_loss.
+  
   Args:
-    labels: An 1-D `int32` `Tensor`.
-    inputs: 3-D `float` `Tensor`.
-      If time_major == False, this will be a `Tensor` shaped:
-        `[batch_size, max_time, num_classes]`.
-      If time_major == True (default), this will be a `Tensor` shaped:
-        `[max_time, batch_size, num_classes]`.
-      The logits.
-    sequence_length: 1-D `int32` vector, size `[batch_size]`.
-      The sequence lengths.
-    eos_token: An integer. A padding label value or end of sentence token. e.g. 0
-
-
-  See https://www.tensorflow.org/api_docs/python/tf/nn/ctc_loss
-  for more info on the other parameters not discussed here
+     tensor: A 1-D `int32` `Tensor` to be converted to a `Sparse`.
+     eos_token: An integer. 
+       It is part of the target label that signfies the end of a sentence.
+     outputs_collections: Collection to add the outputs.
+     scope: Optional scope for name_scope.
   """
   with variable_scope.variable_scope(
-      scope, 'ctc_loss_dense_labels', [inputs]) as sc:
+      scope, 'dense_to_sparse', [inputs]) as sc:
     inputs = ops.convert_to_tensor(inputs)
     indices = array_ops.where(math_ops.not_equal(labels, constant_op.constant(eos_token, labels.dtype)))
     values = array_ops.gather_nd(labels, indices)
     shape = array_ops.shape(labels, out_type=dtypes.int64)
-    sparse_labels = sparse_tensor.SparseTensor(indices, values, shape)
-    outputs = nn.ctc_loss(sprase_labels, inputs, sequence_length,
-                          preprocess_collapse_repeated,
-                          ctc_merge_repeated,
-                          ignore_longer_outputs_than_inputs,
-                          time_major)
+    outputs = sparse_tensor.SparseTensor(indices, values, shape)
     return utils.collect_named_outputs(output_collections, sc.name, outputs)
 
 
