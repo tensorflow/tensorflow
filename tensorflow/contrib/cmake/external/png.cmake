@@ -58,7 +58,7 @@ if (tensorflow_PNG_PROVIDER STREQUAL module)
 
 	## put png includes in the directory where they are expected
 	add_custom_target(png_create_destination_dir
-		COMMAND ${CMAKE_COMMAND} -E make_directory ${png_INCLUDE_DIR}
+		COMMAND ${CMAKE_COMMAND} -E make_directory ${png_INCLUDE_DIRS}
 		DEPENDS png)
 
 	add_custom_target(png_copy_headers_to_destination
