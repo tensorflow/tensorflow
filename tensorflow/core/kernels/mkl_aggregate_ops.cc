@@ -61,6 +61,18 @@ class MklAddNOp : public OpKernel {
     GetMklShape(ctx, src2_idx, &(mkl_context.input2_shape));
     bool input2_in_mkl_format = mkl_context.input2_shape.IsMklTensor();
 
+    // if the shapes of two tensors are not same raise op error
+    TensorShape src1_shape, src2_shape;
+    src1_shape = input0.shape();
+    src2_shape = input1.shape();
+    if (!src1_shape.IsSameSize(src2_shape) ){
+      ctx->SetStatus( 
+          errors::InvalidArgument(
+          "Inputs to operation ", this->name(), " of type ", this->type_string(),
+          " must have the same size and shape.  Input 0: ",
+          src1_shape.DebugString(), " != input 1: ",
+          src2_shape.DebugString()));
+    }
     // handle the case of a scalar
     if (!input1_in_mkl_format && input0.dims() == 0) {
       const TensorShape& o_shape = input0.shape();
@@ -307,6 +319,18 @@ class MklAddNOp : public OpKernel {
        src1_mkl_shape.GetDimension(): src1_tensor.dims();
       int src2_dims_size = input2_in_mkl_format?
        src2_mkl_shape.GetDimension(): src2_tensor.dims();
+      // if the shapes of two tensors are not same raise op error
+      TensorShape src1_shape, src2_shape;
+      src1_shape = src1_tensor.shape();
+      src2_shape = src2_tensor.shape();
+      if (!src1_shape.IsSameSize(src2_shape) ){
+	ctx->SetStatus( 
+            errors::InvalidArgument(
+            "Inputs to operation ", this->name(), " of type ", this->type_string(),
+            " must have the same size and shape.  Input 0: ",
+            src1_shape.DebugString(), " != input 1: ",
+            src2_shape.DebugString()));
+      }
 
       if (!input1_in_mkl_format && src1_dims_size == 0) {
          Tensor* dst_tensor = nullptr;
