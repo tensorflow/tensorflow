@@ -26,6 +26,8 @@
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
 source "${SCRIPT_DIR}/builds/builds_common.sh"
 
+ROOT_DIR=$( cd "$SCRIPT_DIR/../../.." && pwd -P )
+
 # Helper functions
 die() {
   echo $@
@@ -418,15 +420,8 @@ do_bazel_nobuild() {
 }
 
 do_pip_smoke_test() {
-  BUILD_CMD="bazel build ${BAZEL_FLAGS} //tensorflow/tools/pip_package:pip_smoke_test"
-  ${BUILD_CMD}
-  cmd_status \
-    "Pip smoke test has failed. Please make sure any new TensorFlow are added to the tensorflow/tools/pip_package:build_pip_package dependencies."
-
-  RUN_CMD="bazel-bin/tensorflow/tools/pip_package/pip_smoke_test"
-  ${RUN_CMD}
-  cmd_status \
-    "The pip smoke test failed."
+  cd "$ROOT_DIR/tensorflow/tools/pip_package"
+  python pip_smoke_test.py
 }
 
 do_code_link_check() {
@@ -511,9 +506,14 @@ do_check_load_py_test() {
     "check_load_py_test failed."
 }
 
+do_cmake_python_sanity() {
+  cd "$ROOT_DIR/tensorflow/contrib/cmake"
+  python -m unittest -v python_sanity_test
+}
+
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_cmake_python_sanity")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Test entries in /tensorflow/contrib/cmake/python_{modules|protos|protos_cc}.txt for validity and consistency")
 
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS="--config=hdfs --config=gcp"
@@ -548,7 +548,10 @@ while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
 "${SANITY_STEPS[COUNTER]} (${SANITY_STEPS_DESC[COUNTER]}) ==="
   echo ""
 
+  # subshell: don't leak variables or changes of working directory
+  (
   ${SANITY_STEPS[COUNTER]} ${INCREMENTAL_FLAG}
+  )
   RESULT=$?
 
   if [[ ${RESULT} != "0" ]]; then

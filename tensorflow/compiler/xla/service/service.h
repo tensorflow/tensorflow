@@ -340,6 +340,8 @@ class Service : public ServiceInterface {
   StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Replicas(
       const Backend& backend, const DeviceHandle& device_handle) const;
 
+  Status MaybeDumpHloModule(const HloModule& module) const;
+
   // Returns the device handle that represents the replicated device for a
   // single computation that is not model-parallelized.
   DeviceHandle SingleComputationDeviceHandle() const;

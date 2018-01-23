@@ -765,6 +765,15 @@ class MapDatasetSerializationTest(
 
     self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
 
+  def testCaptureConstantInMapFn(self):
+
+    def _build_ds():
+      constant_var = constant_op.constant(5)
+      return (contrib_dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda x: x + constant_var))
+
+    self.run_core_tests(_build_ds, None, 10)
+
   def testCaptureDefunInMapFn(self):
     num_outputs = 100
 
@@ -855,6 +864,15 @@ class ParallelMapDatasetSerializationTest(
           lambda _: counter_var.assign_add(1)))
 
     self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+
+  def testCaptureConstantInMapFn(self):
+
+    def _build_ds():
+      constant_var = constant_op.constant(5)
+      return (contrib_dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda x: x + constant_var))
+
+    self.run_core_tests(_build_ds, None, 10)
 
   def testCaptureDefunInMapFn(self):
     num_outputs = 100

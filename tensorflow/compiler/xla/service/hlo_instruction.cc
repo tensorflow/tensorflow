@@ -404,6 +404,9 @@ HloInstruction::CreateCrossReplicaSum(
     tensorflow::StringPiece outfeed_config) {
   std::unique_ptr<HloInstruction> instruction =
       WrapUnique(new HloInstruction(HloOpcode::kOutfeed, ShapeUtil::MakeNil()));
+  CHECK(ShapeUtil::Compatible(operand->shape(), shape))
+      << "Outfeed shape " << shape << " must be compatible with operand shape "
+      << operand->shape();
   instruction->AppendOperand(operand);
   instruction->outfeed_config_ = outfeed_config.ToString();
   instruction->outfeed_shape_ = shape;
@@ -667,6 +670,58 @@ HloInstruction::CreateSelectAndScatter(
   instruction->dimensions_.assign(broadcast_dimensions.begin(),
                                   broadcast_dimensions.end());
   return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction>
+HloInstruction::CreateBroadcastSequence(
+    const Shape& output_shape, HloInstruction* operand,
+    const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+        adder) {
+  CHECK(ShapeUtil::IsScalar(operand->shape()) ||
+        ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(output_shape));
+  Shape broadcast_shape = ShapeUtil::ChangeElementType(
+      output_shape, operand->shape().element_type());
+  // Do explicit broadcast for scalar.
+  if (ShapeUtil::IsScalar(operand->shape())) {
+    auto broadcast =
+        HloInstruction::CreateBroadcast(broadcast_shape, operand, {});
+    broadcast->set_metadata(operand->metadata());
+    if (operand->has_sharding()) {
+      broadcast->set_sharding(operand->sharding());
+    }
+    return broadcast;
+  }
+  // Do explicit broadcast for degenerate broadcast.
+  std::vector<int64> broadcast_dimensions;
+  std::vector<int64> reshaped_dimensions;
+  for (int i = 0; i < ShapeUtil::Rank(operand->shape()); i++) {
+    if (operand->shape().dimensions(i) == output_shape.dimensions(i)) {
+      broadcast_dimensions.push_back(i);
+      reshaped_dimensions.push_back(operand->shape().dimensions(i));
+    } else {
+      CHECK_EQ(operand->shape().dimensions(i), 1)
+          << "An explicit broadcast sequence requires the broadcasted "
+             "dimensions to be trivial; operand: "
+          << operand->ToString() << "; output_shape: " << output_shape;
+    }
+  }
+  // Eliminate the size one dimensions.
+  HloInstruction* reshaped_operand = adder(HloInstruction::CreateReshape(
+      ShapeUtil::MakeShape(operand->shape().element_type(),
+                           reshaped_dimensions),
+      operand));
+  reshaped_operand->set_metadata(operand->metadata());
+  if (operand->has_sharding()) {
+    reshaped_operand->set_sharding(operand->sharding());
+  }
+  // Broadcast 'reshape' up to the larger size.
+  auto broadcast = HloInstruction::CreateBroadcast(
+      broadcast_shape, reshaped_operand, broadcast_dimensions);
+  broadcast->set_metadata(operand->metadata());
+  if (operand->has_sharding()) {
+    broadcast->set_sharding(operand->sharding());
+  }
+  return broadcast;
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreatePad(
