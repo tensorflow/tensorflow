@@ -89,6 +89,7 @@ from tensorflow.python.ops import gen_state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_state_ops import *
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 
@@ -189,6 +190,7 @@ def is_variable_initialized(ref, name=None):
                                                            name=name)
 
 
+@tf_export("assign_sub")
 def assign_sub(ref, value, use_locking=None, name=None):
   """Update 'ref' by subtracting 'value' from it.
 
@@ -217,6 +219,7 @@ def assign_sub(ref, value, use_locking=None, name=None):
   return ref.assign_sub(value)
 
 
+@tf_export("assign_add")
 def assign_add(ref, value, use_locking=None, name=None):
   """Update 'ref' by adding 'value' to it.
 
@@ -245,6 +248,7 @@ def assign_add(ref, value, use_locking=None, name=None):
   return ref.assign_add(value)
 
 
+@tf_export("assign")
 def assign(ref, value, validate_shape=None, use_locking=None, name=None):
   """Update 'ref' by assigning 'value' to it.
 
@@ -277,6 +281,7 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
   return ref.assign(value)
 
 
+@tf_export("count_up_to")
 def count_up_to(ref, limit, name=None):
   r"""Increments 'ref' until it reaches 'limit'.
 
@@ -299,6 +304,7 @@ def count_up_to(ref, limit, name=None):
       ref.handle, limit, T=ref.dtype, name=name)
 
 
+@tf_export("scatter_update")
 def scatter_update(ref, indices, updates, use_locking=True, name=None):
   # pylint: disable=line-too-long
   r"""Applies sparse updates to a variable reference.
@@ -354,6 +360,7 @@ def scatter_update(ref, indices, updates, use_locking=True, name=None):
     return ref.read_value()
 
 
+@tf_export("scatter_nd_update")
 def scatter_nd_update(ref, indices, updates, use_locking=True, name=None):
   r"""Applies sparse `updates` to individual values or slices in a Variable.
 
