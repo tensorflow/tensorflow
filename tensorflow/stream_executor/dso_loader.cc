@@ -96,7 +96,7 @@ string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 }
 
 /* static */ port::Status DsoLoader::GetLibcuptiDsoHandle(void** dso_handle) {
-#if defined(NVIDIA_TEGRA)
+#if defined(ANDROID_TEGRA)
   // On Android devices the CUDA version number is not added to the library name.
   return GetDsoHandle(FindDsoPath(port::Env::Default()->FormatLibraryFileName(
                                       "cupti", ""),
