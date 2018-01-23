@@ -369,6 +369,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "batch_kernels",
+    srcs = ["batch_kernels.cc"],
+    deps = [
+        "//tensorflow/core:batch_ops_op_lib",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:concat_lib_hdrs",
+        "//tensorflow/core/kernels:ops_util_hdrs",
+        "//tensorflow/core/kernels:split_lib_hdrs",
+        "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
+        "//tensorflow/core/kernels/batching_util:shared_batch_scheduler_hdrs",
+    ],
+    alwayslink = 1,
+)
+
 tf_kernel_library(
     name = "record_input_op",
     srcs = [
@@ -4975,6 +4991,7 @@ filegroup(
             "debug_ops.*",
             "scatter_nd_op*",
             "critical_section.*",
+            "batch_kernels.*",
         ],
     ),
     visibility = ["//visibility:public"],
