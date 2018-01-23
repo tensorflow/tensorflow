@@ -1507,7 +1507,7 @@ def sample_distorted_bounding_box(image_size,
                                   bounding_boxes,
                                   seed=None,
                                   seed2=None,
-                                  min_object_covered=None,
+                                  min_object_covered=0.1,
                                   aspect_ratio_range=None,
                                   area_range=None,
                                   max_attempts=None,
@@ -1610,8 +1610,6 @@ def sample_distorted_bounding_box(image_size,
       Provide as input to `tf.image.draw_bounding_boxes`.
   """
   with ops.name_scope(name, 'sample_distorted_bounding_box'):
-    if min_object_covered is None:
-      min_object_covered = 0.1
     return gen_image_ops._sample_distorted_bounding_box_v2(  # pylint: disable=protected-access
         image_size,
         bounding_boxes,
