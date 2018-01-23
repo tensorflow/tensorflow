@@ -177,6 +177,8 @@ message OptimizerOptions {
     ON_2 = 2;
   }
   GlobalJitLevel global_jit_level = 5;
+
+  bool do_loop_invariant_node_motion = 7;
 }
 
 message GraphOptions {
