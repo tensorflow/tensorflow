@@ -48,7 +48,13 @@ class ArithmeticOptimizer : public GraphOptimizer {
  private:
   // Returns true is a node with given name and the optimizer prefix already
   // exists.
-  bool OptimizedNodeExists(const string& name);
+  string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
+  bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
+
+  // Creates a new node in the graph, with name equal to that of node, prefixed
+  // with "ArithmeticOptimizer/" and the given suffix. Also updates node_map_,
+  // and optionally copies node into the new node if copy_node is true.
+  NodeDef* AddNode(const NodeDef& node, StringPiece suffix, bool copy_node);
 
   // Creates a new node in the graph, prefixed with "ArithmeticOptimizer/",
   // updates node_map_, and optionally copies *node_to_copy into the new

@@ -26,6 +26,18 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+filegroup(
+    name = "srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = ["*test*"],
+    ),
+    visibility = ["//visibility:public"],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
     srcs = ["c_api.h"],

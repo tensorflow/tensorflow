@@ -2833,6 +2833,16 @@ class PngTest(test_util.TensorFlowTestCase):
 
 class GifTest(test_util.TensorFlowTestCase):
 
+  def testOptimizedGifErrorString(self):
+    filename = "tensorflow/core/lib/gif/testdata/optimized.gif"
+
+    with self.test_session(use_gpu=True) as sess:
+      gif = io_ops.read_file(filename)
+      image = image_ops.decode_gif(gif)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError, "can't process optimized gif"):
+        gif, image = sess.run([gif, image])
+
   def testValid(self):
     # Read some real GIFs
     prefix = "tensorflow/core/lib/gif/testdata/"

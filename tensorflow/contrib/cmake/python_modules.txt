@@ -1,3 +1,5 @@
+# python_sanity_test.py will complain about invalid or missing entries
+# problematic entries can be commented for temporary whitelisting
 tensorflow
 tensorflow/core
 tensorflow/core/example
@@ -308,6 +310,8 @@ tensorflow/contrib/metrics
 tensorflow/contrib/metrics/python
 tensorflow/contrib/metrics/python/metrics
 tensorflow/contrib/metrics/python/ops
+tensorflow/contrib/mpi_collectives/python
+tensorflow/contrib/mpi_collectives/python/ops
 tensorflow/contrib/model_pruning
 tensorflow/contrib/model_pruning/examples
 tensorflow/contrib/model_pruning/examples/cifar10

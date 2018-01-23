@@ -281,14 +281,16 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
     return;
   }
 
-  // ptxas 9.0 before 9.0.276 miscompiles some address calculations with large
-  // offsets (e.g. "load ptr + large_constant"), b/70245379.
-  if (vmaj == 9 && vmin == 0 && vdot < 276) {
+  // ptxas 9.0 before 9.0.276 and ptxas 9.1 before 9.1.121 miscompile some
+  // address calculations with large offsets (e.g. "load ptr + large_constant"),
+  // b/70245379.
+  if ((vmaj == 9 && vmin == 0 && vdot < 276) ||
+      (vmaj == 9 && vmin == 1 && vdot < 121)) {
     LOG(WARNING) << "*** WARNING *** You are using ptxas " << vmaj << "."
                  << vmin << "." << vdot
-                 << ", which is in range [9.0.0, 9.0.276). These versions are "
-                    "known to miscompile XLA code, leading to incorrect "
-                    "results or invalid-address errors.";
+                 << ", which is in range [9.0.0, 9.0.276) + [9.1.0, 9.1.121). "
+                    "These versions are known to miscompile XLA code, leading "
+                    "to incorrect results or invalid-address errors.";
   }
 }
 
@@ -309,16 +311,24 @@ void WarnIfBadDriverJITVersion() {
     }
     se::cuda::DriverVersion version = version_or_status.ValueOrDie();
 
-    // The driver JIT in 384 before 384.108 miscompiles some address
+    // The following versions of the driver JIT miscompile some address
     // calculations with large offsets (e.g. "load ptr + large_constant"),
-    // b/70245379.
-    if (std::get<0>(version) == 384 && std::get<1>(version) < 108) {
+    // b/70245379:
+    //
+    //  - 384.x before 384.108
+    //  - 387.x before 387.40
+    //  - 390.x before 390.10.
+    auto vmaj = std::get<0>(version);
+    auto vmin = std::get<1>(version);
+    if ((vmaj == 384 && vmin < 108) ||  //
+        (vmaj == 387 && vmin < 40) ||   //
+        (vmaj == 390 && vmin < 10)) {
       LOG(WARNING)
           << "*** WARNING *** Invoking the PTX->SASS JIT from driver version "
           << se::cuda::DriverVersionToString(version)
-          << ", which is in range [384.0.0, 384.108.0). These versions are "
-             "known to miscompile XLA code, leading to incorrect results or "
-             "invalid-address errors.";
+          << ", which is in range [384.0.0, 384.108.0) + [387.0.0, 387.40.0) + "
+             "[390.0.0, 390.10.0). These versions are known to miscompile XLA "
+             "code, leading to incorrect results or invalid-address errors.";
     }
   });
 }

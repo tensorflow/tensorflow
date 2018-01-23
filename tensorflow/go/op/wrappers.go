@@ -116,6 +116,53 @@ func WriteImageSummary(scope *Scope, writer tf.Output, step tf.Output, tag tf.Ou
 	return scope.AddOperation(opspec)
 }
 
+// Outputs a `tf.Event` protocol buffer.
+//
+// When CreateSummaryDbWriter is being used, this op can be useful for
+// importing data from event logs.
+//
+// Arguments:
+//	writer: A handle to a summary writer.
+//	event: A string containing a binary-encoded tf.Event proto.
+//
+// Returns the created operation.
+func ImportEvent(scope *Scope, writer tf.Output, event tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "ImportEvent",
+		Input: []tf.Input{
+			writer, event,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Outputs a `Summary` protocol buffer with a tensor.
+//
+// Arguments:
+//	writer: A handle to a summary writer.
+//	step: The step to write the summary for.
+//	tensor: A tensor to serialize.
+//	tag: The summary's tag.
+//	summary_metadata: Serialized SummaryMetadata protocol buffer containing
+// plugin-related metadata for this summary.
+//
+// Returns the created operation.
+func WriteSummary(scope *Scope, writer tf.Output, step tf.Output, tensor tf.Output, tag tf.Output, summary_metadata tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "WriteSummary",
+		Input: []tf.Input{
+			writer, step, tensor, tag, summary_metadata,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
 // Partitions `data` into `num_partitions` tensors using indices from `partitions`.
 //
 // For each index tuple `js` of size `partitions.ndim`, the slice `data[js, ...]`
@@ -22381,6 +22428,69 @@ func Abs(scope *Scope, x tf.Output) (y tf.Output) {
 	return op.Output(0)
 }
 
+// Flushes and closes the summary writer.
+//
+// Also removes it from the resource manager. To reopen, use another
+// CreateSummaryFileWriter op.
+//
+// Arguments:
+//	writer: A handle to the summary writer resource.
+//
+// Returns the created operation.
+func CloseSummaryWriter(scope *Scope, writer tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "CloseSummaryWriter",
+		Input: []tf.Input{
+			writer,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// StackV2Attr is an optional argument to StackV2.
+type StackV2Attr func(optionalAttr)
+
+// StackV2StackName sets the optional stack_name attribute to value.
+//
+// value: Overrides the name used for the temporary stack resource. Default
+// value is the name of the 'Stack' op (which is guaranteed unique).
+// If not specified, defaults to ""
+func StackV2StackName(value string) StackV2Attr {
+	return func(m optionalAttr) {
+		m["stack_name"] = value
+	}
+}
+
+// A stack that produces elements in first-in last-out order.
+//
+// Arguments:
+//	max_size: The maximum size of the stack if non-negative. If negative, the stack
+// size is unlimited.
+//	elem_type: The type of the elements on the stack.
+//
+// Returns The handle to the stack.
+func StackV2(scope *Scope, max_size tf.Output, elem_type tf.DataType, optional ...StackV2Attr) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"elem_type": elem_type}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StackV2",
+		Input: []tf.Input{
+			max_size,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // OrderedMapStageAttr is an optional argument to OrderedMapStage.
 type OrderedMapStageAttr func(optionalAttr)
 
@@ -28223,116 +28333,6 @@ func FlushSummaryWriter(scope *Scope, writer tf.Output) (o *tf.Operation) {
 		Type: "FlushSummaryWriter",
 		Input: []tf.Input{
 			writer,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// StackV2Attr is an optional argument to StackV2.
-type StackV2Attr func(optionalAttr)
-
-// StackV2StackName sets the optional stack_name attribute to value.
-//
-// value: Overrides the name used for the temporary stack resource. Default
-// value is the name of the 'Stack' op (which is guaranteed unique).
-// If not specified, defaults to ""
-func StackV2StackName(value string) StackV2Attr {
-	return func(m optionalAttr) {
-		m["stack_name"] = value
-	}
-}
-
-// A stack that produces elements in first-in last-out order.
-//
-// Arguments:
-//	max_size: The maximum size of the stack if non-negative. If negative, the stack
-// size is unlimited.
-//	elem_type: The type of the elements on the stack.
-//
-// Returns The handle to the stack.
-func StackV2(scope *Scope, max_size tf.Output, elem_type tf.DataType, optional ...StackV2Attr) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"elem_type": elem_type}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "StackV2",
-		Input: []tf.Input{
-			max_size,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Flushes and closes the summary writer.
-//
-// Also removes it from the resource manager. To reopen, use another
-// CreateSummaryFileWriter op.
-//
-// Arguments:
-//	writer: A handle to the summary writer resource.
-//
-// Returns the created operation.
-func CloseSummaryWriter(scope *Scope, writer tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "CloseSummaryWriter",
-		Input: []tf.Input{
-			writer,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Outputs a `Summary` protocol buffer with a tensor.
-//
-// Arguments:
-//	writer: A handle to a summary writer.
-//	step: The step to write the summary for.
-//	tensor: A tensor to serialize.
-//	tag: The summary's tag.
-//	summary_metadata: Serialized SummaryMetadata protocol buffer containing
-// plugin-related metadata for this summary.
-//
-// Returns the created operation.
-func WriteSummary(scope *Scope, writer tf.Output, step tf.Output, tensor tf.Output, tag tf.Output, summary_metadata tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "WriteSummary",
-		Input: []tf.Input{
-			writer, step, tensor, tag, summary_metadata,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Outputs a `tf.Event` protocol buffer.
-//
-// When CreateSummaryDbWriter is being used, this op can be useful for
-// importing data from event logs.
-//
-// Arguments:
-//	writer: A handle to a summary writer.
-//	event: A string containing a binary-encoded tf.Event proto.
-//
-// Returns the created operation.
-func ImportEvent(scope *Scope, writer tf.Output, event tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "ImportEvent",
-		Input: []tf.Input{
-			writer, event,
 		},
 	}
 	return scope.AddOperation(opspec)

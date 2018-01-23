@@ -6,6 +6,7 @@ load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
+load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
 load("//third_party:repo.bzl", "tf_http_archive")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
@@ -66,6 +67,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # files, in case the parsing of those build files depends on the bazel
   # version we require here.
   check_bazel_version_at_least("0.5.4")
+  clang6_configure(name="local_config_clang6")
   cuda_configure(name="local_config_cuda")
   trt_repository(name="local_config_tensorrt")
   git_configure(name="local_config_git")
@@ -475,11 +477,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/f78b1b74e8a1c265f84ccd2142af88e346ce721e.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/f78b1b74e8a1c265f84ccd2142af88e346ce721e.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/cecc5a23281018f9bbdd6f659462b8c99d8e8926.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/cecc5a23281018f9bbdd6f659462b8c99d8e8926.tar.gz",
       ],
-      sha256 = "d8e5966cf8e7489fa5a1b167f83bebaabe58aa7584b6d8a5c8f3722ae3047d19",
-      strip_prefix = "llvm-f78b1b74e8a1c265f84ccd2142af88e346ce721e",
+      sha256 = "b0960749fe2bf78d7c8350c18d584cf6dd5abeeae20da43d4829cdbc0166626c",
+      strip_prefix = "llvm-cecc5a23281018f9bbdd6f659462b8c99d8e8926",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
@@ -677,11 +679,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "bazel_toolchains",
       urls = [
-          "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/b49ba3689f46ac50e9277dafd8ff32b26951f82e.tar.gz",
-          "https://github.com/bazelbuild/bazel-toolchains/archive/b49ba3689f46ac50e9277dafd8ff32b26951f82e.tar.gz",
+          "https://mirror.bazel.build/github.com/bazelbuild/bazel-toolchains/archive/f3b09700fae5d7b6e659d7cefe0dcc6e8498504c.tar.gz",
+          "https://github.com/bazelbuild/bazel-toolchains/archive/f3b09700fae5d7b6e659d7cefe0dcc6e8498504c.tar.gz",
       ],
-      sha256 = "1266f1e27b4363c83222f1a776397c7a069fbfd6aacc9559afa61cdd73e1b429",
-      strip_prefix = "bazel-toolchains-b49ba3689f46ac50e9277dafd8ff32b26951f82e",
+      sha256 = "ed829b5eea8af1f405f4cc3d6ecfc3b1365bb7843171036030a31b5127002311",
+      strip_prefix = "bazel-toolchains-f3b09700fae5d7b6e659d7cefe0dcc6e8498504c",
   )
 
   tf_http_archive(

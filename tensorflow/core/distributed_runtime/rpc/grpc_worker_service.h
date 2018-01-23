@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_H_
 
+#include "tensorflow/core/distributed_runtime/recent_request_ids.h"
 #include "tensorflow/core/distributed_runtime/worker.h"
 
 namespace grpc {
@@ -40,6 +41,9 @@ class GrpcWorker : public Worker {
                                    StatusCallback done);
 
   WorkerEnv* env();
+
+ private:
+  RecentRequestIds recv_tensor_recent_request_ids_;
 };
 
 std::unique_ptr<GrpcWorker> NewGrpcWorker(WorkerEnv* worker_env);

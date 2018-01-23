@@ -20,14 +20,10 @@ from __future__ import print_function
 
 from setuptools import setup
 
-_VERSION = '1.3.0-a1'
+_VERSION = '1.4.3-a2'
 
 CONSOLE_SCRIPTS = [
     'capture_tpu_profile=cloud_tpu_profiler.main:run_main',
-]
-
-REQUIRED_PACKAGES = [
-    'tensorflow >= 1.2.0',
 ]
 
 setup(
@@ -45,13 +41,12 @@ setup(
     entry_points={
         'console_scripts': CONSOLE_SCRIPTS,
     },
-    install_requires=REQUIRED_PACKAGES,
     classifiers=[
         # How mature is this project? Common values are
         #   3 - Alpha
         #   4 - Beta
         #   5 - Production/Stable
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         
         'Intended Audience :: Developers',
         'Intended Audience :: Education',

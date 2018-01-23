@@ -384,6 +384,7 @@ package_group(
         "//learning/meta_rank/...",
         "//tensorflow/...",
         "//tensorflow_fold/llgtm/...",
+        "//third_party/py/tensor2tensor/...",
     ],
 )
 
