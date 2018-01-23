@@ -41,6 +41,7 @@ tensorflow/core/lib/io/record_reader.cc
 tensorflow/core/lib/io/random_inputstream.cc
 tensorflow/core/lib/io/path.cc
 tensorflow/core/lib/io/iterator.cc
+tensorflow/core/lib/io/inputstream_interface.cc
 tensorflow/core/lib/io/inputbuffer.cc
 tensorflow/core/lib/io/format.cc
 tensorflow/core/lib/io/compression.cc
