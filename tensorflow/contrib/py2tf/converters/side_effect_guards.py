@@ -34,8 +34,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextmanager
+
 import gast
 
+import tensorflow as tf
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import templates
 
@@ -96,7 +99,7 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
   def _gate_symbols(self, guard_statement, guarded_args):
 
     def template(args):  # pylint:disable=unused-argument
-      (args,) = (tf.identity(a) for a in (args,))  # pylint:disable=undefined-variable
+      (args,) = (tf.identity(a) for a in (args,))
 
     guards = templates.replace(
         template, args=tuple(gast.Name(a, None, None) for a in guarded_args))
@@ -121,9 +124,9 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
         if temp_result is not None:
           if not isinstance(temp_result, (list, tuple)):
             temp_result = (temp_result,)
-          ctx = tf.control_dependencies(temp_result)  # pylint:disable=undefined-variable
+          ctx = tf.control_dependencies(temp_result)
         else:
-          ctx = contextmanager(lambda: (yield))()  # pylint:disable=undefined-variable
+          ctx = contextmanager(lambda: (yield))()
         with ctx:
           # TODO(mdan): Also insert ops to re-fetch if variables are involved.
           pass  # Will be removed below.

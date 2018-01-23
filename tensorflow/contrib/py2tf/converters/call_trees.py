@@ -26,6 +26,7 @@ import types
 
 import gast
 
+import tensorflow as tf
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import templates

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+import tensorflow as tf
 from tensorflow.compiler.tests.xla_test import XLATestCase
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
