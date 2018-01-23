@@ -30,9 +30,9 @@ def main():
   # Pip installs the binary in aux-bin off of main site-package install.
   # Just find it and exec, passing all arguments in the process.
   pip_binary = os.path.join(tf.__path__[0], 'aux-bin/transform_graph')
-  bazel_binary = os.path.join(
-      tf.resource_loader.get_root_dir_with_all_resources(),
-      'bazel-bin/tensorflow/tools/graph_transforms/transform_graph')
+  bazel_binary = ('bazel-bin/tensorflow/tools/graph_transforms/'
+                  'graph_transforms_wrapper.runfiles/org_tensorflow/'
+                  'tensorflow/tools/graph_transforms/transform_graph')
   binary = bazel_binary if os.path.isfile(bazel_binary) else pip_binary
   os.execvp(binary, sys.argv)
 
