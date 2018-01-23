@@ -26,6 +26,8 @@
 SCRIPT_DIR=$( cd ${0%/*} && pwd -P )
 source "${SCRIPT_DIR}/builds/builds_common.sh"
 
+ROOT_DIR=$( cd "$SCRIPT_DIR/../../.." && pwd -P )
+
 # Helper functions
 die() {
   echo $@
@@ -98,7 +100,9 @@ do_pylint() {
 "^tensorflow/contrib/eager/python/evaluator\.py.*\[E0202.*method-hidden "\
 "^tensorflow/contrib/eager/python/metrics_impl\.py.*\[E0202.*method-hidden "\
 "^tensorflow/python/platform/gfile\.py.*\[E0301.*non-iterator "\
-"^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable"
+"^tensorflow/python/keras/_impl/keras/callbacks\.py.*\[E1133.*not-an-iterable "\
+"^tensorflow/python/keras/_impl/keras/layers/recurrent\.py.*\[E0203.*access-member-before-definition "\
+"^tensorflow/python/kernel_tests/constant_op_eager_test.py.*\[E0303.*invalid-length-returned"
 
   echo "ERROR_WHITELIST=\"${ERROR_WHITELIST}\""
 
@@ -109,9 +113,9 @@ do_pylint() {
   fi
 
   if [[ $1 == "PYTHON2" ]]; then
-    PYLINT_BIN="python /usr/local/lib/python2.7/dist-packages/pylint/lint.py"
+    PYLINT_BIN="python -m pylint"
   elif [[ $1 == "PYTHON3" ]]; then
-    PYLINT_BIN="python3 /usr/local/lib/python3.4/dist-packages/pylint/lint.py"
+    PYLINT_BIN="python3 -m pylint"
   else
     echo "Unrecognized python version (PYTHON2 | PYTHON3): $1"
     return 1
@@ -400,9 +404,14 @@ cmd_status(){
 }
 
 # Run bazel build --nobuild to test the validity of the BUILD files
+# TODO(mikecase): Remove TF Lite exclusion from this list. Exclusion is
+# necessary since the @androidsdk WORKSPACE dependency is commented
+# out by default in TF WORKSPACE file.
 do_bazel_nobuild() {
   BUILD_TARGET="//tensorflow/..."
-  BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} ${BUILD_TARGET}"
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/java/demo/app/src/main/..."
+  BUILD_TARGET="${BUILD_TARGET} -//tensorflow/contrib/lite/schema/..."
+  BUILD_CMD="bazel build --nobuild ${BAZEL_FLAGS} -- ${BUILD_TARGET}"
 
   ${BUILD_CMD}
 
@@ -411,15 +420,8 @@ do_bazel_nobuild() {
 }
 
 do_pip_smoke_test() {
-  BUILD_CMD="bazel build ${BAZEL_FLAGS} //tensorflow/tools/pip_package:pip_smoke_test"
-  ${BUILD_CMD}
-  cmd_status \
-    "Pip smoke test has failed. Please make sure any new TensorFlow are added to the tensorflow/tools/pip_package:build_pip_package dependencies."
-
-  RUN_CMD="bazel-bin/tensorflow/tools/pip_package/pip_smoke_test"
-  ${RUN_CMD}
-  cmd_status \
-    "The pip smoke test failed."
+  cd "$ROOT_DIR/tensorflow/tools/pip_package"
+  python pip_smoke_test.py
 }
 
 do_code_link_check() {
@@ -504,9 +506,14 @@ do_check_load_py_test() {
     "check_load_py_test failed."
 }
 
+do_cmake_python_sanity() {
+  cd "$ROOT_DIR/tensorflow/contrib/cmake"
+  python -m unittest -v python_sanity_test
+}
+
 # Supply all sanity step commands and descriptions
-SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check")
-SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links")
+SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_cmake_python_sanity")
+SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Test entries in /tensorflow/contrib/cmake/python_{modules|protos|protos_cc}.txt for validity and consistency")
 
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS="--config=hdfs --config=gcp"
@@ -541,7 +548,10 @@ while [[ ${COUNTER} -lt "${#SANITY_STEPS[@]}" ]]; do
 "${SANITY_STEPS[COUNTER]} (${SANITY_STEPS_DESC[COUNTER]}) ==="
   echo ""
 
+  # subshell: don't leak variables or changes of working directory
+  (
   ${SANITY_STEPS[COUNTER]} ${INCREMENTAL_FLAG}
+  )
   RESULT=$?
 
   if [[ ${RESULT} != "0" ]]; then

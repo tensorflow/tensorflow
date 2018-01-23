@@ -313,6 +313,51 @@ TEST_F(TuplePointsToAnalysisTest, TupleCopy) {
       {constant1, constant2, copy});
 }
 
+TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
+  // Send forwards its operand to the output tuple at {0}.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto send = builder.AddInstruction(
+      HloInstruction::CreateSend(constant, /*channel_id=*/0));
+  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(send).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(send).IsDistinct());
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(send_done).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(send_done).IsDistinct());
+
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(send).element({}), {send});
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(send).element({0}), {constant});
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(send_done).CreateFlattenedSet(),
+      {send_done});
+  ExpectHasBufferAliases(constant, {}, {{constant, {}}, {send, {0}}});
+}
+
+TEST_F(TuplePointsToAnalysisTest, RecvAndRecvDone) {
+  // RecvDone forwards its operand tuple element at {0} to the output.
+  auto builder = HloComputation::Builder(TestName());
+  auto recv = builder.AddInstruction(HloInstruction::CreateRecv(
+      ShapeUtil::MakeShape(F32, {1, 2, 3}), /*channel_id=*/0));
+  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(recv).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(recv).IsDistinct());
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(recv_done).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(recv_done).IsDistinct());
+
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(recv).element({}), {recv});
+  ExpectHasBufferAliases(recv, {0}, {{recv, {0}}, {recv_done, {}}});
+}
+
 TEST_F(TuplePointsToAnalysisTest, TupleSelect) {
   // Select from two different tuples. This should create an ambiguous points to
   // set containing the union of both sides.

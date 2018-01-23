@@ -21,8 +21,10 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.datasets.mnist.load_data')
 def load_data(path='mnist.npz'):
   """Loads the MNIST dataset.
 
@@ -34,7 +36,9 @@ def load_data(path='mnist.npz'):
       Tuple of Numpy arrays: `(x_train, y_train), (x_test, y_test)`.
   """
   path = get_file(
-      path, origin='https://s3.amazonaws.com/img-datasets/mnist.npz')
+      path,
+      origin='https://s3.amazonaws.com/img-datasets/mnist.npz',
+      file_hash='8a61469f7ea1b51cbae51d4f78837e45')
   f = np.load(path)
   x_train = f['x_train']
   y_train = f['y_train']

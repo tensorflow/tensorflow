@@ -65,5 +65,5 @@ please read the following list carefully:
     [TensorFlow issues tracker](https://github.com/tensorflow/tensorflow/issues)
     on GitHub.  For example, use the issue tracker to request a
     new operation in TensorFlow.
-    
+
 

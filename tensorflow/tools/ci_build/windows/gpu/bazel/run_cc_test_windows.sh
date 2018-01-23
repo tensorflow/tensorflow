@@ -56,5 +56,5 @@ passing_tests=$(bazel query "kind(cc_test, //tensorflow/cc/... + //tensorflow/co
 
 # TODO(pcloudy): There is a bug in Bazel preventing build with GPU support without -c opt
 # Re-enable this test after it is fixed.
-# bazel test --config=win-cuda $BUILD_OPTS -k $slow_compiling_test --test_output=errors
-bazel test -c opt --config=win-cuda $BUILD_OPTS -k $passing_tests --test_output=errors
+# bazel test --config=win-cuda -k $slow_compiling_test --test_output=errors
+bazel test -c opt --config=win-cuda -k $passing_tests --test_output=errors

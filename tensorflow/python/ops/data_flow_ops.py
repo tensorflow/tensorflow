@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
@@ -38,6 +39,7 @@ from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 
@@ -106,6 +108,7 @@ def _shape_common(s1, s2):
 
 
 # pylint: disable=protected-access
+@tf_export("QueueBase")
 class QueueBase(object):
   """Base class for queue implementations.
 
@@ -595,6 +598,7 @@ class QueueBase(object):
       return gen_data_flow_ops._queue_size(self._queue_ref, name=name)
 
 
+@tf_export("RandomShuffleQueue")
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
@@ -673,6 +677,7 @@ class RandomShuffleQueue(QueueBase):
     super(RandomShuffleQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
+@tf_export("FIFOQueue")
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
@@ -726,6 +731,7 @@ class FIFOQueue(QueueBase):
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
+@tf_export("PaddingFIFOQueue")
 class PaddingFIFOQueue(QueueBase):
   """A FIFOQueue that supports batching variable-sized tensors by padding.
 
@@ -796,6 +802,7 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
+@tf_export("PriorityQueue")
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
@@ -1105,6 +1112,7 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
+@tf_export("ConditionalAccumulatorBase")
 class ConditionalAccumulatorBase(object):
   """A conditional accumulator for aggregating gradients.
 
@@ -1183,6 +1191,7 @@ class ConditionalAccumulatorBase(object):
         name=name)
 
 
+@tf_export("ConditionalAccumulator")
 class ConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating gradients.
 
@@ -1262,6 +1271,7 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     return out
 
 
+@tf_export("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 
@@ -2225,7 +2235,8 @@ class RecordInput(object):
                shift_ratio=0,
                seed=0,
                name=None,
-               batches=None):
+               batches=None,
+               compression_type=None):
     """Constructs a RecordInput Op.
 
     Args:
@@ -2243,6 +2254,8 @@ class RecordInput(object):
         how many batches to create, which are returned as a list when
         `get_yield_op()` is called. An example use case is to split processing
         between devices on one computer.
+      compression_type: The type of compression for the file. Currently ZLIB and
+        GZIP are supported. Defaults to none.
 
     Raises:
       ValueError: If one of the arguments is invalid.
@@ -2257,12 +2270,17 @@ class RecordInput(object):
     self._shift_ratio = shift_ratio
     self._seed = seed
     self._name = name
+    self._compression_type = python_io.TFRecordCompressionType.NONE
+    if compression_type is not None:
+      self._compression_type = compression_type
 
   def get_yield_op(self):
     """Adds a node that yields a group of records every time it is executed.
     If RecordInput `batches` parameter is not None, it yields a list of
     record batches with the specified `batch_size`.
     """
+    compression_type = python_io.TFRecordOptions.get_compression_type_string(
+        python_io.TFRecordOptions(self._compression_type))
     records = gen_data_flow_ops.record_input(
         file_pattern=self._file_pattern,
         file_buffer_size=self._buffer_size,
@@ -2270,6 +2288,7 @@ class RecordInput(object):
         file_shuffle_shift_ratio=self._shift_ratio,
         batch_size=self._batch_size,
         file_random_seed=self._seed,
+        compression_type=compression_type,
         name=self._name)
     if self._batches is None:
       return records

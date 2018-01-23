@@ -107,7 +107,8 @@ def get_api_imports():
   # Import all required modules in their parent modules.
   # For e.g. if we import 'tf.foo.bar.Value'. Then, we also
   # import 'bar' in 'tf.foo'.
-  for dest_module in module_imports.keys():
+  dest_modules = set(module_imports.keys())
+  for dest_module in dest_modules:
     dest_module_split = dest_module.split('.')
     for dest_submodule_index in range(1, len(dest_module_split)):
       dest_submodule = '.'.join(dest_module_split[:dest_submodule_index])
@@ -156,15 +157,20 @@ def create_api_files(output_files):
   for module, exports in module_imports.items():
     # Make sure genrule output file list is in sync with API exports.
     if module not in module_name_to_file_path:
-      missing_output_files.append(module)
+      module_without_tf = module[len('tf.'):]
+      module_file_path = '"api/%s/__init__.py"' %  (
+          module_without_tf.replace('.', '/'))
+      missing_output_files.append(module_file_path)
       continue
     with open(module_name_to_file_path[module], 'w') as fp:
       fp.write(_GENERATED_FILE_HEADER + '\n'.join(exports))
 
   if missing_output_files:
     raise ValueError(
-        'Missing outputs for python_api_gen genrule:\n%s' %
-        ',\n'.join(missing_output_files))
+        'Missing outputs for python_api_gen genrule:\n%s.'
+        'Make sure all required outputs are in the '
+        'tensorflow/tools/api/generator/BUILD file.' %
+        ',\n'.join(sorted(missing_output_files)))
 
 
 def main(output_files):

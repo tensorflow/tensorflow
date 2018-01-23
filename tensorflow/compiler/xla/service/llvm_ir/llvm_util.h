@@ -29,6 +29,7 @@ limitations under the License.
 #include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_module_config.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -128,6 +129,9 @@ llvm::Value* EmitBufferIndexingGEP(llvm::Value* array, int64 index,
 // Returns the LLVM type which represents the given XLA primitive type.
 llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
                                   llvm::Module* module);
+
+// Returns the type size in bits. If "type" is a struct, it must be packed.
+int GetSizeInBits(llvm::Type* type);
 
 // Returns the LLVM type which represents the given XLA shape. For example,
 // if "shape" is [5 x [10 x f32]], the function returns [5 x [10 x float]].
@@ -243,6 +247,8 @@ llvm::Instruction* AddRangeMetadata(int64 lower, int64 upper,
 
 void SetToFirstInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
 
+void SetToLastInsertPoint(llvm::BasicBlock* blk, llvm::IRBuilder<>* builder);
+
 // Create a bitwise rotation of `rotand` by `rotor`.
 llvm::Value* CreateRor(llvm::Value* rotand, llvm::Value* rotor,
                        llvm::IRBuilder<>* builder);
@@ -275,6 +281,16 @@ std::map<int, llvm::MDNode*> MergeMetadata(
 Status DumpIRToDirectory(const string& directory_name,
                          const string& hlo_module_name,
                          const llvm::Module& llvm_module, bool optimized);
+
+llvm::Function* CreateFunction(llvm::FunctionType* function_type,
+                               llvm::GlobalValue::LinkageTypes linkage,
+                               bool enable_fast_math, bool optimize_for_size,
+                               tensorflow::StringPiece name,
+                               llvm::Module* module);
+
+// Extracts the xla_backend_extra_options from `config` and passes those that
+// don't start with xla_ to LLVM.
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config);
 
 }  // namespace llvm_ir
 }  // namespace xla

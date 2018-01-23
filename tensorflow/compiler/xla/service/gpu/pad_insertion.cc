@@ -28,7 +28,7 @@ namespace gpu {
 namespace {
 bool IsForwardConvolutionCanonical(const HloInstruction& conv) {
   CHECK_EQ(HloOpcode::kConvolution, conv.opcode());
-  return window_util::HasEvenPadding(conv.window()) &&
+  return window_util::HasSymmetricPadding(conv.window()) &&
          !window_util::HasNegativePadding(conv.window()) &&
          !window_util::HasDilation(conv.window());
 }
@@ -43,14 +43,14 @@ HloInstruction* MaybePaddedAndSlicedInput(
     const Window& conv_window, const ConvolutionDimensionNumbers& conv_dnums,
     HloInstruction* input) {
   HloComputation* computation = input->parent();
-  if (!window_util::HasEvenPadding(conv_window) ||
+  if (!window_util::HasSymmetricPadding(conv_window) ||
       window_util::HasBaseDilation(conv_window)) {
     // If padding is uneven or has dilation, we insert a kPad instruction that
     // applies positive padding and dilation.
     PaddingConfig padding_config =
         MakeNoPaddingConfig(input->shape().dimensions_size());
-    for (size_t i = 0; i < conv_dnums.spatial_dimensions().size(); ++i) {
-      int64 dim = conv_dnums.spatial_dimensions(i);
+    for (size_t i = 0; i < conv_dnums.input_spatial_dimensions().size(); ++i) {
+      int64 dim = conv_dnums.input_spatial_dimensions(i);
       padding_config.mutable_dimensions(dim)->set_edge_padding_low(
           std::max<int64>(0LL, conv_window.dimensions(i).padding_low()));
       padding_config.mutable_dimensions(dim)->set_edge_padding_high(
@@ -81,8 +81,8 @@ HloInstruction* MaybePaddedAndSlicedInput(
     std::vector<int64> limit_indices(input->shape().dimensions().begin(),
                                      input->shape().dimensions().end());
     std::vector<int64> strides(input->shape().dimensions_size(), 1);
-    for (size_t i = 0; i < conv_dnums.spatial_dimensions().size(); ++i) {
-      int64 dim = conv_dnums.spatial_dimensions(i);
+    for (size_t i = 0; i < conv_dnums.input_spatial_dimensions().size(); ++i) {
+      int64 dim = conv_dnums.input_spatial_dimensions(i);
       // If dimension "dim" has negative padding, increase the start index or
       // decrement the limit index by the amount of negative padding.
       start_indices[dim] +=
@@ -117,8 +117,8 @@ HloInstruction* MaybePaddedKernel(const Window& conv_window,
   for (size_t i = 0; i < kernel->shape().dimensions_size(); ++i) {
     padding_config.add_dimensions();
   }
-  for (size_t i = 0; i < conv_dnums.spatial_dimensions().size(); ++i) {
-    int64 dim = conv_dnums.spatial_dimensions(i);
+  for (size_t i = 0; i < conv_dnums.kernel_spatial_dimensions().size(); ++i) {
+    int64 dim = conv_dnums.kernel_spatial_dimensions(i);
     padding_config.mutable_dimensions(dim)->set_interior_padding(
         conv_window.dimensions(i).window_dilation() - 1);
   }
@@ -190,7 +190,7 @@ void IncreasePaddingHighBy(int64 delta, WindowDimension* window_dim) {
 
 bool PadInsertion::CanonicalizeBackwardFilterConvolution(
     HloInstruction* backward_conv) {
-  if (window_util::HasEvenPadding(backward_conv->window())) {
+  if (window_util::HasSymmetricPadding(backward_conv->window())) {
     return false;
   }
 
@@ -202,8 +202,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
   //   ABCD0 = Pad(ABCD, padding_high=1)
   //   BackwardFilterConv(ABCD0, xyz, padding_low=pading_high=1)
   // We choose the lesser of padding_low and padding_high as the new padding.
-  HloInstruction* transpose = backward_conv->fused_expression_root();
-  HloInstruction* forward_conv = transpose->mutable_operand(0);
+  HloInstruction* forward_conv = backward_conv->fused_expression_root();
   HloInstruction* input = backward_conv->mutable_operand(0);
   Window new_forward_conv_window = forward_conv->window();
   Window new_backward_conv_window = backward_conv->window();
@@ -229,7 +228,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
     // later. Therefore, the amount of new padding (low or high) is the minimum
     // of the amount of old padding low and old padding high.
     int64 new_conv_padding = std::min(padding_low, padding_high);
-    int64 dim = backward_conv_dnums.spatial_dimensions(i);
+    int64 dim = backward_conv_dnums.input_spatial_dimensions(i);
     input_padding_config.mutable_dimensions(dim)->set_edge_padding_low(
         padding_low - new_conv_padding);
     input_padding_config.mutable_dimensions(dim)->set_edge_padding_high(
@@ -269,19 +268,10 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
               .ConsumeValueOrDie(),
           padded_input, output, new_forward_conv_window, forward_conv_dnums));
 
-  HloInstruction* new_transpose =
-      computation->AddInstruction(HloInstruction::CreateTranspose(
-          ShapeInference::InferTransposeShape(new_forward_conv->shape(),
-                                              transpose->dimensions())
-              .ConsumeValueOrDie(),
-          new_forward_conv, transpose->dimensions()));
-
-  // Fuse the new forward convolution and the new transpose to the new backward
-  // convolution.
+  // Fuse the new forward convolution to the new backward convolution.
   HloInstruction* new_backward_conv =
       computation->CreateFusionInstructionForBackwardConvolution(
-          {new_transpose, new_forward_conv},
-          HloInstruction::FusionKind::kConvBackwardFilter,
+          {new_forward_conv}, HloInstruction::FusionKind::kConvBackwardFilter,
           new_backward_conv_window, backward_conv_dnums);
 
   VLOG(1) << "Canonicalizing backward filter conv";
@@ -295,7 +285,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
 
 bool PadInsertion::CanonicalizeBackwardInputConvolution(
     HloInstruction* backward_conv) {
-  if (window_util::HasEvenPadding(backward_conv->window())) {
+  if (window_util::HasSymmetricPadding(backward_conv->window())) {
     return false;
   }
 
@@ -369,12 +359,11 @@ bool PadInsertion::CanonicalizeBackwardInputConvolution(
   std::vector<int64> limit_indices(
       new_backward_conv->shape().dimensions().begin(),
       new_backward_conv->shape().dimensions().end());
-  std::vector<int64> strides(new_backward_conv->shape().dimensions_size(),
-                             1LL);
+  std::vector<int64> strides(new_backward_conv->shape().dimensions_size(), 1LL);
   for (size_t i = 0; i < backward_conv->window().dimensions_size(); ++i) {
     int64 padding_low = backward_conv->window().dimensions(i).padding_low();
     int64 padding_high = backward_conv->window().dimensions(i).padding_high();
-    int64 dim = backward_conv_dnums.spatial_dimensions(i);
+    int64 dim = backward_conv_dnums.output_spatial_dimensions(i);
     if (padding_low > padding_high) {
       // If the amount of low padding (of the old backward convolution) is
       // larger, we internally pad the low end of the activations and slice

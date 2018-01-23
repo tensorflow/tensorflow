@@ -100,13 +100,17 @@ bool ImplementedAsDnnConvolution(const HloInstruction& hlo) {
   if (hlo.opcode() == HloOpcode::kConvolution) {
     const ConvolutionDimensionNumbers& dnums =
         hlo.convolution_dimension_numbers();
-    if (dnums.spatial_dimensions_size() > 3) {
+    if (dnums.input_spatial_dimensions_size() > 3) {
       return false;
     }
 
     // CuDNN does not accept zero-element arguments
     if (ShapeUtil::HasZeroElements(hlo.operand(0)->shape()) ||
         ShapeUtil::HasZeroElements(hlo.operand(1)->shape())) {
+      return false;
+    }
+
+    if (window_util::HasWindowReversal(hlo.window())) {
       return false;
     }
 
@@ -123,8 +127,26 @@ bool ImplementedAsDnnConvolution(const HloInstruction& hlo) {
   return false;
 }
 
+const char* const kCudnnBatchNormForwardInferenceCallTarget =
+    "__cudnn$batchNormalizationForwardInference";
+const char* const kCudnnBatchNormForwardTrainingCallTarget =
+    "__cudnn$batchNormalizationForwardTraining";
+const char* const kCudnnBatchNormBackwardCallTarget =
+    "__cudnn$batchNormalizationBackward";
+
+bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo) {
+  if (hlo.opcode() != HloOpcode::kCustomCall) {
+    return false;
+  }
+  const auto& target = hlo.custom_call_target();
+  return target == kCudnnBatchNormForwardInferenceCallTarget ||
+         target == kCudnnBatchNormForwardTrainingCallTarget ||
+         target == kCudnnBatchNormBackwardCallTarget;
+}
+
 bool ImplementedAsLibraryCall(const HloInstruction& hlo) {
-  return ImplementedAsGemm(hlo) || ImplementedAsDnnConvolution(hlo);
+  return ImplementedAsGemm(hlo) || ImplementedAsDnnConvolution(hlo) ||
+         IsCustomCallToDnnBatchNorm(hlo);
 }
 
 bool IsReductionToVector(const HloInstruction& reduce) {

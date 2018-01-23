@@ -1708,6 +1708,34 @@ class StreamingCurvePointsTest(test.TestCase):
                    [[1.0, 4.0 / 6.0], [0.75, 1.0], [0.0, 1.0]])
 
 
+def _np_auc(predictions, labels, weights=None):
+  """Computes the AUC explicitly using Numpy.
+
+  Args:
+    predictions: an ndarray with shape [N].
+    labels: an ndarray with shape [N].
+    weights: an ndarray with shape [N].
+
+  Returns:
+    the area under the ROC curve.
+  """
+  if weights is None:
+    weights = np.ones(np.size(predictions))
+  is_positive = labels > 0
+  num_positives = np.sum(weights[is_positive])
+  num_negatives = np.sum(weights[~is_positive])
+
+  # Sort descending:
+  inds = np.argsort(-predictions)
+
+  sorted_labels = labels[inds]
+  sorted_weights = weights[inds]
+  is_positive = sorted_labels > 0
+
+  tp = np.cumsum(sorted_weights * is_positive) / num_positives
+  return np.sum((sorted_weights * tp)[~is_positive]) / num_negatives
+
+
 class StreamingAUCTest(test.TestCase):
 
   def setUp(self):
@@ -1896,33 +1924,6 @@ class StreamingAUCTest(test.TestCase):
 
       self.assertAlmostEqual(1, auc.eval(), 6)
 
-  def np_auc(self, predictions, labels, weights):
-    """Computes the AUC explicitly using Numpy.
-
-    Args:
-      predictions: an ndarray with shape [N].
-      labels: an ndarray with shape [N].
-      weights: an ndarray with shape [N].
-
-    Returns:
-      the area under the ROC curve.
-    """
-    if weights is None:
-      weights = np.ones(np.size(predictions))
-    is_positive = labels > 0
-    num_positives = np.sum(weights[is_positive])
-    num_negatives = np.sum(weights[~is_positive])
-
-    # Sort descending:
-    inds = np.argsort(-predictions)
-
-    sorted_labels = labels[inds]
-    sorted_weights = weights[inds]
-    is_positive = sorted_labels > 0
-
-    tp = np.cumsum(sorted_weights * is_positive) / num_positives
-    return np.sum((sorted_weights * tp)[~is_positive]) / num_negatives
-
   def testWithMultipleUpdates(self):
     num_samples = 1000
     batch_size = 10
@@ -1945,7 +1946,7 @@ class StreamingAUCTest(test.TestCase):
 
     for weights in (None, np.ones(num_samples), np.random.exponential(
         scale=1.0, size=num_samples)):
-      expected_auc = self.np_auc(predictions, labels, weights)
+      expected_auc = _np_auc(predictions, labels, weights)
 
       with self.test_session() as sess:
         enqueue_ops = [[] for i in range(num_batches)]
@@ -1972,6 +1973,211 @@ class StreamingAUCTest(test.TestCase):
         # Although with higher number of samples/thresholds we should see the
         # accuracy improving
         self.assertAlmostEqual(expected_auc, auc.eval(), 2)
+
+
+class StreamingDynamicAUCTest(test.TestCase):
+
+  def setUp(self):
+    super(StreamingDynamicAUCTest, self).setUp()
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testUnknownCurve(self):
+    with self.assertRaisesRegexp(
+        ValueError, 'curve must be either ROC or PR, TEST_CURVE unknown'):
+      metrics.streaming_dynamic_auc(labels=array_ops.ones((10, 1)),
+                                    predictions=array_ops.ones((10, 1)),
+                                    curve='TEST_CURVE')
+
+  def testVars(self):
+    metrics.streaming_dynamic_auc(
+        labels=array_ops.ones((10, 1)), predictions=array_ops.ones((10, 1)))
+    _assert_metric_variables(self, ['dynamic_auc/concat_labels/array:0',
+                                    'dynamic_auc/concat_labels/size:0',
+                                    'dynamic_auc/concat_preds/array:0',
+                                    'dynamic_auc/concat_preds/size:0'])
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    auc, _ = metrics.streaming_dynamic_auc(
+        labels=array_ops.ones((10, 1)),
+        predictions=array_ops.ones((10, 1)),
+        metrics_collections=[my_collection_name])
+    self.assertEqual(ops.get_collection(my_collection_name), [auc])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.streaming_dynamic_auc(
+        labels=array_ops.ones((10, 1)),
+        predictions=array_ops.ones((10, 1)),
+        updates_collections=[my_collection_name])
+    self.assertEqual(ops.get_collection(my_collection_name), [update_op])
+
+  def testValueTensorIsIdempotent(self):
+    predictions = random_ops.random_uniform(
+        (10, 3), maxval=1, dtype=dtypes_lib.float32, seed=1)
+    labels = random_ops.random_uniform(
+        (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
+    auc, update_op = metrics.streaming_dynamic_auc(labels, predictions)
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      # Run several updates.
+      for _ in xrange(10):
+        sess.run(update_op)
+      # Then verify idempotency.
+      initial_auc = auc.eval()
+      for _ in xrange(10):
+        self.assertAlmostEqual(initial_auc, auc.eval(), 5)
+
+  def testAllLabelsOnes(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant([1., 1., 1.])
+      labels = constant_op.constant([1, 1, 1])
+      auc, update_op = metrics.streaming_dynamic_auc(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertEqual(0, auc.eval())
+
+  def testAllLabelsZeros(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant([1., 1., 1.])
+      labels = constant_op.constant([0, 0, 0])
+      auc, update_op = metrics.streaming_dynamic_auc(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertEqual(0, auc.eval())
+
+  def testNonZeroOnePredictions(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant([2.5, -2.5, 2.5, -2.5],
+                                         dtype=dtypes_lib.float32)
+      labels = constant_op.constant([1, 0, 1, 0])
+      auc, update_op = metrics.streaming_dynamic_auc(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertAlmostEqual(auc.eval(), 1.0)
+
+  def testAllCorrect(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+    with self.test_session() as sess:
+      predictions = constant_op.constant(inputs)
+      labels = constant_op.constant(inputs)
+      auc, update_op = metrics.streaming_dynamic_auc(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertEqual(1, auc.eval())
+
+  def testSomeCorrect(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant([1, 0, 1, 0])
+      labels = constant_op.constant([0, 1, 1, 0])
+      auc, update_op = metrics.streaming_dynamic_auc(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertAlmostEqual(0.5, auc.eval())
+
+  def testAllIncorrect(self):
+    inputs = np.random.randint(0, 2, size=(100, 1))
+    with self.test_session() as sess:
+      predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(1 - inputs, dtype=dtypes_lib.float32)
+      auc, update_op = metrics.streaming_dynamic_auc(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertAlmostEqual(0, auc.eval())
+
+  def testExceptionOnIncompatibleShapes(self):
+    with self.test_session() as sess:
+      predictions = array_ops.ones([5])
+      labels = array_ops.zeros([6])
+      with self.assertRaisesRegexp(ValueError, 'Shapes .* are incompatible'):
+        _, update_op = metrics.streaming_dynamic_auc(labels, predictions)
+        sess.run(variables.local_variables_initializer())
+        sess.run(update_op)
+
+  def testExceptionOnGreaterThanOneLabel(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant([1, 0.5, 0], dtypes_lib.float32)
+      labels = constant_op.constant([2, 1, 0])
+      _, update_op = metrics.streaming_dynamic_auc(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
+          '.*labels must be 0 or 1, at least one is >1.*'):
+        sess.run(update_op)
+
+  def testExceptionOnNegativeLabel(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant([1, 0.5, 0], dtypes_lib.float32)
+      labels = constant_op.constant([1, 0, -1])
+      _, update_op = metrics.streaming_dynamic_auc(labels, predictions)
+      sess.run(variables.local_variables_initializer())
+      with self.assertRaisesRegexp(
+          errors_impl.InvalidArgumentError,
+          '.*labels must be 0 or 1, at least one is <0.*'):
+        sess.run(update_op)
+
+  def testWithMultipleUpdates(self):
+    batch_size = 10
+    num_batches = 100
+    labels = np.array([])
+    predictions = np.array([])
+    tf_labels = variables.Variable(array_ops.ones(batch_size, dtypes_lib.int32),
+                                   collections=[ops.GraphKeys.LOCAL_VARIABLES],
+                                   dtype=dtypes_lib.int32)
+    tf_predictions = variables.Variable(
+        array_ops.ones(batch_size),
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        dtype=dtypes_lib.float32)
+    auc, update_op = metrics.streaming_dynamic_auc(tf_labels, tf_predictions)
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+      for _ in xrange(num_batches):
+        new_labels = np.random.randint(0, 2, size=batch_size)
+        noise = np.random.normal(0.0, scale=0.2, size=batch_size)
+        new_predictions = 0.4 + 0.2 * new_labels + noise
+        labels = np.concatenate([labels, new_labels])
+        predictions = np.concatenate([predictions, new_predictions])
+        sess.run(tf_labels.assign(new_labels))
+        sess.run(tf_predictions.assign(new_predictions))
+        sess.run(update_op)
+        expected_auc = _np_auc(predictions, labels)
+        self.assertAlmostEqual(expected_auc, auc.eval())
+
+  def testAUCPRReverseIncreasingPredictions(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [0.1, 0.4, 0.35, 0.8], dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 0, 1, 1])
+      auc, update_op = metrics.streaming_dynamic_auc(
+          labels, predictions, curve='PR')
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-5)
+
+  def testAUCPRJumbledPredictions(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [0.1, 0.4, 0.35, 0.8, 0.1, 0.135, 0.81], dtypes_lib.float32)
+      labels = constant_op.constant([0, 0, 1, 0, 1, 0, 1])
+      auc, update_op = metrics.streaming_dynamic_auc(
+          labels, predictions, curve='PR')
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-6)
+
+  def testAUCPRPredictionsLessThanHalf(self):
+    with self.test_session() as sess:
+      predictions = constant_op.constant(
+          [0.0, 0.1, 0.2, 0.33, 0.3, 0.4, 0.5],
+          shape=(1, 7),
+          dtype=dtypes_lib.float32)
+      labels = constant_op.constant([0, 0, 0, 0, 1, 1, 1], shape=(1, 7))
+      auc, update_op = metrics.streaming_dynamic_auc(
+          labels, predictions, curve='PR')
+      sess.run(variables.local_variables_initializer())
+      sess.run(update_op)
+      self.assertAlmostEqual(0.90277, auc.eval(), delta=1e-5)
 
 
 class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
@@ -2012,11 +2218,11 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
       if weights:
         weights_tensor = constant_op.constant(weights, dtype=dtypes_lib.float32)
       gotten_result, update_op = (
-          metric_ops.streaming_precision_recall_at_equal_thresholds(
-              predictions=predictions_tensor,
+          metric_ops.precision_recall_at_equal_thresholds(
               labels=labels_tensor,
-              num_thresholds=3,
-              weights=weights_tensor))
+              predictions=predictions_tensor,
+              weights=weights_tensor,
+              num_thresholds=3))
 
       sess.run(variables.local_variables_initializer())
       sess.run(update_op)
@@ -2024,17 +2230,17 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
       self._testResultsEqual(expected_result, gotten_result)
 
   def testVars(self):
-    metric_ops.streaming_precision_recall_at_equal_thresholds(
-        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32),
-        labels=constant_op.constant([True], dtype=dtypes_lib.bool))
+    metric_ops.precision_recall_at_equal_thresholds(
+        labels=constant_op.constant([True], dtype=dtypes_lib.bool),
+        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32))
     _assert_metric_variables(
         self, ('precision_recall_at_equal_thresholds/variables/tp_buckets:0',
                'precision_recall_at_equal_thresholds/variables/fp_buckets:0'))
 
   def testVarsWithName(self):
-    metric_ops.streaming_precision_recall_at_equal_thresholds(
-        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32),
+    metric_ops.precision_recall_at_equal_thresholds(
         labels=constant_op.constant([True], dtype=dtypes_lib.bool),
+        predictions=constant_op.constant([0.42], dtype=dtypes_lib.float32),
         name='foo')
     _assert_metric_variables(
         self, ('foo/variables/tp_buckets:0', 'foo/variables/fp_buckets:0'))
@@ -2045,9 +2251,8 @@ class StreamingPrecisionRecallAtEqualThresholdsTest(test.TestCase):
     labels = constant_op.constant(
         np.random.uniform(size=(10, 3)) > 0.5, dtype=dtypes_lib.bool)
 
-    result, update_op = (
-        metric_ops.streaming_precision_recall_at_equal_thresholds(
-            predictions=predictions, labels=labels))
+    result, update_op = metric_ops.precision_recall_at_equal_thresholds(
+        labels=labels, predictions=predictions)
 
     with self.test_session() as sess:
       # Run several updates.
@@ -2957,7 +3162,7 @@ class RecallAtPrecisionTest(test.TestCase):
     labels = random_ops.random_uniform(
         (10, 3), maxval=2, dtype=dtypes_lib.int64, seed=2)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=0.7)
+        labels, predictions, precision=0.7)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -2977,7 +3182,7 @@ class RecallAtPrecisionTest(test.TestCase):
     predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
     labels = constant_op.constant(inputs)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=1.0)
+        labels, predictions, precision=1.0)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -2992,7 +3197,7 @@ class RecallAtPrecisionTest(test.TestCase):
         predictions_values, dtype=dtypes_lib.float32)
     labels = constant_op.constant(labels_values)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=0.8)
+        labels, predictions, precision=0.8)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -3007,7 +3212,7 @@ class RecallAtPrecisionTest(test.TestCase):
         predictions_values, dtype=dtypes_lib.float32)
     labels = constant_op.constant(labels_values)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, precision=0.4)
+        labels, predictions, precision=0.4)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -3025,7 +3230,7 @@ class RecallAtPrecisionTest(test.TestCase):
     labels = constant_op.constant(labels_values)
     weights = constant_op.constant(weights_values)
     recall, update_op = metrics.recall_at_precision(
-        predictions, labels, weights=weights, precision=0.4)
+        labels, predictions, weights=weights, precision=0.4)
 
     with self.test_session() as sess:
       sess.run(variables.local_variables_initializer())
@@ -6453,6 +6658,214 @@ class CountTest(test.TestCase):
       for i in range(4):
         update_op.eval(feed_dict={values: feed_values[i]})
       self.assertAlmostEqual(4.1, result.eval(), 5)
+
+
+class CohenKappaTest(test.TestCase):
+
+  def _confusion_matrix_to_samples(self, confusion_matrix):
+    x, y = confusion_matrix.shape
+    pairs = []
+    for label in range(x):
+      for feature in range(y):
+        pairs += [label, feature] * confusion_matrix[label, feature]
+    pairs = np.array(pairs).reshape((-1, 2))
+    return pairs[:, 0], pairs[:, 1]
+
+  def setUp(self):
+    np.random.seed(1)
+    ops.reset_default_graph()
+
+  def testVars(self):
+    metrics.cohen_kappa(
+        predictions_idx=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        num_classes=2)
+    _assert_metric_variables(self, (
+        'cohen_kappa/po:0',
+        'cohen_kappa/pe_row:0',
+        'cohen_kappa/pe_col:0',))
+
+  def testMetricsCollection(self):
+    my_collection_name = '__metrics__'
+    kappa, _ = metrics.cohen_kappa(
+        predictions_idx=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        num_classes=2,
+        metrics_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [kappa])
+
+  def testUpdatesCollection(self):
+    my_collection_name = '__updates__'
+    _, update_op = metrics.cohen_kappa(
+        predictions_idx=array_ops.ones((10, 1)),
+        labels=array_ops.ones((10, 1)),
+        num_classes=2,
+        updates_collections=[my_collection_name])
+    self.assertListEqual(ops.get_collection(my_collection_name), [update_op])
+
+  def testValueTensorIsIdempotent(self):
+    predictions = random_ops.random_uniform(
+      (10, 1), maxval=3, dtype=dtypes_lib.int64, seed=1)
+    labels = random_ops.random_uniform(
+      (10, 1), maxval=3, dtype=dtypes_lib.int64, seed=2)
+    kappa, update_op = metrics.cohen_kappa(labels, predictions, 3)
+
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      # Run several updates.
+      for _ in range(10):
+        sess.run(update_op)
+
+      # Then verify idempotency.
+      initial_kappa = kappa.eval()
+      for _ in range(10):
+        self.assertAlmostEqual(initial_kappa, kappa.eval(), 5)
+
+  def testBasic(self):
+    confusion_matrix = np.array([
+      [9, 3, 1],
+      [4, 8, 2],
+      [2, 1, 6]])
+    # overall total = 36
+    # po = [9, 8, 6], sum(po) = 23
+    # pe_row = [15, 12, 9], pe_col = [13, 14, 9], so pe = [5.42, 4.67, 2.25]
+    # finally, kappa = (sum(po) - sum(pe)) / (N - sum(pe))
+    #                = (23 - 12.34) / (36 - 12.34)
+    #                = 0.45
+    # see: http://psych.unl.edu/psycrs/handcomp/hckappa.PDF
+    expect = 0.45
+    labels, predictions = self._confusion_matrix_to_samples(confusion_matrix)
+
+    dtypes = [dtypes_lib.int16, dtypes_lib.int32, dtypes_lib.int64]
+    shapes = [(len(labels,)),  # 1-dim
+              (len(labels), 1)]  # 2-dim
+    weights = [None, np.ones_like(labels)]
+
+    for dtype in dtypes:
+      for shape in shapes:
+        for weight in weights:
+          with self.test_session() as sess:
+            predictions_tensor = constant_op.constant(
+                np.reshape(predictions, shape), dtype=dtype)
+            labels_tensor = constant_op.constant(
+                np.reshape(labels, shape), dtype=dtype)
+            kappa, update_op = metrics.cohen_kappa(
+                labels_tensor, predictions_tensor, 3, weights=weight)
+
+            sess.run(variables.local_variables_initializer())
+            self.assertAlmostEqual(expect, sess.run(update_op), 2)
+            self.assertAlmostEqual(expect, kappa.eval(), 2)
+
+  def testAllCorrect(self):
+    inputs = np.arange(0, 100) % 4
+    # confusion matrix
+    # [[25, 0, 0],
+    #  [0, 25, 0],
+    #  [0, 0, 25]]
+    # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(inputs, inputs)
+    expect = 1.0
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(inputs, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(inputs)
+      kappa, update_op = metrics.cohen_kappa(labels, predictions, 4)
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(expect, sess.run(update_op), 5)
+      self.assertAlmostEqual(expect, kappa.eval(), 5)
+
+  def testAllIncorrect(self):
+    labels = np.arange(0, 100) % 4
+    predictions = (labels + 1) % 4
+    # confusion matrix
+    # [[0, 25, 0],
+    #  [0, 0, 25],
+    #  [25, 0, 0]]
+    # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(labels, predictions)
+    expect = -0.333333333333
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(predictions, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(labels)
+      kappa, update_op = metrics.cohen_kappa(labels, predictions, 4)
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(expect, sess.run(update_op), 5)
+      self.assertAlmostEqual(expect, kappa.eval(), 5)
+
+  def testWeighted(self):
+    confusion_matrix = np.array([
+      [9, 3, 1],
+      [4, 8, 2],
+      [2, 1, 6]])
+    labels, predictions = self._confusion_matrix_to_samples(confusion_matrix)
+    num_samples = np.sum(confusion_matrix, dtype=np.int32)
+    weights = (np.arange(0, num_samples) % 5) / 5.0
+    # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(
+    #                          labels, predictions, sample_weight=weights)
+    expect = 0.453466583385
+
+    with self.test_session() as sess:
+      predictions = constant_op.constant(predictions, dtype=dtypes_lib.float32)
+      labels = constant_op.constant(labels)
+      kappa, update_op = metrics.cohen_kappa(labels, predictions, 4,
+                                             weights=weights)
+
+      sess.run(variables.local_variables_initializer())
+      self.assertAlmostEqual(expect, sess.run(update_op), 5)
+      self.assertAlmostEqual(expect, kappa.eval(), 5)
+
+  def testWithMultipleUpdates(self):
+    confusion_matrix = np.array([
+      [90, 30, 10, 20],
+      [40, 80, 20, 30],
+      [20, 10, 60, 35],
+      [15, 25, 30, 25]])
+    labels, predictions = self._confusion_matrix_to_samples(confusion_matrix)
+    num_samples = np.sum(confusion_matrix, dtype=np.int32)
+    weights = (np.arange(0, num_samples) % 5) / 5.0
+    num_classes = confusion_matrix.shape[0]
+
+    batch_size = num_samples // 10
+    predictions_t = array_ops.placeholder(dtypes_lib.float32,
+                                          shape=(batch_size,))
+    labels_t = array_ops.placeholder(dtypes_lib.int32,
+                                     shape=(batch_size,))
+    weights_t = array_ops.placeholder(dtypes_lib.float32,
+                                      shape=(batch_size,))
+    kappa, update_op = metrics.cohen_kappa(
+        labels_t, predictions_t, num_classes, weights=weights_t)
+    with self.test_session() as sess:
+      sess.run(variables.local_variables_initializer())
+
+      for idx in range(0, num_samples, batch_size):
+        batch_start, batch_end = idx, idx + batch_size
+        sess.run(update_op,
+                 feed_dict={labels_t: labels[batch_start:batch_end],
+                            predictions_t: predictions[batch_start:batch_end],
+                            weights_t: weights[batch_start:batch_end]})
+      # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(
+      #                          labels_np, predictions_np, sample_weight=weights_np)
+      expect = 0.289965397924
+      self.assertAlmostEqual(expect, kappa.eval(), 5)
+
+  def testInvalidNumClasses(self):
+    predictions = array_ops.placeholder(dtypes_lib.float32, shape=(4, 1))
+    labels = array_ops.placeholder(dtypes_lib.int32, shape=(4, 1))
+    with self.assertRaisesRegexp(ValueError, 'num_classes'):
+      metrics.cohen_kappa(labels, predictions, 1)
+
+  def testInvalidDimension(self):
+    predictions = array_ops.placeholder(dtypes_lib.float32, shape=(4, 1))
+    invalid_labels = array_ops.placeholder(dtypes_lib.int32, shape=(4, 2))
+    with self.assertRaises(ValueError):
+      metrics.cohen_kappa(invalid_labels, predictions, 3)
+
+    invalid_predictions = array_ops.placeholder(dtypes_lib.float32, shape=(4, 2))
+    labels = array_ops.placeholder(dtypes_lib.int32, shape=(4, 1))
+    with self.assertRaises(ValueError):
+      metrics.cohen_kappa(labels, invalid_predictions, 3)
 
 
 if __name__ == '__main__':

@@ -227,6 +227,42 @@ TEST_F(XlaCompilerTest, Simple) {
   xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
 }
 
+TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
+  // Builds a graph that adds reshapes a tensor, but with the shape not
+  // statically known.
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto b = ops::_Arg(scope.WithOpName("B"), DT_INT32, 1);
+  auto c = ops::Reshape(scope.WithOpName("C"), a, b);
+  auto d = ops::_Retval(scope.WithOpName("D"), c, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].type = DT_INT32;
+  args[1].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  Status status =
+      compiler.CompileGraph(XlaCompiler::CompileOptions(), "reshape",
+                            std::move(graph), args, &result);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(
+      StringPiece(status.error_message()).contains("depends on a parameter"))
+      << status.error_message();
+  EXPECT_TRUE(
+      StringPiece(status.error_message()).contains("[[Node: C = Reshape"))
+      << status.error_message();
+}
+
 // Tests handling of compile-time constant outputs.
 TEST_F(XlaCompilerTest, ConstantOutputs) {
   // Builds a graph with one compile-time constant output and one data-dependent

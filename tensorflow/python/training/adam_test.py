@@ -207,6 +207,9 @@ class AdamOptimizerTest(test.TestCase):
           # Validate updated params
           self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
           self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
+          if use_resource:
+            self.assertEqual("var0_%d/Adam:0" % (i,),
+                             opt.get_slot(var=var0, name="m").name)
 
   def testBasic(self):
     with self.test_session():

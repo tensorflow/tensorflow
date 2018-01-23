@@ -19,14 +19,20 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.layers.python.layers import layers
+from tensorflow.contrib.quantize.python import copy_graph
 from tensorflow.contrib.quantize.python import fold_batch_norms
+from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 batch_norm = layers.batch_norm
@@ -284,16 +290,20 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
 
     folded_mul = g.get_operation_by_name(scope + '/mul_fold')
     self.assertEqual(folded_mul.type, 'Mul')
+    if fused_batch_norm:
+      scale_reshape_op_name = scope + '/BatchNorm_Fold/scale_reshape'
+    else:
+      scale_reshape_op_name = scope + '/scale_reshape'
     self._AssertInputOpsAre(folded_mul,
                             [scope + '/depthwise_weights/read',
-                             scope + '/scale_reshape'])
+                             scale_reshape_op_name])
     self._AssertOutputGoesToOps(folded_mul, g, [scope + '/depthwise_Fold'])
 
-    scale_reshape = g.get_operation_by_name(scope + '/scale_reshape')
+    scale_reshape = g.get_operation_by_name(scale_reshape_op_name)
     self.assertEqual(scale_reshape.type, 'Reshape')
     self._AssertInputOpsAre(scale_reshape, [
         self._BatchNormMultiplierName(scope, has_scaling, fused_batch_norm),
-        scope + '/scale_reshape/shape'
+        scale_reshape_op_name + '/shape'
     ])
     self._AssertOutputGoesToOps(scale_reshape, g, [scope + '/mul_fold'])
 
@@ -315,6 +325,68 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
   def testFoldDepthwiseConv2d(self):
     self._RunTestOverParameters(self._TestFoldDepthwiseConv2d)
 
+  def _TestCompareFoldAndUnfolded(self, relu, relu_op_name, with_bypass,
+                                  has_scaling, fused_batch_norm):
+    """Tests that running folded and unfolded BN returns the same results.
+
+    Args:
+      relu: Callable that returns an Operation, a factory method for the Relu*.
+      relu_op_name: String, name of the Relu* operation.
+      with_bypass: Bool, when true there is an extra connection added from
+        inputs to just before Relu*.
+      has_scaling: Bool, when true the batch norm has scaling.
+      fused_batch_norm: Bool, when true the batch norm is fused.
+    """
+    random_seed.set_random_seed(1234)
+    unfolded_g = ops.Graph()
+    with unfolded_g.as_default():
+      batch_size, height, width = 5, 128, 128
+      inputs = random_ops.random_uniform(
+          (batch_size, height, width, 3), dtype=dtypes.float32, seed=1234)
+      out_depth = 3 if with_bypass else 32
+      stride = 1 if with_bypass else 2
+      activation_fn = None if with_bypass else relu
+      scope = 'test/test2' if with_bypass else 'test'
+      node = conv2d(
+          inputs,
+          out_depth, [5, 5],
+          stride=stride,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=activation_fn,
+          normalizer_fn=batch_norm,
+          normalizer_params=self._BatchNormParams(
+              scale=has_scaling, fused=fused_batch_norm),
+          scope=scope)
+      if with_bypass:
+        node = math_ops.add(inputs, node, name='test/Add')
+      relu_node = relu(node, name='test/' + relu_op_name)
+
+    folded_g = copy_graph.CopyGraph(unfolded_g)
+    with folded_g.as_default():
+      fold_batch_norms.FoldBatchNorms(folded_g)
+
+    with session.Session(graph=unfolded_g) as sess:
+      sess.run(variables.global_variables_initializer())
+      grad_node = gradients.gradients(relu_node, inputs)
+      results = sess.run([relu_node, grad_node])
+      unfolded_forward, unfolded_backward = results[0], results[1]
+
+    with session.Session(graph=folded_g) as sess:
+      sess.run(variables.global_variables_initializer())
+      relu_node = folded_g.get_tensor_by_name(relu_node.name)
+      inputs = folded_g.get_tensor_by_name(inputs.name)
+      grad_node = gradients.gradients(relu_node, inputs)
+      results = sess.run([relu_node, grad_node])
+      folded_forward, folded_backward = results[0], results[1]
+
+    # Check that the folded and unfolded results match.
+    self.assertAllClose(unfolded_forward, folded_forward, atol=1e-3)
+    self.assertAllClose(unfolded_backward, folded_backward, atol=1e-3)
+
+  def testCompareFoldAndUnfolded(self):
+    self._RunTestOverParameters(self._TestCompareFoldAndUnfolded)
+
   def _BatchNormParams(self, scale=True, fused=False):
     return {
         'center': True,
@@ -326,13 +398,13 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
   def _BatchNormMultiplierName(self, scope, has_scaling, fused):
     if has_scaling:
       if fused:
-        return scope + '/mul'
+        return scope + '/BatchNorm_Fold/mul'
       return scope + '/BatchNorm/batchnorm/mul'
     return scope + '/BatchNorm/batchnorm/Rsqrt'
 
   def _BathNormBiasName(self, scope, fused):
     if fused:
-      return scope + '/bias'
+      return scope + '/BatchNorm_Fold/bias'
     return scope + '/BatchNorm/batchnorm/sub'
 
   def _WeightInit(self, stddev):
@@ -346,7 +418,7 @@ class FoldBatchNormsTest(test_util.TensorFlowTestCase):
     Returns:
       An initializer that initializes with a truncated normal variable.
     """
-    return init_ops.truncated_normal_initializer(stddev=stddev)
+    return init_ops.truncated_normal_initializer(stddev=stddev, seed=1234)
 
   def _AssertInputOpsAre(self, op, in_op_names):
     """Asserts that all inputs to op come from in_op_names (disregarding order).

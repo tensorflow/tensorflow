@@ -327,6 +327,12 @@ class BufferAssignment {
     return SharesSliceAtIndex(hlo_a, {}, hlo_b, {});
   }
 
+  // Returns true if hlo_a and hlo_b both have at least one buffer assigned for
+  // their top-level and each of their nested shape indices, and if hlo_a's
+  // buffers are all different from hlo_b's buffers.
+  bool HaveDisjointSlices(const HloInstruction* hlo_a,
+                          const HloInstruction* hlo_b) const;
+
   // Returns the underlying points-to analysis used for this assignment.
   const TuplePointsToAnalysis& points_to_analysis() const {
     return liveness_->points_to_analysis();

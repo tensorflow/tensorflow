@@ -27,4 +27,8 @@ def tf_gen_op_wrapper_private_py(name, out=None, deps=[],
     deps=deps,
     require_shape_functions=require_shape_functions,
     generated_target_name=name,
+    api_def_srcs = [
+        "//tensorflow/core/api_def:base_api_def",
+        "//tensorflow/core/api_def:python_api_def",
+    ],
   )

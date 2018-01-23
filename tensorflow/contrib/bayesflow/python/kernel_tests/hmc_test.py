@@ -12,8 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for Hamiltonian Monte Carlo.
-"""
+"""Tests for Hamiltonian Monte Carlo."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,6 +26,7 @@ from tensorflow.contrib.bayesflow.python.ops import hmc
 
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.platform import test
@@ -45,6 +45,9 @@ class HMCTest(test.TestCase):
 
     random_seed.set_random_seed(10003)
     np.random.seed(10003)
+
+  def assertAllFinite(self, x):
+    self.assertAllEqual(np.ones_like(x).astype(bool), np.isfinite(x))
 
   def _log_gamma_log_prob(self, x, event_dims=()):
     """Computes log-pdf of a log-gamma random variable.
@@ -344,6 +347,98 @@ class HMCTest(test.TestCase):
 
   def testAIS12(self):
     self._ais_gets_correct_log_normalizer_wrapper([1, 2])
+
+  def testNanRejection(self):
+    """Tests that an update that yields NaN potentials gets rejected.
+
+    We run HMC with a target distribution that returns NaN
+    log-likelihoods if any element of x < 0, and unit-scale
+    exponential log-likelihoods otherwise. The exponential potential
+    pushes x towards 0, ensuring that any reasonably large update will
+    push us over the edge into NaN territory.
+    """
+    def _unbounded_exponential_log_prob(x):
+      """An exponential distribution with log-likelihood NaN for x < 0."""
+      per_element_potentials = array_ops.where(x < 0,
+                                               np.nan * array_ops.ones_like(x),
+                                               -x)
+      return math_ops.reduce_sum(per_element_potentials)
+
+    with self.test_session() as sess:
+      initial_x = math_ops.linspace(0.01, 5, 10)
+      updated_x, acceptance_probs, _, _ = hmc.kernel(
+          2., 5, initial_x, _unbounded_exponential_log_prob, [0])
+      initial_x_val, updated_x_val, acceptance_probs_val = sess.run(
+          [initial_x, updated_x, acceptance_probs])
+
+      logging.vlog(1, 'initial_x = {}'.format(initial_x_val))
+      logging.vlog(1, 'updated_x = {}'.format(updated_x_val))
+      logging.vlog(1, 'acceptance_probs = {}'.format(acceptance_probs_val))
+
+      self.assertAllEqual(initial_x_val, updated_x_val)
+      self.assertEqual(acceptance_probs_val, 0.)
+
+  def testNanFromGradsDontPropagate(self):
+    """Test that update with NaN gradients does not cause NaN in results."""
+    def _nan_log_prob_with_nan_gradient(x):
+      return np.nan * math_ops.reduce_sum(x)
+
+    with self.test_session() as sess:
+      initial_x = math_ops.linspace(0.01, 5, 10)
+      updated_x, acceptance_probs, new_log_prob, new_grad = hmc.kernel(
+          2., 5, initial_x, _nan_log_prob_with_nan_gradient, [0])
+      initial_x_val, updated_x_val, acceptance_probs_val = sess.run(
+          [initial_x, updated_x, acceptance_probs])
+
+      logging.vlog(1, 'initial_x = {}'.format(initial_x_val))
+      logging.vlog(1, 'updated_x = {}'.format(updated_x_val))
+      logging.vlog(1, 'acceptance_probs = {}'.format(acceptance_probs_val))
+
+      self.assertAllEqual(initial_x_val, updated_x_val)
+      self.assertEqual(acceptance_probs_val, 0.)
+
+      self.assertAllFinite(
+          gradients_impl.gradients(updated_x, initial_x)[0].eval())
+      self.assertTrue(
+          gradients_impl.gradients(new_grad, initial_x)[0] is None)
+
+      # Gradients of the acceptance probs and new log prob are not finite.
+      _ = new_log_prob  # Prevent unused arg error.
+      # self.assertAllFinite(
+      #     gradients_impl.gradients(acceptance_probs, initial_x)[0].eval())
+      # self.assertAllFinite(
+      #     gradients_impl.gradients(new_log_prob, initial_x)[0].eval())
+
+  def testChainWorksIn64Bit(self):
+    def log_prob(x):
+      return - math_ops.reduce_sum(x * x, axis=-1)
+    states, acceptance_probs = hmc.chain(
+        n_iterations=10,
+        step_size=np.float64(0.01),
+        n_leapfrog_steps=10,
+        initial_x=np.zeros(5).astype(np.float64),
+        target_log_prob_fn=log_prob,
+        event_dims=[-1])
+    with self.test_session() as sess:
+      states_, acceptance_probs_ = sess.run([states, acceptance_probs])
+    self.assertEqual(np.float64, states_.dtype)
+    self.assertEqual(np.float64, acceptance_probs_.dtype)
+
+  def testChainWorksIn16Bit(self):
+    def log_prob(x):
+      return - math_ops.reduce_sum(x * x, axis=-1)
+    states, acceptance_probs = hmc.chain(
+        n_iterations=10,
+        step_size=np.float16(0.01),
+        n_leapfrog_steps=10,
+        initial_x=np.zeros(5).astype(np.float16),
+        target_log_prob_fn=log_prob,
+        event_dims=[-1])
+    with self.test_session() as sess:
+      states_, acceptance_probs_ = sess.run([states, acceptance_probs])
+    self.assertEqual(np.float16, states_.dtype)
+    self.assertEqual(np.float16, acceptance_probs_.dtype)
+
 
 if __name__ == '__main__':
   test.main()

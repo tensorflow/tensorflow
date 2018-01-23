@@ -1,0 +1,26 @@
+op {
+  graph_op_name: "ImmutableConst"
+  attr {
+    name: "dtype"
+    description: <<END
+Type of the returned tensor.
+END
+  }
+  attr {
+    name: "shape"
+    description: <<END
+Shape of the returned tensor.
+END
+  }
+  attr {
+    name: "memory_region_name"
+    description: <<END
+Name of readonly memory region used by the tensor, see
+NewReadOnlyMemoryRegionFromFile in tensorflow::Env.
+END
+  }
+  summary: "Returns immutable tensor from memory region."
+  description: <<END
+The current implementation memmaps the tensor from a file.
+END
+}

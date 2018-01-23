@@ -11,6 +11,7 @@ py_binary(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/contrib/eager/python:tfe",
+        "//tensorflow/python/eager:context",
         "@six_archive//:six",
     ],
 )

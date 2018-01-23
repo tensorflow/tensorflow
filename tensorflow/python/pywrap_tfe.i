@@ -18,18 +18,30 @@ limitations under the License.
 %rename("%s") TFE_NewContext;
 %rename("%s") TFE_DeleteContext;
 %rename("%s") TFE_ContextListDevices;
+%rename("%s") TFE_ContextAddFunction;
 %rename("%s") TFE_ContextAddFunctionDef;
+%rename("%s") TFE_ContextEnableRunMetadata;
+%rename("%s") TFE_ContextDisableRunMetadata;
+%rename("%s") TFE_ContextExportRunMetadata;
+%rename("%s") TFE_ContextClearCaches;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_RegisterExceptionClass;
 %rename("%s") TFE_Py_Execute;
+%rename("%s") TFE_Py_FastPathExecute;
 %rename("%s") TFE_Py_UID;
-%rename("%s") TFE_Py_NewTape;
-%rename("%s") TFE_Py_TapeShouldRecord;
-%rename("%s") TFE_Py_TapeWatch;
-%rename("%s") TFE_Py_TapeDeleteTrace;
-%rename("%s") TFE_Py_TapeRecordOperation;
-%rename("%s") TFE_Py_TapeExport;
+%rename("%s") TFE_Py_TapeSetNew;
+%rename("%s") TFE_Py_TapeSetRemove;
+%rename("%s") TFE_Py_TapeSetStopOnThread;
+%rename("%s") TFE_Py_TapeSetRestartOnThread;
+%rename("%s") TFE_Py_TapeSetIsEmpty;
+%rename("%s") TFE_Py_TapeSetShouldRecord;
+%rename("%s") TFE_Py_TapeSetWatch;
+%rename("%s") TFE_Py_TapeSetDeleteTrace;
+%rename("%s") TFE_Py_TapeSetRecordOperation;
+%rename("%s") TFE_Py_TapeSetWatchVariable;
+%rename("%s") TFE_Py_TapeGradient;
+%rename("%s") TFE_Py_TapeWatchedVariables;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
 %rename("%s") TFE_ContextOptionsSetDevicePlacementPolicy;
@@ -125,7 +137,7 @@ limitations under the License.
         SWIG_fail;
       }
       if (EagerTensor_CheckExact(elem)) {
-        (*$1)[i] = EagerTensorHandle(elem);
+        (*$1)[i] = EagerTensor_Handle(elem);
       } else {
         SWIG_exception_fail(SWIG_TypeError,
                             "provided list of inputs contains objects other "
@@ -169,9 +181,13 @@ limitations under the License.
   }
 }
 
+// SWIG usually unwraps the tuple that the native Python/C interface generates.
+// Since we wanted to have a function with a variable length of arguments, we
+// used the native Python/C interface directly (which by default supports
+// passing all arguments as a tuple).
+%native(TFE_Py_FastPathExecute) TFE_Py_FastPathExecute_C;
 
 %include "tensorflow/python/eager/pywrap_tfe.h"
-
 
 // Clear all typemaps.
 %typemap(out) TF_DataType;

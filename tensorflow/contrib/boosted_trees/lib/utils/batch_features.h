@@ -56,7 +56,7 @@ class BatchFeatures {
     *num_sparse_int_features = sparse_int_feature_columns_.size();
     if (*num_dense_float_features == 0 && *num_sparse_float_features == 0 &&
         *num_sparse_int_features == 0) {
-      return errors::FailedPrecondition("Not intialized yet.");
+      return errors::FailedPrecondition("Not initialized yet.");
     }
     return Status::OK();
   }

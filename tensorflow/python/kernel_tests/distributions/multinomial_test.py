@@ -281,10 +281,10 @@ class MultinomialTest(test.TestCase):
           dist.variance(),
           dist.stddev(),
       ])
-      self.assertAllClose(sample_mean_, analytic_mean, atol=0., rtol=0.01)
-      self.assertAllClose(sample_cov_, analytic_cov, atol=0., rtol=0.01)
-      self.assertAllClose(sample_var_, analytic_var, atol=0., rtol=0.01)
-      self.assertAllClose(sample_stddev_, analytic_stddev, atol=0., rtol=0.01)
+      self.assertAllClose(sample_mean_, analytic_mean, atol=0.01, rtol=0.01)
+      self.assertAllClose(sample_cov_, analytic_cov, atol=0.01, rtol=0.01)
+      self.assertAllClose(sample_var_, analytic_var, atol=0.01, rtol=0.01)
+      self.assertAllClose(sample_stddev_, analytic_stddev, atol=0.01, rtol=0.01)
 
   def testSampleUnbiasedNonScalarBatch(self):
     with self.test_session() as sess:

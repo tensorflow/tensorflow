@@ -148,9 +148,9 @@ Tensor FeatureSparseCopy(const std::size_t batch, const string& key,
 int64 CopyIntoSparseTensor(const Tensor& in, const int batch,
                            const int64 offset, Tensor* indices, Tensor* values);
 
-// Parses the attributes passed to ParseSingleExample.
+// Parses the attributes passed to ParseExample.
 // REQUIRES: Init must be called after construction.
-class ParseSingleExampleAttrs {
+class ParseExampleAttrs {
  public:
   template <typename ContextType>
   Status Init(ContextType* ctx) {
@@ -196,6 +196,72 @@ class ParseSingleExampleAttrs {
   int64 num_sparse;
   int64 num_dense;
   std::vector<DataType> sparse_types;
+  std::vector<DataType> dense_types;
+  std::vector<PartialTensorShape> dense_shapes;
+  std::vector<bool> variable_length;
+  std::vector<std::size_t> elements_per_stride;
+
+ private:
+  Status FinishInit();  // for context-independent parts of Init.
+};
+
+// Parses the attributes passed to ParseSingleExample.
+// REQUIRES: Init must be called after construction.
+class ParseSingleExampleAttrs {
+ public:
+  template <typename ContextType>
+  Status Init(ContextType* ctx) {
+    TF_RETURN_IF_ERROR(ctx->GetAttr("sparse_keys", &sparse_keys));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("sparse_types", &sparse_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("dense_keys", &dense_keys));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("Tdense", &dense_types));
+    TF_RETURN_IF_ERROR(ctx->GetAttr("dense_shapes", &dense_shapes));
+
+    int num_sparse;
+    TF_RETURN_IF_ERROR(ctx->GetAttr("num_sparse", &num_sparse));
+    if (num_sparse != sparse_keys.size() || num_sparse != sparse_types.size()) {
+      return errors::InvalidArgument(
+          "num_sparse (", num_sparse, ") must match the size of sparse_keys (",
+          sparse_keys.size(), ") and sparse_types (", sparse_types.size(), ")");
+    }
+
+    // Temporary check until we start allowing a variable length outer
+    // dimension.
+    for (int i = 0; i < dense_shapes.size(); ++i) {
+      bool shape_ok = true;
+      if (dense_shapes[i].dims() == -1) {
+        shape_ok = false;
+      } else {
+        for (int d = 1; d < dense_shapes[i].dims(); ++d) {
+          if (dense_shapes[i].dim_size(d) == -1) {
+            shape_ok = false;
+          }
+        }
+      }
+      if (!shape_ok) {
+        return errors::InvalidArgument(
+            "dense_shapes[", i,
+            "] has unknown rank or unknown inner dimensions: ",
+            dense_shapes[i].DebugString());
+      }
+      TensorShape dense_shape;
+      if (dense_shapes[i].dims() > 0 && dense_shapes[i].dim_size(0) == -1) {
+        variable_length.push_back(true);
+        for (int d = 1; d < dense_shapes[i].dims(); ++d) {
+          dense_shape.AddDim(dense_shapes[i].dim_size(d));
+        }
+      } else {
+        variable_length.push_back(false);
+        dense_shapes[i].AsTensorShape(&dense_shape);
+      }
+      elements_per_stride.push_back(dense_shape.num_elements());
+    }
+    return FinishInit();
+  }
+
+  std::vector<string> sparse_keys;
+  std::vector<DataType> sparse_types;
+  std::vector<string> dense_keys;
   std::vector<DataType> dense_types;
   std::vector<PartialTensorShape> dense_shapes;
   std::vector<bool> variable_length;

@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import random
 import threading
 
@@ -32,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
@@ -40,6 +42,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
+@test_util.with_c_api
 class TestUtilTest(test_util.TensorFlowTestCase):
 
   def test_assert_ops_in_graph(self):
@@ -183,11 +186,13 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
   def _WeMustGoDeeper(self, msg):
     with self.assertRaisesOpError(msg):
-      node_def = ops._NodeDef("op_type", "name")
-      node_def_orig = ops._NodeDef("op_type_orig", "orig")
-      op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
-      op = ops.Operation(node_def, ops.get_default_graph(), original_op=op_orig)
-      raise errors.UnauthenticatedError(node_def, op, "true_err")
+      with ops.Graph().as_default():
+        node_def = ops._NodeDef("IntOutput", "name")
+        node_def_orig = ops._NodeDef("IntOutput", "orig")
+        op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
+        op = ops.Operation(node_def, ops.get_default_graph(),
+                           original_op=op_orig)
+        raise errors.UnauthenticatedError(node_def, op, "true_err")
 
   def testAssertRaisesOpErrorDoesNotPassMessageDueToLeakedStack(self):
     with self.assertRaises(AssertionError):
@@ -207,6 +212,18 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       self.assertAllClose(1, {"a": 1})
     with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose({"a": 1}, 1)
+
+  def testAllCloseNamedtuples(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    expected = {"a": a, "b": b, "c": c}
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["a", "b", "c"])
+
+    # Identity.
+    self.assertAllClose(expected, my_named_tuple(a=a, b=b, c=c))
+    self.assertAllClose(
+        my_named_tuple(a=a, b=b, c=c), my_named_tuple(a=a, b=b, c=c))
 
   def testAllCloseDicts(self):
     a = 7
@@ -314,6 +331,10 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       )
 
   def testRandomSeed(self):
+    # Call setUp again for WithCApi case (since it makes a new defeault graph
+    # after setup).
+    # TODO(skyewm): remove this when C API is permanently enabled.
+    self.setUp()
     a = random.randint(1, 1000)
     a_np_rand = np.random.rand(1)
     with self.test_session():
@@ -327,6 +348,77 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertEqual(a, b)
     self.assertEqual(a_np_rand, b_np_rand)
     self.assertEqual(a_rand, b_rand)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_callable_evaluate(self):
+    def model():
+      return resource_variable_ops.ResourceVariable(
+          name="same_name",
+          initial_value=1) + 1
+    with context.eager_mode():
+      self.assertEqual(2, self.evaluate(model))
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_nested_tensors_evaluate(self):
+    expected = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
+    nested = {"a": constant_op.constant(1),
+              "b": constant_op.constant(2),
+              "nested": {"d": constant_op.constant(3),
+                         "e": constant_op.constant(4)}}
+
+    self.assertEqual(expected, self.evaluate(nested))
+
+  def test_get_node_def_from_graph(self):
+    graph_def = graph_pb2.GraphDef()
+    node_foo = graph_def.node.add()
+    node_foo.name = "foo"
+    self.assertIs(test_util.get_node_def_from_graph("foo", graph_def), node_foo)
+    self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
+
+
+@test_util.with_c_api
+class GarbageCollectionTest(test_util.TensorFlowTestCase):
+
+  def test_no_reference_cycle_decorator(self):
+
+    class ReferenceCycleTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+
+      @test_util.assert_no_garbage_created
+      def test_has_cycle(self):
+        a = []
+        a.append(a)
+
+      @test_util.assert_no_garbage_created
+      def test_has_no_cycle(self):
+        pass
+
+    with self.assertRaises(AssertionError):
+      ReferenceCycleTest().test_has_cycle()
+
+    ReferenceCycleTest().test_has_no_cycle()
+
+  def test_no_leaked_tensor_decorator(self):
+
+    class LeakedTensorTest(object):
+
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
+
+      @test_util.assert_no_new_tensors
+      def test_has_leak(self):
+        self.a = constant_op.constant([3.])
+
+      @test_util.assert_no_new_tensors
+      def test_has_no_leak(self):
+        constant_op.constant([3.])
+
+    with self.assertRaisesRegexp(AssertionError, "Tensors not deallocated"):
+      LeakedTensorTest().test_has_leak()
+
+    LeakedTensorTest().test_has_no_leak()
 
 
 @test_util.with_c_api
@@ -394,7 +486,6 @@ class IsolationTest(test_util.TensorFlowTestCase):
       with context.eager_mode():
         with self.assertRaises(ValueError):
           first_container_variable.read_value()
-
 
 if __name__ == "__main__":
   googletest.main()

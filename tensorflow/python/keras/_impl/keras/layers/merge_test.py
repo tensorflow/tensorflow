@@ -116,6 +116,20 @@ class MergeLayersTest(test.TestCase):
       self.assertEqual(out.shape, (2, 4, 5))
       self.assertAllClose(out, np.maximum(x1, x2), atol=1e-4)
 
+  def test_merge_minimum(self):
+    with self.test_session():
+      i1 = keras.layers.Input(shape=(4, 5))
+      i2 = keras.layers.Input(shape=(4, 5))
+      o = keras.layers.minimum([i1, i2])
+      self.assertListEqual(o.get_shape().as_list(), [None, 4, 5])
+      model = keras.models.Model([i1, i2], o)
+
+      x1 = np.random.random((2, 4, 5))
+      x2 = np.random.random((2, 4, 5))
+      out = model.predict([x1, x2])
+      self.assertEqual(out.shape, (2, 4, 5))
+      self.assertAllClose(out, np.minimum(x1, x2), atol=1e-4)
+
   def test_merge_concatenate(self):
     with self.test_session():
       i1 = keras.layers.Input(shape=(4, 5))
@@ -174,9 +188,9 @@ class MergeLayersTest(test.TestCase):
       self.assertEqual(out.shape, (2, 1))
       self.assertAllClose(out, expected, atol=1e-4)
 
-      # test _compute_output_shape
+      # test compute_output_shape
       layer = keras.layers.Dot(axes=-1)
-      self.assertEqual(layer._compute_output_shape([(4, 5), (4, 5)]), (4, 1))
+      self.assertEqual(layer.compute_output_shape([(4, 5), (4, 5)]), (4, 1))
 
   def test_dot_errors(self):
     i1 = keras.layers.Input(shape=(4, 5))
@@ -192,7 +206,7 @@ class MergeLayersTest(test.TestCase):
       keras.layers.dot([i1, i2, i3], axes=-1)
     with self.assertRaises(ValueError):
       dot = keras.layers.Dot(1)
-      dot._compute_output_shape(1)
+      dot.compute_output_shape(1)
 
   def test_merge_subtract(self):
     i1 = keras.layers.Input(shape=(4, 5))

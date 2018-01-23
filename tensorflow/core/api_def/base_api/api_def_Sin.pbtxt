@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "Sin"
+  summary: "Computes sin of x element-wise."
+}

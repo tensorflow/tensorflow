@@ -41,6 +41,8 @@ class GenerateVocabRemappingOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->GetAttr("new_vocab_offset", &new_vocab_offset_));
     OP_REQUIRES_OK(context, context->GetAttr("num_new_vocab", &num_new_vocab_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr("old_vocab_size", &old_vocab_size_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -92,16 +94,14 @@ class GenerateVocabRemappingOp : public OpKernel {
     lookup::HashTable<string, int64>* old_vocab_table =
         new lookup::HashTable<string, int64>(context, this);
     core::ScopedUnref unref_old(old_vocab_table);
-    // Note: we pass -1 (unknown) for vocab_size, which is supposed to be the
-    // total elements in file.  This is different from num_new_vocab_, which
-    // accounts for partitioning.
-    OP_REQUIRES_OK(context, lookup::InitializeTableFromTextFile(
-                                old_vocab_filename,
-                                -1,  // vocab_size
-                                kUnusedLookupDelim,
-                                -2,  // key_index, use the whole line/token.
-                                -1,  // value_index, use the line number.
-                                context->env(), old_vocab_table));
+    // Note: If old_vocab_size_ is -1 (unknown), we retrieve all elements in
+    // file (see TextFileLineIterator).
+    OP_REQUIRES_OK(context,
+                   lookup::InitializeTableFromTextFile(
+                       old_vocab_filename, old_vocab_size_, kUnusedLookupDelim,
+                       -2,  // key_index, use the whole line/token.
+                       -1,  // value_index, use the line number.
+                       context->env(), old_vocab_table));
 
     // Fill out new_ids = [new_vocab_offset, new_vocab_offset + 1, ...,
     //                     new_vocab_offset + num_new_vocab_]
@@ -165,6 +165,7 @@ class GenerateVocabRemappingOp : public OpKernel {
  private:
   int new_vocab_offset_;
   int num_new_vocab_;
+  int old_vocab_size_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("GenerateVocabRemapping").Device(DEVICE_CPU),

@@ -25,11 +25,13 @@ __version__ = pywrap_tensorflow.__version__
 __git_version__ = pywrap_tensorflow.__git_version__
 __compiler_version__ = pywrap_tensorflow.__compiler_version__
 __cxx11_abi_flag__ = pywrap_tensorflow.__cxx11_abi_flag__
+__monolithic_build__ = pywrap_tensorflow.__monolithic_build__
 
 VERSION = __version__
 GIT_VERSION = __git_version__
 COMPILER_VERSION = __compiler_version__
 CXX11_ABI_FLAG = __cxx11_abi_flag__
+MONOLITHIC_BUILD = __monolithic_build__
 
 GRAPH_DEF_VERSION = pywrap_tensorflow.GRAPH_DEF_VERSION
 GRAPH_DEF_VERSION_MIN_CONSUMER = (
@@ -42,6 +44,7 @@ __all__ = [
     "__git_version__",
     "__compiler_version__",
     "__cxx11_abi_flag__",
+    "__monolithic_build__",
     "COMPILER_VERSION",
     "CXX11_ABI_FLAG",
     "GIT_VERSION",
@@ -49,4 +52,5 @@ __all__ = [
     "GRAPH_DEF_VERSION_MIN_CONSUMER",
     "GRAPH_DEF_VERSION_MIN_PRODUCER",
     "VERSION",
+    "MONOLITHIC_BUILD",
 ]

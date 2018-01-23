@@ -90,6 +90,11 @@ _EPSILON = 10e-8
 # Default image data format, one of "channels_last", "channels_first".
 _IMAGE_DATA_FORMAT = 'channels_last'
 
+# This list holds the available devices.
+# It is populated when `_get_available_gpus()` is called for the first time.
+# We assume our devices don't change henceforth.
+_LOCAL_DEVICES = None
+
 
 def backend():
   """Publicly accessible method for determining the current backend.
@@ -442,8 +447,10 @@ def _get_available_gpus():
   Returns:
       A list of available GPU devices.
   """
-  devices = get_session().list_devices()
-  return [x.name for x in devices if x.device_type == 'GPU']
+  global _LOCAL_DEVICES
+  if _LOCAL_DEVICES is None:
+    _LOCAL_DEVICES = get_session().list_devices()
+  return [x.name for x in _LOCAL_DEVICES if x.device_type == 'GPU']
 
 
 def _has_nchw_support():
@@ -2479,11 +2486,21 @@ def print_tensor(x, message=''):
 class Function(object):
   """Runs a computation graph.
 
+  It's possible to pass arguments to `tf.Session.run()` via `session_kwargs`.
+  In particular additional operations via `fetches` argument and additional
+  tensor substitutions via `feed_dict` arguments. Note that given
+  substitutions are merged with substitutions from `inputs`. Even though
+  `feed_dict` is passed once in the constructor (called in `model.compile()`)
+  we can modify the values in the dictionary. Through this feed_dict we can
+  provide additional substitutions besides Keras inputs.
+
   Arguments:
       inputs: Feed placeholders to the computation graph.
       outputs: Output tensors to fetch.
       updates: Additional update ops to be run at function call.
-      name: a name to help users identify what this function does.
+      name: A name to help users identify what this function does.
+      session_kwargs: Arguments to `tf.Session.run()`: `fetches`, `feed_dict`,
+        `options`, `run_metadata`
   """
 
   def __init__(self, inputs, outputs, updates=None, name=None,
@@ -2511,12 +2528,18 @@ class Function(object):
           updates_ops.append(update)
       self.updates_op = control_flow_ops.group(*updates_ops)
     self.name = name
+    # additional tensor substitutions
+    self.feed_dict = session_kwargs.pop('feed_dict', {})
+    # additional operations
+    self.fetches = session_kwargs.pop('fetches', [])
+    if not isinstance(self.fetches, list):
+      self.fetches = [self.fetches]
     self.session_kwargs = session_kwargs
 
   def __call__(self, inputs):
     if not isinstance(inputs, (list, tuple)):
       raise TypeError('`inputs` should be a list or tuple.')
-    feed_dict = {}
+    feed_dict = self.feed_dict.copy()
     for tensor, value in zip(self.inputs, inputs):
       if is_sparse(tensor):
         sparse_coo = value.tocoo()
@@ -2524,11 +2547,10 @@ class Function(object):
                                   np.expand_dims(sparse_coo.col, 1)), 1)
         value = (indices, sparse_coo.data, sparse_coo.shape)
       feed_dict[tensor] = value
+    fetches = self.outputs + [self.updates_op] + self.fetches
     session = get_session()
     updated = session.run(
-        self.outputs + [self.updates_op],
-        feed_dict=feed_dict,
-        **self.session_kwargs)
+        fetches=fetches, feed_dict=feed_dict, **self.session_kwargs)
     return updated[:len(self.outputs)]
 
 
@@ -3098,8 +3120,8 @@ def sparse_categorical_crossentropy(target, output, from_logits=False):
   logits = array_ops.reshape(output, [-1, int(output_shape[-1])])
   res = nn.sparse_softmax_cross_entropy_with_logits(
       labels=targets, logits=logits)
-  if len(output_shape) == 3:
-    # if our output includes timesteps we need to reshape
+  if len(output_shape) >= 3:
+    # If our output includes timesteps or spatial dimensions we need to reshape
     return array_ops.reshape(res, array_ops.shape(output)[:-1])
   else:
     return res

@@ -40,6 +40,16 @@ struct Costs {
   // Builds a Costs structure with all zero values, rather than unknowns.
   static inline Costs ZeroCosts();
 
+  struct MilliSeconds : std::chrono::milliseconds {
+    MilliSeconds() : std::chrono::milliseconds(0) {}
+    MilliSeconds(double d) : std::chrono::milliseconds(static_cast<int64>(d)) {}
+    MilliSeconds(const std::chrono::milliseconds& d)
+        : std::chrono::milliseconds(d) {}
+    MilliSeconds& operator=(const std::chrono::milliseconds& d) {
+      std::chrono::milliseconds::operator=(d);
+      return *this;
+    }
+  };
   struct MicroSeconds : std::chrono::microseconds {
     MicroSeconds() : std::chrono::microseconds(0) {}
     MicroSeconds(double d) : std::chrono::microseconds(static_cast<int64>(d)) {}
@@ -48,6 +58,9 @@ struct Costs {
     MicroSeconds& operator=(const std::chrono::microseconds& d) {
       std::chrono::microseconds::operator=(d);
       return *this;
+    }
+    MilliSeconds asMilliSeconds() const {
+      return std::chrono::duration_cast<std::chrono::milliseconds>(*this);
     }
   };
   struct NanoSeconds : std::chrono::nanoseconds {
@@ -60,9 +73,10 @@ struct Costs {
       return *this;
     }
     MicroSeconds asMicroSeconds() const {
-      std::chrono::microseconds us =
-          std::chrono::duration_cast<std::chrono::microseconds>(*this);
-      return MicroSeconds(us);
+      return std::chrono::duration_cast<std::chrono::microseconds>(*this);
+    }
+    MilliSeconds asMilliSeconds() const {
+      return std::chrono::duration_cast<std::chrono::milliseconds>(*this);
     }
   };
 
@@ -100,6 +114,10 @@ struct Costs {
   std::unordered_map<string, uint64> estimated_max_memory_per_device;
 };
 
+inline std::ostream& operator<<(std::ostream& os, const Costs::MilliSeconds d) {
+  os << d.count() << "ms";
+  return os;
+}
 inline std::ostream& operator<<(std::ostream& os, const Costs::MicroSeconds d) {
   os << d.count() << "us";
   return os;

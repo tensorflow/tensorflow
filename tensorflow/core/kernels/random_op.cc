@@ -577,7 +577,7 @@ struct FillPhiloxRandomKernel<Distribution, false> {
     const size_t kGroupSize = Distribution::kResultElementCount;
 
     const size_t item_id = item.get_global(0);
-    const size_t total_item_count = item.get_global_range(0);
+    const size_t total_item_count = item.get_global_range();
     size_t offset = item_id * kGroupSize;
     gen_.Skip(item_id);
 
@@ -633,7 +633,7 @@ struct FillPhiloxRandomKernel<Distribution, true> {
                                                 PhiloxRandom::kResultElementCount;
 
     const size_t item_id = item.get_global(0);
-    const size_t total_item_count = item.get_global_range(0);
+    const size_t total_item_count = item.get_global_range();
     size_t group_index = item_id;
     size_t offset = group_index * kGroupSize;
 

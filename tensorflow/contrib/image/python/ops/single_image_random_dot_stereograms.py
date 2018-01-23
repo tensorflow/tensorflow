@@ -68,7 +68,7 @@ def single_image_random_dot_stereograms(
   ```
 
   Args:
-    depth_values: A `Tensor`. Must be one of the following types: 
+    depth_values: A `Tensor`. Must be one of the following types:
       `float64`, `float32`, `int64`, `int32`.  Z values of data to encode
       into 'output_data_window' window, lower further away {0.0 floor(far),
       1.0 ceiling(near) after norm}, must be 2-D tensor
@@ -84,17 +84,17 @@ def single_image_random_dot_stereograms(
     mu: An optional `float`. Defaults to `0.3333`.
       Depth of field, Fraction of viewing distance (eg. 1/3 = 0.3333)
     normalize: An optional `bool`. Defaults to `True`.
-      Normalize input data to [0.0, 1.0] 
+      Normalize input data to [0.0, 1.0]
     normalize_max: An optional `float`. Defaults to `-100`.
       Fix MAX value for Normalization (0.0) - if < MIN, autoscale
     normalize_min: An optional `float`. Defaults to `100`.
       Fix MIN value for Normalization (0.0) - if > MAX, autoscale
     border_level: An optional `float`. Defaults to `0`.
-      Value of bord in depth 0.0 {far} to 1.0 {near} 
+      Value of bord in depth 0.0 {far} to 1.0 {near}
     number_colors: An optional `int`. Defaults to `256`. 2 (Black &
       White), 256 (grayscale), and Numbers > 256 (Full Color) are
       supported
-    output_image_shape: An optional `tf.TensorShape` or list of `ints`. 
+    output_image_shape: An optional `tf.TensorShape` or list of `ints`.
       Defaults to shape `[1024, 768, 1]`. Defines output shape of returned
       image in '[X,Y, Channels]' 1-grayscale, 3 color; channels will be
       updated to 3 if number_colors > 256

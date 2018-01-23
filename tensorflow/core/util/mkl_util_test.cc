@@ -54,7 +54,6 @@ TEST(MklUtilTest, MklDnnTfShape) {
   EXPECT_NE(b_tf_shape_nchw, b_mkldnn_tf_shape);
 }
 
-
 TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   // Let's create 2D tensor of shape {3, 4} with 3 being innermost dimension
   // first (case 1) and then it being outermost dimension (case 2).

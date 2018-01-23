@@ -101,8 +101,8 @@ class MklToTfOp : public OpKernel {
       // Allocate output tensor.
       TensorShape output_shape = input_shape.GetTfShape();
       Tensor* output_tensor = NULL;
-      OP_REQUIRES_OK(context, context->allocate_output(input_number,
-                                  output_shape, &output_tensor));
+      OP_REQUIRES_OK(context, context->allocate_output(
+                                  input_number, output_shape, &output_tensor));
       CHECK_NOTNULL(output_tensor);
 
       // Do we need to reorder Mkl layout into TensorFlow layout?
@@ -116,13 +116,13 @@ class MklToTfOp : public OpKernel {
         // If not, just forward input tensor to output tensor.
         CHECK(output_tensor->CopyFrom(input_tensor, output_shape));
       }
-    } catch (mkldnn::error &e) {
+    } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + std::string(e.message) +
-                       ", in file " + std::string(__FILE__) + ":" +
-                       std::to_string(__LINE__);
-      OP_REQUIRES_OK(context,
-        errors::Aborted("Operation received an exception:", error_msg));
+                         ", message: " + std::string(e.message) + ", in file " +
+                         std::string(__FILE__) + ":" + std::to_string(__LINE__);
+      OP_REQUIRES_OK(
+          context,
+          errors::Aborted("Operation received an exception:", error_msg));
     }
   }
 #else
@@ -160,8 +160,8 @@ class MklToTfOp : public OpKernel {
 
     // Allocate output tensor.
     Tensor* output_tensor = NULL;
-    OP_REQUIRES_OK(context, context->allocate_output(input_number,
-                              output_shape, &output_tensor));
+    OP_REQUIRES_OK(context, context->allocate_output(input_number, output_shape,
+                                                     &output_tensor));
 
     dnnLayout_t output_layout =
         static_cast<dnnLayout_t>(input_shape.GetTfLayout());

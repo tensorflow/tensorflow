@@ -292,7 +292,7 @@ def loss(weight, bias):
   error = prediction(training_inputs, weight, bias) - training_outputs
   return tf.reduce_mean(tf.square(error))
 
-# Function that returns the the derivative of loss with respect to
+# Function that returns the derivative of loss with respect to
 # weight and bias
 grad = tfe.gradients_function(loss)
 
@@ -757,7 +757,7 @@ For example, to record summaries once every 100 global steps, use:
 
 ```python
 tf.train.get_or_create_global_step()  # Ensuring the global step variable exists
-writer = tf.contrib.summary.create_summary_file_writer(logdir)
+writer = tf.contrib.summary.create_file_writer(logdir)
 
 for _ in range(iterations):
   with writer.as_default():

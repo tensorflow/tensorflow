@@ -63,7 +63,12 @@ string MakeUniquePath(string name) {
 
 string DumpGraphDefToFile(const string& name, GraphDef const& graph_def) {
   string path = MakeUniquePath(name);
-  TF_CHECK_OK(WriteTextProto(Env::Default(), path, graph_def));
+  Status status = WriteTextProto(Env::Default(), path, graph_def);
+  if (!status.ok()) {
+    VLOG(1) << "Failed to dump GraphDef to file: " << path << " : " << status;
+    path.clear();
+    path = "(unavailable)";
+  }
   return path;
 }
 
@@ -79,7 +84,13 @@ string DumpGraphToFile(const string& name, Graph const& graph,
 
 string DumpFunctionDefToFile(const string& name, FunctionDef const& fdef) {
   string path = MakeUniquePath(name);
-  TF_CHECK_OK(WriteTextProto(Env::Default(), path, fdef));
+  Status status = WriteTextProto(Env::Default(), path, fdef);
+  if (!status.ok()) {
+    VLOG(1) << "Failed to dump FunctionDef to file: " << path << " : "
+            << status;
+    path.clear();
+    path = "(unavailable)";
+  }
   return path;
 }
 

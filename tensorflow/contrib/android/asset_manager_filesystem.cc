@@ -97,7 +97,7 @@ class RandomAccessFileFromAsset : public RandomAccessFile {
     off64_t new_offset = AAsset_seek64(asset.get(), offset, SEEK_SET);
     off64_t length = AAsset_getLength64(asset.get());
     if (new_offset < 0) {
-      result->set(scratch, 0);
+      *result = StringPiece(scratch, 0);
       return errors::OutOfRange("Read after file end.");
     }
     const off64_t region_left =
@@ -106,7 +106,7 @@ class RandomAccessFileFromAsset : public RandomAccessFile {
     if (read < 0) {
       return errors::Internal("Error reading from asset.");
     }
-    result->set(scratch, region_left);
+    *result = StringPiece(scratch, region_left);
     return (region_left == to_read)
                ? Status::OK()
                : errors::OutOfRange("Read less bytes than requested.");

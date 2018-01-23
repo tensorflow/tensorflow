@@ -19,6 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import,line-too-long,wildcard-import
+from tensorflow.python.estimator.canned.baseline import BaselineClassifier
+from tensorflow.python.estimator.canned.baseline import BaselineRegressor
 from tensorflow.python.estimator.canned.dnn import DNNClassifier
 from tensorflow.python.estimator.canned.dnn import DNNRegressor
 from tensorflow.python.estimator.canned.dnn_linear_combined import DNNLinearCombinedClassifier
@@ -39,6 +41,8 @@ from tensorflow.python.estimator.run_config import RunConfig
 from tensorflow.python.estimator.training import EvalSpec
 from tensorflow.python.estimator.training import train_and_evaluate
 from tensorflow.python.estimator.training import TrainSpec
+from tensorflow.python.estimator.warm_starting_util import VocabInfo
+from tensorflow.python.estimator.warm_starting_util import WarmStartSettings
 
 
 from tensorflow.python.util.all_util import remove_undocumented
@@ -46,6 +50,8 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     # Canned Estimators
+    'BaselineClassifier',
+    'BaselineRegressor',
     'DNNClassifier',
     'DNNRegressor',
     'DNNLinearCombinedClassifier',
@@ -72,6 +78,10 @@ _allowed_symbols = [
     'Exporter',
     'LatestExporter',
     'FinalExporter',
+
+    # Warm-starting
+    'WarmStartSettings',
+    'VocabInfo',
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

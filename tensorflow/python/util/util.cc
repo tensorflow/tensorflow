@@ -29,7 +29,7 @@ bool WarnedThatSetIsNotSequence = false;
 
 // Returns 1 if `o` is considered a sequence for the purposes of Flatten().
 // Returns 0 otherwise.
-// Returns -1 if an error occured.
+// Returns -1 if an error occurred.
 int IsSequenceHelper(PyObject* o) {
   if (PyDict_Check(o)) return true;
   if (PySet_Check(o) && !WarnedThatSetIsNotSequence) {

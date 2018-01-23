@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -1462,7 +1463,11 @@ TEST_F(CApiFunctionTest, AppendHash) {
                  /*append_hash=*/true);
   tensorflow::FunctionDef fdef;
   ASSERT_TRUE(GetFunctionDef(func_, &fdef));
+#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+  ASSERT_EQ(string("func_name_base_ZpgUD4x8oqk"), fdef.signature().name());
+#else
   ASSERT_EQ(string("func_name_base_qaJ8jA8UmGY"), fdef.signature().name());
+#endif
 }
 
 TEST_F(CApiFunctionTest, GetOpDef) {
@@ -1482,8 +1487,123 @@ TEST_F(CApiFunctionTest, GetOpDef) {
   EXPECT_EQ(op_def.name(), func_name_);
   EXPECT_EQ(op_def.input_arg_size(), 1);
   EXPECT_EQ(op_def.output_arg_size(), 1);
+  EXPECT_FALSE(op_def.is_stateful());
 
   TF_DeleteBuffer(buffer);
+}
+
+void DefineStatefulFunction(const char* name, TF_Function** func) {
+  std::unique_ptr<TF_Graph, decltype(&TF_DeleteGraph)> func_graph(
+      TF_NewGraph(), TF_DeleteGraph);
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> s(TF_NewStatus(),
+                                                           TF_DeleteStatus);
+
+  TF_Tensor* tensor_shape = Int32Tensor({37, 1});
+  TF_Operation* shape = Const(tensor_shape, func_graph.get(), s.get(), "shape");
+  TF_Operation* random =
+      RandomUniform(shape, TF_FLOAT, func_graph.get(), s.get());
+
+  TF_Output inputs[] = {};
+  TF_Output outputs[] = {{random, 0}};
+  *func = TF_GraphToFunction(func_graph.get(), name, /*append_hash=*/false, -1,
+                             /*opers=*/nullptr, 0, inputs, 1, outputs,
+                             /*output_names=*/nullptr,
+                             /*opts=*/nullptr, "", s.get());
+  ASSERT_EQ(TF_OK, TF_GetCode(s.get())) << TF_Message(s.get());
+  ASSERT_NE(*func, nullptr);
+  TF_DeleteTensor(tensor_shape);
+}
+
+TEST_F(CApiFunctionTest, StatefulOpDef) {
+  DefineStatefulFunction(func_name_, &func_);
+  TF_GraphCopyFunction(host_graph_, func_, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Test we can retrieve function OpDef from graph
+  TF_Buffer* buffer = TF_NewBuffer();
+  TF_GraphGetOpDef(host_graph_, func_name_, buffer, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Sanity check returned OpDef
+  string data(static_cast<const char*>(buffer->data), buffer->length);
+  OpDef op_def;
+  op_def.ParseFromString(data);
+  EXPECT_EQ(op_def.name(), func_name_);
+  EXPECT_EQ(op_def.input_arg_size(), 0);
+  EXPECT_EQ(op_def.output_arg_size(), 1);
+  EXPECT_TRUE(op_def.is_stateful());
+
+  TF_DeleteBuffer(buffer);
+}
+
+void AssertEqual(TF_Function* f1, TF_Function* f2) {
+  string s1, s2;
+  tensorflow::FunctionDef fdef1, fdef2;
+  ASSERT_TRUE(GetFunctionDef(f1, &fdef1));
+  ASSERT_TRUE(GetFunctionDef(f2, &fdef2));
+  SerializeToStringDeterministic(fdef1, &s1);
+  SerializeToStringDeterministic(fdef2, &s2);
+  ASSERT_EQ(s1, s2);
+}
+
+string GetName(TF_Function* func) {
+  tensorflow::FunctionDef fdef;
+  GetFunctionDef(func, &fdef);
+  return fdef.signature().name();
+}
+
+TEST_F(CApiFunctionTest, GetFunctionsFromGraph) {
+  TF_Function* funcs[2];
+
+  // Get functions from empty graph
+  EXPECT_EQ(TF_GraphNumFunctions(host_graph_), 0);
+  TF_GraphGetFunctions(host_graph_, nullptr, 0, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Define a function and add it to host_graph_
+  TF_Function* func0;
+  DefineFunction("FooFunc0", &func0);
+  TF_GraphCopyFunction(host_graph_, func0, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Get this function from host_graph_
+  EXPECT_EQ(TF_GraphNumFunctions(host_graph_), 1);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 0, s_), 0);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 1, s_), 1);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  AssertEqual(func0, funcs[0]);
+  TF_DeleteFunction(funcs[0]);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 2, s_), 1);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  AssertEqual(func0, funcs[0]);
+  TF_DeleteFunction(funcs[0]);
+
+  // Define a second function
+  TF_Function* func1;
+  DefineFunction("FooFunc1", &func1);
+  TF_GraphCopyFunction(host_graph_, func1, nullptr, s_);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+
+  // Get both function from host_graph_
+  EXPECT_EQ(TF_GraphNumFunctions(host_graph_), 2);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 0, s_), 0);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  EXPECT_EQ(TF_GraphGetFunctions(host_graph_, funcs, 2, s_), 2);
+  ASSERT_EQ(TF_OK, TF_GetCode(s_)) << TF_Message(s_);
+  if (GetName(funcs[0]) == GetName(func0)) {
+    AssertEqual(func0, funcs[0]);
+    AssertEqual(func1, funcs[1]);
+  } else {
+    AssertEqual(func0, funcs[1]);
+    AssertEqual(func1, funcs[0]);
+  }
+
+  TF_DeleteFunction(funcs[0]);
+  TF_DeleteFunction(funcs[1]);
+
+  TF_DeleteFunction(func0);
+  TF_DeleteFunction(func1);
 }
 
 }  // namespace

@@ -21,8 +21,8 @@ from __future__ import print_function
 import six
 
 from tensorflow.python.keras._impl.keras import backend as K
-from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
+from tensorflow.python.layers.base import Layer
 from tensorflow.python.platform import tf_logging as logging
 
 

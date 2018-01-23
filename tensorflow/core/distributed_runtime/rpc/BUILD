@@ -186,6 +186,7 @@ tf_cuda_library(
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:graph_mgr",
+        "//tensorflow/core/distributed_runtime:recent_request_ids",
         "//tensorflow/core/distributed_runtime:rendezvous_mgr_interface",
         "//tensorflow/core/distributed_runtime:worker",
         "//tensorflow/core/distributed_runtime:worker_cache",
@@ -200,7 +201,6 @@ cc_library(
     srcs = ["grpc_worker_service_impl.cc"],
     hdrs = ["grpc_worker_service_impl.h"],
     deps = [
-        ":grpc_namespace_compat",
         ":grpc_serialization_traits",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/distributed_runtime:tensor_coding",
@@ -247,18 +247,8 @@ cc_library(
     srcs = ["grpc_master_service_impl.cc"],
     hdrs = ["grpc_master_service_impl.h"],
     deps = [
-        ":grpc_namespace_compat",
         ":grpc_serialization_traits",
         "//tensorflow/core:master_proto_cc",
-        "@grpc//:grpc++_unsecure",
-    ],
-)
-
-cc_library(
-    name = "grpc_namespace_compat",
-    srcs = [],
-    hdrs = ["grpc_namespace_compat.h"],
-    deps = [
         "@grpc//:grpc++_unsecure",
     ],
 )
@@ -281,6 +271,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime:request_id",
         "//tensorflow/core/distributed_runtime:tensor_coding",
         "//tensorflow/core/distributed_runtime:worker_cache",
         "//tensorflow/core/distributed_runtime:worker_env",

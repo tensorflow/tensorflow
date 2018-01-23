@@ -46,6 +46,12 @@ enum PrimitiveType {
   // converted to f16 from f32 at arbirary points in the computation.
   F16 = 10;
   F32 = 11;
+
+  // Truncated 16 bit floating-point format. This is similar to IEEE's 16 bit
+  // floating-point format, but uses 1 bit for the sign, 8 bits for the exponent
+  // and 7 bits for the mantissa.
+  BF16 = 16;
+
   F64 = 12;
 
   // Complex values of fixed width.
@@ -63,6 +69,8 @@ enum PrimitiveType {
   // An opaque type used for passing context specific data to a custom
   // operation.
   OPAQUE = 14;
+
+  // Next = 17
 }
 
 // Describes the value held inside padding elements.
@@ -106,6 +114,17 @@ message PaddingConfig {
   repeated PaddingConfigDimension dimensions = 1;
 }
 
+// A format specifies the method used by a layout to store an array in memory.
+enum Format {
+  INVALID_FORMAT = 0;
+  // The default layout, with exactly one storage location per element (ignoring
+  // padding).
+  DENSE = 1;
+  // A sparsely encoded layout, providing only the index/value pairs of non-zero
+  // elements.
+  SPARSE = 2;
+}
+
 // A layout describes how the array is placed in (1D) memory space.  This
 // includes the minor-to-major ordering of dimensions within a shape, as well as
 // any padding present in those dimensions.
@@ -116,20 +135,29 @@ message PaddingConfig {
 //
 // See the XLA documentation for more information on shapes and layouts.
 message Layout {
+  // The method used to store the data in memory. The format determines which of
+  // the other fields are used by the layout.
+  Format format = 4;
+
   // Sequence of dimension numbers, from minor (fastest varying index) to major
   // (slowest varying index). This field is required.
   repeated int64 minor_to_major = 1;
 
-  // The width to which the layout of each dimension is padded up
-  // to. If present, the size of the padded_dimensions must equal the
-  // rank of the shape. The padding appears at the end of a dimension,
-  // not at the beginning. This kind of padding, unlike padding in
-  // e.g. convolution, is not part of the shape.
+  // The width to which the layout of each dimension is padded up to. If
+  // present, the size of the padded_dimensions must equal the rank of the
+  // shape. The padding appears at the end of a dimension, not at the
+  // beginning. This kind of padding, unlike padding in e.g. convolution, is not
+  // part of the shape. This field must be unset unless the format is DENSE.
   repeated int64 padded_dimensions = 2;
 
-  // Describes the values in the padding specified by
-  // padded_dimensions.
+  // Describes the values in the padding specified by padded_dimensions. This
+  // field must be unset unless the format is DENSE.
   PaddingValue padding_value = 3;
+
+  // The maximum number of elements that can be stored for SPARSE formats.  This
+  // can be used to determine the maximum size in bytes of arrays stored in
+  // memory.  This field must be unset unless the format is SPARSE.
+  int64 max_sparse_elements = 5;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal()
   // appropriately to account for the new field.
@@ -310,7 +338,11 @@ message LiteralProto {
   repeated double f64s = 9;
   repeated float c64s = 12;  // Stored as interleaved real, imag floats.
   repeated LiteralProto tuple_literals = 10;
-  bytes f16s = 11;  // Note: the F16s are encoded in little endian byte order
+  // The F16s and BF16s are encoded in little endian byte order
+  bytes f16s = 11;
+  bytes bf16s = 13;
+  repeated int64 sparse_indices = 14;
+  // Next = 15
 }
 
 message WindowDimension {
@@ -346,6 +378,10 @@ message WindowDimension {
   // means no dilation. base_dilation - 1 no-op entries ("holes") are implicitly
   // placed between each base area element. See documentation for convolution.
   int64 base_dilation = 6;
+
+  // Window reversal means that this dimension was logically reversed before the
+  // operation.
+  bool window_reversal = 7;
 }
 
 // Describes the windowing in an operation such as convolution.
@@ -402,15 +438,9 @@ message ConvolutionDimensionNumbers {
   // The number of the dimension that represents features in the input.
   int64 input_feature_dimension = 8;
 
-  // The number of the dimension that represents batch in the output.
-  int64 output_batch_dimension = 9;
-
-  // The number of the dimension that represents features in the output.
-  int64 output_feature_dimension = 10;
-
   // The dimension numbers for the spatial dimensions that the window
-  // moves through in the input (lhs) and output.
-  repeated int64 spatial_dimensions = 5;
+  // moves through in the input.
+  repeated int64 input_spatial_dimensions = 11;
 
   // The number of the dimension that represents input features in the
   // convolutional kernel (rhs).
@@ -424,12 +454,24 @@ message ConvolutionDimensionNumbers {
   // moves through in the kernel (rhs). window.strides(0) is the
   // stride in the kernel_spatial_dimensions(0) dimension.
   repeated int64 kernel_spatial_dimensions = 6;
+
+  // The number of the dimension that represents batch in the output.
+  int64 output_batch_dimension = 9;
+
+  // The number of the dimension that represents features in the output.
+  int64 output_feature_dimension = 10;
+
+  // The dimension numbers for the spatial dimensions that the window
+  // moves through in the output.
+  repeated int64 output_spatial_dimensions = 12;
+
+  // Next = 13
 };
 
 message ConvolveRequest {
   ComputationDataHandle lhs = 2;
   ComputationDataHandle rhs = 3;  // This is the filter/kernel.
-  Window window = 4;              // Describes the filter/kenel.
+  Window window = 4;              // Describes the filter/kernel.
   ConvolutionDimensionNumbers dimension_numbers = 5;
 }
 
@@ -475,6 +517,23 @@ message CustomCallRequest {
   string call_target_name = 2;
   repeated ComputationDataHandle operands = 3;
   Shape shape = 4;
+}
+
+message DotDimensionNumbers {
+  // The dimension numbers that represent the 'lhs' contracting dimensions.
+  repeated int64 lhs_contracting_dimensions = 1;
+  // The dimension numbers that represent the 'rhs' contracting dimensions.
+  repeated int64 rhs_contracting_dimensions = 2;
+  // The dimension numbers that represent the 'lhs' batch dimensions.
+  repeated int64 lhs_batch_dimensions = 3;
+  // The dimension numbers that represent the 'rhs' batch dimensions.
+  repeated int64 rhs_batch_dimensions = 4;
+};
+
+message DotRequest {
+  ComputationDataHandle lhs = 2;
+  ComputationDataHandle rhs = 3;
+  DotDimensionNumbers dimension_numbers = 4;
 }
 
 message MapRequest {
@@ -630,6 +689,14 @@ message ConcatenateRequest {
   int64 dimension = 3;
 }
 
+message ConditionalRequest {
+  ComputationDataHandle predicate = 2;
+  ComputationDataHandle true_operand = 3;
+  ComputationHandle true_computation = 4;
+  ComputationDataHandle false_operand = 5;
+  ComputationHandle false_computation = 6;
+}
+
 message WhileRequest {
   ComputationHandle condition = 2;
   ComputationHandle body = 3;
@@ -711,9 +778,6 @@ enum BinaryOperation {
   BINOP_LT = 9;
   BINOP_NE = 10;
 
-  // Dot product, matrix multiply.
-  BINOP_DOT = 12;
-
   // Element-wise maximum.
   BINOP_MAX = 14;
 
@@ -759,9 +823,7 @@ enum RandomDistribution {
   // parameter[0] and standard deviation parameter[1].
   RNG_NORMAL = 2;
 
-  // Creates a Bernoulli-distribution-generated random number with mean
-  // parameter[0].
-  RNG_BERNOULLI = 3;
+  // Next: 4
 }
 
 message RngRequest {
@@ -825,8 +887,10 @@ message OpSharding {
     REPLICATED = 0;
     // This sharding is maximal - one device runs the entire operation.
     MAXIMAL = 1;
-    // Neither of the above; tile_shape and tile_assignment are both used.
-    OTHER = 2;
+    // This sharding is a tuple - only the tuple_shardings field is valid.
+    TUPLE = 2;
+    // None of the above; tile_shape and tile_assignment are both used.
+    OTHER = 3;
   }
   Type type = 1;
   // The shape of the sharded tile.
@@ -838,6 +902,13 @@ message OpSharding {
   // Flattened list of device IDs. The order of flattening is the same as used
   // by IndexUtil::MultiToLinearIndex(tile_assignment_shape).
   repeated int64 tile_assignment_devices = 4;
+  // If type == TUPLE, the sub-shardings, one per leaf node in the tuple shape,
+  // in pre-order. The tuple shape could be nested; here we store just a
+  // flattened list of all leaves in the tuple shape. Note that the tuple shape
+  // is not stored here; shardings do not store the shapes to which they are
+  // applied, this is inferred from the instruction this sharding gets attached
+  // to.
+  repeated OpSharding tuple_shardings = 5;
 }
 
 message OpRequest {
@@ -855,6 +926,7 @@ message OpRequest {
     ConvolveRequest convolve_request = 8;
     CrossReplicaSumRequest cross_replica_sum_request = 9;
     CustomCallRequest custom_call_request = 10;
+    DotRequest dot_request = 43;
     DynamicSliceRequest dynamic_slice_request = 11;
     DynamicUpdateSliceRequest dynamic_update_slice_request = 12;
     GetTupleElementRequest get_tuple_element_request = 13;
@@ -883,7 +955,9 @@ message OpRequest {
     BatchNormGradRequest batch_norm_grad_request = 37;
     BatchNormInferenceRequest batch_norm_inference_request = 38;
     FftRequest fft_request = 41;
-    // Next: 42
+    ConvertRequest bitcast_convert_request = 42;
+    ConditionalRequest conditional_request = 44;
+    // Next: 45
   }
 }
 

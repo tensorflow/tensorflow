@@ -72,8 +72,10 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training_util
@@ -127,6 +129,23 @@ def _weight_threshold_variable(var, scope):
         trainable=False,
         dtype=var.dtype)
     return threshold
+
+
+def _kronecker_product(mat1, mat2):
+  """Computes the Kronecker product of two matrices mat1 and mat2.
+
+  Args:
+    mat1: A matrix of size m x n
+    mat2: A matrix of size p x q
+  Returns:
+    Kronecker product of matrices mat1 and mat2 of size mp x nq
+  """
+
+  m1, n1 = mat1.get_shape().as_list()
+  mat1_rsh = array_ops.reshape(mat1, [m1, 1, n1, 1])
+  m2, n2 = mat2.get_shape().as_list()
+  mat2_rsh = array_ops.reshape(mat2, [1, m2, 1, n2])
+  return array_ops.reshape(mat1_rsh * mat2_rsh, [m1 * m2, n1 * n2])
 
 
 def _histogram(values, value_range, nbins=100, dtype=np.int32, name=None):
@@ -297,6 +316,13 @@ def get_pruning_hparams():
       How often should the masks be updated? (in # of global_steps)
     nbins: integer
       number of bins to use for histogram computation
+    block_height: integer
+      number of rows in a block (defaults to 1)
+    block_width: integer
+      number of cols in a block (defaults to 1)
+    block_pooling_function: string
+      Whether to perform average (AVG) or max (MAX) pooling in the block
+      (default: AVG)
     initial_sparsity: float
       initial sparsity value
     target_sparsity: float
@@ -332,6 +358,9 @@ def get_pruning_hparams():
       threshold_decay=0.9,
       pruning_frequency=10,
       nbins=255,
+      block_height=1,
+      block_width=1,
+      block_pooling_function='AVG',
       initial_sparsity=0,
       target_sparsity=0.5,
       sparsity_function_begin_step=0,
@@ -341,11 +370,7 @@ def get_pruning_hparams():
 
 class Pruning(object):
 
-  def __init__(self,
-               spec=None,
-               global_step=None,
-               sparsity=None,
-               partitioner=None):
+  def __init__(self, spec=None, global_step=None, sparsity=None):
     """Set up the specification for model pruning.
 
     If a spec is provided, the sparsity is set up based on the sparsity_function
@@ -358,8 +383,6 @@ class Pruning(object):
       global_step: A tensorflow variable that is used while setting up the
         sparsity function
       sparsity: A tensorflow scalar variable storing the sparsity
-      partitioner: The tensorflow partitioner function used to distribute
-        parameters across shards
     """
     # Pruning specification
     self._spec = spec if spec else get_pruning_hparams()
@@ -373,15 +396,18 @@ class Pruning(object):
     # Built using self._setup_sparsity() or provided externally
     self._sparsity = sparsity if sparsity else self._setup_sparsity()
 
-    # Stores the partitioner function uses to partition variables across tasks/
-    self._partitioner = partitioner
-
     # List of tensorflow assignments ops for new masks and thresholds
     self._assign_ops = []
 
     # Tensorflow variable keeping track of the last global step when the masks
     # were updated
     self._last_update_step = self._setup_last_update_step()
+
+    # Block dimensions
+    self._block_dim = [self._spec.block_height, self._spec.block_width]
+
+    # Block pooling function
+    self._block_pooling_function = self._spec.block_pooling_function
 
   def _setup_global_step(self, global_step):
     graph_global_step = global_step
@@ -457,9 +483,10 @@ class Pruning(object):
 
     Returns:
       new_threshold: The new value of the threshold based on weights, and
-        desired_sparsity
-      new_mask: A n-D numpy array containing 0 or 1 to indicate which of the
-        values in weights falls below the threshold
+        sparsity at the current global_step
+      new_mask: A numpy array of the same size and shape as weights containing
+        0 or 1 to indicate which of the values in weights falls below
+        the threshold
 
     Raises:
       ValueError: if sparsity is not defined
@@ -492,6 +519,63 @@ class Pruning(object):
           math_ops.greater(abs_weights, smoothed_threshold), np.float32)
     return smoothed_threshold, new_mask
 
+  def _maybe_update_block_mask(self, weights, threshold):
+    """Performs block-granular masking of the weights.
+
+    Block pruning occurs only if the block_height or block_width is > 1 and
+    if the weight tensor has ndims = 2. Otherwise, elementwise pruning occurs.
+    Args:
+      weights: The weight tensor that needs to be masked.
+      threshold: The current threshold value. The function will compute a new
+        threshold and return the exponential moving average using the current
+        value of threshold
+
+    Returns:
+      new_threshold: The new value of the threshold based on weights, and
+        sparsity at the current global_step
+      new_mask: A numpy array of the same size and shape as weights containing
+        0 or 1 to indicate which of the values in weights falls below
+        the threshold
+
+    Raises:
+      ValueError: if block pooling function is not AVG or MAX
+    """
+    if weights.get_shape().ndims != 2 or self._block_dim == [1, 1]:
+      return self._update_mask(weights, threshold)
+
+    if self._block_pooling_function not in ['AVG', 'MAX']:
+      raise ValueError('Unknown pooling function for block sparsity: %s' %
+                       self._block_pooling_function)
+
+    with ops.name_scope(weights.op.name + '_pruning_ops'):
+      abs_weights = math_ops.abs(
+          array_ops.reshape(
+              weights, [1, weights.get_shape()[0],
+                        weights.get_shape()[1], 1]))
+      pool_window = [self._block_dim[0], self._block_dim[1]]
+      pooled_weights = nn_ops.pool(
+          abs_weights,
+          window_shape=pool_window,
+          pooling_type=self._block_pooling_function,
+          strides=pool_window,
+          padding='SAME',
+          name=weights.op.name + '_pooled')
+
+      smoothed_threshold, new_mask = self._update_mask(pooled_weights,
+                                                       threshold)
+
+      reshaped_mask = array_ops.reshape(
+          new_mask,
+          [pooled_weights.get_shape()[1],
+           pooled_weights.get_shape()[2]])
+      updated_mask = _kronecker_product(reshaped_mask,
+                                        array_ops.ones(self._block_dim))
+      sliced_mask = array_ops.slice(
+          updated_mask, [0, 0],
+          [weights.get_shape()[0],
+           weights.get_shape()[1]])
+    return smoothed_threshold, sliced_mask
+
   def _get_mask_assign_ops(self):
     # Make sure the assignment ops have not already been added to the list
     if self._assign_ops:
@@ -509,18 +593,21 @@ class Pruning(object):
 
     for index, mask in enumerate(masks):
       threshold = thresholds[index]
-      weight = weights[index] if self._partitioner is None else weights[
-          index].as_tensor()
+      weight = weights[index]
+      is_partitioned = isinstance(weight, variables.PartitionedVariable)
+      if is_partitioned:
+        weight = weight.as_tensor()
 
       if self._spec.do_not_prune:
         if self._exists_in_do_not_prune_list(mask.name):
           continue
 
-      new_threshold, new_mask = self._update_mask(weight, threshold)
+      new_threshold, new_mask = self._maybe_update_block_mask(weight, threshold)
       self._assign_ops.append(_variable_assign(threshold, new_threshold))
+
       self._assign_ops.append(
-          _variable_assign(mask, new_mask) if self._partitioner is None else
-          _partitioned_variable_assign(mask, new_mask))
+          _partitioned_variable_assign(mask, new_mask)
+          if is_partitioned else _variable_assign(mask, new_mask))
 
   def mask_update_op(self):
     with ops.name_scope(self._spec.name):

@@ -185,7 +185,7 @@ class BaseDebugOp : public OpKernel {
       if (!status.ok()) {
         LOG(ERROR) << "Debug node of watch key "
                    << debug_watch_key_->debug_node_name
-                   << "failed to publish debug tensor data to all URLs "
+                   << " failed to publish debug tensor data to all URLs "
                    << str_util::Join(debug_urls_, ", ")
                    << ", due to: " << status.error_message();
       }

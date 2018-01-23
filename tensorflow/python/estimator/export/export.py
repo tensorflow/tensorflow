@@ -57,7 +57,7 @@ class ServingInputReceiver(collections.namedtuple(
       groups of receiver tensors, each of which may be a `Tensor` or a dict of
       string to `Tensor`.  These named receiver tensor alternatives generate
       additional serving signatures, which may be used to feed inputs at
-      different points within the input reciever subgraph.  A typical usage is
+      different points within the input receiver subgraph.  A typical usage is
       to allow feeding raw feature `Tensor`s *downstream* of the
       tf.parse_example() op.  Defaults to None.
   """
@@ -191,7 +191,8 @@ def build_all_signature_defs(receiver_tensors,
   if not isinstance(receiver_tensors, dict):
     receiver_tensors = {_SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
   if export_outputs is None or not isinstance(export_outputs, dict):
-    raise ValueError('export_outputs must be a dict.')
+    raise ValueError('export_outputs must be a dict and not'
+                     '{}'.format(type(export_outputs)))
 
   signature_def_map = {}
   excluded_signatures = {}

@@ -46,23 +46,27 @@ class ConvolutionFoldingTest : public HloTestBase {
     //
     // TODO(jingyue): Add more tests on NCHW input order which TF also supports.
     tf_default_dnums_for_backward_filter_.set_input_batch_dimension(3);
-    tf_default_dnums_for_backward_filter_.set_output_batch_dimension(3);
     tf_default_dnums_for_backward_filter_.set_input_feature_dimension(0);
-    tf_default_dnums_for_backward_filter_.set_output_feature_dimension(0);
-    tf_default_dnums_for_backward_filter_.add_spatial_dimensions(1);
-    tf_default_dnums_for_backward_filter_.add_spatial_dimensions(2);
+    tf_default_dnums_for_backward_filter_.add_input_spatial_dimensions(1);
+    tf_default_dnums_for_backward_filter_.add_input_spatial_dimensions(2);
     tf_default_dnums_for_backward_filter_.set_kernel_input_feature_dimension(0);
     tf_default_dnums_for_backward_filter_.set_kernel_output_feature_dimension(
         3);
     tf_default_dnums_for_backward_filter_.add_kernel_spatial_dimensions(1);
     tf_default_dnums_for_backward_filter_.add_kernel_spatial_dimensions(2);
+    tf_default_dnums_for_backward_filter_.add_output_spatial_dimensions(0);
+    tf_default_dnums_for_backward_filter_.add_output_spatial_dimensions(1);
+    tf_default_dnums_for_backward_filter_.set_output_batch_dimension(2);
+    tf_default_dnums_for_backward_filter_.set_output_feature_dimension(3);
 
     tf_default_dnums_for_backward_input_.set_input_batch_dimension(0);
     tf_default_dnums_for_backward_input_.set_output_batch_dimension(0);
     tf_default_dnums_for_backward_input_.set_input_feature_dimension(3);
     tf_default_dnums_for_backward_input_.set_output_feature_dimension(3);
-    tf_default_dnums_for_backward_input_.add_spatial_dimensions(1);
-    tf_default_dnums_for_backward_input_.add_spatial_dimensions(2);
+    tf_default_dnums_for_backward_input_.add_input_spatial_dimensions(1);
+    tf_default_dnums_for_backward_input_.add_output_spatial_dimensions(1);
+    tf_default_dnums_for_backward_input_.add_input_spatial_dimensions(2);
+    tf_default_dnums_for_backward_input_.add_output_spatial_dimensions(2);
     tf_default_dnums_for_backward_input_.set_kernel_input_feature_dimension(3);
     tf_default_dnums_for_backward_input_.set_kernel_output_feature_dimension(2);
     tf_default_dnums_for_backward_input_.add_kernel_spatial_dimensions(0);
@@ -82,7 +86,7 @@ class ConvolutionFoldingTest : public HloTestBase {
   ConvolutionDimensionNumbers tf_default_dnums_for_backward_input_;
 };
 
-TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithoutTranspose) {
+TEST_F(ConvolutionFoldingTest, BackwardFilterConvolve) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -132,7 +136,7 @@ TEST_F(ConvolutionFoldingTest,
 
   auto module = CreateNewModule();
   module->AddEntryComputation(builder.Build());
-  EXPECT_FALSE(FoldConvolution(module.get()));
+  EXPECT_TRUE(FoldConvolution(module.get()));
 }
 
 // Extracted from block35 training.
@@ -151,13 +155,9 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithPaddedActivations) {
     conv_window.mutable_dimensions(i)->set_padding_low(1);
     conv_window.mutable_dimensions(i)->set_padding_high(1);
   }
-  HloInstruction* convolution =
-      builder.AddInstruction(HloInstruction::CreateConvolve(
-          ShapeUtil::MakeShape(F32, {32, 3, 3, 32}), activations, gradients,
-          conv_window, tf_default_dnums_for_backward_filter_));
-
-  builder.AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeShape(F32, {3, 3, 32, 32}), convolution, {1, 2, 3, 0}));
+  builder.AddInstruction(HloInstruction::CreateConvolve(
+      ShapeUtil::MakeShape(F32, {32, 3, 3, 32}), activations, gradients,
+      conv_window, tf_default_dnums_for_backward_filter_));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -185,13 +185,9 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithPaddedGradients) {
     conv_window.mutable_dimensions(i)->set_padding_high(-1);
     conv_window.mutable_dimensions(i)->set_window_dilation(2);
   }
-  HloInstruction* convolution =
-      builder.AddInstruction(HloInstruction::CreateConvolve(
-          ShapeUtil::MakeShape(F32, {320, 3, 3, 192}), activations, gradients,
-          conv_window, tf_default_dnums_for_backward_filter_));
-
-  builder.AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeShape(F32, {3, 3, 192, 320}), convolution, {1, 2, 3, 0}));
+  builder.AddInstruction(HloInstruction::CreateConvolve(
+      ShapeUtil::MakeShape(F32, {320, 3, 3, 192}), activations, gradients,
+      conv_window, tf_default_dnums_for_backward_filter_));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -218,13 +214,9 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithUnevenPadding) {
     // Uneven padding: padding_low=0, padding_high=1
     conv_window.mutable_dimensions(i)->set_padding_high(1);
   }
-  HloInstruction* convolution =
-      builder.AddInstruction(HloInstruction::CreateConvolve(
-          ShapeUtil::MakeShape(F32, {32, 2, 2, 32}), activations, gradients,
-          conv_window, tf_default_dnums_for_backward_filter_));
-
-  builder.AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeShape(F32, {2, 2, 32, 32}), convolution, {1, 2, 3, 0}));
+  builder.AddInstruction(HloInstruction::CreateConvolve(
+      ShapeUtil::MakeShape(F32, {32, 2, 2, 32}), activations, gradients,
+      conv_window, tf_default_dnums_for_backward_filter_));
 
   auto module = CreateNewModule();
   HloComputation* entry_computation =
@@ -258,8 +250,10 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveEvenPadding) {
   conv_dnums.set_output_batch_dimension(0);
   conv_dnums.set_input_feature_dimension(1);
   conv_dnums.set_output_feature_dimension(1);
-  conv_dnums.add_spatial_dimensions(2);
-  conv_dnums.add_spatial_dimensions(3);
+  conv_dnums.add_input_spatial_dimensions(2);
+  conv_dnums.add_output_spatial_dimensions(2);
+  conv_dnums.add_input_spatial_dimensions(3);
+  conv_dnums.add_output_spatial_dimensions(3);
   conv_dnums.set_kernel_input_feature_dimension(0);
   conv_dnums.set_kernel_output_feature_dimension(1);
   conv_dnums.add_kernel_spatial_dimensions(2);

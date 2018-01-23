@@ -37,14 +37,6 @@ namespace xla {
 // LocalClient::Compile.
 class ExecutableBuildOptions {
  public:
-  // If set, this is the platform to build the computation for. This must match
-  // the underlying platform of the service. A value of nullptr indicates the
-  // option has not been set.
-  //
-  // TODO(b/28616830): Support multiple platforms.
-  ExecutableBuildOptions& set_platform(perftools::gputools::Platform* platform);
-  perftools::gputools::Platform* platform() const;
-
   // If set, this is the device to build the computation for. Valid
   // device_ordinal values are: 0 to # of devices - 1. These values are
   // identical to the device ordinal values used by StreamExecutor. The built
@@ -61,18 +53,10 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_result_layout(const Shape& shape_with_layout);
   const Shape* result_layout() const;
 
-  // If set, the executable will be built to output a hybrid
-  // ShapedBuffer with top-level tuple pointers in host memory and
-  // result buffers in device memory.
-  ExecutableBuildOptions& set_has_hybrid_result(bool has_hybrid_result);
-  bool has_hybrid_result() const;
-
  private:
-  perftools::gputools::Platform* platform_ = nullptr;
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
-  bool has_hybrid_result_ = true;
 };
 
 class LocalExecutable {
@@ -129,9 +113,9 @@ class LocalExecutable {
   tensorflow::Status RecordResult(const ShapedBuffer* result,
                                   SessionModule* session_module);
 
-  // Copies the contents of a ShapedBuffer into a Literal proto.
-  tensorflow::Status LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer,
-                                             Literal* literal);
+  // Returns a literal containing the contents of the given ShapedBuffer.
+  StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(
+      const ShapedBuffer& shaped_buffer);
 
   // Compiled computation.
   std::unique_ptr<Executable> executable_;
@@ -177,6 +161,27 @@ class LocalClient : public Client {
   // return as a Literal.
   StatusOr<std::unique_ptr<Literal>> ShapedBufferToLiteral(
       const ShapedBuffer& shaped_buffer);
+
+  // Transfer the given literal to the infeed queue of the given device.
+  // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
+  // not inherit from Client and there is no possibility of confusion with
+  // Client::TransferToInfeed.
+  Status TransferToInfeedLocal(const Literal& literal, int device_ordinal);
+
+  // Transfer and return a value of the given shape from the outfeed of the
+  // given device.
+  // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
+  // not inherit from Client and there is no possibility of confusion with
+  // Client::TransferFromOutfeed.
+  StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocal(
+      const Shape& shape, int device_ordinal);
+
+  // Returns the device ordinal that corresponds to the given replica number.
+  //
+  // This returns an error if there is not a one-to-one correspondence of
+  // replicas to device ordinals, but is useful as a short term mechanism for
+  // the "easy" case where a single replica is a single device.
+  StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
 
   // Returns the platform that the underlying service targets.
   perftools::gputools::Platform* platform() const;

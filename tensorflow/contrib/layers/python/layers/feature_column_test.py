@@ -102,6 +102,16 @@ class FeatureColumnTest(test.TestCase):
     weighted_ids = fc.weighted_sparse_column(ids, "weights")
     self.assertEqual(weighted_ids.name, "ids_weighted_by_weights")
 
+  def testWeightedSparseColumnWithVocabularyFile(self):
+    ids = fc.sparse_column_with_vocabulary_file(
+        "ids", "a_file", num_oov_buckets=7, vocab_size=3)
+    weighted_ids = fc.weighted_sparse_column(ids, "weights")
+    self.assertEqual(weighted_ids.name, "ids_weighted_by_weights")
+    self.assertEqual(weighted_ids.lookup_config, ids.lookup_config)
+    self.assertEqual(weighted_ids.lookup_config.vocab_size, 3)
+    self.assertEqual(weighted_ids.lookup_config.num_oov_buckets, 7)
+    self.assertEqual(weighted_ids.lookup_config.vocabulary_file, "a_file")
+
   def testWeightedSparseColumnDeepCopy(self):
     ids = fc.sparse_column_with_keys("ids", ["marlo", "omar", "stringer"])
     weighted = fc.weighted_sparse_column(ids, "weights")

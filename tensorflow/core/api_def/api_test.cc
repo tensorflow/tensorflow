@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// Test that verifies tensorflow/core/api_def/base_api/api_def*.pbtxt files
-// are correct. If api_def*.pbtxt do not match expected contents, run
-// tensorflow/core/api_def/base_api/update_api_def.sh script to update them.
+// Test that validates tensorflow/core/api_def/base_api/api_def*.pbtxt files.
 
 #include <ctype.h>
 #include <algorithm>
@@ -23,12 +21,11 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/api_def/excluded_ops.h"
 #include "tensorflow/core/framework/api_def.pb.h"
-#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
-#include "tensorflow/core/framework/op_gen_overrides.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -44,163 +41,164 @@ namespace tensorflow {
 namespace {
 constexpr char kDefaultApiDefDir[] =
     "tensorflow/core/api_def/base_api";
-constexpr char kOverridesFilePath[] =
-    "tensorflow/cc/ops/op_gen_overrides.pbtxt";
-constexpr char kApiDefFileFormat[] = "api_def_%c.pbtxt";
-constexpr char kAlphabet[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+constexpr char kApiDefFilePattern[] = "api_def_*.pbtxt";
+}  // namespace
 
-// Get map from first character to ApiDefs for ops
-// that start with that character.
-std::unordered_map<char, ApiDefs> GenerateApiDef(
-    const OpList& ops, const OpGenOverrides& overrides) {
-  std::unordered_map<string, OpGenOverride> name_to_override;
-  for (const auto& op_override : overrides.op()) {
-    name_to_override[op_override.name()] = op_override;
-  }
+// Reads golden ApiDef files and returns a map from file name to ApiDef file
+// contents.
+void GetGoldenApiDefs(Env* env, const string& api_files_dir,
+                      std::unordered_map<string, ApiDef>* name_to_api_def) {
+  std::vector<string> matching_paths;
+  TF_CHECK_OK(env->GetMatchingPaths(
+      io::JoinPath(api_files_dir, kApiDefFilePattern), &matching_paths));
 
-  std::unordered_map<char, ApiDefs> api_defs_map;
-
-  for (const auto& op : ops.op()) {
-    CHECK(!op.name().empty())
-        << "Encountered empty op name: %s" << op.DebugString();
-    const char file_id = toupper(op.name()[0]);
-    CHECK(isalpha(file_id)) << "Unexpected op name: " << op.name();
-    ApiDef* api_def = api_defs_map[file_id].add_op();
-    api_def->set_graph_op_name(op.name());
-
-    if (name_to_override.find(op.name()) != name_to_override.end()) {
-      const auto& op_override = name_to_override[op.name()];
-      // Set visibility
-      if (op_override.skip()) {
-        api_def->set_visibility(ApiDef_Visibility_SKIP);
-      } else if (op_override.hide()) {
-        api_def->set_visibility(ApiDef_Visibility_HIDDEN);
-      }
-      // Add endpoints
-      if (!op_override.rename_to().empty()) {
-        auto* endpoint = api_def->add_endpoint();
-        endpoint->set_name(op_override.rename_to());
-      } else {
-        auto* endpoint = api_def->add_endpoint();
-        endpoint->set_name(op.name());
-      }
-      for (auto& alias : op_override.alias()) {
-        auto* endpoint = api_def->add_endpoint();
-        endpoint->set_name(alias);
-      }
-      // Add attributes
-      for (auto& attr : op.attr()) {
-        auto* api_def_attr = api_def->add_attr();
-        api_def_attr->set_name(attr.name());
-        for (auto& attr_override : op_override.attr_default()) {
-          if (attr.name() == attr_override.name()) {
-            *(api_def_attr->mutable_default_value()) = attr_override.value();
-          }
-        }
-        for (auto& attr_rename : op_override.attr_rename()) {
-          if (attr.name() == attr_rename.from()) {
-            api_def_attr->set_rename_to(attr_rename.to());
-          }
-        }
-      }
-    } else {
-      auto* endpoint = api_def->add_endpoint();
-      endpoint->set_name(op.name());
-    }
-    // Add docs
-    api_def->set_summary(op.summary());
-    api_def->set_description(op.description());
-  }
-  return api_defs_map;
-}
-
-// Reads golden api defs file with the given suffix.
-string GetGoldenApiDefsStr(Env* env, const string& api_files_dir, char suffix) {
-  string file_path = strings::Printf(
-      io::JoinPath(api_files_dir, kApiDefFileFormat).c_str(), suffix);
-  if (env->FileExists(file_path).ok()) {
+  for (auto& file_path : matching_paths) {
     string file_contents;
-    TF_EXPECT_OK(ReadFileToString(env, file_path, &file_contents));
-    return file_contents;
+    TF_CHECK_OK(ReadFileToString(env, file_path, &file_contents));
+    file_contents = PBTxtFromMultiline(file_contents);
+
+    ApiDefs api_defs;
+    CHECK(tensorflow::protobuf::TextFormat::ParseFromString(file_contents,
+                                                            &api_defs))
+        << "Failed to load " << file_path;
+    CHECK_EQ(api_defs.op_size(), 1);
+    (*name_to_api_def)[api_defs.op(0).graph_op_name()] = api_defs.op(0);
   }
-  return "";
 }
 
-void RunApiTest(bool update_api_def, const string& api_files_dir) {
-  // Read C++ overrides file
-  string overrides_file_contents;
-  Env* env = Env::Default();
-  TF_EXPECT_OK(
-      ReadFileToString(env, kOverridesFilePath, &overrides_file_contents));
+class ApiTest : public ::testing::Test {
+ protected:
+  ApiTest() {
+    OpRegistry::Global()->Export(false, &ops_);
+    const std::vector<string> multi_line_fields = {"description"};
 
-  // Read all ops
-  OpList ops;
-  OpRegistry::Global()->Export(false, &ops);
-  const std::vector<string> multi_line_fields = {"description"};
+    Env* env = Env::Default();
+    GetGoldenApiDefs(env, kDefaultApiDefDir, &api_defs_map_);
+  }
+  OpList ops_;
+  std::unordered_map<string, ApiDef> api_defs_map_;
+};
 
-  // Get expected ApiDefs
-  OpGenOverrides overrides;
-  auto new_api_defs_map = GenerateApiDef(ops, overrides);
-
-  bool updated_at_least_one_file = false;
-
-  for (char c : kAlphabet) {
-    string golden_api_defs_str = GetGoldenApiDefsStr(env, api_files_dir, c);
-    string new_api_defs_str = new_api_defs_map[c].DebugString();
-    new_api_defs_str = PBTxtToMultiline(new_api_defs_str, multi_line_fields);
-    if (golden_api_defs_str == new_api_defs_str) {
+// Check that all ops have an ApiDef.
+TEST_F(ApiTest, AllOpsAreInApiDef) {
+  auto* excluded_ops = GetExcludedOps();
+  for (const auto& op : ops_.op()) {
+    if (excluded_ops->find(op.name()) != excluded_ops->end()) {
       continue;
     }
-    if (update_api_def) {
-      string output_file_path =
-          io::JoinPath(api_files_dir, strings::Printf(kApiDefFileFormat, c));
-      if (new_api_defs_str.empty()) {
-        std::cout << "Deleting " << output_file_path << "..." << std::endl;
-        TF_EXPECT_OK(env->DeleteFile(output_file_path));
-      } else {
-        std::cout << "Updating " << output_file_path << "..." << std::endl;
-        TF_EXPECT_OK(
-            WriteStringToFile(env, output_file_path, new_api_defs_str));
-      }
-      updated_at_least_one_file = true;
-    } else {
-      EXPECT_EQ(golden_api_defs_str, new_api_defs_str)
-          << "To update golden API files, run "
-          << "tensorflow/core/api_def/update_api_def.sh.";
+    ASSERT_TRUE(api_defs_map_.find(op.name()) != api_defs_map_.end())
+        << op.name() << " op does not have api_def_*.pbtxt file. "
+        << "Please add api_def_" << op.name() << ".pbtxt file "
+        << "under tensorflow/core/api_def/base_api/ directory.";
+  }
+}
+
+// Check that ApiDefs have a corresponding op.
+TEST_F(ApiTest, AllApiDefsHaveCorrespondingOp) {
+  std::unordered_set<string> op_names;
+  for (const auto& op : ops_.op()) {
+    op_names.insert(op.name());
+  }
+  for (const auto& name_and_api_def : api_defs_map_) {
+    ASSERT_TRUE(op_names.find(name_and_api_def.first) != op_names.end())
+        << name_and_api_def.first << " op has ApiDef but missing from ops. "
+        << "Does api_def_" << name_and_api_def.first << " need to be deleted?";
+  }
+}
+
+string GetOpDefHasDocStringError(const string& op_name) {
+  return strings::Printf(
+      "OpDef for %s has a doc string. "
+      "Doc strings must be defined in ApiDef instead of OpDef. "
+      "Please, add summary and descriptions in api_def_%s"
+      ".pbtxt file instead",
+      op_name.c_str(), op_name.c_str());
+}
+
+// Check that OpDef's do not have descriptions and summaries.
+// Descriptions and summaries must be in corresponding ApiDefs.
+TEST_F(ApiTest, OpDefsShouldNotHaveDocs) {
+  auto* excluded_ops = GetExcludedOps();
+  for (const auto& op : ops_.op()) {
+    if (excluded_ops->find(op.name()) != excluded_ops->end()) {
+      continue;
+    }
+    ASSERT_TRUE(op.summary().empty()) << GetOpDefHasDocStringError(op.name());
+    ASSERT_TRUE(op.description().empty())
+        << GetOpDefHasDocStringError(op.name());
+    for (const auto& arg : op.input_arg()) {
+      ASSERT_TRUE(arg.description().empty())
+          << GetOpDefHasDocStringError(op.name());
+    }
+    for (const auto& arg : op.output_arg()) {
+      ASSERT_TRUE(arg.description().empty())
+          << GetOpDefHasDocStringError(op.name());
+    }
+    for (const auto& attr : op.attr()) {
+      ASSERT_TRUE(attr.description().empty())
+          << GetOpDefHasDocStringError(op.name());
     }
   }
+}
 
-  if (update_api_def && !updated_at_least_one_file) {
-    std::cout << "Api def files are already up to date." << std::endl;
+// Checks that input arg names in an ApiDef match input
+// arg names in corresponding OpDef.
+TEST_F(ApiTest, AllApiDefInputArgsAreValid) {
+  for (const auto& op : ops_.op()) {
+    const auto& api_def = api_defs_map_[op.name()];
+    for (const auto& api_def_arg : api_def.in_arg()) {
+      bool found_arg = false;
+      for (const auto& op_arg : op.input_arg()) {
+        if (api_def_arg.name() == op_arg.name()) {
+          found_arg = true;
+          break;
+        }
+      }
+      ASSERT_TRUE(found_arg)
+          << "Input argument " << api_def_arg.name()
+          << " (overwritten in api_def_" << op.name()
+          << ".pbtxt) is not defined in OpDef for " << op.name();
+    }
   }
 }
 
-TEST(ApiTest, GenerateBaseAPIDef) { RunApiTest(false, kDefaultApiDefDir); }
-}  // namespace
+// Checks that output arg names in an ApiDef match output
+// arg names in corresponding OpDef.
+TEST_F(ApiTest, AllApiDefOutputArgsAreValid) {
+  for (const auto& op : ops_.op()) {
+    const auto& api_def = api_defs_map_[op.name()];
+    for (const auto& api_def_arg : api_def.out_arg()) {
+      bool found_arg = false;
+      for (const auto& op_arg : op.output_arg()) {
+        if (api_def_arg.name() == op_arg.name()) {
+          found_arg = true;
+          break;
+        }
+      }
+      ASSERT_TRUE(found_arg)
+          << "Output argument " << api_def_arg.name()
+          << " (overwritten in api_def_" << op.name()
+          << ".pbtxt) is not defined in OpDef for " << op.name();
+    }
+  }
+}
+
+// Checks that attribute names in an ApiDef match attribute
+// names in corresponding OpDef.
+TEST_F(ApiTest, AllApiDefAttributeNamesAreValid) {
+  for (const auto& op : ops_.op()) {
+    const auto& api_def = api_defs_map_[op.name()];
+    for (const auto& api_def_attr : api_def.attr()) {
+      bool found_attr = false;
+      for (const auto& op_attr : op.attr()) {
+        if (api_def_attr.name() == op_attr.name()) {
+          found_attr = true;
+        }
+      }
+      ASSERT_TRUE(found_attr)
+          << "Attribute " << api_def_attr.name() << " (overwritten in api_def_"
+          << op.name() << ".pbtxt) is not defined in OpDef for " << op.name();
+    }
+  }
+}
 }  // namespace tensorflow
-
-int main(int argc, char** argv) {
-  bool update_api_def = false;
-  tensorflow::string api_files_dir = tensorflow::kDefaultApiDefDir;
-  std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag(
-          "update_api_def", &update_api_def,
-          "Whether to update tensorflow/core/api_def/base_api/api_def*.pbtxt "
-          "files if they differ from expected API."),
-      tensorflow::Flag("api_def_dir", &api_files_dir,
-                       "Base directory of api_def*.pbtxt files.")};
-  std::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  bool parsed_values_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parsed_values_ok) {
-    std::cerr << usage << std::endl;
-    return 2;
-  }
-  if (update_api_def) {
-    tensorflow::port::InitMain(argv[0], &argc, &argv);
-    tensorflow::RunApiTest(update_api_def, api_files_dir);
-    return 0;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  // Run tests
-  return RUN_ALL_TESTS();
-}

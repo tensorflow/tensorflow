@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "TensorArrayCloseV2"
+  visibility: SKIP
+  summary: "Deprecated. Use TensorArrayCloseV3"
+}

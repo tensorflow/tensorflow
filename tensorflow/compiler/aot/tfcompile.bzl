@@ -128,8 +128,13 @@ def tf_library(name, graph, config,
 
   # Rule that runs tfcompile to produce the header and object file.
   header_file = name + ".h"
-  object_file = name + ".o"
+  metadata_object_file = name + "_tfcompile_metadata.o"
+  function_object_file = name + "_tfcompile_function.o"
   ep = ("__" + PACKAGE_NAME + "__" + name).replace("/", "_")
+  if type(tfcompile_flags) == type(""):
+    flags = tfcompile_flags
+  else:
+    flags = " ".join(["'" + arg.replace("'", "'\\''") + "'" for arg in (tfcompile_flags or [])])
   native.genrule(
       name=("gen_" + name),
       srcs=[
@@ -138,7 +143,8 @@ def tf_library(name, graph, config,
       ],
       outs=[
           header_file,
-          object_file,
+          metadata_object_file,
+          function_object_file,
       ],
       cmd=("$(location " + tfcompile_tool + ")" +
            " --graph=$(location " + tfcompile_graph + ")" +
@@ -147,8 +153,9 @@ def tf_library(name, graph, config,
            " --cpp_class=" + cpp_class +
            " --target_triple=" + target_llvm_triple() +
            " --out_header=$(@D)/" + header_file +
-           " --out_object=$(@D)/" + object_file +
-           " " + (tfcompile_flags or "")),
+           " --out_metadata_object=$(@D)/" + metadata_object_file +
+           " --out_function_object=$(@D)/" + function_object_file +
+           " " + flags),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,
@@ -185,7 +192,7 @@ def tf_library(name, graph, config,
            " --cpp_class=" + cpp_class +
            " --target_triple=" + target_llvm_triple() +
            " --out_session_module=$(@D)/" + session_module_pb +
-           " " + (tfcompile_flags or "")),
+           " " + flags),
       tools=[tfcompile_tool],
       visibility=visibility,
       testonly=testonly,
@@ -195,11 +202,10 @@ def tf_library(name, graph, config,
 
   # The cc_library rule packaging up the header and object file, and needed
   # kernel implementations.
-  need_xla_data_proto = (tfcompile_flags and
-                         tfcompile_flags.find("--gen_program_shape") != -1)
+  need_xla_data_proto = (flags and flags.find("--gen_program_shape") != -1)
   native.cc_library(
       name=name,
-      srcs=[object_file],
+      srcs=[function_object_file, metadata_object_file],
       hdrs=[header_file],
       visibility=visibility,
       testonly=testonly,
@@ -264,7 +270,6 @@ def tf_library(name, graph, config,
         srcs=[test_file],
         deps=[
             ":" + name,
-            "@org_tensorflow//tensorflow/compiler/tf2xla:xla_local_runtime_context",
             "@org_tensorflow//tensorflow/compiler/aot:runtime",
             "@org_tensorflow//tensorflow/compiler/aot:tf_library_test_main",
             "@org_tensorflow//tensorflow/compiler/xla:executable_run_options",
@@ -310,7 +315,6 @@ def tf_library(name, graph, config,
         linkopts = if_android(["-pie", "-s"]),
         deps=[
             ":" + name,
-            "@org_tensorflow//tensorflow/compiler/tf2xla:xla_local_runtime_context",
             "@org_tensorflow//tensorflow/compiler/aot:benchmark",
             "@org_tensorflow//tensorflow/compiler/aot:runtime",
             "@org_tensorflow//tensorflow/compiler/xla:executable_run_options",

@@ -20,14 +20,23 @@ from __future__ import print_function
 
 from tensorflow.contrib.timeseries.examples import lstm
 
+from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.platform import test
+
+
+class _SeedRunConfig(estimator_lib.RunConfig):
+
+  @property
+  def tf_random_seed(self):
+    return 3
 
 
 class LSTMExampleTest(test.TestCase):
 
   def test_periodicity_learned(self):
     (observed_times, observed_values,
-     all_times, predicted_values) = lstm.train_and_predict(training_steps=100)
+     all_times, predicted_values) = lstm.train_and_predict(
+         training_steps=100, estimator_config=_SeedRunConfig())
     self.assertAllEqual([100], observed_times.shape)
     self.assertAllEqual([100, 5], observed_values.shape)
     self.assertAllEqual([200], all_times.shape)

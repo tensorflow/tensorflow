@@ -172,17 +172,11 @@ void SetMemory(NodeExecStatsWrapper* stats, OpKernelContext* ctx) {
     stats->AddAllocation(allocator_pair.first, allocator_pair.second);
   }
   auto* ms = stats->stats()->mutable_memory_stats();
-  ms->set_host_temp_memory_size(ctx->host_temp_memory_size());
-  ms->set_device_temp_memory_size(ctx->device_temp_memory_size());
-  for (const auto& alloc_id : ctx->host_persistent_alloc_ids()) {
-    ms->mutable_host_persistent_tensor_alloc_ids()->Add(alloc_id);
+  ms->set_temp_memory_size(ctx->temp_memory_size());
+  for (const auto& alloc_id : ctx->persistent_alloc_ids()) {
+    ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
   }
-  for (const auto& alloc_id : ctx->device_persistent_alloc_ids()) {
-    ms->mutable_device_persistent_tensor_alloc_ids()->Add(alloc_id);
-  }
-  ms->set_host_persistent_memory_size(ctx->host_persistent_memory_allocated());
-  ms->set_device_persistent_memory_size(
-      ctx->device_persistent_memory_allocated());
+  ms->set_persistent_memory_size(ctx->persistent_memory_allocated());
 }
 
 void SetReferencedTensors(NodeExecStatsWrapper* stats,
@@ -1188,7 +1182,7 @@ class ExecutorState {
   // QUESTION: Make it a checkpoint::TensorSliceReaderCacheWrapper
   // instead of a pointer?  (avoids having to delete).
   checkpoint::TensorSliceReaderCacheWrapper* slice_reader_cache_;
-  FunctionCallFrame* call_frame_;
+  CallFrameInterface* call_frame_;
   const ExecutorImpl* impl_;
   CancellationManager* cancellation_manager_;
   Executor::Args::Runner runner_;
@@ -1803,6 +1797,21 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
     if (vlog_ && VLOG_IS_ON(1)) {
       LOG(WARNING) << this << " Compute status: " << s;
       DumpState();
+    }
+    if (s.code() == error::RESOURCE_EXHAUSTED) {
+      if (stats_collector_) {
+        string err = stats_collector_->ReportAllocsOnResourceExhausted(
+            s.error_message());
+        s = Status(s.code(), strings::StrCat(s.error_message(), err));
+      } else {
+        s = Status(
+            s.code(),
+            strings::StrCat(
+                s.error_message(),
+                "\nHint: If you want to see a list of allocated tensors when "
+                "OOM happens, add report_tensor_allocations_upon_oom "
+                "to RunOptions for current allocation info.\n"));
+      }
     }
     return s;
   }

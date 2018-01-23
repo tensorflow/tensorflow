@@ -174,13 +174,13 @@ class QuantizedConcatOp : public OpKernel {
     OP_REQUIRES(context, (input_mins.size() == N),
                 errors::InvalidArgument(
                     "QuantizedConcatOp : Expected mins input list length ",
-                    input_mins.size(), " to equal values length ", N))
+                    input_mins.size(), " to equal values length ", N));
     OpInputList input_maxes;
     OP_REQUIRES_OK(context, context->input_list("input_maxes", &input_maxes));
     OP_REQUIRES(context, (input_maxes.size() == N),
                 errors::InvalidArgument(
                     "QuantizedConcatOp : Expected maxes input list length ",
-                    input_maxes.size(), " to equal values length ", N))
+                    input_maxes.size(), " to equal values length ", N));
     const int input_dims = values[0].dims();
     const TensorShape& input_shape = values[0].shape();
     OP_REQUIRES(

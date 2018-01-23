@@ -286,7 +286,6 @@ def _fused_batch_norm(inputs,
     ValueError: If the rank of `inputs` is neither 2 or 4.
     ValueError: If rank or `C` dimension of `inputs` is undefined.
   """
-  # TODO(reedwm): Add support for fp16 inputs.
   if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
     raise ValueError('data_format has to be either NCHW or NHWC.')
   with variable_scope.variable_scope(
@@ -310,7 +309,6 @@ def _fused_batch_norm(inputs,
         new_shape = [-1, channels, 1, 1]
       inputs = array_ops.reshape(inputs, new_shape)
     inputs_shape = inputs.get_shape()
-    dtype = inputs.dtype.base_dtype
     if data_format == DATA_FORMAT_NHWC:
       params_shape = inputs_shape[-1:]
     else:
@@ -320,9 +318,10 @@ def _fused_batch_norm(inputs,
                        (inputs.name, params_shape))
 
     # Allocate parameters for the beta and gamma of the normalization.
-    trainable_beta = trainable and center
     beta_collections = utils.get_variable_collections(variables_collections,
                                                       'beta')
+    # Float32 required to avoid precision-loss when using fp16 input/output
+    variable_dtype = dtypes.float32
     if not param_initializers:
       param_initializers = {}
     if not param_regularizers:
@@ -336,13 +335,13 @@ def _fused_batch_norm(inputs,
       beta = variables.model_variable(
           'beta',
           shape=params_shape,
-          dtype=dtype,
+          dtype=variable_dtype,
           initializer=beta_initializer,
           regularizer=beta_regularizer,
           collections=beta_collections,
-          trainable=trainable_beta)
+          trainable=trainable)
     else:
-      beta = array_ops.constant(0.0, shape=params_shape)
+      beta = array_ops.constant(0.0, dtype=variable_dtype, shape=params_shape)
 
     if scale:
       gamma_collections = utils.get_variable_collections(
@@ -352,13 +351,13 @@ def _fused_batch_norm(inputs,
       gamma = variables.model_variable(
           'gamma',
           shape=params_shape,
-          dtype=dtype,
+          dtype=variable_dtype,
           initializer=gamma_initializer,
           regularizer=gamma_regularizer,
           collections=gamma_collections,
           trainable=trainable)
     else:
-      gamma = array_ops.constant(1.0, shape=params_shape)
+      gamma = array_ops.constant(1.0, dtype=variable_dtype, shape=params_shape)
 
     # Create moving_mean and moving_variance variables and add them to the
     # appropriate collections. We disable variable partitioning while creating
@@ -375,7 +374,7 @@ def _fused_batch_norm(inputs,
       moving_mean = variables.model_variable(
           'moving_mean',
           shape=params_shape,
-          dtype=dtype,
+          dtype=variable_dtype,
           initializer=moving_mean_initializer,
           trainable=False,
           collections=moving_mean_collections)
@@ -386,7 +385,7 @@ def _fused_batch_norm(inputs,
       moving_variance = variables.model_variable(
           'moving_variance',
           shape=params_shape,
-          dtype=dtype,
+          dtype=variable_dtype,
           initializer=moving_variance_initializer,
           trainable=False,
           collections=moving_variance_collections)
@@ -1403,7 +1402,8 @@ def dropout(inputs,
             noise_shape=None,
             is_training=True,
             outputs_collections=None,
-            scope=None):
+            scope=None,
+            seed=None):
   """Returns a dropout op applied to the input.
 
   With probability `keep_prob`, outputs the input element scaled up by
@@ -1421,6 +1421,8 @@ def dropout(inputs,
       Otherwise, inputs is returned.
     outputs_collections: Collection to add the outputs.
     scope: Optional scope for name_scope.
+    seed: A Python integer. Used to create random seeds. See
+      @{tf.set_random_seed} for behavior.
 
   Returns:
     A tensor representing the output of the operation.
@@ -1430,6 +1432,7 @@ def dropout(inputs,
     inputs = ops.convert_to_tensor(inputs)
     layer = core_layers.Dropout(rate=1 - keep_prob,
                                 noise_shape=noise_shape,
+                                seed=seed,
                                 name=sc.name,
                                 _scope=sc)
     outputs = layer.apply(inputs, training=is_training)
@@ -1893,7 +1896,7 @@ class GDN(base.Layer):
     outputs.set_shape(inputs.get_shape())
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     channel_axis = self._channel_axis()
     input_shape = tensor_shape.TensorShape(input_shape)
     if not 3 <= input_shape.ndim <= 5:
@@ -2558,7 +2561,10 @@ def separable_convolution2d(
           regularizer=weights_regularizer,
           trainable=trainable,
           collections=weights_collections)
-      strides = [1, stride_h, stride_w, 1]
+      strides = [1, 1, stride_h,
+                 stride_w] if data_format.startswith('NC') else [
+                     1, stride_h, stride_w, 1
+                 ]
 
       outputs = nn.depthwise_conv2d(inputs, depthwise_weights, strides, padding,
                                     rate=utils.two_element_tuple(rate),
@@ -2648,51 +2654,61 @@ def spatial_softmax(features,
     ValueError: If unexpected data_format specified.
     ValueError: If num_channels dimension is unspecified.
   """
-  shape = array_ops.shape(features)
-  static_shape = features.shape
-  if data_format == DATA_FORMAT_NHWC:
-    height, width, num_channels = shape[1], shape[2], static_shape[3]
-  elif data_format == DATA_FORMAT_NCHW:
-    num_channels, height, width = static_shape[1], shape[2], shape[3]
-  else:
-    raise ValueError('data_format has to be either NCHW or NHWC.')
-  if num_channels.value is None:
-    raise ValueError('The num_channels dimension of the inputs to '
-                     '`spatial_softmax` should be defined. Found `None`.')
+  with variable_scope.variable_scope(name, 'spatial_softmax'):
+    shape = array_ops.shape(features)
+    static_shape = features.shape
+    if data_format == DATA_FORMAT_NHWC:
+      height, width, num_channels = shape[1], shape[2], static_shape[3]
+    elif data_format == DATA_FORMAT_NCHW:
+      num_channels, height, width = static_shape[1], shape[2], shape[3]
+    else:
+      raise ValueError('data_format has to be either NCHW or NHWC.')
+    if num_channels.value is None:
+      raise ValueError('The num_channels dimension of the inputs to '
+                       '`spatial_softmax` should be defined. Found `None`.')
 
-  with ops.name_scope(name, 'spatial_softmax', [features]) as name:
-    # Create tensors for x and y coordinate values, scaled to range [-1, 1].
-    pos_x, pos_y = array_ops.meshgrid(math_ops.lin_space(-1., 1., num=height),
-                                      math_ops.lin_space(-1., 1., num=width),
-                                      indexing='ij')
-    pos_x = array_ops.reshape(pos_x, [height * width])
-    pos_y = array_ops.reshape(pos_y, [height * width])
-    if temperature is None:
-      temperature_collections = utils.get_variable_collections(
-          variables_collections, 'temperature')
+    with ops.name_scope('spatial_softmax_op', 'spatial_softmax_op', [features]):
+      # Create tensors for x and y coordinate values, scaled to range [-1, 1].
+      pos_x, pos_y = array_ops.meshgrid(math_ops.lin_space(-1., 1., num=height),
+                                        math_ops.lin_space(-1., 1., num=width),
+                                        indexing='ij')
+      pos_x = array_ops.reshape(pos_x, [height * width])
+      pos_y = array_ops.reshape(pos_y, [height * width])
+      
+      if temperature is None:
+        temp_initializer = init_ops.ones_initializer()
+      else:
+        temp_initializer = init_ops.constant_initializer(temperature)
+          
+      if not trainable:
+        temp_collections = None
+      else:
+        temp_collections = utils.get_variable_collections(
+              variables_collections, 'temperature')
+      
       temperature = variables.model_variable(
           'temperature',
           shape=(),
           dtype=dtypes.float32,
-          initializer=init_ops.ones_initializer(),
-          collections=temperature_collections,
+          initializer=temp_initializer,
+          collections=temp_collections,
           trainable=trainable)
-    if data_format == 'NCHW':
-      features = array_ops.reshape(features, [-1, height * width])
-    else:
-      features = array_ops.reshape(
-          array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
+      if data_format == 'NCHW':
+        features = array_ops.reshape(features, [-1, height * width])
+      else:
+        features = array_ops.reshape(
+            array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
 
-    softmax_attention = nn.softmax(features/temperature)
-    expected_x = math_ops.reduce_sum(
-        pos_x * softmax_attention, [1], keep_dims=True)
-    expected_y = math_ops.reduce_sum(
-        pos_y * softmax_attention, [1], keep_dims=True)
-    expected_xy = array_ops.concat([expected_x, expected_y], 1)
-    feature_keypoints = array_ops.reshape(
-        expected_xy, [-1, num_channels.value * 2])
-    feature_keypoints.set_shape([None, num_channels.value * 2])
-    return feature_keypoints
+      softmax_attention = nn.softmax(features/temperature)
+      expected_x = math_ops.reduce_sum(
+          pos_x * softmax_attention, [1], keep_dims=True)
+      expected_y = math_ops.reduce_sum(
+          pos_y * softmax_attention, [1], keep_dims=True)
+      expected_xy = array_ops.concat([expected_x, expected_y], 1)
+      feature_keypoints = array_ops.reshape(
+          expected_xy, [-1, num_channels.value * 2])
+      feature_keypoints.set_shape([None, num_channels.value * 2])
+  return feature_keypoints
 
 
 def stack(inputs, layer, stack_args, **kwargs):

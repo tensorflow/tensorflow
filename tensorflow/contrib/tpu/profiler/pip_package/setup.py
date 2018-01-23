@@ -23,7 +23,7 @@ from setuptools import setup
 _VERSION = '1.3.0-a1'
 
 CONSOLE_SCRIPTS = [
-    'capture_tpu_profile=cloud_tpu_profiler.main:main',
+    'capture_tpu_profile=cloud_tpu_profiler.main:run_main',
 ]
 
 REQUIRED_PACKAGES = [
@@ -70,7 +70,7 @@ setup(
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
         'Topic :: Software Development',
-        'Topic :: Software Development :: Libraries',  
+        'Topic :: Software Development :: Libraries',
         'Topic :: Software Development :: Libraries :: Python Modules',
     ],
     license='Apache 2.0',

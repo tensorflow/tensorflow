@@ -45,6 +45,7 @@ import numpy as np
 import six
 
 from tensorflow.core.framework import attr_value_pb2
+from tensorflow.core.framework import types_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import execute
 from tensorflow.python.framework import dtypes
@@ -55,10 +56,9 @@ from tensorflow.python.framework import tensor_util
 
 def _eager_reshape(tensor, shape, ctx):
   """Eager-only version of Reshape op; requires tensor is an eager Tensor."""
-  attr_t = tensor.dtype.as_datatype_enum
+  attr_t = tensor._datatype_enum()  # pylint: disable=protected-access
   attr_tshape, (shape,) = execute.args_to_matching_eager(
       [shape], ctx, dtypes.int32)
-  attr_tshape = attr_tshape.as_datatype_enum
   inputs_flat = [tensor, shape]
   attrs = ("T", attr_t, "Tshape", attr_tshape)
   result, = execute.execute(
@@ -71,7 +71,7 @@ def _eager_fill(dims, value, ctx):
   attr_t = value.dtype.as_datatype_enum
   dims = convert_to_eager_tensor(dims, ctx, dtypes.int32)
   inputs_flat = [dims, value]
-  attrs = ("T", attr_t)
+  attrs = ("T", attr_t, "index_type", types_pb2.DT_INT32)
   result, = execute.execute(
       b"Fill", 1, inputs=inputs_flat, attrs=attrs, ctx=ctx)
   return result

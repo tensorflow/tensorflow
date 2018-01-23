@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
+from tensorflow.python.eager import execute
 from tensorflow.python.platform import tf_logging as logging
 
 _DEFAULT_CALLBACK_ACTION = "raise"
@@ -249,6 +250,7 @@ def add_execution_callback(callback):
       `outputs` is the `list` of output `Tensor`(s) from the op.
        Return value(s) from the callback are ignored.
   """
+  execute.execute = execute.execute_with_callbacks
   context.get_default_context().add_post_execution_callback(callback)
 
 

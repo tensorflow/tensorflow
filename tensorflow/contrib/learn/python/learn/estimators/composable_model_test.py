@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn.datasets import base
 from tensorflow.contrib.learn.python.learn.estimators import composable_model
@@ -55,7 +55,7 @@ def _base_model_fn(features, labels, mode, params):
     raise NotImplementedError
 
   def _train_op_fn(loss):
-    global_step = contrib_variables.get_global_step()
+    global_step = training_util.get_global_step()
     assert global_step
     train_step = model.get_train_step(loss)
 

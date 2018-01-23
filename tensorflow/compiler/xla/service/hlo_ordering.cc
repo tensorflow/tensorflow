@@ -173,6 +173,19 @@ bool HloOrdering::UseIsBeforeValueDefinition(
       return true;
     }
   }
+
+  // The use at a call occurs before values that are defined in the called
+  // computation.
+  if (use.instruction->opcode() == HloOpcode::kCall) {
+    const HloInstruction* call = use.instruction;
+    if (call_graph_->InstructionIsNestedIn(value.defining_instruction(),
+                                           call->to_apply())) {
+      VLOG(4) << "  use is call " << use.instruction->name()
+              << " and def is in called computation";
+      return true;
+    }
+  }
+
   VLOG(4) << "  use is not before value";
   return false;
 }
@@ -184,23 +197,6 @@ bool HloOrdering::LiveRangeStrictlyBefore(
           << ", b = " << b.ToShortString() << ")";
   if (!IsDefinedBefore(a, b)) {
     VLOG(4) << "a not defined before b";
-    return false;
-  }
-
-  // Live-out values from the module can never have ranges strictly before any
-  // other value.
-  if (a.live_out_of_module()) {
-    VLOG(4) << "a is live out of module";
-    return false;
-  }
-
-  // Live-out values of computations can never have ranges strictly before any
-  // other value in the computation (including values nested in
-  // subcomputations).
-  if (a.live_out_of_computation() &&
-      call_graph_->InstructionIsNestedIn(b.defining_instruction(),
-                                         a.defining_instruction()->parent())) {
-    VLOG(4) << "a is live out of computation containing b";
     return false;
   }
 

@@ -38,6 +38,7 @@ from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import rnn
 from tensorflow.python.ops import rnn_cell_impl
+from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables as variables_lib
 import tensorflow.python.ops.data_flow_grad  # pylint: disable=unused-import
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
@@ -57,7 +58,7 @@ class Plus1RNNCell(rnn_cell_impl.RNNCell):
   def state_size(self):
     return 5
 
-  def __call__(self, input_, state, scope=None):
+  def call(self, input_, state, scope=None):
     return (input_ + 1, state + 1)
 
 
@@ -75,8 +76,29 @@ class ScalarStateRNNCell(rnn_cell_impl.RNNCell):
   def zero_state(self, batch_size, dtype):
     return array_ops.zeros([], dtype=dtypes.int32)
 
-  def __call__(self, input_, state, scope=None):
+  def call(self, input_, state, scope=None):
     return (input_, state + 1)
+
+
+class TensorArrayStateRNNCell(rnn_cell_impl.RNNCell):
+  """RNN Cell its state as a TensorArray."""
+
+  @property
+  def output_size(self):
+    return 1
+
+  @property
+  def state_size(self):
+    return (tensor_shape.TensorShape([]), ())
+
+  def zero_state(self, batch_size, dtype):
+    return (array_ops.zeros([], dtype=dtypes.int32),
+            tensor_array_ops.TensorArray(
+                dtype=dtype, size=0, dynamic_size=True))
+
+  def call(self, input_, state, scope=None):
+    new_array = state[1].write(state[0], input_)
+    return (input_, (state[0] + 1, new_array))
 
 
 class RNNTest(test.TestCase):
@@ -170,6 +192,36 @@ class RNNTest(test.TestCase):
     else:
       self.assertAllEqual(outputs.numpy(), np.array([[[1], [2], [3], [4]]]))
       self.assertEqual(state.numpy(), 4)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testTensorArrayStateIsAccepted(self):
+    cell = TensorArrayStateRNNCell()
+    in_graph_mode = context.in_graph_mode()
+
+    if in_graph_mode:
+      inputs = array_ops.placeholder(dtypes.float32, shape=(1, 4, 1))
+    else:
+      inputs = np.array([[[1], [2], [3], [4]]], dtype=np.float32)
+
+    with self.test_session() as sess:
+      outputs, state = rnn.dynamic_rnn(
+          cell, inputs, dtype=dtypes.float32, sequence_length=[4])
+      state = (state[0], state[1].stack())
+      if in_graph_mode:
+        outputs, state = sess.run(
+            [outputs, state], feed_dict={
+                inputs: [[[1], [2], [3], [4]]]
+            })
+
+    if in_graph_mode:
+      self.assertAllEqual(outputs, np.array([[[1], [2], [3], [4]]]))
+      self.assertEqual(state[0], 4)
+      self.assertAllEqual(state[1], np.array([[[1]], [[2]], [[3]], [[4]]]))
+    else:
+      self.assertAllEqual(outputs.numpy(), np.array([[[1], [2], [3], [4]]]))
+      self.assertEqual(state[0].numpy(), 4)
+      self.assertAllEqual(state[1].numpy(),
+                          np.array([[[1]], [[2]], [[3]], [[4]]]))
 
 
 ######### Benchmarking RNN code

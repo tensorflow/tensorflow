@@ -20,17 +20,19 @@ from __future__ import print_function
 from tensorflow.contrib.rnn.ops import gen_gru_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import ops
+from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.util.deprecation import deprecated_args
 
 _gru_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_gru_ops.so"))
+
+LayerRNNCell = rnn_cell_impl._LayerRNNCell  # pylint: disable=invalid-name,protected-access
 
 
 @ops.RegisterGradient("GRUBlockCell")
@@ -95,7 +97,7 @@ def _GRUBlockCellGrad(op, *grad):
   return d_x, d_h_prev, d_w_ru, d_w_c, d_b_ru, d_b_c
 
 
-class GRUBlockCell(rnn_cell_impl.RNNCell):
+class GRUBlockCell(LayerRNNCell):
   r"""Block GRU cell implementation.
 
   Deprecated: use GRUBlockCellV2 instead.
@@ -132,22 +134,37 @@ class GRUBlockCell(rnn_cell_impl.RNNCell):
 
   @deprecated_args(None, "cell_size is deprecated, use num_units instead",
                    "cell_size")
-  def __init__(self, num_units=None, cell_size=None):
+  def __init__(self,
+               num_units=None,
+               cell_size=None,
+               reuse=None,
+               name="gru_cell"):
     """Initialize the Block GRU cell.
 
     Args:
       num_units: int, The number of units in the GRU cell.
       cell_size: int, The old (deprecated) name for `num_units`.
+      reuse: (optional) boolean describing whether to reuse variables in an
+        existing scope.  If not `True`, and the existing scope already has the
+        given variables, an error is raised.
+      name: String, the name of the layer. Layers with the same name will
+        share weights, but to avoid mistakes we require reuse=True in such
+        cases.  By default this is "lstm_cell", for variable-name compatibility
+        with `tf.nn.rnn_cell.GRUCell`.
 
     Raises:
       ValueError: if both cell_size and num_units are not None;
         or both are None.
     """
+    super(GRUBlockCell, self).__init__(_reuse=reuse, name=name)
     if (cell_size is None) == (num_units is None):
-      raise ValueError("Exactly one of num_units or cell_size must be provided.")
+      raise ValueError(
+          "Exactly one of num_units or cell_size must be provided.")
     if num_units is None:
       num_units = cell_size
     self._cell_size = num_units
+    # Inputs must be 2-dimensional.
+    self.input_spec = base_layer.InputSpec(ndim=2)
 
   @property
   def state_size(self):
@@ -157,40 +174,43 @@ class GRUBlockCell(rnn_cell_impl.RNNCell):
   def output_size(self):
     return self._cell_size
 
-  def __call__(self, x, h_prev, scope=None):
+  def build(self, input_shape):
+    # Check if the input size exist.
+    input_size = input_shape[1].value
+    if input_size is None:
+      raise ValueError("Expecting input_size to be set.")
+
+    self._gate_kernel = self.add_variable(
+        "w_ru", [input_size + self._cell_size, self._cell_size * 2])
+    self._gate_bias = self.add_variable(
+        "b_ru", [self._cell_size * 2],
+        initializer=init_ops.constant_initializer(1.0))
+    self._candidate_kernel = self.add_variable(
+        "w_c", [input_size + self._cell_size, self._cell_size])
+    self._candidate_bias = self.add_variable(
+        "b_c", [self._cell_size],
+        initializer=init_ops.constant_initializer(0.0))
+
+    self.built = True
+
+  def call(self, inputs, h_prev):
     """GRU cell."""
-    with vs.variable_scope(scope or type(self).__name__):
-      input_size = x.get_shape().with_rank(2)[1]
+    # Check cell_size == state_size from h_prev.
+    cell_size = h_prev.get_shape().with_rank(2)[1]
+    if cell_size != self._cell_size:
+      raise ValueError("Shape of h_prev[1] incorrect: cell_size %i vs %s" %
+                       (self._cell_size, cell_size))
 
-      # Check if the input size exist.
-      if input_size is None:
-        raise ValueError("Expecting input_size to be set.")
+    _gru_block_cell = gen_gru_ops.gru_block_cell  # pylint: disable=invalid-name
+    _, _, _, new_h = _gru_block_cell(
+        x=inputs,
+        h_prev=h_prev,
+        w_ru=self._gate_kernel,
+        w_c=self._candidate_kernel,
+        b_ru=self._gate_bias,
+        b_c=self._candidate_bias)
 
-      # Check cell_size == state_size from h_prev.
-      cell_size = h_prev.get_shape().with_rank(2)[1]
-      if cell_size != self._cell_size:
-        raise ValueError("Shape of h_prev[1] incorrect: cell_size %i vs %s" %
-                         (self._cell_size, cell_size))
-
-      if cell_size is None:
-        raise ValueError("cell_size from `h_prev` should not be None.")
-
-      w_ru = vs.get_variable("w_ru", [input_size + self._cell_size,
-                                      self._cell_size * 2])
-      b_ru = vs.get_variable(
-          "b_ru", [self._cell_size * 2],
-          initializer=init_ops.constant_initializer(1.0))
-      w_c = vs.get_variable("w_c",
-                            [input_size + self._cell_size, self._cell_size])
-      b_c = vs.get_variable(
-          "b_c", [self._cell_size],
-          initializer=init_ops.constant_initializer(0.0))
-
-      _gru_block_cell = gen_gru_ops.gru_block_cell  # pylint: disable=invalid-name
-      _, _, _, new_h = _gru_block_cell(
-          x=x, h_prev=h_prev, w_ru=w_ru, w_c=w_c, b_ru=b_ru, b_c=b_c)
-
-      return new_h, new_h
+    return new_h, new_h
 
 
 class GRUBlockCellV2(GRUBlockCell):
@@ -199,39 +219,21 @@ class GRUBlockCellV2(GRUBlockCell):
   Only differs from GRUBlockCell by variable names.
   """
 
-  def __call__(self, x, h_prev, scope=None):
+  def build(self, input_shape):
     """GRU cell."""
-    with vs.variable_scope(scope or type(self).__name__):
-      input_size = x.get_shape().with_rank(2)[1]
+    input_size = input_shape[1].value
+    if input_size is None:
+      raise ValueError("Expecting input_size to be set.")
 
-      # Check if the input size exist.
-      if input_size is None:
-        raise ValueError("Expecting input_size to be set.")
+    self._gate_kernel = self.add_variable(
+        "gates/kernel", [input_size + self._cell_size, self._cell_size * 2])
+    self._gate_bias = self.add_variable(
+        "gates/bias", [self._cell_size * 2],
+        initializer=init_ops.constant_initializer(1.0))
+    self._candidate_kernel = self.add_variable(
+        "candidate/kernel", [input_size + self._cell_size, self._cell_size])
+    self._candidate_bias = self.add_variable(
+        "candidate/bias", [self._cell_size],
+        initializer=init_ops.constant_initializer(0.0))
 
-      # Check cell_size == state_size from h_prev.
-      cell_size = h_prev.get_shape().with_rank(2)[1]
-      if cell_size != self._cell_size:
-        raise ValueError("Shape of h_prev[1] incorrect: cell_size %i vs %s" %
-                         (self._cell_size, cell_size))
-
-      if cell_size is None:
-        raise ValueError("cell_size from `h_prev` should not be None.")
-
-      with vs.variable_scope("gates"):
-        w_ru = vs.get_variable("kernel", [input_size + self._cell_size,
-                                          self._cell_size * 2])
-        b_ru = vs.get_variable(
-            "bias", [self._cell_size * 2],
-            initializer=init_ops.constant_initializer(1.0))
-      with vs.variable_scope("candidate"):
-        w_c = vs.get_variable("kernel",
-                              [input_size + self._cell_size, self._cell_size])
-        b_c = vs.get_variable(
-            "bias", [self._cell_size],
-            initializer=init_ops.constant_initializer(0.0))
-
-      _gru_block_cell = gen_gru_ops.gru_block_cell  # pylint: disable=invalid-name
-      _, _, _, new_h = _gru_block_cell(
-          x=x, h_prev=h_prev, w_ru=w_ru, w_c=w_c, b_ru=b_ru, b_c=b_c)
-
-      return new_h, new_h
+    self.built = True

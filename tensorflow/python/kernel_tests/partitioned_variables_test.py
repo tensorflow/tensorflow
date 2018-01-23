@@ -46,6 +46,15 @@ class PartitionerCreatorsTest(test.TestCase):
         self.assertEqual(len(v0_list), 5)
         self.assertAllEqual(v0_part, (5, 1))
 
+  def testFixedSizePartitionerInt64(self):
+    with self.test_session():
+      partitioner = partitioned_variables.fixed_size_partitioner(4, axis=0)
+      with variable_scope.variable_scope("root", partitioner=partitioner):
+        v0 = variable_scope.get_variable(
+            "v0", dtype=dtypes.int64, shape=[20])
+        v0_list = v0._get_variable_list()
+        self.assertEqual(len(v0_list), 4)
+
   def testResourceFixedSizePartitioner(self):
     with self.test_session():
       partitioner = partitioned_variables.fixed_size_partitioner(5, axis=0)

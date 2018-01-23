@@ -333,8 +333,12 @@ public abstract class CameraActivity extends Activity
           continue;
         }
 
-        useCamera2API = isHardwareLevelSupported(characteristics,
-            CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
+        // Fallback to camera1 API for internal cameras that don't have full support.
+        // This should help with legacy situations where using the camera2 API causes
+        // distorted or otherwise broken previews.
+        useCamera2API = (facing == CameraCharacteristics.LENS_FACING_EXTERNAL)
+            || isHardwareLevelSupported(characteristics, 
+                                        CameraCharacteristics.INFO_SUPPORTED_HARDWARE_LEVEL_FULL);
         LOGGER.i("Camera API lv2?: %s", useCamera2API);
         return cameraId;
       }

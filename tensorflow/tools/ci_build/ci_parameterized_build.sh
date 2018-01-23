@@ -18,7 +18,7 @@
 #   ci_parameterized_build.sh
 #
 # The script obeys the following required environment variables:
-#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | GPU_CLANG | ANDROID | ANDROID_FULL)
+#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID | ANDROID_FULL)
 #   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
@@ -88,6 +88,9 @@
 #   TF_NIGHTLY:
 #                     If this run is being used to build the tf_nightly pip
 #                     packages.
+#   TF_CUDA_CLANG:
+#                     If set to 1, builds and runs cuda_clang configuration.
+#                     Only available inside GPU containers.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -147,6 +150,38 @@ BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
 
 if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
   BAZEL_TARGET="$BAZEL_TARGET -//tensorflow/contrib/..."
+else
+  BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/lite/..."
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:context_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:framework"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:interpreter_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:model_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/toco:toco"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:simple_memory_arena_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:string_util_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:activations_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:add_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:basic_rnn_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:concatenation_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:conv_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:depthwise_conv_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_sparse_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:fully_connected_test"
+  # BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/testing:generated_examples_zip_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:hashtable_lookup_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:local_response_norm_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:lsh_projection_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:lstm_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:l2norm_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:mul_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:pooling_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:reshape_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:resize_bilinear_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:skip_gram_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:softmax_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:space_to_depth_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:svdf_test"
 fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
@@ -214,16 +249,34 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   OPT_FLAG="${OPT_FLAG} ${NO_DOCKER_OPT_FLAG}"
 fi
 
+# In DO_DOCKER mode, appends environment variable to docker's run invocation.
+# Otherwise, exports the corresponding variable.
+function set_script_variable() {
+  local VAR="$1"
+  local VALUE="$2"
+  if [[ $DO_DOCKER == "1" ]]; then
+    TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e $VAR=$VALUE"
+  else
+    export $VAR="$VALUE"
+  fi
+}
+
+
 # Process container type
 if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
   :
-elif [[ ${CTYPE} == "gpu" ]] || [[ ${CTYPE} == "gpu_clang" ]]; then
-  if [[ ${CTYPE} == "gpu" ]]; then
-    OPT_FLAG="${OPT_FLAG} --config=cuda"
-  else # ${CTYPE} == "gpu_clang"
-    OPT_FLAG="${OPT_FLAG} --config=cuda_clang"
-  fi
+elif [[ ${CTYPE} == "gpu" ]]; then
+  set_script_variable TF_NEED_CUDA 1
 
+  if [[ $TF_CUDA_CLANG == "1" ]]; then
+    OPT_FLAG="${OPT_FLAG} --config=cuda_clang"
+
+    set_script_variable TF_CUDA_CLANG 1
+    # For cuda_clang we download `clang` while building.
+    set_script_variable TF_DOWNLOAD_CLANG 1
+  else
+    OPT_FLAG="${OPT_FLAG} --config=cuda"
+  fi
 
   # Attempt to determine CUDA capability version automatically and use it if
   # CUDA capability version is not specified by the environment variables.
@@ -375,7 +428,7 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
     # CPU only command, fully parallel.
     NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} -- "\
 "${BAZEL_TARGET}"
-  elif [[ ${CTYPE} == "gpu" ]] || [[ ${CTYPE} == "gpu_clang" ]]; then
+  elif [[ ${CTYPE} == "gpu" ]]; then
     # GPU only command, run as many jobs as the GPU count only.
     NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
 "--local_test_jobs=${TF_GPU_COUNT} "\
@@ -514,8 +567,9 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
-if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
-  # Modify Dockerfile for Python3.5 build
+if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
+  [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+  # Modify Dockerfile for Python3.5 | Python3.6 build
   TMP_DIR=$(mktemp -d)
   echo "Docker build will occur in temporary directory: ${TMP_DIR}"
 
@@ -531,10 +585,10 @@ if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
 
   # Replace a line in the Dockerfile
   if sed -i \
-      's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
+      "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
       "${DOCKERFILE}"
   then
-    echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}"
+    echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}"
   else
     die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
   fi

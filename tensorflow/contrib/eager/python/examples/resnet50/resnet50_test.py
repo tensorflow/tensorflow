@@ -52,25 +52,32 @@ def random_batch(batch_size):
 
 def train_one_step(model, images, labels, optimizer):
 
-  def model_loss():
+  with tfe.GradientTape() as tape:
     logits = model(images, training=True)
     loss = tf.losses.softmax_cross_entropy(
         logits=logits, onehot_labels=labels)
     tf.contrib.summary.scalar(name='loss', tensor=loss)
-    return loss
-
-  optimizer.minimize(model_loss)
+  grads = tape.gradient(loss, model.variables)
+  optimizer.apply_gradients(zip(grads, model.variables))
 
 
 class ResNet50Test(tf.test.TestCase):
 
-  def test_apply(self):
+  def _apply(self, defun=False):
     device, data_format = device_and_data_format()
     model = resnet50.ResNet50(data_format)
+    if defun:
+      model.call = tfe.defun(model.call)
     with tf.device(device):
       images, _ = random_batch(2)
       output = model(images)
     self.assertEqual((2, 1000), output.shape)
+
+  def test_apply(self):
+    self._apply(defun=False)
+
+  def test_apply_with_defun(self):
+    self._apply(defun=True)
 
   def test_apply_no_top(self):
     device, data_format = device_and_data_format()
@@ -95,7 +102,7 @@ class ResNet50Test(tf.test.TestCase):
     model = resnet50.ResNet50(data_format)
     tf.train.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with tf.contrib.summary.create_summary_file_writer(
+    with tf.contrib.summary.create_file_writer(
         logdir, max_queue=0,
         name='t0').as_default(), tf.contrib.summary.always_record_summaries():
       with tf.device(device):
@@ -103,7 +110,7 @@ class ResNet50Test(tf.test.TestCase):
         images, labels = random_batch(2)
         train_one_step(model, images, labels, optimizer)
         self.assertEqual(320, len(model.variables))
-    events = summary_test_util.events_from_file(logdir)
+    events = summary_test_util.events_from_logdir(logdir)
     self.assertEqual(len(events), 2)
     self.assertEqual(events[1].summary.value[0].tag, 'loss')
 
@@ -175,9 +182,11 @@ class ResNet50Benchmarks(tf.test.Benchmark):
     # a sync. This is a roundabout way, yes.
     tf.constant(1.).cpu()
 
-  def benchmark_eager_apply(self):
+  def _benchmark_eager_apply(self, label, defun=False):
     device, data_format = device_and_data_format()
     model = resnet50.ResNet50(data_format)
+    if defun:
+      model.call = tfe.defun(model.call)
     batch_size = 64
     num_burn = 5
     num_iters = 30
@@ -189,16 +198,23 @@ class ResNet50Benchmarks(tf.test.Benchmark):
       start = time.time()
       for _ in xrange(num_iters):
         model(images).cpu()
-      self._report('eager_apply', start, num_iters, device, batch_size,
-                   data_format)
+      self._report(label, start, num_iters, device, batch_size, data_format)
 
-  def _benchmark_eager_train(self, label, make_iterator):
+  def benchmark_eager_apply(self):
+    self._benchmark_eager_apply('eager_apply', defun=False)
+
+  def benchmark_eager_apply_with_defun(self):
+    self._benchmark_eager_apply('eager_apply_with_defun', defun=True)
+
+  def _benchmark_eager_train(self, label, make_iterator, defun=False):
     device, data_format = device_and_data_format()
     for batch_size in self._train_batch_sizes():
       (images, labels) = random_batch(batch_size)
       num_burn = 3
       num_iters = 10
       model = resnet50.ResNet50(data_format)
+      if defun:
+        model.call = tfe.defun(model.call)
       optimizer = tf.train.GradientDescentOptimizer(0.1)
 
       with tf.device(device):
@@ -217,7 +233,11 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         self._report(label, start, num_iters, device, batch_size, data_format)
 
   def benchmark_eager_train(self):
-    self._benchmark_eager_train('eager_train', MockIterator)
+    self._benchmark_eager_train('eager_train', MockIterator, defun=False)
+
+  def benchmark_eager_train_with_defun(self):
+    self._benchmark_eager_train(
+        'eager_train_with_defun', MockIterator, defun=True)
 
   def benchmark_eager_train_datasets(self):
 
@@ -226,7 +246,18 @@ class ResNet50Benchmarks(tf.test.Benchmark):
         ds = tf.data.Dataset.from_tensors(tensors).repeat()
       return tfe.Iterator(ds)
 
-    self._benchmark_eager_train('eager_train_dataset', make_iterator)
+    self._benchmark_eager_train(
+        'eager_train_dataset', make_iterator, defun=False)
+
+  def benchmark_eager_train_datasets_with_defun(self):
+
+    def make_iterator(tensors):
+      with tf.device('/device:CPU:0'):
+        ds = tf.data.Dataset.from_tensors(tensors).repeat()
+      return tfe.Iterator(ds)
+
+    self._benchmark_eager_train(
+        'eager_train_dataset_with_defun', make_iterator, defun=True)
 
 
 if __name__ == '__main__':

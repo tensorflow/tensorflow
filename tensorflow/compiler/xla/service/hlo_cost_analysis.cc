@@ -22,13 +22,14 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 
 namespace xla {
 
 constexpr char HloCostAnalysis::kFlopsKey[];
 constexpr char HloCostAnalysis::kTranscendentalsKey[];
 constexpr char HloCostAnalysis::kBytesAccessedKey[];
-constexpr char HloCostAnalysis::kSecondsKey[];
+constexpr char HloCostAnalysis::kOptimalSecondsKey[];
 
 HloCostAnalysis::HloCostAnalysis(const ShapeSizeFunction& shape_size)
     : HloCostAnalysis(shape_size, {}) {}
@@ -60,16 +61,16 @@ Status HloCostAnalysis::Postprocess(const HloInstruction* hlo) {
   if (current_should_compute_bottleneck_time_) {
     // Compute the time as the time of the bottleneck, i.e. the slowest property
     // given the per-second rate of each property.
-    float max_seconds = 0.0f;
+    float optimal_seconds = 0.0f;
     for (const auto& property : current_properties_) {
-      if (property.first != kSecondsKey) {
-        max_seconds = std::max(
-            max_seconds,
+      if (property.first != kOptimalSecondsKey) {
+        optimal_seconds = std::max(
+            optimal_seconds,
             property.second /
                 GetProperty(property.first, per_second_rates_, INFINITY));
       }
     }
-    current_properties_[kSecondsKey] = max_seconds;
+    current_properties_[kOptimalSecondsKey] = optimal_seconds;
   }
 
   TF_RET_CHECK(hlo_properties_.emplace(hlo, current_properties_).second);
@@ -200,10 +201,11 @@ Status HloCostAnalysis::HandleCopy(const HloInstruction*) {
 Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
   const Shape& rhs_shape = dot->operand(1)->shape();
+  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   // Count of elements along the reduction dimension (last dimension for the
   // rhs).
-  int64 reduction_width = lhs_shape.dimensions(ShapeUtil::Rank(lhs_shape) - 1);
-
+  int64 reduction_width =
+      lhs_shape.dimensions(dnums.lhs_contracting_dimensions(0));
   // First divide by reduction width before multiplying by rhs elements to avoid
   // overflow.
   int64 fma_count;
@@ -337,7 +339,15 @@ Status HloCostAnalysis::HandleSend(const HloInstruction*) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleSendDone(const HloInstruction*) {
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleRecv(const HloInstruction*) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleRecvDone(const HloInstruction*) {
   return Status::OK();
 }
 
@@ -382,13 +392,35 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
+  auto real_shape =
+      ShapeUtil::IsTuple(fft->operand(0)->shape())
+          ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
+          : fft->operand(0)->shape();
+  constexpr int kFmaPerComplexMul = 4;
+  int64 log_factors = 1;
+  for (int64 dim : fft->fft_length()) {
+    log_factors *= tensorflow::Log2Floor(dim);
+  }
+  current_properties_[kFlopsKey] = kFmaFlops * kFmaPerComplexMul * log_factors *
+                                   ShapeUtil::ElementsIn(real_shape);
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
   //
   // TODO(b/33004697): Compute correct cost here, taking the actual number of
   // replicas into account.
-  current_properties_[kFlopsKey] = ShapeUtil::ElementsIn(crs->shape());
+  double flops = 0.0;
+  ShapeUtil::ForEachSubshape(
+      crs->shape(), [&, this](const Shape& subshape, const ShapeIndex&) {
+        if (ShapeUtil::IsArray(subshape)) {
+          flops += ShapeUtil::ElementsIn(subshape);
+        }
+      });
+  current_properties_[kFlopsKey] = flops;
   return Status::OK();
 }
 
@@ -472,6 +504,25 @@ Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
+  // Compute the cost of the true and false computations and take the maximum
+  // from those for each property.
+  TF_ASSIGN_OR_RETURN(const Properties true_computation_properties,
+                      ProcessSubcomputation(conditional->true_computation()));
+  TF_ASSIGN_OR_RETURN(const Properties false_computation_properties,
+                      ProcessSubcomputation(conditional->false_computation()));
+  current_properties_ = true_computation_properties;
+  for (const auto& property : false_computation_properties) {
+    if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_, property)) {
+      current_properties_[property.first] =
+          std::max(current_properties_[property.first], property.second);
+    }
+  }
+  current_should_compute_bottleneck_time_ = false;
+
+  return Status::OK();
+}
+
 Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
   return Status::OK();
 }
@@ -488,8 +539,8 @@ float HloCostAnalysis::bytes_accessed() const {
   return GetProperty(kBytesAccessedKey, properties_sum_);
 }
 
-float HloCostAnalysis::seconds() const {
-  return GetProperty(kSecondsKey, properties_sum_);
+float HloCostAnalysis::optimal_seconds() const {
+  return GetProperty(kOptimalSecondsKey, properties_sum_);
 }
 
 int64 HloCostAnalysis::flop_count(const HloInstruction& hlo) const {
@@ -504,8 +555,8 @@ int64 HloCostAnalysis::bytes_accessed(const HloInstruction& hlo) const {
   return GetPropertyForHlo(hlo, kBytesAccessedKey, hlo_properties_);
 }
 
-float HloCostAnalysis::seconds(const HloInstruction& hlo) const {
-  return GetPropertyForHlo(hlo, kSecondsKey, hlo_properties_);
+float HloCostAnalysis::optimal_seconds(const HloInstruction& hlo) const {
+  return GetPropertyForHlo(hlo, kOptimalSecondsKey, hlo_properties_);
 }
 
 StatusOr<HloCostAnalysis::Properties> HloCostAnalysis::ProcessSubcomputation(

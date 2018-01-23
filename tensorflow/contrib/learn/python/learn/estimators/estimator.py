@@ -30,7 +30,6 @@ import six
 
 from google.protobuf import message
 from tensorflow.contrib import layers
-from tensorflow.contrib import metrics as metrics_lib
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_args
 from tensorflow.contrib.framework import list_variables
@@ -60,6 +59,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
@@ -360,10 +360,23 @@ def _write_dict_to_summary(output_dir, dictionary, current_global_step):
         logging.warn('Skipping summary for %s, cannot parse string to Summary.',
                      key)
         continue
+    elif isinstance(dictionary[key], np.ndarray):
+      value = summary_proto.value.add()
+      value.tag = key
+      value.node_name = key
+      tensor_proto = tensor_util.make_tensor_proto(dictionary[key])
+      value.tensor.CopyFrom(tensor_proto)
+      logging.info(
+          'Summary for np.ndarray is not visible in Tensorboard by default. '
+          'Consider using a Tensorboard plugin for visualization (see '
+          'https://github.com/tensorflow/tensorboard-plugin-example/blob/master/README.md '  # pylint:disable=line-too-long
+          'for more information).'
+      )
     else:
       logging.warn(
           'Skipping summary for %s, must be a float, np.float32, np.int64, '
-          'np.int32 or int or a serialized string of Summary.', key)
+          'np.int32 or int or np.ndarray or a serialized string of Summary.',
+          key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 
@@ -1230,7 +1243,7 @@ class Estimator(BaseEstimator):
 
     if metric_key.MetricKey.LOSS not in model_fn_ops.eval_metric_ops:
       model_fn_ops.eval_metric_ops[metric_key.MetricKey.LOSS] = (
-          metrics_lib.streaming_mean(model_fn_ops.loss))
+          metrics_lib.mean(model_fn_ops.loss))
     return model_fn_ops
 
   def _get_predict_ops(self, features):
@@ -1256,7 +1269,9 @@ class Estimator(BaseEstimator):
       assets_extra=None,
       as_text=False,
       checkpoint_path=None,
-      graph_rewrite_specs=(GraphRewriteSpec((tag_constants.SERVING,), ()),)):
+      graph_rewrite_specs=(GraphRewriteSpec((tag_constants.SERVING,), ()),),
+      strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Exports inference graph as a SavedModel into given dir.
 
     Args:
@@ -1280,6 +1295,9 @@ class Estimator(BaseEstimator):
         produce a separate MetaGraphDef within the exported SavedModel, tagged
         and rewritten as specified.  Defaults to a single entry using the
         default serving tag ("serve") and no rewriting.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
       The string path to the exported directory.
@@ -1287,6 +1305,7 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if an unrecognized export_type is requested.
     """
+    # pylint: enable=line-too-long
     if serving_input_fn is None:
       raise ValueError('serving_input_fn must be defined.')
 
@@ -1366,7 +1385,8 @@ class Estimator(BaseEstimator):
             signature_def_map=signature_def_map,
             assets_collection=ops.get_collection(
                 ops.GraphKeys.ASSET_FILEPATHS),
-            legacy_init_op=init_op)
+            legacy_init_op=init_op,
+            strip_default_attrs=strip_default_attrs)
 
     # pylint: disable=protected-access
     base_meta_graph_def = builder._saved_model.meta_graphs[0]

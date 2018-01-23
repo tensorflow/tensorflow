@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "MapDataset"
+  summary: "Creates a dataset that applies `f` to the outputs of `input_dataset`."
+}

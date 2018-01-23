@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -24,8 +24,10 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.datasets.imdb.load_data')
 def load_data(path='imdb.npz',
               num_words=None,
               skip_top=0,
@@ -43,7 +45,7 @@ def load_data(path='imdb.npz',
           the most frequent words are kept
       skip_top: skip the top N most frequently occurring words
           (which may not be informative).
-      maxlen: truncate sequences after this length.
+      maxlen: sequences longer than this will be filtered out.
       seed: random seed for sample shuffling.
       start_char: The start of a sequence will be marked with this character.
           Set to 1 because 0 is usually the padding character.
@@ -65,23 +67,24 @@ def load_data(path='imdb.npz',
   have simply been skipped.
   """
   path = get_file(
-      path, origin='https://s3.amazonaws.com/text-datasets/imdb.npz')
+      path,
+      origin='https://s3.amazonaws.com/text-datasets/imdb.npz',
+      file_hash='599dadb1135973df5b59232a0e9a887c')
   f = np.load(path)
-  x_train = f['x_train']
-  labels_train = f['y_train']
-  x_test = f['x_test']
-  labels_test = f['y_test']
+  x_train, labels_train = f['x_train'], f['y_train']
+  x_test, labels_test = f['x_test'], f['y_test']
   f.close()
 
   np.random.seed(seed)
-  np.random.shuffle(x_train)
-  np.random.seed(seed)
-  np.random.shuffle(labels_train)
+  indices = np.arange(len(x_train))
+  np.random.shuffle(indices)
+  x_train = x_train[indices]
+  labels_train = labels_train[indices]
 
-  np.random.seed(seed * 2)
-  np.random.shuffle(x_test)
-  np.random.seed(seed * 2)
-  np.random.shuffle(labels_test)
+  indices = np.arange(len(x_test))
+  np.random.shuffle(indices)
+  x_test = x_test[indices]
+  labels_test = labels_test[indices]
 
   xs = np.concatenate([x_train, x_test])
   labels = np.concatenate([labels_train, labels_test])
@@ -132,6 +135,7 @@ def load_data(path='imdb.npz',
   return (x_train, y_train), (x_test, y_test)
 
 
+@tf_export('keras.datasets.imdb.get_word_index')
 def get_word_index(path='imdb_word_index.json'):
   """Retrieves the dictionary mapping word indices back to words.
 

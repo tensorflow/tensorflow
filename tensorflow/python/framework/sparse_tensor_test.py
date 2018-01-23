@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
@@ -50,6 +52,16 @@ class SparseTensorTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(sess_run_value.indices, value.indices)
         self.assertAllEqual(sess_run_value.values, value.values)
         self.assertAllEqual(sess_run_value.dense_shape, value.dense_shape)
+
+  def testIsSparse(self):
+    self.assertFalse(sparse_tensor.is_sparse(3))
+    self.assertFalse(sparse_tensor.is_sparse("foo"))
+    self.assertFalse(sparse_tensor.is_sparse(np.array(3)))
+    self.assertTrue(
+        sparse_tensor.is_sparse(sparse_tensor.SparseTensor([[0]], [0], [1])))
+    self.assertTrue(
+        sparse_tensor.is_sparse(
+            sparse_tensor.SparseTensorValue([[0]], [0], [1])))
 
 
 class ConvertToTensorOrSparseTensorTest(test_util.TensorFlowTestCase):

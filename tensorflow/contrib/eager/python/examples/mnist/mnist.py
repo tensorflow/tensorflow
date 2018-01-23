@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import functools
 import os
 import sys
 import time
@@ -40,7 +39,7 @@ class MNISTModel(tfe.Network):
   """MNIST Network.
 
   Network structure is equivalent to:
-  https://github.com/tensorflow/tensorflow/blob/r1.4/tensorflow/examples/tutorials/mnist/mnist_deep.py
+  https://github.com/tensorflow/tensorflow/blob/r1.5/tensorflow/examples/tutorials/mnist/mnist_deep.py
   and
   https://github.com/tensorflow/models/blob/master/tutorials/image/mnist/convolutional.py
 
@@ -124,21 +123,18 @@ def train_one_epoch(model, optimizer, dataset, log_interval=None):
 
   tf.train.get_or_create_global_step()
 
-  def model_loss(labels, images):
-    prediction = model(images, training=True)
-    loss_value = loss(prediction, labels)
-    tf.contrib.summary.scalar('loss', loss_value)
-    tf.contrib.summary.scalar('accuracy',
-                              compute_accuracy(prediction, labels))
-    return loss_value
-
   for (batch, (images, labels)) in enumerate(tfe.Iterator(dataset)):
     with tf.contrib.summary.record_summaries_every_n_global_steps(10):
-      batch_model_loss = functools.partial(model_loss, labels, images)
-      optimizer.minimize(
-          batch_model_loss, global_step=tf.train.get_global_step())
+      with tfe.GradientTape() as tape:
+        prediction = model(images, training=True)
+        loss_value = loss(prediction, labels)
+        tf.contrib.summary.scalar('loss', loss_value)
+        tf.contrib.summary.scalar('accuracy',
+                                  compute_accuracy(prediction, labels))
+      grads = tape.gradient(loss_value, model.variables)
+      optimizer.apply_gradients(zip(grads, model.variables))
       if log_interval and batch % log_interval == 0:
-        print('Batch #%d\tLoss: %.6f' % (batch, batch_model_loss()))
+        print('Batch #%d\tLoss: %.6f' % (batch, loss_value))
 
 
 def test(model, dataset):
@@ -190,10 +186,10 @@ def main(_):
   else:
     train_dir = None
     test_dir = None
-  summary_writer = tf.contrib.summary.create_summary_file_writer(
-      train_dir, flush_secs=10)
-  test_summary_writer = tf.contrib.summary.create_summary_file_writer(
-      test_dir, flush_secs=10, name='test')
+  summary_writer = tf.contrib.summary.create_file_writer(
+      train_dir, flush_millis=10000)
+  test_summary_writer = tf.contrib.summary.create_file_writer(
+      test_dir, flush_millis=10000, name='test')
   checkpoint_prefix = os.path.join(FLAGS.checkpoint_dir, 'ckpt')
 
   with tf.device(device):

@@ -128,8 +128,15 @@ struct FakeQuantWithMinMaxVarsFunctor {
                   ConstScalar<float> min, ConstScalar<float> max,
                   const int quant_min, const int quant_max,
                   Flat<float> outputs) {
+    const float min_val = min();
+    const float max_val = max();
+    // If min and max are both zero, we should just return zero.
+    if (min_val == 0.0f && max_val == 0.0f) {
+      outputs.device(d) = outputs.constant(0.0f);
+      return;
+    }
     float nudged_min, nudged_max, nudged_scale;
-    Nudge(min(), max(), quant_min, quant_max, &nudged_min, &nudged_max,
+    Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
           &nudged_scale);
     const auto nudged_scale_repl = inputs.constant(nudged_scale);
 
@@ -151,8 +158,17 @@ struct FakeQuantWithMinMaxVarsGradientFunctor {
                   const int quant_max, Flat<float> backprops_wrt_input,
                   Scalar<float> backprop_wrt_min,
                   Scalar<float> backprop_wrt_max) {
+    const float min_val = min();
+    const float max_val = max();
+    // If min and max are both zero, we propagate everything to inputs.
+    if (min_val == 0.0f && max_val == 0.0f) {
+      backprops_wrt_input.device(d) = gradients;
+      backprop_wrt_min.device(d) = backprop_wrt_min.constant(0.0f);
+      backprop_wrt_max.device(d) = backprop_wrt_max.constant(0.0f);
+      return;
+    }
     float nudged_min, nudged_max, nudged_scale;
-    Nudge(min(), max(), quant_min, quant_max, &nudged_min, &nudged_max,
+    Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
           &nudged_scale);
 
     const auto between_min_max =
@@ -185,8 +201,16 @@ struct FakeQuantWithMinMaxVarsPerChannelFunctor {
                   ConstVec<float> min, ConstVec<float> max, const int quant_min,
                   const int quant_max, TTypes<float>::Matrix outputs) {
     for (Index i = 0; i < min.size(); ++i) {
+      const float min_val = min(i);
+      const float max_val = max(i);
+      // If min and max are both zero, we should just return zero.
+      if (min_val == 0.0f && max_val == 0.0f) {
+        auto chip = outputs.chip<1>(i);
+        chip.device(d) = chip.constant(0.0f);
+        continue;
+      }
       float nudged_min, nudged_max, nudged_scale;
-      Nudge(min(i), max(i), quant_min, quant_max, &nudged_min, &nudged_max,
+      Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
             &nudged_scale);
       const auto clamped =
           inputs.chip<1>(i).cwiseMin(nudged_max).cwiseMax(nudged_min);
@@ -212,11 +236,22 @@ struct FakeQuantWithMinMaxVarsPerChannelGradientFunctor {
                   TTypes<float>::Matrix backprops_wrt_input,
                   Vec<float> backprop_wrt_min, Vec<float> backprop_wrt_max) {
     for (Index i = 0; i < min.size(); ++i) {
-      float nudged_min, nudged_max, nudged_scale;
-      Nudge(min(i), max(i), quant_min, quant_max, &nudged_min, &nudged_max,
-            &nudged_scale);
+      const float min_val = min(i);
+      const float max_val = max(i);
       const auto gradients_chip = gradients.chip<1>(i);
       const auto inputs_chip = inputs.chip<1>(i);
+      // If min and max are both zero, we propagate everything to inputs.
+      if (min_val == 0.0f && max_val == 0.0f) {
+        backprops_wrt_input.chip<1>(i).device(d) = gradients_chip;
+        auto min_chip = backprop_wrt_min.chip<0>(i);
+        auto max_chip = backprop_wrt_max.chip<0>(i);
+        min_chip.device(d) = min_chip.constant(0.0f);
+        max_chip.device(d) = max_chip.constant(0.0f);
+        continue;
+      }
+      float nudged_min, nudged_max, nudged_scale;
+      Nudge(min_val, max_val, quant_min, quant_max, &nudged_min, &nudged_max,
+            &nudged_scale);
 
       const auto between_min_max =
           (inputs_chip >= nudged_min && inputs_chip <= nudged_max)

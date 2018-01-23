@@ -1,4 +1,4 @@
-# TensorFlow Eager Execution
+# Eager Execution
 
 > *WARNING*: This is a preview/pre-alpha version. The API and performance
 > characteristics are subject to change.
@@ -76,3 +76,6 @@ For an introduction to eager execution in TensorFlow, see:
 ## Changelog
 
 - 2017/10/31: Initial preview release.
+- 2017/12/01: Example of dynamic neural network:
+  [SPINN: Stack-augmented Parser-Interpreter Neural Network](https://arxiv.org/abs/1603.06021).
+  See [README.md](python/examples/spinn/README.md) for details.

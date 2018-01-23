@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -416,7 +417,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
     self._compareCpu(y, self._rsqrt, math_ops.rsqrt)
-    self._compareCpu(x, np.exp, math_ops.exp)
+    self._compareBoth(x, np.exp, math_ops.exp)
     self._compareCpu(x, np.expm1, math_ops.expm1)
     self._compareCpu(y, np.log, math_ops.log)
     self._compareCpu(y, np.log1p, math_ops.log1p)
@@ -460,7 +461,7 @@ class UnaryOpTest(test.TestCase):
     self._compareCpu(x, np.square, math_ops.square)
     self._compareCpu(y, np.sqrt, math_ops.sqrt)
     self._compareCpu(y, self._rsqrt, math_ops.rsqrt)
-    self._compareCpu(x, np.exp, math_ops.exp)
+    self._compareBoth(x, np.exp, math_ops.exp)
     self._compareCpu(x, np.expm1, math_ops.expm1)
     self._compareCpu(y, np.log, math_ops.log)
     self._compareCpu(y, np.log1p, math_ops.log1p)
@@ -1167,6 +1168,32 @@ class BinaryOpTest(test.TestCase):
       x2 = np.array(x2l).astype(dtype)
       self._compareCpu(x1, x2, np.arctan2, math_ops.atan2)
       self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
+
+  def testPowNegativeExponent(self):
+    for dtype in [np.int32, np.int64]:
+      with self.test_session(use_gpu=False) as sess:
+        with self.assertRaisesRegexp(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          x = np.array([5, 2]).astype(dtype)
+          y = np.array([-2, 3]).astype(dtype)
+          sess.run(math_ops.pow(x, y))
+
+      with self.test_session(use_gpu=False) as sess:
+        with self.assertRaisesRegexp(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          x = np.array([5, 2]).astype(dtype)
+          y = np.array([2, -3]).astype(dtype)
+          sess.run(math_ops.pow(x, y))
+
+      with self.test_session(use_gpu=False) as sess:
+        with self.assertRaisesRegexp(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          x = np.array([5, 2]).astype(dtype)
+          y = -3
+          sess.run(math_ops.pow(x, y))
 
 
 class ComparisonOpTest(test.TestCase):

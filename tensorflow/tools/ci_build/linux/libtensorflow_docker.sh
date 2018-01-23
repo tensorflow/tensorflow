@@ -48,6 +48,6 @@ ${DOCKER_BINARY} run \
   -e "TF_NEED_GCP=0" \
   -e "TF_NEED_HDFS=0" \
   -e "TF_NEED_CUDA=${TF_NEED_CUDA}" \
-  -e "TF_NEED_OPENCL=0" \
+  -e "TF_NEED_OPENCL_SYCL=0" \
   "${DOCKER_IMAGE}" \
   "/workspace/tensorflow/tools/ci_build/linux/libtensorflow.sh"

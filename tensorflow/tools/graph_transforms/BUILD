@@ -128,9 +128,12 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/contrib/rnn:gru_ops_op_lib",
+        "//tensorflow/contrib/rnn:lstm_ops_op_lib",
     ] + if_not_windows([
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",
@@ -312,4 +315,15 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     main = "python/transform_graph_test.py",
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
 )

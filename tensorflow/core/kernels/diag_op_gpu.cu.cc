@@ -33,7 +33,7 @@ __global__ void DiagCudaKernel(const int num_threads,
                                const T* in,
                                T* out) {
   CUDA_1D_KERNEL_LOOP(index, num_threads) {
-    // Fill the diagonal elements or set to zero in other place. 
+    // Fill the diagonal elements or set to zero in other place.
     if (index % (1 + size) == 0) {
       out[index] = in[index / (1 + size)];
     } else {

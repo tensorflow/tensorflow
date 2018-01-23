@@ -45,16 +45,16 @@ class HyperplaneLSHProbesOp : public OpKernel {
     const Tensor& products_tensor = context->input(0);
     OP_REQUIRES(context, products_tensor.dims() == 2,
                 InvalidArgument("Need a two-dimensional products tensor, got ",
-                                products_tensor.dims(), " dimensions."))
+                                products_tensor.dims(), " dimensions."));
 
     const Tensor& num_tables_tensor = context->input(1);
     OP_REQUIRES(context, num_tables_tensor.dims() == 0,
                 InvalidArgument("Need a scalar num_tables tensor, got ",
-                                num_tables_tensor.dims(), " dimensions."))
+                                num_tables_tensor.dims(), " dimensions."));
     int num_tables = num_tables_tensor.scalar<int32>()();
     OP_REQUIRES(context, num_tables >= 1,
                 InvalidArgument("num_tables must be at least 1 but got ",
-                                num_tables, "."))
+                                num_tables, "."));
     OP_REQUIRES(context, num_tables <= 1000,
                 InvalidArgument("Need num_tables <= 1000, got ", num_tables,
                                 ". This is mostly to protect against incorrect "
@@ -66,12 +66,13 @@ class HyperplaneLSHProbesOp : public OpKernel {
                 InvalidArgument("Need a scalar num_hyperplanes_per_table "
                                 "tensor, got ",
                                 num_hyperplanes_per_table_tensor.dims(),
-                                " dimensions."))
+                                " dimensions."));
     int num_hyperplanes_per_table =
         num_hyperplanes_per_table_tensor.scalar<int32>()();
     OP_REQUIRES(context, num_hyperplanes_per_table >= 1,
                 InvalidArgument("num_hyperplanes_per_table must be at least 1 "
-                                "but got ", num_hyperplanes_per_table, "."))
+                                "but got ",
+                                num_hyperplanes_per_table, "."));
     OP_REQUIRES(context, num_hyperplanes_per_table <= 30,
                 InvalidArgument("Need num_hyperplanes_per_table <= 30, got ",
                                 num_hyperplanes_per_table, ". "
@@ -81,10 +82,10 @@ class HyperplaneLSHProbesOp : public OpKernel {
     const Tensor& num_probes_tensor = context->input(3);
     OP_REQUIRES(context, num_probes_tensor.dims() == 0,
                 InvalidArgument("Need a scalar num_probes tensor, got ",
-                                num_probes_tensor.dims(), " dimensions."))
+                                num_probes_tensor.dims(), " dimensions."));
     int num_probes = num_probes_tensor.scalar<int32>()();
     OP_REQUIRES(context, num_probes >= 1,
-                InvalidArgument("num_probes must be at least 1."))
+                InvalidArgument("num_probes must be at least 1."));
 
     int expected_num_hyperplanes = num_tables * num_hyperplanes_per_table;
     OP_REQUIRES(

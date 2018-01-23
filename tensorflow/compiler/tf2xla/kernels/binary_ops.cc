@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
 namespace {
@@ -75,7 +76,7 @@ static xla::ComputationDataHandle FloorDivImpl(xla::ComputationBuilder* b,
   auto abs_y = b->Abs(y);
   auto t = b->Neg(b->Sub(b->Add(abs_x, abs_y), one));
   auto result = b->Select(different_sign, b->Div(t, abs_y), b->Div(x, y));
-  if (dtype == DT_FLOAT || dtype == DT_DOUBLE) {
+  if (DataTypeIsFloating(dtype)) {
     result = b->Floor(result);
   }
   return result;

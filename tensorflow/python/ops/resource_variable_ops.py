@@ -63,7 +63,7 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
     raise ValueError("variable object with name '%s' already created. Use "
                      "get_variable() if reuse is desired." %
                      shared_name)
-  with context.graph_mode(), ops.Graph().as_default():
+  with context.graph_mode(), ops.Graph().as_default() as graph:
     h = gen_resource_variable_ops.var_handle_op(shape=shape, dtype=dtype,
                                                 shared_name=shared_name,
                                                 name=name,
@@ -74,6 +74,25 @@ def _eager_safe_variable_handle(shape, dtype, shared_name, name, graph_mode):
     # shape inference doesn't run in eager mode we copy this data here for when
     # the handle is captured by an eager mode function.
     handle._handle_data = h._handle_data  # pylint: disable=protected-access
+  # Clean up our reference cycles to avoid making the garbage collector run.
+  # pylint: disable=protected-access
+  # OrderedDict, constructed on Graph creation, makes a simple reference loop
+  # and hides it in an __attribute in some Python versions. We don't need to
+  # throw an error if we can't find it, but if we do find it we can break the
+  # loop to avoid creating work for the garbage collector.
+  problematic_cycle = graph._functions.__dict__.get("_OrderedDict__root", None)
+  # pylint: enable=protected-access
+  if problematic_cycle:
+    try:
+      del problematic_cycle[0][:]
+    except TypeError:
+      # This is probably not one of the problematic Python versions. Continue
+      # with the rest of our cleanup.
+      pass
+  # Now clean up our own reference cycles by clearing all of the attributes for
+  # the Graph and op we created.
+  h.__dict__ = {}
+  graph.__dict__ = {}
   return handle
 
 
@@ -165,11 +184,12 @@ class ResourceVariable(variables.Variable):
     assign = a.assign(2.0)
     with tf.control_dependencies([assign]):
       b = a.read_value()
-
-    other_assign = a.assign(3.0)
+    with tf.control_dependencies([b]):
+      other_assign = a.assign(3.0)
     with tf.control_dependencies([other_assign]):
-      tf.Print(b, [b]).run()  # Will print 2.0 because the value was read before
-                              # other_assign ran.
+      # Will print 2.0 because the value was read before other_assign ran. If
+      # `a` was a tf.Variable instead, 2.0 or 3.0 could be printed.
+      tf.Print(b, [b]).eval()
   ```
 
   To enforce these consistency properties tf.ResourceVariable might make more
@@ -256,10 +276,6 @@ class ResourceVariable(variables.Variable):
           dtype=dtype,
           constraint=constraint)
 
-  # LINT.IfChange
-  # _VariableFromResource inherits from ResourceVariable but
-  # doesn't call the constructor, so changes here might need to be reflected
-  # there.
   # pylint: disable=unused-argument
   def _init_from_args(self,
                       initial_value=None,
@@ -418,7 +434,8 @@ class ResourceVariable(variables.Variable):
               self._initializer_op = (
                   gen_resource_variable_ops.assign_variable_op(
                       self._handle,
-                      self._build_initializer_expr(initial_value),
+                      self._try_guard_against_uninitialized_dependencies(
+                          initial_value),
                       name=n))
           with ops.name_scope("Read"), ops.colocate_with(self._handle):
             # Manually assign reads to the handle's device to avoid log
@@ -454,6 +471,7 @@ class ResourceVariable(variables.Variable):
           ops.add_to_collections(collections, self)
         elif ops.GraphKeys.GLOBAL_STEP in collections:
           ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, self)
+
     if not self._in_graph_mode:
       # After the handle has been created, set up a way to clean it up when
       # executing eagerly. We'll hold the only reference to the deleter, so that
@@ -493,14 +511,14 @@ class ResourceVariable(variables.Variable):
       self._cached_value = None
     if variable_def.HasField("save_slice_info_def"):
       self._save_slice_info = variables.Variable.SaveSliceInfo(
-          save_slice_info_def=variable_def.save_slice_info_def)
+          save_slice_info_def=variable_def.save_slice_info_def,
+          import_scope=import_scope)
     else:
       self._save_slice_info = None
     self._caching_device = None
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._graph_element = self.value()
     self._constraint = None
-  # LINT.ThenChange(//tensorflow/python/eager/graph_callable.py)
 
   def __nonzero__(self):
     return self.__bool__()
@@ -866,26 +884,14 @@ def _ReadGrad(_, grad):
 def _GatherGrad(op, grad):
   """Gradient for gather op."""
   # Build appropriately shaped IndexedSlices
-  # Walk graph back until the original handle is found.
-  # TODO(apassos): more robust way of getting the shape.
-  # TODO(apassos): implement this for EAGER mode.
-  if context.in_eager_mode():
-    dense_shape = gen_resource_variable_ops.variable_shape(op.inputs[0])
-    return (ops.IndexedSlices(grad,
-                              op.inputs[1],
-                              dense_shape=dense_shape),
-            None)
   handle = op.inputs[0]
-  while handle.op.type != "VarHandleOp":
-    handle = handle.op.inputs[0]
-  params_shape = ops.convert_to_tensor(
-      tensor_shape.TensorShape(handle.op.get_attr("shape")))
   indices = op.inputs[1]
+  params_shape = gen_resource_variable_ops.variable_shape(handle)
   size = array_ops.expand_dims(array_ops.size(indices), 0)
   values_shape = array_ops.concat([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
-  return [ops.IndexedSlices(values, indices, params_shape), None]
+  return (ops.IndexedSlices(values, indices, params_shape), None)
 
 
 def _to_proto_fn(v, export_scope=None):

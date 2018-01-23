@@ -1,0 +1,16 @@
+op {
+  graph_op_name: "CriticalSectionOp"
+  attr {
+    name: "container"
+    description: <<END
+the container this critical section is placed in.
+END
+  }
+  attr {
+    name: "shared_name"
+    description: <<END
+the name by which this critical section is referred to.
+END
+  }
+  summary: "Creates a handle to a CriticalSection resource."
+}

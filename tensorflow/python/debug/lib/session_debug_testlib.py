@@ -58,7 +58,8 @@ from tensorflow.python.training import gradient_descent
 def no_rewrite_session_config():
   rewriter_config = rewriter_config_pb2.RewriterConfig(
       disable_model_pruning=True,
-      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
   graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
   return config_pb2.ConfigProto(graph_options=graph_options)
 
@@ -963,7 +964,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
   def testOutputSlotWithoutOutgoingEdgeCanBeWatched(self):
     """Test watching output slots not attached to any outgoing edges."""
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       u = constant_op.constant(u_init_val, shape=[2, 2], name="u")
 

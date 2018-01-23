@@ -167,6 +167,22 @@ message DebugOptions {
   // computation will run 2! * 4! times.
   bool xla_test_all_input_layouts = 91;
 
+  // Assign colors based on sharding information when generating the Graphviz
+  // HLO graph.
+  bool xla_hlo_graph_sharding_color = 92;
+
+  // Prefix the name scopes of the TF graph exports with "devX" device
+  // assignments, if available.
+  bool xla_hlo_tfgraph_device_scopes = 93;
+
+  // If true, the GPU backend is free to use cudnn for HLO batch normalization
+  // ops.
+  bool xla_gpu_use_cudnn_batchnorm = 94;
+
+  // Dump compilation artifacts, before hlo passes are executed, in binary proto
+  // into this directory.
+  string xla_dump_prepass_hlo_proto_to = 95;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;
@@ -361,6 +377,7 @@ message WaitForExecutionResponse {
 message IsConstantRequest {
   ComputationHandle computation = 1;
   ComputationDataHandle operand = 2;
+  int64 num_parameters = 3;
 }
 
 message IsConstantResponse {
@@ -371,6 +388,7 @@ message ComputeConstantRequest {
   ComputationHandle computation = 1;
   ComputationDataHandle operand = 2;
   Layout output_layout = 3;
+  repeated LiteralProto parameters = 4;
 }
 
 message ComputeConstantResponse {

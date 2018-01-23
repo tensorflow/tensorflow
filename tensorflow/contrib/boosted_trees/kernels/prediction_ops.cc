@@ -63,17 +63,24 @@ const char* kPredictionsTensorName = "predictions";
 void CalculateTreesToInclude(
     const boosted_trees::trees::DecisionTreeEnsembleConfig& config,
     const std::vector<int32>& trees_to_drop, const int32 num_trees,
-    const bool only_finalized, std::vector<int32>* trees_to_include) {
+    const bool only_finalized, const bool center_bias,
+    std::vector<int32>* trees_to_include) {
   trees_to_include->reserve(num_trees - trees_to_drop.size());
 
   int32 index = 0;
   // This assumes that trees_to_drop is a sorted list of tree ids.
   for (int32 tree = 0; tree < num_trees; ++tree) {
-    if ((!trees_to_drop.empty() && index < trees_to_drop.size() &&
-         trees_to_drop[index] == tree) ||
-        (only_finalized && config.tree_metadata_size() > 0 &&
-         !config.tree_metadata(tree).is_finalized())) {
+    // Skip the tree if tree is in the list of trees_to_drop.
+    if (!trees_to_drop.empty() && index < trees_to_drop.size() &&
+        trees_to_drop[index] == tree) {
       ++index;
+      continue;
+    }
+    // Or skip if the tree is not finalized and only_finalized is set,
+    // with the exception of centering bias.
+    if (only_finalized && !(center_bias && tree == 0) &&
+        config.tree_metadata_size() > 0 &&
+        !config.tree_metadata(tree).is_finalized()) {
       continue;
     }
     trees_to_include->push_back(tree);
@@ -250,7 +257,7 @@ class GradientTreesPredictionOp : public OpKernel {
     CalculateTreesToInclude(
         ensemble_resource->decision_tree_ensemble(), dropped_trees,
         ensemble_resource->decision_tree_ensemble().trees_size(),
-        only_finalized_trees_, &trees_to_include);
+        only_finalized_trees_, center_bias_, &trees_to_include);
 
     // Allocate output predictions matrix.
     Tensor* output_predictions_t = nullptr;

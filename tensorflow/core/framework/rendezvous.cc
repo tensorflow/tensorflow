@@ -36,15 +36,15 @@ namespace tensorflow {
 Rendezvous::ParsedKey& Rendezvous::ParsedKey::operator=(const ParsedKey& b) {
   const char* b_base = b.buf_.data();
   buf_ = b.buf_;
-  src_device.set(buf_.data() + (b.src_device.data() - b_base),
-                 b.src_device.size());
+  src_device = StringPiece(buf_.data() + (b.src_device.data() - b_base),
+                           b.src_device.size());
   src = b.src;
   src_incarnation = b.src_incarnation;
-  dst_device.set(buf_.data() + (b.dst_device.data() - b_base),
-                 b.dst_device.size());
+  dst_device = StringPiece(buf_.data() + (b.dst_device.data() - b_base),
+                           b.dst_device.size());
   dst = b.dst;
-  edge_name.set(buf_.data() + (b.edge_name.data() - b_base),
-                b.edge_name.size());
+  edge_name = StringPiece(buf_.data() + (b.edge_name.data() - b_base),
+                          b.edge_name.size());
   return *this;
 }
 
@@ -104,9 +104,9 @@ Status Rendezvous::ParseKey(StringPiece key, ParsedKey* out) {
       strings::HexStringToUint64(parts[1], &out->src_incarnation) &&
       DeviceNameUtils::ParseFullName(parts[2], &out->dst) &&
       !parts[3].empty()) {
-    out->src_device.set(parts[0].data(), parts[0].size());
-    out->dst_device.set(parts[2].data(), parts[2].size());
-    out->edge_name.set(parts[3].data(), parts[3].size());
+    out->src_device = StringPiece(parts[0].data(), parts[0].size());
+    out->dst_device = StringPiece(parts[2].data(), parts[2].size());
+    out->edge_name = StringPiece(parts[3].data(), parts[3].size());
     return Status::OK();
   }
   return errors::InvalidArgument("Invalid  rendezvous key: ", key);

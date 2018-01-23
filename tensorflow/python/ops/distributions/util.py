@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
@@ -699,6 +700,88 @@ def pick_vector(cond,
         [array_ops.where(cond, 0, n)], [array_ops.where(cond, n, -1)])
 
 
+def prefer_static_broadcast_shape(
+    shape1, shape2, name="prefer_static_broadcast_shape"):
+  """Convenience function which statically broadcasts shape when possible.
+
+  Args:
+    shape1:  `1-D` integer `Tensor`.  Already converted to tensor!
+    shape2:  `1-D` integer `Tensor`.  Already converted to tensor!
+    name:  A string name to prepend to created ops.
+
+  Returns:
+    The broadcast shape, either as `TensorShape` (if broadcast can be done
+      statically), or as a `Tensor`.
+  """
+  with ops.name_scope(name, values=[shape1, shape2]):
+    def make_shape_tensor(x):
+      return ops.convert_to_tensor(x, name="shape", dtype=dtypes.int32)
+
+    def get_tensor_shape(s):
+      if isinstance(s, tensor_shape.TensorShape):
+        return s
+      s_ = tensor_util.constant_value(make_shape_tensor(s))
+      if s_ is not None:
+        return tensor_shape.TensorShape(s_)
+      return None
+
+    def get_shape_tensor(s):
+      if not isinstance(s, tensor_shape.TensorShape):
+        return make_shape_tensor(s)
+      if s.is_fully_defined():
+        return make_shape_tensor(s.as_list())
+      raise ValueError("Cannot broadcast from partially "
+                       "defined `TensorShape`.")
+
+    shape1_ = get_tensor_shape(shape1)
+    shape2_ = get_tensor_shape(shape2)
+    if shape1_ is not None and shape2_ is not None:
+      return array_ops.broadcast_static_shape(shape1_, shape2_)
+
+    shape1_ = get_shape_tensor(shape1)
+    shape2_ = get_shape_tensor(shape2)
+    return array_ops.broadcast_dynamic_shape(shape1_, shape2_)
+
+
+def prefer_static_rank(x):
+  """Return static rank of tensor `x` if available, else `tf.rank(x)`.
+
+  Args:
+    x: `Tensor` (already converted).
+
+  Returns:
+    Numpy array (if static rank is obtainable), else `Tensor`.
+  """
+  return prefer_static_value(array_ops.rank(x))
+
+
+def prefer_static_shape(x):
+  """Return static shape of tensor `x` if available, else `tf.shape(x)`.
+
+  Args:
+    x: `Tensor` (already converted).
+
+  Returns:
+    Numpy array (if static shape is obtainable), else `Tensor`.
+  """
+  return prefer_static_value(array_ops.shape(x))
+
+
+def prefer_static_value(x):
+  """Return static value of tensor `x` if available, else `x`.
+
+  Args:
+    x: `Tensor` (already converted).
+
+  Returns:
+    Numpy array (if static value is obtainable), else `Tensor`.
+  """
+  static_x = tensor_util.constant_value(x)
+  if static_x is not None:
+    return static_x
+  return x
+
+
 def gen_new_seed(seed, salt):
   """Generate a new seed, from the given seed and salt."""
   if seed is None:
@@ -751,6 +834,7 @@ def fill_triangular(x, upper=False, name=None):
   """
 
   with ops.name_scope(name, "fill_triangular", values=[x]):
+    x = ops.convert_to_tensor(x, name="x")
     if x.shape.with_rank_at_least(1)[-1].value is not None:
       # Formula derived by solving for n: m = n(n+1)/2.
       m = np.int32(x.shape[-1].value)
@@ -1050,8 +1134,8 @@ def dimension_size(x, axis):
   """Returns the size of a specific dimension."""
   # Since tf.gather isn't "constant-in, constant-out", we must first check the
   # static shape or fallback to dynamic shape.
-  s = x.shape.with_rank_at_least(axis + 1)[axis].value
-  if axis > -1 and s is not None:
+  s = x.shape.with_rank_at_least(np.abs(axis))[axis].value
+  if s is not None:
     return s
   return array_ops.shape(x)[axis]
 
@@ -1099,26 +1183,98 @@ def process_quadrature_grid_and_probs(
     probs /= linalg_ops.norm(probs, ord=1, axis=-1, keep_dims=True,
                              name="probs")
 
-    def _static_dim_size(x, axis):
+    def _static_event_size(x):
       """Returns the static size of a specific dimension or `None`."""
-      return x.shape.with_rank_at_least(axis + 1)[axis].value
+      return x.shape.with_rank_at_least(1)[-1].value
 
-    m, n = _static_dim_size(probs, axis=0), _static_dim_size(grid, axis=0)
+    m, n = _static_event_size(probs), _static_event_size(grid)
     if m is not None and n is not None:
       if m != n:
         raise ValueError("`quadrature_grid_and_probs` must be a `tuple` of "
                          "same-length zero-th-dimension `Tensor`s "
                          "(saw lengths {}, {})".format(m, n))
     elif validate_args:
-      grid = control_flow_ops.with_dependencies([
+      assertions = [
           check_ops.assert_equal(
-              dimension_size(probs, axis=0),
-              dimension_size(grid, axis=0),
+              dimension_size(probs, axis=-1),
+              dimension_size(grid, axis=-1),
               message=("`quadrature_grid_and_probs` must be a `tuple` of "
                        "same-length zero-th-dimension `Tensor`s")),
-      ], grid)
-
+      ]
+      with ops.control_dependencies(assertions):
+        grid = array_ops.identity(grid)
+        probs = array_ops.identity(probs)
     return grid, probs
+
+
+def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
+  """Pads `value` to the front and/or back of a `Tensor` dim, `count` times.
+
+  Args:
+    x: `Tensor` input.
+    axis: Scalar `int`-like `Tensor` representing the single dimension to pad.
+      (Negative indexing is supported.)
+    front: Python `bool`; if `True` the beginning of the `axis` dimension is
+      padded with `value`, `count` times. If `False` no front padding is made.
+    back: Python `bool`; if `True` the end of the `axis` dimension is
+      padded with `value`, `count` times. If `False` no end padding is made.
+    value: Scalar `int`-like `Tensor` representing the actual value added to the
+      front and/or back of the `axis` dimension of `x`.
+    count: Scalar `int`-like `Tensor` representing number of elements added to
+      the front and/or back of the `axis` dimension of `x`. E.g., if
+      `front = back = True` then `2 * count` elements are added.
+    name: Python `str` name prefixed to Ops created by this function.
+
+  Returns:
+    pad: The padded version of input `x`.
+
+  Raises:
+    ValueError: if both `front` and `back` are `False`.
+    TypeError: if `count` is not `int`-like.
+  """
+  with ops.name_scope(name, "pad", [x, value, count]):
+    x = ops.convert_to_tensor(x, name="x")
+    value = ops.convert_to_tensor(value, dtype=x.dtype, name="value")
+    count = ops.convert_to_tensor(count, name="count")
+    if not count.dtype.is_integer:
+      raise TypeError("`count.dtype` (`{}`) must be `int`-like.".format(
+          count.dtype.name))
+    if not front and not back:
+      raise ValueError("At least one of `front`, `back` must be `True`.")
+    ndims = (x.shape.ndims if x.shape.ndims is not None
+             else array_ops.rank(x, name="ndims"))
+    axis = ops.convert_to_tensor(axis, name="axis")
+    axis_ = tensor_util.constant_value(axis)
+    if axis_ is not None:
+      axis = axis_
+      if axis < 0:
+        axis = ndims + axis
+      count_ = tensor_util.constant_value(count)
+      if axis_ >= 0 or x.shape.ndims is not None:
+        head = x.shape[:axis]
+        middle = tensor_shape.TensorShape(
+            None if count_ is None
+            else (x.shape[axis] + count_ * (front + back)))
+        tail = x.shape[axis+1:]
+        final_shape = head.concatenate(middle.concatenate(tail))
+      else:
+        final_shape = None
+    else:
+      axis = array_ops.where(axis < 0, ndims + axis, axis)
+      final_shape = None
+    x = array_ops.pad(
+        x,
+        paddings=array_ops.one_hot(
+            indices=array_ops.stack([axis if front else -1,
+                                     axis if back else -1]),
+            depth=ndims,
+            axis=0,
+            on_value=count,
+            dtype=dtypes.int32),
+        constant_values=value)
+    if final_shape is not None:
+      x.set_shape(final_shape)
+    return x
 
 
 class AppendDocstring(object):

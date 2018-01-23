@@ -36,7 +36,7 @@ installed on your system:
     Ensure that you append the relevant Cuda pathnames to the `%PATH%`
     environment variable as described in the NVIDIA documentation.
   * The NVIDIA drivers associated with CUDA Toolkit 8.0.
-  * cuDNN v6.1. For details, see
+  * cuDNN v6.0. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
     Note that cuDNN is typically installed in a different location from the
     other CUDA DLLs. Ensure that you add the directory where you installed
@@ -84,7 +84,7 @@ install it now:
   * [Python 3.5.x 64-bit from python.org](https://www.python.org/downloads/release/python-352/)
   * [Python 3.6.x 64-bit from python.org](https://www.python.org/downloads/release/python-362/)
 
--TensorFlow supports Python 3.5.x and 3.6.x on Windows.
+TensorFlow supports Python 3.5.x and 3.6.x on Windows.
 Note that Python 3 comes with the pip3 package manager, which is the
 program you'll use to install TensorFlow.
 
@@ -97,7 +97,6 @@ version of TensorFlow, enter the following command:
 To install the GPU version of TensorFlow, enter the following command:
 
 <pre>C:\> <b>pip3 install --upgrade tensorflow-gpu</b></pre>
-
 
 ## Installing with Anaconda
 
@@ -219,6 +218,11 @@ ImportError: cannot import name 'descriptor'</pre>
   </td>
 </tr>
 
+<tr>
+  <td><a href="https://stackoverflow.com/q/38896424">38896424</a></td>
+  <td>
+  <pre>Could not find a version that satisfies the requirement tensorflow</pre>
+  </td>
+</tr>
 
 </table>
-
