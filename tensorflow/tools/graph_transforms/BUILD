@@ -321,6 +321,9 @@ py_binary(
     name = "graph_transforms_wrapper",
     srcs = ["graph_transforms_wrapper.py"],
     srcs_version = "PY2AND3",
+    data = [
+        ":transform_graph",
+    ],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
