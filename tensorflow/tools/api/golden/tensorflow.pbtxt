@@ -1161,6 +1161,10 @@ tf_module {
     argspec: "args=[\'values\', \'value_range\', \'nbins\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'100\', \"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
+    name: "histogram_fixed_width_bins"
+    argspec: "args=[\'values\', \'value_range\', \'nbins\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'100\', \"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
     name: "identity"
     argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }

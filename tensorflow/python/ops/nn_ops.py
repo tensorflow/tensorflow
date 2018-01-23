@@ -1546,7 +1546,8 @@ def leaky_relu(features, alpha=0.2, name=None):
   http://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf
 
   Args:
-    features: A `Tensor` representing preactivation values.
+    features: A `Tensor` representing preactivation values. Must be one of
+      the following types: `float16`, `float32`, `float64`, `int32`, `int64`.
     alpha: Slope of the activation function at x < 0.
     name: A name for the operation (optional).
 
@@ -1555,7 +1556,9 @@ def leaky_relu(features, alpha=0.2, name=None):
   """
   with ops.name_scope(name, "LeakyRelu", [features, alpha]):
     features = ops.convert_to_tensor(features, name="features")
-    alpha = ops.convert_to_tensor(alpha, name="alpha")
+    if features.dtype.is_integer:
+      features = math_ops.to_float(features)
+    alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
     return math_ops.maximum(alpha * features, features)
 
 
@@ -2300,7 +2303,7 @@ def conv1d(value, filters, stride, padding,
   returned to the caller.
 
   Args:
-    value: A 3D `Tensor`.  Must be of type `float32` or `float64`.
+    value: A 3D `Tensor`.  Must be of type `float16` or `float32`.
     filters: A 3D `Tensor`.  Must have the same type as `input`.
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.

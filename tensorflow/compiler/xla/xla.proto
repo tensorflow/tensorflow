@@ -179,6 +179,10 @@ message DebugOptions {
   // ops.
   bool xla_gpu_use_cudnn_batchnorm = 94;
 
+  // Dump compilation artifacts, before hlo passes are executed, in binary proto
+  // into this directory.
+  string xla_dump_prepass_hlo_proto_to = 95;
+
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.
   map<string, string> xla_backend_extra_options = 500;

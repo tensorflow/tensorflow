@@ -104,6 +104,7 @@ Status VerbsServer::Start() {
           [this] { verbs_service_->HandleRPCsLoop(); }));
       rdma_mgr_->SetupChannels();
       CHECK(rdma_mgr_->ConnectivityCheck()) << "Connectivity check failed!";
+      rdma_mgr_->InitAllocators();
       verbs_state_ = CONNECTED;
     }
   }

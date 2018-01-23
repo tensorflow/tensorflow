@@ -28,7 +28,7 @@ namespace gpu {
 namespace {
 bool IsForwardConvolutionCanonical(const HloInstruction& conv) {
   CHECK_EQ(HloOpcode::kConvolution, conv.opcode());
-  return window_util::HasEvenPadding(conv.window()) &&
+  return window_util::HasSymmetricPadding(conv.window()) &&
          !window_util::HasNegativePadding(conv.window()) &&
          !window_util::HasDilation(conv.window());
 }
@@ -43,7 +43,7 @@ HloInstruction* MaybePaddedAndSlicedInput(
     const Window& conv_window, const ConvolutionDimensionNumbers& conv_dnums,
     HloInstruction* input) {
   HloComputation* computation = input->parent();
-  if (!window_util::HasEvenPadding(conv_window) ||
+  if (!window_util::HasSymmetricPadding(conv_window) ||
       window_util::HasBaseDilation(conv_window)) {
     // If padding is uneven or has dilation, we insert a kPad instruction that
     // applies positive padding and dilation.
@@ -190,7 +190,7 @@ void IncreasePaddingHighBy(int64 delta, WindowDimension* window_dim) {
 
 bool PadInsertion::CanonicalizeBackwardFilterConvolution(
     HloInstruction* backward_conv) {
-  if (window_util::HasEvenPadding(backward_conv->window())) {
+  if (window_util::HasSymmetricPadding(backward_conv->window())) {
     return false;
   }
 
@@ -285,7 +285,7 @@ bool PadInsertion::CanonicalizeBackwardFilterConvolution(
 
 bool PadInsertion::CanonicalizeBackwardInputConvolution(
     HloInstruction* backward_conv) {
-  if (window_util::HasEvenPadding(backward_conv->window())) {
+  if (window_util::HasSymmetricPadding(backward_conv->window())) {
     return false;
   }
 

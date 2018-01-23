@@ -63,14 +63,18 @@ class _Pooling1D(base.Layer):
   def call(self, inputs):
     # There is no TF op for 1D pooling, hence we make the inputs 4D.
     if self.data_format == 'channels_last':
-      inputs = array_ops.expand_dims(inputs, 2)
-      pool_shape = (1,) + self.pool_size + (1, 1)
-      strides = (1,) + self.strides + (1, 1)
-      data_format = 'NHWC'
-    else:
+      # input is NWC, make it NHWC
       inputs = array_ops.expand_dims(inputs, 1)
+      # pool on the W dim
       pool_shape = (1, 1) + self.pool_size + (1,)
       strides = (1, 1) + self.strides + (1,)
+      data_format = 'NHWC'
+    else:
+      # input is NCW, make it NCHW
+      inputs = array_ops.expand_dims(inputs, 2)
+      # pool on the W dim
+      pool_shape = (1, 1, 1) + self.pool_size
+      strides = (1, 1, 1) + self.strides
       data_format = 'NCHW'
 
     outputs = self.pool_function(
@@ -81,9 +85,9 @@ class _Pooling1D(base.Layer):
         data_format=data_format)
 
     if self.data_format == 'channels_last':
-      return array_ops.squeeze(outputs, 2)
-    else:
       return array_ops.squeeze(outputs, 1)
+    else:
+      return array_ops.squeeze(outputs, 2)
 
   def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()

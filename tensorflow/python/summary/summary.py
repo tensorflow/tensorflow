@@ -286,12 +286,13 @@ def merge(inputs, collections=None, name=None):
   return val
 
 
-def merge_all(key=_ops.GraphKeys.SUMMARIES):
+def merge_all(key=_ops.GraphKeys.SUMMARIES, scope=None):
   """Merges all summaries collected in the default graph.
 
   Args:
     key: `GraphKey` used to collect the summaries.  Defaults to
       `GraphKeys.SUMMARIES`.
+    scope: Optional scope used to filter the summary ops, using `re.match`
 
   Returns:
     If no summaries were collected, returns None.  Otherwise returns a scalar
@@ -310,7 +311,7 @@ def merge_all(key=_ops.GraphKeys.SUMMARIES):
     raise RuntimeError(
         'Merging tf.summary.* ops is not compatible with eager execution. '
         'Use tf.contrib.summary instead.')
-  summary_ops = _ops.get_collection(key)
+  summary_ops = _ops.get_collection(key, scope=scope)
   if not summary_ops:
     return None
   else:
