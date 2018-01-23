@@ -1399,7 +1399,7 @@ def convolution3d_transpose(
 
 
 @add_arg_scope
-def ctc_loss_dense_labels(inputs, labels, eos_token, sequence_length,
+def ctc_loss_dense_labels(labels, inputs, sequence_length, eos_token,
                           preprocess_collapse_repeated=False,
                           ctc_merge_repeated=True,
                           ignore_longer_outputs_than_inputs=False,
@@ -1432,7 +1432,7 @@ def ctc_loss_dense_labels(inputs, labels, eos_token, sequence_length,
     values = array_ops.gather_nd(labels, indices)
     shape = array_ops.shape(labels, out_type=dtypes.int64)
     sparse_labels = sparse_tensor.SparseTensor(indices, values, shape)
-    outputs = nn.ctc_loss(inputs, sparse_labels, sequence_length,
+    outputs = nn.ctc_loss(sprase_labels, inputs, sequence_length,
                           preprocess_collapse_repeated,
                           ctc_merge_repeated,
                           ignore_longer_outputs_than_inputs,
