@@ -45,14 +45,19 @@ def create_operator(matrix):
       apply_adjoint=lambda v: math_ops.matmul(matrix, v, adjoint_a=True))
 
 
-def identity_operator(operator):
+def identity_operator(matrix):
   """Creates a linear operator from a rank-2 identity tensor."""
 
   linear_operator = collections.namedtuple(
       "LinearOperator", ["shape", "dtype", "apply", "apply_adjoint"])
+  shape = matrix.get_shape()
+  if shape.is_fully_defined():
+    shape = shape.as_list()
+  else:
+    shape = array_ops.shape(matrix)
   return linear_operator(
-      shape=operator.shape,
-      dtype=operator.dtype,
+      shape=shape,
+      dtype=matrix.dtype,
       apply=lambda v: v,
       apply_adjoint=lambda v: v)
 

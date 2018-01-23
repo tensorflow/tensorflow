@@ -58,10 +58,12 @@ def conjugate_gradient(operator,
        `operator` represents matrix `A`, `apply` should return `A * x`.
     rhs: A rank-1 `Tensor` of shape `[N]` containing the right-hand size vector.
     preconditioner: An object representing a linear operator, see `operator` for
-      detail.The preconditioner should approximate the inverse of `A`, efficient
-      preconditioner could dramatically improve the rate of convergence.
-      If `preconditioner` represents matrix `M`(`M` approximates `A^{-1}`),
-      using `M.apply(x)` to estimate `A^{-1}x`.
+      detail. The preconditioner should approximate the inverse of `A`,
+      efficient preconditioner could dramatically improve the rate of
+      convergence. If `preconditioner` represents matrix `M`(`M` approximates
+      `A^{-1}`), using `preconditioner.apply(x)` to estimate `A^{-1}x`, for
+      this to be useful, the cost of applying `M` should be much lower than
+      computing `A^{-1}` directly.
     x: A rank-1 `Tensor` of shape `[N]` containing the initial guess for the
       solution.
     tol: A float scalar convergence tolerance.
@@ -74,7 +76,8 @@ def conjugate_gradient(operator,
       - x: A rank-1 `Tensor` of shape `[N]` containing the computed solution.
       - r: A rank-1 `Tensor` of shape `[M]` containing the residual vector.
       - p: A rank-1 `Tensor` of shape `[N]`. `A`-conjugate basis vector.
-      - gamma: \\(r \dot M \dot r\\)
+      - gamma: \\(r \dot M \dot r\\), equivalent to  \\(||r||_2^2\\) when
+        `preconditioner=None`.
   """
   # ephemeral class holding CG state.
   cg_state = collections.namedtuple("CGState", ["i", "x", "r", "p", "gamma"])
@@ -88,17 +91,20 @@ def conjugate_gradient(operator,
     alpha = state.gamma / util.dot(state.p, z)
     x = state.x + alpha * state.p
     r = state.r - alpha * z
-    q = preconditioner.apply(r)
-    gamma = util.dot(r, q)
-    beta = gamma / state.gamma
-    p = q + beta * state.p
+    if preconditioner is None:
+      gamma = util.l2norm_squared(r)
+      beta = gamma / state.gamma
+      p = r + beta * state.p
+    else:
+      q = preconditioner.apply(r)
+      gamma = util.dot(r, q)
+      beta = gamma / state.gamma
+      p = q + beta * state.p
     return i + 1, cg_state(i + 1, x, r, p, gamma)
 
   with ops.name_scope(name):
     n = operator.shape[1:]
     rhs = array_ops.expand_dims(rhs, -1)
-    if preconditioner is None:
-      preconditioner = util.identity_operator(operator)
     if x is None:
       x = array_ops.expand_dims(
           array_ops.zeros(
@@ -107,12 +113,12 @@ def conjugate_gradient(operator,
     else:
       x = array_ops.expand_dims(x, -1)
       r0 = rhs - operator.apply(x)
-    p0 = preconditioner.apply(r0)
+    if preconditioner is None:
+      p0 = r0
+    else:
+      p0 = preconditioner.apply(r0)
     gamma0 = util.dot(rhs, p0)
     tol = tol * tol * util.l2norm_squared(rhs)
-    x = array_ops.expand_dims(
-        array_ops.zeros(
-            n, dtype=rhs.dtype.base_dtype), -1)
     i = constant_op.constant(0, dtype=dtypes.int32)
     state = cg_state(i=i, x=x, r=r0, p=p0, gamma=gamma0)
     _, state = control_flow_ops.while_loop(stopping_criterion, cg_step,
