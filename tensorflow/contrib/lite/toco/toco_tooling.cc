@@ -53,6 +53,7 @@ void MakeGeneralGraphTransformationsSet(
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
   transformations->Add(new ConvertTrivialTransposeToReshape);
+  transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
@@ -96,7 +97,6 @@ void MakeGeneralGraphTransformationsSet(
 
 bool SupportsQuantization(FileFormat format) {
   return (format == GRAPHVIZ_DOT || format == TFLITE);
-  ;
 }
 
 bool SupportsFusedActivationFunction(FileFormat format) {

@@ -1463,8 +1463,6 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
   return true;
 }
 
-namespace {
-
 void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
                      std::vector<int>* shuffle) {
   CHECK_EQ(AxesCount(input_axes_order), AxesCount(output_axes_order));
@@ -1498,6 +1496,8 @@ void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
     LOG(FATAL) << "Bad shuffle";
   }
 }
+
+namespace {
 
 // Extend shuffle is designed to match ExtendShape, which pads the shape with
 // unit dimensions at the beginning.
