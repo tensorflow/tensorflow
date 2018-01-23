@@ -129,6 +129,19 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "autoregressive_test",
+    size = "small",
+    srcs = ["python/kernel_tests/autoregressive_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
     name = "binomial_test",
     size = "small",
     srcs = ["python/kernel_tests/binomial_test.py"],
