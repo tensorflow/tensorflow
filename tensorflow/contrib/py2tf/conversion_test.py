@@ -28,13 +28,13 @@ class ConversionTest(test.TestCase):
 
   def test_object_to_graph_unsupported_types(self):
     with self.assertRaises(ValueError):
-      conversion.object_to_graph('dummy', {}, {})
+      conversion.object_to_graph('dummy', None, {})
 
   def test_object_to_graph_callable(self):
     def f(a):
       return a
 
-    conversion_map = conversion.ConversionMap()
+    conversion_map = conversion.ConversionMap(True, (), ())
     ast, new_name = conversion.object_to_graph(f, conversion_map, {})
     self.assertTrue(isinstance(ast, gast.FunctionDef), ast)
     self.assertEqual('tf__f', new_name)
@@ -46,7 +46,7 @@ class ConversionTest(test.TestCase):
     def f(a):
       return g(a)
 
-    conversion_map = conversion.ConversionMap()
+    conversion_map = conversion.ConversionMap(True, (), ())
     conversion.object_to_graph(f, conversion_map, {})
 
     self.assertTrue(f in conversion_map.dependency_cache)

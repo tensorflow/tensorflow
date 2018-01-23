@@ -1951,6 +1951,7 @@ py_library(
     srcs = ["ops/list_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":list_ops_gen",
     ],
 )

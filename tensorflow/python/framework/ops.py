@@ -2695,6 +2695,7 @@ class Graph(object):
       self._scoped_c_graph = c_api_util.ScopedTFGraph()
     else:
       self._scoped_c_graph = None
+    self._variable_creator_stack = []
 
   # TODO(apassos) remove once the C API is used by default.
   def _use_c_api_hack(self):
@@ -2730,6 +2731,22 @@ class Graph(object):
       else:
         ret.append((filename, lineno, name, line))
     return ret
+
+  # Note: this method is private because the API of tf.Graph() is public and
+  # frozen, and this functionality is still not ready for public visibility.
+  @tf_contextlib.contextmanager
+  def _variable_creator_scope(self, creator):
+    old = list(self._variable_creator_stack)
+    self._variable_creator_stack.append(creator)
+    try:
+      yield
+    finally:
+      self._variable_creator_stack = old
+
+  # Note: this method is private because the API of tf.Graph() is public and
+  # frozen, and this functionality is still not ready for public visibility.
+  def _get_variable_creator_stack(self):
+    return list(self._variable_creator_stack)
 
   def _extract_stack(self):
     """A lightweight, extensible re-implementation of traceback.extract_stack.

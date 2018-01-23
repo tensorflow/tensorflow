@@ -92,7 +92,8 @@ def _create_global_step(graph):
 
 def _create_or_get_iterations_per_loop():
   graph = ops.get_default_graph()
-  iter_vars = graph.get_collection(_TPU_ESTIMATOR)
+  collection_name = '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR)
+  iter_vars = graph.get_collection(collection_name)
   if len(iter_vars) == 1:
     return iter_vars[0]
   elif len(iter_vars) > 1:
@@ -107,7 +108,7 @@ def _create_or_get_iterations_per_loop():
           shape=[],
           dtype=dtypes.int32,
           trainable=False,
-          collections=[_TPU_ESTIMATOR],
+          collections=[collection_name, ops.GraphKeys.LOCAL_VARIABLES],
           use_resource=True)
 
 
