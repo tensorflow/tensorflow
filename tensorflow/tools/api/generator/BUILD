@@ -46,6 +46,8 @@ genrule(
         "api/bitwise/__init__.py",
         "api/contrib/__init__.py",
         "api/contrib/stat_summarizer/__init__.py",
+        "api/distributions/__init__.py",
+        "api/distributions/bijectors/__init__.py",
         "api/image/__init__.py",
         "api/linalg/__init__.py",
         "api/nn/__init__.py",
