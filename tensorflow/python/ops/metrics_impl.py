@@ -824,8 +824,8 @@ def mean_per_class_accuracy(labels,
   Calculates the accuracy for each class, then takes the mean of that.
 
   For estimation of the metric over a stream of data, the function creates an
-  `update_op` operation that updates these variables and returns the
-  `mean_accuracy`.
+  `update_op` operation that updates the accuracy of each class and returns
+  them.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
@@ -850,7 +850,7 @@ def mean_per_class_accuracy(labels,
 
   Returns:
     mean_accuracy: A `Tensor` representing the mean per class accuracy.
-    update_op: An operation that increments the confusion matrix.
+    update_op: An operation that updates the accuracy tensor.
 
   Raises:
     ValueError: If `predictions` and `labels` have mismatched shapes, or if
@@ -865,6 +865,8 @@ def mean_per_class_accuracy(labels,
 
   with variable_scope.variable_scope(name, 'mean_accuracy',
                                      (predictions, labels, weights)):
+    labels = math_ops.to_int64(labels)
+
     # Flatten the input if its rank > 1.
     if labels.get_shape().ndims > 1:
       labels = array_ops.reshape(labels, [-1])
@@ -885,18 +887,21 @@ def mean_per_class_accuracy(labels,
     is_correct = math_ops.to_float(math_ops.equal(predictions, labels))
 
     if weights is not None:
+      if weights.get_shape().ndims > 1:
+        weights = array_ops.reshape(weights, [-1])
+      weights = math_ops.to_float(weights)
+
       is_correct = is_correct * weights
+      ones = ones * weights
 
     update_total_op = state_ops.scatter_add(total, labels, ones)
     update_count_op = state_ops.scatter_add(count, labels, is_correct)
 
     per_class_accuracy = _safe_div(count, total, None)
-    per_class_accuracy_update = _safe_div(update_count_op, update_total_op,
-                                          None)
 
-    mean_accuracy_v = math_ops.reduce_mean(per_class_accuracy, name='value')
-    update_op = math_ops.reduce_mean(per_class_accuracy_update,
-                                     name='update_op')
+    mean_accuracy_v = math_ops.reduce_mean(per_class_accuracy,
+                                           name='mean_accuracy')
+    update_op = _safe_div(update_count_op, update_total_op, name='update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, mean_accuracy_v)
