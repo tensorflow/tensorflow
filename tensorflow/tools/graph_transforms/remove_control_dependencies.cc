@@ -10,7 +10,10 @@
 namespace tensorflow {
 namespace graph_transforms {
 
-// Changes the op type of a specified op.
+// Remove control depdencies in preparation for inference.
+// In the tensorflow graph, control dependencies are represented as extra
+// inputs which are referenced with "^tensor_name".
+// See node_def.proto for more details.
 Status RemoveControlDependencies(const GraphDef& input_graph_def,
                 const TransformFuncContext& context,
                 GraphDef* output_graph_def) {
