@@ -177,7 +177,10 @@ class UnaryVariantOpRegistry {
     Op op_type_;
     StringPiece device_, typename_;
   };
-
+  //friend declaration for operator==
+  // needed for clang
+  template <typename Op>
+    friend bool operator==(const FuncTuple<Op> &l, const FuncTuple<Op> &r);
   struct TupleHash {
     template <typename Op>
     std::size_t operator()(
