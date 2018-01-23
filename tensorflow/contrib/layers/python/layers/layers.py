@@ -1405,7 +1405,7 @@ def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
   so that they can be fed to the ctc_loss.
   
   Args:
-     tensor: A 1-D `int32` `Tensor` to be converted to a `Sparse`.
+     tensor: A `Tensor` to be converted to a `Sparse`.
      eos_token: An integer. 
        It is part of the target label that signfies the end of a sentence.
      outputs_collections: Collection to add the outputs.
