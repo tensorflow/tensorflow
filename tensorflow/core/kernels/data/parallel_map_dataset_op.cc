@@ -109,10 +109,10 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
       TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
 
       // Input: other_arguments
-      DataTypeVector other_arguments_types(
-          captured_func_->captured_inputs().size());
-      std::vector<Node*> other_arguments(
-          captured_func_->captured_inputs().size());
+      DataTypeVector other_arguments_types;
+      other_arguments_types.reserve(captured_func_->captured_inputs().size());
+      std::vector<Node*> other_arguments;
+      other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
         TF_RETURN_IF_ERROR(b->AddTensor(t, &node));

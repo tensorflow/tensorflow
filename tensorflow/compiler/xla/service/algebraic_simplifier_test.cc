@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -2494,6 +2495,144 @@ TEST_F(AlgebraicSimplifierTest, TrivialDynamicUpdateSlice) {
   EXPECT_THAT(computation->root_instruction(),
               op::DynamicSlice(op::Parameter(), op::Parameter()));
 }
+
+struct PadReduceWindowEffectiveBroadcastCase {
+  std::vector<int64> input_spatials;
+  std::vector<int64> symmetric_pad_spatials;
+  std::vector<int64> reduce_window_spatials;
+  // Whether to use `B F S0 S1` form vs `B S0 S1 F` form.
+  //
+  // This doesn't test any different functionality but is useful for making sure
+  // kBroadcast nodes are well formed.
+  bool prepend_a;
+  bool should_become_broadcast;
+
+  string ToTestCaseName() const {
+    return tensorflow::strings::StrCat(
+        tensorflow::str_util::Join(input_spatials, ","), ";",
+        tensorflow::str_util::Join(symmetric_pad_spatials, ","), ";",
+        tensorflow::str_util::Join(reduce_window_spatials, ","), ";", prepend_a,
+        ";", should_become_broadcast);
+  }
+};
+
+void PrintTo(const PadReduceWindowEffectiveBroadcastCase& c, std::ostream* os) {
+  *os << c.ToTestCaseName();
+}
+
+class PadReduceWindowEffectiveBroadcastTest
+    : public AlgebraicSimplifierTest,
+      public ::testing::WithParamInterface<
+          PadReduceWindowEffectiveBroadcastCase> {};
+
+TEST_P(PadReduceWindowEffectiveBroadcastTest, DoIt) {
+  const auto& param = GetParam();
+
+  // a and b are parallel bounds we can either turn into a B F S0 S1 or
+  // `B S0 S1 F` kind of pattern.
+  auto decorate_spatials = [&param](tensorflow::gtl::ArraySlice<int64> spatials,
+                                    int64 a, int64 b) {
+    std::vector<int64> result;
+    if (param.prepend_a) {
+      result.push_back(a);
+    }
+    for (int64 s : spatials) {
+      result.push_back(s);
+    }
+    if (!param.prepend_a) {
+      result.push_back(a);
+    }
+    result.push_back(b);
+    return result;
+  };
+
+  HloComputation::Builder builder(TestName());
+  const Shape input_shape = ShapeUtil::MakeShape(
+      F32, decorate_spatials(param.input_spatials, 128, 2048));
+  HloInstruction* input = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, input_shape, "input"));
+
+  PaddingConfig padding = window_util::MakeSymmetricPadding(
+      decorate_spatials(param.symmetric_pad_spatials, 0, 0));
+  HloInstruction* pad = builder.AddInstruction(HloInstruction::CreatePad(
+      ShapeUtil::MakeShape(
+          F32, decorate_spatials(param.reduce_window_spatials, 128, 2048)),
+      input,
+      builder.AddInstruction(
+          HloInstruction::CreateConstant(Literal::CreateR0(0.0f))),
+      padding));
+
+  std::unique_ptr<HloModule> module = CreateNewModule();
+  HloComputation* add_computation = nullptr;
+  {
+    HloComputation::Builder builder(TestName() + ".add");
+    const Shape scalar_shape = ShapeUtil::MakeShape(F32, {});
+    HloInstruction* p0 = builder.AddInstruction(
+        HloInstruction::CreateParameter(0, scalar_shape, "p0"));
+    HloInstruction* p1 = builder.AddInstruction(
+        HloInstruction::CreateParameter(1, scalar_shape, "p1"));
+    builder.AddInstruction(
+        HloInstruction::CreateBinary(scalar_shape, HloOpcode::kAdd, p0, p1));
+    add_computation = module->AddEmbeddedComputation(builder.Build());
+  }
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      const Shape output_shape,
+      ShapeInference::InferPadShape(input_shape, ShapeUtil::MakeShape(F32, {}),
+                                    padding));
+  Window window = window_util::MakeWindow(
+      decorate_spatials(param.reduce_window_spatials, 1, 1));
+  auto zero = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(0.0f)));
+  builder.AddInstruction(HloInstruction::CreateReduceWindow(
+      output_shape, pad, zero, window, add_computation));
+
+  auto computation = module->AddEntryComputation(builder.Build());
+  AlgebraicSimplifier simplifier(/*is_layout_sensitive=*/false,
+                                 non_bitcasting_callback());
+  TF_ASSERT_OK_AND_ASSIGN(bool run_successful, simplifier.Run(module.get()));
+  ASSERT_TRUE(run_successful);
+
+  EXPECT_TRUE(
+      ShapeUtil::Equal(computation->root_instruction()->shape(), output_shape));
+
+  if (param.should_become_broadcast) {
+    EXPECT_THAT(computation->root_instruction(), op::Broadcast(::testing::_));
+  } else {
+    EXPECT_THAT(computation->root_instruction(),
+                op::ReduceWindow(::testing::_, zero));
+  }
+}
+
+const std::vector<PadReduceWindowEffectiveBroadcastCase>&
+PadReduceWindowEffectiveBroadcastCases() {
+  static auto* cases = new std::vector<PadReduceWindowEffectiveBroadcastCase>{
+      {/*input_spatials=*/{1, 1}, /*symmetric_pad_amount=*/{6, 6},
+       /*reduce_window_spatials=*/{7, 7}, /*prepend_a=*/true,
+       /*should_become_broadcast=*/true},  //
+      {/*input_spatials=*/{1, 1}, /*symmetric_pad_amount=*/{6, 6},
+       /*reduce_window_spatials=*/{7, 7}, /*prepend_a=*/false,
+       /*should_become_broadcast=*/true},  //
+      {/*input_spatials=*/{2, 2}, /*symmetric_pad_amount=*/{6, 6},
+       /*reduce_window_spatials=*/{7, 7}, /*prepend_a=*/true,
+       /*should_become_broadcast=*/false},  //
+      {/*input_spatials=*/{1, 1}, /*symmetric_pad_amount=*/{2, 2},
+       /*reduce_window_spatials=*/{5, 5}, /*prepend_a=*/true,
+       /*should_become_broadcast=*/true},  //
+      {/*input_spatials=*/{1, 1}, /*symmetric_pad_amount=*/{2, 2},
+       /*reduce_window_spatials=*/{1, 1}, /*prepend_a=*/true,
+       /*should_become_broadcast=*/false},  //
+      {/*input_spatials=*/{5, 1}, /*symmetric_pad_amount=*/{0, 2},
+       /*reduce_window_spatials=*/{2, 5}, /*prepend_a=*/true,
+       /*should_become_broadcast=*/false},  //
+  };
+  return *cases;
+}
+
+INSTANTIATE_TEST_CASE_P(
+    PadReduceWindowEffectiveBroadcastInstantiation,
+    PadReduceWindowEffectiveBroadcastTest,
+    ::testing::ValuesIn(PadReduceWindowEffectiveBroadcastCases()));
 
 class DotStrengthReductionTest
     : public AlgebraicSimplifierTest,

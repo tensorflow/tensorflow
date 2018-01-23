@@ -44,7 +44,7 @@ const char* kValidFileFormats[] = {"mp3", "mp4", "ogg", "wav"};
 void Decode(OpKernelContext* context,
             const tensorflow::StringPiece& file_contents,
             const string& file_format, const int32 samples_per_second,
-            const int32 channel_count) {
+            const int32 channel_count, const string& stream) {
   // Write the input data to a temp file.
   const string temp_filename = io::GetTempFilename(file_format);
   OP_REQUIRES_OK(context, WriteFile(temp_filename, file_contents));
@@ -54,7 +54,7 @@ void Decode(OpKernelContext* context,
   std::vector<float> output_samples;
   Status result =
       ffmpeg::ReadAudioFile(temp_filename, file_format, samples_per_second,
-                            channel_count, &output_samples);
+                            channel_count, stream, &output_samples);
   if (result.code() == error::Code::NOT_FOUND) {
     OP_REQUIRES(
         context, result.ok(),
@@ -99,7 +99,12 @@ void Decode(OpKernelContext* context,
  */
 class DecodeAudioOpV2 : public OpKernel {
  public:
-  explicit DecodeAudioOpV2(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit DecodeAudioOpV2(OpKernelConstruction* context) : OpKernel(context) {
+    string stream;
+    if (context->GetAttr("stream", &stream).ok()) {
+      stream_ = stream;
+    }
+  }
 
   void Compute(OpKernelContext* context) override {
     OP_REQUIRES(
@@ -153,8 +158,10 @@ class DecodeAudioOpV2 : public OpKernel {
         errors::InvalidArgument("channel_count must be positive, but got: ",
                                 channel_count));
 
-    Decode(context, contents, file_format, samples_per_second, channel_count);
+    Decode(context, contents, file_format, samples_per_second, channel_count, stream_);
   }
+private:
+  string stream_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DecodeAudioV2").Device(DEVICE_CPU),
@@ -166,6 +173,7 @@ REGISTER_OP("DecodeAudioV2")
     .Input("samples_per_second: int32")
     .Input("channel_count: int32")
     .Output("sampled_audio: float")
+    .Attr("stream: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       const Tensor* channels_tensor = c->input_tensor(3);
       if (channels_tensor == nullptr) {
@@ -237,7 +245,7 @@ class DecodeAudioOp : public OpKernel {
 
     const tensorflow::StringPiece file_contents = contents.scalar<string>()();
     Decode(context, file_contents, file_format_, samples_per_second_,
-           channel_count_);
+           channel_count_, "");
   }
 
  private:

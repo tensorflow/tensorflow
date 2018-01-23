@@ -34,6 +34,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -197,6 +198,7 @@ class _DistributionMeta(abc.ABCMeta):
     return abc.ABCMeta.__new__(mcs, classname, baseclasses, attrs)
 
 
+@tf_export("distributions.ReparameterizationType")
 class ReparameterizationType(object):
   """Instances of this class represent how sampling is reparameterized.
 
@@ -239,15 +241,20 @@ class ReparameterizationType(object):
 # reparameterized distribution support straight-through gradients with
 # respect to all parameters.
 FULLY_REPARAMETERIZED = ReparameterizationType("FULLY_REPARAMETERIZED")
+tf_export("distributions.FULLY_REPARAMETERIZED").export_constant(
+    __name__, "FULLY_REPARAMETERIZED")
 
 
 # Not reparameterized distribution: samples from a non-
 # reparameterized distribution do not support straight-through gradients for
 # at least some of the parameters.
 NOT_REPARAMETERIZED = ReparameterizationType("NOT_REPARAMETERIZED")
+tf_export("distributions.NOT_REPARAMETERIZED").export_constant(
+    __name__, "NOT_REPARAMETERIZED")
 
 
 @six.add_metaclass(_DistributionMeta)
+@tf_export("distributions.Distribution")
 class Distribution(_BaseDistribution):
   """A generic probability distribution base class.
 
@@ -1075,7 +1082,7 @@ class Distribution(_BaseDistribution):
 
     Denote this distribution (`self`) by `p` and the `other` distribution by
     `q`. Assuming `p, q` are absolutely continuous with respect to reference
-    measure `r`, (Shanon) cross entropy is defined as:
+    measure `r`, the KL divergence is defined as:
 
     ```none
     KL[p, q] = E_p[log(p(X)/q(X))]

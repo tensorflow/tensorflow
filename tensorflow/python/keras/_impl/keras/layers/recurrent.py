@@ -790,7 +790,8 @@ class SimpleRNNCell(Layer):
       units: Positive integer, dimensionality of the output space.
       activation: Activation function to use
           (see [activations](../activations.md)).
-          If you pass None, no activation is applied
+          Default: hyperbolic tangent (`tanh`).
+          If you pass `None`, no activation is applied
           (ie. "linear" activation: `a(x) = x`).
       use_bias: Boolean, whether the layer uses a bias vector.
       kernel_initializer: Initializer for the `kernel` weights matrix,
@@ -946,7 +947,8 @@ class SimpleRNN(RNN):
       units: Positive integer, dimensionality of the output space.
       activation: Activation function to use
           (see [activations](../activations.md)).
-          If you pass None, no activation is applied
+          Default: hyperbolic tangent (`tanh`).
+          If you pass `None`, no activation is applied
           (ie. "linear" activation: `a(x) = x`).
       use_bias: Boolean, whether the layer uses a bias vector.
       kernel_initializer: Initializer for the `kernel` weights matrix,
@@ -1155,11 +1157,15 @@ class GRUCell(Layer):
       units: Positive integer, dimensionality of the output space.
       activation: Activation function to use
           (see [activations](../activations.md)).
-          If you pass None, no activation is applied
+          Default: hyperbolic tangent (`tanh`).
+          If you pass `None`, no activation is applied
           (ie. "linear" activation: `a(x) = x`).
       recurrent_activation: Activation function to use
           for the recurrent step
           (see [activations](../activations.md)).
+          Default: hard sigmoid (`hard_sigmoid`).
+          If you pass `None`, no activation is applied
+          (ie. "linear" activation: `a(x) = x`).
       use_bias: Boolean, whether the layer uses a bias vector.
       kernel_initializer: Initializer for the `kernel` weights matrix,
           used for the linear transformation of the inputs.
@@ -1392,11 +1398,15 @@ class GRU(RNN):
       units: Positive integer, dimensionality of the output space.
       activation: Activation function to use
           (see [activations](../activations.md)).
-          If you pass None, no activation is applied
+          Default: hyperbolic tangent (`tanh`).
+          If you pass `None`, no activation is applied
           (ie. "linear" activation: `a(x) = x`).
       recurrent_activation: Activation function to use
           for the recurrent step
           (see [activations](../activations.md)).
+          Default: hard sigmoid (`hard_sigmoid`).
+          If you pass `None`, no activation is applied
+          (ie. "linear" activation: `a(x) = x`).
       use_bias: Boolean, whether the layer uses a bias vector.
       kernel_initializer: Initializer for the `kernel` weights matrix,
           used for the linear transformation of the inputs.
@@ -1630,11 +1640,15 @@ class LSTMCell(Layer):
       units: Positive integer, dimensionality of the output space.
       activation: Activation function to use
           (see [activations](../activations.md)).
-          If you pass None, no activation is applied
+          Default: hyperbolic tangent (`tanh`).
+          If you pass `None`, no activation is applied
           (ie. "linear" activation: `a(x) = x`).
       recurrent_activation: Activation function to use
           for the recurrent step
           (see [activations](../activations.md)).
+          Default: hard sigmoid (`hard_sigmoid`).
+          If you pass `None`, no activation is applied
+          (ie. "linear" activation: `a(x) = x`).
       use_bias: Boolean, whether the layer uses a bias vector.
       kernel_initializer: Initializer for the `kernel` weights matrix,
           used for the linear transformation of the inputs.
@@ -1896,11 +1910,16 @@ class LSTM(RNN):
       units: Positive integer, dimensionality of the output space.
       activation: Activation function to use
           (see [activations](../activations.md)).
-          If you pass None, no activation is applied
+          Default: hyperbolic tangent (`tanh`).
+          If you pass `None`, no activation is applied
           (ie. "linear" activation: `a(x) = x`).
       recurrent_activation: Activation function to use
           for the recurrent step
           (see [activations](../activations.md)).
+          Default: hyperbolic tangent (`tanh`).
+          Default: hard sigmoid (`hard_sigmoid`).
+          If you pass `None`, no activation is applied
+          (ie. "linear" activation: `a(x) = x`).
       use_bias: Boolean, whether the layer uses a bias vector.
       kernel_initializer: Initializer for the `kernel` weights matrix,
           used for the linear transformation of the inputs.

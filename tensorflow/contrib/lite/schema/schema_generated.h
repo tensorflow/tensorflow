@@ -48,6 +48,9 @@ struct SVDFOptionsT;
 struct RNNOptions;
 struct RNNOptionsT;
 
+struct SequenceRNNOptions;
+struct SequenceRNNOptionsT;
+
 struct FullyConnectedOptions;
 struct FullyConnectedOptionsT;
 
@@ -339,11 +342,12 @@ enum BuiltinOptions {
   BuiltinOptions_SubOptions = 28,
   BuiltinOptions_DivOptions = 29,
   BuiltinOptions_SqueezeOptions = 30,
+  BuiltinOptions_SequenceRNNOptions = 31,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_SqueezeOptions
+  BuiltinOptions_MAX = BuiltinOptions_SequenceRNNOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[31] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[32] {
   static BuiltinOptions values[] = {
       BuiltinOptions_NONE,
       BuiltinOptions_Conv2DOptions,
@@ -375,7 +379,8 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[31] {
       BuiltinOptions_MeanOptions,
       BuiltinOptions_SubOptions,
       BuiltinOptions_DivOptions,
-      BuiltinOptions_SqueezeOptions};
+      BuiltinOptions_SqueezeOptions,
+      BuiltinOptions_SequenceRNNOptions};
   return values;
 }
 
@@ -411,6 +416,7 @@ inline const char **EnumNamesBuiltinOptions() {
                                 "SubOptions",
                                 "DivOptions",
                                 "SqueezeOptions",
+                                "SequenceRNNOptions",
                                 nullptr};
   return names;
 }
@@ -577,6 +583,11 @@ struct BuiltinOptionsTraits<DivOptions> {
 template <>
 struct BuiltinOptionsTraits<SqueezeOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_SqueezeOptions;
+};
+
+template <>
+struct BuiltinOptionsTraits<SequenceRNNOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SequenceRNNOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -924,6 +935,16 @@ struct BuiltinOptionsUnion {
   const SqueezeOptionsT *AsSqueezeOptions() const {
     return type == BuiltinOptions_SqueezeOptions
                ? reinterpret_cast<const SqueezeOptionsT *>(value)
+               : nullptr;
+  }
+  SequenceRNNOptionsT *AsSequenceRNNOptions() {
+    return type == BuiltinOptions_SequenceRNNOptions
+               ? reinterpret_cast<SequenceRNNOptionsT *>(value)
+               : nullptr;
+  }
+  const SequenceRNNOptionsT *AsSequenceRNNOptions() const {
+    return type == BuiltinOptions_SequenceRNNOptions
+               ? reinterpret_cast<const SequenceRNNOptionsT *>(value)
                : nullptr;
   }
 };
@@ -1884,6 +1905,77 @@ inline flatbuffers::Offset<RNNOptions> CreateRNNOptions(
 
 flatbuffers::Offset<RNNOptions> CreateRNNOptions(
     flatbuffers::FlatBufferBuilder &_fbb, const RNNOptionsT *_o,
+    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
+struct SequenceRNNOptionsT : public flatbuffers::NativeTable {
+  typedef SequenceRNNOptions TableType;
+  bool time_major;
+  ActivationFunctionType fused_activation_function;
+  SequenceRNNOptionsT()
+      : time_major(false),
+        fused_activation_function(ActivationFunctionType_NONE) {}
+};
+
+struct SequenceRNNOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SequenceRNNOptionsT NativeTableType;
+  enum { VT_TIME_MAJOR = 4, VT_FUSED_ACTIVATION_FUNCTION = 6 };
+  bool time_major() const { return GetField<uint8_t>(VT_TIME_MAJOR, 0) != 0; }
+  ActivationFunctionType fused_activation_function() const {
+    return static_cast<ActivationFunctionType>(
+        GetField<int8_t>(VT_FUSED_ACTIVATION_FUNCTION, 0));
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_TIME_MAJOR) &&
+           VerifyField<int8_t>(verifier, VT_FUSED_ACTIVATION_FUNCTION) &&
+           verifier.EndTable();
+  }
+  SequenceRNNOptionsT *UnPack(
+      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(
+      SequenceRNNOptionsT *_o,
+      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SequenceRNNOptions> Pack(
+      flatbuffers::FlatBufferBuilder &_fbb, const SequenceRNNOptionsT *_o,
+      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SequenceRNNOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_time_major(bool time_major) {
+    fbb_.AddElement<uint8_t>(SequenceRNNOptions::VT_TIME_MAJOR,
+                             static_cast<uint8_t>(time_major), 0);
+  }
+  void add_fused_activation_function(
+      ActivationFunctionType fused_activation_function) {
+    fbb_.AddElement<int8_t>(SequenceRNNOptions::VT_FUSED_ACTIVATION_FUNCTION,
+                            static_cast<int8_t>(fused_activation_function), 0);
+  }
+  explicit SequenceRNNOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+      : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SequenceRNNOptionsBuilder &operator=(const SequenceRNNOptionsBuilder &);
+  flatbuffers::Offset<SequenceRNNOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SequenceRNNOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SequenceRNNOptions> CreateSequenceRNNOptions(
+    flatbuffers::FlatBufferBuilder &_fbb, bool time_major = false,
+    ActivationFunctionType fused_activation_function =
+        ActivationFunctionType_NONE) {
+  SequenceRNNOptionsBuilder builder_(_fbb);
+  builder_.add_fused_activation_function(fused_activation_function);
+  builder_.add_time_major(time_major);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<SequenceRNNOptions> CreateSequenceRNNOptions(
+    flatbuffers::FlatBufferBuilder &_fbb, const SequenceRNNOptionsT *_o,
     const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct FullyConnectedOptionsT : public flatbuffers::NativeTable {
@@ -3716,6 +3808,11 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
                ? static_cast<const SqueezeOptions *>(builtin_options())
                : nullptr;
   }
+  const SequenceRNNOptions *builtin_options_as_SequenceRNNOptions() const {
+    return builtin_options_type() == BuiltinOptions_SequenceRNNOptions
+               ? static_cast<const SequenceRNNOptions *>(builtin_options())
+               : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -3915,6 +4012,12 @@ template <>
 inline const SqueezeOptions *Operator::builtin_options_as<SqueezeOptions>()
     const {
   return builtin_options_as_SqueezeOptions();
+}
+
+template <>
+inline const SequenceRNNOptions *
+Operator::builtin_options_as<SequenceRNNOptions>() const {
+  return builtin_options_as_SequenceRNNOptions();
 }
 
 struct OperatorBuilder {
@@ -4839,6 +4942,51 @@ inline flatbuffers::Offset<RNNOptions> CreateRNNOptions(
   (void)_va;
   auto _fused_activation_function = _o->fused_activation_function;
   return tflite::CreateRNNOptions(_fbb, _fused_activation_function);
+}
+
+inline SequenceRNNOptionsT *SequenceRNNOptions::UnPack(
+    const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SequenceRNNOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SequenceRNNOptions::UnPackTo(
+    SequenceRNNOptionsT *_o,
+    const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  {
+    auto _e = time_major();
+    _o->time_major = _e;
+  }
+  {
+    auto _e = fused_activation_function();
+    _o->fused_activation_function = _e;
+  }
+}
+
+inline flatbuffers::Offset<SequenceRNNOptions> SequenceRNNOptions::Pack(
+    flatbuffers::FlatBufferBuilder &_fbb, const SequenceRNNOptionsT *_o,
+    const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSequenceRNNOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SequenceRNNOptions> CreateSequenceRNNOptions(
+    flatbuffers::FlatBufferBuilder &_fbb, const SequenceRNNOptionsT *_o,
+    const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs {
+    flatbuffers::FlatBufferBuilder *__fbb;
+    const SequenceRNNOptionsT *__o;
+    const flatbuffers::rehasher_function_t *__rehasher;
+  } _va = {&_fbb, _o, _rehasher};
+  (void)_va;
+  auto _time_major = _o->time_major;
+  auto _fused_activation_function = _o->fused_activation_function;
+  return tflite::CreateSequenceRNNOptions(_fbb, _time_major,
+                                          _fused_activation_function);
 }
 
 inline FullyConnectedOptionsT *FullyConnectedOptions::UnPack(
@@ -6397,6 +6545,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier,
       auto ptr = reinterpret_cast<const SqueezeOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_SequenceRNNOptions: {
+      auto ptr = reinterpret_cast<const SequenceRNNOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default:
       return false;
   }
@@ -6541,6 +6693,10 @@ inline void *BuiltinOptionsUnion::UnPack(
       auto ptr = reinterpret_cast<const SqueezeOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_SequenceRNNOptions: {
+      auto ptr = reinterpret_cast<const SequenceRNNOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default:
       return nullptr;
   }
@@ -6671,6 +6827,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(
     case BuiltinOptions_SqueezeOptions: {
       auto ptr = reinterpret_cast<const SqueezeOptionsT *>(value);
       return CreateSqueezeOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_SequenceRNNOptions: {
+      auto ptr = reinterpret_cast<const SequenceRNNOptionsT *>(value);
+      return CreateSequenceRNNOptions(_fbb, ptr, _rehasher).Union();
     }
     default:
       return 0;
@@ -6815,6 +6975,11 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u)
     case BuiltinOptions_SqueezeOptions: {
       value =
           new SqueezeOptionsT(*reinterpret_cast<SqueezeOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SequenceRNNOptions: {
+      value = new SequenceRNNOptionsT(
+          *reinterpret_cast<SequenceRNNOptionsT *>(u.value));
       break;
     }
     default:
@@ -6971,6 +7136,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_SqueezeOptions: {
       auto ptr = reinterpret_cast<SqueezeOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SequenceRNNOptions: {
+      auto ptr = reinterpret_cast<SequenceRNNOptionsT *>(value);
       delete ptr;
       break;
     }

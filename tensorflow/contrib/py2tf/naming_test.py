@@ -28,7 +28,7 @@ class NamerTest(test.TestCase):
     def bar():
       pass
 
-    namer = naming.Namer(set())
+    namer = naming.Namer({}, True, None, ())
     self.assertEqual('tf__foo', namer.compiled_function_name('foo'))
     self.assertEqual('tf__bar', namer.compiled_function_name('bar', bar))
     self.assertEqual({bar: 'tf__bar'}, namer.renamed_calls)
@@ -38,7 +38,7 @@ class NamerTest(test.TestCase):
     def foo():
       pass
 
-    namer = naming.Namer(set())
+    namer = naming.Namer({}, True, None, ())
     self.assertEqual('tf__foo', namer.compiled_function_name('foo', foo))
     self.assertEqual('tf__foo', namer.compiled_function_name('foo', foo))
 
@@ -46,22 +46,22 @@ class NamerTest(test.TestCase):
     def foo():
       pass
 
-    namer = naming.Namer(set(('tf__foo',)))
+    namer = naming.Namer({'tf__foo': 1}, True, None, ())
     self.assertEqual('tf__foo_1', namer.compiled_function_name('foo', foo))
 
   def test_new_symbol_tracks_names(self):
-    namer = naming.Namer(set())
+    namer = naming.Namer({}, True, None, ())
     self.assertEqual('temp', namer.new_symbol('temp', set()))
     self.assertItemsEqual(('temp',), namer.generated_names)
 
   def test_new_symbol_avoids_duplicates(self):
-    namer = naming.Namer(set())
+    namer = naming.Namer({}, True, None, ())
     self.assertEqual('temp', namer.new_symbol('temp', set()))
     self.assertEqual('temp_1', namer.new_symbol('temp', set()))
     self.assertItemsEqual(('temp', 'temp_1'), namer.generated_names)
 
   def test_new_symbol_avoids_conflicts(self):
-    namer = naming.Namer(set(('temp',)))
+    namer = naming.Namer({'temp': 1}, True, None, ())
     # temp is reserved in the global namespace
     self.assertEqual('temp_1', namer.new_symbol('temp', set()))
     # temp_2 is reserved in the local namespace

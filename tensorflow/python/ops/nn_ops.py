@@ -39,6 +39,7 @@ from tensorflow.python.ops.gen_nn_ops import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
 # Aliases for some automatically-generated names.
@@ -190,6 +191,7 @@ class _NonAtrousConvolution(object):
         name=self.name)
 
 
+@tf_export("nn.with_space_to_batch")
 def with_space_to_batch(
     input,  # pylint: disable=redefined-builtin
     dilation_rate,
@@ -633,6 +635,7 @@ def _get_strides_and_dilation_rate(num_spatial_dims, strides, dilation_rate):
   return strides, dilation_rate
 
 
+@tf_export("nn.convolution")
 def convolution(input, filter,  # pylint: disable=redefined-builtin
                 padding, strides=None, dilation_rate=None,
                 name=None, data_format=None):
@@ -848,6 +851,7 @@ class Convolution(object):
     return self.conv_op(inp, filter)
 
 
+@tf_export("nn.pool")
 def pool(input,  # pylint: disable=redefined-builtin
          window_shape,
          pooling_type,
@@ -1015,6 +1019,7 @@ def pool(input,  # pylint: disable=redefined-builtin
         filter_shape=window_shape)
 
 
+@tf_export("nn.atrous_conv2d")
 def atrous_conv2d(value, filters, rate, padding, name=None):
   """Atrous convolution (a.k.a. convolution with holes or dilated convolution).
 
@@ -1150,6 +1155,7 @@ def atrous_conv2d(value, filters, rate, padding, name=None):
       name=name)
 
 
+@tf_export("nn.conv2d_transpose")
 def conv2d_transpose(value,
                      filter,  # pylint: disable=redefined-builtin
                      output_shape,
@@ -1225,6 +1231,7 @@ def conv2d_transpose(value,
         name=name)
 
 
+@tf_export("nn.atrous_conv2d_transpose")
 def atrous_conv2d_transpose(value,
                             filters,
                             output_shape,
@@ -1371,6 +1378,7 @@ def atrous_conv2d_transpose(value,
                                     block_size=rate)
 
 
+@tf_export("nn.conv3d_transpose")
 def conv3d_transpose(value,
                      filter,  # pylint: disable=redefined-builtin
                      output_shape,
@@ -1444,6 +1452,7 @@ def conv3d_transpose(value,
 
 
 # pylint: disable=protected-access
+@tf_export("nn.bias_add")
 def bias_add(value, bias, data_format=None, name=None):
   """Adds `bias` to `value`.
 
@@ -1498,6 +1507,7 @@ def bias_add_v1(value, bias, name=None):
     return gen_nn_ops._bias_add_v1(value, bias, name=name)
 
 
+@tf_export("nn.crelu")
 def crelu(features, name=None, axis=-1):
   """Computes Concatenated ReLU.
 
@@ -1521,6 +1531,7 @@ def crelu(features, name=None, axis=-1):
     return gen_nn_ops.relu(c)
 
 
+@tf_export("nn.relu6")
 def relu6(features, name=None):
   """Computes Rectified Linear 6: `min(max(features, 0), 6)`.
   Source: [Convolutional Deep Belief Networks on CIFAR-10. A. Krizhevsky](http://www.cs.utoronto.ca/~kriz/conv-cifar10-aug2010.pdf)
@@ -1538,6 +1549,7 @@ def relu6(features, name=None):
     return gen_nn_ops._relu6(features, name=name)
 
 
+@tf_export("nn.leaky_relu")
 def leaky_relu(features, alpha=0.2, name=None):
   """Compute the Leaky ReLU activation function.
 
@@ -1546,7 +1558,8 @@ def leaky_relu(features, alpha=0.2, name=None):
   http://web.stanford.edu/~awni/papers/relu_hybrid_icml2013_final.pdf
 
   Args:
-    features: A `Tensor` representing preactivation values.
+    features: A `Tensor` representing preactivation values. Must be one of
+      the following types: `float16`, `float32`, `float64`, `int32`, `int64`.
     alpha: Slope of the activation function at x < 0.
     name: A name for the operation (optional).
 
@@ -1555,7 +1568,9 @@ def leaky_relu(features, alpha=0.2, name=None):
   """
   with ops.name_scope(name, "LeakyRelu", [features, alpha]):
     features = ops.convert_to_tensor(features, name="features")
-    alpha = ops.convert_to_tensor(alpha, name="alpha")
+    if features.dtype.is_integer:
+      features = math_ops.to_float(features)
+    alpha = ops.convert_to_tensor(alpha, dtype=features.dtype, name="alpha")
     return math_ops.maximum(alpha * features, features)
 
 
@@ -1661,6 +1676,7 @@ def _softmax(logits, compute_op, dim=-1, name=None):
   return output
 
 
+@tf_export("nn.softmax")
 @deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def softmax(logits, axis=None, name=None, dim=None):
   """Computes softmax activations.
@@ -1690,6 +1706,7 @@ def softmax(logits, axis=None, name=None, dim=None):
   return _softmax(logits, gen_nn_ops._softmax, axis, name)
 
 
+@tf_export("nn.log_softmax")
 @deprecation.deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def log_softmax(logits, axis=None, name=None, dim=None):
   """Computes log softmax activations.
@@ -1728,6 +1745,7 @@ def _ensure_xent_args(name, sentinel, labels, logits):
     raise ValueError("Both labels and logits must be provided.")
 
 
+@tf_export("nn.softmax_cross_entropy_with_logits_v2")
 def softmax_cross_entropy_with_logits_v2(_sentinel=None,  # pylint: disable=invalid-name
                                          labels=None, logits=None,
                                          dim=-1, name=None):
@@ -1842,6 +1860,7 @@ See tf.nn.softmax_cross_entropy_with_logits_v2.
 """
 
 
+@tf_export("nn.softmax_cross_entropy_with_logits")
 @deprecation.deprecated(date=None, instructions=_XENT_DEPRECATION)
 def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid-name
                                       labels=None, logits=None,
@@ -1898,6 +1917,7 @@ def softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid
       labels=labels, logits=logits, dim=dim, name=name)
 
 
+@tf_export("nn.sparse_softmax_cross_entropy_with_logits")
 def sparse_softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=invalid-name
                                              labels=None, logits=None,
                                              name=None):
@@ -1996,6 +2016,7 @@ def sparse_softmax_cross_entropy_with_logits(_sentinel=None,  # pylint: disable=
       return cost
 
 
+@tf_export("nn.avg_pool")
 def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the average pooling on the input.
 
@@ -2028,6 +2049,7 @@ def avg_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 name=name)
 
 
+@tf_export("nn.max_pool")
 def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """Performs the max pooling on the input.
 
@@ -2099,6 +2121,7 @@ def _calc_bias_add_flops(graph, node):
   return ops.OpStats("flops", input_count)
 
 
+@tf_export("nn.xw_plus_b")
 def xw_plus_b(x, weights, biases, name=None):  # pylint: disable=invalid-name
   """Computes matmul(x, weights) + biases.
 
@@ -2145,6 +2168,7 @@ def xw_plus_b_v1(x, weights, biases, name=None):  # pylint: disable=invalid-name
     return bias_add_v1(mm, biases, name=name)
 
 
+@tf_export("nn.dropout")
 def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: disable=invalid-name
   """Computes dropout.
 
@@ -2209,6 +2233,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     return ret
 
 
+@tf_export("nn.top_k")
 def top_k(input, k=1, sorted=True, name=None):
   """Finds values and indices of the `k` largest entries for the last dimension.
 
@@ -2266,6 +2291,7 @@ def nth_element(input, n, reverse=False, name=None):
   return gen_nn_ops.nth_element(input, n, reverse=reverse, name=name)
 
 
+@tf_export("nn.conv1d")
 @deprecation.deprecated_arg_values(
     None, "`NCHW` for data_format is deprecated, use `NCW` instead",
     warn_once=True, data_format="NCHW")
@@ -2300,7 +2326,7 @@ def conv1d(value, filters, stride, padding,
   returned to the caller.
 
   Args:
-    value: A 3D `Tensor`.  Must be of type `float32` or `float64`.
+    value: A 3D `Tensor`.  Must be of type `float16` or `float32`.
     filters: A 3D `Tensor`.  Must have the same type as `input`.
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.
@@ -2451,6 +2477,7 @@ def _calc_dilation2d_flops(graph, node):
   return ops.OpStats("flops", (output_count * filter_height * filter_width * 2))
 
 
+@tf_export("nn.erosion2d")
 def erosion2d(value, kernel, strides, rates, padding, name=None):
   """Computes the grayscale erosion of 4-D `value` and 3-D `kernel` tensors.
 
@@ -2508,6 +2535,7 @@ def erosion2d(value, kernel, strides, rates, padding, name=None):
                               name=name))
 
 
+@tf_export("nn.in_top_k")
 def in_top_k(predictions, targets, k, name=None):
   r"""Says whether the targets are in the top `K` predictions.
 
