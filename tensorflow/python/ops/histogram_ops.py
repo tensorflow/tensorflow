@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 def histogram_fixed_width_bins(values,
@@ -56,7 +57,7 @@ def histogram_fixed_width_bins(values,
 
   Returns:
     A `Tensor` holding the indices of the binned values whose shape matches
-    `values`. 
+    `values`.
 
   Examples:
 
@@ -97,6 +98,7 @@ def histogram_fixed_width_bins(values,
     return array_ops.reshape(indices, shape)
 
 
+@tf_export('histogram_fixed_width')
 def histogram_fixed_width(values,
                           value_range,
                           nbins=100,

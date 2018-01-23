@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _gather(params, ids, name=None):
@@ -257,6 +258,7 @@ def _embedding_lookup_and_transform(params,
       return ret
 
 
+@tf_export("nn.embedding_lookup")
 def embedding_lookup(
     params,
     ids,
@@ -325,6 +327,7 @@ def embedding_lookup(
       transform_fn=None)
 
 
+@tf_export("nn.embedding_lookup_sparse")
 def embedding_lookup_sparse(params,
                             sp_ids,
                             sp_weights,

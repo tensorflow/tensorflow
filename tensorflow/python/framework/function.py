@@ -417,7 +417,7 @@ class _DefinedFunction(object):
       if self._func_name:
         assert self._func_name == self._op_def.name
       else:
-        self._func_name = self._op_def.name
+        self._func_name = compat.as_str(self._op_def.name)
 
   def _set_c_attrs(self, attrs):
     """Sets `attrs` as attributes of self._c_func.
