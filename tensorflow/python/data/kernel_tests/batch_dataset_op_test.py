@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -300,6 +301,27 @@ class BatchDatasetTest(test.TestCase):
                               [b"<end>"] * (padded_len - seq_len))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+  def testPaddedBatchDatasetUnicode(self):
+    # See GitHub issue 16149
+    def generator():
+      data = [
+          [u'Простой', u'тест', u'юникода'],
+          [u'никогда', u'не', u'бывает', u'простым']]
+
+      for seq in data:
+        yield seq, [0, 1, 2, 3]
+
+    dataset = dataset_ops.Dataset.from_generator(
+        generator,
+        (dtypes.string, dtypes.int32),
+        (tensor_shape.TensorShape([None]), tensor_shape.TensorShape([None])))
+    padded_dataset = dataset.padded_batch(2, padded_shapes=([None], [None]),
+                                          padding_values=('', 0))
+    with self.test_session() as sess:
+      next_element = padded_dataset.make_one_shot_iterator().get_next()
+      sess.run(next_element)
+
 
   def testPaddedBatchDatasetShapeSpecifications(self):
     int_placeholder = array_ops.placeholder(dtypes.int32)
