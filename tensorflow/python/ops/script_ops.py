@@ -109,7 +109,7 @@ class FuncRegistry(object):
     if result.dtype.char == "S" and result is not value:
       return np.asarray(value, order="C", dtype=object)
     elif result.dtype.char == "U" and result is not value:
-      value = np.vectorize(lambda x: x.encode())(value)
+      value = np.vectorize(lambda x: x.encode("utf8"))(value)
       return np.asarray(value, order="C", dtype=object)
     elif result.dtype.char == "U":
       return result.astype(np.bytes_)
