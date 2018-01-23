@@ -196,10 +196,19 @@ public:
   std::set<HloInstruction*> non_standard_parameter_layout;
 };
 
+static void DumpGraph(const HloConputation* comp) {
+  DebugOptions debug_opts;
+  debug_opts.set_xla_hlo_dump_as_graphdef(true);
+  debug_opts.set_xla_hlo_graph_path("/tmp");
+
+  hlo_graph_dumper::DumpGraph(*comp, "poplar", debug_opts, NULL, false);
+}
+
 StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
         std::unique_ptr<HloModule> module,
         perftools::gputools::StreamExecutor* executor) {
   VLOG(1) << "Begin HloPasses: " << module->name();
+
   HloPassPipeline pipeline("IPU");
   pipeline.AddPass<BatchNormExpander>(true, true, true, false);
   pipeline.AddPass<DotDecomposer>();
@@ -255,6 +264,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   CompilerResources resources(module->config().seed() + 1);
 
   HloComputation* entry = module->entry_computation();
+
+  if (getenv("TF_POPLAR_DUMP_HLO") != NULL) {
+    DumpGraph(entry);
+  }
 
   {
     AllocationFinder finder;
