@@ -140,26 +140,23 @@ class JITTest(test.TestCase):
   def testDefunNoJitScope(self):
     with self.test_session(graph=ops.Graph()):
       @function.Defun(compiled=True, noinline=True)
-      def mulop(x1, x2):
-        return x1 * x2
+
       x = constant_op.constant(1.0)
-      r = mulop(x, x)
+      r = math_ops.multiply(x, x)
 
       # Ensure the forward function is compiled.
       graph_def = r.graph.as_graph_def()
       func_attrs = graph_def.library.function[0].attr
       self.assertTrue(func_attrs["_XlaCompile"].b)
-      # No enclosing jit scope so function sets its own value for _XlaScope.
-      self.assertEqual(b"function_mulop", func_attrs["_XlaScope"].s)
+      self.assertEqual(b"jit_scope_0", func_attrs["_XlaScope"].s)
 
   def testDefunInheritsJitScope(self):
     with self.test_session(graph=ops.Graph()):
       with jit.experimental_jit_scope(True):
         @function.Defun(compiled=True, noinline=True)
-        def mulop(x1, x2):
-          return x1 * x2
+        
         x = constant_op.constant(1.0)
-        r = mulop(x, x)
+        r = math_ops.multiply(x, x)
 
       # Ensure the forward function is compiled.
       graph_def = r.graph.as_graph_def()
@@ -244,10 +241,9 @@ class CompilationEnabledInGradientTest(test.TestCase):
     with self.test_session(graph=ops.Graph()) as sess:
       with jit.experimental_jit_scope(True):
         @function.Defun(compiled=True, noinline=True)
-        def mulop(x1, x2):
-          return x1 * x2
+
         x = constant_op.constant(1.0)
-        r = mulop(x, x)
+        r = math_ops.multiply(x, x)
         g_r = gradients.gradients(r, x, name="GA")[0]
 
       # Ensure the forward function is compiled.
@@ -271,11 +267,9 @@ class CompilationEnabledInGradientTest(test.TestCase):
 
         @function.Defun(
             compiled=True, noinline=True, separate_compiled_gradients=True)
-        def mulop(x1, x2):
-          return x1 * x2
 
         x = constant_op.constant(1.0)
-        r = mulop(x, x)
+        r = math_ops.multiply(x, x)
         g_r = gradients.gradients(r, x, name="GA")[0]
 
       # Ensure the forward function is compiled.
