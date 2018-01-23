@@ -36,8 +36,10 @@ REGISTER_KERNEL_BUILDER(
     BinaryOp<CPUDevice, functor::squared_difference<int32>>);
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER3(BinaryOp, SYCL, "SquaredDifference", functor::squared_difference,
-          float, double, int64);
+#define REGISTER_KERNEL(type) REGISTER(BinaryOp, SYCL, "SquaredDifference", functor::squared_difference, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
+
+REGISTER1_SYCL(BinaryOp, "SquaredDifference", functor::squared_difference, int64);
 REGISTER_KERNEL_BUILDER(
     Name("SquaredDifference")
         .Device(DEVICE_SYCL)

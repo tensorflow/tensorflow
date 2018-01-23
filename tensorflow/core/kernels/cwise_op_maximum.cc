@@ -35,7 +35,10 @@ REGISTER_KERNEL_BUILDER(Name("Maximum")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER3(BinaryOp, SYCL, "Maximum", functor::maximum, float, double, int64);
+#define REGISTER_KERNEL(type) REGISTER(BinaryOp, SYCL, "Maximum", functor::maximum, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
+
+REGISTER1_SYCL(BinaryOp, "Maximum", functor::maximum, int64);
 REGISTER_KERNEL_BUILDER(Name("Maximum")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

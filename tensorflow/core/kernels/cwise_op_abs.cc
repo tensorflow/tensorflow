@@ -38,7 +38,11 @@ REGISTER_KERNEL_BUILDER(Name("Abs")
 #endif
 
 #if TENSORFLOW_USE_SYCL
-REGISTER3(UnaryOp, SYCL, "Abs", functor::abs, float, double, int64);
+#define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Abs", functor::abs, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
+
+REGISTER1_SYCL(UnaryOp, "Abs", functor::abs, int64);
+
 REGISTER_KERNEL_BUILDER(Name("Abs")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

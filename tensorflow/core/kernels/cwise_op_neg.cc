@@ -20,7 +20,10 @@ REGISTER7(UnaryOp, CPU, "Neg", functor::neg, float, Eigen::half, double, int32,
           complex64, int64, complex128);
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER3(UnaryOp, SYCL, "Neg", functor::neg, float, double, int64);
+#define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Neg", functor::neg, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
+
+REGISTER1_SYCL(UnaryOp, "Neg", functor::neg, int64);
 REGISTER_KERNEL_BUILDER(Name("Neg")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

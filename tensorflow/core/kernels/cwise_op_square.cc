@@ -35,12 +35,15 @@ REGISTER_KERNEL_BUILDER(Name("Square")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER3(UnaryOp, SYCL, "Square", functor::square, float, double, int64);
+#define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Square", functor::square, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
+
+REGISTER1_SYCL(UnaryOp, "Square", functor::square, int64);
 REGISTER_KERNEL_BUILDER(Name("Square")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::square<int32>>);
-#endif // TENSORFLOW_USE_SYC
+#endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

@@ -42,7 +42,10 @@ REGISTER_KERNEL_BUILDER(Name("Mul")
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER3(BinaryOp, SYCL, "Mul", functor::mul, float, double, uint8);
+#define REGISTER_KERNEL(type) REGISTER(BinaryOp, SYCL, "Mul", functor::mul, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
+
+REGISTER1_SYCL(BinaryOp, "Mul", functor::mul, uint8);
 REGISTER_KERNEL_BUILDER(Name("Mul")
                             .Device(DEVICE_SYCL)
                             .HostMemory("x")

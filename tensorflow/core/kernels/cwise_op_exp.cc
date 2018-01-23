@@ -25,6 +25,7 @@ REGISTER5(UnaryOp, GPU, "Exp", functor::exp, float, Eigen::half, double,
 #endif
 
 #if TENSORFLOW_USE_SYCL
-REGISTER2(UnaryOp, SYCL, "Exp", functor::exp, float, double);
+#define REGISTER_KERNEL(type) REGISTER(UnaryOp, SYCL, "Exp", functor::exp, type);
+TF_CALL_SYCL_NUMBER_TYPES(REGISTER_KERNEL);
 #endif // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
