@@ -55,6 +55,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.tf_export import tf_export
 
 
 # Temporary global switch determining if we should enable the work-in-progress
@@ -191,6 +192,7 @@ class _TensorLike(object):
   pass
 
 
+@tf_export("Tensor")
 class Tensor(_TensorLike):
   """Represents one of the outputs of an `Operation`.
 
@@ -871,6 +873,7 @@ _tensor_conversion_func_lock = threading.Lock()
 register_dense_tensor_like_type(Tensor)
 
 
+@tf_export("convert_to_tensor")
 def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
   """Converts the given `value` to a `Tensor`.
 
@@ -1116,6 +1119,7 @@ def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
       as_ref=False)
 
 
+@tf_export("convert_to_tensor_or_indexed_slices")
 def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
@@ -1246,6 +1250,7 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
 
 
 # TODO(josh11b): Add ctx argument to conversion_func() signature.
+@tf_export("register_tensor_conversion_function")
 def register_tensor_conversion_function(base_type,
                                         conversion_func,
                                         priority=100):
@@ -1306,6 +1311,7 @@ def register_tensor_conversion_function(base_type,
     _tensor_conversion_func_cache = {}
 
 
+@tf_export("IndexedSlices")
 class IndexedSlices(_TensorLike):
   """A sparse representation of a set of tensor slices at given indices.
 
@@ -1486,6 +1492,7 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
   return c_op
 
 
+@tf_export("Operation")
 class Operation(object):
   """Represents a graph node that performs computation on tensors.
 
@@ -2213,6 +2220,7 @@ class Operation(object):
 _gradient_registry = registry.Registry("gradient")
 
 
+@tf_export("RegisterGradient")
 class RegisterGradient(object):
   """A decorator for registering the gradient function for an op type.
 
@@ -2255,6 +2263,7 @@ class RegisterGradient(object):
     return f
 
 
+@tf_export("NoGradient", "NotDifferentiable")
 def NotDifferentiable(op_type):
   """Specifies that ops of type `op_type` is not differentiable.
 
@@ -2574,6 +2583,7 @@ def _name_from_scope_name(name):
   return name[:-1] if (name and name[-1] == "/") else name
 
 
+@tf_export("Graph")
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
@@ -4591,6 +4601,9 @@ class Graph(object):
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
 # apply to inner graph mode code. Fix that.
+
+
+@tf_export("device")
 def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
@@ -4620,6 +4633,7 @@ def device(device_name_or_function):
     return context.device(device_name_or_function)
 
 
+@tf_export("container")
 def container(container_name):
   """Wrapper for `Graph.container()` using the default graph.
 
@@ -4633,6 +4647,7 @@ def container(container_name):
   return get_default_graph().container(container_name)
 
 
+@tf_export("colocate_with")
 def colocate_with(op, ignore_existing=False):
   if context.in_graph_mode():
     return get_default_graph().colocate_with(op, ignore_existing)
@@ -4643,6 +4658,7 @@ def colocate_with(op, ignore_existing=False):
       return _NullContextmanager()
 
 
+@tf_export("control_dependencies")
 def control_dependencies(control_inputs):
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
@@ -4760,6 +4776,7 @@ def default_session(session):
   return _default_session_stack.get_controller(session)
 
 
+@tf_export("get_default_session")
 def get_default_session():
   """Returns the default session for the current thread.
 
@@ -5049,6 +5066,7 @@ def eager_run(main=None, argv=None):
   app.run(main, argv)
 
 
+@tf_export("reset_default_graph")
 def reset_default_graph():
   """Clears the default graph stack and resets the global default graph.
 
@@ -5067,6 +5085,7 @@ def reset_default_graph():
   _default_graph_stack.reset()
 
 
+@tf_export("get_default_graph")
 def get_default_graph():
   """Returns the default graph for the current thread.
 
@@ -5187,6 +5206,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   return graph or get_default_graph()
 
 
+@tf_export("GraphKeys")
 class GraphKeys(object):
   """Standard names to use for graph collections.
 
@@ -5335,6 +5355,7 @@ class GraphKeys(object):
     return cls.GLOBAL_VARIABLES
 
 
+@tf_export("add_to_collection")
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.
 
@@ -5371,6 +5392,7 @@ def add_to_collections(names, value):
   get_default_graph().add_to_collections(names, value)
 
 
+@tf_export("get_collection_ref")
 def get_collection_ref(key):
   """Wrapper for `Graph.get_collection_ref()` using the default graph.
 
@@ -5394,6 +5416,7 @@ def get_collection_ref(key):
   return get_default_graph().get_collection_ref(key)
 
 
+@tf_export("get_collection")
 def get_collection(key, scope=None):
   """Wrapper for `Graph.get_collection()` using the default graph.
 
@@ -5430,6 +5453,7 @@ def get_all_collection_keys():
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
+@tf_export("name_scope", "keras.backend.name_scope")
 class name_scope(object):  # pylint: disable=invalid-name
   """A context manager for use when defining a Python op.
 
@@ -5576,6 +5600,7 @@ def prepend_name_scope(name, import_scope):
 
 # pylint: disable=g-doc-return-or-yield
 # pylint: disable=not-context-manager
+@tf_export("op_scope")
 @tf_contextlib.contextmanager
 def op_scope(values, name, default_name=None):
   """DEPRECATED. Same as name_scope above, just different argument order."""

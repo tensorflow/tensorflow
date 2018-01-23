@@ -65,8 +65,10 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.protobuf import compare
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("test.gpu_device_name")
 def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
@@ -101,6 +103,7 @@ def assert_ops_in_graph(expected_ops, graph):
   return actual_ops
 
 
+@tf_export("test.assert_equal_graph_def")
 def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
@@ -630,6 +633,7 @@ def run_in_graph_and_eager_modes(
   return decorator
 
 
+@tf_export("test.is_gpu_available")
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
 
@@ -678,6 +682,7 @@ def device(use_gpu):
     yield
 
 
+@tf_export("test.TestCase")
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
@@ -1326,6 +1331,7 @@ class TensorFlowTestCase(googletest.TestCase):
     # pylint: enable=invalid-name
 
 
+@tf_export("test.create_local_cluster")
 def create_local_cluster(num_workers, num_ps, protocol="grpc",
                          worker_config=None, ps_config=None):
   """Create and start local servers and return the associated `Server` objects.
