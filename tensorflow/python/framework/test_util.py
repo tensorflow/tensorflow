@@ -1130,7 +1130,11 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
       print("dtype = %s, shape = %s" % (a.dtype, a.shape))
-      np.testing.assert_allclose(a, b, rtol=rtol, atol=atol, err_msg=msg)
+      # TODO(xpan): There seems to be a bug:
+      # tensorflow/compiler/tests:binary_ops_test pass with float32
+      # nan even though the equal_nan is False by default internally.
+      np.testing.assert_allclose(
+          a, b, rtol=rtol, atol=atol, err_msg=msg, equal_nan=True)
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
     """Asserts that two numpy arrays, or dicts of same, have near values.
