@@ -1136,41 +1136,84 @@ class TensorFlowTestCase(googletest.TestCase):
       np.testing.assert_allclose(
           a, b, rtol=rtol, atol=atol, err_msg=msg, equal_nan=True)
 
-  def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
-    """Asserts that two numpy arrays, or dicts of same, have near values.
+  def _assertAllCloseRecursive(self, a, b, rtol=1e-6, atol=1e-6, path=None):
+    path = path or []
+    path_str = (("[" + "][".join([str(p) for p in path]) + "]") if path else "")
 
-    This does not support nested dicts. `a` and `b` can be namedtuples too,
-    which are converted to dicts.
-
-    Args:
-      a: The expected numpy ndarray (or anything can be converted to one), or
-        dict of same. Must be a dict iff `b` is a dict.
-      b: The actual numpy ndarray (or anything can be converted to one), or
-        dict of same. Must be a dict iff `a` is a dict.
-      rtol: relative tolerance.
-      atol: absolute tolerance.
-
-    Raises:
-      ValueError: if only one of `a` and `b` is a dict.
-    """
     # Check if a and/or b are namedtuples.
     if hasattr(a, "_asdict"):
       a = a._asdict()
     if hasattr(b, "_asdict"):
       b = b._asdict()
-    is_a_dict = isinstance(a, dict)
-    if is_a_dict != isinstance(b, dict):
-      raise ValueError("Can't compare dict to non-dict, %s vs %s." % (a, b))
-    if is_a_dict:
+    a_is_dict = isinstance(a, dict)
+    if a_is_dict != isinstance(b, dict):
+      raise ValueError("Can't compare dict to non-dict, a%s vs b%s." %
+                       (path_str, path_str))
+    if a_is_dict:
       self.assertItemsEqual(
-          a.keys(), b.keys(),
-          msg="mismatched keys, expected %s, got %s" % (a.keys(), b.keys()))
+          a.keys(),
+          b.keys(),
+          msg="mismatched keys: a%s has keys %s, but b%s has keys %s" %
+          (path_str, a.keys(), path_str, b.keys()))
       for k in a:
+        path.append(k)
+        self._assertAllCloseRecursive(
+            a[k], b[k], rtol=rtol, atol=atol, path=path)
+        del path[-1]
+    elif isinstance(a, (list, tuple)):
+      # Try to directly compare a, b as ndarrays; if not work, then traverse
+      # through the sequence, which is more expensive.
+      try:
+        a_as_ndarray = np.array(a)
+        b_as_ndarray = np.array(b)
         self._assertArrayLikeAllClose(
-            a[k], b[k], rtol=rtol, atol=atol,
-            msg="%s: expected %s, got %s." % (k, a, b))
+            a_as_ndarray,
+            b_as_ndarray,
+            rtol=rtol,
+            atol=atol,
+            msg="Mismatched value: a%s is different from b%s." % (path_str,
+                                                                  path_str))
+      except (ValueError, TypeError) as e:
+        if len(a) != len(b):
+          raise ValueError(
+              "Mismatched length: a%s has %d items, but b%s has %d items" %
+              (path_str, len(a), path_str, len(b)))
+        for idx, (a_ele, b_ele) in enumerate(zip(a, b)):
+          path.append(str(idx))
+          self._assertAllCloseRecursive(
+              a_ele, b_ele, rtol=rtol, atol=atol, path=path)
+          del path[-1]
+    # a and b are ndarray like objects
     else:
-      self._assertArrayLikeAllClose(a, b, rtol=rtol, atol=atol)
+      self._assertArrayLikeAllClose(
+          a,
+          b,
+          rtol=rtol,
+          atol=atol,
+          msg="Mismatched value: a%s is different from b%s." % (path_str,
+                                                                path_str))
+
+  def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
+    """Asserts that two structures of numpy arrays, have near values.
+
+    `a` and `b` can be arbitrarily nested structures. A layer of a nested
+    structure can be a `dict`, `namedtuple`, `tuple` or `list`.
+
+    Args:
+      a: The expected numpy `ndarray`, or anything that can be converted into a
+          numpy `ndarray`, or any arbitrarily nested of structure of these.
+      b: The actual numpy `ndarray`, or anything that can be converted into a
+          numpy `ndarray`, or any arbitrarily nested of structure of these.
+      rtol: relative tolerance.
+      atol: absolute tolerance.
+
+    Raises:
+      ValueError: if only one of `a[p]` and `b[p]` is a dict or
+          `a[p]` and `b[p]` have different length, where `[p]` denotes a path
+          to the nested structure, e.g. given `a = [(1, 1), {'d': (6, 7)}]` and
+          `[p] = [1]['d']`, then `a[p] = (6, 7)`.
+    """
+    self._assertAllCloseRecursive(a, b, rtol=rtol, atol=atol)
 
   def assertAllCloseAccordingToType(self,
                                     a,
