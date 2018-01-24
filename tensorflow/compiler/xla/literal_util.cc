@@ -830,6 +830,16 @@ std::unique_ptr<Literal> Literal::Slice(
             result_literal->Set<float>(indices, value);
           });
       return result_literal;
+    case C64:
+      result_literal->EachCell<complex64>(
+          [&](tensorflow::gtl::ArraySlice<int64> indices, complex64 /*value*/) {
+            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
+              new_indices[i] = indices[i] + start_indices[i];
+            }
+            complex64 value = Get<complex64>(new_indices);
+            result_literal->Set<complex64>(indices, value);
+          });
+      return result_literal;
     case S32:
       result_literal->EachCell<int32>(
           [&](tensorflow::gtl::ArraySlice<int64> indices, int32 /*value*/) {

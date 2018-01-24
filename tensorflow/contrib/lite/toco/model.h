@@ -1527,6 +1527,8 @@ struct Model {
     return *arrays.at(name);
   }
   Array& GetOrCreateArray(const string& name) {
+    // Make sure name is not used by an optional array
+    DCHECK(!optional_arrays.count(name));
     if (!arrays.count(name)) {
       Array* ptr = new Array;
       arrays[name] = std::unique_ptr<Array>(ptr);
@@ -1534,7 +1536,17 @@ struct Model {
     Array& result = GetArray(name);
     return result;
   }
+  void CreateOptionalArray(const string& name) {
+    DCHECK(!arrays.count(name) && !optional_arrays.count(name));
+    optional_arrays.insert(name);
+  }
+  bool IsOptionalArray(const string& name) const {
+    return optional_arrays.count(name);
+  }
 
+  // Optional arrays are used for optional tensors,
+  // these tensors do not have data, but with reserved names as op inputs.
+  std::set<string> optional_arrays;
   // The list of operators. Notice how it's a list of unique_ptr's, implying
   // that the Model is what owns Operator's and keeps them alive.
   std::vector<std::unique_ptr<Operator>> operators;

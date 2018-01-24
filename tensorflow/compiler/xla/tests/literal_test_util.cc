@@ -712,6 +712,7 @@ bool NearComparator::ExpectValuesNear<bfloat16>(bfloat16 expected,
     new_num_elements *= new_dimensions[i];
   }
   CHECK_EQ(ShapeUtil::ElementsIn(literal.shape()), new_num_elements);
+  CHECK_EQ(new_dimensions.size(), minor_to_major.size());
 
   auto new_literal = MakeUnique<Literal>(
       ShapeUtil::MakeShape(literal.shape().element_type(), new_dimensions));
@@ -760,6 +761,10 @@ bool NearComparator::ExpectValuesNear<bfloat16>(bfloat16 expected,
       case F64:
         new_literal->Set<double>(to_multi_index,
                                  literal.Get<double>(from_multi_index));
+        break;
+      case C64:
+        new_literal->Set<complex64>(to_multi_index,
+                                    literal.Get<complex64>(from_multi_index));
         break;
       default:
         LOG(FATAL) << "Unhandled primitive element type: "

@@ -31,8 +31,10 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("Variable")
 class Variable(object):
   """See the @{$variables$Variables How To} for a high level overview.
 
@@ -1308,6 +1310,7 @@ class PartitionedVariable(object):
         "assign() has not been implemented for PartitionedVariable.")
 
 
+@tf_export("global_variables")
 def global_variables(scope=None):
   """Returns global variables.
 
@@ -1333,6 +1336,7 @@ def global_variables(scope=None):
   return ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES, scope)
 
 
+@tf_export("all_variables")
 @deprecated("2017-03-02", "Please use tf.global_variables instead.")
 def all_variables():
   """See `tf.global_variables`."""
@@ -1357,6 +1361,7 @@ def _all_saveable_objects(scope=None):
           ops.get_collection(ops.GraphKeys.SAVEABLE_OBJECTS, scope))
 
 
+@tf_export("local_variables")
 def local_variables(scope=None):
   """Returns local variables.
 
@@ -1384,6 +1389,7 @@ def local_variables(scope=None):
   return ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES, scope)
 
 
+@tf_export("model_variables")
 def model_variables(scope=None):
   """Returns all variables in the MODEL_VARIABLES collection.
 
@@ -1400,6 +1406,7 @@ def model_variables(scope=None):
   return ops.get_collection(ops.GraphKeys.MODEL_VARIABLES, scope)
 
 
+@tf_export("trainable_variables")
 def trainable_variables(scope=None):
   """Returns all variables created with `trainable=True`.
 
@@ -1421,6 +1428,7 @@ def trainable_variables(scope=None):
   return ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES, scope)
 
 
+@tf_export("moving_average_variables")
 def moving_average_variables(scope=None):
   """Returns all variables that maintain their moving averages.
 
@@ -1442,6 +1450,7 @@ def moving_average_variables(scope=None):
   return ops.get_collection(ops.GraphKeys.MOVING_AVERAGE_VARIABLES, scope)
 
 
+@tf_export("initializers.variables", "variables_initializer")
 def variables_initializer(var_list, name="init"):
   """Returns an Op that initializes a list of variables.
 
@@ -1467,6 +1476,7 @@ def variables_initializer(var_list, name="init"):
   return control_flow_ops.no_op(name=name)
 
 
+@tf_export("initialize_variables")
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.variables_initializer` instead.")
 def initialize_variables(var_list, name="init"):
@@ -1474,6 +1484,7 @@ def initialize_variables(var_list, name="init"):
   return variables_initializer(var_list, name=name)
 
 
+@tf_export("initializers.global_variables", "global_variables_initializer")
 def global_variables_initializer():
   """Returns an Op that initializes global variables.
 
@@ -1487,6 +1498,7 @@ def global_variables_initializer():
   return variables_initializer(global_variables())
 
 
+@tf_export("initialize_all_variables")
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.global_variables_initializer` instead.")
 def initialize_all_variables():
@@ -1494,6 +1506,7 @@ def initialize_all_variables():
   return global_variables_initializer()
 
 
+@tf_export("initializers.local_variables", "local_variables_initializer")
 def local_variables_initializer():
   """Returns an Op that initializes all local variables.
 
@@ -1507,6 +1520,7 @@ def local_variables_initializer():
   return variables_initializer(local_variables())
 
 
+@tf_export("initialize_local_variables")
 @tf_should_use.should_use_result
 @deprecated("2017-03-02", "Use `tf.local_variables_initializer` instead.")
 def initialize_local_variables():
@@ -1514,6 +1528,7 @@ def initialize_local_variables():
   return local_variables_initializer()
 
 
+@tf_export("is_variable_initialized")
 @tf_should_use.should_use_result
 def is_variable_initialized(variable):
   """Tests if a variable has been initialized.
@@ -1528,6 +1543,7 @@ def is_variable_initialized(variable):
   return state_ops.is_variable_initialized(variable)
 
 
+@tf_export("assert_variables_initialized")
 @tf_should_use.should_use_result
 def assert_variables_initialized(var_list=None):
   """Returns an Op to check if variables are initialized.
@@ -1570,6 +1586,7 @@ def assert_variables_initialized(var_list=None):
       return array_ops.stack(ranks)
 
 
+@tf_export("report_uninitialized_variables")
 @tf_should_use.should_use_result
 def report_uninitialized_variables(var_list=None,
                                    name="report_uninitialized_variables"):

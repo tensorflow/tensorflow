@@ -47,27 +47,6 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
-py_test(
-    name = "pip_smoke_test",
-    srcs = ["pip_smoke_test.py"],
-    data = [
-        "//tensorflow:all_opensource_files",
-    ],
-    tags = [
-        "manual",
-        "notap",
-    ],
-)
-
-py_binary(
-    name = "check_load_py_test",
-    srcs = ["check_load_py_test.py"],
-    data = [
-        "//tensorflow:all_opensource_files",
-    ],
-    srcs_version = "PY2AND3",
-)
-
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
@@ -200,6 +179,8 @@ sh_binary(
             "//tensorflow/python/tools:tools_pip",
             "//tensorflow/python:test_ops",
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
+            "//tensorflow/tools/graph_transforms:graph_transforms_wrapper",
+            "//tensorflow/tools/graph_transforms:transform_graph",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )

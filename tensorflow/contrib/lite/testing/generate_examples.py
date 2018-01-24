@@ -1361,6 +1361,10 @@ def make_squeeze_tests(zip_path):
       "dtype": [tf.int32, tf.float32, tf.int64],
       "input_shape": [[1]],
       "axis": [None, [], [0], [-1]],
+  }, {
+      "dtype": [tf.int32, tf.float32, tf.int64],
+      "input_shape": [[1, 1, 1, 1, 1]],
+      "axis": [None, [], [0], [3, 0], [-2, 0, 3, 2]],
   }]
 
   def build_graph(parameters):

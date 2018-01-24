@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
+#include "tensorflow/compiler/xla/service/hlo_proto_util.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/service/session.pb.h"
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
@@ -418,6 +419,8 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
       computation_tracker_.BuildHloModule(versioned_handle, *module_config,
                                           /*include_unreachable_instructions=*/
                                           true));
+
+  TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
 
   TF_ASSIGN_OR_RETURN(
       module, backend->compiler()->RunHloPasses(std::move(module), executor));
@@ -1595,6 +1598,17 @@ StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Service::Replicas(
     replicas.push_back(executor);
   }
   return replicas;
+}
+
+Status Service::MaybeDumpHloModule(const HloModule& module) const {
+  const string xla_dump_prepass_hlo_proto_to =
+      module.config().debug_options().xla_dump_prepass_hlo_proto_to();
+  if (xla_dump_prepass_hlo_proto_to.empty()) {
+    return Status::OK();
+  }
+  HloProto proto = MakeHloProto(module);
+  return protobuf_util::DumpProtoToDirectory(
+      proto, xla_dump_prepass_hlo_proto_to, module.name());
 }
 
 }  // namespace xla

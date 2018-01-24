@@ -6,6 +6,7 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "py_test",
     "tf_gen_op_libs",
     "tf_custom_op_library",
     "tf_custom_op_py_library",
@@ -66,6 +67,17 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":periodic_resample_op_py",
+    ],
+)
+
+py_test(
+    name = "periodic_resample_op_test",
+    srcs = ["python/kernel_tests/periodic_resample_op_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":init_py",
+        "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:framework_test_lib",
     ],
 )
 
