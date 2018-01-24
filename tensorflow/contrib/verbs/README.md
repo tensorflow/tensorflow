@@ -115,7 +115,7 @@ When the receiver receives the RDMA write, it will locate the relevant **RdmaTen
 		* Reallocate the result tensor (and proxy tensor if required).
 		* Re-send the request to the remote side.
 	* **RecvTensorContent()**    - Receive tensor content from the remote side (RDMA write was completed).
-		* Decode proto if required and/or move to GPU if the content was not written to it directly (GPU direct is not available).
+		* Decode proto if required and/or move to GPU if the content was not written to it directly (GPU direct is not avaliable).
 		* Invoke the done callback.
 * **class RdmaTensorResponse**   - Holds and manages information for a single tensor response throughout the entire send cycle. API:
 	* **Start()**                - Start the response sequence. 

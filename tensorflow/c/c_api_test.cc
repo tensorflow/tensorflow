@@ -575,7 +575,7 @@ TEST(CAPI, ImportGraphDef) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
-  // Create a graph with two nodes: x and 3
+  // Create a simple graph.
   Placeholder(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   ASSERT_TRUE(TF_GraphOperationByName(graph, "feed") != nullptr);
@@ -586,7 +586,7 @@ TEST(CAPI, ImportGraphDef) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   ASSERT_TRUE(TF_GraphOperationByName(graph, "neg") != nullptr);
 
-  // Export to a GraphDef
+  // Export to a GraphDef.
   TF_Buffer* graph_def = TF_NewBuffer();
   TF_GraphToGraphDef(graph, graph_def, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
@@ -605,6 +605,31 @@ TEST(CAPI, ImportGraphDef) {
   ASSERT_TRUE(scalar != nullptr);
   ASSERT_TRUE(feed != nullptr);
   ASSERT_TRUE(neg != nullptr);
+
+  // Test basic structure of the imported graph.
+  EXPECT_EQ(0, TF_OperationNumInputs(scalar));
+  EXPECT_EQ(0, TF_OperationNumInputs(feed));
+  ASSERT_EQ(1, TF_OperationNumInputs(neg));
+  TF_Output neg_input = TF_OperationInput({neg, 0});
+  EXPECT_EQ(scalar, neg_input.oper);
+  EXPECT_EQ(0, neg_input.index);
+
+  // Test that we can't see control edges involving the source and sink nodes.
+  TF_Operation* control_ops[100];
+  EXPECT_EQ(0, TF_OperationNumControlInputs(scalar));
+  EXPECT_EQ(0, TF_OperationGetControlInputs(scalar, control_ops, 100));
+  EXPECT_EQ(0, TF_OperationNumControlOutputs(scalar));
+  EXPECT_EQ(0, TF_OperationGetControlOutputs(scalar, control_ops, 100));
+
+  EXPECT_EQ(0, TF_OperationNumControlInputs(feed));
+  EXPECT_EQ(0, TF_OperationGetControlInputs(feed, control_ops, 100));
+  EXPECT_EQ(0, TF_OperationNumControlOutputs(feed));
+  EXPECT_EQ(0, TF_OperationGetControlOutputs(feed, control_ops, 100));
+
+  EXPECT_EQ(0, TF_OperationNumControlInputs(neg));
+  EXPECT_EQ(0, TF_OperationGetControlInputs(neg, control_ops, 100));
+  EXPECT_EQ(0, TF_OperationNumControlOutputs(neg));
+  EXPECT_EQ(0, TF_OperationGetControlOutputs(neg, control_ops, 100));
 
   // Import it again, with an input mapping, return outputs, and a return
   // operation, into the same graph.
@@ -629,7 +654,7 @@ TEST(CAPI, ImportGraphDef) {
   ASSERT_TRUE(neg2 != nullptr);
 
   // Check input mapping
-  TF_Output neg_input = TF_OperationInput({neg, 0});
+  neg_input = TF_OperationInput({neg, 0});
   EXPECT_EQ(scalar, neg_input.oper);
   EXPECT_EQ(0, neg_input.index);
 

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import copy
 import random
 import threading
 
@@ -252,12 +253,30 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(expected, {"a": a, "b": b, "c": c_copy})
 
-  def testAllCloseNestedDicts(self):
-    a = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
-    with self.assertRaisesRegexp(
-        TypeError,
-        r"inputs could not be safely coerced to any supported types"):
-      self.assertAllClose(a, a)
+  def testAllCloseListOfNamedtuples(self):
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["x", "y"])
+    l1 = [
+        my_named_tuple(x=np.array([[2.3, 2.5]]), y=np.array([[0.97, 0.96]])),
+        my_named_tuple(x=np.array([[3.3, 3.5]]), y=np.array([[0.98, 0.99]]))
+    ]
+    l2 = [
+        ([[2.3, 2.5]], [[0.97, 0.96]]),
+        ([[3.3, 3.5]], [[0.98, 0.99]]),
+    ]
+    self.assertAllClose(l1, l2)
+
+  def testAllCloseNestedStructure(self):
+    a = {"x": np.ones((3, 2, 4)) * 7, "y": (2, [{"nested": {"m": 3, "n": 4}}])}
+    self.assertAllClose(a, a)
+
+    b = copy.deepcopy(a)
+    self.assertAllClose(a, b)
+
+    # Test mismatched values
+    b["y"][1][0]["nested"]["n"] = 4.2
+    with self.assertRaisesRegexp(AssertionError,
+                                 r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
+      self.assertAllClose(a, b)
 
   def testArrayNear(self):
     a = [1, 2]
@@ -282,6 +301,9 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         control_flow_ops.Assert(x, y).run()
 
   def testAssertAllCloseAccordingToType(self):
+    # test plain int
+    self.assertAllCloseAccordingToType(1, 1, rtol=1e-8, atol=1e-8)
+
     # test float64
     self.assertAllCloseAccordingToType(
         np.asarray([1e-8], dtype=np.float64),

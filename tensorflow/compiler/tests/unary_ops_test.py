@@ -67,8 +67,10 @@ class UnaryOpsTest(XLATestCase):
         output = op(pinp)
       result = session.run(output, {pinp: inp})
       if equality_test is None:
-        equality_test = self.assertAllCloseAccordingToType
-      equality_test(result, expected, rtol=rtol, atol=atol)
+        self.assertAllCloseAccordingToType(
+            result, expected, rtol=rtol, atol=atol, bfloat16_rtol=0.03)
+      else:
+        equality_test(result, expected, rtol=rtol, atol=atol)
 
   def ListsAreClose(self, result, expected, rtol, atol):
     """Tests closeness of two lists of floats."""

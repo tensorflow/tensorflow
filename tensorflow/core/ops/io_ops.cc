@@ -272,14 +272,14 @@ REGISTER_OP("WholeFileReaderV2")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
-// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("TextLineReader")
     .Output("reader_handle: Ref(string)")
     .Attr("skip_header_lines: int = 0")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(TwoElementOutput);
+    .SetShapeFn(TwoElementOutput)
+    .Deprecated(26, "Use TextLineReaderV2");
 
 REGISTER_OP("TextLineReaderV2")
     .Output("reader_handle: resource")
@@ -289,7 +289,6 @@ REGISTER_OP("TextLineReaderV2")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
-// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("FixedLengthRecordReader")
     .Output("reader_handle: Ref(string)")
     .Attr("header_bytes: int = 0")
@@ -299,7 +298,8 @@ REGISTER_OP("FixedLengthRecordReader")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(TwoElementOutput);
+    .SetShapeFn(TwoElementOutput)
+    .Deprecated(26, "Use FixedLengthRecordReaderV2");
 
 REGISTER_OP("FixedLengthRecordReaderV2")
     .Output("reader_handle: resource")
@@ -313,14 +313,14 @@ REGISTER_OP("FixedLengthRecordReaderV2")
     .SetIsStateful()
     .SetShapeFn(shape_inference::ScalarShape);
 
-// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("TFRecordReader")
     .Output("reader_handle: Ref(string)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .Attr("compression_type: string = ''")
     .SetIsStateful()
-    .SetShapeFn(TwoElementOutput);
+    .SetShapeFn(TwoElementOutput)
+    .Deprecated(26, "Use TFRecordReaderV2");
 
 REGISTER_OP("TFRecordReaderV2")
     .Output("reader_handle: resource")
@@ -337,13 +337,13 @@ REGISTER_OP("LMDBReader")
     .SetIsStateful()
     .SetShapeFn(TwoElementOutput);
 
-// TODO(cwhipkey): mark this deprecated in favor of V2.
 REGISTER_OP("IdentityReader")
     .Output("reader_handle: Ref(string)")
     .Attr("container: string = ''")
     .Attr("shared_name: string = ''")
     .SetIsStateful()
-    .SetShapeFn(TwoElementOutput);
+    .SetShapeFn(TwoElementOutput)
+    .Deprecated(26, "Use IdentityReaderV2");
 
 REGISTER_OP("IdentityReaderV2")
     .Output("reader_handle: resource")

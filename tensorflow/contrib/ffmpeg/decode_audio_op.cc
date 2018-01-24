@@ -158,9 +158,11 @@ class DecodeAudioOpV2 : public OpKernel {
         errors::InvalidArgument("channel_count must be positive, but got: ",
                                 channel_count));
 
-    Decode(context, contents, file_format, samples_per_second, channel_count, stream_);
+    Decode(context, contents, file_format, samples_per_second, channel_count,
+           stream_);
   }
-private:
+
+ private:
   string stream_;
 };
 

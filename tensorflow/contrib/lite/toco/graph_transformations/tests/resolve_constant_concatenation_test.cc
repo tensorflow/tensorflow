@@ -19,7 +19,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-//#include "tensorflow/contrib/lite/kernels/test_util.h"
 #include "tensorflow/contrib/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/contrib/lite/toco/model.h"
 #include "tensorflow/contrib/lite/toco/tooling_util.h"
@@ -168,11 +167,11 @@ TEST_F(ResolveConstantConcatenationTest, ConcatAtAxis0) {
 
   GraphTransformationsSet graph_transformation_set;
   graph_transformation_set.Add(new toco::ResolveConstantConcatenation);
-  EXPECT_THAT(model.arrays.size(), 5);
+  EXPECT_THAT(model.GetArrayMap().size(), 5);
   (*graph_transformation_set.begin())->Run(&model, /*op_index=*/0);
-  EXPECT_THAT(model.arrays.size(), 1);
+  EXPECT_THAT(model.GetArrayMap().size(), 1);
 
-  auto& concatenated_array = (*model.arrays.begin()).second;
+  auto& concatenated_array = (*model.GetArrayMap().begin()).second;
   EXPECT_THAT(concatenated_array->GetBuffer<toco::ArrayDataType::kFloat>().data,
               ElementsAreArray(ArrayFloatNear(
                   {0.,  1.,  2.,  3.,  4.,  5.,  6.,  7.,  10., 11., 12.,
@@ -187,11 +186,11 @@ TEST_F(ResolveConstantConcatenationTest, ConcatAtAxis1) {
 
   GraphTransformationsSet graph_transformation_set;
   graph_transformation_set.Add(new toco::ResolveConstantConcatenation);
-  EXPECT_THAT(model.arrays.size(), 5);
+  EXPECT_THAT(model.GetArrayMap().size(), 5);
   (*graph_transformation_set.begin())->Run(&model, /*op_index=*/0);
-  EXPECT_THAT(model.arrays.size(), 1);
+  EXPECT_THAT(model.GetArrayMap().size(), 1);
 
-  auto& concatenated_array = (*model.arrays.begin()).second;
+  auto& concatenated_array = (*model.GetArrayMap().begin()).second;
   EXPECT_THAT(concatenated_array->GetBuffer<toco::ArrayDataType::kFloat>().data,
               ElementsAreArray(ArrayFloatNear(
                   {0.,  1.,  2.,  3.,  10., 11., 12., 13., 20., 21., 22.,
@@ -206,11 +205,11 @@ TEST_F(ResolveConstantConcatenationTest, ConcatAtAxis2) {
 
   GraphTransformationsSet graph_transformation_set;
   graph_transformation_set.Add(new toco::ResolveConstantConcatenation);
-  EXPECT_THAT(model.arrays.size(), 5);
+  EXPECT_THAT(model.GetArrayMap().size(), 5);
   (*graph_transformation_set.begin())->Run(&model, /*op_index=*/0);
-  EXPECT_THAT(model.arrays.size(), 1);
+  EXPECT_THAT(model.GetArrayMap().size(), 1);
 
-  auto& concatenated_array = (*model.arrays.begin()).second;
+  auto& concatenated_array = (*model.GetArrayMap().begin()).second;
   EXPECT_THAT(concatenated_array->GetBuffer<toco::ArrayDataType::kFloat>().data,
               ElementsAreArray(ArrayFloatNear(
                   {0.,  1.,  10., 11., 20., 21., 30., 31., 2.,  3.,  12.,

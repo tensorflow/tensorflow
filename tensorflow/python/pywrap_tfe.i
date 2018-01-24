@@ -24,6 +24,8 @@ limitations under the License.
 %rename("%s") TFE_ContextDisableRunMetadata;
 %rename("%s") TFE_ContextExportRunMetadata;
 %rename("%s") TFE_ContextClearCaches;
+%rename("%s") TFE_ContextGetDevicePlacementPolicy;
+%rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_RegisterExceptionClass;

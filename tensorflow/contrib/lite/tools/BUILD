@@ -42,6 +42,8 @@ tf_cc_binary(
     }),
     deps = [
         ":mutable_op_resolver",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
