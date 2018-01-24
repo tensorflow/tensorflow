@@ -1548,7 +1548,8 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     const tensorflow::Graph& graph, const std::set<int>& subgraph_node_ids,
     const std::vector<std::pair<int, int>>& input_inds,
     const std::vector<std::pair<int, int>>& output_inds, size_t max_batch_size,
-    size_t max_workspace_size, const ShapeMap& shape_map,
+    size_t max_workspace_size,
+    const tensorflow::grappler::GraphProperties& graph_properties,
     tensorflow::NodeDef* trt_node) {
   // Visit nodes in reverse topological order and construct the TRT network.
 
@@ -1605,20 +1606,20 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     input_names.push_back(node_name);  // insert original node name without port
     // TODO(jie): alternative :)
     // tensorflow::DataType tf_dtype = node->output_type(output_idx);
-    if (shape_map.count(node_name) == 0)
+    if (!graph_properties.HasOutputProperties(node_name))
       return tensorflow::errors::Internal("failed to find input node: " +
                                           node_name);
 
-    auto input_entry_vec = shape_map.at(node_name);
-    if (static_cast<int>(input_entry_vec.size()) < output_idx)
+    auto op_info_vec = graph_properties.GetOutputProperties(node_name);
+    if (static_cast<int>(op_info_vec.size()) < output_idx)
       return tensorflow::errors::Internal(
           "accessing output index of: " + std::to_string(output_idx) +
           ", at node: " + node_name + "with output entry from shape_map: " +
-          std::to_string(input_entry_vec.size()));
+          std::to_string(op_info_vec.size()));
 
-    auto input_entry = input_entry_vec.at(output_idx);
+    auto op_info = op_info_vec.at(output_idx);
 
-    tensorflow::DataType tf_dtype = input_entry.second;
+    tensorflow::DataType tf_dtype = op_info.dtype();
     input_dtypes.push_back(tf_dtype);
 
     nvinfer1::DataType dtype(nvinfer1::DataType::kFLOAT);
@@ -1627,15 +1628,16 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     LOG(DEBUG) << "accessing output index of: " << std::to_string(output_idx)
                << ", at node: " << node_name
                << "with output entry from shape_map: "
-               << std::to_string(input_entry_vec.size());
+               << std::to_string(op_info_vec.size());
+
     // TODO(ben,jie): update TRT input format/dimension
     nvinfer1::DimsCHW input_dim_psuedo_chw;
     for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
 
-    for (int i = 1; i < input_entry.first.dims(); i++) {
+    for (int i = 1; i < op_info.shape().dim_size(); i++) {
       LOG(DEBUG) << "dimension: " << i
-                 << " , size: " << input_entry.first.dim_size(i);
-      input_dim_psuedo_chw.d[i - 1] = input_entry.first.dim_size(i);
+                 << " , size: " << op_info.shape().dim(i).size();
+      input_dim_psuedo_chw.d[i - 1] = op_info.shape().dim(i).size();
     }
 
     // TODO(ben,jie): proper way to restore input tensor name?

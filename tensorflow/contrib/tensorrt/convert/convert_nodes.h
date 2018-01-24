@@ -20,10 +20,10 @@ limitations under the License.
 #include <vector>
 #include <utility>
 
-#include "tensorflow/contrib/tensorrt/convert/inferShapes.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/grappler/costs/graph_properties.h"
 
 namespace tensorrt {
 namespace convert {
@@ -34,7 +34,8 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
         input_inds,  // {node_id, output_idx}
     const std::vector<std::pair<int, int>>&
         output_inds,  // {node_id, output_idx}
-    size_t max_batch_size, size_t max_workspace_size, const ShapeMap& shape_map,
+    size_t max_batch_size, size_t max_workspace_size,
+    const tensorflow::grappler::GraphProperties& graph_prop,
     tensorflow::NodeDef* trt_node);
 }  // namespace convert
 }  // namespace tensorrt
