@@ -86,7 +86,7 @@ def convert_inline(f, *args, **kwargs):
 def convert(recursive=False, arg_value_hints=None):
   """Decorator that compiles a function to graph mode.
 
-  The decorator is dynamic - invoking compilation whenever the decorated fuction
+  The decorator is dynamic - invoking compilation whenever the decorated function
   is called. This means the parameter values are known at compilation.
 
   Args:
