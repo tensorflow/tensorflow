@@ -267,6 +267,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
         "@six_archive//:six",
     ],
 )
@@ -356,6 +357,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
         "@six_archive//:six",
     ],
 )
@@ -680,6 +682,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
         "@six_archive//:six",
     ],
 )
