@@ -140,8 +140,6 @@ function main() {
     mkdir "${TMPDIR}/tensorflow/aux-bin"
     # Install toco as a binary in aux-bin.
     cp bazel-bin/tensorflow/contrib/lite/toco/toco ${TMPDIR}/tensorflow/aux-bin/
-    # Install graph transform tool as a bianry in aux-bin
-    cp bazel-bin/tensorflow/tools/graph_transforms/transform_graph ${TMPDIR}/tensorflow/aux-bin/
   fi
 
   # protobuf pip package doesn't ship with header files. Copy the headers
