@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import copy
 import random
 import threading
 
@@ -32,6 +34,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
@@ -40,6 +43,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
+@test_util.with_c_api
 class TestUtilTest(test_util.TensorFlowTestCase):
 
   def test_assert_ops_in_graph(self):
@@ -184,8 +188,8 @@ class TestUtilTest(test_util.TensorFlowTestCase):
   def _WeMustGoDeeper(self, msg):
     with self.assertRaisesOpError(msg):
       with ops.Graph().as_default():
-        node_def = ops._NodeDef("op_type", "name")
-        node_def_orig = ops._NodeDef("op_type_orig", "orig")
+        node_def = ops._NodeDef("IntOutput", "name")
+        node_def_orig = ops._NodeDef("IntOutput", "orig")
         op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
         op = ops.Operation(node_def, ops.get_default_graph(),
                            original_op=op_orig)
@@ -209,6 +213,18 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       self.assertAllClose(1, {"a": 1})
     with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose({"a": 1}, 1)
+
+  def testAllCloseNamedtuples(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    expected = {"a": a, "b": b, "c": c}
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["a", "b", "c"])
+
+    # Identity.
+    self.assertAllClose(expected, my_named_tuple(a=a, b=b, c=c))
+    self.assertAllClose(
+        my_named_tuple(a=a, b=b, c=c), my_named_tuple(a=a, b=b, c=c))
 
   def testAllCloseDicts(self):
     a = 7
@@ -237,12 +253,30 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(expected, {"a": a, "b": b, "c": c_copy})
 
-  def testAllCloseNestedDicts(self):
-    a = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
-    with self.assertRaisesRegexp(
-        TypeError,
-        r"inputs could not be safely coerced to any supported types"):
-      self.assertAllClose(a, a)
+  def testAllCloseListOfNamedtuples(self):
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["x", "y"])
+    l1 = [
+        my_named_tuple(x=np.array([[2.3, 2.5]]), y=np.array([[0.97, 0.96]])),
+        my_named_tuple(x=np.array([[3.3, 3.5]]), y=np.array([[0.98, 0.99]]))
+    ]
+    l2 = [
+        ([[2.3, 2.5]], [[0.97, 0.96]]),
+        ([[3.3, 3.5]], [[0.98, 0.99]]),
+    ]
+    self.assertAllClose(l1, l2)
+
+  def testAllCloseNestedStructure(self):
+    a = {"x": np.ones((3, 2, 4)) * 7, "y": (2, [{"nested": {"m": 3, "n": 4}}])}
+    self.assertAllClose(a, a)
+
+    b = copy.deepcopy(a)
+    self.assertAllClose(a, b)
+
+    # Test mismatched values
+    b["y"][1][0]["nested"]["n"] = 4.2
+    with self.assertRaisesRegexp(AssertionError,
+                                 r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
+      self.assertAllClose(a, b)
 
   def testArrayNear(self):
     a = [1, 2]
@@ -267,6 +301,9 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         control_flow_ops.Assert(x, y).run()
 
   def testAssertAllCloseAccordingToType(self):
+    # test plain int
+    self.assertAllCloseAccordingToType(1, 1, rtol=1e-8, atol=1e-8)
+
     # test float64
     self.assertAllCloseAccordingToType(
         np.asarray([1e-8], dtype=np.float64),
@@ -316,6 +353,10 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       )
 
   def testRandomSeed(self):
+    # Call setUp again for WithCApi case (since it makes a new defeault graph
+    # after setup).
+    # TODO(skyewm): remove this when C API is permanently enabled.
+    self.setUp()
     a = random.randint(1, 1000)
     a_np_rand = np.random.rand(1)
     with self.test_session():
@@ -357,6 +398,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
 
 
+@test_util.with_c_api
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
   def test_no_reference_cycle_decorator(self):

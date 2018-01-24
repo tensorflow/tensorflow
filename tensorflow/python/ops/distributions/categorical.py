@@ -29,6 +29,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _broadcast_cat_event_and_params(event, params, base_dtype=dtypes.int32):
@@ -58,6 +59,7 @@ def _broadcast_cat_event_and_params(event, params, base_dtype=dtypes.int32):
   return event, params
 
 
+@tf_export("distributions.Categorical")
 class Categorical(distribution.Distribution):
   """Categorical distribution.
 
@@ -263,7 +265,9 @@ class Categorical(distribution.Distribution):
       logits_2d = self.logits
     else:
       logits_2d = array_ops.reshape(self.logits, [-1, self.event_size])
-    draws = random_ops.multinomial(logits_2d, n, seed=seed)
+    sample_dtype = dtypes.int64 if self.dtype.size > 4 else dtypes.int32
+    draws = random_ops.multinomial(
+        logits_2d, n, seed=seed, output_dtype=sample_dtype)
     draws = array_ops.reshape(
         array_ops.transpose(draws),
         array_ops.concat([[n], self.batch_shape_tensor()], 0))

@@ -44,6 +44,9 @@ void WriteProfile(const string* filename);
 // Load the profile to profiler from a proto buffer file.
 void ProfilerFromFile(const string* filename);
 
+// Returns a binary string that represents the serialized ProfileProto.
+string SerializeToString();
+
 string Profile(const string* command, const string* options);
 
 // Single-step Profiler.

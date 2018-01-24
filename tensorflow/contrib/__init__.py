@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 # Add projects here, they will show up under tf.contrib.
+from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
 from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
+from tensorflow.contrib import coder
 from tensorflow.contrib import compiler
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
@@ -82,13 +84,14 @@ from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
 from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.ndlstm import python as ndlstm
+from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs
 from tensorflow.contrib.summary import summary
 
 from tensorflow.python.util.lazy_loader import LazyLoader
-ffmpeg = LazyLoader("ffmpeg",
-                    globals(), "tensorflow.contrib.ffmpeg")
+ffmpeg = LazyLoader("ffmpeg", globals(),
+                    "tensorflow.contrib.ffmpeg")
 del LazyLoader
 
 del absolute_import

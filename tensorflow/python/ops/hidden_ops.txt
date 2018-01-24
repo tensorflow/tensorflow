@@ -8,6 +8,7 @@ ConcatV2
 ConjugateTranspose
 Const
 DebugGradientIdentity
+DebugGradientRefIdentity
 EditDistance
 ExpandDims
 ListDiff
@@ -29,6 +30,8 @@ Squeeze
 Slice
 TileGrad  # Exported through array_grad instead of array_ops.
 ZerosLike  # TODO(josh11b): Use this instead of the Python version.
+Unique
+UniqueV2
 Unpack
 
 # candidate_sampling_ops
@@ -225,6 +228,7 @@ BatchSelfAdjointEigV2
 BatchSvd
 LogMatrixDeterminant
 MatrixExponential
+MatrixLogarithm
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2

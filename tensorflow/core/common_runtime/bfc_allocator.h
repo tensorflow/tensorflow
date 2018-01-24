@@ -70,6 +70,8 @@ class BFCAllocator : public VisitableAllocator {
 
   void GetStats(AllocatorStats* stats) override;
 
+  void ClearStats() override;
+
  private:
   struct Bin;
 
@@ -418,11 +420,13 @@ class BFCAllocator : public VisitableAllocator {
   mutable mutex lock_;
   RegionManager region_manager_ GUARDED_BY(lock_);
 
-  std::vector<Chunk> chunks_;
-  ChunkHandle free_chunks_list_;  // Ptr to head of linked list of free Chunks
+  std::vector<Chunk> chunks_ GUARDED_BY(lock_);
+
+  // Pointer to head of linked list of free Chunks
+  ChunkHandle free_chunks_list_ GUARDED_BY(lock_);
 
   // Called once on each region, ASAP.
-  std::vector<Visitor> region_visitors_;
+  std::vector<Visitor> region_visitors_ GUARDED_BY(lock_);
 
   // Counter containing the next unique identifier to assign to a
   // newly-created chunk.

@@ -67,9 +67,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                     "num_parallel_batches must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
-                                                 std::move(other_arguments),
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            func_, std::move(other_arguments), &captured_func));
 
     *output = new Dataset(input, batch_size, num_parallel_batches,
                           output_types_, output_shapes_,
@@ -280,27 +279,13 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         // Call `captured_func_(input_element)`, store the result in
         // `result->return_values`, and notify `batch_result->counter`
         // to unblock a consumer.
-        FunctionLibraryRuntime::Options opts;
-        opts.step_id = CapturedFunction::generate_step_id();
-        ScopedStepContainer* step_container =
-            new ScopedStepContainer(opts.step_id, [this](const string& name) {
-              dataset()
-                  ->captured_func_->resource_manager()
-                  ->Cleanup(name)
-                  .IgnoreError();
-            });
-        opts.step_container = step_container;
-        std::function<void(std::function<void()>)>* runner =
-            new std::function<void(std::function<void()>)>(*ctx->runner());
-        opts.runner = runner;
         (*ctx->runner())(std::bind(
-            [=](std::vector<Tensor> input_element) {
+            [this, result, batch_result, offset](
+                IteratorContext* ctx, std::vector<Tensor> input_element) {
               dataset()->captured_func_->RunAsync(
-                  opts, std::move(input_element), &result->return_values,
-                  [this, step_container, runner, result, batch_result,
-                   offset](Status ret_status) {
-                    delete step_container;
-                    delete runner;
+                  ctx, std::move(input_element), &result->return_values,
+                  [this, ctx, result, batch_result, offset](Status ret_status) {
+                    delete ctx;
                     result->status.Update(ret_status);
                     if (ret_status.ok()) {
                       EnsureOutputAllocated(batch_result,
@@ -342,7 +327,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                     batch_result->counter->DecrementCount();
                   });
             },
-            std::move(input_element)));
+            new IteratorContext(*ctx), std::move(input_element)));
       }
 
       void StartInvocationBatch(IteratorContext* ctx, int64 batch_index)

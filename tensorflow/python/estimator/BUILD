@@ -282,6 +282,7 @@ py_library(
         ":model_fn",
         ":numpy_io",
         ":prediction_keys",
+        ":warm_starting_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
@@ -424,6 +425,7 @@ py_library(
         ":model_fn",
         ":run_config",
         ":util",
+        ":warm_starting_util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:control_flow_ops",
@@ -622,8 +624,9 @@ py_library(
 
 py_test(
     name = "head_test",
-    size = "small",
+    size = "medium",
     srcs = ["canned/head_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -647,6 +650,7 @@ py_test(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
         "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
         "@six_archive//:six",

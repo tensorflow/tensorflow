@@ -87,22 +87,25 @@ TFE_TensorHandle* EagerTensor_Handle(const PyObject* o);
 // newly created type, or nullptr on error.
 PyObject* TFE_Py_InitEagerTensor(PyObject* base_class);
 
-// Pushes a new tape into the thread-local stack.
-// `persistent` must be a PyBool_Type, i.e either Py_True or Py_False
-void TFE_Py_TapeStackPushNew(PyObject* persistent);
+// Creates a new tape and adds it to the active set. `persistent` must be a
+// PyBool_Type, i.e either Py_True or Py_False
+PyObject* TFE_Py_TapeSetNew(PyObject* persistent);
 
-// Pops the tape from the top of the stack and returns it.
-PyObject* TFE_Py_TapeStackPop();
-
-// Pushes an existing tape onto the stack.
-void TFE_Py_TapeStackPush(PyObject* tape);
+// Removes the passed tape from the set of active tapes.
+void TFE_Py_TapeSetRemove(PyObject* tape);
 
 // Returns true if the tape stack is empty.
-PyObject* TFE_Py_TapeStackIsEmpty();
+PyObject* TFE_Py_TapeSetIsEmpty();
 
-PyObject* TFE_Py_TapeStackShouldRecord(PyObject* tensors);
-void TFE_Py_TapeStackWatch(PyObject* tensor);
-void TFE_Py_TapeStackDeleteTrace(tensorflow::int64 tensor_id);
+PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors);
+void TFE_Py_TapeSetWatch(PyObject* tensor);
+void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id);
+
+// Stops any gradient recording on the current thread.
+void TFE_Py_TapeSetStopOnThread();
+
+// Restarts gradient recording on the current thread.
+void TFE_Py_TapeSetRestartOnThread();
 
 // Records an operation in the gradient tape stack.type is a string for the
 // operation type, used in the backprop code. output_tensors should be a list of
@@ -111,13 +114,12 @@ void TFE_Py_TapeStackDeleteTrace(tensorflow::int64 tensor_id);
 // operation. backward_function should be the function to be called during
 // backprop to, given the gradients of the output tensors, produce the gradients
 // of the input tensors.
-void TFE_Py_TapeStackRecordOperation(PyObject* op_type,
-                                     PyObject* output_tensors,
-                                     PyObject* input_tensor_ids,
-                                     PyObject* backward_function);
+void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
+                                   PyObject* input_tensor_ids,
+                                   PyObject* backward_function);
 
 // Watches the given variable object on the given tape.
-void TFE_Py_TapeStackWatchVariable(PyObject* variable);
+void TFE_Py_TapeSetWatchVariable(PyObject* variable);
 
 // Computes a gradient based on information recorded on the tape.`tape` must
 // have been produced by TFE_Py_NewTape. `vspace` must be a
@@ -128,6 +130,28 @@ void TFE_Py_TapeStackWatchVariable(PyObject* variable);
 PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
                               PyObject* target, PyObject* sources,
                               PyObject* output_gradients, TF_Status* status);
+
+// Execute a tensorflow operation assuming that all provided inputs are
+// correctly formatted (i.e. EagerTensors). If it doesn't find EagerTensors,
+// it will simply fail with a NotImplementedError.
+//
+// The first PyObject* is unused.
+// The "args" PyObject* is meant to be a tuple with the following structure:
+//  Item 1: The TFE Context
+//  Item 2: device_name: Name of the device on which to execute the operation,
+//          or NULL for automatic selection.
+//  Item 3: op_name: Name of the TensorFlow op to execute.
+//  Item 4: record_gradient_callback: Callback that records the gradient of the
+//          result.
+//          The callback takes (inputs, attrs, result) - all sequences and
+//          records the gradient.
+//  Item 5 onwards: inputs - This is a list of inputs followed by a list of
+//        attrs. It is not necessary for type attrs to be present.
+//
+// This is named _C since there doesn't seem to be any way to make it visible
+// in the SWIG interface without renaming due to the use of the %native
+// directive.
+PyObject* TFE_Py_FastPathExecute_C(PyObject*, PyObject* args);
 
 // Returns the set of variables watched by the given tape.
 PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape);

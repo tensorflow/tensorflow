@@ -350,7 +350,7 @@ TEST_F(ArithmeticOptimizerTest, TrivialSumsRepeatedAdd) {
   for (int i = 0; i < item.graph.node_size(); ++i) {
     item.graph.mutable_node(i)->set_device(devices[i]);
   }
-  ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  ArithmeticOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -423,7 +423,7 @@ TEST_F(ArithmeticOptimizerTest, HoistFactor) {
 
       GrapplerItem item;
       TF_CHECK_OK(s.ToGraphDef(&item.graph));
-      ArithmeticOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+      ArithmeticOptimizer optimizer;
       GraphDef output;
       Status status = optimizer.Optimize(nullptr, item, &output);
       TF_EXPECT_OK(status);
@@ -625,10 +625,9 @@ TEST_F(ArithmeticOptimizerTest, IdentityReshape) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
-                   .Optimize(nullptr, item, &output));
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   EXPECT_EQ(0, std::count_if(
@@ -650,10 +649,9 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshape) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
-                   .Optimize(nullptr, item, &output));
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   EXPECT_EQ(1, std::count_if(
@@ -673,10 +671,9 @@ TEST_F(ArithmeticOptimizerTest, NotIdentityReshapeTooManyUnknownDimSizes) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
 
   GraphDef output;
-  TF_EXPECT_OK(ArithmeticOptimizer(RewriterConfig::AGGRESSIVE)
-                   .Optimize(nullptr, item, &output));
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   EXPECT_EQ(1, std::count_if(
@@ -709,7 +706,7 @@ TEST_F(ArithmeticOptimizerTest, CombineReshapes) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   EXPECT_EQ(1, std::count_if(
@@ -733,7 +730,7 @@ TEST_F(ArithmeticOptimizerTest, ReorderTransposeCast) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   const NodeDef* transpose_node = nullptr;
@@ -769,7 +766,7 @@ TEST_F(ArithmeticOptimizerTest, NoReorderTransposeCast) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   int num_transposes = 0;
@@ -803,7 +800,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposes) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   std::set<string> nodes_after_optimization;
@@ -836,7 +833,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveInverseTransposesMultipleOutputs) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   for (const NodeDef& node : output.node()) {
@@ -863,7 +860,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveTransposesWithControlDependency) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   NodeMap node_map(&output);
@@ -892,7 +889,7 @@ TEST_F(ArithmeticOptimizerTest, NotRemoveTransposes) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   EXPECT_EQ(6, output.node_size());
@@ -923,7 +920,7 @@ TEST_F(ArithmeticOptimizerTest, FoldMulToTransposeConv) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   NodeMap node_map(&output);
@@ -965,7 +962,7 @@ TEST_F(ArithmeticOptimizerTest, NotFoldMulAcrossPreservedTranspose) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   NodeMap node_map(&output);
@@ -995,7 +992,7 @@ TEST_F(ArithmeticOptimizerTest, FoldMulToConv) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   NodeMap node_map(&output);
@@ -1034,11 +1031,15 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  // Run the optimizer twice to make sure the rewrite is idempotent.
+  item.graph.Swap(&output);
+  TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
+
+  item.graph.Swap(&output);
   TF_EXPECT_OK(
       ConstantFolding(/*cpu_device=*/nullptr).Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   NodeMap node_map(&output);
@@ -1046,7 +1047,7 @@ TEST_F(ArithmeticOptimizerTest, OptimizeCastMulTransposeConv) {
   const NodeDef* transpose_node =
       CHECK_NOTNULL(node_map.GetNode(OptimizedName("Transpose_uint8")));
   const NodeDef* cast_node =
-      CHECK_NOTNULL(node_map.GetNode(OptimizedName("Cast_new")));
+      CHECK_NOTNULL(node_map.GetNode(OptimizedName("Cast_float")));
   const NodeDef* weights_node =
       CHECK_NOTNULL(node_map.GetNode(OptimizedName("weights_scaled_Conv2D")));
   const NodeDef* conv_node = CHECK_NOTNULL(node_map.GetNode("Conv2D"));
@@ -1083,11 +1084,11 @@ TEST_F(ArithmeticOptimizerTest, OptimizeMultipleMulTransposeConv) {
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(
       ConstantFolding(/*cpu_device=*/nullptr).Optimize(nullptr, item, &output));
 
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   NodeMap node_map(&output);
@@ -1116,7 +1117,7 @@ TEST_F(ArithmeticOptimizerTest, CombineBitcasts) {
 
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   EXPECT_EQ(1, std::count_if(
@@ -1136,7 +1137,7 @@ TEST_F(ArithmeticOptimizerTest, CombineAndRemoveBitcasts) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   EXPECT_EQ(0, std::count_if(
@@ -1155,7 +1156,7 @@ TEST_F(ArithmeticOptimizerTest, RemoveRedundantCast) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   GraphDef output;
   TF_EXPECT_OK(ArithmeticOptimizer().Optimize(nullptr, item, &output));
-  item.graph = output;
+  item.graph.Swap(&output);
   TF_EXPECT_OK(ModelPruner().Optimize(nullptr, item, &output));
 
   EXPECT_EQ(0, std::count_if(

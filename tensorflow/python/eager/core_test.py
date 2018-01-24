@@ -84,6 +84,20 @@ class TFETest(test_util.TensorFlowTestCase):
     self.assertTrue(has_cpu_device)
     del ctx
 
+  def testRunMetadata(self):
+    context.enable_run_metadata()
+    t = constant_op.constant(1.0)
+    _ = t + t  # Runs an operation which will be in the RunMetadata
+    run_metadata = context.export_run_metadata()
+    context.disable_run_metadata()
+    step_stats = run_metadata.step_stats
+    self.assertGreater(len(step_stats.dev_stats), 0)
+    cpu_stats = step_stats.dev_stats[0]
+    self.assertEqual('/job:localhost/replica:0/task:0/device:CPU:0',
+                     cpu_stats.device)
+    self.assertEqual(len(cpu_stats.node_stats), 1)
+    self.assertEqual(cpu_stats.node_stats[0].node_name, 'Add')
+
   def testContextStackContainsEagerMode(self):
     # Eager execution has been enabled, and no other context
     # switch has occurred, so `context_stack` should contain
@@ -158,6 +172,15 @@ class TFETest(test_util.TensorFlowTestCase):
     # Invalid device
     with self.assertRaises(RuntimeError):
       x.gpu(context.context().num_gpus() + 1)
+
+  def testCopyScope(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    constant = constant_op.constant(1.0)
+    with ops.device('gpu:0'):
+      with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+        c = constant + 1.0
+    self.assertAllEqual(c, 2.0)
 
   def testNumpyForceCPU(self):
     if not context.context().num_gpus():

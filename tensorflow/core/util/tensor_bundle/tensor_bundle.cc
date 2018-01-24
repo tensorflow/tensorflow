@@ -51,6 +51,9 @@ const int kTensorBundleMinProducer = 0;
 const int kTensorBundleMinConsumer = 0;
 const int kTensorBundleVersion = 1;
 
+// Size of our input buffer for streaming reads
+static const int kBufferSize = 1024 * 1024;
+
 // Key to the special BundleHeaderProto entry.  Do not change this, as clients
 // can make the assumption that the header is always the first entry in the
 // bundle.
@@ -141,7 +144,11 @@ Status ReadVariantTensor(io::InputBuffer* buffered_file, Tensor* ret,
         buffered_file->ReadNBytes(string_length, &buffer[0], &bytes_read));
     *actual_crc32c = crc32c::Extend(*actual_crc32c, buffer.data(), bytes_read);
     VariantTensorDataProto proto;
-    proto.ParseFromString(buffer);
+    if (!proto.ParseFromString(buffer)) {
+      return errors::DataLoss("Unable to parse VariantTensorDataProto from ",
+                              "buffer of size ", string_length, ". ",
+                              "Bundle entry offset: ", offset, " size: ", size);
+    }
     Variant v = proto;
     if (!DecodeUnaryVariant(&v)) {
       return errors::Internal("Could not decode variant with type_name: \"",
@@ -342,10 +349,27 @@ table::Options TableBuilderOptions() {
   return o;
 }
 
+// Writes zeros to output buffer to align the next write to the requested
+// alignment. "size" is the current size of the buffer and is updated to the
+// new size.
+Status PadAlignment(FileOutputBuffer* out, int alignment, int64* size) {
+  int bytes_over = *size % alignment;
+  if (bytes_over == 0) {
+    return Status::OK();
+  }
+  int bytes_to_write = alignment - bytes_over;
+  Status status = out->Append(string(bytes_to_write, '\0'));
+  if (status.ok()) {
+    *size += bytes_to_write;
+  }
+  return status;
+}
+
 }  // namespace
 
-BundleWriter::BundleWriter(Env* env, StringPiece prefix)
+BundleWriter::BundleWriter(Env* env, StringPiece prefix, const Options& options)
     : env_(env),
+      options_(options),
       prefix_(prefix.ToString()),
       tmp_metadata_path_(strings::StrCat(MetaFilename(prefix_), ".tempstate",
                                          random::New64())),
@@ -399,6 +423,7 @@ Status BundleWriter::Add(StringPiece key, const Tensor& val) {
     entry->set_size(data_bytes_written);
     entry->set_crc32c(crc32c::Mask(crc32c));
     size_ += data_bytes_written;
+    status_ = PadAlignment(out_.get(), options_.data_alignment, &size_);
   }
   return status_;
 }
@@ -668,13 +693,6 @@ Status MergeBundles(Env* env, gtl::ArraySlice<string> prefixes,
   return status;
 }
 
-// TODO(b/64763924): Remove after Jan 1st 2018.
-bool GetLenientNames() {
-  const char* lenient_names_str = std::getenv("TF_SAVER_LENIENT_NAMES");
-  return lenient_names_str != nullptr &&
-         std::strcmp(lenient_names_str, "") != 0;
-}
-
 // Interface for reading a tensor bundle.
 
 BundleReader::BundleReader(Env* env, StringPiece prefix)
@@ -720,7 +738,6 @@ BundleReader::BundleReader(Env* env, StringPiece prefix)
   }
   status_ = CheckVersions(header.version(), kTensorBundleVersion,
                           kTensorBundleMinProducer, "Checkpoint", "checkpoint");
-  lenient_names_ = GetLenientNames();
 }
 
 BundleReader::~BundleReader() {
@@ -743,23 +760,6 @@ Status BundleReader::GetBundleEntryProto(StringPiece key,
   TF_CHECK_OK(status_);
   Seek(key);
   if (!iter_->Valid() || iter_->key() != key) {
-    if (lenient_names_ && !key.ends_with(":0")) {
-      // TODO(b/64763924): Remove after Jan 1st 2018.
-      // Try appending ":0" to the key.
-      const string key_with_colon_zero = key.ToString() + ":0";
-      Status status = GetBundleEntryProto(key_with_colon_zero, entry);
-      if (status.ok()) {
-        LOG(WARNING) << "Key " << key << " was not found; using key "
-                     << key_with_colon_zero << " instead. This lenient naming "
-                     << "behavior will be removed on Jan 1st 2018, so please "
-                     << "update your checkpoint file.";
-        return status;
-      } else if (status.code() != error::NOT_FOUND) {
-        return status;
-      }
-      LOG(INFO) << "Looked for both " << key << " and " << key_with_colon_zero
-                << " in checkpoint.";
-    }
     return errors::NotFound("Key ", key, " not found in checkpoint");
   }
 
@@ -810,8 +810,7 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
     std::unique_ptr<RandomAccessFile> file = nullptr;
     TF_RETURN_IF_ERROR(env_->NewRandomAccessFile(
         DataFilename(prefix_, entry.shard_id(), num_shards_), &file));
-    buffered_file =
-        new io::InputBuffer(file.release(), 1024 << 10 /* 1024KB buffer */);
+    buffered_file = new io::InputBuffer(file.release(), kBufferSize);
     // The InputBuffer and RandomAccessFile objects are both released in dtor.
     data_[entry.shard_id()] = buffered_file;
   }
@@ -819,11 +818,21 @@ Status BundleReader::GetValue(const BundleEntryProto& entry, Tensor* val) {
 
   TF_RETURN_IF_ERROR(buffered_file->Seek(entry.offset()));
   uint32 actual_crc32c = 0;
+
   if (DataTypeCanUseMemcpy(entry.dtype())) {
     char* backing_buffer = const_cast<char*>((ret->tensor_data().data()));
     size_t unused_bytes_read;
-    TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(entry.size(), backing_buffer,
-                                                 &unused_bytes_read));
+    if (entry.size() > kBufferSize) {
+      StringPiece sp;
+      TF_RETURN_IF_ERROR(buffered_file->file()->Read(
+          entry.offset(), entry.size(), &sp, backing_buffer));
+      if (sp.data() != backing_buffer) {
+        memmove(backing_buffer, sp.data(), entry.size());
+      }
+    } else {
+      TF_RETURN_IF_ERROR(buffered_file->ReadNBytes(entry.size(), backing_buffer,
+                                                   &unused_bytes_read));
+    }
     actual_crc32c = crc32c::Value(backing_buffer, entry.size());
   } else if (entry.dtype() == DT_VARIANT) {
     // Relies on io::InputBuffer's buffering, because we issue many neighboring

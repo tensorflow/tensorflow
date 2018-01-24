@@ -148,6 +148,9 @@ class Device : public DeviceBase {
     return BuildDeviceAttributes(name, device, memory_limit, locality, "");
   }
 
+  // Clears the resource manager associated with this device.
+  void ClearResourceMgr() { rmgr_->Clear(); }
+
  protected:
   void DeleteResourceMgr() {
     delete rmgr_;

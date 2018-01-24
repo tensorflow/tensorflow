@@ -68,6 +68,13 @@ class HloParser {
   bool ParseTupleLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
   bool ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
                             const Shape& shape);
+  bool ParseDenseLiteral(std::unique_ptr<Literal>* literal, const Shape& shape);
+  bool ParseSparseLiteral(std::unique_ptr<Literal>* literal,
+                          const Shape& shape);
+  template <typename LiteralNativeT>
+  bool ParseSparseLiteralHelper(std::unique_ptr<Literal>* literal,
+                                const Shape& shape);
+
   // Sets the sub-value of literal at the given index to the given value. The
   // literal's shape must have the default layout.
   bool SetValueInLiteral(int64 value, int64 linear_index, Literal* literal);
@@ -924,7 +931,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
-          shape, operands[0], config ? *config : ""));
+          operands[0]->shape(), operands[0], config ? *config : ""));
       break;
     }
     case HloOpcode::kRng: {
@@ -1324,7 +1331,7 @@ bool HloParser::SetValueInLiteralHelper(ParsedElemT value, int64 linear_index,
         PrimitiveType_Name(literal->shape().element_type())));
   }
 
-  literal->GetMutableArraySlice<LiteralNativeT>().at(linear_index) =
+  literal->data<LiteralNativeT>().at(linear_index) =
       static_cast<LiteralNativeT>(value);
   return true;
 }
@@ -1391,9 +1398,19 @@ bool HloParser::ParseTupleLiteral(std::unique_ptr<Literal>* literal,
 // non_tuple
 //   ::= rank01
 //   ::= rank2345
-// rank2345 ::= shape nested_array
+// rank2345 ::= shape sparse_or_nested_array
 bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
                                      const Shape& shape) {
+  if (LayoutUtil::IsSparseArray(shape)) {
+    return ParseSparseLiteral(literal, shape);
+  }
+
+  CHECK(LayoutUtil::IsDenseArray(shape));
+  return ParseDenseLiteral(literal, shape);
+}
+
+bool HloParser::ParseDenseLiteral(std::unique_ptr<Literal>* literal,
+                                  const Shape& shape) {
   const int64 rank = ShapeUtil::Rank(shape);
   if (rank > 1 && !EatShapeAndCheckCompatible(shape)) {
     return false;
@@ -1515,7 +1532,7 @@ bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
             return false;
           }
         } else {
-          return TokenError(StrCat("unsupported premitive type ",
+          return TokenError(StrCat("unsupported primitive type ",
                                    PrimitiveType_Name(shape.element_type())));
         }
         break;
@@ -1524,6 +1541,142 @@ bool HloParser::ParseNonTupleLiteral(std::unique_ptr<Literal>* literal,
   } while (nest_level > 0);
 
   *literal = (*literal)->Relayout(shape.layout());
+  return true;
+}
+
+bool HloParser::ParseSparseLiteral(std::unique_ptr<Literal>* literal,
+                                   const Shape& shape) {
+  if (!EatShapeAndCheckCompatible(shape)) {
+    return false;
+  }
+
+  switch (shape.element_type()) {
+    case PRED:
+      return ParseSparseLiteralHelper<uint8>(literal, shape);
+    case S8:
+      return ParseSparseLiteralHelper<int8>(literal, shape);
+    case S16:
+      return ParseSparseLiteralHelper<int16>(literal, shape);
+    case S32:
+      return ParseSparseLiteralHelper<int32>(literal, shape);
+    case S64:
+      return ParseSparseLiteralHelper<int64>(literal, shape);
+    case U8:
+      return ParseSparseLiteralHelper<uint8>(literal, shape);
+    case U16:
+      return ParseSparseLiteralHelper<uint16>(literal, shape);
+    case U32:
+      return ParseSparseLiteralHelper<uint32>(literal, shape);
+    case U64:
+      return ParseSparseLiteralHelper<uint64>(literal, shape);
+    case F16:
+      return ParseSparseLiteralHelper<half>(literal, shape);
+    case F32:
+      return ParseSparseLiteralHelper<float>(literal, shape);
+    case BF16:
+      return ParseSparseLiteralHelper<bfloat16>(literal, shape);
+    case F64:
+      return ParseSparseLiteralHelper<double>(literal, shape);
+    default:
+      return Error(lexer_.GetLoc(),
+                   StrCat("invalid primitive type for sparse literal: ",
+                          PrimitiveType_Name(shape.element_type())));
+  }
+}
+
+template <typename LiteralNativeT>
+bool HloParser::ParseSparseLiteralHelper(std::unique_ptr<Literal>* literal,
+                                         const Shape& shape) {
+  std::vector<int64> index;
+
+  int64 rank = ShapeUtil::Rank(shape);
+
+  *literal = MakeUnique<Literal>(shape);
+
+  if (!ParseToken(TokKind::kLbrace,
+                  "expects '{' at the beginning of a sparse literal")) {
+    return false;
+  }
+
+  for (;;) {
+    if (lexer_.GetKind() == TokKind::kRbrace) {
+      lexer_.Lex();
+      break;
+    }
+
+    LocTy index_loc = lexer_.GetLoc();
+    index.clear();
+    if (lexer_.GetKind() == TokKind::kInt) {
+      int64 single_index = lexer_.GetInt64Val();
+      lexer_.Lex();
+      if (rank != 1) {
+        return Error(
+            index_loc,
+            StrCat("invalid single-dimensional index for shape with rank ",
+                   rank, ": ", single_index));
+      }
+      index.push_back(single_index);
+    } else {
+      if (!ParseInt64List(TokKind::kLsquare, TokKind::kRsquare, TokKind::kComma,
+                          &index)) {
+        return false;
+      }
+      if (index.size() != rank) {
+        return Error(
+            index_loc,
+            StrCat("invalid multi-dimension index for shape with rank ", rank,
+                   ": [", tensorflow::str_util::Join(index, ", "), "]"));
+      }
+    }
+    if (!ParseToken(TokKind::kColon,
+                    "expects ':' after after the sparse array index and before "
+                    "the sparse array value")) {
+      return false;
+    }
+    LocTy value_loc = lexer_.GetLoc();
+    LiteralNativeT value;
+    if (lexer_.GetKind() == TokKind::kw_true ||
+        lexer_.GetKind() == TokKind::kw_false) {
+      value = static_cast<LiteralNativeT>(lexer_.GetKind() == TokKind::kw_true);
+      lexer_.Lex();
+    } else if (primitive_util::IsIntegralType(shape.element_type())) {
+      int64 value_s64;
+      if (!ParseInt64(&value_s64)) {
+        return Error(value_loc,
+                     StrCat("expects integer for primitive type: ",
+                            PrimitiveType_Name(shape.element_type())));
+      }
+      value = static_cast<LiteralNativeT>(value_s64);
+    } else if (primitive_util::IsFloatingPointType(shape.element_type())) {
+      double value_f64;
+      if (!ParseDouble(&value_f64)) {
+        return Error(value_loc,
+                     StrCat("expects floating point value for primitive type: ",
+                            PrimitiveType_Name(shape.element_type())));
+      }
+      value = static_cast<LiteralNativeT>(value_f64);
+    } else {
+      LOG(FATAL) << "Unexpected element type: "
+                 << PrimitiveType_Name(shape.element_type());
+    }
+    if (lexer_.GetKind() != TokKind::kRbrace &&
+        !ParseToken(TokKind::kComma,
+                    "expects ',' separator between sparse array elements")) {
+      return false;
+    }
+
+    if ((*literal)->sparse_element_count() + 1 ==
+        LayoutUtil::MaxSparseElements(shape.layout())) {
+      return Error(
+          lexer_.GetLoc(),
+          StrCat("number of sparse elements exceeds maximum for layout: ",
+                 ShapeUtil::HumanStringWithLayout(shape)));
+    }
+
+    (*literal)->AppendSparseElement(index, value);
+  }
+
+  (*literal)->SortSparseElements();
   return true;
 }
 
@@ -1851,7 +2004,7 @@ bool HloParser::ParseWindow(Window* window) {
       if (field_name == "rhs_reversal") {
         return ParseDxD("rhs_reversal", &rhs_reversal);
       }
-      return Error(loc, StrCat("unexpected attribute name: ", field_name));
+      return Error(attr_loc, StrCat("unexpected attribute name: ", field_name));
     }();
     if (!ok) {
       return false;

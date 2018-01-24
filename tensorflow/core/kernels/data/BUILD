@@ -64,6 +64,7 @@ cc_library(
     deps = [
         ":captured_function",
         ":dataset",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -203,6 +204,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 
@@ -476,6 +478,7 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:ops_util",
     ],
 )

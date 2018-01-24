@@ -261,7 +261,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     parent_->evaluated_[broadcast] =
         Literal::CreateFromShape(broadcast->shape());
     auto output = parent_->evaluated_[broadcast].get();
-    auto operand_to_broadcast =
+    const Literal& operand_to_broadcast =
         parent_->GetEvaluatedLiteralFor(broadcast->operand(0));
     std::vector<int64> broadcast_indices(
         ShapeUtil::Rank(broadcast->operand(0)->shape()), 0);
@@ -836,7 +836,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         << " but is inferred to be: "
         << ShapeUtil::HumanString(inferred_return_shape);
 
-    auto operand_literal = parent_->GetEvaluatedLiteralFor(operand);
+    const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
     auto result = Literal::CreateFromShape(result_shape);
 
     TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
@@ -945,14 +945,21 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                 out_index[output_spatial_dim] * window_dim.stride() -
                 window_dim.padding_low() +
                 rhs_spatial_index[ki] * window_dim.window_dilation();
-            // Skip if the lhs (input) index is to be dilated.
-            if (undilated_index % window_dim.base_dilation() != 0) {
+            // Skip if the lhs (input) index is to be dilated.  As an
+            // optimization, skip this mod if there's no dilation.
+            if (window_dim.base_dilation() > 1 &&
+                undilated_index % window_dim.base_dilation() != 0) {
               goto cnt;
             }
 
-            // Calculate the actual lhs (input) index after dilation.
-            lhs_index[input_spatial_dim] =
-                undilated_index / window_dim.base_dilation();
+            // Calculate the actual lhs (input) index after dilation.  As an
+            // optimization, skip this integer divide if there's no dilation.
+            if (window_dim.base_dilation() > 1) {
+              lhs_index[input_spatial_dim] =
+                  undilated_index / window_dim.base_dilation();
+            } else {
+              lhs_index[input_spatial_dim] = undilated_index;
+            }
 
             // Skip if input index is not in bound.
             if (!(lhs_index[input_spatial_dim] >= 0 &&
@@ -1079,7 +1086,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           return scalar;
         }));
 
-    auto evaluated_operand = parent_->GetEvaluatedLiteralFor(pad->operand(0));
+    const Literal& evaluated_operand =
+        parent_->GetEvaluatedLiteralFor(pad->operand(0));
 
     std::vector<int64> input_index(ShapeUtil::Rank(evaluated_operand.shape()),
                                    0);
@@ -1461,8 +1469,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           std::fill(operand_index.begin(), operand_index.end(), 0);
 
           do {
-            // Set curr_val to 0 if out of bound (padded).
-            ReturnT curr_val = static_cast<ReturnT>(0);
             bool out_of_bound = false;
             for (int i = 0; i < operand_index.size(); ++i) {
               operand_index[i] =
@@ -1475,23 +1481,25 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
               }
             }
             if (!out_of_bound) {
-              curr_val = operand_literal.Get<ReturnT>(operand_index);
+              auto curr_val = operand_literal.Get<ReturnT>(operand_index);
+
+              // Evaluate computation with specified literal operands.
+              const auto curr_val_literal =
+                  Literal::CreateR0<ReturnT>(curr_val);
+              const auto result_val_literal =
+                  Literal::CreateR0<ReturnT>(result_val);
+              const std::vector<const Literal*> args = {
+                  curr_val_literal.get(), result_val_literal.get()};
+              std::unique_ptr<Literal> computed_result =
+                  embedded_evaluator.Evaluate<const Literal*>(*function, args)
+                      .ConsumeValueOrDie();
+
+              // Clear visit states so that the we can use the evaluate again on
+              // the same computation.
+              embedded_evaluator.ResetVisitStates();
+
+              result_val = computed_result->Get<ReturnT>({});
             }
-            // Evaluate computation with specified literal operands.
-            const auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
-            const auto result_val_literal =
-                Literal::CreateR0<ReturnT>(result_val);
-            const std::vector<const Literal*> args = {curr_val_literal.get(),
-                                                      result_val_literal.get()};
-            std::unique_ptr<Literal> computed_result =
-                embedded_evaluator.Evaluate<const Literal*>(*function, args)
-                    .ConsumeValueOrDie();
-
-            // Clear visit states so that the we can use the evaluate again on
-            // the same computation.
-            embedded_evaluator.ResetVisitStates();
-
-            result_val = computed_result->Get<ReturnT>({});
           } while (IndexUtil::BumpIndices(window_shape, &window_index));
 
           return result_val;
@@ -1514,7 +1522,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         << ShapeUtil::HumanString(inferred_return_shape);
 
     const int64 rank = ShapeUtil::Rank(operand->shape());
-    auto operand_literal = parent_->GetEvaluatedLiteralFor(operand);
+    const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
     auto func = [&](tensorflow::gtl::ArraySlice<int64> out_index) {
       DimensionVector operand_index(rank);
       for (int64 i = 0; i < rank; ++i) {
@@ -1580,8 +1588,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   StatusOr<std::unique_ptr<Literal>> DynamicSlice(
       const Literal& operand_literal, const Literal& start_indices_literal,
       const Shape& result_shape) {
-    const auto& start_indices_typed =
-        start_indices_literal.GetArraySlice<IndexT>();
+    auto start_indices_typed = start_indices_literal.data<IndexT>();
     std::vector<int64> start(start_indices_typed.begin(),
                              start_indices_typed.end());
 
@@ -1609,12 +1616,11 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
   StatusOr<std::unique_ptr<Literal>> DynamicUpdateSlice(
       const Literal& operand_literal, const Literal& update_literal,
       const Literal& start_indices_literal) {
-    const auto& start_indices_typed =
-        start_indices_literal.GetArraySlice<IndexT>();
+    auto start_indices_typed = start_indices_literal.data<IndexT>();
     const std::vector<int64> start(start_indices_typed.begin(),
                                    start_indices_typed.end());
 
-    auto result = MakeUnique<Literal>(operand_literal);
+    auto result = operand_literal.CloneToUnique();
     std::vector<int64> result_index(ShapeUtil::Rank(result->shape()), 0);
 
     auto func = [&](const std::vector<int64>& update_index) {
@@ -1772,8 +1778,8 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
 
   TF_RETURN_IF_ERROR(module.entry_computation()->Accept(this));
 
-  return MakeUnique<Literal>(
-      GetEvaluatedLiteralFor(module.entry_computation()->root_instruction()));
+  return GetEvaluatedLiteralFor(module.entry_computation()->root_instruction())
+      .CloneToUnique();
 }
 
 template <typename LiteralPtr>
@@ -1790,8 +1796,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
   }
 
   TF_RETURN_IF_ERROR(computation.Accept(this));
-  return MakeUnique<Literal>(
-      GetEvaluatedLiteralFor(computation.root_instruction()));
+  return GetEvaluatedLiteralFor(computation.root_instruction()).CloneToUnique();
 }
 
 template <typename LiteralPtr>
@@ -1816,14 +1821,14 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
               << input_literal->ToString();
       TF_RET_CHECK(ShapeUtil::Equal(operand->shape(), input_literal->shape()));
 
-      evaluated_[operand] = MakeUnique<Literal>(*input_literal);
+      evaluated_[operand] = input_literal->CloneToUnique();
     }
   }
 
   TF_RETURN_IF_ERROR(Preprocess(instruction));
   TF_RETURN_IF_ERROR(instruction->Visit(this));
   TF_RETURN_IF_ERROR(Postprocess(instruction));
-  return MakeUnique<Literal>(GetEvaluatedLiteralFor(instruction));
+  return GetEvaluatedLiteralFor(instruction).CloneToUnique();
 }
 
 StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
@@ -1844,7 +1849,7 @@ StatusOr<std::unique_ptr<Literal>> HloEvaluator::Evaluate(
   TF_RETURN_IF_ERROR(Preprocess(instruction));
   TF_RETURN_IF_ERROR(instruction->Visit(this));
   TF_RETURN_IF_ERROR(Postprocess(instruction));
-  return MakeUnique<Literal>(GetEvaluatedLiteralFor(instruction));
+  return GetEvaluatedLiteralFor(instruction).CloneToUnique();
 }
 
 std::unique_ptr<Literal> HloEvaluator::TryEvaluate(
@@ -1901,7 +1906,7 @@ Status HloEvaluator::HandleParameter(HloInstruction* parameter) {
       << ", but input literal shape is: "
       << ShapeUtil::HumanString(input_literal->shape());
 
-  evaluated_[parameter] = MakeUnique<Literal>(*input_literal);
+  evaluated_[parameter] = input_literal->CloneToUnique();
   return Status::OK();
 }
 
@@ -1952,7 +1957,7 @@ Status HloEvaluator::HandleConcatenate(HloInstruction* concatenate) {
 
   for (auto operand : operands) {
     const Shape& operand_shape = operand->shape();
-    TF_RETURN_IF_ERROR(result_literal->Copy(
+    TF_RETURN_IF_ERROR(result_literal->CopySliceFrom(
         GetEvaluatedLiteralFor(operand), source_indices, dest_indices,
         AsInt64Slice(operand_shape.dimensions())));
     dest_indices[concat_dim] +=
@@ -2110,16 +2115,17 @@ Status HloEvaluator::HandleGetTupleElement(HloInstruction* get_tuple_element) {
 
   const Literal& operand_tuple_literal = GetEvaluatedLiteralFor(operand);
 
-  evaluated_[get_tuple_element] =
-      MakeUnique<Literal>(operand_tuple_literal.tuple_literals(index));
-
-  return Status::OK();
+  evaluated_[get_tuple_element] = MakeUnique<Literal>(
+      ShapeUtil::GetTupleElementShape(operand->shape(), index));
+  return evaluated_[get_tuple_element]->CopyFrom(operand_tuple_literal,
+                                                 /*dest_shape_index=*/{},
+                                                 /*src_shape_index=*/{index});
 }
 
 Status HloEvaluator::HandleCopy(HloInstruction* copy) {
   TF_RET_CHECK(ShapeUtil::Compatible(copy->shape(), copy->operand(0)->shape()));
 
-  auto result = MakeUnique<Literal>(GetEvaluatedLiteralFor(copy->operand(0)));
+  auto result = GetEvaluatedLiteralFor(copy->operand(0)).CloneToUnique();
   evaluated_[copy] = std::move(result);
   return Status::OK();
 }

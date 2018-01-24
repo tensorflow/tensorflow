@@ -274,11 +274,19 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result);
 
 int AxesCount(AxesOrder axes_order);
 
+// Returns the permutation of the dimensions based on the input axes order and
+// output axes order.
+void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
+                     std::vector<int>* shuffle);
+
 void ShuffleDims(const Shape& input_shape, AxesOrder input_axes_order,
                  AxesOrder output_axes_order, Shape* output_shape);
 void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
                   AxesOrder output_axes_order, const Shape& output_shape,
                   const float* input_data, float* output_data);
+void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
+                  AxesOrder output_axes_order, const Shape& output_shape,
+                  const uint8* input_data, uint8* output_data);
 
 // Returns true if it may be OK for any graph transformation to ever discard
 // that array. The idea is that we can't ever discard arrays that are either

@@ -118,13 +118,36 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   std::iota(layout_indices.rbegin(), layout_indices.rend(), 0);
   xla::Layout layout = xla::LayoutUtil::MakeLayout(layout_indices);
 
+  xla::StatusOr<bool> is_constant = builder()->IsConstant(handle);
+  if (!is_constant.ok()) {
+    Status status = is_constant.status();
+    errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
+                            context_->op_kernel().type_string(),
+                            " operator as a compile-time constant.");
+    return status;
+  }
+
+  if (!is_constant.ValueOrDie()) {
+    return errors::InvalidArgument(
+        "Input ", index, " to ", context_->op_kernel().type_string(),
+        " operator must be a compile-time constant.\n"
+        "\n"
+        "XLA compilation requires that operator arguments that represent "
+        "shapes or dimensions be evaluated to concrete values at compile time. "
+        "This error means that a shape or dimension argument could not be "
+        "evaluated at compile time, usually because the value of the argument "
+        "depends on a parameter to the computation, on a variable, or on a "
+        "stateful operation such as a random number generator.");
+  }
+
   // Ask the XLA compiler to evaluate the data handle to a literal.
   xla::StatusOr<std::unique_ptr<xla::Literal>> computed =
       builder()->ComputeConstant(handle, &layout);
   if (!computed.ok()) {
-    return errors::InvalidArgument(
-        "Error evaluating ", context_->op_kernel().name(), " input ", index,
-        ": ", computed.status().error_message());
+    return errors::Internal("Error evaluating ", context_->op_kernel().name(),
+                            " input ", index,
+                            "as a compile-time constant.\nError: ",
+                            computed.status().error_message());
   }
   *constant_literal = std::move(*computed.ValueOrDie());
 
@@ -206,15 +229,15 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
   switch (literal.shape().element_type()) {
-    case xla::S32:
-      out->Clear();
-      *out->mutable_shape() = literal.shape();
-      out->mutable_shape()->set_element_type(xla::S64);
-      for (int32 x : literal.s32s()) {
-        out->add_s64s(x);
+    case xla::S32: {
+      *out = xla::Literal(
+          xla::ShapeUtil::ChangeElementType(literal.shape(), xla::S64));
+      auto src_data = literal.data<int32>();
+      for (int64 i = 0; i < src_data.size(); ++i) {
+        out->data<int64>()[i] = src_data[i];
       }
       return Status::OK();
-
+    }
     case xla::S64:
       *out = std::move(literal);
       return Status::OK();
@@ -389,9 +412,19 @@ XlaCompiler* XlaOpKernelContext::compiler() const {
   return XlaContext::Get(context_).compiler();
 }
 
-void XlaOpKernelContext::CtxFailure(Status s) { context_->CtxFailure(s); }
-void XlaOpKernelContext::CtxFailureWithWarning(Status s) {
+void XlaOpKernelContext::CtxFailure(const Status& s) {
+  context_->CtxFailure(s);
+}
+void XlaOpKernelContext::CtxFailureWithWarning(const Status& s) {
   context_->CtxFailureWithWarning(s);
+}
+void XlaOpKernelContext::CtxFailure(const char* file, int line,
+                                    const Status& s) {
+  context_->CtxFailure(file, line, s);
+}
+void XlaOpKernelContext::CtxFailureWithWarning(const char* file, int line,
+                                               const Status& s) {
+  context_->CtxFailureWithWarning(file, line, s);
 }
 
 const xla::Computation* XlaOpKernelContext::GetOrCreateMax(

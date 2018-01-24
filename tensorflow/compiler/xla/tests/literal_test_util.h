@@ -111,17 +111,18 @@ class LiteralTestUtil {
   static void ExpectR4EqualArray4D(const Array4D<NativeT>& expected,
                                    const Literal& actual);
 
-  // Returns whether the two tuples are equal.
-  static ::testing::AssertionResult EqualTuple(
-      const Literal& expected, const Literal& actual) TF_MUST_USE_RESULT;
-
-  // Expects that the values of the elements in the expected and actual tuples
-  // are equal. Tuples are matched recursively.
-  static void ExpectEqualTuple(const Literal& expected, const Literal& actual);
-
   // Asserts that the expected and actual literals are within the given error
   // bound for all elements. Also, asserts that the rank, dimensions sizes, and
-  // bounds are equivalent. Only supported for floating point values.
+  // bounds are equivalent.
+  //
+  // Tuples are matched recursively.  When comparing tensors of
+  // non-floating-point type, checks for exact equality, ignoring the ErroSpec.
+  //
+  // If the shape of the literals is neither a complex/floating-point tensor nor
+  // a tuple which contains a complex/floating-point tensor, Near() is
+  // equivalent to Equal().  We don't raise an error in this case, because we
+  // want to allow callers to call Near() even if they have no preconceptions
+  // about the shapes being compared.
   static ::testing::AssertionResult Near(
       const Literal& expected, const Literal& actual,
       const ErrorSpec& error) TF_MUST_USE_RESULT;
@@ -169,18 +170,6 @@ class LiteralTestUtil {
   static void ExpectR4NearArray4D(const Array4D<NativeT>& expected,
                                   const Literal& actual,
                                   const ErrorSpec& error);
-
-  // Returns whether the values of the elements in the expected and actual
-  // tuples are within the given error bound. Tuples are matched recursively.
-  // If the elements of the tuple are not floating-point types, the error spec
-  // is ignored and exact equality is checked.
-  static ::testing::AssertionResult NearTuple(
-      const Literal& expected, const Literal& actual,
-      const ErrorSpec& error) TF_MUST_USE_RESULT;
-
-  // Expects that the expected and actual values are near.
-  static void ExpectNearTuple(const Literal& expected, const Literal& actual,
-                              const ErrorSpec& error);
 
   // If the error spec is given, returns whether the expected and the actual are
   // within the error bound; otherwise, returns whether they are equal. Tuples

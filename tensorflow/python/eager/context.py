@@ -24,9 +24,12 @@ import copy
 import random
 import threading
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
+from tensorflow.python.util import compat
 from tensorflow.python.util import tf_contextlib
 
 GRAPH_MODE = 0
@@ -398,6 +401,54 @@ class Context(object):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
 
+  def enable_run_metadata(self):
+    """Enables tracing of op execution via RunMetadata.
+
+    To retrieve the accumulated metadata call context.export_run_metadata()
+    and to stop tracing call context.disable_run_metadata().
+    """
+    if not self._context_handle:
+      self._initialize_handle_and_devices()
+    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._context_handle)
+
+  @contextlib.contextmanager
+  def device_policy(self, policy):
+    old = pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
+        self._context_handle)
+    pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
+        self._handle, policy)
+    try:
+      yield
+    finally:
+      pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
+          self._handle, old)
+
+  def disable_run_metadata(self):
+    """Disables tracing of op execution via RunMetadata."""
+    if not self._context_handle:
+      return
+    pywrap_tensorflow.TFE_ContextDisableRunMetadata(self._context_handle)
+
+  def export_run_metadata(self):
+    """Returns a RunMetadata proto with accumulated information.
+
+    The returned protocol buffer contains information since the most recent call
+    to either enable_run_metadata or export_run_metadata.
+
+    Returns:
+      A RunMetadata protocol buffer. Or None if not enabled.
+    """
+    if not self._context_handle:
+      return None
+    with c_api_util.tf_buffer() as buffer_:
+      with errors.raise_exception_on_not_ok_status() as status:
+        pywrap_tensorflow.TFE_ContextExportRunMetadata(
+            self._context_handle, buffer_, status)
+      proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
+    run_metadata = config_pb2.RunMetadata()
+    run_metadata.ParseFromString(compat.as_bytes(proto_data))
+    return run_metadata
+
 _context = None
 _context_lock = threading.Lock()
 
@@ -516,3 +567,29 @@ def num_gpus():
     The number of available GPU devices.
   """
   return context().num_gpus()
+
+
+def enable_run_metadata():
+  """Enables tracing of op execution via RunMetadata.
+
+  To retrieve the accumulated metadata call context.export_run_metadata()
+  and to stop tracing call context.disable_run_metadata().
+  """
+  context().enable_run_metadata()
+
+
+def disable_run_metadata():
+  """Disables tracing of op execution via RunMetadata."""
+  context().disable_run_metadata()
+
+
+def export_run_metadata():
+  """Returns a RunMetadata proto with accumulated information.
+
+  The returned protocol buffer contains information since the most recent call
+  to either enable_run_metadata or export_run_metadata.
+
+  Returns:
+    A RunMetadata protocol buffer.
+  """
+  return context().export_run_metadata()

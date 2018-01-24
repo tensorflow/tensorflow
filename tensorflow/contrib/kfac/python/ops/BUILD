@@ -199,6 +199,7 @@ py_library(
     deps = [
         "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",

@@ -36,6 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 def encode_resource_handle(resource_handle):
@@ -141,6 +142,7 @@ class TensorHandle(object):
     return feeder.op.name + ";" + TensorHandle._get_reader_key(handle)
 
 
+@tf_export("get_session_handle")
 def get_session_handle(data, name=None):
   """Return the handle of `data`.
 
@@ -183,6 +185,7 @@ def get_session_handle(data, name=None):
     return gen_data_flow_ops._get_session_handle(data, name=name)  # pylint: disable=protected-access
 
 
+@tf_export("get_session_tensor")
 def get_session_tensor(handle, dtype, name=None):
   """Get the tensor of type `dtype` by feeding a tensor handle.
 
@@ -223,6 +226,7 @@ def get_session_tensor(handle, dtype, name=None):
   return (holder, tensor)
 
 
+@tf_export("delete_session_tensor")
 def delete_session_tensor(handle, name=None):
   """Delete the tensor for the given tensor handle.
 

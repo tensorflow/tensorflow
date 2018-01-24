@@ -1,3 +1,5 @@
+# python_sanity_test.py will complain about invalid or missing entries
+# problematic entries can be commented for temporary whitelisting
 tensorflow
 tensorflow/core
 tensorflow/core/example
@@ -109,7 +111,6 @@ tensorflow/contrib/android/java/org/tensorflow/contrib
 tensorflow/contrib/android/java/org/tensorflow/contrib/android
 tensorflow/contrib/android/jni
 tensorflow/contrib/batching
-tensorflow/contrib/batching/kernels
 tensorflow/contrib/batching/python
 tensorflow/contrib/batching/python/ops
 tensorflow/contrib/bayesflow
@@ -130,6 +131,11 @@ tensorflow/contrib/cloud/python/ops
 tensorflow/contrib/cluster_resolver
 tensorflow/contrib/cluster_resolver/python
 tensorflow/contrib/cluster_resolver/python/training
+tensorflow/contrib/coder
+tensorflow/contrib/coder/kernels
+tensorflow/contrib/coder/ops
+tensorflow/contrib/coder/python
+tensorflow/contrib/coder/python/ops
 tensorflow/contrib/compiler
 tensorflow/contrib/copy_graph
 tensorflow/contrib/copy_graph/python
@@ -303,6 +309,8 @@ tensorflow/contrib/metrics
 tensorflow/contrib/metrics/python
 tensorflow/contrib/metrics/python/metrics
 tensorflow/contrib/metrics/python/ops
+tensorflow/contrib/mpi_collectives/python
+tensorflow/contrib/mpi_collectives/python/ops
 tensorflow/contrib/model_pruning
 tensorflow/contrib/model_pruning/examples
 tensorflow/contrib/model_pruning/examples/cifar10
@@ -339,6 +347,8 @@ tensorflow/contrib/quantize
 tensorflow/contrib/quantize/python
 tensorflow/contrib/receptive_field
 tensorflow/contrib/receptive_field/python
+tensorflow/contrib/receptive_field/python/util
+tensorflow/contrib/receptive_field/python/util/examples
 tensorflow/contrib/reduce_slice_ops
 tensorflow/contrib/reduce_slice_ops/kernels
 tensorflow/contrib/reduce_slice_ops/ops

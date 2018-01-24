@@ -1868,6 +1868,61 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
                output_data, output_dims);
 }
 
+// TODO(aselle): This is not actually optimized yet.
+inline void Div(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[Offset(input1_dims, c, x, y, b)] /
+                      input2_data[Offset(input2_dims, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
+}
+
+// TODO(aselle): This is not actually optimized yet.
+inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[Offset(input1_dims, c, x, y, b)] -
+                      input2_data[Offset(input2_dims, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
+}
 template <FusedActivationFunctionType Ac, typename Scalar>
 void Concatenation(int concat_dim, const Scalar* const* input_data,
                    const Dims<4>* const* input_dims, int inputs_count,

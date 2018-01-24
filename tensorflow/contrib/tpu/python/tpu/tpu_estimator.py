@@ -36,6 +36,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_feed
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
 
+from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
 
 from tensorflow.python.estimator import estimator as estimator_lib
@@ -53,6 +54,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
+from tensorflow.python.training import basic_session_run_hooks
 from tensorflow.python.training import evaluation
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
@@ -90,7 +92,8 @@ def _create_global_step(graph):
 
 def _create_or_get_iterations_per_loop():
   graph = ops.get_default_graph()
-  iter_vars = graph.get_collection(_TPU_ESTIMATOR)
+  collection_name = '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR)
+  iter_vars = graph.get_collection(collection_name)
   if len(iter_vars) == 1:
     return iter_vars[0]
   elif len(iter_vars) > 1:
@@ -105,7 +108,7 @@ def _create_or_get_iterations_per_loop():
           shape=[],
           dtype=dtypes.int32,
           trainable=False,
-          collections=[_TPU_ESTIMATOR],
+          collections=[collection_name, ops.GraphKeys.LOCAL_VARIABLES],
           use_resource=True)
 
 
@@ -215,6 +218,15 @@ class _TPUContext(object):
     return ((not self._use_tpu) or mode == model_fn_lib.ModeKeys.PREDICT or
             (mode == model_fn_lib.ModeKeys.EVAL and
              self._eval_batch_size is None))
+
+  @property
+  def global_batch_size(self):
+    mode = self._assert_mode()
+    if mode == model_fn_lib.ModeKeys.EVAL and self._eval_batch_size is None:
+      raise RuntimeError('Internal error, EVAL on TPU is not enabled, but '
+                         '`global_batch_size` is called.')
+    return (self._train_batch_size
+            if mode == model_fn_lib.ModeKeys.TRAIN else self._eval_batch_size)
 
   @property
   def batch_size_for_input_fn(self):
@@ -376,7 +388,7 @@ class TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
   `metric_fn` runs on CPU to generate metrics and `tensors` represents the
   `Tensor`s transferred from TPU system to CPU host and passed to `metric_fn`.
   To be precise, TPU evaluation expects a slightly different signature from the
-  ${tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
+  @{tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
   dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`.
   The `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. The
   `tensors` usually specify the model logits, which are transferred back from
@@ -1317,6 +1329,31 @@ class _EvalMetrics(object):
     return eval_metric_ops, eval_update_ops
 
 
+class ExamplesPerSecondHook(basic_session_run_hooks.StepCounterHook):
+  """Count examples during runtime."""
+
+  def __init__(self,
+               batch_size,
+               every_n_steps=100,
+               every_n_secs=None,
+               output_dir=None,
+               summary_writer=None):
+    self._batch_size = batch_size
+    super(ExamplesPerSecondHook, self).__init__(
+        every_n_steps=every_n_steps,
+        every_n_secs=every_n_secs,
+        output_dir=output_dir,
+        summary_writer=summary_writer)
+
+  def _log_and_record(self, elapsed_steps, elapsed_time, global_step):
+    examples_per_sec = self._batch_size * elapsed_steps / elapsed_time
+    if self._summary_writer is not None:
+      example_summary = Summary(value=[Summary.Value(
+          tag='examples_sec', simple_value=examples_per_sec)])
+      self._summary_writer.add_summary(example_summary, global_step)
+    logging.info('examples/sec: %g', examples_per_sec)
+
+
 class TPUEstimator(estimator_lib.Estimator):
   """Estimator with TPU support.
 
@@ -1534,8 +1571,8 @@ class TPUEstimator(estimator_lib.Estimator):
     if max_steps is not None:
       util_lib.check_positive_integer(max_steps, 'Train max_steps')
 
-    return [_TPUStopAtStepHook(self._iterations_per_training_loop,
-                               steps, max_steps)]
+    return [_TPUStopAtStepHook(self._iterations_per_training_loop, steps,
+                               max_steps)]
 
   def _convert_eval_steps_to_hooks(self, steps):
     with self._ctx.with_mode(model_fn_lib.ModeKeys.EVAL) as ctx:
@@ -1547,11 +1584,11 @@ class TPUEstimator(estimator_lib.Estimator):
 
     util_lib.check_positive_integer(steps, 'Eval steps')
 
-    hooks = []
-    hooks.append(evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
-        num_evals=steps))
-    hooks.append(_SetEvalIterationsHook(steps))
-    return hooks
+    return [
+        evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
+            num_evals=steps),
+        _SetEvalIterationsHook(steps)
+    ]
 
   def _call_input_fn(self, input_fn, mode):
     """Calls the input function.
@@ -1632,9 +1669,12 @@ class TPUEstimator(estimator_lib.Estimator):
               _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn))
           hooks = [
               TPUInfeedOutfeedSessionHook(ctx, enqueue_ops),
+              ExamplesPerSecondHook(ctx.global_batch_size),
               training.LoggingTensorHook(
-                  {'loss': array_ops.identity(loss),
-                   'step': training.get_global_step()},
+                  {
+                      'loss': array_ops.identity(loss),
+                      'step': training.get_global_step()
+                  },
                   every_n_secs=30)
           ]
           summary.scalar(model_fn_lib.LOSS_METRIC_KEY, loss)
@@ -1839,5 +1879,3 @@ class _CapturingContext(control_flow_ops.ControlFlowContext):
 
   def __exit__(self, _, __, ___):  # pylint: disable=invalid-name
     self._g._set_control_flow_context(self._old)  # pylint: disable=protected-access
-
-

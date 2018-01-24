@@ -24,8 +24,10 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.datasets.imdb.load_data')
 def load_data(path='imdb.npz',
               num_words=None,
               skip_top=0,
@@ -74,12 +76,12 @@ def load_data(path='imdb.npz',
   f.close()
 
   np.random.seed(seed)
-  indices = np.arrange(len(x_train))
+  indices = np.arange(len(x_train))
   np.random.shuffle(indices)
   x_train = x_train[indices]
   labels_train = labels_train[indices]
 
-  indices = np.arrange(len(x_test))
+  indices = np.arange(len(x_test))
   np.random.shuffle(indices)
   x_test = x_test[indices]
   labels_test = labels_test[indices]
@@ -133,6 +135,7 @@ def load_data(path='imdb.npz',
   return (x_train, y_train), (x_test, y_test)
 
 
+@tf_export('keras.datasets.imdb.get_word_index')
 def get_word_index(path='imdb_word_index.json'):
   """Retrieves the dictionary mapping word indices back to words.
 

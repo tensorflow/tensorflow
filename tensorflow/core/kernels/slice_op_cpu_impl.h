@@ -30,7 +30,6 @@ using CpuDevice = Eigen::ThreadPoolDevice;
   template struct functor::Slice<CpuDevice, T, CPU_PROVIDED_IXDIM>;
 
 TF_CALL_ALL_TYPES(DEFINE_CPU_KERNELS);
-DEFINE_CPU_KERNELS(bfloat16);
 
 #undef DEFINE_CPU_KERNELS
 

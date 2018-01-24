@@ -31,6 +31,7 @@ limitations under the License.
 #include "llvm/IR/Function.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/Verifier.h"
 #include "llvm/Object/ObjectFile.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/TargetRegistry.h"
@@ -50,6 +51,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/conv_canonicalization.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_executable.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_hlo_support_checker.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_instruction_fusion.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_layout_assignment.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_options.h"
@@ -85,6 +87,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -164,32 +167,6 @@ namespace {
 // first module is compiled.
 std::once_flag llvm_command_line_options_initialized;
 
-void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
-  auto options = config.debug_options().xla_backend_extra_options();
-  if (!options.empty()) {
-    std::vector<string> fake_argv_storage;
-    fake_argv_storage.push_back("");
-    for (const auto& it : options) {
-      // Skip options the XLA backend itself consumes.
-      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
-        if (it.second.empty()) {
-          fake_argv_storage.push_back(it.first);
-        } else {
-          fake_argv_storage.push_back(it.first + "=" + it.second);
-        }
-      }
-    }
-
-    VLOG(2) << "Passing argv to LLVM:";
-    std::vector<const char*> fake_argv;
-    for (const auto& s : fake_argv_storage) {
-      fake_argv.push_back(s.c_str());
-      VLOG(2) << s;
-    }
-    llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
-  }
-}
-
 // This visitor records which HLO instructions should have profiling information
 // recorded.
 class CollectProfileCandidates : public DfsHloVisitorWithDefault {
@@ -257,7 +234,8 @@ class CollectProfileCandidates : public DfsHloVisitorWithDefault {
 Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   // Optimization pipeline.
   HloPassPipeline pipeline("CPU");
-  pipeline.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
+  pipeline.AddInvariantChecker<HloVerifier>();
+  pipeline.AddPass<CpuHloSupportChecker>();
 
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
@@ -275,7 +253,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
   {
     auto& pass =
         pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
-    pass.AddInvariantChecker<HloVerifier>(ShapeSizeBytesFunction());
+    pass.AddInvariantChecker<HloVerifier>();
 
     pass.AddPass<BatchNormExpander>(
         /*rewrite_training_op=*/true,
@@ -291,6 +269,7 @@ Status CpuCompiler::RunHloPasses(HloModule* module, bool is_aot_compile) {
     // elimination has to come after that pass.
     pipeline.AddPass<ZeroSizedHloElimination>();
 
+    pass.AddPass<WhileLoopInvariantCodeMotion>();
     pass.AddPass<TupleSimplifier>();
     pass.AddPass<WhileLoopSimplifier>();
     pass.AddPass<HloDCE>();
@@ -439,6 +418,21 @@ Status InitializeModuleHooks(
   return Status::OK();
 }
 
+Status VerifyLlvmModule(const llvm::Module& llvm_module) {
+  XLA_SCOPED_LOGGING_TIMER("CpuCompiler - Running LLVM verifier");
+
+  std::string err;
+  llvm::raw_string_ostream err_stream(err);
+
+  // verifyModule() returns true if the module is broken.
+  TF_RET_CHECK(!llvm::verifyModule(llvm_module, &err_stream))
+      << "Invalid LLVM IR before optimizations:\n"
+      << err_stream.str()
+      << "\nThis probably indicates a bug in the HLO -> LLVM IR lowering. "
+         "Rerun with --xla_dump_ir_to to get the IR. ";
+  return Status::OK();
+}
+
 }  // namespace
 
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
@@ -464,7 +458,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   VLOG(1) << "Compiling: " << module->name();
   TF_RET_CHECK(stream_exec != nullptr);
   std::call_once(llvm_command_line_options_initialized,
-                 &InitializeLLVMCommandLineOptions, module->config());
+                 &llvm_ir::InitializeLLVMCommandLineOptions, module->config());
 
   ModuleHook pre_optimization_ir_hook;
   ModuleHook post_optimization_ir_hook;
@@ -489,6 +483,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
   HloComputation* entry_computation = module->entry_computation();
   std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
+  std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
   std::unique_ptr<HloProfilePrinter> hlo_profile_printer;
   if (module->config().hlo_profiling_enabled()) {
@@ -512,6 +507,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     TF_RETURN_IF_ERROR(entry_computation->Accept(&cost_analysis));
     hlo_profile_printer =
         CreateHloProfilePrinter(*hlo_profile_index_map, cost_analysis);
+    computation_to_profile_idx =
+        hlo_profile_index_map->computation_to_profile_idx();
   }
 
   std::unique_ptr<Executable> cpu_executable;
@@ -522,18 +519,6 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       module->config().debug_options().xla_embed_ir_in_executable();
   const string xla_dump_hlo_proto_to =
       module->config().debug_options().xla_dump_hlo_proto_to();
-
-  // We always profile the entry computation as a whole, even if hlo profiling
-  // is disabled.  When hlo profiling is diabled, the executor passes in a
-  // profile counter array of just one element, which corresponds to the whole
-  // computation.
-  std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
-  if (hlo_profile_index_map) {
-    computation_to_profile_idx =
-        hlo_profile_index_map->computation_to_profile_idx();
-  } else {
-    computation_to_profile_idx[entry_computation] = 0;
-  }
 
   if (options::CpuParallelBackendRequested(module->config())) {
     VLOG(1) << "Using parallel cpu backend";
@@ -572,7 +557,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
       if (instruction->opcode() == HloOpcode::kConstant) {
         // Copy the constant out of the ProtocolBuffer so that we can give it a
         // higher alignment.
-        const void* data = instruction->literal().InternalData();
+        const void* data = instruction->literal().untyped_data();
         int64 size = CpuExecutable::ShapeSizeBytes(instruction->shape());
         auto iter = aligned_constants.emplace(
             instruction, xla::MakeUnique<unsigned char[]>(size));
@@ -627,6 +612,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     if (embed_ir_in_executable) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
     }
+    TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
     // JIT compile the LLVM IR module to in-memory machine code.
     jit->AddModule(std::move(llvm_module));
@@ -704,6 +690,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     if (embed_ir_in_executable) {
       ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
     }
+    TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
     XLA_VLOG_LINES(2, "LLVM IR:\n" + llvm_ir::DumpModuleToString(*llvm_module));
 
@@ -728,7 +715,8 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
                                 const AotCompilationOptions& aot_options) {
   TF_RET_CHECK(!modules.empty());
   std::call_once(llvm_command_line_options_initialized,
-                 &InitializeLLVMCommandLineOptions, modules[0]->config());
+                 &llvm_ir::InitializeLLVMCommandLineOptions,
+                 modules[0]->config());
 
   // We can pass just one llvm::TargetOptions when we compile the LLVM module,
   // so we bail if the configs have conflicting flags. At the moment, the only
@@ -881,6 +869,16 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     TF_RETURN_IF_ERROR(InitializeModuleHooks(
         *module, user_pre_optimization_hook_, user_post_optimization_hook_,
         &pre_optimization_ir_dump_hook, &post_optimization_ir_dump_hook));
+
+    // Run the LLVM verifier over the unoptimized LLVM IR.  If it fails, run the
+    // pre-optimization IR dump hook before returning.
+    {
+      Status verify_status = VerifyLlvmModule(llvm_module);
+      if (!verify_status.ok() && pre_optimization_ir_dump_hook) {
+        pre_optimization_ir_dump_hook(llvm_module).IgnoreError();
+      }
+      TF_RETURN_IF_ERROR(verify_status);
+    }
 
     Disassembler disassembler(*target_machine);
     CompilerFunctor compiler_functor(

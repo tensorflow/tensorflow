@@ -25,7 +25,6 @@ namespace tools {
 namespace {
 
 using tensorflow::StringPiece;
-using tensorflow::strings::StrCat;
 
 struct TestData {
   string test_name;
@@ -688,7 +687,37 @@ ENTRY %fusion.v3 () -> f32[3,2,1,1] {
 }
 
 )"
+},
+{
+"Sparse",
+R"(HloModule sparse_f32
+
+ENTRY %sparse () -> f32[2,3,4] {
+  ROOT %foo = f32[2,3,4]sparse{10} constant(f32[2,3,4]{[0, 1, 2]: 1, [1, 2, 3]: 2, [2, 3, 4]: 3})
 }
+
+)"
+},
+{
+"SparseEmpty",
+R"(HloModule sparse_f32_empty
+
+ENTRY %sparse_f32_empty () -> f32[2,3,4] {
+  ROOT %foo = f32[2,3,4]sparse{10} constant(f32[2,3,4]{})
+}
+
+)"
+},
+{
+"SparseR1",
+R"(HloModule sparse_f32_r1
+
+ENTRY %sparse_f32_r1 () -> f32[9] {
+  ROOT %foo = f32[9]sparse{10} constant(f32[9]{1: 2, 3: 4, 5: 6})
+}
+
+)"
+},
   });
   // clang-format on
 }
@@ -1058,12 +1087,14 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[1,2,1], filter: f32[1,1,1]) -> f32[1,2
 
 )";
 
-  ExpectHasSubstr(Parse(StrCat(prefix, ",dim_labels=00_01_10", suffix))
-                      .status()
-                      .error_message(),
-                  "expects dim labels pattern");
+  ExpectHasSubstr(
+      Parse(tensorflow::strings::StrCat(prefix, ",dim_labels=00_01_10", suffix))
+          .status()
+          .error_message(),
+      "expects dim labels pattern");
 
-  ExpectHasSubstr(Parse(StrCat(prefix, ",dim_labels=010_1100->010", suffix))
+  ExpectHasSubstr(Parse(tensorflow::strings::StrCat(
+                            prefix, ",dim_labels=010_1100->010", suffix))
                       .status()
                       .error_message(),
                   "must have the same rank");

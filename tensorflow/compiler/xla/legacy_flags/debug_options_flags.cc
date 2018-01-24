@@ -224,6 +224,11 @@ void AllocateFlags() {
           "xla_dump_hlo_proto_to", flag_values->mutable_xla_dump_hlo_proto_to(),
           "Dump compilation artifacts as proto binary into this directory."),
       tensorflow::Flag(
+          "xla_dump_prepass_hlo_proto_to",
+          flag_values->mutable_xla_dump_prepass_hlo_proto_to(),
+          "Dump compilation artifacts, before hlo passes are executed, as "
+          "proto binary into this directory."),
+      tensorflow::Flag(
           "xla_test_all_output_layouts",
           bool_setter_for(&DebugOptions::set_xla_test_all_output_layouts),
           flag_values->xla_test_all_output_layouts(),

@@ -292,7 +292,7 @@ def loss(weight, bias):
   error = prediction(training_inputs, weight, bias) - training_outputs
   return tf.reduce_mean(tf.square(error))
 
-# Function that returns the the derivative of loss with respect to
+# Function that returns the derivative of loss with respect to
 # weight and bias
 grad = tfe.gradients_function(loss)
 

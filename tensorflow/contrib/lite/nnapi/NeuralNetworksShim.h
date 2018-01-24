@@ -370,7 +370,7 @@ enum {
    * Looks up items from a given tensor.
    *
    * Each item in the output is a raw copy of the corresponding item in
-   * the input “values”. If the the given “lookup” indices are out of bounds,
+   * the input “values”. If the given “lookup” indices are out of bounds,
    * the op will fail and an error will be reported.
    *
    * Inputs:
@@ -1774,7 +1774,7 @@ inline int ANeuralNetworksExecution_setInput(
  *             model. If the type is the same as specified when the model
  *             was built, NULL can be passed.
  * @param memory The memory containing the data.
- * @param offset This specifies the location of the data whithin the memory.
+ * @param offset This specifies the location of the data within the memory.
  *               The offset is in bytes from the start of memory.
  * @param length The size in bytes of the data value.
  *
@@ -1841,7 +1841,7 @@ inline int ANeuralNetworksExecution_setOutput(
  *             model. If the type is the same as specified when the model
  *             was built, NULL can be passed.
  * @param memory The memory where the data is to be stored.
- * @param offset This specifies the location of the data whithin the memory.
+ * @param offset This specifies the location of the data within the memory.
  *               The offset is in bytes from the start of memory.
  * @param length The length in bytes of the data value.
  *

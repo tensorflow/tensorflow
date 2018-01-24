@@ -150,19 +150,19 @@ bool IdentifyL2Normalization::Run(Model* model, std::size_t op_index) {
 
   // Erase the subgraph that is now replaced by L2Normalization
   model->operators.erase(FindOperator(model, square_op));
-  model->arrays.erase(sum_op->inputs[0]);
+  model->EraseArray(sum_op->inputs[0]);
   if (sum_op->inputs.size() > 1) {
-    model->arrays.erase(sum_op->inputs[1]);
+    model->EraseArray(sum_op->inputs[1]);
   }
   model->operators.erase(FindOperator(model, sum_op));
   if (add_op) {
-    model->arrays.erase(add_op->inputs[0]);
-    model->arrays.erase(add_op->inputs[1]);
+    model->EraseArray(add_op->inputs[0]);
+    model->EraseArray(add_op->inputs[1]);
     model->operators.erase(FindOperator(model, add_op));
   }
-  model->arrays.erase(sqrt_or_rsqrt_op->inputs[0]);
+  model->EraseArray(sqrt_or_rsqrt_op->inputs[0]);
   model->operators.erase(FindOperator(model, sqrt_or_rsqrt_op));
-  model->arrays.erase(div_or_mul_op->inputs[1]);
+  model->EraseArray(div_or_mul_op->inputs[1]);
   model->operators.erase(FindOperator(model, div_or_mul_op));
   return true;
 }

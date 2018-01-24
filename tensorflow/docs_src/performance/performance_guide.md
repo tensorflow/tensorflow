@@ -203,8 +203,8 @@ bn = tf.contrib.layers.batch_norm(input_layer, fused=True, data_format='NCHW')
 
 ### RNN Performance
 
-There are many ways to specify an RNN computation in Tensorflow and they have
-have trade-offs with respect to model flexibility and performance. The
+There are many ways to specify an RNN computation in TensorFlow and they have
+trade-offs with respect to model flexibility and performance. The
 @{tf.nn.rnn_cell.BasicLSTMCell} should be considered a reference implementation
 and used only as a last resort when no other options will work.
 
@@ -230,7 +230,7 @@ If you need to run one step of the RNN at a time, as might be the case in
 reinforcement learning with a recurrent policy, then you should use the
 @{tf.contrib.rnn.LSTMBlockCell} with your own environment interaction loop
 inside a @{tf.while_loop} construct. Running one step of the RNN at a time and
-returning to python is possible but it will be slower.
+returning to Python is possible, but it will be slower.
 
 On CPUs, mobile devices, and if @{tf.contrib.cudnn_rnn} is not available on
 your GPU, the fastest and most memory efficient option is

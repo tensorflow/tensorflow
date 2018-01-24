@@ -59,12 +59,16 @@ PyObject* PyShapeInfoFromXlaShape(const Shape& shape);
 // Returns the outcome of a best-effort check that the Python object
 // is a pair of the form (numpy dtype, dimensions), as produced by
 // PyShapeInfoFromXlaShape.
-bool CheckPyShapeInfo(PyObject* o);
+Status CheckPyShapeInfo(PyObject* o);
 
 // Performs the inverse conversion to that of PyShapeInfoFromXlaShape.
 //
 // The return value is a new reference.
 Shape XlaShapeFromPyShapeInfo(PyObject* o);
+
+// Converts a PyObject that represents operation metadata into protocol buffer
+// form.
+StatusOr<OpMetadata> OpMetadataFromPyObject(PyObject* o);
 
 // Converts an XLA literal to a Python object, either a Numpy ndarray
 // or a nested Python tuple thereof.
@@ -82,13 +86,13 @@ PyObject* PyObjectFromXlaLiteral(const Literal& literal);
 // To avoid transferring ownership of the data buffers that underlie
 // PyArrays and XLA literals, this function makes deep copies of all
 // array data.
-std::unique_ptr<Literal> XlaLiteralFromPyObject(PyObject* o);
+StatusOr<std::unique_ptr<Literal> > XlaLiteralFromPyObject(PyObject* o);
 
 // The following functions copy array data from the buffers underlying Numpy
 // ndarrays into those underlying XLA literals, and vice versa.
 
-void CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
-                             Literal* literal);
+Status CopyNumpyArrayToLiteral(int np_type, PyArrayObject* py_array,
+                               Literal* literal);
 
 void CopyLiteralToNumpyArray(int np_type, const Literal& literal,
                              PyArrayObject* py_array);
@@ -96,14 +100,14 @@ void CopyLiteralToNumpyArray(int np_type, const Literal& literal,
 template <typename NativeT>
 void CopyNumpyArrayToLiteral(PyArrayObject* py_array, Literal* literal) {
   NativeT* source = static_cast<NativeT*>(PyArray_DATA(py_array));
-  auto dest = literal->GetMutableArraySlice<NativeT>();
+  auto dest = literal->data<NativeT>();
   std::copy(source, source + PyArray_SIZE(py_array), dest.data());
 }
 
 template <typename NativeT>
 void CopyLiteralToNumpyArray(const Literal& literal, PyArrayObject* py_array) {
   NativeT* dest = static_cast<NativeT*>(PyArray_DATA(py_array));
-  auto source = literal.GetArraySlice<NativeT>();
+  auto source = literal.data<NativeT>();
   std::copy(source.begin(), source.end(), dest);
 }
 

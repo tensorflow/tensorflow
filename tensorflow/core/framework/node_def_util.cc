@@ -362,6 +362,21 @@ Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
                                  node_def.name());
 }
 
+Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                         int output_port, DataType* output_type) {
+  DataTypeVector output_types;
+  for (const auto& arg : op_def.output_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, &output_types));
+    if (output_types.size() > output_port) {
+      const DataType dtype = output_types[output_port];
+      *output_type = dtype;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Output ", output_port, " not found for node ",
+                                 node_def.name());
+}
+
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs) {
   for (const auto& arg : op_def.input_arg()) {

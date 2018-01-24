@@ -55,6 +55,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import decorator_utils
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.tf_export import tf_export
 
 
 # Temporary global switch determining if we should enable the work-in-progress
@@ -191,6 +192,7 @@ class _TensorLike(object):
   pass
 
 
+@tf_export("Tensor")
 class Tensor(_TensorLike):
   """Represents one of the outputs of an `Operation`.
 
@@ -285,7 +287,7 @@ class Tensor(_TensorLike):
     self._op = op
     self._value_index = value_index
     self._dtype = dtypes.as_dtype(dtype)
-    self._shape = tensor_shape.unknown_shape()
+    self._shape_val = tensor_shape.unknown_shape()
     # List of operations that use this Tensor as input.  We maintain this list
     # to easily navigate a computation graph.
     self._consumers = []
@@ -379,7 +381,18 @@ class Tensor(_TensorLike):
               graph, self._as_tf_output(), num_dims, status)
         dim_list = [None if i == -1 else i for i in dim_list]
       return tensor_shape.TensorShape(dim_list)
-    return self._shape
+    return self._shape_val
+
+  @property
+  def _shape(self):
+    logging.warning("Tensor._shape is private, use Tensor.shape "
+                    "instead. Tensor._shape will eventually be removed.")
+    return self.shape
+
+  @_shape.setter
+  def _shape(self, value):
+    raise ValueError(
+        "Tensor._shape cannot be assigned, use Tensor.set_shape instead.")
 
   def __iter__(self):
     if context.in_graph_mode():
@@ -454,7 +467,7 @@ class Tensor(_TensorLike):
         this tensor.
     """
     if not _USE_C_API:
-      self._shape = self._shape.merge_with(shape)  # pylint: disable=protected-access
+      self._shape_val = self._shape_val.merge_with(shape)
       return
     if not isinstance(shape, tensor_shape.TensorShape):
       shape = tensor_shape.TensorShape(shape)
@@ -775,6 +788,11 @@ class _EagerTensorBase(Tensor):
     """The shape of the tensor as a list."""
     return list(self._shape_tuple())
 
+  @property
+  def ndim(self):
+    """Returns the number of Tensor dimensions."""
+    return self.shape.ndims
+
   def cpu(self):
     """A copy of this Tensor with contents backed by host memory."""
     return self._copy(context.context(), "CPU:0")
@@ -866,6 +884,7 @@ _tensor_conversion_func_lock = threading.Lock()
 register_dense_tensor_like_type(Tensor)
 
 
+@tf_export("convert_to_tensor")
 def convert_to_tensor(value, dtype=None, name=None, preferred_dtype=None):
   """Converts the given `value` to a `Tensor`.
 
@@ -1111,6 +1130,7 @@ def convert_n_to_tensor(values, dtype=None, name=None, preferred_dtype=None):
       as_ref=False)
 
 
+@tf_export("convert_to_tensor_or_indexed_slices")
 def convert_to_tensor_or_indexed_slices(value, dtype=None, name=None):
   """Converts the given object to a `Tensor` or an `IndexedSlices`.
 
@@ -1241,6 +1261,7 @@ def convert_n_to_tensor_or_indexed_slices(values, dtype=None, name=None):
 
 
 # TODO(josh11b): Add ctx argument to conversion_func() signature.
+@tf_export("register_tensor_conversion_function")
 def register_tensor_conversion_function(base_type,
                                         conversion_func,
                                         priority=100):
@@ -1301,6 +1322,7 @@ def register_tensor_conversion_function(base_type,
     _tensor_conversion_func_cache = {}
 
 
+@tf_export("IndexedSlices")
 class IndexedSlices(_TensorLike):
   """A sparse representation of a set of tensor slices at given indices.
 
@@ -1481,6 +1503,7 @@ def _create_c_op(graph, node_def, inputs, control_inputs):
   return c_op
 
 
+@tf_export("Operation")
 class Operation(object):
   """Represents a graph node that performs computation on tensors.
 
@@ -1560,7 +1583,6 @@ class Operation(object):
             "Cannot create a tensor proto whose content is larger than 2GB.")
       if not _VALID_OP_NAME_REGEX.match(node_def.name):
         raise ValueError("'%s' is not a valid node name" % node_def.name)
-      self._node_def = copy.deepcopy(node_def)
       c_op = None
     elif type(node_def).__name__ == "SwigPyObject":
       assert inputs is None
@@ -1569,7 +1591,6 @@ class Operation(object):
       assert input_types is None
       assert original_op is None
       assert op_def is None
-      self._node_def = None
       c_op = node_def
     else:
       raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
@@ -1577,28 +1598,27 @@ class Operation(object):
     if not isinstance(g, Graph):
       raise TypeError("g needs to be a Graph: %s" % g)
     self._graph = g
+
     if inputs is None:
       inputs = []
     elif not isinstance(inputs, list):
       raise TypeError("inputs needs to be a list of Tensors: %s" % inputs)
-    self._inputs = list(inputs)  # Defensive copy.
-    for a in self._inputs:
+    for a in inputs:
       if not isinstance(a, Tensor):
         raise TypeError("input needs to be a Tensor: %s" % a)
     if input_types is None:
-      input_types = [i.dtype.base_dtype for i in self._inputs]
+      input_types = [i.dtype.base_dtype for i in inputs]
     else:
       if not all(
           x.is_compatible_with(i.dtype)
-          for i, x in zip(self._inputs, input_types)):
+          for i, x in zip(inputs, input_types)):
         raise TypeError("In op '%s', input types (%s) are not compatible "
                         "with expected types (%s)" %
-                        (self.node_def.name, [i.dtype for i in self._inputs],
+                        (self.node_def.name, [i.dtype for i in inputs],
                          input_types))
-    self._input_types_val = input_types
 
     # Build the list of control inputs.
-    self._control_inputs = []
+    control_input_ops = []
     if control_inputs:
       for c in control_inputs:
         control_op = None
@@ -1609,11 +1629,20 @@ class Operation(object):
         else:
           raise TypeError("Control input must be an Operation, "
                           "a Tensor, or IndexedSlices: %s" % c)
-        self._control_inputs.append(control_op)
+        control_input_ops.append(control_op)
+
+    # Don't set private fields with C API enabled to catch users who need to
+    # switch to public API.
+    # TODO(skyewm): delete these fields once we remove _USE_C_API
+    if not self._graph._c_graph:
+      self._inputs_val = list(inputs)  # Defensive copy.
+      self._input_types_val = input_types
+      self._control_inputs_val = control_input_ops
+      self._node_def_val = copy.deepcopy(node_def)
+      self._op_def_val = op_def
 
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._original_op = original_op
-    self._op_def = op_def
     self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
     self._control_flow_context = self.graph._get_control_flow_context()  # pylint: disable=protected-access
 
@@ -1623,24 +1652,21 @@ class Operation(object):
       assert self._graph._c_graph  # pylint: disable=protected-access
       self._c_op = c_op
     elif self._graph._c_graph:  # pylint: disable=protected-access
-      if self._op_def:
-        # TODO(skyewm): op_def_library.apply_op() flattens the incoming
-        # inputs. Refactor so we don't have to do this here.
-        grouped_inputs = self._reconstruct_sequence_inputs(
-            self._op_def, self._inputs, self._node_def.attr)
-      else:
-        # If no OpDef is specified, assume all inputs are scalar.
-        grouped_inputs = self._inputs
-
-      self._c_op = _create_c_op(self._graph, self._node_def, grouped_inputs,
-                                self._control_inputs)
+      if op_def is None:
+        op_def = self._graph._registered_ops[node_def.op]
+      # TODO(skyewm): op_def_library.apply_op() flattens the incoming inputs.
+      # Refactor so we don't have to do this here.
+      grouped_inputs = self._reconstruct_sequence_inputs(
+          op_def, inputs, node_def.attr)
+      self._c_op = _create_c_op(self._graph, node_def, grouped_inputs,
+                                control_input_ops)
     else:
       self._c_op = None
 
     # Mark that we consume the inputs. This is unnecessary and unsupported with
     # the C API enabled, since the C API tracks the tensor consumers instead.
     if not self._c_op:
-      for input_tensor in self._inputs:
+      for input_tensor in self._inputs_val:
         input_tensor._add_consumer(self)  # pylint: disable=protected-access
 
     # Initialize self._outputs.
@@ -1755,7 +1781,7 @@ class Operation(object):
     if self._c_op:
       return c_api.TF_OperationName(self._c_op)
     else:
-      return self._node_def.name
+      return self._node_def_val.name
 
   @property
   def _id(self):
@@ -1774,7 +1800,7 @@ class Operation(object):
     if self._c_op:
       return c_api.TF_OperationDevice(self._c_op)
     else:
-      return self._node_def.device
+      return self._node_def_val.device
 
   @property
   def _output_types(self):
@@ -1834,7 +1860,7 @@ class Operation(object):
           self._c_op,  # pylint: disable=protected-access
           compat.as_str(_device_string(device)))
     else:
-      self._node_def.device = _device_string(device)
+      self._node_def_val.device = _device_string(device)
 
   def _add_input(self, tensor, dtype=None):
     """Add a new input to this operation.
@@ -1862,7 +1888,7 @@ class Operation(object):
         raise TypeError(
             "Cannot convert a tensor of type %s to an input of type %s" %
             (tensor.dtype.name, dtype.name))
-    self._inputs.append(tensor)
+    self._inputs_val.append(tensor)
     self._input_types_val.append(dtype)
     tensor._add_consumer(self)  # pylint: disable=protected-access
     self._recompute_node_def()
@@ -1892,8 +1918,8 @@ class Operation(object):
             self._tf_input(index),
             status)
     else:
-      self._inputs[index].consumers().remove(self)
-      self._inputs[index] = tensor
+      self._inputs_val[index].consumers().remove(self)
+      self._inputs_val[index] = tensor
       self._input_types_val[index] = tensor.dtype
       tensor._add_consumer(self)  # pylint: disable=protected-access
       self._recompute_node_def()
@@ -1919,7 +1945,7 @@ class Operation(object):
           if not isinstance(op, Operation):
             raise TypeError("op must be an Operation: %s" % op)
           _assert_same_graph(self, op)
-          self._control_inputs.append(op)
+          self._control_inputs_val.append(op)
         self._recompute_node_def()
 
   def _add_control_input(self, op):
@@ -1951,13 +1977,14 @@ class Operation(object):
     # TODO(skyewm): remove this function when we switch to C API
     if self._c_op: return
 
-    del self._node_def.input[:]
+    del self._node_def_val.input[:]
     # pylint: disable=protected-access
-    self._node_def.input.extend([t._as_node_def_input() for t in self._inputs])
+    self._node_def_val.input.extend(
+        [t._as_node_def_input() for t in self._inputs_val])
     # pylint: enable=protected-access
-    if self._control_inputs:
-      self._node_def.input.extend(
-          ["^%s" % op.name for op in self._control_inputs])
+    if self._control_inputs_val:
+      self._node_def_val.input.extend(
+          ["^%s" % op.name for op in self._control_inputs_val])
 
   def __str__(self):
     return str(self.node_def)
@@ -2007,11 +2034,17 @@ class Operation(object):
       ]
       # pylint: enable=protected-access
       return Operation._InputList(retval)
-    return Operation._InputList(self._inputs)
+    return Operation._InputList(self._inputs_val)
 
   @property
-  def _input_dtypes(self):
-    return self._input_types
+  def _inputs(self):
+    logging.warning("Operation._inputs is private, use Operation.inputs "
+                    "instead. Operation._inputs will eventually be removed.")
+    return self.inputs
+
+  @_inputs.setter
+  def _inputs(self, value):
+    raise ValueError("Cannot assign _inputs")
 
   @property
   def _input_types(self):
@@ -2024,6 +2057,10 @@ class Operation(object):
       return input_types
     else:
       return self._input_types_val
+
+  @_input_types.setter
+  def _input_types(self, value):
+    raise ValueError("Cannot assign _input_types")
 
   @property
   def control_inputs(self):
@@ -2048,7 +2085,22 @@ class Operation(object):
       ]
       # pylint: enable=protected-access
     else:
-      return self._control_inputs
+      return self._control_inputs_val
+
+  @property
+  def _control_inputs(self):
+    logging.warning("Operation._control_inputs is private, use "
+                    "Operation.control_inputs instead. "
+                    "Operation._control_inputs will eventually be removed.")
+    return self.control_inputs
+
+  @_control_inputs.setter
+  def _control_inputs(self, value):
+    logging.warning("Operation._control_inputs is private, use "
+                    "Operation.control_inputs instead. "
+                    "Operation._control_inputs will eventually be removed.")
+    self._remove_all_control_inputs()
+    self._add_control_inputs(value)
 
   @property
   def type(self):
@@ -2057,7 +2109,7 @@ class Operation(object):
       op_type = c_api.TF_OperationOpType(self._c_op)
       return op_type
     else:
-      return self._node_def.op
+      return self._node_def_val.op
 
   @property
   def graph(self):
@@ -2084,7 +2136,13 @@ class Operation(object):
       node_def.ParseFromString(compat.as_bytes(data))
       return node_def
     else:
-      return self._node_def
+      return self._node_def_val
+
+  @property
+  def _node_def(self):
+    logging.warning("Operation._node_def is private, use Operation.node_def "
+                    "instead. Operation._node_def will eventually be removed.")
+    return self.node_def
 
   @property
   def op_def(self):
@@ -2109,7 +2167,13 @@ class Operation(object):
       op_def.ParseFromString(compat.as_bytes(data))
       return op_def
     else:
-      return self._op_def
+      return self._op_def_val
+
+  @property
+  def _op_def(self):
+    logging.warning("Operation._op_def is private, use Operation.op_def "
+                    "instead. Operation._op_def will eventually be removed.")
+    return self.op_def
 
   @property
   def traceback(self):
@@ -2141,7 +2205,7 @@ class Operation(object):
       finally:
         c_api.TF_DeleteBuffer(buf)
     else:
-      self._node_def.attr[attr_name].CopyFrom(attr_value)
+      self._node_def_val.attr[attr_name].CopyFrom(attr_value)
 
   def get_attr(self, name):
     """Returns the value of the attr of this op with the given `name`.
@@ -2168,10 +2232,10 @@ class Operation(object):
       x = attr_value_pb2.AttrValue()
       x.ParseFromString(data)
     else:
-      if name not in self._node_def.attr:
+      if name not in self._node_def_val.attr:
         raise ValueError(
-            "No attr named '" + name + "' in " + str(self._node_def))
-      x = self._node_def.attr[name]
+            "No attr named '" + name + "' in " + str(self._node_def_val))
+      x = self._node_def_val.attr[name]
 
     # Treat an empty oneof value as an empty list.
     if not x.WhichOneof("value"):
@@ -2215,6 +2279,7 @@ class Operation(object):
 _gradient_registry = registry.Registry("gradient")
 
 
+@tf_export("RegisterGradient")
 class RegisterGradient(object):
   """A decorator for registering the gradient function for an op type.
 
@@ -2257,6 +2322,7 @@ class RegisterGradient(object):
     return f
 
 
+@tf_export("NoGradient", "NotDifferentiable")
 def NotDifferentiable(op_type):
   """Specifies that ops of type `op_type` is not differentiable.
 
@@ -2576,6 +2642,7 @@ def _name_from_scope_name(name):
   return name[:-1] if (name and name[-1] == "/") else name
 
 
+@tf_export("Graph")
 class Graph(object):
   """A TensorFlow computation, represented as a dataflow graph.
 
@@ -2702,6 +2769,7 @@ class Graph(object):
       self._scoped_c_graph = c_api_util.ScopedTFGraph()
     else:
       self._scoped_c_graph = None
+    self._variable_creator_stack = []
 
   # TODO(apassos) remove once the C API is used by default.
   def _use_c_api_hack(self):
@@ -2737,6 +2805,22 @@ class Graph(object):
       else:
         ret.append((filename, lineno, name, line))
     return ret
+
+  # Note: this method is private because the API of tf.Graph() is public and
+  # frozen, and this functionality is still not ready for public visibility.
+  @tf_contextlib.contextmanager
+  def _variable_creator_scope(self, creator):
+    old = list(self._variable_creator_stack)
+    self._variable_creator_stack.append(creator)
+    try:
+      yield
+    finally:
+      self._variable_creator_stack = old
+
+  # Note: this method is private because the API of tf.Graph() is public and
+  # frozen, and this functionality is still not ready for public visibility.
+  def _get_variable_creator_stack(self):
+    return list(self._variable_creator_stack)
 
   def _extract_stack(self):
     """A lightweight, extensible re-implementation of traceback.extract_stack.
@@ -2950,23 +3034,42 @@ class Graph(object):
 
     """
     # pylint: enable=line-too-long
-    with self._lock:
-      graph = graph_pb2.GraphDef()
-      graph.versions.CopyFrom(self._graph_def_versions)
-      bytesize = 0
-      for op_id in sorted(self._nodes_by_id):
-        op = self._nodes_by_id[op_id]
-        if from_version is None or op_id > from_version:
-          graph.node.extend([op.node_def])
-          if op.outputs and add_shapes:
-            assert "_output_shapes" not in graph.node[-1].attr
-            graph.node[-1].attr["_output_shapes"].list.shape.extend(
-                [output.get_shape().as_proto() for output in op.outputs])
-          bytesize += op.node_def.ByteSize()
-          if bytesize >= (1 << 31) or bytesize < 0:
-            raise ValueError("GraphDef cannot be larger than 2GB.")
-      self._copy_functions_to_graph_def(graph, bytesize)
-      return graph, self._version
+    if _USE_C_API:
+      with self._lock:
+        with c_api_util.tf_buffer() as buf:
+          with errors.raise_exception_on_not_ok_status() as status:
+            c_api.TF_GraphToGraphDef(self._c_graph, buf, status)
+          data = c_api.TF_GetBuffer(buf)
+        graph = graph_pb2.GraphDef()
+        graph.ParseFromString(compat.as_bytes(data))
+        # Strip the experimental library field iff it's empty.
+        if not graph.library.function:
+          graph.ClearField("library")
+
+        if add_shapes:
+          for node in graph.node:
+            op = self._nodes_by_name[node.name]
+            if op.outputs:
+              node.attr["_output_shapes"].list.shape.extend(
+                  [output.get_shape().as_proto() for output in op.outputs])
+    else:
+      with self._lock:
+        graph = graph_pb2.GraphDef()
+        graph.versions.CopyFrom(self._graph_def_versions)
+        bytesize = 0
+        for op_id in sorted(self._nodes_by_id):
+          op = self._nodes_by_id[op_id]
+          if from_version is None or op_id > from_version:
+            graph.node.extend([op.node_def])
+            if op.outputs and add_shapes:
+              assert "_output_shapes" not in graph.node[-1].attr
+              graph.node[-1].attr["_output_shapes"].list.shape.extend(
+                  [output.get_shape().as_proto() for output in op.outputs])
+            bytesize += op.node_def.ByteSize()
+            if bytesize >= (1 << 31) or bytesize < 0:
+              raise ValueError("GraphDef cannot be larger than 2GB.")
+        self._copy_functions_to_graph_def(graph, bytesize)
+    return graph, self._version
 
   def as_graph_def(self, from_version=None, add_shapes=False):
     # pylint: disable=line-too-long
@@ -4152,10 +4255,10 @@ class Graph(object):
       """
       self._graph = graph
       if control_inputs is None:
-        self._control_inputs = []
+        self._control_inputs_val = []
         self._new_stack = True
       else:
-        self._control_inputs = control_inputs
+        self._control_inputs_val = control_inputs
         self._new_stack = False
       self._seen_nodes = set()
       self._old_stack = None
@@ -4183,7 +4286,7 @@ class Graph(object):
 
     @property
     def control_inputs(self):
-      return self._control_inputs
+      return self._control_inputs_val
 
     def add_op(self, op):
       self._seen_nodes.add(op)
@@ -4557,6 +4660,9 @@ class Graph(object):
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
 # apply to inner graph mode code. Fix that.
+
+
+@tf_export("device")
 def device(device_name_or_function):
   """Wrapper for `Graph.device()` using the default graph.
 
@@ -4586,6 +4692,7 @@ def device(device_name_or_function):
     return context.device(device_name_or_function)
 
 
+@tf_export("container")
 def container(container_name):
   """Wrapper for `Graph.container()` using the default graph.
 
@@ -4599,6 +4706,7 @@ def container(container_name):
   return get_default_graph().container(container_name)
 
 
+@tf_export("colocate_with")
 def colocate_with(op, ignore_existing=False):
   if context.in_graph_mode():
     return get_default_graph().colocate_with(op, ignore_existing)
@@ -4609,6 +4717,7 @@ def colocate_with(op, ignore_existing=False):
       return _NullContextmanager()
 
 
+@tf_export("control_dependencies")
 def control_dependencies(control_inputs):
   """Wrapper for `Graph.control_dependencies()` using the default graph.
 
@@ -4726,6 +4835,7 @@ def default_session(session):
   return _default_session_stack.get_controller(session)
 
 
+@tf_export("get_default_session")
 def get_default_session():
   """Returns the default session for the current thread.
 
@@ -5015,6 +5125,7 @@ def eager_run(main=None, argv=None):
   app.run(main, argv)
 
 
+@tf_export("reset_default_graph")
 def reset_default_graph():
   """Clears the default graph stack and resets the global default graph.
 
@@ -5033,6 +5144,7 @@ def reset_default_graph():
   _default_graph_stack.reset()
 
 
+@tf_export("get_default_graph")
 def get_default_graph():
   """Returns the default graph for the current thread.
 
@@ -5153,6 +5265,7 @@ def _get_graph_from_inputs(op_input_list, graph=None):
   return graph or get_default_graph()
 
 
+@tf_export("GraphKeys")
 class GraphKeys(object):
   """Standard names to use for graph collections.
 
@@ -5301,6 +5414,7 @@ class GraphKeys(object):
     return cls.GLOBAL_VARIABLES
 
 
+@tf_export("add_to_collection")
 def add_to_collection(name, value):
   """Wrapper for `Graph.add_to_collection()` using the default graph.
 
@@ -5337,6 +5451,7 @@ def add_to_collections(names, value):
   get_default_graph().add_to_collections(names, value)
 
 
+@tf_export("get_collection_ref")
 def get_collection_ref(key):
   """Wrapper for `Graph.get_collection_ref()` using the default graph.
 
@@ -5360,6 +5475,7 @@ def get_collection_ref(key):
   return get_default_graph().get_collection_ref(key)
 
 
+@tf_export("get_collection")
 def get_collection(key, scope=None):
   """Wrapper for `Graph.get_collection()` using the default graph.
 
@@ -5396,6 +5512,7 @@ def get_all_collection_keys():
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
+@tf_export("name_scope", "keras.backend.name_scope")
 class name_scope(object):  # pylint: disable=invalid-name
   """A context manager for use when defining a Python op.
 
@@ -5475,8 +5592,12 @@ class name_scope(object):  # pylint: disable=invalid-name
       g = _get_graph_from_inputs(self._values)
       self._g_manager = g.as_default()
       self._g_manager.__enter__()
-      self._name_scope = g.name_scope(self._name)
-      return self._name_scope.__enter__()
+      try:
+        self._name_scope = g.name_scope(self._name)
+        return self._name_scope.__enter__()
+      except:
+        self._g_manager.__exit__(*sys.exc_info())
+        raise
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
     if self._in_eager_mode:
@@ -5538,6 +5659,7 @@ def prepend_name_scope(name, import_scope):
 
 # pylint: disable=g-doc-return-or-yield
 # pylint: disable=not-context-manager
+@tf_export("op_scope")
 @tf_contextlib.contextmanager
 def op_scope(values, name, default_name=None):
   """DEPRECATED. Same as name_scope above, just different argument order."""

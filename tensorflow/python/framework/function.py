@@ -417,7 +417,7 @@ class _DefinedFunction(object):
       if self._func_name:
         assert self._func_name == self._op_def.name
       else:
-        self._func_name = self._op_def.name
+        self._func_name = compat.as_str(self._op_def.name)
 
   def _set_c_attrs(self, attrs):
     """Sets `attrs` as attributes of self._c_func.
@@ -682,7 +682,7 @@ class _FuncGraph(ops.Graph):
 
   def create_op(self, op_type, inputs, data_types, **kwargs):
     for i, x in enumerate(inputs):
-      if x.graph is not self:
+      if isinstance(x, ops.EagerTensor) or x.graph is not self:
         # Referring to a tensor from other graph.
         if x in self._captured:
           # Captured already.

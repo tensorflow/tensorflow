@@ -512,7 +512,7 @@ struct GreaterThan {
   constexpr bool operator()(int a, int b) const { return a > b; }
 };
 
-// For each data type, the tile size posibility frontier denotes the tile size
+// For each data type, the tile size possibility frontier denotes the tile size
 // combinations that consume the most computational resources constrained by
 // - number of threads per SM limit,
 // - limit on size of the short dimension (<=15) due to the definition of

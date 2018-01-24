@@ -86,7 +86,7 @@ tf_module {
   }
   member_method {
     name: "crelu"
-    argspec: "args=[\'features\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'features\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'None\', \'-1\'], "
   }
   member_method {
     name: "ctc_beam_search_decoder"

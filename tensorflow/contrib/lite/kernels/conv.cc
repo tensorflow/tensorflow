@@ -322,22 +322,23 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRangeFloat(params->activation, &output_activation_min,
                                 &output_activation_max);
 
-  const float* filter_data;
-  if (data->need_hwcn_weights) {
-    filter_data = GetTensorData<float>(hwcn_weights);
-  } else {
-    filter_data = GetTensorData<float>(filter);
-  }
-
   if (kernel_type == kReference) {
-    reference_ops::Conv(
-        GetTensorData<float>(input), GetTensorDims(input), filter_data,
-        GetTensorDims(filter), GetTensorData<float>(bias), GetTensorDims(bias),
-        params->stride_width, params->stride_height, data->padding.width,
-        data->padding.height, output_activation_min, output_activation_max,
-        GetTensorData<float>(output), GetTensorDims(output),
-        GetTensorData<float>(im2col), GetTensorDims(im2col));
+    reference_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
+                        GetTensorData<float>(filter), GetTensorDims(filter),
+                        GetTensorData<float>(bias), GetTensorDims(bias),
+                        params->stride_width, params->stride_height,
+                        data->padding.width, data->padding.height,
+                        output_activation_min, output_activation_max,
+                        GetTensorData<float>(output), GetTensorDims(output),
+                        GetTensorData<float>(im2col), GetTensorDims(im2col));
   } else {
+    const float* filter_data;
+    if (data->need_hwcn_weights) {
+      filter_data = GetTensorData<float>(hwcn_weights);
+    } else {
+      filter_data = GetTensorData<float>(filter);
+    }
+
     multithreaded_ops::Conv(
         GetTensorData<float>(input), GetTensorDims(input), filter_data,
         GetTensorDims(filter), GetTensorData<float>(bias), GetTensorDims(bias),

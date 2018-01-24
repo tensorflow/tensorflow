@@ -120,6 +120,8 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
   tensor_map = _scoped_captures.tensors
   if tensor_map is None:
     # Capturing is not enabled.
+    if value.dtype == dtypes_module.resource:
+      return value
     return constant_op.constant(value.numpy())
   if type(value) == ops.Tensor and value.graph is default_graph:
     # The tensor has already been converted and captured. The type check
@@ -544,11 +546,12 @@ def _defun_internal(name, func, args, kwds):
       func_inputs = _get_defun_inputs(args)
 
       with capture_tensors(captures):
-        tape.push_new_tape()
+        this_tape = tape.push_new_tape()
         try:
           func_outputs = func(*func_inputs, **kwds)
         finally:
-          variables = tape.pop_tape().watched_variables()
+          tape.pop_tape(this_tape)
+        variables = this_tape.watched_variables()
 
         # Returning a closed-over tensor as an output does not trigger a
         # call to convert_to_tensor, so we manually capture all such tensors.

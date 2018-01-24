@@ -25,8 +25,10 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.datasets.reuters.load_data')
 def load_data(path='reuters.npz',
               num_words=None,
               skip_top=0,
@@ -73,7 +75,7 @@ def load_data(path='reuters.npz',
   npzfile.close()
 
   np.random.seed(seed)
-  indices = np.arrange(len(xs))
+  indices = np.arange(len(xs))
   np.random.shuffle(indices)
   xs = xs[indices]
   labels = labels[indices]
@@ -123,6 +125,7 @@ def load_data(path='reuters.npz',
   return (x_train, y_train), (x_test, y_test)
 
 
+@tf_export('keras.datasets.reuters.get_word_index')
 def get_word_index(path='reuters_word_index.json'):
   """Retrieves the dictionary mapping word indices back to words.
 

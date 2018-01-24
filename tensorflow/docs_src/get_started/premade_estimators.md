@@ -71,7 +71,7 @@ Before getting into the details of the program itself, let's investigate the
 programming environment. As the following illustration shows, TensorFlow
 provides a programming stack consisting of multiple API layers:
 
-<div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
+<div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../images/tensorflow_programming_environment.png">
 </div>
 <div style="text-align: center">
@@ -206,8 +206,8 @@ Let's see how those tasks are implemented in Iris.
 You must create input functions to supply data for training,
 evaluating, and prediction.
 
-An **input function** is a function that returns the following two-element
-tuple:
+An **input function** is a function that returns a @{tf.data.Dataset} object
+which outputs the following two-element tuple:
 
 * "features" - A Python dictionary in which:
     * Each key is the name of a feature.
@@ -216,23 +216,10 @@ tuple:
   [label](https://developers.google.com/machine-learning/glossary/#label) for
   every example.
 
-Just to demonstrate the format of the input function here's a simple
-implementation:
-
-```python
-def input_evaluation_set():
-    features = {'SepalLength': np.array([6.4, 5.0]),
-                'SepalWidth':  np.array([2.8, 2.3]),
-                'PetalLength': np.array([5.6, 3.3]),
-                'PetalWidth':  np.array([2.2, 1.0])}
-    labels = np.array([2, 1])
-    return features, labels
-```
-
 Your input function may generate the "features" dictionary and "label" list any
-way you like. However, we recommend using TensorFlow's Dataset API, which can
-deftly parse all sorts of data. At a high-level, the Datasets API consists of
-the following classes:
+way you like. However, we recommend using TensorFlow's @{tf.data.Dataset} API,
+which can deftly parse all sorts of data. At a high-level,
+the @{tf.data.Dataset} API consists of the following classes:
 
 <div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%"
@@ -268,10 +255,7 @@ def train_input_fn(features, labels, batch_size):
     dataset = tf.data.Dataset.from_tensor_slices((dict(features), labels))
 
     # Shuffle, repeat, and batch the examples.
-    dataset = dataset.shuffle(1000).repeat().batch(batch_size)
-
-    # Build the Iterator, and return the read end of the pipeline.
-    return dataset.make_one_shot_iterator().get_next()
+    return dataset.shuffle(1000).repeat().batch(batch_size)
 ```
 
 ## Define the Feature Columns
@@ -305,7 +289,7 @@ features, we can build the estimator.
 
 ## Instantiate an Estimator
 
-The Iris problem is a classic classifier problem. Fortunately, TensorFlow
+The Iris problem is a classic classification problem. Fortunately, TensorFlow
 provides several pre-made classifier Estimators, including:
 
 * @{tf.estimator.DNNClassifier}—for deep models that perform multi-class

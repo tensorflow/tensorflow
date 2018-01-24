@@ -176,8 +176,9 @@ class _CudnnRNN(base_layer.Layer):
           otherwise, it implies 'linear_input'.
       direction: the direction model that the model operates. Can be either
           'unidirectional' or 'bidirectional'
-      dropout: dropout rate, a number between [0, 1]. Dropout is applied on
-          inputs of each layer. When set to 0, dropout is disabled.
+      dropout: dropout rate, a number between [0, 1]. Dropout is applied between
+          each layer (no dropout is applied for a model with a single layer).
+          When set to 0, dropout is disabled.
       seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
           for behavior.
       dtype: tf.float16, tf.float32 or tf.float64
@@ -358,7 +359,7 @@ class _CudnnRNN(base_layer.Layer):
     # Create saveable in the outer scope of the cudnn subgraph, such that
     # alternative subgraph with platform-independent rnn cells can load the
     # checkpoints directly.
-    if not (self.built or vs.get_variable_scope().reuse):
+    if not (self.built or vs.get_variable_scope().reuse is True):
       self._create_saveable()
     self.built = True
 
@@ -497,7 +498,7 @@ class _CudnnRNN(base_layer.Layer):
         input_mode=self.input_mode,
         direction=self.direction,
         scope=vs.get_variable_scope(),
-        name="%s_saveable" % self.trainable_variables[0].op.name)
+        name="%s_saveable" % self.trainable_variables[0].name.split(":")[0])
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
 
