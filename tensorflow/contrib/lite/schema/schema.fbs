@@ -53,12 +53,12 @@ table Tensor {
   type:TensorType;
   // An index that refers to the buffers table at the root of the model. Or,
   // if there is no data buffer associated (i.e. intermediate results), then
-  // this is 0 (which refers to an always existant empty buffer).
+  // this is 0 (which refers to an always existent empty buffer).
   //
   // The data_buffer itself is an opaque container, with the assumption that the
   // target device is little-endian. In addition, all builtin operators assume
   // the memory is ordered such that if `shape` is [4, 3, 2], then index
-  // [i, j, k] maps to data_buffer[i*3*2 + j*3 + k].
+  // [i, j, k] maps to data_buffer[i*3*2 + j*2 + k].
   buffer:uint;
   name:string;  // For debugging and importing back into tensorflow.
   quantization:QuantizationParameters;  // Optional.
