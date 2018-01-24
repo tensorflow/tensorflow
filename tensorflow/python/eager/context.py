@@ -49,6 +49,8 @@ _MAXINT32 = 2**31 - 1
 DEVICE_PLACEMENT_EXPLICIT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_EXPLICIT
 DEVICE_PLACEMENT_WARN = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_WARN
 DEVICE_PLACEMENT_SILENT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT
+DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
+    pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32)
 
 
 # TODO(agarwal): better name ?
@@ -122,6 +124,8 @@ class Context(object):
            right device but raises a warning.
          tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
            hide performance problems.
+         tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
+           raising errors on the other ones.
     """
     self._eager_context = _EagerContext()
     self._context_handle = None

@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import nn_ops
 
 
 def execute(op_name, num_outputs, inputs, attrs=None):
@@ -111,6 +112,14 @@ class TFETest(test_util.TensorFlowTestCase):
     # It is not possible to build a graph function when eager execution
     # is enabled; the stack entry should reflect this fact.
     self.assertFalse(stack_entry.is_building_function)
+
+  def testInt32GPU(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    with ops.device('gpu:0'):
+      xent = nn_ops.sparse_softmax_cross_entropy_with_logits(
+          logits=[[0.0, 0.0]], labels=[0])
+    self.assertAllClose(xent, [0.69314718])
 
   def _runInThread(self, target, args):
     t = threading.Thread(target=target, args=args)
