@@ -617,6 +617,30 @@ class Split : public CustomOperator<TensorFlowSplitOperator> {
   }
 };
 
+class StridedSlice
+    : public BuiltinOperator<StridedSliceOperator,
+                             ::tflite::StridedSliceOptions,
+                             ::tflite::BuiltinOptions_StridedSliceOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateStridedSliceOptions(
+        *builder, op.begin_mask, op.end_mask, op.ellipsis_mask,
+        op.new_axis_mask, op.shrink_axis_mask);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->begin_mask = options.begin_mask();
+    op->end_mask = options.end_mask();
+    op->ellipsis_mask = options.ellipsis_mask();
+    op->new_axis_mask = options.new_axis_mask();
+    op->shrink_axis_mask = options.shrink_axis_mask();
+  }
+};
+
 class TensorFlowUnsupported : public BaseOperator {
  public:
   using BaseOperator::BaseOperator;
@@ -777,6 +801,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new Mean(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
   ops.emplace_back(
       new Squeeze(::tflite::BuiltinOperator_SQUEEZE, OperatorType::kSqueeze));
+  ops.emplace_back(new StridedSlice(::tflite::BuiltinOperator_STRIDED_SLICE,
+                                    OperatorType::kStridedSlice));
 
   // Custom Operators.
   ops.emplace_back(new Cast("CAST", OperatorType::kCast));

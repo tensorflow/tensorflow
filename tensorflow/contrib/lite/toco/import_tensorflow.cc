@@ -1179,6 +1179,8 @@ void ConvertStridedSliceOperator(const NodeDef& node,
                                  const TensorFlowImportFlags& tf_import_flags,
                                  Model* model) {
   CHECK_EQ(node.op(), "StridedSlice");
+  // TODO(soroosh): The 4th input (strides) should be e optional, to be
+  // consistent with TF.
   CheckInputsCount(node, tf_import_flags, 4);
 
   auto* op = new StridedSliceOperator;

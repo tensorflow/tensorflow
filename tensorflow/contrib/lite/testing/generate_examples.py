@@ -1447,6 +1447,97 @@ def make_squeeze_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_strided_slice_tests(zip_path):
+  """Make a set of tests to do strided_slice."""
+
+  # TODO(soroosh): add test/support for uint8.
+  test_parameters = [
+      # 4-D
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "index_type": [tf.int32],
+          "input_shape": [[12, 2, 2, 5]],
+          "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
+          "end": [[8, 2, 2, 3], [12, 2, 2, 5]],
+          "strides": [None, [1, 1, 1, 1], [2, 1, 3, 1]],
+          "begin_mask": [None, 0, 1, 2, 8],
+          "end_mask": [None, 0, 1, 2, 8],
+      },
+      # 2-D
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "index_type": [tf.int32],
+          "input_shape": [[2, 3]],
+          "begin": [[0, 0], [1, 0]],
+          "end": [[2, 3], [2, 2]],
+          "strides": [None, [1, 1], [2, 2]],
+          "begin_mask": [None, 0, 1, 2],
+          "end_mask": [None, 0, 1, 2],
+      },
+      # Negative strides
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "index_type": [tf.int32],
+          "input_shape": [[2, 3]],
+          "begin": [[0, -1]],
+          "end": [[2, -3]],
+          "strides": [[1, -1]],
+          "begin_mask": [None, 0, 1, 2],
+          "end_mask": [None, 0, 1, 2],
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build graph for stride_slice test."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    begin = tf.placeholder(
+        dtype=parameters["index_type"],
+        name="begin",
+        shape=[len(parameters["input_shape"])])
+    end = tf.placeholder(
+        dtype=parameters["index_type"],
+        name="end",
+        shape=[len(parameters["input_shape"])])
+    strides = (
+        tf.placeholder(
+            dtype=parameters["index_type"],
+            name="strides",
+            shape=[len(parameters["input_shape"])])
+        if parameters["strides"] is not None else None)
+    tensors = [input_tensor, begin, end]
+    if strides is not None:
+      tensors.append(strides)
+    out = tf.strided_slice(
+        input_tensor,
+        begin,
+        end,
+        strides,
+        begin_mask=parameters["begin_mask"],
+        end_mask=parameters["end_mask"])
+    return tensors, [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    """Build inputs for stride_slice test."""
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    index_type = _TF_TYPE_INFO[parameters["index_type"]][0]
+    begin_values = np.array(parameters["begin"]).astype(index_type)
+    end_values = np.array(parameters["end"]).astype(index_type)
+    stride_values = (
+        np.array(parameters["strides"]).astype(index_type)
+        if parameters["strides"] is not None else None)
+    values = [input_values, begin_values, end_values]
+    if stride_values is not None:
+      values.append(stride_values)
+
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_l2_pool(input_tensor, ksize, strides, padding, data_format):
   """Given an input perform a sequence of TensorFlow ops to produce l2pool."""
   return tf.sqrt(tf.nn.avg_pool(
@@ -1505,6 +1596,7 @@ def main(unused_args):
         "transpose.zip": make_transpose_tests,
         "mean.zip": make_mean_tests,
         "squeeze.zip": make_squeeze_tests,
+        "strided_slice.zip": make_strided_slice_tests,
     }
     out = FLAGS.zip_to_output
     bin_path = FLAGS.toco

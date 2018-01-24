@@ -738,6 +738,9 @@ struct PadOperator : Operator {
 //
 // Inputs:
 //   inputs[0]: required: the input array
+//   inputs[1]: required: the begin array
+//   inputs[2]: required: the end array
+//   inputs[3]: optional: the strides array
 //
 // TensorFlow equivalent: StridedSlice
 struct StridedSliceOperator : Operator {

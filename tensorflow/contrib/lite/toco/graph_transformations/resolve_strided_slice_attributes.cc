@@ -33,6 +33,10 @@ bool ResolveStridedSliceAttributes::Run(Model* model, std::size_t op_index) {
   CHECK_EQ(op->inputs.size(), 4);
   const auto& start_array = model->GetArray(op->inputs[1]);
   if (!start_array.has_shape()) return false;
+  if (toco::RequiredBufferSizeForShape(start_array.shape()) > 4) {
+    // Only 1-4D arrays are supported for now.
+    return false;
+  }
 
   const auto& stop_array = model->GetArray(op->inputs[2]);
   if (!stop_array.has_shape()) return false;

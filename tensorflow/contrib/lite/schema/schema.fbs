@@ -118,6 +118,7 @@ enum BuiltinOperator : byte {
   DIV = 42,
   SQUEEZE = 43,
   UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
+  STRIDED_SLICE = 45,
 }
 
 // Options for the builtin operators.
@@ -153,6 +154,7 @@ union BuiltinOptions {
   DivOptions,
   SqueezeOptions,
   SequenceRNNOptions,
+  StridedSliceOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -338,6 +340,14 @@ table MeanOptions {
 
 table SqueezeOptions {
   squeeze_dims:[int];
+}
+
+table StridedSliceOptions {
+  begin_mask: int;
+  end_mask: int;
+  ellipsis_mask: int;
+  new_axis_mask: int;
+  shrink_axis_mask: int;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

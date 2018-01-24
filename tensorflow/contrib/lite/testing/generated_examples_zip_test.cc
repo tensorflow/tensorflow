@@ -263,6 +263,7 @@ INSTANTIATE_TESTS(div)
 INSTANTIATE_TESTS(transpose)
 INSTANTIATE_TESTS(mean)
 INSTANTIATE_TESTS(squeeze)
+INSTANTIATE_TESTS(strided_slice)
 
 }  // namespace testing
 }  // namespace tflite
