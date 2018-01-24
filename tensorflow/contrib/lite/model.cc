@@ -476,13 +476,6 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
     case BuiltinOperator_RESIZE_BILINEAR: {
-      auto* params = MallocPOD<TfLiteResizeBilinearParams>();
-      if (auto* schema_params =
-              op->builtin_options_as_ResizeBilinearOptions()) {
-        params->new_height = schema_params->new_height();
-        params->new_width = schema_params->new_width();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_PAD: {
