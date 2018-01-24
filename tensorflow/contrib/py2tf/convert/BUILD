@@ -22,6 +22,7 @@ py_library(
         "call_trees.py",
         "continue_canonicalization.py",
         "control_flow.py",
+        "decorators.py",
         "for_canonicalization.py",
         "logical_expressions.py",
         "print_functions.py",

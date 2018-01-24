@@ -339,7 +339,17 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
-    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN:
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
+      TfLiteSequenceRNNParams* params = MallocPOD<TfLiteSequenceRNNParams>();
+      if (auto* sequence_rnn_params =
+              op->builtin_options_as_SequenceRNNOptions()) {
+        params->activation =
+            parse_activation(sequence_rnn_params->fused_activation_function());
+        params->time_major = sequence_rnn_params->time_major();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_RNN: {
       TfLiteRNNParams* params = MallocPOD<TfLiteRNNParams>();
       if (auto* rnn_params = op->builtin_options_as_RNNOptions()) {

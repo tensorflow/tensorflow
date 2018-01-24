@@ -52,7 +52,7 @@ function build_libtensorflow_tarball() {
 
   TARBALL_SUFFIX="${1}"
   BAZEL="bazel --bazelrc ./tensorflow/tools/ci_build/install/.bazelrc"
-  BAZEL_OPTS="-c opt"
+  BAZEL_OPTS="-c opt --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0"
   if [ "${TF_NEED_CUDA}" == "1" ]; then
     BAZEL_OPTS="${BAZEL_OPTS} --config=cuda"
   fi

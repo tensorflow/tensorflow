@@ -120,6 +120,8 @@ def _convert_to_graph_tensor(value, dtype=None, name=None, as_ref=False):
   tensor_map = _scoped_captures.tensors
   if tensor_map is None:
     # Capturing is not enabled.
+    if value.dtype == dtypes_module.resource:
+      return value
     return constant_op.constant(value.numpy())
   if type(value) == ops.Tensor and value.graph is default_graph:
     # The tensor has already been converted and captured. The type check

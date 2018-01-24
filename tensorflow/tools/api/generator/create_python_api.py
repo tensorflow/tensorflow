@@ -157,15 +157,20 @@ def create_api_files(output_files):
   for module, exports in module_imports.items():
     # Make sure genrule output file list is in sync with API exports.
     if module not in module_name_to_file_path:
-      missing_output_files.append(module)
+      module_without_tf = module[len('tf.'):]
+      module_file_path = '"api/%s/__init__.py"' %  (
+          module_without_tf.replace('.', '/'))
+      missing_output_files.append(module_file_path)
       continue
     with open(module_name_to_file_path[module], 'w') as fp:
       fp.write(_GENERATED_FILE_HEADER + '\n'.join(exports))
 
   if missing_output_files:
     raise ValueError(
-        'Missing outputs for python_api_gen genrule:\n%s' %
-        ',\n'.join(missing_output_files))
+        'Missing outputs for python_api_gen genrule:\n%s.'
+        'Make sure all required outputs are in the '
+        'tensorflow/tools/api/generator/BUILD file.' %
+        ',\n'.join(sorted(missing_output_files)))
 
 
 def main(output_files):

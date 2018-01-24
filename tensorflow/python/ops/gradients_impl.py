@@ -50,6 +50,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import spectral_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # Warn the user if we convert a sparse representation to dense with at
@@ -394,6 +395,7 @@ def _MaybeCompile(scope, op, func, grad_fn):
     return grad_fn()
 
 
+@tf_export("gradients")
 def gradients(ys,
               xs,
               grad_ys=None,
@@ -799,6 +801,7 @@ def _MultiDeviceAddN(tensor_list):
   return math_ops.add_n(summands)
 
 
+@tf_export("AggregationMethod")
 class AggregationMethod(object):
   """A class listing aggregation methods used to combine gradients.
 
@@ -971,6 +974,7 @@ def _hessian_vector_product(ys, xs, v):
   return gradients(elemwise_products, xs)
 
 
+@tf_export("hessians")
 def hessians(ys, xs, name="hessians", colocate_gradients_with_ops=False,
             gate_gradients=False, aggregation_method=None):
   """Constructs the Hessian of sum of `ys` with respect to `x` in `xs`.

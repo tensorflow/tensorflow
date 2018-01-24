@@ -715,7 +715,7 @@ class ComputationBuilder {
   ComputationDataHandle Recv(const Shape& shape, const ChannelHandle& handle);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
-  // constant does not depend on parameters with higher index then
+  // constant does not depend on parameters with index greater than or equal to
   // `num_parameters`, or on stateful operators such as `RngNormal` or `Infeed`.
   // Unlike `ComputeConstant`, `IsConstant` tests whether a computation is a
   // compile-time constant without evaluating the computation.

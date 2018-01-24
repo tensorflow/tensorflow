@@ -34,8 +34,10 @@ class Namer(object):
     * side_effect_guards.SymbolNamer
   """
 
-  def __init__(self, global_namespace, name_map=None):
+  def __init__(self, global_namespace, recursive, name_map, partial_types):
     self.global_namespace = global_namespace
+    self.recursive = recursive
+    self.partial_types = partial_types
 
     self.renamed_calls = {}
     if name_map is not None:
@@ -54,6 +56,7 @@ class Namer(object):
     while new_name in self.global_namespace:
       n += 1
       new_name = '%s_%d' % (new_name_root, n)
+
     if live_object is not None:
       self.renamed_calls[live_object] = new_name
     self.generated_names.add(new_name)
@@ -67,7 +70,9 @@ class Namer(object):
     if live_object is not None and live_object in self.renamed_calls:
       return self.renamed_calls[live_object]
 
-    if owner_type is None:
+    if not self.recursive:
+      new_name = original_name
+    elif owner_type is None or owner_type in self.partial_types:
       # Top level functions: rename
       new_name_root = 'tf__%s' % original_name
       new_name = new_name_root

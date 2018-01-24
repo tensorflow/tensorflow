@@ -50,7 +50,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/contrib/lite:context",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )
 

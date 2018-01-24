@@ -396,7 +396,7 @@ class MklInputConversionOp : public OpKernel {
       auto cpu_engine = engine(engine::cpu, 0);
       MklDnnData<T> tf_input(&cpu_engine);
       auto input_tf_md = mkl_output_mkl_shape.GetTfLayout();
-      tf_input.SetUsrMem(input_tf_md, &tf_tensor);
+      tf_input.SetUsrMem(input_tf_md, tf_tensor);
 
       // Create reorder between tensorflow layout and Mkl layout.
       std::vector<primitive> net;

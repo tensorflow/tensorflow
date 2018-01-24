@@ -775,8 +775,10 @@ static const NodeDef* FindSwapInTrigger(
   return nullptr;
 }
 
-static bool IsSwappable(GraphView::OutputPort output) {
+static bool IsSwappable(const GraphView& graph, GraphView::OutputPort output) {
   const NodeDef& node = *output.node;
+  // There is no point in swapping out persistent tensors, since the tensor will
+  // continue to use memory.
   if (IsPersistent(node)) {
     return false;
   }
@@ -785,13 +787,29 @@ static bool IsSwappable(GraphView::OutputPort output) {
   if (!OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
     return false;
   }
-
   DataType dtype;
   if (!OutputTypeForNode(node, *op_def, output.port_id, &dtype).ok()) {
     return false;
   }
+  // References can only refer to persistent memory: therefore the node isn't
+  // swappable.
+  if (IsRefType(dtype)) {
+    return false;
+  }
 
-  return !IsRefType(dtype);
+  if (output.node->op() == "Identity" || output.node->op() == "Reshape") {
+    // If placed on the same device, these nodes are just forwarding references
+    // to their input. Therefore they are swappable iff their fanin is swappable
+    // or it resides on a different device.
+    GraphView::InputPort input;
+    input.node = output.node;
+    input.port_id = 0;
+    GraphView::OutputPort fanin = graph.GetRegularFanin(input);
+    if (fanin.node->device() == node.device()) {
+      return IsSwappable(graph, fanin);
+    }
+  }
+  return true;
 }
 
 static NodeDef* FindSwapOutTrigger(
@@ -811,7 +829,7 @@ static NodeDef* FindSwapOutTrigger(
       view.GetFanout(generator);
   NodeDef* trigger = nullptr;
   Costs::NanoSeconds earliest_fanout(
-      static_cast<double>(std::numeric_limits<int>::max()));
+      static_cast<double>(std::numeric_limits<int64>::max() >> 2));
 
   for (const auto& port : fanout) {
     if (port.node == node) {
@@ -843,8 +861,9 @@ static bool IsSwappable(GraphView::InputPort input) {
   return !IsRefType(dtype);
 }
 
-static bool IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
-                                       std::unordered_set<string>* skip_list) {
+static bool IdentifySwappingCandidates(
+    Cluster* cluster, GrapplerItem* item, std::unordered_set<string>* skip_list,
+    std::unordered_map<NodeDef*, SwapInfo>* nodes_to_swap) {
   GraphMemory memory(*item);
   const std::unordered_map<string, DeviceProperties>& devices =
       cluster->GetDevices();
@@ -898,10 +917,9 @@ static bool IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
         // Don't bother with small tensors.
         continue;
       }
-      // Don't try to swap out persistent data
       GraphView::OutputPort port =
           graph.GetOutputPort(live_tensor.node, live_tensor.output_id);
-      if (!IsSwappable(port)) {
+      if (!IsSwappable(graph, port)) {
         continue;
       }
       Costs::NanoSeconds execution_time(-1);
@@ -943,9 +961,8 @@ static bool IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
         }
       }
       if (!found) {
-        AttrValue& val =
-            (*fanout_to_swap.node->mutable_attr())["_swap_to_host"];
-        val.mutable_list()->add_i(fanout_to_swap.port_id);
+        (*nodes_to_swap)[fanout_to_swap.node].inputs_to_swap.push_back(
+            fanout_to_swap.port_id);
         required_savings -= live_tensor.memory_used;
         updated_graph = true;
         if (required_savings < 0) {
@@ -961,14 +978,13 @@ static bool IdentifySwappingCandidates(Cluster* cluster, GrapplerItem* item,
 bool SwappingPass(RewriterConfig::MemOptType optimization_level,
                   Cluster* cluster, GrapplerItem* item,
                   std::unordered_set<string>* skip_list) {
-  bool updated_graph = false;
+  std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;
   if (optimization_level == RewriterConfig::SWAPPING_HEURISTICS ||
       optimization_level == RewriterConfig::HEURISTICS) {
     // Use heuristics to figure out what needs to be swapped;
-    updated_graph = IdentifySwappingCandidates(cluster, item, skip_list);
+    IdentifySwappingCandidates(cluster, item, skip_list, &nodes_to_swap);
   }
   // Look for manual annotatations in the graph.
-  std::unordered_map<NodeDef*, SwapInfo> nodes_to_swap;
   for (auto& node : *item->graph.mutable_node()) {
     if (node.attr().count("_swap_to_host") != 0) {
       SwapInfo& swap_info = nodes_to_swap[&node];
@@ -1018,10 +1034,11 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
   }
   GraphView view(&item->graph);
 
+  bool updated_graph = false;
+
   for (auto& swap : nodes_to_swap) {
     NodeDef* node = swap.first;
     const SwapInfo& swap_info = swap.second;
-
     if (skip_list->find(node->name()) != skip_list->end()) {
       continue;
     }
@@ -1047,7 +1064,7 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
         skip_list->insert(input_name);
       }
 
-      // Make sure the tensor isn't swapped out quickly look for node that
+      // Make sure the tensor is swapped out quickly: look for node that
       // will execute just after the tensor is generated and add a control
       // dependency from the swap out node to that node.
       NodeDef* out_trigger =
