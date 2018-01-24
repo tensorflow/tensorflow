@@ -47,7 +47,8 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
                num_quantiles,
                max_elements=None,
                name=None,
-               container=None):
+               container=None,
+               generate_quantiles=False):
     """Creates a QuantileAccumulator object.
 
     Args:
@@ -57,8 +58,11 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
       max_elements: Maximum number of elements added to the accumulator.
       name: the name to save the accumulator under.
       container: An optional `string`. Defaults to `""`
+      generate_quantiles: Generate quantiles instead of approximate boundaries.
+        If true, exactly `num_quantiles` will be produced in the final summary.
     """
     self._epsilon = epsilon
+    self._generate_quantiles = generate_quantiles
 
     name = _PATTERN.sub("", name)
     with ops.name_scope(name, "QuantileAccumulator") as name:
@@ -70,7 +74,8 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
           init_stamp_token,
           epsilon=epsilon,
           max_elements=max_elements,
-          num_quantiles=num_quantiles)
+          num_quantiles=num_quantiles,
+          generate_quantiles=generate_quantiles)
       is_initialized_op = gen_quantile_ops.quantile_accumulator_is_initialized(
           self._quantile_accumulator_handle)
     resources.register_resource(self._quantile_accumulator_handle,
@@ -176,7 +181,14 @@ class QuantileAccumulator(saver.BaseSaverBuilder.SaveableObject):
         summaries=summary)
 
   def flush(self, stamp_token, next_stamp_token):
-    """Finalizes quantile summary stream and resets it for next iteration."""
+    """Finalizes quantile summary stream and resets it for next iteration.
+
+    Args:
+      stamp_token: Exepcted current token.
+      next_stamp_token: Next value for the token.
+    Returns:
+      A list of quantiles or approximate boundaries.
+    """
     return gen_quantile_ops.quantile_accumulator_flush(
         quantile_accumulator_handle=self._quantile_accumulator_handle,
         stamp_token=stamp_token,

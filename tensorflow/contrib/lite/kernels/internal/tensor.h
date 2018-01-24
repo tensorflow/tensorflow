@@ -41,8 +41,7 @@ inline int32_t* GetTensorData(TfLiteTensor* tensor) {
 
 template <>
 inline int64_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? reinterpret_cast<int64_t*>(tensor->data.raw)
-                           : nullptr;
+  return tensor != nullptr ? tensor->data.i64 : nullptr;
 }
 
 inline int RemapDim(int max_dimensions, int d) {

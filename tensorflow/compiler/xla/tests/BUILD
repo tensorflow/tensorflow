@@ -815,9 +815,6 @@ xla_test(
 xla_test(
     name = "bfloat16_test",
     srcs = ["bfloat16_test.cc"],
-    blacklisted_backends = [
-        "gpu",
-    ],
     shard_count = 40,
     deps = [
         ":test_utils",
@@ -1001,7 +998,10 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
-    tags = ["optonly"],
+    tags = [
+        "enable_for_xla_interpreter",
+        "optonly",
+    ],
     xla_test_library_deps = [":reduce_window_test_library"],
     deps = [],
 )

@@ -14,5 +14,6 @@ py_library(
         "gast/astn.py",
         "gast/gast.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
 )

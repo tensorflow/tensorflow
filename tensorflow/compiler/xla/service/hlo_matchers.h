@@ -83,6 +83,7 @@ HLO_MATCHER(Abs);
 HLO_MATCHER(Add);
 HLO_MATCHER(Bitcast);
 HLO_MATCHER(Broadcast);
+HLO_MATCHER(BatchNormGrad);
 HLO_MATCHER(Call);
 HLO_MATCHER(Ceil);
 HLO_MATCHER(Clamp);

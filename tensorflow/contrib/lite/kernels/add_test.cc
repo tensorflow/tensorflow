@@ -77,9 +77,10 @@ TEST(FloatAddOpModel, NoActivation) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({-1.9, 0.4, 1.0, 1.3}));
 }
 
-TEST(FloatAddOpModel, ActivationRELU1) {
+TEST(FloatAddOpModel, ActivationRELU_N1_TO_1) {
   FloatAddOpModel m({TensorType_FLOAT32, {1, 2, 2, 1}},
-                    {TensorType_FLOAT32, {}}, ActivationFunctionType_RELU1);
+                    {TensorType_FLOAT32, {}},
+                    ActivationFunctionType_RELU_N1_TO_1);
   m.PopulateTensor<float>(m.input1(), {-2.0, 0.2, 0.7, 0.8});
   m.PopulateTensor<float>(m.input2(), {0.1, 0.2, 0.3, 0.5});
   m.Invoke();
@@ -122,7 +123,7 @@ TEST(QuantizedAddOpModel, QuantizedTestsNoActivation) {
   }
 }
 
-TEST(QuantizedAddOpModel, QuantizedTestsActivationRELU1) {
+TEST(QuantizedAddOpModel, QuantizedTestsActivationRELU_N1_TO_1) {
   float kQuantizedTolerance = GetTolerance(-1.0, 1.0);
   std::vector<std::initializer_list<float>> inputs1 = {{-0.8, 0.2, 0.9, 0.7},
                                                        {-0.8, 0.2, 0.7, 0.3}};
@@ -133,7 +134,7 @@ TEST(QuantizedAddOpModel, QuantizedTestsActivationRELU1) {
   for (int i = 0; i < inputs1.size(); ++i) {
     QuantizedAddOpModel m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
                           {TensorType_UINT8, {}, -1.0, 1.0},
-                          ActivationFunctionType_RELU1);
+                          ActivationFunctionType_RELU_N1_TO_1);
     m.QuantizeAndPopulate<uint8_t>(m.input1(), inputs1[i]);
     m.QuantizeAndPopulate<uint8_t>(m.input2(), inputs2[i]);
     m.Invoke();

@@ -23,11 +23,13 @@ import numpy as np
 
 from tensorflow.core.framework import types_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util.tf_export import tf_export
 
 
 _np_bfloat16 = pywrap_tensorflow.TF_bfloat16_type()
 
 
+@tf_export("DType")
 class DType(object):
   """Represents the type of the elements in a `Tensor`.
 
@@ -321,32 +323,55 @@ dtype_range = {np.bool_: (False, True),
 
 # Define standard wrappers for the types_pb2.DataType enum.
 resource = DType(types_pb2.DT_RESOURCE)
+tf_export("resource").export_constant(__name__, "resource")
 variant = DType(types_pb2.DT_VARIANT)
+tf_export("variant").export_constant(__name__, "variant")
 float16 = DType(types_pb2.DT_HALF)
+tf_export("float16").export_constant(__name__, "float16")
 half = float16
+tf_export("half").export_constant(__name__, "half")
 float32 = DType(types_pb2.DT_FLOAT)
+tf_export("float32").export_constant(__name__, "float32")
 float64 = DType(types_pb2.DT_DOUBLE)
+tf_export("float64").export_constant(__name__, "float64")
 double = float64
+tf_export("double").export_constant(__name__, "double")
 int32 = DType(types_pb2.DT_INT32)
+tf_export("int32").export_constant(__name__, "int32")
 uint8 = DType(types_pb2.DT_UINT8)
+tf_export("uint8").export_constant(__name__, "uint8")
 uint16 = DType(types_pb2.DT_UINT16)
+tf_export("uint16").export_constant(__name__, "uint16")
 uint32 = DType(types_pb2.DT_UINT32)
 uint64 = DType(types_pb2.DT_UINT64)
 int16 = DType(types_pb2.DT_INT16)
+tf_export("int16").export_constant(__name__, "int16")
 int8 = DType(types_pb2.DT_INT8)
+tf_export("int8").export_constant(__name__, "int8")
 string = DType(types_pb2.DT_STRING)
+tf_export("string").export_constant(__name__, "string")
 complex64 = DType(types_pb2.DT_COMPLEX64)
+tf_export("complex64").export_constant(__name__, "complex64")
 complex128 = DType(types_pb2.DT_COMPLEX128)
+tf_export("complex128").export_constant(__name__, "complex128")
 int64 = DType(types_pb2.DT_INT64)
+tf_export("int64").export_constant(__name__, "int64")
 bool = DType(types_pb2.DT_BOOL)
+tf_export("bool").export_constant(__name__, "bool")
 qint8 = DType(types_pb2.DT_QINT8)
+tf_export("qint8").export_constant(__name__, "qint8")
 quint8 = DType(types_pb2.DT_QUINT8)
+tf_export("quint8").export_constant(__name__, "quint8")
 qint16 = DType(types_pb2.DT_QINT16)
+tf_export("qint16").export_constant(__name__, "qint16")
 quint16 = DType(types_pb2.DT_QUINT16)
+tf_export("quint16").export_constant(__name__, "quint16")
 qint32 = DType(types_pb2.DT_QINT32)
+tf_export("qint32").export_constant(__name__, "qint32")
 resource_ref = DType(types_pb2.DT_RESOURCE_REF)
 variant_ref = DType(types_pb2.DT_VARIANT_REF)
 bfloat16 = DType(types_pb2.DT_BFLOAT16)
+tf_export("bfloat16").export_constant(__name__, "bfloat16")
 float16_ref = DType(types_pb2.DT_HALF_REF)
 half_ref = float16_ref
 float32_ref = DType(types_pb2.DT_FLOAT_REF)
@@ -578,8 +603,10 @@ _TF_TO_NP = {
 QUANTIZED_DTYPES = frozenset(
     [qint8, quint8, qint16, quint16, qint32, qint8_ref, quint8_ref, qint16_ref,
      quint16_ref, qint32_ref])
+tf_export("QUANTIZED_DTYPES").export_constant(__name__, "QUANTIZED_DTYPES")
 
 
+@tf_export("as_dtype")
 def as_dtype(type_value):
   """Converts the given `type_value` to a `DType`.
 

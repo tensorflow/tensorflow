@@ -259,6 +259,10 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
   EXPECT_EQ(NodeName(swap_out.name()), swap_in.input(0));
   EXPECT_EQ("^c", swap_in.input(1));
 
+  const NodeDef& new_c = output.node(2);
+  EXPECT_EQ(NodeName(c.name()), new_c.name());
+  EXPECT_EQ("^swap_out_e_0", new_c.input(1));
+
   // Run the optimizer a second time to ensure it's idempotent.
   item.graph.Swap(&output);
   status = optimizer.Optimize(cluster.get(), item, &output);
@@ -267,11 +271,54 @@ TEST_F(MemoryOptimizerTest, SimpleSwapping) {
 
 TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output a = ops::Variable(s.WithOpName("a").WithDevice("/gpu:0"),
+  Output v = ops::Variable(s.WithOpName("v").WithDevice("/gpu:0"),
                            {128, 128, 8}, DT_FLOAT);
+  Output a = ops::Identity(s.WithOpName("a").WithDevice("/gpu:0"), v);
+  Output b = ops::Square(s.WithOpName("b").WithDevice("/gpu:0"), v);
+  Output c = ops::Sqrt(s.WithOpName("c").WithDevice("/gpu:0"), a);
+  Output d = ops::Identity(s.WithOpName("d").WithDevice("/gpu:0"), b);
+  Output axis = ops::Const(s.WithOpName("axis"), 0);
+  Output e =
+      ops::Concat(s.WithOpName("e").WithDevice("/gpu:0"), {a, b, c, d}, axis);
+  Output f = ops::Square(s.WithOpName("f").WithDevice("/gpu:0"), a);
+  Output g = ops::Sqrt(s.WithOpName("g").WithDevice("/gpu:0"), b);
+  Output h = ops::Exp(s.WithOpName("h").WithDevice("/gpu:0"), c);
+  Output i = ops::Log(s.WithOpName("i").WithDevice("/gpu:0"), d);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"e", "f", "g", "h", "i"};
+
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
+
+  MemoryOptimizer optimizer(RewriterConfig::SWAPPING_HEURISTICS);
+  GraphDef output;
+  Status status = optimizer.Optimize(cluster.get(), item, &output);
+  TF_EXPECT_OK(status);
+
+  for (const auto& node : output.node()) {
+    if (node.name() == "e") {
+      EXPECT_EQ(5, node.input_size());
+      EXPECT_EQ("a", node.input(0));
+      EXPECT_EQ("swap_in_e_1", node.input(1));
+      EXPECT_EQ("swap_in_e_2", node.input(2));
+      EXPECT_EQ("swap_in_e_3", node.input(3));
+      EXPECT_EQ("axis", node.input(4));
+    }
+  }
+}
+
+TEST_F(MemoryOptimizerTest, UnswappableInputs) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output v = ops::Variable(s.WithOpName("v").WithDevice("/gpu:0"),
+                           {128, 128, 8}, DT_FLOAT);
+  Output a = ops::Square(s.WithOpName("a").WithDevice("/gpu:0"), v);
   Output b = ops::Identity(s.WithOpName("b").WithDevice("/gpu:0"), {a});
   Output c = ops::Identity(s.WithOpName("c").WithDevice("/gpu:0"), {a});
-  Output d = ops::Identity(s.WithOpName("d").WithDevice("/gpu:0"), {a});
+  Output index = ops::Const(s.WithOpName("index"), {0});
+  Output indices = ops::Tile(s.WithOpName("indices"), index, {128});
+  Output d =
+      ops::ScatterAdd(s.WithOpName("d").WithDevice("/gpu:0"), v, indices, c);
   Output axis = ops::Const(s.WithOpName("axis"), 0);
   Output e =
       ops::Concat(s.WithOpName("e").WithDevice("/gpu:0"), {b, c, d}, axis);
@@ -289,46 +336,9 @@ TEST_F(MemoryOptimizerTest, SwappingHeuristics) {
 
   for (const auto& node : output.node()) {
     if (node.name() == "e") {
-      EXPECT_TRUE(node.attr().count("_swap_to_host") > 0);
-      const AttrValue& val = node.attr().at("_swap_to_host");
-      EXPECT_TRUE(val.has_list());
-      std::set<int> inputs_to_swap;
-      for (int64 input_id : val.list().i()) {
-        inputs_to_swap.insert(input_id);
-      }
-      EXPECT_EQ(std::set<int>({0, 1, 2}), inputs_to_swap);
-    }
-  }
-}
-
-TEST_F(MemoryOptimizerTest, UnswappableInputs) {
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  Output a = ops::Variable(s.WithOpName("a").WithDevice("/gpu:0"),
-                           {128, 128, 8}, DT_FLOAT);
-  Output b = ops::Identity(s.WithOpName("b").WithDevice("/gpu:0"), {a});
-  Output c = ops::Identity(s.WithOpName("c").WithDevice("/gpu:0"), {a});
-  Output index = ops::Const(s.WithOpName("index"), {0});
-  Output indices = ops::Tile(s.WithOpName("indices"), index, {128});
-  Output d =
-      ops::ScatterAdd(s.WithOpName("d").WithDevice("/gpu:0"), a, indices, c);
-  Output axis = ops::Const(s.WithOpName("axis"), 0);
-  Output e =
-      ops::Concat(s.WithOpName("e").WithDevice("/gpu:0"), {b, c, d}, axis);
-
-  GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  item.fetch = {"e"};
-
-  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
-
-  MemoryOptimizer optimizer(RewriterConfig::SWAPPING_HEURISTICS);
-  GraphDef output;
-  Status status = optimizer.Optimize(cluster.get(), item, &output);
-  TF_EXPECT_OK(status);
-
-  for (const auto& node : output.node()) {
-    if (node.name() == "d") {
-      EXPECT_EQ(0, node.attr().count("_swap_to_host"));
+      // The d node isn't swappable.
+      EXPECT_EQ(4, node.input_size());
+      EXPECT_EQ("d", node.input(2));
     }
   }
 }
@@ -355,7 +365,6 @@ TEST_F(MemoryOptimizerTest, AccumulationRewrites) {
 
   int count = 0;
   for (const auto& node : output.node()) {
-    std::cout << node.DebugString() << std::endl;
     if (node.name() == "d") {
       EXPECT_EQ("DestroyTemporaryVariable", node.op());
       count++;

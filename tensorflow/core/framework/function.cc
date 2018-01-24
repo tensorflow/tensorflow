@@ -810,6 +810,10 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
     entries.push_back(strings::StrCat(
         "_overlay_lib", "=", reinterpret_cast<uintptr_t>(options.overlay_lib)));
   }
+  if (!options.state_handle.empty()) {
+    entries.push_back(
+        strings::StrCat("_state_handle", "=", options.state_handle));
+  }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
 }

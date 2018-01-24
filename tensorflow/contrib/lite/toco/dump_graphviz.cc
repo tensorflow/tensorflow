@@ -278,8 +278,8 @@ std::vector<const Operator*> OperatorsToDump(const Model& model) {
   if (last_specified) {
     // Return only the part of the graph between graphviz_first_array
     // and graphviz_last_array.
-    CHECK(model.arrays.count(dump_options.graphviz_first_array));
-    CHECK(model.arrays.count(dump_options.graphviz_last_array));
+    CHECK(model.HasArray(dump_options.graphviz_first_array));
+    CHECK(model.HasArray(dump_options.graphviz_last_array));
     std::unordered_set<string> arrays_already_produced;
     std::vector<string> arrays_to_produce;
     arrays_to_produce.push_back(dump_options.graphviz_last_array);
@@ -336,7 +336,7 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
             op_properties.color.TextColorString().c_str());
     // Add nodes and edges for all inputs of the operator.
     for (const auto& input : op.inputs) {
-      if (model.arrays.count(input) == 0) {
+      if (!model.HasArray(input)) {
         // Arrays should _always_ exist. Except, perhaps, during development.
         continue;
       }
@@ -352,7 +352,7 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
     }
     // Add nodes and edges for all outputs of the operator.
     for (const auto& output : op.outputs) {
-      if (model.arrays.count(output) == 0) {
+      if (!model.HasArray(output)) {
         // Arrays should _always_ exist. Except, perhaps, during development.
         continue;
       }

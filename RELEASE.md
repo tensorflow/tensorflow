@@ -13,46 +13,146 @@
 * [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/lite)
   dev preview is now available.
 * CUDA 9 and cuDNN 7 support.
+* Accelerated Linear Algebra (XLA):
+  * Add `complex64` support to XLA compiler.
+  * `bfloat` support is now added to XLA infrastructure.
+  * Make `ClusterSpec` propagation work with XLA devices.
+  * Use a determinisitic executor to generate XLA graph.
+* `tf.contrib`:
+  * `tf.contrib.distributions`:
+    * Add `tf.contrib.distributions.Autoregressive`.
+    * Make `tf.contrib.distributions` QuadratureCompound classes support batch
+    * Infer `tf.contrib.distributions.RelaxedOneHotCategorical` `dtype` from arguments.
+    * Make `tf.contrib.distributions` quadrature family parameterized by
+      `quadrature_grid_and_prob` vs `quadrature_degree`.
+    * `auto_correlation` added to `tf.contrib.distributions`
+  * Add `tf.contrib.bayesflow.layers`, a collection of probabilistic (neural) layers.
+  * Add `tf.contrib.bayesflow.halton_sequence`.
+  * Add `tf.contrib.data.make_saveable_from_iterator.`
+  * Add `tf.contrib.data.shuffle_and_repeat`.
+  * Add new custom transformation: `tf.contrib.data.scan()`.
+  * `tf.contrib.distributions.bijectors`:
+    * Add `tf.contrib.distributions.bijectors.MaskedAutoregressiveFlow`.
+    * Add `tf.contrib.distributions.bijectors.Permute`.
+    * Add `tf.contrib.distributions.bijectors.Gumbel`.
+    * Add `tf.contrib.distributions.bijectors.Reshape`.
+    * Support shape inference (i.e., shapes containing -1) in the Reshape bijector.
+* Add `streaming_precision_recall_at_equal_thresholds,` a method for computing
+  streaming precision and recall with `O(num_thresholds + size of predictions)`
+  time and space complexity.
+* Change `RunConfig` default behavior to not set a random seed, making random
+  behavior independently random on distributed workers. We expect this to
+  generally improve training performance. Models that do rely on determinism
+  should set a random seed explicitly.
+* Replaced the implementation of `tf.flags` with `absl.flags`.
+* Add support for `CUBLAS_TENSOR_OP_MATH` in fp16 GEMM
+* Add support for CUDA on NVIDIA Tegra devices
 
 ## Bug Fixes and Other Changes
-* `auto_correlation` added to `tf.contrib.distributions`.
-* Add `DenseFlipout` probabilistic layer.
-* Restandardize `DenseVariational` as simpler template for other probabilistic layers.
-* Make `tf.contrib.distributions` QuadratureCompound classes support batch.
+* Documentation updates:
+  * Clarified that you can only install TensorFlow on 64-bit machines.
+  * Added a short doc explaining how `Estimator`s save checkpoints.
+  * Add documentation for ops supported by the `tf2xla` bridge.
+  * Fix minor typos in the doc of `SpaceToDepth` and `DepthToSpace`.
+  * Updated documentation comments in `mfcc_mel_filterbank.h` and `mfcc.h` to
+    clarify that the input domain is squared magnitude spectra and the weighting
+    is done on linear magnitude spectra (sqrt of inputs).
+  * Change `tf.contrib.distributions` docstring examples to use `tfd` alias
+    rather than `ds`, `bs`.
+  * Fix docstring typos in `tf.distributions.bijectors.Bijector`.
+  * `tf.assert_equal` no longer raises `ValueError.` It now raises
+    `InvalidArgumentError,` as documented.
+  * Update Getting Started docs and API intro.
+* Google Cloud Storage (GCS):
+  * Add userspace DNS caching for the GCS client.
+  * Customize request timeouts for the GCS filesystem.
+  * Improve GCS filesystem caching.
+* Bug Fixes:
+  * Fix bug where partitioned integer variables got their wrong shapes. Before
+  * Fix correctness bug in CPU and GPU implementations of Adadelta.
+  * Fix a bug in `import_meta_graph`'s handling of partitioned variables when
+    importing into a scope. WARNING: This may break loading checkpoints of
+    graphs with partitioned variables saved after using `import_meta_graph` with
+    a non-empty `import_scope` argument.
+  * Fix bug in offline debugger which prevented viewing events.
+  * Added the `WorkerService.DeleteWorkerSession` method to the gRPC interface,
+    to fix a memory leak. Ensure that your master and worker servers are running
+    the same version of TensorFlow to avoid compatibility issues.
+  * Fix bug in peephole implementation of BlockLSTM cell.
+  * Fix bug by casting dtype of `log_det_jacobian` to match `log_prob` in
+    `TransformedDistribution`.
+  * Fix a bug in `import_meta_graph`'s handling of partitioned variables when
+  * Ensure `tf.distributions.Multinomial` doesn't underflow in `log_prob`.
+    Before this change, all partitions of an integer variable were initialized
+    with the shape of the unpartitioned variable; after this change they are
+    initialized correctly.
+* Other:
+  * Add necessary shape util support for bfloat16.
+  * Add a way to run ops using a step function to MonitoredSession.
+  * Add `DenseFlipout` probabilistic layer.
+  * A new flag `ignore_live_threads` is available on train. If set to `True`, it
+    will ignore threads that remain running when tearing down infrastructure
+    after successfully completing training, instead of throwing a RuntimeError.
+  * Restandardize `DenseVariational` as simpler template for other probabilistic
+    layers.
+  * `tf.data` now supports `tf.SparseTensor` components in dataset elements.
+  * It is now possible to iterate over `Tensor`s.
+  * Allow `SparseSegmentReduction` ops to have missing segment IDs.
+  * Modify custom export strategy to account for multidimensional sparse float
+    splits.
+  * `Conv2D`, `Conv2DBackpropInput`, `Conv2DBackpropFilter` now supports arbitrary
+    dilations with GPU and cuDNNv6 support.
+  * `Estimator` now supports `Dataset`: `input_fn` can return a `Dataset`
+    instead of `Tensor`s.
+  * Add `RevBlock`, a memory-efficient implementation of reversible residual layers.
+  * Reduce BFCAllocator internal fragmentation.
+  * Add `cross_entropy` and `kl_divergence` to `tf.distributions.Distribution`.
+  * Add `tf.nn.softmax_cross_entropy_with_logits_v2` which enables backprop
+    w.r.t. the labels.
+  * GPU back-end now uses `ptxas` to compile generated PTX.
+  * `BufferAssignment`'s protocol buffer dump is now deterministic.
+  * Change embedding op to use parallel version of `DynamicStitch`.
+  * Add support for sparse multidimensional feature columns.
+  * Speed up the case for sparse float columns that have only 1 value.
+  * Allow sparse float splits to support multivalent feature columns.
+  * Add `quantile` to `tf.distributions.TransformedDistribution`.
+  * Add `NCHW_VECT_C` support for `tf.depth_to_space` on GPU.
+  * Add `NCHW_VECT_C` support for `tf.space_to_depth` on GPU.
+
+## API Changes
+* Rename `SqueezeDims` attribute to `Axis` in C++ API for Squeeze op.
 * `Stream::BlockHostUntilDone` now returns Status rather than bool.
-* Customize request timeouts for the GCS filesystem.
+* Minor refactor: move stats files from `stochastic` to `common` and remove
+  `stochastic`.
 
 ## Thanks to our Contributors
 
 This release contains contributions from many people at Google, as well as:
 
-4d55397500, Abdullah Alrasheed, abenmao, Adam Salvail, Aditya Dhulipala, Ag Ramesh,
-Akimasa Kimura, Alan Du, Alan Yee, Alexander, Amit Kushwaha, Amy, Andrei Costinescu,
-Andrei Nigmatulin, Andrew Erlichson, Andrew Myers, Andrew Stepanov, Androbin, AngryPowman,
-Anish Shah, Anton Daitche, Artsiom Chapialiou, asdf2014, Aseem Raj Baranwal, Ash Hall,
-Bart Kiers, Batchu Venkat Vishal, ben, Ben Barsdell, Bill Piel, Carl Thomé, Catalin Voss,
-Changming Sun, Chengzhi Chen, Chi Zeng, Chris Antaki, Chris Donahue, Chris Oelmueller,
-Chris Tava, Clayne Robison, Codrut, Courtial Florian, Dalmo Cirne, Dan J, Darren Garvey,
-David Kristoffersson, David Norman, David RöThlisberger, DavidNorman, Dhruv, DimanNe,
-Dorokhov, Duncan Mac-Vicar P, EdwardDixon, EMCP, error.d, FAIJUL, Fan Xia,
-Francois Xavier, Fred Reiss, Freedom" Koan-Sin Tan, Fritz Obermeyer, Gao, Xiang,
-Guenther Schmuelling, Guo Yejun (郭叶军), Hans Gaiser, HectorSVC, Hyungsuk Yoon,
-James Pruegsanusak, Jay Young, Jean Wanka, Jeff Carpenter, Jeremy Rutman, Jeroen BéDorf,
-Jett Jones, Jimmy Jia, jinghuangintel, jinze1994, JKurland, Joel Hestness, joetoth,
-John B Nelson, John Impallomeni, John Lawson, Jonas, Jonathan Dekhtiar, joshkyh, Jun Luan,
-Jun Mei, Kai Sasaki, Karl Lessard, karl@kubx.ca, Kb Sriram, Kenichi Ueno, Kevin Slagle,
-Kongsea, Lakshay Garg, lhlmgr, Lin Min, liu.guangcong, Loki Der Quaeler, Louie Helm,
-lucasmoura, Luke Iwanski, Lyndon White, Mahmoud Abuzaina, Marcel Puyat, Mark Aaron Shirley,
-Michele Colombo, MtDersvan, Namrata-Ibm, Nathan Luehr, Naurril, Nayana Thorat, Nicolas Lopez,
-Niranjan Hasabnis, Nolan Liu, Nouce, Oliver Hennigh, osdamv, Patrik Erdes,
-Patryk Chrabaszcz, Pavel Christof, Penghao Cen, postBG, Qingqing Cao, Qingying Chen, qjivy,
-Raphael, Rasmi, raymondxyang, Renze Yu, resec, Roffel, Ruben Vereecken, Ryohei Kuroki,
-sandipmgiri, Santiago Castro, Scott Kirkland, Sean Vig, Sebastian Raschka, Sebastian Weiss,
-Sergey Kolesnikov, Sergii Khomenko, Shahid, Shivam Kotwalia, Stuart Berg, Sumit Gouthaman,
-superzerg, Sven Mayer, tetris, Ti Zhou, Tiago Freitas Pereira, Tian Jin, Tomoaki Oiki,
-Vaibhav Sood, vfdev, Vivek Rane, Vladimir Moskva, wangqr, Weber Xie, Will Frey,
-Yan Facai (颜发才), yanivbl6, Yaroslav Bulatov, Yixing Lao, Yong Tang, youkaichao,
-Yuan (Terry) Tang, Yue Zhang, Yuxin Wu, Ziming Dong, ZxYuan, 黄璞
+Adam Zahran, Ag Ramesh, Alan Lee, Alan Yee, Alex Sergeev, Alexander, Amir H. Jadidinejad,
+Amy, Anastasios Doumoulakis, Andrei Costinescu, Andrei Nigmatulin, Anthony Platanios,
+Anush Elangovan, arixlin, Armen Donigian, ArtëM Sobolev, Atlas7, Ben Barsdell, Bill Prin,
+Bo Wang, Brett Koonce, Cameron Thomas, Carl Thomé, Cem Eteke, cglewis, Changming Sun,
+Charles Shenton, Chi-Hung, Chris Donahue, Chris Filo Gorgolewski, Chris Hoyean Song,
+Chris Tava, Christian Grail, Christoph Boeddeker, cinqS, Clayne Robison, codrut3, concerttttt,
+CQY, Dan Becker, Dan Jarvis, Daniel Zhang, David Norman, dmaclach, Dmitry Trifonov,
+Donggeon Lim, dongpilYu, Dr. Kashif Rasul, Edd Wilder-James, Eric Lv, fcharras, Felix Abecassis,
+FirefoxMetzger, formath, FredZhang, Gaojin Cao, Gary Deer, Guenther Schmuelling, Hanchen Li,
+Hanmin Qin, hannesa2, hyunyoung2, Ilya Edrenkin, Jackson Kontny, Jan, Javier Luraschi,
+Jay Young, Jayaram Bobba, Jeff, Jeff Carpenter, Jeremy Sharpe, Jeroen BéDorf, Jimmy Jia,
+Jinze Bai, Jiongyan Zhang, Joe Castagneri, Johan Ju, Josh Varty, Julian Niedermeier,
+JxKing, Karl Lessard, Kb Sriram, Keven Wang, Koan-Sin Tan, Kyle Mills, lanhin, LevineHuang,
+Loki Der Quaeler, Loo Rong Jie, Luke Iwanski, LáSzló Csomor, Mahdi Abavisani, Mahmoud Abuzaina,
+ManHyuk, Marek ŠUppa, MathSquared, Mats Linander, Matt Wytock, Matthew Daley, Maximilian Bachl,
+mdymczyk, melvyniandrag, Michael Case, Mike Traynor, miqlas, Namrata-Ibm, Nathan Luehr,
+Nathan Van Doorn, Noa Ezra, Nolan Liu, Oleg Zabluda, opensourcemattress, Ouwen Huang,
+Paul Van Eck, peisong, Peng Yu, PinkySan, pks, powderluv, Qiao Hai-Jun, Qiao Longfei,
+Rajendra Arora, Ralph Tang, resec, Robin Richtsfeld, Rohan Varma, Ryohei Kuroki, SaintNazaire,
+Samuel He, Sandeep Dcunha, sandipmgiri, Sang Han, scott, Scott Mudge, Se-Won Kim, Simon Perkins,
+Simone Cirillo, Steffen Schmitz, Suvojit Manna, Sylvus, Taehoon Lee, Ted Chang, Thomas Deegan,
+Till Hoffmann, Tim, Toni Kunic, Toon Verstraelen, Tristan Rice, Urs KöSter, Utkarsh Upadhyay,
+Vish (Ishaya) Abrams, Winnie Tsang, Yan Chen, Yan Facai (颜发才), Yi Yang, Yong Tang,
+Youssef Hesham, Yuan (Terry) Tang, Zhengsheng Wei, zxcqwe4906, 张志豪, 田传武 
 
 We are also grateful to all who filed issues or helped resolve them, asked and
 answered questions, and were part of inspiring discussions.
@@ -60,7 +160,15 @@ answered questions, and were part of inspiring discussions.
 # Release 1.4.1
 
 ## Bug Fixes and Other Changes
-* `LinearClassifier` fix for the Google Cloud Machine Learning Engine.
+* `LinearClassifier` fix.
+
+# Release 1.4.0
+
+## Major Features And Improvements
+* `tf.keras` is now part of the core TensorFlow API.
+* [`tf.data`](http://tensorflow.org/programmers_guide/datasets) is now part of
+  the core TensorFlow API.
+  * The API is now subject to backwards compatibility guarantees.
 
 # Release 1.4.0
 

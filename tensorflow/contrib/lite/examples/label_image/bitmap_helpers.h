@@ -36,7 +36,7 @@ template void downsize<uint8_t>(uint8_t*, unsigned char*, int, int, int, int,
 template void downsize<float>(float*, unsigned char*, int, int, int, int, int,
                               int, Settings*);
 
-}  // label_image
-}  // tflite
+}  // namespace label_image
+}  // namespace tflite
 
 #endif  // TENSORFLOW_CONTRIB_LITE_EXAMPLES_LABEL_IMAGE_BITMAP_HELPERS_H

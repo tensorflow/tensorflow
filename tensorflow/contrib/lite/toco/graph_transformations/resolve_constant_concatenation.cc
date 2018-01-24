@@ -189,7 +189,7 @@ bool ResolveConstantConcatenation::Run(Model* model, std::size_t op_index) {
 
   // Remove all the resolved arrays.
   for (const string& input_name : concat_op->inputs) {
-    model->arrays.erase(input_name);
+    model->EraseArray(input_name);
   }
 
   // Remove concatenate operator

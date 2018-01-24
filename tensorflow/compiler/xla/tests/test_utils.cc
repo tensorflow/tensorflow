@@ -34,7 +34,7 @@ void PopulateWithRandomFloatingPointData(Literal* literal) {
   TF_CHECK_OK(literal->Populate<FloatT>(
       [&](tensorflow::gtl::ArraySlice<int64> indices) {
         // Generate a random uniforma number from -0.0625 and 0.0625 and bias it
-        // with  a position dependent nubmer with mean 0.037109375. These number
+        // with  a position dependent number with mean 0.037109375. These number
         // should allow for long chains of accumulation without being too close
         // to zero or to large to accumulate all numbers accurately.
         return (generator(engine) - 1.0625) +

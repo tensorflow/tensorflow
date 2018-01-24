@@ -10,5 +10,6 @@ py_library(
     srcs = [
         "termcolor.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
 )

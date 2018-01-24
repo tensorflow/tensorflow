@@ -29,6 +29,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -263,6 +264,14 @@ class ShuffleAndRepeatTest(
     with self.assertRaises(errors.OutOfRangeError):
       self.gen_outputs(lambda: self._build_ds(10, count=-1, num_elements=0), [],
                        100)
+
+  def testLargeBufferSize(self):
+    with ops.Graph().as_default() as g:
+      ds = dataset_ops.Dataset.range(20).apply(
+          shuffle_ops.shuffle_and_repeat(buffer_size=21))
+      get_next_op = ds.make_one_shot_iterator().get_next()
+      with self.test_session(graph=g) as sess:
+        sess.run(get_next_op)
 
 
 class ShuffleAndRepeatSerializationTest(

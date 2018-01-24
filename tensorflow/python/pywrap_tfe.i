@@ -24,10 +24,13 @@ limitations under the License.
 %rename("%s") TFE_ContextDisableRunMetadata;
 %rename("%s") TFE_ContextExportRunMetadata;
 %rename("%s") TFE_ContextClearCaches;
+%rename("%s") TFE_ContextGetDevicePlacementPolicy;
+%rename("%s") TFE_ContextSetThreadLocalDevicePlacementPolicy;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_RegisterExceptionClass;
 %rename("%s") TFE_Py_Execute;
+%rename("%s") TFE_Py_FastPathExecute;
 %rename("%s") TFE_Py_UID;
 %rename("%s") TFE_Py_TapeSetNew;
 %rename("%s") TFE_Py_TapeSetRemove;
@@ -155,7 +158,7 @@ limitations under the License.
   }
   $1 = &temp;
   $1->resize(PyInt_AsLong($input), nullptr);
-} 
+}
 
 // Create new Status object.
 %typemap(in, numinputs=0) TF_Status *out_status {
@@ -180,9 +183,13 @@ limitations under the License.
   }
 }
 
+// SWIG usually unwraps the tuple that the native Python/C interface generates.
+// Since we wanted to have a function with a variable length of arguments, we
+// used the native Python/C interface directly (which by default supports
+// passing all arguments as a tuple).
+%native(TFE_Py_FastPathExecute) TFE_Py_FastPathExecute_C;
 
 %include "tensorflow/python/eager/pywrap_tfe.h"
-
 
 // Clear all typemaps.
 %typemap(out) TF_DataType;

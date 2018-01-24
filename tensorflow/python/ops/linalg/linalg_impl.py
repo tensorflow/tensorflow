@@ -41,6 +41,7 @@ einsum = special_math_ops.einsum
 expm = gen_linalg_ops._matrix_exponential
 eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
+logm = gen_linalg_ops._matrix_logarithm
 lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm
 qr = linalg_ops.qr

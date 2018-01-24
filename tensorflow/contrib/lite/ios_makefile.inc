@@ -30,6 +30,9 @@ ifeq ($(TARGET), IOS)
 		${IPHONEOS_SYSROOT} \
 		-arch $(IOS_ARCH) \
 		-O3
+	ifeq ($(IOS_ARCH), x86_64)
+		CXXFLAGS += -msse4.1
+	endif
 	CCFLAGS += -miphoneos-version-min=$(MIN_SDK_VERSION) \
 		-fembed-bitcode \
 		-mno-thumb \

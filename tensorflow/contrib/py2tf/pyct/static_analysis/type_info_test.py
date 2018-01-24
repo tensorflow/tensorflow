@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import parser
+from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.contrib.py2tf.pyct.static_analysis import access
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
@@ -63,7 +64,7 @@ class TypeInfoResolverTest(test.TestCase):
     node = parser.parse_object(test_fn)
     node = access.resolve(node)
     node = live_values.resolve(node, {'training': training}, {})
-    node = type_info.resolve(node, None)
+    node = type_info.resolve(node, None, None, {})
 
     call_node = node.body[0].body[0].value
     self.assertEquals(training.GradientDescentOptimizer,
@@ -80,7 +81,7 @@ class TypeInfoResolverTest(test.TestCase):
     node = parser.parse_object(test_fn)
     node = access.resolve(node)
     node = live_values.resolve(node, {'training': training}, {})
-    node = type_info.resolve(node, None)
+    node = type_info.resolve(node, None, None, {})
 
     attr_call_node = node.body[0].body[1].value.func
     self.assertEquals((training.__name__, 'GradientDescentOptimizer'),
@@ -95,7 +96,7 @@ class TypeInfoResolverTest(test.TestCase):
     node = parser.parse_object(test_fn)
     node = access.resolve(node)
     node = live_values.resolve(node, {'session': session}, {})
-    node = type_info.resolve(node, None)
+    node = type_info.resolve(node, None, None, {})
 
     constructor_call = node.body[0].body[0].items[0].context_expr
     self.assertEquals(session.Session, anno.getanno(constructor_call, 'type'))
@@ -106,6 +107,21 @@ class TypeInfoResolverTest(test.TestCase):
     self.assertEquals((session.__name__, 'Session'),
                       anno.getanno(member_call, 'type_fqn'))
 
+  def test_constructor_deta_dependent(self):
+
+    def test_fn(x):
+      if x > 0:
+        opt = training.GradientDescentOptimizer(0.1)
+      else:
+        opt = training.GradientDescentOptimizer(0.01)
+      opt.minimize(0)
+
+    node = parser.parse_object(test_fn)
+    node = access.resolve(node)
+    node = live_values.resolve(node, {'training': training}, {})
+    with self.assertRaises(transformer.PyFlowParseError):
+      node = type_info.resolve(node, None, None, {})
+
   def test_parameter_class_members(self):
 
     def test_fn(opt):
@@ -114,8 +130,8 @@ class TypeInfoResolverTest(test.TestCase):
     node = parser.parse_object(test_fn)
     node = access.resolve(node)
     node = live_values.resolve(node, {'training': training}, {})
-    with self.assertRaises(ValueError):
-      node = type_info.resolve(node, None)
+    with self.assertRaises(transformer.PyFlowParseError):
+      node = type_info.resolve(node, None, None, {})
 
   def test_parameter_class_members_with_value_hints(self):
 
@@ -126,7 +142,7 @@ class TypeInfoResolverTest(test.TestCase):
     node = access.resolve(node)
     node = live_values.resolve(node, {'training': training}, {})
     node = type_info.resolve(
-        node, {
+        node, None, None, {
             'opt': (('%s.GradientDescentOptimizer' % training.__name__),
                     training.GradientDescentOptimizer(0.1))
         })
@@ -148,8 +164,8 @@ class TypeInfoResolverTest(test.TestCase):
     node = parser.parse_object(test_fn)
     node = access.resolve(node)
     node = live_values.resolve(node, {'bar': bar}, {})
-    with self.assertRaises(ValueError):
-      node = type_info.resolve(node, None)
+    with self.assertRaises(transformer.PyFlowParseError):
+      node = type_info.resolve(node, None, None, {})
 
   def test_nested_members(self):
 
@@ -160,8 +176,8 @@ class TypeInfoResolverTest(test.TestCase):
     node = parser.parse_object(test_fn)
     node = access.resolve(node)
     node = live_values.resolve(node, {'training': training}, {})
-    with self.assertRaises(ValueError):
-      node = type_info.resolve(node, None)
+    with self.assertRaises(transformer.PyFlowParseError):
+      node = type_info.resolve(node, None, None, {})
 
 
 if __name__ == '__main__':

@@ -1149,6 +1149,60 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
                output_data, output_dims);
 }
 
+inline void Div(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[Offset(input1_dims, c, x, y, b)] /
+                      input2_data[Offset(input2_dims, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
+}
+
+inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[Offset(input1_dims, c, x, y, b)] -
+                      input2_data[Offset(input2_dims, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
+}
+
 template <FusedActivationFunctionType Ac, typename Scalar>
 void Concatenation(int concat_dim, const Scalar* const* input_data,
                    const Dims<4>* const* input_dims, int inputs_count,
@@ -2276,6 +2330,18 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
   }
 }
 
+inline bool LoopCondition(int index, int stop, int stride) {
+  return stride > 0 ? index < stop : index > stop;
+}
+
+inline int StartIndex(int start, int stride, int dim, bool masked) {
+  return masked ? (stride > 0 ? 0 : dim - 1) : start;
+}
+
+inline int StopIndex(int stop, int stride, int dim, bool masked) {
+  return masked ? (stride > 0 ? dim : -1) : stop;
+}
+
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          int begin_mask, int end_mask,
@@ -2283,20 +2349,35 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          const std::vector<int>& stops,
                          const std::vector<int>& strides, T* output_data,
                          const Dims<4>& output_dims) {
-  const int start_b = (begin_mask & 8) ? 0 : starts[3];
-  const int stop_b = (end_mask & 8) ? input_dims.sizes[3] : stops[3];
-  const int start_h = (begin_mask & 4) ? 0 : starts[2];
-  const int stop_h = (end_mask & 4) ? input_dims.sizes[2] : stops[2];
-  const int start_w = (begin_mask & 2) ? 0 : starts[1];
-  const int stop_w = (end_mask & 2) ? input_dims.sizes[1] : stops[1];
-  const int start_d = (begin_mask & 1) ? 0 : starts[0];
-  const int stop_d = (end_mask & 1) ? input_dims.sizes[0] : stops[0];
+  TFLITE_DCHECK_EQ(starts.size(), 4);
+  TFLITE_DCHECK_EQ(stops.size(), 4);
+  TFLITE_DCHECK_EQ(strides.size(), 4);
+  const int start_b =
+      StartIndex(starts[3], strides[3], input_dims.sizes[3], begin_mask & 8);
+  const int stop_b =
+      StopIndex(stops[3], strides[3], input_dims.sizes[3], end_mask & 8);
+  const int start_h =
+      StartIndex(starts[2], strides[2], input_dims.sizes[2], begin_mask & 4);
+  const int stop_h =
+      StopIndex(stops[2], strides[2], input_dims.sizes[2], end_mask & 4);
+  const int start_w =
+      StartIndex(starts[1], strides[1], input_dims.sizes[1], begin_mask & 2);
+  const int stop_w =
+      StopIndex(stops[1], strides[1], input_dims.sizes[1], end_mask & 2);
+  const int start_d =
+      StartIndex(starts[0], strides[0], input_dims.sizes[0], begin_mask & 1);
+  const int stop_d =
+      StopIndex(stops[0], strides[0], input_dims.sizes[0], end_mask & 1);
 
   T* out_ptr = output_data;
-  for (int in_b = start_b; in_b < stop_b; in_b += strides[3]) {
-    for (int in_h = start_h; in_h < stop_h; in_h += strides[2]) {
-      for (int in_w = start_w; in_w < stop_w; in_w += strides[1]) {
-        for (int in_d = start_d; in_d < stop_d; in_d += strides[0]) {
+  for (int in_b = start_b; LoopCondition(in_b, stop_b, strides[3]);
+       in_b += strides[3]) {
+    for (int in_h = start_h; LoopCondition(in_h, stop_h, strides[2]);
+         in_h += strides[2]) {
+      for (int in_w = start_w; LoopCondition(in_w, stop_w, strides[1]);
+           in_w += strides[1]) {
+        for (int in_d = start_d; LoopCondition(in_d, stop_d, strides[0]);
+             in_d += strides[0]) {
           *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
         }
       }

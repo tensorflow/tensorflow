@@ -744,13 +744,13 @@ def _build_nccl_hybrid(input_tensors, red_op, upper_level_f):
   level_2_output = upper_level_f(up_values)
   # Third stage: propagate within each worker using NCCL Broadcast
   for w in range(0, num_workers):
-    dst_devices = per_worker_devices[w][1:]
-    send_op, dst_tensors = nccl.broadcast(level_2_output[w], dst_devices)
-    # NOTE: need control dependency to ensure send_op executes
-    with ops.control_dependencies([send_op]):
-      with ops.device(per_worker_devices[w][0]):
-        dst_tensors.insert(0, array_ops.identity(level_2_output[w]))
-        down_values[w] = dst_tensors
+    dst_tensors = []
+    with ops.device(per_worker_devices[w][0]):
+      broadcast_src = nccl.broadcast(array_ops.identity(level_2_output[w]))
+    for d in per_worker_devices[w]:
+      with ops.device(d):
+        dst_tensors.append(array_ops.identity(broadcast_src))
+    down_values[w] = dst_tensors
   output_tensors = [v for sublist in down_values for v in sublist]
   if len(shape) > 1:
     output_tensors = _reshape_tensors(output_tensors, shape)

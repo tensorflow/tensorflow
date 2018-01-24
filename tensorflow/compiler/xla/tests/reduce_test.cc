@@ -143,6 +143,55 @@ class ReduceTest : public ClientLibraryTestBase {
     ComputeAndCompareR0<bool>(&builder, expected, {input_global_data.get()});
   }
 
+  // Reduce predicate tensor with dimension rows * cols to dimension cols, to
+  // test the implementation of atomic operations on misaligned small data
+  // types.
+  template <int64 cols>
+  void RunR2ToR1PredTest(bool and_reduce, int64 rows, int64 minor = 1,
+                         int64 major = 0) {
+    ComputationBuilder builder(client_, TestName());
+    const Shape input_shape = ShapeUtil::MakeShape(U8, {rows, cols});
+    auto input = builder.Parameter(0, input_shape, "input");
+    auto input_pred = builder.Eq(input, builder.ConstantR0<uint8>(1));
+
+    ComputationDataHandle init_value;
+    Computation reduce_op;
+    if (and_reduce) {
+      init_value = builder.ConstantR0<bool>(true);
+      reduce_op = CreateScalarAndComputation(&builder);
+    } else {
+      init_value = builder.ConstantR0<bool>(false);
+      reduce_op = CreateScalarOrComputation(&builder);
+    }
+
+    builder.Reduce(input_pred, init_value, reduce_op,
+                   /*dimensions_to_reduce=*/{0});
+
+    Array2D<uint8> input_data(rows, cols);
+    input_data.FillRandom(0, 1);
+    std::unique_ptr<Literal> input_literal =
+        Literal::CreateR2FromArray2D(input_data);
+    input_literal =
+        input_literal->Relayout(LayoutUtil::MakeLayout({minor, major}));
+    std::unique_ptr<GlobalData> input_global_data =
+        client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+
+    std::array<bool, cols> expected;
+    for (int64 colno = 0; colno < cols; ++colno) {
+      bool column_sum = and_reduce ? true : false;
+      for (int64 rowno = 0; rowno < rows; ++rowno) {
+        if (and_reduce) {
+          column_sum = column_sum && input_data(rowno, colno);
+        } else {
+          column_sum = column_sum || input_data(rowno, colno);
+        }
+      }
+      expected[colno] = column_sum;
+    }
+
+    ComputeAndCompareR1<bool>(&builder, expected, {input_global_data.get()});
+  }
+
   // Runs an R2 => R0 reduction test with the given number of (rows, cols).
   void RunR2ToR0Test(int64 rows, int64 cols, int64 minor = 1, int64 major = 0) {
     ComputationBuilder builder(client_, TestName());
@@ -806,6 +855,13 @@ XLA_TEST_F(ReduceTest, DISABLED_ON_GPU(OperationOnConstantAsInitValue)) {
   auto max = builder.Reduce(b, a2, max_f32, {0});
 
   ComputeAndCompareR0<float>(&builder, 4.0f, {b_data.get()});
+}
+
+XLA_TEST_F(ReduceTest, ReduceAndPredR2_128x64_To_R1) {
+  RunR2ToR1PredTest</*cols=64*/ 64>(/*and_reduce=true*/ true, /*rows=128*/ 128);
+}
+XLA_TEST_F(ReduceTest, ReduceOrPredR2_64x32_To_R1) {
+  RunR2ToR1PredTest</*cols=32*/ 32>(/*and_reduce=false*/ false, /*rows=64*/ 64);
 }
 
 }  // namespace

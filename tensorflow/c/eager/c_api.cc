@@ -118,6 +118,23 @@ void TFE_ContextClearCaches(TFE_Context* ctx) {
   tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
 }
 
+void TFE_ContextSetThreadLocalDevicePlacementPolicy(
+    TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
+  tensorflow::mutex_lock ml(ctx->policy_map_mu);
+  ctx->thread_local_policies[std::this_thread::get_id()] = policy;
+}
+
+extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
+    TFE_Context* ctx) {
+  tensorflow::mutex_lock ml(ctx->policy_map_mu);
+  auto policy_map_it =
+      ctx->thread_local_policies.find(std::this_thread::get_id());
+  if (policy_map_it != ctx->thread_local_policies.end()) {
+    return policy_map_it->second;
+  }
+  return ctx->policy;
+}
+
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
@@ -173,6 +190,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   bool is_same_device =
       (srcd == dstd) || (DeviceName(srcd) == DeviceName(dstd));
   const bool dst_cpu = IsCPU(dstd);
+  const bool src_cpu = IsCPU(srcd);
   if (is_same_device) {
     return new TFE_TensorHandle(h->t, dst_cpu ? nullptr : dstd);
   }
@@ -196,7 +214,7 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
     return new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd);
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
-  if (!IsCPU(srcd)) {
+  if (!src_cpu) {
     src_device_context = srcd->tensorflow_gpu_device_info()->default_context;
   }
   tensorflow::DeviceContext* dst_device_context = nullptr;
@@ -434,7 +452,7 @@ tensorflow::Status ValidateInputTypeAndPlacement(
     const tensorflow::Device* actual_device =
         op->input_devices[i] == nullptr ? host_device : op->input_devices[i];
     if (expected_device != actual_device) {
-      switch (ctx->policy) {
+      switch (TFE_ContextGetDevicePlacementPolicy(ctx)) {
         case TFE_DEVICE_PLACEMENT_EXPLICIT:
           // TODO(xpan): See if we could bubble python related error up
           // to python level.
