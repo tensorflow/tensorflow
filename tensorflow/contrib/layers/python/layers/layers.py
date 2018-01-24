@@ -2751,10 +2751,9 @@ def spatial_softmax(features,
         features = array_ops.reshape(
             array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
 
+      attention = features/temperature
       if activation_fn is not None:
-        attention = activation_fn(features/temperature)
-      else:
-        attention = features/temperature
+        attention = activation_fn(attention)
 
       expected_x = math_ops.reduce_sum(
           pos_x * attention, [1], keep_dims=True)
