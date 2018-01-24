@@ -1094,7 +1094,7 @@ class SeparableConv1D(_SeparableConv):
       strides = (1, 1, 1) + self.strides
       spatial_start_dim = 2
 
-    # Explictly broadcast inputs and kernels to 4D.
+    # Explicitly broadcast inputs and kernels to 4D.
     # TODO(fchollet): refactor when a native separable_conv1d op is available.
     inputs = array_ops.expand_dims(inputs, spatial_start_dim)
     depthwise_kernel = array_ops.expand_dims(self.depthwise_kernel, 0)
