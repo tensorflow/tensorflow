@@ -173,6 +173,15 @@ class TFETest(test_util.TensorFlowTestCase):
     with self.assertRaises(RuntimeError):
       x.gpu(context.context().num_gpus() + 1)
 
+  def testCopyScope(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    constant = constant_op.constant(1.0)
+    with ops.device('gpu:0'):
+      with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+        c = constant + 1.0
+    self.assertAllEqual(c, 2.0)
+
   def testNumpyForceCPU(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')

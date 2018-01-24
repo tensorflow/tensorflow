@@ -88,7 +88,9 @@ typedef struct {
   TfLiteFusedActivation activation;
 } TfLiteSequenceRNNParams;
 
-typedef struct { TfLiteFusedActivation activation; } TfLiteFullyConnectedParams;
+typedef struct {
+  TfLiteFusedActivation activation;
+} TfLiteFullyConnectedParams;
 
 typedef enum {
   kTfLiteLshProjectionUnknown = 0,
@@ -96,9 +98,13 @@ typedef enum {
   kTfLiteLshProjectionDense = 2,
 } TfLiteLSHProjectionType;
 
-typedef struct { TfLiteLSHProjectionType type; } TfLiteLSHProjectionParams;
+typedef struct {
+  TfLiteLSHProjectionType type;
+} TfLiteLSHProjectionParams;
 
-typedef struct { float beta; } TfLiteSoftmaxParams;
+typedef struct {
+  float beta;
+} TfLiteSoftmaxParams;
 
 typedef struct {
   int axis;
@@ -225,6 +231,14 @@ typedef struct {
   int squeeze_dims[8];
   int num_squeeze_dims;
 } TfLiteSqueezeParams;
+
+typedef struct {
+  int begin_mask;
+  int end_mask;
+  int ellipsis_mask;
+  int new_axis_mask;
+  int shrink_axis_mask;
+} TfLiteStridedSliceParams;
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -815,9 +815,6 @@ xla_test(
 xla_test(
     name = "bfloat16_test",
     srcs = ["bfloat16_test.cc"],
-    blacklisted_backends = [
-        "gpu",
-    ],
     shard_count = 40,
     deps = [
         ":test_utils",

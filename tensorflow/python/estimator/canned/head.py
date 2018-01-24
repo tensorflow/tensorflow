@@ -627,15 +627,15 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
       logits: logits `Tensor` with shape `[D0, D1, ... DN, logits_dimension]`.
         For many applications, the shape is `[batch_size, logits_dimension]`.
       labels: Labels integer or string `Tensor` with shape matching `logits`,
-        namely `[D0, D1, ... DN, 1]`. `labels` is required argument when `mode`
-        equals `TRAIN` or `EVAL`.
+        namely `[D0, D1, ... DN, 1]` or `[D0, D1, ... DN]`. `labels` is
+        required argument when `mode` equals `TRAIN` or `EVAL`.
       train_op_fn: Function that takes a scalar loss `Tensor` and returns
         `train_op`. Required in TRAIN mode.
       regularization_losses: A list of additional scalar losses to be added to
         the training loss, such as regularization losses. These losses are
         usually expressed as a batch average, so for best results users need to
-        set `loss_reduction=MEAN_PER_ELEMENT` or
-        `loss_reduction=SUM_BY_NONZERO_WEIGHTS` when creating the head to
+        set `loss_reduction=SUM_OVER_BATCH_SIZE` or
+        `loss_reduction=SUM_OVER_NONZERO_WEIGHTS` when creating the head to
         avoid scaling errors.
     Returns:
       `EstimatorSpec`.
@@ -827,10 +827,10 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
     return 1
 
   def _eval_metric_ops(self, labels, logits, logistic, class_ids, weights,
-                       unreduced_loss):
+                       unreduced_loss, regularization_loss):
     with ops.name_scope(None, 'metrics',
                         (labels, logits, logistic, class_ids, weights,
-                         unreduced_loss)):
+                         unreduced_loss, regularization_loss)):
       keys = metric_keys.MetricKeys
       labels_mean = _indicator_labels_mean(
           labels=labels, weights=weights, name=keys.LABEL_MEAN)
@@ -870,6 +870,11 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                   curve='PR',
                   name=keys.AUC_PR)
       }
+      if regularization_loss is not None:
+        metric_ops[_summary_key(self._name, keys.LOSS_REGULARIZATION)] = (
+            metrics_lib.mean(
+                values=regularization_loss,
+                name=keys.LOSS_REGULARIZATION))
       for threshold in self._thresholds:
         accuracy_key = keys.ACCURACY_AT_THRESHOLD % threshold
         metric_ops[_summary_key(self._name,
@@ -924,8 +929,31 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
         processed_labels=labels)
 
   def create_estimator_spec(
-      self, features, mode, logits, labels=None, train_op_fn=None):
-    """See `Head`."""
+      self, features, mode, logits, labels=None, train_op_fn=None,
+      regularization_losses=None):
+    """Returns an `EstimatorSpec`.
+
+    Args:
+      features: Input `dict` of `Tensor` or `SparseTensor` objects.
+      mode: Estimator's `ModeKeys`.
+      logits: logits `Tensor` with shape `[D0, D1, ... DN, 1]`. For many
+        applications, the shape is `[batch_size, 1]`.
+      labels: Labels integer or string `Tensor` with shape matching `logits`,
+        namely `[D0, D1, ... DN, 1]` or `[D0, D1, ... DN]`. `labels` is required
+        argument when `mode` equals `TRAIN` or `EVAL`.
+      train_op_fn: Function that takes a scalar loss `Tensor` and returns
+        `train_op`. Required in TRAIN mode.
+      regularization_losses: A list of additional scalar losses to be added to
+        the training loss, such as regularization losses. These losses are
+        usually expressed as a batch average, so for best results users need to
+        set `loss_reduction=SUM_OVER_BATCH_SIZE` or
+        `loss_reduction=SUM_OVER_NONZERO_WEIGHTS` when creating the head to
+        avoid scaling errors.
+    Returns:
+      `EstimatorSpec`.
+    Raises:
+      ValueError: If `train_op_fn` is `None` in TRAIN mode.
+    """
     # Predict.
     with ops.name_scope(self._name, 'head'):
       with ops.name_scope(None, 'predictions', (logits,)):
@@ -972,20 +1000,28 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
       (training_loss, unreduced_loss, weights, processed_labels) = (
           self.create_loss(
               features=features, mode=mode, logits=logits, labels=labels))
+      if regularization_losses:
+        regularization_loss = math_ops.add_n(regularization_losses)
+        regularized_training_loss = math_ops.add_n(
+            [training_loss, regularization_loss])
+      else:
+        regularization_loss = None
+        regularized_training_loss = training_loss
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
-            loss=training_loss,
+            loss=regularized_training_loss,
             eval_metric_ops=self._eval_metric_ops(
                 labels=processed_labels,
                 logits=logits,
                 logistic=logistic,
                 class_ids=class_ids,
                 weights=weights,
-                unreduced_loss=unreduced_loss))
+                unreduced_loss=unreduced_loss,
+                regularization_loss=regularization_loss))
 
       # Train.
       if train_op_fn is None:
@@ -999,18 +1035,22 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
       else:
         mean_loss = None
     with ops.name_scope(''):
+      keys = metric_keys.MetricKeys
       summary.scalar(
-          _summary_key(self._name, metric_keys.MetricKeys.LOSS),
-          training_loss)
+          _summary_key(self._name, keys.LOSS),
+          regularized_training_loss)
       if mean_loss is not None:
         summary.scalar(
-            _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
-            mean_loss)
+            _summary_key(self._name, keys.LOSS_MEAN), mean_loss)
+      if regularization_loss is not None:
+        summary.scalar(
+            _summary_key(self._name, keys.LOSS_REGULARIZATION),
+            regularization_loss)
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
-        loss=training_loss,
-        train_op=train_op_fn(training_loss))
+        loss=regularized_training_loss,
+        train_op=train_op_fn(regularized_training_loss))
 
 
 def _regression_head_with_mean_squared_error_loss(
@@ -1111,7 +1151,8 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         processed_labels=labels)
 
   def create_estimator_spec(
-      self, features, mode, logits, labels=None, train_op_fn=None):
+      self, features, mode, logits, labels=None, train_op_fn=None,
+      regularization_losses=None):
     """Returns an `EstimatorSpec`.
 
     Args:
@@ -1125,6 +1166,12 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         `mode` equals `TRAIN` or `EVAL`.
       train_op_fn: Function that takes a scalar loss `Tensor` and returns
         `train_op`. Required in TRAIN mode.
+      regularization_losses: A list of additional scalar losses to be added to
+        the training loss, such as regularization losses. These losses are
+        usually expressed as a batch average, so for best results users need to
+        set `loss_reduction=SUM_OVER_BATCH_SIZE` or
+        `loss_reduction=SUM_OVER_NONZERO_WEIGHTS` when creating the head to
+        avoid scaling errors.
     Returns:
       `EstimatorSpec`.
     Raises:
@@ -1147,20 +1194,34 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
 
       training_loss, unreduced_loss, weights, _ = self.create_loss(
           features=features, mode=mode, logits=logits, labels=labels)
+      if regularization_losses:
+        regularization_loss = math_ops.add_n(regularization_losses)
+        regularized_training_loss = math_ops.add_n(
+            [training_loss, regularization_loss])
+      else:
+        regularization_loss = None
+        regularized_training_loss = training_loss
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
+        keys = metric_keys.MetricKeys
         # Estimator already adds a metric for loss.
         eval_metric_ops = {
-            _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN):
+            _summary_key(self._name, keys.LOSS_MEAN):
                 metrics_lib.mean(
                     values=unreduced_loss,
                     weights=weights)
         }
+        if regularization_loss is not None:
+          regularization_loss_key = _summary_key(
+              self._name, keys.LOSS_REGULARIZATION)
+          eval_metric_ops[regularization_loss_key] = metrics_lib.mean(
+              values=regularization_loss,
+              name=keys.LOSS_REGULARIZATION)
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
-            loss=training_loss,
+            loss=regularized_training_loss,
             eval_metric_ops=eval_metric_ops)
 
       # Train.
@@ -1175,18 +1236,22 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       else:
         mean_loss = None
     with ops.name_scope(''):
+      keys = metric_keys.MetricKeys
       summary.scalar(
-          _summary_key(self._name, metric_keys.MetricKeys.LOSS),
-          training_loss)
+          _summary_key(self._name, keys.LOSS),
+          regularized_training_loss)
       if mean_loss is not None:
         summary.scalar(
-            _summary_key(self._name, metric_keys.MetricKeys.LOSS_MEAN),
-            mean_loss)
+            _summary_key(self._name, keys.LOSS_MEAN), mean_loss)
+      if regularization_loss is not None:
+        summary.scalar(
+            _summary_key(self._name, keys.LOSS_REGULARIZATION),
+            regularization_loss)
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
-        loss=training_loss,
-        train_op=train_op_fn(training_loss))
+        loss=regularized_training_loss,
+        train_op=train_op_fn(regularized_training_loss))
 
 
 def _assert_range(labels, n_classes, message=None):

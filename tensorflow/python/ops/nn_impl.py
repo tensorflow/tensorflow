@@ -196,9 +196,12 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
       targets * -log(sigmoid(logits)) +
           (1 - targets) * -log(1 - sigmoid(logits))
 
-  A value `pos_weights > 1` decreases the false negative count, hence increasing the recall.
-  Conversely setting `pos_weights < 1` decreases the false positive count and increases the precision.
-  This can be seen from the fact that `pos_weight` is introduced as a multiplicative coefficient for the positive targets term 
+  A value `pos_weights > 1` decreases the false negative count, hence increasing
+  the recall.
+  Conversely setting `pos_weights < 1` decreases the false positive count and
+  increases the precision.
+  This can be seen from the fact that `pos_weight` is introduced as a
+  multiplicative coefficient for the positive targets term
   in the loss expression:
 
       targets * -log(sigmoid(logits)) * pos_weight +
@@ -646,9 +649,12 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
 
 
 @tf_export("nn.moments")
-def moments(x, axes,
-            shift=None,  # pylint: disable=unused-argument
-            name=None, keep_dims=False):
+def moments(
+    x,
+    axes,
+    shift=None,  # pylint: disable=unused-argument
+    name=None,
+    keep_dims=False):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
@@ -692,8 +698,8 @@ def moments(x, axes,
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)
     if x.dtype == dtypes.float16:
-      return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
-          variance, dtypes.float16))
+      return (math_ops.cast(mean, dtypes.float16),
+              math_ops.cast(variance, dtypes.float16))
     else:
       return (mean, variance)
 
@@ -824,8 +830,8 @@ def batch_normalization(x,
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       inv *= scale
-    return x * inv + (offset - mean * inv
-                      if offset is not None else -mean * inv)
+    return x * inv + (
+        offset - mean * inv if offset is not None else -mean * inv)
 
 
 @tf_export("nn.fused_batch_norm")

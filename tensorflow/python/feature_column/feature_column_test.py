@@ -1072,6 +1072,7 @@ def get_linear_model_column_var(column):
                             'linear_model/' + column.name)[0]
 
 
+@test_util.with_c_api
 class LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -1325,10 +1326,16 @@ class LinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      predictions = fc.linear_model(features, [price])
-      with _initialized_session():
-        with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-          predictions.eval()
+      if ops._USE_C_API:
+        with self.assertRaisesRegexp(
+            Exception,
+            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+          predictions = fc.linear_model(features, [price])
+      else:
+        predictions = fc.linear_model(features, [price])
+        with _initialized_session():
+          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
+            predictions.eval()
 
   def test_dense_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -1791,6 +1798,7 @@ class InputLayerTest(test.TestCase):
       self.assertAllEqual([[2, 2], [2, 2], [2, 2]], gradient)
 
 
+@test_util.with_c_api
 class FunctionalInputLayerTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -1855,10 +1863,16 @@ class FunctionalInputLayerTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      net = fc.input_layer(features, [price])
-      with _initialized_session():
-        with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-          net.eval()
+      if ops._USE_C_API:
+        with self.assertRaisesRegexp(
+            Exception,
+            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+          net = fc.input_layer(features, [price])
+      else:
+        net = fc.input_layer(features, [price])
+        with _initialized_session():
+          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
+            net.eval()
 
   def test_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
