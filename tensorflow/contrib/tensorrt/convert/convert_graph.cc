@@ -268,10 +268,10 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 
   // Build full graph
   tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
-                                             graph_def.library());
+                                             gdef.library());
   tensorflow::Graph graph(flib);
   TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToGraph(
-      tensorflow::GraphConstructorOptions(), graph_def, &graph));
+      tensorflow::GraphConstructorOptions(), gdef, &graph));
 
   // Segment the graph into subgraphs that can be converted to TensorRT
   tensorrt::segment::SegmentOptions segment_options;
@@ -282,7 +282,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   segment_options.minimum_segment_size = 2;
   tensorrt::segment::SegmentNodesVector segments;
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
-      graph_def, IsTensorRTCandidate, segment_options, &segments));
+      gdef, IsTensorRTCandidate, segment_options, &segments));
   if (segments.size() > 1) {
     // LOG(WARNING) << "Multiple TensorRT candidate subgraphs were found, "
     //<< "but only the first can be converted.";
