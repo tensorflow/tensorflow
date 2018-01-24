@@ -39,6 +39,13 @@ class DecodeBmpOp : public OpKernel {
         errors::InvalidArgument("channels must be 0, 1, 3 or 4, got ",
                                 channels_));
   }
+  inline int32 ByteSwapInt32ForBE(int32 x) {
+#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
+    return le32toh(x);
+#else
+    return x;
+#endif
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& contents = context->input(0);
@@ -56,29 +63,18 @@ class DecodeBmpOp : public OpKernel {
                                         input.size(), " bytes"));
 
     const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
-#if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
     int32 header_size_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 10)));
-    const int32 header_size = le32toh(header_size_);
+    const int32 header_size = ByteSwapInt32ForBE(header_size_);
     int32 width_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 18)));
-    const int32 width = le32toh(width_);
+    const int32 width = ByteSwapInt32ForBE(width_);
     int32 height_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 22)));
-    const int32 height = le32toh(height_);
+    const int32 height = ByteSwapInt32ForBE(height_);
     int32 bpp_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 28)));
-    const int32 bpp = le32toh(bpp_);
-#else
-    const int32 header_size = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 10)));
-    const int32 width = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 18)));
-    const int32 height = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 22)));
-    const int32 bpp = internal::SubtleMustCopy(
-        *(reinterpret_cast<const int32*>(img_bytes + 28)));
-#endif
+    const int32 bpp = ByteSwapInt32ForBE(bpp_);
 
     if (channels_) {
       OP_REQUIRES(context, (channels_ == bpp / 8),
