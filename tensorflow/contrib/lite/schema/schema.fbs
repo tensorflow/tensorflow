@@ -266,8 +266,6 @@ table LSTMOptions {
 }
 
 table ResizeBilinearOptions {
-  new_height:int;
-  new_width:int;
 }
 
 // A call operation options

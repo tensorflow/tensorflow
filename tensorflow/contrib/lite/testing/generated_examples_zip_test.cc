@@ -85,7 +85,10 @@ std::map<string, string> kBrokenTests = {
     {R"(l2normdim=\[2,3\],epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
 
     // ResizeBilinear looks completely incompatible with Tensorflow
-    {R"(resize_bilinear)", "67964336"},
+    {R"(resize_bilinear.*dtype=tf.int32)", "72401107"},
+    {R"(resize_bilinearalign_corners=True,.*,size=\[2,2\])", "72401483"},
+    {R"(resize_bilinearalign_corners=True,.*,size=\[4,3\])", "72401483"},
+    {R"(resize_bilinearalign_corners=True,.*,size=\[5,6\])", "72401483"},
 
     // Transpose only supports 1D-4D input tensors.
     {R"(transposedtype=.*,input_shape=\[.,.,.,.,.\],perm=.*)", "71545879"},
