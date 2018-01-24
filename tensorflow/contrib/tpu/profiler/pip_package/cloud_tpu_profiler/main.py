@@ -42,8 +42,9 @@ def main(unused_argv=None):
   if not FLAGS.service_addr or not FLAGS.logdir:
     sys.exit('service_addr and logdir must be provided.')
   executable_path = os.path.join(os.path.dirname(__file__), EXECUTABLE)
+  logdir = os.path.expandvars(os.path.expanduser(FLAGS.logdir))
   cmd = [executable_path]
-  cmd.append('--logdir='+FLAGS.logdir)
+  cmd.append('--logdir='+logdir)
   cmd.append('--service_addr='+FLAGS.service_addr)
   cmd.append('--duration_ms='+str(FLAGS.duration_ms))
   subprocess.call(cmd)

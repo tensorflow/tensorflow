@@ -31,6 +31,7 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 def remove_squeezable_dimensions(
@@ -93,6 +94,7 @@ def remove_squeezable_dimensions(
     return labels, predictions
 
 
+@tf_export('confusion_matrix')
 def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
                      name=None, weights=None):
   """Computes the confusion matrix from predictions and labels.

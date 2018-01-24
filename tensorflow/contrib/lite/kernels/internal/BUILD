@@ -145,7 +145,7 @@ cc_library(
         ":types",
         ":round",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -223,7 +223,7 @@ cc_library(
         ":round",
         ":types",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
     ] + select({
         ":haswell": tflite_deps_intel,
