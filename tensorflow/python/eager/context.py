@@ -413,6 +413,8 @@ class Context(object):
 
   @contextlib.contextmanager
   def device_policy(self, policy):
+    if not self._context_handle:
+      self._initialize_handle_and_devices()
     old = pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
         self._context_handle)
     pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
