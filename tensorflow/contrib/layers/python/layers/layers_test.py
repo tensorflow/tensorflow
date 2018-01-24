@@ -1296,10 +1296,10 @@ class ConvolutionInPlaneTest(test.TestCase):
 class DenseToSparseTest(test.TestCase):
 
   def testDenseFromConstantToSparse(self):
-    expected_constant = np.reshape(np.arange(24), (3, 4, 2))
+    expected_constant = np.reshape(np.arange(24, dtype=np.int64), (3, 4, 2))
     tensor = constant_op.constant(expected_constant)
     sparse = _layers.dense_to_sparse(tensor)
-    dense = sparse_ops.sparse_to_dense(sparse.indices, sparse.values, sparse.dense_shape)
+    dense = sparse_ops.sparse_to_dense(sparse.indices, sparse.dense_shape, sparse.values)
     with self.test_session() as sess:
       constant = sess.run(dense)
       self.assertAllEqual(expected_constant, constant)
