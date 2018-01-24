@@ -36,6 +36,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(josh11b): SWIG the code from node_def_util instead of duplicating
@@ -369,6 +370,7 @@ def _GatherReturnElements(requested_return_elements, graph, results):
   return combined_return_elements
 
 
+@tf_export('import_graph_def')
 @deprecated_args(None, 'Please file an issue at '
                  'https://github.com/tensorflow/tensorflow/issues if you depend'
                  ' on this feature.',

@@ -22,6 +22,7 @@ from __future__ import print_function
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 DEFAULT_GRAPH_SEED = 87654321
@@ -32,6 +33,7 @@ def _truncate_seed(seed):
   return seed % _MAXINT32  # Truncate to fit into 32-bit integer
 
 
+@tf_export('get_seed')
 def get_seed(op_seed):
   """Returns the local seeds an operation should use given an op-specific seed.
 
@@ -78,6 +80,7 @@ def get_seed(op_seed):
   return seeds
 
 
+@tf_export('set_random_seed')
 def set_random_seed(seed):
   """Sets the graph-level random seed.
 

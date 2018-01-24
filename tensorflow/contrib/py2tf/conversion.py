@@ -181,7 +181,8 @@ def function_to_graph(f, conversion_map, param_value_hints, owner_type=None):
         node_globals[fn.__name__] = fn
 
   namer = conversion_map.new_namer(node_globals)
-  node = node_to_graph(node, namer, node_globals, param_value_hints,
+  node = node_to_graph(node, tf_inspect.getsource(f), tf_inspect.getfile(f),
+                       namer, node_globals, param_value_hints,
                        conversion_map.nocompile_decorators)
 
   # Simulate a rename to ensure the top level is in the name map. This is needed
@@ -196,18 +197,23 @@ def function_to_graph(f, conversion_map, param_value_hints, owner_type=None):
   return node, conversion_map.name_map[f]
 
 
-def _static_analysis_pass(node, namespace, value_hints):
+def _static_analysis_pass(node, source, f, namespace, value_hints):
   node = access.resolve(node)
   node = live_values.resolve(node, namespace, config.PYTHON_LITERALS)
-  node = type_info.resolve(node, value_hints)
+  node = type_info.resolve(node, source, f, value_hints)
   return node
 
 
-def node_to_graph(node, namer, namespace, value_hints, nocompile_decorators):
+def node_to_graph(node, source, f, namer, namespace, value_hints,
+                  nocompile_decorators):
   """Convert Python code to equivalent TF graph mode code.
 
   Args:
     node: A Python AST node representing the code to convert.
+    source: Optional string containing the source code of the node. Used in
+        error messages.
+    f: Optional string indicating the file where the node originated. None if
+        unknown. Used in error messages.
     namer: A naming.Namer object.
     namespace: Dict mapping symbol names to their corresponding live objects.
     value_hints: A dict containing value hints for symbols like function
@@ -235,7 +241,7 @@ def node_to_graph(node, namer, namespace, value_hints, nocompile_decorators):
   # tree, which must be accounted. Although less efficient, it is most robust
   # to re-run the analysis.
 
-  node = _static_analysis_pass(node, namespace, value_hints)
+  node = _static_analysis_pass(node, source, f, namespace, value_hints)
   node = decorators.transform(node, nocompile_decorators)
   node = break_canonicalization.transform(node, namer)
 
@@ -245,14 +251,14 @@ def node_to_graph(node, namer, namespace, value_hints, nocompile_decorators):
   node = continue_canonicalization.transform(node, namer)
   namespace['len'] = len
 
-  node = _static_analysis_pass(node, namespace, value_hints)
+  node = _static_analysis_pass(node, None, None, namespace, value_hints)
   node = for_canonicalization.transform(node, namer)
   # for_canonicalization may insert new global references.
   node = builtin_functions.transform(node)
   # builtin_functions may insert new global references.
   namespace['print'] = print
 
-  node = _static_analysis_pass(node, namespace, value_hints)
+  node = _static_analysis_pass(node, None, None, namespace, value_hints)
   node = print_functions.transform(node)
   node = call_trees.transform(node, namer, namespace,
                               config.DEFAULT_UNCOMPILED_MODULES,

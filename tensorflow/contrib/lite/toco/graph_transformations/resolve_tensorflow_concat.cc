@@ -75,7 +75,7 @@ bool ResolveTensorFlowConcat::Run(Model* model, std::size_t op_index) {
 
   // Remove the axis array if it is not used by anything else.
   if (CountOpsWithInput(*model, axis_name) == 1) {
-    model->arrays.erase(axis_name);
+    model->EraseArray(axis_name);
   }
   // Remove the TensorFlowConcat op
   model->operators.erase(concat_it);

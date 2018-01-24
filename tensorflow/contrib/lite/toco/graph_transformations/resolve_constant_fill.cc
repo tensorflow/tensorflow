@@ -104,11 +104,11 @@ bool ResolveConstantFill::Run(Model* model, std::size_t op_index) {
   // Erase input arrays if no longer used
   if (IsDiscardableArray(*model, op->inputs[0]) &&
       CountOpsWithInput(*model, op->inputs[0]) == 1) {
-    model->arrays.erase(op->inputs[0]);
+    model->EraseArray(op->inputs[0]);
   }
   if (IsDiscardableArray(*model, op->inputs[1]) &&
       CountOpsWithInput(*model, op->inputs[1]) == 1) {
-    model->arrays.erase(op->inputs[1]);
+    model->EraseArray(op->inputs[1]);
   }
 
   // Erase the operator

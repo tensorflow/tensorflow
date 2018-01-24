@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy
-import tensorflow
+
 from tensorflow.contrib.periodic_resample import periodic_resample
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
@@ -53,12 +53,11 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
 
   def testPeriodicResampleBasic3D(self):
 
-    input_tensor = numpy.arange(2*2*4).reshape((2, 2, 4))
+    input_tensor = numpy.arange(2 * 2 * 4).reshape((2, 2, 4))
     desired_shape = numpy.array([4, 4, None])
-    output_tensor = numpy.array([[[0], [2], [4], [6]],
-                                 [[1], [3], [5], [7]],
-                                 [[8], [10], [12], [14]],
-                                 [[9], [11], [13], [15]]])
+    output_tensor = numpy.array([[[0], [2], [4], [6]], [[1], [3], [5], [7]],
+                                 [[8], [10], [12], [14]], [[9], [11], [13],
+                                                           [15]]])
 
     # NOTE: output_tensor != input_tensor.reshape((4, 4, -1))
     with self.test_session():
@@ -72,24 +71,18 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
 
   def testPeriodicResampleBasic4D(self):
 
-    input_tensor = numpy.arange(2*2*2*8).reshape((2, 2, 2, 8))
+    input_tensor = numpy.arange(2 * 2 * 2 * 8).reshape((2, 2, 2, 8))
     desired_shape = numpy.array([4, 4, 4, None])
-    output_tensor = numpy.array([[[[0], [4], [8], [12]],
-                                  [[2], [6], [10], [14]],
-                                  [[16], [20], [24], [28]],
-                                  [[18], [22], [26], [30]]],
-                                 [[[1], [5], [9], [13]],
-                                  [[3], [7], [11], [15]],
-                                  [[17], [21], [25], [29]],
-                                  [[19], [23], [27], [31]]],
-                                 [[[32], [36], [40], [44]],
-                                  [[34], [38], [42], [46]],
-                                  [[48], [52], [56], [60]],
-                                  [[50], [54], [58], [62]]],
-                                 [[[33], [37], [41], [45]],
-                                  [[35], [39], [43], [47]],
-                                  [[49], [53], [57], [61]],
-                                  [[51], [55], [59], [63]]]])
+    output_tensor = numpy.array(
+        [[[[0], [4], [8], [12]], [[2], [6], [10], [14]],
+          [[16], [20], [24], [28]], [[18], [22], [26], [30]]],
+         [[[1], [5], [9], [13]], [[3], [7], [11], [15]], [[17], [21], [25],
+                                                          [29]],
+          [[19], [23], [27],
+           [31]]], [[[32], [36], [40], [44]], [[34], [38], [42], [46]],
+                    [[48], [52], [56], [60]], [[50], [54], [58], [62]]],
+         [[[33], [37], [41], [45]], [[35], [39], [43], [47]],
+          [[49], [53], [57], [61]], [[51], [55], [59], [63]]]])
 
     # NOTE: output_tensor != input_tensor.reshape((4, 4, 4, -1))
     with self.test_session():
@@ -111,5 +104,5 @@ class PeriodicResampleTest(test_util.TensorFlowTestCase):
         periodic_resample(input_tensor, [None, 4, 4]).eval()
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
   googletest.main()

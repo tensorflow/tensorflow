@@ -24,6 +24,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
 
@@ -69,7 +70,7 @@ class Scope(object):
     raise KeyError(name)
 
 
-class TypeInfoResolver(gast.NodeTransformer):
+class TypeInfoResolver(transformer.Base):
   """Annotates symbols with type information where possible.
 
   Nodes currently annotated:
@@ -77,7 +78,8 @@ class TypeInfoResolver(gast.NodeTransformer):
     * Attribute (helps resolve object methods)
   """
 
-  def __init__(self, value_hints):
+  def __init__(self, value_hints, source, f):
+    super(TypeInfoResolver, self).__init__(source, f)
     self.scope = Scope(None)
     self.value_hints = value_hints
     self.function_level = 0
@@ -206,6 +208,6 @@ class TypeInfoResolver(gast.NodeTransformer):
     return node
 
 
-def resolve(node, value_hints):
+def resolve(node, source, f, value_hints):
   assert value_hints is not None
-  return TypeInfoResolver(value_hints).visit(node)
+  return TypeInfoResolver(value_hints, source, f).visit(node)

@@ -55,7 +55,7 @@ bool ResolveTensorFlowMerge::Run(Model* model, std::size_t op_index) {
 
   // Remove the node and its output array.
   AddMessageF("Removing already-resolved %s", LogName(*merge_op));
-  model->arrays.erase(merge_op->outputs[0]);
+  model->EraseArray(merge_op->outputs[0]);
   model->operators.erase(merge_it);
   return true;
 }

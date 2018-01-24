@@ -46,6 +46,7 @@ gen_zipped_test_files(
         "space_to_batch_nd.zip",
         "space_to_depth.zip",
         "squeeze.zip",
+        "strided_slice.zip",
         "sub.zip",
         "transpose.zip",
     ],

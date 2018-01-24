@@ -73,15 +73,8 @@ struct RemoteMR {
   uint64_t remote_addr;
   uint32_t rkey;
 };
-enum BufferStatus {
-  none,
-  idle,
-  busy
-};
-enum Location {
-  local,
-  remote
-};
+enum BufferStatus { none, idle, busy };
+enum Location { local, remote };
 
 enum RdmaMessageType {
   RDMA_MESSAGE_META_DATA_UPDATE,
@@ -269,7 +262,7 @@ class RdmaTensorRequest {
   // Receive tensor content (RDMA write was completed).
   //
   // Decode proto if required and/or move to GPU if the content was not
-  // written to it directly (GPU direct is not available). Afterwards,
+  // written to it directly (GPU direct is not avaliable). Afterwards,
   // invoke Done().
   void RecvTensorContent();
 

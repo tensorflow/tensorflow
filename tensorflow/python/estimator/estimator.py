@@ -456,6 +456,7 @@ class Estimator(object):
       with training.MonitoredSession(
           session_creator=training.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
+              master=self._config.master,
               scaffold=estimator_spec.scaffold,
               config=self._session_config),
           hooks=input_hooks + hooks) as mon_sess:

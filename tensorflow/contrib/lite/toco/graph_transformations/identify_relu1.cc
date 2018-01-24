@@ -89,12 +89,12 @@ bool IdentifyRelu1::Run(Model* model, std::size_t op_index) {
   AddMessageF("Creating %s replacing equivalent subgraph", LogName(*relu1_op));
 
   // Erase Maximum scalar input & operator
-  model->arrays.erase(maximum_op->inputs[scalar_input_index]);
+  model->EraseArray(maximum_op->inputs[scalar_input_index]);
   model->operators.erase(FindOperator(model, maximum_op));
 
   // Erase Minimum inputs & operator
-  model->arrays.erase(minimum_op->inputs[0]);
-  model->arrays.erase(minimum_op->inputs[1]);
+  model->EraseArray(minimum_op->inputs[0]);
+  model->EraseArray(minimum_op->inputs[1]);
   model->operators.erase(FindOperator(model, minimum_op));
 
   return true;

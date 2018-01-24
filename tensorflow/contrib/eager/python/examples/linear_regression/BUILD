@@ -23,3 +23,13 @@ cuda_py_test(
         "//tensorflow:tensorflow_py",
     ],
 )
+
+cuda_py_test(
+    name = "linear_regression_graph_test",
+    size = "small",
+    srcs = ["linear_regression_graph_test.py"],
+    additional_deps = [
+        ":linear_regression",
+        "//tensorflow:tensorflow_py",
+    ],
+)
