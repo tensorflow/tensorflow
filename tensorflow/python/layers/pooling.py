@@ -68,8 +68,8 @@ class _Pooling1D(base.Layer):
       data_format = 'NHWC'
     else:
       inputs = array_ops.expand_dims(inputs, 1)
-      pool_shape = (1, 1) + self.pool_size + (1,)
-      strides = (1, 1) + self.strides + (1,)
+      pool_shape = (1, 1, 1) + self.pool_size
+      strides = (1, 1, 1) + self.strides
       data_format = 'NCHW'
 
     outputs = self.pool_function(
