@@ -274,6 +274,11 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result);
 
 int AxesCount(AxesOrder axes_order);
 
+// Returns the permutation of the dimensions based on the input axes order and
+// output axes order.
+void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
+                     std::vector<int>* shuffle);
+
 void ShuffleDims(const Shape& input_shape, AxesOrder input_axes_order,
                  AxesOrder output_axes_order, Shape* output_shape);
 void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,

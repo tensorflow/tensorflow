@@ -23,6 +23,7 @@ py_library(
         "parser.py",
         "pretty_printer.py",
         "templates.py",
+        "transformer.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],

@@ -388,7 +388,7 @@ class TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
   `metric_fn` runs on CPU to generate metrics and `tensors` represents the
   `Tensor`s transferred from TPU system to CPU host and passed to `metric_fn`.
   To be precise, TPU evaluation expects a slightly different signature from the
-  ${tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
+  @{tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
   dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`.
   The `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. The
   `tensors` usually specify the model logits, which are transferred back from

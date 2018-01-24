@@ -43,86 +43,91 @@ static const char* kS3FileSystemAllocationTag = "S3FileSystemAllocation";
 static const size_t kS3ReadAppendableFileBufferSize = 1024 * 1024;
 static const int kS3GetChildrenMaxKeys = 100;
 
-Aws::Client::ClientConfiguration GetDefaultClientConfig() {
-  Aws::Client::ClientConfiguration cfg;
+Aws::Client::ClientConfiguration& GetDefaultClientConfig() {
+  static mutex cfg_lock(LINKER_INITIALIZED);
+  static bool init(false);
+  static Aws::Client::ClientConfiguration cfg;
 
-  const char* endpoint = getenv("S3_ENDPOINT");
-  if (endpoint) {
-    cfg.endpointOverride = Aws::String(endpoint);
-  }
-  const char* region = getenv("AWS_REGION");
-  if (!region) {
-    // TODO (yongtang): `S3_REGION` should be deprecated after 2.0.
-    region = getenv("S3_REGION");
-  }
-  if (region) {
-    cfg.region = Aws::String(region);
-  } else {
-    // Load config file (e.g., ~/.aws/config) only if AWS_SDK_LOAD_CONFIG
-    // is set with a truthy value.
-    const char* load_config_env = getenv("AWS_SDK_LOAD_CONFIG");
-    string load_config =
-        load_config_env ? str_util::Lowercase(load_config_env) : "";
-    if (load_config == "true" || load_config == "1") {
-      Aws::String config_file;
-      // If AWS_CONFIG_FILE is set then use it, otherwise use ~/.aws/config.
-      const char* config_file_env = getenv("AWS_CONFIG_FILE");
-      if (config_file_env) {
-        config_file = config_file_env;
-      } else {
-        const char* home_env = getenv("HOME");
-        if (home_env) {
-          config_file = home_env;
-          config_file += "/.aws/config";
+  std::lock_guard<mutex> lock(cfg_lock);
+
+  if (!init) {
+    const char* endpoint = getenv("S3_ENDPOINT");
+    if (endpoint) {
+      cfg.endpointOverride = Aws::String(endpoint);
+    }
+    const char* region = getenv("AWS_REGION");
+    if (!region) {
+      // TODO (yongtang): `S3_REGION` should be deprecated after 2.0.
+      region = getenv("S3_REGION");
+    }
+    if (region) {
+      cfg.region = Aws::String(region);
+    } else {
+      // Load config file (e.g., ~/.aws/config) only if AWS_SDK_LOAD_CONFIG
+      // is set with a truthy value.
+      const char* load_config_env = getenv("AWS_SDK_LOAD_CONFIG");
+      string load_config =
+          load_config_env ? str_util::Lowercase(load_config_env) : "";
+      if (load_config == "true" || load_config == "1") {
+        Aws::String config_file;
+        // If AWS_CONFIG_FILE is set then use it, otherwise use ~/.aws/config.
+        const char* config_file_env = getenv("AWS_CONFIG_FILE");
+        if (config_file_env) {
+          config_file = config_file_env;
+        } else {
+          const char* home_env = getenv("HOME");
+          if (home_env) {
+            config_file = home_env;
+            config_file += "/.aws/config";
+          }
+        }
+        Aws::Config::AWSConfigFileProfileConfigLoader loader(config_file);
+        loader.Load();
+        auto profiles = loader.GetProfiles();
+        if (!profiles["default"].GetRegion().empty()) {
+          cfg.region = profiles["default"].GetRegion();
         }
       }
-      Aws::Config::AWSConfigFileProfileConfigLoader loader(config_file);
-      loader.Load();
-      auto profiles = loader.GetProfiles();
-      if (!profiles["default"].GetRegion().empty()) {
-        cfg.region = profiles["default"].GetRegion();
+    }
+    const char* use_https = getenv("S3_USE_HTTPS");
+    if (use_https) {
+      if (use_https[0] == '0') {
+        cfg.scheme = Aws::Http::Scheme::HTTP;
+      } else {
+        cfg.scheme = Aws::Http::Scheme::HTTPS;
       }
     }
-  }
-  const char* use_https = getenv("S3_USE_HTTPS");
-  if (use_https) {
-    if (use_https[0] == '0') {
-      cfg.scheme = Aws::Http::Scheme::HTTP;
-    } else {
-      cfg.scheme = Aws::Http::Scheme::HTTPS;
+    const char* verify_ssl = getenv("S3_VERIFY_SSL");
+    if (verify_ssl) {
+      if (verify_ssl[0] == '0') {
+        cfg.verifySSL = false;
+      } else {
+        cfg.verifySSL = true;
+      }
     }
-  }
-  const char* verify_ssl = getenv("S3_VERIFY_SSL");
-  if (verify_ssl) {
-    if (verify_ssl[0] == '0') {
-      cfg.verifySSL = false;
-    } else {
-      cfg.verifySSL = true;
-    }
-  }
-  const char* connect_timeout = getenv("S3_CONNECT_TIMEOUT_MSEC");
-  if (connect_timeout) {
-    int64 timeout;
+    const char* connect_timeout = getenv("S3_CONNECT_TIMEOUT_MSEC");
+    if (connect_timeout) {
+      int64 timeout;
 
-    if (strings::safe_strto64(connect_timeout, &timeout)) {
-      cfg.connectTimeoutMs = timeout;
+      if (strings::safe_strto64(connect_timeout, &timeout)) {
+        cfg.connectTimeoutMs = timeout;
+      }
     }
-  }
-  const char* request_timeout = getenv("S3_REQUEST_TIMEOUT_MSEC");
-  if (request_timeout) {
-    int64 timeout;
+    const char* request_timeout = getenv("S3_REQUEST_TIMEOUT_MSEC");
+    if (request_timeout) {
+      int64 timeout;
 
-    if (strings::safe_strto64(request_timeout, &timeout)) {
-      cfg.requestTimeoutMs = timeout;
+      if (strings::safe_strto64(request_timeout, &timeout)) {
+        cfg.requestTimeoutMs = timeout;
+      }
     }
-  } else {
-    // Use a request default for S3 I/O. This helps ensure large file transfers
-    // will succeed.
-    cfg.requestTimeoutMs = 600000; // 10 minutes.
+
+    init = true;
   }
 
   return cfg;
 };
+
 
 void ShutdownClient(Aws::S3::S3Client *s3_client) {
   if (s3_client != nullptr) {

@@ -1942,6 +1942,16 @@ cc_library(
     ],
 )
 
+tf_cc_test(
+    name = "hlo_element_type_converter_test",
+    srcs = ["hlo_element_type_converter_test.cc"],
+    deps = [
+        ":hlo_element_type_converter",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 cc_library(
     name = "device_memory_allocator",
     srcs = ["device_memory_allocator.cc"],

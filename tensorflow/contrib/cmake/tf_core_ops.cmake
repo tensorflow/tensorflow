@@ -15,6 +15,7 @@
 set(tf_op_lib_names
     "audio_ops"
     "array_ops"
+		"batch_ops"
     "bitwise_ops"
     "candidate_sampling_ops"
     "checkpoint_ops"

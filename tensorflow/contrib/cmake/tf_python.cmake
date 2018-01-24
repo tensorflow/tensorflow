@@ -317,6 +317,7 @@ endfunction()
 
 GENERATE_PYTHON_OP_LIB("audio_ops")
 GENERATE_PYTHON_OP_LIB("array_ops")
+GENERATE_PYTHON_OP_LIB("batch_ops")
 GENERATE_PYTHON_OP_LIB("bitwise_ops")
 GENERATE_PYTHON_OP_LIB("math_ops")
 GENERATE_PYTHON_OP_LIB("functional_ops")

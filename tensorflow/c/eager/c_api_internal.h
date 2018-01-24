@@ -21,6 +21,7 @@ limitations under the License.
 #include <cstddef>
 #include <memory>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "tensorflow/c/c_api.h"
@@ -44,6 +45,12 @@ struct TFE_Context {
   explicit TFE_Context(TF_Session* s) : session(s) {}
 
   TFE_ContextDevicePlacementPolicy policy;
+
+  // Note: we cannot use C++11 thread_local here as there is no concept of a
+  // thread-local-object-local variable in C++11.
+  tensorflow::mutex policy_map_mu;
+  std::unordered_map<std::thread::id, TFE_ContextDevicePlacementPolicy>
+      thread_local_policies GUARDED_BY(policy_map_mu);
 
   // TFE_Context is an extension of TF_Session. And TF_Session needs a TF_Graph.
   TF_Session* session;

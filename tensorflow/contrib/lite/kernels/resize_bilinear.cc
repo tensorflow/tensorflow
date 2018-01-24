@@ -33,49 +33,53 @@ enum KernelType {
 };
 
 constexpr int kInputTensor = 0;
+constexpr int kSizeTensor = 1;
 constexpr int kOutputTensor = 0;
 
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
-  auto* params =
-      reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
-
-  TF_LITE_ENSURE_EQ(context, NumInputs(node), 1);
+  TF_LITE_ENSURE_EQ(context, NumInputs(node), 2);
   TF_LITE_ENSURE_EQ(context, NumOutputs(node), 1);
 
   TfLiteTensor* input = GetInput(context, node, kInputTensor);
+  TfLiteTensor* size = GetInput(context, node, kSizeTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
 
   // TODO(ahentz): Our current implementations rely on the inputs being 4D.
   TF_LITE_ENSURE_EQ(context, NumDimensions(input), 4);
+  TF_LITE_ENSURE_EQ(context, NumDimensions(size), 1);
 
   // TODO(ahentz): Our current implementations only support float32.
-  TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, input->type, output->type);
+  TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
+  TF_LITE_ENSURE_EQ(context, size->type, kTfLiteInt32);
+  // ResizeBilinear creates a float tensor even when the input is made of
+  // integers.
+  output->type = kTfLiteFloat32;
 
-  TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
-  output_size->data[0] = input->dims->data[0];
-  output_size->data[1] = params->new_height;
-  output_size->data[2] = params->new_width;
-  output_size->data[3] = input->dims->data[3];
-
-  return context->ResizeTensor(context, output, output_size);
+  // TODO(ahentz): if the input is constant, we can allocate here.
+  output->allocation_type = kTfLiteDynamic;
+  return kTfLiteOk;
 }
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
-  auto* params =
-      reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
-
   TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
+  TfLiteTensor* size = GetInput(context, node, kSizeTensor);
 
-  // We have to fake a tensor here, to satisfy ResizeBilinear().
-  int32 output_size_data[2] = {params->new_height, params->new_width};
+  // TODO(ahentz): we only need to do this here if it wasn't done in Eval().
+  TfLiteIntArray* output_size = TfLiteIntArrayCreate(4);
+  output_size->data[0] = input->dims->data[0];
+  const int32* size_data = GetTensorData<int32>(size);
+  output_size->data[1] = size_data[0];
+  output_size->data[2] = size_data[1];
+  output_size->data[3] = input->dims->data[3];
+  context->ResizeTensor(context, output, output_size);
+  TfLiteTensorRealloc(output->bytes, output);
 
   if (output->type == kTfLiteFloat32) {
 #define TF_LITE_RESIZE_BILINEAR(type)                                     \
   type::ResizeBilinear(GetTensorData<float>(input), GetTensorDims(input), \
-                       output_size_data, GetTensorDims({1, 1, 1, 2}),     \
+                       GetTensorData<int32>(size), GetTensorDims(size),   \
                        GetTensorData<float>(output), GetTensorDims(output))
 
     if (kernel_type == kReference) {

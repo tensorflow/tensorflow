@@ -112,6 +112,19 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     numpy_tensor = np.asarray(tensor, dtype=np.int32)
     self.assertAllEqual(numpy_tensor, [1, 2, 3])
 
+  def testNdimsAgreesWithNumpy(self):
+    numpy_tensor = np.asarray(1.0)
+    tensor = constant_op.constant(numpy_tensor)
+    self.assertAllEqual(numpy_tensor.ndim, tensor.ndim)
+
+    numpy_tensor = np.asarray([1.0, 2.0, 3.0])
+    tensor = constant_op.constant(numpy_tensor)
+    self.assertAllEqual(numpy_tensor.ndim, tensor.ndim)
+
+    numpy_tensor = np.asarray([[1.0, 2.0, 3.0], [1.0, 2.0, 3.0]])
+    tensor = constant_op.constant(numpy_tensor)
+    self.assertAllEqual(numpy_tensor.ndim, tensor.ndim)
+
   def testCopy(self):
     t = constant_op.constant(1.0)
     tt = copy.copy(t)
