@@ -368,8 +368,8 @@ class DropoutTest(test_lib.TestCase):
       with self.test_session():
         t = constant_op.constant(
             1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
-        # Set noise_shape=[-1, 1] which means [x_dim, 1].
-        dropout = nn_ops.dropout(t, keep_prob, noise_shape=[-1, 1])
+        # Set noise_shape=[None, 1] which means [x_dim, 1].
+        dropout = nn_ops.dropout(t, keep_prob, noise_shape=[None, 1])
         self.assertEqual([x_dim, y_dim], dropout.get_shape())
         final_count = 0
         for _ in xrange(0, num_iter):
