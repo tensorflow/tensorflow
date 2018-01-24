@@ -1583,7 +1583,6 @@ class Operation(object):
             "Cannot create a tensor proto whose content is larger than 2GB.")
       if not _VALID_OP_NAME_REGEX.match(node_def.name):
         raise ValueError("'%s' is not a valid node name" % node_def.name)
-      self._node_def_val = copy.deepcopy(node_def)
       c_op = None
     elif type(node_def).__name__ == "SwigPyObject":
       assert inputs is None
@@ -1592,7 +1591,6 @@ class Operation(object):
       assert input_types is None
       assert original_op is None
       assert op_def is None
-      self._node_def_val = None
       c_op = node_def
     else:
       raise TypeError("node_def needs to be a NodeDef: %s" % node_def)
@@ -1605,24 +1603,22 @@ class Operation(object):
       inputs = []
     elif not isinstance(inputs, list):
       raise TypeError("inputs needs to be a list of Tensors: %s" % inputs)
-    self._inputs_val = list(inputs)  # Defensive copy.
-    for a in self._inputs_val:
+    for a in inputs:
       if not isinstance(a, Tensor):
         raise TypeError("input needs to be a Tensor: %s" % a)
     if input_types is None:
-      input_types = [i.dtype.base_dtype for i in self._inputs_val]
+      input_types = [i.dtype.base_dtype for i in inputs]
     else:
       if not all(
           x.is_compatible_with(i.dtype)
-          for i, x in zip(self._inputs_val, input_types)):
+          for i, x in zip(inputs, input_types)):
         raise TypeError("In op '%s', input types (%s) are not compatible "
                         "with expected types (%s)" %
-                        (self.node_def.name, [i.dtype for i in self._inputs_val],
+                        (self.node_def.name, [i.dtype for i in inputs],
                          input_types))
-    self._input_types_val = input_types
 
     # Build the list of control inputs.
-    self._control_inputs_val = []
+    control_input_ops = []
     if control_inputs:
       for c in control_inputs:
         control_op = None
@@ -1633,11 +1629,20 @@ class Operation(object):
         else:
           raise TypeError("Control input must be an Operation, "
                           "a Tensor, or IndexedSlices: %s" % c)
-        self._control_inputs_val.append(control_op)
+        control_input_ops.append(control_op)
+
+    # Don't set private fields with C API enabled to catch users who need to
+    # switch to public API.
+    # TODO(skyewm): delete these fields once we remove _USE_C_API
+    if not self._graph._c_graph:
+      self._inputs_val = list(inputs)  # Defensive copy.
+      self._input_types_val = input_types
+      self._control_inputs_val = control_input_ops
+      self._node_def_val = copy.deepcopy(node_def)
+      self._op_def_val = op_def
 
     self._id_value = self._graph._next_id()  # pylint: disable=protected-access
     self._original_op = original_op
-    self._op_def_val = op_def
     self._traceback = self._graph._extract_stack()  # pylint: disable=protected-access
     self._control_flow_context = self.graph._get_control_flow_context()  # pylint: disable=protected-access
 
@@ -1653,8 +1658,8 @@ class Operation(object):
       # Refactor so we don't have to do this here.
       grouped_inputs = self._reconstruct_sequence_inputs(
           op_def, inputs, node_def.attr)
-      self._c_op = _create_c_op(self._graph, self._node_def_val, grouped_inputs,
-                                self._control_inputs_val)
+      self._c_op = _create_c_op(self._graph, node_def, grouped_inputs,
+                                control_input_ops)
     else:
       self._c_op = None
 
