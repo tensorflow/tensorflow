@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@ def CreateInferenceGraph(input_graph_def, outputs,max_batch_size=1,max_workspace
 
   Args:
     input_graph_def: GraphDef object containing a model to be transformed.
-    outputs: List of node names for the model outputs.
+    outputs: List of tensors or node names for the model outputs.
     max_batch_size: max size for the input batch
     max_workspace_size: parameter to control memory allocation (in Bytes)
 
@@ -44,36 +44,21 @@ def CreateInferenceGraph(input_graph_def, outputs,max_batch_size=1,max_workspace
     New GraphDef with TRTEngineOps placed in graph replacing subgraphs.
   """
 
-  # with errors.raise_exception_on_not_ok_status() as status:
-  #   output_graph_def_string = trt_convert(
-  #       input_graph_def_string,outputs,
-  #       max_batch_size,max_workspace_size, status)
-  # g = tf.Graph()
-  # with g.as_default():
-  #   tf.import_graph_def(input_graph_def, name="")
-  # rewriter_config = rewriter_config_pb2.RewriterConfig()
-  # rewriter_config.optimizers.append('layout')
-  # rewriter_config.optimizers.append('constfold')
-
-  # # mark output nodes as fetch
-  # train_op = ops.get_collection_ref(ops.GraphKeys.TRAIN_OP)
-  # for node_name in outputs:
-  #   out_node = g.get_operation_by_name(node_name)
-  #   for i in range(0,len(out_node.outputs)):
-  #     train_op.append(out_node.outputs[0])
-
-  # # constant folding
-  # mg = meta_graph.create_meta_graph_def(graph=g)
-  # meta_graph.add_collection_def(mg, ops.GraphKeys.TRAIN_OP)
-  # optimized_graph_def_str = \
-  #   tf_optimizer.OptimizeGraph(rewriter_config, mg).SerializeToString()
+  out_names=[]
+  for i in outputs:
+    if isinstance(i,ops.Tensor):
+      out_names.append(i.name)
+    else:
+      out_names.append(i)
+      
   input_graph_def_str= \
     input_graph_def.SerializeToString()
 
   # TODO(sami): Fix this when we can return status from C++ library
-  # There is a problem with the TF internal library setup that doesn't allow us to return a status object from C++.
-  # Thus we return a  pair or strings where first one is encoded status and the second one is the
-  # transformed graphs protobuf string.
+  # There is a problem with the TF internal library setup that doesn't
+  # allow us to return a status object from C++.  Thus we return a
+  # pair or strings where first one is encoded status and the second
+  # one is the transformed graphs protobuf string.
   out = trt_convert(
       input_graph_def_str ,outputs,
       max_batch_size,max_workspace_size)

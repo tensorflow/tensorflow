@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 
+namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
@@ -39,5 +40,5 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     tensorflow::NodeDef* trt_node);
 }  // namespace convert
 }  // namespace tensorrt
-
+}  // namespace tensorflow
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_NODES_H_

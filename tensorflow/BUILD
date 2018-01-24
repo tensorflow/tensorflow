@@ -359,14 +359,6 @@ config_setting(
 )
 
 config_setting(
-    name = "using_tensorrt",
-    define_values = {
-        "using_tensorrt":"true",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "with_mpi_support",
     values = {"define": "with_mpi_support=true"},
     visibility = ["//visibility:public"],

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
+namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 
@@ -49,5 +50,5 @@ tensorflow::Status SegmentGraph(
 
 }  // namespace segment
 }  // namespace tensorrt
-
+}  // namespace tensorflow
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_SEGMENT_SEGMENT_H_
