@@ -219,7 +219,7 @@ genrule(
           "    -o $$out" +
           "    $$(dirname $(location simd/jdct.inc))/$$(basename $${out%.o}.asm)\n" +
           "done",
-    tools = ["@nasm//:nasm"],
+    tools = ["@nasm"],
 )
 
 cc_library(

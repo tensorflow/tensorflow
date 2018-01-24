@@ -42,7 +42,7 @@ def _generate_shared_name(prefix):
     global _uid_counter
     uid = _uid_counter
     _uid_counter += 1
-  return "{}_{}".format(prefix, uid)
+  return "{}{}".format(prefix, uid)
 
 
 class Iterator(object):
@@ -84,8 +84,8 @@ class Iterator(object):
       self._flat_output_shapes = nest.flatten(
           sparse.as_dense_shapes(self._output_shapes, self._output_classes))
       self._resource = gen_dataset_ops.iterator(
-          container="",
-          shared_name=_generate_shared_name("eager_iterator"),
+          shared_name="",
+          container=_generate_shared_name("eageriterator"),
           output_types=self._flat_output_types,
           output_shapes=self._flat_output_shapes)
       gen_dataset_ops.make_iterator(ds_variant, self._resource)

@@ -53,7 +53,7 @@ with the corresponding parameters as shown in the figure.
 ### Automatic Speech Recognizer (ASR) Acoustic Model (AM)
 
 The acoustic model for automatic speech recognition is the neural network model
-for matching phonemes to the input autio features. It generates posterior
+for matching phonemes to the input audio features. It generates posterior
 probabilities of phonemes from speech frontend features (log-mel filterbanks).
 It has an input size of 320 (float), an output size of 42 (float), five LSTM
 layers and one fully connected layers with a Softmax activation function, with
@@ -68,7 +68,7 @@ for predicting the probability of a word given previous words in a sentence.
 It generates posterior probabilities of the next word based from a sequence of
 words. The words are encoded as indices in a fixed size dictionary.
 The model has two inputs both of size one (integer): the current word index and
-next word index, an output size of one (float): the log probability. It consits
+next word index, an output size of one (float): the log probability. It consists
 of three embedding layer, three LSTM layers, followed by a multiplication, a
 fully connected layers and an addition.
 The corresponding parameters as shown in the figure.

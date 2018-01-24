@@ -151,6 +151,7 @@ union BuiltinOptions {
   SubOptions,
   DivOptions,
   SqueezeOptions,
+  SequenceRNNOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -211,6 +212,12 @@ table SVDFOptions {
 
 // An implementation of TensorFlow RNNCell.
 table RNNOptions {
+  fused_activation_function:ActivationFunctionType;
+}
+
+// An implementation of TensorFlow dynamic_rnn with RNNCell.
+table SequenceRNNOptions {
+  time_major:bool;
   fused_activation_function:ActivationFunctionType;
 }
 

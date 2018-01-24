@@ -235,9 +235,10 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
   for (const auto& op : model.operators) {
     std::vector<int32_t> inputs;
     for (const string& input : op->inputs) {
-      inputs.push_back(tensors_map.at(input));
+      // -1 is the ID for optional tensor in TFLite output
+      int id = model.IsOptionalArray(input) ? -1 : tensors_map.at(input);
+      inputs.push_back(id);
     }
-
     std::vector<int32_t> outputs;
     for (const string& output : op->outputs) {
       outputs.push_back(tensors_map.at(output));
