@@ -34,6 +34,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 
 def metric_variable(shape, dtype, validate_shape=True, name=None):
@@ -262,6 +263,7 @@ def _streaming_confusion_matrix(labels, predictions, num_classes, weights=None):
   return total_cm, update_op
 
 
+@tf_export('metrics.mean')
 def mean(values, weights=None, metrics_collections=None,
          updates_collections=None, name=None):
   """Computes the (weighted) mean of the given values.
@@ -337,6 +339,7 @@ def mean(values, weights=None, metrics_collections=None,
     return mean_t, update_op
 
 
+@tf_export('metrics.accuracy')
 def accuracy(labels, predictions, weights=None, metrics_collections=None,
              updates_collections=None, name=None):
   """Calculates how often `predictions` matches `labels`.
@@ -552,6 +555,7 @@ def _confusion_matrix_at_thresholds(
   return values, update_ops
 
 
+@tf_export('metrics.auc')
 def auc(labels, predictions, weights=None, num_thresholds=200,
         metrics_collections=None, updates_collections=None,
         curve='ROC', name=None, summation_method='trapezoidal'):
@@ -682,6 +686,7 @@ def auc(labels, predictions, weights=None, num_thresholds=200,
     return auc_value, update_op
 
 
+@tf_export('metrics.mean_absolute_error')
 def mean_absolute_error(labels, predictions, weights=None,
                         metrics_collections=None,
                         updates_collections=None,
@@ -740,6 +745,7 @@ def mean_absolute_error(labels, predictions, weights=None,
               updates_collections, name or 'mean_absolute_error')
 
 
+@tf_export('metrics.mean_cosine_distance')
 def mean_cosine_distance(labels, predictions, dim, weights=None,
                          metrics_collections=None,
                          updates_collections=None,
@@ -812,6 +818,7 @@ def mean_cosine_distance(labels, predictions, dim, weights=None,
   return mean_distance, update_op
 
 
+@tf_export('metrics.mean_per_class_accuracy')
 def mean_per_class_accuracy(labels,
                             predictions,
                             num_classes,
@@ -824,8 +831,8 @@ def mean_per_class_accuracy(labels,
   Calculates the accuracy for each class, then takes the mean of that.
 
   For estimation of the metric over a stream of data, the function creates an
-  `update_op` operation that updates these variables and returns the
-  `mean_accuracy`.
+  `update_op` operation that updates the accuracy of each class and returns
+  them.
 
   If `weights` is `None`, weights default to 1. Use weights of 0 to mask values.
 
@@ -836,8 +843,8 @@ def mean_per_class_accuracy(labels,
       shape is [batch size] and type `int32` or `int64`. The tensor will be
       flattened if its rank > 1.
     num_classes: The possible number of labels the prediction task can
-      have. This value must be provided, since a confusion matrix of
-      dimension = [num_classes, num_classes] will be allocated.
+      have. This value must be provided, since two variables with shape =
+      [num_classes] will be allocated.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `labels` dimension).
@@ -850,7 +857,7 @@ def mean_per_class_accuracy(labels,
 
   Returns:
     mean_accuracy: A `Tensor` representing the mean per class accuracy.
-    update_op: An operation that increments the confusion matrix.
+    update_op: An operation that updates the accuracy tensor.
 
   Raises:
     ValueError: If `predictions` and `labels` have mismatched shapes, or if
@@ -865,27 +872,43 @@ def mean_per_class_accuracy(labels,
 
   with variable_scope.variable_scope(name, 'mean_accuracy',
                                      (predictions, labels, weights)):
+    labels = math_ops.to_int64(labels)
+
+    # Flatten the input if its rank > 1.
+    if labels.get_shape().ndims > 1:
+      labels = array_ops.reshape(labels, [-1])
+
+    if predictions.get_shape().ndims > 1:
+      predictions = array_ops.reshape(predictions, [-1])
+
     # Check if shape is compatible.
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    total_cm, update_op = _streaming_confusion_matrix(
-        labels, predictions, num_classes, weights=weights)
+    total = metric_variable([num_classes], dtypes.float32, name='total')
+    count = metric_variable([num_classes], dtypes.float32, name='count')
 
-    def compute_mean_accuracy(name):
-      """Compute the mean per class accuracy via the confusion matrix."""
-      per_row_sum = math_ops.to_float(math_ops.reduce_sum(total_cm, 1))
-      cm_diag = math_ops.to_float(array_ops.diag_part(total_cm))
-      denominator = per_row_sum
+    ones = array_ops.ones([array_ops.size(labels)], dtypes.float32)
 
-      # If the value of the denominator is 0, set it to 1 to avoid
-      # zero division.
-      denominator = array_ops.where(
-          math_ops.greater(denominator, 0), denominator,
-          array_ops.ones_like(denominator))
-      accuracies = math_ops.div(cm_diag, denominator)
-      return math_ops.reduce_mean(accuracies, name=name)
+    if labels.dtype != predictions.dtype:
+      predictions = math_ops.cast(predictions, labels.dtype)
+    is_correct = math_ops.to_float(math_ops.equal(predictions, labels))
 
-    mean_accuracy_v = compute_mean_accuracy('mean_accuracy')
+    if weights is not None:
+      if weights.get_shape().ndims > 1:
+        weights = array_ops.reshape(weights, [-1])
+      weights = math_ops.to_float(weights)
+
+      is_correct = is_correct * weights
+      ones = ones * weights
+
+    update_total_op = state_ops.scatter_add(total, labels, ones)
+    update_count_op = state_ops.scatter_add(count, labels, is_correct)
+
+    per_class_accuracy = _safe_div(count, total, None)
+
+    mean_accuracy_v = math_ops.reduce_mean(per_class_accuracy,
+                                           name='mean_accuracy')
+    update_op = _safe_div(update_count_op, update_total_op, name='update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, mean_accuracy_v)
@@ -896,6 +919,7 @@ def mean_per_class_accuracy(labels,
     return mean_accuracy_v, update_op
 
 
+@tf_export('metrics.mean_iou')
 def mean_iou(labels,
              predictions,
              num_classes,
@@ -997,6 +1021,7 @@ def mean_iou(labels,
     return mean_iou_v, update_op
 
 
+@tf_export('metrics.mean_relative_error')
 def mean_relative_error(labels, predictions, normalizer, weights=None,
                         metrics_collections=None,
                         updates_collections=None,
@@ -1063,6 +1088,7 @@ def mean_relative_error(labels, predictions, normalizer, weights=None,
               updates_collections, name or 'mean_relative_error')
 
 
+@tf_export('metrics.mean_squared_error')
 def mean_squared_error(labels, predictions, weights=None,
                        metrics_collections=None,
                        updates_collections=None,
@@ -1121,6 +1147,7 @@ def mean_squared_error(labels, predictions, weights=None,
               updates_collections, name or 'mean_squared_error')
 
 
+@tf_export('metrics.mean_tensor')
 def mean_tensor(values, weights=None, metrics_collections=None,
                 updates_collections=None, name=None):
   """Computes the element-wise (weighted) mean of the given tensors.
@@ -1206,6 +1233,7 @@ def mean_tensor(values, weights=None, metrics_collections=None,
     return mean_t, update_op
 
 
+@tf_export('metrics.percentage_below')
 def percentage_below(values, threshold, weights=None,
                      metrics_collections=None,
                      updates_collections=None,
@@ -1307,6 +1335,7 @@ def _count_condition(values, weights=None, metrics_collections=None,
   return value_tensor, update_op
 
 
+@tf_export('metrics.false_negatives')
 def false_negatives(labels, predictions, weights=None,
                     metrics_collections=None,
                     updates_collections=None,
@@ -1356,6 +1385,7 @@ def false_negatives(labels, predictions, weights=None,
                             updates_collections)
 
 
+@tf_export('metrics.false_negatives_at_thresholds')
 def false_negatives_at_thresholds(labels, predictions, thresholds, weights=None,
                                   metrics_collections=None,
                                   updates_collections=None,
@@ -1409,6 +1439,7 @@ def false_negatives_at_thresholds(labels, predictions, thresholds, weights=None,
     return values['fn'], update_ops['fn']
 
 
+@tf_export('metrics.false_positives')
 def false_positives(labels, predictions, weights=None,
                     metrics_collections=None,
                     updates_collections=None,
@@ -1459,6 +1490,7 @@ def false_positives(labels, predictions, weights=None,
                             updates_collections)
 
 
+@tf_export('metrics.false_positives_at_thresholds')
 def false_positives_at_thresholds(labels, predictions, thresholds, weights=None,
                                   metrics_collections=None,
                                   updates_collections=None,
@@ -1512,6 +1544,7 @@ def false_positives_at_thresholds(labels, predictions, thresholds, weights=None,
     return values['fp'], update_ops['fp']
 
 
+@tf_export('metrics.true_negatives')
 def true_negatives(labels, predictions, weights=None,
                    metrics_collections=None,
                    updates_collections=None,
@@ -1562,6 +1595,7 @@ def true_negatives(labels, predictions, weights=None,
                             updates_collections)
 
 
+@tf_export('metrics.true_negatives_at_thresholds')
 def true_negatives_at_thresholds(labels, predictions, thresholds, weights=None,
                                  metrics_collections=None,
                                  updates_collections=None,
@@ -1615,6 +1649,7 @@ def true_negatives_at_thresholds(labels, predictions, thresholds, weights=None,
     return values['tn'], update_ops['tn']
 
 
+@tf_export('metrics.true_positives')
 def true_positives(labels, predictions, weights=None,
                    metrics_collections=None,
                    updates_collections=None,
@@ -1665,6 +1700,7 @@ def true_positives(labels, predictions, weights=None,
                             updates_collections)
 
 
+@tf_export('metrics.true_positives_at_thresholds')
 def true_positives_at_thresholds(labels, predictions, thresholds, weights=None,
                                  metrics_collections=None,
                                  updates_collections=None,
@@ -1718,6 +1754,7 @@ def true_positives_at_thresholds(labels, predictions, thresholds, weights=None,
     return values['tp'], update_ops['tp']
 
 
+@tf_export('metrics.precision')
 def precision(labels, predictions, weights=None,
               metrics_collections=None, updates_collections=None,
               name=None):
@@ -1803,6 +1840,7 @@ def precision(labels, predictions, weights=None,
     return p, update_op
 
 
+@tf_export('metrics.precision_at_thresholds')
 def precision_at_thresholds(labels, predictions, thresholds,
                             weights=None,
                             metrics_collections=None,
@@ -1878,6 +1916,7 @@ def precision_at_thresholds(labels, predictions, thresholds,
     return prec, update_op
 
 
+@tf_export('metrics.recall')
 def recall(labels, predictions, weights=None,
            metrics_collections=None, updates_collections=None,
            name=None):
@@ -2217,6 +2256,7 @@ def _streaming_sparse_false_negative_at_k(labels,
     return var, state_ops.assign_add(var, batch_total_fn, name='update')
 
 
+@tf_export('metrics.recall_at_k')
 def recall_at_k(labels,
                 predictions,
                 k,
@@ -2310,6 +2350,7 @@ def recall_at_k(labels,
         name=scope)
 
 
+@tf_export('metrics.recall_at_top_k')
 def recall_at_top_k(labels,
                     predictions_idx,
                     k=None,
@@ -2385,6 +2426,7 @@ def recall_at_top_k(labels,
     return metric, update
 
 
+@tf_export('metrics.recall_at_thresholds')
 def recall_at_thresholds(labels, predictions, thresholds,
                          weights=None, metrics_collections=None,
                          updates_collections=None, name=None):
@@ -2456,6 +2498,7 @@ def recall_at_thresholds(labels, predictions, thresholds,
     return rec, update_op
 
 
+@tf_export('metrics.root_mean_squared_error')
 def root_mean_squared_error(labels, predictions, weights=None,
                             metrics_collections=None,
                             updates_collections=None,
@@ -2525,6 +2568,7 @@ def root_mean_squared_error(labels, predictions, weights=None,
   return rmse, update_rmse_op
 
 
+@tf_export('metrics.sensitivity_at_specificity')
 def sensitivity_at_specificity(
     labels, predictions, specificity, weights=None, num_thresholds=200,
     metrics_collections=None, updates_collections=None, name=None):
@@ -2887,6 +2931,7 @@ def _streaming_sparse_average_precision_at_top_k(labels,
     return mean_average_precision, update
 
 
+@tf_export('metrics.sparse_average_precision_at_k')
 @deprecated(None, 'Use average_precision_at_k instead')
 def sparse_average_precision_at_k(labels,
                                   predictions,
@@ -2906,6 +2951,7 @@ def sparse_average_precision_at_k(labels,
       name=name)
 
 
+@tf_export('metrics.average_precision_at_k')
 def average_precision_at_k(labels,
                            predictions,
                            k,
@@ -3080,6 +3126,7 @@ def _streaming_sparse_false_positive_at_k(labels,
     return var, state_ops.assign_add(var, batch_total_fp, name='update')
 
 
+@tf_export('metrics.precision_at_top_k')
 def precision_at_top_k(labels,
                        predictions_idx,
                        k=None,
@@ -3159,6 +3206,7 @@ def precision_at_top_k(labels,
     return metric, update
 
 
+@tf_export('metrics.sparse_precision_at_k')
 @deprecated(None, 'Use precision_at_k instead')
 def sparse_precision_at_k(labels,
                           predictions,
@@ -3180,6 +3228,7 @@ def sparse_precision_at_k(labels,
       name=name)
 
 
+@tf_export('metrics.precision_at_k')
 def precision_at_k(labels,
                    predictions,
                    k,
@@ -3273,6 +3322,7 @@ def precision_at_k(labels,
         name=scope)
 
 
+@tf_export('metrics.specificity_at_sensitivity')
 def specificity_at_sensitivity(
     labels, predictions, sensitivity, weights=None, num_thresholds=200,
     metrics_collections=None, updates_collections=None, name=None):

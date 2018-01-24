@@ -31,6 +31,7 @@ from tensorflow.python.ops.gen_linalg_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 # Names below are lower_case.
 # pylint: disable=invalid-name
@@ -77,6 +78,7 @@ def _RegularizedGramianCholesky(matrix, l2_regularizer, first_kind):
   return gen_linalg_ops.cholesky(gramian)
 
 
+@tf_export('cholesky_solve', 'linalg.cholesky_solve')
 def cholesky_solve(chol, rhs, name=None):
   """Solves systems of linear eqns `A X = RHS`, given Cholesky factorizations.
 
@@ -119,6 +121,7 @@ def cholesky_solve(chol, rhs, name=None):
     return x
 
 
+@tf_export('eye', 'linalg.eye')
 def eye(num_rows,
         num_columns=None,
         batch_shape=None,
@@ -188,6 +191,7 @@ def eye(num_rows,
       return array_ops.matrix_set_diag(zero_matrix, diag_ones)
 
 
+@tf_export('matrix_solve_ls', 'linalg.lstsq')
 def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   r"""Solves one or more linear least-squares problems.
 
@@ -324,6 +328,7 @@ def matrix_solve_ls(matrix, rhs, l2_regularizer=0.0, fast=True, name=None):
   # pylint: enable=protected-access
 
 
+@tf_export('self_adjoint_eig', 'linalg.eigh')
 def self_adjoint_eig(tensor, name=None):
   """Computes the eigen decomposition of a batch of self-adjoint matrices.
 
@@ -346,6 +351,7 @@ def self_adjoint_eig(tensor, name=None):
   return e, v
 
 
+@tf_export('self_adjoint_eigvals', 'linalg.eigvalsh')
 def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
 
@@ -368,6 +374,7 @@ def self_adjoint_eigvals(tensor, name=None):
   return e
 
 
+@tf_export('svd', 'linalg.svd')
 def svd(tensor, full_matrices=False, compute_uv=True, name=None):
   r"""Computes the singular value decompositions of one or more matrices.
 
@@ -439,6 +446,7 @@ def svd(tensor, full_matrices=False, compute_uv=True, name=None):
 
 
 # pylint: disable=redefined-builtin
+@tf_export('norm', 'linalg.norm')
 @deprecation.deprecated_args(
     None, 'keep_dims is deprecated, use keepdims instead', 'keep_dims')
 def norm(tensor,

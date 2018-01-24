@@ -403,11 +403,6 @@ tf_xla_py_test(
     disabled_backends = [
         "gpu",
     ],
-    tags = [
-        "manual",
-        "no_oss",
-        "notap",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/python:framework_for_generated_wrappers",

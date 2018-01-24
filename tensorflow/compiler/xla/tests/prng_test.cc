@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <limits>
 #include <memory>
 
 #include "tensorflow/compiler/xla/client/computation_builder.h"
@@ -36,42 +37,98 @@ namespace {
 class PrngTest : public ClientLibraryTestBase {
  protected:
   template <typename T>
-  void UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims);
-
-  template <typename T>
-  void BernoulliTest(float p, tensorflow::gtl::ArraySlice<int64> dims);
+  std::unique_ptr<Literal> UniformTest(T a, T b,
+                                       tensorflow::gtl::ArraySlice<int64> dims,
+                                       int64 seed = 42);
 
   // Computes the χ² statistic of a sample of the discrete uniform distribution
   // of the given range size. `expected_count` is the number of times each
   // possible value is expected to be generated. Thus, the sample size is
   // `range_size * expected_count`.
-  double UniformChiSquared(int32 range_size, int32 expected_count);
+  double UniformChiSquared(int32 range_size, int32 expected_count,
+                           int64 seed = 42);
 };
 
 template <typename T>
-void PrngTest::UniformTest(T a, T b, tensorflow::gtl::ArraySlice<int64> dims) {
+std::unique_ptr<Literal> PrngTest::UniformTest(
+    T a, T b, tensorflow::gtl::ArraySlice<int64> dims, int64 seed) {
   ComputationBuilder builder(client_, TestName());
   builder.RngUniform(
       builder.ConstantR0<T>(a), builder.ConstantR0<T>(b),
       ShapeUtil::MakeShape(primitive_util::NativeToPrimitiveType<T>(), dims));
 
-  SetSeed(42);
+  SetSeed(seed);
   auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
   EXPECT_THAT(dims, ::testing::ElementsAreArray(actual->shape().dimensions()));
   actual->EachCell<T>([=](tensorflow::gtl::ArraySlice<int64>, T value) {
     EXPECT_LE(a, value);
     EXPECT_LT(value, b);
   });
+  return actual;
 }
 
 // Uniform random number generation tests
 XLA_TEST_F(PrngTest, ScalarU01) { UniformTest<float>(0, 1, {}); }
+XLA_TEST_F(PrngTest, ScalarU01limits) {
+  UniformTest<float>(std::numeric_limits<float>::min(),
+                     std::numeric_limits<float>::max(), {});
+}
 XLA_TEST_F(PrngTest, ZeroValuesU01) { UniformTest<float>(0, 1, {0}); }
 XLA_TEST_F(PrngTest, TenValuesU01) { UniformTest<float>(0, 1, {10}); }
 XLA_TEST_F(PrngTest, TenValuesU37) { UniformTest<float>(3, 7, {10}); }
 XLA_TEST_F(PrngTest, ZeroValuesR2) { UniformTest<float>(0, 1, {0, 20}); }
 XLA_TEST_F(PrngTest, LargeU01) { UniformTest<float>(0, 1, {0x100, 0x100}); }
 XLA_TEST_F(PrngTest, TwelveValuesU524) { UniformTest<int32>(5, 24, {12}); }
+
+// TODO(b/71543667): Fix Rng ops on LLVM backends.
+XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU_PARALLEL(
+                         DISABLED_ON_CPU(ScalarBF16Tests)))) {
+  for (int64 seed = 0; seed < 100; ++seed) {
+    // The largest negative number smaller than zero in bf16 that's not
+    // denormalized.
+    int32 low_raw = 0x80800000;
+    const float low = reinterpret_cast<const float&>(low_raw);
+    float high = 0.0f;
+    UniformTest<bfloat16>(static_cast<bfloat16>(low),
+                          static_cast<bfloat16>(high), {}, /*seed=*/seed);
+
+    // Test odd and even values.
+    UniformTest<bfloat16>(static_cast<bfloat16>(32.75),
+                          static_cast<bfloat16>(33), {}, /*seed=*/seed);
+    UniformTest<bfloat16>(static_cast<bfloat16>(32.50),
+                          static_cast<bfloat16>(32.75), {}, /*seed=*/seed);
+    UniformTest<bfloat16>(static_cast<bfloat16>(-33.00),
+                          static_cast<bfloat16>(-32.75), {}, /*seed=*/seed);
+    UniformTest<bfloat16>(static_cast<bfloat16>(-32.75),
+                          static_cast<bfloat16>(-32.50), {}, /*seed=*/seed);
+  }
+}
+
+// TODO(b/71543667): Fix Rng ops on LLVM backends.
+XLA_TEST_F(PrngTest, DISABLED_ON_GPU(DISABLED_ON_CPU(
+                         DISABLED_ON_CPU_PARALLEL(ScalarBF16CountTests)))) {
+  // There are 3 BF16 values in the range of [32.25, 33): 32.25, 32.5, 32.75,
+  // they should get similar counts.
+  bfloat16 low = static_cast<bfloat16>(32.25);
+  bfloat16 high = static_cast<bfloat16>(33);
+  bfloat16 interval = static_cast<bfloat16>(0.25);
+  std::vector<int32> counts(static_cast<int64>((high - low) / interval), 0);
+
+  constexpr int64 count = 100;
+  for (int64 seed = 0; seed < count; ++seed) {
+    auto result = UniformTest<bfloat16>(low, high, {}, /*seed=*/seed);
+    result->Literal::EachCell<bfloat16>(
+        [&](tensorflow::gtl::ArraySlice<int64>, bfloat16 value) {
+          int64 index = static_cast<int64>((value - low) / interval);
+          counts[index]++;
+        });
+  }
+  // Each bucket should have similar amount of counts. That is, not more than
+  // 10% of total counts. This mostly tests that we don't fall into a 1:2:2
+  // distribution, which yields 20% expected difference.
+  EXPECT_LT(std::abs(counts[0] - counts[1]), count * 0.1);
+  EXPECT_LT(std::abs(counts[1] - counts[2]), count * 0.1);
+}
 
 namespace {
 template <typename T>
@@ -80,7 +137,8 @@ T Square(T x) {
 }
 }  // namespace
 
-double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count) {
+double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count,
+                                   int64 seed) {
   int32 sample_size = range_size * expected_count;
 
   ComputationBuilder builder(client_, TestName());
@@ -88,7 +146,7 @@ double PrngTest::UniformChiSquared(int32 range_size, int32 expected_count) {
                      builder.ConstantR0<int32>(range_size),
                      ShapeUtil::MakeShape(S32, {sample_size}));
 
-  SetSeed(42);
+  SetSeed(seed);
   auto actual = ExecuteAndTransferOrDie(&builder, /*arguments=*/{});
   std::vector<int32> counts(range_size, 0);
   actual->EachCell<int32>([&counts](tensorflow::gtl::ArraySlice<int64>,

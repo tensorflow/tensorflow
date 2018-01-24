@@ -23,7 +23,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import subprocess
+
+
+os.chdir(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
+
 
 PIP_PACKAGE_QUERY_EXPRESSION = \
   'deps(//tensorflow/tools/pip_package:build_pip_package)'
@@ -134,8 +139,8 @@ def main():
 
     raise RuntimeError("""One or more dependencies are not in the pip package.
 Please either blacklist the dependencies in
-tensorflow/tensorflow/tensorflow/tools/pip_package/pip_smoke_test.py
-or add them to tensorflow/tensorflow/tensorflow/tools/pip_package/BUILD.""")
+//tensorflow/tools/pip_package/pip_smoke_test.py
+or add them to //tensorflow/tools/pip_package/BUILD.""")
 
   else:
     print("TEST PASSED")

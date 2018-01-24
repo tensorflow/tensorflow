@@ -69,6 +69,7 @@ cuda_py_test(
     srcs = ["datasets_test.py"],
     additional_deps = [
         ":datasets",
+        "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",

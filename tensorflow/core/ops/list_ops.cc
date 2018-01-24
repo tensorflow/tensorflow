@@ -176,5 +176,81 @@ REGISTER_OP("TensorListFromTensor")
       return Status::OK();
     });
 
+REGISTER_OP("TensorListElementShape")
+    .Input("input_handle: variant")
+    .Output("element_shape: shape_type")
+    .Attr("shape_type: {int32, int64}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data == nullptr) {
+        c->set_output(0, c->Vector(c->UnknownDim()));
+        return Status::OK();
+      }
+      c->set_output(0, c->Vector(c->Rank((*handle_data)[0].shape)));
+      return Status::OK();
+    });
+
+REGISTER_OP("TensorListReserve")
+    .Input("element_shape: shape_type")
+    .Input("num_elements: int32")
+    .Output("handle: variant")
+    .Attr("element_dtype: type")
+    .Attr("shape_type: {int32, int64}")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      DataType t;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
+      c->set_output_handle_shapes_and_types(
+          0, std::vector<shape_inference::ShapeAndType>{{s, t}});
+      return Status::OK();
+    });
+
+REGISTER_OP("TensorListGetItem")
+    .Input("input_handle: variant")
+    .Input("index: int32")
+    .Output("item: element_dtype")
+    .Attr("element_dtype: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      DataType t;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      shape_inference::ShapeHandle element_shape = c->UnknownShape();
+      if (handle_data != nullptr) {
+        const shape_inference::ShapeAndType& list_shape_type =
+            (*handle_data)[0];
+        element_shape = list_shape_type.shape;
+        if (list_shape_type.dtype != t) {
+          return errors::InvalidArgument("Expected list with element dtype ",
+                                         DataTypeString(t),
+                                         " but got list with element dtype ",
+                                         DataTypeString(list_shape_type.dtype));
+        }
+      }
+      c->set_output(0, element_shape);
+      return Status::OK();
+    });
+
+REGISTER_OP("TensorListSetItem")
+    .Input("input_handle: variant")
+    .Input("index: int32")
+    .Input("item: element_dtype")
+    .Output("output_handle: variant")
+    .Attr("element_dtype: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      DataType t;
+      TF_RETURN_IF_ERROR(c->GetAttr("element_dtype", &t));
+      auto* handle_data = c->input_handle_shapes_and_types(0);
+      if (handle_data == nullptr) {
+        c->set_output_handle_shapes_and_types(0, {{c->UnknownShape(), t}});
+        return Status::OK();
+      }
+      const shape_inference::ShapeAndType& list_shape_type = (*handle_data)[0];
+      shape_inference::ShapeHandle s = c->input(2);
+      TF_RETURN_IF_ERROR(c->Merge(s, list_shape_type.shape, &s));
+      c->set_output_handle_shapes_and_types(0, *handle_data);
+      return Status::OK();
+    });
+
 }  // namespace
 }  // namespace tensorflow
