@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_GRPC_VERBS_CLIENT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_GRPC_VERBS_CLIENT_H_
+#ifndef TENSORFLOW_CONTRIB_GRPC_VERBS_CLIENT_H_
+#define TENSORFLOW_CONTRIB_GRPC_VERBS_CLIENT_H_
 
 #include "tensorflow/contrib/verbs/grpc_verbs_service_impl.h"
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
@@ -47,4 +47,4 @@ class GrpcVerbsClient {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_GRPC_VERBS_CLIENT_H_
+#endif  // TENSORFLOW_CONTRIB_GRPC_VERBS_CLIENT_H_

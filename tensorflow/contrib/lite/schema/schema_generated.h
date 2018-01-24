@@ -2657,26 +2657,13 @@ flatbuffers::Offset<CallOptions> CreateCallOptions(
 
 struct PadOptionsT : public flatbuffers::NativeTable {
   typedef PadOptions TableType;
-  std::vector<int32_t> before_padding;
-  std::vector<int32_t> after_padding;
   PadOptionsT() {}
 };
 
 struct PadOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef PadOptionsT NativeTableType;
-  enum { VT_BEFORE_PADDING = 4, VT_AFTER_PADDING = 6 };
-  const flatbuffers::Vector<int32_t> *before_padding() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_BEFORE_PADDING);
-  }
-  const flatbuffers::Vector<int32_t> *after_padding() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_AFTER_PADDING);
-  }
   bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyOffset(verifier, VT_BEFORE_PADDING) &&
-           verifier.Verify(before_padding()) &&
-           VerifyOffset(verifier, VT_AFTER_PADDING) &&
-           verifier.Verify(after_padding()) && verifier.EndTable();
+    return VerifyTableStart(verifier) && verifier.EndTable();
   }
   PadOptionsT *UnPack(
       const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2691,14 +2678,6 @@ struct PadOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 struct PadOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_before_padding(
-      flatbuffers::Offset<flatbuffers::Vector<int32_t>> before_padding) {
-    fbb_.AddOffset(PadOptions::VT_BEFORE_PADDING, before_padding);
-  }
-  void add_after_padding(
-      flatbuffers::Offset<flatbuffers::Vector<int32_t>> after_padding) {
-    fbb_.AddOffset(PadOptions::VT_AFTER_PADDING, after_padding);
-  }
   explicit PadOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
       : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2712,22 +2691,9 @@ struct PadOptionsBuilder {
 };
 
 inline flatbuffers::Offset<PadOptions> CreatePadOptions(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> before_padding = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> after_padding = 0) {
+    flatbuffers::FlatBufferBuilder &_fbb) {
   PadOptionsBuilder builder_(_fbb);
-  builder_.add_after_padding(after_padding);
-  builder_.add_before_padding(before_padding);
   return builder_.Finish();
-}
-
-inline flatbuffers::Offset<PadOptions> CreatePadOptionsDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<int32_t> *before_padding = nullptr,
-    const std::vector<int32_t> *after_padding = nullptr) {
-  return tflite::CreatePadOptions(
-      _fbb, before_padding ? _fbb.CreateVector<int32_t>(*before_padding) : 0,
-      after_padding ? _fbb.CreateVector<int32_t>(*after_padding) : 0);
 }
 
 flatbuffers::Offset<PadOptions> CreatePadOptions(
@@ -5572,24 +5538,6 @@ inline void PadOptions::UnPackTo(
     PadOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = before_padding();
-    if (_e) {
-      _o->before_padding.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->before_padding[_i] = _e->Get(_i);
-      }
-    }
-  };
-  {
-    auto _e = after_padding();
-    if (_e) {
-      _o->after_padding.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->after_padding[_i] = _e->Get(_i);
-      }
-    }
-  };
 }
 
 inline flatbuffers::Offset<PadOptions> PadOptions::Pack(
@@ -5609,11 +5557,7 @@ inline flatbuffers::Offset<PadOptions> CreatePadOptions(
     const flatbuffers::rehasher_function_t *__rehasher;
   } _va = {&_fbb, _o, _rehasher};
   (void)_va;
-  auto _before_padding =
-      _o->before_padding.size() ? _fbb.CreateVector(_o->before_padding) : 0;
-  auto _after_padding =
-      _o->after_padding.size() ? _fbb.CreateVector(_o->after_padding) : 0;
-  return tflite::CreatePadOptions(_fbb, _before_padding, _after_padding);
+  return tflite::CreatePadOptions(_fbb);
 }
 
 inline ReshapeOptionsT *ReshapeOptions::UnPack(

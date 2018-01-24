@@ -5048,6 +5048,8 @@ def enable_eager_execution(config=None, device_policy=None):
          right device but raises a warning.
        tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
          hide performance problems.
+       tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
+         raising errors on the other ones.
 
   Raises:
     ValueError: If trying to create a context after using graph operations
@@ -5059,10 +5061,10 @@ def enable_eager_execution(config=None, device_policy=None):
         "config must be a tf.ConfigProto, but got %s" % type(config))
   if device_policy not in (None, context.DEVICE_PLACEMENT_EXPLICIT,
                            context.DEVICE_PLACEMENT_WARN,
-                           context.DEVICE_PLACEMENT_SILENT):
+                           context.DEVICE_PLACEMENT_SILENT,
+                           context.DEVICE_PLACEMENT_SILENT_FOR_INT32):
     raise ValueError(
-        "device_policy must be one of None, tfe.DEVICE_PLACEMENT_EXPLICIT, "
-        "tfe.DEVICE_PLACEMENT_WARN, tfe.DEVICE_PLACEMENT_SILENT"
+        "device_policy must be one of None, tfe.DEVICE_PLACEMENT_*"
     )
   # pylint: disable=protected-access
   if context._default_mode == context.GRAPH_MODE:

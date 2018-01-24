@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_MIRROR_PAD_OP_CPU_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_MIRROR_PAD_OP_CPU_IMPL_H_
+#ifndef TENSORFLOW_CORE_MIRROR_PAD_OP_CPU_IMPL_H_
+#define TENSORFLOW_CORE_MIRROR_PAD_OP_CPU_IMPL_H_
 
 #define EIGEN_USE_THREADS
 
@@ -41,4 +41,4 @@ TF_CALL_NUMBER_TYPES(DEFINE_CPU_SPECS);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_MIRROR_PAD_OP_CPU_IMPL_H_
+#endif  // TENSORFLOW_CORE_MIRROR_PAD_OP_CPU_IMPL_H_

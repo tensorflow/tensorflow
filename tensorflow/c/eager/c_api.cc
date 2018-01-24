@@ -453,9 +453,16 @@ tensorflow::Status ValidateInputTypeAndPlacement(
         op->input_devices[i] == nullptr ? host_device : op->input_devices[i];
     if (expected_device != actual_device) {
       switch (TFE_ContextGetDevicePlacementPolicy(ctx)) {
-        case TFE_DEVICE_PLACEMENT_EXPLICIT:
+        case TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32:
           // TODO(xpan): See if we could bubble python related error up
           // to python level.
+          if (op->inputs[i].dtype() == tensorflow::DT_INT32) {
+            // Note: enabling silent copies of int32 tensors to match behavior
+            // of graph mode.
+            break;
+          }
+          TF_FALLTHROUGH_INTENDED;
+        case TFE_DEVICE_PLACEMENT_EXPLICIT:
           return tensorflow::errors::InvalidArgument(
               "Tensors on conflicting devices:"
               " cannot compute ",

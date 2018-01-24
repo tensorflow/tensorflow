@@ -479,25 +479,6 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
     case BuiltinOperator_PAD: {
-      auto* params = MallocPOD<TfLitePadParams>();
-      if (auto* schema_params = op->builtin_options_as_PadOptions()) {
-        auto* before_padding = schema_params->before_padding();
-        FlatBufferIntVectorToArray(sizeof(params->before_padding),
-                                   before_padding, params->before_padding,
-                                   error_reporter);
-
-        auto* after_padding = schema_params->after_padding();
-        FlatBufferIntVectorToArray(sizeof(params->after_padding), after_padding,
-                                   params->after_padding, error_reporter);
-
-        if (before_padding->Length() != after_padding->Length()) {
-          error_reporter->Report(
-              "Before padding and after padding arrays need to contain the "
-              "same number of dimensions.\n");
-        }
-        params->num_dimensions = after_padding->Length();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_RESHAPE: {

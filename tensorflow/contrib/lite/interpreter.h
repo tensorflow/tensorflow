@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Main abstraction controlling the tflite interpreter.
 // See context.h for the API for defining operations (TfLiteRegistration).
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_INTERPRETER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_INTERPRETER_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_INTERPRETER_H_
+#define TENSORFLOW_CONTRIB_LITE_INTERPRETER_H_
 
 #include <cstdio>
 #include <cstdlib>
@@ -363,4 +363,4 @@ class Interpreter {
 };
 
 }  // namespace tflite
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_INTERPRETER_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_INTERPRETER_H_

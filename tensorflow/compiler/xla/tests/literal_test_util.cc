@@ -301,6 +301,9 @@ bool ExpectLiteralsEqual(const Literal& expected, const Literal& actual,
     case BF16:
       match = ExpectLiteralsEqual<bfloat16>(expected, actual, &multi_index, 0);
       break;
+    case F16:
+      match = ExpectLiteralsEqual<half>(expected, actual, &multi_index, 0);
+      break;
     case F32:
       match = ExpectLiteralsEqual<float>(expected, actual, &multi_index, 0);
       break;
@@ -379,6 +382,9 @@ class NearComparator {
     switch (expected.shape().element_type()) {
       case BF16:
         ExpectLiteralsNear<bfloat16>(expected, actual, 0);
+        break;
+      case F16:
+        ExpectLiteralsNear<half>(expected, actual, 0);
         break;
       case F32:
         ExpectLiteralsNear<float>(expected, actual, 0);
@@ -570,6 +576,12 @@ bool NearComparator::ExpectValuesNear<bfloat16>(bfloat16 expected,
                                                 bfloat16 actual) {
   return ExpectValuesNear(static_cast<float>(expected),
                           static_cast<float>(actual));
+}
+
+template <>
+bool NearComparator::ExpectValuesNear<half>(half expected, half actual) {
+  return ExpectValuesNear(static_cast<float>(std::move(expected)),
+                          static_cast<float>(std::move(actual)));
 }
 
 }  // namespace
