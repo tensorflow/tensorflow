@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import linalg_ops
 
 
 def conjugate_gradient(operator,
@@ -57,13 +58,13 @@ def conjugate_gradient(operator,
         vector with the result of applying the operator to `x`, i.e. if
        `operator` represents matrix `A`, `apply` should return `A * x`.
     rhs: A rank-1 `Tensor` of shape `[N]` containing the right-hand size vector.
-    preconditioner: An object representing a linear operator, see `operator` for
-      detail. The preconditioner should approximate the inverse of `A`,
-      efficient preconditioner could dramatically improve the rate of
+    preconditioner: An object representing a linear operator, see `operator`
+      for detail. The preconditioner should approximate the inverse of `A`.
+      An efficient preconditioner could dramatically improve the rate of
       convergence. If `preconditioner` represents matrix `M`(`M` approximates
-      `A^{-1}`), using `preconditioner.apply(x)` to estimate `A^{-1}x`, for
-      this to be useful, the cost of applying `M` should be much lower than
-      computing `A^{-1}` directly.
+      `A^{-1}`), the algorithm uses `preconditioner.apply(x)` to estimate
+      `A^{-1}x`. For this to be useful, the cost of applying `M` should be
+      much lower than computing `A^{-1}` directly.
     x: A rank-1 `Tensor` of shape `[N]` containing the initial guess for the
       solution.
     tol: A float scalar convergence tolerance.
@@ -84,7 +85,7 @@ def conjugate_gradient(operator,
 
   def stopping_criterion(i, state):
     return math_ops.logical_and(i < max_iter,
-                                util.l2norm_squared(state.r) > tol)
+                                linalg_ops.norm(state.r) > tol)
 
   def cg_step(i, state):
     z = operator.apply(state.p)
@@ -92,7 +93,7 @@ def conjugate_gradient(operator,
     x = state.x + alpha * state.p
     r = state.r - alpha * z
     if preconditioner is None:
-      gamma = util.l2norm_squared(r)
+      gamma = util.dot(r, r)
       beta = gamma / state.gamma
       p = r + beta * state.p
     else:
@@ -117,8 +118,8 @@ def conjugate_gradient(operator,
       p0 = r0
     else:
       p0 = preconditioner.apply(r0)
-    gamma0 = util.dot(rhs, p0)
-    tol = tol * tol * util.l2norm_squared(rhs)
+    gamma0 = util.dot(r0, p0)
+    tol = tol * linalg_ops.norm(r0)
     i = constant_op.constant(0, dtype=dtypes.int32)
     state = cg_state(i=i, x=x, r=r0, p=p0, gamma=gamma0)
     _, state = control_flow_ops.while_loop(stopping_criterion, cg_step,

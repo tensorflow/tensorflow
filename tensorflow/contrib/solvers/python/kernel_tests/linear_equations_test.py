@@ -89,11 +89,11 @@ def _get_linear_equations_tests(dtype_, use_static_shape_, shape_):
         cg_results.append(cg_val)
       # Validate that we get same results using identity_preconditioner
       # and None
-      self.assertEqual(cg_results[0].gamma, cg_results[1].gamma)
       self.assertEqual(cg_results[0].i, cg_results[1].i)
-      self.assertAllClose(cg_results[0].r, cg_results[1].r)
-      self.assertAllClose(cg_results[0].x, cg_results[1].x)
-      self.assertAllClose(cg_results[0].p, cg_results[1].p)
+      self.assertAlmostEqual(cg_results[0].gamma, cg_results[1].gamma)
+      self.assertAllClose(cg_results[0].r, cg_results[1].r, rtol=tol)
+      self.assertAllClose(cg_results[0].x, cg_results[1].x, rtol=tol)
+      self.assertAllClose(cg_results[0].p, cg_results[1].p, rtol=tol)
 
   return [test_conjugate_gradient]
 
