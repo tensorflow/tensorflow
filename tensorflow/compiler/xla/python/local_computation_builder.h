@@ -47,6 +47,12 @@ Status TransferToInfeedLocal(const Literal& literal);
 // The replica number is resolved to an appropriate device ordinal.
 Status TransferToInfeedLocalReplica(const Literal& literal, int replica_number);
 
+// Transfers a literal of the given shape from the outfeed of the given replica.
+//
+// The replica number is resolved to an appropriate device ordinal.
+StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
+    const Shape& shape, int replica_number);
+
 // Wraps a ScopedShapedBuffer produced by copying a literal "to
 // device," i.e. copying a literal to a scoped buffer via the local
 // client.
@@ -105,6 +111,9 @@ class LocalComputationBuilder {
  public:
   LocalComputationBuilder(const string& computation_name);
 
+  void SetOpMetadata(const OpMetadata& metadata);
+  void ClearOpMetadata();
+
   // Returns an owned LocalComputation to the caller on success.
   StatusOr<LocalComputation*> Build();
 
@@ -115,11 +124,18 @@ class LocalComputationBuilder {
 
   ComputationDataHandle Infeed(const Shape& shape);
 
+  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
+               const string& outfeed_config);
+
   ComputationDataHandle ConstantLiteral(const Literal& literal);
 
   ComputationDataHandle Broadcast(
       const ComputationDataHandle& operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+
+  ComputationDataHandle Pad(const ComputationDataHandle& operand,
+                            const ComputationDataHandle& padding_value,
+                            const PaddingConfig& padding_config);
 
   ComputationDataHandle Reshape(const ComputationDataHandle& operand,
                                 tensorflow::gtl::ArraySlice<int64> dimensions,
@@ -147,6 +163,14 @@ class LocalComputationBuilder {
   ComputationDataHandle ConcatInDim(
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
       int64 dimension);
+
+  ComputationDataHandle SelectAndScatterWithGeneralPadding(
+      const ComputationDataHandle& operand, const LocalComputation& select,
+      tensorflow::gtl::ArraySlice<int64> window_dimensions,
+      tensorflow::gtl::ArraySlice<int64> window_strides,
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding,
+      const ComputationDataHandle& source,
+      const ComputationDataHandle& init_value, const LocalComputation& scatter);
 
   ComputationDataHandle Select(const ComputationDataHandle& pred,
                                const ComputationDataHandle& on_true,
@@ -194,6 +218,14 @@ class LocalComputationBuilder {
       const ComputationDataHandle& init_value,
       const LocalComputation& local_computation,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
+
+  ComputationDataHandle ReduceWindowWithGeneralPadding(
+      const ComputationDataHandle& operand,
+      const ComputationDataHandle& init_value,
+      const LocalComputation& local_computation,
+      tensorflow::gtl::ArraySlice<int64> window_dimensions,
+      tensorflow::gtl::ArraySlice<int64> window_strides,
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding);
 
   ComputationDataHandle RngNormal(const ComputationDataHandle& mu,
                                   const ComputationDataHandle& sigma,

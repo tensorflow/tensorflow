@@ -649,7 +649,7 @@ class CudnnRNNParamsToCanonical<GPUDevice, T> : public CudnnRNNKernelCommon {
     }
     const int num_params_per_layer = num_params_ / num_layers / num_dirs;
     // Number of params applied on inputs. The rest are applied on recurrent
-    // hiddden states.
+    // hidden states.
     const int num_params_input_state = num_params_per_layer / 2;
     CHECK(num_params_ % (num_layers * num_dirs) == 0)
         << "Number of params is not a multiple of num_layers * num_dirs.";

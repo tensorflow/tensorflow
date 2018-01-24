@@ -20,11 +20,15 @@ import time
 
 import numpy as np
 
+from tensorflow.contrib import lookup
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.data import Dataset
 from tensorflow.python.eager import test
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 
@@ -36,6 +40,15 @@ class IteratorTest(test.TestCase):
     for t in datasets.Iterator(Dataset.range(4)):
       got.append(t.numpy())
     self.assertAllEqual([0, 1, 2, 3], got)
+
+  def testGetNext(self):
+    iterator = datasets.Iterator(Dataset.range(4))
+    self.assertEqual(0, iterator.get_next().numpy())
+    self.assertEqual(1, iterator.get_next().numpy())
+    self.assertEqual(2, iterator.get_next().numpy())
+    self.assertEqual(3, iterator.get_next().numpy())
+    with self.assertRaises(errors.OutOfRangeError):
+      iterator.get_next()
 
   def testMultipleIteratorsOnTheSameDataset(self):
     ds = Dataset.range(4)
@@ -68,6 +81,18 @@ class IteratorTest(test.TestCase):
     got = [x.numpy() for x in it]
     self.assertAllEqual([0, 4, 16, 36], got)
 
+  def testMapCaptureLookupTable(self):
+    default_val = -1
+    keys = constant_op.constant(['brain', 'salad', 'surgery'])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup.HashTable(
+        lookup.KeyValueTensorInitializer(keys, values), default_val)
+    dataset = Dataset.from_tensor_slices(['brain', 'salad', 'surgery'])
+    dataset = dataset.map(table.lookup)
+    it = datasets.Iterator(dataset)
+    got = [x.numpy() for x in it]
+    self.assertAllEqual([0, 1, 2], got)
+
   def testMultipleIteratorsOnADatasetThatUsesFunctions(self):
     ds = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6]).map(math_ops.square)
 
@@ -75,6 +100,53 @@ class IteratorTest(test.TestCase):
     self.assertAllEqual([1, 4, 9, 16, 25, 36], got1)
     got2 = [x.numpy() for x in datasets.Iterator(ds)]
     self.assertAllEqual(got1, got2)
+
+  def assertSparseValuesEqual(self, a, b):
+    self.assertAllEqual(a.indices, b.indices)
+    self.assertAllEqual(a.values, b.values)
+    self.assertAllEqual(a.dense_shape, b.dense_shape)
+
+  def testSparseTensorElements(self):
+    components = (sparse_tensor.SparseTensorValue(
+        indices=np.array([[0, 0], [1, 0], [2, 0]]),
+        values=np.array([0, 0, 0]),
+        dense_shape=np.array([3, 1])),
+                  sparse_tensor.SparseTensorValue(
+                      indices=np.array([[0, 0], [1, 1], [2, 2]]),
+                      values=np.array([1, 2, 3]),
+                      dense_shape=np.array([3, 3])))
+
+    expected = [
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[0]]),
+             values=np.array([1]),
+             dense_shape=np.array([3]))),
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[1]]),
+             values=np.array([2]),
+             dense_shape=np.array([3]))),
+        (sparse_tensor.SparseTensorValue(
+            indices=np.array([[0]]),
+            values=np.array([0]),
+            dense_shape=np.array([1])),
+         sparse_tensor.SparseTensorValue(
+             indices=np.array([[2]]),
+             values=np.array([3]),
+             dense_shape=np.array([3]))),
+    ]
+
+    for i, result in enumerate(
+        datasets.Iterator(Dataset.from_tensor_slices(components))):
+      self.assertSparseValuesEqual(expected[i][0], result[0])
+      self.assertSparseValuesEqual(expected[i][1], result[1])
 
   def testPyFunc(self):
 

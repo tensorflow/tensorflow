@@ -1149,6 +1149,60 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
                output_data, output_dims);
 }
 
+inline void Div(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[Offset(input1_dims, c, x, y, b)] /
+                      input2_data[Offset(input2_dims, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
+}
+
+inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[Offset(input1_dims, c, x, y, b)] -
+                      input2_data[Offset(input2_dims, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
+}
+
 template <FusedActivationFunctionType Ac, typename Scalar>
 void Concatenation(int concat_dim, const Scalar* const* input_data,
                    const Dims<4>* const* input_dims, int inputs_count,
@@ -2333,6 +2387,64 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
         }
       }
     }
+  }
+}
+
+template <typename T>
+inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
+                 T* output_data, const int* output_dims,
+                 const int output_num_dims, const int* axis,
+                 const int num_axis_dimensions, bool keep_dims, int* temp_index,
+                 int* resolved_axis) {
+  // resets output data.
+  size_t num_outputs = 1;
+  for (int idx = 0; idx < output_num_dims; ++idx) {
+    num_outputs *= static_cast<size_t>(output_dims[idx]);
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = 0;
+  }
+  // resets temp index.
+  for (int idx = 0; idx < input_num_dims; ++idx) {
+    temp_index[idx] = 0;
+  }
+  // resolves axis.
+  int num_resolved_axis = 0;
+  for (int idx = 0; idx < num_axis_dimensions; ++idx) {
+    int current = axis[idx];
+    TFLITE_DCHECK(current < input_num_dims && current + input_num_dims >= 0);
+    if (current < 0) {
+      current += input_num_dims;
+    }
+    bool is_dup = false;
+    for (int j = 0; j < num_resolved_axis; ++j) {
+      if (resolved_axis[j] == current) {
+        is_dup = true;
+        break;
+      }
+    }
+    if (!is_dup) {
+      resolved_axis[num_resolved_axis++] = current;
+    }
+  }
+  // iterates through input_data.
+  for (bool has_next = true; has_next;
+       has_next = NextIndex(input_num_dims, input_dims, temp_index)) {
+    size_t input_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, temp_index, 0, nullptr);
+    size_t output_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, temp_index,
+                            num_resolved_axis, resolved_axis);
+    output_data[output_offset] += input_data[input_offset];
+  }
+  // takes average by num of elements added to get mean.
+  size_t num_elements_in_axis = 1;
+  for (int idx = 0; idx < num_resolved_axis; ++idx) {
+    num_elements_in_axis *= static_cast<size_t>(input_dims[resolved_axis[idx]]);
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
+                                      num_elements_in_axis);
   }
 }
 

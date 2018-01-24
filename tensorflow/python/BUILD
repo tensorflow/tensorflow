@@ -32,6 +32,7 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_grappler")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
@@ -74,6 +75,7 @@ py_library(
         ":io_ops",
         ":layers",
         ":lib",
+        ":list_ops",
         ":math_ops",
         ":metrics",
         ":nn",
@@ -178,6 +180,17 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "stacktrace_handler_test",
+    size = "small",
+    srcs = ["platform/stacktrace_handler_test.py"],
+    additional_deps = [
+        ":client_testlib",
+        ":platform",
+    ],
+    tags = ["no_windows"],
+)
+
+tf_py_test(
     name = "app_test",
     size = "small",
     srcs = ["platform/app_test.py"],
@@ -197,9 +210,8 @@ cc_library(
         "//tensorflow/core/grappler/costs:analytical_cost_estimator",
         "//tensorflow/core/grappler/costs:cost_estimator",
         "//tensorflow/core/grappler/costs:measuring_cost_estimator",
-        "//tensorflow/core/grappler/costs:op_performance_data_cc",
         "//tensorflow/core/grappler/costs:utils",
-    ],
+    ] + tf_protos_grappler(),
 )
 
 cc_library(
@@ -384,6 +396,7 @@ tf_cc_shared_object(
     }),
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
@@ -1225,6 +1238,7 @@ py_test(
         ":random_ops",
         ":resource_variable_ops",
         ":session",
+        ":test_ops",
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
@@ -1409,6 +1423,10 @@ tf_gen_op_wrapper_private_py(
 
 tf_gen_op_wrapper_private_py(
     name = "resource_variable_ops_gen",
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "list_ops_gen",
 )
 
 tf_gen_op_wrapper_private_py(
@@ -1929,6 +1947,16 @@ py_library(
 )
 
 py_library(
+    name = "list_ops",
+    srcs = ["ops/list_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":array_ops",
+        ":list_ops_gen",
+    ],
+)
+
+py_library(
     name = "nn",
     srcs = [
         "ops/nn.py",
@@ -2354,6 +2382,8 @@ py_library(
         ":platform",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -3082,6 +3112,7 @@ tf_py_wrap_cc(
         "lib/io/py_record_reader.i",
         "lib/io/py_record_writer.i",
         "platform/base.i",
+        "platform/stacktrace_handler.i",
         "pywrap_tfe.i",
         "training/quantize_training.i",
         "training/server_lib.i",

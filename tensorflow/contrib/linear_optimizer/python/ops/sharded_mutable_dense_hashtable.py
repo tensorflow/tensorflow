@@ -102,7 +102,7 @@ class ShardedMutableDenseHashTable(lookup.LookupInterface):
                        keys.get_shape())
 
   def lookup(self, keys, name=None):
-    if keys.dtype != self._key_dtype:
+    if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError('Signature mismatch. Keys must be dtype %s, got %s.' %
                       (self._key_dtype, keys.dtype))
     self._check_keys(keys)

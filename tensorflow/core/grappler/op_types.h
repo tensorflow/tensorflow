@@ -36,6 +36,7 @@ bool IsBetainc(const NodeDef& node);
 bool IsBiasAdd(const NodeDef& node);
 bool IsBiasAddGrad(const NodeDef& node);
 bool IsBitcast(const NodeDef& node);
+bool IsCast(const NodeDef& node);
 bool IsComplex(const NodeDef& node);
 bool IsComplexAbs(const NodeDef& node);
 bool IsConj(const NodeDef& node);
@@ -136,6 +137,10 @@ bool IsAggregate(const NodeDef& node);
 // Return true if the op is commutative (e.g. Mul, Add).
 // Returns false if it could not be determined to be so.
 bool IsCommutative(const NodeDef& node);
+
+// Returns true if the node is known to use persistent memory to store its
+// value.
+bool IsPersistent(const NodeDef& node);
 
 bool IsFreeOfSideEffect(const NodeDef& node);
 bool ModifiesFrameInfo(const NodeDef& node);

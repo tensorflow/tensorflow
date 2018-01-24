@@ -6,6 +6,16 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
+py_binary(
+    name = "visualize",
+    srcs = ["visualize.py"],
+    data = [
+        "//tensorflow/contrib/lite/schema:schema.fbs",
+        "@flatbuffers//:flatc",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 tf_cc_binary(
     name = "generate_op_registrations",
     srcs = ["gen_op_registration_main.cc"],
@@ -14,6 +24,25 @@ tf_cc_binary(
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cc_binary(
+    name = "benchmark_model",
+    srcs = ["benchmark_model.cc"],
+    linkopts = select({
+        "//tensorflow:android": [
+            "-pie",
+            "-landroid",
+            "-lm",
+            "-z defs",
+            "-Wl,--exclude-libs,ALL",  # Exclude syms in all libs from auto export
+        ],
+        "//conditions:default": [],
+    }),
+    deps = [
+        ":mutable_op_resolver",
+        "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
 

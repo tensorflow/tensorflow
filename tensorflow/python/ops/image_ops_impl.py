@@ -36,6 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.util.tf_export import tf_export
 
 
 ops.NotDifferentiable('RandomCrop')
@@ -147,6 +148,28 @@ def _Check3DImage(image, require_static=True):
     return []
 
 
+def _Assert3DImage(image):
+  """Assert that we are working with a properly shaped image.
+
+    Performs the check statically if possible (i.e. if the shape
+    is statically known). Otherwise adds a control dependency
+    to an assert op that checks the dynamic shape.
+
+    Args:
+      image: 3-D Tensor of shape [height, width, channels]
+
+    Raises:
+      ValueError: if `image.shape` is not a 3-vector.
+
+    Returns:
+      If the shape of `image` could be verified statically, `image` is
+      returned unchanged, otherwise there will be a control dependency
+      added that asserts the correct dynamic shape.
+    """
+  return control_flow_ops.with_dependencies(
+    _Check3DImage(image, require_static=False), image)
+
+
 def _CheckAtLeast3DImage(image, require_static=True):
   """Assert that we are working with properly shaped image.
 
@@ -201,6 +224,7 @@ def fix_image_flip_shape(image, result):
   return result
 
 
+@tf_export('image.random_flip_up_down')
 def random_flip_up_down(image, seed=None):
   """Randomly flips an image vertically (upside down).
 
@@ -221,8 +245,7 @@ def random_flip_up_down(image, seed=None):
   """
   with ops.name_scope(None, 'random_flip_up_down', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+    image = _Assert3DImage(image)
     uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
     mirror_cond = math_ops.less(uniform_random, .5)
     result = control_flow_ops.cond(mirror_cond,
@@ -232,6 +255,7 @@ def random_flip_up_down(image, seed=None):
     return fix_image_flip_shape(image, result)
 
 
+@tf_export('image.random_flip_left_right')
 def random_flip_left_right(image, seed=None):
   """Randomly flip an image horizontally (left to right).
 
@@ -252,19 +276,17 @@ def random_flip_left_right(image, seed=None):
   """
   with ops.name_scope(None, 'random_flip_left_right', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+    image = _Assert3DImage(image)
     uniform_random = random_ops.random_uniform([], 0, 1.0, seed=seed)
     mirror_cond = math_ops.less(uniform_random, .5)
     result = control_flow_ops.cond(mirror_cond,
                                    lambda: array_ops.reverse(image, [1]),
                                    lambda: image,
                                    name=scope)
-    print('scope: ' + scope)
-    print('result name: ' + result.name)
     return fix_image_flip_shape(image, result)
 
 
+@tf_export('image.flip_left_right')
 def flip_left_right(image):
   """Flip an image horizontally (left to right).
 
@@ -284,12 +306,12 @@ def flip_left_right(image):
   """
   with ops.name_scope(None, 'flip_left_right', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+    image = _Assert3DImage(image)
     return fix_image_flip_shape(image,
                                 array_ops.reverse(image, [1], name=scope))
 
 
+@tf_export('image.flip_up_down')
 def flip_up_down(image):
   """Flip an image vertically (upside down).
 
@@ -309,12 +331,12 @@ def flip_up_down(image):
   """
   with ops.name_scope(None, 'flip_up_down', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+    image = _Assert3DImage(image)
     return fix_image_flip_shape(image,
                                 array_ops.reverse(image, [0], name=scope))
 
 
+@tf_export('image.rot90')
 def rot90(image, k=1, name=None):
   """Rotate an image counter-clockwise by 90 degrees.
 
@@ -328,8 +350,7 @@ def rot90(image, k=1, name=None):
   """
   with ops.name_scope(name, 'rot90', [image, k]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+    image = _Assert3DImage(image)
     k = ops.convert_to_tensor(k, dtype=dtypes.int32, name='k')
     k.get_shape().assert_has_rank(0)
     k = math_ops.mod(k, 4)
@@ -352,6 +373,7 @@ def rot90(image, k=1, name=None):
     return ret
 
 
+@tf_export('image.transpose_image')
 def transpose_image(image):
   """Transpose an image by swapping the first and second dimension.
 
@@ -368,11 +390,11 @@ def transpose_image(image):
   """
   with ops.name_scope(None, 'transpose_image', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+    image = _Assert3DImage(image)
     return array_ops.transpose(image, [1, 0, 2], name=scope)
 
 
+@tf_export('image.central_crop')
 def central_crop(image, central_fraction):
   """Crop the central region of the image.
 
@@ -404,8 +426,7 @@ def central_crop(image, central_fraction):
     if central_fraction == 1.0:
       return image
 
-    image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+    image = _Assert3DImage(image)
 
     img_shape = array_ops.shape(image)
     depth = image.get_shape()[2]
@@ -426,6 +447,7 @@ def central_crop(image, central_fraction):
     return image
 
 
+@tf_export('image.pad_to_bounding_box')
 def pad_to_bounding_box(image, offset_height, offset_width, target_height,
                         target_width):
   """Pad `image` with zeros to the specified `height` and `width`.
@@ -506,6 +528,7 @@ def pad_to_bounding_box(image, offset_height, offset_width, target_height,
     return padded
 
 
+@tf_export('image.crop_to_bounding_box')
 def crop_to_bounding_box(image, offset_height, offset_width, target_height,
                          target_width):
   """Crops an image to a specified bounding box.
@@ -584,6 +607,7 @@ def crop_to_bounding_box(image, offset_height, offset_width, target_height,
     return cropped
 
 
+@tf_export('image.resize_image_with_crop_or_pad')
 def resize_image_with_crop_or_pad(image, target_height, target_width):
   """Crops and/or pads an image to a target width and height.
 
@@ -698,6 +722,7 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     return resized
 
 
+@tf_export('image.ResizeMethod')
 class ResizeMethod(object):
   BILINEAR = 0
   NEAREST_NEIGHBOR = 1
@@ -705,6 +730,7 @@ class ResizeMethod(object):
   AREA = 3
 
 
+@tf_export('image.resize_images')
 def resize_images(images,
                   size,
                   method=ResizeMethod.BILINEAR,
@@ -815,6 +841,7 @@ def resize_images(images,
     return images
 
 
+@tf_export('image.per_image_standardization')
 def per_image_standardization(image):
   """Linearly scales `image` to have zero mean and unit norm.
 
@@ -836,8 +863,7 @@ def per_image_standardization(image):
   """
   with ops.name_scope(None, 'per_image_standardization', [image]) as scope:
     image = ops.convert_to_tensor(image, name='image')
-    image = control_flow_ops.with_dependencies(
-        _Check3DImage(image, require_static=False), image)
+    image = _Assert3DImage(image)
     num_pixels = math_ops.reduce_prod(array_ops.shape(image))
 
     image = math_ops.cast(image, dtype=dtypes.float32)
@@ -858,6 +884,7 @@ def per_image_standardization(image):
     return image
 
 
+@tf_export('image.random_brightness')
 def random_brightness(image, max_delta, seed=None):
   """Adjust the brightness of images by a random factor.
 
@@ -884,6 +911,7 @@ def random_brightness(image, max_delta, seed=None):
   return adjust_brightness(image, delta)
 
 
+@tf_export('image.random_contrast')
 def random_contrast(image, lower, upper, seed=None):
   """Adjust the contrast of an image by a random factor.
 
@@ -915,6 +943,7 @@ def random_contrast(image, lower, upper, seed=None):
   return adjust_contrast(image, contrast_factor)
 
 
+@tf_export('image.adjust_brightness')
 def adjust_brightness(image, delta):
   """Adjust the brightness of RGB or Grayscale images.
 
@@ -949,6 +978,7 @@ def adjust_brightness(image, delta):
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
 
+@tf_export('image.adjust_contrast')
 def adjust_contrast(images, contrast_factor):
   """Adjust contrast of RGB or grayscale images.
 
@@ -990,6 +1020,7 @@ def adjust_contrast(images, contrast_factor):
     return convert_image_dtype(adjusted, orig_dtype, saturate=True)
 
 
+@tf_export('image.adjust_gamma')
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs Gamma Correction on the input image.
 
@@ -1028,7 +1059,7 @@ def adjust_gamma(image, gamma=1, gain=1):
                         'Gamma should be a non-negative real number.')
     if assert_op:
       gamma = control_flow_ops.with_dependencies(assert_op, gamma)
-   
+
     # scale = max(dtype) - min(dtype).
     scale = constant_op.constant(image.dtype.limits[1] - image.dtype.limits[0],
                                  dtype=dtypes.float32)
@@ -1038,6 +1069,7 @@ def adjust_gamma(image, gamma=1, gain=1):
     return adjusted_img
 
 
+@tf_export('image.convert_image_dtype')
 def convert_image_dtype(image, dtype, saturate=False, name=None):
   """Convert `image` to `dtype`, scaling its values if needed.
 
@@ -1116,6 +1148,7 @@ def convert_image_dtype(image, dtype, saturate=False, name=None):
           return math_ops.cast(scaled, dtype, name=name)
 
 
+@tf_export('image.rgb_to_grayscale')
 def rgb_to_grayscale(images, name=None):
   """Converts one or more images from RGB to Grayscale.
 
@@ -1140,13 +1173,12 @@ def rgb_to_grayscale(images, name=None):
     # Reference for converting between RGB and grayscale.
     # https://en.wikipedia.org/wiki/Luma_%28video%29
     rgb_weights = [0.2989, 0.5870, 0.1140]
-    rank_1 = array_ops.expand_dims(array_ops.rank(images) - 1, 0)
-    gray_float = math_ops.reduce_sum(
-        flt_image * rgb_weights, rank_1, keepdims=True)
-    gray_float.set_shape(images.get_shape()[:-1].concatenate([1]))
+    gray_float = math_ops.tensordot(flt_image, rgb_weights, [-1, -1])
+    gray_float = array_ops.expand_dims(gray_float, -1)
     return convert_image_dtype(gray_float, orig_dtype, name=name)
 
 
+@tf_export('image.grayscale_to_rgb')
 def grayscale_to_rgb(images, name=None):
   """Converts one or more images from Grayscale to RGB.
 
@@ -1173,6 +1205,7 @@ def grayscale_to_rgb(images, name=None):
 
 
 # pylint: disable=invalid-name
+@tf_export('image.random_hue')
 def random_hue(image, max_delta, seed=None):
   """Adjust the hue of an RGB image by a random factor.
 
@@ -1205,6 +1238,7 @@ def random_hue(image, max_delta, seed=None):
   return adjust_hue(image, delta)
 
 
+@tf_export('image.adjust_hue')
 def adjust_hue(image, delta, name=None):
   """Adjust hue of an RGB image.
 
@@ -1238,6 +1272,7 @@ def adjust_hue(image, delta, name=None):
     return convert_image_dtype(rgb_altered, orig_dtype)
 
 
+@tf_export('image.random_saturation')
 def random_saturation(image, lower, upper, seed=None):
   """Adjust the saturation of an RGB image by a random factor.
 
@@ -1270,6 +1305,7 @@ def random_saturation(image, lower, upper, seed=None):
   return adjust_saturation(image, saturation_factor)
 
 
+@tf_export('image.adjust_saturation')
 def adjust_saturation(image, saturation_factor, name=None):
   """Adjust saturation of an RGB image.
 
@@ -1301,6 +1337,8 @@ def adjust_saturation(image, saturation_factor, name=None):
         gen_image_ops.adjust_saturation(flt_image, saturation_factor),
         orig_dtype)
 
+
+@tf_export('image.decode_image')
 def decode_image(contents, channels=None, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
   and `decode_png`.
@@ -1393,6 +1431,7 @@ def decode_image(contents, channels=None, name=None):
     return control_flow_ops.cond(is_jpeg, _jpeg, check_png, name='cond_jpeg')
 
 
+@tf_export('image.total_variation')
 def total_variation(images, name=None):
   """Calculate and return the total variation for one or more images.
 
@@ -1463,6 +1502,7 @@ def total_variation(images, name=None):
   return tot_var
 
 
+@tf_export('image.sample_distorted_bounding_box')
 def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
                                   seed2=None, min_object_covered=None,
                                   aspect_ratio_range=None, area_range=None,
@@ -1564,6 +1604,7 @@ def sample_distorted_bounding_box(image_size, bounding_boxes, seed=None,
                 name=name)
 
 
+@tf_export('image.non_max_suppression')
 def non_max_suppression(boxes,
                         scores,
                         max_output_size,

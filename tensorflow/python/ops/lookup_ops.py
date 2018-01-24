@@ -40,8 +40,10 @@ from tensorflow.python.ops.gen_lookup_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("initialize_all_tables")
 @deprecated(None, "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
@@ -56,6 +58,7 @@ def initialize_all_tables(name="init_all_tables"):
   return tables_initializer(name)
 
 
+@tf_export("tables_initializer")
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
@@ -84,10 +87,10 @@ def _check_table_dtypes(table, key_dtype, value_dtype):
     TypeError: when 'key_dtype' or 'value_dtype' doesn't match the table data
       types.
   """
-  if key_dtype != table.key_dtype:
+  if key_dtype.base_dtype != table.key_dtype:
     raise TypeError("Invalid key dtype, expected %s but got %s." %
                     (table.key_dtype, key_dtype))
-  if value_dtype != table.value_dtype:
+  if value_dtype.base_dtype != table.value_dtype:
     raise TypeError("Invalid value dtype, expected %s but got %s." %
                     (table.value_dtype, value_dtype))
 
@@ -217,7 +220,7 @@ class InitializableLookupTableBase(LookupInterface):
     if isinstance(keys, sparse_tensor.SparseTensor):
       key_tensor = keys.values
 
-    if keys.dtype != self._key_dtype:
+    if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
 
@@ -528,7 +531,7 @@ class TextFileInitializer(TableInitializerBase):
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g., if
     # it is a placeholder) then it does not make sense to track it as an asset.
-    if constant_op.is_constant(filename):
+    if context.in_graph_mode() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
 
@@ -849,7 +852,7 @@ class IdTableWithHashBuckets(LookupInterface):
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
     """
-    if keys.dtype != self._key_dtype:
+    if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
     values = keys

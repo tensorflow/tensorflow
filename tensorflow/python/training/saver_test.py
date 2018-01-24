@@ -74,6 +74,7 @@ from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
 
 
+@test_util.with_c_api
 class SaverTest(test.TestCase):
 
   def basicSaveRestore(self, variable_op):
@@ -742,6 +743,7 @@ class SaverTest(test.TestCase):
       save.save(sess, save_path)
 
 
+@test_util.with_c_api
 class SaveRestoreShardedTest(test.TestCase):
 
   _WRITE_VERSION = saver_pb2.SaverDef.V1
@@ -1016,10 +1018,12 @@ class SaveRestoreShardedTest(test.TestCase):
     self._testPartitionedVariables(use_resource=True)
 
 
+@test_util.with_c_api
 class SaveRestoreShardedTestV2(SaveRestoreShardedTest):
   _WRITE_VERSION = saver_pb2.SaverDef.V2
 
 
+@test_util.with_c_api
 class MaxToKeepTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1289,6 +1293,7 @@ class MaxToKeepTest(test.TestCase):
       self.assertFalse(gfile.Exists(save._MetaGraphFilename(s1)))
 
 
+@test_util.with_c_api
 class KeepCheckpointEveryNHoursTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1347,6 +1352,7 @@ class KeepCheckpointEveryNHoursTest(test.TestCase):
       self.assertTrue(saver_module.checkpoint_exists(s4))
 
 
+@test_util.with_c_api
 class SaveRestoreWithVariableNameMap(test.TestCase):
 
   def _testNonReshape(self, variable_op):
@@ -1423,6 +1429,7 @@ class SaveRestoreWithVariableNameMap(test.TestCase):
     self._testNonReshape(variables.Variable)
 
 
+@test_util.with_c_api
 class LatestCheckpointWithRelativePaths(test.TestCase):
 
   @staticmethod
@@ -1524,6 +1531,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           self.assertEqual(v0.eval(), 2.0)
 
 
+@test_util.with_c_api
 class CheckpointStateTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1638,6 +1646,7 @@ class CheckpointStateTest(test.TestCase):
                      os.path.join(save_dir, "./model.ckpt-687529"))
 
 
+@test_util.with_c_api
 class MetaGraphTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -1907,7 +1916,8 @@ class MetaGraphTest(test.TestCase):
       # Generates a new MetaGraphDef.
       new_meta_graph_def = new_saver.export_meta_graph()
       # It should be the same as the original.
-      self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
+      test_util.assert_meta_graph_protos_equal(self, meta_graph_def,
+                                               new_meta_graph_def)
 
   def _testGraphExtensionSave(self, test_dir):
     filename = os.path.join(test_dir, "metafile")
@@ -2217,6 +2227,7 @@ class MetaGraphTest(test.TestCase):
           sess.run("new_model/output:0")
 
 
+@test_util.with_c_api
 class CheckpointReaderTest(test.TestCase):
 
   _WRITE_VERSION = saver_pb2.SaverDef.V1
@@ -2269,10 +2280,12 @@ class CheckpointReaderTest(test.TestCase):
       pywrap_tensorflow.NewCheckpointReader("non-existent")
 
 
+@test_util.with_c_api
 class CheckpointReaderForV2Test(CheckpointReaderTest):
   _WRITE_VERSION = saver_pb2.SaverDef.V2
 
 
+@test_util.with_c_api
 class WriteGraphTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -2300,6 +2313,7 @@ class WriteGraphTest(test.TestCase):
     self.assertTrue(os.path.exists(path))
 
 
+@test_util.with_c_api
 class SaverUtilsTest(test.TestCase):
 
   def setUp(self):
@@ -2342,6 +2356,7 @@ class SaverUtilsTest(test.TestCase):
     self.assertTrue(mtimes[1] >= mtimes[0])
 
 
+@test_util.with_c_api
 class ScopedGraphTest(test.TestCase):
 
   def _get_test_dir(self, dirname):
@@ -2643,52 +2658,6 @@ class ScopedGraphTest(test.TestCase):
     with self.test_session(graph=graph2) as sess:
       saver_list2[0].restore(sess, saver2_ckpt)
       self.assertEqual(2.0, var_dict2["variable2:0"].eval())
-
-
-# TODO(b/64763924): Remove after Jan 1st 2018.
-class LenientNamesTest(test.TestCase):
-
-  def setUp(self):
-    super(LenientNamesTest, self).setUp()
-    os.putenv("TF_SAVER_LENIENT_NAMES", "True")
-
-  def tearDown(self):
-    os.putenv("TF_SAVER_LENIENT_NAMES", "")
-    super(LenientNamesTest, self).tearDown()
-
-  def testSaveRestore(self):
-    save_path = os.path.join(self.get_temp_dir(), "basic_save_restore")
-
-    # Build a graph with 2 parameter nodes, and Save and
-    # Restore nodes for them.
-    v0 = variables.Variable(10.0, name="v0")
-    v1 = variables.Variable(20.0, name="v1")
-    v2 = saver_test_utils.CheckpointedOp(name="v2")
-    v2_init = v2.insert("k1", 30.0)
-    save = saver_module.Saver(
-        {
-            "v0:0": v0,
-            "v1": v1,
-            "v2": v2.saveable
-        }, restore_sequentially=True)
-    init_all_op = [variables.global_variables_initializer(), v2_init]
-
-    with self.test_session() as sess:
-      sess.run(init_all_op)
-      save.save(sess, save_path)
-
-    with self.test_session() as sess:
-      v0 = variables.Variable(-1.0, name="v0")
-      v1 = variables.Variable(-1.0, name="v1")
-      v2 = saver_test_utils.CheckpointedOp(name="v2")
-      save = saver_module.Saver({"v0": v0, "v1": v1, "v2": v2.saveable})
-
-      save.restore(sess, save_path)
-      # Check that the parameter nodes have been restored.
-      self.assertEqual(10.0, v0.eval())
-      self.assertEqual(20.0, v1.eval())
-      self.assertEqual(b"k1", v2.keys().eval())
-      self.assertEqual(30.0, v2.values().eval())
 
 
 if __name__ == "__main__":

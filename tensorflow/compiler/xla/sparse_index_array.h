@@ -72,8 +72,8 @@ class SparseIndexArray {
 
   // Returns a slice that refers to the given sparse index number. The argument
   // must be in the range [0, element_count()).
-  tensorflow::gtl::ArraySlice<int64> At(int64 sparse_index_number) const;
-  tensorflow::gtl::MutableArraySlice<int64> At(int64 sparse_index_number);
+  tensorflow::gtl::ArraySlice<int64> At(int64 sparse_element_number) const;
+  tensorflow::gtl::MutableArraySlice<int64> At(int64 sparse_element_number);
 
   // Adds the given index at the end of the array.  The new size of the
   // SparseIndexArray must not exceed `max_indices`.

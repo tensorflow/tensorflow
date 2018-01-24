@@ -90,6 +90,18 @@ class SoftmaxTest(test_lib.TestCase):
     self.assertAllClose(y_tf_np, y_np, eps)
     self.assertAllClose(y_tf_last_dim_np, y_np, eps)
 
+  def testSoftmaxAxes(self):
+    arr = np.linspace(0., 1, 12).reshape(3, 4)
+    x_neg_axis = nn_ops.softmax(arr, axis=-2)
+    y_pos_axis = nn_ops.softmax(arr, axis=0)
+    z_gt_axis = nn_ops.softmax(arr, axis=4)
+    x_neg_axis_tf = self.evaluate(x_neg_axis)
+    y_pos_axis_tf = self.evaluate(y_pos_axis)
+    z_gt_axis_tf = self.evaluate(z_gt_axis)
+    eps = 1e-3
+    self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
+    self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
+
   def testGradient(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float64)
@@ -163,6 +175,18 @@ class LogSoftmaxTest(test_lib.TestCase):
     y_tf_np = self.evaluate(y_tf)
     eps = 1e-3
     self.assertAllClose(y_tf_np, y_np, eps)
+
+  def testLogSoftmaxAxes(self):
+    arr = np.linspace(0., 1, 12).reshape(3, 4)
+    x_neg_axis = nn_ops.log_softmax(arr, axis=-2)
+    y_pos_axis = nn_ops.log_softmax(arr, axis=0)
+    z_gt_axis = nn_ops.log_softmax(arr, axis=4)
+    x_neg_axis_tf = self.evaluate(x_neg_axis)
+    y_pos_axis_tf = self.evaluate(y_pos_axis)
+    z_gt_axis_tf = self.evaluate(z_gt_axis)
+    eps = 1e-3
+    self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
+    self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
   def testGradient(self):
     x_shape = [5, 10]
@@ -854,11 +878,13 @@ class LeakyReluTest(test_lib.TestCase):
     self.assertAllClose(inputs, outputs)
 
   def testValues(self):
-    np_values = np.array([-1.0, 0.0, 0.5, 1.0, 2.0], dtype=np.float32)
-    outputs = nn_ops.leaky_relu(constant_op.constant(np_values))
-    with self.test_session() as sess:
-      outputs = sess.run(outputs)
-    self.assertAllClose(outputs, [-0.2, 0.0, 0.5, 1.0, 2.0])
+    for dtype in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+      np_values = np.array([-2, -1, 0, 1, 2], dtype=dtype)
+      outputs = nn_ops.leaky_relu(constant_op.constant(np_values))
+      with self.test_session() as sess:
+        outputs = sess.run(outputs)
+      tol = 2e-3 if dtype == np.float16 else 1e-6
+      self.assertAllClose(outputs, [-0.4, -0.2, 0.0, 1.0, 2.0], rtol=tol, atol=tol)
 
 
 class SwishTest(test_lib.TestCase):

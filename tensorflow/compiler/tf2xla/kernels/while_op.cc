@@ -120,6 +120,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   body_options.use_tuple_arg = true;
   body_options.return_updated_values_for_all_resources = true;
   body_options.resolve_compile_time_constants = false;
+  body_options.is_entry_computation = false;
   XlaCompiler::CompilationResult body;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(body_options, body_name_attr_,
                                                 arguments, &body));
@@ -197,14 +198,21 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   XlaCompiler::CompileOptions cond_options;
   cond_options.use_tuple_arg = true;
   cond_options.resolve_compile_time_constants = false;
+  cond_options.is_entry_computation = false;
   XlaCompiler::CompilationResult cond;
   OP_REQUIRES_OK(ctx, compiler->CompileFunction(cond_options, cond_name_attr_,
                                                 arguments, &cond));
 
-  xla::Shape body_input_shape =
-      xla::ShapeUtil::MakeTupleShape(body.xla_input_shapes);
-  xla::Shape cond_input_shape =
-      xla::ShapeUtil::MakeTupleShape(cond.xla_input_shapes);
+  OP_REQUIRES(ctx, body.xla_input_shapes.size() == 1,
+              errors::FailedPrecondition("Expected one input shape"));
+  xla::Shape body_input_shape = body.xla_input_shapes[0];
+  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(body_input_shape),
+              errors::FailedPrecondition("Expected tuple shape"));
+  OP_REQUIRES(ctx, cond.xla_input_shapes.size() == 1,
+              errors::FailedPrecondition("Expected one input shape"));
+  xla::Shape cond_input_shape = cond.xla_input_shapes[0];
+  OP_REQUIRES(ctx, xla::ShapeUtil::IsTuple(cond_input_shape),
+              errors::FailedPrecondition("Expected tuple shape"));
 
   VLOG(2) << "Body shape: " << xla::ShapeUtil::HumanString(body_input_shape)
           << " -> " << xla::ShapeUtil::HumanString(body.xla_output_shape);

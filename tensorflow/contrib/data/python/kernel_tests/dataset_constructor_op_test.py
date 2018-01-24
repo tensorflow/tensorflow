@@ -717,11 +717,12 @@ class DatasetConstructorTest(test.TestCase):
       sess.run(var_1.initializer)
 
       iterator = dataset.make_initializable_iterator()
+      sess.run(iterator.initializer)
 
       with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          "Trying to access resource located in device"):
-        sess.run(iterator.initializer)
+          errors.FailedPreconditionError,
+          "Error while reading resource variable Variable"):
+        sess.run(iterator.get_next())
 
   def testRestructureDataset(self):
     components = (array_ops.placeholder(dtypes.int32),

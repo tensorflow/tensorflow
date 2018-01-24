@@ -82,6 +82,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
+from tensorflow.python.util.tf_export import tf_export
 
 
 # We override the 'tuple' for a control flow op, so we keep python's
@@ -117,6 +118,7 @@ def _summarize_eager(tensor, summarize=None):
 
 # Assert and Print are special symbols in python, so we must
 # use an upper-case version of them.
+@tf_export("Assert")
 @tf_should_use.should_use_result
 def Assert(condition, data, summarize=None, name=None):
   """Asserts that the given condition is true.
@@ -681,6 +683,78 @@ def _AddNextAndBackEdge(m, v, enforce_shape_invariant=True):
   return v
 
 
+def GetMaxSizeFromNestedMaximumIterations(value, while_ctxt):
+  """Calculate a max_size for use by stack ops inside an XLA while_loop.
+
+  Args:
+    value: The value inside the while_loop forward context.  Used for printing
+      error messages.
+    while_ctxt: The forward context inside which value resides.  This does
+      not always match the value's immediate context, as `value` may be
+      inside e.g. a cond context inside the while_loop.
+
+  Returns:
+    A tensor containing the `max_size` to feed to a Stack initializer.
+
+  Raises:
+    ValueError: If `value` is nested inside a `while_loop` that either
+      lacks a `maximum_iterations` parameter, or the `maximum_iterations`
+      parameter:
+
+        - is inside a `while_loop` that is a parent of the calling context, and
+        - cannot be evaluated at graph build time to a constant.
+  """
+  value_name = value.name
+  # curr_ctxt is the context that tf.gradients was called in.
+  curr_ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
+
+  curr_ctxt_name = curr_ctxt.name if curr_ctxt is not None else ""
+  max_size = constant_op.constant(1)
+
+  # Loop through all containing while contexts between value and the
+  # current context, multiplying together each context's
+  # max_iterations to get the maximum stack size.
+  while while_ctxt not in (None, curr_ctxt):
+    max_iter = while_ctxt.maximum_iterations
+    if max_iter is None:
+      raise ValueError(
+          "Cannot create a gradient accumulator for tensor '%s' inside "
+          "XLA while_loop because maximum_iterations was not passed to "
+          "the tf.while_loop call ('%s')."
+          % (value_name, while_ctxt.name))
+
+    # pylint: disable=protected-access
+    max_iter_ctxt = max_iter.op._get_control_flow_context()
+    # pylint: enable=protected-access
+
+    # If max_iter_ctxt (non-strictly) contains curr_ctxt, then it's OK to use.
+    if util.IsContainingContext(curr_ctxt, max_iter_ctxt):
+      max_size *= max_iter
+    else:
+      # We cannot use max_iter because it's defined in a nested while
+      # or cond context, so will fail if we try to use it as input to
+      # any ops in curr_ctxt (e.g. max_size or the final accumulator
+      # stack). Attempt to get a constant value out to use instead.
+      const_max_iter = tensor_util.constant_value(max_iter)
+      if const_max_iter is None:
+        raise ValueError(
+            "Cannot create a gradient accumulator for tensor '%s' inside XLA "
+            "while_loop. maximum_iterations tensor '%s' for while_loop context "
+            "'%s' must be statically known (e.g. a constant value or known "
+            "shape dimension), or be defined at or outside the while loop "
+            "context '%s' (currently defined in '%s')." % (
+                value_name, max_iter.name, while_ctxt.name,
+                curr_ctxt_name, max_iter_ctxt.name))
+      max_size *= const_max_iter
+
+    # Find the next outer WhileContext (or stop if we reach the
+    # tf.gradient's context).
+    while_ctxt = util.GetContainingWhileContext(
+        while_ctxt.outer_context, stop_ctxt=curr_ctxt)
+
+  return max_size
+
+
 class GradLoopState(object):
   """The state used for constructing the gradient graph for a while loop.
 
@@ -893,17 +967,24 @@ class GradLoopState(object):
 
     Raises:
       TypeError: For internal errors involving the value condition context.
+      ValueError: If `value` is inside a XLA scope and a valid max size
+        for the stack can't be found.
     """
-    curr_ctxt = ops.get_default_graph()._get_control_flow_context()
+    # curr_ctxt is the context that tf.gradients was called in.
+    curr_ctxt = ops.get_default_graph()._get_control_flow_context()  # pylint: disable=protected-access
     with ops.control_dependencies(None):
       if curr_ctxt: curr_ctxt.Enter()
       with ops.colocate_with(value):
-        maximum_iterations = self.forward_context.maximum_iterations
-        if maximum_iterations is None:
-          maximum_iterations = constant_op.constant(-1, dtypes.int32)
+        # We only need to pass maximum_iterations to the stack if
+        # we're inside an XLA context.
+        if not util.IsInXLAContext(value.op):
+          max_size = constant_op.constant(-1, dtypes.int32)
+        else:
+          max_size = GetMaxSizeFromNestedMaximumIterations(
+              value, self.forward_context)
         # pylint: disable=protected-access
         acc = gen_data_flow_ops._stack_v2(
-            max_size=maximum_iterations,
+            max_size=max_size,
             elem_type=value.dtype.base_dtype,
             name="f_acc")
         # pylint: enable=protected-access
@@ -1788,6 +1869,7 @@ def _UnpackIfSingleton(res):
 
 # pylint: disable=redefined-outer-name
 # pylint: disable=g-doc-args
+@tf_export("cond")
 @deprecation.deprecated_args(
     None,
     "fn1/fn2 are deprecated in favor of the true_fn/false_fn arguments.",
@@ -2468,7 +2550,6 @@ class WhileContext(ControlFlowContext):
         zeros_shape = array_ops.shape_internal(value, optimize=False)
         acc = array_ops.zeros(zeros_shape, grad.dtype)
         if self.outer_context: self.outer_context.Exit()
-      acc._shape = grad.get_shape()  # pylint: disable=protected-access
 
     self.Enter()
     self.AddName(acc.name)
@@ -2765,6 +2846,7 @@ class WhileContext(ControlFlowContext):
 
 
 # pylint: disable=redefined-outer-name
+@tf_export("while_loop")
 def while_loop(cond, body, loop_vars, shape_invariants=None,
                parallel_iterations=10, back_prop=True, swap_memory=False,
                name=None, maximum_iterations=None):
@@ -2903,27 +2985,6 @@ def while_loop(cond, body, loop_vars, shape_invariants=None,
         raise ValueError("maximum_iterations must be a scalar, saw shape: %s" %
                          maximum_iterations.shape)
 
-      # If/when we generated the gradient for this while loop, the
-      # maximum_iterations tensor will be used as the input to any generated
-      # stack ops. It's likely the stacks will be outside any control flow
-      # context (i.e. if gradients() is called outside any control flow
-      # context), which will result in the maximum_iterations tensor being an
-      # illegal input (see control_flow_util.CheckInputFromValidContext).
-      #
-      # NOTE(skyewm): we could technically allow tensors from CondContexts, but
-      # that will be error-prone and hard to reason about for users.
-      #
-      # TODO(skyewm): make this work (it's tricky).
-      if (context.in_graph_mode() and
-          (util.IsInWhileLoop(maximum_iterations.op) or
-           util.IsInCond(maximum_iterations.op))):
-        raise ValueError(
-            "maximum_iterations tensor cannot be declared in tf.cond or "
-            "tf.while_loop. Please file an issue at "
-            "https://github.com/tensorflow/tensorflow/issues if you require "
-            "this functionality. (Control flow context: %s)" %
-            maximum_iterations.op._get_control_flow_context().name)  # pylint: disable=protected-access
-
       counter = constant_op.constant(
           0, dtype=maximum_iterations.dtype, name="iteration_counter")
       orig_cond = cond
@@ -3053,6 +3114,7 @@ def _GroupControlDeps(dev, deps, name=None):
 
 
 # TODO(touts): Accept "inputs" as a list.
+@tf_export("group")
 def group(*inputs, **kwargs):
   """Create an op that groups multiple operations.
 
@@ -3118,6 +3180,7 @@ def group(*inputs, **kwargs):
       return no_op(name=name)
 
 
+@tf_export("tuple")
 def tuple(tensors, name=None, control_inputs=None):
   """Group tensors together.
 
@@ -3271,6 +3334,7 @@ def _case_verify_and_canonicalize_args(pred_fn_pairs, exclusive, name):
   return predicates, actions
 
 
+@tf_export("case")
 def case(pred_fn_pairs,
          default=None,
          exclusive=False,
@@ -3385,8 +3449,18 @@ def case(pred_fn_pairs,
 class XLAControlFlowContext(ControlFlowContext):
   """Base class for XLA and TPU control flow contexts."""
 
+  def __init__(self):
+    super(XLAControlFlowContext, self).__init__()
+    self._name = "XLAControlFlowContext"
+
   def IsXLAContext(self):
     return True
+
+  def AddOp(self, _):
+    pass
+
+  def AddValue(self, x):
+    return x
 
 
 ops.register_proto_function(ops.GraphKeys.COND_CONTEXT,

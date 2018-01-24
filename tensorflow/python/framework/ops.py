@@ -1623,15 +1623,12 @@ class Operation(object):
       assert self._graph._c_graph  # pylint: disable=protected-access
       self._c_op = c_op
     elif self._graph._c_graph:  # pylint: disable=protected-access
-      if self._op_def:
-        # TODO(skyewm): op_def_library.apply_op() flattens the incoming
-        # inputs. Refactor so we don't have to do this here.
-        grouped_inputs = self._reconstruct_sequence_inputs(
-            self._op_def, self._inputs, self._node_def.attr)
-      else:
-        # If no OpDef is specified, assume all inputs are scalar.
-        grouped_inputs = self._inputs
-
+      if op_def is None:
+        op_def = self._graph._registered_ops[node_def.op]
+      # TODO(skyewm): op_def_library.apply_op() flattens the incoming inputs.
+      # Refactor so we don't have to do this here.
+      grouped_inputs = self._reconstruct_sequence_inputs(
+          op_def, inputs, node_def.attr)
       self._c_op = _create_c_op(self._graph, self._node_def, grouped_inputs,
                                 self._control_inputs)
     else:
@@ -2008,10 +2005,6 @@ class Operation(object):
       # pylint: enable=protected-access
       return Operation._InputList(retval)
     return Operation._InputList(self._inputs)
-
-  @property
-  def _input_dtypes(self):
-    return self._input_types
 
   @property
   def _input_types(self):
@@ -2702,6 +2695,7 @@ class Graph(object):
       self._scoped_c_graph = c_api_util.ScopedTFGraph()
     else:
       self._scoped_c_graph = None
+    self._variable_creator_stack = []
 
   # TODO(apassos) remove once the C API is used by default.
   def _use_c_api_hack(self):
@@ -2737,6 +2731,22 @@ class Graph(object):
       else:
         ret.append((filename, lineno, name, line))
     return ret
+
+  # Note: this method is private because the API of tf.Graph() is public and
+  # frozen, and this functionality is still not ready for public visibility.
+  @tf_contextlib.contextmanager
+  def _variable_creator_scope(self, creator):
+    old = list(self._variable_creator_stack)
+    self._variable_creator_stack.append(creator)
+    try:
+      yield
+    finally:
+      self._variable_creator_stack = old
+
+  # Note: this method is private because the API of tf.Graph() is public and
+  # frozen, and this functionality is still not ready for public visibility.
+  def _get_variable_creator_stack(self):
+    return list(self._variable_creator_stack)
 
   def _extract_stack(self):
     """A lightweight, extensible re-implementation of traceback.extract_stack.
@@ -5494,8 +5504,12 @@ class name_scope(object):  # pylint: disable=invalid-name
       g = _get_graph_from_inputs(self._values)
       self._g_manager = g.as_default()
       self._g_manager.__enter__()
-      self._name_scope = g.name_scope(self._name)
-      return self._name_scope.__enter__()
+      try:
+        self._name_scope = g.name_scope(self._name)
+        return self._name_scope.__enter__()
+      except:
+        self._g_manager.__exit__(*sys.exc_info())
+        raise
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
     if self._in_eager_mode:

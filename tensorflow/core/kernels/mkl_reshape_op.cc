@@ -256,11 +256,18 @@ class MklReshapeOp : public OpKernel {
               AllocateOutputSetMklShape(context, kOutputSlotIdx, &output_tensor,
                                         shape_to, mkl_shape_output);
 
-              // Insert reorder between Mkl layout and TensorFlow layout.
+              // Insert reorder between Mkl layout and TensorFlow layout if
+              // needed. If reorder is not needed but reshape is needed (since
+              // shape_from != shape_to), then we just copy input tensor to
+              // output tensor with target shape (we cannot forward Mkl layout
+              // in such case because shape has changed.)
               std::vector<primitive> net;
-              CHECK_EQ(dnn_data_input.CheckReorderToOpMem(output_tf_pd,
-                       output_tensor, &net), true);
-              stream(stream::kind::eager).submit(net).wait();
+              if (dnn_data_input.CheckReorderToOpMem(output_tf_pd,
+                       output_tensor, &net)) {
+                stream(stream::kind::eager).submit(net).wait();
+              } else {
+                output_tensor->CopyFrom(input_tensor, shape_to);
+              }
               return;
           } else {
             // If dimensions that are being expanded or collapsed are

@@ -57,6 +57,20 @@ XLA_TEST_F(TupleTest, TupleConstant) {
   ComputeAndCompareTuple(&builder, *value, {}, error_spec_);
 }
 
+// Tests a tuple made of scalar constants.
+XLA_TEST_F(TupleTest, TupleScalarConstant) {
+  ComputationBuilder builder(client_, TestName());
+
+  const float constant_scalar1 = 7.3f;
+  const float constant_scalar2 = 1.2f;
+  auto value =
+      Literal::MakeTuple({Literal::CreateR0<float>(constant_scalar1).get(),
+                          Literal::CreateR0<float>(constant_scalar2).get()});
+
+  auto result = builder.ConstantLiteral(*value);
+  ComputeAndCompareTuple(&builder, *value, {}, error_spec_);
+}
+
 // Tests the creation of tuple data.
 XLA_TEST_F(TupleTest, TupleCreate) {
   ComputationBuilder builder(client_, TestName());

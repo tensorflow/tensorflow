@@ -422,8 +422,12 @@ class ComputationBuilder {
 
   // Enqueues an outfeed instruction onto the computation. This instruction
   // generates outgoing data transfers for the given data.
-  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
-               const string& outfeed_config);
+  //
+  // shape_with_layout communicates the laid out shape that we want to outfeed
+  // -- if !ShapeUtil::Compatible(GetShape(operand), shape_with_layout) an error
+  // will occur.
+  void Outfeed(const ComputationDataHandle& operand,
+               const Shape& shape_with_layout, const string& outfeed_config);
 
   // Enqueues a call instruction onto the computation.
   ComputationDataHandle Call(
@@ -711,7 +715,7 @@ class ComputationBuilder {
   ComputationDataHandle Recv(const Shape& shape, const ChannelHandle& handle);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
-  // constant does not depend on parameters with higher index then
+  // constant does not depend on parameters with index greater than or equal to
   // `num_parameters`, or on stateful operators such as `RngNormal` or `Infeed`.
   // Unlike `ComputeConstant`, `IsConstant` tests whether a computation is a
   // compile-time constant without evaluating the computation.
@@ -877,19 +881,28 @@ class ComputationBuilder {
   // This is used before any given operation is enqueued.
   Status PrepareComputation();
 
-  // Helper function for parsing a method response and either returning the
-  // output computation data handle (on success) or a vacuous computation data
-  // handle (on failure).
-  ComputationDataHandle ParseOpResponse(const Status& status,
-                                        OpResponse* response);
-
   // Notes that the error occurred by:
   // * storing it internally and capturing a backtrace if it's the first error
   //   (this deferred value will be produced on the call to Build())
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
-  void AddCommonFieldsToOpRequest(OpRequest* request) const;
+  // Helper function that runs the given op_request, filling in op_response.
+  // Before the op is run, PrepareComputation is called, and common fields in
+  // the op_request are filled in.
+  Status RunOp(OpRequest* op_request, OpResponse* op_response);
+
+  // Helper function that calls RunOp and calls NoteError on failures.
+  void RunOpAndNoteError(OpRequest* op_request);
+
+  // Helper function that calls RunOp and either returns the output computation
+  // data handle (on success) or a vacuous computation data handle (on failure).
+  ComputationDataHandle RunOpAndParseResponse(OpRequest* op_request);
+
+  // Helper function that implements GetShape without noting errors. This makes
+  // it easier to ensure the real GetShape will note errors on every error path.
+  StatusOr<std::unique_ptr<Shape>> GetShapeWithoutNoteError(
+      const ComputationDataHandle& operand);
 
   string name_;  // Name to use for the built computation.
 

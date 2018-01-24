@@ -184,7 +184,7 @@ def toco_convert(input_data,
     if inference_type == QUANTIZED_UINT8:
       if tflite_input_type == FLOAT:
         tflite_input_type = QUANTIZED_UINT8
-      input_array.mean, input_array.std = quantized_input_stats[idx]
+      input_array.mean_value, input_array.std_value = quantized_input_stats[idx]
 
     input_array.name = _tensor_name(input_tensor)
     input_array.shape.dims.extend(map(int, input_tensor.get_shape()))

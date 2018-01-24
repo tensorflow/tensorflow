@@ -2,9 +2,10 @@
 
 This document introduces the concept of embeddings, gives a simple example of
 how to train an embedding in TensorFlow, and explains how to view embeddings
-with the TensorBoard Embedding Projector. The first two parts target newcomers
-to machine learning or TensorFlow, and the Embedding Projector how-to is for
-users at all levels.
+with the TensorBoard Embedding Projector
+([live example](http://projector.tensorflow.org)). The first two parts target
+newcomers to machine learning or TensorFlow, and the Embedding Projector how-to
+is for users at all levels.
 
 [TOC]
 
@@ -119,7 +120,7 @@ data set.
   text patterns.
 
 Further useful articles are
-[How to Use t-SNE Effectively](distill.pub/2016/misread-tsne/) and
+[How to Use t-SNE Effectively](https://distill.pub/2016/misread-tsne/) and
 [Principal Component Analysis Explained Visually](http://setosa.io/ev/principal-component-analysis/).
 
 ### Exploration

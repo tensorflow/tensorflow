@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import copy
+
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
@@ -52,9 +54,26 @@ class Scope(object):
     self.created = set()
     self.used = set()
 
+  # TODO(mdan): Rename to `locals`
+  @property
+  def referenced(self):
+    if not self.isolated and self.parent is not None:
+      return self.used | self.parent.referenced
+    return self.used
+
   def __repr__(self):
     return 'Scope{r=%s, c=%s, w=%s}' % (tuple(self.used), tuple(self.created),
                                         tuple(self.modified))
+
+  def copy_from(self, other):
+    self.modified = copy.copy(other.modified)
+    self.created = copy.copy(other.created)
+    self.used = copy.copy(other.used)
+
+  def merge_from(self, other):
+    self.modified |= other.modified
+    self.created |= other.created
+    self.used |= other.used
 
   def has(self, name):
     if name in self.modified:
@@ -65,18 +84,20 @@ class Scope(object):
 
   def mark_read(self, name):
     self.used.add(name)
-    if self.parent is not None and self.parent.has(
-        name) and name not in self.created:
+    if self.parent is not None and name not in self.created:
       self.parent.mark_read(name)
 
   def mark_write(self, name):
     self.modified.add(name)
-    if self.parent is not None and self.parent.has(name):
-      self.parent.mark_write(name)
-    else:
-      if not self.isolated:
-        self.parent.mark_write(name)
+    if self.isolated:
       self.created.add(name)
+    else:
+      if self.parent is None:
+        self.created.add(name)
+      else:
+        if not self.parent.has(name):
+          self.created.add(name)
+        self.parent.mark_write(name)
 
 
 class AccessResolver(gast.NodeTransformer):
@@ -129,22 +150,54 @@ class AccessResolver(gast.NodeTransformer):
     self.visit(node.func)
     return node
 
+  def _process_block_node(self, node, block, scope_name):
+    current_scope = self.scope
+    block_scope = Scope(current_scope, isolated=False)
+    self.scope = block_scope
+    for n in block:
+      self.visit(n)
+    anno.setanno(node, '%s_scope' % scope_name, block_scope)
+    self.scope = current_scope
+    return node
+
+  def _process_parallel_blocks(self, parent, children):
+    # Because the scopes are not isolated, processing any child block
+    # modifies the parent state causing the other child blocks to be
+    # processed incorrectly. So we need to checkpoint the parent scope so that
+    # each child sees the same context.
+    before_parent = Scope(None)
+    before_parent.copy_from(self.scope)
+    after_children = []
+    for child, name in children:
+      self.scope.copy_from(before_parent)
+      parent = self._process_block_node(parent, child, name)
+      after_child = Scope(None)
+      after_child.copy_from(self.scope)
+      after_children.append(after_child)
+    for after_child in after_children:
+      self.scope.merge_from(after_child)
+    for child, name in children:
+      # TODO(mdan): We don't need this - we have the parent link from scope.
+      anno.setanno(parent, '%s_parent_scope' % name, self.scope)
+    return parent
+
+  def visit_If(self, node):
+    self.visit(node.test)
+    node = self._process_parallel_blocks(
+        node, ((node.body, 'body'), (node.orelse, 'orelse')))
+    return node
+
   def visit_For(self, node):
-    raise NotImplementedError()
+    self.visit(node.target)
+    self.visit(node.iter)
+    node = self._process_parallel_blocks(
+        node, ((node.body, 'body'), (node.orelse, 'orelse')))
+    return node
 
   def visit_While(self, node):
     self.visit(node.test)
-    current_scope = self.scope
-    anno.setanno(node, 'parent_scope', current_scope)
-    body_scope = Scope(current_scope, isolated=False)
-    self.scope = body_scope
-    for n in node.body:
-      self.visit(n)
-    anno.setanno(node, 'body_scope', body_scope)
-    if node.orelse:
-      raise NotImplementedError()
-      # TODO(mdan): Add support for orelse.
-    self.scope = current_scope
+    node = self._process_parallel_blocks(
+        node, ((node.body, 'body'), (node.orelse, 'orelse')))
     return node
 
 

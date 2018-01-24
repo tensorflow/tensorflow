@@ -22,6 +22,10 @@ message TreeConstraintsConfig {
 
   // Min hessian weight per node.
   float min_node_weight = 2;
+
+  // Maximum number of unique features used in the tree. Zero means there is no
+  // limit.
+  int64 max_number_of_unique_feature_columns = 3;
 }
 
 // LearningRateConfig describes all supported learning rate tuners.

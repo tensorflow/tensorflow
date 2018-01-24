@@ -40,6 +40,11 @@ void BinaryOpShared::SetComputeError(OpKernelContext* ctx) {
   if ((op == "Div" || op == "Mod" || op == "FloorMod" || op == "FloorDiv") &&
       DataTypeIsInteger(ctx->op_kernel().input_type(0))) {
     ctx->CtxFailure(errors::InvalidArgument("Integer division by zero"));
+  } else if ((op == "Pow") &&
+             DataTypeIsInteger(ctx->op_kernel().input_type(0)) &&
+             DataTypeIsSigned(ctx->op_kernel().input_type(1))) {
+    ctx->CtxFailure(errors::InvalidArgument(
+        "Integers to negative integer powers are not allowed"));
   } else {
     ctx->CtxFailure(
         errors::Internal("Unexpected error in binary operator "

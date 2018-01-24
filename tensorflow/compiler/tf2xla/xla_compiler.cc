@@ -268,7 +268,8 @@ Status BuildArguments(const Graph& graph,
                       XlaContext* context, std::vector<int>* arg_cores,
                       std::vector<XlaExpression>* arg_expressions,
                       std::vector<int>* input_mapping,
-                      std::vector<xla::Shape>* input_shapes) {
+                      std::vector<xla::Shape>* input_shapes,
+                      bool is_entry_computation) {
   arg_expressions->resize(args.size());
   *arg_cores = std::vector<int>(args.size(), -1);
 
@@ -316,13 +317,20 @@ Status BuildArguments(const Graph& graph,
     return Status::OK();
   }
 
-  input_shapes->resize(parameters.size());
+  std::vector<xla::Shape> arg_shapes;
+  arg_shapes.reserve(parameters.size());
   input_mapping->resize(parameters.size());
   for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
     const XlaCompiler::Argument& arg = args[parameters[i]];
     // Computes the shapes of non-constant arguments.
-    (*input_shapes)[i] = arg.shape;
+    arg_shapes.push_back(arg.shape);
     (*input_mapping)[i] = parameters[i];
+  }
+
+  if (use_tuple_arg) {
+    input_shapes->push_back(xla::ShapeUtil::MakeTupleShape(arg_shapes));
+  } else {
+    *input_shapes = arg_shapes;
   }
 
   // Use the _Arg nodes in the graph to resolve core assignments.
@@ -348,9 +356,23 @@ Status BuildArguments(const Graph& graph,
   // Build parameter handles for non-constant arguments.
   std::vector<xla::ComputationDataHandle> arg_handles(parameters.size());
   if (use_tuple_arg) {
-    xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(*input_shapes);
-    xla::ComputationDataHandle tuple =
-        builder->Parameter(0, tuple_shape, "arg_tuple");
+    xla::ComputationDataHandle tuple;
+    if (is_entry_computation) {
+      xla::OpSharding tuple_sharding;
+      tuple_sharding.set_type(xla::OpSharding::Type::OpSharding_Type_TUPLE);
+      for (int64 parameter : parameters) {
+        const int core = (*arg_cores)[parameter];
+        const int root_device = 0;
+        *tuple_sharding.add_tuple_shardings() =
+            core == -1 ? xla::sharding_builder::AssignDevice(root_device)
+                       : xla::sharding_builder::AssignDevice(core);
+      }
+      xla::ScopedShardingAssignment assign_tuple_sharding(builder,
+                                                          tuple_sharding);
+      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+    } else {
+      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+    }
     for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
       const int core = (*arg_cores)[parameters[i]];
       xla::ScopedShardingAssignment assign_sharding(
@@ -374,7 +396,7 @@ Status BuildArguments(const Graph& graph,
   for (std::vector<int>::size_type i = 0; i < parameters.size(); ++i) {
     const XlaCompiler::Argument& arg = args[parameters[i]];
     VLOG(2) << "  XLA arg " << i
-            << " shape: " << xla::ShapeUtil::HumanString((*input_shapes)[i])
+            << " shape: " << xla::ShapeUtil::HumanString(arg_shapes[i])
             << " name: " << arg.name << " TF arg " << parameters[i];
     XlaExpression& arg_expression = (*arg_expressions)[parameters[i]];
     switch (arg.kind) {
@@ -530,9 +552,10 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
 
   std::vector<XlaExpression> arg_expressions;
   std::vector<int> arg_cores;
-  TF_RETURN_IF_ERROR(BuildArguments(
-      *graph, args, options.use_tuple_arg, &builder, context, &arg_cores,
-      &arg_expressions, &result->input_mapping, &result->xla_input_shapes));
+  TF_RETURN_IF_ERROR(
+      BuildArguments(*graph, args, options.use_tuple_arg, &builder, context,
+                     &arg_cores, &arg_expressions, &result->input_mapping,
+                     &result->xla_input_shapes, options.is_entry_computation));
   context->set_args(std::move(arg_expressions));
 
   TF_RETURN_IF_ERROR(ExecuteGraph(context, std::move(graph), device_,

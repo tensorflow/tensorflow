@@ -38,6 +38,7 @@ from six.moves.urllib.error import URLError
 from six.moves.urllib.request import urlopen
 
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
+from tensorflow.python.util.tf_export import tf_export
 
 try:
   import queue  # pylint:disable=g-import-not-at-top
@@ -135,6 +136,7 @@ def _extract_archive(file_path, path='.', archive_format='auto'):
   return False
 
 
+@tf_export('keras.utils.get_file')
 def get_file(fname,
              origin,
              untar=False,
@@ -315,6 +317,7 @@ def validate_file(fpath, file_hash, algorithm='auto', chunk_size=65535):
     return False
 
 
+@tf_export('keras.utils.Sequence')
 class Sequence(object):
   """Base object for fitting to a sequence of data, such as a dataset.
 
@@ -402,6 +405,7 @@ def get_index(uid, i):
   return _SHARED_SEQUENCES[uid][i]
 
 
+@tf_export('keras.utils.SequenceEnqueuer')
 class SequenceEnqueuer(object):
   """Base class to enqueue inputs.
 
@@ -476,16 +480,26 @@ class OrderedEnqueuer(SequenceEnqueuer):
 
   def __init__(self, sequence, use_multiprocessing=False, shuffle=False):
     self.sequence = sequence
+    self.use_multiprocessing = use_multiprocessing
 
     # Doing Multiprocessing.Value += x is not process-safe.
     global _SEQUENCE_COUNTER
     if _SEQUENCE_COUNTER is None:
-      _SEQUENCE_COUNTER = multiprocessing.Value('i', 0)
+      if self.use_multiprocessing:
+        _SEQUENCE_COUNTER = multiprocessing.Value('i', 0)
+      else:
+        _SEQUENCE_COUNTER = 0
 
-    with _SEQUENCE_COUNTER.get_lock():
-      self.uid = _SEQUENCE_COUNTER.value
-      _SEQUENCE_COUNTER.value += 1
-    self.use_multiprocessing = use_multiprocessing
+    if self.use_multiprocessing:
+      with _SEQUENCE_COUNTER.get_lock():
+        self.uid = _SEQUENCE_COUNTER.value
+        _SEQUENCE_COUNTER.value += 1
+    else:
+      self.uid = _SEQUENCE_COUNTER
+      if isinstance(_SEQUENCE_COUNTER, int):
+        _SEQUENCE_COUNTER += 1
+      else:
+        _SEQUENCE_COUNTER.value += 1
     self.shuffle = shuffle
     self.workers = 0
     self.executor = None
@@ -598,6 +612,7 @@ class OrderedEnqueuer(SequenceEnqueuer):
     self.executor.join()
 
 
+@tf_export('keras.utils.GeneratorEnqueuer')
 class GeneratorEnqueuer(SequenceEnqueuer):
   """Builds a queue out of a data generator.
 
@@ -742,4 +757,3 @@ class GeneratorEnqueuer(SequenceEnqueuer):
       success, value = self.queue.get()
       if not success:
         six.reraise(value.__class__, value, value.__traceback__)
-

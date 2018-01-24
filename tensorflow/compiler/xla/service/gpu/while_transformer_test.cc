@@ -117,9 +117,7 @@ class WhileTransformerTest : public HloTestBase {
   }
 
   void RunCopyInsertionPass() {
-    HloVerifier verifier([](const Shape& shape) {
-      return ShapeUtil::ByteSizeOf(shape, /*pointer_size=*/sizeof(void*));
-    });
+    HloVerifier verifier;
     TF_ASSERT_OK(verifier.Run(module_.get()).status());
     CopyInsertion copy_insertion;
     TF_ASSERT_OK(copy_insertion.Run(module_.get()).status());

@@ -38,7 +38,8 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
 
   // If the data type of some input is unknown, we need to yield.
   for (const auto& input : op->inputs) {
-    if (model->arrays[input]->data_type == ArrayDataType::kNone) {
+    if (!model->IsOptionalArray(input) &&
+        model->arrays[input]->data_type == ArrayDataType::kNone) {
       return false;
     }
   }
@@ -61,7 +62,7 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     SetDataTypeForAllOutputs(model, op, ArrayDataType::kBool);
   } else if (op->type == OperatorType::kRank ||
              op->type == OperatorType::kTensorFlowShape) {
-    // These operators are assumed to produce int32 outputs.
+    // These operators only produce int32 outputs.
     SetDataTypeForAllOutputs(model, op, ArrayDataType::kInt32);
   } else if (op->type == OperatorType::kTensorFlowSplit ||
              op->type == OperatorType::kTensorFlowConcat ||
@@ -80,6 +81,20 @@ bool PropagateArrayDataTypes::Run(Model* model, std::size_t op_index) {
     CHECK_EQ(op->outputs.size(), 1);
     auto* argmax_op = static_cast<ArgMaxOperator*>(op);
     model->arrays[op->outputs[0]]->data_type = argmax_op->output_data_type;
+  } else if (op->type == OperatorType::kRange) {
+    auto* range_op = static_cast<RangeOperator*>(op);
+    // Output type of the Range op can be set via an attribute
+    ArrayDataType data_type;
+    if (range_op->dtype != ArrayDataType::kNone) {
+      // Use the type if specified
+      data_type = range_op->dtype;
+    } else {
+      // Otherwise use the first input
+      CHECK_GE(op->inputs.size(), 1);
+      data_type = model->arrays[op->inputs[0]]->data_type;
+    }
+    CHECK_EQ(op->outputs.size(), 1);
+    SetDataTypeForAllOutputs(model, op, data_type);
   } else if (op->type == OperatorType::kTensorFlowUnsupported) {
     auto* unsupported_op = static_cast<TensorFlowUnsupportedOperator*>(op);
     if (unsupported_op->output_data_types.size() != op->outputs.size()) {

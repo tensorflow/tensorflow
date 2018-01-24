@@ -830,6 +830,16 @@ std::unique_ptr<Literal> Literal::Slice(
             result_literal->Set<float>(indices, value);
           });
       return result_literal;
+    case C64:
+      result_literal->EachCell<complex64>(
+          [&](tensorflow::gtl::ArraySlice<int64> indices, complex64 /*value*/) {
+            for (int64 i = 0; i < ShapeUtil::Rank(result_shape); ++i) {
+              new_indices[i] = indices[i] + start_indices[i];
+            }
+            complex64 value = Get<complex64>(new_indices);
+            result_literal->Set<complex64>(indices, value);
+          });
+      return result_literal;
     case S32:
       result_literal->EachCell<int32>(
           [&](tensorflow::gtl::ArraySlice<int64> indices, int32 /*value*/) {
@@ -871,39 +881,101 @@ std::unique_ptr<Literal> Literal::CloneToUnique() const {
 string Literal::GetAsString(tensorflow::gtl::ArraySlice<int64> multi_index,
                             const ShapeIndex& shape_index) const {
   const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
+  CHECK(LayoutUtil::IsDenseArray(subshape));
   switch (subshape.element_type()) {
     case PRED:
       return Get<bool>(multi_index, shape_index) ? "true" : "false";
-    case U8:
-      return StrCat(Get<uint8>(multi_index, shape_index));
+    case S8:
+      return StrCat(Get<int8>(multi_index, shape_index));
+    case S16:
+      return StrCat(Get<int16>(multi_index, shape_index));
     case S32:
       return StrCat(Get<int32>(multi_index, shape_index));
     case S64:
       return StrCat(Get<int64>(multi_index, shape_index));
+    case U8:
+      return StrCat(Get<uint8>(multi_index, shape_index));
+    case U16:
+      return StrCat(Get<uint16>(multi_index, shape_index));
     case U32:
       return StrCat(Get<uint32>(multi_index, shape_index));
     case U64:
       return StrCat(Get<uint64>(multi_index, shape_index));
+    case F16:
+      return StrCat(Get<half>(multi_index, shape_index));
     case F32:
       return StrCat(Get<float>(multi_index, shape_index));
+    case BF16:
+      return StrCat(
+          static_cast<float>(Get<bfloat16>(multi_index, shape_index)));
     case F64:
       return StrCat(Get<double>(multi_index, shape_index));
     case C64: {
       complex64 c = Get<complex64>(multi_index, shape_index);
       return StrCat("(", c.real(), ", ", c.imag(), ")");
     }
-    case F16:
-      return StrCat(Get<half>(multi_index, shape_index));
-    case BF16:
-      return StrCat(
-          static_cast<float>(Get<bfloat16>(multi_index, shape_index)));
     default:
-      return StrCat("[", PrimitiveType_Name(subshape.element_type()), "]");
+      LOG(FATAL) << PrimitiveType_Name(subshape.element_type());
+  }
+}
+
+string Literal::GetSparseElementAsString(int64 sparse_element_number,
+                                         const ShapeIndex& shape_index) const {
+  const Shape& subshape = ShapeUtil::GetSubshape(shape(), shape_index);
+  CHECK(LayoutUtil::IsSparseArray(subshape));
+  switch (subshape.element_type()) {
+    case PRED:
+      return GetSparseElement<bool>(sparse_element_number, shape_index)
+                 ? "true"
+                 : "false";
+    case S8:
+      return StrCat(GetSparseElement<int8>(sparse_element_number, shape_index));
+    case S16:
+      return StrCat(
+          GetSparseElement<int16>(sparse_element_number, shape_index));
+    case S32:
+      return StrCat(
+          GetSparseElement<int32>(sparse_element_number, shape_index));
+    case S64:
+      return StrCat(
+          GetSparseElement<int64>(sparse_element_number, shape_index));
+    case U8:
+      return StrCat(
+          GetSparseElement<uint8>(sparse_element_number, shape_index));
+    case U16:
+      return StrCat(
+          GetSparseElement<uint16>(sparse_element_number, shape_index));
+    case U32:
+      return StrCat(
+          GetSparseElement<uint32>(sparse_element_number, shape_index));
+    case U64:
+      return StrCat(
+          GetSparseElement<uint64>(sparse_element_number, shape_index));
+    case F16:
+      return StrCat(GetSparseElement<half>(sparse_element_number, shape_index));
+    case F32:
+      return StrCat(
+          GetSparseElement<float>(sparse_element_number, shape_index));
+    case BF16:
+      return StrCat(static_cast<float>(
+          GetSparseElement<bfloat16>(sparse_element_number, shape_index)));
+    case F64:
+      return StrCat(
+          GetSparseElement<double>(sparse_element_number, shape_index));
+    case C64: {
+      complex64 c =
+          GetSparseElement<complex64>(sparse_element_number, shape_index);
+      return StrCat("(", c.real(), ", ", c.imag(), ")");
+    }
+    default:
+      LOG(FATAL) << "Invalid element type for sparse arrays: "
+                 << PrimitiveType_Name(subshape.element_type());
   }
 }
 
 StatusOr<int64> Literal::GetIntegralAsS64(
     tensorflow::gtl::ArraySlice<int64> multi_index) const {
+  CHECK(LayoutUtil::IsDenseArray(shape()));
   switch (shape().element_type()) {
     case PRED:
       return Get<bool>(multi_index);
@@ -924,6 +996,78 @@ StatusOr<int64> Literal::GetIntegralAsS64(
   }
 }
 
+tensorflow::gtl::ArraySlice<int64> Literal::GetSparseIndex(
+    int64 sparse_element_number, const ShapeIndex& shape_index) const {
+  const Piece& p = piece(shape_index);
+  CHECK_GE(sparse_element_number, 0);
+  CHECK_LT(sparse_element_number, p.sparse_indices()->index_count());
+  return p.sparse_indices()->At(sparse_element_number);
+}
+
+void Literal::SortSparseElements(const ShapeIndex& shape_index) {
+  piece(shape_index).SortSparseElements();
+}
+
+void Literal::Piece::SortSparseElements() {
+  switch (subshape().element_type()) {
+    case PRED:
+      SortSparseElementsInternal<bool>();
+      break;
+    case S8:
+      SortSparseElementsInternal<int8>();
+      break;
+    case U8:
+      SortSparseElementsInternal<uint8>();
+      break;
+    case S16:
+      SortSparseElementsInternal<int16>();
+      break;
+    case U16:
+      SortSparseElementsInternal<uint16>();
+      break;
+    case S32:
+      SortSparseElementsInternal<int32>();
+      break;
+    case U32:
+      SortSparseElementsInternal<uint32>();
+      break;
+    case S64:
+      SortSparseElementsInternal<int64>();
+      break;
+    case U64:
+      SortSparseElementsInternal<uint64>();
+      break;
+    case F32:
+      SortSparseElementsInternal<float>();
+      break;
+    case F64:
+      SortSparseElementsInternal<double>();
+      break;
+    case C64:
+      SortSparseElementsInternal<complex64>();
+      break;
+    case F16:
+      SortSparseElementsInternal<half>();
+      break;
+    case BF16:
+      SortSparseElementsInternal<bfloat16>();
+      break;
+    default:
+      LOG(FATAL) << "Element type not valid for sparse array: "
+                 << PrimitiveType_Name(subshape().element_type());
+  }
+}
+
+template <typename NativeT>
+void Literal::Piece::SortSparseElementsInternal() {
+  CHECK(LayoutUtil::IsSparseArray(subshape()));
+  int64 num_elements = sparse_indices()->index_count();
+  auto values = data<NativeT>();
+  CHECK_LE(num_elements, values.size());
+  sparse_indices()->SortWithValues(
+      tensorflow::gtl::MutableArraySlice<NativeT>(values.data(), num_elements));
+}
+
 namespace {
 
 void ToStringHelper(const Literal& literal, const ShapeIndex& shape_index,
@@ -936,17 +1080,6 @@ void ToStringHelper(const Literal& literal, const ShapeIndex& shape_index,
     } else {
       return ShapeUtil::HumanString(shape);
     }
-  };
-
-  auto element_to_string =
-      [&](tensorflow::gtl::ArraySlice<int64> indices) -> string {
-    PrimitiveType element_type = subshape.element_type();
-    if (element_type == PRED) {
-      // We display predicates in a densely packed form.
-      return literal.Get<bool>(indices, shape_index) ? "1" : "0";
-    }
-    return ((!indices.empty() && indices.back() > 0) ? ", " : "") +
-           literal.GetAsString(indices, shape_index);
   };
 
   // TODO(b/32894291): refactor this code to reduce code duplication.
@@ -963,7 +1096,47 @@ void ToStringHelper(const Literal& literal, const ShapeIndex& shape_index,
     }
     pieces->push_back(tensorflow::str_util::Join(tuple_pieces, ",\n"));
     pieces->push_back("\n)");
-  } else if (ShapeUtil::Rank(subshape) == 0) {
+    return;
+  }
+
+  if (LayoutUtil::IsSparseArray(subshape)) {
+    pieces->push_back(shape_to_string(subshape));
+    pieces->push_back("{");
+    int64 rank = ShapeUtil::Rank(subshape);
+    int64 num_elements = literal.sparse_element_count();
+    for (int64 i = 0; i < num_elements; ++i) {
+      if (i > 0) {
+        pieces->push_back(", ");
+      }
+      if (rank == 1) {
+        pieces->push_back(StrCat(literal.GetSparseIndex(i)[0]));
+        pieces->push_back(": ");
+      } else {
+        pieces->push_back("[");
+        pieces->push_back(
+            tensorflow::str_util::Join(literal.GetSparseIndex(i), ", "));
+        pieces->push_back("]: ");
+      }
+      pieces->push_back(literal.GetSparseElementAsString(i));
+    }
+    pieces->push_back("}");
+    return;
+  }
+
+  CHECK(LayoutUtil::IsDenseArray(subshape));
+
+  auto element_to_string =
+      [&](tensorflow::gtl::ArraySlice<int64> indices) -> string {
+    PrimitiveType element_type = subshape.element_type();
+    if (element_type == PRED) {
+      // We display predicates in a densely packed form.
+      return literal.Get<bool>(indices, shape_index) ? "1" : "0";
+    }
+    return ((!indices.empty() && indices.back() > 0) ? ", " : "") +
+           literal.GetAsString(indices, shape_index);
+  };
+
+  if (ShapeUtil::Rank(subshape) == 0) {
     pieces->push_back(literal.GetAsString({}, shape_index));
   } else if (ShapeUtil::Rank(subshape) == 1) {
     pieces->push_back("{");
@@ -1057,6 +1230,11 @@ void ToStringHelper(const Literal& literal, const ShapeIndex& shape_index,
 }
 
 }  // namespace
+
+int64 Literal::sparse_element_count() const {
+  CHECK(LayoutUtil::IsSparseArray(shape()));
+  return sparse_indices()->index_count();
+}
 
 string Literal::ToString(bool print_layout) const {
   std::vector<string> pieces;

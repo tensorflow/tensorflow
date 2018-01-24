@@ -712,8 +712,8 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
           {1, 2},
           {3, 4},
       })));
-  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {1, 0});
-  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {0, 1});
+  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
+  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1});
   auto outfeed10 = builder.AddInstruction(
       HloInstruction::CreateOutfeed(shape10, constant, ""));
   auto outfeed01 = builder.AddInstruction(
@@ -1162,7 +1162,7 @@ TEST_F(HloInstructionTest, Stringification) {
 
   EXPECT_EQ(
       fusion->ToString(options),
-      "%fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
+      "%dot_fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
       "f32[20,10]{1,0} %y), kind=kTransposeDot, calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(

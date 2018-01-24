@@ -260,6 +260,7 @@ tf_cc_test(
     srcs = ["shape_util_test.cc"],
     deps = [
         ":shape_util",
+        ":status_macros",
         ":test",
         ":test_helpers",
         ":types",

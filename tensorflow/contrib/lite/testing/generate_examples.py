@@ -94,12 +94,12 @@ KNOWN_BUGS = {
     r"softmax.*input_shape=\[1,3,4,3\]": "67749831",
     # SpaceToDepth only supports float32.
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
-    # Gather doesn't support int64 indices.
-    r"gather.*indices_dtype=int64": "XXXX",
     # BatchToSpaceND doesn't support cropping.
     r"batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\]": "70594634",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
+    # Div will use floordiv
+    r"div.*int32": "72051395"
 }
 
 
@@ -632,7 +632,7 @@ def make_constant_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
-def make_add_tests(zip_path):
+def make_binary_op_tests(zip_path, binary_operator):
   """Make a set of tests to do add with and without broadcast."""
 
   # These parameters are split because we don't support broadcasting.
@@ -640,25 +640,36 @@ def make_add_tests(zip_path):
       "dtype": [tf.float32, tf.int32],
       "input_shape_1": [[1, 3, 4, 3]],
       "input_shape_2": [[1, 3, 4, 3]],
+      "activation": [True]
   }, {
       "dtype": [tf.float32],
       "input_shape_1": [[5]],
       "input_shape_2": [[5]],
+      "activation": [False, True]
   }, {
       "dtype": [tf.float32],
       "input_shape_1": [[1, 3, 4, 3]],
       "input_shape_2": [[3]],
+      "activation": [True]
   }]
 
   def build_graph(parameters):
-    input1 = tf.placeholder(dtype=parameters["dtype"], name="input1",
-                            shape=parameters["input_shape_1"])
-    input2 = tf.placeholder(dtype=parameters["dtype"], name="input2",
-                            shape=parameters["input_shape_2"])
-    out = tf.add(input1, input2)
+    """Builds the graph given the current parameters."""
+    input1 = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input1",
+        shape=parameters["input_shape_1"])
+    input2 = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input2",
+        shape=parameters["input_shape_2"])
+    out = binary_operator(input1, input2)
+    if parameters["activation"]:
+      out = tf.nn.relu(out)
     return [input1, input2], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
+    """Builds operand inputs for op."""
     input1 = create_tensor_data(parameters["dtype"],
                                 parameters["input_shape_1"])
     input2 = create_tensor_data(parameters["dtype"],
@@ -672,42 +683,54 @@ def make_add_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
-def make_mul_tests(zip_path):
-  """Make a set of tests to do mul with and without broadcast."""
+def make_mean_tests(zip_path):
+  """Make a set of tests to do mean."""
 
-  # These parameters are split because we don't support broadcasting.
   test_parameters = [{
-      "dtype": [tf.float32, tf.int32],
-      "input_shape_1": [[1, 3, 4, 3]],
-      "input_shape_2": [[1, 3, 4, 3]],
+      "input_dtype": [tf.float32, tf.int32, tf.int64],
+      "input_shape": [[3, 2, 4]],
+      "axis": [
+          None, 0, 1, 2, [0, 1], [0, 2], [1, 2], [0, 1, 2], [1, 0], [2, 0],
+          [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1], [-1, 0],
+          [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
+      ],
+      "keep_dims": [True, False],
   }, {
-      "dtype": [tf.float32],
-      "input_shape_1": [[5]],
-      "input_shape_2": [[5]],
-  }, {
-      "dtype": [tf.float32],
-      "input_shape_1": [[1, 3, 4, 3]],
-      "input_shape_2": [[3]],
+      "input_dtype": [tf.float32, tf.int32, tf.int64],
+      "input_shape": [[1, 224, 224, 3]],
+      "axis": [
+          None, 0, 1, 2, 3, [1, 2], [0, 3], [1, 2, 3], [0, 1, 2, 3],
+          [3, 2, 1, 0], [3, 1, 0, 2], [2, 0], [3, 0], [3, 1], [1, 0], -1, -2,
+          -3, -4, [0, -2], [2, 3, -1, 0], [3, 1, 2, -3], [3, -4], [2, 2, 2],
+          [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
+      ],
+      "keep_dims": [True, False],
   }]
 
   def build_graph(parameters):
-    input1 = tf.placeholder(dtype=parameters["dtype"], name="input1",
-                            shape=parameters["input_shape_1"])
-    input2 = tf.placeholder(dtype=parameters["dtype"], name="input2",
-                            shape=parameters["input_shape_2"])
-    out = tf.multiply(input1, input2)
-    return [input1, input2], [out]
+    """Build the mean op testing graph."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.reduce_mean(
+        input_tensor,
+        axis=parameters["axis"],
+        keep_dims=parameters["keep_dims"])
+    return [input_tensor], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input1 = create_tensor_data(parameters["dtype"],
-                                parameters["input_shape_1"])
-    input2 = create_tensor_data(parameters["dtype"],
-                                parameters["input_shape_2"])
-    return [input1, input2], sess.run(
-        outputs, feed_dict={inputs[0]: input1,
-                            inputs[1]: input2})
+    input_values = create_tensor_data(parameters["input_dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_binary_op_tests_func(binary_operator):
+  """Return a function that does a test on a binary operator."""
+  return lambda zip_path: make_binary_op_tests(zip_path, binary_operator)
 
 
 def make_gather_tests(zip_path):
@@ -1048,16 +1071,21 @@ def make_local_response_norm_tests(zip_path):
 def make_pad_tests(zip_path):
   """Make a set of tests to do pad."""
 
-  test_parameters = [{
-      "dtype": [tf.int32, tf.float32],
-      "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
-      "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]], [[0, 1], [0, 0], [0, 0],
-                                                      [2, 3]]],
-  }, {
-      "dtype": [tf.int32, tf.float32],
-      "input_shape": [[1, 2], [0, 1, 2]],
-      "paddings": [[[0, 1], [2, 3]]],
-  }]
+  # TODO(nupurgarg): Add test for tf.uint8.
+  test_parameters = [
+      {
+          "dtype": [tf.int32, tf.int64, tf.float32],
+          "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
+          "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]], [[0, 1], [0, 0],
+                                                          [0, 0], [2, 3]]],
+      },
+      # Non-4D use case.
+      {
+          "dtype": [tf.int32, tf.int64, tf.float32],
+          "input_shape": [[1, 2], [0, 1, 2]],
+          "paddings": [[[0, 1], [2, 3]]],
+      },
+  ]
 
   def build_graph(parameters):
     input_tensor = tf.placeholder(
@@ -1079,7 +1107,7 @@ def make_pad_tests(zip_path):
 def make_reshape_tests(zip_path):
   """Make a set of tests to do reshape."""
 
-  # Alll shapes below are suitable for tensors with 420 elements.
+  # All shapes below are suitable for tensors with 420 elements.
   test_parameters = [{
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[3, 4, 5, 7], [4, 105], [21, 5, 2, 2], [420]],
@@ -1318,6 +1346,44 @@ def make_transpose_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_squeeze_tests(zip_path):
+  """Make a set of tests to do squeeze."""
+
+  test_parameters = [{
+      "dtype": [tf.int32, tf.float32, tf.int64],
+      "input_shape": [[1, 2, 1, 3, 1, 4, 1, 1]],
+      "axis": [
+          None, [], [0, 2], [4, 7], [-1, 0, 2, 0, 7, -6], [1], [2, 3, 2],
+          [-1, -2, -4, -6, -8], [0, 2, 4, 6, 7], [7, 6, 4, 2, 0], [6, 6],
+          [0, 1, 2, 3, 4, 5, 6, 7], [-2, -3, 1, 0, 7, -5]
+      ],
+  }, {
+      "dtype": [tf.int32, tf.float32, tf.int64],
+      "input_shape": [[1]],
+      "axis": [None, [], [0], [-1]],
+  }, {
+      "dtype": [tf.int32, tf.float32, tf.int64],
+      "input_shape": [[1, 1, 1, 1, 1]],
+      "axis": [None, [], [0], [3, 0], [-2, 0, 3, 2]],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.squeeze(input_tensor, axis=parameters["axis"])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_l2_pool(input_tensor, ksize, strides, padding, data_format):
   """Given an input perform a sequence of TensorFlow ops to produce l2pool."""
   return tf.sqrt(tf.nn.avg_pool(
@@ -1345,8 +1411,10 @@ def main(unused_args):
 
     dispatch = {
         "control_dep.zip": make_control_dep_tests,
-        "add.zip": make_add_tests,
+        "add.zip": make_binary_op_tests_func(tf.add),
         "space_to_batch_nd.zip": make_space_to_batch_nd_tests,
+        "div.zip": make_binary_op_tests_func(tf.div),
+        "sub.zip": make_binary_op_tests_func(tf.subtract),
         "batch_to_space_nd.zip": make_batch_to_space_nd_tests,
         "conv.zip": make_conv_tests,
         "constant.zip": make_constant_tests,
@@ -1358,7 +1426,7 @@ def main(unused_args):
         "fused_batch_norm.zip": make_fused_batch_norm_tests,
         "l2norm.zip": make_l2norm_tests,
         "local_response_norm.zip": make_local_response_norm_tests,
-        "mul.zip": make_mul_tests,
+        "mul.zip": make_binary_op_tests_func(tf.multiply),
         "relu.zip": make_relu_tests,
         "relu1.zip": make_relu1_tests,
         "relu6.zip": make_relu6_tests,
@@ -1372,6 +1440,8 @@ def main(unused_args):
         "softmax.zip": make_softmax_tests,
         "space_to_depth.zip": make_space_to_depth_tests,
         "transpose.zip": make_transpose_tests,
+        "mean.zip": make_mean_tests,
+        "squeeze.zip": make_squeeze_tests,
     }
     out = FLAGS.zip_to_output
     bin_path = FLAGS.toco

@@ -173,11 +173,13 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
   bool is_same_device =
       (srcd == dstd) || (DeviceName(srcd) == DeviceName(dstd));
   const bool dst_cpu = IsCPU(dstd);
+  const bool src_cpu = IsCPU(srcd);
   if (is_same_device) {
     return new TFE_TensorHandle(h->t, dst_cpu ? nullptr : dstd);
   }
   tensorflow::Tensor* src = &(h->t);
-  if (!dst_cpu && !tensorflow::DataTypeCanUseMemcpy(src->dtype())) {
+  if (!dst_cpu && (src->dtype() != tensorflow::DT_VARIANT &&
+                   !tensorflow::DataTypeCanUseMemcpy(src->dtype()))) {
     TF_SetStatus(
         status, TF_INVALID_ARGUMENT,
         tensorflow::strings::StrCat("Can't copy Tensor with type ",
@@ -186,13 +188,16 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
             .c_str());
     return nullptr;
   }
-  tensorflow::Tensor dst(dstd->GetAllocator(tensorflow::AllocatorAttributes()),
-                         src->dtype(), src->shape());
+  tensorflow::AllocatorAttributes attr;
+  if (src->dtype() == tensorflow::DT_VARIANT) {
+    attr.set_on_host(true);
+  }
+  tensorflow::Tensor dst(dstd->GetAllocator(attr), src->dtype(), src->shape());
   if (src->shape().num_elements() == 0) {
     return new TFE_TensorHandle(dst, dst_cpu ? nullptr : dstd);
   }
   tensorflow::DeviceContext* src_device_context = nullptr;
-  if (!IsCPU(srcd)) {
+  if (!src_cpu) {
     src_device_context = srcd->tensorflow_gpu_device_info()->default_context;
   }
   tensorflow::DeviceContext* dst_device_context = nullptr;

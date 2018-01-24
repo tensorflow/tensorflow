@@ -22,8 +22,8 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -65,6 +65,9 @@ Status ReadProtoFile(Env* env, const string& fname, T* proto,
 }
 
 void PrintHelp();
+
+// Generate helper message based on the command and options.
+string QueryDoc(const string& cmd, const Options& opts);
 
 }  // namespace tfprof
 }  // namespace tensorflow

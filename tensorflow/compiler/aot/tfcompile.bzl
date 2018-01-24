@@ -128,7 +128,8 @@ def tf_library(name, graph, config,
 
   # Rule that runs tfcompile to produce the header and object file.
   header_file = name + ".h"
-  object_file = name + ".o"
+  metadata_object_file = name + "_tfcompile_metadata.o"
+  function_object_file = name + "_tfcompile_function.o"
   ep = ("__" + PACKAGE_NAME + "__" + name).replace("/", "_")
   if type(tfcompile_flags) == type(""):
     flags = tfcompile_flags
@@ -142,7 +143,8 @@ def tf_library(name, graph, config,
       ],
       outs=[
           header_file,
-          object_file,
+          metadata_object_file,
+          function_object_file,
       ],
       cmd=("$(location " + tfcompile_tool + ")" +
            " --graph=$(location " + tfcompile_graph + ")" +
@@ -151,7 +153,8 @@ def tf_library(name, graph, config,
            " --cpp_class=" + cpp_class +
            " --target_triple=" + target_llvm_triple() +
            " --out_header=$(@D)/" + header_file +
-           " --out_object=$(@D)/" + object_file +
+           " --out_metadata_object=$(@D)/" + metadata_object_file +
+           " --out_function_object=$(@D)/" + function_object_file +
            " " + flags),
       tools=[tfcompile_tool],
       visibility=visibility,
@@ -202,7 +205,7 @@ def tf_library(name, graph, config,
   need_xla_data_proto = (flags and flags.find("--gen_program_shape") != -1)
   native.cc_library(
       name=name,
-      srcs=[object_file],
+      srcs=[function_object_file, metadata_object_file],
       hdrs=[header_file],
       visibility=visibility,
       testonly=testonly,

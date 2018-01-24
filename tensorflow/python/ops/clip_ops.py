@@ -28,8 +28,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("clip_by_value")
 def clip_by_value(t, clip_value_min, clip_value_max,
                   name=None):
   """Clips tensor values to a specified min and max.
@@ -70,6 +72,7 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   return t_max
 
 
+@tf_export("clip_by_norm")
 def clip_by_norm(t, clip_norm, axes=None, name=None):
   """Clips tensor values to a maximum L2-norm.
 
@@ -117,6 +120,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
 
   return tclip
 
+
+@tf_export("global_norm")
 def global_norm(t_list, name=None):
   """Computes the global norm of multiple tensors.
 
@@ -164,6 +169,8 @@ def global_norm(t_list, name=None):
 
   return norm
 
+
+@tf_export("clip_by_global_norm")
 def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   """Clips values of multiple tensors by the ratio of the sum of their norms.
 
@@ -246,6 +253,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   return list_clipped, use_norm
 
 
+@tf_export("clip_by_average_norm")
 def clip_by_average_norm(t, clip_norm, name=None):
   """Clips tensor values to a maximum average L2-norm.
 
