@@ -539,6 +539,7 @@ struct MatMulFunctor<SYCLDevice, T> {
   REGISTER_KERNEL_BUILDER(                                                     \
       Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T").Label("eigen"), \
       MatMulOp<CPUDevice, T, false /* cublas, ignored for CPU */>);
+
 #define REGISTER_CPU(T)                                             \
   REGISTER_KERNEL_BUILDER(                                          \
       Name("MatMul").Device(DEVICE_CPU).TypeConstraint<T>("T"),     \
