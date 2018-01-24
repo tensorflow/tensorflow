@@ -5,6 +5,7 @@ load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
+load("//third_party/toolchains/clang6:repo.bzl", "clang6_configure")
 load("//third_party/toolchains/cpus/arm:arm_compiler_configure.bzl", "arm_compiler_configure")
 load("//third_party:repo.bzl", "tf_http_archive")
 load("@io_bazel_rules_closure//closure/private:java_import_external.bzl", "java_import_external")
@@ -65,6 +66,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   # files, in case the parsing of those build files depends on the bazel
   # version we require here.
   check_bazel_version_at_least("0.5.4")
+  clang6_configure(name="local_config_clang6")
   cuda_configure(name="local_config_cuda")
   git_configure(name="local_config_git")
   sycl_configure(name="local_config_sycl")
@@ -473,11 +475,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/4c73606e33bba4c18a77c28e5a853adfea421951.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/4c73606e33bba4c18a77c28e5a853adfea421951.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/cecc5a23281018f9bbdd6f659462b8c99d8e8926.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/cecc5a23281018f9bbdd6f659462b8c99d8e8926.tar.gz",
       ],
-      sha256 = "4e179ad9a7de252602b58e109ff00aad9662e1e83334791b56dafdb580a1e850",
-      strip_prefix = "llvm-4c73606e33bba4c18a77c28e5a853adfea421951",
+      sha256 = "b0960749fe2bf78d7c8350c18d584cf6dd5abeeae20da43d4829cdbc0166626c",
+      strip_prefix = "llvm-cecc5a23281018f9bbdd6f659462b8c99d8e8926",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
