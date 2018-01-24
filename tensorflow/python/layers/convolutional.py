@@ -1623,6 +1623,8 @@ class Conv3DTranspose(Conv3D):
 
     if self.use_bias:
       outputs_shape = outputs.shape.as_list()
+      if outputs_shape[0] is None:
+        outputs_shape[0] = -1
       if self.data_format == 'channels_first':
         outputs_4d = array_ops.reshape(outputs, [
             outputs_shape[0], outputs_shape[1],
