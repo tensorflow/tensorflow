@@ -615,11 +615,11 @@ void Tensor::CheckType(DataType expected_dtype) const {
 
 void Tensor::CheckTypeAndIsAligned(DataType expected_dtype) const {
   CHECK_EQ(dtype(), expected_dtype);
-  CHECK(IsAligned());
+  CHECK(IsAligned()) << "CheckTypeAndIsAligned";
 }
 
 void Tensor::CheckIsAlignedAndSingleElement() const {
-  CHECK(IsAligned());
+  CHECK(IsAligned()) << "Aligned and single element";
   CHECK_EQ(1, NumElements()) << "Must have a one element tensor";
 }
 

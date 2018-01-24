@@ -25,9 +25,11 @@ from tensorflow.python.ops import summary_op_util
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_logging_ops import *
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 
+@tf_export("summary.tensor_summary")
 def tensor_summary(name,
                    tensor,
                    summary_description=None,

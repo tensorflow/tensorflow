@@ -87,6 +87,8 @@ cuda_py_test(
     srcs = ["list_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:list_ops",
         "//tensorflow/python/eager:context",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -2488,6 +2490,7 @@ cuda_py_test(
         "//tensorflow/python:sparse_ops",
     ],
     shard_count = 5,
+    tags = ["noasan"],
 )
 
 cuda_py_test(

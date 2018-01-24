@@ -14,15 +14,15 @@
 # limitations under the License.
 # ==============================================================================
 
-# Script to update tensorflow/core/api_def/base_api/api_def*.pbtxt files.
+# Script to create tensorflow/core/api_def/base_api/api_def*.pbtxt
+# files for new ops.
 
 set -e
 
 current_file="$(readlink -f "$0")"
 current_dir="$(dirname "$current_file")"
 
-bazel build //tensorflow/core:api_test
-bazel-bin/tensorflow/core/api_test \
-  --update_api_def \
-  --api_def_dir="${current_dir}/base_api"
-
+bazel build //tensorflow/core/api_def:update_api_def
+bazel-bin/tensorflow/core/api_def/update_api_def \
+  --api_def_dir="${current_dir}/base_api" \
+  --op_file_pattern="${current_dir}/../ops/*_ops.cc"

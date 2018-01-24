@@ -56,7 +56,7 @@ class CallTreesTest(test.TestCase):
       return test_fn_1(a) + 1
 
     node = self._parse_and_analyze(test_fn_2, {'test_fn_1': test_fn_1})
-    node = call_trees.transform(node, TestNamer(), set())
+    node = call_trees.transform(node, TestNamer(), {}, (), ())
     result = compiler.ast_to_object(node)
     # Only test_fn_2 is transformed, so we'll insert renamed_test_fn_1 manually.
     setattr(result, 'renamed_test_fn_1', renamed_test_fn_1)
@@ -74,9 +74,9 @@ class CallTreesTest(test.TestCase):
         'math_ops': math_ops,
         'constant_op': constant_op
     })
-    node = call_trees.transform(node, TestNamer(),
+    node = call_trees.transform(node, TestNamer(), {},
                                 set(((math_ops.__name__,),
-                                     (constant_op.__name__,))))
+                                     (constant_op.__name__,))), ())
     result = compiler.ast_to_object(node)
     setattr(result, 'math_ops', math_ops)
     setattr(result, 'constant_op', constant_op)

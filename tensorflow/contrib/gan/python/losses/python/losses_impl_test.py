@@ -623,5 +623,32 @@ class CombineAdversarialLossTest(test.TestCase):
         self.assertNear(gnorm_np, precond_gnorm_np, 1e-5)
 
 
+class CycleConsistencyLossTest(test.TestCase):
+  """Tests for cycle_consistency_loss."""
+
+  def setUp(self):
+    super(CycleConsistencyLossTest, self).setUp()
+
+    self._data_x_np = [[1.0, 2, 3], [4, 5, 6]]
+    self._reconstructed_data_x_np = [[7.0, 8, 9], [10, 11, 12]]
+    self._data_y_np = [1.0, 9]
+    self._reconstructed_data_y_np = [-2.0, 3]
+
+    self._data_x = constant_op.constant(self._data_x_np, dtype=dtypes.float32)
+    self._reconstructed_data_x = constant_op.constant(
+        self._reconstructed_data_x_np, dtype=dtypes.float32)
+    self._data_y = constant_op.constant(self._data_y_np, dtype=dtypes.float32)
+    self._reconstructed_data_y = constant_op.constant(
+        self._reconstructed_data_y_np, dtype=dtypes.float32)
+
+  def test_correct_loss(self):
+    loss = tfgan_losses.cycle_consistency_loss(
+        self._data_x, self._reconstructed_data_x, self._data_y,
+        self._reconstructed_data_y)
+    with self.test_session(use_gpu=True):
+      variables.global_variables_initializer().run()
+      self.assertNear(5.25, loss.eval(), 1e-5)
+
+
 if __name__ == '__main__':
   test.main()

@@ -1253,6 +1253,24 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
           (((np_vars[0] * np_vars[1]) + (np_vars[2] * np_vars[3]))
            + ((np_vars[4] * np_vars[5]) + (np_vars[6] * np_vars[7]))))
 
+  def testVariableCreator(self):
+
+    variable_names = []
+
+    def creator_a(next_creator, **kwargs):
+      variable_names.append(kwargs.get("name", ""))
+      return next_creator(**kwargs)
+
+    def creator_b(next_creator, **kwargs):
+      kwargs["name"] = "forced_name"
+      return next_creator(**kwargs)
+
+    with variable_scope.variable_creator_scope(creator_a):
+      with variable_scope.variable_creator_scope(creator_b):
+        variable_scope.variable(1.0, name="one_name")
+
+    self.assertAllEqual(variable_names, ["forced_name"])
+
 
 class PartitionInfoTest(test.TestCase):
 

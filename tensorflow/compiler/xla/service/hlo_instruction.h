@@ -409,6 +409,20 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
+  // Creates a sequence of instructions that performs an explicit broadcast of
+  // the operand to the target shape.
+  //
+  // Interior HLOs are passed to "adder", but the "root" HLO of the sequence is
+  // returned as a unique_ptr for API consistency with other factory methods in
+  // this interface.
+  //
+  // TODO(b/72173833) Ideally HloComputations would always be present, and so
+  // the adder being passed by the caller would not be necessary.
+  static std::unique_ptr<HloInstruction> CreateBroadcastSequence(
+      const Shape& output_shape, HloInstruction* operand,
+      const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+          adder);
+
   // Creates a pad instruction, where the operand is padded on the edges and
   // between the elements with the given padding value.
   static std::unique_ptr<HloInstruction> CreatePad(
