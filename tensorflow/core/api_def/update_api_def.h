@@ -21,7 +21,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-// Returns ApiDef text representation in multi-line format
+// Returns ApiDefs text representation in multi-line format
 // constructed based on the given op.
 string CreateApiDef(const OpDef& op);
 
