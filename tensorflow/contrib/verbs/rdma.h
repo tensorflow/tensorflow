@@ -73,15 +73,8 @@ struct RemoteMR {
   uint64_t remote_addr;
   uint32_t rkey;
 };
-enum BufferStatus {
-  none,
-  idle,
-  busy
-};
-enum Location {
-  local,
-  remote
-};
+enum BufferStatus { none, idle, busy };
+enum Location { local, remote };
 
 enum RdmaMessageType {
   RDMA_MESSAGE_META_DATA_UPDATE,

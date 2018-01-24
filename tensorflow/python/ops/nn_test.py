@@ -131,8 +131,7 @@ class LogPoissonLossTest(test_lib.TestCase):
     y_np = self._log_poisson_loss(x_np, z_np, compute_full_loss=False)
     y_np_stirling = self._log_poisson_loss(x_np, z_np, compute_full_loss=True)
     y_tf = nn_impl.log_poisson_loss(z_np, x_np, compute_full_loss=False)
-    y_tf_stirling = nn_impl.log_poisson_loss(
-        z_np, x_np, compute_full_loss=True)
+    y_tf_stirling = nn_impl.log_poisson_loss(z_np, x_np, compute_full_loss=True)
     y_tf_np = self.evaluate(y_tf)
     y_tf_np_stirling = self.evaluate(y_tf_stirling)
     eps = 1e-3
@@ -773,8 +772,8 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     def _SoftmaxCrossEntropyWithLogits(logits, targets):
       # logits, targets: float arrays of the same shape.
       assert logits.shape == targets.shape
-      stable_exp_logits = np.exp(logits - np.amax(
-          logits, axis=1, keepdims=True))
+      stable_exp_logits = np.exp(
+          logits - np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
       return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
@@ -865,8 +864,8 @@ class LeakyReluTest(test_lib.TestCase):
     batch_size = 3
     height, width = 4, 4
     np.random.seed(1)  # Make it reproducible.
-    inputs = np.random.uniform(
-        size=(batch_size, height, width, 3)).astype(np.float32)
+    inputs = np.random.uniform(size=(batch_size, height, width, 3)).astype(
+        np.float32)
     inputs = constant_op.constant(inputs)
 
     outputs = nn_ops.leaky_relu(inputs)
@@ -884,7 +883,8 @@ class LeakyReluTest(test_lib.TestCase):
       with self.test_session() as sess:
         outputs = sess.run(outputs)
       tol = 2e-3 if dtype == np.float16 else 1e-6
-      self.assertAllClose(outputs, [-0.4, -0.2, 0.0, 1.0, 2.0], rtol=tol, atol=tol)
+      self.assertAllClose(
+          outputs, [-0.4, -0.2, 0.0, 1.0, 2.0], rtol=tol, atol=tol)
 
 
 class SwishTest(test_lib.TestCase):
@@ -915,7 +915,10 @@ class SwishTest(test_lib.TestCase):
 
 class MomentsTest(test_lib.TestCase):
 
-  def doOutputTest(self, input_shape, moments_axes, tol=1e-4,
+  def doOutputTest(self,
+                   input_shape,
+                   moments_axes,
+                   tol=1e-4,
                    check_gradients=False):
     for mu in [0.0, 1.0, 1e3]:
       for sigma in [1.0, 0.1]:
