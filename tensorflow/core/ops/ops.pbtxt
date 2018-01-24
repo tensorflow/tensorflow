@@ -8540,6 +8540,10 @@ op {
       s: ""
     }
   }
+  deprecation {
+    version: 26
+    explanation: "Use FixedLengthRecordReaderV2"
+  }
   is_stateful: true
 }
 op {
@@ -10136,6 +10140,10 @@ op {
     default_value {
       s: ""
     }
+  }
+  deprecation {
+    version: 26
+    explanation: "Use IdentityReaderV2"
   }
   is_stateful: true
 }
@@ -19699,6 +19707,7 @@ op {
         type: DT_UINT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -19733,6 +19742,7 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_DOUBLE
       }
@@ -28618,6 +28628,10 @@ op {
       s: ""
     }
   }
+  deprecation {
+    version: 26
+    explanation: "Use TFRecordReaderV2"
+  }
   is_stateful: true
 }
 op {
@@ -28888,6 +28902,10 @@ op {
     name: "handle"
     type: DT_STRING
   }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayCloseV3"
+  }
 }
 op {
   name: "TensorArrayCloseV3"
@@ -29067,6 +29085,10 @@ op {
       }
     }
   }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayGatherV3"
+  }
 }
 op {
   name: "TensorArrayGatherV3"
@@ -29143,6 +29165,10 @@ op {
   attr {
     name: "source"
     type: "string"
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayGradV3"
   }
   is_stateful: true
 }
@@ -29253,6 +29279,10 @@ op {
     name: "dtype"
     type: "type"
   }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayReadV3"
+  }
 }
 op {
   name: "TensorArrayReadV3"
@@ -29336,6 +29366,10 @@ op {
     name: "T"
     type: "type"
   }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayScatterV3"
+  }
 }
 op {
   name: "TensorArrayScatterV3"
@@ -29398,6 +29432,10 @@ op {
   output_arg {
     name: "size"
     type: DT_INT32
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArraySizeV3"
   }
 }
 op {
@@ -29473,6 +29511,10 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArraySplitV3"
   }
 }
 op {
@@ -29574,6 +29616,10 @@ op {
     default_value {
       s: ""
     }
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayV3"
   }
   is_stateful: true
 }
@@ -29691,6 +29737,10 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayWriteV3"
   }
 }
 op {
@@ -30068,6 +30118,10 @@ op {
     default_value {
       s: ""
     }
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TextLineReaderV2"
   }
   is_stateful: true
 }

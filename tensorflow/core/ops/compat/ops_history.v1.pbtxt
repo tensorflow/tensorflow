@@ -18823,6 +18823,57 @@ op {
   is_stateful: true
 }
 op {
+  name: "FixedLengthRecordReader"
+  output_arg {
+    name: "reader_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "header_bytes"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "record_bytes"
+    type: "int"
+  }
+  attr {
+    name: "footer_bytes"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "hop_bytes"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  deprecation {
+    version: 26
+  }
+  is_stateful: true
+}
+op {
   name: "FixedLengthRecordReaderV2"
   output_arg {
     name: "reader_handle"
@@ -21381,6 +21432,32 @@ op {
     default_value {
       s: ""
     }
+  }
+  is_stateful: true
+}
+op {
+  name: "IdentityReader"
+  output_arg {
+    name: "reader_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  deprecation {
+    version: 26
   }
   is_stateful: true
 }
@@ -38545,6 +38622,46 @@ op {
   }
 }
 op {
+  name: "ResizeBilinear"
+  input_arg {
+    name: "images"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "resized_images"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_INT8
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_UINT16
+        type: DT_INT32
+        type: DT_INT64
+        type: DT_BFLOAT16
+        type: DT_HALF
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
   name: "ResizeBilinearGrad"
   input_arg {
     name: "grads"
@@ -38564,6 +38681,40 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_HALF
+        type: DT_DOUBLE
+      }
+    }
+  }
+  attr {
+    name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+}
+op {
+  name: "ResizeBilinearGrad"
+  input_arg {
+    name: "grads"
+    type: DT_FLOAT
+  }
+  input_arg {
+    name: "original_image"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_DOUBLE
       }
@@ -61859,6 +62010,39 @@ op {
   is_stateful: true
 }
 op {
+  name: "TFRecordReader"
+  output_arg {
+    name: "reader_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "compression_type"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  deprecation {
+    version: 26
+  }
+  is_stateful: true
+}
+op {
   name: "TFRecordReaderV2"
   output_arg {
     name: "reader_handle"
@@ -62260,6 +62444,16 @@ op {
   }
 }
 op {
+  name: "TensorArrayCloseV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  deprecation {
+    version: 26
+  }
+}
+op {
   name: "TensorArrayCloseV3"
   input_arg {
     name: "handle"
@@ -62437,6 +62631,41 @@ op {
   }
 }
 op {
+  name: "TensorArrayGatherV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  deprecation {
+    version: 26
+  }
+}
+op {
   name: "TensorArrayGatherV3"
   input_arg {
     name: "handle"
@@ -62510,6 +62739,29 @@ op {
   attr {
     name: "source"
     type: "string"
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorArrayGradV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "grad_handle"
+    type: DT_STRING
+  }
+  attr {
+    name: "source"
+    type: "string"
+  }
+  deprecation {
+    version: 26
   }
   is_stateful: true
 }
@@ -62620,6 +62872,32 @@ op {
   }
 }
 op {
+  name: "TensorArrayReadV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "value"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  deprecation {
+    version: 26
+  }
+}
+op {
   name: "TensorArrayReadV3"
   input_arg {
     name: "handle"
@@ -62702,6 +62980,36 @@ op {
   }
 }
 op {
+  name: "TensorArrayScatterV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "indices"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 26
+  }
+}
+op {
   name: "TensorArrayScatterV3"
   input_arg {
     name: "handle"
@@ -62761,6 +63069,24 @@ op {
   output_arg {
     name: "size"
     type: DT_INT32
+  }
+}
+op {
+  name: "TensorArraySizeV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  deprecation {
+    version: 26
   }
 }
 op {
@@ -62835,6 +63161,36 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "TensorArraySplitV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "lengths"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 26
   }
 }
 op {
@@ -62935,6 +63291,55 @@ op {
     default_value {
       s: ""
     }
+  }
+  is_stateful: true
+}
+op {
+  name: "TensorArrayV2"
+  input_arg {
+    name: "size"
+    type: DT_INT32
+  }
+  output_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+  }
+  attr {
+    name: "element_shape"
+    type: "shape"
+    default_value {
+      shape {
+        unknown_rank: true
+      }
+    }
+  }
+  attr {
+    name: "dynamic_size"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "clear_after_read"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "tensor_array_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  deprecation {
+    version: 26
   }
   is_stateful: true
 }
@@ -63101,6 +63506,36 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+}
+op {
+  name: "TensorArrayWriteV2"
+  input_arg {
+    name: "handle"
+    type: DT_STRING
+  }
+  input_arg {
+    name: "index"
+    type: DT_INT32
+  }
+  input_arg {
+    name: "value"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "flow_in"
+    type: DT_FLOAT
+  }
+  output_arg {
+    name: "flow_out"
+    type: DT_FLOAT
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+  deprecation {
+    version: 26
   }
 }
 op {
@@ -63478,6 +63913,39 @@ op {
     default_value {
       s: ""
     }
+  }
+  is_stateful: true
+}
+op {
+  name: "TextLineReader"
+  output_arg {
+    name: "reader_handle"
+    type: DT_STRING
+    is_ref: true
+  }
+  attr {
+    name: "skip_header_lines"
+    type: "int"
+    default_value {
+      i: 0
+    }
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  deprecation {
+    version: 26
   }
   is_stateful: true
 }
