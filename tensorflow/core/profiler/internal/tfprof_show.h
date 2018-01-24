@@ -15,8 +15,8 @@ limitations under the License.
 
 // Parent class and utilities for tfprof_graph and tfprof_scope.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
 
 #include <algorithm>
 #include <string>
@@ -151,4 +151,4 @@ string FormatAcceleratorExecTime(const T* node, const Options& opts) {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_

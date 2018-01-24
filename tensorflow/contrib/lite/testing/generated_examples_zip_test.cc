@@ -48,50 +48,51 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
     // Add doesn't support broadcasting.
-    {R"(adda.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
-    {R"(mula.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
-    {R"(diva.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
-    {R"(suba.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
+    {R"(^\/adda.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
+    {R"(^\/mula.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
+    {R"(^\/diva.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
+    {R"(^\/suba.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
 
     // Add only supports float32. (and "constant" tests use Add)
-    {R"(adda.*int32)", "68808744"},
-    {R"(constant.*int32)", "68808744"},
-    {R"(mul.*int32)", "68808744"},
-    {R"(div.*int32)", "68808744"},
-    {R"(sub.*int32)", "68808744"},
+    {R"(^\/adda.*int32)", "68808744"},
+    {R"(^\/constant.*int32)", "68808744"},
+    {R"(^\/mul.*int32)", "68808744"},
+    {R"(^\/div.*int32)", "68808744"},
+    {R"(^\/sub.*int32)", "68808744"},
 
     // Pad only supports 4D tensors.
-    {R"(paddtype=.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
+    {R"(^\/pad.*,input_shape=\[.,.\],paddings=\[\[.,.\],\[.,.\]\])",
      "70527055"},
 
     // L2Norm only supports tensors with 4D or fewer.
-    {R"(l2normdim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
+    {R"(^\/l2normdim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
 
     // SpaceToBatch only supports 4D tensors.
-    {R"(space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
+    {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
 
     // L2Norm only works for dim=-1.
-    {R"(l2normdim=-2,epsilon=.*,input_shape=\[.,.\])", "67963812"},
-    {R"(l2normdim=0,epsilon=.*,input_shape=\[.,.\])", "67963812"},
-    {R"(l2normdim=-2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(l2normdim=-2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(l2normdim=2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(l2normdim=2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(l2normdim=0,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(l2normdim=0,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(l2normdim=1,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(l2normdim=1,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
-    {R"(l2normdim=\[2,3\],epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
-    {R"(l2normdim=\[2,3\],epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+    {R"(^\/l2normdim=-2,epsilon=.*,input_shape=\[.,.\])", "67963812"},
+    {R"(^\/l2normdim=0,epsilon=.*,input_shape=\[.,.\])", "67963812"},
+    {R"(^\/l2normdim=-2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+    {R"(^\/l2normdim=-2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+    {R"(^\/l2normdim=2,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+    {R"(^\/l2normdim=2,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+    {R"(^\/l2normdim=0,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+    {R"(^\/l2normdim=0,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+    {R"(^\/l2normdim=1,epsilon=.*,input_shape=\[3,15,14,3\])", "67963812"},
+    {R"(^\/l2normdim=1,epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
+    {R"(^\/l2normdim=\[2,3\],epsilon=.*,input_shape=\[3,15,14,3\])",
+     "67963812"},
+    {R"(^\/l2normdim=\[2,3\],epsilon=.*,input_shape=\[1,3,4,3\])", "67963812"},
 
     // ResizeBilinear looks completely incompatible with Tensorflow
-    {R"(resize_bilinear.*dtype=tf.int32)", "72401107"},
-    {R"(resize_bilinearalign_corners=True,.*,size=\[2,2\])", "72401483"},
-    {R"(resize_bilinearalign_corners=True,.*,size=\[4,3\])", "72401483"},
-    {R"(resize_bilinearalign_corners=True,.*,size=\[5,6\])", "72401483"},
+    {R"(^\/resize_bilinear.*dtype=tf.int32)", "72401107"},
+    {R"(^\/resize_bilinearalign_corners=True,.*,size=\[2,2\])", "72401483"},
+    {R"(^\/resize_bilinearalign_corners=True,.*,size=\[4,3\])", "72401483"},
+    {R"(^\/resize_bilinearalign_corners=True,.*,size=\[5,6\])", "72401483"},
 
     // Transpose only supports 1D-4D input tensors.
-    {R"(transposedtype=.*,input_shape=\[.,.,.,.,.\],perm=.*)", "71545879"},
+    {R"(^\/transposedtype=.*,input_shape=\[.,.,.,.,.\],perm=.*)", "71545879"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes

@@ -5486,6 +5486,72 @@ func QuantizedReluX(scope *Scope, features tf.Output, max_value tf.Output, min_f
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// SummaryWriterAttr is an optional argument to SummaryWriter.
+type SummaryWriterAttr func(optionalAttr)
+
+// SummaryWriterSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func SummaryWriterSharedName(value string) SummaryWriterAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// SummaryWriterContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func SummaryWriterContainer(value string) SummaryWriterAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// Returns a handle to be used to access a summary writer.
+//
+// The summary writer is an in-graph resource which can be used by ops to write
+// summaries to event files.
+//
+// Returns the summary writer resource. Scalar handle.
+func SummaryWriter(scope *Scope, optional ...SummaryWriterAttr) (writer tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "SummaryWriter",
+
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Computes gradients for SparseSegmentMean.
+//
+// Returns tensor "output" with same shape as grad, except for dimension 0 whose
+// value is output_dim0.
+//
+// Arguments:
+//	grad: gradient propagated to the SparseSegmentMean op.
+//	indices: indices passed to the corresponding SparseSegmentMean op.
+//	segment_ids: segment_ids passed to the corresponding SparseSegmentMean op.
+//	output_dim0: dimension 0 of "data" passed to SparseSegmentMean op.
+func SparseSegmentMeanGrad(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, output_dim0 tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "SparseSegmentMeanGrad",
+		Input: []tf.Input{
+			grad, indices, segment_ids, output_dim0,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Applies softmax to a batched N-D `SparseTensor`.
 //
 // The inputs represent an N-D SparseTensor  with logical shape `[..., B, C]`
@@ -18592,72 +18658,6 @@ func MatchingFiles(scope *Scope, pattern tf.Output) (filenames tf.Output) {
 		Input: []tf.Input{
 			pattern,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Computes gradients for SparseSegmentMean.
-//
-// Returns tensor "output" with same shape as grad, except for dimension 0 whose
-// value is output_dim0.
-//
-// Arguments:
-//	grad: gradient propagated to the SparseSegmentMean op.
-//	indices: indices passed to the corresponding SparseSegmentMean op.
-//	segment_ids: segment_ids passed to the corresponding SparseSegmentMean op.
-//	output_dim0: dimension 0 of "data" passed to SparseSegmentMean op.
-func SparseSegmentMeanGrad(scope *Scope, grad tf.Output, indices tf.Output, segment_ids tf.Output, output_dim0 tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "SparseSegmentMeanGrad",
-		Input: []tf.Input{
-			grad, indices, segment_ids, output_dim0,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// SummaryWriterAttr is an optional argument to SummaryWriter.
-type SummaryWriterAttr func(optionalAttr)
-
-// SummaryWriterSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func SummaryWriterSharedName(value string) SummaryWriterAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// SummaryWriterContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func SummaryWriterContainer(value string) SummaryWriterAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// Returns a handle to be used to access a summary writer.
-//
-// The summary writer is an in-graph resource which can be used by ops to write
-// summaries to event files.
-//
-// Returns the summary writer resource. Scalar handle.
-func SummaryWriter(scope *Scope, optional ...SummaryWriterAttr) (writer tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "SummaryWriter",
-
-		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

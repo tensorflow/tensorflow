@@ -121,6 +121,7 @@ limitations under the License.
 %rename("%s") TFE_DEVICE_PLACEMENT_EXPLICIT;
 %rename("%s") TFE_DEVICE_PLACEMENT_WARN;
 %rename("%s") TFE_DEVICE_PLACEMENT_SILENT;
+%rename("%s") TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32;
 
 %include "tensorflow/c/eager/c_api.h"
 

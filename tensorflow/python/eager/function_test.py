@@ -400,10 +400,11 @@ class FunctionTest(test.TestCase):
 
     # The Reshape op requires the shape tensor to be placed in host memory.
     reshape = function.defun(array_ops.reshape)
-    value = constant_op.constant([1., 2.]).gpu()
+    value = constant_op.constant([1., 2.])
     shape = constant_op.constant([2, 1]).gpu()
     with self.assertRaises(errors.InvalidArgumentError):
-      reshape(value, shape)
+      with ops.device('gpu:0'):
+        reshape(value, shape)
 
   def testDifferentiableFunctionNoneOutputs(self):
 

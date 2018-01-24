@@ -13,9 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 =============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TPU_PROFILER_VERSION_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TPU_PROFILER_VERSION_H_
+#ifndef TENSORFLOW_CONTRIB_TPU_PROFILER_VERSION_H_
+#define TENSORFLOW_CONTRIB_TPU_PROFILER_VERSION_H_
 
 #define TPU_PROFILER_VERSION "1.4.3"
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TPU_PROFILER_VERSION_H_
+#endif  // TENSORFLOW_CONTRIB_TPU_PROFILER_VERSION_H_
