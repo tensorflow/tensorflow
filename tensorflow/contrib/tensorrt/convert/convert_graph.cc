@@ -28,7 +28,6 @@ limitations under the License.
 #include "NvInfer.h"
 
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
-#include "tensorflow/contrib/tensorrt/convert/inferShapes.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -40,6 +39,17 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 #define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
+#include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/layout_optimizer.h" 
+#include "tensorflow/core/grappler/devices.h"
+//#include "tensorflow/core/grappler/clusters/single_machine.h"
+#include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/utils.h"
+
+#include "tensorflow/core/grappler/costs/graph_properties.h"
+
 //------------------------------------------------------------------------------
 namespace tensorrt {
 namespace convert {
@@ -114,7 +124,8 @@ std::unordered_map<std::string, std::vector<int>> BuildTensorNameMap(
 tensorflow::Status ConvertSubGraphToTensorRT(
     tensorflow::Graph& graph, const std::vector<std::string>& output_names,
     const std::set<int>& subgraph_node_ids, size_t max_batch_size,
-    size_t max_workspace_size, const ShapeMap& shape_map) {
+    size_t max_workspace_size,
+    const tensorflow::grappler::GraphProperties& graph_properties) {
   tensorflow::EdgeSet subgraph_incoming_edges;
   GetSubGraphIncomingEdges(graph, subgraph_node_ids, &subgraph_incoming_edges);
 
@@ -152,7 +163,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   tensorflow::NodeDef trt_node_def;
   TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRTNodeDef(
       graph, subgraph_node_ids, subgraph_inputs, subgraph_outputs,
-      max_batch_size, max_workspace_size, shape_map, &trt_node_def));
+      max_batch_size, max_workspace_size, graph_properties, &trt_node_def));
   tensorflow::Status status;
   tensorflow::Node* trt_node = graph.AddNode(trt_node_def, &status);
 
@@ -199,18 +210,62 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<std::string>& output_names, size_t max_batch_size,
     size_t max_workspace_size, tensorflow::GraphDef* new_graph_def) {
-  ShapeMap shape_map;
-  TF_RETURN_IF_ERROR(
-      tensorflow::trt::inferShapes(graph_def, output_names, shape_map));
-  std::stringstream oss;
-  for (auto& n : shape_map) {  // nodes
-    oss << " Node= " << n.first << ", ";
-    for (auto o : n.second) {  // outputs
-      oss << o.first.DebugString() << " T= " << o.second << ", ";
-    }
-    LOG(DEBUG) << oss.str();
-    oss.str("");
-  }
+
+  // optimization pass
+  tensorflow::grappler::GrapplerItem item;
+  item.fetch = output_names;
+  tensorflow::GraphDef gdef;
+
+  // layout optimization
+  item.graph = graph_def;
+  tensorflow::grappler::LayoutOptimizer optimizer;
+  tensorflow::grappler::Cluster* gCluster;
+
+  // virtual cluster
+  tensorflow::DeviceProperties device_properties;
+  device_properties.set_type("GPU");
+  device_properties.mutable_environment()->insert({"architecture", "6"});
+  gCluster =
+    new tensorflow::grappler::VirtualCluster({{"/GPU:0", device_properties}});
+
+  // single machine
+  int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
+  int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
+  LOG(DEBUG) << "cpu_cores: " << num_cpu_cores;
+  LOG(DEBUG) << "gpus: " << num_gpus;
+  // int timeout_s = 60 * 10;
+  // gCluster = new tensorflow::grappler::SingleMachine(
+  //                  timeout_s, num_cpu_cores, num_gpus);
+
+  tensorflow::Status status = optimizer.Optimize(gCluster, item, &gdef);
+
+  if (status !=tensorflow::Status::OK())
+    return status;
+ 
+  // constant folding
+  item.graph = gdef;
+  tensorflow::grappler::ConstantFolding fold(nullptr);
+  status = fold.Optimize(nullptr, item, &gdef);
+  if (status !=tensorflow::Status::OK())
+    return status;
+  
+  // AJ refactoring shape inference through grappler/GraphProperties.
+  tensorflow::grappler::GraphProperties static_graph_properties(item);
+  static_graph_properties.InferStatically(false);
+  // TF_CHECK_OK(static_graph_prop.InferStatically(false));
+  // ShapeMap shape_map;
+  // TF_RETURN_IF_ERROR(
+  //     tensorflow::trt::inferShapes(gdef, output_names, shape_map));
+  // std::stringstream oss;
+  // for (auto& n : shape_map) {  // nodes
+  //   oss << " Node= " << n.first << ", ";
+  //   for (auto o : n.second) {  // outputs
+  //     oss << o.first.DebugString() << " T= " << o.second << ", ";
+  //   }
+  //   LOG(DEBUG) << oss.str();
+  //   oss.str("");
+  // }
+
   // Build full graph
   tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
                                              graph_def.library());
@@ -243,7 +298,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     }
     TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRT(
         graph, output_names, subgraph_node_ids, max_batch_size,
-        max_workspace_size, shape_map));
+        max_workspace_size, static_graph_properties));
   }
   graph.ToGraphDef(new_graph_def);
   return tensorflow::Status::OK();
