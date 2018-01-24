@@ -258,6 +258,8 @@ def _rpath_linkopts(name):
       clean_dep("//tensorflow:darwin"): [
           "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
       ],
+      clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,%s" % (_make_search_paths("$$ORIGIN", levels_to_root),),
       ],
@@ -600,6 +602,8 @@ def tf_cc_test(name,
         "//tensorflow:android": [
             "-pie",
           ],
+        clean_dep("//tensorflow:windows"): [],
+        clean_dep("//tensorflow:windows_msvc"): [],
         "//conditions:default": [
             "-lpthread",
             "-lm"
@@ -1246,6 +1250,8 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
           "//conditions:default": [
               "-lm",
           ],
+          clean_dep("//tensorflow:windows"): [],
+          clean_dep("//tensorflow:windows_msvc"): [],
           clean_dep("//tensorflow:darwin"): [],
       }),)
 
