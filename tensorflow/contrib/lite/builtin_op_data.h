@@ -172,11 +172,6 @@ typedef struct {
 } TfLiteResizeBilinearParams;
 
 typedef struct {
-  // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
-  // For now we will fix the maximum possible number of dimensions.
-  int before_padding[8];
-  int after_padding[8];
-  int num_dimensions;
 } TfLitePadParams;
 
 typedef struct {

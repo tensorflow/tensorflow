@@ -98,6 +98,10 @@ class SingleOpModel {
   int AddInput(TensorType type) { return AddInput(TensorData{type}); }
   int AddInput(const TensorData& t);
 
+  // Add a Tensor containing const data and return the tensor id.
+  int AddConstInput(TensorType type, std::initializer_list<int> data,
+                    std::initializer_list<int> shape);
+
   // Add a null input tensor (optional input) and return kOptionalTensor.
   int AddNullInput();
 
@@ -181,7 +185,7 @@ class SingleOpModel {
   std::unique_ptr<tflite::Interpreter> interpreter_;
 
  private:
-  int AddTensor(TensorData t);
+  int AddTensor(TensorData t, std::initializer_list<int> data);
 
   std::map<int, TensorData> tensor_data_;
   std::vector<int32_t> inputs_;
@@ -189,6 +193,7 @@ class SingleOpModel {
   std::vector<flatbuffers::Offset<Tensor>> tensors_;
   std::vector<flatbuffers::Offset<OperatorCode>> opcodes_;
   std::vector<flatbuffers::Offset<Operator>> operators_;
+  std::vector<flatbuffers::Offset<Buffer>> buffers_;
   std::map<string, std::function<TfLiteRegistration*()>> custom_registrations_;
 };
 
