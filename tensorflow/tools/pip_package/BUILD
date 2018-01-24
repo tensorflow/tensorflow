@@ -179,8 +179,6 @@ sh_binary(
             "//tensorflow/python/tools:tools_pip",
             "//tensorflow/python:test_ops",
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
-            "//tensorflow/tools/graph_transforms:graph_transforms_wrapper",
-            "//tensorflow/tools/graph_transforms:transform_graph",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
 )
