@@ -28,6 +28,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util import compat_internal
 
 
 _USE_DEFAULT = object()
@@ -444,7 +445,8 @@ class RunConfig(object):
     if tf_config:
       logging.info('TF_CONFIG environment variable: %s', tf_config)
 
-    model_dir = _get_model_dir(tf_config, compat.path_to_str(model_dir))
+    model_dir = _get_model_dir(tf_config,
+                               compat_internal.path_to_str(model_dir))
 
     RunConfig._replace(
         self,

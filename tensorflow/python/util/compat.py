@@ -21,7 +21,6 @@ In addition to the functions below, `as_str` converts an object to a `str`.
 @@as_bytes
 @@as_text
 @@as_str_any
-@@path_to_str
 
 ## Types
 The compatibility module also provides the following types:
@@ -107,20 +106,6 @@ def as_str_any(value):
     return as_str(value)
   else:
     return str(value)
-
-
-def path_to_str(path):
-  """Returns the file system path representation of a `PathLike` object, else as it is.
-
-  Args:
-    path: An object that can be converted to path representation.
-
-  Returns:
-    A `str` object.
-  """
-  if hasattr(path, "__fspath__"):
-    path = as_str_any(path.__fspath__())
-  return path
 
 
 # Numpy 1.8 scalars don't inherit from numbers.Integral in Python 3, so we
