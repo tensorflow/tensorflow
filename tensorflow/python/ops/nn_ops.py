@@ -2211,7 +2211,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
             else:
               new_dims.append(noise_shape_.dims[i].value)
           return tensor_shape.TensorShape(new_dims)
-      except TypeError:
+      except Exception:
         return noise_shape
 
       return noise_shape
