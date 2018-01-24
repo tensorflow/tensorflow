@@ -12,17 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifdef _WIN32
-#include <stdint.h>
-#include <stdio.h>
-#include <stdlib.h>
-#else
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-#endif
 
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/builtin_op_data.h"
@@ -30,6 +19,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/version.h"
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
+#include "tensorflow/contrib/lite/tflite_osal.h"
 
 namespace tflite {
 

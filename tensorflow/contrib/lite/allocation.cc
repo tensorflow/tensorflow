@@ -13,15 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifdef _WIN32
-#include <windows.h>
-#else
-#include <fcntl.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <unistd.h>
-#endif // _WIN32
+
 
 #include <cassert>
 #include <cstdarg>
@@ -31,6 +23,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/allocation.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/tflite_osal.h"
 
 namespace tflite {
 

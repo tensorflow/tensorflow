@@ -61,11 +61,9 @@ set(variables
 set(CMAKE_CXX_STANDARD 14)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" )
 
-set(SDK_DIR "C:/SDKS")
 set(GTEST_LIB_DIR "${SDK_DIR}/googletest/lib")
 
-
-set(TENSORFLOW_ROOT_DIR "C:/Development/tensorflow")
+set(TENSORFLOW_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 set(TENSORFLOW_LITE_ROOT_DIR "${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/lite")
 set(TENSORFLOW_LITE_KERNEL_DIR "${TENSORFLOW_LITE_ROOT_DIR}/kernels")
 set(TENSORFLOW_LITE_DOWNLOADED_DEPENDENCIES_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads")
@@ -169,8 +167,8 @@ function(add_tflite_tests test_directory)
   foreach (TEST_SRC_FILE ${TEST_SRC_FILES})
       string(REPLACE ".cc" "" TEST_NAME ${TEST_SRC_FILE})
       add_executable(${TEST_NAME} ${test_directory}/${TEST_SRC_FILE} )
-      target_link_libraries(${TEST_NAME} debug tensorflow-lite ${GTEST_LIB_DIR}/gtestd.lib ${GTEST_LIB_DIR}/gmockd.lib tensorflow-lite_test_util)
-      target_link_libraries(${TEST_NAME} optimized tensorflow-lite ${GTEST_LIB_DIR}/gtest.lib ${GTEST_LIB_DIR}/gmock.lib tensorflow-lite_test_util)
+      target_link_libraries(${TEST_NAME} debug tensorflow-lite ${GTEST_LIB_DIR}/gtestd.lib ${GMOCK_LIB_DIR}/gmockd.lib tensorflow-lite_test_util)
+      target_link_libraries(${TEST_NAME} optimized tensorflow-lite ${GTEST_LIB_DIR}/gtest.lib ${GMOCK_LIB_DIR}/gmock.lib tensorflow-lite_test_util)
   endforeach()
 
 endfunction()

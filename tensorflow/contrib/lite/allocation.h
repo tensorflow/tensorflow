@@ -23,10 +23,9 @@ limitations under the License.
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/simple_memory_arena.h"
+#include "tensorflow/contrib/lite/tflite_osal.h"
 
-#ifdef _WIN32
-#include <windows.h>
-#endif
+
 
 namespace tflite {
 
