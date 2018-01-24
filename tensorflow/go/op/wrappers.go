@@ -2461,6 +2461,8 @@ func TensorArrayV2TensorArrayName(value string) TensorArrayV2Attr {
 }
 
 // Deprecated. Use TensorArrayV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArrayV3
 func TensorArrayV2(scope *Scope, size tf.Output, dtype tf.DataType, optional ...TensorArrayV2Attr) (handle tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -10400,6 +10402,8 @@ func SparseReshape(scope *Scope, input_indices tf.Output, input_shape tf.Output,
 }
 
 // Deprecated. Use TensorArraySplitV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArraySplitV3
 func TensorArraySplitV2(scope *Scope, handle tf.Output, value tf.Output, lengths tf.Output, flow_in tf.Output) (flow_out tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -11813,6 +11817,8 @@ func MaxPoolV2(scope *Scope, input tf.Output, ksize tf.Output, strides tf.Output
 }
 
 // Deprecated. Use TensorArrayReadV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArrayReadV3
 func TensorArrayReadV2(scope *Scope, handle tf.Output, index tf.Output, flow_in tf.Output, dtype tf.DataType) (value tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -20211,6 +20217,8 @@ func DenseToSparseBatchDataset(scope *Scope, input_dataset tf.Output, batch_size
 }
 
 // Deprecated. Use TensorArrayGradV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArrayGradV3
 func TensorArrayGradV2(scope *Scope, handle tf.Output, flow_in tf.Output, source string) (grad_handle tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -21504,6 +21512,8 @@ func TensorArrayGatherV2ElementShape(value tf.Shape) TensorArrayGatherV2Attr {
 }
 
 // Deprecated. Use TensorArrayGatherV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArrayGatherV3
 func TensorArrayGatherV2(scope *Scope, handle tf.Output, indices tf.Output, flow_in tf.Output, dtype tf.DataType, optional ...TensorArrayGatherV2Attr) (value tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -22227,6 +22237,8 @@ func EncodeBase64(scope *Scope, input tf.Output, optional ...EncodeBase64Attr) (
 }
 
 // Deprecated. Use TensorArrayCloseV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArrayCloseV3
 //
 // Returns the created operation.
 func TensorArrayCloseV2(scope *Scope, handle tf.Output) (o *tf.Operation) {
@@ -23247,6 +23259,8 @@ func TensorArraySizeV3(scope *Scope, handle tf.Output, flow_in tf.Output) (size 
 }
 
 // Deprecated. Use TensorArrayGradV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArrayWriteV3
 func TensorArrayWriteV2(scope *Scope, handle tf.Output, index tf.Output, value tf.Output, flow_in tf.Output) (flow_out tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -23397,6 +23411,8 @@ func AsString(scope *Scope, input tf.Output, optional ...AsStringAttr) (output t
 }
 
 // Deprecated. Use TensorArrayScatterV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArrayScatterV3
 func TensorArrayScatterV2(scope *Scope, handle tf.Output, indices tf.Output, value tf.Output, flow_in tf.Output) (flow_out tf.Output) {
 	if scope.Err() != nil {
 		return
@@ -23601,6 +23617,8 @@ func FractionalMaxPool(scope *Scope, value tf.Output, pooling_ratio []float32, o
 }
 
 // Deprecated. Use TensorArraySizeV3
+//
+// DEPRECATED at GraphDef version 26: Use TensorArraySizeV3
 func TensorArraySizeV2(scope *Scope, handle tf.Output, flow_in tf.Output) (size tf.Output) {
 	if scope.Err() != nil {
 		return
