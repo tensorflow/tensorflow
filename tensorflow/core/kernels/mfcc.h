@@ -15,8 +15,8 @@ limitations under the License.
 
 // Basic class for computing MFCCs from spectrogram slices.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MFCC_H_
+#define TENSORFLOW_CORE_KERNELS_MFCC_H_
 
 #include <vector>
 
@@ -74,4 +74,4 @@ class Mfcc {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MFCC_H_

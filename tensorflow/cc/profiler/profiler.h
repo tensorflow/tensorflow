@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_PROFILER_PROFILER_H_
-#define THIRD_PARTY_TENSORFLOW_CC_PROFILER_PROFILER_H_
+#ifndef TENSORFLOW_CC_PROFILER_PROFILER_H_
+#define TENSORFLOW_CC_PROFILER_PROFILER_H_
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -94,4 +94,4 @@ class Profiler {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_PROFILER_PROFILER_H_
+#endif  // TENSORFLOW_CC_PROFILER_PROFILER_H_
