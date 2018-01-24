@@ -255,6 +255,8 @@ void XlaOpRegistry::RegisterCompilationKernels() {
 std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
     const string& compilation_device_name,
     bool include_compilation_only_kernels) {
+  // Ensure compilation kernels registered.
+  RegisterCompilationKernels();
   std::vector<const KernelDef*> kernels;
   XlaOpRegistry& registry = Instance();
   mutex_lock lock(registry.mutex_);
