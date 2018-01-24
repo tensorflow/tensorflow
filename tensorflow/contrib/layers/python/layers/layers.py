@@ -2757,9 +2757,9 @@ def spatial_softmax(features,
         attention = features/temperature
 
       expected_x = math_ops.reduce_sum(
-        pos_x * attention, [1], keep_dims=True)
+          pos_x * attention, [1], keep_dims=True)
       expected_y = math_ops.reduce_sum(
-        pos_y * attention, [1], keep_dims=True)
+          pos_y * attention, [1], keep_dims=True)
       expected_xy = array_ops.concat([expected_x, expected_y], 1)
       feature_keypoints = array_ops.reshape(
           expected_xy, [-1, num_channels.value * 2])
