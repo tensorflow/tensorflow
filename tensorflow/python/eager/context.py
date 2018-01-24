@@ -411,7 +411,7 @@ class Context(object):
       self._initialize_handle_and_devices()
     pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._context_handle)
 
-  @contextlib.contextmanager
+  @tf_contextlib.contextmanager
   def device_policy(self, policy):
     if not self._context_handle:
       self._initialize_handle_and_devices()
