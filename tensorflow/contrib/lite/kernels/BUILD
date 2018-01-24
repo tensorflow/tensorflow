@@ -106,6 +106,7 @@ cc_library(
         "sub.cc",
         "svdf.cc",
         "transpose.cc",
+        "unidirectional_sequence_lstm.cc",
         "unidirectional_sequence_rnn.cc",
     ],
     hdrs = [
@@ -241,6 +242,18 @@ tf_cc_test(
     name = "basic_rnn_test",
     size = "small",
     srcs = ["basic_rnn_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "unidirectional_sequence_lstm_test",
+    size = "small",
+    srcs = ["unidirectional_sequence_lstm_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

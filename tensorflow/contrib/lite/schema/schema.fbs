@@ -117,6 +117,7 @@ enum BuiltinOperator : byte {
   SUB = 41,
   DIV = 42,
   SQUEEZE = 43,
+  UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
 }
 
 // Options for the builtin operators.

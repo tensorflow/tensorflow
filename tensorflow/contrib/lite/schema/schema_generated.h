@@ -206,11 +206,12 @@ enum BuiltinOperator {
   BuiltinOperator_SUB = 41,
   BuiltinOperator_DIV = 42,
   BuiltinOperator_SQUEEZE = 43,
+  BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_SQUEEZE
+  BuiltinOperator_MAX = BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[41] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[42] {
   static BuiltinOperator values[] = {
       BuiltinOperator_ADD,
       BuiltinOperator_AVERAGE_POOL_2D,
@@ -252,7 +253,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[41] {
       BuiltinOperator_MEAN,
       BuiltinOperator_SUB,
       BuiltinOperator_DIV,
-      BuiltinOperator_SQUEEZE};
+      BuiltinOperator_SQUEEZE,
+      BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM};
   return values;
 }
 
@@ -301,6 +303,7 @@ inline const char **EnumNamesBuiltinOperator() {
                                 "SUB",
                                 "DIV",
                                 "SQUEEZE",
+                                "UNIDIRECTIONAL_SEQUENCE_LSTM",
                                 nullptr};
   return names;
 }
