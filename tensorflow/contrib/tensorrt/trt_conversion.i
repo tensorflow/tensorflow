@@ -54,7 +54,7 @@
     }
     tensorflow::GraphDef outGraph;
     tensorflow::Status conversion_status =
-      tensorrt::convert::ConvertGraphDefToTensorRT(graph_def,
+        tensorflow::tensorrt::convert::ConvertGraphDefToTensorRT(graph_def,
 						   output_names,
 						   max_batch_size,
 						   max_workspace_size,

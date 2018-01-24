@@ -1,8 +1,4 @@
 # -*- python -*-
-# Description:
-#   provide tensorrt information
-
-#TODO(Sami) these needs to be defined 
 
 licenses(["notice"])  
 

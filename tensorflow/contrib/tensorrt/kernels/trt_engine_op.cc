@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -18,7 +18,6 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
-// Use TF logging f
 
 
 namespace tensorflow {
@@ -29,9 +28,6 @@ using namespace nvinfer1;
 namespace tensorrt {
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
-  // char *gieModelStream{nullptr};
-  // size_t size{0};
-
   // read serialized_engine
   std::string serialized_engine;
   OP_REQUIRES_OK(context,
@@ -48,7 +44,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   trt_engine_ptr_.reset(infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(), nullptr));
 
-  trt_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
+  trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
   // runtime is safe to delete after engine creation
   infer->destroy();
   std::stringstream oss;
@@ -83,8 +79,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
     }
   }
 
-  // CHECK_NE(cudaStreamCreate(&stream_),0); // logic here is wrong
-  // cudaStreamCreate(&stream_);
 }
 
 void TRTEngineOp::Compute(OpKernelContext* context) {
@@ -107,20 +101,16 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
       valid = false;
       break;
     }
-    // int64 input_shape.dim_size(int d)
-    // int input_shape.dims()
     switch (trt_engine_ptr_->getBindingDataType(bindingIndex)) {
       case nvinfer1::DataType::kFLOAT:
         LOG(INFO) << "float";
         buffers[bindingIndex] = (void*)(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(INFO) << "half";
-        // buffers[bindingIndex] = (void*)input_tensor.flat<float16>().data();
+        LOG(FATAL) << "half size is not supported yet!";
         break;
       case nvinfer1::DataType::kINT8:
-        LOG(INFO) << "int8";
-        // buffers[bindingIndex] = (void*)input_tensor.flat<int8>().data();
+        LOG(FATAL) << "int8 is not supported yet!";
         break;
     }
   }
@@ -149,8 +139,6 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
 
     OP_REQUIRES_OK(context,
                    context->allocate_output(i, output_shape, &output_tensor));
-    // buffers[bindingIndex] = (void*)output_tensor->flat<float>();
-    // buffers[bindingIndex] = output_tensor->flat<float>().data();
     switch (trt_engine_ptr_->getBindingDataType(bindingIndex)) {
       case nvinfer1::DataType::kFLOAT:
         LOG(INFO) << "float";
@@ -158,12 +146,10 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
             reinterpret_cast<void*>(output_tensor->flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(INFO) << "half";
-        // buffers[bindingIndex] = (void*)output_tensor->flat<float16>().data();
+        LOG(FATAL) << "half size is not supported yet!";
         break;
       case nvinfer1::DataType::kINT8:
-        LOG(INFO) << "int8";
-        // buffers[bindingIndex] = (void*)output_tensor->flat<int8>().data();
+        LOG(FATAL) << "int8 is not supported yet!";
         break;
     }
   }
@@ -174,7 +160,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
                                                 ->implementation()
                                                 ->CudaStreamMemberHack()));
 
-  trt_context_ptr_->enqueue(nbBatch, &buffers[0], *stream, nullptr);
+  trt_execution_context_ptr_->enqueue(nbBatch, &buffers[0], *stream, nullptr);
   cudaStreamSynchronize(*stream);
 }
 

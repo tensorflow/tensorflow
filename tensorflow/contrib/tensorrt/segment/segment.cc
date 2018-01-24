@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 
 //------------------------------------------------------------------------------
+namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 
@@ -227,7 +228,6 @@ tensorflow::Status SegmentGraph(
         graph.RemoveNode(node);
       }
     }
-    // tensorflow::DumpGraph("Post-Segment", &graph);
   }
 
   // Convert the segments into the expected return format
@@ -257,3 +257,4 @@ tensorflow::Status SegmentGraph(
 
 }  // namespace segment
 }  // namespace tensorrt
+}  // namespace tensorflow

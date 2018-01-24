@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -43,7 +43,7 @@ class TRTEngineOp : public OpKernel {
   using destroyed_ptr = std::unique_ptr<T, Destroyer<T>>;
   destroyed_ptr<nvinfer1::ICudaEngine> trt_engine_ptr_;
   // TODO(samikama) context should go to a resource manager!
-  destroyed_ptr<nvinfer1::IExecutionContext> trt_context_ptr_;
+  destroyed_ptr<nvinfer1::IExecutionContext> trt_execution_context_ptr_;
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
 };

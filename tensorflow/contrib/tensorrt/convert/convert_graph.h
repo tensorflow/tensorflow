@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 
+namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
@@ -30,5 +31,5 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     size_t max_workspace_size, tensorflow::GraphDef* new_graph_def);
 }
 }  // namespace tensorrt
-
+}  // namespace tensorrt
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_GRAPH_H_
