@@ -474,19 +474,11 @@ class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    auto before_padding = builder->CreateVector(op.left_padding);
-    auto after_padding = builder->CreateVector(op.right_padding);
-    return ::tflite::CreatePadOptions(*builder, before_padding, after_padding);
+    return ::tflite::CreatePadOptions(*builder);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->left_padding.insert(op->left_padding.end(),
-                            options.before_padding()->begin(),
-                            options.before_padding()->end());
-    op->right_padding.insert(op->right_padding.end(),
-                             options.after_padding()->begin(),
-                             options.after_padding()->end());
   }
 };
 

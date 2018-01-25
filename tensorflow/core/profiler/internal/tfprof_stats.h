@@ -20,8 +20,8 @@ limitations under the License.
 // 3. Accept command and options to selectively aggregate stats for analysis
 //    and print out the results.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_
 
 #include <map>
 #include <memory>
@@ -125,4 +125,4 @@ class TFStats {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_

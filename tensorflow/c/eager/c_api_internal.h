@@ -38,7 +38,8 @@ limitations under the License.
 
 struct TFE_ContextOptions {
   TF_SessionOptions session_options;
-  TFE_ContextDevicePlacementPolicy policy{TFE_DEVICE_PLACEMENT_EXPLICIT};
+  TFE_ContextDevicePlacementPolicy policy{
+      TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32};
 };
 
 struct TFE_Context {
