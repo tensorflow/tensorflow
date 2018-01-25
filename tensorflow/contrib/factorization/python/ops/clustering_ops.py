@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.factorization.python.ops import gen_clustering_ops
+from tensorflow.contrib.factorization.python.ops import constants
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.contrib.factorization.python.ops.gen_clustering_ops import *
@@ -41,19 +42,6 @@ from tensorflow.python.platform import resource_loader
 _clustering_ops = loader.load_op_library(
     resource_loader.get_path_to_datafile('_clustering_ops.so'))
 
-# Euclidean distance between vectors U and V is defined as ||U - V||_F which is
-# the square root of the sum of the absolute squares of the elements difference.
-SQUARED_EUCLIDEAN_DISTANCE = 'squared_euclidean'
-# Cosine distance between vectors U and V is defined as
-# 1 - (U \dot V) / (||U||_F ||V||_F)
-COSINE_DISTANCE = 'cosine'
-
-RANDOM_INIT = 'random'
-KMEANS_PLUS_PLUS_INIT = 'kmeans_plus_plus'
-KMC2_INIT = 'kmc2'
-
-# The name of the variable holding the cluster centers. Used by the Estimator.
-CLUSTERS_VAR_NAME = 'clusters'
 
 
 class KMeans(object):
@@ -62,8 +50,8 @@ class KMeans(object):
   def __init__(self,
                inputs,
                num_clusters,
-               initial_clusters=RANDOM_INIT,
-               distance_metric=SQUARED_EUCLIDEAN_DISTANCE,
+               initial_clusters=constants.RANDOM_INIT,
+               distance_metric=constants.SQUARED_EUCLIDEAN_DISTANCE,
                use_mini_batch=False,
                mini_batch_steps_per_iteration=1,
                random_seed=0,
@@ -135,11 +123,11 @@ class KMeans(object):
         distance_metric.
     """
     if isinstance(initial_clusters, str) and initial_clusters not in [
-        RANDOM_INIT, KMEANS_PLUS_PLUS_INIT, KMC2_INIT
+        constants.RANDOM_INIT, constants.KMEANS_PLUS_PLUS_INIT, constants.KMC2_INIT
     ]:
       raise ValueError(
           "Unsupported initialization algorithm '%s'" % initial_clusters)
-    if distance_metric not in [SQUARED_EUCLIDEAN_DISTANCE, COSINE_DISTANCE]:
+    if distance_metric not in [constants.SQUARED_EUCLIDEAN_DISTANCE, constants.COSINE_DISTANCE]:
       raise ValueError("Unsupported distance metric '%s'" % distance_metric)
     self._inputs = inputs if isinstance(inputs, list) else [inputs]
     self._num_clusters = num_clusters
@@ -166,9 +154,9 @@ class KMeans(object):
       Currently only Euclidean distance and cosine distance are supported.
     """
     assert isinstance(inputs, list)
-    if distance_metric == SQUARED_EUCLIDEAN_DISTANCE:
+    if distance_metric == constants.SQUARED_EUCLIDEAN_DISTANCE:
       return cls._compute_euclidean_distance(inputs, clusters)
-    elif distance_metric == COSINE_DISTANCE:
+    elif distance_metric == constants.COSINE_DISTANCE:
       return cls._compute_cosine_distance(
           inputs, clusters, inputs_normalized=True)
     else:
@@ -246,7 +234,7 @@ class KMeans(object):
     # sub-graph is not evaluated.
     scores = self._distance_graph(inputs, clusters, self._distance_metric)
     output = []
-    if (self._distance_metric == COSINE_DISTANCE and
+    if (self._distance_metric == constants.COSINE_DISTANCE and
         not self._clusters_l2_normalized()):
       # The cosine distance between normalized vectors x and y is the same as
       # 2 * squared_euclidean_distance. We are using this fact and reusing the
@@ -259,7 +247,7 @@ class KMeans(object):
       with ops.colocate_with(inp, ignore_existing=True):
         (indices, distances) = gen_clustering_ops.nearest_neighbors(
             inp, clusters, 1)
-        if self._distance_metric == COSINE_DISTANCE:
+        if self._distance_metric == constants.COSINE_DISTANCE:
           distances *= 0.5
         output.append((score, array_ops.squeeze(distances, [-1]),
                        array_ops.squeeze(indices, [-1])))
@@ -267,7 +255,7 @@ class KMeans(object):
 
   def _clusters_l2_normalized(self):
     """Returns True if clusters centers are kept normalized."""
-    return (self._distance_metric == COSINE_DISTANCE and
+    return (self._distance_metric == constants.COSINE_DISTANCE and
             (not self._use_mini_batch or
              self._mini_batch_steps_per_iteration > 1))
 
@@ -291,7 +279,7 @@ class KMeans(object):
     """
     init_value = array_ops.constant([], dtype=dtypes.float32)
     cluster_centers = variable_scope.variable(
-        init_value, name=CLUSTERS_VAR_NAME, validate_shape=False)
+        init_value, name=constants.CLUSTERS_VAR_NAME, validate_shape=False)
     cluster_centers_initialized = variable_scope.variable(
         False, dtype=dtypes.bool, name='initialized')
 
@@ -373,7 +361,7 @@ class KMeans(object):
         cluster_centers_initialized).op()
     cluster_centers = cluster_centers_var
 
-    if self._distance_metric == COSINE_DISTANCE:
+    if self._distance_metric == constants.COSINE_DISTANCE:
       inputs = self._l2_normalize_data(inputs)
       if not self._clusters_l2_normalized():
         cluster_centers = nn_impl.l2_normalize(cluster_centers, dim=1)
@@ -414,7 +402,7 @@ class KMeans(object):
           ]):
             with ops.colocate_with(
                 cluster_centers_updated, ignore_existing=True):
-              if self._distance_metric == COSINE_DISTANCE:
+              if self._distance_metric == constants.COSINE_DISTANCE:
                 cluster_centers = nn_impl.l2_normalize(
                     cluster_centers_updated, dim=1)
               else:
@@ -613,7 +601,7 @@ class _InitializeClustersOpFactory(object):
     # Points from only the first shard are used for initializing centers.
     # TODO(ands): Use all points.
     inp = self._inputs[0]
-    if self._distance_metric == COSINE_DISTANCE:
+    if self._distance_metric == constants.COSINE_DISTANCE:
       inp = nn_impl.l2_normalize(inp, dim=1)
     return gen_clustering_ops.kmeans_plus_plus_initialization(
         inp,
@@ -658,7 +646,7 @@ class _InitializeClustersOpFactory(object):
         # By assumption the batch is reshuffled and _sample_random is always
         # called for i=0. Hence, we simply return the first point.
         new_center = array_ops.reshape(first_shard[0], [1, -1])
-        if self._distance_metric == COSINE_DISTANCE:
+        if self._distance_metric == constants.COSINE_DISTANCE:
           new_center = nn_impl.l2_normalize(new_center, dim=1)
         return new_center
 
@@ -679,7 +667,7 @@ class _InitializeClustersOpFactory(object):
         newly_sampled_center = array_ops.reshape(subset[new_center_index],
                                                  [1, -1])
         # Return concatenation with previously sampled centers.
-        if self._distance_metric == COSINE_DISTANCE:
+        if self._distance_metric == constants.COSINE_DISTANCE:
           newly_sampled_center = nn_impl.l2_normalize(
               newly_sampled_center, dim=1)
         return array_ops.concat([self._cluster_centers, newly_sampled_center],
@@ -723,7 +711,7 @@ class _InitializeClustersOpFactory(object):
 
   def _choose_initial_centers(self):
     if isinstance(self._initial_clusters, str):
-      if self._initial_clusters == RANDOM_INIT:
+      if self._initial_clusters == constants.RANDOM_INIT:
         return self._greedy_batch_sampler(self._random)
       else:  # self._initial_clusters == KMEANS_PLUS_PLUS_INIT
         return self._single_batch_sampler(self._kmeans_plus_plus)
@@ -739,7 +727,7 @@ class _InitializeClustersOpFactory(object):
   def _add_new_centers(self):
     """Adds some centers and returns the number of centers remaining."""
     new_centers = self._choose_initial_centers()
-    if self._distance_metric == COSINE_DISTANCE:
+    if self._distance_metric == constants.COSINE_DISTANCE:
       new_centers = nn_impl.l2_normalize(new_centers, dim=1)
     # If cluster_centers is empty, it doesn't have the right shape for concat.
     all_centers = control_flow_ops.cond(
@@ -757,7 +745,7 @@ class _InitializeClustersOpFactory(object):
     with ops.control_dependencies([
         check_ops.assert_positive(self._num_remaining),
     ]):
-      if self._initial_clusters == KMC2_INIT:
+      if self._initial_clusters == constants.KMC2_INIT:
         num_now_remaining = self._kmc2_multiple_centers()
       else:
         num_now_remaining = self._add_new_centers()
