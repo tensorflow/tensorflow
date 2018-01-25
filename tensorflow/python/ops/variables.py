@@ -28,6 +28,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
@@ -1020,6 +1021,61 @@ class Variable(object):
     """Returns a `Variable` object created from `variable_def`."""
     return Variable(variable_def=variable_def,
                     import_scope=import_scope)
+
+  def __iadd__(self, other):
+    logging.log_first_n(
+        logging.WARN,
+        "Variable += will be deprecated. Use variable.assign_add"
+        " if you want assignment to the variable value or 'x = x + y'"
+        " if you want a new python Tensor object.", 1)
+    return self + other
+
+  def __isub__(self, other):
+    logging.log_first_n(
+        logging.WARN,
+        "Variable -= will be deprecated. Use variable.assign_sub"
+        " if you want assignment to the variable value or 'x = x - y'"
+        " if you want a new python Tensor object.", 1)
+    return self - other
+
+  def __imul__(self, other):
+    logging.log_first_n(
+        logging.WARN,
+        "Variable *= will be deprecated. Use variable.assign_mul"
+        " if you want assignment to the variable value or 'x = x * y'"
+        " if you want a new python Tensor object.", 1)
+    return self * other
+
+  def __idiv__(self, other):
+    logging.log_first_n(
+        logging.WARN,
+        "Variable /= will be deprecated. Use variable.assign_div"
+        " if you want assignment to the variable value or 'x = x / y'"
+        " if you want a new python Tensor object.", 1)
+    return self / other
+
+  def __itruediv__(self, other):
+    logging.log_first_n(
+        logging.WARN,
+        "Variable /= will be deprecated. Use variable.assign_div"
+        " if you want assignment to the variable value or 'x = x / y'"
+        " if you want a new python Tensor object.", 1)
+    return self / other
+
+  def __irealdiv__(self, other):
+    logging.log_first_n(
+        logging.WARN,
+        "Variable /= will be deprecated. Use variable.assign_div"
+        " if you want assignment to the variable value or 'x = x / y'"
+        " if you want a new python Tensor object.", 1)
+    return self / other
+
+  def __ipow__(self, other):
+    logging.log_first_n(
+        logging.WARN,
+        "Variable **= will be deprecated. Use 'x = x ** y'"
+        " if you want a new python Tensor object.", 1)
+    return self ** other
 
   class SaveSliceInfo(object):
     """Information on how to save this Variable as a slice.

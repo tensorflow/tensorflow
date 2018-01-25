@@ -835,25 +835,45 @@ class ResourceVariable(variables.Variable):
       return self.value()
 
   def __iadd__(self, unused_other):
-    raise RuntimeError("Variable += value not supported.")
+    raise RuntimeError("Variable += value not supported. Use "
+                       "variable.assign_add(value) to modify the variable "
+                       "value and variable = variable + value to get a new "
+                       "Tensor object.")
 
   def __isub__(self, unused_other):
-    raise RuntimeError("Variable -= value not supported.")
+    raise RuntimeError("Variable -= value not supported. Use "
+                       "variable.assign_sub(value) to modify the variable "
+                       "value and variable = variable - value to get a new "
+                       "Tensor object.")
 
   def __imul__(self, unused_other):
-    raise RuntimeError("Variable *= value not supported.")
+    raise RuntimeError("Variable *= value not supported. Use "
+                       "variable.assign_mul(value) to modify the variable "
+                       "value and variable = variable * value to get a new "
+                       "Tensor object.")
 
   def __idiv__(self, unused_other):
-    raise RuntimeError("Variable /= value not supported.")
+    raise RuntimeError("Variable /= value not supported. Use "
+                       "variable.assign_div(value) to modify the variable "
+                       "value and variable = variable / value to get a new "
+                       "Tensor object.")
 
   def __itruediv__(self, unused_other):
-    raise RuntimeError("Variable /= value not supported.")
+    raise RuntimeError("Variable /= value not supported. Use "
+                       "variable.assign_div(value) to modify the variable "
+                       "value and variable = variable / value to get a new "
+                       "Tensor object.")
 
   def __irealdiv__(self, unused_other):
-    raise RuntimeError("Variable /= value not supported.")
+    raise RuntimeError("Variable /= value not supported. Use "
+                       "variable.assign_div(value) to modify the variable "
+                       "value and variable = variable / value to get a new "
+                       "Tensor object.")
 
   def __ipow__(self, unused_other):
-    raise RuntimeError("Variable **= value not supported.")
+    raise RuntimeError("Variable **= value not supported. Use "
+                       "value and variable = variable ** value to get a new "
+                       "Tensor object.")
 
 
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
