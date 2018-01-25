@@ -31,28 +31,30 @@ from tensorflow.python.platform import googletest
 
 
 class QuantizeGraphTest(test_util.TensorFlowTestCase):
-
   # We have a lot of other tests that test the details of the rewrite, here we
   # just the specific features of the quantize_graph API.
-  def testReturnedElementsTraining(self):
-    self._TestReturnElements(True)
 
-  def testReturnedElementsEval(self):
-    self._TestReturnElements(False)
+  def _RunTestOverParameters(self, test_fn):
+    rewrite_fns = [
+        quantize_graph.create_training_graph,
+        quantize_graph.create_eval_graph,
+        quantize_graph.experimental_create_training_graph,
+        quantize_graph.experimental_create_eval_graph,
+    ]
+    for fn in rewrite_fns:
+      test_fn(fn)
 
-  def _TestReturnElements(self, is_training):
+  def testReturnedElements(self):
+    self._RunTestOverParameters(self._TestReturnElements)
+
+  def _TestReturnElements(self, fn):
     graph = ops.Graph()
     with graph.as_default():
       a = constant_op.constant(1.0)
       b = variables.Variable(2.0)
       c = a + b
     elements = [a, b, c.op]
-    if is_training:
-      q_graph, returned_elements = quantize_graph.create_training_graph(
-          graph, elements=elements)
-    else:
-      q_graph, returned_elements = quantize_graph.create_eval_graph(
-          graph, elements=elements)
+    q_graph, returned_elements = fn(graph, elements=elements)
     # Make sure q_graph is different from graph.
     self.assertTrue(graph != q_graph)
     # Check that the returned elements are part of the new graph.
@@ -62,35 +64,26 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
     for element, returned_element in zip(elements, returned_elements):
       self.assertEqual(element.name, returned_element.name)
 
-  def testNoReturnElementsTraining(self):
-    self._TestNoReturnElements(True)
+  def testNoReturnElements(self):
+    self._RunTestOverParameters(self._TestNoReturnElements)
 
-  def testNoReturnElementsEval(self):
-    self._TestNoReturnElements(False)
-
-  def _TestNoReturnElements(self, is_training):
+  def _TestNoReturnElements(self, fn):
     graph = ops.Graph()
     with graph.as_default():
       a = constant_op.constant(1.0)
       b = variables.Variable(2.0)
       _ = a + b
-    if is_training:
-      q_graph = quantize_graph.create_training_graph(graph)
-    else:
-      q_graph = quantize_graph.create_eval_graph(graph)
+    q_graph = fn(graph)
     # Check that quantize_graph didn't return a tuple when elements isn't
     # provided.
     self.assertTrue(isinstance(q_graph, ops.Graph))
     # Make sure q_graph is different from graph.
     self.assertTrue(graph != q_graph)
 
-  def testDeviceNameTraining(self):
-    self._TestDeviceName(True)
+  def testDeviceName(self):
+    self._RunTestOverParameters(self._TestDeviceName)
 
-  def testDeviceNameEval(self):
-    self._TestDeviceName(False)
-
-  def _TestDeviceName(self, is_training):
+  def _TestDeviceName(self, fn):
     graph = ops.Graph()
     with graph.as_default():
       batch_size, height, width, depth = 5, 128, 128, 3
@@ -106,12 +99,7 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       _ = nn_ops.relu6(conv)
 
     device_name = '/job:oink/task:0/device:CPU:0'
-    if is_training:
-      q_graph = quantize_graph.create_training_graph(
-          graph, device_name_or_function=device_name)
-    else:
-      q_graph = quantize_graph.create_eval_graph(
-          graph, device_name_or_function=device_name)
+    q_graph = fn(graph, device_name_or_function=device_name)
 
     orig_variable_names = set(
         [v.name for v in graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])

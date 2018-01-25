@@ -12,18 +12,20 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_DATASET_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_DATASET_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_DATASET_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_DATASET_H_
 
 #include <memory>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -193,9 +195,17 @@ class GraphDefBuilderWrapper {
     return Status::OK();
   }
 
+  // Returns whether an op has been whitelisted for use inside map_fns.
+  // Uses a heuristic to whitelist source dataset ops which have been
+  // marked stateful due to b/65524810.
+  // Also looks up the `op_def->name` in the global
+  // `WhitelistedStatefulOpRegistry`.
   bool IsOpWhitelisted(const OpDef* op_def) const {
-    return StringPiece(op_def->name()).ends_with("Dataset") &&
-           HasAttr(op_def, "output_shapes");
+    return (StringPiece(op_def->name()).ends_with("Dataset") &&
+            op_def->output_arg_size() == 1 &&
+            op_def->output_arg(0).type() == DT_VARIANT) ||
+           dataset::WhitelistedStatefulOpRegistry::Global()->Contains(
+               op_def->name());
   }
 
   bool HasAttr(const string& op_type_name, const string& attr_name) const;
@@ -258,6 +268,10 @@ class IteratorContext {
     // created. Better suggestions are welcome!
     std::function<std::shared_ptr<StatsAggregator>()> stats_aggregator_getter =
         nullptr;
+
+    // The FunctionLibraryRuntime object to be used to make function calls.
+    FunctionLibraryRuntime* lib = nullptr;
+    std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
   };
 
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
@@ -275,6 +289,14 @@ class IteratorContext {
       return nullptr;
     }
   }
+
+  std::shared_ptr<const FunctionLibraryDefinition> function_library() {
+    return params_.function_library;
+  }
+
+  FunctionLibraryRuntime* lib() { return params_.lib; }
+
+  void set_lib(FunctionLibraryRuntime* lib) { params_.lib = lib; }
 
  private:
   Params params_;
@@ -320,7 +342,7 @@ class IteratorBase {
   }
 
   // Restores the state of this iterator.
-  virtual Status Restore(OpKernelContext* ctx, IteratorStateReader* reader) {
+  virtual Status Restore(IteratorContext* ctx, IteratorStateReader* reader) {
     return RestoreInternal(ctx, reader);
   }
 
@@ -336,7 +358,7 @@ class IteratorBase {
   // This is needed so that sub-classes of IteratorBase can call
   // `RestoreInternal` on their parent iterators, e.g., in
   // `RepeatDataasetOp::Dataset`.
-  Status RestoreParent(OpKernelContext* ctx, IteratorStateReader* reader,
+  Status RestoreParent(IteratorContext* ctx, IteratorStateReader* reader,
                        const std::unique_ptr<IteratorBase>& parent) {
     return parent->RestoreInternal(ctx, reader);
   }
@@ -347,7 +369,7 @@ class IteratorBase {
   }
 
   // Restores the state of this iterator recursively.
-  virtual Status RestoreInternal(OpKernelContext* ctx,
+  virtual Status RestoreInternal(IteratorContext* ctx,
                                  IteratorStateReader* reader) {
     return errors::Unimplemented("RestoreInternal");
   }
@@ -584,4 +606,4 @@ Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor);
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_DATASET_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_DATASET_H_

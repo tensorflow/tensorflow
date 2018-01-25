@@ -269,7 +269,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //   cas_new_output_address = alloca(atomic_size);
 //   cas_old_output_address = alloca(atomic_size);
 //   if (atomic_size != element_size) {
-//     atomic_address = output_address & ((int64)(-2));
+//     atomic_address = output_address & ((int64)(-4));
 //     new_output_address = cas_new_output_address + (output_address & 3);
 //   } else {
 //     atomic_address = output_address;
@@ -326,7 +326,7 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
         ir_builder_.CreatePtrToInt(output_address, address_int_type);
     llvm::Value* mask = llvm::ConstantInt::get(address_int_type, 3);
     llvm::Value* offset = ir_builder_.CreateAnd(atomic_memory_address, mask);
-    mask = llvm::ConstantInt::get(address_int_type, -2);
+    mask = llvm::ConstantInt::get(address_int_type, -4);
     atomic_memory_address = ir_builder_.CreateAnd(atomic_memory_address, mask);
     atomic_memory_address =
         ir_builder_.CreateIntToPtr(atomic_memory_address, atomic_address_type);

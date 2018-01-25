@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/layout_util.h"
+
+#include <sstream>
+
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
@@ -290,6 +293,12 @@ TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
 TEST_F(LayoutUtilTest, SparseLayoutMaxElements) {
   EXPECT_EQ(LayoutUtil::MaxSparseElements(LayoutUtil::MakeSparseLayout(101)),
             101);
+}
+
+TEST_F(LayoutUtilTest, StreamOut) {
+  std::ostringstream oss;
+  oss << LayoutUtil::MakeLayout({0, 1, 2});
+  EXPECT_EQ(oss.str(), "{0,1,2}");
 }
 
 }  // namespace

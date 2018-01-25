@@ -68,14 +68,6 @@ dictionary that maps @{tf.Tensor} objects to
 numpy arrays (and some other types), which will be used as the values of those
 tensors in the execution of a step.
 
-Often, you have certain tensors, such as inputs, that will always be fed. The
-@{tf.placeholder} op allows you
-to define tensors that *must* be fed, and optionally allows you to constrain
-their shape as well. See the
-@{$beginners$beginners' MNIST tutorial} for an
-example of how placeholders and feeding can be used to provide the training data
-for a neural network.
-
 #### What is the difference between `Session.run()` and `Tensor.eval()`?
 
 If `t` is a @{tf.Tensor} object,

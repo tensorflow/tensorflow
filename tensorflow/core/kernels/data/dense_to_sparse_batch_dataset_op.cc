@@ -273,7 +273,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(Iterator::RestoreParent(ctx, reader, input_impl_));

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_PARTIAL_REDUCTION_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_PARTIAL_REDUCTION_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_PARTIAL_REDUCTION_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_PARTIAL_REDUCTION_OPS_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -81,4 +81,4 @@ CALL_ALL_REDUCEOPS(ReduceSliceFunctorReduceop)
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_PARTIAL_REDUCTION_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_PARTIAL_REDUCTION_OPS_H_

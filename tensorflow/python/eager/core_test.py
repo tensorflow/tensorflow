@@ -33,6 +33,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import nn_ops
 
 
 def execute(op_name, num_outputs, inputs, attrs=None):
@@ -112,6 +113,14 @@ class TFETest(test_util.TensorFlowTestCase):
     # is enabled; the stack entry should reflect this fact.
     self.assertFalse(stack_entry.is_building_function)
 
+  def testInt32GPU(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    with ops.device('gpu:0'):
+      xent = nn_ops.sparse_softmax_cross_entropy_with_logits(
+          logits=[[0.0, 0.0]], labels=[0])
+    self.assertAllClose(xent, [0.69314718])
+
   def _runInThread(self, target, args):
     t = threading.Thread(target=target, args=args)
     try:
@@ -172,6 +181,15 @@ class TFETest(test_util.TensorFlowTestCase):
     # Invalid device
     with self.assertRaises(RuntimeError):
       x.gpu(context.context().num_gpus() + 1)
+
+  def testCopyScope(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    constant = constant_op.constant(1.0)
+    with ops.device('gpu:0'):
+      with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+        c = constant + 1.0
+    self.assertAllEqual(c, 2.0)
 
   def testNumpyForceCPU(self):
     if not context.context().num_gpus():

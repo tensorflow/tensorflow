@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/platform/default/thread_annotations.h"
 
 namespace xla {
 
@@ -24,17 +25,17 @@ namespace swig {
 // TODO(b/34473877) Ideally XLA would support AllReduce among arbitrary sets of
 // device handles instead of needing to set the number of replicas at XLA
 // service initialization time.
-tensorflow::mutex g_replica_count_mutex(tensorflow::LINKER_INITIALIZED);
-int g_replica_count = 1;
-bool g_local_client_created = false;
+tensorflow::mutex g_local_client_mutex(tensorflow::LINKER_INITIALIZED);
+int g_replica_count GUARDED_BY(g_local_client_mutex) = 1;
+LocalClient* g_local_client GUARDED_BY(g_local_client_mutex) = nullptr;
 
 Status InitializeReplicaCount(int replica_count) {
   if (replica_count < 1) {
     return InvalidArgument("Replica count must be >= 1; got %d.",
                            replica_count);
   }
-  tensorflow::mutex_lock lock(g_replica_count_mutex);
-  if (g_local_client_created) {
+  tensorflow::mutex_lock lock(g_local_client_mutex);
+  if (g_local_client != nullptr) {
     return FailedPrecondition(
         "Attempted to set the replica count to %d, but a local XLA service was "
         "previously created with a replica count of %d.",
@@ -45,33 +46,47 @@ Status InitializeReplicaCount(int replica_count) {
 }
 
 int GetReplicaCount() {
-  tensorflow::mutex_lock lock(g_replica_count_mutex);
+  tensorflow::mutex_lock lock(g_local_client_mutex);
   return g_replica_count;
 }
 
 LocalClient* GetOrCreateLocalClient() {
-  LocalClientOptions options;
-  {
-    tensorflow::mutex_lock lock(g_replica_count_mutex);
-    options.set_number_of_replicas(g_replica_count);
-    g_local_client_created = true;
+  tensorflow::mutex_lock lock(g_local_client_mutex);
+  if (g_local_client != nullptr) {
+    return g_local_client;
   }
-  return ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
+  LocalClientOptions options;
+  options.set_number_of_replicas(g_replica_count);
+  g_local_client = ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
+  CHECK(g_local_client != nullptr);
+  return g_local_client;
 }
 
 Status TransferToInfeedLocal(const Literal& literal) {
-  VLOG(1) << "Infeeding literal without replica number.";
+  VLOG(1) << "Infeeding literal without replica number; shape: "
+          << literal.shape();
   LocalClient* client = GetOrCreateLocalClient();
   return client->TransferToInfeedLocal(literal, /*device_ordinal=*/0);
 }
 
 Status TransferToInfeedLocalReplica(const Literal& literal,
                                     int replica_number) {
-  VLOG(1) << "Infeeding literal to replica number: " << replica_number;
+  VLOG(1) << "Infeeding shape " << literal.shape()
+          << " to replica number: " << replica_number;
   LocalClient* client = GetOrCreateLocalClient();
   TF_ASSIGN_OR_RETURN(int device_ordinal,
                       client->ReplicaNumberToDeviceOrdinal(replica_number));
   return client->TransferToInfeedLocal(literal, device_ordinal);
+}
+
+StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocalReplica(
+    const Shape& shape, int replica_number) {
+  VLOG(1) << "Outfeeding literal from replica number: " << replica_number
+          << " shape: " << shape;
+  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(int device_ordinal,
+                      client->ReplicaNumberToDeviceOrdinal(replica_number));
+  return client->TransferFromOutfeedLocal(shape, device_ordinal);
 }
 
 LocalShapedBuffer::LocalShapedBuffer(
@@ -107,6 +122,8 @@ CompiledLocalComputation::CompiledLocalComputation(
 StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
     const std::vector<Literal>& arguments) {
   LocalClient* client = GetOrCreateLocalClient();
+
+  VLOG(1) << "Execution requested with " << GetReplicaCount() << " replicas.";
 
   // Each replica populates a StatusOr result, but only replica zero actually
   // retrieves its literal value.
@@ -238,6 +255,12 @@ const Computation& LocalComputation::computation() const {
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
     : builder_(GetOrCreateLocalClient(), computation_name) {}
 
+void LocalComputationBuilder::SetOpMetadata(const OpMetadata& metadata) {
+  builder_.SetOpMetadata(metadata);
+}
+
+void LocalComputationBuilder::ClearOpMetadata() { builder_.ClearOpMetadata(); }
+
 StatusOr<LocalComputation*> LocalComputationBuilder::Build() {
   TF_ASSIGN_OR_RETURN(Computation computation, builder_.Build());
   return new LocalComputation(std::move(computation));
@@ -258,6 +281,12 @@ ComputationDataHandle LocalComputationBuilder::Infeed(const Shape& shape) {
   return builder_.Infeed(shape);
 }
 
+void LocalComputationBuilder::Outfeed(const ComputationDataHandle& operand,
+                                      const Shape& shape,
+                                      const string& outfeed_config) {
+  builder_.Outfeed(operand, shape, outfeed_config);
+}
+
 ComputationDataHandle LocalComputationBuilder::ConstantLiteral(
     const Literal& literal) {
   return builder_.ConstantLiteral(literal);
@@ -267,6 +296,13 @@ ComputationDataHandle LocalComputationBuilder::Broadcast(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
   return builder_.Broadcast(operand, broadcast_sizes);
+}
+
+ComputationDataHandle LocalComputationBuilder::Pad(
+    const ComputationDataHandle& operand,
+    const ComputationDataHandle& padding_value,
+    const PaddingConfig& padding_config) {
+  return builder_.Pad(operand, padding_value, padding_config);
 }
 
 ComputationDataHandle LocalComputationBuilder::Reshape(
@@ -312,6 +348,19 @@ ComputationDataHandle LocalComputationBuilder::ConcatInDim(
     tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
     int64 dimension) {
   return builder_.ConcatInDim(operands, dimension);
+}
+
+ComputationDataHandle
+LocalComputationBuilder::SelectAndScatterWithGeneralPadding(
+    const ComputationDataHandle& operand, const LocalComputation& select,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    const ComputationDataHandle& source,
+    const ComputationDataHandle& init_value, const LocalComputation& scatter) {
+  return builder_.SelectAndScatterWithGeneralPadding(
+      operand, select.computation(), window_dimensions, window_strides, padding,
+      source, init_value, scatter.computation());
 }
 
 ComputationDataHandle LocalComputationBuilder::Select(
@@ -386,6 +435,18 @@ ComputationDataHandle LocalComputationBuilder::Reduce(
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
   return builder_.Reduce(operand, init_value, local_computation.computation(),
                          dimensions_to_reduce);
+}
+
+ComputationDataHandle LocalComputationBuilder::ReduceWindowWithGeneralPadding(
+    const ComputationDataHandle& operand,
+    const ComputationDataHandle& init_value,
+    const LocalComputation& local_computation,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+  return builder_.ReduceWindowWithGeneralPadding(
+      operand, init_value, local_computation.computation(), window_dimensions,
+      window_strides, padding);
 }
 
 ComputationDataHandle LocalComputationBuilder::RngNormal(

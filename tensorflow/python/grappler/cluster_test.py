@@ -67,7 +67,7 @@ class ClusterTest(test.TestCase):
 
   def testMemoryEstimates(self):
     with ops.Graph().as_default() as g:
-      with ops.device('/job:localhost/replica:0/task:0/cpu:0'):
+      with ops.device('/job:localhost/replica:0/task:0/device:CPU:0'):
         a = random_ops.random_uniform(shape=())
         b = random_ops.random_uniform(shape=())
         c = a + b
@@ -79,7 +79,7 @@ class ClusterTest(test.TestCase):
             disable_detailed_stats=True, disable_timeline=True)
         peak_mem = grappler_cluster.DeterminePeakMemoryUsage(grappler_item)
         self.assertLessEqual(1, len(peak_mem))
-        snapshot = peak_mem['/job:localhost/replica:0/task:0/cpu:0']
+        snapshot = peak_mem['/job:localhost/replica:0/task:0/device:CPU:0']
         peak_usage = snapshot[0]
         self.assertEqual(52, peak_usage)
         live_tensors = snapshot[1]
@@ -165,19 +165,19 @@ class ClusterTest(test.TestCase):
       supported_dev = real_cluster.GetSupportedDevices(grappler_item)
       if test.is_gpu_available():
         self.assertEqual(supported_dev['add'], [
-            '/job:localhost/replica:0/task:0/cpu:0',
+            '/job:localhost/replica:0/task:0/device:CPU:0',
             '/job:localhost/replica:0/task:0/device:GPU:0'
         ])
         self.assertEqual(supported_dev['Sum'], [
-            '/job:localhost/replica:0/task:0/cpu:0',
+            '/job:localhost/replica:0/task:0/device:CPU:0',
             '/job:localhost/replica:0/task:0/device:GPU:0'
         ])
         # The axis tensor must reside on the host
         self.assertEqual(supported_dev['range'],
-                         ['/job:localhost/replica:0/task:0/cpu:0'])
+                         ['/job:localhost/replica:0/task:0/device:CPU:0'])
       else:
         self.assertEqual(supported_dev['add'],
-                         ['/job:localhost/replica:0/task:0/cpu:0'])
+                         ['/job:localhost/replica:0/task:0/device:CPU:0'])
 
 
 if __name__ == '__main__':

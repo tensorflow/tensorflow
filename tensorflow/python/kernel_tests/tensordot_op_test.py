@@ -64,7 +64,7 @@ class TensordotTest(test_lib.TestCase):
     a = [[1, 2], [3, 4]]
     b = [[1, 2], [3, 4]]
     # Invalid static axes.
-    for axes_value in -1, 0, [1], [[1]], [[1], [0, 1]]:
+    for axes_value in -1, 3, [1], [[1]], [[1], [0, 1]]:
       with self.assertRaises(ValueError):
         math_ops.tensordot(a, b, axes_value)
 
@@ -87,7 +87,7 @@ class TensordotTest(test_lib.TestCase):
 
   # Test case for 11950
   def test_valid_axis(self):
-    for axes_value in [1, 2], [[1], [2]]:
+    for axes_value in [1, 2], [[1], [2]], [[], []], 0:
       with self.test_session() as sess:
         np_a = np.ones((3,3))
         np_b = np.array([2, 3, 1])[None, None]
@@ -102,29 +102,29 @@ class TensordotTest(test_lib.TestCase):
 
 
   def test_partial_shape_inference(self):
-    a = array_ops.placeholder(dtypes.float32)
-    b = array_ops.placeholder(dtypes.float32)
-    axes = ([1], [0])
-    output = math_ops.tensordot(a, b, axes)
-    self.assertEqual(output.get_shape().ndims, None)
-    a.set_shape([None, 2])
-    b.set_shape([2, 3])
-    output = math_ops.tensordot(a, b, axes)
-    output_shape = output.get_shape()
-    self.assertEqual(output_shape.ndims, 2)
-    output_shape = output_shape.as_list()
-    self.assertEqual(output_shape[0], None)
-    self.assertEqual(output_shape[1], 3)
-    a = array_ops.placeholder(dtypes.float32)
-    b = array_ops.placeholder(dtypes.float32)
-    a.set_shape([2, 2])
-    b.set_shape([2, None])
-    output = math_ops.tensordot(a, b, axes)
-    output_shape = output.get_shape()
-    self.assertEqual(output_shape.ndims, 2)
-    output_shape = output_shape.as_list()
-    self.assertEqual(output_shape[0], 2)
-    self.assertEqual(output_shape[1], None)
+    for axes in ([1],[0]), 1:
+      a = array_ops.placeholder(dtypes.float32)
+      b = array_ops.placeholder(dtypes.float32)
+      output = math_ops.tensordot(a, b, axes)
+      self.assertEqual(output.get_shape().ndims, None)
+      a.set_shape([None, 2])
+      b.set_shape([2, 3])
+      output = math_ops.tensordot(a, b, axes)
+      output_shape = output.get_shape()
+      self.assertEqual(output_shape.ndims, 2)
+      output_shape = output_shape.as_list()
+      self.assertEqual(output_shape[0], None)
+      self.assertEqual(output_shape[1], 3)
+      a = array_ops.placeholder(dtypes.float32)
+      b = array_ops.placeholder(dtypes.float32)
+      a.set_shape([2, 2])
+      b.set_shape([2, None])
+      output = math_ops.tensordot(a, b, axes)
+      output_shape = output.get_shape()
+      self.assertEqual(output_shape.ndims, 2)
+      output_shape = output_shape.as_list()
+      self.assertEqual(output_shape[0], 2)
+      self.assertEqual(output_shape[1], None)
 
 
 def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
@@ -191,8 +191,8 @@ def _get_tensordot_tests(dtype_, rank_a_, rank_b_, num_dims_, dynamic_shape_):
         low=-1.0, high=1.0, size=np.prod(shape)).reshape(shape).astype(dtype_)
     b_np = np.random.uniform(
         low=-1.0, high=1.0, size=np.prod(shape)).reshape(shape).astype(dtype_)
-    all_axes = [1]
-    if a_np.ndim > 1:
+    all_axes = [0, 1]
+    if a_np.ndim > 2:
       all_axes.append(a_np.ndim - 1)
     for axes in all_axes:
       np_ans = np.tensordot(a_np, b_np, axes=axes)

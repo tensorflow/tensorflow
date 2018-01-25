@@ -15,8 +15,8 @@ limitations under the License.
 
 // Parent class and utilities for tfprof_graph and tfprof_scope.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
 
 #include <algorithm>
 #include <string>
@@ -29,10 +29,10 @@ limitations under the License.
 #include "tensorflow/core/profiler/internal/tfprof_constants.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
 #include "tensorflow/core/profiler/internal/tfprof_node_show.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_tensor.h"
 #include "tensorflow/core/profiler/internal/tfprof_timeline.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
@@ -44,7 +44,8 @@ class TFShow {
   virtual ~TFShow() {}
   virtual void AddNode(TFGraphNode* node) = 0;
   virtual void Build() = 0;
-  const GraphNodeProto& Show(const Options& opts);
+  virtual const GraphNodeProto& Show(const string& prefix,
+                                     const Options& opts) final;
 
  protected:
   virtual const ShowNode* ShowInternal(const Options& opts,
@@ -150,4 +151,4 @@ string FormatAcceleratorExecTime(const T* node, const Options& opts) {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_SHOW_H_

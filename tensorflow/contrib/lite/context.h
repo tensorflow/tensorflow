@@ -26,8 +26,8 @@ limitations under the License.
 // TfLiteRegistration - the implementation of a conceptual operation.
 //
 // Some abstractions in this file are created and managed by Interpreter.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
+#define TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
 
 #include <stdint.h>
 #include <stdlib.h>
@@ -141,6 +141,7 @@ typedef struct {
 // A union of points that points to memory for a given tensor.
 typedef union {
   int* i32;
+  int64_t* i64;
   float* f;
   char* raw;
   const char* raw_const;
@@ -295,4 +296,4 @@ typedef struct {
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_CONTEXT_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_CONTEXT_H_

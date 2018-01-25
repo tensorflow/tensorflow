@@ -216,7 +216,7 @@ def constant_value(pred):
 
   Arguments:
     pred: A scalar, either a Python bool or a TensorFlow boolean variable
-      or tensor.
+      or tensor, or the Python integer 1 or 0.
 
   Returns:
     True or False if `pred` has a constant boolean value, None otherwise.
@@ -224,6 +224,12 @@ def constant_value(pred):
   Raises:
     TypeError: If `pred` is not a Variable, Tensor or bool.
   """
+  # Allow integer booleans.
+  if pred == 0:
+    pred = False
+  elif pred == 1:
+    pred = True
+
   if isinstance(pred, bool):
     pred_value = pred
   elif isinstance(pred, variables.Variable):

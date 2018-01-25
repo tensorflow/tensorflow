@@ -129,6 +129,9 @@ class HloModule {
   // Gets the number of computations in this module.
   int64 computation_count() const { return computations_.size(); }
 
+  // Gets the number of instructions in this module.
+  int64 instruction_count() const;
+
   // Compute and return a post order of all computations in the module. The sort
   // is defined like so: if computation A has an instruction which calls
   // computation B, then A will appear after B in the sort.

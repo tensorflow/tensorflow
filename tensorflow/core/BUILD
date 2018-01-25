@@ -136,6 +136,8 @@ load(
     "tf_nano_proto_library",
     "tf_protos_all",
     "tf_protos_all_impl",
+    "tf_protos_grappler",
+    "tf_protos_grappler_impl",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -203,6 +205,8 @@ CORE_PROTO_SRCS = [
 ADDITIONAL_CORE_PROTO_SRCS = [
     "example/example_parser_configuration.proto",
     "protobuf/control_flow.proto",
+    # TODO(ebrevdo): Re-enable once CriticalSection is in core.
+    # "protobuf/critical_section.proto",
     "protobuf/meta_graph.proto",
     "protobuf/named_tensor.proto",
     "protobuf/saved_model.proto",
@@ -275,6 +279,8 @@ cc_library(
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/types.h",
+        "platform/windows/cpu_info.h",
+        "lib/bfloat16/bfloat16.h",
     ] + tf_additional_proto_hdrs() + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
     deps = tf_lib_proto_parsing_deps(),
@@ -287,6 +293,7 @@ cc_library(
 cc_library(
     name = "lib",
     hdrs = [
+        "lib/bfloat16/bfloat16.h",
         "lib/core/arena.h",
         "lib/core/bitmap.h",
         "lib/core/bits.h",
@@ -426,6 +433,7 @@ tf_cuda_library(
         "framework/cancellation.h",
         "framework/common_shape_fns.h",
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
+        "framework/dataset.h",
         "framework/device_base.h",
         "framework/function.h",
         "framework/graph_def_util.h",
@@ -529,14 +537,6 @@ cc_library(
     ],
 )
 
-tf_proto_library_cc(
-    name = "op_gen_overrides_proto",
-    srcs = ["framework/op_gen_overrides.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "op_gen_lib",
     srcs = ["framework/op_gen_lib.cc"],
@@ -545,7 +545,6 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":op_gen_overrides_proto_cc",
         ":protos_all_cc",
     ],
 )
@@ -567,6 +566,7 @@ cc_library(
         "framework/numeric_types.h",
         "framework/tensor_types.h",
         "framework/type_traits.h",
+        "lib/bfloat16/bfloat16.h",
         "platform/default/dynamic_annotations.h",
         "platform/default/integral_types.h",
         "platform/default/logging.h",
@@ -595,6 +595,7 @@ cc_library(
 tf_gen_op_libs(
     is_external = False,
     op_lib_names = [
+        "batch_ops",
         "bitwise_ops",
         "candidate_sampling_ops",
         "checkpoint_ops",
@@ -607,6 +608,7 @@ tf_gen_op_libs(
         "image_ops",
         "io_ops",
         "linalg_ops",
+        "list_ops",
         "lookup_ops",
         "logging_ops",
         "math_ops",
@@ -675,6 +677,7 @@ cc_library(
     deps = [
         ":array_ops_op_lib",
         ":audio_ops_op_lib",
+        ":batch_ops_op_lib",
         ":bitwise_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":checkpoint_ops_op_lib",
@@ -687,6 +690,7 @@ cc_library(
         ":image_ops_op_lib",
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
+        ":list_ops_op_lib",
         ":logging_ops_op_lib",
         ":lookup_ops_op_lib",
         ":math_ops_op_lib",
@@ -809,6 +813,7 @@ cc_library(
     deps = [
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
+        "//tensorflow/core/kernels:batch_kernels",
         "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:checkpoint_ops",
@@ -822,6 +827,7 @@ cc_library(
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
         "//tensorflow/core/kernels:linalg",
+        "//tensorflow/core/kernels:list_kernels",
         "//tensorflow/core/kernels:lookup",
         "//tensorflow/core/kernels:logging",
         "//tensorflow/core/kernels:math",
@@ -860,6 +866,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
         "//tensorflow/core/kernels:mkl_aggregate_ops",
     ]),
@@ -1057,18 +1064,31 @@ cc_library(
     name = "ios_tensorflow_lib",
     srcs = if_ios([
         ":android_op_registrations_and_gradients",
-        "//tensorflow/core:android_srcs",
         "//tensorflow/core/kernels:android_core_ops",
         "//tensorflow/core/kernels:android_extended_ops",
     ]),
     copts = tf_copts() + ["-Os"] + ["-std=c++11"],
     visibility = ["//visibility:public"],
     deps = [
+        ":ios_tensorflow_lib_lite",
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
-        "@fft2d//:fft2d",
-        "@gemmlowp//:gemmlowp",
+        "@fft2d",
+        "@gemmlowp",
+        "@protobuf_archive//:protobuf",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "ios_tensorflow_lib_lite",
+    srcs = if_ios(["//tensorflow/core:android_srcs"]),
+    copts = tf_copts() + ["-Os"] + ["-std=c++11"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":protos_all_cc_impl",
+        "//third_party/eigen3",
         "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
@@ -1305,6 +1325,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "framework/function_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/function.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "framework/graph_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/graph.proto",
@@ -1515,7 +1542,7 @@ cc_library(
         "@snappy",
         "@zlib_archive//:zlib",
         "@protobuf_archive//:protobuf",
-    ] + tf_protos_all_impl(),
+    ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
 )
 
 # File compiled with extra flags to get cpu-specific acceleration.
@@ -1580,6 +1607,7 @@ cc_library(
         "platform/jpeg.h",
     ]),
     hdrs = [
+        "lib/bfloat16/bfloat16.h",
         "lib/core/stringpiece.h",
         "lib/jpeg/jpeg_handle.h",
         "lib/jpeg/jpeg_mem.h",
@@ -1607,6 +1635,7 @@ cc_library(
         "platform/gif.h",
     ]),
     hdrs = [
+        "lib/bfloat16/bfloat16.h",
         "lib/core/stringpiece.h",
         "lib/gif/gif_io.h",
         "lib/gtl/cleanup.h",
@@ -1634,6 +1663,7 @@ cc_library(
         "platform/png.h",
     ]),
     hdrs = [
+        "lib/bfloat16/bfloat16.h",
         "lib/core/casts.h",
         "lib/core/stringpiece.h",
         "lib/png/png_io.h",
@@ -2077,7 +2107,7 @@ tf_cuda_library(
         ":core_cpu_base",
         ":proto_text",
         "//tensorflow/core/grappler:grappler_item",
-    ] + if_static([":core_cpu_impl"]) + tf_protos_all(),
+    ] + if_static([":core_cpu_impl"]) + tf_protos_all() + tf_protos_grappler(),
 )
 
 tf_cuda_library(
@@ -2314,7 +2344,7 @@ cc_library(
         ":lib_internal",
         ":proto_text",
         "//third_party/eigen3",
-        "@local_config_sycl//sycl:sycl",
+        "@local_config_sycl//sycl",
     ],
     alwayslink = 0,
 )
@@ -2803,6 +2833,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
+        "//tensorflow/core/kernels:mkl_softmax_op",
         "//tensorflow/core/kernels:mkl_tfconv_op",
     ]),
 )
@@ -3438,37 +3469,6 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:example_parsing_ops",
-    ],
-)
-
-filegroup(
-    name = "base_api_def",
-    srcs = glob(["api_def/base_api/*"]),
-)
-
-filegroup(
-    name = "python_api_def",
-    srcs = glob(["api_def/python_api/*"]),
-)
-
-tf_cc_test(
-    name = "api_test",
-    srcs = ["api_def/api_test.cc"],
-    data = [
-        ":base_api_def",
-        "//tensorflow/cc:ops/op_gen_overrides.pbtxt",
-    ],
-    deps = [
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":op_gen_lib",
-        ":op_gen_overrides_proto_cc",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
     ],
 )
 

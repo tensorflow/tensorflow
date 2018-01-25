@@ -815,9 +815,6 @@ xla_test(
 xla_test(
     name = "bfloat16_test",
     srcs = ["bfloat16_test.cc"],
-    blacklisted_backends = [
-        "gpu",
-    ],
     shard_count = 40,
     deps = [
         ":test_utils",
@@ -838,6 +835,30 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "half_test",
+    srcs = ["half_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    deps = [
+        ":test_utils",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla/client:computation",
+        "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -1001,7 +1022,10 @@ xla_test(
     name = "reduce_window_test",
     timeout = "long",
     srcs = [],
-    tags = ["optonly"],
+    tags = [
+        "enable_for_xla_interpreter",
+        "optonly",
+    ],
     xla_test_library_deps = [":reduce_window_test_library"],
     deps = [],
 )
@@ -1010,6 +1034,7 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
+    tags = ["enable_for_xla_interpreter"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",
@@ -1043,6 +1068,19 @@ xla_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "reduce_hlo_test",
+    srcs = ["reduce_hlo_test.cc"],
+    deps = [
+        ":client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],
@@ -1401,6 +1439,31 @@ xla_test(
         "//tensorflow/compiler/xla/tests:test_utils",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "execution_profile_test",
+    srcs = ["execution_profile_test.cc"],
+    deps = [
+        ":client_library_test_base",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "execution_profile_test_with_xla_hlo_profile",
+    srcs = ["execution_profile_test.cc"],
+    args = ["--xla_hlo_profile"],
+    deps = [
+        ":client_library_test_base",
+        "//tensorflow/compiler/xla/client:computation_builder",
+        "//tensorflow/compiler/xla/client:global_data",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:test",
     ],
 )

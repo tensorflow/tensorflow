@@ -102,7 +102,7 @@ TEST(FloatActivationsOpTest, Relu) {
 }
 
 TEST(FloatActivationsOpTest, Relu1) {
-  FloatActivationsOpModel m(BuiltinOperator_RELU1,
+  FloatActivationsOpModel m(BuiltinOperator_RELU_N1_TO_1,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
   m.SetInput({
       0.0, -0.6, 0.2, -0.4,  //

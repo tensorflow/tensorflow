@@ -23,7 +23,7 @@ limitations under the License.
 #include <fstream>
 #include <vector>
 #ifdef _WIN32
-#include <io.h>  //for _mktemp
+#include <io.h>  // for _mktemp
 #endif
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -117,6 +117,9 @@ constexpr char kReadRequestTimeout[] = "GCS_READ_REQUEST_TIMEOUT_SECS";
 // The environment variable to configure the overall request timeout for
 // upload requests.
 constexpr char kWriteRequestTimeout[] = "GCS_WRITE_REQUEST_TIMEOUT_SECS";
+// The environment variable to configure an additional header to send with
+// all requests to GCS (format HEADERNAME:HEADERCONTENT)
+constexpr char kAdditionalRequestHeader[] = "GCS_ADDITIONAL_REQUEST_HEADER";
 
 // TODO: DO NOT use a hardcoded path
 Status GetTmpFilename(string* filename) {
@@ -212,17 +215,21 @@ std::set<string> AddAllSubpaths(const std::vector<string>& paths) {
 
 Status ParseJson(StringPiece json, Json::Value* result) {
   Json::Reader reader;
-  if (!reader.parse(json.ToString(), *result)) {
+  if (!reader.parse(json.data(), json.data() + json.size(), *result)) {
     return errors::Internal("Couldn't parse JSON response from GCS.");
   }
   return Status::OK();
 }
 
+Status ParseJson(const std::vector<char>& json, Json::Value* result) {
+  return ParseJson(StringPiece{json.data(), json.size()}, result);
+}
+
 /// Reads a JSON value with the given name from a parent JSON value.
-Status GetValue(const Json::Value& parent, const string& name,
+Status GetValue(const Json::Value& parent, const char* name,
                 Json::Value* result) {
   *result = parent.get(name, Json::Value::null);
-  if (*result == Json::Value::null) {
+  if (result->isNull()) {
     return errors::Internal("The field '", name,
                             "' was expected in the JSON response.");
   }
@@ -230,7 +237,7 @@ Status GetValue(const Json::Value& parent, const string& name,
 }
 
 /// Reads a string JSON value with the given name from a parent JSON value.
-Status GetStringValue(const Json::Value& parent, const string& name,
+Status GetStringValue(const Json::Value& parent, const char* name,
                       string* result) {
   Json::Value result_value;
   TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
@@ -244,7 +251,7 @@ Status GetStringValue(const Json::Value& parent, const string& name,
 }
 
 /// Reads a long JSON value with the given name from a parent JSON value.
-Status GetInt64Value(const Json::Value& parent, const string& name,
+Status GetInt64Value(const Json::Value& parent, const char* name,
                      int64* result) {
   Json::Value result_value;
   TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
@@ -253,7 +260,7 @@ Status GetInt64Value(const Json::Value& parent, const string& name,
     return Status::OK();
   }
   if (result_value.isString() &&
-      strings::safe_strto64(result_value.asString().c_str(), result)) {
+      strings::safe_strto64(result_value.asCString(), result)) {
     return Status::OK();
   }
   return errors::Internal(
@@ -262,8 +269,7 @@ Status GetInt64Value(const Json::Value& parent, const string& name,
 }
 
 /// Reads a boolean JSON value with the given name from a parent JSON value.
-Status GetBoolValue(const Json::Value& parent, const string& name,
-                    bool* result) {
+Status GetBoolValue(const Json::Value& parent, const char* name, bool* result) {
   Json::Value result_value;
   TF_RETURN_IF_ERROR(GetValue(parent, name, &result_value));
   if (!result_value.isBool()) {
@@ -604,6 +610,11 @@ bool GetEnvVar(const char* varname, bool (*convert)(StringPiece, T*),
   return convert(env_value, value);
 }
 
+bool StringPieceIdentity(StringPiece str, StringPiece* value) {
+  *value = str;
+  return true;
+}
+
 }  // namespace
 
 GcsFileSystem::GcsFileSystem()
@@ -665,6 +676,36 @@ GcsFileSystem::GcsFileSystem()
     VLOG(1) << "GCS DNS cache is disabled, because " << kResolveCacheSecs
             << " = 0 (or is not set)";
   }
+
+  // Get the additional header
+  StringPiece add_header_contents;
+  if (GetEnvVar(kAdditionalRequestHeader, StringPieceIdentity,
+                &add_header_contents)) {
+    size_t split = add_header_contents.find(':', 0);
+
+    if (split != StringPiece::npos) {
+      StringPiece header_name = add_header_contents.substr(0, split);
+      StringPiece header_value = add_header_contents.substr(split + 1);
+
+      if (!header_name.empty() && !header_value.empty()) {
+        additional_header_.reset(new std::pair<const string, const string>(
+            header_name.ToString(), header_value.ToString()));
+
+        VLOG(1) << "GCS additional header ENABLED. "
+                << "Name: " << additional_header_->first << ", "
+                << "Value: " << additional_header_->second;
+      } else {
+        LOG(ERROR) << "GCS additional header DISABLED. Invalid contents: "
+                   << add_header_contents;
+      }
+    } else {
+      LOG(ERROR) << "GCS additional header DISABLED. Invalid contents: "
+                 << add_header_contents;
+    }
+  } else {
+    VLOG(1) << "GCS additional header DISABLED. No environment variable set.";
+  }
+
   // Apply the overrides for request timeouts
   uint32 timeout_value;
   if (GetEnvVar(kRequestConnectionTimeout, strings::safe_strtou32,
@@ -693,7 +734,8 @@ GcsFileSystem::GcsFileSystem(
     uint64 stat_cache_max_age, size_t stat_cache_max_entries,
     uint64 matching_paths_cache_max_age,
     size_t matching_paths_cache_max_entries, int64 initial_retry_delay_usec,
-    TimeoutConfig timeouts)
+    TimeoutConfig timeouts,
+    std::pair<const string, const string>* additional_header)
     : auth_provider_(std::move(auth_provider)),
       http_request_factory_(std::move(http_request_factory)),
       file_block_cache_(
@@ -702,7 +744,8 @@ GcsFileSystem::GcsFileSystem(
       matching_paths_cache_(new MatchingPathsCache(
           matching_paths_cache_max_age, matching_paths_cache_max_entries)),
       timeouts_(timeouts),
-      initial_retry_delay_usec_(initial_retry_delay_usec) {}
+      initial_retry_delay_usec_(initial_retry_delay_usec),
+      additional_header_(additional_header) {}
 
 Status GcsFileSystem::NewRandomAccessFile(
     const string& fname, std::unique_ptr<RandomAccessFile>* result) {
@@ -903,13 +946,11 @@ Status GcsFileSystem::StatForObject(const string& fname, const string& bucket,
                                         " when reading metadata of gs://",
                                         bucket, "/", object);
 
-        StringPiece response_piece =
-            StringPiece(output_buffer.data(), output_buffer.size());
         Json::Value root;
-        TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
+        TF_RETURN_IF_ERROR(ParseJson(output_buffer, &root));
 
         // Parse file size.
-        TF_RETURN_IF_ERROR(GetInt64Value(root, "size", &(stat->length)));
+        TF_RETURN_IF_ERROR(GetInt64Value(root, "size", &stat->length));
 
         // Parse file modification time.
         string updated;
@@ -1072,11 +1113,9 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
 
     TF_RETURN_WITH_CONTEXT_IF_ERROR(request->Send(), " when reading ", dirname);
     Json::Value root;
-    StringPiece response_piece =
-        StringPiece(output_buffer.data(), output_buffer.size());
-    TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
+    TF_RETURN_IF_ERROR(ParseJson(output_buffer, &root));
     const auto items = root.get("items", Json::Value::null);
-    if (items != Json::Value::null) {
+    if (!items.isNull()) {
       if (!items.isArray()) {
         return errors::Internal(
             "Expected an array 'items' in the GCS response.");
@@ -1107,7 +1146,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
       }
     }
     const auto prefixes = root.get("prefixes", Json::Value::null);
-    if (prefixes != Json::Value::null) {
+    if (!prefixes.isNull()) {
       // Subfolders are returned for the non-recursive mode.
       if (!prefixes.isArray()) {
         return errors::Internal(
@@ -1115,7 +1154,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
       }
       for (size_t i = 0; i < prefixes.size(); i++) {
         const auto prefix = prefixes.get(i, Json::Value::null);
-        if (prefix == Json::Value::null || !prefix.isString()) {
+        if (prefix.isNull() || !prefix.isString()) {
           return errors::Internal(
               "'prefixes' was expected to be an array of strings in the GCS "
               "response.");
@@ -1134,7 +1173,7 @@ Status GcsFileSystem::GetChildrenBounded(const string& dirname,
       }
     }
     const auto token = root.get("nextPageToken", Json::Value::null);
-    if (token == Json::Value::null) {
+    if (token.isNull()) {
       return Status::OK();
     }
     if (!token.isString()) {
@@ -1286,9 +1325,7 @@ Status GcsFileSystem::RenameObject(const string& src, const string& target) {
   // DeleteFile call below.
   file_block_cache_->RemoveFile(target);
   Json::Value root;
-  StringPiece response_piece =
-      StringPiece(output_buffer.data(), output_buffer.size());
-  TF_RETURN_IF_ERROR(ParseJson(response_piece, &root));
+  TF_RETURN_IF_ERROR(ParseJson(output_buffer, &root));
   bool done;
   TF_RETURN_IF_ERROR(GetBoolValue(root, "done", &done));
   if (!done) {
@@ -1399,6 +1436,11 @@ Status GcsFileSystem::CreateHttpRequest(std::unique_ptr<HttpRequest>* request) {
   TF_RETURN_IF_ERROR(AuthProvider::GetToken(auth_provider_.get(), &auth_token));
 
   new_request->AddAuthBearerHeader(auth_token);
+
+  if (additional_header_) {
+    new_request->AddHeader(additional_header_->first,
+                           additional_header_->second);
+  }
 
   *request = std::move(new_request);
   return Status::OK();

@@ -762,7 +762,7 @@ int64 MinSystemMemory(int64 available_memory) {
   // is necessary.
   min_system_memory *= 2;
 #endif
-#if defined(NVIDIA_TEGRA)
+#if defined(ANDROID_TEGRA)
   // 1GB system mem for NVIDIA Tegra devices since they use the same mem for RAM and Video RAM
   min_system_memory = 1<<30;
 #endif
@@ -1297,8 +1297,14 @@ Status BaseGPUDeviceFactory::GetValidDeviceIds(
                    "TF_MIN_GPU_MULTIPROCESSOR_COUNT.";
       continue;
     }
-    LOG(INFO) << "Adding visible gpu device " << visible_gpu_id;
     ids->push_back(visible_gpu_id);
+  }
+  if (!ids->empty()) {
+    std::vector<int> raw_ids(ids->size());
+    std::transform(ids->begin(), ids->end(), raw_ids.begin(),
+                   [](CudaGpuId id) -> int { return id.value(); });
+    LOG(INFO) << "Adding visible gpu devices: "
+              << str_util::Join(raw_ids, ", ");
   }
 
   return Status::OK();

@@ -73,7 +73,8 @@ void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
   CHECK_LE(offset, size_) << "LogicalBuffer " << buffer
                           << " offset out of range";
   CHECK_LE(offset + size, size_)
-      << "LogicalBuffer " << buffer << " size out of range";
+      << "LogicalBuffer " << buffer
+      << " size out of range at offset: " << offset << " with size: " << size;
   CHECK_EQ(buffer.color(), color())
       << "Buffer color " << buffer.color() << " for buffer " << buffer
       << " does not match allocation color " << color() << ".";
@@ -845,14 +846,13 @@ Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
-    if (is_thread_local || instruction->opcode() == HloOpcode::kCustomCall) {
-      // Custom call operations never have reusable buffers. Also we do not
-      // reuse thread-local buffers for now, because they are dynamically
-      // allocated and their lifetimes are hard to compute.
+    if (is_thread_local) {
+      // We do not reuse thread-local buffers for now, because they are
+      // dynamically allocated and their lifetimes are hard to compute.
       BufferAllocation* allocation = assignment->NewAllocation(
           *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
       VLOG(3) << "New allocation #" << allocation->index()
-              << " for thread-local/CustomCall: " << *buffer;
+              << " for thread-local: " << *buffer;
       continue;
     }
 
@@ -1385,14 +1385,15 @@ void BufferAssigner::AssignColocatedBufferSets(
     }
 
     for (const LogicalBuffer* buffer : colocated_buffer_set) {
+      const int64 buffer_size = assignment->buffer_size_(*buffer);
       if (allocation == nullptr) {
         // TODO(b/32491382) Avoid current trivial solution of using new
         // allocations for each colocated buffer set. When liveness has
         // module-level scope, we can allow buffers to be shared across
         // computations (in some cases).
-        allocation = assignment->NewAllocation(
-            *buffer, assignment->buffer_size_(*buffer),
-            /*is_thread_local=*/false, /*is_reusable=*/true);
+        allocation = assignment->NewAllocation(*buffer, buffer_size,
+                                               /*is_thread_local=*/false,
+                                               /*is_reusable=*/true);
         if (entry_parameter_number >= 0) {
           // This colocated buffer set contains an entry parameter and other
           // logical buffers which use the parameter as read-only in a while
@@ -1403,8 +1404,11 @@ void BufferAssigner::AssignColocatedBufferSets(
         }
         colocated_allocations->insert(allocation->index());
       } else {
+        CHECK_EQ(buffer_size, allocation->size())
+            << "Buffer: " << *buffer << " size mismatch in colocated buffer "
+            << "allocation: " << *allocation;
         assignment->AddAssignment(allocation, *buffer, /*offset=*/0,
-                                  assignment->buffer_size_(*buffer));
+                                  buffer_size);
       }
       colocated_buffers->insert(buffer);
     }

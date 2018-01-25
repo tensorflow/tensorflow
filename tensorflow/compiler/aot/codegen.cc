@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/aot/embedded_protocol_buffers.h"
 #include "tensorflow/compiler/aot/runtime.h"
 #include "tensorflow/compiler/tf2xla/str_util.h"
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
@@ -263,49 +264,6 @@ string GenNameToIndexCode(const T& entries, bool generate) {
   return code;
 }
 
-// Converts the given `str` into a comma-separated list of per-character values.
-string StringToCharList(const string& str) {
-  string list;
-  for (const char c : str) {
-    if (!list.empty()) {
-      list += ",";
-    }
-    list += strings::StrCat(static_cast<int>(c));
-  }
-  return list;
-}
-
-string GenProgramShapeCode(xla::ProgramShape program_shape, bool generate) {
-  // No need for any static magic if we're not supposed to generate the data.
-  if (!generate) {
-    return "{\n    return nullptr;\n  }";
-  }
-  // The parameter names are currently meaningless, and redundant with the rest
-  // of our metadata, so clear them out to avoid confusion and save space.
-  program_shape.clear_parameter_names();
-  const string proto_str = program_shape.SerializeAsString();
-  // Embed the program shape as a serialized protobuf in the header file.
-  //
-  // TODO(toddw): This strategy will likely fail for larger protobufs, depending
-  // on the C++ compiler that is used. Figure out another solution if necessary.
-  string code = R"({
-    static const xla::ProgramShape* kShape = []() {
-      static const char kProto[] = {{{PROTO_LIST}}};
-      static constexpr int kProtoSize = {{PROTO_SIZE}};
-      xla::ProgramShape* shape = new xla::ProgramShape;
-      shape->ParseFromArray(kProto, kProtoSize);
-      return shape;
-    }();
-    return kShape;
-  })";
-  str_util::ReplaceAllPairs(
-      &code, {
-                 {"{{PROTO_LIST}}", StringToCharList(proto_str)},
-                 {"{{PROTO_SIZE}}", strings::StrCat(proto_str.size())},
-             });
-  return code;
-}
-
 Status ValidateFeedFetchCppNames(const tf2xla::Config& config) {
   for (const tf2xla::Feed& feed : config.feed()) {
     if (!feed.name().empty()) {
@@ -322,8 +280,9 @@ Status ValidateFeedFetchCppNames(const tf2xla::Config& config) {
 
 }  // namespace
 
-Status GenerateHeader(const HeaderOpts& opts, const tf2xla::Config& config,
-                      const CompileResult& compile_result, string* header) {
+Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
+                      const CompileResult& compile_result,
+                      const MetadataResult& metadata_result, string* header) {
   TF_RETURN_IF_ERROR(ValidateConfig(config));
   TF_RETURN_IF_ERROR(ValidateFeedFetchCppNames(config));
   const int64 result_index = compile_result.aot->result_buffer_index();
@@ -373,8 +332,6 @@ Status GenerateHeader(const HeaderOpts& opts, const tf2xla::Config& config,
           ?
           R"(#include "tensorflow/compiler/xla/xla_data.pb.h")"
           : "";
-  const string program_shape_code =
-      GenProgramShapeCode(ps, opts.gen_program_shape);
 
   // Use a poor-man's text templating mechanism; first populate the full header
   // with placeholder tokens, and then rewrite the tokens with real values.
@@ -401,6 +358,8 @@ namespace xla { class ExecutableRunOptions; }
 extern "C" void {{ENTRY}}(
     void* result, const xla::ExecutableRunOptions* run_options,
     const void** args, void** temps, tensorflow::int64* profile_counters);
+
+{{DECLS_FROM_OBJ_FILE}}
 
 {{NS_START}}
 // {{CLASS}} represents a computation previously specified in a
@@ -524,7 +483,10 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
   static const char** StaticResultNames() {{RESULT_NAMES_CODE}}
 
   // Shape of the args and results.
-  static const xla::ProgramShape* StaticProgramShape() {{PROGRAM_SHAPE_CODE}}
+  static const xla::ProgramShape* StaticProgramShape() {
+    static const xla::ProgramShape* kShape = {{PROGRAM_SHAPE_SHIM_EXPRESSION}};
+    return kShape;
+  }
 };
 {{NS_END}}
 
@@ -547,15 +509,59 @@ class {{CLASS}} : public tensorflow::XlaCompiledCpuFunction {
       {"{{NS_END}}\n", ns_end},
       {"{{NS_START}}\n", ns_start},
       {"{{PROGRAM_SHAPE}}", xla::ShapeUtil::HumanString(ps)},
-      {"{{PROGRAM_SHAPE_CODE}}", program_shape_code},
       {"{{RESULT_INDEX}}", strings::StrCat(result_index)},
       {"{{RESULT_NAMES_CODE}}", result_names_code},
       {"{{TEMP_BYTES_ALIGNED}}", strings::StrCat(temp_bytes_aligned)},
       {"{{TEMP_BYTES_TOTAL}}", strings::StrCat(temp_bytes_total)},
       {"{{TEMP_NUM}}", strings::StrCat(temp_sizes.size())},
       {"{{TEMP_SIZES}}", str_util::Join(temp_sizes, ", ")},
-  };
+      {"{{DECLS_FROM_OBJ_FILE}}",
+       str_util::Join(metadata_result.header_variable_decls, "\n")},
+      {"{{PROGRAM_SHAPE_SHIM_EXPRESSION}}",
+       metadata_result.program_shape_access_shim}};
   str_util::ReplaceAllPairs(header, rewrites);
+  return Status::OK();
+}
+
+static string CreateUniqueIdentifierForProgramShape(const CodegenOpts& opts) {
+  string result = "__tfcompile";
+  for (const string& n : opts.namespaces) {
+    strings::StrAppend(&result, "_", n);
+  }
+
+  strings::StrAppend(&result, "_", opts.class_name, "_ProgramShape");
+  return result;
+}
+
+Status GenerateMetadata(const CodegenOpts& opts,
+                        const CompileResult& compile_result,
+                        MetadataResult* metadata_result) {
+  std::unique_ptr<xla::ProgramShape> program_shape;
+
+  if (opts.gen_program_shape) {
+    program_shape =
+        tensorflow::MakeUnique<xla::ProgramShape>(compile_result.program_shape);
+    // The parameter names are currently meaningless, and redundant with the
+    // rest of our metadata, so clear them out to avoid confusion and save
+    // space.
+    program_shape->clear_parameter_names();
+  }
+
+  // When asked to serialize a null protobuf, CreateEmbeddedProtocolBuffer gives
+  // a shim that evaluates to nullptr, which is what we want.
+
+  TF_ASSIGN_OR_RETURN(
+      EmbeddedProtocolBuffer embedded_program_shape,
+      CreateEmbeddedProtocolBuffer(opts.target_triple,
+                                   CreateUniqueIdentifierForProgramShape(opts),
+                                   "xla::ProgramShape", program_shape.get()));
+
+  metadata_result->program_shape_access_shim =
+      std::move(embedded_program_shape.cpp_shim_expression);
+  metadata_result->header_variable_decls.emplace_back(
+      std::move(embedded_program_shape.cpp_variable_decl));
+  metadata_result->object_file_data =
+      std::move(embedded_program_shape.object_file_data);
   return Status::OK();
 }
 

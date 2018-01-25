@@ -143,6 +143,57 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop) {
   }
 }
 
+TEST_F(DependencyOptimizerTest, ChangeToNoop_SwitchIdentity) {
+  // This tests that we don't try to repeatedly add Identity nodes
+  // with names like "ConstantFoldingCtrl/foo/bar/switch_$port" when
+  // multiple nodes reading the same output of a Switch node get
+  // optimized (e.g. constant folded or turned into NoOps).
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);
+  ops::Variable v_ctrl(scope.WithOpName("v_ctrl"), {}, DT_BOOL);
+  ops::Switch s(scope.WithOpName("switch"), v_in, v_ctrl);
+  // "neg" should be turned into a NoOp with a control dependency from
+  // the existing Identity node "ConstantFoldingCtrl/switch_1" and
+  // subsequently eliminated completely from the graph.
+  Output neg = ops::Neg(scope.WithOpName("neg"), s.output_true);
+  // c1 could be a result of constant folding some node fed by neg.
+  Output c1 = ops::Const(scope.WithOpName("c1").WithControlDependencies(neg),
+                         {1.0f, 2.0f}, {1, 2});
+  Output ctrl_dep_id = ops::Identity(
+      scope.WithOpName("ConstantFoldingCtrl/switch_1"), s.output_true);
+  // c2 could be a result of constant folding a node fed by s, which also
+  // added the ctrl_dep_id node.
+  Output c2 =
+      ops::Const(scope.WithOpName("c2").WithControlDependencies(ctrl_dep_id),
+                 {1.0f, 2.0f}, {1, 2});
+  Output neg1 = ops::Neg(scope.WithOpName("neg1"), s.output_false);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch.push_back("c1");
+  item.fetch.push_back("c2");
+  item.fetch.push_back("neg1");
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    // "neg" should be eliminated.
+    EXPECT_NE("neg", node.name());
+    // A control dep from "^ConstantFoldingCtrl/switch_1"
+    // should be attached to "c1".
+    if (node.name() == "c1") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^ConstantFoldingCtrl/switch_1", node.input(0));
+    }
+  }
+}
+
 // TODO(rmlarsen): Add test to make sure we skip Switch and Merge.
 TEST_F(DependencyOptimizerTest, ChangeToNoop_NoFetch) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
@@ -291,6 +342,51 @@ TEST_F(DependencyOptimizerTest, Transitive_Reduction_Simple) {
   EXPECT_EQ("id2", output.node(3).name());
   EXPECT_EQ(1, output.node(3).input_size());
   EXPECT_EQ("id1", output.node(3).input(0));
+}
+
+TEST_F(DependencyOptimizerTest, ChangeToNoop_Identity) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);
+  Output id_after_var = ops::Identity(scope.WithOpName("id_after_var"), v_in);
+  ops::Variable v_ctrl(scope.WithOpName("v_ctrl"), {}, DT_BOOL);
+  ops::Switch s(
+      scope.WithOpName("switch").WithControlDependencies(id_after_var), v_in,
+      v_ctrl);
+  Output id0 = ops::Identity(scope.WithOpName("id0"), s.output_true);
+  Output grappler_added_id = ops::Identity(
+      scope.WithOpName("ConstantFoldingCtrl/switch_1"), s.output_true);
+  Output c1 = ops::Const(scope.WithOpName("c1")
+                             .WithControlDependencies(id0)
+                             .WithControlDependencies(id_after_var)
+                             .WithControlDependencies(grappler_added_id),
+                         {1.0f, 2.0f}, {1, 2});
+  Output id1 = ops::Identity(scope.WithOpName("id1"), c1);
+  Output fetch =
+      ops::Identity(scope.WithOpName("fetch").WithControlDependencies(id1), c1);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch.push_back("c1");
+  item.fetch.push_back("fetch");
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(item.graph.node_size() - 2, output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    // "id0" and "id1" but neither "ConstantFoldingCtrl/switch_1" nor
+    // "id_after_var" should be eliminated.
+    EXPECT_NE("id0", node.name());
+    EXPECT_NE("id1", node.name());
+    if (node.name() == "c1") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("^ConstantFoldingCtrl/switch_1", node.input(0));
+    }
+  }
 }
 
 }  // namespace

@@ -409,6 +409,20 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
+  // Creates a sequence of instructions that performs an explicit broadcast of
+  // the operand to the target shape.
+  //
+  // Interior HLOs are passed to "adder", but the "root" HLO of the sequence is
+  // returned as a unique_ptr for API consistency with other factory methods in
+  // this interface.
+  //
+  // TODO(b/72173833) Ideally HloComputations would always be present, and so
+  // the adder being passed by the caller would not be necessary.
+  static std::unique_ptr<HloInstruction> CreateBroadcastSequence(
+      const Shape& output_shape, HloInstruction* operand,
+      const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+          adder);
+
   // Creates a pad instruction, where the operand is padded on the edges and
   // between the elements with the given padding value.
   static std::unique_ptr<HloInstruction> CreatePad(
@@ -554,9 +568,9 @@ class HloInstruction {
   // Layout of the instructions' output array is not considered.
   bool Identical(
       const HloInstruction& other,
-      std::function<bool(const HloInstruction*, const HloInstruction*)>
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
           eq_operands = std::equal_to<const HloInstruction*>(),
-      std::function<bool(const HloComputation*, const HloComputation*)>
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations = std::equal_to<const HloComputation*>()) const {
     // An instruction is always identical to itself.
     if (this == &other) {
@@ -566,10 +580,18 @@ class HloInstruction {
     // Identical instruction must have the same opcode and identical operands.
     // In general, there is no need to check shape because shape is inferred
     // from the shape of the operands.
-    if (opcode() != other.opcode() ||
-        !ContainersEqual(operands(), other.operands(),
-                         std::move(eq_operands))) {
+    if (opcode() != other.opcode()) {
       return false;
+    }
+    if (operands().size() != other.operands().size()) {
+      return false;
+    }
+    // Use an explicit loop rather than ContainerEquals, because copying around
+    // std::functions may be too expensive in some cases.
+    for (size_t i = 0; i < operands().size(); ++i) {
+      if (!eq_operands(operand(i), other.operand(i))) {
+        return false;
+      }
     }
 
     return IdenticalSlowPath(other, eq_computations);
@@ -1213,7 +1235,7 @@ class HloInstruction {
   // See comments on Identical().
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      std::function<bool(const HloComputation*, const HloComputation*)>
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
           eq_computations) const;
 
   // Creates an n-ary elementwise operation.

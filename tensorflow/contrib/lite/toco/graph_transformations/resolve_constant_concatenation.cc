@@ -191,7 +191,7 @@ bool ResolveConstantConcatenation::Run(Model* model, std::size_t op_index) {
   for (const string& input_name : concat_op->inputs) {
     // Check to prevent removal of shared tensors
     if(CountOpsWithInput(*model, input_name) == 1) {
-      model->arrays.erase(input_name);
+      model->EraseArray(input_name);
     }
   }
 

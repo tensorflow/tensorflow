@@ -38,6 +38,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
+@test_util.with_c_api
 class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
@@ -302,7 +303,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(3.0, self.evaluate(v.value()))
     self.evaluate(resource_variable_ops.destroy_resource_op(v.handle))
-    with self.assertRaises(errors.NotFoundError):
+    with self.assertRaises(errors.FailedPreconditionError):
       self.evaluate(v.value())
     # Handle to a resource not actually created.
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
@@ -342,14 +343,14 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable(
           2.0, caching_device="/job:localhost")
       self.assertEqual("/job:localhost", v.value().device)
-      with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
+      with self.assertRaises(ValueError):
         _ = v.value().op.get_attr("_class")
 
     with ops.colocate_with(v.op):
       w = resource_variable_ops.ResourceVariable(
           2.0, caching_device="/job:localhost")
       self.assertEqual("/job:localhost", w.value().device)
-      with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
+      with self.assertRaises(ValueError):
         _ = w.value().op.get_attr("_class")
 
   def testSharedName(self):

@@ -457,6 +457,14 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
   return call;
 }
 
+int64 HloModule::instruction_count() const {
+  int64 n = 0;
+  for (const auto& computation : computations_) {
+    n += computation->instruction_count();
+  }
+  return n;
+}
+
 std::list<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the
@@ -515,7 +523,15 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
 
   std::unordered_map<HloComputation*, HloComputation*> clone_map;
   for (auto& computation : computations_) {
-    auto cloned_computation = computation->Clone(suffix);
+    if (computation->IsFusionComputation()) {
+      // Cloning of a fused computation is handled by its fusion instruction.
+      continue;
+    }
+
+    // When cloning a computation, pass in the new module, so that for any
+    // fusion instruction in this computation, the fused computation will be
+    // deep cloned to the new module.
+    auto cloned_computation = computation->Clone(suffix, module.get());
     InsertOrDie(&clone_map, computation.get(), cloned_computation.get());
 
     if (entry_computation_ == computation.get()) {
@@ -529,8 +545,15 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
     for (auto* instruction : cloned_computation->instructions()) {
       // Rewrite instruction's called_computation to point to the cloned
       // computations.
-      instruction->ReplaceCalledComputations(
-          [&](HloComputation* hlo) { return FindOrDie(clone_map, hlo); });
+      instruction->ReplaceCalledComputations([&](HloComputation* hlo) {
+        if (hlo->IsFusionComputation()) {
+          // Cloning of a fused computation has already been handled when its
+          // fusion instruction is cloned. So this hlo computation is already
+          // the cloned one.
+          return hlo;
+        }
+        return FindOrDie(clone_map, hlo);
+      });
     }
   }
   return module;

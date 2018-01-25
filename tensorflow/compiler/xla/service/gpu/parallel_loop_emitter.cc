@@ -88,6 +88,23 @@ llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
           /*HasNUW=*/true, /*HasNSW=*/true),
       thread_id, "linear_index", /*HasNUW=*/true, /*HasNSW=*/true);
 
+  // Add an @llvm.assume(linear_index < threads_per_block * num_blocks).
+  //
+  // This might seem obvious from the computation above, but LLVM does not
+  // currently determine the range of linear_index precisely.  InstCombine uses
+  // known-bits, which, when applied to the task of determining a value's range,
+  // is imprecise for everything other than powers of 2.  And
+  // CorrelatedValuePropagation is, as a cost-saving measure, disabled for
+  // conditions in the same basic block as their operands.
+  llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::assume,
+      {ir_builder_->CreateICmpULT(
+          linear_index,
+          ir_builder_->getInt64(launch_dimensions_.threads_per_block() *
+                                launch_dimensions_.block_count()),
+          "linear_index_in_range")},
+      {}, ir_builder_);
+
   auto if_in_bounds = llvm_ir::EmitIfThenElse(
       ir_builder_->CreateICmpULT(
           linear_index, ir_builder_->getInt64(ShapeUtil::ElementsIn(shape_))),
