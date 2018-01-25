@@ -89,7 +89,7 @@ void RunInference(Settings* s) {
 
   tflite::ops::builtin::BuiltinOpResolver resolver;
 
-  tflite::InterpreterBuilder (*model, resolver)(&interpreter);
+  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (!interpreter) {
     LOG(FATAL) << "Failed to construct interpreter\n";
     exit(-1);
@@ -151,9 +151,9 @@ void RunInference(Settings* s) {
   switch (interpreter->tensor(input)->type) {
     case kTfLiteFloat32:
       s->input_floating = true;
-      downsize<float>(interpreter->typed_tensor<float>(input), in, image_height,
-                      image_width, image_channels, wanted_height, wanted_width,
-                      wanted_channels, s);
+      downsize<float>(interpreter->typed_tensor<float>(input), in,
+                      image_height, image_width, image_channels,
+                      wanted_height, wanted_width, wanted_channels, s);
       break;
     case kTfLiteUInt8:
       downsize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in,
@@ -188,8 +188,9 @@ void RunInference(Settings* s) {
   int output = interpreter->outputs()[0];
   switch (interpreter->tensor(output)->type) {
     case kTfLiteFloat32:
-      get_top_n<float>(interpreter->typed_output_tensor<float>(0), output_size,
-                       num_results, threshold, &top_results, true);
+      get_top_n<float>(interpreter->typed_output_tensor<float>(0),
+                       output_size, num_results, threshold, &top_results,
+                       true);
       break;
     case kTfLiteUInt8:
       get_top_n<uint8_t>(interpreter->typed_output_tensor<uint8_t>(0),
