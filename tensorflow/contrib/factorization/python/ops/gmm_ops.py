@@ -406,7 +406,7 @@ class GmmAlgorithm(object):
       if 'm' in self._params:
         self._means_op = self._means.assign(
             math_ops.div(
-                math_ops.add_n(self._w_mul_x), points_in_k_expanded + MEPS))
+                math_ops.add_n(self._w_mul_x), points_in_k_expanded + constants.MEPS))
       else:
         self._means_op = control_flow_ops.no_op()
       # means are (num_classes x 1 x dims)
