@@ -1093,6 +1093,8 @@ tensorflow::Status ConvertPool(Converter& ctx,
   // TODO(jie): support other pooling type
   if (node_def.op() == "MaxPool")
     type = nvinfer1::PoolingType::kMAX;
+  else if (node_def.op() == "AvgPool")
+    type = nvinfer1::PoolingType::kAVERAGE;
   else
     return tensorflow::errors::Unimplemented("only supports Max pool");
 
@@ -1253,6 +1255,25 @@ tensorflow::Status ConvertConst(Converter& ctx,
     // weights = ctx.get_temp_weights(dtype, scalar_shape);
     // std::memcpy(const_cast<void*>(weights.values),
     //           weights_tensor.float_val().data(), weights.size_bytes());
+  } else if (!weights_tensor.int_val().empty()) {
+    LOG(DEBUG) << "int!!!" << node_def.name();
+    nvinfer1::Dims scalar_shape;
+    if (tensor.dims() > 0) {
+      LOG(DEBUG) << "dimensions: " << tensor.dims();
+      weights = TRT_ShapedWeights(dtype, weights_tensor.int_val().data(),
+                                  get_tensor_shape(tensor));
+    } else {
+      LOG(DEBUG) << "dimensions: " << tensor.dims();
+      scalar_shape.nbDims = 1;
+      scalar_shape.d[0] = 1;
+      scalar_shape.type[0] = nvinfer1::DimensionType::kSPATIAL;
+      for (int i = 1; i < nvinfer1::Dims::MAX_DIMS; i++) {
+        scalar_shape.d[i] = 0;
+        scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
+      }
+      weights = TRT_ShapedWeights(dtype, weights_tensor.int_val().data(),
+                                  scalar_shape);
+    }
   } else if (!weights_tensor.tensor_content().empty()) {
     LOG(DEBUG) << "TENSOR!!!" << node_def.name();
     weights = TRT_ShapedWeights(dtype, weights_tensor.tensor_content().data(),
@@ -1261,6 +1282,7 @@ tensorflow::Status ConvertConst(Converter& ctx,
     return tensorflow::errors::Unimplemented(
         "not supported constant type, at " + node_def.name());
   }
+
   // pass the output
   outputs->push_back(TRT_TensorOrWeights(weights));
   return tensorflow::Status::OK();
@@ -1522,19 +1544,115 @@ tensorflow::Status ConvertPad(Converter& ctx,
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertConcat(
+    Converter& ctx, tensorflow::NodeDef const& node_def,
+    std::vector<TRT_TensorOrWeights> const& inputs,
+    std::vector<TRT_TensorOrWeights>* outputs) {
+
+  // not including the last input (axis) here
+  int input_size = static_cast<int>(inputs.size()) - 1;
+
+  if (!inputs.at(0).is_tensor())
+    return tensorflow::errors::InvalidArgument(
+             "Concat in TRT support only Tensor input, at " + node_def.name());
+
+  // We are retrieving the axis
+  TRT_ShapedWeights axis = inputs.at(input_size).weights();
+	
+  TFAttrs attrs(node_def);
+  auto attr_size = attrs.at("N")->i();
+  auto data_type = attrs.get<nvinfer1::DataType>("T");
+  auto index_type = attrs.get<tensorflow::DataType>("Tidx");
+
+  // TODO(jie): handle data type
+  // Only expect to handle INT32 as index attributes for now
+  if (index_type != tensorflow::DataType::DT_INT32)
+    return tensorflow::errors::Unimplemented("Tidx supports only DT_INT32, at "
+             + node_def.name());
+
+  int index =
+      *(static_cast<int*>(const_cast<void*>(axis.values_)));
+ 
+  // TODO(jie): early termination with no-op (attr_size==1)
+
+  auto dim = inputs.at(0).tensor()->getDimensions();
+  // dimension check
+  if (index > dim.nbDims + 1)
+    return tensorflow::errors::InvalidArgument(
+        "Concatenate on axis out of dimension range, at " +
+        node_def.name());
+
+  if (index == 0)
+    return tensorflow::errors::InvalidArgument(
+        "Concatenate on batch dimension not supported, at " +
+        node_def.name());
+
+  // incase we need permutation;
+  std::vector<int> permutation_order(dim.nbDims+1);
+
+  for (int i=0; i<dim.nbDims+1; i++)
+    permutation_order[i] = i;
+
+  if (index != 1) {
+    permutation_order[1] = index-1;
+    permutation_order[index-1] = 1;
+  }
+    
+
+  std::vector<nvinfer1::ITensor const*> inputs_vec;
+  // Shap chack (all input tensor should have same shape)
+  // starting from 0 since we are probably also doing transpose here;
+  for (int i=0; i < input_size; i++) {
+    auto tensor_i = inputs.at(i).tensor();
+    auto dim_i = tensor_i->getDimensions();
+    if ( dim_i.nbDims != dim.nbDims )
+      return tensorflow::errors::InvalidArgument(
+        "Concatenate receives inputs with inconsistent dimensions, at " +
+        node_def.name());
+
+    for (int j=0; j < dim.nbDims; j++) {
+      // check dimension consistency on non-concatenate axis
+      if (j != index-1 && dim_i.d[j] != dim.d[j])
+        return tensorflow::errors::InvalidArgument(
+          "Concatenate receives inputs with inconsistent shape, at" +
+          node_def.name());
+    }
+
+    // TRT does concatenation only on channel!
+    if (index != 1)
+      tensor_i = ctx.transposeTensor(const_cast<nvinfer1::ITensor*>(tensor_i),
+                                     permutation_order);
+
+    inputs_vec.push_back(tensor_i);
+  }
+
+  // nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  nvinfer1::IConcatenationLayer* layer = ctx.network()->addConcatenation(
+    const_cast<nvinfer1::ITensor* const*>(inputs_vec.data()),
+    inputs_vec.size());
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  if (index != 1)
+  {
+    output_tensor= ctx.transposeTensor(output_tensor, permutation_order);
+  }
+  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
+}
+
 void Converter::register_op_converters() {
   // vgg_16 slim implementation
   _op_registry["Placeholder"] = ConvertPlaceholder;
   _op_registry["Conv2D"] = ConvertConv2D;
   _op_registry["Relu"] = ConvertActivation;
   _op_registry["MaxPool"] = ConvertPool;
+  _op_registry["AvgPool"] = ConvertPool;
   // This could be really handled as ConvertBinary
   _op_registry["BiasAdd"] = ConvertScale;
   _op_registry["Const"] = ConvertConst;
   // _op_registry["MatMul"] = ConvertFullyConnected; // not used in vgg
   // TODO(ben,jie): this is a temp hack.
   _op_registry["Identity"] = ConvertIdentity;  // Identity should be removed
-  // _op_registry["AvgPool"] = ConvertPool;
 
   // resnet_50_v1 slim implementation
   _op_registry["Add"] = ConvertBinary;
@@ -1544,6 +1662,8 @@ void Converter::register_op_converters() {
   _op_registry["Mean"] = ConvertReduce;
   _op_registry["Pad"] = ConvertPad;
   // TODO(ben,jie): Add more ops
+
+  _op_registry["ConcatV2"] = ConvertConcat;
 }
 
 }  // namespace

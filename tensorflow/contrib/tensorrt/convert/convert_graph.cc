@@ -60,7 +60,8 @@ static std::unordered_set<std::string> output_nodes;
 bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
   static const std::set<std::string> candidate_ops = {
       "Identity", "Const", "Conv2D", "MaxPool", "BiasAdd", "Relu",
-      "Add",      "Mul",   "Sub",    "Rsqrt",   "Pad"    , "Mean"
+      "Add",      "Mul",   "Sub",    "Rsqrt",   "Pad"    , "Mean",
+      "AvgPool",  "ConcatV2"
                                                        // TODO(ben,jie): ...
   };
   if (output_nodes.count(node_def.name())) return false;
