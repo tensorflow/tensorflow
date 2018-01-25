@@ -52,6 +52,7 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialTransposeToReshape);
   transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);

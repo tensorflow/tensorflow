@@ -110,7 +110,8 @@ void ExecuteAndFetchProfile(string* profile_output, LocalClient* client,
 
   Executable* executable = local_executable->executable();
   HloExecutionProfile hlo_execution_profile(
-      &executable->hlo_profile_printer(), &executable->hlo_profile_index_map());
+      &executable->hlo_profile_printer_data(),
+      &executable->hlo_profile_index_map());
 
   TF_ASSERT_OK_AND_ASSIGN(
       Backend::StreamPtr stream_ptr,
