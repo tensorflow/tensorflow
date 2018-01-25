@@ -557,3 +557,47 @@ tf_cuda_cc_test(
         "//tensorflow/core/kernels:array",
     ],
 )
+
+cc_library(
+    name = "request_id",
+    srcs = ["request_id.cc"],
+    hdrs = ["request_id.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_cc_test(
+    name = "request_id_test",
+    size = "small",
+    srcs = ["request_id_test.cc"],
+    deps = [
+        ":request_id",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "recent_request_ids",
+    srcs = ["recent_request_ids.cc"],
+    hdrs = ["recent_request_ids.h"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "recent_request_ids_test",
+    size = "small",
+    srcs = ["recent_request_ids_test.cc"],
+    deps = [
+        ":recent_request_ids",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:worker_proto_cc",
+    ],
+)

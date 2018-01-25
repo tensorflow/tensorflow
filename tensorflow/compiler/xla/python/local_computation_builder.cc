@@ -255,6 +255,12 @@ const Computation& LocalComputation::computation() const {
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
     : builder_(GetOrCreateLocalClient(), computation_name) {}
 
+void LocalComputationBuilder::SetOpMetadata(const OpMetadata& metadata) {
+  builder_.SetOpMetadata(metadata);
+}
+
+void LocalComputationBuilder::ClearOpMetadata() { builder_.ClearOpMetadata(); }
+
 StatusOr<LocalComputation*> LocalComputationBuilder::Build() {
   TF_ASSIGN_OR_RETURN(Computation computation, builder_.Build());
   return new LocalComputation(std::move(computation));
@@ -290,6 +296,13 @@ ComputationDataHandle LocalComputationBuilder::Broadcast(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
   return builder_.Broadcast(operand, broadcast_sizes);
+}
+
+ComputationDataHandle LocalComputationBuilder::Pad(
+    const ComputationDataHandle& operand,
+    const ComputationDataHandle& padding_value,
+    const PaddingConfig& padding_config) {
+  return builder_.Pad(operand, padding_value, padding_config);
 }
 
 ComputationDataHandle LocalComputationBuilder::Reshape(
@@ -335,6 +348,19 @@ ComputationDataHandle LocalComputationBuilder::ConcatInDim(
     tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
     int64 dimension) {
   return builder_.ConcatInDim(operands, dimension);
+}
+
+ComputationDataHandle
+LocalComputationBuilder::SelectAndScatterWithGeneralPadding(
+    const ComputationDataHandle& operand, const LocalComputation& select,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    const ComputationDataHandle& source,
+    const ComputationDataHandle& init_value, const LocalComputation& scatter) {
+  return builder_.SelectAndScatterWithGeneralPadding(
+      operand, select.computation(), window_dimensions, window_strides, padding,
+      source, init_value, scatter.computation());
 }
 
 ComputationDataHandle LocalComputationBuilder::Select(
@@ -409,6 +435,18 @@ ComputationDataHandle LocalComputationBuilder::Reduce(
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
   return builder_.Reduce(operand, init_value, local_computation.computation(),
                          dimensions_to_reduce);
+}
+
+ComputationDataHandle LocalComputationBuilder::ReduceWindowWithGeneralPadding(
+    const ComputationDataHandle& operand,
+    const ComputationDataHandle& init_value,
+    const LocalComputation& local_computation,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+  return builder_.ReduceWindowWithGeneralPadding(
+      operand, init_value, local_computation.computation(), window_dimensions,
+      window_strides, padding);
 }
 
 ComputationDataHandle LocalComputationBuilder::RngNormal(

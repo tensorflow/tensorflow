@@ -54,9 +54,12 @@ class Scope(object):
     self.created = set()
     self.used = set()
 
+  # TODO(mdan): Rename to `locals`
   @property
   def referenced(self):
-    return self.used | self.modified
+    if not self.isolated and self.parent is not None:
+      return self.used | self.parent.referenced
+    return self.used
 
   def __repr__(self):
     return 'Scope{r=%s, c=%s, w=%s}' % (tuple(self.used), tuple(self.created),
@@ -81,18 +84,20 @@ class Scope(object):
 
   def mark_read(self, name):
     self.used.add(name)
-    if self.parent is not None and self.parent.has(
-        name) and name not in self.created:
+    if self.parent is not None and name not in self.created:
       self.parent.mark_read(name)
 
   def mark_write(self, name):
     self.modified.add(name)
-    if self.parent is not None and self.parent.has(name):
-      self.parent.mark_write(name)
-    else:
-      if not self.isolated:
-        self.parent.mark_write(name)
+    if self.isolated:
       self.created.add(name)
+    else:
+      if self.parent is None:
+        self.created.add(name)
+      else:
+        if not self.parent.has(name):
+          self.created.add(name)
+        self.parent.mark_write(name)
 
 
 class AccessResolver(gast.NodeTransformer):
@@ -172,6 +177,7 @@ class AccessResolver(gast.NodeTransformer):
     for after_child in after_children:
       self.scope.merge_from(after_child)
     for child, name in children:
+      # TODO(mdan): We don't need this - we have the parent link from scope.
       anno.setanno(parent, '%s_parent_scope' % name, self.scope)
     return parent
 

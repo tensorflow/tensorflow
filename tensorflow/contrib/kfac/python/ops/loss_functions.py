@@ -660,19 +660,20 @@ class CategoricalLogitsNegativeLogProbLoss(DistributionNegativeLogProbLoss,
 
   def multiply_fisher(self, vector):
     probs = self._probs
-    return vector * probs - math_ops.reduce_sum(vector * probs, axis=1) * probs
+    return vector * probs - probs * math_ops.reduce_sum(
+        vector * probs, axis=-1, keep_dims=True)
 
   def multiply_fisher_factor(self, vector):
     probs = self._probs
     sqrt_probs = self._sqrt_probs
     return sqrt_probs * vector - probs * math_ops.reduce_sum(
-        sqrt_probs * vector, axis=1, keep_dims=True)
+        sqrt_probs * vector, axis=-1, keep_dims=True)
 
   def multiply_fisher_factor_transpose(self, vector):
     probs = self._probs
     sqrt_probs = self._sqrt_probs
     return sqrt_probs * vector - sqrt_probs * math_ops.reduce_sum(
-        probs * vector, axis=1, keep_dims=True)
+        probs * vector, axis=-1, keep_dims=True)
 
   def multiply_fisher_factor_replicated_one_hot(self, index):
     assert len(index) == 1, "Length of index was {}".format(len(index))

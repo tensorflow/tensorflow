@@ -43,24 +43,11 @@ xla::ComputationDataHandle XlaComputeScatterAddDynamicSlice(
   TensorShape out_shape(flat_shape);
   out_shape.set_dim(0, num_segments);
 
-  // TODO(b/37575001) The tensor in which we construct the output during
-  // the loop must have rank >= 3 as a workaround for lowering issues.
-  int64 extra_dims = 0;
-  if (out_shape.dims() < 3) {
-    extra_dims = 3 - out_shape.dims();
-  }
-  TensorShape loop_out_shape;
-  for (int64 k = 0; k < extra_dims; ++k) {
-    loop_out_shape.AddDim(1);
-  }
-  loop_out_shape.AppendShape(out_shape);
-
   // Slices from the input data are same shape as the input data, except dim 0.
   TensorShape slice_shape(flat_shape);
   slice_shape.set_dim(0, 1);
-  // slices are reshaped into the rank >= 3 shape of the loop-carried output
-  TensorShape loop_out_slice_shape(loop_out_shape);
-  loop_out_slice_shape.set_dim(extra_dims, 1);
+  TensorShape loop_out_slice_shape(out_shape);
+  loop_out_slice_shape.set_dim(0, 1);
 
   // Construct the initial values of the loop-carried variables
   // Flatten the indices into 1-D for ease of iteration.
@@ -70,7 +57,7 @@ xla::ComputationDataHandle XlaComputeScatterAddDynamicSlice(
 
   auto init_i = builder->ConstantR0<int32>(0);
   auto init_out = builder->Broadcast(XlaHelpers::Zero(builder, dtype),
-                                     loop_out_shape.dim_sizes());
+                                     out_shape.dim_sizes());
 
   xla::PrimitiveType ptype;
   TF_CHECK_OK(DataTypeToPrimitiveType(dtype, &ptype));
@@ -83,7 +70,7 @@ xla::ComputationDataHandle XlaComputeScatterAddDynamicSlice(
        // The scatter indices tensor is loop invariant.
        xla::ShapeUtil::MakeShape(xla::S32, {indices_shape.num_elements()}),
        // The output data array is updated each loop iteration.
-       xla::ShapeUtil::MakeShape(ptype, loop_out_shape.dim_sizes())});
+       xla::ShapeUtil::MakeShape(ptype, out_shape.dim_sizes())});
   xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(tuple_shapes);
 
   auto init = builder->Tuple({init_i, data_flat, indices_1d, init_out});
@@ -95,7 +82,6 @@ xla::ComputationDataHandle XlaComputeScatterAddDynamicSlice(
                condb.Parameter(0, tuple_shape, "ScatterAddWhileTuple"), 0),
            condb.ConstantR0<int32>(indices_shape.num_elements()));
   auto cond_status = condb.Build();
-  // TF_CHECK_OK(cond_status);
   auto cond = cond_status.ConsumeValueOrDie();
 
   // Construct the while loop body's function. The implementation of scatter is:
@@ -123,11 +109,9 @@ xla::ComputationDataHandle XlaComputeScatterAddDynamicSlice(
                       loop_out_slice_shape.dim_sizes());
 
     // Index into the output array.
-    // Construct the index into the R3+ output array 0, ..., <index>, 0, ...
-    std::vector<xla::ComputationDataHandle> out_index_vals(
-        loop_out_shape.dims(), zero);
-    out_index_vals[extra_dims] =
-        bodyb.DynamicSlice(idcs, bodyb.Reshape(i, {1}), {1});
+    std::vector<xla::ComputationDataHandle> out_index_vals(out_shape.dims(),
+                                                           zero);
+    out_index_vals[0] = bodyb.DynamicSlice(idcs, bodyb.Reshape(i, {1}), {1});
     auto out_index = bodyb.ConcatInDim(out_index_vals, 0);
 
     // Slice the output array, update value, and update the output slice.
@@ -142,12 +126,10 @@ xla::ComputationDataHandle XlaComputeScatterAddDynamicSlice(
     bodyb.Tuple({ip1, data, idcs, updated_output});
   }
   auto body_status = bodyb.Build();
-  // TF_CHECK_OK(body_status);
   auto body = body_status.ConsumeValueOrDie();
 
   auto gather_while = builder->While(cond, body, init);
-  auto updated_output = builder->GetTupleElement(gather_while, 3);
-  return builder->Reshape(updated_output, out_shape.dim_sizes());
+  return builder->GetTupleElement(gather_while, 3);
 }
 
 namespace {

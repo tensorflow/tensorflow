@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.conv_utils import convert_kernel
+from tensorflow.python.util.tf_export import tf_export
 
 
 def count_params(weights):
@@ -187,6 +188,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
   print_fn('_' * line_length)
 
 
+@tf_export('keras.utils.convert_all_kernels_in_model')
 def convert_all_kernels_in_model(model):
   """Converts all convolution kernels in a model from Theano to TensorFlow.
 

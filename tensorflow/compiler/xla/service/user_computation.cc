@@ -2153,6 +2153,17 @@ UserComputation::LookUpRequestForErrorReporting(
   return LookUpRequest(handle);
 }
 
+tensorflow::gtl::optional<const OpMetadata*> UserComputation::ParameterMetadata(
+    int parameter_number) const {
+  tensorflow::mutex_lock lock(mutex_);
+  auto it = parameters_.find(parameter_number);
+  if (it == parameters_.end()) {
+    return tensorflow::gtl::nullopt;
+  }
+  OperationRequest* op = it->second;
+  return &op->request().metadata();
+}
+
 Status UserComputation::RemapEmbeddedComputations(
     const std::map<int64, ComputationHandle>& old_to_new) {
   auto update = [&old_to_new](ComputationHandle* to_update) -> Status {
@@ -2756,48 +2767,11 @@ HloComputation* ComputationLowerer::ResolveComputation(
 
 HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
     HloInstruction* operand, const Shape& output_shape) {
-  CHECK(ShapeUtil::IsScalar(operand->shape()) ||
-        ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(output_shape));
-  Shape broadcast_shape = ShapeUtil::MakeShape(
-      operand->shape().element_type(), AsInt64Slice(output_shape.dimensions()));
-  // Do explicit broadcast for scalar.
-  if (ShapeUtil::IsScalar(operand->shape())) {
-    HloInstruction* broadcast = hlo_builder_.AddInstruction(
-        HloInstruction::CreateBroadcast(broadcast_shape, operand, {}));
-    broadcast->set_metadata(operand->metadata());
-    if (operand->has_sharding()) {
-      broadcast->set_sharding(operand->sharding());
-    }
-    return broadcast;
-  }
-  // Do explicit broadcast for degenerate broadcast.
-  std::vector<int64> broadcast_dimensions;
-  std::vector<int64> reshaped_dimensions;
-  for (int i = 0; i < ShapeUtil::Rank(operand->shape()); i++) {
-    if (operand->shape().dimensions(i) == output_shape.dimensions(i)) {
-      broadcast_dimensions.push_back(i);
-      reshaped_dimensions.push_back(operand->shape().dimensions(i));
-    }
-  }
-  // Eliminate the size one dimensions.
-  HloInstruction* reshaped_operand =
-      hlo_builder_.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(operand->shape().element_type(),
-                               reshaped_dimensions),
-          operand));
-  reshaped_operand->set_metadata(operand->metadata());
-  if (operand->has_sharding()) {
-    reshaped_operand->set_sharding(operand->sharding());
-  }
-  // Broadcast 'reshape' up to the larger size.
-  HloInstruction* broadcast =
-      hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
-          broadcast_shape, reshaped_operand, broadcast_dimensions));
-  broadcast->set_metadata(operand->metadata());
-  if (operand->has_sharding()) {
-    broadcast->set_sharding(operand->sharding());
-  }
-  return broadcast;
+  auto fadd = [this](std::unique_ptr<HloInstruction> x) {
+    return hlo_builder_.AddInstruction(std::move(x));
+  };
+  return fadd(
+      HloInstruction::CreateBroadcastSequence(output_shape, operand, fadd));
 }
 
 void ComputationLowerer::Visit(

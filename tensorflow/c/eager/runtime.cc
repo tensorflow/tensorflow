@@ -316,18 +316,12 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
       allocator_pair.second->GetRecordsAndUnRef();
     }
     auto* ms = stats->mutable_memory_stats();
-    ms->set_host_temp_memory_size(context.host_temp_memory_size());
-    ms->set_device_temp_memory_size(context.device_temp_memory_size());
-    for (const auto& alloc_id : context.host_persistent_alloc_ids()) {
-      ms->mutable_host_persistent_tensor_alloc_ids()->Add(alloc_id);
+    ms->set_temp_memory_size(context.temp_memory_size());
+    for (const auto& alloc_id : context.persistent_alloc_ids()) {
+      ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
     }
-    for (const auto& alloc_id : context.device_persistent_alloc_ids()) {
-      ms->mutable_device_persistent_tensor_alloc_ids()->Add(alloc_id);
-    }
-    ms->set_host_persistent_memory_size(
-        context.host_persistent_memory_allocated());
-    ms->set_device_persistent_memory_size(
-        context.device_persistent_memory_allocated());
+
+    ms->set_persistent_memory_size(context.persistent_memory_allocated());
   }
   return Status::OK();
 }

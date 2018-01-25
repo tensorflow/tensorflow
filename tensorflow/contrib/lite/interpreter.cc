@@ -18,16 +18,16 @@ limitations under the License.
 #include <cstdarg>
 #include <cstdint>
 #include <cstring>
+#include "tensorflow/contrib/lite/arena_planner.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/error_reporter.h"
+#include "tensorflow/contrib/lite/graph_info.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
+#include "tensorflow/contrib/lite/memory_planner.h"
 #include "tensorflow/contrib/lite/nnapi_delegate.h"
 
 namespace {
 
-// Memory allocation tuning
-constexpr const int kDefaultArenaAlignment = 64;
-constexpr const int kDefaultTensorAlignment = 4;
 // std::vector preallocation tuning.
 constexpr const int kSlotsToReserve = 128;
 
@@ -35,10 +35,33 @@ constexpr const int kSlotsToReserve = 128;
 
 namespace tflite {
 
+// A trivial implementation of GraphInfo around the Interpreter.
+class InterpreterInfo : public GraphInfo {
+ public:
+  explicit InterpreterInfo(Interpreter* interpreter)
+      : interpreter_(interpreter) {}
+
+  size_t num_tensors() const override { return interpreter_->tensors_size(); }
+  TfLiteTensor* tensor(size_t index) override {
+    return interpreter_->tensor(index);
+  }
+  size_t num_nodes() const override { return interpreter_->nodes_size(); }
+  const TfLiteNode& node(size_t index) const override {
+    return interpreter_->node_and_registration(index)->first;
+  }
+  const std::vector<int>& inputs() const override {
+    return interpreter_->inputs();
+  }
+  const std::vector<int>& outputs() const override {
+    return interpreter_->outputs();
+  }
+
+ public:
+  Interpreter* interpreter_;
+};
+
 Interpreter::Interpreter(ErrorReporter* error_reporter)
-    : arena_(kDefaultArenaAlignment),
-      persistent_arena_(kDefaultArenaAlignment),
-      error_reporter_(error_reporter ? error_reporter
+    : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
   context_.impl_ = static_cast<void*>(this);
   context_.ResizeTensor = ResizeTensor;
@@ -50,7 +73,7 @@ Interpreter::Interpreter(ErrorReporter* error_reporter)
   // Reserve some space for the tensors to avoid excessive resizing.
   tensors_.reserve(kSlotsToReserve);
   nodes_and_registration_.reserve(kSlotsToReserve);
-  next_allocate_node_id_ = 0;
+  next_node_to_prepare_ = 0;
   UseNNAPI(false);
 }
 
@@ -128,181 +151,6 @@ TfLiteStatus Interpreter::BytesRequired(TfLiteType type, const int* dims,
   return kTfLiteOk;
 }
 
-TfLiteStatus Interpreter::AllocateTensorsWhoseSizesAreKnown() {
-  if (!consistent_) {
-    ReportError(&context_, "AllocateTensors() called on inconsistent model.");
-    return kTfLiteError;
-  }
-  if (next_allocate_node_id_ == nodes_and_registration_.size() && invokable_) {
-    return kTfLiteOk;
-  }
-  allocs_and_refcounts_.resize(context_.tensors_size);
-
-  int new_next_allocate_node_id = next_allocate_node_id_;
-  invokable_ = false;
-
-  // Allocate graph input nodes.
-  if (next_allocate_node_id_ == 0) {
-    for (int i = 0; i < inputs_.size(); ++i) {
-      int tensor_index = inputs_[i];
-      if (tensor_index == kOptionalTensor) {
-        continue;
-      }
-      TfLiteTensor& tensor = context_.tensors[tensor_index];
-      if (tensor.allocation_type == kTfLiteArenaRw) {
-        TF_LITE_ENSURE_OK(
-            &context_,
-            arena_.Allocate(&context_, kDefaultTensorAlignment, tensor.bytes,
-                            &allocs_and_refcounts_[tensor_index].alloc));
-      }
-    }
-    // Add 1 to output tensors, so they will not get overwritten.
-    for (int i = 0; i < outputs_.size(); ++i) {
-      allocs_and_refcounts_[outputs_[i]].count++;
-    }
-  }
-
-  // Count references to node input tensors, and resize node-referenced tensors
-  // until we encounter a node that has a dynamic output tensor.
-  for (int k = next_allocate_node_id_; k < nodes_and_registration_.size();
-       k++) {
-    new_next_allocate_node_id++;
-    TfLiteNode& node = nodes_and_registration_[k].first;
-    const TfLiteRegistration& registration = nodes_and_registration_[k].second;
-    if (OpPrepare(registration, &node) == kTfLiteError) {
-      return kTfLiteError;
-    }
-
-    TfLiteIntArray* node_inputs = node.inputs;
-    for (int i = 0; i < node_inputs->size; ++i) {
-      int tensor_index = node_inputs->data[i];
-      if (tensor_index != kOptionalTensor) {
-        allocs_and_refcounts_[node_inputs->data[i]].count++;
-      }
-    }
-
-    // Discontinue if the node has dynamic outputs.
-    bool has_unallocated_dynamic_tensor = false;
-    TfLiteIntArray* node_outputs = node.outputs;
-    for (int i = 0; i < node_outputs->size; ++i) {
-      TfLiteTensor& tensor = context_.tensors[node_outputs->data[i]];
-      if (tensor.allocation_type == kTfLiteDynamic) {
-        has_unallocated_dynamic_tensor = true;
-        break;
-      }
-    }
-    if (has_unallocated_dynamic_tensor) {
-      break;
-    }
-  }
-
-  // Allocate graph persistent outputs, e.g. RNN cell states, etc.
-  for (int k = next_allocate_node_id_; k < new_next_allocate_node_id; k++) {
-    TfLiteNode& node = nodes_and_registration_[k].first;
-
-    // Go through output tensors and allocate the persistent ones first.
-    TfLiteIntArray* node_outputs = node.outputs;
-    for (int i = 0; i < node_outputs->size; ++i) {
-      int tensor_index = node_outputs->data[i];
-      TfLiteTensor& tensor = context_.tensors[tensor_index];
-      if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
-        TF_LITE_ENSURE_OK(&context_,
-                          persistent_arena_.Allocate(
-                              &context_, kDefaultTensorAlignment, tensor.bytes,
-                              &allocs_and_refcounts_[tensor_index].alloc));
-      }
-    }
-  }
-
-  // Go through the graph in execution order.
-  for (int k = next_allocate_node_id_; k < new_next_allocate_node_id; k++) {
-    TfLiteNode& node = nodes_and_registration_[k].first;
-
-    // First allocate output tensors.
-    TfLiteIntArray* node_outputs = node.outputs;
-    for (int i = 0; i < node_outputs->size; ++i) {
-      int tensor_index = node_outputs->data[i];
-      TfLiteTensor& tensor = context_.tensors[tensor_index];
-      if (tensor.allocation_type == kTfLiteArenaRw) {
-        TF_LITE_ENSURE_OK(
-            &context_,
-            arena_.Allocate(&context_, kDefaultTensorAlignment, tensor.bytes,
-                            &allocs_and_refcounts_[tensor_index].alloc));
-      }
-    }
-    // Then the temporaries, in two passes. First allocate them all, them
-    // deallocate them.
-    TfLiteIntArray* node_temporaries = node.temporaries;
-    for (int i = 0; i < node_temporaries->size; ++i) {
-      int tensor_index = node_temporaries->data[i];
-      TfLiteTensor& tensor = context_.tensors[tensor_index];
-      if (tensor.allocation_type == kTfLiteArenaRw) {
-        TF_LITE_ENSURE_OK(
-            &context_,
-            arena_.Allocate(&context_, kDefaultTensorAlignment, tensor.bytes,
-                            &allocs_and_refcounts_[tensor_index].alloc));
-      }
-    }
-    for (int i = 0; i < node_temporaries->size; ++i) {
-      int tensor_index = node_temporaries->data[i];
-      TfLiteTensor& tensor = context_.tensors[tensor_index];
-      allocs_and_refcounts_[tensor_index].count--;
-      if (tensor.allocation_type == kTfLiteArenaRw &&
-          allocs_and_refcounts_[tensor_index].count == 0) {
-        TF_LITE_ENSURE_OK(
-            &context_,
-            arena_.Deallocate(&context_,
-                              allocs_and_refcounts_[tensor_index].alloc));
-      }
-    }
-
-    // Then process the node's inputs.
-    TfLiteIntArray* node_inputs = node.inputs;
-    for (int i = 0; i < node_inputs->size; ++i) {
-      int tensor_index = node_inputs->data[i];
-      if (tensor_index == kOptionalTensor) {
-        continue;
-      }
-      TfLiteTensor& tensor = context_.tensors[tensor_index];
-
-      // Decrease reference count and deallocate if not needed anymore.
-      allocs_and_refcounts_[tensor_index].count--;
-      if (tensor.allocation_type == kTfLiteArenaRw &&
-          allocs_and_refcounts_[tensor_index].count == 0) {
-        TF_LITE_ENSURE_OK(
-            &context_,
-            arena_.Deallocate(&context_,
-                              allocs_and_refcounts_[tensor_index].alloc));
-      }
-    }
-  }
-
-  // Resize the buffer and commit the arena.
-  TF_LITE_ENSURE_OK(&context_, arena_.Commit(&context_));
-  TF_LITE_ENSURE_OK(&context_, persistent_arena_.Commit(&context_));
-
-  // Rewire the tensors to use the underlying arena buffer.
-  for (int i = 0; i < context_.tensors_size; ++i) {
-    TfLiteTensor& tensor = context_.tensors[i];
-    if (tensor.allocation_type == kTfLiteArenaRw) {
-      TF_LITE_ENSURE_OK(
-          &context_,
-          arena_.ResolveAlloc(&context_, allocs_and_refcounts_[i].alloc,
-                              &tensor.data.raw));
-    }
-    if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
-      TF_LITE_ENSURE_OK(
-          &context_,
-          persistent_arena_.ResolveAlloc(
-              &context_, allocs_and_refcounts_[i].alloc, &tensor.data.raw));
-    }
-  }
-
-  invokable_ = true;
-  next_allocate_node_id_ = new_next_allocate_node_id;
-  return kTfLiteOk;
-}
-
 namespace {
 TfLiteIntArray* convertVectorToTfLiteIntArray(const std::vector<int>& x) {
   TfLiteIntArray* lite = TfLiteIntArrayCreate(x.size());
@@ -312,11 +160,19 @@ TfLiteIntArray* convertVectorToTfLiteIntArray(const std::vector<int>& x) {
 }  // namespace
 
 TfLiteStatus Interpreter::AllocateTensors() {
-  next_allocate_node_id_ = 0;
-  TF_LITE_ENSURE_OK(&context_, arena_.Clear());
-  TF_LITE_ENSURE_OK(&context_, persistent_arena_.Clear());
-  allocs_and_refcounts_.clear();
-  return AllocateTensorsWhoseSizesAreKnown();
+  next_node_to_prepare_ = 0;
+  if (memory_planner_) {
+    TF_LITE_ENSURE_STATUS(memory_planner_->ResetAllocations());
+  }
+
+  if (!consistent_) {
+    ReportError(&context_, "AllocateTensors() called on inconsistent model.");
+    return kTfLiteError;
+  }
+
+  TF_LITE_ENSURE_STATUS(PrepareOpsAndTensors());
+  invokable_ = true;
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::AddNodeWithParameters(
@@ -372,6 +228,57 @@ TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
   return ResizeTensorImpl(&context_.tensors[tensor_index], dims_lite);
 }
 
+// Returns true if at least one tensor in the given list is kTfLiteDynamic.
+bool HasDynamicTensor(const TfLiteContext& context,
+                      const TfLiteIntArray* tensors) {
+  for (int i = 0; i < tensors->size; ++i) {
+    const TfLiteTensor& tensor = context.tensors[tensors->data[i]];
+    if (tensor.allocation_type == kTfLiteDynamic) {
+      return true;
+    }
+  }
+  return false;
+}
+
+TfLiteStatus Interpreter::PrepareOpsStartingAt(int first_node,
+                                               int* last_node_prepared) {
+  for (int i = first_node; i < nodes_and_registration_.size(); i++) {
+    TfLiteNode& node = nodes_and_registration_[i].first;
+    const TfLiteRegistration& registration = nodes_and_registration_[i].second;
+    if (OpPrepare(registration, &node) == kTfLiteError) {
+      return kTfLiteError;
+    }
+
+    *last_node_prepared = i;
+
+    // Discontinue if the node has dynamic outputs. Note that we don't
+    // stop for dynamic temporary tensors since they won't affect the
+    // sizes of other tensors in the graph.
+    if (HasDynamicTensor(context_, node.outputs)) {
+      break;
+    }
+  }
+  return kTfLiteOk;
+}
+
+TfLiteStatus Interpreter::PrepareOpsAndTensors() {
+  if (!memory_planner_) {
+    memory_planner_.reset(new ArenaPlanner(
+        &context_, std::unique_ptr<GraphInfo>(new InterpreterInfo(this))));
+    memory_planner_->PlanAllocations();
+  }
+
+  int last_node_prepared = 0;
+
+  TF_LITE_ENSURE_STATUS(
+      PrepareOpsStartingAt(next_node_to_prepare_, &last_node_prepared));
+  TF_LITE_ENSURE_STATUS(memory_planner_->ExecuteAllocations(
+      next_node_to_prepare_, last_node_prepared));
+
+  next_node_to_prepare_ = last_node_prepared + 1;
+  return kTfLiteOk;
+}
+
 TfLiteStatus Interpreter::Invoke() {
   if (!consistent_) {
     ReportError(&context_, "Invoke called on model that is not consistent.");
@@ -384,10 +291,7 @@ TfLiteStatus Interpreter::Invoke() {
 
   TfLiteStatus status = kTfLiteOk;
   if (nnapi_delegate_) {
-    if (AllocateTensorsWhoseSizesAreKnown() == kTfLiteError) {
-      return kTfLiteError;
-    }
-    if (next_allocate_node_id_ == nodes_and_registration_.size()) {
+    if (next_node_to_prepare_ == nodes_and_registration_.size()) {
       TF_LITE_ENSURE_OK(&context_, nnapi_delegate_->Invoke(this));
       return kTfLiteOk;
     } else {
@@ -400,14 +304,17 @@ TfLiteStatus Interpreter::Invoke() {
     }
   }
 
+  // Invocations are always done in node order.
+  // Note that calling Invoke repeatedly will cause the original memory plan to
+  // be reused, unless either ResizeInputTensor() or AllocateTensors() has been
+  // called.
+  // TODO(b/71913981): we should force recalculation in the presence of dynamic
+  // tensors, because they may have new value which in turn may affect shapes
+  // and allocations.
   for (int i = 0; i < nodes_and_registration_.size(); i++) {
-    // Ensure we have allocated up to this node. The point of this is to
-    // allocate as much as possible before running any evaluation, but
-    // dynamic shapes can prevent this from being possible.
-    if (i >= next_allocate_node_id_) {
-      if (AllocateTensorsWhoseSizesAreKnown() == kTfLiteError) {
-        return kTfLiteError;
-      }
+    if (i == next_node_to_prepare_) {
+      TF_LITE_ENSURE_STATUS(PrepareOpsAndTensors());
+      TF_LITE_ENSURE(&context_, next_node_to_prepare_ >= i);
     }
     TfLiteNode& node = nodes_and_registration_[i].first;
     const TfLiteRegistration& registration = nodes_and_registration_[i].second;

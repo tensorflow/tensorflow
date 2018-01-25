@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -252,10 +253,8 @@ OpKernelContext::OpKernelContext(Params* params)
 OpKernelContext::OpKernelContext(Params* params, int num_outputs)
     : params_(params),
       outputs_(num_outputs),
-      host_temp_memory_size_(0),
-      device_temp_memory_size_(0),
-      host_persistent_memory_allocated_(0),
-      device_persistent_memory_allocated_(0) {
+      temp_memory_size_(0),
+      persistent_memory_allocated_(0) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
   params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
@@ -668,11 +667,7 @@ Status OpKernelContext::allocate_temp(
     if (a->TracksAllocationSizes()) {
       int64 alloc_size =
           a->AllocatedSize(const_cast<char*>(out_temp->tensor_data().data()));
-      if (allocate_on_host(allocator_attr)) {
-        record_host_temp_memory_size(alloc_size);
-      } else {
-        record_device_temp_memory_size(alloc_size);
-      }
+      record_temp_memory_size(alloc_size);
     }
   }
   return s;
@@ -795,26 +790,15 @@ bool OpKernelContext::allocate_on_host(AllocatorAttributes alloc_attr) const {
   return alloc_attr.on_host() || device()->attributes().device_type() == "CPU";
 }
 
-void OpKernelContext::record_host_persistent_memory_allocation(int64 size,
-                                                               int64 alloc_id) {
-  host_persistent_memory_allocated_ += size;
-  host_persistent_alloc_ids_.push_back(alloc_id);
+void OpKernelContext::record_persistent_memory_allocation(int64 size,
+                                                          int64 alloc_id) {
+  persistent_memory_allocated_ += size;
+  persistent_alloc_ids_.push_back(alloc_id);
 }
 
-void OpKernelContext::record_device_persistent_memory_allocation(
-    int64 size, int64 alloc_id) {
-  device_persistent_memory_allocated_ += size;
-  device_persistent_alloc_ids_.push_back(alloc_id);
-}
-
-std::vector<int64> OpKernelContext::host_persistent_alloc_ids() const {
-  return std::vector<int64>(host_persistent_alloc_ids_.begin(),
-                            host_persistent_alloc_ids_.end());
-}
-
-std::vector<int64> OpKernelContext::device_persistent_alloc_ids() const {
-  return std::vector<int64>(device_persistent_alloc_ids_.begin(),
-                            device_persistent_alloc_ids_.end());
+std::vector<int64> OpKernelContext::persistent_alloc_ids() const {
+  return std::vector<int64>(persistent_alloc_ids_.begin(),
+                            persistent_alloc_ids_.end());
 }
 
 // OpKernel registration ------------------------------------------------------
@@ -1179,23 +1163,50 @@ const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
 }
 #endif
 
-void OpKernelConstruction::CtxFailure(Status s) {
+void OpKernelConstruction::CtxFailure(const Status& s) {
   VLOG(1) << s;
   SetStatus(s);
 }
 
-void OpKernelConstruction::CtxFailureWithWarning(Status s) {
+void OpKernelConstruction::CtxFailureWithWarning(const Status& s) {
   LOG(WARNING) << s;
   SetStatus(s);
 }
 
-void OpKernelContext::CtxFailure(Status s) {
+void OpKernelConstruction::CtxFailure(const char* file, int line,
+                                      const Status& s) {
+  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+          << " : " << s;
+  SetStatus(s);
+}
+
+void OpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
+                                                 const Status& s) {
+  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+               << " : " << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailure(const Status& s) {
   VLOG(1) << s;
   SetStatus(s);
 }
 
-void OpKernelContext::CtxFailureWithWarning(Status s) {
+void OpKernelContext::CtxFailureWithWarning(const Status& s) {
   LOG(WARNING) << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailure(const char* file, int line, const Status& s) {
+  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+          << " : " << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
+                                            const Status& s) {
+  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+               << " : " << s;
   SetStatus(s);
 }
 

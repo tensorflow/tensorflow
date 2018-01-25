@@ -349,7 +349,7 @@ TfLiteRegistration* Register_RELU() {
   return &r;
 }
 
-TfLiteRegistration* Register_RELU1() {
+TfLiteRegistration* Register_RELU_N1_TO_1() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
                                  activations::GenericPrepare,
                                  activations::Relu1Eval};

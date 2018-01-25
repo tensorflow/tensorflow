@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
+from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
@@ -1167,6 +1168,32 @@ class BinaryOpTest(test.TestCase):
       x2 = np.array(x2l).astype(dtype)
       self._compareCpu(x1, x2, np.arctan2, math_ops.atan2)
       self._compareGpu(x1, x2, np.arctan2, math_ops.atan2)
+
+  def testPowNegativeExponent(self):
+    for dtype in [np.int32, np.int64]:
+      with self.test_session(use_gpu=False) as sess:
+        with self.assertRaisesRegexp(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          x = np.array([5, 2]).astype(dtype)
+          y = np.array([-2, 3]).astype(dtype)
+          sess.run(math_ops.pow(x, y))
+
+      with self.test_session(use_gpu=False) as sess:
+        with self.assertRaisesRegexp(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          x = np.array([5, 2]).astype(dtype)
+          y = np.array([2, -3]).astype(dtype)
+          sess.run(math_ops.pow(x, y))
+
+      with self.test_session(use_gpu=False) as sess:
+        with self.assertRaisesRegexp(
+            errors_impl.InvalidArgumentError,
+            "Integers to negative integer powers are not allowed"):
+          x = np.array([5, 2]).astype(dtype)
+          y = -3
+          sess.run(math_ops.pow(x, y))
 
 
 class ComparisonOpTest(test.TestCase):

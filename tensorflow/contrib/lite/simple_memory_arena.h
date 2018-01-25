@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
+#define TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
 
 #include <list>
 #include <memory>
@@ -68,6 +68,10 @@ class SimpleMemoryArena {
 
   TfLiteStatus Clear();
 
+  int64_t BasePointer() const {
+    return reinterpret_cast<int64_t>(underlying_buffer_aligned_ptr_);
+  }
+
  private:
   bool commited_;
   size_t arena_alignment_;
@@ -81,4 +85,4 @@ class SimpleMemoryArena {
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_

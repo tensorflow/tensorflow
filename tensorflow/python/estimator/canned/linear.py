@@ -26,8 +26,12 @@ from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.feature_column import feature_column as feature_column_lib
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
+from tensorflow.python.summary import summary
 from tensorflow.python.training import ftrl
 from tensorflow.python.training import training_util
 
@@ -40,6 +44,26 @@ _LEARNING_RATE = 0.2
 def _get_default_optimizer(feature_columns):
   learning_rate = min(_LEARNING_RATE, 1.0 / math.sqrt(len(feature_columns)))
   return ftrl.FtrlOptimizer(learning_rate=learning_rate)
+
+
+def _compute_fraction_of_zero(cols_to_vars):
+  """Given a linear cols_to_vars dict, compute the fraction of zero weights.
+
+  Args:
+    cols_to_vars: A dictionary mapping FeatureColumns to lists of tf.Variables
+      like one returned from feature_column_lib.linear_model.
+
+  Returns:
+    The fraction of zeros (sparsity) in the linear model.
+  """
+  all_weight_vars = []
+  for var_or_var_list in cols_to_vars.values():
+    # Skip empty-lists associated with columns that created no Variables.
+    if var_or_var_list:
+      all_weight_vars += [
+          array_ops.reshape(var, [-1]) for var in var_or_var_list
+      ]
+  return nn.zero_fraction(array_ops.concat(all_weight_vars, axis=0))
 
 
 def _linear_logit_fn_builder(units, feature_columns):
@@ -66,8 +90,22 @@ def _linear_logit_fn_builder(units, feature_columns):
     Returns:
       A `Tensor` representing the logits.
     """
-    return feature_column_lib.linear_model(
-        features=features, feature_columns=feature_columns, units=units)
+    cols_to_vars = {}
+    logits = feature_column_lib.linear_model(
+        features=features,
+        feature_columns=feature_columns,
+        units=units,
+        cols_to_vars=cols_to_vars)
+    bias = cols_to_vars.pop('bias')
+    if units > 1:
+      summary.histogram('bias', bias)
+    else:
+      # If units == 1, the bias value is a length-1 list of a scalar Tensor,
+      # so we should provide a scalar summary.
+      summary.scalar('bias', bias[0][0])
+    summary.scalar('fraction_of_zero_weights',
+                   _compute_fraction_of_zero(cols_to_vars))
+    return logits
 
   return linear_logit_fn
 
@@ -98,6 +136,7 @@ def _linear_model_fn(features, labels, mode, head, feature_columns, optimizer,
   if not isinstance(features, dict):
     raise ValueError('features should be a dictionary of `Tensor`s. '
                      'Given type: {}'.format(type(features)))
+
   optimizer = optimizers.get_optimizer_instance(
       optimizer or _get_default_optimizer(feature_columns),
       learning_rate=_LEARNING_RATE)
@@ -159,6 +198,13 @@ class LinearClassifier(estimator.Estimator):
         l1_regularization_strength=0.001
       ))
 
+  # Or estimator with warm-starting from a previous checkpoint.
+  estimator = LinearClassifier(
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
+      warm_start_from="/path/to/checkpoint/dir")
+
+
   # Input builders
   def input_fn_train: # returns x, y (where y represents label's class index).
     ...
@@ -198,7 +244,9 @@ class LinearClassifier(estimator.Estimator):
                label_vocabulary=None,
                optimizer='Ftrl',
                config=None,
-               partitioner=None):
+               partitioner=None,
+               warm_start_from=None,
+               loss_reduction=losses.Reduction.SUM):
     """Construct a `LinearClassifier` estimator object.
 
     Args:
@@ -230,6 +278,13 @@ class LinearClassifier(estimator.Estimator):
         to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
+      warm_start_from: A string filepath to a checkpoint to warm-start from, or
+        a `WarmStartSettings` object to fully configure warm-starting.  If the
+        string filepath is provided instead of a `WarmStartSettings`, then all
+        weights and biases are warm-started, and it is assumed that vocabularies
+        and Tensor names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
 
     Returns:
       A `LinearClassifier` estimator.
@@ -240,12 +295,16 @@ class LinearClassifier(estimator.Estimator):
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
           weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
           n_classes, weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
+
     def _model_fn(features, labels, mode, config):
+      """Call the defined shared _linear_model_fn."""
       return _linear_model_fn(
           features=features,
           labels=labels,
@@ -255,10 +314,12 @@ class LinearClassifier(estimator.Estimator):
           optimizer=optimizer,
           partitioner=partitioner,
           config=config)
+
     super(LinearClassifier, self).__init__(
         model_fn=_model_fn,
         model_dir=model_dir,
-        config=config)
+        config=config,
+        warm_start_from=warm_start_from)
 
 
 class LinearRegressor(estimator.Estimator):
@@ -278,6 +339,13 @@ class LinearRegressor(estimator.Estimator):
   estimator = LinearRegressor(
       feature_columns=[categorical_column_a,
                        categorical_feature_a_x_categorical_feature_b])
+
+  # Or estimator with warm-starting from a previous checkpoint.
+  estimator = LinearRegressor(
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
+      warm_start_from="/path/to/checkpoint/dir")
+
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -317,7 +385,9 @@ class LinearRegressor(estimator.Estimator):
                weight_column=None,
                optimizer='Ftrl',
                config=None,
-               partitioner=None):
+               partitioner=None,
+               warm_start_from=None,
+               loss_reduction=losses.Reduction.SUM):
     """Initializes a `LinearRegressor` instance.
 
     Args:
@@ -341,10 +411,20 @@ class LinearRegressor(estimator.Estimator):
         to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
+      warm_start_from: A string filepath to a checkpoint to warm-start from, or
+        a `WarmStartSettings` object to fully configure warm-starting.  If the
+        string filepath is provided instead of a `WarmStartSettings`, then all
+        weights and biases are warm-started, and it is assumed that vocabularies
+        and Tensor names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
     """
     head = head_lib._regression_head_with_mean_squared_error_loss(  # pylint: disable=protected-access
-        label_dimension=label_dimension, weight_column=weight_column)
+        label_dimension=label_dimension, weight_column=weight_column,
+        loss_reduction=loss_reduction)
+
     def _model_fn(features, labels, mode, config):
+      """Call the defined shared _linear_model_fn."""
       return _linear_model_fn(
           features=features,
           labels=labels,
@@ -354,7 +434,9 @@ class LinearRegressor(estimator.Estimator):
           optimizer=optimizer,
           partitioner=partitioner,
           config=config)
+
     super(LinearRegressor, self).__init__(
         model_fn=_model_fn,
         model_dir=model_dir,
-        config=config)
+        config=config,
+        warm_start_from=warm_start_from)

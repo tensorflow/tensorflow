@@ -62,7 +62,7 @@ namespace details {
 void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
   // First find a list of unique array names.
   std::set<string> names;
-  for (const auto& array_pair : model.arrays) {
+  for (const auto& array_pair : model.GetArrayMap()) {
     names.insert(array_pair.first);
   }
 
@@ -96,7 +96,7 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
   // tensors in the tensors_map.
   std::map<int, Offset<Tensor>> ordered_tensors;
 
-  for (const auto& array_pair : model.arrays) {
+  for (const auto& array_pair : model.GetArrayMap()) {
     const string& tensor_name = array_pair.first;
     const toco::Array& array = *array_pair.second;
 
@@ -235,9 +235,10 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
   for (const auto& op : model.operators) {
     std::vector<int32_t> inputs;
     for (const string& input : op->inputs) {
-      inputs.push_back(tensors_map.at(input));
+      // -1 is the ID for optional tensor in TFLite output
+      int id = model.IsOptionalArray(input) ? -1 : tensors_map.at(input);
+      inputs.push_back(id);
     }
-
     std::vector<int32_t> outputs;
     for (const string& output : op->outputs) {
       outputs.push_back(tensors_map.at(output));

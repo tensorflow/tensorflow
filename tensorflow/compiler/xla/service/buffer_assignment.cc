@@ -846,14 +846,13 @@ Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
-    if (is_thread_local || instruction->opcode() == HloOpcode::kCustomCall) {
-      // Custom call operations never have reusable buffers. Also we do not
-      // reuse thread-local buffers for now, because they are dynamically
-      // allocated and their lifetimes are hard to compute.
+    if (is_thread_local) {
+      // We do not reuse thread-local buffers for now, because they are
+      // dynamically allocated and their lifetimes are hard to compute.
       BufferAllocation* allocation = assignment->NewAllocation(
           *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
       VLOG(3) << "New allocation #" << allocation->index()
-              << " for thread-local/CustomCall: " << *buffer;
+              << " for thread-local: " << *buffer;
       continue;
     }
 

@@ -15,8 +15,8 @@ limitations under the License.
 // This abstracts command line arguments in toco.
 // Arg<T> is a parseable type that can register a default value, be able to
 // parse itself, and keep track of whether it was specified.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_
 
 #include <functional>
 #include <unordered_map>
@@ -147,12 +147,12 @@ class Arg<toco::StringMapList> final {
       if (!TryStripPrefixString(outer_member, "{", &outer_member)) return false;
       if (!TryStripSuffixString(outer_member, "}", &outer_member)) return false;
       const std::vector<string> inner_fields_vector =
-          strings::Split(outer_member, ',');
+          absl::StrSplit(outer_member, ',');
 
       std::unordered_map<string, string> element;
       for (const string& member_field : inner_fields_vector) {
         std::vector<string> outer_member_key_value =
-            strings::Split(member_field, ':');
+            absl::StrSplit(member_field, ':');
         if (outer_member_key_value.size() != 2) return false;
         string& key = outer_member_key_value[0];
         string& value = outer_member_key_value[1];
@@ -232,4 +232,4 @@ struct ParsedTocoFlags {
 };
 
 }  // namespace toco
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_

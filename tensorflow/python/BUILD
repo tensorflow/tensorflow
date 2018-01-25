@@ -32,6 +32,7 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library_py")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_lib_deps")
 load("//tensorflow/core:platform/default/build_config.bzl", "tf_additional_all_protos")
+load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_grappler")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_plugin_deps")
 load("//tensorflow/python:build_defs.bzl", "tf_gen_op_wrapper_private_py")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_verbs_deps")
@@ -186,6 +187,7 @@ tf_py_test(
         ":client_testlib",
         ":platform",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -208,9 +210,8 @@ cc_library(
         "//tensorflow/core/grappler/costs:analytical_cost_estimator",
         "//tensorflow/core/grappler/costs:cost_estimator",
         "//tensorflow/core/grappler/costs:measuring_cost_estimator",
-        "//tensorflow/core/grappler/costs:op_performance_data_cc",
         "//tensorflow/core/grappler/costs:utils",
-    ],
+    ] + tf_protos_grappler(),
 )
 
 cc_library(
@@ -395,6 +396,7 @@ tf_cc_shared_object(
     }),
     deps = [
         "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
@@ -1386,6 +1388,13 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "batch_ops_gen",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "math_ops_gen",
     visibility = [
         "//learning/brain/google/python/ops:__pkg__",
@@ -1949,6 +1958,7 @@ py_library(
     srcs = ["ops/list_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":list_ops_gen",
     ],
 )
@@ -2379,6 +2389,8 @@ py_library(
         ":platform",
         ":util",
         ":variable_scope",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
     ],
 )
 

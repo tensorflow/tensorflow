@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
+#ifndef TENSORFLOW_C_C_TEST_UTIL_H_
+#define TENSORFLOW_C_C_TEST_UTIL_H_
 
 #include "tensorflow/c/c_api.h"
 
@@ -136,4 +136,4 @@ class CSession {
   std::vector<TF_Operation*> targets_;
 };
 
-#endif  // THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
+#endif  // TENSORFLOW_C_C_TEST_UTIL_H_

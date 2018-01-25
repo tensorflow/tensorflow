@@ -14,6 +14,7 @@ load(
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
+    "tf_py_test",
 )
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
@@ -24,6 +25,8 @@ tf_custom_op_library(
         "kernels/bipartite_match_op.cc",
         "kernels/image_ops.cc",
         "kernels/image_ops.h",
+        "kernels/segmentation_ops.cc",
+        "kernels/segmentation_ops.h",
         "ops/image_ops.cc",
     ],
     gpu_srcs = [
@@ -38,6 +41,8 @@ tf_kernel_library(
         "kernels/bipartite_match_op.cc",
         "kernels/image_ops.cc",
         "kernels/image_ops.h",
+        "kernels/segmentation_ops.cc",
+        "kernels/segmentation_ops.h",
     ],
     gpu_srcs = [
         "kernels/image_ops_gpu.cu.cc",
@@ -78,6 +83,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:common_shapes",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
@@ -185,6 +191,21 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+tf_py_test(
+    name = "segmentation_test",
+    size = "medium",
+    srcs = ["python/kernel_tests/segmentation_test.py"],
+    additional_deps = [
+        ":distort_image_py",
+        ":image_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
     ],
 )
 

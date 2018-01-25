@@ -110,19 +110,6 @@ cc_library(
     alwayslink = True,
 )
 
-# Internal targets below this point.
-
-cc_library(
-    name = "common",
-    srcs = [
-        "defs.cc",
-    ],
-    hdrs = [
-        "defs.h",
-    ],
-    visibility = [":friends"],
-)
-
 cc_library(
     name = "xla_device",
     srcs = [
@@ -135,6 +122,8 @@ cc_library(
         "xla_device_context.h",
         "xla_device_ops.h",
     ],
+    # Public visibility is needed for external TF/XLA backends.
+    visibility = ["//visibility:public"],
     deps = [
         ":common",
         ":jit_compilation_passes",
@@ -162,6 +151,19 @@ cc_library(
         "//tensorflow/core/kernels:sendrecv_ops",
         "//tensorflow/core/kernels:variable_ops",
     ],
+)
+
+# Internal targets below this point.
+
+cc_library(
+    name = "common",
+    srcs = [
+        "defs.cc",
+    ],
+    hdrs = [
+        "defs.h",
+    ],
+    visibility = [":friends"],
 )
 
 cc_library(
