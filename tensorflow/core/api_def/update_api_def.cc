@@ -224,14 +224,14 @@ void RemoveDocs(const std::vector<const OpDef*>& ops,
 }
 }  // namespace
 
-// Returns ApiDef text representation in multi-line format
+// Returns ApiDefs text representation in multi-line format
 // constructed based on the given op.
 string CreateApiDef(const OpDef& op) {
-  ApiDef api_def;
-  FillBaseApiDef(&api_def, op);
+  ApiDefs api_defs;
+  FillBaseApiDef(api_defs.add_op(), op);
 
   const std::vector<string> multi_line_fields = {"description"};
-  string new_api_defs_str = api_def.DebugString();
+  string new_api_defs_str = api_defs.DebugString();
   return PBTxtToMultiline(new_api_defs_str, multi_line_fields);
 }
 

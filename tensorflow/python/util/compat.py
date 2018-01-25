@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Functions for Python 2 vs. 3 compatibility.
 
 ## Conversion routines
@@ -118,7 +117,7 @@ def path_to_str(path):
   Returns:
     A `str` object.
   """
-  if hasattr(path, "__fspath__"):
+  if hasattr(path, '__fspath__'):
     path = as_str_any(path.__fspath__())
   return path
 
@@ -129,10 +128,8 @@ integral_types = (_numbers.Integral, _np.integer)
 real_types = (_numbers.Real, _np.integer, _np.floating)
 complex_types = (_numbers.Complex, _np.number)
 
-
 # Either bytes or text.
 bytes_or_text_types = (bytes, _six.text_type)
-
 
 _allowed_symbols = [
     'as_str',

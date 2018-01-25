@@ -555,21 +555,11 @@ class ComputationBuilder(object):
       A ComputationDataHandle representing the added pad op.
     """
     if not isinstance(padding_config, xla_data_pb2.PaddingConfig):
-      padding_config = self._GetPaddingConfigFromTriples(padding_config)
+      padding_config = GetPaddingConfigFromTriples(padding_config)
     return _wrap_data_handle(
         self._client.Pad(_unwrap_data_handle(operand),
                          _unwrap_data_handle(padding_value),
                          padding_config))
-
-  def _GetPaddingConfigFromTriples(self, triples):
-    """Create PaddingConfig proto from list of triples of integers."""
-    padding_config = xla_data_pb2.PaddingConfig()
-    for lo, hi, interior in triples:
-      dimension = padding_config.dimensions.add()
-      dimension.edge_padding_low = lo
-      dimension.edge_padding_high = hi
-      dimension.interior_padding = interior
-    return padding_config
 
   def Reshape(self, operand, dimensions, new_sizes):
     """Reshape op."""
@@ -997,3 +987,14 @@ def get_replica_count():
   yet or not.
   """
   return c_api.GetReplicaCount()
+
+
+def GetPaddingConfigFromTriples(triples):
+  """Create PaddingConfig proto from list of triples of integers."""
+  padding_config = xla_data_pb2.PaddingConfig()
+  for lo, hi, interior in triples:
+    dimension = padding_config.dimensions.add()
+    dimension.edge_padding_low = lo
+    dimension.edge_padding_high = hi
+    dimension.interior_padding = interior
+  return padding_config

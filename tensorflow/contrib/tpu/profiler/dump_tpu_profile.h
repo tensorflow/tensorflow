@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_
+#ifndef TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_
+#define TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_
 
 #include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -35,4 +35,4 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
 }  // namespace tpu
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_
+#endif  // TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_

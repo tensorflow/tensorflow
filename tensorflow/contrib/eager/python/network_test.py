@@ -688,7 +688,7 @@ class NetworkTest(test.TestCase):
     net2(one)
     # Layer names typically are globally unique rather than being unique within
     # the scope of their first use. However, within a Network they must be named
-    # locally so that previous Layer consutrciton does not interfere with
+    # locally so that previous Layer construction does not interfere with
     # variable naming (e.g. add a Layer construction before the Network,
     # suddenly your previously saved checkpoint is incompatible).
     self.assertEqual("dense", net1.l1.name)

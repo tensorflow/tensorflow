@@ -945,14 +945,21 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                 out_index[output_spatial_dim] * window_dim.stride() -
                 window_dim.padding_low() +
                 rhs_spatial_index[ki] * window_dim.window_dilation();
-            // Skip if the lhs (input) index is to be dilated.
-            if (undilated_index % window_dim.base_dilation() != 0) {
+            // Skip if the lhs (input) index is to be dilated.  As an
+            // optimization, skip this mod if there's no dilation.
+            if (window_dim.base_dilation() > 1 &&
+                undilated_index % window_dim.base_dilation() != 0) {
               goto cnt;
             }
 
-            // Calculate the actual lhs (input) index after dilation.
-            lhs_index[input_spatial_dim] =
-                undilated_index / window_dim.base_dilation();
+            // Calculate the actual lhs (input) index after dilation.  As an
+            // optimization, skip this integer divide if there's no dilation.
+            if (window_dim.base_dilation() > 1) {
+              lhs_index[input_spatial_dim] =
+                  undilated_index / window_dim.base_dilation();
+            } else {
+              lhs_index[input_spatial_dim] = undilated_index;
+            }
 
             // Skip if input index is not in bound.
             if (!(lhs_index[input_spatial_dim] >= 0 &&

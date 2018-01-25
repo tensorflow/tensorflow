@@ -128,3 +128,67 @@ def create_eval_graph(input_graph, elements=None, device_name_or_function=None):
       is_training=False,
       elements=elements,
       device_name_or_function=device_name_or_function)
+
+
+def experimental_create_training_graph(input_graph,
+                                       elements=None,
+                                       device_name_or_function=None):
+  """Returns a transformed training input_graph for simulated quantization.
+
+  This function has additional experimental options not (yet) available to
+  create_training_graph. The resulting behavior may be undefined.
+  The forward pass has fake quantization ops inserted to simulate the error
+  introduced by quantization.
+
+  Args:
+    input_graph: The tf.Graph to be transformed.
+    elements: (Optional) List of Tensors and Operations in input_graph whose
+        corresponding elements in the new graph will be returned.
+    device_name_or_function: (Optional) The device name or function to use.
+
+  Returns:
+    g is new tf.Graph that is rewritten for simulated quantization.
+    l is a list of Tensors/Operations in g corresponding to the provided input
+        elements, if elements is not None.
+
+  Raises:
+    ValueError: If elements contains an element that isn't a tf.Tensor or
+        tf.Operation.
+  """
+  return _create_graph(
+      input_graph=input_graph,
+      is_training=True,
+      elements=elements,
+      device_name_or_function=device_name_or_function)
+
+
+def experimental_create_eval_graph(input_graph,
+                                   elements=None,
+                                   device_name_or_function=None):
+  """Returns a transformed eval input_graph for simulated quantization.
+
+  This function has additional experimental options not (yet) available to
+  create_eval_graph. The resulting behavior may be undefined.
+  The forward pass has fake quantization ops inserted to simulate the error
+  introduced by quantization.
+
+  Args:
+    input_graph: The tf.Graph to be transformed.
+    elements: (Optional) List of Tensors and Operations in input_graph whose
+        corresponding elements in the new graph will be returned.
+    device_name_or_function: (Optional) The device name or function to use.
+
+  Returns:
+    g is new tf.Graph that is rewritten for simulated quantization.
+    l is a list of Tensors/Operations in g corresponding to the provided input
+        elements, if elements is not None.
+
+  Raises:
+    ValueError: If elements contains an element that isn't a tf.Tensor or
+        tf.Operation.
+  """
+  return _create_graph(
+      input_graph=input_graph,
+      is_training=False,
+      elements=elements,
+      device_name_or_function=device_name_or_function)

@@ -124,7 +124,7 @@ bool RemoveTrivialPassthroughOp(GraphTransformation* transformation,
       }
     }
     if (!is_referenced) {
-      model->arrays.erase(removal_candidate);
+      model->EraseArray(removal_candidate);
     }
   }
 

@@ -97,7 +97,7 @@ class _ConvBlock(tfe.Network):
 
   Args:
       kernel_size: the kernel size of middle conv layer at main path
-      filters: list of integers, the filterss of 3 conv layer at main path
+      filters: list of integers, the filters of 3 conv layer at main path
       stage: integer, current stage label, used for generating layer names
       block: 'a','b'..., current block label, used for generating layer names
       data_format: data_format for the input ('channels_first' or

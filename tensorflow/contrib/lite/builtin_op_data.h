@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_BUILTIN_OP_DATA_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_BUILTIN_OP_DATA_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_BUILTIN_OP_DATA_H_
+#define TENSORFLOW_CONTRIB_LITE_BUILTIN_OP_DATA_H_
 
 #include <stdint.h>
 
@@ -88,7 +88,9 @@ typedef struct {
   TfLiteFusedActivation activation;
 } TfLiteSequenceRNNParams;
 
-typedef struct { TfLiteFusedActivation activation; } TfLiteFullyConnectedParams;
+typedef struct {
+  TfLiteFusedActivation activation;
+} TfLiteFullyConnectedParams;
 
 typedef enum {
   kTfLiteLshProjectionUnknown = 0,
@@ -96,9 +98,13 @@ typedef enum {
   kTfLiteLshProjectionDense = 2,
 } TfLiteLSHProjectionType;
 
-typedef struct { TfLiteLSHProjectionType type; } TfLiteLSHProjectionParams;
+typedef struct {
+  TfLiteLSHProjectionType type;
+} TfLiteLSHProjectionParams;
 
-typedef struct { float beta; } TfLiteSoftmaxParams;
+typedef struct {
+  float beta;
+} TfLiteSoftmaxParams;
 
 typedef struct {
   int axis;
@@ -166,11 +172,6 @@ typedef struct {
 } TfLiteResizeBilinearParams;
 
 typedef struct {
-  // TODO(ahentz): We can't have dynamic data in this struct, at least not yet.
-  // For now we will fix the maximum possible number of dimensions.
-  int before_padding[8];
-  int after_padding[8];
-  int num_dimensions;
 } TfLitePadParams;
 
 typedef struct {
@@ -226,8 +227,16 @@ typedef struct {
   int num_squeeze_dims;
 } TfLiteSqueezeParams;
 
+typedef struct {
+  int begin_mask;
+  int end_mask;
+  int ellipsis_mask;
+  int new_axis_mask;
+  int shrink_axis_mask;
+} TfLiteStridedSliceParams;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_BUILTIN_OP_DATA_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_BUILTIN_OP_DATA_H_

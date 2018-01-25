@@ -181,7 +181,9 @@ REGISTER_OP("ResizeBilinear")
     .Input("images: T")
     .Input("size: int32")
     .Output("resized_images: float")
-    .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
+    .Attr(
+        "T: {int8, uint8, int16, uint16, int32, int64, bfloat16, half, "
+        "float, double}")
     .Attr("align_corners: bool = false")
     .SetShapeFn(ResizeShapeFn);
 
@@ -212,7 +214,7 @@ REGISTER_OP("ResizeBilinearGrad")
     .Input("grads: float")
     .Input("original_image: T")
     .Output("output: T")
-    .Attr("T: {float, half, double}")
+    .Attr("T: {float, bfloat16, half, double}")
     .Attr("align_corners: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
