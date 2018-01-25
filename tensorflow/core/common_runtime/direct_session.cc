@@ -1143,8 +1143,8 @@ Status DirectSession::GetOrCreateExecutors(
     options.debug_options = run_state_args->debug_options;
   }
 
-  std::shared_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
   std::unique_ptr<FunctionInfo> func_info(new FunctionInfo);
+  std::shared_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
 
   // The executor_lock_ is intentionally released while executor is
   // being created.

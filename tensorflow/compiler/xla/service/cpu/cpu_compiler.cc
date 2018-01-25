@@ -485,7 +485,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx;
   std::unordered_map<const HloComputation*, int64> computation_to_profile_idx;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map;
-  std::unique_ptr<HloProfilePrinter> hlo_profile_printer;
+  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data;
   if (module->config().hlo_profiling_enabled()) {
     hlo_profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
 
@@ -505,8 +505,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
 
     HloCostAnalysis cost_analysis(shape_size_bytes);
     TF_RETURN_IF_ERROR(entry_computation->Accept(&cost_analysis));
-    hlo_profile_printer =
-        CreateHloProfilePrinter(*hlo_profile_index_map, cost_analysis);
+    hlo_profile_printer_data =
+        CreateHloProfilePrinterData(*hlo_profile_index_map, cost_analysis);
     computation_to_profile_idx =
         hlo_profile_index_map->computation_to_profile_idx();
   }
@@ -619,7 +619,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     cpu_executable.reset(new ParallelCpuExecutable(
         std::move(jit), std::move(assignment), std::move(module),
         std::move(function_names), std::move(aligned_constants),
-        std::move(hlo_profile_printer), std::move(hlo_profile_index_map)));
+        std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map)));
 
     if (embed_ir_in_executable) {
       static_cast<CpuExecutable&>(*cpu_executable)
@@ -698,7 +698,7 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     jit->AddModule(std::move(llvm_module));
     cpu_executable.reset(new CpuExecutable(
         std::move(jit), std::move(assignment), std::move(module), function_name,
-        std::move(hlo_profile_printer), std::move(hlo_profile_index_map)));
+        std::move(hlo_profile_printer_data), std::move(hlo_profile_index_map)));
 
     if (embed_ir_in_executable) {
       static_cast<CpuExecutable&>(*cpu_executable)

@@ -73,7 +73,7 @@ StatusOr<std::unique_ptr<ShapedBuffer>> Executable::ExecuteOnStreamWrapper(
   std::unique_ptr<HloExecutionProfile> profile_ptr =
       module_config().debug_options().xla_hlo_profile() &&
               hlo_profiling_enabled()
-          ? MakeUnique<HloExecutionProfile>(&hlo_profile_printer(),
+          ? MakeUnique<HloExecutionProfile>(&hlo_profile_printer_data(),
                                             &hlo_profile_index_map())
           : nullptr;
 

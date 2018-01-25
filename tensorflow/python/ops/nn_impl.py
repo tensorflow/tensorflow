@@ -969,7 +969,8 @@ def _compute_sampled_logits(weights,
                             subtract_log_q=True,
                             remove_accidental_hits=False,
                             partition_strategy="mod",
-                            name=None):
+                            name=None,
+                            seed=None):
   """Helper function for nce_loss and sampled_softmax_loss functions.
 
   Computes sampled output training logits and labels suitable for implementing
@@ -1007,6 +1008,8 @@ def _compute_sampled_logits(weights,
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
         Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
+    seed: random seed for candidate sampling. Default to None, which doesn't set
+        the op-level random seed for candidate sampling.
   Returns:
     out_logits: `Tensor` object with shape
         `[batch_size, num_true + num_sampled]`, for passing to either
@@ -1036,7 +1039,8 @@ def _compute_sampled_logits(weights,
           num_true=num_true,
           num_sampled=num_sampled,
           unique=True,
-          range_max=num_classes)
+          range_max=num_classes,
+          seed=seed)
     # NOTE: pylint cannot tell that 'sampled_values' is a sequence
     # pylint: disable=unpacking-non-sequence
     sampled, true_expected_count, sampled_expected_count = (
@@ -1255,7 +1259,8 @@ def sampled_softmax_loss(weights,
                          sampled_values=None,
                          remove_accidental_hits=True,
                          partition_strategy="mod",
-                         name="sampled_softmax_loss"):
+                         name="sampled_softmax_loss",
+                         seed=None):
   """Computes and returns the sampled softmax training loss.
 
   This is a faster way to train a softmax classifier over a huge number of
@@ -1316,6 +1321,8 @@ def sampled_softmax_loss(weights,
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
         Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
+    seed: random seed for candidate sampling. Default to None, which doesn't set
+        the op-level random seed for candidate sampling.
 
   Returns:
     A `batch_size` 1-D tensor of per-example sampled softmax losses.
@@ -1333,7 +1340,8 @@ def sampled_softmax_loss(weights,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
-      name=name)
+      name=name,
+      seed=seed)
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits(
       labels=labels, logits=logits)
   # sampled_losses is a [batch_size] tensor.
