@@ -20,6 +20,7 @@ py_library(
         "__init__.py",
         "anno.py",
         "compiler.py",
+        "context.py",
         "parser.py",
         "pretty_printer.py",
         "templates.py",

@@ -89,14 +89,14 @@ bool RemoveTrivialBinaryOperator::Run(Model* model, std::size_t op_index) {
   const auto& constant_input_float_data =
       constant_input_array.GetBuffer<ArrayDataType::kFloat>().data;
   bool is_trivial = false;
-  if (binary_op->type != OperatorType::kAdd) {
+  if (binary_op->type == OperatorType::kAdd) {
     is_trivial = AreAllBufferElementsEqualTo(constant_input_float_data, 0.f);
-  } else if (binary_op->type != OperatorType::kSub) {
+  } else if (binary_op->type == OperatorType::kSub) {
     is_trivial = index_of_constant_input == 1 &&
                  AreAllBufferElementsEqualTo(constant_input_float_data, 0.f);
-  } else if (binary_op->type != OperatorType::kMul) {
+  } else if (binary_op->type == OperatorType::kMul) {
     is_trivial = AreAllBufferElementsEqualTo(constant_input_float_data, 1.f);
-  } else if (binary_op->type != OperatorType::kDiv) {
+  } else if (binary_op->type == OperatorType::kDiv) {
     is_trivial = index_of_constant_input == 1 &&
                  AreAllBufferElementsEqualTo(constant_input_float_data, 1.f);
   }

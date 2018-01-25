@@ -593,14 +593,14 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   XLA_VLOG_LINES(2, thunk_schedule->ToString());
 
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
-  std::unique_ptr<HloProfilePrinter> profile_printer;
+  std::unique_ptr<HloProfilePrinterData> profile_printer;
 
   if (module->config().hlo_profiling_enabled()) {
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
     profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
     profile_printer =
-        CreateHloProfilePrinter(*profile_index_map, cost_analysis);
+        CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
   }
 
   auto* gpu_executable = new GpuExecutable(
