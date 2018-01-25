@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import gast
 
-import tensorflow as tf
 from tensorflow.contrib.py2tf.pyct import templates
 
 
@@ -32,7 +31,7 @@ class BuiltinFunctionTransformer(gast.NodeTransformer):
   def _convert_len(self, node):
 
     def template(args):
-      tf.shape(args)[0]  # pylint:disable=expression-not-assigned
+      tf.shape(args)[0]  # pylint:disable=undefined-variable,expression-not-assigned
 
     new_call = templates.replace(template, args=node.args)[0].value
     return new_call

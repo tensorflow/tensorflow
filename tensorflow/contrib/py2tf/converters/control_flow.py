@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import gast
 
-import tensorflow as tf
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import templates
 
@@ -97,7 +96,7 @@ class ControlFlowTransformer(gast.NodeTransformer):
         orelse  # pylint:disable=pointless-statement
         return (aliased_results,)
 
-      results = tf.cond(test, body_name, orelse_name)
+      results = tf.cond(test, body_name, orelse_name)  # pylint:disable=undefined-variable
 
     all_modified = tuple(body_scope.modified | orelse_scope.modified)
     all_referenced = body_scope.referenced | orelse_scope.referenced
@@ -160,7 +159,7 @@ class ControlFlowTransformer(gast.NodeTransformer):
         body  # pylint:disable=pointless-statement
         return state,
 
-      state_ast_tuple = tf.while_loop(test_name, body_name, [state])
+      state_ast_tuple = tf.while_loop(test_name, body_name, [state])  # pylint:disable=undefined-variable
 
     test_name = self.namer.new_symbol('loop_test', body_scope.referenced)
     body_name = self.namer.new_symbol('loop_body', body_scope.referenced)

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-import tensorflow as tf
 from tensorflow.compiler.tests.xla_test import XLATestCase
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -775,15 +774,15 @@ class BinaryOpsTest(XLATestCase):
   def DISABLED_testSparseMatMul(self):
     # Binary wrappers for sparse_matmul with different hints
     def SparseMatmulWrapperTF(a, b):
-      return tf.sparse_matmul(a, b, a_is_sparse=True)
+      return math_ops.sparse_matmul(a, b, a_is_sparse=True)
 
     def SparseMatmulWrapperFT(a, b):
-      return tf.sparse_matmul(a, b, b_is_sparse=True)
+      return math_ops.sparse_matmul(a, b, b_is_sparse=True)
 
     def SparseMatmulWrapperTT(a, b):
-      return tf.sparse_matmul(a, b, a_is_sparse=True, b_is_sparse=True)
+      return math_ops.sparse_matmul(a, b, a_is_sparse=True, b_is_sparse=True)
 
-    self._testMatMul(tf.sparse_matmul)
+    self._testMatMul(math_ops.sparse_matmul)
     self._testMatMul(SparseMatmulWrapperTF)
     self._testMatMul(SparseMatmulWrapperFT)
     self._testMatMul(SparseMatmulWrapperTT)
