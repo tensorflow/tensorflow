@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -329,7 +329,7 @@ TEST_F(RollOpTest, OneSize_ThreeD32_NoMemcpy) {
   test::ExpectTensorEqual<string>(expected, *GetOutput(0));
 }
 
-TEST_F(RollOpTest, DuplicateShifts_TwoD32) {
+TEST_F(RollOpTest, MultiShifts_TwoD32) {
   MakeOp(DT_FLOAT, DT_INT32);
 
   // Feed and run
@@ -346,7 +346,7 @@ TEST_F(RollOpTest, DuplicateShifts_TwoD32) {
   test::ExpectTensorEqual<float>(expected, *GetOutput(0));
 }
 
-TEST_F(RollOpTest, DuplicateShifts_TwoD32_NoMemcpy) {
+TEST_F(RollOpTest, MultiShifts_TwoD32_NoMemcpy) {
   MakeOp(DT_STRING, DT_INT32);
 
   // Feed and run
@@ -426,6 +426,8 @@ TEST_F(RollOpTest, Error_AxisOutOfRange) {
   EXPECT_TRUE(StringPiece(s.ToString()).contains("is out of range")) << s;
 }
 
+// isd - (inner shift dimension) The inner most dimension to be shifted.
+//    All outer dimensions will also be shifted for testing.
 static Graph* RollGraph(const TensorShape& shape, int isd) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor input(DT_FLOAT, shape);
@@ -433,7 +435,8 @@ static Graph* RollGraph(const TensorShape& shape, int isd) {
   const int dims = static_cast<int>(input.dims());
   Tensor shift(DT_INT32, TensorShape({dims}));
   for (int i = 0; i < dims; i++) {
-    shift.flat<int32>()(i) = (i > isd) ? 0 : 2;
+    // shift the inner shift dimension and all outer dimensions
+    shift.flat<int32>()(i) = (i <= isd) ? 2 : 0;
   }
   Tensor axis(DT_INT32, TensorShape({dims}));
   for (int i = 0; i < dims; i++) {

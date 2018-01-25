@@ -3,17 +3,19 @@ op {
   in_arg {
     name: "shift"
     description: <<END
-`shift[i]` specifies the number of places by which elements are shifted
-positively (towards larger indices) along the dimension specified by
-`axis[i]`. Negative shifts will roll the elements in the opposite direction.
+Dimension must be 0-D or 1-D. `shift[i]` specifies the number of places by which
+elements are shifted positively (towards larger indices) along the dimension
+specified by `axis[i]`. Negative shifts will roll the elements in the opposite
+direction.
 END
   }
   in_arg {
     name: "axis"
     description: <<END
-`axis[i]` specifies the dimension that the shift `shift[i]` should occur.
-if the same axis is referenced more than once, the total shift for that axis
-will be the sum of all the shifts that belong to that axis.
+Dimension must be 0-D or 1-D. `axis[i]` specifies the dimension that the shift
+`shift[i]` should occur. If the same axis is referenced more than once, the
+total shift for that axis will be the sum of all the shifts that belong to that
+axis.
 END
   }
   out_arg {

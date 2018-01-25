@@ -619,7 +619,6 @@ cc_library(
         ":reshape_op",
         ":reverse_op",
         ":reverse_sequence_op",
-        ":roll_op",
         ":shape_ops",
         ":slice_op",
         ":snapshot_op",

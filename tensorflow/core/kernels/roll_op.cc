@@ -1,4 +1,4 @@
-/* Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -71,7 +71,7 @@ void DoRoll(OpKernelContext* context, const int64 num_elements,
             // offset = shift[j] + ... other offsets
             // offset - dim_range[j] = -threshold[j] + ... other offsets
             // thus we undo our previous offset as well as add a new offset of
-            // -threshold[j] in one opperation
+            // -threshold[j] in one operation
             offset -= dim_range[j];  // now wraps around
           }
           break;                         // indx != 0 don't need to carry
