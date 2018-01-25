@@ -131,6 +131,30 @@ class VariableScopeTest(test.TestCase):
       self.assertFalse(v in store.non_trainable_variables())
       self.assertTrue(w in store.non_trainable_variables())
 
+      # Test copying.
+      new_store = store.copy()
+      with new_store.as_default():
+        new_v = variable_scope.get_variable("v")
+        new_w = variable_scope.get_variable("w")
+      self.assertEqual(new_v.numpy(), v.numpy())
+      self.assertEqual(new_w.numpy(), w.numpy())
+      self.assertTrue(new_v in new_store.variables())
+      self.assertTrue(new_w in new_store.variables())
+      self.assertTrue(new_v in new_store.trainable_variables())
+      self.assertFalse(new_w in new_store.trainable_variables())
+      self.assertFalse(new_v in new_store.non_trainable_variables())
+      self.assertTrue(new_w in new_store.non_trainable_variables())
+
+      # Check that variables are separate instances.
+      for v in store.variables():
+        v.assign(-1)
+      for v in new_store.variables():
+        v.assign(1)
+      for v in store.variables():
+        self.assertEqual(v.numpy(), -1)
+      for v in new_store.variables():
+        self.assertEqual(v.numpy(), 1)
+
   @test_util.run_in_graph_and_eager_modes()
   def testInitFromNonTensorValue(self):
     v = variable_scope.get_variable("v4", initializer=4, dtype=dtypes.int32)

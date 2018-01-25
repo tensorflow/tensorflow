@@ -807,6 +807,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
 
   // There operators are supported by Toco, but not by TF Lite, and has no
   // attributes.
+  ops.emplace_back(
+      new SimpleOperator<AddNOperator>("ADDN", OperatorType::kAddN));
   ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   ops.emplace_back(new SimpleOperator<TensorFlowRsqrtOperator>(
       "RSQRT", OperatorType::kTensorFlowRsqrt));

@@ -481,13 +481,17 @@ class Tensor(_TensorLike):
           dim_list.append(-1)
         else:
           dim_list.append(dim.value)
-    with errors.raise_exception_on_not_ok_status() as status:
-      c_api.TF_GraphSetTensorShape_wrapper(
-          self._op._graph._c_graph,  # pylint: disable=protected-access
-          self._as_tf_output(),
-          dim_list,
-          unknown_shape,
-          status)
+    try:
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.TF_GraphSetTensorShape_wrapper(
+            self._op._graph._c_graph,  # pylint: disable=protected-access
+            self._as_tf_output(),
+            dim_list,
+            unknown_shape,
+            status)
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
 
   @property
   def value_index(self):

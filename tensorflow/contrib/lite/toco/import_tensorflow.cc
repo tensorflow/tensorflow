@@ -696,6 +696,19 @@ void ConvertAddOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertAddNOperator(const NodeDef& node,
+                         const TensorFlowImportFlags& tf_import_flags,
+                         Model* model) {
+  CHECK_EQ(node.op(), "AddN");
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  auto* op = new AddNOperator;
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertMulOperator(const NodeDef& node,
                         const TensorFlowImportFlags& tf_import_flags,
                         Model* model) {
@@ -1862,6 +1875,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertSquareOperator(node, tf_import_flags, model);
     } else if (node.op() == "Add") {
       ConvertAddOperator(node, tf_import_flags, model);
+    } else if (node.op() == "AddN") {
+      ConvertAddNOperator(node, tf_import_flags, model);
     } else if (node.op() == "Mul") {
       ConvertMulOperator(node, tf_import_flags, model);
     } else if (node.op() == "Sub") {

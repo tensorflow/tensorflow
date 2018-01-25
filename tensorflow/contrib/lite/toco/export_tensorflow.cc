@@ -519,6 +519,18 @@ void ConvertAddOperator(const Model& model, const AddOperator& src_op,
   (*add_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
+void ConvertAddNOperator(const Model& model, const AddNOperator& src_op,
+                         GraphDef* tensorflow_graph) {
+  auto* add_op = tensorflow_graph->add_node();
+  add_op->set_op("AddN");
+  add_op->set_name(src_op.outputs[0]);
+  for (const auto& input : src_op.inputs) {
+    *add_op->add_input() = input;
+  }
+  (*add_op->mutable_attr())["N"].set_i(src_op.inputs.size());
+  (*add_op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
 void ConvertMulOperator(const Model& model, const MulOperator& src_op,
                         GraphDef* tensorflow_graph) {
   auto* add_op = tensorflow_graph->add_node();
@@ -1406,6 +1418,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kAdd) {
     ConvertAddOperator(model, static_cast<const AddOperator&>(src_op),
                        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kAddN) {
+    ConvertAddNOperator(model, static_cast<const AddNOperator&>(src_op),
+                        tensorflow_graph);
   } else if (src_op.type == OperatorType::kMul) {
     ConvertMulOperator(model, static_cast<const MulOperator&>(src_op),
                        tensorflow_graph);
