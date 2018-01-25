@@ -46,17 +46,16 @@ def _load_library(name, op_list=None):
         if lib_op.name == expected_op:
           break
       else:
-        raise NameError(
-          'Could not find operator %s in dynamic library %s' %
-          (expected_op, name))
+        raise NameError('Could not find operator %s in dynamic library %s' %
+                        (expected_op, name))
     return library
   except errors.NotFoundError:
     logging.warning('%s file could not be loaded.', name)
 
 
-MPI_LIB = _load_library('mpi_collectives.so', ['MPISize', 'MPIRank',
-                                               'MPILocalRank', 'MPIAllgather',
-                                               'MPIAllreduce'])
+MPI_LIB = _load_library(
+    'mpi_collectives.so',
+    ['MPISize', 'MPIRank', 'MPILocalRank', 'MPIAllgather', 'MPIAllreduce'])
 
 
 def size(name=None):
@@ -151,15 +150,14 @@ def allgather(tensor, name=None):
   """
   # Specify that first allgather is to collect the tensor gather sizes,
   # indicated by passing in a scalar (0-D tensor) of value 0
-  sizes_flag = tf.constant(0, dtype=tf.int64, name="size_flag_const")
-  my_size = tf.slice(tf.shape(tensor, out_type=tf.int64), [0], [1], name="size_slice")
+  sizes_flag = tf.constant(0, dtype=tf.int64, name='size_flag_const')
+  my_size = tf.slice(
+      tf.shape(tensor, out_type=tf.int64), [0], [1], name='size_slice')
   if name is None:
-    name = "allgather"
-  sizing_name = "{}_sizing".format(name)
+    name = 'allgather'
+  sizing_name = '{}_sizing'.format(name)
   sizes = MPI_LIB.mpi_allgather(my_size, sizes_flag, name=sizing_name)
   return MPI_LIB.mpi_allgather(tensor, sizes, name=name)
 
 
 ops.NotDifferentiable('MPIAllgather')
-
-
