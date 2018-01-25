@@ -39,7 +39,7 @@ class DecodeBmpOp : public OpKernel {
         errors::InvalidArgument("channels must be 0, 1, 3 or 4, got ",
                                 channels_));
   }
-  inline int32 ByteSwapInt32ForBE(int32 x) {
+  inline int32 ByteSwapInt32ForBigEndian(int32 x) {
 #if (__BYTE_ORDER__ == __ORDER_BIG_ENDIAN__)
     return le32toh(x);
 #else
@@ -65,16 +65,16 @@ class DecodeBmpOp : public OpKernel {
     const uint8* img_bytes = reinterpret_cast<const uint8*>(input.data());
     int32 header_size_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 10)));
-    const int32 header_size = ByteSwapInt32ForBE(header_size_);
+    const int32 header_size = ByteSwapInt32ForBigEndian(header_size_);
     int32 width_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 18)));
-    const int32 width = ByteSwapInt32ForBE(width_);
+    const int32 width = ByteSwapInt32ForBigEndian(width_);
     int32 height_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 22)));
-    const int32 height = ByteSwapInt32ForBE(height_);
+    const int32 height = ByteSwapInt32ForBigEndian(height_);
     int32 bpp_ = internal::SubtleMustCopy(
         *(reinterpret_cast<const int32*>(img_bytes + 28)));
-    const int32 bpp = ByteSwapInt32ForBE(bpp_);
+    const int32 bpp = ByteSwapInt32ForBigEndian(bpp_);
 
     if (channels_) {
       OP_REQUIRES(context, (channels_ == bpp / 8),
