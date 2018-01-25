@@ -197,6 +197,7 @@ const char* OperatorTypeName(OperatorType type) {
   case OperatorType::k##c:              \
     return #c;
     HANDLE_OPERATORTYPENAME_CASE(Add)
+    HANDLE_OPERATORTYPENAME_CASE(AddN)
     HANDLE_OPERATORTYPENAME_CASE(AveragePool)
     HANDLE_OPERATORTYPENAME_CASE(BatchNormalization)
     HANDLE_OPERATORTYPENAME_CASE(Conv)
@@ -1397,6 +1398,16 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
           return false;
         }
         total += RequiredBufferSizeForShape(output_array.shape());
+        break;
+      }
+      case OperatorType::kAddN: {
+        const auto& output_array = model.GetArray(op->outputs[0]);
+        if (!output_array.has_shape()) {
+          return false;
+        }
+        // AddN cost is roughly the same cost as N-1 Adds.
+        const int num_adds = op->inputs.size() - 1;
+        total += num_adds * RequiredBufferSizeForShape(output_array.shape());
         break;
       }
       case OperatorType::kLogistic:
