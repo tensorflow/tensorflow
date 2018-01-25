@@ -45,8 +45,8 @@ int input_callback(GifFileType* gif_file, GifByteType* buf, int size) {
 }
 
 uint8* Decode(const void* srcdata, int datasize,
-              std::function<uint8*(int, int, int, int)> allocate_output,
-              std::string* error_string) {
+              const std::function<uint8*(int, int, int, int)>& allocate_output,
+              string* error_string) {
   int error_code = D_GIF_SUCCEEDED;
   InputBufferInfo info = {reinterpret_cast<const uint8*>(srcdata), datasize};
   GifFileType* gif_file =

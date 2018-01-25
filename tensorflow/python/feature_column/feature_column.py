@@ -657,11 +657,11 @@ def embedding_column(
       trainable=trainable)
 
 
-def _shared_embedding_columns(
+def shared_embedding_columns(
     categorical_columns, dimension, combiner='mean', initializer=None,
     shared_embedding_collection_name=None, ckpt_to_load_from=None,
     tensor_name_in_ckpt=None, max_norm=None, trainable=True):
-  """List of `_DenseColumn`s that convert from sparse, categorical input.
+  """List of dense columns that convert from sparse, categorical input.
 
   This is similar to `embedding_column`, except that that it produces a list of
   embedding columns that share the same embedding weights.
@@ -670,7 +670,7 @@ def _shared_embedding_columns(
   impression video IDs that share the same vocabulary), and you want to convert
   them to a dense representation (e.g., to feed to a DNN).
 
-  Inputs must be a list of `_CategoricalColumn` created by any of the
+  Inputs must be a list of categorical columns created by any of the
   `categorical_column_*` function. They must all be of the same type and have
   the same arguments except `key`. E.g. they can be
   categorical_column_with_vocabulary_file with the same vocabulary_file. Some or
@@ -714,7 +714,7 @@ def _shared_embedding_columns(
   ```
 
   Args:
-    categorical_columns: List of `_CategoricalColumn`s created by a
+    categorical_columns: List of categorical columns created by a
       `categorical_column_with_*` function. These columns produce the sparse IDs
       that are inputs to the embedding lookup. All columns must be of the same
       type and have the same arguments except `key`. E.g. they can be
@@ -744,7 +744,7 @@ def _shared_embedding_columns(
     trainable: Whether or not the embedding is trainable. Default is True.
 
   Returns:
-    A list of `_DenseColumn`s that converts from sparse input. The order of
+    A list of dense columns that converts from sparse input. The order of
     results follows the ordering of `categorical_columns`.
 
   Raises:

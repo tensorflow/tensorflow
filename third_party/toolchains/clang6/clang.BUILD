@@ -90,8 +90,8 @@ filegroup(
 filegroup(
     name = "libraries",
     srcs = glob([
-      "lib/*.*",
-      "lib/clang/6.0.0/lib/linux/*.*",
+        "lib/*.*",
+        "lib/clang/6.0.0/lib/linux/*.*",
     ]),
     output_licenses = ["unencumbered"],
 )

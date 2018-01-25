@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_SOFTMAX_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_SOFTMAX_H_
+#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_SOFTMAX_H_
+#define TENSORFLOW_CORE_KERNELS_EIGEN_SOFTMAX_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -87,4 +87,4 @@ SoftMax(const Input& input, const float beta)
 
 } // end namespace Eigen
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_SOFTMAX_H_
+#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_SOFTMAX_H_

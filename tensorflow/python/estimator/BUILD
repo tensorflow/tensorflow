@@ -267,6 +267,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
         "@six_archive//:six",
     ],
 )
@@ -356,6 +357,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
         "@six_archive//:six",
     ],
 )
@@ -624,8 +626,9 @@ py_library(
 
 py_test(
     name = "head_test",
-    size = "small",
+    size = "medium",
     srcs = ["canned/head_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -679,6 +682,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/feature_column",
+        "//tensorflow/python/ops/losses",
         "@six_archive//:six",
     ],
 )

@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -137,6 +138,10 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module) {
 
     // TODO(b/64094172): make Call work on GPU instead of inlining.
     pipeline.AddPass<CallInliner>();
+    // Convert BF16 operations to F32 operations so that the GPU backend can
+    // support BF16 operations without directly implementing a BF16 lowering for
+    // most ops.
+    pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
     pipeline.AddPass<DotDecomposer>();
     {
       auto& pass =
