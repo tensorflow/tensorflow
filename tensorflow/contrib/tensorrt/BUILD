@@ -169,6 +169,26 @@ tf_py_wrap_cc(
 )
 
 cc_library(
+    name = "trt_resources",
+    srcs = [
+        "resources/TRTInt8Calibrator.cc",
+        "resources/TRTResourceManager.cc",
+    ],
+    hdrs = [
+        "resources/TRTInt8Calibrator.h",
+        "resources/TRTResourceManager.h",
+        "resources/TRTResources.h",
+    ],
+    deps = [
+        "@local_config_tensorrt//:tensorrt",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:framework_lite",
+        "//tensorflow/core:core_cpu_base",
+
+    ],
+)
+
+cc_library(
     name= "trt_conversion",
     srcs=[
         "convert/convert_nodes.cc",
@@ -188,6 +208,7 @@ cc_library(
         "@protobuf_archive//:protobuf_headers",
         "@nsync//:nsync_headers",
         ":trt_logging",
+        ":trt_resources",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:framework_headers_lib",

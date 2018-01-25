@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/contrib/tensorrt/resources/TRTResourceManager.h"
 
 #define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
 //  Check if the types are equal. Cast to int first so that failure log message
