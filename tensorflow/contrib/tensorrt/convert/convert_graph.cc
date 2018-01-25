@@ -28,7 +28,6 @@ limitations under the License.
 #include "NvInfer.h"
 
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
-#include "tensorflow/contrib/tensorrt/convert/inferShapes.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -49,6 +48,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
 
+#include "tensorflow/core/grappler/costs/graph_properties.h"
+
 //------------------------------------------------------------------------------
 namespace tensorrt {
 namespace convert {
@@ -59,7 +60,7 @@ static std::unordered_set<std::string> output_nodes;
 bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
   static const std::set<std::string> candidate_ops = {
       "Identity", "Const", "Conv2D", "MaxPool", "BiasAdd", "Relu",
-      "Add",      "Mul",   "Sub",    "Rsqrt",   "Pad"  // "Placeholder" ,"Mean"
+      "Add",      "Mul",   "Sub",    "Rsqrt",   "Pad"    , "Mean"
                                                        // TODO(ben,jie): ...
   };
   if (output_nodes.count(node_def.name())) return false;
@@ -123,7 +124,8 @@ std::unordered_map<std::string, std::vector<int>> BuildTensorNameMap(
 tensorflow::Status ConvertSubGraphToTensorRT(
     tensorflow::Graph& graph, const std::vector<std::string>& output_names,
     const std::set<int>& subgraph_node_ids, size_t max_batch_size,
-    size_t max_workspace_size, const ShapeMap& shape_map) {
+    size_t max_workspace_size,
+    const tensorflow::grappler::GraphProperties& graph_properties) {
   tensorflow::EdgeSet subgraph_incoming_edges;
   GetSubGraphIncomingEdges(graph, subgraph_node_ids, &subgraph_incoming_edges);
 
@@ -161,7 +163,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   tensorflow::NodeDef trt_node_def;
   TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRTNodeDef(
       graph, subgraph_node_ids, subgraph_inputs, subgraph_outputs,
-      max_batch_size, max_workspace_size, shape_map, &trt_node_def));
+      max_batch_size, max_workspace_size, graph_properties, &trt_node_def));
   tensorflow::Status status;
   tensorflow::Node* trt_node = graph.AddNode(trt_node_def, &status);
 
@@ -246,19 +248,24 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   status = fold.Optimize(nullptr, item, &gdef);
   if (status !=tensorflow::Status::OK())
     return status;
+  
+  // AJ refactoring shape inference through grappler/GraphProperties.
+  tensorflow::grappler::GraphProperties static_graph_properties(item);
+  static_graph_properties.InferStatically(false);
+  // TF_CHECK_OK(static_graph_prop.InferStatically(false));
+  // ShapeMap shape_map;
+  // TF_RETURN_IF_ERROR(
+  //     tensorflow::trt::inferShapes(gdef, output_names, shape_map));
+  // std::stringstream oss;
+  // for (auto& n : shape_map) {  // nodes
+  //   oss << " Node= " << n.first << ", ";
+  //   for (auto o : n.second) {  // outputs
+  //     oss << o.first.DebugString() << " T= " << o.second << ", ";
+  //   }
+  //   LOG(DEBUG) << oss.str();
+  //   oss.str("");
+  // }
 
-  ShapeMap shape_map;
-  TF_RETURN_IF_ERROR(
-      tensorflow::trt::inferShapes(gdef, output_names, shape_map));
-  std::stringstream oss;
-  for (auto& n : shape_map) {  // nodes
-    oss << " Node= " << n.first << ", ";
-    for (auto o : n.second) {  // outputs
-      oss << o.first.DebugString() << " T= " << o.second << ", ";
-    }
-    LOG(DEBUG) << oss.str();
-    oss.str("");
-  }
   // Build full graph
   tensorflow::FunctionLibraryDefinition flib(tensorflow::OpRegistry::Global(),
                                              gdef.library());
@@ -291,7 +298,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     }
     TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRT(
         graph, output_names, subgraph_node_ids, max_batch_size,
-        max_workspace_size, shape_map));
+        max_workspace_size, static_graph_properties));
   }
   graph.ToGraphDef(new_graph_def);
   return tensorflow::Status::OK();

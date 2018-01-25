@@ -194,12 +194,10 @@ cc_library(
         "convert/convert_nodes.cc",
         "convert/convert_graph.cc",
         "segment/segment.cc",
-        "convert/inferShapes.cc",
     ],
     hdrs=[
         "convert/convert_nodes.h",
         "convert/convert_graph.h",
-        "convert/inferShapes.h",
         "segment/segment.h",
         "segment/union_find.h",
     ],
@@ -217,6 +215,7 @@ cc_library(
         "//tensorflow/core/grappler/optimizers:layout_optimizer",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler/costs:graph_properties",
         #"//tensorflow/core/grappler/clusters:single_machine",
     ],
 )
