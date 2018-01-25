@@ -604,6 +604,7 @@ py_library(
         ":metric_keys",
         ":model_fn",
         ":prediction_keys",
+        ":util",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
