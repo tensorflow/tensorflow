@@ -18,32 +18,22 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf.convert import builtin_functions
+from tensorflow.contrib.py2tf.converters import builtin_functions
+from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.contrib.py2tf.pyct import compiler
-from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
-from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
-from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class BuiltinFunctionsTest(test.TestCase):
-
-  def _parse_and_analyze(self, test_fn, namespace):
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, namespace, {})
-    node = type_info.resolve(node, None, None, {})
-    return node
+class BuiltinFunctionsTest(converter_test_base.TestCase):
 
   def test_len(self):
 
     def test_fn(a):
       return len(a)
 
-    node = self._parse_and_analyze(test_fn, {'len': len})
+    node = self.parse_and_analyze(test_fn, {'len': len})
     node = builtin_functions.transform(node)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', array_ops)

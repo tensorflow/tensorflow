@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -1271,6 +1272,52 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   return Status::OK();
 }
 
+// Returns true if the relative order of the unreduced dimensions stays the same
+// through the reduce operation.
+static bool ReductionPreservesLayout(const HloInstruction& reduce) {
+  DCHECK_EQ(reduce.opcode(), HloOpcode::kReduce);
+
+  // Maps dimensions that were not reduced from their dimension numbers in the
+  // source shape to their dimensions numbers in the destination shape.
+  //
+  // So if we reduce f32[A,B,C,D] on dimensions 1 and 2, this map contains
+  // [0->0, 3->1].
+  gtl::FlatMap<int64, int64> unreduced_dim_map;
+
+  gtl::FlatSet<int64> reduced_dims(reduce.dimensions().begin(),
+                                   reduce.dimensions().end());
+
+  const Shape& operand_shape = reduce.operand(0)->shape();
+  const Shape& result_shape = reduce.shape();
+
+  int64 delta = 0;
+  for (int64 i = 0; i < operand_shape.dimensions_size(); i++) {
+    if (reduced_dims.count(i)) {
+      delta++;
+    } else {
+      InsertOrDie(&unreduced_dim_map, i, i - delta);
+    }
+  }
+
+  // Iterate dimensions minor to major and check that the corresponding
+  // dimensions in the source and target shapes are equivalent.
+  int64 result_dim_idx = 0;
+  for (int64 operand_dim_idx = 0;
+       operand_dim_idx < operand_shape.dimensions_size(); operand_dim_idx++) {
+    int64 operand_dim = operand_shape.layout().minor_to_major(operand_dim_idx);
+    if (!reduced_dims.count(operand_dim)) {
+      if (FindOrDie(unreduced_dim_map, operand_dim) !=
+          result_shape.layout().minor_to_major(result_dim_idx++)) {
+        return false;
+      }
+    }
+  }
+
+  CHECK_EQ(result_dim_idx, result_shape.dimensions_size());
+
+  return true;
+}
+
 IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
     HloComputation* function, string* failure_reason) const {
   CHECK_EQ(function->num_parameters(), 2);
@@ -1540,6 +1587,10 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
     gtl::ArraySlice<int64> dimensions, HloComputation* function,
     string* failure_reason) {
+  if (!ReductionPreservesLayout(*reduce)) {
+    return false;
+  }
+
   ReductionGenerator reduction_generator =
       MatchReductionGenerator(function, failure_reason);
   if (!reduction_generator) {

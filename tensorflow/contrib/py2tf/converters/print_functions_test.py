@@ -20,30 +20,20 @@ from __future__ import print_function
 
 import gast
 
-from tensorflow.contrib.py2tf.convert import print_functions
+from tensorflow.contrib.py2tf.converters import converter_test_base
+from tensorflow.contrib.py2tf.converters import print_functions
 from tensorflow.contrib.py2tf.pyct import compiler
-from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
-from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
-from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.platform import test
 
 
-class PrintFunctionsTest(test.TestCase):
-
-  def _parse_and_analyze(self, test_fn, namespace):
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, namespace, {})
-    node = type_info.resolve(node, None, None, {})
-    return node
+class PrintFunctionsTest(converter_test_base.TestCase):
 
   def test_transform(self):
 
     def test_fn(a):
       print(a)
 
-    node = self._parse_and_analyze(test_fn, {'print': print})
+    node = self.parse_and_analyze(test_fn, {'print': print})
     node = print_functions.transform(node)
     result = compiler.ast_to_object(node)
 
