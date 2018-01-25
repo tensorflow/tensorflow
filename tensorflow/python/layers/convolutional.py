@@ -1658,11 +1658,11 @@ class Conv3DTranspose(Conv3D):
 
     output_shape[c_axis] = self.filters
     output_shape[d_axis] = utils.deconv_output_length(
-        output_shape[d_axis], stride_d, kernel_d, self.padding)
+        output_shape[d_axis], stride_d, self.padding, kernel_d)
     output_shape[h_axis] = utils.deconv_output_length(
-        output_shape[h_axis], stride_h, kernel_h, self.padding)
+        output_shape[h_axis], stride_h, self.padding, kernel_h)
     output_shape[w_axis] = utils.deconv_output_length(
-        output_shape[w_axis], stride_w, kernel_w, self.padding)
+        output_shape[w_axis], stride_w, self.padding, kernel_w)
     return tensor_shape.TensorShape(output_shape)
 
 
