@@ -351,6 +351,7 @@ xla_test(
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:platform_util",

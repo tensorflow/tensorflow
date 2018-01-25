@@ -182,6 +182,7 @@ cc_library(
     deps = [
         ":status",
         ":status_macros",
+        ":statusor",
         ":types",
         ":xla_data_proto",
         "//tensorflow/core:lib",
