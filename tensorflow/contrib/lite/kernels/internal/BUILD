@@ -324,6 +324,12 @@ cc_library(
         ":x86_64": [
             ":neon_tensor_utils",
         ],
+        ":x86": [
+            ":neon_tensor_utils",
+        ],
+        ":darwin": [
+            ":neon_tensor_utils",
+        ],
         "//conditions:default": [
             ":portable_tensor_utils",
         ],
