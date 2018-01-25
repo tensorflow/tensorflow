@@ -24,6 +24,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.factorization.python.ops import gmm_ops
+from tensorflow.contrib.factorization.python.ops import constants
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -123,7 +124,7 @@ class GmmOpsTest(test.TestCase):
       with self.test_session() as sess:
         data = constant_op.constant(self.data, dtype=dtypes.float32)
         _, assignments, _, training_op, init_op, _ = gmm_ops.gmm(
-            data, 'random', num_classes, random_seed=self.seed)
+            data, constants.RANDOM_INIT, num_classes, random_seed=self.seed)
 
         variables.global_variables_initializer().run()
         sess.run(init_op)
