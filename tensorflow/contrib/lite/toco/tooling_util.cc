@@ -652,10 +652,13 @@ void CheckNonExistentIOArrays(const Model& model) {
 void CheckNoMissingArray(const Model& model) {
   for (const auto& op : model.operators) {
     for (const auto& input : op->inputs) {
-      CHECK(model.HasArray(input) || model.optional_arrays.count(input));
+      CHECK(model.HasArray(input) || model.optional_arrays.count(input))
+       << "Input: " << input << " missing for op: " 
+       << op->outputs[0] << ".";
     }
     for (const auto& output : op->outputs) {
-      CHECK(model.HasArray(output));
+      CHECK(model.HasArray(output)) << "Output: " << output 
+        << " missing.";
     }
   }
   CheckNonExistentIOArrays(model);
