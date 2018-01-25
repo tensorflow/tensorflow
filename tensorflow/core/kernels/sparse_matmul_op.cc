@@ -1626,11 +1626,10 @@ inline void SparseMatMul<TL, TR>::Compute(
                           SparseMatMulOp<TA, TB, LibxsmmSparseMatMul>);
 #endif
 
-REGISTER_SPARSE_MATMUL(bfloat16, bfloat16);
-
-REGISTER_SPARSE_MATMUL(float, bfloat16);
-
-REGISTER_SPARSE_MATMUL(bfloat16, float);
+// Disabled for TensorFlow 1.5.0. Will be re-enabled in 1.6.0.
+// REGISTER_SPARSE_MATMUL(bfloat16, bfloat16);
+// REGISTER_SPARSE_MATMUL(float, bfloat16);
+// REGISTER_SPARSE_MATMUL(bfloat16, float);
 
 #ifdef TENSORFLOW_USE_LIBXSMM
 REGISTER_SPARSE_MATMUL_LIBXSMM(float, float);
