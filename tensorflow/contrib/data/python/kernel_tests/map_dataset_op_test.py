@@ -446,11 +446,12 @@ class MapDatasetTest(test.TestCase):
         contrib_dataset_ops.Dataset.from_tensors(0).repeat(10)
         .map(lambda _: counter_var.assign_add(1)).make_initializable_iterator())
     init_op = iterator.initializer
+    get_next = iterator.get_next()
 
     with self.test_session() as sess:
-      with self.assertRaisesRegexp(errors.FailedPreconditionError,
-                                   "Failed to capture resource"):
-        sess.run(init_op)
+      sess.run(init_op)
+      with self.assertRaises(errors.NotFoundError):
+        sess.run(get_next)
 
   def testSeededStatefulOperatorIsProperlyStateful(self):
     iterator = (
@@ -702,15 +703,18 @@ class MapDatasetTest(test.TestCase):
       ds = _build_ds(captured_iterator)
       iterator = ds.make_initializable_iterator()
       init_op = iterator.initializer
-      return captured_iterator.initializer, init_op
+      get_next = iterator.get_next()
+      return captured_iterator.initializer, init_op, get_next
 
     with ops.Graph().as_default() as g:
-      captured_init_op, init_op = _build_graph()
+      captured_init_op, init_op, get_next = _build_graph()
       with self.test_session(graph=g) as sess:
         sess.run(captured_init_op)
-        with self.assertRaises(errors.UnimplementedError):
-          # CapturedFunction does not support capturing IteratorResource.
-          sess.run(init_op)
+        sess.run(init_op)
+        for i in range(10):
+          self.assertEquals(i * i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
 
 
 class MapDatasetSerializationTest(
@@ -760,6 +764,15 @@ class MapDatasetSerializationTest(
           lambda _: counter_var.assign_add(1)))
 
     self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+
+  def testCaptureConstantInMapFn(self):
+
+    def _build_ds():
+      constant_var = constant_op.constant(5)
+      return (contrib_dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda x: x + constant_var))
+
+    self.run_core_tests(_build_ds, None, 10)
 
   def testCaptureDefunInMapFn(self):
     num_outputs = 100
@@ -851,6 +864,15 @@ class ParallelMapDatasetSerializationTest(
           lambda _: counter_var.assign_add(1)))
 
     self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+
+  def testCaptureConstantInMapFn(self):
+
+    def _build_ds():
+      constant_var = constant_op.constant(5)
+      return (contrib_dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda x: x + constant_var))
+
+    self.run_core_tests(_build_ds, None, 10)
 
   def testCaptureDefunInMapFn(self):
     num_outputs = 100

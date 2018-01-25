@@ -66,7 +66,7 @@ bool ResolveConstantFakeQuant::Run(Model* model, std::size_t op_index) {
     output_buffer.data[i] = dst_val;
   }
   if (CountOpsWithInput(*model, fakequant_op->inputs[0]) == 1) {
-    model->arrays.erase(fakequant_op->inputs[0]);
+    model->EraseArray(fakequant_op->inputs[0]);
   }
   model->operators.erase(fakequant_it);
 

@@ -451,6 +451,7 @@ py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",
@@ -474,7 +475,7 @@ py_test(
 
 py_test(
     name = "stats_dataset_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["stats_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],

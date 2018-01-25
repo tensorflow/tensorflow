@@ -563,7 +563,7 @@ class Conv2DTranspose(tf_convolutional_layers.Conv2DTranspose, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class Conv3DTranspose(tf_convolutional_layers.Conv3D, Layer):
+class Conv3DTranspose(tf_convolutional_layers.Conv3DTranspose, Layer):
   """Transposed convolution layer (sometimes called Deconvolution).
 
   The need for transposed convolutions generally arises

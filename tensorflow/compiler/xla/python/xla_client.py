@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import enum  # pylint: disable=g-bad-import-order
+import inspect
 import itertools
+import os
 
 import numpy as np
 
@@ -31,6 +34,28 @@ from tensorflow.compiler.xla.python import pywrap_xla as c_api
 # whereas method names of ComputationBuilder and LocalComputation are
 # CamelCase for consistency with XLA.
 # pylint: disable=invalid-name
+
+
+OpMetadata = collections.namedtuple(
+    'OpMetadata',
+    [
+        'op_type',
+        'op_name',
+        'source_file',
+        'source_line',
+    ],
+)
+
+
+def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
+  """Helper for use in source mapping that returns an OpMetadata object."""
+  full_filename, lineno = inspect.stack()[skip_frames][1:3]
+  filename = os.path.basename(full_filename)
+  return OpMetadata(
+      op_type=op_type,
+      op_name=op_name,
+      source_file=filename,
+      source_line=lineno)
 
 
 class PaddingType(enum.Enum):
@@ -335,6 +360,14 @@ class ComputationBuilder(object):
   def Build(self):
     return LocalComputation(self._client.Build(), is_compiled=False)
 
+  def SetOpMetadata(self, op_metadata):
+    """Set metadata for operations that are about to be enqueued."""
+    self._client.SetOpMetadata(op_metadata)
+
+  def ClearOpMetadata(self):
+    """Clear metadata for operations that are about to be enqueued."""
+    self._client.ClearOpMetadata()
+
   def Infeed(self, shape):
     """Enqueues an infeed op onto the computation.
 
@@ -507,6 +540,26 @@ class ComputationBuilder(object):
 
   def GetComputationStats(self):
     raise NotImplementedError()
+
+  def Pad(self, operand, padding_value, padding_config):
+    """Enqueues a Pad operation onto the computation.
+
+    Args:
+      operand: ComputationDataHandle representing the array to pad.
+      padding_value: ComputationDataHandle representing the scalar pad value.
+      padding_config: either an xla_data_pb2.PaddingConfig or a list of integer
+        triples (edge_padding_low, edge_padding_high, interior_padding)
+        representing the configuration of the padding operation.
+
+    Returns:
+      A ComputationDataHandle representing the added pad op.
+    """
+    if not isinstance(padding_config, xla_data_pb2.PaddingConfig):
+      padding_config = GetPaddingConfigFromTriples(padding_config)
+    return _wrap_data_handle(
+        self._client.Pad(_unwrap_data_handle(operand),
+                         _unwrap_data_handle(padding_value),
+                         padding_config))
 
   def Reshape(self, operand, dimensions, new_sizes):
     """Reshape op."""
@@ -934,3 +987,14 @@ def get_replica_count():
   yet or not.
   """
   return c_api.GetReplicaCount()
+
+
+def GetPaddingConfigFromTriples(triples):
+  """Create PaddingConfig proto from list of triples of integers."""
+  padding_config = xla_data_pb2.PaddingConfig()
+  for lo, hi, interior in triples:
+    dimension = padding_config.dimensions.add()
+    dimension.edge_padding_low = lo
+    dimension.edge_padding_high = hi
+    dimension.interior_padding = interior
+  return padding_config

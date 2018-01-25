@@ -360,10 +360,23 @@ def _write_dict_to_summary(output_dir, dictionary, current_global_step):
         logging.warn('Skipping summary for %s, cannot parse string to Summary.',
                      key)
         continue
+    elif isinstance(dictionary[key], np.ndarray):
+      value = summary_proto.value.add()
+      value.tag = key
+      value.node_name = key
+      tensor_proto = tensor_util.make_tensor_proto(dictionary[key])
+      value.tensor.CopyFrom(tensor_proto)
+      logging.info(
+          'Summary for np.ndarray is not visible in Tensorboard by default. '
+          'Consider using a Tensorboard plugin for visualization (see '
+          'https://github.com/tensorflow/tensorboard-plugin-example/blob/master/README.md '  # pylint:disable=line-too-long
+          'for more information).'
+      )
     else:
       logging.warn(
           'Skipping summary for %s, must be a float, np.float32, np.int64, '
-          'np.int32 or int or a serialized string of Summary.', key)
+          'np.int32 or int or np.ndarray or a serialized string of Summary.',
+          key)
   summary_writer.add_summary(summary_proto, current_global_step)
   summary_writer.flush()
 

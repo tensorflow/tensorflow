@@ -118,6 +118,23 @@ void TFE_ContextClearCaches(TFE_Context* ctx) {
   tensorflow::gtl::STLDeleteValues(&ctx->kernel_cache);
 }
 
+void TFE_ContextSetThreadLocalDevicePlacementPolicy(
+    TFE_Context* ctx, TFE_ContextDevicePlacementPolicy policy) {
+  tensorflow::mutex_lock ml(ctx->policy_map_mu);
+  ctx->thread_local_policies[std::this_thread::get_id()] = policy;
+}
+
+extern TFE_ContextDevicePlacementPolicy TFE_ContextGetDevicePlacementPolicy(
+    TFE_Context* ctx) {
+  tensorflow::mutex_lock ml(ctx->policy_map_mu);
+  auto policy_map_it =
+      ctx->thread_local_policies.find(std::this_thread::get_id());
+  if (policy_map_it != ctx->thread_local_policies.end()) {
+    return policy_map_it->second;
+  }
+  return ctx->policy;
+}
+
 TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
   tensorflow::Tensor tensor;
   status->status = tensorflow::TF_TensorToTensor(t, &tensor);
@@ -435,10 +452,17 @@ tensorflow::Status ValidateInputTypeAndPlacement(
     const tensorflow::Device* actual_device =
         op->input_devices[i] == nullptr ? host_device : op->input_devices[i];
     if (expected_device != actual_device) {
-      switch (ctx->policy) {
-        case TFE_DEVICE_PLACEMENT_EXPLICIT:
+      switch (TFE_ContextGetDevicePlacementPolicy(ctx)) {
+        case TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32:
           // TODO(xpan): See if we could bubble python related error up
           // to python level.
+          if (op->inputs[i].dtype() == tensorflow::DT_INT32) {
+            // Note: enabling silent copies of int32 tensors to match behavior
+            // of graph mode.
+            break;
+          }
+          TF_FALLTHROUGH_INTENDED;
+        case TFE_DEVICE_PLACEMENT_EXPLICIT:
           return tensorflow::errors::InvalidArgument(
               "Tensors on conflicting devices:"
               " cannot compute ",

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_GRAPH_TRANSFORMATIONS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_GRAPH_TRANSFORMATIONS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_GRAPH_TRANSFORMATIONS_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_GRAPH_TRANSFORMATIONS_H_
 
 #include <cstddef>
 #include <initializer_list>
@@ -114,7 +114,9 @@ void RunGraphTransformations(Model* model, const string& message,
 // List of all graph transformations
 DECLARE_GRAPH_TRANSFORMATION(ConvertExpandDimsToReshape)
 DECLARE_GRAPH_TRANSFORMATION(ConvertPureConvToDepthwise)
+DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialAddNToAdd)
 DECLARE_GRAPH_TRANSFORMATION(ConvertTrivialTransposeToReshape)
+DECLARE_GRAPH_TRANSFORMATION(ConvertReorderAxes)
 DECLARE_GRAPH_TRANSFORMATION(EnsureBiasVectors)
 DECLARE_GRAPH_TRANSFORMATION(FuseActivationFunctions)
 DECLARE_GRAPH_TRANSFORMATION(FuseBinaryIntoFollowingAffine)
@@ -146,7 +148,7 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveReorderAxes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowConcat)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowMatMul)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowMerge)
-DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowSqueeze)
+DECLARE_GRAPH_TRANSFORMATION(ResolveSqueezeAttributes)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowSwitch)
 DECLARE_GRAPH_TRANSFORMATION(ResolveTensorFlowTile)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantFakeQuant)
@@ -192,4 +194,4 @@ class RemoveTrivialReshape : public GraphTransformation {
 
 }  // end namespace toco
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_GRAPH_TRANSFORMATIONS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_GRAPH_TRANSFORMATIONS_GRAPH_TRANSFORMATIONS_H_

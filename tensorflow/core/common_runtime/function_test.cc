@@ -758,6 +758,7 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
   FunctionLibraryRuntime::Options opts;
   opts.stats_collector = &stats_collector;
   TF_CHECK_OK(Run(flr0_, handle, opts, {x}, {&y}));
+  TF_CHECK_OK(flr0_->ReleaseHandle(handle));
 
   TF_CHECK_OK(InstantiateAndRun(flr0_, "SquareAndAddOneWithStatefulNodes", {},
                                 {x}, {&y}));

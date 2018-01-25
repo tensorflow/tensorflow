@@ -58,11 +58,7 @@ void PruneControlInputs(NodeDef* node) {
   int pos = 0;
   while (pos < node->input_size()) {
     const string& input = node->input(pos);
-    // TODO(rmlarsen): Remove control inputs that also appears as a regular
-    // inputs. Currently, doing so breaks testControlFlowStrictness in
-    // python/framework/function_test.
-    //    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
-    if (IsControlInput(input) && !inputs.insert(input).second) {
+    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
       VLOG(1) << "**** Removing duplicate control input: " << input
               << " from node " << node->DebugString();
       node->mutable_input()->SwapElements(pos, node->input_size() - 1);
@@ -104,12 +100,24 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
     return false;
   }
 
-  // TODO(rmlarsen): We have to skip Identity nodes to make an obsolete test in
-  // python/training/session_manager_test.py pass. See if we can fix or get rid
-  // of that test.
+  // Don't turn Identity nodes inserted by Grappler after Switch into NoOp,
+  // since we cannot anchor control dependencies on Switch nodes.
+  // Don't remove Identity nodes corresponding to Variable reads.
+  if (IsIdentity(node)) {
+    const NodeDef* input = node_map_->GetNode(NodeName(node.input(0)));
+    if (input != nullptr) {
+      if (IsVariable(*input) ||
+          (StringPiece(node.name()).starts_with(kConstantFoldingCtrl) &&
+           IsSwitch(*input))) {
+        return false;
+      }
+    }
+  }
+
   const std::unordered_set<string> do_not_rewrite_ops{
-      "Assert", "CheckNumerics",         "Identity",    "_Retval",
-      "_Arg",   "_ParallelConcatUpdate", "_TPUExecute", "_TPUCompile"};
+      "Assert",     "CheckNumerics",         "_Retval",
+      "_Arg",       "_ParallelConcatUpdate", "_TPUExecute",
+      "_TPUCompile"};
   return do_not_rewrite_ops.find(node.op()) == do_not_rewrite_ops.end();
 }
 

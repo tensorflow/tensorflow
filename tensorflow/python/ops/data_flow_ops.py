@@ -39,6 +39,7 @@ from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_data_flow_ops import *
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 
@@ -107,6 +108,7 @@ def _shape_common(s1, s2):
 
 
 # pylint: disable=protected-access
+@tf_export("QueueBase")
 class QueueBase(object):
   """Base class for queue implementations.
 
@@ -596,6 +598,7 @@ class QueueBase(object):
       return gen_data_flow_ops._queue_size(self._queue_ref, name=name)
 
 
+@tf_export("RandomShuffleQueue")
 class RandomShuffleQueue(QueueBase):
   """A queue implementation that dequeues elements in a random order.
 
@@ -674,6 +677,7 @@ class RandomShuffleQueue(QueueBase):
     super(RandomShuffleQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
+@tf_export("FIFOQueue")
 class FIFOQueue(QueueBase):
   """A queue implementation that dequeues elements in first-in first-out order.
 
@@ -727,6 +731,7 @@ class FIFOQueue(QueueBase):
     super(FIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
+@tf_export("PaddingFIFOQueue")
 class PaddingFIFOQueue(QueueBase):
   """A FIFOQueue that supports batching variable-sized tensors by padding.
 
@@ -797,6 +802,7 @@ class PaddingFIFOQueue(QueueBase):
     super(PaddingFIFOQueue, self).__init__(dtypes, shapes, names, queue_ref)
 
 
+@tf_export("PriorityQueue")
 class PriorityQueue(QueueBase):
   """A queue implementation that dequeues elements in prioritized order.
 
@@ -1106,6 +1112,7 @@ class Barrier(object):
         self._barrier_ref, name=name)
 
 
+@tf_export("ConditionalAccumulatorBase")
 class ConditionalAccumulatorBase(object):
   """A conditional accumulator for aggregating gradients.
 
@@ -1184,6 +1191,7 @@ class ConditionalAccumulatorBase(object):
         name=name)
 
 
+@tf_export("ConditionalAccumulator")
 class ConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating gradients.
 
@@ -1263,6 +1271,7 @@ class ConditionalAccumulator(ConditionalAccumulatorBase):
     return out
 
 
+@tf_export("SparseConditionalAccumulator")
 class SparseConditionalAccumulator(ConditionalAccumulatorBase):
   """A conditional accumulator for aggregating sparse gradients.
 

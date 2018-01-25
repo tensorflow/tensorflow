@@ -67,6 +67,7 @@ __all__ = [
     'wasserstein_gradient_penalty',
     'mutual_information_penalty',
     'combine_adversarial_loss',
+    'cycle_consistency_loss',
 ]
 
 
@@ -915,3 +916,63 @@ def combine_adversarial_loss(main_loss,
                     array_ops.stop_gradient(adv_coeff) * adversarial_loss)
 
   return final_loss
+
+
+def cycle_consistency_loss(data_x,
+                           reconstructed_data_x,
+                           data_y,
+                           reconstructed_data_y,
+                           scope=None,
+                           add_summaries=False):
+  """Defines the cycle consistency loss.
+
+  The cyclegan model has two partial models where `model_x2y` generator F maps
+  data set X to Y, `model_y2x` generator G maps data set Y to X. For a `data_x`
+  in data set X, we could reconstruct it by
+  * reconstructed_data_x = G(F(data_x))
+  Similarly
+  * reconstructed_data_y = F(G(data_y))
+
+  The cycle consistency loss is about the difference between data and
+  reconstructed data, namely
+  * loss_x2x = |data_x - G(F(data_x))| (L1-norm)
+  * loss_y2y = |data_y - F(G(data_y))| (L1-norm)
+  * loss = (loss_x2x + loss_y2y) / 2
+  where `loss` is the final result.
+
+  See https://arxiv.org/abs/1703.10593 for more details.
+
+  Args:
+    data_x: A `Tensor` of data X.
+    reconstructed_data_x: A `Tensor` of reconstructed data X.
+    data_y: A `Tensor` of data Y.
+    reconstructed_data_y: A `Tensor` of reconstructed data Y.
+    scope: The scope for the operations performed in computing the loss.
+      Defaults to None.
+    add_summaries: Whether or not to add detailed summaries for the loss.
+      Defaults to False.
+
+  Returns:
+    A scalar `Tensor` of cycle consistency loss.
+  """
+
+  def _partial_cycle_consistency_loss(data, reconstructed_data):
+    # Following the original implementation
+    # https://github.com/junyanz/CycleGAN/blob/master/models/cycle_gan_model.lua
+    # use L1-norm of pixel-wise error normalized by data size so that
+    # `cycle_loss_weight` can be specified independent of image size.
+    return math_ops.reduce_mean(math_ops.abs(data - reconstructed_data))
+
+  with ops.name_scope(
+      scope,
+      'cycle_consistency_loss',
+      values=[data_x, reconstructed_data_x, data_y, reconstructed_data_y]):
+    loss_x2x = _partial_cycle_consistency_loss(data_x, reconstructed_data_x)
+    loss_y2y = _partial_cycle_consistency_loss(data_y, reconstructed_data_y)
+    loss = (loss_x2x + loss_y2y) / 2.0
+    if add_summaries:
+      summary.scalar('cycle_consistency_loss_x2x', loss_x2x)
+      summary.scalar('cycle_consistency_loss_y2y', loss_y2y)
+      summary.scalar('cycle_consistency_loss', loss)
+
+  return loss

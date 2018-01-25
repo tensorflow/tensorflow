@@ -50,7 +50,7 @@ cc_library(
     deps = [
         ":op_macros",
         "//tensorflow/contrib/lite:context",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )
 
@@ -102,9 +102,12 @@ cc_library(
         "skip_gram.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
+        "squeeze.cc",
+        "strided_slice.cc",
         "sub.cc",
         "svdf.cc",
         "transpose.cc",
+        "unidirectional_sequence_lstm.cc",
         "unidirectional_sequence_rnn.cc",
     ],
     hdrs = [
@@ -240,6 +243,18 @@ tf_cc_test(
     name = "basic_rnn_test",
     size = "small",
     srcs = ["basic_rnn_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "unidirectional_sequence_lstm_test",
+    size = "small",
+    srcs = ["unidirectional_sequence_lstm_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
@@ -484,6 +499,30 @@ tf_cc_test(
     name = "space_to_depth_test",
     size = "small",
     srcs = ["space_to_depth_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "squeeze_test",
+    size = "small",
+    srcs = ["squeeze_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "strided_slice_test",
+    size = "small",
+    srcs = ["strided_slice_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

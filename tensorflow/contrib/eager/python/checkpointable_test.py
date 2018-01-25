@@ -70,42 +70,36 @@ class CheckpointableAdam(adam.AdamOptimizer, checkpointable.Checkpointable):
     checkpointable.Checkpointable.__init__(self)
     adam.AdamOptimizer.__init__(self, *args, **kwargs)
 
-  # NOTE: Copied from AdamOptimizer with modifications to use add_variable
+  # NOTE: Copied from Optimizer with modifications to use add_variable
   # for non-slot variables. These contortions are necessary to maintain
   # checkpoint compatibility with variable.name based saving.
-  def _create_slots(self, var_list):
-    # Create the beta1 and beta2 accumulators on the same device as the first
-    # variable. Sort the var_list to make sure this device is consistent across
-    # workers (these need to go on the same PS, otherwise some updates are
-    # silently ignored).
-    first_var = min(var_list, key=lambda x: x.name)
+  # TODO(allenl): Make this cleaner.
+  def _create_non_slot_variable(self, initial_value, name, colocate_with):
+    """Add an extra variable, not associated with a slot."""
+    if context.in_graph_mode():
+      graph = colocate_with.graph
+    else:
+      graph = None
 
-    create_new = self._beta1_power is None
-    if not create_new and context.in_graph_mode():
-      create_new = (self._beta1_power.graph is not first_var.graph)
-
-    if create_new:
-      with ops.colocate_with(first_var):
-
+    key = (name, graph)
+    v = self._non_slot_dict.get(key, None)
+    if v is None:
+      with ops.colocate_with(colocate_with):
         def _variable_getter(name, shape, dtype, initializer):
           del shape, dtype  # not used, but there for compatibility
           return variable_scope.variable(
               name=name, initial_value=initializer, trainable=False)
 
-        self._beta1_power = self.add_variable(
-            name="beta1_power",
-            shape=[],
-            initializer=self._beta1,
+        initial_value = ops.convert_to_tensor(initial_value)
+        v = self.add_variable(
+            name=name,
+            shape=initial_value.get_shape(),
+            initializer=initial_value,
             getter=_variable_getter)
-        self._beta2_power = self.add_variable(
-            name="beta2_power",
-            shape=[],
-            initializer=self._beta2,
-            getter=_variable_getter)
-    # Create slots for the first and second moments.
-    for v in var_list:
-      self._zeros_slot(v, "m", self._name)
-      self._zeros_slot(v, "v", self._name)
+
+      self._non_slot_dict[key] = v
+
+    return v
 
   # TODO(allenl): Override slot variable creation (_get_or_make_slot,
   # _get_or_make_slot_with_initializer, _zeros_slot) to allow deferred

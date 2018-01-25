@@ -136,6 +136,8 @@ load(
     "tf_nano_proto_library",
     "tf_protos_all",
     "tf_protos_all_impl",
+    "tf_protos_grappler",
+    "tf_protos_grappler_impl",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -277,6 +279,7 @@ cc_library(
         "platform/platform.h",
         "platform/protobuf.h",
         "platform/types.h",
+        "platform/windows/cpu_info.h",
         "lib/bfloat16/bfloat16.h",
     ] + tf_additional_proto_hdrs() + glob(tf_env_time_hdrs()),
     copts = tf_copts(),
@@ -430,6 +433,7 @@ tf_cuda_library(
         "framework/cancellation.h",
         "framework/common_shape_fns.h",
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
+        "framework/dataset.h",
         "framework/device_base.h",
         "framework/function.h",
         "framework/graph_def_util.h",
@@ -591,6 +595,7 @@ cc_library(
 tf_gen_op_libs(
     is_external = False,
     op_lib_names = [
+        "batch_ops",
         "bitwise_ops",
         "candidate_sampling_ops",
         "checkpoint_ops",
@@ -672,6 +677,7 @@ cc_library(
     deps = [
         ":array_ops_op_lib",
         ":audio_ops_op_lib",
+        ":batch_ops_op_lib",
         ":bitwise_ops_op_lib",
         ":candidate_sampling_ops_op_lib",
         ":checkpoint_ops_op_lib",
@@ -807,6 +813,7 @@ cc_library(
     deps = [
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
+        "//tensorflow/core/kernels:batch_kernels",
         "//tensorflow/core/kernels:bincount_op",
         "//tensorflow/core/kernels:candidate_sampler_ops",
         "//tensorflow/core/kernels:checkpoint_ops",
@@ -1067,8 +1074,8 @@ cc_library(
         ":protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
-        "@fft2d//:fft2d",
-        "@gemmlowp//:gemmlowp",
+        "@fft2d",
+        "@gemmlowp",
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
@@ -1318,6 +1325,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "framework/function_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/function.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "framework/graph_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/graph.proto",
@@ -1528,7 +1542,7 @@ cc_library(
         "@snappy",
         "@zlib_archive//:zlib",
         "@protobuf_archive//:protobuf",
-    ] + tf_protos_all_impl(),
+    ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
 )
 
 # File compiled with extra flags to get cpu-specific acceleration.
@@ -2093,7 +2107,7 @@ tf_cuda_library(
         ":core_cpu_base",
         ":proto_text",
         "//tensorflow/core/grappler:grappler_item",
-    ] + if_static([":core_cpu_impl"]) + tf_protos_all(),
+    ] + if_static([":core_cpu_impl"]) + tf_protos_all() + tf_protos_grappler(),
 )
 
 tf_cuda_library(
@@ -2330,7 +2344,7 @@ cc_library(
         ":lib_internal",
         ":proto_text",
         "//third_party/eigen3",
-        "@local_config_sycl//sycl:sycl",
+        "@local_config_sycl//sycl",
     ],
     alwayslink = 0,
 )
@@ -3455,36 +3469,6 @@ tf_cc_test(
         ":testlib",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/core/kernels:example_parsing_ops",
-    ],
-)
-
-filegroup(
-    name = "base_api_def",
-    srcs = glob(["api_def/base_api/*"]),
-)
-
-filegroup(
-    name = "python_api_def",
-    srcs = glob(["api_def/python_api/*"]),
-)
-
-tf_cc_test(
-    name = "api_test",
-    srcs = ["api_def/api_test.cc"],
-    data = [
-        ":base_api_def",
-    ],
-    deps = [
-        ":framework",
-        ":framework_internal",
-        ":lib",
-        ":lib_internal",
-        ":lib_test_internal",
-        ":op_gen_lib",
-        ":ops",
-        ":protos_all_cc",
-        ":test",
-        ":test_main",
     ],
 )
 

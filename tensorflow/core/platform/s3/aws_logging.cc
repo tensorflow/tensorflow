@@ -48,6 +48,7 @@ void AWSLogSystem::LogStream(Aws::Utils::Logging::LogLevel log_level,
 
 void AWSLogSystem::LogMessage(Aws::Utils::Logging::LogLevel log_level,
                               const std::string& message) {
+  if (message == "Initializing Curl library") return;
   switch (log_level) {
     case Aws::Utils::Logging::LogLevel::Info:
       LOG(INFO) << message;
