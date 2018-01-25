@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-r"""Simple transfer learning with Inception v3 or Mobilenet models.
+"""Simple transfer learning with Inception v3 or Mobilenet models.
 
 With support for TensorBoard.
 
