@@ -95,8 +95,7 @@ class FuncRegistry(object):
     components of a tensor have different lengths.  This is bad: ignoring the
     padding is wrong for text data, and removing the padding is wrong for binary
     data.  To avoid this bug, we redo the conversion using an object dtype.
-    Additionally, we convert unicode strings to (byte-)strings for Python3
-    compatibility.
+    Additionally, we convert unicode strings to (byte-)strings for compatibility.
 
     Args:
       value: Value to convert to a numpy array.
