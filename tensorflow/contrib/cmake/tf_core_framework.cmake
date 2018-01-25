@@ -211,10 +211,6 @@ else()
   file(GLOB tf_core_platform_srcs_exclude
       "${tensorflow_source_dir}/tensorflow/core/platform/default/device_tracer.cc")
   list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_srcs_exclude})
-  # file(GLOB tf_core_platform_gpu_srcs
-  #   "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu/*.h"
-  #   "${tensorflow_source_dir}/tensorflow/core/platform/default/gpu/*.cc")
-  # list(APPEND tf_core_platform_srcs ${tf_core_platform_gpu_srcs})
 endif()
 
 file(GLOB tf_core_platform_exclude_srcs
