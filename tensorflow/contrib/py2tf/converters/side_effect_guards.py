@@ -34,8 +34,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from contextlib import contextmanager
-
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
@@ -125,7 +123,7 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
             temp_result = (temp_result,)
           ctx = tf.control_dependencies(temp_result)  # pylint:disable=undefined-variable
         else:
-          ctx = contextmanager(lambda: (yield))()
+          ctx = contextmanager(lambda: (yield))()  # pylint:disable=undefined-variable
         with ctx:
           # TODO(mdan): Also insert ops to re-fetch if variables are involved.
           pass  # Will be removed below.
