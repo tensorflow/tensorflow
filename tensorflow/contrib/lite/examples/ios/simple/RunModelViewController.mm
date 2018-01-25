@@ -142,10 +142,7 @@ static void GetTopN(const float* prediction,
 
 - (NSString*)filePathForResourceName:(NSString*)name withExtension:(NSString*)extension {
     NSString* file_path = [[NSBundle mainBundle] pathForResource:name ofType:extension];
-    if (!file_path) {
-        NSLog(@"Couldn't find '%@.%@' in bundle.", name, extension);
-        exit(-1);
-    }
+    NSAssert(file_path, @"Couldn't find '%@.%@' in bundle.", name, extension);
     return file_path;
 }
 
