@@ -411,6 +411,18 @@ class Context(object):
       self._initialize_handle_and_devices()
     pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._context_handle)
 
+  @contextlib.contextmanager
+  def device_policy(self, policy):
+    old = pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
+        self._context_handle)
+    pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
+        self._handle, policy)
+    try:
+      yield
+    finally:
+      pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
+          self._handle, old)
+
   def disable_run_metadata(self):
     """Disables tracing of op execution via RunMetadata."""
     if not self._context_handle:

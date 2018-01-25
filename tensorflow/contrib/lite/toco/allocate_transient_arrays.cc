@@ -148,7 +148,7 @@ std::size_t TransientArraySize(const Model& model, const string& array_name,
   if (!IsAllocatableTransientArray(model, array_name)) {
     return 0;
   }
-  const auto& array = model.arrays.at(array_name);
+  const auto& array = &model.GetArray(array_name);
   CHECK(array->has_shape())
       << "Array '" << array_name << "' doesn't have a shape";
   if (array->data_type == ArrayDataType::kNone) {
@@ -185,7 +185,7 @@ void AllocateTransientArray(const Model& model, const string& array_name,
   }
   const std::size_t size =
       TransientArraySize(model, array_name, transient_data_alignment);
-  const auto& array = model.arrays.at(array_name);
+  const auto& array = &model.GetArray(array_name);
   CHECK(!array->alloc);
   allocator->Allocate(size, &array->GetOrCreateAlloc());
 }
@@ -197,7 +197,7 @@ void DeallocateTransientArray(const Model& model, const string& array_name,
   if (!IsAllocatableTransientArray(model, array_name)) {
     return;
   }
-  const auto& array = model.arrays.at(array_name);
+  const auto& array = &model.GetArray(array_name);
   CHECK(!!array->alloc);
   allocator->Deallocate(*array->alloc);
 }
@@ -231,7 +231,7 @@ void AllocateTransientArrays(Model* model,
   // Construct a sorted map of array names, so that other layout engines can
   // match exactly.
   std::map<string, const Array*> ordered_arrays_map;
-  for (const auto& pair : model->arrays) {
+  for (const auto& pair : model->GetArrayMap()) {
     ordered_arrays_map[pair.first] = pair.second.get();
   }
 

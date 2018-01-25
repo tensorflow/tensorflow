@@ -72,6 +72,7 @@ namespace {
 using llvm_ir::AsStringRef;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
+namespace gtl = tensorflow::gtl;
 }  // namespace
 
 namespace cpu {
@@ -491,7 +492,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
 }
 
 Status IrEmitter::HandleMap(HloInstruction* map) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(map->operands());
+  gtl::ArraySlice<HloInstruction*> operands(map->operands());
   HloComputation* function = map->to_apply();
   // The called computation should have been emitted previously.
   llvm::Function* mapped_ir_function = FindOrDie(emitted_functions_, function);
@@ -1632,7 +1633,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     const ReductionGenerator& reduction_generator,
     const llvm_ir::IrArray::Index& output_index,
     const ShardedVectorType& accumulator_type, HloInstruction* init_value,
-    HloInstruction* arg, tensorflow::gtl::ArraySlice<int64> dimensions,
+    HloInstruction* arg, gtl::ArraySlice<int64> dimensions,
     unsigned element_alignment) {
   ShardedVector accumulator;
   accumulator.reserve(accumulator_type.size());
@@ -1736,7 +1737,7 @@ void IrEmitter::EmitShardedVectorStore(
 
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
-    tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function,
+    gtl::ArraySlice<int64> dimensions, HloComputation* function,
     string* failure_reason) {
   ReductionGenerator reduction_generator =
       MatchReductionGenerator(function, failure_reason);
@@ -1881,7 +1882,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
-  tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+  gtl::ArraySlice<int64> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     string vectorization_failure_reason;
@@ -2001,7 +2002,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   //
   // * Implement the memcpy within the innermost loop.
 
-  tensorflow::gtl::FlatSet<int64> inner_dims;
+  gtl::FlatSet<int64> inner_dims;
   for (int64 dim : LayoutUtil::MinorToMajor(layout)) {
     if (operand->shape().dimensions(dim) != slice->shape().dimensions(dim)) {
       break;
@@ -2329,8 +2330,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 }
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(
-      custom_call->operands());
+  gtl::ArraySlice<HloInstruction*> operands(custom_call->operands());
   tensorflow::StringPiece custom_call_target(custom_call->custom_call_target());
   llvm::Type* i8_ptr_type = ir_builder_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
@@ -2461,8 +2461,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 }
 
 StatusOr<bool> IrEmitter::EmitFastConcatenate(
-    HloInstruction* concatenate,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    HloInstruction* concatenate, gtl::ArraySlice<HloInstruction*> operands,
     string* failure_reason) {
   if (ShouldEmitParallelLoopFor(*concatenate)) {
     *failure_reason =
@@ -2601,8 +2600,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
 }
 
 Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(
-      concatenate->operands());
+  gtl::ArraySlice<HloInstruction*> operands(concatenate->operands());
   string failure_reason;
   TF_ASSIGN_OR_RETURN(
       bool successful,
@@ -2915,7 +2913,7 @@ llvm::Value* IrEmitter::EmitTempBufferPointer(
 // for a single element_type value, and loads it after call.
 llvm::Value* IrEmitter::EmitElementFunctionCall(
     llvm::Function* function, const Shape& return_shape,
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+    gtl::ArraySlice<llvm::Value*> parameter_addresses,
     tensorflow::StringPiece name) {
   llvm::Value* return_value_buffer = EmitArrayFunctionCall(
       function, return_shape, 1, parameter_addresses, name);
@@ -2935,8 +2933,7 @@ llvm::Value* IrEmitter::EmitElementFunctionCall(
 //                 temps)
 //   return return_value_buffer  -- address of the return value.
 void IrEmitter::EmitArrayFunctionCallInto(
-    llvm::Function* function,
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+    llvm::Function* function, gtl::ArraySlice<llvm::Value*> parameter_addresses,
     llvm::Value* return_value_buffer, tensorflow::StringPiece name) {
   ir_builder_.CreateCall(
       function, GetArrayFunctionCallArguments(
@@ -2949,7 +2946,7 @@ void IrEmitter::EmitArrayFunctionCallInto(
 
 llvm::Value* IrEmitter::EmitArrayFunctionCall(
     llvm::Function* function, const Shape& return_shape, int64 element_count,
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+    gtl::ArraySlice<llvm::Value*> parameter_addresses,
     tensorflow::StringPiece name) {
   llvm::Value* elements =
       llvm::ConstantInt::get(ir_builder_.getInt64Ty(), element_count);
@@ -3059,8 +3056,8 @@ Status IrEmitter::EmitMemcpy(const HloInstruction& source,
 
 Status IrEmitter::ElementTypesSameAndSupported(
     const HloInstruction& instruction,
-    tensorflow::gtl::ArraySlice<const HloInstruction*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> supported_types) {
+    gtl::ArraySlice<const HloInstruction*> operands,
+    gtl::ArraySlice<PrimitiveType> supported_types) {
   for (auto operand : operands) {
     TF_RET_CHECK(
         ShapeUtil::SameElementType(operands[0]->shape(), operand->shape()));

@@ -38,6 +38,7 @@ except ImportError:
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=g-import-not-at-top
 
 
@@ -328,6 +329,7 @@ def _AssertCompatible(values, dtype):
                       (dtype.name, repr(mismatch), type(mismatch).__name__))
 
 
+@tf_export("make_tensor_proto")
 def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   """Create a TensorProto.
 
@@ -515,6 +517,7 @@ def make_tensor_proto(values, dtype=None, shape=None, verify_shape=False):
   return tensor_proto
 
 
+@tf_export("make_ndarray")
 def MakeNdarray(tensor):
   """Create a numpy ndarray from a tensor.
 

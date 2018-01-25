@@ -12,8 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""
-Complain about invalid or missing entries in python_*.txt files.
+"""Complain about invalid or missing entries in python_*.txt files.
+
 Problematic entries can be commented for temporary whitelisting.
 """
 
@@ -35,6 +35,7 @@ def abs_path(path):
   path = os.path.abspath(path)
   return path
 
+
 def read_entries(test):
   with open(abs_path(test.entries_file), "r") as f:
     lines = f.readlines()
@@ -47,24 +48,27 @@ def read_entries(test):
 
   for line in lines:
     # line is comment
-    if line.startswith('#'):
+    if line.startswith("#"):
       line = line[1:].strip()
       # whitelist entry
-      if line.startswith('tensorflow/'):
+      if line.startswith("tensorflow/"):
         test.whitelist.append(line)
     # line has comment -> strip comment
-    elif line.find('#') != -1:
-      line = line[:line.find('#')].strip()
+    elif line.find("#") != -1:
+      line = line[:line.find("#")].strip()
       test.entries.append(line)
     else:
       test.entries.append(line)
+
 
 def test_invalid_directories(test):
   for entry in test.entries:
     if not os.path.isdir(abs_path(entry)):
       problem = "'" + test.entries_file + "' contains invalid '" + entry + "'"
-      solution = "Please remove the invalid entry (or add the missing directory)."
+      solution = ("Please remove the invalid entry (or add the missing "
+                  "directory).")
       raise AssertionError(problem + "\n" + solution)
+
 
 def test_missing_directory(test, path):
   if path in test.whitelist:
