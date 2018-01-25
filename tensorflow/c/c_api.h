@@ -511,6 +511,11 @@ TF_CAPI_EXPORT extern void TF_SetAttrTypeList(TF_OperationDescription* desc,
                                               const char* attr_name,
                                               const TF_DataType* values,
                                               int num_values);
+// Set a 'func' attribute to the specified name.
+// `value` must point to a string of length `length` bytes.
+TF_CAPI_EXPORT extern void TF_SetAttrFuncName(TF_OperationDescription* desc,
+                                              const char* attr_name,
+                                              const char* value, size_t length);
 
 // Set `num_dims` to -1 to represent "unknown rank".  Otherwise,
 // `dims` points to an array of length `num_dims`.  `dims[i]` must be
@@ -1028,6 +1033,23 @@ TF_CAPI_EXPORT extern void TF_GraphCopyFunction(TF_Graph* g,
                                                 const TF_Function* func,
                                                 const TF_Function* grad,
                                                 TF_Status* status);
+
+// Returns the number of TF_Functions registered in `g`.
+TF_CAPI_EXPORT extern int TF_GraphNumFunctions(TF_Graph* g);
+
+// Fills in `funcs` with the TF_Function* registered in `g`.
+// `funcs` must point to an array of TF_Function* of length at least
+// `max_func`. In usual usage, max_func should be set to the result of
+// TF_GraphNumFunctions(g). In this case, all the functions registered in
+// `g` will be returned. Else, an unspecified subset.
+//
+// If successful, returns the number of TF_Function* successfully set in
+// `funcs` and sets status to OK. The caller takes ownership of
+// all the returned TF_Functions. They must be deleted with TF_DeleteFunction.
+// On error, returns 0, sets status to the encountered error, and the contents
+// of funcs will be undefined.
+TF_CAPI_EXPORT extern int TF_GraphGetFunctions(TF_Graph* g, TF_Function** funcs,
+                                               int max_func, TF_Status* status);
 
 // Note: The following function may fail on very large protos in the future.
 

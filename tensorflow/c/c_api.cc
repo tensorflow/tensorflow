@@ -927,6 +927,7 @@ int TF_DeviceListCount(const TF_DeviceList* list) {
       status->status = InvalidArgument("index out of bounds");            \
       return err_val;                                                     \
     }                                                                     \
+    status->status = Status::OK();                                        \
     return list->response[index].accessor;                                \
   }
 
@@ -1201,6 +1202,13 @@ void TF_SetAttrTypeList(TF_OperationDescription* desc, const char* attr_name,
                      reinterpret_cast<const DataType*>(values), num_values));
 }
 
+void TF_SetAttrFuncName(TF_OperationDescription* desc, const char* attr_name,
+                        const char* value, size_t length) {
+  tensorflow::NameAttrList func_name;
+  func_name.set_name(std::string(value, value + length));
+  desc->node_builder.Attr(attr_name, func_name);
+}
+
 void TF_SetAttrShape(TF_OperationDescription* desc, const char* attr_name,
                      const int64_t* dims, int num_dims) {
   PartialTensorShape shape;
@@ -1462,7 +1470,13 @@ int TF_OperationOutputConsumers(TF_Output oper_out, TF_Input* consumers,
 }
 
 int TF_OperationNumControlInputs(TF_Operation* oper) {
-  return oper->node.in_edges().size() - oper->node.num_inputs();
+  int count = 0;
+  for (const auto* edge : oper->node.in_edges()) {
+    if (edge->IsControlEdge() && !edge->src()->IsSource()) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 int TF_OperationGetControlInputs(TF_Operation* oper,
@@ -1470,7 +1484,7 @@ int TF_OperationGetControlInputs(TF_Operation* oper,
                                  int max_control_inputs) {
   int count = 0;
   for (const auto* edge : oper->node.in_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->src()->IsSource()) {
       if (count < max_control_inputs) {
         control_inputs[count] = ToOperation(edge->src());
       }
@@ -1483,7 +1497,7 @@ int TF_OperationGetControlInputs(TF_Operation* oper,
 int TF_OperationNumControlOutputs(TF_Operation* oper) {
   int count = 0;
   for (const auto* edge : oper->node.out_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->dst()->IsSink()) {
       ++count;
     }
   }
@@ -1495,7 +1509,7 @@ int TF_OperationGetControlOutputs(TF_Operation* oper,
                                   int max_control_outputs) {
   int count = 0;
   for (const auto* edge : oper->node.out_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->dst()->IsSink()) {
       if (count < max_control_outputs) {
         control_outputs[count] = ToOperation(edge->dst());
       }

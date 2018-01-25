@@ -17,9 +17,12 @@ filegroup(
 py_library(
     name = "convert",
     srcs = [
+        "break_canonicalization.py",
         "builtin_functions.py",
         "call_trees.py",
+        "continue_canonicalization.py",
         "control_flow.py",
+        "decorators.py",
         "for_canonicalization.py",
         "logical_expressions.py",
         "print_functions.py",
@@ -33,8 +36,30 @@ py_library(
 )
 
 py_test(
+    name = "break_canonicalization_test",
+    srcs = ["break_canonicalization_test.py"],
+    deps = [
+        ":convert",
+        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/contrib/py2tf/pyct/static_analysis",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
+    deps = [
+        ":convert",
+        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/contrib/py2tf/pyct/static_analysis",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "continue_canonicalization_test",
+    srcs = ["continue_canonicalization_test.py"],
     deps = [
         ":convert",
         "//tensorflow/contrib/py2tf/pyct",

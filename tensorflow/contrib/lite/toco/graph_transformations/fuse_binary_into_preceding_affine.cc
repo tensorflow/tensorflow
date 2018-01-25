@@ -309,7 +309,7 @@ bool FuseBinaryIntoPrecedingAffine::Run(Model* model, std::size_t op_index) {
     LOG(FATAL) << "should not get here";
   }
 
-  model->arrays.erase(preceding_op->outputs[0]);
+  model->EraseArray(preceding_op->outputs[0]);
   preceding_op->outputs[0] = binary_op->outputs[0];
   preceding_op->fused_activation_function =
       binary_op->fused_activation_function;
@@ -317,7 +317,7 @@ bool FuseBinaryIntoPrecedingAffine::Run(Model* model, std::size_t op_index) {
       binary_op->inputs[index_of_constant_input];
   CHECK(IsConstantParameterArray(*model, old_constant_param_name));
   if (CountOpsWithInput(*model, old_constant_param_name) == 1) {
-    model->arrays.erase(old_constant_param_name);
+    model->EraseArray(old_constant_param_name);
   }
   model->operators.erase(binary_it);
   return true;

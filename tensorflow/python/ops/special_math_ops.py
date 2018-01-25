@@ -31,9 +31,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
+@tf_export('lbeta')
 def lbeta(x, name='lbeta'):
   r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.
 
@@ -82,6 +84,7 @@ def lbeta(x, name='lbeta'):
     return result
 
 
+@tf_export('einsum', 'linalg.einsum')
 def einsum(equation, *inputs, **kwargs):
   """A generalized contraction between tensors of arbitrary dimension.
 

@@ -221,5 +221,77 @@ INSTANTIATE_TEST_CASE_P(MatOpsDotAddTestInstances, MatOpsDotAddTest,
                         ::testing::Combine(::testing::Bool(), ::testing::Bool(),
                                            ::testing::Bool()));
 
+class MatOpsDotAddTest_bf16
+    : public ClientLibraryTestBase,
+      public ::testing::WithParamInterface<std::tuple<bool, bool, bool>> {};
+
+TEST_P(MatOpsDotAddTest_bf16, Dot_Add_2x2_2x2) {
+  bool row_major = std::get<0>(GetParam());
+  bool add_lhs = std::get<1>(GetParam());
+  bool transpose = std::get<2>(GetParam());
+  Array2D<bfloat16> lhs(
+      {{bfloat16(1.0f), bfloat16(2.0f)}, {bfloat16(3.0), bfloat16(4.0)}});
+  Array2D<bfloat16> rhs(
+      {{bfloat16(10.0f), bfloat16(11.0f)}, {bfloat16(12.0f), bfloat16(13.0f)}});
+
+  auto minor_to_major = [](bool row_major) -> std::vector<int64> {
+    return {row_major ? 1 : 0, row_major ? 0 : 1};
+  };
+
+  auto prim_type = primitive_util::NativeToPrimitiveType<bfloat16>();
+  Shape lhs_shape =
+      ShapeUtil::MakeShape(prim_type, {lhs.height(), lhs.width()});
+  Shape rhs_shape =
+      ShapeUtil::MakeShape(prim_type, {rhs.height(), rhs.width()});
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto lhs_handle,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2DWithLayout<bfloat16>(
+              lhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto rhs_handle,
+      client_->TransferToServer(
+          *Literal::CreateR2FromArray2DWithLayout<bfloat16>(
+              rhs, LayoutUtil::MakeLayout(minor_to_major(row_major)))));
+
+  ComputationBuilder builder(client_, TestName());
+  auto lhs_arg = builder.Parameter(0, lhs_shape, "lhs");
+  auto lhs_mat_arg = lhs_arg;
+  if (transpose) {
+    lhs_mat_arg = builder.Transpose(lhs_mat_arg, {1, 0});
+  }
+  auto rhs_arg = builder.Parameter(1, rhs_shape, "rhs");
+  auto result = builder.Dot(lhs_mat_arg, rhs_arg);
+  Array2D<bfloat16> expected;
+  if (add_lhs) {
+    result = builder.Add(result, lhs_arg);
+    if (transpose) {
+      expected = Array2D<bfloat16>(
+          {{bfloat16(47), bfloat16(52)}, {bfloat16(71), bfloat16(78)}});
+    } else {
+      expected = Array2D<bfloat16>(
+          {{bfloat16(35), bfloat16(39)}, {bfloat16(81), bfloat16(89)}});
+    }
+  } else {
+    result = builder.Add(result, rhs_arg);
+    if (transpose) {
+      expected = Array2D<bfloat16>(
+          {{bfloat16(56), bfloat16(61)}, {bfloat16(80), bfloat16(87)}});
+    } else {
+      expected = Array2D<bfloat16>(
+          {{bfloat16(44), bfloat16(48)}, {bfloat16(90), bfloat16(98)}});
+    }
+  }
+
+  ComputeAndCompareR2<bfloat16>(&builder, expected,
+                                {lhs_handle.get(), rhs_handle.get()},
+                                ErrorSpec(1e-6));
+}
+
+INSTANTIATE_TEST_CASE_P(MatOpsDotAddTestInstances, MatOpsDotAddTest_bf16,
+                        ::testing::Combine(::testing::Bool(), ::testing::Bool(),
+                                           ::testing::Bool()));
+
 }  // namespace
 }  // namespace xla

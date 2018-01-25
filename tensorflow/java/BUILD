@@ -313,6 +313,7 @@ tf_cc_test(
     ],
     deps = [
         ":java_op_gen_lib",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],

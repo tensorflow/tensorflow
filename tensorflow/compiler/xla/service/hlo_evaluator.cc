@@ -945,14 +945,21 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
                 out_index[output_spatial_dim] * window_dim.stride() -
                 window_dim.padding_low() +
                 rhs_spatial_index[ki] * window_dim.window_dilation();
-            // Skip if the lhs (input) index is to be dilated.
-            if (undilated_index % window_dim.base_dilation() != 0) {
+            // Skip if the lhs (input) index is to be dilated.  As an
+            // optimization, skip this mod if there's no dilation.
+            if (window_dim.base_dilation() > 1 &&
+                undilated_index % window_dim.base_dilation() != 0) {
               goto cnt;
             }
 
-            // Calculate the actual lhs (input) index after dilation.
-            lhs_index[input_spatial_dim] =
-                undilated_index / window_dim.base_dilation();
+            // Calculate the actual lhs (input) index after dilation.  As an
+            // optimization, skip this integer divide if there's no dilation.
+            if (window_dim.base_dilation() > 1) {
+              lhs_index[input_spatial_dim] =
+                  undilated_index / window_dim.base_dilation();
+            } else {
+              lhs_index[input_spatial_dim] = undilated_index;
+            }
 
             // Skip if input index is not in bound.
             if (!(lhs_index[input_spatial_dim] >= 0 &&
@@ -1462,8 +1469,6 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           std::fill(operand_index.begin(), operand_index.end(), 0);
 
           do {
-            // Set curr_val to 0 if out of bound (padded).
-            ReturnT curr_val = static_cast<ReturnT>(0);
             bool out_of_bound = false;
             for (int i = 0; i < operand_index.size(); ++i) {
               operand_index[i] =
@@ -1476,23 +1481,25 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
               }
             }
             if (!out_of_bound) {
-              curr_val = operand_literal.Get<ReturnT>(operand_index);
+              auto curr_val = operand_literal.Get<ReturnT>(operand_index);
+
+              // Evaluate computation with specified literal operands.
+              const auto curr_val_literal =
+                  Literal::CreateR0<ReturnT>(curr_val);
+              const auto result_val_literal =
+                  Literal::CreateR0<ReturnT>(result_val);
+              const std::vector<const Literal*> args = {
+                  curr_val_literal.get(), result_val_literal.get()};
+              std::unique_ptr<Literal> computed_result =
+                  embedded_evaluator.Evaluate<const Literal*>(*function, args)
+                      .ConsumeValueOrDie();
+
+              // Clear visit states so that the we can use the evaluate again on
+              // the same computation.
+              embedded_evaluator.ResetVisitStates();
+
+              result_val = computed_result->Get<ReturnT>({});
             }
-            // Evaluate computation with specified literal operands.
-            const auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
-            const auto result_val_literal =
-                Literal::CreateR0<ReturnT>(result_val);
-            const std::vector<const Literal*> args = {curr_val_literal.get(),
-                                                      result_val_literal.get()};
-            std::unique_ptr<Literal> computed_result =
-                embedded_evaluator.Evaluate<const Literal*>(*function, args)
-                    .ConsumeValueOrDie();
-
-            // Clear visit states so that the we can use the evaluate again on
-            // the same computation.
-            embedded_evaluator.ResetVisitStates();
-
-            result_val = computed_result->Get<ReturnT>({});
           } while (IndexUtil::BumpIndices(window_shape, &window_index));
 
           return result_val;

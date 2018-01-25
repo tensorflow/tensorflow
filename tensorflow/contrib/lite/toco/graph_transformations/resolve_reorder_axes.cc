@@ -25,6 +25,31 @@ limitations under the License.
 
 namespace toco {
 
+// Reorder the elements of an input_array according to the input_axes_order and
+// output_axes_order. Then adjust the shapes of the input and output arrays
+// accordingly. Note that input_array must have a buffer (that is, it is a
+// constant array).
+template <typename T, ArrayDataType DataType>
+void ReorderAxes(AxesOrder input_axes_order, AxesOrder output_axes_order,
+                 Array* input_array, Array* output_array) {
+  CHECK(input_array->buffer->type == DataType);
+  CHECK(!output_array->buffer);
+  auto& input_data = input_array->GetMutableBuffer<DataType>().data;
+  std::vector<T> reordered_data;
+  reordered_data.resize(RequiredBufferSizeForShape(output_array->shape()));
+  // TODO(b/62904716) Shapes should be used directly.
+  Shape input_shape = input_array->shape();
+  Shape output_shape = output_array->shape();
+  if (AxesCount(input_axes_order) == 2) {
+    UnextendShape(&input_shape, 2);
+    UnextendShape(&output_shape, 2);
+  }
+  ShuffleArray(input_shape, input_axes_order, output_axes_order, output_shape,
+               input_data.data(), reordered_data.data());
+  input_data = reordered_data;
+  input_array->copy_shape(output_array->shape());
+}
+
 bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
   auto reorder_it = model->operators.begin() + op_index;
   auto* reorder_op = static_cast<ReorderAxesOperator*>(reorder_it->get());
@@ -52,26 +77,19 @@ bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
     return false;
   }
   // Reorder the input array dims and buffer data
-  CHECK(constant_input_array.buffer->type == ArrayDataType::kFloat);
-  CHECK(!output_array.buffer);
-  auto& input_data =
-      constant_input_array.GetMutableBuffer<ArrayDataType::kFloat>().data;
-  std::vector<float> reordered_data;
-  reordered_data.resize(RequiredBufferSizeForShape(output_array.shape()));
-  const auto input_axes_order = reorder_op->input_axes_order;
-  const auto output_axes_order = reorder_op->output_axes_order;
-  // TODO(b/62904716) Shapes should be used directly.
-  Shape input_shape = constant_input_array.shape();
-  Shape output_shape = output_array.shape();
-  if (AxesCount(input_axes_order) == 2) {
-    UnextendShape(&input_shape, 2);
-    UnextendShape(&output_shape, 2);
+  if (constant_input_array.buffer->type == ArrayDataType::kFloat) {
+    ReorderAxes<float, ArrayDataType::kFloat>(
+        reorder_op->input_axes_order, reorder_op->output_axes_order,
+        &constant_input_array, &output_array);
+  } else if (constant_input_array.buffer->type == ArrayDataType::kInt32) {
+    ReorderAxes<uint8, ArrayDataType::kUint8>(
+        reorder_op->input_axes_order, reorder_op->output_axes_order,
+        &constant_input_array, &output_array);
+  } else {
+    LOG(FATAL) << "Cannot ReorderAxes unless input buffer is float or uint8.";
   }
-  ShuffleArray(input_shape, input_axes_order, output_axes_order, output_shape,
-               input_data.data(), reordered_data.data());
-  input_data = reordered_data;
+
   input_array.copy_shape(output_array.shape());
-  constant_input_array.copy_shape(output_array.shape());
 
   // Update the edges of the graph to point to the input array
   for (const auto& other_op : model->operators) {
@@ -85,7 +103,7 @@ bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
   AddMessageF("Reordered axes for array %s", input_array_name);
 
   // Remove the op and output array.
-  model->arrays.erase(output_array_name);
+  model->EraseArray(output_array_name);
   model->operators.erase(reorder_it);
   return true;
 }

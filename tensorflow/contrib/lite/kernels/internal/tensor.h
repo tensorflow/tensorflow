@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
 
 #include <vector>
 #include "tensorflow/contrib/lite/context.h"
@@ -41,8 +41,7 @@ inline int32_t* GetTensorData(TfLiteTensor* tensor) {
 
 template <>
 inline int64_t* GetTensorData(TfLiteTensor* tensor) {
-  return tensor != nullptr ? reinterpret_cast<int64_t*>(tensor->data.raw)
-                           : nullptr;
+  return tensor != nullptr ? tensor->data.i64 : nullptr;
 }
 
 inline int RemapDim(int max_dimensions, int d) {
@@ -84,4 +83,4 @@ inline Dims<4> GetTensorDims(const TfLiteTensor* tensor) {
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_TENSOR_H_

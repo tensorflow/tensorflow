@@ -27,7 +27,21 @@ from tensorflow.python.platform import test
 
 class GradientsFunctionTest(test.TestCase):
 
-  def test_transform(self):
+  def test_equals(self):
+
+    def test_fn(a, b):
+      return a == b
+
+    node = parser.parse_object(test_fn)
+    node = logical_expressions.transform(node)
+    result = compiler.ast_to_object(node)
+    setattr(result, 'tf', math_ops)
+
+    with self.test_session() as sess:
+      self.assertTrue(sess.run(result.test_fn(1, 1)))
+      self.assertFalse(sess.run(result.test_fn(1, 2)))
+
+  def test_bool_ops(self):
 
     def test_fn(a, b, c):
       return (a or b) and (a or b or c)

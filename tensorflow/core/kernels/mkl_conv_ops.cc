@@ -551,6 +551,13 @@ class MklConv2DOp : public OpKernel {
         output_mkl_shape.SetMklTensor(false);
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, &output_tensor,
                                     src_tf_shape, output_mkl_shape);
+
+        // MklConv2D also outputs converted filter as 2nd output of Conv2D.
+        filter_mkl_shape.SetMklTensor(false);
+        Tensor* output_filter_tensor = nullptr;
+        AllocateOutputSetMklShape(context, kOutputIndex_Filter,
+                                  &output_filter_tensor,
+                                  filter_tf_shape, filter_mkl_shape);
         return;
       }
 

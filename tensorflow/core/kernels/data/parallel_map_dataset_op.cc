@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
@@ -57,22 +58,24 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
                     "num_parallel_calls must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
-                                                 std::move(other_arguments),
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            func_, std::move(other_arguments), &captured_func));
 
-    *output = new Dataset(input, num_parallel_calls, output_types_,
+    *output = new Dataset(ctx, input, func_, num_parallel_calls, output_types_,
                           output_shapes_, std::move(captured_func));
   }
 
  private:
-  class Dataset : public DatasetBase {
+  class Dataset : public GraphDatasetBase {
    public:
-    Dataset(const DatasetBase* input, int32 num_parallel_calls,
+    Dataset(OpKernelContext* ctx, const DatasetBase* input,
+            const NameAttrList& func, int32 num_parallel_calls,
             const DataTypeVector& output_types,
             const std::vector<PartialTensorShape>& output_shapes,
             std::unique_ptr<CapturedFunction> captured_func)
-        : input_(input),
+        : GraphDatasetBase(ctx),
+          input_(input),
+          func_(func),
           num_parallel_calls_(num_parallel_calls),
           output_types_(output_types),
           output_shapes_(output_shapes),
@@ -97,6 +100,50 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() override { return "ParallelMapDatasetOp::Dataset"; }
+
+   protected:
+    Status AsGraphDefInternal(OpKernelContext* ctx, DatasetGraphDefBuilder* b,
+                              Node** output) const override {
+      // Input: input_dataset
+      Node* input_graph_node = nullptr;
+      TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
+
+      // Input: other_arguments
+      DataTypeVector other_arguments_types;
+      other_arguments_types.reserve(captured_func_->captured_inputs().size());
+      std::vector<Node*> other_arguments;
+      other_arguments.reserve(captured_func_->captured_inputs().size());
+      for (const Tensor& t : captured_func_->captured_inputs()) {
+        Node* node;
+        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        other_arguments.emplace_back(node);
+        other_arguments_types.emplace_back(t.dtype());
+      }
+
+      // Input: num_parallel_calls
+      Node* num_parallel_calls = nullptr;
+      TF_RETURN_IF_ERROR(
+          b->AddScalar(num_parallel_calls_, &num_parallel_calls));
+
+      // Attr: f
+      TF_RETURN_IF_ERROR(b->AddFunction(ctx, func_.name()));
+      AttrValue f;
+      b->BuildAttrValue(func_, &f);
+
+      // Attr: Targuments
+      AttrValue other_arguments_types_attr;
+      b->BuildAttrValue(other_arguments_types, &other_arguments_types_attr);
+
+      TF_RETURN_IF_ERROR(b->AddDataset(
+          this,
+          {std::make_pair(0, input_graph_node),
+           std::make_pair(2, num_parallel_calls)},  // Single tensor inputs.
+          {std::make_pair(1, other_arguments)},     // Tensor list inputs.
+          {std::make_pair("f", f),
+           std::make_pair("Targuments", other_arguments_types_attr)},  // Attrs
+          output));
+      return Status::OK();
+    }
 
    private:
     class Iterator : public DatasetIterator<Dataset> {
@@ -129,12 +176,12 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
         // Ensure that there are `dataset()->num_parallel_calls_`
         // invocations of `func_` outstanding at once.
-        while (!end_of_input_ && (num_inputs_consumed_ - num_outputs_consumed_ <
-                                  dataset()->num_parallel_calls_)) {
+        while (input_impl_ && (num_inputs_consumed_ - num_outputs_consumed_ <
+                               dataset()->num_parallel_calls_)) {
           InvokeFunctionLocked(ctx);
         }
 
-        if (end_of_input_ && num_inputs_consumed_ == num_outputs_consumed_) {
+        if (!input_impl_ && num_inputs_consumed_ == num_outputs_consumed_) {
           *end_of_sequence = true;
           return Status::OK();
         }
@@ -155,6 +202,93 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
         return result->status;
       }
 
+     protected:
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        if (input_impl_) {
+          TF_RETURN_IF_ERROR(SaveParent(writer, input_impl_));
+        } else {
+          TF_RETURN_IF_ERROR(
+              writer->WriteScalar(full_name("end_of_input"), ""));
+        }
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("num_inputs_consumed"),
+                                               num_inputs_consumed_));
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            full_name("num_outputs_consumed"), num_outputs_consumed_));
+
+        for (size_t i = 0; i < dataset()->num_parallel_calls_; i++) {
+          if (invocation_results_[i].notification) {
+            invocation_results_[i].notification->WaitForNotification();
+            TF_RETURN_IF_ERROR(
+                WriteStatusLocked(writer, i, invocation_results_[i].status));
+            TF_RETURN_IF_ERROR(writer->WriteScalar(
+                full_name(strings::StrCat("invocation_results[", i, "].size")),
+                invocation_results_[i].return_values.size()));
+            for (size_t j = 0; j < invocation_results_[i].return_values.size();
+                 j++) {
+              TF_RETURN_IF_ERROR(writer->WriteTensor(
+                  full_name(
+                      strings::StrCat("invocation_results[", i, "][", j, "]")),
+                  invocation_results_[i].return_values[j]));
+            }
+          } else {
+            TF_RETURN_IF_ERROR(writer->WriteScalar(
+                full_name(strings::StrCat("invocation_results[", i, "]_empty")),
+                ""));
+          }
+        }
+
+        return Status::OK();
+      }
+
+      Status RestoreInternal(IteratorContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        if (reader->Contains(full_name("end_of_input"))) {
+          input_impl_.reset();
+        } else {
+          TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));
+        }
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("num_inputs_consumed"),
+                                              &num_inputs_consumed_));
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("num_outputs_consumed"),
+                                              &num_outputs_consumed_));
+        for (size_t i = 0; i < dataset()->num_parallel_calls_; i++) {
+          InvocationResult* result = &invocation_results_[i];
+          *result = InvocationResult();
+          if (!reader->Contains(full_name(
+                  strings::StrCat("invocation_results[", i, "]_empty")))) {
+            result->notification.reset(new Notification);
+            result->notification->Notify();
+            TF_RETURN_IF_ERROR(ReadStatusLocked(reader, i, &result->status));
+            size_t num_return_values;
+            {
+              int64 size;
+              TF_RETURN_IF_ERROR(
+                  reader->ReadScalar(full_name(strings::StrCat(
+                                         "invocation_results[", i, "].size")),
+                                     &size));
+              num_return_values = static_cast<size_t>(size);
+              if (num_return_values != size) {
+                return errors::InvalidArgument(strings::StrCat(
+                    full_name(
+                        strings::StrCat("invocation_results[", i, "].size")),
+                    ": ", size, " is not a valid value of type size_t."));
+              }
+            }
+            result->return_values.reserve(num_return_values);
+            for (size_t j = 0; j < num_return_values; j++) {
+              result->return_values.emplace_back();
+              TF_RETURN_IF_ERROR(reader->ReadTensor(
+                  full_name(
+                      strings::StrCat("invocation_results[", i, "][", j, "]")),
+                  &result->return_values.back()));
+            }
+          }
+        }
+        return Status::OK();
+      }
+
      private:
       struct InvocationResult {
         Status status;
@@ -164,7 +298,7 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
       void InvokeFunctionLocked(IteratorContext* ctx)
           EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-        DCHECK(!end_of_input_);
+        DCHECK(input_impl_);
         DCHECK(num_inputs_consumed_ - num_outputs_consumed_ <
                dataset()->num_parallel_calls_);
 
@@ -177,9 +311,11 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
 
         // Get the next input element.
         std::vector<Tensor> input_element;
+        bool end_of_input;
         result->status =
-            input_impl_->GetNext(ctx, &input_element, &end_of_input_);
-        if (end_of_input_) {
+            input_impl_->GetNext(ctx, &input_element, &end_of_input);
+        if (end_of_input) {
+          input_impl_.reset();
           result->status = errors::OutOfRange("");
         } else {
           ++num_inputs_consumed_;
@@ -190,32 +326,57 @@ class ParallelMapDatasetOp : public UnaryDatasetOpKernel {
           // `result->return_values`, and notify `result->notification`
           // to unblock a consumer.
           result->notification.reset(new Notification);
-
-          FunctionLibraryRuntime::Options opts;
-          opts.step_id = CapturedFunction::generate_step_id();
-          ScopedStepContainer* step_container =
-              new ScopedStepContainer(opts.step_id, [this](const string& name) {
-                dataset()
-                    ->captured_func_->resource_manager()
-                    ->Cleanup(name)
-                    .IgnoreError();
-              });
-          opts.step_container = step_container;
-          opts.runner = ctx->runner();
           dataset()->captured_func_->RunAsync(
-              opts, std::move(input_element), &result->return_values,
-              [result, step_container, result_index](Status ret_status) {
-                delete step_container;
+              ctx, std::move(input_element), &result->return_values,
+              [result, result_index](Status ret_status) {
                 result->status.Update(ret_status);
                 result->notification->Notify();
               });
         }
       }
 
+      Status WriteStatusLocked(IteratorStateWriter* writer, size_t index,
+                               const Status& status)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        TF_RETURN_IF_ERROR(writer->WriteScalar(
+            CodeKey(index), static_cast<int64>(status.code())));
+        if (!status.ok()) {
+          TF_RETURN_IF_ERROR(writer->WriteScalar(ErrorMessageKey(index),
+                                                 status.error_message()));
+        }
+        return Status::OK();
+      }
+
+      Status ReadStatusLocked(IteratorStateReader* reader, size_t index,
+                              Status* status) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+        int64 code_int;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(CodeKey(index), &code_int));
+        error::Code code = static_cast<error::Code>(code_int);
+
+        if (code != error::Code::OK) {
+          string error_message;
+          TF_RETURN_IF_ERROR(
+              reader->ReadScalar(ErrorMessageKey(index), &error_message));
+          *status = Status(code, error_message);
+        } else {
+          *status = Status::OK();
+        }
+        return Status::OK();
+      }
+
+      string CodeKey(size_t index) {
+        return full_name(
+            strings::StrCat("invocation_results[", index, "].code"));
+      }
+
+      string ErrorMessageKey(size_t index) {
+        return full_name(
+            strings::StrCat("invocation_results[", index, "].error_message"));
+      }
+
       mutex mu_;
-      const std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
+      std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
       std::vector<InvocationResult> invocation_results_ GUARDED_BY(mu_);
-      bool end_of_input_ GUARDED_BY(mu_) = false;
       int64 num_inputs_consumed_ GUARDED_BY(mu_) = 0;
       int64 num_outputs_consumed_ GUARDED_BY(mu_) = 0;
     };

@@ -31,8 +31,8 @@ limitations under the License.
 // OpResolver must be defined to provide your kernel implementations to the
 // interpreter. This is environment specific and may consist of just the builtin
 // ops, or some custom operators you defined to extend tflite.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MODEL_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MODEL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_MODEL_H_
+#define TENSORFLOW_CONTRIB_LITE_MODEL_H_
 
 #include <memory>
 #include "tensorflow/contrib/lite/error_reporter.h"
@@ -173,4 +173,4 @@ class InterpreterBuilder {
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_MODEL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_MODEL_H_

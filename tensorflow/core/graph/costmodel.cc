@@ -291,59 +291,24 @@ Bytes CostModel::TempMemorySize(const Node* node) const {
   return max_mem_usage_[id].temp_memory_size;
 }
 
-Bytes CostModel::HostTempMemorySize(const Node* node) const {
+Bytes CostModel::PersistentMemorySize(const Node* node) const {
   const int id = Id(node);
   if (id < 0) {
     return Bytes(0);
   }
-  return max_mem_usage_[id].host_temp_memory_size;
-}
-
-Bytes CostModel::DeviceTempMemorySize(const Node* node) const {
-  const int id = Id(node);
-  if (id < 0) {
-    return Bytes(0);
-  }
-  return max_mem_usage_[id].device_temp_memory_size;
-}
-
-Bytes CostModel::HostPersistentMemorySize(const Node* node) const {
-  const int id = Id(node);
-  if (id < 0) {
-    return Bytes(0);
-  }
-  return max_mem_usage_[id].host_persistent_memory_size;
-}
-
-Bytes CostModel::DevicePersistentMemorySize(const Node* node) const {
-  const int id = Id(node);
-  if (id < 0) {
-    return Bytes(0);
-  }
-  return max_mem_usage_[id].device_persistent_memory_size;
+  return max_mem_usage_[id].persistent_memory_size;
 }
 
 void CostModel::RecordMemoryStats(const Node* node,
                                   const MemoryStats& memory_stats) {
   const int id = Id(node);
   if (id < 0) return;
-  max_mem_usage_[id].host_temp_memory_size =
-      memory_stats.host_temp_memory_size();
-  max_mem_usage_[id].device_temp_memory_size =
-      memory_stats.device_temp_memory_size();
-  max_mem_usage_[id].host_persistent_memory_size =
-      memory_stats.host_persistent_memory_size();
-  max_mem_usage_[id].device_persistent_memory_size =
-      memory_stats.device_persistent_memory_size();
-  for (int64 alloc_id : memory_stats.host_persistent_tensor_alloc_ids()) {
+  max_mem_usage_[id].temp_memory_size = memory_stats.temp_memory_size();
+  max_mem_usage_[id].persistent_memory_size =
+      memory_stats.persistent_memory_size();
+  for (int64 alloc_id : memory_stats.persistent_tensor_alloc_ids()) {
     if (alloc_id > 0) {
-      host_persistent_alloc_ids_.insert(alloc_id);
-    }
-  }
-  for (int64 alloc_id : memory_stats.device_persistent_tensor_alloc_ids()) {
-    if (alloc_id > 0) {
-      persistent_alloc_ids_by_devices_[node->assigned_device_name()].insert(
-          alloc_id);
+      persistent_alloc_ids_.insert(alloc_id);
     }
   }
 }
@@ -381,7 +346,7 @@ int64 CostModel::AllocationId(const Node* node, int slot) const {
 }
 
 bool CostModel::IsPersistentTensor(const Node* node, int64 alloc_id) const {
-  if (host_persistent_alloc_ids_.count(alloc_id) > 0) {
+  if (persistent_alloc_ids_.count(alloc_id) > 0) {
     return true;
   }
   if (persistent_alloc_ids_by_devices_.find(node->assigned_device_name()) ==
@@ -548,11 +513,8 @@ void CostModel::AddToCostGraphDef(const Graph* graph,
       cnode->add_control_input(Id(e->src()));
     }
 
-    cnode->set_host_temp_memory_size(HostTempMemorySize(n).value());
-    cnode->set_device_temp_memory_size(DeviceTempMemorySize(n).value());
-    cnode->set_host_persistent_memory_size(HostPersistentMemorySize(n).value());
-    cnode->set_device_persistent_memory_size(
-        DevicePersistentMemorySize(n).value());
+    cnode->set_temporary_memory_size(TempMemorySize(n).value());
+    cnode->set_persistent_memory_size(PersistentMemorySize(n).value());
 
     cnode->set_compute_cost(MaxExecutionTime(n).value());
 

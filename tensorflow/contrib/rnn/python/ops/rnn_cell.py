@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Module for constructing RNN Cells."""
 from __future__ import absolute_import
 from __future__ import division
@@ -38,6 +37,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import partitioned_variables
+from tensorflow.python.ops import nn_impl
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -55,16 +55,15 @@ def _get_concat_variable(name, shape, dtype, num_shards):
       return value
 
   concat_variable = array_ops.concat(sharded_variable, 0, name=concat_name)
-  ops.add_to_collection(ops.GraphKeys.CONCATENATED_VARIABLES,
-                        concat_variable)
+  ops.add_to_collection(ops.GraphKeys.CONCATENATED_VARIABLES, concat_variable)
   return concat_variable
 
 
 def _get_sharded_variable(name, shape, dtype, num_shards):
   """Get a list of sharded variables with the given dtype."""
   if num_shards > shape[0]:
-    raise ValueError("Too many shards: shape=%s, num_shards=%d" %
-                     (shape, num_shards))
+    raise ValueError("Too many shards: shape=%s, num_shards=%d" % (shape,
+                                                                   num_shards))
   unit_shard_size = int(math.floor(shape[0] / num_shards))
   remaining_rows = shape[0] - unit_shard_size * num_shards
 
@@ -73,8 +72,9 @@ def _get_sharded_variable(name, shape, dtype, num_shards):
     current_size = unit_shard_size
     if i < remaining_rows:
       current_size += 1
-    shards.append(vs.get_variable(name + "_%d" % i, [current_size] + shape[1:],
-                                  dtype=dtype))
+    shards.append(
+        vs.get_variable(
+            name + "_%d" % i, [current_size] + shape[1:], dtype=dtype))
   return shards
 
 
@@ -176,9 +176,8 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
     """
     super(CoupledInputForgetGateLSTMCell, self).__init__(_reuse=reuse)
     if not state_is_tuple:
-      logging.warn(
-          "%s: Using a concatenated state is slower and will soon be "
-          "deprecated.  Use state_is_tuple=True.", self)
+      logging.warn("%s: Using a concatenated state is slower and will soon be "
+                   "deprecated.  Use state_is_tuple=True.", self)
     self._num_units = num_units
     self._use_peepholes = use_peepholes
     self._initializer = initializer
@@ -195,12 +194,14 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
     self._norm_shift = norm_shift
 
     if num_proj:
-      self._state_size = (rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
-                          if state_is_tuple else num_units + num_proj)
+      self._state_size = (
+          rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
+          if state_is_tuple else num_units + num_proj)
       self._output_size = num_proj
     else:
-      self._state_size = (rnn_cell_impl.LSTMStateTuple(num_units, num_units)
-                          if state_is_tuple else 2 * num_units)
+      self._state_size = (
+          rnn_cell_impl.LSTMStateTuple(num_units, num_units)
+          if state_is_tuple else 2 * num_units)
       self._output_size = num_units
 
   @property
@@ -250,8 +251,8 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
     concat_w = _get_concat_variable(
-        "W", [input_size.value + num_proj, 3 * self._num_units],
-        dtype, self._num_unit_shards)
+        "W", [input_size.value + num_proj, 3 * self._num_units], dtype,
+        self._num_unit_shards)
 
     b = vs.get_variable(
         "B",
@@ -298,9 +299,9 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
       m = sigmoid(o) * self._activation(c)
 
     if self._num_proj is not None:
-      concat_w_proj = _get_concat_variable(
-          "W_P", [self._num_units, self._num_proj],
-          dtype, self._num_proj_shards)
+      concat_w_proj = _get_concat_variable("W_P",
+                                           [self._num_units, self._num_proj],
+                                           dtype, self._num_proj_shards)
 
       m = math_ops.matmul(m, concat_w_proj)
       if self._proj_clip is not None:
@@ -308,8 +309,9 @@ class CoupledInputForgetGateLSTMCell(rnn_cell_impl.RNNCell):
         m = clip_ops.clip_by_value(m, -self._proj_clip, self._proj_clip)
         # pylint: enable=invalid-unary-operand-type
 
-    new_state = (rnn_cell_impl.LSTMStateTuple(c, m)
-                 if self._state_is_tuple else array_ops.concat([c, m], 1))
+    new_state = (
+        rnn_cell_impl.LSTMStateTuple(c, m)
+        if self._state_is_tuple else array_ops.concat([c, m], 1))
     return m, new_state
 
 
@@ -325,10 +327,15 @@ class TimeFreqLSTMCell(rnn_cell_impl.RNNCell):
   It uses peep-hole connections and optional cell clipping.
   """
 
-  def __init__(self, num_units, use_peepholes=False,
-               cell_clip=None, initializer=None,
-               num_unit_shards=1, forget_bias=1.0,
-               feature_size=None, frequency_skip=None,
+  def __init__(self,
+               num_units,
+               use_peepholes=False,
+               cell_clip=None,
+               initializer=None,
+               num_unit_shards=1,
+               forget_bias=1.0,
+               feature_size=None,
+               frequency_skip=1,
                reuse=None):
     """Initialize the parameters for an LSTM cell.
 
@@ -398,7 +405,7 @@ class TimeFreqLSTMCell(rnn_cell_impl.RNNCell):
     actual_input_size = freq_inputs[0].get_shape().as_list()[1]
 
     concat_w = _get_concat_variable(
-        "W", [actual_input_size + 2*self._num_units, 4 * self._num_units],
+        "W", [actual_input_size + 2 * self._num_units, 4 * self._num_units],
         dtype, self._num_unit_shards)
 
     b = vs.get_variable(
@@ -417,23 +424,23 @@ class TimeFreqLSTMCell(rnn_cell_impl.RNNCell):
           "W_O_diag", shape=[self._num_units], dtype=dtype)
 
     # initialize the first freq state to be zero
-    m_prev_freq = array_ops.zeros([int(inputs.get_shape()[0]),
-                                   self._num_units], dtype)
+    m_prev_freq = array_ops.zeros([int(inputs.get_shape()[0]), self._num_units],
+                                  dtype)
     for fq in range(len(freq_inputs)):
-      c_prev = array_ops.slice(state, [0, 2*fq*self._num_units],
+      c_prev = array_ops.slice(state, [0, 2 * fq * self._num_units],
                                [-1, self._num_units])
-      m_prev = array_ops.slice(state, [0, (2*fq+1)*self._num_units],
+      m_prev = array_ops.slice(state, [0, (2 * fq + 1) * self._num_units],
                                [-1, self._num_units])
       # i = input_gate, j = new_input, f = forget_gate, o = output_gate
-      cell_inputs = array_ops.concat([freq_inputs[fq], m_prev, m_prev_freq],
-                                     1)
+      cell_inputs = array_ops.concat([freq_inputs[fq], m_prev, m_prev_freq], 1)
       lstm_matrix = nn_ops.bias_add(math_ops.matmul(cell_inputs, concat_w), b)
       i, j, f, o = array_ops.split(
           value=lstm_matrix, num_or_size_splits=4, axis=1)
 
       if self._use_peepholes:
-        c = (sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
-             sigmoid(i + w_i_diag * c_prev) * tanh(j))
+        c = (
+            sigmoid(f + self._forget_bias + w_f_diag * c_prev) * c_prev +
+            sigmoid(i + w_i_diag * c_prev) * tanh(j))
       else:
         c = (sigmoid(f + self._forget_bias) * c_prev + sigmoid(i) * tanh(j))
 
@@ -471,11 +478,11 @@ class TimeFreqLSTMCell(rnn_cell_impl.RNNCell):
     input_size = input_feat.get_shape().with_rank(2)[-1].value
     if input_size is None:
       raise ValueError("Cannot infer input_size from static shape inference.")
-    num_feats = int((input_size - self._feature_size) / (
-        self._frequency_skip)) + 1
+    num_feats = int(
+        (input_size - self._feature_size) / (self._frequency_skip)) + 1
     freq_inputs = []
     for f in range(num_feats):
-      cur_input = array_ops.slice(input_feat, [0, f*self._frequency_skip],
+      cur_input = array_ops.slice(input_feat, [0, f * self._frequency_skip],
                                   [-1, self._feature_size])
       freq_inputs.append(cur_input)
     return freq_inputs
@@ -497,11 +504,16 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
   The code uses optional peephole connections, shared_weights and cell clipping.
   """
 
-  def __init__(self, num_units, use_peepholes=False,
+  def __init__(self,
+               num_units,
+               use_peepholes=False,
                share_time_frequency_weights=False,
-               cell_clip=None, initializer=None,
-               num_unit_shards=1, forget_bias=1.0,
-               feature_size=None, frequency_skip=None,
+               cell_clip=None,
+               initializer=None,
+               num_unit_shards=1,
+               forget_bias=1.0,
+               feature_size=None,
+               frequency_skip=None,
                num_frequency_blocks=None,
                start_freqindex_list=None,
                end_freqindex_list=None,
@@ -579,10 +591,10 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
         for freq_index in range(self._num_frequency_blocks[block_index]):
           name_prefix = "state_f%02d_b%02d" % (freq_index, block_index)
           state_names += ("%s_c, %s_m," % (name_prefix, name_prefix))
-      self._state_tuple_type = collections.namedtuple(
-          "GridLSTMStateTuple", state_names.strip(","))
-      self._state_size = self._state_tuple_type(
-          *([num_units, num_units] * self._total_blocks))
+      self._state_tuple_type = collections.namedtuple("GridLSTMStateTuple",
+                                                      state_names.strip(","))
+      self._state_size = self._state_tuple_type(*(
+          [num_units, num_units] * self._total_blocks))
     else:
       self._state_tuple_type = None
       self._state_size = num_units * self._total_blocks * 2
@@ -625,7 +637,10 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
     state_out_lst = []
     for block in range(len(freq_inputs)):
       m_out_lst_current, state_out_lst_current = self._compute(
-          freq_inputs[block], block, state, batch_size,
+          freq_inputs[block],
+          block,
+          state,
+          batch_size,
           state_is_tuple=self._state_is_tuple)
       m_out_lst.extend(m_out_lst_current)
       state_out_lst.extend(state_out_lst_current)
@@ -636,7 +651,11 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
     m_out = array_ops.concat(m_out_lst, 1)
     return m_out, state_out
 
-  def _compute(self, freq_inputs, block, state, batch_size,
+  def _compute(self,
+               freq_inputs,
+               block,
+               state,
+               batch_size,
                state_prefix="state",
                state_is_tuple=True):
     """Run the actual computation of one step LSTM.
@@ -665,8 +684,8 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
     actual_input_size = freq_inputs[0].get_shape().as_list()[1]
 
     concat_w_f = _get_concat_variable(
-        "W_f_%d" % block, [actual_input_size + 2 * self._num_units,
-                           num_gates * self._num_units],
+        "W_f_%d" % block,
+        [actual_input_size + 2 * self._num_units, num_gates * self._num_units],
         dtype, self._num_unit_shards)
     b_f = vs.get_variable(
         "B_f_%d" % block,
@@ -674,10 +693,9 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
         initializer=init_ops.zeros_initializer(),
         dtype=dtype)
     if not self._share_time_frequency_weights:
-      concat_w_t = _get_concat_variable(
-          "W_t_%d" % block, [actual_input_size + 2 * self._num_units,
-                             num_gates * self._num_units],
-          dtype, self._num_unit_shards)
+      concat_w_t = _get_concat_variable("W_t_%d" % block, [
+          actual_input_size + 2 * self._num_units, num_gates * self._num_units
+      ], dtype, self._num_unit_shards)
       b_t = vs.get_variable(
           "B_t_%d" % block,
           shape=[num_gates * self._num_units],
@@ -690,7 +708,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
         w_f_diag_freqf = vs.get_variable(
             "W_F_diag_freqf_%d" % block, shape=[self._num_units], dtype=dtype)
         w_f_diag_freqt = vs.get_variable(
-            "W_F_diag_freqt_%d"% block, shape=[self._num_units], dtype=dtype)
+            "W_F_diag_freqt_%d" % block, shape=[self._num_units], dtype=dtype)
       w_i_diag_freqf = vs.get_variable(
           "W_I_diag_freqf_%d" % block, shape=[self._num_units], dtype=dtype)
       w_i_diag_freqt = vs.get_variable(
@@ -724,8 +742,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
         m_prev_time = getattr(state, name_prefix + "_m")
       else:
         c_prev_time = array_ops.slice(
-            state, [0, 2 * freq_index * self._num_units],
-            [-1, self._num_units])
+            state, [0, 2 * freq_index * self._num_units], [-1, self._num_units])
         m_prev_time = array_ops.slice(
             state, [0, (2 * freq_index + 1) * self._num_units],
             [-1, self._num_units])
@@ -735,8 +752,8 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
           [freq_inputs[freq_index], m_prev_time, m_prev_freq], 1)
 
       # F-LSTM
-      lstm_matrix_freq = nn_ops.bias_add(math_ops.matmul(cell_inputs,
-                                                         concat_w_f), b_f)
+      lstm_matrix_freq = nn_ops.bias_add(
+          math_ops.matmul(cell_inputs, concat_w_f), b_f)
       if self._couple_input_forget_gates:
         i_freq, j_freq, o_freq = array_ops.split(
             value=lstm_matrix_freq, num_or_size_splits=num_gates, axis=1)
@@ -751,8 +768,8 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
         f_time = f_freq
         o_time = o_freq
       else:
-        lstm_matrix_time = nn_ops.bias_add(math_ops.matmul(cell_inputs,
-                                                           concat_w_t), b_t)
+        lstm_matrix_time = nn_ops.bias_add(
+            math_ops.matmul(cell_inputs, concat_w_t), b_t)
         if self._couple_input_forget_gates:
           i_time, j_time, o_time = array_ops.split(
               value=lstm_matrix_time, num_or_size_splits=num_gates, axis=1)
@@ -764,8 +781,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
       # F-LSTM c_freq
       # input gate activations
       if self._use_peepholes:
-        i_freq_g = sigmoid(i_freq +
-                           w_i_diag_freqf * c_prev_freq +
+        i_freq_g = sigmoid(i_freq + w_i_diag_freqf * c_prev_freq +
                            w_i_diag_freqt * c_prev_time)
       else:
         i_freq_g = sigmoid(i_freq)
@@ -774,9 +790,8 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
         f_freq_g = 1.0 - i_freq_g
       else:
         if self._use_peepholes:
-          f_freq_g = sigmoid(f_freq + self._forget_bias +
-                             w_f_diag_freqf * c_prev_freq +
-                             w_f_diag_freqt * c_prev_time)
+          f_freq_g = sigmoid(f_freq + self._forget_bias + w_f_diag_freqf *
+                             c_prev_freq + w_f_diag_freqt * c_prev_time)
         else:
           f_freq_g = sigmoid(f_freq + self._forget_bias)
       # cell state
@@ -791,12 +806,10 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
       # input gate activations
       if self._use_peepholes:
         if self._share_time_frequency_weights:
-          i_time_g = sigmoid(i_time +
-                             w_i_diag_freqf * c_prev_freq +
+          i_time_g = sigmoid(i_time + w_i_diag_freqf * c_prev_freq +
                              w_i_diag_freqt * c_prev_time)
         else:
-          i_time_g = sigmoid(i_time +
-                             w_i_diag_timef * c_prev_freq +
+          i_time_g = sigmoid(i_time + w_i_diag_timef * c_prev_freq +
                              w_i_diag_timet * c_prev_time)
       else:
         i_time_g = sigmoid(i_time)
@@ -806,13 +819,11 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
       else:
         if self._use_peepholes:
           if self._share_time_frequency_weights:
-            f_time_g = sigmoid(f_time + self._forget_bias +
-                               w_f_diag_freqf * c_prev_freq +
-                               w_f_diag_freqt * c_prev_time)
+            f_time_g = sigmoid(f_time + self._forget_bias + w_f_diag_freqf *
+                               c_prev_freq + w_f_diag_freqt * c_prev_time)
           else:
-            f_time_g = sigmoid(f_time + self._forget_bias +
-                               w_f_diag_timef * c_prev_freq +
-                               w_f_diag_timet * c_prev_time)
+            f_time_g = sigmoid(f_time + self._forget_bias + w_f_diag_timef *
+                               c_prev_freq + w_f_diag_timet * c_prev_time)
         else:
           f_time_g = sigmoid(f_time + self._forget_bias)
       # cell state
@@ -825,8 +836,7 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
 
       # F-LSTM m_freq
       if self._use_peepholes:
-        m_freq = sigmoid(o_freq +
-                         w_o_diag_freqf * c_freq +
+        m_freq = sigmoid(o_freq + w_o_diag_freqf * c_freq +
                          w_o_diag_freqt * c_time) * tanh(c_freq)
       else:
         m_freq = sigmoid(o_freq) * tanh(c_freq)
@@ -834,12 +844,10 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
       # T-LSTM m_time
       if self._use_peepholes:
         if self._share_time_frequency_weights:
-          m_time = sigmoid(o_time +
-                           w_o_diag_freqf * c_freq +
+          m_time = sigmoid(o_time + w_o_diag_freqf * c_freq +
                            w_o_diag_freqt * c_time) * tanh(c_time)
         else:
-          m_time = sigmoid(o_time +
-                           w_o_diag_timef * c_freq +
+          m_time = sigmoid(o_time + w_o_diag_timef * c_freq +
                            w_o_diag_timet * c_time) * tanh(c_time)
       else:
         m_time = sigmoid(o_time) * tanh(c_time)
@@ -878,16 +886,18 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
       raise ValueError("Cannot infer input_size from static shape inference.")
     if slice_offset > 0:
       # Padding to the end
-      inputs = array_ops.pad(
-          input_feat, array_ops.constant([0, 0, 0, slice_offset], shape=[2, 2],
-                                         dtype=dtypes.int32),
-          "CONSTANT")
+      inputs = array_ops.pad(input_feat,
+                             array_ops.constant(
+                                 [0, 0, 0, slice_offset],
+                                 shape=[2, 2],
+                                 dtype=dtypes.int32), "CONSTANT")
     elif slice_offset < 0:
       # Padding to the front
-      inputs = array_ops.pad(
-          input_feat, array_ops.constant([0, 0, -slice_offset, 0], shape=[2, 2],
-                                         dtype=dtypes.int32),
-          "CONSTANT")
+      inputs = array_ops.pad(input_feat,
+                             array_ops.constant(
+                                 [0, 0, -slice_offset, 0],
+                                 shape=[2, 2],
+                                 dtype=dtypes.int32), "CONSTANT")
       slice_offset = 0
     else:
       inputs = input_feat
@@ -897,13 +907,13 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
         raise ValueError("Length of num_frequency_blocks"
                          " is not 1, but instead is %d",
                          len(self._num_frequency_blocks))
-      num_feats = int((input_size - self._feature_size) / (
-          self._frequency_skip)) + 1
+      num_feats = int(
+          (input_size - self._feature_size) / (self._frequency_skip)) + 1
       if num_feats != self._num_frequency_blocks[0]:
         raise ValueError(
             "Invalid num_frequency_blocks, requires %d but gets %d, please"
-            " check the input size and filter config are correct." % (
-                self._num_frequency_blocks[0], num_feats))
+            " check the input size and filter config are correct." %
+            (self._num_frequency_blocks[0], num_feats))
       block_inputs = []
       for f in range(num_feats):
         cur_input = array_ops.slice(
@@ -926,18 +936,18 @@ class GridLSTMCell(rnn_cell_impl.RNNCell):
         start_index = self._start_freqindex_list[b]
         end_index = self._end_freqindex_list[b]
         cur_size = end_index - start_index
-        block_feats = int((cur_size - self._feature_size) / (
-            self._frequency_skip)) + 1
+        block_feats = int(
+            (cur_size - self._feature_size) / (self._frequency_skip)) + 1
         if block_feats != self._num_frequency_blocks[b]:
           raise ValueError(
               "Invalid num_frequency_blocks, requires %d but gets %d, please"
-              " check the input size and filter config are correct." % (
-                  self._num_frequency_blocks[b], block_feats))
+              " check the input size and filter config are correct." %
+              (self._num_frequency_blocks[b], block_feats))
         block_inputs = []
         for f in range(block_feats):
           cur_input = array_ops.slice(
-              inputs, [0, start_index + slice_offset + f *
-                       self._frequency_skip],
+              inputs,
+              [0, start_index + slice_offset + f * self._frequency_skip],
               [-1, self._feature_size])
           block_inputs.append(cur_input)
         freq_inputs.append(block_inputs)
@@ -953,11 +963,16 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
   The current implementation uses different weights for the two directions.
   """
 
-  def __init__(self, num_units, use_peepholes=False,
+  def __init__(self,
+               num_units,
+               use_peepholes=False,
                share_time_frequency_weights=False,
-               cell_clip=None, initializer=None,
-               num_unit_shards=1, forget_bias=1.0,
-               feature_size=None, frequency_skip=None,
+               cell_clip=None,
+               initializer=None,
+               num_unit_shards=1,
+               forget_bias=1.0,
+               feature_size=None,
+               frequency_skip=None,
                num_frequency_blocks=None,
                start_freqindex_list=None,
                end_freqindex_list=None,
@@ -1016,8 +1031,8 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
           state_names += ("%s_c, %s_m," % (name_prefix, name_prefix))
     self._state_tuple_type = collections.namedtuple(
         "BidirectionalGridLSTMStateTuple", state_names.strip(","))
-    self._state_size = self._state_tuple_type(
-        *([num_units, num_units] * self._total_blocks * 2))
+    self._state_size = self._state_tuple_type(*(
+        [num_units, num_units] * self._total_blocks * 2))
     self._output_size = 2 * num_units * self._total_blocks * 2
 
   def call(self, inputs, state):
@@ -1051,8 +1066,12 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
       fwd_state_out_lst = []
       for block in range(len(fwd_inputs)):
         fwd_m_out_lst_current, fwd_state_out_lst_current = self._compute(
-            fwd_inputs[block], block, state, batch_size,
-            state_prefix="fwd_state", state_is_tuple=True)
+            fwd_inputs[block],
+            block,
+            state,
+            batch_size,
+            state_prefix="fwd_state",
+            state_is_tuple=True)
         fwd_m_out_lst.extend(fwd_m_out_lst_current)
         fwd_state_out_lst.extend(fwd_state_out_lst_current)
     # Backward processing
@@ -1063,8 +1082,12 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
         # Reverse the blocks
         bwd_inputs_reverse = bwd_inputs[block][::-1]
         bwd_m_out_lst_current, bwd_state_out_lst_current = self._compute(
-            bwd_inputs_reverse, block, state, batch_size,
-            state_prefix="bwd_state", state_is_tuple=True)
+            bwd_inputs_reverse,
+            block,
+            state,
+            batch_size,
+            state_prefix="bwd_state",
+            state_is_tuple=True)
         bwd_m_out_lst.extend(bwd_m_out_lst_current)
         bwd_state_out_lst.extend(bwd_state_out_lst_current)
     state_out = self._state_tuple_type(*(fwd_state_out_lst + bwd_state_out_lst))
@@ -1075,6 +1098,7 @@ class BidirectionalGridLSTMCell(GridLSTMCell):
 
 # pylint: disable=protected-access
 _Linear = core_rnn_cell._Linear  # pylint: disable=invalid-name
+
 # pylint: enable=protected-access
 
 
@@ -1084,8 +1108,14 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
   Implementation based on https://arxiv.org/abs/1409.0473.
   """
 
-  def __init__(self, cell, attn_length, attn_size=None, attn_vec_size=None,
-               input_size=None, state_is_tuple=True, reuse=None):
+  def __init__(self,
+               cell,
+               attn_length,
+               attn_size=None,
+               attn_vec_size=None,
+               input_size=None,
+               state_is_tuple=True,
+               reuse=None):
     """Create a cell with attention.
 
     Args:
@@ -1115,16 +1145,15 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
     if not rnn_cell_impl._like_rnncell(cell):  # pylint: disable=protected-access
       raise TypeError("The parameter cell is not RNNCell.")
     if nest.is_sequence(cell.state_size) and not state_is_tuple:
-      raise ValueError("Cell returns tuple of states, but the flag "
-                       "state_is_tuple is not set. State size is: %s"
-                       % str(cell.state_size))
+      raise ValueError(
+          "Cell returns tuple of states, but the flag "
+          "state_is_tuple is not set. State size is: %s" % str(cell.state_size))
     if attn_length <= 0:
-      raise ValueError("attn_length should be greater than zero, got %s"
-                       % str(attn_length))
+      raise ValueError(
+          "attn_length should be greater than zero, got %s" % str(attn_length))
     if not state_is_tuple:
-      logging.warn(
-          "%s: Using a concatenated state is slower and will soon be "
-          "deprecated.  Use state_is_tuple=True.", self)
+      logging.warn("%s: Using a concatenated state is slower and will soon be "
+                   "deprecated.  Use state_is_tuple=True.", self)
     if attn_size is None:
       attn_size = cell.output_size
     if attn_vec_size is None:
@@ -1160,8 +1189,8 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
     else:
       states = state
       state = array_ops.slice(states, [0, 0], [-1, self._cell.state_size])
-      attns = array_ops.slice(
-          states, [0, self._cell.state_size], [-1, self._attn_size])
+      attns = array_ops.slice(states, [0, self._cell.state_size],
+                              [-1, self._attn_size])
       attn_states = array_ops.slice(
           states, [0, self._cell.state_size + self._attn_size],
           [-1, self._attn_size * self._attn_length])
@@ -1199,8 +1228,8 @@ class AttentionCellWrapper(rnn_cell_impl.RNNCell):
     tanh = math_ops.tanh
 
     with vs.variable_scope("attention"):
-      k = vs.get_variable(
-          "attn_w", [1, 1, self._attn_size, self._attn_vec_size])
+      k = vs.get_variable("attn_w",
+                          [1, 1, self._attn_size, self._attn_vec_size])
       v = vs.get_variable("attn_v", [self._attn_vec_size])
       hidden = array_ops.reshape(attn_states,
                                  [-1, self._attn_length, 1, self._attn_size])
@@ -1227,7 +1256,8 @@ class HighwayWrapper(rnn_cell_impl.RNNCell):
     https://arxiv.org/abs/1505.00387
   """
 
-  def __init__(self, cell,
+  def __init__(self,
+               cell,
                couple_carry_transform_gates=True,
                carry_bias_init=1.0):
     """Constructs a `HighwayWrapper` for `cell`.
@@ -1259,8 +1289,7 @@ class HighwayWrapper(rnn_cell_impl.RNNCell):
     carry_weight = vs.get_variable("carry_w", [input_size, input_size])
     carry_bias = vs.get_variable(
         "carry_b", [input_size],
-        initializer=init_ops.constant_initializer(
-            self._carry_bias_init))
+        initializer=init_ops.constant_initializer(self._carry_bias_init))
     carry = math_ops.sigmoid(nn_ops.xw_plus_b(inp, carry_weight, carry_bias))
     if self._couple_carry_transform_gates:
       transform = 1 - carry
@@ -1269,11 +1298,9 @@ class HighwayWrapper(rnn_cell_impl.RNNCell):
                                          [input_size, input_size])
       transform_bias = vs.get_variable(
           "transform_b", [input_size],
-          initializer=init_ops.constant_initializer(
-              -self._carry_bias_init))
-      transform = math_ops.sigmoid(nn_ops.xw_plus_b(inp,
-                                                    transform_weight,
-                                                    transform_bias))
+          initializer=init_ops.constant_initializer(-self._carry_bias_init))
+      transform = math_ops.sigmoid(
+          nn_ops.xw_plus_b(inp, transform_weight, transform_bias))
     return inp * carry + out * transform
 
   def __call__(self, inputs, state, scope=None):
@@ -1293,9 +1320,11 @@ class HighwayWrapper(rnn_cell_impl.RNNCell):
     """
     outputs, new_state = self._cell(inputs, state, scope=scope)
     nest.assert_same_structure(inputs, outputs)
+
     # Ensure shapes match
     def assert_shape_match(inp, out):
       inp.get_shape().assert_is_compatible_with(out.get_shape())
+
     nest.map_structure(assert_shape_match, inputs, outputs)
     res_outputs = nest.map_structure(self._highway, inputs, outputs)
     return (res_outputs, new_state)
@@ -1321,10 +1350,16 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
   Stanislau Semeniuta, Aliaksei Severyn, Erhardt Barth.
   """
 
-  def __init__(self, num_units, forget_bias=1.0,
-               input_size=None, activation=math_ops.tanh,
-               layer_norm=True, norm_gain=1.0, norm_shift=0.0,
-               dropout_keep_prob=1.0, dropout_prob_seed=None,
+  def __init__(self,
+               num_units,
+               forget_bias=1.0,
+               input_size=None,
+               activation=math_ops.tanh,
+               layer_norm=True,
+               norm_gain=1.0,
+               norm_shift=0.0,
+               dropout_keep_prob=1.0,
+               dropout_prob_seed=None,
                reuse=None):
     """Initializes the basic LSTM cell.
 
@@ -1409,8 +1444,8 @@ class LayerNormBasicLSTMCell(rnn_cell_impl.RNNCell):
     if (not isinstance(self._keep_prob, float)) or self._keep_prob < 1:
       g = nn_ops.dropout(g, self._keep_prob, seed=self._seed)
 
-    new_c = (c * math_ops.sigmoid(f + self._forget_bias)
-             + math_ops.sigmoid(i) * g)
+    new_c = (
+        c * math_ops.sigmoid(f + self._forget_bias) + math_ops.sigmoid(i) * g)
     if self._layer_norm:
       new_c = self._norm(new_c, "state", dtype=dtype)
     new_h = self._activation(new_c) * math_ops.sigmoid(o)
@@ -1432,8 +1467,7 @@ class NASCell(rnn_cell_impl.RNNCell):
   The class uses an optional projection layer.
   """
 
-  def __init__(self, num_units, num_proj=None,
-               use_biases=False, reuse=None):
+  def __init__(self, num_units, num_proj=None, use_biases=False, reuse=None):
     """Initialize the parameters for a NAS cell.
 
     Args:
@@ -1503,12 +1537,10 @@ class NASCell(rnn_cell_impl.RNNCell):
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
     # Variables for the NAS cell. W_m is all matrices multiplying the
     # hiddenstate and W_inputs is all matrices multiplying the inputs.
-    concat_w_m = vs.get_variable(
-        "recurrent_kernel", [num_proj, 8 * self._num_units],
-        dtype)
+    concat_w_m = vs.get_variable("recurrent_kernel",
+                                 [num_proj, 8 * self._num_units], dtype)
     concat_w_inputs = vs.get_variable(
-        "kernel", [input_size.value, 8 * self._num_units],
-        dtype)
+        "kernel", [input_size.value, 8 * self._num_units], dtype)
 
     m_matrix = math_ops.matmul(m_prev, concat_w_m)
     inputs_matrix = math_ops.matmul(inputs, concat_w_inputs)
@@ -1523,10 +1555,10 @@ class NASCell(rnn_cell_impl.RNNCell):
 
     # The NAS cell branches into 8 different splits for both the hiddenstate
     # and the input
-    m_matrix_splits = array_ops.split(axis=1, num_or_size_splits=8,
-                                      value=m_matrix)
-    inputs_matrix_splits = array_ops.split(axis=1, num_or_size_splits=8,
-                                           value=inputs_matrix)
+    m_matrix_splits = array_ops.split(
+        axis=1, num_or_size_splits=8, value=m_matrix)
+    inputs_matrix_splits = array_ops.split(
+        axis=1, num_or_size_splits=8, value=inputs_matrix)
 
     # First layer
     layer1_0 = sigmoid(inputs_matrix_splits[0] + m_matrix_splits[0])
@@ -1558,9 +1590,8 @@ class NASCell(rnn_cell_impl.RNNCell):
 
     # Projection layer if specified
     if self._num_proj is not None:
-      concat_w_proj = vs.get_variable(
-          "projection_weights", [self._num_units, self._num_proj],
-          dtype)
+      concat_w_proj = vs.get_variable("projection_weights",
+                                      [self._num_units, self._num_proj], dtype)
       new_m = math_ops.matmul(new_m, concat_w_proj)
 
     new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_m)
@@ -1583,8 +1614,12 @@ class UGRNNCell(rnn_cell_impl.RNNCell):
   "Capacity and Trainability in Recurrent Neural Networks" Proc. ICLR 2017.
   """
 
-  def __init__(self, num_units, initializer=None, forget_bias=1.0,
-               activation=math_ops.tanh, reuse=None):
+  def __init__(self,
+               num_units,
+               initializer=None,
+               forget_bias=1.0,
+               activation=math_ops.tanh,
+               reuse=None):
     """Initialize the parameters for an UGRNN cell.
 
     Args:
@@ -1639,8 +1674,8 @@ class UGRNNCell(rnn_cell_impl.RNNCell):
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
-    with vs.variable_scope(vs.get_variable_scope(),
-                           initializer=self._initializer):
+    with vs.variable_scope(
+        vs.get_variable_scope(), initializer=self._initializer):
       cell_inputs = array_ops.concat([inputs, state], 1)
       if self._linear is None:
         self._linear = _Linear(cell_inputs, 2 * self._num_units, True)
@@ -1680,9 +1715,13 @@ class IntersectionRNNCell(rnn_cell_impl.RNNCell):
   RNNs so it may not achieve best performance with depth 1.
   """
 
-  def __init__(self, num_units, num_in_proj=None,
-               initializer=None, forget_bias=1.0,
-               y_activation=nn_ops.relu, reuse=None):
+  def __init__(self,
+               num_units,
+               num_in_proj=None,
+               initializer=None,
+               forget_bias=1.0,
+               y_activation=nn_ops.relu,
+               reuse=None):
     """Initialize the parameters for an +RNN cell.
 
     Args:
@@ -1746,8 +1785,8 @@ class IntersectionRNNCell(rnn_cell_impl.RNNCell):
     if input_size.value is None:
       raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
 
-    with vs.variable_scope(vs.get_variable_scope(),
-                           initializer=self._initializer):
+    with vs.variable_scope(
+        vs.get_variable_scope(), initializer=self._initializer):
       # read-in projections (should be used for first layer in deep +RNN
       # to transform size of inputs from I --> N)
       if input_size.value != self._num_units:
@@ -1764,13 +1803,13 @@ class IntersectionRNNCell(rnn_cell_impl.RNNCell):
       n_dim = i_dim = self._num_units
       cell_inputs = array_ops.concat([inputs, state], 1)
       if self._linear2 is None:
-        self._linear2 = _Linear(cell_inputs, 2*n_dim + 2*i_dim, True)
+        self._linear2 = _Linear(cell_inputs, 2 * n_dim + 2 * i_dim, True)
       rnn_matrix = self._linear2(cell_inputs)
 
-      gh_act = rnn_matrix[:, :n_dim]                           # b x n
-      h_act = rnn_matrix[:, n_dim:2*n_dim]                     # b x n
-      gy_act = rnn_matrix[:, 2*n_dim:2*n_dim+i_dim]            # b x i
-      y_act = rnn_matrix[:, 2*n_dim+i_dim:2*n_dim+2*i_dim]     # b x i
+      gh_act = rnn_matrix[:, :n_dim]  # b x n
+      h_act = rnn_matrix[:, n_dim:2 * n_dim]  # b x n
+      gy_act = rnn_matrix[:, 2 * n_dim:2 * n_dim + i_dim]  # b x i
+      y_act = rnn_matrix[:, 2 * n_dim + i_dim:2 * n_dim + 2 * i_dim]  # b x i
 
       h = tanh(h_act)
       y = self._y_activation(y_act)
@@ -1816,6 +1855,7 @@ class CompiledWrapper(rnn_cell_impl.RNNCell):
     if self._compile_stateful:
       compile_ops = True
     else:
+
       def compile_ops(node_def):
         global _REGISTERED_OPS
         if _REGISTERED_OPS is None:
@@ -1826,10 +1866,7 @@ class CompiledWrapper(rnn_cell_impl.RNNCell):
       return self._cell(inputs, state, scope=scope)
 
 
-def _random_exp_initializer(minval,
-                            maxval,
-                            seed=None,
-                            dtype=dtypes.float32):
+def _random_exp_initializer(minval, maxval, seed=None, dtype=dtypes.float32):
   """Returns an exponential distribution initializer.
 
   Args:
@@ -1848,10 +1885,7 @@ def _random_exp_initializer(minval,
     del partition_info  # Unused.
     return math_ops.exp(
         random_ops.random_uniform(
-            shape,
-            math_ops.log(minval),
-            math_ops.log(maxval),
-            dtype,
+            shape, math_ops.log(minval), math_ops.log(maxval), dtype,
             seed=seed))
 
   return _initializer
@@ -1955,8 +1989,7 @@ class PhasedLSTMCell(rnn_cell_impl.RNNCell):
       if self._linear1 is None:
         self._linear1 = _Linear(in_mask_gates, 2 * self._num_units, True)
 
-      mask_gates = math_ops.sigmoid(
-          self._linear1(in_mask_gates))
+      mask_gates = math_ops.sigmoid(self._linear1(in_mask_gates))
       [input_gate, forget_gate] = array_ops.split(
           axis=1, num_or_size_splits=2, value=mask_gates)
 
@@ -1980,12 +2013,12 @@ class PhasedLSTMCell(rnn_cell_impl.RNNCell):
 
     period = vs.get_variable(
         "period", [self._num_units],
-        initializer=_random_exp_initializer(
-            self._period_init_min, self._period_init_max))
+        initializer=_random_exp_initializer(self._period_init_min,
+                                            self._period_init_max))
     phase = vs.get_variable(
         "phase", [self._num_units],
-        initializer=init_ops.random_uniform_initializer(
-            0., period.initial_value))
+        initializer=init_ops.random_uniform_initializer(0.,
+                                                        period.initial_value))
     ratio_on = vs.get_variable(
         "ratio_on", [self._num_units],
         initializer=init_ops.constant_initializer(self._ratio_on),
@@ -2006,6 +2039,7 @@ class PhasedLSTMCell(rnn_cell_impl.RNNCell):
     new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
 
     return new_h, new_state
+
 
 class ConvLSTMCell(rnn_cell_impl.RNNCell):
   """Convolutional LSTM recurrent network cell.
@@ -2040,7 +2074,7 @@ class ConvLSTMCell(rnn_cell_impl.RNNCell):
     """
     super(ConvLSTMCell, self).__init__(name=name)
 
-    if conv_ndims != len(input_shape)-1:
+    if conv_ndims != len(input_shape) - 1:
       raise ValueError("Invalid input_shape {} for conv_ndims={}.".format(
           input_shape, conv_ndims))
 
@@ -2059,8 +2093,8 @@ class ConvLSTMCell(rnn_cell_impl.RNNCell):
     state_size = tensor_shape.TensorShape(
         self._input_shape[:-1] + [self._output_channels])
     self._state_size = rnn_cell_impl.LSTMStateTuple(state_size, state_size)
-    self._output_size = tensor_shape.TensorShape(self._input_shape[:-1]
-                                                 + [self._total_output_channels])
+    self._output_size = tensor_shape.TensorShape(
+        self._input_shape[:-1] + [self._total_output_channels])
 
   @property
   def output_size(self):
@@ -2072,13 +2106,10 @@ class ConvLSTMCell(rnn_cell_impl.RNNCell):
 
   def call(self, inputs, state, scope=None):
     cell, hidden = state
-    new_hidden = _conv([inputs, hidden],
-                       self._kernel_shape,
-                       4*self._output_channels,
-                       self._use_bias)
-    gates = array_ops.split(value=new_hidden,
-                            num_or_size_splits=4,
-                            axis=self._conv_ndims+1)
+    new_hidden = _conv([inputs, hidden], self._kernel_shape,
+                       4 * self._output_channels, self._use_bias)
+    gates = array_ops.split(
+        value=new_hidden, num_or_size_splits=4, axis=self._conv_ndims + 1)
 
     input_gate, new_input, forget_gate, output_gate = gates
     new_cell = math_ops.sigmoid(forget_gate + self._forget_bias) * cell
@@ -2090,29 +2121,35 @@ class ConvLSTMCell(rnn_cell_impl.RNNCell):
     new_state = rnn_cell_impl.LSTMStateTuple(new_cell, output)
     return output, new_state
 
+
 class Conv1DLSTMCell(ConvLSTMCell):
   """1D Convolutional LSTM recurrent network cell.
 
   https://arxiv.org/pdf/1506.04214v1.pdf
   """
+
   def __init__(self, name="conv_1d_lstm_cell", **kwargs):
     """Construct Conv1DLSTM. See `ConvLSTMCell` for more details."""
     super(Conv1DLSTMCell, self).__init__(conv_ndims=1, **kwargs)
+
 
 class Conv2DLSTMCell(ConvLSTMCell):
   """2D Convolutional LSTM recurrent network cell.
 
   https://arxiv.org/pdf/1506.04214v1.pdf
   """
+
   def __init__(self, name="conv_2d_lstm_cell", **kwargs):
     """Construct Conv2DLSTM. See `ConvLSTMCell` for more details."""
     super(Conv2DLSTMCell, self).__init__(conv_ndims=2, **kwargs)
+
 
 class Conv3DLSTMCell(ConvLSTMCell):
   """3D Convolutional LSTM recurrent network cell.
 
   https://arxiv.org/pdf/1506.04214v1.pdf
   """
+
   def __init__(self, name="conv_3d_lstm_cell", **kwargs):
     """Construct Conv3DLSTM. See `ConvLSTMCell` for more details."""
     super(Conv3DLSTMCell, self).__init__(conv_ndims=3, **kwargs)
@@ -2137,7 +2174,7 @@ def _conv(args, filter_size, num_features, bias, bias_start=0.0):
   shapes = [a.get_shape().as_list() for a in args]
   shape_length = len(shapes[0])
   for shape in shapes:
-    if len(shape) not in [3,4,5]:
+    if len(shape) not in [3, 4, 5]:
       raise ValueError("Conv Linear expects 3D, 4D "
                        "or 5D arguments: %s" % str(shapes))
     if len(shape) != len(shapes[0]):
@@ -2148,39 +2185,35 @@ def _conv(args, filter_size, num_features, bias, bias_start=0.0):
   dtype = [a.dtype for a in args][0]
 
   # determine correct conv operation
-  if   shape_length == 3:
+  if shape_length == 3:
     conv_op = nn_ops.conv1d
     strides = 1
   elif shape_length == 4:
     conv_op = nn_ops.conv2d
-    strides = shape_length*[1]
+    strides = shape_length * [1]
   elif shape_length == 5:
     conv_op = nn_ops.conv3d
-    strides = shape_length*[1]
+    strides = shape_length * [1]
 
   # Now the computation.
   kernel = vs.get_variable(
-      "kernel",
-      filter_size + [total_arg_size_depth, num_features],
-      dtype=dtype)
+      "kernel", filter_size + [total_arg_size_depth, num_features], dtype=dtype)
   if len(args) == 1:
-    res = conv_op(args[0],
-                  kernel,
-                  strides,
-                  padding='SAME')
+    res = conv_op(args[0], kernel, strides, padding="SAME")
   else:
-    res = conv_op(array_ops.concat(axis=shape_length-1, values=args),
-                  kernel,
-                  strides,
-                  padding='SAME')
+    res = conv_op(
+        array_ops.concat(axis=shape_length - 1, values=args),
+        kernel,
+        strides,
+        padding="SAME")
   if not bias:
     return res
   bias_term = vs.get_variable(
       "biases", [num_features],
       dtype=dtype,
-      initializer=init_ops.constant_initializer(
-          bias_start, dtype=dtype))
+      initializer=init_ops.constant_initializer(bias_start, dtype=dtype))
   return res + bias_term
+
 
 class GLSTMCell(rnn_cell_impl.RNNCell):
   """Group LSTM cell (G-LSTM).
@@ -2193,8 +2226,13 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
   "Factorization Tricks for LSTM Networks", ICLR 2017 workshop.
   """
 
-  def __init__(self, num_units, initializer=None, num_proj=None,
-               number_of_groups=1, forget_bias=1.0, activation=math_ops.tanh,
+  def __init__(self,
+               num_units,
+               initializer=None,
+               num_proj=None,
+               number_of_groups=1,
+               forget_bias=1.0,
+               activation=math_ops.tanh,
                reuse=None):
     """Initialize the parameters of G-LSTM cell.
 
@@ -2231,11 +2269,15 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
     if self._num_proj:
       if self._num_proj % self._number_of_groups != 0:
         raise ValueError("num_proj must be divisible by number_of_groups")
-      self._group_shape = [int(self._num_proj / self._number_of_groups),
-                           int(self._num_units / self._number_of_groups)]
+      self._group_shape = [
+          int(self._num_proj / self._number_of_groups),
+          int(self._num_units / self._number_of_groups)
+      ]
     else:
-      self._group_shape = [int(self._num_units / self._number_of_groups),
-                           int(self._num_units / self._number_of_groups)]
+      self._group_shape = [
+          int(self._num_units / self._number_of_groups),
+          int(self._num_units / self._number_of_groups)
+      ]
 
     if num_proj:
       self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
@@ -2267,10 +2309,11 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
       subset of inputs corresponding to group "group_id",
       a Tensor, 2D, [batch x num_units/number_of_groups]
     """
-    return array_ops.slice(input_=inputs,
-                           begin=[0, group_id * group_size],
-                           size=[self._batch_size, group_size],
-                           name=("GLSTM_group%d_input_generation" % group_id))
+    return array_ops.slice(
+        input_=inputs,
+        begin=[0, group_id * group_size],
+        size=[self._batch_size, group_size],
+        name=("GLSTM_group%d_input_generation" % group_id))
 
   def call(self, inputs, state):
     """Run one step of G-LSTM.
@@ -2309,10 +2352,13 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
       for group_id in range(self._number_of_groups):
         with vs.variable_scope("group%d" % group_id):
           x_g_id = array_ops.concat(
-            [self._get_input_for_group(inputs, group_id,
-                                       self._group_shape[0]),
-             self._get_input_for_group(m_prev, group_id,
-                                       self._group_shape[0])], axis=1)
+              [
+                  self._get_input_for_group(inputs, group_id,
+                                            self._group_shape[0]),
+                  self._get_input_for_group(m_prev, group_id,
+                                            self._group_shape[0])
+              ],
+              axis=1)
           if self._linear1 is None:
             self._linear1 = _Linear(x_g_id, 4 * self._group_shape[1], False)
           R_k = self._linear1(x_g_id)  # pylint: disable=invalid-name
@@ -2323,34 +2369,35 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
         f_parts.append(f_k)
         o_parts.append(o_k)
 
-      bi = vs.get_variable(name="bias_i",
-                           shape=[self._num_units],
-                           dtype=dtype,
-                           initializer=
-                           init_ops.constant_initializer(0.0, dtype=dtype))
-      bj = vs.get_variable(name="bias_j",
-                           shape=[self._num_units],
-                           dtype=dtype,
-                           initializer=
-                           init_ops.constant_initializer(0.0, dtype=dtype))
-      bf = vs.get_variable(name="bias_f",
-                           shape=[self._num_units],
-                           dtype=dtype,
-                           initializer=
-                           init_ops.constant_initializer(0.0, dtype=dtype))
-      bo = vs.get_variable(name="bias_o",
-                           shape=[self._num_units],
-                           dtype=dtype,
-                           initializer=
-                           init_ops.constant_initializer(0.0, dtype=dtype))
+      bi = vs.get_variable(
+          name="bias_i",
+          shape=[self._num_units],
+          dtype=dtype,
+          initializer=init_ops.constant_initializer(0.0, dtype=dtype))
+      bj = vs.get_variable(
+          name="bias_j",
+          shape=[self._num_units],
+          dtype=dtype,
+          initializer=init_ops.constant_initializer(0.0, dtype=dtype))
+      bf = vs.get_variable(
+          name="bias_f",
+          shape=[self._num_units],
+          dtype=dtype,
+          initializer=init_ops.constant_initializer(0.0, dtype=dtype))
+      bo = vs.get_variable(
+          name="bias_o",
+          shape=[self._num_units],
+          dtype=dtype,
+          initializer=init_ops.constant_initializer(0.0, dtype=dtype))
 
       i = nn_ops.bias_add(array_ops.concat(i_parts, axis=1), bi)
       j = nn_ops.bias_add(array_ops.concat(j_parts, axis=1), bj)
       f = nn_ops.bias_add(array_ops.concat(f_parts, axis=1), bf)
       o = nn_ops.bias_add(array_ops.concat(o_parts, axis=1), bo)
 
-    c = (math_ops.sigmoid(f + self._forget_bias) * c_prev +
-         math_ops.sigmoid(i) * math_ops.tanh(j))
+    c = (
+        math_ops.sigmoid(f + self._forget_bias) * c_prev +
+        math_ops.sigmoid(i) * math_ops.tanh(j))
     m = math_ops.sigmoid(o) * self._activation(c)
 
     if self._num_proj is not None:
@@ -2635,10 +2682,12 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
 
 class SRUCell(rnn_cell_impl._LayerRNNCell):
   """SRU, Simple Recurrent Unit
+
      Implementation based on
      Training RNNs as Fast as CNNs (cf. https://arxiv.org/abs/1709.02755).
 
-     This variation of RNN cell is characterized by the simplified data dependence
+     This variation of RNN cell is characterized by the simplified data
+     dependence
      between hidden states of two consecutive time steps. Traditionally, hidden
      states from a cell at time step t-1 needs to be multiplied with a matrix
      W_hh before being fed into the ensuing cell at time step t.
@@ -2656,8 +2705,8 @@ class SRUCell(rnn_cell_impl._LayerRNNCell):
       will share weights, but to avoid mistakes we require reuse=True in such
       cases.
   """
-  def __init__(self, num_units,
-               activation=None, reuse=None, name=None):
+
+  def __init__(self, num_units, activation=None, reuse=None, name=None):
     super(SRUCell, self).__init__(_reuse=reuse, name=name)
     self._num_units = num_units
     self._activation = activation or math_ops.tanh
@@ -2675,8 +2724,8 @@ class SRUCell(rnn_cell_impl._LayerRNNCell):
 
   def build(self, inputs_shape):
     if inputs_shape[1].value is None:
-      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
-                       % inputs_shape)
+      raise ValueError(
+          "Expected inputs.shape[-1] to be known, saw shape: %s" % inputs_shape)
 
     input_depth = inputs_shape[1].value
 
@@ -2711,15 +2760,276 @@ class SRUCell(rnn_cell_impl._LayerRNNCell):
     """Simple recurrent unit (SRU) with num_units cells."""
 
     U = math_ops.matmul(inputs, self._kernel)
-    x_bar, f_intermediate, r_intermediate = array_ops.split(value=U,
-                                                            num_or_size_splits=3,
-                                                            axis=1)
+    x_bar, f_intermediate, r_intermediate = array_ops.split(
+        value=U, num_or_size_splits=3, axis=1)
 
-    f_r = math_ops.sigmoid(nn_ops.bias_add(array_ops.concat(
-        [f_intermediate, r_intermediate], 1), self._bias))
+    f_r = math_ops.sigmoid(
+        nn_ops.bias_add(
+            array_ops.concat([f_intermediate, r_intermediate], 1), self._bias))
     f, r = array_ops.split(value=f_r, num_or_size_splits=2, axis=1)
 
     c = f * state + (1.0 - f) * x_bar
     h = r * self._activation(c) + (1.0 - r) * inputs
 
     return h, c
+
+
+class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
+  """Weight normalized LSTM Cell. Adapted from `rnn_cell_impl.LSTMCell`.
+
+    The weight-norm implementation is based on:
+    https://arxiv.org/abs/1602.07868
+    Tim Salimans, Diederik P. Kingma.
+    Weight Normalization: A Simple Reparameterization to Accelerate
+    Training of Deep Neural Networks
+
+    The default LSTM implementation based on:
+    http://www.bioinf.jku.at/publications/older/2604.pdf
+    S. Hochreiter and J. Schmidhuber.
+    "Long Short-Term Memory". Neural Computation, 9(8):1735-1780, 1997.
+
+    The class uses optional peephole connections, optional cell clipping
+    and an optional projection layer.
+
+    The optional peephole implementation is based on:
+    https://research.google.com/pubs/archive/43905.pdf
+    Hasim Sak, Andrew Senior, and Francoise Beaufays.
+    "Long short-term memory recurrent neural network architectures for
+    large scale acoustic modeling." INTERSPEECH, 2014.
+  """
+
+  def __init__(self,
+               num_units,
+               norm=True,
+               use_peepholes=False,
+               cell_clip=None,
+               initializer=None,
+               num_proj=None,
+               proj_clip=None,
+               forget_bias=1,
+               activation=None,
+               reuse=None):
+    """Initialize the parameters of a weight-normalized LSTM cell.
+
+    Args:
+      num_units: int, The number of units in the LSTM cell
+      norm: If `True`, apply normalization to the weight matrices. If False,
+        the result is identical to that obtained from `rnn_cell_impl.LSTMCell`
+      use_peepholes: bool, set `True` to enable diagonal/peephole connections.
+      cell_clip: (optional) A float value, if provided the cell state is clipped
+        by this value prior to the cell output activation.
+      initializer: (optional) The initializer to use for the weight matrices.
+      num_proj: (optional) int, The output dimensionality for the projection
+        matrices.  If None, no projection is performed.
+      proj_clip: (optional) A float value.  If `num_proj > 0` and `proj_clip` is
+        provided, then the projected values are clipped elementwise to within
+        `[-proj_clip, proj_clip]`.
+      forget_bias: Biases of the forget gate are initialized by default to 1
+        in order to reduce the scale of forgetting at the beginning of
+        the training.
+      activation: Activation function of the inner states.  Default: `tanh`.
+      reuse: (optional) Python boolean describing whether to reuse variables
+        in an existing scope.  If not `True`, and the existing scope already has
+        the given variables, an error is raised.
+    """
+    super(WeightNormLSTMCell, self).__init__(_reuse=reuse)
+
+    self._scope = "wn_lstm_cell"
+    self._num_units = num_units
+    self._norm = norm
+    self._initializer = initializer
+    self._use_peepholes = use_peepholes
+    self._cell_clip = cell_clip
+    self._num_proj = num_proj
+    self._proj_clip = proj_clip
+    self._activation = activation or math_ops.tanh
+    self._forget_bias = forget_bias
+
+    self._weights_variable_name = "kernel"
+    self._bias_variable_name = "bias"
+
+    if num_proj:
+      self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_proj)
+      self._output_size = num_proj
+    else:
+      self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_units)
+      self._output_size = num_units
+
+  @property
+  def state_size(self):
+    return self._state_size
+
+  @property
+  def output_size(self):
+    return self._output_size
+
+  def _normalize(self, weight, name):
+    """Apply weight normalization.
+
+    Args:
+      weight: a 2D tensor with known number of columns.
+      name: string, variable name for the normalizer.
+    Returns:
+      A tensor with the same shape as `weight`.
+    """
+
+    output_size = weight.get_shape().as_list()[1]
+    g = vs.get_variable(name, [output_size], dtype=weight.dtype)
+    return nn_impl.l2_normalize(weight, dim=0) * g
+
+  def _linear(self,
+              args,
+              output_size,
+              norm,
+              bias,
+              bias_initializer=None,
+              kernel_initializer=None):
+    """Linear map: sum_i(args[i] * W[i]), where W[i] is a variable.
+
+    Args:
+      args: a 2D Tensor or a list of 2D, batch x n, Tensors.
+      output_size: int, second dimension of W[i].
+      bias: boolean, whether to add a bias term or not.
+      bias_initializer: starting value to initialize the bias
+        (default is all zeros).
+      kernel_initializer: starting value to initialize the weight.
+
+    Returns:
+      A 2D Tensor with shape [batch x output_size] equal to
+      sum_i(args[i] * W[i]), where W[i]s are newly created matrices.
+
+    Raises:
+      ValueError: if some of the arguments has unspecified or wrong shape.
+    """
+    if args is None or (nest.is_sequence(args) and not args):
+      raise ValueError("`args` must be specified")
+    if not nest.is_sequence(args):
+      args = [args]
+
+    # Calculate the total size of arguments on dimension 1.
+    total_arg_size = 0
+    shapes = [a.get_shape() for a in args]
+    for shape in shapes:
+      if shape.ndims != 2:
+        raise ValueError("linear is expecting 2D arguments: %s" % shapes)
+      if shape[1].value is None:
+        raise ValueError("linear expects shape[1] to be provided for shape %s, "
+                         "but saw %s" % (shape, shape[1]))
+      else:
+        total_arg_size += shape[1].value
+
+    dtype = [a.dtype for a in args][0]
+
+    # Now the computation.
+    scope = vs.get_variable_scope()
+    with vs.variable_scope(scope) as outer_scope:
+      weights = vs.get_variable(
+          self._weights_variable_name, [total_arg_size, output_size],
+          dtype=dtype,
+          initializer=kernel_initializer)
+      if norm:
+        wn = []
+        st = 0
+        with ops.control_dependencies(None):
+          for i in range(len(args)):
+            en = st + shapes[i][1].value
+            wn.append(
+                self._normalize(weights[st:en, :], name="norm_{}".format(i)))
+            st = en
+
+          weights = array_ops.concat(wn, axis=0)
+
+      if len(args) == 1:
+        res = math_ops.matmul(args[0], weights)
+      else:
+        res = math_ops.matmul(array_ops.concat(args, 1), weights)
+      if not bias:
+        return res
+
+      with vs.variable_scope(outer_scope) as inner_scope:
+        inner_scope.set_partitioner(None)
+        if bias_initializer is None:
+          bias_initializer = init_ops.constant_initializer(0.0, dtype=dtype)
+
+        biases = vs.get_variable(
+            self._bias_variable_name, [output_size],
+            dtype=dtype,
+            initializer=bias_initializer)
+
+      return nn_ops.bias_add(res, biases)
+
+  def call(self, inputs, state):
+    """Run one step of LSTM.
+
+    Args:
+      inputs: input Tensor, 2D, batch x num_units.
+      state: A tuple of state Tensors, both `2-D`, with column sizes
+       `c_state` and `m_state`.
+
+    Returns:
+      A tuple containing:
+
+      - A `2-D, [batch x output_dim]`, Tensor representing the output of the
+        LSTM after reading `inputs` when previous state was `state`.
+        Here output_dim is:
+           num_proj if num_proj was set,
+           num_units otherwise.
+      - Tensor(s) representing the new state of LSTM after reading `inputs` when
+        the previous state was `state`.  Same type and shape(s) as `state`.
+
+    Raises:
+      ValueError: If input size cannot be inferred from inputs via
+        static shape inference.
+    """
+    dtype = inputs.dtype
+    num_units = self._num_units
+    sigmoid = math_ops.sigmoid
+    c, h = state
+
+    input_size = inputs.get_shape().with_rank(2)[1]
+    if input_size.value is None:
+      raise ValueError("Could not infer input size from inputs.get_shape()[-1]")
+
+    with vs.variable_scope(self._scope, initializer=self._initializer):
+
+      concat = self._linear(
+          [inputs, h], 4 * num_units, norm=self._norm, bias=True)
+
+      # i = input_gate, j = new_input, f = forget_gate, o = output_gate
+      i, j, f, o = array_ops.split(value=concat, num_or_size_splits=4, axis=1)
+
+      if self._use_peepholes:
+        w_f_diag = vs.get_variable("w_f_diag", shape=[num_units], dtype=dtype)
+        w_i_diag = vs.get_variable("w_i_diag", shape=[num_units], dtype=dtype)
+        w_o_diag = vs.get_variable("w_o_diag", shape=[num_units], dtype=dtype)
+
+        new_c = (
+            c * sigmoid(f + self._forget_bias + w_f_diag * c) +
+            sigmoid(i + w_i_diag * c) * self._activation(j))
+      else:
+        new_c = (
+            c * sigmoid(f + self._forget_bias) +
+            sigmoid(i) * self._activation(j))
+
+      if self._cell_clip is not None:
+        # pylint: disable=invalid-unary-operand-type
+        new_c = clip_ops.clip_by_value(new_c, -self._cell_clip, self._cell_clip)
+        # pylint: enable=invalid-unary-operand-type
+      if self._use_peepholes:
+        new_h = sigmoid(o + w_o_diag * new_c) * self._activation(new_c)
+      else:
+        new_h = sigmoid(o) * self._activation(new_c)
+
+      if self._num_proj is not None:
+        with vs.variable_scope("projection"):
+          new_h = self._linear(
+              new_h, self._num_proj, norm=self._norm, bias=False)
+
+        if self._proj_clip is not None:
+          # pylint: disable=invalid-unary-operand-type
+          new_h = clip_ops.clip_by_value(new_h, -self._proj_clip,
+                                         self._proj_clip)
+          # pylint: enable=invalid-unary-operand-type
+
+      new_state = rnn_cell_impl.LSTMStateTuple(new_c, new_h)
+      return new_h, new_state

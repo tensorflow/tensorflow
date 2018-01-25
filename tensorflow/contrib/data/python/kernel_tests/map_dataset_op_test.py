@@ -24,8 +24,9 @@ import threading
 import numpy as np
 
 from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
-from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import dataset_ops as contrib_dataset_ops
 from tensorflow.contrib.data.python.ops import error_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -52,8 +53,10 @@ class MapDatasetTest(test.TestCase):
   def _buildMapDataset(self, components, count):
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
-            .repeat(count))
+
+    return (
+        contrib_dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
+        .repeat(count))
 
   def testMapDataset(self):
     """Test an dataset that maps a TF function across its input elements."""
@@ -113,7 +116,8 @@ class MapDatasetTest(test.TestCase):
                                output_buffer_size):
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(
+
+    return (contrib_dataset_ops.Dataset.from_tensor_slices(components).map(
         _map_fn, num_threads=num_threads, output_buffer_size=output_buffer_size)
             .repeat(count))
 
@@ -210,9 +214,9 @@ class MapDatasetTest(test.TestCase):
   def testParallelMapUnspecifiedOutputSize(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
-    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-               .map(lambda x: array_ops.check_numerics(x, "message"),
-                    num_threads=2))
+    dataset = (
+        contrib_dataset_ops.Dataset.from_tensor_slices(components).map(
+            lambda x: array_ops.check_numerics(x, "message"), num_threads=2))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -225,9 +229,11 @@ class MapDatasetTest(test.TestCase):
   def testParallelMapError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
-    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-               .map(lambda x: array_ops.check_numerics(x, "message"),
-                    num_threads=2, output_buffer_size=2))
+    dataset = (
+        contrib_dataset_ops.Dataset.from_tensor_slices(components).map(
+            lambda x: array_ops.check_numerics(x, "message"),
+            num_threads=2,
+            output_buffer_size=2))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -246,9 +252,9 @@ class MapDatasetTest(test.TestCase):
   def testPrefetchError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
-    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-               .map(lambda x: array_ops.check_numerics(x, "message"))
-               .prefetch(2))
+    dataset = (
+        contrib_dataset_ops.Dataset.from_tensor_slices(components)
+        .map(lambda x: array_ops.check_numerics(x, "message")).prefetch(2))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -267,9 +273,10 @@ class MapDatasetTest(test.TestCase):
   def testMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
-    dataset = (dataset_ops.Dataset.from_tensor_slices(components)
-               .map(lambda x: array_ops.check_numerics(x, "message")).apply(
-                   error_ops.ignore_errors()))
+    dataset = (
+        contrib_dataset_ops.Dataset.from_tensor_slices(components)
+        .map(lambda x: array_ops.check_numerics(x, "message")).apply(
+            error_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -284,10 +291,11 @@ class MapDatasetTest(test.TestCase):
   def testParallelMapIgnoreError(self):
     components = np.array([1., 2., 3., np.nan, 5.]).astype(np.float32)
 
-    dataset = (dataset_ops.Dataset.from_tensor_slices(components).map(
-        lambda x: array_ops.check_numerics(x, "message"),
-        num_threads=2,
-        output_buffer_size=2).apply(error_ops.ignore_errors()))
+    dataset = (
+        contrib_dataset_ops.Dataset.from_tensor_slices(components).map(
+            lambda x: array_ops.check_numerics(x, "message"),
+            num_threads=2,
+            output_buffer_size=2).apply(error_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -308,9 +316,10 @@ class MapDatasetTest(test.TestCase):
     for filename in filenames:
       write_string_to_file(filename, filename)
 
-    dataset = (dataset_ops.Dataset.from_tensor_slices(filenames).map(
-        io_ops.read_file, num_threads=2, output_buffer_size=2).apply(
-            error_ops.ignore_errors()))
+    dataset = (
+        contrib_dataset_ops.Dataset.from_tensor_slices(filenames).map(
+            io_ops.read_file, num_threads=2, output_buffer_size=2).apply(
+                error_ops.ignore_errors()))
     iterator = dataset.make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -344,7 +353,7 @@ class MapDatasetTest(test.TestCase):
     table = lookup_ops.HashTable(
         lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
 
-    input_sentences = dataset_ops.Dataset.from_tensor_slices(
+    input_sentences = contrib_dataset_ops.Dataset.from_tensor_slices(
         ["brain brain tank salad surgery", "surgery brain"])
 
     iterator = (input_sentences
@@ -368,8 +377,9 @@ class MapDatasetTest(test.TestCase):
     queue = data_flow_ops.FIFOQueue(200, dtypes.int64, shapes=[])
     enqueue_op = queue.enqueue_many(elements)
     close_op = queue.close()
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(-1)
-                .map(lambda _: queue.dequeue()).make_initializable_iterator())
+    iterator = (
+        contrib_dataset_ops.Dataset.from_tensors(0).repeat(-1)
+        .map(lambda _: queue.dequeue()).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -392,9 +402,10 @@ class MapDatasetTest(test.TestCase):
     enqueue_op = queue.enqueue_many(elements)
     close_op = queue.close()
 
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(-1)
-                .map(lambda _: (queue.dequeue(), queue_2.dequeue()))
-                .make_initializable_iterator())
+    iterator = (
+        contrib_dataset_ops.Dataset.from_tensors(0).repeat(-1)
+        .map(lambda _: (queue.dequeue(), queue_2.dequeue()))
+        .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -411,9 +422,9 @@ class MapDatasetTest(test.TestCase):
   def testCaptureVariable(self):
     counter_var = variable_scope.get_variable(
         "counter", (), dtypes.int32, use_resource=True)
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10)
-                .map(lambda _: counter_var.assign_add(1))
-                .make_initializable_iterator())
+    iterator = (
+        contrib_dataset_ops.Dataset.from_tensors(0).repeat(10)
+        .map(lambda _: counter_var.assign_add(1)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -431,20 +442,22 @@ class MapDatasetTest(test.TestCase):
   def testCaptureUninitializedVariableError(self):
     counter_var = variable_scope.get_variable(
         "counter", (), dtypes.int32, use_resource=True)
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10)
-                .map(lambda _: counter_var.assign_add(1))
-                .make_initializable_iterator())
+    iterator = (
+        contrib_dataset_ops.Dataset.from_tensors(0).repeat(10)
+        .map(lambda _: counter_var.assign_add(1)).make_initializable_iterator())
     init_op = iterator.initializer
+    get_next = iterator.get_next()
 
     with self.test_session() as sess:
-      with self.assertRaisesRegexp(errors.FailedPreconditionError,
-                                   "Failed to capture resource"):
-        sess.run(init_op)
+      sess.run(init_op)
+      with self.assertRaises(errors.NotFoundError):
+        sess.run(get_next)
 
   def testSeededStatefulOperatorIsProperlyStateful(self):
-    iterator = (dataset_ops.Dataset.from_tensors(0).repeat(10)
-                .map(lambda _: random_ops.random_uniform((), seed=11)).batch(2)
-                .make_initializable_iterator())
+    iterator = (
+        contrib_dataset_ops.Dataset.from_tensors(0).repeat(10)
+        .map(lambda _: random_ops.random_uniform((), seed=11)).batch(2)
+        .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -466,7 +479,7 @@ class MapDatasetTest(test.TestCase):
       self.assertAllClose(random_values, random_values_2)
 
   def testMapDict(self):
-    iterator = (dataset_ops.Dataset.range(10)
+    iterator = (contrib_dataset_ops.Dataset.range(10)
                 .map(lambda x: {"foo": x * 2, "bar": x ** 2})
                 .map(lambda d: d["foo"] + d["bar"])
                 .make_initializable_iterator())
@@ -482,9 +495,9 @@ class MapDatasetTest(test.TestCase):
 
   def testMapNamedtuple(self, count=10):
     # construct dataset of tuples
-    labels = dataset_ops.Dataset.range(count)
+    labels = contrib_dataset_ops.Dataset.range(count)
     images = labels.map(lambda l: -l)
-    dataset_tuple = dataset_ops.Dataset.zip((labels, images))
+    dataset_tuple = contrib_dataset_ops.Dataset.zip((labels, images))
 
     # convert dataset of tuples to dataset of namedtuples
     example = namedtuple("Example", ["label", "image"])
@@ -517,7 +530,7 @@ class MapDatasetTest(test.TestCase):
   def testUseStepContainerInMap(self):
     row = np.arange(6)
     iterator = (
-        dataset_ops.Dataset.from_tensors(row)
+        contrib_dataset_ops.Dataset.from_tensors(row)
         .map(lambda elems: functional_ops.map_fn(lambda x: x * x, elems))
         .make_initializable_iterator())
     init_op = iterator.initializer
@@ -547,10 +560,8 @@ class MapDatasetTest(test.TestCase):
 
     buffer_size_placeholder = array_ops.placeholder(dtypes.int64, shape=[])
     iterator = (
-        dataset_ops.Dataset.range(100)
-        .map(_map_fn)
-        .prefetch(buffer_size_placeholder)
-        .make_initializable_iterator())
+        contrib_dataset_ops.Dataset.range(100).map(_map_fn)
+        .prefetch(buffer_size_placeholder).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -586,9 +597,10 @@ class MapDatasetTest(test.TestCase):
           sess.run(get_next)
 
   def testReturnList(self):
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(lambda x: [x, constant_op.constant(37.0)])
-                .make_initializable_iterator())
+    iterator = (
+        contrib_dataset_ops.Dataset.range(10)
+        .map(lambda x: [x, constant_op.constant(37.0)])
+        .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -607,9 +619,9 @@ class MapDatasetTest(test.TestCase):
       return script_ops.py_func(
           _map_py_func, [x_tensor], [dtypes.int64, dtypes.float64])
 
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(_map_fn)
-                .make_initializable_iterator())
+    iterator = (
+        contrib_dataset_ops.Dataset.range(10).map(_map_fn)
+        .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -633,9 +645,9 @@ class MapDatasetTest(test.TestCase):
           values=(i * np.array([1])),
           dense_shape=np.array([1, 1]))
 
-    iterator = (dataset_ops.Dataset.range(10)
-                .map(_sparse)
-                .make_initializable_iterator())
+    iterator = (
+        contrib_dataset_ops.Dataset.range(10).map(_sparse)
+        .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -661,7 +673,7 @@ class MapDatasetTest(test.TestCase):
       return sparse_ops.sparse_concat(0, [i, i])
 
     iterator = (
-        dataset_ops.Dataset.range(10).map(_sparse).map(_check)
+        contrib_dataset_ops.Dataset.range(10).map(_sparse).map(_check)
         .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -683,23 +695,26 @@ class MapDatasetTest(test.TestCase):
         get_next = iterator.get_next()
         return x * get_next
 
-      return dataset_ops.Dataset.range(10).map(_map_fn)
+      return contrib_dataset_ops.Dataset.range(10).map(_map_fn)
 
     def _build_graph():
-      captured_iterator = dataset_ops.Dataset.range(
+      captured_iterator = contrib_dataset_ops.Dataset.range(
           10).make_initializable_iterator()
       ds = _build_ds(captured_iterator)
       iterator = ds.make_initializable_iterator()
       init_op = iterator.initializer
-      return captured_iterator.initializer, init_op
+      get_next = iterator.get_next()
+      return captured_iterator.initializer, init_op, get_next
 
     with ops.Graph().as_default() as g:
-      captured_init_op, init_op = _build_graph()
+      captured_init_op, init_op, get_next = _build_graph()
       with self.test_session(graph=g) as sess:
         sess.run(captured_init_op)
-        with self.assertRaises(errors.UnimplementedError):
-          # CapturedFunction does not support capturing IteratorResource.
-          sess.run(init_op)
+        sess.run(init_op)
+        for i in range(10):
+          self.assertEquals(i * i, sess.run(get_next))
+        with self.assertRaises(errors.OutOfRangeError):
+          sess.run(get_next)
 
 
 class MapDatasetSerializationTest(
@@ -718,8 +733,9 @@ class MapDatasetSerializationTest(
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
-    return (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
-            .repeat(self._num_epochs))
+    return (
+        contrib_dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
+        .repeat(self._num_epochs))
 
   def testSaveRestoreCore(self):
     self.run_core_tests(
@@ -735,7 +751,7 @@ class MapDatasetSerializationTest(
         return random_ops.random_uniform(
             (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
 
-      return dataset_ops.Dataset.range(100).map(_map_fn)
+      return contrib_dataset_ops.Dataset.range(100).map(_map_fn)
 
     self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
 
@@ -744,10 +760,19 @@ class MapDatasetSerializationTest(
     def _build_ds():
       counter_var = variable_scope.get_variable(
           "counter", (), dtypes.int32, use_resource=True)
-      return (dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+      return (contrib_dataset_ops.Dataset.from_tensors(0).repeat(10).map(
           lambda _: counter_var.assign_add(1)))
 
     self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+
+  def testCaptureConstantInMapFn(self):
+
+    def _build_ds():
+      constant_var = constant_op.constant(5)
+      return (contrib_dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda x: x + constant_var))
+
+    self.run_core_tests(_build_ds, None, 10)
 
   def testCaptureDefunInMapFn(self):
     num_outputs = 100
@@ -758,7 +783,7 @@ class MapDatasetSerializationTest(
       def defun_fn(x):
         return constant_op.constant(1000) + math_ops.to_int32(x)
 
-      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+      return contrib_dataset_ops.Dataset.range(num_outputs).map(defun_fn)
 
     self.run_core_tests(_build_ds, None, num_outputs)
 
@@ -776,7 +801,107 @@ class MapDatasetSerializationTest(
 
         return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
 
-      return dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+      return contrib_dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+
+    self.run_core_tests(_build_ds, None, num_outputs)
+
+
+class ParallelMapDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def setUp(self):
+    self._tensor_slice_len = 7
+    self._num_epochs = 1
+    self._num_outputs = self._tensor_slice_len * self._num_epochs
+
+  def _build_ds(self, multiplier=37.0):
+    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
+                  np.arange(self._tensor_slice_len)[:, np.newaxis],
+                  np.array(multiplier) * np.arange(self._tensor_slice_len))
+
+    def _map_fn(x, y, z):
+      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
+
+    return (dataset_ops.Dataset.from_tensor_slices(components).map(
+        _map_fn, num_parallel_calls=3).repeat(self._num_epochs))
+
+  def _build_ds_with_prefetch(self, multiplier=37.0):
+    components = (np.arange(self._tensor_slice_len), np.array([[1, 2, 3]]) *
+                  np.arange(self._tensor_slice_len)[:, np.newaxis],
+                  np.array(multiplier) * np.arange(self._tensor_slice_len))
+
+    def _map_fn(x, y, z):
+      return math_ops.square(x), math_ops.square(y), math_ops.square(z)
+
+    return (dataset_ops.Dataset.from_tensor_slices(components).map(
+        _map_fn, num_parallel_calls=3).repeat(self._num_epochs).prefetch(5))
+
+  def testSaveRestoreCore(self):
+    for ds_fn in [self._build_ds, self._build_ds_with_prefetch]:
+      self.run_core_tests(
+          ds_fn,
+          lambda: ds_fn(multiplier=15.0),
+          self._num_outputs)
+
+  def testSaveStatefulFunction(self):
+
+    def _build_ds():
+
+      def _map_fn(x):
+        return random_ops.random_uniform(
+            (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
+
+      return contrib_dataset_ops.Dataset.range(100).map(_map_fn)
+
+    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+
+  def testCaptureVariableInMapFn(self):
+
+    def _build_ds():
+      counter_var = variable_scope.get_variable(
+          "counter", (), dtypes.int32, use_resource=True)
+      return (contrib_dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda _: counter_var.assign_add(1)))
+
+    self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
+
+  def testCaptureConstantInMapFn(self):
+
+    def _build_ds():
+      constant_var = constant_op.constant(5)
+      return (contrib_dataset_ops.Dataset.from_tensors(0).repeat(10).map(
+          lambda x: x + constant_var))
+
+    self.run_core_tests(_build_ds, None, 10)
+
+  def testCaptureDefunInMapFn(self):
+    num_outputs = 100
+
+    def _build_ds():
+
+      @function.Defun(dtypes.int64)
+      def defun_fn(x):
+        return constant_op.constant(1000) + math_ops.to_int32(x)
+
+      return contrib_dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+
+    self.run_core_tests(_build_ds, None, num_outputs)
+
+  def testBuildDefunInMapFn(self):
+    num_outputs = 100
+
+    def _build_ds():
+
+      @function.Defun(dtypes.int64)
+      def defun_fn(x):
+
+        @function.Defun(dtypes.int32)
+        def defun_fn_deep(x):
+          return constant_op.constant(1000) + math_ops.to_int32(x)
+
+        return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
+
+      return contrib_dataset_ops.Dataset.range(num_outputs).map(defun_fn)
 
     self.run_core_tests(_build_ds, None, num_outputs)
 
@@ -785,7 +910,7 @@ class IgnoreErrorsSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
   def _build_ds(self, components):
-    return dataset_ops.Dataset.from_tensor_slices(components).map(
+    return contrib_dataset_ops.Dataset.from_tensor_slices(components).map(
         lambda x: array_ops.check_numerics(x, "message")).apply(
             error_ops.ignore_errors())
 
