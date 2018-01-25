@@ -28,6 +28,7 @@ cc_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
+        "//third_party/eigen3",
     ],
 )
 
