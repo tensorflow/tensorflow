@@ -278,9 +278,9 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._checkpoint_and_export = checkpoint_and_export
     self._saving_listeners = saving_listeners
-    self.early_stopping_metric = early_stopping_metric
-    self.early_stopping_rounds = early_stopping_rounds,
-    self.early_stopping_metric_minimize = early_stopping_metric_minimize
+    self._early_stopping_metric = early_stopping_metric
+    self._early_stopping_rounds = early_stopping_rounds,
+    self._early_stopping_metric_minimize = early_stopping_metric_minimize
     # Using 1 on a non-cached file system requires a lot of overhead to
     # read the checkpoint state file. This is particular bad on GCS, so
     # we use a different default. This is a temporary band-aid, to be
@@ -678,9 +678,9 @@ class Experiment(object):
                   every_n_steps=self._min_eval_frequency,
                   name=eval_dir_suffix,
                   hooks=self._eval_hooks,
-                  early_stopping_rounds=self.early_stopping_rounds,
-                  early_stopping_metric=self.early_stopping_metric,
-                  early_stopping_metric_minimize=self.early_stopping_metric_minimize)
+                  early_stopping_rounds=self._early_stopping_rounds,
+                  early_stopping_metric=self._early_stopping_metric,
+                  early_stopping_metric_minimize=self._early_stopping_metric_minimize)
           ]
       self.train(delay_secs=0)
 
