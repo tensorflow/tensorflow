@@ -156,7 +156,6 @@ static void GetTopN(const float* prediction,
     std::unique_ptr<tflite::FlatBufferModel> model(tflite::FlatBufferModel::BuildFromFile([graph_path fileSystemRepresentation]));
     NSAssert(model, @"Failed to mmap model %@", graph_path);
 
-    NSLog(@"Loaded model %@.", graph);
     model->error_reporter();
     NSLog(@"Resolved reporter.");
 
