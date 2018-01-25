@@ -146,8 +146,14 @@ tensorflow::Status SegmentGraph(
     node_segments.emplace_back(node);
   }
 
-  // Visit nodes in reverse topological order and use edge
-  // contraction to merge candidate nodes.
+  // The segmentation algorithm below visits nodes in reverse
+  // topological order and attempts to merge nodes along output
+  // edges. That means that subgraphs grow from the output-side of the
+  // network towards the inputs. In general this is not guaranteed to
+  // produce a globally optimal segmentation. In the future if we have
+  // a measure of how beneficial it is to include a given node in a
+  // TRT subgraph then we can revisit this algorithm to take advantage
+  // of that information.
   std::vector<tensorflow::Node*> order;
   tensorflow::GetPostOrder(graph, &order);
 
