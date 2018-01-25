@@ -22,6 +22,7 @@ PYTHON_LITERALS = {
     'None': None,
     'False': False,
     'True': True,
+    'float': float,
 }
 
 DEFAULT_UNCOMPILED_MODULES = set((

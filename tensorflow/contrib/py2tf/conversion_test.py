@@ -26,20 +26,23 @@ from tensorflow.python.platform import test
 
 class ConversionTest(test.TestCase):
 
-  def test_object_to_graph_unsupported_types(self):
+  def test_entity_to_graph_unsupported_types(self):
     with self.assertRaises(ValueError):
-      conversion.object_to_graph('dummy', None, {})
+      conversion_map = conversion.ConversionMap(True, (), ())
+      conversion.entity_to_graph('dummy', conversion_map, None, None)
 
-  def test_object_to_graph_callable(self):
+  def test_entity_to_graph_callable(self):
+
     def f(a):
       return a
 
     conversion_map = conversion.ConversionMap(True, (), ())
-    ast, new_name = conversion.object_to_graph(f, conversion_map, {})
+    ast, new_name = conversion.entity_to_graph(f, conversion_map, None, None)
     self.assertTrue(isinstance(ast, gast.FunctionDef), ast)
     self.assertEqual('tf__f', new_name)
 
-  def test_object_to_graph_call_tree(self):
+  def test_entity_to_graph_call_tree(self):
+
     def g(a):
       return a
 
@@ -47,7 +50,7 @@ class ConversionTest(test.TestCase):
       return g(a)
 
     conversion_map = conversion.ConversionMap(True, (), ())
-    conversion.object_to_graph(f, conversion_map, {})
+    conversion.entity_to_graph(f, conversion_map, None, None)
 
     self.assertTrue(f in conversion_map.dependency_cache)
     self.assertTrue(g in conversion_map.dependency_cache)
