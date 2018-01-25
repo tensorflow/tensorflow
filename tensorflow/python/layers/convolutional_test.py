@@ -32,7 +32,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-
+from tensorflow import placeholder, float32
 
 @test_util.with_c_api
 class ConvTest(test.TestCase):
@@ -770,6 +770,11 @@ class Conv2DTransposeTest(test.TestCase):
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 32, 4])
     self.assertListEqual(layer.bias.get_shape().as_list(), [32])
 
+  def testCreateConv2DTransposeUndefinedInputShape(self):
+    layer = conv_layers.Conv2DTranspose(4,3,activation=nn_ops.relu)
+    inputPlaceholder = placeholder(float32,shape=[1,None,None,1],name='input')
+    output = layer.apply(inputPlaceholder)
+
   def testConv2DTransposeFloat16(self):
     height, width = 7, 9
     images = random_ops.random_uniform((5, height, width, 4), dtype='float16')
@@ -955,6 +960,11 @@ class Conv3DTransposeTest(test.TestCase):
                          [5, depth + 2, height + 2, width + 2, 4])
     self.assertListEqual(layer.kernel.get_shape().as_list(), [3, 3, 3, 4, 32])
     self.assertListEqual(layer.bias.get_shape().as_list(), [4])
+
+  def testCreateConv3DTransposeUndefinedInputShape(self):
+    layer = conv_layers.Conv3DTranspose(4,3,activation=nn_ops.relu)
+    inputPlaceholder = placeholder(float32,shape=[1,None,None,None,1],name='input')
+    output = layer.apply(inputPlaceholder)
 
   def testCreateConv3DTransposeIntegerKernelSize(self):
     depth, height, width = 5, 7, 9
