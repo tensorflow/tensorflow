@@ -48,6 +48,15 @@ class MockNodeClass(object):
     return MockRequestClass(name, self._tpu_map)
 
 
+def mock_request_compute_metadata(cls, *args, **kwargs):
+  del cls, kwargs  # Unused.
+  if args[0] == '/project/project-id':
+    return 'test-project'
+  elif args[0] == '/instance/zone':
+    return 'projects/test-project/locations/us-central1-c'
+  return ''
+
+
 class TPUClusterResolverTest(test.TestCase):
 
   def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
@@ -88,6 +97,30 @@ class TPUClusterResolverTest(test.TestCase):
     mock_client.projects.return_value = mock_project
 
     return mock_client
+
+  @mock.patch.object(TPUClusterResolver,
+                     '_requestComputeMetadata',
+                     mock_request_compute_metadata)
+  def testRetrieveProjectAndZoneFromMetadata(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470'
+        }
+    }
+
+    tpu_cluster_resolver = TPUClusterResolver(
+        project=None,
+        zone=None,
+        tpu_names=['test-tpu-1'],
+        credentials=None,
+        service=self.mock_service_client(tpu_map=tpu_map))
+
+    actual_cluster_spec = tpu_cluster_resolver.cluster_spec()
+    expected_proto = """
+    job { name: 'tpu_worker' tasks { key: 0 value: '10.1.2.3:8470' } }
+    """
+    self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
   def testSimpleSuccessfulRetrieval(self):
     tpu_map = {

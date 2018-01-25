@@ -80,18 +80,25 @@ TEST_F(ConstantFoldingTest, SimpleFolding) {
 TEST_F(ConstantFoldingTest, AddTree) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
-  Output c1 = ops::Const(s.WithOpName("c1"), 2.0f, {1});
   Output c2 = ops::Const(s.WithOpName("c2"), 2.0f, {2});
-  Output c4 = ops::Const(s.WithOpName("c4"), 4.0f, {2});
+  Output c3 = ops::Const(s.WithOpName("c3"), 3.0f, {2});
   Output x = ops::Placeholder(s.WithOpName("x"), DT_FLOAT,
                               ops::Placeholder::Shape(TensorShape({2, 2})));
   Output add_child = ops::Add(s.WithOpName("add_child"), c2, x);
+  Output c1 = ops::Const(s.WithOpName("c1").WithControlDependencies(add_child),
+                         1.0f, {1});
   Output add_parent = ops::Add(s.WithOpName("add_parent"), c1, add_child);
-  Output mul_child = ops::Mul(s.WithOpName("mul_child"), c2, x);
-  Output mul_parent = ops::Mul(s.WithOpName("mul_parent"), c1, mul_child);
-  Output addmul_child = ops::Add(s.WithOpName("addmul_child"), c2, x);
+
+  Output y = ops::Placeholder(s.WithOpName("y"), DT_FLOAT,
+                              ops::Placeholder::Shape(TensorShape({2, 2})));
+  Output c4 = ops::Const(s.WithOpName("c4"), 4.0f, {2});
+  Output c5 = ops::Const(s.WithOpName("c5"), 5.0f, {2});
+  Output c20 = ops::Const(s.WithOpName("c20"), 20.0f, {2});
+  Output mul_child = ops::Mul(s.WithOpName("mul_child"), c4, y);
+  Output mul_parent = ops::Mul(s.WithOpName("mul_parent"), c5, mul_child);
+  Output addmul_child = ops::Add(s.WithOpName("addmul_child"), c4, x);
   Output addmul_parent =
-      ops::Mul(s.WithOpName("addmul_parent"), c1, addmul_child);
+      ops::Mul(s.WithOpName("addmul_parent"), c5, addmul_child);
 
   GrapplerItem item;
   item.fetch = {"add_parent", "mul_parent", "addmul_parent"};
@@ -102,15 +109,21 @@ TEST_F(ConstantFoldingTest, AddTree) {
   Status status = fold.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
 
-  EXPECT_EQ(9, output.node_size());
-
-  // We expect the following rewrite(s) to occur (for both Add and Mul):
+  // We expect the following rewrite(s) to occur:
+  //
   //    +                +             +
   //   / \              / \           / \
-  // 2.0   +     -->   x   +    -->  x  4.0
-  //      / \             / \
-  //    2.0  x          2.0 2.0
+  // 1.0  +     -->    x   +    -->  x  3.0
+  //     / \              / \
+  //   2.0  x           1.0 2.0
+  //
+  //    *                *             *
+  //   / \              / \           / \
+  // 4.0  *     -->    y   *    -->  y  20.0
+  //     / \              / \
+  //   5.0  y           4.0 5.0
 
+  EXPECT_EQ(11, output.node_size());
   for (const auto& node : output.node()) {
     if (node.name() == "add_child") {
       EXPECT_EQ("Const", node.op());
@@ -130,26 +143,26 @@ TEST_F(ConstantFoldingTest, AddTree) {
     } else if (node.name() == "mul_parent") {
       EXPECT_EQ("Mul", node.op());
       EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(0));
       EXPECT_EQ("mul_child", node.input(1));
     } else if (node.name() == "addmul_child") {
       // Unchanged.
       EXPECT_EQ("Add", node.op());
       EXPECT_EQ(2, node.input_size());
-      EXPECT_EQ("c2", node.input(0));
+      EXPECT_EQ("c4", node.input(0));
       EXPECT_EQ("x", node.input(1));
     }
   }
 
-  // Check that the reciprocals have the expected value.
-  std::vector<string> fetch = {"c4"};
+  // Check that the result nodes have the expected value.
+  std::vector<string> fetch = {"c3", "c20"};
   auto tensor_expected = EvaluateNodes(item.graph, fetch);
   EXPECT_EQ(fetch.size(), tensor_expected.size());
   fetch = {"add_child", "mul_child"};
   auto tensors = EvaluateNodes(output, fetch);
   EXPECT_EQ(fetch.size(), tensors.size());
   for (int i = 0; i < fetch.size(); i++) {
-    test::ExpectTensorEqual<float>(tensor_expected[0], tensors[i]);
+    test::ExpectTensorEqual<float>(tensor_expected[i], tensors[i]);
   }
 }
 

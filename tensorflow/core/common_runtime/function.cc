@@ -266,8 +266,14 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
 }
 
 FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {
+  // The most common patterns of FLR usage don't require the caller to
+  // explicitly release handles. As a result, we try to unref each item until
+  // it's erased.
   for (auto item : items_) {
-    if (item.second) item.second->Unref();
+    if (item.second) {
+      while (!item.second->Unref()) {
+      }
+    }
   }
 }
 
@@ -474,6 +480,8 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   const string key = Canonicalize(function_name, attrs, options_copy);
   *handle = parent_->GetHandle(key);
   if (*handle != kInvalidHandle) {
+    mutex_lock l(mu_);
+    items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
     return Status::OK();
   }
 
@@ -508,6 +516,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     *handle = parent_->GetHandle(key);
     if (*handle != kInvalidHandle) {
       delete fbody;
+      items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
     } else {
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;

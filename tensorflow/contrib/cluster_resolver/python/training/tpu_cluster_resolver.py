@@ -18,6 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+
+from six.moves.urllib.request import Request
+from six.moves.urllib.request import urlopen
+
 from tensorflow.contrib.cluster_resolver.python.training.cluster_resolver import ClusterResolver
 from tensorflow.python.training.server_lib import ClusterSpec
 
@@ -38,10 +42,16 @@ class TPUClusterResolver(ClusterResolver):
   Cloud Platform project.
   """
 
+  def _requestComputeMetadata(self, path):
+    req = Request('http://metadata/computeMetadata/v1/%s' % path,
+                  headers={'Metadata-Flavor': 'Google'})
+    resp = urlopen(req)
+    return resp.read()
+
   def __init__(self,
-               project,
-               zone,
                tpu_names,
+               zone=None,
+               project=None,
                job_name='tpu_worker',
                credentials='default',
                service=None):
@@ -51,9 +61,13 @@ class TPUClusterResolver(ClusterResolver):
     for the IP addresses and ports of each Cloud TPU listed.
 
     Args:
-      project: Name of the GCP project containing Cloud TPUs
-      zone: Zone where the TPUs are located
       tpu_names: A list of names of the target Cloud TPUs.
+      zone: Zone where the TPUs are located. If omitted or empty, we will assume
+        that the zone of the TPU is the same as the zone of the GCE VM, which we
+        will try to discover from the GCE metadata service.
+      project: Name of the GCP project containing Cloud TPUs. If omitted or
+        empty, we will try to discover the project name of the GCE VM from the
+        GCE metadata service.
       job_name: Name of the TensorFlow job the TPUs belong to.
       credentials: GCE Credentials. If None, then we use default credentials
         from the oauth2client
@@ -64,6 +78,13 @@ class TPUClusterResolver(ClusterResolver):
     Raises:
       ImportError: If the googleapiclient is not installed.
     """
+
+    if not project:
+      project = self._requestComputeMetadata('/project/project-id')
+
+    if not zone:
+      zone_path = self._requestComputeMetadata('/instance/zone')
+      zone = zone_path.split('/')[-1]
 
     self._project = project
     self._zone = zone

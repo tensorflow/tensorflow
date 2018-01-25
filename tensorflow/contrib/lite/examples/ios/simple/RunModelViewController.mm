@@ -29,13 +29,6 @@
 
 #include "ios_image_load.h"
 
-#define LOG(x) std::cerr
-#define CHECK(x)                  \
-  if (!(x)) {                     \
-    LOG(ERROR) << #x << "failed"; \
-    exit(1);                      \
-  }
-
 static void GetTopN(const float* prediction,
                     const int prediction_size,
                     const int num_results, const float threshold,
@@ -150,8 +143,8 @@ static void GetTopN(const float* prediction,
 - (NSString*)filePathForResourceName:(NSString*)name withExtension:(NSString*)extension {
     NSString* file_path = [[NSBundle mainBundle] pathForResource:name ofType:extension];
     if (!file_path) {
-        LOG(FATAL) << "Couldn't find '" << [name UTF8String] << "."
-        << [extension UTF8String] << "' in bundle.";
+        NSLog(@"Couldn't find '%@.%@' in bundle.", name, extension);
+        exit(-1);
     }
     return file_path;
 }
@@ -166,9 +159,10 @@ static void GetTopN(const float* prediction,
     std::unique_ptr<tflite::FlatBufferModel> model(tflite::FlatBufferModel::BuildFromFile([graph_path fileSystemRepresentation]));
     NSAssert(model, @"Failed to mmap model %@", graph_path);
 
-    LOG(INFO) << "Loaded model " << graph_path.UTF8String;
+    NSLog(@"Loaded model %@.", graph);
     model->error_reporter();
-    LOG(INFO) << "resolved reporter";
+    NSLog(@"Resolved reporter.");
+
 #ifdef TFLITE_CUSTOM_OPS_HEADER
     tflite::MutableOpResolver resolver;
     RegisterSelectedOps(&resolver);
@@ -178,9 +172,7 @@ static void GetTopN(const float* prediction,
     
     std::unique_ptr<tflite::Interpreter> interpreter;
     tflite::InterpreterBuilder(*model, resolver)(&interpreter);
-    if (!interpreter) {
-        LOG(FATAL) << "Failed to construct interpreter";
-    }
+    NSAssert(interpreter, @"Failed to construct interpreter.");
     
     if (num_threads != -1) {
         interpreter->SetNumThreads(num_threads);
@@ -192,9 +184,7 @@ static void GetTopN(const float* prediction,
         interpreter->ResizeInputTensor(input, sizes);
     }
     
-    if (interpreter->AllocateTensors() != kTfLiteOk) {
-        LOG(FATAL) << "Failed to allocate tensors!";
-    }
+    NSAssert(interpreter->AllocateTensors() != kTfLiteOk, @"Failed to allocate tensors!");
     
     // Read the label list
     NSString* labels_path = [self filePathForResourceName:@"labels" withExtension:@"txt"];
@@ -237,9 +227,7 @@ static void GetTopN(const float* prediction,
         }
     }
     
-    if (interpreter->Invoke() != kTfLiteOk) {
-        LOG(FATAL) << "Failed to invoke!";
-    }
+    NSAssert(interpreter->Invoke() != kTfLiteOk, @"Failed to invoke!");
     
     float* output = interpreter->typed_output_tensor<float>(0);
     const int output_size = 1000;
@@ -268,16 +256,15 @@ static void GetTopN(const float* prediction,
         ss << "\n";
     }
     
-    LOG(INFO) << "Predictions: " << ss.str();
-    
     std::string predictions = ss.str();
     NSString* result = @"";
     result = [NSString stringWithFormat: @"%@ - %s", result,
               predictions.c_str()];
     
+  NSLog(@"Predictions: %@", result);
+      
     return result;
 }
-
 @end
 
 // Returns the top N confidence values over threshold in the provided vector,

@@ -100,6 +100,7 @@ class ShuffleDatasetOpBase : public UnaryDatasetOpKernel {
             TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &input_element,
                                                     &end_of_input_sequence));
             if (!end_of_input_sequence) {
+              first_call = false;
               break;
             }
             if (first_call && dataset()->count_ == -1) {

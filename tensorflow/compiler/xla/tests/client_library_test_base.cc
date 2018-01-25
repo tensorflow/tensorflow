@@ -387,7 +387,7 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
     return;
   }
   auto actual = actual_status.ConsumeValueOrDie();
-  LiteralTestUtil::ExpectEqualTuple(expected, *actual);
+  LiteralTestUtil::ExpectEqual(expected, *actual);
 }
 
 void ClientLibraryTestBase::ComputeAndCompareTuple(
@@ -399,7 +399,7 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
     return;
   }
   auto actual = actual_status.ConsumeValueOrDie();
-  LiteralTestUtil::ExpectNearTuple(expected, *actual, error);
+  LiteralTestUtil::ExpectNear(expected, *actual, error);
 }
 
 void ClientLibraryTestBase::ComputeAndCompare(
@@ -526,6 +526,15 @@ std::unique_ptr<GlobalData>
 ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     int64 parameter_number, const Literal& literal, const string& name,
     ComputationBuilder* builder, ComputationDataHandle* data_handle) {
+  return CreateParameterAndTransferLiteral(parameter_number, literal, name,
+                                           nullptr, builder, data_handle);
+}
+
+std::unique_ptr<GlobalData>
+ClientLibraryTestBase::CreateParameterAndTransferLiteral(
+    int64 parameter_number, const Literal& literal, const string& name,
+    const DeviceHandle* device_handle, ComputationBuilder* builder,
+    ComputationDataHandle* data_handle) {
   const Literal* param_literal = &literal;
   std::unique_ptr<Literal> converted_literal;
   if (use_bfloat16_) {
@@ -533,7 +542,8 @@ ClientLibraryTestBase::CreateParameterAndTransferLiteral(
     param_literal = converted_literal.get();
   }
   std::unique_ptr<GlobalData> data =
-      client_->TransferToServer(*param_literal).ConsumeValueOrDie();
+      client_->TransferToServer(*param_literal, device_handle)
+          .ConsumeValueOrDie();
   *data_handle =
       builder->Parameter(parameter_number, param_literal->shape(), name);
   return data;

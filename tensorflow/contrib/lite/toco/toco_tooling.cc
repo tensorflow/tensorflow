@@ -52,6 +52,8 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertTrivialTransposeToReshape);
+  transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
@@ -68,9 +70,12 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);
+  transformations->Add(new ResolveConstantRange);
+  transformations->Add(new ResolveConstantStack);
+  transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
-  transformations->Add(new ResolveTensorFlowSqueeze);
+  transformations->Add(new ResolveSqueezeAttributes);
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
@@ -86,13 +91,12 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveSliceAttributes);
   transformations->Add(new ResolveMeanAttributes);
   transformations->Add(new ResolveTransposeAttributes);
-  transformations->Add(new ResolveConstantTensorFlowShape);
+  transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
 }
 
 bool SupportsQuantization(FileFormat format) {
   return (format == GRAPHVIZ_DOT || format == TFLITE);
-  ;
 }
 
 bool SupportsFusedActivationFunction(FileFormat format) {
@@ -129,7 +133,7 @@ void SetFinalDataTypeOnInputs(const TocoFlags& toco_flags, Model* model) {
 
   for (int i = 0; i < model->flags.input_arrays_size(); i++) {
     string const& array_name = model->flags.input_arrays(i).name();
-    auto* array = model->arrays[array_name].get();
+    auto* array = &model->GetArray(array_name);
     // Note that the notion of changing data types only applies to real-numbers
     // arrays (see the documentation for inference_input_type).
     // TODO(benoitjacob) this is assuming that uint8 arrays are quantized,

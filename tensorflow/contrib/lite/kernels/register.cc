@@ -41,11 +41,14 @@ TfLiteRegistration* Register_SOFTMAX();
 TfLiteRegistration* Register_CONCATENATION();
 TfLiteRegistration* Register_ADD();
 TfLiteRegistration* Register_SPACE_TO_BATCH_ND();
+TfLiteRegistration* Register_DIV();
+TfLiteRegistration* Register_SUB();
 TfLiteRegistration* Register_BATCH_TO_SPACE_ND();
 TfLiteRegistration* Register_MUL();
 TfLiteRegistration* Register_L2_NORMALIZATION();
 TfLiteRegistration* Register_LOCAL_RESPONSE_NORMALIZATION();
 TfLiteRegistration* Register_LSTM();
+TfLiteRegistration* Register_UNIDIRECTIONAL_SEQUENCE_LSTM();
 TfLiteRegistration* Register_PAD();
 TfLiteRegistration* Register_RESHAPE();
 TfLiteRegistration* Register_RESIZE_BILINEAR();
@@ -54,6 +57,8 @@ TfLiteRegistration* Register_SPACE_TO_DEPTH();
 TfLiteRegistration* Register_GATHER();
 TfLiteRegistration* Register_TRANSPOSE();
 TfLiteRegistration* Register_MEAN();
+TfLiteRegistration* Register_SQUEEZE();
+TfLiteRegistration* Register_STRIDED_SLICE();
 
 BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU, Register_RELU());
@@ -86,6 +91,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION,
              Register_LOCAL_RESPONSE_NORMALIZATION());
   AddBuiltin(BuiltinOperator_LSTM, Register_LSTM());
+  AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
+             Register_UNIDIRECTIONAL_SEQUENCE_LSTM());
   AddBuiltin(BuiltinOperator_PAD, Register_PAD());
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR());
@@ -94,6 +101,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_GATHER, Register_GATHER());
   AddBuiltin(BuiltinOperator_TRANSPOSE, Register_TRANSPOSE());
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
+  AddBuiltin(BuiltinOperator_DIV, Register_DIV());
+  AddBuiltin(BuiltinOperator_SUB, Register_SUB());
+  AddBuiltin(BuiltinOperator_SQUEEZE, Register_SQUEEZE());
+  AddBuiltin(BuiltinOperator_STRIDED_SLICE, Register_STRIDED_SLICE());
 }
 
 TfLiteRegistration* BuiltinOpResolver::FindOp(

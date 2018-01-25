@@ -43,7 +43,7 @@ limitations under the License.
 using mkldnn::lrn_forward;
 using mkldnn::lrn_backward;
 using mkldnn::prop_kind;
-using mkldnn::algorithm::lrn_across_channels;
+using mkldnn::lrn_across_channels;
 using mkldnn::stream;
 #endif
 

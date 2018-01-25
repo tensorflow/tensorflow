@@ -1857,6 +1857,25 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], end.get_shape().as_list())
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
 
+  def testDefaultMinObjectCovered(self):
+    # By default min_object_covered=0.1 if not provided
+    with self.test_session(use_gpu=True):
+      image_size = constant_op.constant(
+          [40, 50, 1], shape=[3], dtype=dtypes.int32)
+      bounding_box = constant_op.constant(
+          [0.0, 0.0, 1.0, 1.0],
+          shape=[4],
+          dtype=dtypes.float32,)
+      begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
+          image_size=image_size,
+          bounding_boxes=bounding_box,
+          aspect_ratio_range=(0.75, 1.33),
+          area_range=(0.05, 1.0))
+
+      self.assertAllEqual([3], begin.get_shape().as_list())
+      self.assertAllEqual([3], end.get_shape().as_list())
+      self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+
 
 class ResizeImagesTest(test_util.TensorFlowTestCase):
 
@@ -2832,6 +2851,16 @@ class PngTest(test_util.TensorFlowTestCase):
 
 
 class GifTest(test_util.TensorFlowTestCase):
+
+  def testOptimizedGifErrorString(self):
+    filename = "tensorflow/core/lib/gif/testdata/optimized.gif"
+
+    with self.test_session(use_gpu=True) as sess:
+      gif = io_ops.read_file(filename)
+      image = image_ops.decode_gif(gif)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError, "can't process optimized gif"):
+        gif, image = sess.run([gif, image])
 
   def testValid(self):
     # Read some real GIFs

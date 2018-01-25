@@ -44,6 +44,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import template
 from tensorflow.python.ops import variable_scope
@@ -1291,6 +1292,17 @@ class ConvolutionInPlaneTest(test.TestCase):
 
       self.assertAllClose(result, expected, rtol=1e-5, atol=1e-5)
 
+
+class DenseToSparseTest(test.TestCase):
+
+  def testDenseFromConstantToSparse(self):
+    expected_constant = np.reshape(np.arange(24, dtype=np.int64), (3, 4, 2))
+    tensor = constant_op.constant(expected_constant)
+    sparse = _layers.dense_to_sparse(tensor)
+    dense = sparse_ops.sparse_to_dense(sparse.indices, sparse.dense_shape, sparse.values)
+    with self.test_session() as sess:
+      constant = sess.run(dense)
+      self.assertAllEqual(expected_constant, constant)
 
 class DropoutTest(test.TestCase):
 

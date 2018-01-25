@@ -24,6 +24,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
 
@@ -69,7 +70,7 @@ class Scope(object):
     raise KeyError(name)
 
 
-class TypeInfoResolver(gast.NodeTransformer):
+class TypeInfoResolver(transformer.Base):
   """Annotates symbols with type information where possible.
 
   Nodes currently annotated:
@@ -77,7 +78,8 @@ class TypeInfoResolver(gast.NodeTransformer):
     * Attribute (helps resolve object methods)
   """
 
-  def __init__(self, value_hints):
+  def __init__(self, value_hints, source, f):
+    super(TypeInfoResolver, self).__init__(source, f)
     self.scope = Scope(None)
     self.value_hints = value_hints
     self.function_level = 0
@@ -120,8 +122,9 @@ class TypeInfoResolver(gast.NodeTransformer):
     self.generic_visit(node)
     if isinstance(node.ctx, gast.Param):
       self.scope.setval(node.id, gast.Name(node.id, gast.Load(), None))
-      if (self.function_level == 1 and self.value_hints is not None and
-          node.id in self.value_hints):
+      # TODO(mdan): Member functions should not need type hints.
+      # We could attemp to extract im_class from the live_val annotation.
+      if self.function_level == 1 and node.id in self.value_hints:
         # Forge a node to hold the type information, so that method calls on
         # it can resolve the type.
         type_holder = gast.Name(node.id, gast.Load(), None)
@@ -137,7 +140,7 @@ class TypeInfoResolver(gast.NodeTransformer):
       if anno.hasanno(func, 'live_val'):
         func_obj = anno.getanno(func, 'live_val')
         if tf_inspect.isclass(func_obj):
-          # This is then a constructor.
+          anno.setanno(source, 'is_constructor', True)
           anno.setanno(source, 'type', func_obj)
           anno.setanno(source, 'type_fqn', anno.getanno(func, 'fqn'))
           # TODO(mdan): Raise an error if constructor has side effects.
@@ -150,8 +153,15 @@ class TypeInfoResolver(gast.NodeTransformer):
           self.scope.setval(e.id,
                             gast.Subscript(
                                 source, gast.Index(i), ctx=gast.Store()))
-      else:
+      elif isinstance(t, gast.Name):
         self.scope.setval(t.id, source)
+      elif isinstance(t, gast.Attribute):
+        if not (isinstance(t.value, gast.Name) and t.value.id == 'self'):
+          raise ValueError(
+              'Dont know how to handle assignment to attributes of objects'
+              ' other than "self": [%s].%s' % (t.value, t.attr))
+      else:
+        raise ValueError('Dont know how to handle assignment to %s' % t)
 
   def visit_With(self, node):
     for wi in node.items:
@@ -187,6 +197,7 @@ class TypeInfoResolver(gast.NodeTransformer):
         if not anno.hasanno(object_source, 'type'):
           raise ValueError('Could not determine type of "%s". Is it dynamic?' %
                            (target.value.id))
+        anno.setanno(target, 'type', anno.getanno(object_source, 'type'))
         anno.setanno(target, 'type_fqn', anno.getanno(object_source,
                                                       'type_fqn'))
       else:
@@ -197,5 +208,6 @@ class TypeInfoResolver(gast.NodeTransformer):
     return node
 
 
-def resolve(node, value_hints):
-  return TypeInfoResolver(value_hints).visit(node)
+def resolve(node, source, f, value_hints):
+  assert value_hints is not None
+  return TypeInfoResolver(value_hints, source, f).visit(node)

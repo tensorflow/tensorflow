@@ -58,6 +58,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_constant_folding.h"
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
+#include "tensorflow/compiler/xla/service/hlo_element_type_converter.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
@@ -99,7 +100,6 @@ namespace gpu {
 namespace {
 
 using tensorflow::port::Tracing;
-using tensorflow::strings::StrCat;
 
 // Returns the directory containing nvvm libdevice files.  config_cuda_data_dir
 // should be equal to config().debug_options().xla_gpu_cuda_data_dir() of the
@@ -138,6 +138,10 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module) {
 
     // TODO(b/64094172): make Call work on GPU instead of inlining.
     pipeline.AddPass<CallInliner>();
+    // Convert BF16 operations to F32 operations so that the GPU backend can
+    // support BF16 operations without directly implementing a BF16 lowering for
+    // most ops.
+    pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
     pipeline.AddPass<DotDecomposer>();
     {
       auto& pass =
@@ -271,25 +275,27 @@ void WarnIfBadPtxasVersion(const string& ptxas_path) {
 
   int64 vmaj, vmin, vdot;
   string vmaj_str, vmin_str, vdot_str;
-  using tensorflow::strings::safe_strto64;
   if (!RE2::PartialMatch(out, R"(\bV(\d+)\.(\d+)\.(\d+)\b)", &vmaj_str,
                          &vmin_str, &vdot_str) ||
-      !safe_strto64(vmaj_str, &vmaj) || !safe_strto64(vmin_str, &vmin) ||
-      !safe_strto64(vdot_str, &vdot)) {
+      !tensorflow::strings::safe_strto64(vmaj_str, &vmaj) ||
+      !tensorflow::strings::safe_strto64(vmin_str, &vmin) ||
+      !tensorflow::strings::safe_strto64(vdot_str, &vdot)) {
     LOG(WARNING) << "Couldn't parse ptxas version in output of " << ptxas_path
                  << " --version:\n"
                  << out;
     return;
   }
 
-  // ptxas 9.0 before 9.0.276 miscompiles some address calculations with large
-  // offsets (e.g. "load ptr + large_constant"), b/70245379.
-  if (vmaj == 9 && vmin == 0 && vdot < 276) {
+  // ptxas 9.0 before 9.0.276 and ptxas 9.1 before 9.1.121 miscompile some
+  // address calculations with large offsets (e.g. "load ptr + large_constant"),
+  // b/70245379.
+  if ((vmaj == 9 && vmin == 0 && vdot < 276) ||
+      (vmaj == 9 && vmin == 1 && vdot < 121)) {
     LOG(WARNING) << "*** WARNING *** You are using ptxas " << vmaj << "."
                  << vmin << "." << vdot
-                 << ", which is in range [9.0.0, 9.0.276). These versions are "
-                    "known to miscompile XLA code, leading to incorrect "
-                    "results or invalid-address errors.";
+                 << ", which is in range [9.0.0, 9.0.276) + [9.1.0, 9.1.121). "
+                    "These versions are known to miscompile XLA code, leading "
+                    "to incorrect results or invalid-address errors.";
   }
 }
 
@@ -310,16 +316,24 @@ void WarnIfBadDriverJITVersion() {
     }
     se::cuda::DriverVersion version = version_or_status.ValueOrDie();
 
-    // The driver JIT in 384 before 384.108 miscompiles some address
+    // The following versions of the driver JIT miscompile some address
     // calculations with large offsets (e.g. "load ptr + large_constant"),
-    // b/70245379.
-    if (std::get<0>(version) == 384 && std::get<1>(version) < 108) {
+    // b/70245379:
+    //
+    //  - 384.x before 384.108
+    //  - 387.x before 387.40
+    //  - 390.x before 390.10.
+    auto vmaj = std::get<0>(version);
+    auto vmin = std::get<1>(version);
+    if ((vmaj == 384 && vmin < 108) ||  //
+        (vmaj == 387 && vmin < 40) ||   //
+        (vmaj == 390 && vmin < 10)) {
       LOG(WARNING)
           << "*** WARNING *** Invoking the PTX->SASS JIT from driver version "
           << se::cuda::DriverVersionToString(version)
-          << ", which is in range [384.0.0, 384.108.0). These versions are "
-             "known to miscompile XLA code, leading to incorrect results or "
-             "invalid-address errors.";
+          << ", which is in range [384.0.0, 384.108.0) + [387.0.0, 387.40.0) + "
+             "[390.0.0, 390.10.0). These versions are known to miscompile XLA "
+             "code, leading to incorrect results or invalid-address errors.";
     }
   });
 }
@@ -360,8 +374,9 @@ StatusOr<std::vector<uint8>> CompilePtx(const string& ptx, int cc_major,
     tensorflow::Env::Default()->DeleteFile(cubin_path).IgnoreError();
   });
   tensorflow::SubProcess ptxas_info_dumper;
-  std::vector<string> ptxas_args = {ptxas_path, ptx_path, "-o", cubin_path,
-                                    StrCat("-arch=sm_", cc_major, cc_minor)};
+  std::vector<string> ptxas_args = {
+      ptxas_path, ptx_path, "-o", cubin_path,
+      tensorflow::strings::StrCat("-arch=sm_", cc_major, cc_minor)};
   if (VLOG_IS_ON(2)) {
     ptxas_args.push_back("-v");
   }
@@ -555,7 +570,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   // Write PTX to IR dump directory, if IR dumping was requested.
   if (!ir_dump_directory.empty()) {
     const string ptx_outfile = tensorflow::io::JoinPath(
-        ir_dump_directory, StrCat(module->name(), ".ptx"));
+        ir_dump_directory, tensorflow::strings::StrCat(module->name(), ".ptx"));
     auto status = [&] {
       auto* env = tensorflow::Env::Default();
       TF_RETURN_IF_ERROR(env->RecursivelyCreateDir(ir_dump_directory));

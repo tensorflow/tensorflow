@@ -137,11 +137,31 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     self._batch_size = array_ops.shape(layer_collection.losses[0].inputs)[0]
     self._losses = layer_collection.losses
 
-    self.cov_update_op = self._fisher_est.cov_update_op
-    self.inv_update_op = self._fisher_est.inv_update_op
-    self.inv_updates_dict = self._fisher_est.inv_updates_dict
-
     super(KfacOptimizer, self).__init__(learning_rate, name=name)
+
+  @property
+  def cov_update_thunks(self):
+    return self._fisher_est.cov_update_thunks
+
+  @property
+  def cov_update_ops(self):
+    return self._fisher_est.cov_update_ops
+
+  @property
+  def cov_update_op(self):
+    return self._fisher_est.cov_update_op
+
+  @property
+  def inv_update_thunks(self):
+    return self._fisher_est.inv_update_thunks
+
+  @property
+  def inv_update_ops(self):
+    return self._fisher_est.inv_update_ops
+
+  @property
+  def inv_update_op(self):
+    return self._fisher_est.inv_update_op
 
   @property
   def variables(self):

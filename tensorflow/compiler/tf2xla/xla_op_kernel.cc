@@ -118,13 +118,36 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   std::iota(layout_indices.rbegin(), layout_indices.rend(), 0);
   xla::Layout layout = xla::LayoutUtil::MakeLayout(layout_indices);
 
+  xla::StatusOr<bool> is_constant = builder()->IsConstant(handle);
+  if (!is_constant.ok()) {
+    Status status = is_constant.status();
+    errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
+                            context_->op_kernel().type_string(),
+                            " operator as a compile-time constant.");
+    return status;
+  }
+
+  if (!is_constant.ValueOrDie()) {
+    return errors::InvalidArgument(
+        "Input ", index, " to ", context_->op_kernel().type_string(),
+        " operator must be a compile-time constant.\n"
+        "\n"
+        "XLA compilation requires that operator arguments that represent "
+        "shapes or dimensions be evaluated to concrete values at compile time. "
+        "This error means that a shape or dimension argument could not be "
+        "evaluated at compile time, usually because the value of the argument "
+        "depends on a parameter to the computation, on a variable, or on a "
+        "stateful operation such as a random number generator.");
+  }
+
   // Ask the XLA compiler to evaluate the data handle to a literal.
   xla::StatusOr<std::unique_ptr<xla::Literal>> computed =
       builder()->ComputeConstant(handle, &layout);
   if (!computed.ok()) {
-    return errors::InvalidArgument(
-        "Error evaluating ", context_->op_kernel().name(), " input ", index,
-        ": ", computed.status().error_message());
+    return errors::Internal("Error evaluating ", context_->op_kernel().name(),
+                            " input ", index,
+                            "as a compile-time constant.\nError: ",
+                            computed.status().error_message());
   }
   *constant_literal = std::move(*computed.ValueOrDie());
 
@@ -389,9 +412,19 @@ XlaCompiler* XlaOpKernelContext::compiler() const {
   return XlaContext::Get(context_).compiler();
 }
 
-void XlaOpKernelContext::CtxFailure(Status s) { context_->CtxFailure(s); }
-void XlaOpKernelContext::CtxFailureWithWarning(Status s) {
+void XlaOpKernelContext::CtxFailure(const Status& s) {
+  context_->CtxFailure(s);
+}
+void XlaOpKernelContext::CtxFailureWithWarning(const Status& s) {
   context_->CtxFailureWithWarning(s);
+}
+void XlaOpKernelContext::CtxFailure(const char* file, int line,
+                                    const Status& s) {
+  context_->CtxFailure(file, line, s);
+}
+void XlaOpKernelContext::CtxFailureWithWarning(const char* file, int line,
+                                               const Status& s) {
+  context_->CtxFailureWithWarning(file, line, s);
 }
 
 const xla::Computation* XlaOpKernelContext::GetOrCreateMax(

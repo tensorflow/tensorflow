@@ -35,6 +35,10 @@ int32_t Value(const TfLitePtrUnion& data, int index) {
   return data.i32[index];
 }
 template <>
+int64_t Value(const TfLitePtrUnion& data, int index) {
+  return data.i64[index];
+}
+template <>
 uint8_t Value(const TfLitePtrUnion& data, int index) {
   return data.uint8[index];
 }
@@ -67,6 +71,8 @@ class TfLiteDriver::Expectation {
         return TypedCheck<float>(verbose, tensor);
       case kTfLiteInt32:
         return TypedCheck<int32_t>(verbose, tensor);
+      case kTfLiteInt64:
+        return TypedCheck<int64_t>(verbose, tensor);
       case kTfLiteUInt8:
         return TypedCheck<uint8_t>(verbose, tensor);
       default:
@@ -175,6 +181,12 @@ void TfLiteDriver::SetInput(int id, const string& csv_values) {
       SetTensorData(values, &tensor->data);
       break;
     }
+    case kTfLiteInt64: {
+      const auto& values = testing::Split<int64_t>(csv_values, ",");
+      if (!CheckSizes<int64_t>(tensor->bytes, values.size())) return;
+      SetTensorData(values, &tensor->data);
+      break;
+    }
     case kTfLiteUInt8: {
       const auto& values = testing::Split<uint8_t>(csv_values, ",");
       if (!CheckSizes<uint8_t>(tensor->bytes, values.size())) return;
@@ -198,6 +210,9 @@ void TfLiteDriver::SetExpectation(int id, const string& csv_values) {
       break;
     case kTfLiteInt32:
       expected_output_[id]->SetData<int32_t>(csv_values);
+      break;
+    case kTfLiteInt64:
+      expected_output_[id]->SetData<int64_t>(csv_values);
       break;
     case kTfLiteUInt8:
       expected_output_[id]->SetData<uint8_t>(csv_values);
