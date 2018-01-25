@@ -63,3 +63,23 @@ class SlideDataset(dataset_ops.Dataset):
   @property
   def output_types(self):
     return self._input_dataset.output_types
+
+
+def sliding_window_batch(slide_size, slide_step=1):
+  """A sliding window.
+
+  Args:
+    slide_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+      elements in the window.
+    slide_step: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing
+      the steps moving forward for one iteration. The default is `1`. It
+      must be in [1, `slide_size`).
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    @{tf.contrib.data.Dataset.apply}.
+  """
+  def _apply_fn(dataset):
+    return SlideDataset(dataset, slide_size, slide_step)
+
+  return _apply_fn

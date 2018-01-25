@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.contrib.data.python.ops import sliding
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
@@ -47,7 +48,8 @@ class SlideDatasetTest(test.TestCase):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
     iterator = (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
-                .repeat(count).slide(slide_size, slide_step)
+                .repeat(count)
+                .apply(sliding.sliding_window_batch(slide_size, slide_step))
                 .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -121,8 +123,8 @@ class SlideDatasetTest(test.TestCase):
       return sparse_tensor.SparseTensorValue(
         indices=[[0]], values=(i * [1]), dense_shape=[1])
 
-    iterator = dataset_ops.Dataset.range(10).map(_sparse).slide(
-      5, 3).make_initializable_iterator()
+    iterator = dataset_ops.Dataset.range(10).map(_sparse).apply(
+      sliding.sliding_window_batch(5, 3)).make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -149,8 +151,8 @@ class SlideDatasetTest(test.TestCase):
         values=array_ops.fill([math_ops.to_int32(i)], i),
         dense_shape=[i])
 
-    iterator = dataset_ops.Dataset.range(10).map(_sparse).slide(
-      5, 3).make_initializable_iterator()
+    iterator = dataset_ops.Dataset.range(10).map(_sparse).apply(
+      sliding.sliding_window_batch(5, 3)).make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -180,8 +182,9 @@ class SlideDatasetTest(test.TestCase):
       return sparse_tensor.SparseTensorValue(
         indices=[[0]], values=(i * [1]), dense_shape=[1])
 
-    iterator = dataset_ops.Dataset.range(10).map(_sparse).slide(4, 2).slide(
-      3, 1).make_initializable_iterator()
+    iterator = dataset_ops.Dataset.range(10).map(_sparse).apply(
+      sliding.sliding_window_batch(4, 2)).apply(
+      sliding.sliding_window_batch(3, 1)).make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -218,7 +221,7 @@ class SlideDatasetTest(test.TestCase):
 
     iterator = (dataset_ops.Dataset.from_generator(generator, dtypes.float32,
                                                    output_shapes=[None])
-                .slide(3, 1)
+                .apply(sliding.sliding_window_batch(3, 1))
                 .make_initializable_iterator())
     next_element = iterator.get_next()
 
