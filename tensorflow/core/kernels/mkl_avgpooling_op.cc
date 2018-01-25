@@ -24,7 +24,7 @@
 
 #include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 using mkldnn::memory;
 using mkldnn::error;
@@ -40,8 +40,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-// For now, MKL-ML is default. So making MKL-DNN not a default choice.
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 template <typename Device, typename T>
 class MklAvgPoolingOp : public OpKernel {
@@ -429,7 +428,7 @@ class MklAvgPoolingGradOp : public OpKernel {
 };  // MklAvgPoolingGradOp
 
 
-#else  // INTEL_MKL_DNN is defined
+#else
 
 template <typename Device, typename T>
 class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
@@ -712,7 +711,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
 
 
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
 REGISTER_KERNEL_BUILDER(Name("_MklAvgPool")
                             .Device(DEVICE_CPU)

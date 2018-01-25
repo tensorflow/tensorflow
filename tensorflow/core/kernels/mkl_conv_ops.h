@@ -40,7 +40,7 @@ limitations under the License.
 
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
 using mkldnn::stream;
@@ -52,7 +52,7 @@ using mkldnn::convolution_direct;
 
 namespace tensorflow {
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 
 class MklDnnConvUtil {
  protected:
@@ -563,7 +563,7 @@ class MklConv2DBackpropCommonOp :  public OpKernel {
   Padding padding_;
   TensorFormat data_format_;
 };
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
 /////////////////////////////////////////////////////////////////////
 ///  Dummy Mkl op that is just used for operators that are intermediate

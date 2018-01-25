@@ -44,7 +44,7 @@ limitations under the License.
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
 using mkldnn::stream;
@@ -56,7 +56,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 template <typename Device, class T>
 class MklConv2DCustomBackpropInputOp : public OpKernel {
@@ -498,7 +498,7 @@ class MklConv2DCustomBackpropInputOp :
   }
 };
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
 #define REGISTER_MKL_CPU_KERNELS(T)                                 \
   REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropInput")           \

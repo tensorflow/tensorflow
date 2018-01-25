@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/util/work_sharder.h"
 #endif
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 using mkldnn::lrn_forward;
 using mkldnn::lrn_backward;
@@ -67,7 +67,7 @@ void GetBandMatrix(int depth, int depth_radius,
 
 }  // namespace
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 template <typename T>
 class MklLRNOp : public OpKernel {
@@ -1379,7 +1379,7 @@ class MklLRNGradOp : public OpKernel {
   float beta_;
 };
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
 #define REGISTER_MKL_LRN_CPU(T)                                     \
   REGISTER_KERNEL_BUILDER(Name("_MklLRN")                           \

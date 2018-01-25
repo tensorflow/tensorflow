@@ -28,7 +28,7 @@ limitations under the License.
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
 using mkldnn::stream;
@@ -58,7 +58,7 @@ struct MklReluHelpers {
   }
 };
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 template <typename Device, typename T>
 class MklReluOp : public OpKernel {
@@ -368,7 +368,7 @@ void MklReluGradOp<Device, T>::Compute(OpKernelContext* context) {
 }
 
 
-#else  // INTEL_MKL_DNN
+#else  // INTEL_MKL_ML
 
 template <typename Device, typename T, algorithm alg_kind>
 class MklReluOpBase : public OpKernel {
@@ -854,7 +854,7 @@ class MklTanhGradOp : public MklReluGradOpBase<Device, T, eltwise_tanh> {
                           MklReluGradOp<CPUDevice, type>);
 TF_CALL_float(REGISTER_RELU_MKL_SUPPORTED_KERNELS_TYPES);
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 
 // register dnn kernels for supported operations and supported types
 #define REGISTER_ELU_MKL_SUPPORTED_KERNELS_TYPES(type)             \

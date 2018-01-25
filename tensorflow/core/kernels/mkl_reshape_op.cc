@@ -28,7 +28,7 @@ limitations under the License.
 #include "mkl_dnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 using mkldnn::stream;
 #endif
@@ -40,7 +40,7 @@ class MklReshapeOp : public OpKernel {
  public:
   explicit MklReshapeOp(OpKernelConstruction* context) : OpKernel(context) {}
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
   void Compute(OpKernelContext* context) override {
     const Tensor& input = MklGetInput(context, 0);
     const Tensor& sizes = MklGetInput(context, 1);
@@ -313,7 +313,7 @@ class MklReshapeOp : public OpKernel {
     }
   }
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
  private:
   const int kInputSlotIdx = 0;
