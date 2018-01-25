@@ -292,7 +292,6 @@ if (tensorflow_ENABLE_GPU)
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-ftz=true)  # Flush denormals to zero
   set(CUDA_INCLUDE ${CUDA_TOOLKIT_TARGET_DIR} ${CUDA_TOOLKIT_TARGET_DIR}/extras/CUPTI/include)
 
-  message(STATUS ${CUDA_INCLUDE})
   include_directories(${CUDA_INCLUDE})
   if (WIN32)
     add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.0,3.5,5.2)
