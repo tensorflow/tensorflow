@@ -44,7 +44,7 @@ namespace poplarplugin {
 class PoplarExecutable : public Executable {
  public:
   PoplarExecutable(std::unique_ptr<HloModule> hlo_module,
-                   std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+                   std::unique_ptr<HloProfilePrinterData> hlo_profile_printer,
                    std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map,
                    std::shared_ptr<poplar::Engine> engine,
                    const sep::OutputMap& output_map,

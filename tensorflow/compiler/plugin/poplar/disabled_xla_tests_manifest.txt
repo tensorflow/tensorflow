@@ -27,6 +27,10 @@ DynamicUpdateSliceTest.R3ContiguousMultipleWrappingBF16 POPLAR // No bfloat16
 DynamicUpdateSliceTest.R3ContiguousTooLargeBF16 POPLAR // No bfloat16
 DynamicUpdateSliceTest.R3ContiguousUnalignedBF16 POPLAR // No bfloat16
 DynamicUpdateSliceTest.R3ContiguousLargerBF16 POPLAR // No bfloat16
+ConvolutionTest.Convolve_bf16_1x1x1x2_1x1x1x2_Valid POPLAR // No bfloat16
+MatOpsDotAddTest_bf16.Dot_Add_2x2_2x2 POPLAR // No bfloat16
+PrngTest.ScalarBF16Tests POPLAR // No bfloat16
+PrngTest.ScalarBF16CountTests POPLAR // No bfloat16
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR // U32
@@ -162,6 +166,7 @@ LocalClientExecuteTest.TupleResultWithLayout POPLAR // Doesn't cope with aliasin
 
 LocalClientExecuteTest.InfeedOutfeedTest POPLAR // Don't support InFeed/OutFeed
 
+ReduceWithLayoutTest POPLAR // Some layout issue
 
 ConditionalOpTest POPLAR // No Cond
 

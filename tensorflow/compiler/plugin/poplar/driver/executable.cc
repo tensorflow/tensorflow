@@ -26,7 +26,7 @@ namespace poplarplugin {
 
 PoplarExecutable::PoplarExecutable(
         std::unique_ptr<HloModule> hlo_module,
-        std::unique_ptr<HloProfilePrinter> profile_printer,
+        std::unique_ptr<HloProfilePrinterData> profile_printer,
         std::unique_ptr<HloProfileIndexMap> profile_index_map,
         std::shared_ptr<poplar::Engine> engine,
         const sep::OutputMap& output_map,

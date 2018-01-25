@@ -196,7 +196,7 @@ public:
   std::set<HloInstruction*> non_standard_parameter_layout;
 };
 
-static void DumpGraph(const HloConputation* comp) {
+static void DumpGraph(const HloComputation* comp) {
   DebugOptions debug_opts;
   debug_opts.set_xla_hlo_dump_as_graphdef(true);
   debug_opts.set_xla_hlo_graph_path("/tmp");
@@ -339,12 +339,12 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   }
 
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
-  std::unique_ptr<HloProfilePrinter> profile_printer;
+  std::unique_ptr<HloProfilePrinterData> profile_printer;
   if (module->config().hlo_profiling_enabled()) {
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
     profile_index_map = MakeUnique<HloProfileIndexMap>(*module);
     profile_printer =
-            CreateHloProfilePrinter(*profile_index_map, cost_analysis);
+            CreateHloProfilePrinterData(*profile_index_map, cost_analysis);
   }
 
   std::unique_ptr<Executable> executable;
