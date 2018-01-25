@@ -323,7 +323,7 @@ class _Metadata(object):
   """
 
   def __init__(self, name):
-    """Creata a Metadata builder.
+    """Create a Metadata builder.
 
     Args:
       name: The name of the page being described by the Metadata block.
