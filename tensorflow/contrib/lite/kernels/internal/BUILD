@@ -321,7 +321,7 @@ cc_library(
         ":ios_arm64": [
             ":neon_tensor_utils",
         ],
-        "x86_64": [
+        ":x86_64": [
             ":neon_tensor_utils",
         ],
         "//conditions:default": [
