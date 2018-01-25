@@ -154,7 +154,10 @@ class Experiment(object):
                export_strategies=None,
                train_steps_per_iteration=None,
                checkpoint_and_export=False,
-               saving_listeners=None):
+               saving_listeners=None,
+               early_stopping_metric="loss",
+               early_stopping_rounds=None,
+               early_stopping_metric_minimize=True):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -217,6 +220,18 @@ class Experiment(object):
       saving_listeners: list of `CheckpointSaverListener` objects. Used by
         tf.estimator.Estimator for callbacks that run immediately before or
         after checkpoint savings.
+      early_stopping_metric: `string`, name of the metric to check for early
+          stopping.
+      early_stopping_rounds: `int`. If the metric indicated by
+          `early_stopping_metric` does not change according to
+          `early_stopping_metric_minimize` for this many steps, then training
+          will be stopped.
+      early_stopping_metric_minimize: `bool`, True if `early_stopping_metric` is
+          expected to decrease (thus early stopping occurs when this metric
+          stops decreasing), False if `early_stopping_metric` is expected to
+          increase. Typically, `early_stopping_metric_minimize` is True for
+          loss metrics like mean squared error, and False for performance
+          metrics like accuracy.
 
     Raises:
       ValueError: if `estimator` does not implement Estimator interface,
@@ -263,6 +278,9 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._checkpoint_and_export = checkpoint_and_export
     self._saving_listeners = saving_listeners
+    self.early_stopping_metric = early_stopping_metric
+    self.early_stopping_rounds = early_stopping_rounds,
+    self.early_stopping_metric_minimize = early_stopping_metric_minimize
     # Using 1 on a non-cached file system requires a lot of overhead to
     # read the checkpoint state file. This is particular bad on GCS, so
     # we use a different default. This is a temporary band-aid, to be
@@ -640,12 +658,15 @@ class Experiment(object):
             eval_fn=eval_fn,
             export_fn=self._maybe_export,
             model_dir=self._estimator.model_dir)
+        listeners = [export_listener]
+        if self._saving_listeners:
+          listeners = listeners + self._saving_listeners
 
         saver_hook = basic_session_run_hooks.CheckpointSaverHook(
             checkpoint_dir=self._estimator.model_dir,
             save_secs=config.save_checkpoints_secs,
             save_steps=config.save_checkpoints_steps,
-            listeners=[export_listener])
+            listeners=listeners)
         self._train_monitors += [saver_hook]
       else:
         if self._min_eval_frequency:
@@ -656,7 +677,10 @@ class Experiment(object):
                   metrics=self._eval_metrics,
                   every_n_steps=self._min_eval_frequency,
                   name=eval_dir_suffix,
-                  hooks=self._eval_hooks)
+                  hooks=self._eval_hooks,
+                  early_stopping_rounds=self.early_stopping_rounds,
+                  early_stopping_metric=self.early_stopping_metric,
+                  early_stopping_metric_minimize=self.early_stopping_metric_minimize)
           ]
       self.train(delay_secs=0)
 
