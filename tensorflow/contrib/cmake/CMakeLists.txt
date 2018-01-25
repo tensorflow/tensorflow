@@ -291,6 +291,8 @@ if (tensorflow_ENABLE_GPU)
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--include-path ${PROJECT_BINARY_DIR}/$\{build_configuration\};--expt-relaxed-constexpr)
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-ftz=true)  # Flush denormals to zero
   set(CUDA_INCLUDE ${CUDA_TOOLKIT_TARGET_DIR} ${CUDA_TOOLKIT_TARGET_DIR}/extras/CUPTI/include)
+
+  message(STATUS ${CUDA_INCLUDE})
   include_directories(${CUDA_INCLUDE})
   if (WIN32)
     add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.0,3.5,5.2)
@@ -399,10 +401,12 @@ else(tensorflow_ENABLE_GPU)
     msvcp_dll_name=msvcp140.dll)
 endif(tensorflow_ENABLE_GPU)
 
-# Find python executable
-include(FindPythonInterp)
-if(NOT ${PYTHONINTERP_FOUND})
-    message(FATAL_ERROR "CMake was unable to find a python interpreter.")
+if(tensorflow_BUILD_PYTHON_BINDINGS)
+  # Find python executable
+  include(FindPythonInterp)
+  if(NOT ${PYTHONINTERP_FOUND})
+      message(FATAL_ERROR "CMake was unable to find a python interpreter.")
+  endif()
 endif()
 
 # Let's get to work!
