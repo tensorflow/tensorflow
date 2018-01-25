@@ -220,7 +220,7 @@ def multi_label_head(n_classes,
   `batch_size`.
 
   The head expects `logits` with shape `[D0, D1, ... DN, n_classes]`. In many
-  applications, the shape is `[batch_size, label_n_classes]`.
+  applications, the shape is `[batch_size, n_classes]`.
 
   Labels can be:
   * A multi-hot tensor of shape `[D0, D1, ... DN, n_classes]`
@@ -392,8 +392,32 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
         processed_labels=processed_labels)
 
   def create_estimator_spec(
-      self, features, mode, logits, labels=None, train_op_fn=None):
-    """See `Head`."""
+      self, features, mode, logits, labels=None, train_op_fn=None,
+      regularization_losses=None):
+    """Returns an `EstimatorSpec`.
+
+    Args:
+      features: Input `dict` of `Tensor` or `SparseTensor` objects.
+      mode: Estimator's `ModeKeys`.
+      logits: logits `Tensor` with shape `[D0, D1, ... DN, n_classes]`.
+        For many applications, the shape is `[batch_size, n_classes]`.
+      labels: Labels with shape matching `logits`. Can be multi-hot `Tensor`
+        with shape `[D0, D1, ... DN, n_classes]` or `SparseTensor` with
+        `dense_shape` `[D0, D1, ... DN, ?]`. `labels` is required argument when
+        `mode` equals `TRAIN` or `EVAL`.
+      train_op_fn: Function that takes a scalar loss `Tensor` and returns
+        `train_op`. Required in TRAIN mode.
+      regularization_losses: A list of additional scalar losses to be added to
+        the training loss, such as regularization losses. These losses are
+        usually expressed as a batch average, so for best results users need to
+        set `loss_reduction=SUM_OVER_BATCH_SIZE` or
+        `loss_reduction=SUM_OVER_NONZERO_WEIGHTS` when creating the head to
+        avoid scaling errors.
+    Returns:
+      `EstimatorSpec`.
+    Raises:
+      ValueError: If `train_op_fn` is `None` in TRAIN mode.
+    """
     with ops.name_scope(self._name, 'head'):
       logits = head_lib._check_logits_final_dim(logits, self.logits_dimension)  # pylint:disable=protected-access
 
@@ -422,18 +446,26 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
       (training_loss, unreduced_loss, weights,
        processed_labels) = self.create_loss(
            features=features, mode=mode, logits=logits, labels=labels)
+      if regularization_losses:
+        regularization_loss = math_ops.add_n(regularization_losses)
+        regularized_training_loss = math_ops.add_n(
+            [training_loss, regularization_loss])
+      else:
+        regularization_loss = None
+        regularized_training_loss = training_loss
 
       # Eval.
       if mode == model_fn.ModeKeys.EVAL:
         return model_fn.EstimatorSpec(
             mode=model_fn.ModeKeys.EVAL,
             predictions=predictions,
-            loss=training_loss,
+            loss=regularized_training_loss,
             eval_metric_ops=self._eval_metric_ops(
                 labels=processed_labels,
                 probabilities=probabilities,
                 weights=weights,
-                unreduced_loss=unreduced_loss))
+                unreduced_loss=unreduced_loss,
+                regularization_loss=regularization_loss))
 
       # Train.
       if train_op_fn is None:
@@ -447,25 +479,31 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
       else:
         mean_loss = None
     with ops.name_scope(''):
+      keys = metric_keys.MetricKeys
       summary.scalar(
-          head_lib._summary_key(self._name, metric_keys.MetricKeys.LOSS),  # pylint:disable=protected-access
-          training_loss)
+          head_lib._summary_key(self._name, keys.LOSS),  # pylint:disable=protected-access
+          regularized_training_loss)
       if mean_loss is not None:
         summary.scalar(
-            head_lib._summary_key(  # pylint:disable=protected-access
-                self._name, metric_keys.MetricKeys.LOSS_MEAN),
+            head_lib._summary_key(self._name, keys.LOSS_MEAN),  # pylint:disable=protected-access
             mean_loss)
+      if regularization_loss is not None:
+        summary.scalar(
+            head_lib._summary_key(self._name, keys.LOSS_REGULARIZATION),  # pylint:disable=protected-access
+            regularization_loss)
     return model_fn.EstimatorSpec(
         mode=model_fn.ModeKeys.TRAIN,
         predictions=predictions,
-        loss=training_loss,
-        train_op=train_op_fn(training_loss))
+        loss=regularized_training_loss,
+        train_op=train_op_fn(regularized_training_loss))
 
-  def _eval_metric_ops(self, labels, probabilities, weights, unreduced_loss):
+  def _eval_metric_ops(
+      self, labels, probabilities, weights, unreduced_loss,
+      regularization_loss):
     """Returns a dict of metrics for eval_metric_ops."""
     with ops.name_scope(
         None, 'metrics',
-        [labels, probabilities, weights, unreduced_loss]):
+        [labels, probabilities, weights, unreduced_loss, regularization_loss]):
       keys = metric_keys.MetricKeys
       metric_ops = {
           # Estimator already adds a metric for loss.
@@ -482,6 +520,13 @@ class _MultiLabelHead(head_lib._Head):  # pylint:disable=protected-access
                               weights=weights, curve='PR',
                               name=keys.AUC_PR),
       }
+      if regularization_loss is not None:
+        loss_regularization_key = head_lib._summary_key(  # pylint:disable=protected-access
+            self._name, keys.LOSS_REGULARIZATION)
+        metric_ops[loss_regularization_key] = (
+            metrics_lib.mean(
+                values=regularization_loss,
+                name=keys.LOSS_REGULARIZATION))
       for threshold in self._thresholds:
         accuracy_key = keys.ACCURACY_AT_THRESHOLD % threshold
         metric_ops[head_lib._summary_key(self._name, accuracy_key)] = (  # pylint:disable=protected-access

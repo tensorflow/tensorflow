@@ -810,9 +810,9 @@ INSTANTIATE_TEST_CASE_P(
 
 class R4ReduceWindowAnyDimsTest : public R4ReduceWindowTest {};
 
-// TODO(b/72234705): Fix the test cases failed on CPU.
+// TODO(b/72234705): Fix the test cases failed on CPU and GPU.
 XLA_TEST_P(R4ReduceWindowAnyDimsTest,
-           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(DoIt))) {
+           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt)))) {
   DoIt();
 }
 

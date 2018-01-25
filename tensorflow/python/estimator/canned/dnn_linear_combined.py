@@ -34,6 +34,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
 from tensorflow.python.training import sync_replicas_optimizer
 from tensorflow.python.training import training_util
@@ -309,7 +310,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
                label_vocabulary=None,
                input_layer_partitioner=None,
                config=None,
-               warm_start_from=None):
+               warm_start_from=None,
+               loss_reduction=losses.Reduction.SUM):
     """Initializes a DNNLinearCombinedClassifier instance.
 
     Args:
@@ -356,6 +358,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
         string filepath is provided instead of a `WarmStartSettings`, then all
         weights are warm-started, and it is assumed that vocabularies and Tensor
         names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -371,12 +375,14 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
           weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
           n_classes,
           weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
 
     def _model_fn(features, labels, mode, config):
       """Call the _dnn_linear_combined_model_fn and possibly warm-start."""
@@ -490,7 +496,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                weight_column=None,
                input_layer_partitioner=None,
                config=None,
-               warm_start_from=None):
+               warm_start_from=None,
+               loss_reduction=losses.Reduction.SUM):
     """Initializes a DNNLinearCombinedRegressor instance.
 
     Args:
@@ -531,6 +538,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
         string filepath is provided instead of a `WarmStartSettings`, then all
         weights are warm-started, and it is assumed that vocabularies and Tensor
         names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
 
     Raises:
       ValueError: If both linear_feature_columns and dnn_features_columns are
@@ -552,7 +561,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           mode=mode,
           head=head_lib.  # pylint: disable=protected-access
           _regression_head_with_mean_squared_error_loss(
-              label_dimension=label_dimension, weight_column=weight_column),
+              label_dimension=label_dimension, weight_column=weight_column,
+              loss_reduction=loss_reduction),
           linear_feature_columns=linear_feature_columns,
           linear_optimizer=linear_optimizer,
           dnn_feature_columns=dnn_feature_columns,

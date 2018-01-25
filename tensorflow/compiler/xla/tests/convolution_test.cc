@@ -608,5 +608,28 @@ INSTANTIATE_TEST_CASE_P(
 
 );
 
+TEST_F(ConvolutionTest, Convolve_bf16_1x1x1x2_1x1x1x2_Valid) {
+  ComputationBuilder builder(client_, TestName());
+  Shape input_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
+  Shape filter_shape = ShapeUtil::MakeShape(BF16, {1, 1, 1, 2});
+  auto input = builder.Parameter(0, input_shape, "input");
+  auto filter = builder.Parameter(1, filter_shape, "filter");
+  auto conv = builder.Conv(input, filter, {1, 1}, Padding::kValid);
+
+  Array4D<bfloat16> input_data(1, 1, 1, 2);
+  input_data.FillWithYX(Array2D<bfloat16>({
+      {bfloat16(1), bfloat16(2)},
+  }));
+  Array4D<bfloat16> filter_data(1, 1, 1, 2);
+  filter_data.FillWithYX(Array2D<bfloat16>({
+      {bfloat16(5), bfloat16(6)},
+  }));
+
+  ComputeAndCompare(&builder, conv,
+                    {std::move(*Literal::CreateFromArray(input_data)),
+                     std::move(*Literal::CreateFromArray(filter_data))},
+                    error_spec_);
+}
+
 }  // namespace
 }  // namespace xla

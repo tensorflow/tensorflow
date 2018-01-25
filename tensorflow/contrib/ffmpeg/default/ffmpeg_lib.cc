@@ -318,8 +318,7 @@ Status WriteFile(const string& filename, StringPiece contents) {
 
 Status ReadAudioFile(const string& filename, const string& audio_format_id,
                      int32 samples_per_second, int32 channel_count,
-                     const string& stream,
-                     std::vector<float>* output_samples) {
+                     const string& stream, std::vector<float>* output_samples) {
   // Create an argument list.
   string output_filename = io::GetTempFilename("raw");
   const std::vector<string> args =

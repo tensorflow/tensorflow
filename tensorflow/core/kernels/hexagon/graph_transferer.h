@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
+#ifndef TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
+#define TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H_
 
 #include <array>
 #include <unordered_map>
@@ -225,4 +225,4 @@ class GraphTransferer {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H
+#endif  // TENSORFLOW_CORE_KERNELS_HEXAGON_GRAPH_TRANSFERER_H

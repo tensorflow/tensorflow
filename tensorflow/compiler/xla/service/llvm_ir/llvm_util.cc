@@ -150,6 +150,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       // addition to an addition on this type (int16) - this is just the type
       // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
+    case F16:
+      return llvm::Type::getHalfTy(module->getContext());
     case S32:
     case U32:
       return llvm::Type::getInt32Ty(module->getContext());
@@ -291,6 +293,11 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
         value = llvm::ConstantInt::get(
             ir_element_type,
             tensorflow::bit_cast<uint16>(literal.Get<bfloat16>(*multi_index)));
+        break;
+      case F16:
+        value = llvm::ConstantFP::get(
+            ir_element_type,
+            static_cast<float>(literal.Get<half>(*multi_index)));
         break;
       case F64:
         value = llvm::ConstantFP::get(ir_element_type,

@@ -475,7 +475,7 @@ py_test(
 
 py_test(
     name = "stats_dataset_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["stats_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],

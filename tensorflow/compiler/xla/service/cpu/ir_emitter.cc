@@ -72,6 +72,7 @@ namespace {
 using llvm_ir::AsStringRef;
 using llvm_ir::IrName;
 using llvm_ir::SetToFirstInsertPoint;
+namespace gtl = tensorflow::gtl;
 }  // namespace
 
 namespace cpu {
@@ -491,7 +492,7 @@ Status IrEmitter::HandleTuple(HloInstruction* tuple) {
 }
 
 Status IrEmitter::HandleMap(HloInstruction* map) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(map->operands());
+  gtl::ArraySlice<HloInstruction*> operands(map->operands());
   HloComputation* function = map->to_apply();
   // The called computation should have been emitted previously.
   llvm::Function* mapped_ir_function = FindOrDie(emitted_functions_, function);
@@ -1225,205 +1226,6 @@ static llvm_ir::IrArray::Index FillReducedDimensionIndex(
   return index_with_free_var;
 }
 
-Status IrEmitter::HandleBatchNormTraining(HloInstruction* batch_norm_training) {
-  // The output of BatchNormTraining is a tuple of three element:
-  //   - An N-dimensional array containing normalized values.
-  //   - A 1 dimensional array containing the mean value for each feature.
-  //   - A 1 dimensional array containing the variance value for each feature.
-  HloInstruction* operand = batch_norm_training->operands()[0];
-  HloInstruction* scale = batch_norm_training->operands()[1];
-  HloInstruction* offset = batch_norm_training->operands()[2];
-  float epsilon = batch_norm_training->epsilon();
-  int64 feature_index = batch_norm_training->feature_index();
-  TF_RET_CHECK(ShapeUtil::IsTuple(batch_norm_training->shape()) &&
-               ShapeUtil::TupleElementCount(batch_norm_training->shape()) == 3);
-
-  const Shape& output_shape =
-      ShapeUtil::GetTupleElementShape(batch_norm_training->shape(), 0);
-  const Shape& feature_shape =
-      ShapeUtil::GetTupleElementShape(batch_norm_training->shape(), 1);
-
-  // Reduce vector of the non-feature dimensions.
-  std::vector<int64> dimensions_to_reduce;
-
-  for (int64 i = 0; i < operand->shape().dimensions_size(); ++i) {
-    if (i != feature_index) {
-      dimensions_to_reduce.push_back(i);
-    }
-  }
-
-  // Get the second and third allocations in the output tuple, which should be
-  // used to store the result of mean and variance value calculation.
-  TF_ASSIGN_OR_RETURN(
-      const BufferAllocation::Slice slice_mean,
-      assignment_.GetUniqueSlice(batch_norm_training, /*index=*/{1}));
-  TF_ASSIGN_OR_RETURN(
-      const BufferAllocation::Slice slice_var,
-      assignment_.GetUniqueSlice(batch_norm_training, /*index=*/{2}));
-  const int feature_count = output_shape.dimensions(feature_index);
-  const int size_in_elements = ShapeUtil::ElementsIn(output_shape);
-  TF_RET_CHECK(ShapeUtil::ElementsIn(operand->shape()) == size_in_elements);
-  const int elements_per_feature = size_in_elements / feature_count;
-
-  llvm::Value* mean = EmitTempBufferPointer(slice_mean, feature_shape);
-  llvm_ir::IrArray mean_array(mean, feature_shape);
-
-  llvm::Value* var = EmitTempBufferPointer(slice_var, feature_shape);
-  llvm_ir::IrArray var_array(var, feature_shape);
-
-  // This loop calculates mean and variance for each feature.
-  //
-  // In theory this could be swapped by multi-output fusion. We will evaluate
-  // this when it's ready.
-  //
-  // For variance calculation, we use a simplified formula so we can fuse the
-  // computation into the same loop to calculate mean: Var=E(X^2) - E(X)^2.
-  TF_RETURN_IF_ERROR(
-      llvm_ir::LoopEmitter(
-          [&](const llvm_ir::IrArray::Index& index) {
-            PrimitiveType element_type = operand->shape().element_type();
-            // Used to calculate E(X).
-            llvm::Value* sum_address = llvm_ir::EmitAllocaAtFunctionEntry(
-                llvm_ir::PrimitiveTypeToIrType(element_type, module_),
-                "sum_address", &ir_builder_,
-                MinimumAlignmentForPrimitiveType(element_type));
-
-            // Used to calculate E(X^2).
-            llvm::Value* sum_square_address =
-                llvm_ir::EmitAllocaAtFunctionEntry(
-                    llvm_ir::PrimitiveTypeToIrType(element_type, module_),
-                    "sum_square_address", &ir_builder_,
-                    MinimumAlignmentForPrimitiveType(element_type));
-
-            ir_builder_.CreateStore(
-                llvm::ConstantFP::get(ir_builder_.getFloatTy(), 0.0),
-                sum_address);
-
-            ir_builder_.CreateStore(
-                llvm::ConstantFP::get(ir_builder_.getFloatTy(), 0.0),
-                sum_square_address);
-
-            llvm_ir::ForLoopNest loops(IrName(batch_norm_training, "inner"),
-                                       &ir_builder_);
-
-            const llvm_ir::IrArray::Index reduced_dims_index =
-                loops.AddLoopsForShapeOnDimensions(
-                    operand->shape(), dimensions_to_reduce, "reduction_dim");
-
-            SetToFirstInsertPoint(loops.GetInnerLoopBodyBasicBlock(),
-                                  &ir_builder_);
-
-            llvm_ir::IrArray operand_array(GetIrArrayFor(operand));
-            llvm_ir::IrArray::Index input_index =
-                FillReducedDimensionIndex(reduced_dims_index, index);
-            llvm::Value* new_value =
-                operand_array.EmitReadArrayElement(input_index, &ir_builder_);
-
-            llvm::Value* new_value_square =
-                ir_builder_.CreateFMul(new_value, new_value);
-
-            llvm::Value* current_sum = ir_builder_.CreateLoad(sum_address);
-            llvm::Value* current_sum_square =
-                ir_builder_.CreateLoad(sum_square_address);
-            // Update sum.
-            ir_builder_.CreateStore(
-                ir_builder_.CreateFAdd(current_sum, new_value), sum_address);
-
-            // Update sum square.
-            ir_builder_.CreateStore(
-                ir_builder_.CreateFAdd(current_sum_square, new_value_square),
-                sum_square_address);
-
-            SetToFirstInsertPoint(loops.GetOuterLoopExitBasicBlock(),
-                                  &ir_builder_);
-
-            llvm::Value* sum = ir_builder_.CreateLoad(sum_address);
-            llvm::Value* elements_per_feature_value = llvm::ConstantFP::get(
-                ir_builder_.getFloatTy(), elements_per_feature);
-            llvm::Value* mean =
-                ir_builder_.CreateFDiv(sum, elements_per_feature_value);
-            llvm::Value* mean_square = ir_builder_.CreateFMul(mean, mean);
-            llvm::Value* sum_square =
-                ir_builder_.CreateLoad(sum_square_address);
-
-            // Var=E(X^2) - E(X)^2.
-            llvm::Value* var = ir_builder_.CreateFSub(
-                ir_builder_.CreateFDiv(sum_square, elements_per_feature_value),
-                mean_square);
-
-            var_array.EmitWriteArrayElement(index, var, &ir_builder_);
-            return mean;
-          },
-          mean_array, &ir_builder_)
-          .EmitLoop(IrName(batch_norm_training, "mean_var")));
-
-  TF_RETURN_IF_ERROR(EmitTargetAddressForOp(batch_norm_training));
-  TF_ASSIGN_OR_RETURN(
-      const BufferAllocation::Slice slice,
-      assignment_.GetUniqueSlice(batch_norm_training, /*index=*/{0}));
-
-  llvm::Value* normalized = EmitTempBufferPointer(slice, output_shape);
-
-  llvm_ir::IrArray target_array(normalized, output_shape);
-
-  AddAliasingInformationToIrArray(*batch_norm_training, &target_array);
-
-  TF_RETURN_IF_ERROR(
-      llvm_ir::LoopEmitter(
-          [this, mean_array, var_array, epsilon, operand, dimensions_to_reduce,
-           feature_index, offset, scale](const llvm_ir::IrArray::Index& index) {
-            // The following logic normalizes the input value, scales and shifts
-            // it:
-            //
-            // normalized = (input - mean) / sqrt(variance + epsilon)
-            // result = normalized * scale + offset
-
-            // Current index in the feature dimension.
-            llvm_ir::IrArray::Index feature_index_value(1,
-                                                        index[feature_index]);
-
-            llvm::Value* mean = mean_array.EmitReadArrayElement(
-                feature_index_value, &ir_builder_);
-            llvm::Value* var = var_array.EmitReadArrayElement(
-                feature_index_value, &ir_builder_);
-
-            llvm_ir::IrArray operand_array(GetIrArrayFor(operand));
-            llvm::Value* input =
-                operand_array.EmitReadArrayElement(index, &ir_builder_);
-
-            llvm::Value* variance_with_epsilon = ir_builder_.CreateFAdd(
-                var, llvm::ConstantFP::get(ir_builder_.getFloatTy(), epsilon));
-            llvm::Function* func_llvm_sqrt = llvm::Intrinsic::getDeclaration(
-                module_, llvm::Intrinsic::sqrt, {ir_builder_.getFloatTy()});
-            llvm::Value* variance_sqrt =
-                ir_builder_.CreateCall(func_llvm_sqrt, {variance_with_epsilon});
-            llvm::Value* normalized = ir_builder_.CreateFDiv(
-                ir_builder_.CreateFSub(input, mean), variance_sqrt);
-            llvm_ir::IrArray offset_array(GetIrArrayFor(offset));
-            llvm::Value* offset = offset_array.EmitReadArrayElement(
-                feature_index_value, &ir_builder_);
-            llvm_ir::IrArray scale_array(GetIrArrayFor(scale));
-            llvm::Value* scale = scale_array.EmitReadArrayElement(
-                feature_index_value, &ir_builder_);
-            llvm::Value* result = ir_builder_.CreateFAdd(
-                ir_builder_.CreateFMul(normalized, scale), offset);
-
-            return result;
-          },
-          target_array, &ir_builder_)
-          .EmitLoop(IrName(batch_norm_training, "normalize")));
-
-  llvm_ir::EmitTuple(GetIrArrayFor(batch_norm_training),
-                     {normalized, mean, var}, &ir_builder_, module_);
-  return Status::OK();
-}
-
-Status IrEmitter::HandleBatchNormGrad(HloInstruction* batch_norm_grad) {
-  // TODO(b/62843645) Implement BatchNormGrad on CPU backend.
-  return Unimplemented(
-      "BatchNormGrad is not implemented on CPU. See b/62843645.");
-}
-
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
   VLOG(2) << "HandleParameter: " << parameter->ToString();
   auto param_number = parameter->parameter_number();
@@ -1632,7 +1434,7 @@ IrEmitter::EmitInnerLoopForVectorizedReduction(
     const ReductionGenerator& reduction_generator,
     const llvm_ir::IrArray::Index& output_index,
     const ShardedVectorType& accumulator_type, HloInstruction* init_value,
-    HloInstruction* arg, tensorflow::gtl::ArraySlice<int64> dimensions,
+    HloInstruction* arg, gtl::ArraySlice<int64> dimensions,
     unsigned element_alignment) {
   ShardedVector accumulator;
   accumulator.reserve(accumulator_type.size());
@@ -1736,7 +1538,7 @@ void IrEmitter::EmitShardedVectorStore(
 
 StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
-    tensorflow::gtl::ArraySlice<int64> dimensions, HloComputation* function,
+    gtl::ArraySlice<int64> dimensions, HloComputation* function,
     string* failure_reason) {
   ReductionGenerator reduction_generator =
       MatchReductionGenerator(function, failure_reason);
@@ -1881,7 +1683,7 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
 Status IrEmitter::HandleReduce(HloInstruction* reduce) {
   auto arg = reduce->mutable_operand(0);
   auto init_value = reduce->mutable_operand(1);
-  tensorflow::gtl::ArraySlice<int64> dimensions(reduce->dimensions());
+  gtl::ArraySlice<int64> dimensions(reduce->dimensions());
   HloComputation* function = reduce->to_apply();
   if (!options::VectorizedReduceDisabled(hlo_module_config_)) {
     string vectorization_failure_reason;
@@ -2001,7 +1803,7 @@ Status IrEmitter::HandleSlice(HloInstruction* slice) {
   //
   // * Implement the memcpy within the innermost loop.
 
-  tensorflow::gtl::FlatSet<int64> inner_dims;
+  gtl::FlatSet<int64> inner_dims;
   for (int64 dim : LayoutUtil::MinorToMajor(layout)) {
     if (operand->shape().dimensions(dim) != slice->shape().dimensions(dim)) {
       break;
@@ -2329,8 +2131,7 @@ Status IrEmitter::HandleCall(HloInstruction* call) {
 }
 
 Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(
-      custom_call->operands());
+  gtl::ArraySlice<HloInstruction*> operands(custom_call->operands());
   tensorflow::StringPiece custom_call_target(custom_call->custom_call_target());
   llvm::Type* i8_ptr_type = ir_builder_.getInt8PtrTy();
   llvm::AllocaInst* operands_alloca =
@@ -2461,8 +2262,7 @@ Status IrEmitter::HandleWhile(HloInstruction* xla_while) {
 }
 
 StatusOr<bool> IrEmitter::EmitFastConcatenate(
-    HloInstruction* concatenate,
-    tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    HloInstruction* concatenate, gtl::ArraySlice<HloInstruction*> operands,
     string* failure_reason) {
   if (ShouldEmitParallelLoopFor(*concatenate)) {
     *failure_reason =
@@ -2601,8 +2401,7 @@ void IrEmitter::EmitTransferElements(llvm::Value* target, llvm::Value* source,
 }
 
 Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(
-      concatenate->operands());
+  gtl::ArraySlice<HloInstruction*> operands(concatenate->operands());
   string failure_reason;
   TF_ASSIGN_OR_RETURN(
       bool successful,
@@ -2915,7 +2714,7 @@ llvm::Value* IrEmitter::EmitTempBufferPointer(
 // for a single element_type value, and loads it after call.
 llvm::Value* IrEmitter::EmitElementFunctionCall(
     llvm::Function* function, const Shape& return_shape,
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+    gtl::ArraySlice<llvm::Value*> parameter_addresses,
     tensorflow::StringPiece name) {
   llvm::Value* return_value_buffer = EmitArrayFunctionCall(
       function, return_shape, 1, parameter_addresses, name);
@@ -2935,8 +2734,7 @@ llvm::Value* IrEmitter::EmitElementFunctionCall(
 //                 temps)
 //   return return_value_buffer  -- address of the return value.
 void IrEmitter::EmitArrayFunctionCallInto(
-    llvm::Function* function,
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+    llvm::Function* function, gtl::ArraySlice<llvm::Value*> parameter_addresses,
     llvm::Value* return_value_buffer, tensorflow::StringPiece name) {
   ir_builder_.CreateCall(
       function, GetArrayFunctionCallArguments(
@@ -2949,7 +2747,7 @@ void IrEmitter::EmitArrayFunctionCallInto(
 
 llvm::Value* IrEmitter::EmitArrayFunctionCall(
     llvm::Function* function, const Shape& return_shape, int64 element_count,
-    tensorflow::gtl::ArraySlice<llvm::Value*> parameter_addresses,
+    gtl::ArraySlice<llvm::Value*> parameter_addresses,
     tensorflow::StringPiece name) {
   llvm::Value* elements =
       llvm::ConstantInt::get(ir_builder_.getInt64Ty(), element_count);
@@ -3059,8 +2857,8 @@ Status IrEmitter::EmitMemcpy(const HloInstruction& source,
 
 Status IrEmitter::ElementTypesSameAndSupported(
     const HloInstruction& instruction,
-    tensorflow::gtl::ArraySlice<const HloInstruction*> operands,
-    tensorflow::gtl::ArraySlice<PrimitiveType> supported_types) {
+    gtl::ArraySlice<const HloInstruction*> operands,
+    gtl::ArraySlice<PrimitiveType> supported_types) {
   for (auto operand : operands) {
     TF_RET_CHECK(
         ShapeUtil::SameElementType(operands[0]->shape(), operand->shape()));

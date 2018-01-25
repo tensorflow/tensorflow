@@ -2738,6 +2738,76 @@ op {
   }
 }
 op {
+  name: "Batch"
+  input_arg {
+    name: "in_tensors"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "batched_tensors"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "batch_index"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "id"
+    type: DT_INT64
+  }
+  attr {
+    name: "num_batch_threads"
+    type: "int"
+  }
+  attr {
+    name: "max_batch_size"
+    type: "int"
+  }
+  attr {
+    name: "batch_timeout_micros"
+    type: "int"
+  }
+  attr {
+    name: "allowed_batch_sizes"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "grad_timeout_micros"
+    type: "int"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "batching_queue"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "BatchCholesky"
   input_arg {
     name: "input"
@@ -8470,6 +8540,10 @@ op {
       s: ""
     }
   }
+  deprecation {
+    version: 26
+    explanation: "Use FixedLengthRecordReaderV2"
+  }
   is_stateful: true
 }
 op {
@@ -10067,6 +10141,10 @@ op {
       s: ""
     }
   }
+  deprecation {
+    version: 26
+    explanation: "Use IdentityReaderV2"
+  }
   is_stateful: true
 }
 op {
@@ -10766,6 +10844,30 @@ op {
 }
 op {
   name: "IteratorGetNext"
+  input_arg {
+    name: "iterator"
+    type: DT_RESOURCE
+  }
+  output_arg {
+    name: "components"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "output_shapes"
+    type: "list(shape)"
+    has_minimum: true
+    minimum: 1
+  }
+  is_stateful: true
+}
+op {
+  name: "IteratorGetNextSync"
   input_arg {
     name: "iterator"
     type: DT_RESOURCE
@@ -19629,6 +19731,7 @@ op {
         type: DT_UINT16
         type: DT_INT32
         type: DT_INT64
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_FLOAT
         type: DT_DOUBLE
@@ -19663,6 +19766,7 @@ op {
     allowed_values {
       list {
         type: DT_FLOAT
+        type: DT_BFLOAT16
         type: DT_HALF
         type: DT_DOUBLE
       }
@@ -28548,6 +28652,10 @@ op {
       s: ""
     }
   }
+  deprecation {
+    version: 26
+    explanation: "Use TFRecordReaderV2"
+  }
   is_stateful: true
 }
 op {
@@ -28818,6 +28926,10 @@ op {
     name: "handle"
     type: DT_STRING
   }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayCloseV3"
+  }
 }
 op {
   name: "TensorArrayCloseV3"
@@ -28997,6 +29109,10 @@ op {
       }
     }
   }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayGatherV3"
+  }
 }
 op {
   name: "TensorArrayGatherV3"
@@ -29073,6 +29189,10 @@ op {
   attr {
     name: "source"
     type: "string"
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayGradV3"
   }
   is_stateful: true
 }
@@ -29183,6 +29303,10 @@ op {
     name: "dtype"
     type: "type"
   }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayReadV3"
+  }
 }
 op {
   name: "TensorArrayReadV3"
@@ -29266,6 +29390,10 @@ op {
     name: "T"
     type: "type"
   }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayScatterV3"
+  }
 }
 op {
   name: "TensorArrayScatterV3"
@@ -29328,6 +29456,10 @@ op {
   output_arg {
     name: "size"
     type: DT_INT32
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArraySizeV3"
   }
 }
 op {
@@ -29403,6 +29535,10 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArraySplitV3"
   }
 }
 op {
@@ -29504,6 +29640,10 @@ op {
     default_value {
       s: ""
     }
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayV3"
   }
   is_stateful: true
 }
@@ -29621,6 +29761,10 @@ op {
   attr {
     name: "T"
     type: "type"
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TensorArrayWriteV3"
   }
 }
 op {
@@ -29998,6 +30142,10 @@ op {
     default_value {
       s: ""
     }
+  }
+  deprecation {
+    version: 26
+    explanation: "Use TextLineReaderV2"
   }
   is_stateful: true
 }
@@ -30380,6 +30528,88 @@ op {
     }
   }
   is_stateful: true
+}
+op {
+  name: "Unbatch"
+  input_arg {
+    name: "batched_tensor"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "batch_index"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "id"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "unbatched_tensor"
+    type_attr: "T"
+  }
+  attr {
+    name: "timeout_micros"
+    type: "int"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
+}
+op {
+  name: "UnbatchGrad"
+  input_arg {
+    name: "original_input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "batch_index"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "grad"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "id"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "batched_grad"
+    type_attr: "T"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+  }
 }
 op {
   name: "UniformCandidateSampler"

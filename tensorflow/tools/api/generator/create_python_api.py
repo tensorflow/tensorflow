@@ -31,6 +31,7 @@ from tensorflow.python.util import tf_decorator
 _API_CONSTANTS_ATTR = '_tf_api_constants'
 _API_NAMES_ATTR = '_tf_api_names'
 _API_DIR = '/api/'
+_CONTRIB_IMPORT = 'from tensorflow import contrib'
 _GENERATED_FILE_HEADER = """\"\"\"Imports for Python API.
 
 This file is MACHINE GENERATED! Do not edit.
@@ -50,11 +51,17 @@ def format_import(source_module_name, source_name, dest_name):
   Returns:
     An import statement string.
   """
-  if source_name == dest_name:
-    return 'from %s import %s' % (source_module_name, source_name)
+  if source_module_name:
+    if source_name == dest_name:
+      return 'from %s import %s' % (source_module_name, source_name)
+    else:
+      return 'from %s import %s as %s' % (
+          source_module_name, source_name, dest_name)
   else:
-    return 'from %s import %s as %s' % (
-        source_module_name, source_name, dest_name)
+    if source_name == dest_name:
+      return 'import %s' % source_name
+    else:
+      return 'import %s as %s' % (source_name, dest_name)
 
 
 def get_api_imports():
@@ -73,6 +80,9 @@ def get_api_imports():
   for module in sys.modules.values():
     # Only look at tensorflow modules.
     if not module or 'tensorflow.' not in module.__name__:
+      continue
+    # Do not generate __init__.py files for contrib modules for now.
+    if '.contrib.' in module.__name__ or module.__name__.endswith('.contrib'):
       continue
 
     for module_contents_name in dir(module):
@@ -151,8 +161,10 @@ def create_api_files(output_files):
       os.makedirs(os.path.dirname(file_path))
     open(file_path, 'a').close()
 
-  # Add imports to output files.
   module_imports = get_api_imports()
+  module_imports['tf'].append(_CONTRIB_IMPORT)  # Include all of contrib.
+
+  # Add imports to output files.
   missing_output_files = []
   for module, exports in module_imports.items():
     # Make sure genrule output file list is in sync with API exports.

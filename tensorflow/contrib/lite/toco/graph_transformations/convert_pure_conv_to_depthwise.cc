@@ -58,7 +58,7 @@ bool ConvertPureConvToDepthwise::Run(Model* model, std::size_t op_index) {
   depthwiseconv_op->outputs = {conv_op->outputs[0]};
   if (conv_op->outputs.size() > 1) {
     // delete the im2col array.
-    model->arrays.erase(conv_op->outputs[1]);
+    model->EraseArray(conv_op->outputs[1]);
   }
   depthwiseconv_op->fused_activation_function =
       conv_op->fused_activation_function;

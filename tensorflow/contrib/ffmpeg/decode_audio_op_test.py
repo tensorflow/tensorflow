@@ -83,9 +83,9 @@ class DecodeAudioOpTest(test.TestCase):
     #        -strict -2 -map 0:a -map 1:a \
     #        tensorflow/contrib/ffmpeg/testdata/mono_16khz_mp3_32khz_aac.mp4
     self._loadFileAndTest('mono_16khz_mp3_32khz_aac.mp4', 'mp4', 2.77, 20000,
-        1, stream="0")
+                          1, stream='0')
     self._loadFileAndTest('mono_16khz_mp3_32khz_aac.mp4', 'mp4', 2.77, 20000,
-        1, stream="1")
+                          1, stream='1')
 
   def testMonoMp3(self):
     self._loadFileAndTest('mono_16khz.mp3', 'mp3', 0.57, 20000, 1)

@@ -48,6 +48,7 @@ genrule(
         "api/contrib/stat_summarizer/__init__.py",
         "api/distributions/__init__.py",
         "api/distributions/bijectors/__init__.py",
+        "api/errors/__init__.py",
         "api/image/__init__.py",
         "api/linalg/__init__.py",
         "api/nn/__init__.py",
@@ -55,7 +56,9 @@ genrule(
         "api/train/__init__.py",
         "api/app/__init__.py",
         "api/gfile/__init__.py",
+        "api/graph_util/__init__.py",
         "api/keras/__init__.py",
+        "api/keras/backend/__init__.py",
         "api/keras/datasets/__init__.py",
         "api/keras/datasets/boston_housing/__init__.py",
         "api/keras/datasets/cifar10/__init__.py",
@@ -83,4 +86,7 @@ py_library(
     name = "python_api",
     srcs = [":python_api_gen"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib:contrib_py",  # keep
+    ],
 )

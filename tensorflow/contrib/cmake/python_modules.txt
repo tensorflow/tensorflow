@@ -111,7 +111,6 @@ tensorflow/contrib/android/java/org/tensorflow/contrib
 tensorflow/contrib/android/java/org/tensorflow/contrib/android
 tensorflow/contrib/android/jni
 tensorflow/contrib/batching
-tensorflow/contrib/batching/kernels
 tensorflow/contrib/batching/python
 tensorflow/contrib/batching/python/ops
 tensorflow/contrib/bayesflow

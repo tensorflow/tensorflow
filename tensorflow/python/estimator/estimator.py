@@ -54,6 +54,7 @@ from tensorflow.python.training import saver
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
+from tensorflow.python.util import compat_internal
 from tensorflow.python.util import nest
 
 
@@ -159,7 +160,7 @@ class Estimator(object):
       self._config = config
 
     # Model directory.
-    model_dir = compat.path_to_str(model_dir)
+    model_dir = compat_internal.path_to_str(model_dir)
     if (model_dir is not None) and (self._config.model_dir is not None):
       if model_dir != self._config.model_dir:
         # TODO(alanyee): remove this suppression after it is no longer needed
@@ -455,6 +456,7 @@ class Estimator(object):
       with training.MonitoredSession(
           session_creator=training.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
+              master=self._config.master,
               scaffold=estimator_spec.scaffold,
               config=self._session_config),
           hooks=input_hooks + hooks) as mon_sess:
