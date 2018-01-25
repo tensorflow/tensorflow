@@ -327,6 +327,9 @@ void ReadModelFlagsFromCommandLineFlags(
         CHECK(absl::SimpleAtoi(value, &size));
         CHECK_GT(size, 0);
         rnn_state_proto->set_size(size);
+      } else if (key == "manually_create") {
+        CHECK_EQ(absl::AsciiStrToLower(value), "true");
+        rnn_state_proto->set_manually_create(true);
       } else {
         LOG(FATAL) << "Unknown key '" << key << "' in --rnn_states";
       }

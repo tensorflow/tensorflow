@@ -158,7 +158,9 @@ std::size_t TransientArraySize(const Model& model, const string& array_name,
         LOG(FATAL)
             << "A RNN state array, " << array_name << ", still does not "
             << "have a known data type after all graph transformations have "
-            << "run.";
+            << "run. That's mostly a toco bug --- sorry. For now, you can "
+            << "work around this issue by adding manually_create:true in the "
+            << "--rnn_state description of this RNN state.";
       }
     }
     LOG(FATAL) << "An array, " << array_name << ", still does not "
