@@ -26,10 +26,15 @@ from tensorflow.python.platform import test as test_lib
 
 import numpy as np
 
+try:
+  from distutils.version import StrictVersion as Version
+  # numpy.roll for multiple shifts was introduced in numpy version 1.12.0
+  NP_ROLL_CAN_MULTISHIFT = Version(np.version.version) >= Version('1.12.0')
+except ImportError:
+  NP_ROLL_CAN_MULTISHIFT = False
+
 class RollTest(test_util.TensorFlowTestCase):
   def _testRoll(self, np_input, shift, axis):
-    shift = tuple(shift) if isinstance(shift, list) else shift
-    axis = tuple(axis) if isinstance(axis, list) else axis
     expected_roll = np.roll(np_input, shift, axis)
     with self.test_session():
       roll = manip_ops.roll(np_input, shift, axis)
@@ -54,23 +59,28 @@ class RollTest(test_util.TensorFlowTestCase):
   def testIntTypes(self):
     for t in [np.int32, np.int64]:
       self._testAll(np.random.randint(-100, 100, (5)).astype(t), 3, 0)
-      self._testAll(np.random.randint(-100, 100, (4, 4, 3)).astype(t),
-                    [1, -2, 3], [0, 1, 2])
-      self._testAll(np.random.randint(-100, 100, (4, 2, 1, 3)).astype(t),
-                    [0, 1, -2], [1, 2, 3])
+      if NP_ROLL_CAN_MULTISHIFT:
+        self._testAll(np.random.randint(-100, 100, (4, 4, 3)).astype(t),
+                      [1, -2, 3], [0, 1, 2])
+        self._testAll(np.random.randint(-100, 100, (4, 2, 1, 3)).astype(t),
+                      [0, 1, -2], [1, 2, 3])
 
   def testFloatTypes(self):
     for t in [np.float32, np.float64]:
       self._testAll(np.random.rand(5).astype(t), 2, 0)
-      self._testAll(np.random.rand(3, 4).astype(t), [1, 2], [1, 0])
-      self._testAll(np.random.rand(1, 3, 4).astype(t), [1, 0, -3], [0, 1, 2])
+      if NP_ROLL_CAN_MULTISHIFT:
+        self._testAll(np.random.rand(3, 4).astype(t), [1, 2], [1, 0])
+        self._testAll(np.random.rand(1, 3, 4).astype(t), [1, 0, -3], [0, 1, 2])
 
   def testComplexTypes(self):
     for t in [np.complex64, np.complex128]:
-      x = np.random.rand(2, 5).astype(t)
-      self._testAll(x + 1j * x, [1, 2], [1, 0])
-      x = np.random.rand(3, 2, 1, 1).astype(t)
-      self._testAll(x + 1j * x, [2, 1, 1, 0], [0, 3, 1, 2])
+      x = np.random.rand(4, 4).astype(t)
+      self._testAll(x + 1j * x, 2, 0)
+      if NP_ROLL_CAN_MULTISHIFT:
+        x = np.random.rand(2, 5).astype(t)
+        self._testAll(x + 1j * x, [1, 2], [1, 0])
+        x = np.random.rand(3, 2, 1, 1).astype(t)
+        self._testAll(x + 1j * x, [2, 1, 1, 0], [0, 3, 1, 2])
 
 
   def testRollInputMustVectorHigherRaises(self):
