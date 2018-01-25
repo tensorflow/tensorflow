@@ -26,10 +26,10 @@ struct Settings {
   int loop_count = 1;
   float input_mean = 127.5f;
   float input_std = 127.5f;
-  string model_name = "./mobilenet_quant_v1_224.tflite";
-  string input_bmp_name = "./grace_hopper.bmp";
-  string labels_file_name = "./labels.txt";
-  string input_layer_type = "uint8_t";
+  std::string model_name = "./mobilenet_quant_v1_224.tflite";
+  std::string input_bmp_name = "./grace_hopper.bmp";
+  std::string labels_file_name = "./labels.txt";
+  std::string input_layer_type = "uint8_t";
   int number_of_threads = 4;
 };
 
