@@ -18,19 +18,18 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import manip_ops
-from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import gradient_checker
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import test as test_lib
 
 import numpy as np
 
 class RollTest(test_util.TensorFlowTestCase):
   def _testRoll(self, np_input, shift, axis):
+    shift = tuple(shift) if isinstance(shift, list) else shift
+    axis = tuple(axis) if isinstance(axis, list) else axis
     expected_roll = np.roll(np_input, shift, axis)
     with self.test_session():
       roll = manip_ops.roll(np_input, shift, axis)
