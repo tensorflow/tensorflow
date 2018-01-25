@@ -36,7 +36,6 @@ std::vector<uint8_t> LoadImageFromUIImage(UIImage *img) {
     CGColorSpaceRelease(color_space);
     CGContextDrawImage(context, CGRectMake(0, 0, width, height), image);
     CGContextRelease(context);
-    CFRelease(image);
     
     return result;
 }
