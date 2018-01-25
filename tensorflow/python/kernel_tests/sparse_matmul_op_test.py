@@ -74,22 +74,22 @@ class SparseMatMulTest(test.TestCase):
   def testBasic(self):
     x = np.arange(0., 4.).reshape([4, 1]).astype(np.float32)
     y = np.arange(-1., 1.).reshape([1, 2]).astype(np.float32)
-    for x_dtype in (dtypes.float32, dtypes.bfloat16):
-      for y_dtype in (dtypes.float32, dtypes.bfloat16):
+    for x_dtype in (dtypes.float32,):
+      for y_dtype in (dtypes.float32,):
         self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)
 
   def testZeroDim(self):
     x = np.ones((4, 0)).astype(np.float32)
     y = np.ones((0, 3)).astype(np.float32)
-    for x_dtype in (dtypes.float32, dtypes.bfloat16):
-      for y_dtype in (dtypes.float32, dtypes.bfloat16):
+    for x_dtype in (dtypes.float32,):
+      for y_dtype in (dtypes.float32,):
         self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)
 
   def testEmpty(self):
     x = np.ones((0, 0)).astype(np.float32)
     y = np.ones((0, 0)).astype(np.float32)
-    for x_dtype in (dtypes.float32, dtypes.bfloat16):
-      for y_dtype in (dtypes.float32, dtypes.bfloat16):
+    for x_dtype in (dtypes.float32,):
+      for y_dtype in (dtypes.float32,):
         self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)
 
   # Tests setting one dimension to be a high value.
@@ -98,8 +98,8 @@ class SparseMatMulTest(test.TestCase):
     r2 = np.random.randint(1, 10)
     r3 = np.random.randint(1, 10)
     for m, k, n in [(r1, r2, r3), (r2, r1, r3), (r2, r3, r1)]:
-      for x_dtype in (dtypes.float32, dtypes.bfloat16):
-        for y_dtype in (dtypes.float32, dtypes.bfloat16):
+      for x_dtype in (dtypes.float32,):
+        for y_dtype in (dtypes.float32,):
           x = RandMatrix(m, k, False)
           y = RandMatrix(k, n, False)
           self._testCpuMatmul(x, y, x_dtype=x_dtype, y_dtype=y_dtype)
@@ -110,8 +110,8 @@ class SparseMatMulTest(test.TestCase):
       for tr_b in [True, False]:
         for sp_a in [True, False]:
           for sp_b in [True, False]:
-            for x_dtype in (dtypes.float32, dtypes.bfloat16):
-              for y_dtype in (dtypes.float32, dtypes.bfloat16):
+            for x_dtype in (dtypes.float32,):
+              for y_dtype in (dtypes.float32,):
                 n, k, m = np.random.randint(1, 100, size=3)
                 x = RandMatrix(n, k, tr_a)
                 y = RandMatrix(k, m, tr_b)
@@ -163,8 +163,8 @@ class MatMulGradientTest(test.TestCase):
       for tr_b in [True, False]:
         for sp_a in [True, False]:
           for sp_b in [True, False]:
-            for a_dtype in (dtypes.float32, dtypes.bfloat16):
-              for b_dtype in (dtypes.float32, dtypes.bfloat16):
+            for a_dtype in (dtypes.float32,):
+              for b_dtype in (dtypes.float32,):
                 name = "sparse_matmul_%s_%s_%s_%s" % (tr_a, tr_b, sp_a, sp_b)
                 self._testGradients(tr_a, tr_b, sp_a, sp_b, a_dtype, b_dtype,
                                     name)
