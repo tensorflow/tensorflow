@@ -31,6 +31,7 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
 from tensorflow.python.training import training_util
 
@@ -280,6 +281,7 @@ class DNNClassifier(estimator.Estimator):
       input_layer_partitioner=None,
       config=None,
       warm_start_from=None,
+      loss_reduction=losses.Reduction.SUM,
   ):
     """Initializes a `DNNClassifier` instance.
 
@@ -323,15 +325,19 @@ class DNNClassifier(estimator.Estimator):
         string filepath is provided instead of a `WarmStartSettings`, then all
         weights are warm-started, and it is assumed that vocabularies and Tensor
         names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
     """
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
           weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
           n_classes, weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
 
     def _model_fn(features, labels, mode, config):
       """Call the defined shared _dnn_model_fn and possibly warm-start."""
@@ -441,6 +447,7 @@ class DNNRegressor(estimator.Estimator):
       input_layer_partitioner=None,
       config=None,
       warm_start_from=None,
+      loss_reduction=losses.Reduction.SUM,
   ):
     """Initializes a `DNNRegressor` instance.
 
@@ -478,6 +485,8 @@ class DNNRegressor(estimator.Estimator):
         string filepath is provided instead of a `WarmStartSettings`, then all
         weights are warm-started, and it is assumed that vocabularies and Tensor
         names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
     """
 
     def _model_fn(features, labels, mode, config):
@@ -488,7 +497,8 @@ class DNNRegressor(estimator.Estimator):
           mode=mode,
           head=head_lib.  # pylint: disable=protected-access
           _regression_head_with_mean_squared_error_loss(
-              label_dimension=label_dimension, weight_column=weight_column),
+              label_dimension=label_dimension, weight_column=weight_column,
+              loss_reduction=loss_reduction),
           hidden_units=hidden_units,
           feature_columns=tuple(feature_columns or []),
           optimizer=optimizer,

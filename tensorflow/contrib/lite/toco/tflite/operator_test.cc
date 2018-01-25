@@ -258,16 +258,6 @@ TEST_F(OperatorTest, BuiltinMaxPool) {
   EXPECT_EQ(op.kheight, output_toco_op->kheight);
 }
 
-TEST_F(OperatorTest, BuiltinPad) {
-  PadOperator op;
-  op.left_padding = {1, 2, 3};
-  op.right_padding = {1, 2, 3};
-  auto output_toco_op =
-      SerializeAndDeserialize(GetOperator("PAD", OperatorType::kPad), op);
-  EXPECT_EQ(op.left_padding, output_toco_op->left_padding);
-  EXPECT_EQ(op.right_padding, output_toco_op->right_padding);
-}
-
 TEST_F(OperatorTest, BuiltinReshape) {
   TensorFlowReshapeOperator op;
   op.shape = {1, 2, 4, 5, 8};
