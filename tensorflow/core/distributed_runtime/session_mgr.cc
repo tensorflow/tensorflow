@@ -122,8 +122,8 @@ void SessionMgr::SetLogging(bool active) {
   mutex_lock l(mu_);
   this->is_logging_active_ = active;
   // Legacy Session
-  {
-    auto* worker_cache = legacy_session_.worker_cache.get();
+  if (legacy_session_) {
+    auto* worker_cache = legacy_session_->worker_cache.get();
     if (worker_cache) {
       worker_cache->SetLogging(active);
     }
@@ -144,8 +144,8 @@ void SessionMgr::RetrieveLogs(tensorflow::int64 step_id,
                               LoggingResponse* response) {
   mutex_lock l(mu_);
   // Legacy Session
-  {
-    auto* worker_cache = legacy_session_.worker_cache.get();
+  if (legacy_session_) {
+    auto* worker_cache = legacy_session_->worker_cache.get();
     if (worker_cache) {
       auto step_stats = StepStats();
       if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
@@ -174,8 +174,8 @@ void SessionMgr::RetrieveLogs(tensorflow::int64 step_id,
 void SessionMgr::ClearLogs() {
   mutex_lock l(mu_);
   // Legacy Session
-  {
-    auto* worker_cache = legacy_session_.worker_cache.get();
+  if (legacy_session_) {
+    auto* worker_cache = legacy_session_->worker_cache.get();
     if (worker_cache) {
       worker_cache->ClearLogs();
     }
