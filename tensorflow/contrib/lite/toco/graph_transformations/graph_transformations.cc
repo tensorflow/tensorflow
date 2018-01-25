@@ -132,6 +132,7 @@ bool GraphTransformationsPass(int increment, Model* model,
   CHECK(increment == 1 || increment == -1);
   bool changed = false;
   if (model->operators.empty()) {
+    LOG(INFO) << "Model is empty!!!";
     return false;
   }
   int op_index = increment == 1 ? 0 : model->operators.size() - 1;

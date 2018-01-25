@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_API_DEF_UPDATE_API_DEF_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_API_DEF_UPDATE_API_DEF_H_
+#ifndef TENSORFLOW_CORE_API_DEF_UPDATE_API_DEF_H_
+#define TENSORFLOW_CORE_API_DEF_UPDATE_API_DEF_H_
 // Functions for updating ApiDef when new ops are added.
 
 #include "tensorflow/core/framework/op_def.pb.h"
@@ -42,4 +42,4 @@ void CreateApiDefs(const OpList& ops, const string& api_def_dir,
                    const string& op_file_pattern);
 
 }  // namespace tensorflow
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_API_DEF_UPDATE_API_DEF_H_
+#endif  // TENSORFLOW_CORE_API_DEF_UPDATE_API_DEF_H_

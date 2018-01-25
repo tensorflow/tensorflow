@@ -86,4 +86,7 @@ py_library(
     name = "python_api",
     srcs = [":python_api_gen"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/contrib:contrib_py",  # keep
+    ],
 )
