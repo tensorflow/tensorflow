@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_RESOURCES_QUANTILE_STREAM_RESOURCE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_RESOURCES_QUANTILE_STREAM_RESOURCE_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_RESOURCES_QUANTILE_STREAM_RESOURCE_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_RESOURCES_QUANTILE_STREAM_RESOURCE_H_
 
 #include "tensorflow/contrib/boosted_trees/lib/quantiles/weighted_quantiles_stream.h"
 #include "tensorflow/contrib/boosted_trees/proto/quantiles.pb.h"  // NOLINT
@@ -32,12 +32,14 @@ using QuantileStream =
 class QuantileStreamResource : public StampedResource {
  public:
   QuantileStreamResource(const float epsilon, const int32 num_quantiles,
-                         const int64 max_elements, int64 stamp_token)
+                         const int64 max_elements, bool generate_quantiles,
+                         int64 stamp_token)
       : stream_(epsilon, max_elements),
         are_buckets_ready_(false),
         epsilon_(epsilon),
         num_quantiles_(num_quantiles),
-        max_elements_(max_elements) {
+        max_elements_(max_elements),
+        generate_quantiles_(generate_quantiles) {
     set_stamp(stamp_token);
   }
 
@@ -74,6 +76,11 @@ class QuantileStreamResource : public StampedResource {
     are_buckets_ready_ = are_buckets_ready;
   }
 
+  bool generate_quantiles() const { return generate_quantiles_; }
+  void set_generate_quantiles(bool generate_quantiles) {
+    generate_quantiles_ = generate_quantiles;
+  }
+
  private:
   ~QuantileStreamResource() override {}
 
@@ -95,10 +102,15 @@ class QuantileStreamResource : public StampedResource {
   const int32 num_quantiles_;
   // An upper-bound for the number of elements.
   int64 max_elements_;
+
+  // Generate quantiles instead of approximate boundaries.
+  // If true, exactly `num_quantiles` will be produced in the final summary.
+  bool generate_quantiles_;
+
   TF_DISALLOW_COPY_AND_ASSIGN(QuantileStreamResource);
 };
 
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_RESOURCES_QUANTILE_STREAM_RESOURCE_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_RESOURCES_QUANTILE_STREAM_RESOURCE_H_

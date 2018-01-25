@@ -156,8 +156,8 @@ void ConvertFloatTensorConst(const Model& model, const string& name,
   const_op->set_name(name);
   (*const_op->mutable_attr())["dtype"].set_type(DT_FLOAT);
   auto* tensor = (*const_op->mutable_attr())["value"].mutable_tensor();
-  CHECK(model.arrays.count(name));
-  const auto& input_array = *model.arrays.at(name);
+  CHECK(model.HasArray(name));
+  const auto& input_array = model.GetArray(name);
   const auto& input_shape = input_array.shape();
   CHECK(input_array.buffer);
   CHECK(input_array.buffer->type == ArrayDataType::kFloat);
@@ -177,8 +177,8 @@ void ConvertFloatTensorConst(const Model& model, const string& name,
   const_op->set_name(name);
   (*const_op->mutable_attr())["dtype"].set_type(DT_FLOAT);
   auto* tensor = (*const_op->mutable_attr())["value"].mutable_tensor();
-  CHECK(model.arrays.count(name));
-  const auto& input_array = *model.arrays.at(name);
+  CHECK(model.HasArray(name));
+  const auto& input_array = model.GetArray(name);
   const auto& input_shape = input_array.shape();
   CHECK(input_array.buffer);
   CHECK(input_array.buffer->type == ArrayDataType::kFloat);
@@ -193,8 +193,8 @@ void ConvertIntTensorConst(const Model& model, const string& name,
   if (HasAlreadyExportedConst(name, *tensorflow_graph)) {
     return;
   }
-  CHECK(model.arrays.count(name));
-  const auto& array = *model.arrays.at(name);
+  CHECK(model.HasArray(name));
+  const auto& array = model.GetArray(name);
   auto* const_op = tensorflow_graph->add_node();
   const_op->set_op("Const");
   const_op->set_name(name);
@@ -324,7 +324,7 @@ void ConvertConvOperator(const Model& model, const ConvOperator& src_op,
     biasadd_op->add_input(conv_output);
     biasadd_op->add_input(src_op.inputs[2]);
     (*biasadd_op->mutable_attr())["T"].set_type(DT_FLOAT);
-    CHECK(model.arrays.count(src_op.inputs[2]));
+    CHECK(model.HasArray(src_op.inputs[2]));
     const string& bias_array_name =
         WalkUpToConstantArray(model, src_op.inputs[2]);
     const auto& bias_array = model.GetArray(bias_array_name);
@@ -361,7 +361,7 @@ void ConvertDepthwiseConvOperator(const Model& model,
   // We need to convert that to H x W x InputDepth x Multiplier.
   // That's only a matter of constructing a Dims object; the actual
   // array layout is the same.
-  CHECK(model.arrays.count(src_op.inputs[1]));
+  CHECK(model.HasArray(src_op.inputs[1]));
   const string& src_weights_name =
       WalkUpToConstantArray(model, src_op.inputs[1]);
   const auto& src_weights_array = model.GetArray(src_weights_name);
@@ -404,7 +404,7 @@ void ConvertDepthwiseConvOperator(const Model& model,
     biasadd_op->add_input(conv_output);
     biasadd_op->add_input(src_op.inputs[2]);
     (*biasadd_op->mutable_attr())["T"].set_type(DT_FLOAT);
-    CHECK(model.arrays.count(src_op.inputs[2]));
+    CHECK(model.HasArray(src_op.inputs[2]));
     const string& bias_name = WalkUpToConstantArray(model, src_op.inputs[2]);
     const auto& bias_array = model.GetArray(bias_name);
     // TODO(b/62904716) Bias arrays should be 1-D, and used directly.
@@ -469,10 +469,10 @@ void ConvertFullyConnectedOperator(const Model& model,
   (*matmul_op->mutable_attr())["T"].set_type(DT_FLOAT);
   (*matmul_op->mutable_attr())["transpose_a"].set_b(false);
   (*matmul_op->mutable_attr())["transpose_b"].set_b(false);
-  CHECK(model.arrays.count(src_op.inputs[1]));
+  CHECK(model.HasArray(src_op.inputs[1]));
   const string& fc_weights_name =
       WalkUpToConstantArray(model, src_op.inputs[1]);
-  const auto& fc_weights_array = *model.arrays.at(fc_weights_name);
+  const auto& fc_weights_array = model.GetArray(fc_weights_name);
   const auto& fc_weights_shape = fc_weights_array.shape();
   CHECK_EQ(fc_weights_shape.dimensions_count(), 2);
   CreateMatrixShapeTensorConst(reshape_shape, fc_weights_shape.dims(1), -1,
@@ -492,8 +492,8 @@ void ConvertFullyConnectedOperator(const Model& model,
     biasadd_op->add_input(matmul_output);
     biasadd_op->add_input(src_op.inputs[2]);
     (*biasadd_op->mutable_attr())["T"].set_type(DT_FLOAT);
-    CHECK(model.arrays.count(src_op.inputs[2]));
-    const auto& bias_array = *model.arrays.at(src_op.inputs[2]);
+    CHECK(model.HasArray(src_op.inputs[2]));
+    const auto& bias_array = model.GetArray(src_op.inputs[2]);
     // TODO(b/62904716) Bias arrays should be 1-D, and used directly.
     Shape bias_shape_1d = bias_array.shape();
     UnextendShape(&bias_shape_1d, 1);
@@ -625,7 +625,7 @@ void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
     *reshape_op->add_input() = softmax_size;
     (*reshape_op->mutable_attr())["T"].set_type(DT_FLOAT);
 
-    const auto& input_shape = model.arrays.at(src_op.inputs[0])->shape();
+    const auto& input_shape = model.GetArray(src_op.inputs[0]).shape();
     int32 flattened_size = 1;
     for (int i = 0; i < input_shape.dimensions_count() - 1; ++i) {
       flattened_size *= input_shape.dims(i);
@@ -1013,8 +1013,8 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   // Op names have been chosen to match the tf.slim LSTM naming
   // as closely as possible.
   const int axis =
-      model.arrays.at(src_op.inputs[LstmCellOperator::PREV_ACTIV_INPUT])
-          ->shape()
+      model.GetArray(src_op.inputs[LstmCellOperator::PREV_ACTIV_INPUT])
+          .shape()
           .dimensions_count() -
       1;
   // Note that DATA_INPUT may have extra size 1 dimensions, but TF concat
@@ -1033,9 +1033,9 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
 
   // Write weights
   const string weights_output = base + "weights";
-  CHECK(model.arrays.count(src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]));
+  CHECK(model.HasArray(src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]));
   const auto& weights_array =
-      *model.arrays.at(src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]);
+      model.GetArray(src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]);
   // Convert 4D FullyConnected weights into 2D matrix
   const auto& weights_shape = weights_array.shape();
   CHECK_EQ(weights_shape.dimensions_count(), 2);
@@ -1059,9 +1059,9 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
 
   // Write biases
   const string biases_output = base + "biases";
-  CHECK(model.arrays.count(src_op.inputs[LstmCellOperator::BIASES_INPUT]));
+  CHECK(model.HasArray(src_op.inputs[LstmCellOperator::BIASES_INPUT]));
   const auto& bias_array =
-      *model.arrays.at(src_op.inputs[LstmCellOperator::BIASES_INPUT]);
+      model.GetArray(src_op.inputs[LstmCellOperator::BIASES_INPUT]);
   // TODO(b/62904716) Bias arrays should be 1-D, and used directly.
   Shape bias_shape_1d = bias_array.shape();
   UnextendShape(&bias_shape_1d, 1);
@@ -1557,7 +1557,7 @@ void AddPlaceholderForRNNState(const Model& model, const string& name, int size,
   (*placeholder->mutable_attr())["dtype"].set_type(DT_FLOAT);
 
   auto* shape = (*placeholder->mutable_attr())["shape"].mutable_shape();
-  const auto& state_array = *model.arrays.at(name);
+  const auto& state_array = model.GetArray(name);
   if (state_array.has_shape()) {
     const auto& state_shape = state_array.shape();
     const int kDims = state_shape.dimensions_count();
@@ -1574,7 +1574,7 @@ void ExportTensorFlowGraphDefImplementation(const Model& model,
                                             GraphDef* tensorflow_graph) {
   for (const auto& input_array : model.flags.input_arrays()) {
     AddPlaceholder(input_array.name(),
-                   model.arrays.at(input_array.name())->data_type,
+                   model.GetArray(input_array.name()).data_type,
                    tensorflow_graph);
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
@@ -1588,7 +1588,7 @@ void ExportTensorFlowGraphDefImplementation(const Model& model,
   // by the above operators export. It's important that this comes
   // after, as some operators need to export arrays that they reference
   // in a specific way, rather than in the generic way done below.
-  for (const auto& array_pair : model.arrays) {
+  for (const auto& array_pair : model.GetArrayMap()) {
     const string& array_name = array_pair.first;
     const auto& array = *array_pair.second;
     if (array.buffer) {

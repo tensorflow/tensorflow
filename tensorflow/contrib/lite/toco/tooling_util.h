@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_
 
 #include <algorithm>
 #include <cmath>
@@ -274,6 +274,11 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result);
 
 int AxesCount(AxesOrder axes_order);
 
+// Returns the permutation of the dimensions based on the input axes order and
+// output axes order.
+void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
+                     std::vector<int>* shuffle);
+
 void ShuffleDims(const Shape& input_shape, AxesOrder input_axes_order,
                  AxesOrder output_axes_order, Shape* output_shape);
 void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
@@ -295,4 +300,4 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 
 }  // namespace toco
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_

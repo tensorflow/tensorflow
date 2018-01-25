@@ -15,8 +15,8 @@ limitations under the License.
 
 // Basic class for applying a mel-scale mapping to a power spectrum.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
+#ifndef TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
+#define TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
 
 #include <vector>
 #include "tensorflow/core/framework/op_kernel.h"
@@ -63,4 +63,4 @@ class MfccMelFilterbank {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_
+#endif  // TENSORFLOW_CORE_KERNELS_MFCC_MEL_FILTERBANK_H_

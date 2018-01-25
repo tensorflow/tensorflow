@@ -81,7 +81,7 @@ bool RemoveTrivialBinaryOperator::Run(Model* model, std::size_t op_index) {
   // Now check if the constant operand makes this binary
   // operator trivial.
   const auto& constant_input_array =
-      *model->arrays[binary_op->inputs[index_of_constant_input]];
+      model->GetArray(binary_op->inputs[index_of_constant_input]);
   // For now, we only handle floats here.
   if (constant_input_array.data_type != ArrayDataType::kFloat) {
     return false;

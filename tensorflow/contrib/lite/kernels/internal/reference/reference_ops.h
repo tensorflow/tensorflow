@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -2330,6 +2330,18 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
   }
 }
 
+inline bool LoopCondition(int index, int stop, int stride) {
+  return stride > 0 ? index < stop : index > stop;
+}
+
+inline int StartIndex(int start, int stride, int dim, bool masked) {
+  return masked ? (stride > 0 ? 0 : dim - 1) : start;
+}
+
+inline int StopIndex(int stop, int stride, int dim, bool masked) {
+  return masked ? (stride > 0 ? dim : -1) : stop;
+}
+
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          int begin_mask, int end_mask,
@@ -2337,20 +2349,35 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          const std::vector<int>& stops,
                          const std::vector<int>& strides, T* output_data,
                          const Dims<4>& output_dims) {
-  const int start_b = (begin_mask & 8) ? 0 : starts[3];
-  const int stop_b = (end_mask & 8) ? input_dims.sizes[3] : stops[3];
-  const int start_h = (begin_mask & 4) ? 0 : starts[2];
-  const int stop_h = (end_mask & 4) ? input_dims.sizes[2] : stops[2];
-  const int start_w = (begin_mask & 2) ? 0 : starts[1];
-  const int stop_w = (end_mask & 2) ? input_dims.sizes[1] : stops[1];
-  const int start_d = (begin_mask & 1) ? 0 : starts[0];
-  const int stop_d = (end_mask & 1) ? input_dims.sizes[0] : stops[0];
+  TFLITE_DCHECK_EQ(starts.size(), 4);
+  TFLITE_DCHECK_EQ(stops.size(), 4);
+  TFLITE_DCHECK_EQ(strides.size(), 4);
+  const int start_b =
+      StartIndex(starts[3], strides[3], input_dims.sizes[3], begin_mask & 8);
+  const int stop_b =
+      StopIndex(stops[3], strides[3], input_dims.sizes[3], end_mask & 8);
+  const int start_h =
+      StartIndex(starts[2], strides[2], input_dims.sizes[2], begin_mask & 4);
+  const int stop_h =
+      StopIndex(stops[2], strides[2], input_dims.sizes[2], end_mask & 4);
+  const int start_w =
+      StartIndex(starts[1], strides[1], input_dims.sizes[1], begin_mask & 2);
+  const int stop_w =
+      StopIndex(stops[1], strides[1], input_dims.sizes[1], end_mask & 2);
+  const int start_d =
+      StartIndex(starts[0], strides[0], input_dims.sizes[0], begin_mask & 1);
+  const int stop_d =
+      StopIndex(stops[0], strides[0], input_dims.sizes[0], end_mask & 1);
 
   T* out_ptr = output_data;
-  for (int in_b = start_b; in_b < stop_b; in_b += strides[3]) {
-    for (int in_h = start_h; in_h < stop_h; in_h += strides[2]) {
-      for (int in_w = start_w; in_w < stop_w; in_w += strides[1]) {
-        for (int in_d = start_d; in_d < stop_d; in_d += strides[0]) {
+  for (int in_b = start_b; LoopCondition(in_b, stop_b, strides[3]);
+       in_b += strides[3]) {
+    for (int in_h = start_h; LoopCondition(in_h, stop_h, strides[2]);
+         in_h += strides[2]) {
+      for (int in_w = start_w; LoopCondition(in_w, stop_w, strides[1]);
+           in_w += strides[1]) {
+        for (int in_d = start_d; LoopCondition(in_d, stop_d, strides[0]);
+             in_d += strides[0]) {
           *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
         }
       }
@@ -2628,4 +2655,4 @@ void Transpose(const T* input, const Dims<4>& input_dims, T* output,
 }  // namespace reference_ops
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_

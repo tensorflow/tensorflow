@@ -1388,6 +1388,13 @@ tf_gen_op_wrapper_private_py(
 )
 
 tf_gen_op_wrapper_private_py(
+    name = "batch_ops_gen",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
     name = "math_ops_gen",
     visibility = [
         "//learning/brain/google/python/ops:__pkg__",
@@ -1951,6 +1958,7 @@ py_library(
     srcs = ["ops/list_ops.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":array_ops",
         ":list_ops_gen",
     ],
 )

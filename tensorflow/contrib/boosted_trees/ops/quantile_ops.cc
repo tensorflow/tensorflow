@@ -39,6 +39,7 @@ REGISTER_OP("CreateQuantileAccumulator")
     .Attr("max_elements: int = 1099511627776")  // 1 << 40
     .Attr("epsilon: float")
     .Attr("num_quantiles: int")
+    .Attr("generate_quantiles: bool=False")
     .Input("quantile_accumulator_handle: resource")
     .Input("stamp_token: int64")
     .SetShapeFn([](shape_inference::InferenceContext* c) {

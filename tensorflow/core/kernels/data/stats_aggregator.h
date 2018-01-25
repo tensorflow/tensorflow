@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_STATS_AGGREGATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_STATS_AGGREGATOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_DATA_STATS_AGGREGATOR_H_
+#define TENSORFLOW_CORE_KERNELS_DATA_STATS_AGGREGATOR_H_
 
 #include <memory>
 #include <string>
@@ -81,4 +81,4 @@ class StatsAggregatorResource : public ResourceBase {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_DATA_STATS_AGGREGATOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_DATA_STATS_AGGREGATOR_H_

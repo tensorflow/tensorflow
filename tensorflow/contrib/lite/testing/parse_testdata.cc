@@ -18,6 +18,7 @@ limitations under the License.
 // ASCII file.
 #include "tensorflow/contrib/lite/testing/parse_testdata.h"
 
+#include <cinttypes>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -218,8 +219,8 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
         int32_t computed = data[idx];
         int32_t reference = example.outputs[0].flat_data[idx];
         if (std::abs(computed - reference) > 0) {
-          fprintf(stderr, "output[%zu][%zu] did not match %d vs reference %f\n",
-                  i, idx, data[idx], example.outputs[0].flat_data[idx]);
+          fprintf(stderr, "output[%zu][%zu] did not match %d vs reference %d\n",
+                  i, idx, computed, reference);
           return kTfLiteError;
         }
       }
@@ -231,8 +232,9 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
         int64_t reference = example.outputs[0].flat_data[idx];
         if (std::abs(computed - reference) > 0) {
           fprintf(stderr,
-                  "output[%zu][%zu] did not match %ld vs reference %f\n", i,
-                  idx, data[idx], example.outputs[0].flat_data[idx]);
+                  "output[%zu][%zu] did not match %" PRId64
+                  " vs reference %" PRId64 "\n",
+                  i, idx, computed, reference);
           return kTfLiteError;
         }
       }

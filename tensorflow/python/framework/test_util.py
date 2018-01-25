@@ -65,8 +65,10 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.protobuf import compare
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("test.gpu_device_name")
 def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
@@ -101,6 +103,7 @@ def assert_ops_in_graph(expected_ops, graph):
   return actual_ops
 
 
+@tf_export("test.assert_equal_graph_def")
 def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
@@ -630,6 +633,7 @@ def run_in_graph_and_eager_modes(
   return decorator
 
 
+@tf_export("test.is_gpu_available")
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
 
@@ -678,6 +682,7 @@ def device(use_gpu):
     yield
 
 
+@tf_export("test.TestCase")
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
@@ -1125,43 +1130,90 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
       print("dtype = %s, shape = %s" % (a.dtype, a.shape))
-      np.testing.assert_allclose(a, b, rtol=rtol, atol=atol, err_msg=msg)
+      # TODO(xpan): There seems to be a bug:
+      # tensorflow/compiler/tests:binary_ops_test pass with float32
+      # nan even though the equal_nan is False by default internally.
+      np.testing.assert_allclose(
+          a, b, rtol=rtol, atol=atol, err_msg=msg, equal_nan=True)
 
-  def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
-    """Asserts that two numpy arrays, or dicts of same, have near values.
+  def _assertAllCloseRecursive(self, a, b, rtol=1e-6, atol=1e-6, path=None):
+    path = path or []
+    path_str = (("[" + "][".join([str(p) for p in path]) + "]") if path else "")
 
-    This does not support nested dicts. `a` and `b` can be namedtuples too,
-    which are converted to dicts.
-
-    Args:
-      a: The expected numpy ndarray (or anything can be converted to one), or
-        dict of same. Must be a dict iff `b` is a dict.
-      b: The actual numpy ndarray (or anything can be converted to one), or
-        dict of same. Must be a dict iff `a` is a dict.
-      rtol: relative tolerance.
-      atol: absolute tolerance.
-
-    Raises:
-      ValueError: if only one of `a` and `b` is a dict.
-    """
     # Check if a and/or b are namedtuples.
     if hasattr(a, "_asdict"):
       a = a._asdict()
     if hasattr(b, "_asdict"):
       b = b._asdict()
-    is_a_dict = isinstance(a, dict)
-    if is_a_dict != isinstance(b, dict):
-      raise ValueError("Can't compare dict to non-dict, %s vs %s." % (a, b))
-    if is_a_dict:
+    a_is_dict = isinstance(a, dict)
+    if a_is_dict != isinstance(b, dict):
+      raise ValueError("Can't compare dict to non-dict, a%s vs b%s." %
+                       (path_str, path_str))
+    if a_is_dict:
       self.assertItemsEqual(
-          a.keys(), b.keys(),
-          msg="mismatched keys, expected %s, got %s" % (a.keys(), b.keys()))
+          a.keys(),
+          b.keys(),
+          msg="mismatched keys: a%s has keys %s, but b%s has keys %s" %
+          (path_str, a.keys(), path_str, b.keys()))
       for k in a:
+        path.append(k)
+        self._assertAllCloseRecursive(
+            a[k], b[k], rtol=rtol, atol=atol, path=path)
+        del path[-1]
+    elif isinstance(a, (list, tuple)):
+      # Try to directly compare a, b as ndarrays; if not work, then traverse
+      # through the sequence, which is more expensive.
+      try:
+        a_as_ndarray = np.array(a)
+        b_as_ndarray = np.array(b)
         self._assertArrayLikeAllClose(
-            a[k], b[k], rtol=rtol, atol=atol,
-            msg="%s: expected %s, got %s." % (k, a, b))
+            a_as_ndarray,
+            b_as_ndarray,
+            rtol=rtol,
+            atol=atol,
+            msg="Mismatched value: a%s is different from b%s." % (path_str,
+                                                                  path_str))
+      except (ValueError, TypeError) as e:
+        if len(a) != len(b):
+          raise ValueError(
+              "Mismatched length: a%s has %d items, but b%s has %d items" %
+              (path_str, len(a), path_str, len(b)))
+        for idx, (a_ele, b_ele) in enumerate(zip(a, b)):
+          path.append(str(idx))
+          self._assertAllCloseRecursive(
+              a_ele, b_ele, rtol=rtol, atol=atol, path=path)
+          del path[-1]
+    # a and b are ndarray like objects
     else:
-      self._assertArrayLikeAllClose(a, b, rtol=rtol, atol=atol)
+      self._assertArrayLikeAllClose(
+          a,
+          b,
+          rtol=rtol,
+          atol=atol,
+          msg="Mismatched value: a%s is different from b%s." % (path_str,
+                                                                path_str))
+
+  def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
+    """Asserts that two structures of numpy arrays, have near values.
+
+    `a` and `b` can be arbitrarily nested structures. A layer of a nested
+    structure can be a `dict`, `namedtuple`, `tuple` or `list`.
+
+    Args:
+      a: The expected numpy `ndarray`, or anything that can be converted into a
+          numpy `ndarray`, or any arbitrarily nested of structure of these.
+      b: The actual numpy `ndarray`, or anything that can be converted into a
+          numpy `ndarray`, or any arbitrarily nested of structure of these.
+      rtol: relative tolerance.
+      atol: absolute tolerance.
+
+    Raises:
+      ValueError: if only one of `a[p]` and `b[p]` is a dict or
+          `a[p]` and `b[p]` have different length, where `[p]` denotes a path
+          to the nested structure, e.g. given `a = [(1, 1), {'d': (6, 7)}]` and
+          `[p] = [1]['d']`, then `a[p] = (6, 7)`.
+    """
+    self._assertAllCloseRecursive(a, b, rtol=rtol, atol=atol)
 
   def assertAllCloseAccordingToType(self,
                                     a,
@@ -1326,6 +1378,7 @@ class TensorFlowTestCase(googletest.TestCase):
     # pylint: enable=invalid-name
 
 
+@tf_export("test.create_local_cluster")
 def create_local_cluster(num_workers, num_ps, protocol="grpc",
                          worker_config=None, ps_config=None):
   """Create and start local servers and return the associated `Server` objects.

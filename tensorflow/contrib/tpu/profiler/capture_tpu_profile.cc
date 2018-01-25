@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/tpu/profiler/dump_tpu_profile.h"
 #include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
+#include "tensorflow/contrib/tpu/profiler/version.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -83,6 +84,9 @@ int main(int argc, char** argv) {
       tensorflow::Flag("duration_ms", &FLAGS_duration_ms,
                        "Duration of tracing in ms. Default is 2000ms."),
   };
+
+  std::cout << "Welcome to the Cloud TPU Profiler v" << TPU_PROFILER_VERSION
+            << std::endl;
 
   tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);

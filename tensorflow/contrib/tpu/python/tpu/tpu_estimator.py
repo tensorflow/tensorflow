@@ -92,7 +92,8 @@ def _create_global_step(graph):
 
 def _create_or_get_iterations_per_loop():
   graph = ops.get_default_graph()
-  iter_vars = graph.get_collection(_TPU_ESTIMATOR)
+  collection_name = '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR)
+  iter_vars = graph.get_collection(collection_name)
   if len(iter_vars) == 1:
     return iter_vars[0]
   elif len(iter_vars) > 1:
@@ -107,7 +108,7 @@ def _create_or_get_iterations_per_loop():
           shape=[],
           dtype=dtypes.int32,
           trainable=False,
-          collections=[_TPU_ESTIMATOR],
+          collections=[collection_name, ops.GraphKeys.LOCAL_VARIABLES],
           use_resource=True)
 
 
@@ -387,7 +388,7 @@ class TPUEstimatorSpec(collections.namedtuple('TPUEstimatorSpec', [
   `metric_fn` runs on CPU to generate metrics and `tensors` represents the
   `Tensor`s transferred from TPU system to CPU host and passed to `metric_fn`.
   To be precise, TPU evaluation expects a slightly different signature from the
-  ${tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
+  @{tf.estimator.Estimator}. While `EstimatorSpec.eval_metric_ops` expects a
   dict, `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`.
   The `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. The
   `tensors` usually specify the model logits, which are transferred back from

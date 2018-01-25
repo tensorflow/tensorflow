@@ -44,9 +44,11 @@ from tensorflow.python.ops.gen_functional_ops import *
 from tensorflow.python.ops.gen_functional_ops import _symbolic_gradient
 # pylint: enable=unused-import
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
+@tf_export("foldl")
 def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
           swap_memory=False, name=None):
   """foldl on the list of tensors unpacked from `elems` on dimension 0.
@@ -134,6 +136,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     return r_a
 
 
+@tf_export("foldr")
 def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
           swap_memory=False, name=None):
   """foldr on the list of tensors unpacked from `elems` on dimension 0.
@@ -221,6 +224,7 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     return r_a
 
 
+@tf_export("map_fn")
 def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
            swap_memory=False, infer_shape=True, name=None):
   """map on the list of tensors unpacked from `elems` on dimension 0.
@@ -424,6 +428,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
     return output_pack(results_flat)
 
 
+@tf_export("scan")
 def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
          swap_memory=False, infer_shape=True, name=None):
   """scan on the list of tensors unpacked from `elems` on dimension 0.

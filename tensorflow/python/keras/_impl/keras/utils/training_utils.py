@@ -21,6 +21,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine.training import Model
 from tensorflow.python.ops import array_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _get_available_devices():
@@ -32,6 +33,7 @@ def _normalize_device_name(name):
   return name
 
 
+@tf_export('keras.utils.multi_gpu_model')
 def multi_gpu_model(model, gpus):
   """Replicates a model on different GPUs.
 
@@ -203,4 +205,3 @@ def multi_gpu_model(model, gpus):
     for name, outputs in zip(model.output_names, all_outputs):
       merged.append(concatenate(outputs, axis=0, name=name))
     return Model(model.inputs, merged)
-
