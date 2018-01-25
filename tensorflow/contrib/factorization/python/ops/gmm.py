@@ -133,18 +133,18 @@ class GMM(estimator.Estimator):
   def weights(self):
     """Returns the cluster weights."""
     return checkpoint_utils.load_variable(
-        self.model_dir, gmm_ops.GmmAlgorithm.CLUSTERS_WEIGHT)
+        self.model_dir, constants.CLUSTERS_WEIGHT)
 
   def clusters(self):
     """Returns cluster centers."""
     clusters = checkpoint_utils.load_variable(
-        self.model_dir, gmm_ops.GmmAlgorithm.CLUSTERS_VARIABLE)
+        self.model_dir, constants.CLUSTERS_VARIABLE)
     return np.squeeze(clusters, 1)
 
   def covariances(self):
     """Returns the covariances."""
     return checkpoint_utils.load_variable(
-        self.model_dir, gmm_ops.GmmAlgorithm.CLUSTERS_COVS_VARIABLE)
+        self.model_dir, constants.CLUSTERS_COVS_VARIABLE)
 
   def _parse_tensor_or_dict(self, features):
     if isinstance(features, dict):
