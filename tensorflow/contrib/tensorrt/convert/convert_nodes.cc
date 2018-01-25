@@ -1334,7 +1334,7 @@ tensorflow::Status ConvertReduce(Converter& ctx,
   int nbDims = dims.nbDims + 1;
 
   TRT_ShapedWeights index_list = inputs.at(1).weights();
-
+	
   TFAttrs attrs(node_def);
   // TODO(jie): handle data type
   // auto data_type = attrs.get<nvinfer1::DataType>("T");
@@ -1372,7 +1372,9 @@ tensorflow::Status ConvertReduce(Converter& ctx,
     if (index_list_data[i] == 0)
       return tensorflow::errors::InvalidArgument("TRT cannot reduce at 0, at" +
                                                  node_def.name());
-    if (index_list_data[i] == 1) permuted_index = 1;
+    if (index_list_data[i] == 1)
+      permuted_index = 1;
+
     idx_set.emplace(index_list_data[i]);
   }
 
@@ -1380,7 +1382,7 @@ tensorflow::Status ConvertReduce(Converter& ctx,
   nvinfer1::DimsHW pool_kernel;
   if (permuted_index == 1) {
     for (int i = 2; i < nbDims; i++) {
-      if (idx_set.count(i)) {
+      if (idx_set.count(i)==0) {
         permuted_index = i;
         break;
       }
@@ -1415,6 +1417,7 @@ tensorflow::Status ConvertReduce(Converter& ctx,
     output_tensor = ctx.transposeTensor(
         const_cast<nvinfer1::ITensor*>(output_tensor), permutation_order);
   }
+  outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
 }
 
