@@ -1553,6 +1553,7 @@ class Conv3DTranspose(Conv3D):
           dtype=self.dtype)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
