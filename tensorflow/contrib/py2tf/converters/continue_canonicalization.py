@@ -33,32 +33,28 @@ class ContinueCanonicalizationTransformer(gast.NodeTransformer):
     self.continuation_uses = []
 
   def _create_continuation_check(self):
-
-    def template(var_name):
+    template = """
       if not var_name:
         pass
-
-    cond, = templates.replace(
-        template, var_name=gast.Name(self.continuation_uses[-1][1], None, None))
+    """
+    cond, = templates.replace(template, var_name=self.continuation_uses[-1][1])
     cond.body = []
     return cond
 
   def _create_continuation_trigger(self):
-
-    def template(var_name):  # pylint:disable=unused-argument
+    template = """
       var_name = True
-
+    """
     assign, = templates.replace(
-        template, var_name=gast.Name(self.continuation_uses[-1][1], None, None))
+        template, var_name=self.continuation_uses[-1][1])
     return assign
 
   def _create_continuation_init(self):
-
-    def template(var_name):  # pylint:disable=unused-argument
+    template = """
       var_name = False
-
+    """
     assign, = templates.replace(
-        template, var_name=gast.Name(self.continuation_uses[-1][1], None, None))
+        template, var_name=self.continuation_uses[-1][1])
     return assign
 
   def _visit_and_reindent_if_necessary(self, nodes):
