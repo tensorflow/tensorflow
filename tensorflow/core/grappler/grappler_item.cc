@@ -134,6 +134,7 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
     const NodeDef* node = name_to_node[NodeName(root)];
     if (!node) {
       *ill_formed = true;
+      VLOG(2) << "ComputeTransitiveFanin: problem with root node: " << root;
       return {};
     }
     queue.push_back(node);
@@ -153,6 +154,7 @@ std::vector<const NodeDef*> ComputeTransitiveFanin(
     for (const string& input : node->input()) {
       const NodeDef* in = name_to_node[NodeName(input)];
       if (!in) {
+        VLOG(2) << "ComputeTransitiveFanin: problem with node: " << input;
         *ill_formed = true;
         return {};
       }

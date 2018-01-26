@@ -771,8 +771,8 @@ class _VariableStore(object):
     if initializer is None:
       initializer, initializing_from_value = self._get_default_initializer(
           name=name, shape=shape, dtype=dtype)
-    # Clear control dependencies while creating the initializer.
-    with ops.control_dependencies(None):
+    # Enter an init scope when creating the initializer.
+    with ops.init_scope():
       if initializing_from_value:
         init_val = initializer
         variable_dtype = None

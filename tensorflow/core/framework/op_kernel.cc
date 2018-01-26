@@ -943,13 +943,6 @@ Status FindKernelRegistration(const DeviceType& device_type,
   return Status::OK();
 }
 
-Status FindKernelRegistration(const DeviceType& device_type, const Node& node,
-                              const KernelRegistration** reg,
-                              bool* was_attr_mismatch) {
-  return FindKernelRegistration(device_type, node.def(), reg,
-                                was_attr_mismatch);
-}
-
 }  // namespace
 
 // TODO(irving): Change const NodeDef& to const Node&
