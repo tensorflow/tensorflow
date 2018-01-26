@@ -27,10 +27,10 @@ LIBDIR := $(MAKEFILE_DIR)/gen/lib/
 GENDIR := $(MAKEFILE_DIR)/gen/obj/
 
 # Settings for the host compiler.
-CXX := $(CC_PREFIX) gcc
+CXX := $(CC_PREFIX)gcc
 CXXFLAGS := --std=c++11 -O3 -DNDEBUG
-CC := $(CC_PREFIX) gcc
-CFLAGS :=
+CC := $(CC_PREFIX)gcc
+CFLAGS := -O3 -DNDEBUG
 LDOPTS :=
 LDOPTS += -L/usr/local/lib
 ARFLAGS := -r
@@ -57,7 +57,7 @@ LIBS := \
 
 # If we're on Linux, also link in the dl library.
 ifeq ($(HOST_OS),LINUX)
-	LIBS += -ldl -lpthread
+	LIBS += -ldl
 endif
 
 include $(MAKEFILE_DIR)/ios_makefile.inc
