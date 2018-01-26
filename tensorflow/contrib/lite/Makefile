@@ -61,6 +61,7 @@ ifeq ($(HOST_OS),LINUX)
 endif
 
 include $(MAKEFILE_DIR)/ios_makefile.inc
+include $(MAKEFILE_DIR)/rpi_makefile.inc
 
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
