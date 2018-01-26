@@ -26,12 +26,12 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 
 
-class SlideDataset(dataset_ops.Dataset):
+class _SlideDataset(dataset_ops.Dataset):
   """A `Dataset` that slides a fixed window on its input."""
 
   def __init__(self, input_dataset, slide_size, slide_step=1):
     """See `Dataset.slide()` for details."""
-    super(SlideDataset, self).__init__()
+    super(_SlideDataset, self).__init__()
     self._input_dataset = input_dataset
     self._slide_size = ops.convert_to_tensor(
       slide_size, dtype=dtypes.int64, name="slide_size")
@@ -39,7 +39,7 @@ class SlideDataset(dataset_ops.Dataset):
       slide_step, dtype=dtypes.int64, name="slide_step")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops._slide_dataset(  # pylint: disable=protected-access
+    return gen_dataset_ops.slide_dataset(  # pylint: disable=protected-access
       self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
       slide_size=self._slide_size,
       slide_step=self._slide_step,
@@ -80,6 +80,6 @@ def sliding_window_batch(slide_size, slide_step=1):
     @{tf.contrib.data.Dataset.apply}.
   """
   def _apply_fn(dataset):
-    return SlideDataset(dataset, slide_size, slide_step)
+    return _SlideDataset(dataset, slide_size, slide_step)
 
   return _apply_fn

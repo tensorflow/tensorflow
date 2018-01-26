@@ -387,6 +387,3 @@ Fact
 # word2vec deprecated ops
 NegTrain
 Skipgram
-
-# dataset_ops
-SlideDataset
