@@ -69,7 +69,7 @@ class KafkaDatasetOp : public DatasetOpKernel {
     std::unique_ptr<IteratorBase> MakeIterator(
         const string& prefix) const override {
       return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::TextLine")}));
+          new Iterator({this, strings::StrCat(prefix, "::Kafka")}));
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -182,7 +182,7 @@ class KafkaDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         ResetStreamsLocked();
