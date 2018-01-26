@@ -412,7 +412,7 @@ Creates a dataset that slides a fixed window on `input_dataset`.
 
 window_size: A scalar representing the number of elements in the fixed window.
 stride: A scalar representing the steps moving forward in one iteration.
-  The default is `1`. It must be in [1, `window_size`).
+  It must be in [1, `window_size`).
 )doc");
 
 REGISTER_OP("PaddedBatchDataset")
