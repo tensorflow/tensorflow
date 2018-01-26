@@ -102,30 +102,6 @@ bool HloGetTupleElementMatcher::MatchAndExplain(
   return true;
 }
 
-void HloCustomCallMatcher::DescribeTo(std::ostream* os) const {
-  HloMatcher::DescribeTo(os);
-  *os << " with call target that "
-      << ::testing::DescribeMatcher<string>(call_target_matcher_);
-}
-
-bool HloCustomCallMatcher::MatchAndExplain(
-    const HloInstruction* instruction,
-    ::testing::MatchResultListener* listener) const {
-  if (!HloMatcher::MatchAndExplain(instruction, listener)) {
-    return false;
-  }
-  ::testing::StringMatchResultListener sub_listener;
-  bool result = ExplainMatchResult(
-      call_target_matcher_, instruction->custom_call_target(), &sub_listener);
-  if (sub_listener.str().empty()) {
-    sub_listener << " that "
-                 << ::testing::DescribeMatcher<string>(call_target_matcher_,
-                                                       /*negation=*/!result);
-  }
-  *listener << "custom-call with call target" << sub_listener.str();
-  return result;
-}
-
 }  // namespace testing
 
 void PrintTo(const HloInstruction* inst, ::std::ostream* os) {
