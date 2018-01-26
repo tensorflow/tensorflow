@@ -494,7 +494,7 @@ py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
-    shard_count = 4,
+    shard_count = 20,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [

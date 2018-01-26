@@ -354,7 +354,8 @@ class GrpcWorkerService : public AsyncServiceInterface {
 
 }  // namespace
 
-GrpcWorker::GrpcWorker(WorkerEnv* worker_env) : Worker(worker_env) {}
+GrpcWorker::GrpcWorker(WorkerEnv* worker_env)
+    : Worker(worker_env), recv_tensor_recent_request_ids_(100000) {}
 
 // GrpcRecvTensorAsync: unlike the other Worker methods, which use protocol
 // buffers for a response object, to avoid extra protocol buffer serialization
@@ -363,11 +364,18 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
                                      const RecvTensorRequest* request,
                                      ::grpc::ByteBuffer* response,
                                      StatusCallback done) {
+  Status s = recv_tensor_recent_request_ids_.TrackUnique(
+      request->request_id(), "RecvTensor (GrpcWorker)", *request);
+  if (!s.ok()) {
+    done(s);
+    return;
+  }
+
   const int64 step_id = request->step_id();
   const string& key = request->rendezvous_key();
   TRACEPRINTF("RecvTensor: %lld %s", step_id, key.c_str());
   Rendezvous::ParsedKey parsed;
-  Status s = Rendezvous::ParseKey(key, &parsed);
+  s = Rendezvous::ParseKey(key, &parsed);
   Device* src_dev = nullptr;
   if (s.ok()) {
     s = PrepareRecvTensor(parsed, &src_dev);
@@ -434,6 +442,24 @@ void GrpcWorker::GrpcRecvTensorAsync(CallOptions* opts,
           done(status);
         }
       });
+}
+
+void GrpcWorker::LoggingAsync(const LoggingRequest* request,
+                              LoggingResponse* response, StatusCallback done) {
+  auto env = this->env();
+  if (env) {
+    auto session_mgr = (SessionMgr*)env->session_mgr;
+    if (session_mgr) {
+      session_mgr->SetLogging(request->rpc_logging());
+      for (const auto& step_id : request->fetch_step_id()) {
+        session_mgr->RetrieveLogs(step_id, response);
+      }
+      if (request->clear()) {
+        session_mgr->ClearLogs();
+      }
+    }
+  }
+  done(Status::OK());
 }
 
 WorkerEnv* GrpcWorker::env() { return env_; }

@@ -15,8 +15,8 @@ limitations under the License.
 
 // Build a flat structure of ops.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
 
 #include <deque>
 #include <map>
@@ -76,4 +76,4 @@ class TFOp : public TFMultiShow {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_

@@ -67,7 +67,7 @@ class ComputationBuilder {
   // OpMetadata is often applied to a series of XLA HLO instructions. As a
   // result, OpMetadata is set on the Computation Builder. All subsequent
   // instructions generated via this Computation Builder will have the same
-  // OpMetadata attached until a call to ClearOpMetdata.
+  // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(const OpMetadata& metadata) { metadata_ = metadata; }
 
   // Clears the HloMetadata state.

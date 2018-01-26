@@ -47,15 +47,6 @@ py_binary(
     deps = ["//tensorflow:tensorflow_py"],
 )
 
-py_binary(
-    name = "check_load_py_test",
-    srcs = ["check_load_py_test.py"],
-    data = [
-        "//tensorflow:all_opensource_files",
-    ],
-    srcs_version = "PY2AND3",
-)
-
 # On Windows, python binary is a zip file of runfiles tree.
 # Add everything to its data dependency for generating a runfiles tree
 # for building the pip package on Windows.
@@ -161,7 +152,8 @@ sh_binary(
             "//tensorflow/contrib/nn:nn_py",
             "//tensorflow/contrib/predictor:predictor_pip",
             "//tensorflow/contrib/py2tf:py2tf_internal",
-            "//tensorflow/contrib/py2tf/convert:convert",
+            "//tensorflow/contrib/py2tf/converters:converters",
+            "//tensorflow/contrib/py2tf/converters:test_lib",
             "//tensorflow/contrib/py2tf/pyct:pyct",
             "//tensorflow/contrib/py2tf/pyct/static_analysis:static_analysis",
             "//tensorflow/contrib/receptive_field:receptive_field_pip",

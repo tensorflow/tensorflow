@@ -29,7 +29,7 @@ bool ConvertTrivialTransposeToReshape::Run(Model* model, std::size_t op_index) {
   TransposeOperator* transpose_op =
       static_cast<TransposeOperator*>(transpose_it->get());
 
-  const auto& output_array = *model->arrays[transpose_op->outputs[0]];
+  const auto& output_array = model->GetArray(transpose_op->outputs[0]);
   if (!output_array.has_shape()) {
     // Yield until PropagateFixedSizes has been run on this op.
     return false;
@@ -70,7 +70,7 @@ bool ConvertTrivialTransposeToReshape::Run(Model* model, std::size_t op_index) {
   // Delete perm array if unused
   if (IsDiscardableArray(*model, perm_array_name) &&
       CountOpsWithInput(*model, perm_array_name) == 1) {
-    model->arrays.erase(perm_array_name);
+    model->EraseArray(perm_array_name);
   }
 
   // Replace the operator in the graph.

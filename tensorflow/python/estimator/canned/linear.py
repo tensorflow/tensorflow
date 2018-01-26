@@ -23,7 +23,6 @@ import math
 import six
 
 from tensorflow.python.estimator import estimator
-from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.feature_column import feature_column as feature_column_lib
@@ -31,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.summary import summary
 from tensorflow.python.training import ftrl
 from tensorflow.python.training import training_util
@@ -245,7 +245,8 @@ class LinearClassifier(estimator.Estimator):
                optimizer='Ftrl',
                config=None,
                partitioner=None,
-               warm_start_from=None):
+               warm_start_from=None,
+               loss_reduction=losses.Reduction.SUM):
     """Construct a `LinearClassifier` estimator object.
 
     Args:
@@ -282,6 +283,8 @@ class LinearClassifier(estimator.Estimator):
         string filepath is provided instead of a `WarmStartSettings`, then all
         weights and biases are warm-started, and it is assumed that vocabularies
         and Tensor names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
 
     Returns:
       A `LinearClassifier` estimator.
@@ -292,15 +295,17 @@ class LinearClassifier(estimator.Estimator):
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
           weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
           n_classes, weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
 
     def _model_fn(features, labels, mode, config):
-      """Call the defined shared _linear_model_fn and possibly warm-start."""
-      estimator_spec = _linear_model_fn(
+      """Call the defined shared _linear_model_fn."""
+      return _linear_model_fn(
           features=features,
           labels=labels,
           mode=mode,
@@ -309,19 +314,12 @@ class LinearClassifier(estimator.Estimator):
           optimizer=optimizer,
           partitioner=partitioner,
           config=config)
-      # pylint: disable=protected-access
-      warm_start_settings = warm_starting_util._get_default_warm_start_settings(
-          warm_start_from)
-      if warm_start_settings:
-        warm_starting_util._warm_start(warm_start_settings)
-      # pylint: enable=protected-access
-
-      return estimator_spec
 
     super(LinearClassifier, self).__init__(
         model_fn=_model_fn,
         model_dir=model_dir,
-        config=config)
+        config=config,
+        warm_start_from=warm_start_from)
 
 
 class LinearRegressor(estimator.Estimator):
@@ -388,7 +386,8 @@ class LinearRegressor(estimator.Estimator):
                optimizer='Ftrl',
                config=None,
                partitioner=None,
-               warm_start_from=None):
+               warm_start_from=None,
+               loss_reduction=losses.Reduction.SUM):
     """Initializes a `LinearRegressor` instance.
 
     Args:
@@ -417,13 +416,16 @@ class LinearRegressor(estimator.Estimator):
         string filepath is provided instead of a `WarmStartSettings`, then all
         weights and biases are warm-started, and it is assumed that vocabularies
         and Tensor names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
     """
     head = head_lib._regression_head_with_mean_squared_error_loss(  # pylint: disable=protected-access
-        label_dimension=label_dimension, weight_column=weight_column)
+        label_dimension=label_dimension, weight_column=weight_column,
+        loss_reduction=loss_reduction)
 
     def _model_fn(features, labels, mode, config):
-      """Call the defined shared _linear_model_fn and possibly warm-start."""
-      estimator_spec = _linear_model_fn(
+      """Call the defined shared _linear_model_fn."""
+      return _linear_model_fn(
           features=features,
           labels=labels,
           mode=mode,
@@ -432,16 +434,9 @@ class LinearRegressor(estimator.Estimator):
           optimizer=optimizer,
           partitioner=partitioner,
           config=config)
-      # pylint: disable=protected-access
-      warm_start_settings = warm_starting_util._get_default_warm_start_settings(
-          warm_start_from)
-      if warm_start_settings:
-        warm_starting_util._warm_start(warm_start_settings)
-      # pylint: enable=protected-access
-
-      return estimator_spec
 
     super(LinearRegressor, self).__init__(
         model_fn=_model_fn,
         model_dir=model_dir,
-        config=config)
+        config=config,
+        warm_start_from=warm_start_from)

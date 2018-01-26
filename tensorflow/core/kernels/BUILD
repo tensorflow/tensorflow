@@ -369,6 +369,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "batch_kernels",
+    srcs = ["batch_kernels.cc"],
+    deps = [
+        "//tensorflow/core:batch_ops_op_lib",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:concat_lib_hdrs",
+        "//tensorflow/core/kernels:ops_util_hdrs",
+        "//tensorflow/core/kernels:split_lib_hdrs",
+        "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
+        "//tensorflow/core/kernels/batching_util:shared_batch_scheduler_hdrs",
+    ],
+    alwayslink = 1,
+)
+
 tf_kernel_library(
     name = "record_input_op",
     srcs = [
@@ -4268,7 +4284,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/fft2d:fft2d_headers",
-        "@fft2d//:fft2d",
+        "@fft2d",
     ],
 )
 
@@ -4975,6 +4991,7 @@ filegroup(
             "debug_ops.*",
             "scatter_nd_op*",
             "critical_section.*",
+            "batch_kernels.*",
         ],
     ),
     visibility = ["//visibility:public"],
@@ -5007,8 +5024,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
-        "@fft2d//:fft2d",
-        "@gemmlowp//:gemmlowp",
+        "@fft2d",
+        "@gemmlowp",
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
@@ -5079,7 +5096,7 @@ tf_kernel_library(
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )
 
@@ -5840,9 +5857,10 @@ tf_mkl_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_ops_op_lib",
+    ] + if_mkl([
         "//third_party/mkl:intel_binary_blob",
         "@mkl_dnn//:mkl_dnn",
-    ],
+    ]),
 )
 
 tf_mkl_kernel_library(
@@ -6008,6 +6026,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )

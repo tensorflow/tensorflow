@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops.distributions import bijector
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -27,6 +28,7 @@ __all__ = [
 ]
 
 
+@tf_export("distributions.bijectors.Identity")
 class Identity(bijector.Bijector):
   """Compute Y = g(X) = X.
 

@@ -33,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 class EagerFunc(object):
@@ -243,6 +244,7 @@ def eager_py_func(func, inp, Tout, name=None):
   return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
 
 
+@tf_export("py_func")
 def py_func(func, inp, Tout, stateful=True, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 

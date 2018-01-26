@@ -42,7 +42,7 @@ bool ResolveBatchToSpaceNDAttributes::Run(Model* model, std::size_t op_index) {
     return false;
 
   // Handle crops
-  const auto& crops_array = *model->arrays[op->inputs[2]];
+  const auto& crops_array = model->GetArray(op->inputs[2]);
   if (!crops_array.has_shape()) return false;
   const std::vector<int>& crops_dims = crops_array.shape().dims();
   if (crops_dims.size() != 2) {
@@ -58,7 +58,7 @@ bool ResolveBatchToSpaceNDAttributes::Run(Model* model, std::size_t op_index) {
   }
 
   // Handle block_shape
-  const auto& block_shape_array = *model->arrays[op->inputs[1]];
+  const auto& block_shape_array = model->GetArray(op->inputs[1]);
   if (!block_shape_array.has_shape()) return false;
   const std::vector<int>& block_shape_dims = block_shape_array.shape().dims();
   CHECK_EQ(block_shape_dims.size(), 1);

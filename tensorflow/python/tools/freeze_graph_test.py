@@ -86,7 +86,8 @@ class FreezeGraphTest(test_util.TensorFlowTestCase):
     freeze_graph.freeze_graph(
         input_graph_path, input_saver_def_path, input_binary, checkpoint_path,
         output_node_names, restore_op_name, filename_tensor_name,
-        output_graph_path, clear_devices, "", "", input_meta_graph)
+        output_graph_path, clear_devices, "", "", input_meta_graph,
+        checkpoint_version=saver_write_version)
 
     # Now we make sure the variable is now a constant, and that the graph still
     # produces the expected result.

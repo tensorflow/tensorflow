@@ -53,12 +53,12 @@ table Tensor {
   type:TensorType;
   // An index that refers to the buffers table at the root of the model. Or,
   // if there is no data buffer associated (i.e. intermediate results), then
-  // this is 0 (which refers to an always existant empty buffer).
+  // this is 0 (which refers to an always existent empty buffer).
   //
   // The data_buffer itself is an opaque container, with the assumption that the
   // target device is little-endian. In addition, all builtin operators assume
   // the memory is ordered such that if `shape` is [4, 3, 2], then index
-  // [i, j, k] maps to data_buffer[i*3*2 + j*3 + k].
+  // [i, j, k] maps to data_buffer[i*3*2 + j*2 + k].
   buffer:uint;
   name:string;  // For debugging and importing back into tensorflow.
   quantization:QuantizationParameters;  // Optional.
@@ -117,6 +117,8 @@ enum BuiltinOperator : byte {
   SUB = 41,
   DIV = 42,
   SQUEEZE = 43,
+  UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
+  STRIDED_SLICE = 45,
 }
 
 // Options for the builtin operators.
@@ -152,6 +154,7 @@ union BuiltinOptions {
   DivOptions,
   SqueezeOptions,
   SequenceRNNOptions,
+  StridedSliceOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -263,8 +266,6 @@ table LSTMOptions {
 }
 
 table ResizeBilinearOptions {
-  new_height:int;
-  new_width:int;
 }
 
 // A call operation options
@@ -274,8 +275,6 @@ table CallOptions {
 }
 
 table PadOptions {
-  before_padding:[int];
-  after_padding:[int];
 }
 
 table ReshapeOptions {
@@ -337,6 +336,14 @@ table MeanOptions {
 
 table SqueezeOptions {
   squeeze_dims:[int];
+}
+
+table StridedSliceOptions {
+  begin_mask: int;
+  end_mask: int;
+  ellipsis_mask: int;
+  new_axis_mask: int;
+  shrink_axis_mask: int;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
