@@ -268,7 +268,6 @@ cc_library(
     ],
     hdrs = [
         "common.h",
-        "compatibility.h",
         "optimized/cpu_check.h",
         "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",
@@ -277,6 +276,7 @@ cc_library(
     deps = [
         ":cpu_check",
         ":portable_tensor_utils",
+        ":types",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
         "@arm_neon_2_x86_sse",
