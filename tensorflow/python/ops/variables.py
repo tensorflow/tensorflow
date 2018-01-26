@@ -212,6 +212,7 @@ class Variable(object):
     if not context.in_graph_mode():
       raise RuntimeError("tf.Variable not supported in Eager mode. "
                          "Please use tfe.Variable instead")
+    self._in_graph_mode = context.in_graph_mode()
     if variable_def:
       # If variable_def is provided, recreates the variable from its fields.
       if initial_value:
@@ -307,7 +308,7 @@ class Variable(object):
 
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
-    with ops.control_dependencies(None):
+    with ops.init_scope():
       with ops.name_scope(name, "Variable", [] if init_from_fn else
                           [initial_value]) as name:
 
@@ -378,8 +379,8 @@ class Variable(object):
         else:
           with ops.colocate_with(self._variable.op):
             self._snapshot = array_ops.identity(self._variable, name="read")
+      ops.add_to_collections(collections, self)
 
-    ops.add_to_collections(collections, self)
     self._caching_device = caching_device
     self._save_slice_info = None
     self._constraint = constraint
@@ -553,7 +554,7 @@ class Variable(object):
       A `Tensor` holding the value of this variable after its initializer
       has run.
     """
-    with ops.control_dependencies(None):
+    with ops.init_scope():
       return control_flow_ops.cond(is_variable_initialized(self),
                                    self.read_value,
                                    lambda: self.initial_value)
