@@ -32,4 +32,8 @@ tf_module {
     name: "as_text"
     argspec: "args=[\'bytes_or_text\', \'encoding\'], varargs=None, keywords=None, defaults=[\'utf-8\'], "
   }
+  member_method {
+    name: "path_to_str"
+    argspec: "args=[\'path\'], varargs=None, keywords=None, defaults=None"
+  }
 }

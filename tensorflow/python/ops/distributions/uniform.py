@@ -29,8 +29,10 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("distributions.Uniform")
 class Uniform(distribution.Distribution):
   """Uniform distribution with `low` and `high` parameters.
 

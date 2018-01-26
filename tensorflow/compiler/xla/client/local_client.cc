@@ -21,9 +21,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace se = ::perftools::gputools;
+
+using xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {
 
@@ -79,9 +82,10 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
   for (int i = 0; i < arguments.size(); ++i) {
     if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
             arguments[i]->on_host_shape())) {
-      return InvalidArgument(
-          "argument does not match shape or layout of computation parameter "
-          "%d: expected %s, got %s",
+      return InvalidParameterArgument(
+          executable_.get(), i,
+          "Argument does not match shape or layout of computation parameter "
+          "%d: want %s, got %s",
           i,
           ShapeUtil::HumanString(computation_layout.parameter_layout(i).shape())
               .c_str(),

@@ -1,38 +1,69 @@
-# -*- python -*-
+# NVIDIA TensorRT
+# A high-performance deep learning inference optimizer and runtime.
 
-licenses(["notice"])  
+licenses(["notice"])
 
 exports_files(["LICENSE"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts", "if_cuda")
 
-config_setting(
-    name = "trt_enabled",
-    define_values = {
-        "using_tensorrt":"true"
-    },
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "tensorrt_headers",
+    hdrs = [%{tensorrt_headers}],
+    includes = [
+        "include",
+    ],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
-    name = "tensorrt",
-    srcs =[%{tensorrt_lib}],
-    hdrs = ["include/NvInfer.h",
-            "include/NvUtils.h",
+    name = "nv_infer",
+    srcs = [%{nv_infer}],
+    data = [%{nv_infer}],
+    includes = [
+        "include",
     ],
     copts= cuda_default_copts(),
-    deps =["@local_config_cuda//cuda:cuda",
-	   "@local_config_cuda//cuda:cudnn",],
+    deps = [
+        "@local_config_cuda//cuda:cuda",
+        ":tensorrt_headers",
+    ],
     linkstatic = 1,
-    #include_prefix="include/",
-    includes=["include/"],
-    visibility = ["//visibility:public"],	
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "nv_infer_plugin",
+    srcs = [%{nv_infer_plugin}],
+    data = [%{nv_infer_plugin}],
+    includes = [
+        "include",
+    ],
+    copts= cuda_default_copts(),
+    deps = [
+        "@local_config_cuda//cuda:cuda",
+        ":nv_infer",
+        ":tensorrt_headers",
+    ],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "nv_parsers",
+    srcs = [%{nv_parsers}],
+    data = [%{nv_parsers}],
+    includes = [
+        "include",
+    ],
+    copts= cuda_default_copts(),
+    deps = [
+        ":tensorrt_headers",
+    ],
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
 )
 
 %{tensorrt_genrules}
-
-# filegroup(
-#     name = "%{tensorrt_lib}",
-#     srcs =  ["%{tensorrt_lib}"],
-#     visibility = ["//visibility:public"],
-# )

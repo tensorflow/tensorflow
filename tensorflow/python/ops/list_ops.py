@@ -19,7 +19,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_list_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
@@ -28,28 +30,30 @@ from tensorflow.python.ops.gen_list_ops import *
 
 
 @ops.RegisterGradient("TensorListPushBack")
-def _PushBackGradient(op, dresult):
+def _PushBackGrad(op, dresult):
   return gen_list_ops.tensor_list_pop_back(
       dresult, element_dtype=op.get_attr("element_dtype"))
 
 
 @ops.RegisterGradient("TensorListPopBack")
-def _PopBackGradient(unused_op, dlist, delement):
+def _PopBackGrad(op, dlist, delement):
   if dlist is None:
     dlist = gen_list_ops.empty_tensor_list(
         element_dtype=delement.dtype,
-        element_shape=-1)
+        element_shape=gen_list_ops.tensor_list_element_shape(
+            op.outputs[0], shape_type=dtypes.int32))
   return gen_list_ops.tensor_list_push_back(dlist, delement)
 
 
 @ops.RegisterGradient("TensorListStack")
-def _TensorListStack(unused_op, dtensor):
+def _TensorListStackGrad(unused_op, dtensor):
   return gen_list_ops.tensor_list_from_tensor(dtensor,
                                               element_shape=dtensor.shape[1:])
 
 
 @ops.RegisterGradient("TensorListFromTensor")
-def _TensorListFromTensor(op, dlist):
+def _TensorListFromTensorGrad(op, dlist):
+  """Gradient for TensorListFromTensor."""
   if op.inputs[0].shape[0] is not None:
     num_elements = op.inputs[0].shape[0]
   else:
@@ -57,7 +61,34 @@ def _TensorListFromTensor(op, dlist):
   if dlist is None:
     dlist = gen_list_ops.empty_tensor_list(
         element_dtype=op.inputs[0].dtype,
-        element_shape=-1)
+        element_shape=gen_list_ops.tensor_list_element_shape(
+            op.outputs[0], shape_type=dtypes.int32))
   return gen_list_ops.tensor_list_stack(
       dlist, element_dtype=op.inputs[0].dtype,
       num_elements=num_elements)
+
+
+@ops.RegisterGradient("TensorListGetItem")
+def _TensorListGetItemGrad(op, ditem):
+  """Gradient for TensorListGetItem."""
+  list_size = gen_list_ops.tensor_list_length(op.inputs[0])
+  list_grad = gen_list_ops.tensor_list_set_item(
+      gen_list_ops.tensor_list_reserve(
+          gen_list_ops.tensor_list_element_shape(op.inputs[0],
+                                                 shape_type=dtypes.int32),
+          list_size, element_dtype=ditem.dtype),
+      index=op.inputs[1],
+      item=ditem)
+  index_grad = None
+  return list_grad, index_grad
+
+
+@ops.RegisterGradient("TensorListSetItem")
+def _TensorListSetItemGrad(op, dlist):
+  _, index, item = op.inputs
+  list_grad = gen_list_ops.tensor_list_set_item(
+      dlist, index=index, item=array_ops.zeros_like(item))
+  index_grad = None
+  element_grad = gen_list_ops.tensor_list_get_item(
+      dlist, index, element_dtype=item.dtype)
+  return list_grad, index_grad, element_grad

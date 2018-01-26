@@ -381,8 +381,8 @@ class MultiLabelHead(test.TestCase):
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
-          r'loss_fn must return Tensor of shape \[batch_size, 1\]\. '
-          r'Given: \] \[2\]'):
+          r'\[loss_fn must return Tensor of shape \[D0, D1, ... DN, 1\]\. \] '
+          r'\[logits_shape: \] \[2 2\] \[loss_shape: \] \[2\]'):
         actual_training_loss.eval()
 
   def test_eval_labels_none(self):
@@ -399,12 +399,13 @@ class MultiLabelHead(test.TestCase):
 
   def _test_eval(
       self, head, logits, labels, expected_loss, expected_metrics,
-      features=None):
+      features=None, regularization_losses=None):
     spec = head.create_estimator_spec(
         features=features or {},
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
-        labels=labels)
+        labels=labels,
+        regularization_losses=regularization_losses)
 
     # Assert spec contains expected tensors.
     self.assertIsNotNone(spec.loss)
@@ -485,6 +486,38 @@ class MultiLabelHead(test.TestCase):
         labels=labels,
         expected_loss=expected_loss,
         expected_metrics=expected_metrics)
+
+  def test_eval_with_regularization_losses(self):
+    n_classes = 2
+    head = head_lib.multi_label_head(
+        n_classes, loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    regularization_losses = [1.5, 0.5]
+    expected_regularization_loss = 2.
+    # unregularized_loss = sum(
+    #     labels * -log(sigmoid(logits)) +
+    #     (1 - labels) * -log(1 - sigmoid(logits))) / batch_size
+    expected_unregularized_loss = np.sum(
+        _sigmoid_cross_entropy(labels=labels, logits=logits)) / 2.
+    expected_regularized_loss = (
+        expected_unregularized_loss + expected_regularization_loss)
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        keys.LOSS_MEAN: expected_unregularized_loss,
+        keys.LOSS_REGULARIZATION: expected_regularization_loss,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+    }
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_regularized_loss,
+        expected_metrics=expected_metrics,
+        regularization_losses=regularization_losses)
 
   def test_eval_with_label_vocabulary(self):
     n_classes = 2
@@ -828,6 +861,49 @@ class MultiLabelHead(test.TestCase):
     expected_loss = 17.5
     self._test_train(
         head=head, logits=logits, labels=labels, expected_loss=expected_loss)
+
+  def test_train_with_regularization_losses(self):
+    head = head_lib.multi_label_head(
+        n_classes=2, loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
+    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    regularization_losses = [1.5, 0.5]
+    # For large logits, sigmoid cross entropy loss is approximated as:
+    # loss = labels * (logits < 0) * (-logits) +
+    #        (1 - labels) * (logits > 0) * logits =>
+    # expected_unweighted_loss = [[10., 10.], [15., 0.]]
+    # Average over classes and over batch and add regularization loss.
+    expected_loss = 35. / 4. + 2.
+    expected_summaries = {
+        metric_keys.MetricKeys.LOSS: expected_loss,
+        metric_keys.MetricKeys.LOSS_REGULARIZATION: 2.,
+    }
+    expected_train_result = 'my_train_op'
+    def _train_op_fn(loss):
+      return string_ops.string_join(
+          [constant_op.constant(expected_train_result),
+           string_ops.as_string(loss, precision=3)])
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        regularization_losses=regularization_losses)
+
+    # Assert predictions, loss, train_op, and summaries.
+    tol = 1e-3
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNotNone(spec.scaffold.summary_op)
+      loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
+                                                  spec.scaffold.summary_op))
+      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
+      self.assertEqual(
+          six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
+          train_result)
+      _assert_simple_summaries(self, expected_summaries, summary_str, tol)
 
   def test_train_with_weights(self):
     n_classes = 2

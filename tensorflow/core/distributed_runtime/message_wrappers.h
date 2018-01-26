@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_MESSAGE_WRAPPERS_H_
 
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
@@ -702,4 +702,4 @@ class NonOwnedProtoRunStepResponse : public MutableRunStepResponseWrapper {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW
+#endif  // TENSORFLOW

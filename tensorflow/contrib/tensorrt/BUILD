@@ -1,10 +1,13 @@
-# -*- python -*-
 # Description:
-#   provide tensorrt operators and converter package
+#   Wrap NVIDIA TensorRT (http://developer.nvidia.com/tensorrt) with tensorflow
+#   and provide TensorRT operators and converter package.
+#   APIs are meant to change over time.
 
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load(
@@ -15,11 +18,32 @@ load(
     "tf_py_wrap_cc",
     "tf_cc_test",
     "tf_kernel_library",
+    "tf_cuda_cc_test",
     "tf_custom_op_py_library",
     "tf_copts",
 )
+load(
+    "@local_config_tensorrt//:build_defs.bzl",
+    "if_tensorrt",
+)
 
-
+tf_cuda_cc_test(
+    name = "tensorrt_test_cc",
+    size = "small",
+    srcs = ["tensorrt_test.cc"],
+    tags = [
+        "manual",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ] + if_tensorrt([
+        "@local_config_cuda//cuda:cuda_headers",
+        "@local_config_tensorrt//:nv_infer",
+    ]),
+)
 
 tf_custom_op_library(
     name = "python/ops/_trt_engine_op.so",
@@ -55,7 +79,6 @@ cc_library(
     ]
 )
 
-
 tf_kernel_library(
     name = "trt_engine_op_kernel",
     srcs = [
@@ -88,7 +111,6 @@ tf_gen_op_libs(
     ]
 )
 
-
 cc_library(
     name="trt_logging",
     srcs = [
@@ -112,7 +134,6 @@ tf_gen_op_wrapper_py(
     ],
 )
 
-
 tf_custom_op_py_library(
     name = "trt_engine_op_loader",
     srcs = ["python/ops/trt_engine_op.py"],
@@ -135,8 +156,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":trt_ops_py",
-        ":trt_convert_py",
-        
+        ":trt_convert_py",        
     ],
 )
 
@@ -209,7 +229,6 @@ tf_custom_op_library(
     ],
 )
 
-
 # Library for the segmenting portion of TensorRT operation creation
 cc_library(
     name = "segment",
@@ -240,7 +259,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
-
 
 # Library for the node-level conversion portion of TensorRT operation creation
 

@@ -24,24 +24,36 @@ from __future__ import print_function
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.contrib.bayesflow.python.ops.layers_conv_variational import *
-from tensorflow.contrib.bayesflow.python.ops.layers_dense_variational_impl import *
+from tensorflow.contrib.bayesflow.python.ops.layers_dense_variational import *
 from tensorflow.contrib.bayesflow.python.ops.layers_util import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
-    'Convolution1DVariational',
-    'Convolution2DVariational',
-    'Convolution3DVariational',
-    'Conv1DVariational',
-    'Conv2DVariational',
-    'Conv3DVariational',
-    'convolution1d_variational',
-    'convolution2d_variational',
-    'convolution3d_variational',
-    'conv1d_variational',
-    'conv2d_variational',
-    'conv3d_variational',
+    'Convolution1DReparameterization',
+    'Convolution2DReparameterization',
+    'Convolution3DReparameterization',
+    'Convolution1DFlipout',
+    'Convolution2DFlipout',
+    'Convolution3DFlipout',
+    'Conv1DReparameterization',
+    'Conv2DReparameterization',
+    'Conv3DReparameterization',
+    'Conv1DFlipout',
+    'Conv2DFlipout',
+    'Conv3DFlipout',
+    'convolution1d_reparameterization',
+    'convolution2d_reparameterization',
+    'convolution3d_reparameterization',
+    'convolution1d_flipout',
+    'convolution2d_flipout',
+    'convolution3d_flipout',
+    'conv1d_reparameterization',
+    'conv2d_reparameterization',
+    'conv3d_reparameterization',
+    'conv1d_flipout',
+    'conv2d_flipout',
+    'conv3d_flipout',
     'DenseReparameterization',
     'DenseLocalReparameterization',
     'DenseFlipout',

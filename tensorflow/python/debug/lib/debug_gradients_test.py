@@ -39,7 +39,7 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self.sess = session.Session()
-    with self.sess:
+    with self.sess.as_default():
       self.u = variables.Variable(2.0, name="u")
       self.v = variables.Variable(3.0, name="v")
       self.w = math_ops.multiply(self.u.value(), self.v.value(), name="w")

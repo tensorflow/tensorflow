@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Constraints: functions that impose constraints on weights values.
+# pylint: disable=invalid-name
+"""Constraints: functions that impose constraints on weight values.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -54,10 +55,6 @@ class MaxNorm(Constraint):
           to constrain the weights of each filter tensor of size
           `(rows, cols, input_depth)`.
 
-  References:
-      - [Dropout: A Simple Way to Prevent Neural Networks from Overfitting
-        Srivastava, Hinton, et al.
-        2014](http://www.cs.toronto.edu/~rsalakhu/papers/srivastava14a.pdf)
   """
 
   def __init__(self, max_value=2, axis=0):
@@ -79,7 +76,7 @@ class NonNeg(Constraint):
   """
 
   def __call__(self, w):
-    w *= K.cast(w >= 0., K.floatx())
+    w *= K.cast(K.greater_equal(w, 0.), K.floatx())
     return w
 
 
@@ -132,7 +129,7 @@ class MinMaxNorm(Constraint):
           has shape `(input_dim, output_dim)`,
           set `axis` to `0` to constrain each weight vector
           of length `(input_dim,)`.
-          In a `Conv2D` layer with `dim_ordering="channels_last"`,
+          In a `Conv2D` layer with `data_format="channels_last"`,
           the weight tensor has shape
           `(rows, cols, input_depth, output_depth)`,
           set `axis` to `[0, 1, 2]`
@@ -148,8 +145,9 @@ class MinMaxNorm(Constraint):
 
   def __call__(self, w):
     norms = K.sqrt(K.sum(K.square(w), axis=self.axis, keepdims=True))
-    desired = (self.rate * K.clip(norms, self.min_value, self.max_value) +
-               (1 - self.rate) * norms)
+    desired = (
+        self.rate * K.clip(norms, self.min_value, self.max_value) +
+        (1 - self.rate) * norms)
     w *= (desired / (K.epsilon() + norms))
     return w
 
@@ -164,13 +162,15 @@ class MinMaxNorm(Constraint):
 
 # Aliases.
 
-# pylint: disable=invalid-name
 max_norm = MaxNorm
 non_neg = NonNeg
 unit_norm = UnitNorm
 min_max_norm = MinMaxNorm
 
-# pylint: enable=invalid-name
+# Legacy aliases.
+maxnorm = max_norm
+nonneg = non_neg
+unitnorm = unit_norm
 
 
 def serialize(constraint):

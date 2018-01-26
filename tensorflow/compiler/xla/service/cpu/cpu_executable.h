@@ -51,7 +51,7 @@ class CpuExecutable : public Executable {
                 std::unique_ptr<const BufferAssignment> assignment,
                 std::unique_ptr<const HloModule> hlo_module,
                 const string& entry_function_name,
-                std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+                std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
                 std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~CpuExecutable() override {}
 

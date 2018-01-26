@@ -55,9 +55,9 @@ CpuExecutable::CpuExecutable(
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<const HloModule> hlo_module,
     const string& entry_function_name,
-    std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-    : Executable(std::move(hlo_module), std::move(hlo_profile_printer),
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       jit_(std::move(jit)),
       assignment_(std::move(assignment)) {

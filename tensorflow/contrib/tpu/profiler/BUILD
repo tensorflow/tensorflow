@@ -44,13 +44,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "version",
+    hdrs = ["version.h"],
+    visibility = ["//visibility:public"],
+)
+
 tf_cc_binary(
     name = "capture_tpu_profile",
-    srcs = ["capture_tpu_profile.cc"],
+    srcs = [
+        "capture_tpu_profile.cc",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         ":dump_tpu_profile",
         ":tpu_profiler_proto_cc",
+        ":version",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",

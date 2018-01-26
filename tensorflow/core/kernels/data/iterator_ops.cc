@@ -829,8 +829,8 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     IteratorResource* iterator;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+    OP_REQUIRES_OK_ASYNC(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
     // The call to `iterator->GetNext()` may block and depend on an
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
@@ -868,6 +868,39 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
  private:
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+};
+
+class IteratorGetNextSyncOp : public OpKernel {
+ public:
+  explicit IteratorGetNextSyncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    IteratorResource* iterator;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+    core::ScopedUnref unref_iterator(iterator);
+
+    std::vector<Tensor> components;
+    bool end_of_sequence = false;
+
+    IteratorContext::Params params;
+    params.env = ctx->env();
+    params.stats_aggregator_getter = [iterator]() {
+      return iterator->stats_aggregator();
+    };
+    params.runner = *(ctx->runner());
+    params.function_library = iterator->function_library();
+    IteratorContext iter_ctx(std::move(params));
+
+    OP_REQUIRES_OK(ctx,
+                   iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+    OP_REQUIRES(ctx, !end_of_sequence, errors::OutOfRange("End of sequence"));
+
+    for (int i = 0; i < components.size(); ++i) {
+      // TODO(mrry): Check that the shapes match the shape attrs.
+      ctx->set_output(i, components[i]);
+    }
+  }
 };
 
 class IteratorToStringHandleOp : public OpKernel {
@@ -1033,6 +1066,8 @@ REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),
                         IteratorGetNextOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_CPU),
+                        IteratorGetNextSyncOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
                         IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandle").Device(DEVICE_CPU),

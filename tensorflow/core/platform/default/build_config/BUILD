@@ -122,7 +122,7 @@ cc_library(
         "//tensorflow/core:protos_cc",
         "@com_googlesource_code_re2//:re2",
         "@farmhash_archive//:farmhash",
-        "@fft2d//:fft2d",
+        "@fft2d",
         "@highwayhash//:sip_hash",
         "@png_archive//:png",
     ],
@@ -140,7 +140,7 @@ cc_library(
     name = "jpeg",
     copts = tf_copts(),
     deps = [
-        "@jpeg//:jpeg",
+        "@jpeg",
     ],
 )
 

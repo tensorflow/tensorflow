@@ -92,8 +92,8 @@ bool IdentifyL2Pool::Run(Model* model, std::size_t op_index) {
   AddMessageF("Creating %s replacing equivalent subgraph", LogName(*l2pool_op));
 
   // Erase intermediate arrays, keeping input to square op.
-  model->arrays.erase(avpool_op->inputs[0]);
-  model->arrays.erase(sqrt_op->inputs[0]);
+  model->EraseArray(avpool_op->inputs[0]);
+  model->EraseArray(sqrt_op->inputs[0]);
 
   // Erase three operators being replaced.
   model->operators.erase(FindOperator(model, square_op));

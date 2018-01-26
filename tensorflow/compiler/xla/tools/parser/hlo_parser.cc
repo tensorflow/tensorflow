@@ -931,7 +931,7 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateOutfeed(
-          shape, operands[0], config ? *config : ""));
+          operands[0]->shape(), operands[0], config ? *config : ""));
       break;
     }
     case HloOpcode::kRng: {

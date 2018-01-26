@@ -387,7 +387,7 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
     return;
   }
   auto actual = actual_status.ConsumeValueOrDie();
-  LiteralTestUtil::ExpectEqualTuple(expected, *actual);
+  LiteralTestUtil::ExpectEqual(expected, *actual);
 }
 
 void ClientLibraryTestBase::ComputeAndCompareTuple(
@@ -399,7 +399,7 @@ void ClientLibraryTestBase::ComputeAndCompareTuple(
     return;
   }
   auto actual = actual_status.ConsumeValueOrDie();
-  LiteralTestUtil::ExpectNearTuple(expected, *actual, error);
+  LiteralTestUtil::ExpectNear(expected, *actual, error);
 }
 
 void ClientLibraryTestBase::ComputeAndCompare(
