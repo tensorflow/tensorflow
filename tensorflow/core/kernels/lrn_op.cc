@@ -229,10 +229,11 @@ class LRNOp : public OpKernel {
   explicit LRNOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     float tmp;
     OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));
@@ -247,9 +248,10 @@ class LRNOp : public OpKernel {
     const Tensor& in = context->input(0);
     OP_REQUIRES(context, in.dims() == 4,
                 errors::InvalidArgument("in must be 4-dimensional"));
-    OP_REQUIRES(context, FastBoundsCheck(in.NumElements(),
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("argument to LRN too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(in.NumElements(), std::numeric_limits<int>::max()),
+        errors::InvalidArgument("argument to LRN too large"));
     // Cast to platform-specific int to avoid conversion warnings.
     const int batch = static_cast<int>(in.dim_size(0));
     const int rows = static_cast<int>(in.dim_size(1));
@@ -448,10 +450,11 @@ class LRNGradOp : public OpKernel {
   explicit LRNGradOp(OpKernelConstruction* context) : OpKernel(context) {
     int64 depth_radius64;
     OP_REQUIRES_OK(context, context->GetAttr("depth_radius", &depth_radius64));
-    OP_REQUIRES(context, FastBoundsCheck(depth_radius64,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("depth_radius = ", depth_radius64,
-                                        " larger than int max"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(depth_radius64, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("depth_radius = ", depth_radius64,
+                                " larger than int max"));
     depth_radius_ = static_cast<int>(depth_radius64);
     float tmp;
     OP_REQUIRES_OK(context, context->GetAttr("bias", &tmp));

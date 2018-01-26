@@ -146,7 +146,6 @@ typedef Eigen::GpuDevice GPUDevice;
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
 
-
 template <typename Device, typename T, typename Index>
 class FillOp : public OpKernel {
  public:
