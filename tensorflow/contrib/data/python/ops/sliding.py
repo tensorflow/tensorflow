@@ -30,7 +30,7 @@ class _SlideDataset(dataset_ops.Dataset):
   """A `Dataset` that slides a fixed window on its input."""
 
   def __init__(self, input_dataset, slide_size, slide_step=1):
-    """See `Dataset.slide()` for details."""
+    """See `sliding_window_batch` for details."""
     super(_SlideDataset, self).__init__()
     self._input_dataset = input_dataset
     self._slide_size = ops.convert_to_tensor(
