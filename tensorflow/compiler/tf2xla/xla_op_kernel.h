@@ -173,8 +173,10 @@ class XlaOpKernelContext {
                         const xla::ComputationDataHandle& handle);
 
   // Helper routines for the OP_REQUIRES macros
-  void CtxFailure(Status s);
-  void CtxFailureWithWarning(Status s);
+  void CtxFailure(const Status& s);
+  void CtxFailureWithWarning(const Status& s);
+  void CtxFailure(const char* file, int line, const Status& s);
+  void CtxFailureWithWarning(const char* file, int line, const Status& s);
 
   // If this kernel invocation is within a function execution,
   // call_frame() returns the call frame for the function call.

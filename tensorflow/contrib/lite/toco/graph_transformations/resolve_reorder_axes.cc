@@ -103,7 +103,7 @@ bool ResolveReorderAxes::Run(Model* model, std::size_t op_index) {
   AddMessageF("Reordered axes for array %s", input_array_name);
 
   // Remove the op and output array.
-  model->arrays.erase(output_array_name);
+  model->EraseArray(output_array_name);
   model->operators.erase(reorder_it);
   return true;
 }

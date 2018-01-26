@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/tape.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/gtl/compactptrset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -542,10 +543,10 @@ static PyTypeObject TFE_Py_Tape_Type = {
 // GIL, which is always held when any TFE_Py_* methods are called. We should
 // revisit this if/when decide to not hold the GIL while manipulating the tape
 // stack.
-static std::unordered_set<TFE_Py_Tape*>* tape_set = nullptr;
-std::unordered_set<TFE_Py_Tape*>* GetTapeSet() {
+static tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* tape_set = nullptr;
+tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
   if (tape_set == nullptr) {
-    tape_set = new std::unordered_set<TFE_Py_Tape*>;
+    tape_set = new tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>;
   }
   return tape_set;
 }
@@ -636,8 +637,8 @@ PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
   if (*ThreadTapeIsStopped()) {
     Py_RETURN_FALSE;
   }
-  auto* tape_set = GetTapeSet();
-  if (tape_set->empty()) {
+  auto* tape_set_ptr = GetTapeSet();
+  if (tape_set_ptr->empty()) {
     Py_RETURN_FALSE;
   }
   PyObject* seq = PySequence_Fast(tensors, "expected a sequence");
@@ -654,7 +655,8 @@ PyObject* TFE_Py_TapeSetShouldRecord(PyObject* tensors) {
     tensor_ids.push_back(FastTensorId(item));
   }
   Py_DECREF(seq);
-  for (TFE_Py_Tape* tape : *tape_set) {
+  auto tape_set = *tape_set_ptr;
+  for (TFE_Py_Tape* tape : tape_set) {
     if (tape->tape->ShouldRecord(tensor_ids)) {
       Py_RETURN_TRUE;
     }
@@ -760,8 +762,7 @@ PyObject* TFE_Py_TapeWatchedVariables(PyObject* tape) {
 void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
                                    PyObject* input_tensors,
                                    PyObject* backward_function) {
-  auto* set = GetTapeSet();
-  if (set->empty() || *ThreadTapeIsStopped()) {
+  if (GetTapeSet()->empty() || *ThreadTapeIsStopped()) {
     return;
   }
   std::vector<tensorflow::int64> input_ids = MakeTensorIDList(input_tensors);
@@ -796,7 +797,8 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
     return;
   }
 
-  for (TFE_Py_Tape* tape : *set) {
+  auto set = *GetTapeSet();
+  for (TFE_Py_Tape* tape : set) {
     Py_INCREF(backward_function);
     tape->tape->RecordOperation(
         op_type_str, output_info, input_ids, backward_function,
@@ -805,7 +807,10 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
 }
 
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
-  for (TFE_Py_Tape* tape : *GetTapeSet()) {
+  // Note: making a copy because deleting the trace can trigger a change to the
+  // set of tapes by allowing python's garbage collector to run.
+  auto tape_set = *GetTapeSet();
+  for (TFE_Py_Tape* tape : tape_set) {
     tape->tape->DeleteTrace(tensor_id);
   }
 }
@@ -1086,8 +1091,9 @@ bool MaybeRunRecordGradientCallback(const tensorflow::OpDef* op_def,
 
   PyObject* inputs = PyTuple_New(op_def->input_arg_size());
   for (int i = 0; i < op_def->input_arg_size(); i++) {
-    PyTuple_SET_ITEM(
-        inputs, i, PyTuple_GET_ITEM(args, kFastPathExecuteInputStartIndex + i));
+    auto* input = PyTuple_GET_ITEM(args, kFastPathExecuteInputStartIndex + i);
+    Py_INCREF(input);
+    PyTuple_SET_ITEM(inputs, i, input);
   }
 
   int args_size = PyTuple_GET_SIZE(args);
@@ -1095,9 +1101,10 @@ bool MaybeRunRecordGradientCallback(const tensorflow::OpDef* op_def,
       args_size - op_def->input_arg_size() - kFastPathExecuteInputStartIndex;
   PyObject* attrs = PyTuple_New(num_attrs);
   for (int i = 0; i < num_attrs; i++) {
-    PyTuple_SET_ITEM(attrs, i,
-                     PyTuple_GET_ITEM(args, kFastPathExecuteInputStartIndex +
-                                                op_def->input_arg_size() + i));
+    auto* attr = PyTuple_GET_ITEM(
+        args, kFastPathExecuteInputStartIndex + op_def->input_arg_size() + i);
+    Py_INCREF(attr);
+    PyTuple_SET_ITEM(attrs, i, attr);
   }
 
   PyObject* callback_args = Py_BuildValue("OOO", inputs, attrs, result);

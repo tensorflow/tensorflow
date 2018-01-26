@@ -69,7 +69,7 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
                 LogName(*matmul_op), LogName(*fc_op));
     const auto& previous_op_output = previous_op->outputs[0];
     if (CountOpsWithInput(*model, previous_op_output) == 1) {
-      model->arrays.erase(previous_op_output);
+      model->EraseArray(previous_op_output);
     }
     CHECK_EQ(previous_op->inputs.size(), 2);
     fc_op->inputs = {previous_op->inputs[0], matmul_op->inputs[1]};
@@ -78,7 +78,7 @@ bool ResolveTensorFlowMatMul::Run(Model* model, std::size_t op_index) {
       const auto& previous_op_shape = previous_op->inputs[1];
       if (CountOpsWithInput(*model, previous_op_shape) == 1 &&
           !GetOpWithOutput(*model, previous_op_shape)) {
-        model->arrays.erase(previous_op_shape);
+        model->EraseArray(previous_op_shape);
       }
       model->operators.erase(previous_op_it);
     }

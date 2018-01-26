@@ -25,47 +25,52 @@ using ::testing::ElementsAreArray;
 
 class ResizeBilinearOpModel : public SingleOpModel {
  public:
-  ResizeBilinearOpModel(std::initializer_list<int> input_shape, int new_height,
-                        int new_width) {
+  ResizeBilinearOpModel(std::initializer_list<int> input_shape) {
     input_ = AddInput(TensorType_FLOAT32);
+    size_ = AddInput(TensorType_INT32);
     output_ = AddOutput(TensorType_FLOAT32);
-    SetBuiltinOp(
-        BuiltinOperator_RESIZE_BILINEAR, BuiltinOptions_ResizeBilinearOptions,
-        CreateResizeBilinearOptions(builder_, new_height, new_width).Union());
-    BuildInterpreter({input_shape});
+    SetBuiltinOp(BuiltinOperator_RESIZE_BILINEAR,
+                 BuiltinOptions_ResizeBilinearOptions,
+                 CreateResizeBilinearOptions(builder_).Union());
+    BuildInterpreter({input_shape, {2}});
   }
 
   void SetInput(std::initializer_list<float> data) {
     PopulateTensor(input_, data);
   }
+  void SetSize(std::initializer_list<int> data) { PopulateTensor(size_, data); }
 
   std::vector<float> GetOutput() { return ExtractVector<float>(output_); }
 
  private:
   int input_;
+  int size_;
   int output_;
 };
 
 TEST(ResizeBilinearOpTest, HorizontalResize) {
-  ResizeBilinearOpModel m({1, 1, 2, 1}, 1, 3);
+  ResizeBilinearOpModel m({1, 1, 2, 1});
   m.SetInput({3, 6});
+  m.SetSize({1, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({3, 5, 6})));
 }
 
 TEST(ResizeBilinearOpTest, VerticalResize) {
-  ResizeBilinearOpModel m({1, 2, 1, 1}, 3, 1);
+  ResizeBilinearOpModel m({1, 2, 1, 1});
   m.SetInput({3, 9});
+  m.SetSize({3, 1});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({3, 7, 9})));
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResize) {
-  ResizeBilinearOpModel m({1, 2, 2, 1}, 3, 3);
+  ResizeBilinearOpModel m({1, 2, 2, 1});
   m.SetInput({
       3, 6,  //
       9, 12  //
   });
+  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  3, 5, 6,    //
@@ -75,13 +80,14 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResize) {
 }
 
 TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatches) {
-  ResizeBilinearOpModel m({2, 2, 2, 1}, 3, 3);
+  ResizeBilinearOpModel m({2, 2, 2, 1});
   m.SetInput({
       3, 6,   //
       9, 12,  //
       4, 10,  //
       10, 16  //
   });
+  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  3, 5, 6,     //
@@ -94,11 +100,12 @@ TEST(ResizeBilinearOpTest, TwoDimensionalResizeWithTwoBatches) {
 }
 
 TEST(ResizeBilinearOpTest, ThreeDimensionalResize) {
-  ResizeBilinearOpModel m({1, 2, 2, 2}, 3, 3);
+  ResizeBilinearOpModel m({1, 2, 2, 2});
   m.SetInput({
       3, 4, 6, 10,    //
       9, 10, 12, 16,  //
   });
+  m.SetSize({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
                                  3, 4, 5, 8, 6, 10,      //

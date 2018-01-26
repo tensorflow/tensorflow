@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -111,6 +112,7 @@ class _Mapping(collections.namedtuple(
 
 
 @six.add_metaclass(abc.ABCMeta)
+@tf_export("distributions.bijectors.Bijector")
 class Bijector(object):
   """Interface for transformations of a `Distribution` sample.
 

@@ -55,7 +55,7 @@ class ParallelCpuExecutable : public Executable {
       std::unordered_map<const HloInstruction*,
                          std::unique_ptr<unsigned char[]>>
           aligned_constants,
-      std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
       std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~ParallelCpuExecutable() override {}
 

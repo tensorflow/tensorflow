@@ -15,8 +15,8 @@
 // This is a surrogate for using a proto, since it doesn't seem to be possible
 // to use protos in a dynamically-loaded/shared-linkage library, which is
 // what is used for custom ops in tensorflow/contrib.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_DATA_SPEC_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_DATA_SPEC_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_DATA_SPEC_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_DATA_SPEC_H_
 #include <unordered_map>
 
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -138,4 +138,4 @@ class TensorForestDataSpec {
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_DATA_SPEC_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_CORE_OPS_DATA_SPEC_H_

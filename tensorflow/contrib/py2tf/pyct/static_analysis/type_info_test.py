@@ -19,7 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
+from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.contrib.py2tf.pyct.static_analysis import access
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
@@ -54,17 +56,27 @@ class ScopeTest(test.TestCase):
 
 class TypeInfoResolverTest(test.TestCase):
 
+  def _parse_and_analyze(self, test_fn, namespace, arg_types=None):
+    ctx = context.EntityContext(
+        namer=None,
+        source_code=None,
+        source_file=None,
+        namespace=namespace,
+        arg_values=None,
+        arg_types=arg_types)
+    node = parser.parse_object(test_fn)
+    node = access.resolve(node)
+    node = live_values.resolve(node, namespace, {})
+    node = type_info.resolve(node, ctx)
+    return node
+
   def test_constructor_detection(self):
 
     def test_fn():
       opt = training.GradientDescentOptimizer(0.1)
       return opt
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    node = type_info.resolve(node, {})
-
+    node = self._parse_and_analyze(test_fn, {'training': training})
     call_node = node.body[0].body[0].value
     self.assertEquals(training.GradientDescentOptimizer,
                       anno.getanno(call_node, 'type'))
@@ -77,11 +89,7 @@ class TypeInfoResolverTest(test.TestCase):
       opt = training.GradientDescentOptimizer(0.1)
       opt.minimize(0)
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    node = type_info.resolve(node, {})
-
+    node = self._parse_and_analyze(test_fn, {'training': training})
     attr_call_node = node.body[0].body[1].value.func
     self.assertEquals((training.__name__, 'GradientDescentOptimizer'),
                       anno.getanno(attr_call_node, 'type_fqn'))
@@ -92,11 +100,7 @@ class TypeInfoResolverTest(test.TestCase):
       with session.Session() as sess:
         sess.run(x)
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'session': session}, {})
-    node = type_info.resolve(node, {})
-
+    node = self._parse_and_analyze(test_fn, {'session': session})
     constructor_call = node.body[0].body[0].items[0].context_expr
     self.assertEquals(session.Session, anno.getanno(constructor_call, 'type'))
     self.assertEquals((session.__name__, 'Session'),
@@ -115,33 +119,25 @@ class TypeInfoResolverTest(test.TestCase):
         opt = training.GradientDescentOptimizer(0.01)
       opt.minimize(0)
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    with self.assertRaises(ValueError):
-      node = type_info.resolve(node, {})
+    with self.assertRaises(transformer.PyFlowParseError):
+      self._parse_and_analyze(test_fn, {'training': training})
 
   def test_parameter_class_members(self):
 
     def test_fn(opt):
       opt.minimize(0)
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    with self.assertRaises(ValueError):
-      node = type_info.resolve(node, {})
+    with self.assertRaises(transformer.PyFlowParseError):
+      self._parse_and_analyze(test_fn, {'training': training})
 
   def test_parameter_class_members_with_value_hints(self):
 
     def test_fn(opt):
       opt.minimize(0)
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    node = type_info.resolve(
-        node, {
+    node = self._parse_and_analyze(
+        test_fn, {'training': training},
+        arg_types={
             'opt': (('%s.GradientDescentOptimizer' % training.__name__),
                     training.GradientDescentOptimizer(0.1))
         })
@@ -160,11 +156,8 @@ class TypeInfoResolverTest(test.TestCase):
       foo = bar
       foo()
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'bar': bar}, {})
-    with self.assertRaises(ValueError):
-      node = type_info.resolve(node, {})
+    with self.assertRaises(transformer.PyFlowParseError):
+      self._parse_and_analyze(test_fn, {'bar': bar})
 
   def test_nested_members(self):
 
@@ -172,11 +165,8 @@ class TypeInfoResolverTest(test.TestCase):
       foo = training.GradientDescentOptimizer(0.1)
       foo.bar.baz()
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    with self.assertRaises(ValueError):
-      node = type_info.resolve(node, {})
+    with self.assertRaises(transformer.PyFlowParseError):
+      self._parse_and_analyze(test_fn, {'training': training})
 
 
 if __name__ == '__main__':
