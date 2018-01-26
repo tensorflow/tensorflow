@@ -734,7 +734,7 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
-_last_shape_dtype = [None, None]
+_last_zero_shape_dtype = [None, None]
 _last_zero = [None]
 
 
@@ -748,13 +748,15 @@ def _zeros(shape, dtype):
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
-  if [shape, dtype] != _last_shape_dtype:
-    _last_shape_dtype[:] = [shape, dtype]
+  if [shape, dtype] != _last_zero_shape_dtype:
+    _last_zero_shape_dtype[:] = [shape, dtype]
     _last_zero[0] = _fast_fill(0, shape, dtype)
   return _last_zero[0]
 
 
 def _ones(shape, dtype):
+  if shape == ():  # pylint: disable=g-explicit-bool-comparison
+    return constant_op.constant(1, dtype=dtype)
   return _fast_fill(1, shape, dtype)
 
 
