@@ -241,7 +241,7 @@ Open a Chrome browser, enter URL chrome://tracing and load the timeline file.
 tfprof> code -select accelerator_micros -max_depth 100000 -output pprof:outfile=<filename>  -trim_name_regexes .*apply_op.*
 
 # Use pprof to visualize the generated file.
-pprof -png --nodecount=100 --sample_index=1 <filename>
+google-pprof --pdf --nodecount=100 <filename>
 ```
 
 ![PprofGraph](g3doc/pprof.jpg)
