@@ -278,8 +278,6 @@ class WriteAudioSummaryOp : public OpKernel {
 
  private:
   int max_outputs_;
-  bool has_sample_rate_attr_;
-  float sample_rate_attr_;
 };
 REGISTER_KERNEL_BUILDER(Name("WriteAudioSummary").Device(DEVICE_CPU),
                         WriteAudioSummaryOp);
