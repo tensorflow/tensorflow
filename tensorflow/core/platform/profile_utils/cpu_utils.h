@@ -42,7 +42,7 @@ namespace profile_utils {
 class CpuUtils {
  public:
   // Constant for invalid frequency.
-  // This value is returned when the furequency is not obtained somehow.
+  // This value is returned when the frequency is not obtained somehow.
   static constexpr int64 INVALID_FREQUENCY = -1;
   static constexpr uint64 DUMMY_CYCLE_CLOCK = 1;
 
@@ -103,7 +103,7 @@ class CpuUtils {
      static int64 GetCycleCounterFrequency();
   #endif
 
-  // Return micro secound per each clock
+  // Return micro second per each clock
   // As this method caches the cpu frequency internally,
   // the first call will incur overhead, but not subsequent calls.
   static double GetMicroSecPerClock();
