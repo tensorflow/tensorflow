@@ -849,7 +849,8 @@ xla_test(
     name = "half_test",
     srcs = ["half_test.cc"],
     backends = [
-        "cpu",
+        # TODO(b/72509305): Flaky (fails with SEGV) as of 2018-01-25
+        # "cpu",
         "gpu",
     ],
     deps = [
