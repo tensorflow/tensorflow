@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/function.h"
 #include <vector>
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {

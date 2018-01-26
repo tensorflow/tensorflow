@@ -52,6 +52,7 @@ py_library(
 py_test(
     name = "break_canonicalization_test",
     srcs = ["break_canonicalization_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
@@ -62,6 +63,7 @@ py_test(
 py_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
@@ -72,6 +74,7 @@ py_test(
 py_test(
     name = "continue_canonicalization_test",
     srcs = ["continue_canonicalization_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
@@ -82,6 +85,7 @@ py_test(
 py_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
@@ -92,6 +96,7 @@ py_test(
 py_test(
     name = "builtin_functions_test",
     srcs = ["builtin_functions_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
@@ -112,6 +117,7 @@ py_test(
 py_test(
     name = "logical_expressions_test",
     srcs = ["logical_expressions_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
@@ -122,6 +128,7 @@ py_test(
 py_test(
     name = "print_functions_test",
     srcs = ["print_functions_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
@@ -133,6 +140,7 @@ py_test(
 py_test(
     name = "side_effect_guards_test",
     srcs = ["side_effect_guards_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",

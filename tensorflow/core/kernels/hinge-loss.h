@@ -50,9 +50,8 @@ class HingeLossUpdater : public DualLossUpdater {
     // valid value for new dual = 0
     // c. new optimal value > 1.0. Then new optimal value should be set to 1.0.
     const double candidate_optimal_dual =
-        current_dual +
-        (label - wx) /
-            (num_loss_partitions * example_weight * weighted_example_norm);
+        current_dual + (label - wx) / (num_loss_partitions * example_weight *
+                                       weighted_example_norm);
     if (label * candidate_optimal_dual < 0) {
       return 0.0;
     }

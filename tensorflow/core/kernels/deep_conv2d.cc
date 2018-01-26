@@ -120,9 +120,9 @@ bool CanUseDeepConv2D(int stride_rows, int stride_cols, int filter_rows,
 
   VLOG(2) << "CanUseDeepConv2D"
           << " deep_conv_cost: " << deep_conv_cost
-          << " direct_conv_cost: " << direct_conv_cost
-          << " deep_direct_ratio: " << (static_cast<float>(deep_conv_cost) /
-                                        static_cast<float>(direct_conv_cost))
+          << " direct_conv_cost: " << direct_conv_cost << " deep_direct_ratio: "
+          << (static_cast<float>(deep_conv_cost) /
+              static_cast<float>(direct_conv_cost))
           << " use_deep_conv: " << (deep_conv_cost < direct_conv_cost);
   return deep_conv_cost < direct_conv_cost;
 }
