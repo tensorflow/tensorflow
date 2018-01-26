@@ -41,9 +41,9 @@ def rnn_network(x_in, weight_set, bias_set):
         Output tensor with the computed logits.
     """
 
-    # Prepare data shape to match `rnn` function requirements.
+    # Prepare data shape to match rnn function requirements.
     # Current data input shape: (BATCH_SIZE, num_step, n_input).
-    # Required shape: 'num_step' tensors list of shape (BATCH_SIZE, n_input).
+    # Required shape: num_step tensors list of shape (BATCH_SIZE, n_input).
     x_in = tf.reshape(x_in, [-1, NUM_INPUT])
 
     # Hidden layer ==> (128 batch, 28 steps, 128 hidden).
