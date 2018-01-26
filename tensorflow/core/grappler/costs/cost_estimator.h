@@ -78,6 +78,9 @@ struct Costs {
     MilliSeconds asMilliSeconds() const {
       return std::chrono::duration_cast<std::chrono::milliseconds>(*this);
     }
+    static NanoSeconds infinity() {
+      return NanoSeconds(std::chrono::nanoseconds::max());
+    }
   };
 
   // We store all our times in nanoseconds. If needs be, we can always switch to
