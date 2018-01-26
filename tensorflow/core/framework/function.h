@@ -656,7 +656,7 @@ bool RegisterOp(const string& op, Creator func);
 // Returns OK the gradient creator for the "op" is found (may be
 // nullptr if REGISTER_OP_NO_GRADIENT is used.
 Status GetOpGradientCreator(const string& op, Creator* creator);
-};
+};  // namespace gradient
 
 // Declare explicit instantiations of GetAttr
 #define GET_ATTR(T)                                          \
