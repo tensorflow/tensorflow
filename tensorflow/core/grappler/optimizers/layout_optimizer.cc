@@ -2041,17 +2041,6 @@ class DataLayoutOptimizer : GraphProcessor {
   const LayoutOptimizer::TuningConfig& config_;
 };
 
-int GetNumTranspose(const GraphDef& graph) {
-  int number = 0;
-  for (const auto& node : graph.node()) {
-    if (IsTranspose(node)) {
-      number++;
-    }
-  }
-  VLOG(1) << "Number of Transpose nodes: " << number;
-  return number;
-}
-
 int GetNumGPUs(const Cluster& cluster) {
   auto devices = cluster.GetDevices();
   int num_gpus = 0;
