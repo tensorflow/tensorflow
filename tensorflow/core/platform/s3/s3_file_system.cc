@@ -307,7 +307,7 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
     Aws::InitAPI(options);
 
     this->s3_client_ = std::shared_ptr<Aws::S3::S3Client>(
-        new Aws::S3::S3Client(GetDefaultClientConfig()));
+        new Aws::S3::S3Client(GetDefaultClientConfig(), Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false));
   }
 
   return this->s3_client_;
