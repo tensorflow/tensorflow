@@ -132,7 +132,7 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
             TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &batch_element_tuple,
                                                     end_of_sequence));
             if (!*end_of_sequence) {
-              batch_elements.emplace_back(std::move(batch_element_tuple));
+              batch_elements.push_back(std::move(batch_element_tuple));
             } else {
               input_impl_.reset();
             }
