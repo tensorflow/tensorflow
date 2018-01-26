@@ -1841,12 +1841,11 @@ def reduce_logsumexp(input_tensor,
         reduce_sum(
             gen_math_ops.exp(input_tensor - my_max),
             axis,
-            keepdims=True,
-            reduction_indices=reduction_indices)) + my_max
+            keepdims=keepdims,
+            reduction_indices=reduction_indices))
     if not keepdims:
-      if isinstance(axis, int):
-        axis = [axis]
-      result = array_ops.squeeze(result, axis)
+      my_max = array_ops.reshape(my_max, array_ops.shape(result))
+    result += my_max
     return _may_reduce_to_scalar(keepdims, axis, reduction_indices, result)
 
 
