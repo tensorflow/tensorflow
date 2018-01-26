@@ -36,6 +36,7 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@rejection_resample
 @@scan
 @@shuffle_and_repeat
+@@sliding_window_batch
 @@sloppy_interleave
 @@unbatch
 
@@ -72,6 +73,7 @@ from tensorflow.contrib.data.python.ops.readers import TFRecordDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.scan_ops import scan
 from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
+from tensorflow.contrib.data.python.ops.sliding import sliding_window_batch
 from tensorflow.python.data.ops.iterator_ops import Iterator
 from tensorflow.python.ops.parsing_ops import parse_single_example_v2 as parse_single_example
 # pylint: enable=unused-import
