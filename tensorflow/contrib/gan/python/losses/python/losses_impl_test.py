@@ -620,7 +620,7 @@ class CombineAdversarialLossTest(test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       for _ in range(10):  # spot check closeness on more than one sample.
         gnorm_np, precond_gnorm_np = sess.run([gnorm, precond_gnorm])
-        self.assertNear(gnorm_np, precond_gnorm_np, 1e-5)
+        self.assertNear(gnorm_np, precond_gnorm_np, 1e-4)
 
 
 class CycleConsistencyLossTest(test.TestCase):

@@ -183,8 +183,8 @@ class CostModel {
 
   const bool is_global_;
 
-  // Resizes vectors so that they are large enough for "id".
-  void Ensure(int id);
+  // Resizes vectors so that they are large enough for "id" and id's outputs.
+  void Ensure(int id, int num_outputs);
 
   // Nodes and Edges whose count is < this value
   // get type/byte estimates of 0.

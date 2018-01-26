@@ -104,7 +104,7 @@ def run_handler_scheduled_ops(per_handler_ops, stamp, worker_device):
   batched_ops = collections.defaultdict(list)
   # Group the ops by their batching_key. Ops that share the same batching key
   # can be executed together.
-  for handler in per_handler_ops.keys():
+  for handler in sorted(per_handler_ops.keys()):
     for op in per_handler_ops[handler]:
       batched_ops[(op.batching_key(), op.batch_runner_fn())].append(op)
   op_results = {}

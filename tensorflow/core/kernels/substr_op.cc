@@ -95,9 +95,9 @@ class SubstrOp : public OpKernel {
       // Create BCast helper with shape of input and pos/len
       BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(pos_shape));
       OP_REQUIRES(context, bcast.IsValid(),
-                  errors::InvalidArgument("Incompatible shapes: ",
-                                          input_shape.DebugString(), " vs. ",
-                                          pos_shape.DebugString()));
+                  errors::InvalidArgument(
+                      "Incompatible shapes: ", input_shape.DebugString(),
+                      " vs. ", pos_shape.DebugString()));
       TensorShape output_shape = BCast::ToShape(bcast.result_shape());
       int ndims = output_shape.dims();
       Tensor* output_tensor = nullptr;

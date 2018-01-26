@@ -197,6 +197,7 @@ const char* OperatorTypeName(OperatorType type) {
   case OperatorType::k##c:              \
     return #c;
     HANDLE_OPERATORTYPENAME_CASE(Add)
+    HANDLE_OPERATORTYPENAME_CASE(AddN)
     HANDLE_OPERATORTYPENAME_CASE(AveragePool)
     HANDLE_OPERATORTYPENAME_CASE(BatchNormalization)
     HANDLE_OPERATORTYPENAME_CASE(Conv)
@@ -960,7 +961,9 @@ void CheckModelCounts(const Model& model) {
 void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
                    std::vector<int>* out_dims) {
   CHECK(out_dims->empty());
-  if (num_dims == 1) {
+  if (num_dims == 0) {
+    return;
+  } else if (num_dims == 1) {
     CHECK_EQ(batch, 1);
     *out_dims = {depth};
   } else if (num_dims == 2) {
@@ -992,13 +995,13 @@ void CreateOrCheckRnnStateArray(const string& name, int size, Model* model) {
   if (array.has_shape()) {
     num_dims = array.shape().dimensions_count();
   }
-  std::vector<int> dims;
-  MakeArrayDims(num_dims, batch, 1, 1, size, &dims);
   CHECK(array.data_type == ArrayDataType::kFloat ||
         array.data_type == ArrayDataType::kNone);
   array.data_type = ArrayDataType::kFloat;
-  if (!array.has_shape()) {
+  if (!array.has_shape() && num_dims >= 0) {
     Shape* shape = array.mutable_shape();
+    std::vector<int> dims;
+    MakeArrayDims(num_dims, batch, 1, 1, size, &dims);
     *shape->mutable_dims() = dims;
   }
 }
@@ -1187,9 +1190,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
   }
   // Creation of the RNN state arrays
   for (const auto& rnn_state : model->flags.rnn_states()) {
-    if (!rnn_state.manually_create()) {
-      continue;
-    }
     CreateOrCheckRnnStateArray(rnn_state.state_array(), rnn_state.size(),
                                model);
   }
@@ -1203,6 +1203,9 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
   model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
   model->flags.set_allow_nonexistent_arrays(
       model_flags.allow_nonexistent_arrays());
+
+  CHECK(!model->flags.has_arrays_extra_info());
+  *model->flags.mutable_arrays_extra_info() = model_flags.arrays_extra_info();
 }
 
 void CheckIsReadyForQuantization(const Model& model) {
@@ -1397,6 +1400,16 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
           return false;
         }
         total += RequiredBufferSizeForShape(output_array.shape());
+        break;
+      }
+      case OperatorType::kAddN: {
+        const auto& output_array = model.GetArray(op->outputs[0]);
+        if (!output_array.has_shape()) {
+          return false;
+        }
+        // AddN cost is roughly the same cost as N-1 Adds.
+        const int num_adds = op->inputs.size() - 1;
+        total += num_adds * RequiredBufferSizeForShape(output_array.shape());
         break;
       }
       case OperatorType::kLogistic:
@@ -1701,6 +1714,17 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt64;
     default:
       return ArrayDataType::kNone;
+  }
+}
+
+void UseArraysExtraInfo(Model* model) {
+  for (const auto& entry : model->flags.arrays_extra_info().entries()) {
+    QCHECK(model->HasArray(entry.name()))
+        << "ArraysExtraInfo refers to non-existent array name: "
+        << entry.name();
+    auto& minmax = model->GetArray(entry.name()).GetOrCreateMinMax();
+    minmax.min = entry.min();
+    minmax.max = entry.max();
   }
 }
 

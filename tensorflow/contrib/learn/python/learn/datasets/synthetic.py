@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Synthetic dataset generators."""
 
 from __future__ import absolute_import
@@ -23,18 +22,27 @@ import numpy as np
 
 from tensorflow.contrib.learn.python.learn.datasets.base import Dataset
 
-def circles(n_samples=100, noise=None, seed=None, factor=0.8, n_classes=2, *args, **kwargs):
+
+def circles(n_samples=100,
+            noise=None,
+            seed=None,
+            factor=0.8,
+            n_classes=2,
+            *args,
+            **kwargs):
   """Create circles separated by some value
 
   Args:
     n_samples: int, number of datapoints to generate
     noise: float or None, standard deviation of the Gaussian noise added
     seed: int or None, seed for the noise
-    factor: float, size factor of the inner circles with respect to the outer ones
+    factor: float, size factor of the inner circles with respect to the outer
+      ones
     n_classes: int, number of classes to generate
 
   Returns:
-    Shuffled features and labels for 'circles' synthetic dataset of type `base.Dataset`
+    Shuffled features and labels for 'circles' synthetic dataset of type
+    `base.Dataset`
 
   Note:
     The multi-class support might not work as expected if `noise` is enabled
@@ -54,7 +62,7 @@ def circles(n_samples=100, noise=None, seed=None, factor=0.8, n_classes=2, *args
   if seed is not None:
     np.random.seed(seed)
   # Algo: 1) Generate initial circle, 2) For ever class generate a smaller radius circle
-  linspace = np.linspace(0, 2*np.pi, n_samples // n_classes)
+  linspace = np.linspace(0, 2 * np.pi, n_samples // n_classes)
   circ_x = np.empty(0, dtype=np.int32)
   circ_y = np.empty(0, dtype=np.int32)
   base_cos = np.cos(linspace)
@@ -66,12 +74,12 @@ def circles(n_samples=100, noise=None, seed=None, factor=0.8, n_classes=2, *args
     circ_y = np.append(circ_y, base_sin)
     base_cos *= factor
     base_sin *= factor
-    y = np.append(y, label*np.ones(n_samples // n_classes, dtype=np.int32))
+    y = np.append(y, label * np.ones(n_samples // n_classes, dtype=np.int32))
 
   # Add more points if n_samples is not divisible by n_classes (unbalanced!)
   extras = n_samples % n_classes
-  circ_x = np.append(circ_x, np.cos(np.random.rand(extras)*2*np.pi))
-  circ_y = np.append(circ_y, np.sin(np.random.rand(extras)*2*np.pi))
+  circ_x = np.append(circ_x, np.cos(np.random.rand(extras) * 2 * np.pi))
+  circ_y = np.append(circ_y, np.sin(np.random.rand(extras) * 2 * np.pi))
   y = np.append(y, np.zeros(extras, dtype=np.int32))
 
   # Reshape the features/labels
@@ -85,10 +93,13 @@ def circles(n_samples=100, noise=None, seed=None, factor=0.8, n_classes=2, *args
   return Dataset(data=X[indices], target=y[indices])
 
 
-def spirals(n_samples=100, noise=None, seed=None,
-            mode = 'archimedes',
-            n_loops = 2,
-            *args, **kwargs):
+def spirals(n_samples=100,
+            noise=None,
+            seed=None,
+            mode='archimedes',
+            n_loops=2,
+            *args,
+            **kwargs):
   """Create spirals
 
   Currently only binary classification is supported for spiral generation
@@ -104,7 +115,8 @@ def spirals(n_samples=100, noise=None, seed=None,
       'fermat': a spiral with branch distances decreasing (sqrt)
 
   Returns:
-    Shuffled features and labels for 'spirals' synthetic dataset of type `base.Dataset`
+    Shuffled features and labels for 'spirals' synthetic dataset of type
+    `base.Dataset`
 
   Raises:
     ValueError: If the generation `mode` is not valid
@@ -112,34 +124,35 @@ def spirals(n_samples=100, noise=None, seed=None,
   TODO:
     - Generation of unbalanced data
   """
-  n_classes = 2 # I am not sure how to make it multiclass
+  n_classes = 2  # I am not sure how to make it multiclass
 
   _modes = {
-    'archimedes': _archimedes_spiral,
-    'bernoulli': _bernoulli_spiral,
-    'fermat': _fermat_spiral
+      'archimedes': _archimedes_spiral,
+      'bernoulli': _bernoulli_spiral,
+      'fermat': _fermat_spiral
   }
 
   if mode is None or mode not in _modes:
-    raise ValueError("Cannot generate spiral with mode %s"%mode)
+    raise ValueError('Cannot generate spiral with mode %s' % mode)
 
   if seed is not None:
     np.random.seed(seed)
-  linspace = np.linspace(0, 2*n_loops*np.pi, n_samples // n_classes)
+  linspace = np.linspace(0, 2 * n_loops * np.pi, n_samples // n_classes)
   spir_x = np.empty(0, dtype=np.int32)
   spir_y = np.empty(0, dtype=np.int32)
 
   y = np.empty(0, dtype=np.int32)
   for label in range(n_classes):
-    base_cos, base_sin = _modes[mode](linspace, label*np.pi, *args, **kwargs)
+    base_cos, base_sin = _modes[mode](linspace, label * np.pi, *args, **kwargs)
     spir_x = np.append(spir_x, base_cos)
     spir_y = np.append(spir_y, base_sin)
-    y = np.append(y, label*np.ones(n_samples // n_classes, dtype=np.int32))
+    y = np.append(y, label * np.ones(n_samples // n_classes, dtype=np.int32))
 
   # Add more points if n_samples is not divisible by n_classes (unbalanced!)
   extras = n_samples % n_classes
   if extras > 0:
-    x_exrta, y_extra = _modes[mode](np.random.rand(extras)*2*np.pi, *args, **kwargs)
+    x_exrta, y_extra = _modes[mode](np.random.rand(extras) * 2 * np.pi, *args,
+                                    **kwargs)
     spir_x = np.append(spir_x, x_extra)
     spir_y = np.append(spir_y, y_extra)
     y = np.append(y, np.zeros(extras, dtype=np.int32))
@@ -162,7 +175,8 @@ def _archimedes_spiral(theta, theta_offset=0., *args, **kwargs):
     theta: array-like, angles from polar coordinates to be converted
     theta_offset: float, angle offset in radians (2*pi = 0)
   """
-  x, y = theta*np.cos(theta + theta_offset), theta*np.sin(theta + theta_offset)
+  x, y = theta * np.cos(theta + theta_offset), theta * np.sin(
+      theta + theta_offset)
   x_norm = np.max(np.abs(x))
   y_norm = np.max(np.abs(y))
   x, y = x / x_norm, y / y_norm
@@ -181,7 +195,8 @@ def _bernoulli_spiral(theta, theta_offset=0., *args, **kwargs):
   """
   exp_scale = kwargs.pop('exp_scale', 0.1)
 
-  x, y = np.exp(exp_scale*theta)*np.cos(theta + theta_offset), np.exp(exp_scale*theta)*np.sin(theta + theta_offset)
+  x, y = np.exp(exp_scale * theta) * np.cos(theta + theta_offset), np.exp(
+      exp_scale * theta) * np.sin(theta + theta_offset)
   x_norm = np.max(np.abs(x))
   y_norm = np.max(np.abs(y))
   x, y = x / x_norm, y / y_norm
@@ -195,7 +210,8 @@ def _fermat_spiral(theta, theta_offset=0., *args, **kwargs):
     theta: array-like, angles from polar coordinates to be converted
     theta_offset: float, angle offset in radians (2*pi = 0)
   """
-  x, y = np.sqrt(theta)*np.cos(theta + theta_offset), np.sqrt(theta)*np.sin(theta + theta_offset)
+  x, y = np.sqrt(theta) * np.cos(theta + theta_offset), np.sqrt(theta) * np.sin(
+      theta + theta_offset)
   x_norm = np.max(np.abs(x))
   y_norm = np.max(np.abs(y))
   x, y = x / x_norm, y / y_norm

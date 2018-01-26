@@ -481,13 +481,17 @@ class Tensor(_TensorLike):
           dim_list.append(-1)
         else:
           dim_list.append(dim.value)
-    with errors.raise_exception_on_not_ok_status() as status:
-      c_api.TF_GraphSetTensorShape_wrapper(
-          self._op._graph._c_graph,  # pylint: disable=protected-access
-          self._as_tf_output(),
-          dim_list,
-          unknown_shape,
-          status)
+    try:
+      with errors.raise_exception_on_not_ok_status() as status:
+        c_api.TF_GraphSetTensorShape_wrapper(
+            self._op._graph._c_graph,  # pylint: disable=protected-access
+            self._as_tf_output(),
+            dim_list,
+            unknown_shape,
+            status)
+    except errors.InvalidArgumentError as e:
+      # Convert to ValueError for backwards compatibility.
+      raise ValueError(str(e))
 
   @property
   def value_index(self):
@@ -2099,6 +2103,10 @@ class Operation(object):
     logging.warning("Operation._control_inputs is private, use "
                     "Operation.control_inputs instead. "
                     "Operation._control_inputs will eventually be removed.")
+    # Copy value because it may be self._control_inputs_val (in particular if
+    # this is called from self._control_inputs += ...), and we don't want to
+    # clear value below.
+    value = copy.copy(value)
     self._remove_all_control_inputs()
     self._add_control_inputs(value)
 

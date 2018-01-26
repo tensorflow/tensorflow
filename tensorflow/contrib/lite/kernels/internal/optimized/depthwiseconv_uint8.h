@@ -1504,7 +1504,7 @@ inline void QuantizedDepthwiseConvAccumRowGeneric(
       << "*\n"
       << "* If you would like to carry on with the slow code, compile\n"
       << "* with this preprocessor token defined:\n"
-      << "* TFLITE_ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK.\n"
+      << "* ALLOW_SLOW_GENERIC_DEPTHWISECONV_FALLBACK.\n"
       << "*\n"
       << "* The right thing to do, if you care about performance, is to add\n"
       << "* a new DepthwiseConv kernel to tfmini to cover your case.\n"

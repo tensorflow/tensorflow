@@ -43,6 +43,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/types.h"
@@ -164,6 +165,34 @@ StatusOr<std::unique_ptr<Literal>> ElementWiseUnaryOpImpl(
         return unary_op(operand_literal.Get<NativeT>(multi_index));
       }));
   return std::move(result);
+}
+
+// For one particular placement of a window in a base shape (the placement is
+// represented as `window_count_index`), iterates inside the window. Translates
+// the window index into base index. If the base index is within bound, call `f`
+// with the base index.
+void IterateThroughWindow(
+    const Shape& window_shape, const Window& window, const Shape& base_shape,
+    const tensorflow::gtl::ArraySlice<int64>& window_count_index,
+    const std::function<void(const std::vector<int64>&)>& f) {
+  const int64 rank = ShapeUtil::Rank(base_shape);
+  DimensionVector window_index(rank);
+  std::fill(window_index.begin(), window_index.end(), 0);
+  do {
+    std::vector<int64> base_index(rank);
+    bool out_of_bound = false;
+    for (int64 i = 0; i < rank; ++i) {
+      base_index[i] = window_count_index[i] * window.dimensions(i).stride() +
+                      window_index[i] - window.dimensions(i).padding_low();
+      if (base_index[i] < 0 || base_index[i] >= base_shape.dimensions(i)) {
+        out_of_bound = true;
+        break;
+      }
+    }
+    if (!out_of_bound) {
+      f(base_index);
+    }
+  } while (IndexUtil::BumpIndices(window_shape, &window_index));
 }
 
 }  // namespace
@@ -1420,6 +1449,111 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     return Status::OK();
   }
 
+  Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override {
+    auto operand = select_and_scatter->operand(0);
+    auto source = select_and_scatter->operand(1);
+    const Window& window = select_and_scatter->window();
+
+    const Literal& init_literal =
+        parent_->GetEvaluatedLiteralFor(select_and_scatter->operand(2));
+    TF_RET_CHECK(ShapeUtil::IsScalar(init_literal.shape()));
+    auto init_scalar = init_literal.Get<ReturnT>({});
+
+    auto result = Literal::CreateFromShape(select_and_scatter->shape());
+
+    // Initialize result array with the init value.
+    TF_RETURN_IF_ERROR(result->Populate<ReturnT>(
+        [&](tensorflow::gtl::ArraySlice<int64> output_index) {
+          return init_scalar;
+        }));
+
+    std::vector<int64> window_dimension_sizes;
+    for (const auto& window_dimension : window.dimensions()) {
+      window_dimension_sizes.push_back(window_dimension.size());
+    }
+    const Shape window_shape = ShapeUtil::MakeShape(
+        operand->shape().element_type(), window_dimension_sizes);
+
+    HloComputation* select = select_and_scatter->select();
+    HloComputation* scatter = select_and_scatter->scatter();
+
+    const Literal& operand_literal = parent_->GetEvaluatedLiteralFor(operand);
+    const Literal& source_literal = parent_->GetEvaluatedLiteralFor(source);
+
+    int64 rank = ShapeUtil::Rank(operand_literal.shape());
+
+    HloEvaluator embedded_evaluator;
+    DimensionVector source_index(rank);
+
+    std::fill(source_index.begin(), source_index.end(), 0);
+    do {
+      // For each element in `source`, we place a window in `operand`. For each
+      // window placement, we iterate inside the window twice:
+      //
+      // 1. Find the selected index by applying `select` function to all
+      // elements. E.g., If the `select` function is GreaterEqual, the first
+      // iteration through the window finds the biggest value and returns its
+      // index.
+      //
+      // 2. Using the selected index, scatter value from `source` to result. We
+      // do this by iterating through the window, and compare each index with
+      // the selected index.
+      tensorflow::gtl::optional<ReturnT> selected_val;
+      tensorflow::gtl::optional<std::vector<int64>> selected_index;
+
+      IterateThroughWindow(
+          window_shape, window, operand_literal.shape(), source_index,
+          [&](const std::vector<int64>& operand_index) {
+            auto curr_val = operand_literal.Get<ReturnT>(operand_index);
+            if (!selected_val) {
+              selected_val = curr_val;
+              selected_index = operand_index;
+            }
+            const auto curr_val_literal = Literal::CreateR0<ReturnT>(curr_val);
+            const auto selected_val_literal =
+                Literal::CreateR0<ReturnT>(*selected_val);
+
+            const std::vector<const Literal*> args = {
+                curr_val_literal.get(), selected_val_literal.get()};
+            std::unique_ptr<Literal> computed_result =
+                embedded_evaluator.Evaluate<const Literal*>(*select, args)
+                    .ConsumeValueOrDie();
+            bool selected = computed_result->Get<bool>({});
+            if (selected) {
+              selected_val = curr_val;
+              selected_index = operand_index;
+            }
+            embedded_evaluator.ResetVisitStates();
+          });
+
+      IterateThroughWindow(
+          window_shape, window, operand_literal.shape(), source_index,
+          [&](const std::vector<int64>& operand_index) {
+            if (std::equal(operand_index.begin(), operand_index.end(),
+                           selected_index->begin())) {
+              auto source = source_literal.Get<ReturnT>(source_index);
+              auto scattered = result->Get<ReturnT>(operand_index);
+              const auto source_literal = Literal::CreateR0<ReturnT>(source);
+              const auto scattered_literal =
+                  Literal::CreateR0<ReturnT>(scattered);
+
+              const std::vector<const Literal*> args = {
+                  source_literal.get(), scattered_literal.get()};
+              std::unique_ptr<Literal> computed_result =
+                  embedded_evaluator.Evaluate<const Literal*>(*scatter, args)
+                      .ConsumeValueOrDie();
+              result->Set(operand_index, computed_result->Get<ReturnT>({}));
+              // Clear visit states so that the we can use the evaluator again
+              // on the same computation.
+              embedded_evaluator.ResetVisitStates();
+            }
+          });
+    } while (IndexUtil::BumpIndices(source->shape(), &source_index));
+
+    parent_->evaluated_[select_and_scatter] = std::move(result);
+    return Status::OK();
+  }
+
   Status HandleReduceWindow(HloInstruction* reduce_window) override {
     auto operand = reduce_window->operand(0);
     const Window& window = reduce_window->window();
@@ -1468,39 +1602,28 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
           std::fill(window_index.begin(), window_index.end(), 0);
           std::fill(operand_index.begin(), operand_index.end(), 0);
 
-          do {
-            bool out_of_bound = false;
-            for (int i = 0; i < operand_index.size(); ++i) {
-              operand_index[i] =
-                  output_index[i] * window.dimensions(i).stride() +
-                  window_index[i] - window.dimensions(i).padding_low();
-              if (operand_index[i] < 0 ||
-                  operand_index[i] >= operand_literal.shape().dimensions(i)) {
-                out_of_bound = true;
-                break;
-              }
-            }
-            if (!out_of_bound) {
-              auto curr_val = operand_literal.Get<ReturnT>(operand_index);
+          IterateThroughWindow(
+              window_shape, window, operand_literal.shape(), output_index,
+              [&](const std::vector<int64>& operand_index) {
+                auto curr_val = operand_literal.Get<ReturnT>(operand_index);
 
-              // Evaluate computation with specified literal operands.
-              const auto curr_val_literal =
-                  Literal::CreateR0<ReturnT>(curr_val);
-              const auto result_val_literal =
-                  Literal::CreateR0<ReturnT>(result_val);
-              const std::vector<const Literal*> args = {
-                  curr_val_literal.get(), result_val_literal.get()};
-              std::unique_ptr<Literal> computed_result =
-                  embedded_evaluator.Evaluate<const Literal*>(*function, args)
-                      .ConsumeValueOrDie();
+                // Evaluate computation with specified literal operands.
+                const auto curr_val_literal =
+                    Literal::CreateR0<ReturnT>(curr_val);
+                const auto result_val_literal =
+                    Literal::CreateR0<ReturnT>(result_val);
+                const std::vector<const Literal*> args = {
+                    curr_val_literal.get(), result_val_literal.get()};
+                std::unique_ptr<Literal> computed_result =
+                    embedded_evaluator.Evaluate<const Literal*>(*function, args)
+                        .ConsumeValueOrDie();
 
-              // Clear visit states so that the we can use the evaluate again on
-              // the same computation.
-              embedded_evaluator.ResetVisitStates();
+                // Clear visit states so that the we can use the evaluate again
+                // on the same computation.
+                embedded_evaluator.ResetVisitStates();
 
-              result_val = computed_result->Get<ReturnT>({});
-            }
-          } while (IndexUtil::BumpIndices(window_shape, &window_index));
+                result_val = computed_result->Get<ReturnT>({});
+              });
 
           return result_val;
         }));

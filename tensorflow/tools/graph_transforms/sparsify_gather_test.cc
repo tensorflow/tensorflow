@@ -80,6 +80,8 @@ class SparsifyGatherTest : public ::testing::Test {
     // Build the graph.
     NodeDef* input_node = CreateNode("ids", "Const", {}, &graph_def);
     NodeDef* w_node;
+    NodeDef* zeros_const;
+    NodeDef* zeros_shape;
     NodeDef* zeros_node;
     NodeDef* assign_node;
 
@@ -92,8 +94,12 @@ class SparsifyGatherTest : public ::testing::Test {
     } else {
       w_node = CreateNode("w/part_1", "VariableV2", {}, &graph_def);
 
-      zeros_node =
-          CreateNode("w/part_1/Initializer/zeros", "Const", {}, &graph_def);
+      zeros_shape = CreateNode("w/part_1/Initializer/zeros/shape_as_tensor",
+                               "Const", {}, &graph_def);
+      zeros_const = CreateNode("w/part_1/Initializer/zeros/Const", "Const", {},
+                               &graph_def);
+      zeros_node = CreateNode("w/part_1/Initializer/zeros", "Fill",
+                              {zeros_shape, zeros_const}, &graph_def);
       assign_node = CreateNode("w/part_1/Assign", "Assign",
                                {w_node, zeros_node}, &graph_def);
 
@@ -151,6 +157,9 @@ class SparsifyGatherTest : public ::testing::Test {
     MapNamesToNodes(result, &node_lookup);
 
     // Check nodes.
+    EXPECT_EQ(0,
+              node_lookup.count("w/part_1/Initializer/zeros/shape_as_tensor"));
+    EXPECT_EQ(0, node_lookup.count("w/part_1/Initializer/zeros/Const"));
     EXPECT_EQ(0, node_lookup.count("w/part_1/Initializer/zeros"));
     EXPECT_EQ(0, node_lookup.count("w/part_1/Assign"));
 
@@ -247,7 +256,11 @@ class SparsifyGatherTest : public ::testing::Test {
     // Two partitions
     NodeDef* w_node1;
     NodeDef* w_node2;
+    NodeDef* zeros_const1;
+    NodeDef* zeros_shape1;
     NodeDef* zeros_node1;
+    NodeDef* zeros_const2;
+    NodeDef* zeros_shape2;
     NodeDef* zeros_node2;
     NodeDef* assign_node1;
     NodeDef* assign_node2;
@@ -261,8 +274,13 @@ class SparsifyGatherTest : public ::testing::Test {
       SetNodeTensorAttr<float>("value", weights, w_node2);
     } else {
       w_node1 = CreateNode("w1/part_1", "VariableV2", {}, &graph_def);
-      zeros_node1 =
-          CreateNode("w1/part_1/Initializer/zeros", "Const", {}, &graph_def);
+
+      zeros_shape1 = CreateNode("w1/part_1/Initializer/zeros/shape_as_tensor",
+                                "Const", {}, &graph_def);
+      zeros_const1 = CreateNode("w1/part_1/Initializer/zeros/Const", "Const",
+                                {}, &graph_def);
+      zeros_node1 = CreateNode("w1/part_1/Initializer/zeros", "Fill",
+                               {zeros_shape1, zeros_const1}, &graph_def);
       assign_node1 = CreateNode("w1/part_1/Assign", "Assign",
                                 {w_node1, zeros_node1}, &graph_def);
 
@@ -285,8 +303,12 @@ class SparsifyGatherTest : public ::testing::Test {
       CreateNode("save/Assign", "Assign", {w_node1, restore_node1}, &graph_def);
 
       w_node2 = CreateNode("w2/part_1", "VariableV2", {}, &graph_def);
-      zeros_node2 =
-          CreateNode("w2/part_1/Initializer/zeros", "Const", {}, &graph_def);
+      zeros_shape2 = CreateNode("w2/part_1/Initializer/zeros/shape_as_tensor",
+                                "Const", {}, &graph_def);
+      zeros_const2 = CreateNode("w2/part_1/Initializer/zeros/Const", "Const",
+                                {}, &graph_def);
+      zeros_node2 = CreateNode("w2/part_1/Initializer/zeros", "Fill",
+                               {zeros_shape2, zeros_const2}, &graph_def);
       assign_node2 = CreateNode("w2/part_1/Assign", "Assign",
                                 {w_node2, zeros_node2}, &graph_def);
 
@@ -350,8 +372,14 @@ class SparsifyGatherTest : public ::testing::Test {
     MapNamesToNodes(result, &node_lookup);
 
     // Check nodes.
+    EXPECT_EQ(0,
+              node_lookup.count("w1/part_1/Initializer/zeros/shape_as_tensor"));
+    EXPECT_EQ(0, node_lookup.count("w1/part_1/Initializer/zeros/Const"));
     EXPECT_EQ(0, node_lookup.count("w1/part_1/Initializer/zeros"));
     EXPECT_EQ(0, node_lookup.count("w1/part_1/Assign"));
+    EXPECT_EQ(0,
+              node_lookup.count("w2/part_1/Initializer/zeros/shape_as_tensor"));
+    EXPECT_EQ(0, node_lookup.count("w2/part_1/Initializer/zeros/Const"));
     EXPECT_EQ(0, node_lookup.count("w2/part_1/Initializer/zeros"));
     EXPECT_EQ(0, node_lookup.count("w2/part_1/Assign"));
     EXPECT_EQ(1, node_lookup.count("ids"));

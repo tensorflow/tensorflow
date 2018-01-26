@@ -171,27 +171,8 @@ Status TwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
   return Status::OK();
 }
 
-Status ScalarAndTwoElementVectorInputsAndScalarOutputs(InferenceContext* c) {
-  ShapeHandle handle;
-  DimensionHandle unused_handle;
-  TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 0, &handle));
-  for (int i = 1; i < c->num_inputs(); ++i) {
-    TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &handle));
-    TF_RETURN_IF_ERROR(c->WithValue(c->Dim(handle, 0), 2, &unused_handle));
-  }
-  for (int i = 0; i < c->num_outputs(); ++i) {
-    c->set_output(i, c->Scalar());
-  }
-  return Status::OK();
-}
-
 Status TwoElementOutput(InferenceContext* c) {
   c->set_output(0, c->Vector(2));
-  return Status::OK();
-}
-
-Status ScalarOutput(InferenceContext* c) {
-  c->set_output(0, c->Scalar());
   return Status::OK();
 }
 }  // namespace

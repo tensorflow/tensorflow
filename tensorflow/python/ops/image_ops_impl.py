@@ -770,8 +770,9 @@ def resize_images(images,
     size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
           new size for the images.
     method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
-    align_corners: bool. If true, exactly align all 4 corners of the input and
-                   output. Defaults to `false`.
+    align_corners: bool.  If True, the centers of the 4 corner pixels of the
+        input and output tensors are aligned, preserving the values at the
+        corner pixels. Defaults to `False`.
 
   Raises:
     ValueError: if the shape of `images` is incompatible with the
@@ -1668,3 +1669,106 @@ def non_max_suppression(boxes,
     return gen_image_ops._non_max_suppression_v2(boxes, scores, max_output_size,
                                                  iou_threshold)
     # pylint: enable=protected-access
+
+
+_rgb_to_yiq_kernel = [[0.299, 0.59590059, 0.2115],
+                      [0.587, -0.27455667, -0.52273617],
+                      [0.114, -0.32134392, 0.31119955]]
+
+
+def rgb_to_yiq(images):
+  """Converts one or more images from RGB to YIQ.
+
+  Outputs a tensor of the same shape as the `images` tensor, containing the YIQ
+  value of the pixels.
+  The output is only well defined if the value in images are in [0,1].
+
+  Args:
+    images: 2-D or higher rank. Image data to convert. Last dimension must be
+    size 3.
+
+  Returns:
+    images: tensor with the same shape as `images`.
+  """
+  images = ops.convert_to_tensor(images, name='images')
+  kernel = ops.convert_to_tensor(_rgb_to_yiq_kernel, dtype=images.dtype, name='kernel')
+  ndims = images.get_shape().ndims
+  return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
+
+
+_yiq_to_rgb_kernel = [[1, 1, 1],
+                      [0.95598634, -0.27201283, -1.10674021],
+                      [0.6208248, -0.64720424, 1.70423049]]
+
+
+def yiq_to_rgb(images):
+  """Converts one or more images from YIQ to RGB.
+
+  Outputs a tensor of the same shape as the `images` tensor, containing the RGB
+  value of the pixels.
+  The output is only well defined if the Y value in images are in [0,1],
+  I value are in [-0.5957,0.5957] and Q value are in [-0.5226,0.5226].
+
+  Args:
+    images: 2-D or higher rank. Image data to convert. Last dimension must be
+    size 3.
+
+  Returns:
+    images: tensor with the same shape as `images`.
+  """
+  images = ops.convert_to_tensor(images, name='images')
+  kernel = ops.convert_to_tensor(_yiq_to_rgb_kernel, dtype=images.dtype, name='kernel')
+  ndims = images.get_shape().ndims
+  return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
+
+
+_rgb_to_yuv_kernel = [[0.299, -0.14714119, 0.61497538],
+                      [0.587, -0.28886916, -0.51496512],
+                      [0.114, 0.43601035, -0.10001026]]
+
+
+def rgb_to_yuv(images):
+  """Converts one or more images from RGB to YUV.
+
+  Outputs a tensor of the same shape as the `images` tensor, containing the YUV
+  value of the pixels.
+  The output is only well defined if the value in images are in [0,1].
+
+  Args:
+    images: 2-D or higher rank. Image data to convert. Last dimension must be
+    size 3.
+
+  Returns:
+    images: tensor with the same shape as `images`.
+  """
+  images = ops.convert_to_tensor(images, name='images')
+  kernel = ops.convert_to_tensor(_rgb_to_yuv_kernel, dtype=images.dtype, name='kernel')
+  ndims = images.get_shape().ndims
+  return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
+
+
+_yuv_to_rgb_kernel = [[1, 1, 1],
+                      [0, -0.394642334, 2.03206185],
+                      [1.13988303, -0.58062185, 0]]
+
+
+def yuv_to_rgb(images):
+  """Converts one or more images from YUV to RGB.
+
+  Outputs a tensor of the same shape as the `images` tensor, containing the RGB
+  value of the pixels.
+  The output is only well defined if the Y value in images are in [0,1],
+  U and V value are in [-0.5,0.5].
+
+  Args:
+    images: 2-D or higher rank. Image data to convert. Last dimension must be
+    size 3.
+
+  Returns:
+    images: tensor with the same shape as `images`.
+  """
+  images = ops.convert_to_tensor(images, name='images')
+  kernel = ops.convert_to_tensor(_yuv_to_rgb_kernel, dtype=images.dtype, name='kernel')
+  ndims = images.get_shape().ndims
+  return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
+

@@ -31,15 +31,18 @@ from tensorflow.python.layers import base
 def maxout(inputs, num_units, axis=-1, name=None):
   """Adds a maxout op from https://arxiv.org/abs/1302.4389
 
-  "Maxout Networks" Ian J. Goodfellow, David Warde-Farley, Mehdi Mirza, Aaron Courville,
+  "Maxout Networks" Ian J. Goodfellow, David Warde-Farley, Mehdi Mirza, Aaron
+  Courville,
    Yoshua Bengio
 
-   Usually the operation is performed in the filter/channel dimension. This can also be
+   Usually the operation is performed in the filter/channel dimension. This can
+   also be
    used after fully-connected layers to reduce number of features.
 
    Arguments:
    inputs: Tensor input
-   num_units: Specifies how many features will remain after maxout in the `axis` dimension
+   num_units: Specifies how many features will remain after maxout in the `axis`
+     dimension
          (usually channel). This must be multiple of number of `axis`.
    axis: The dimension where max pooling will be performed. Default is the
    last dimension.
@@ -57,15 +60,18 @@ def maxout(inputs, num_units, axis=-1, name=None):
 class MaxOut(base.Layer):
   """Adds a maxout op from https://arxiv.org/abs/1302.4389
 
-  "Maxout Networks" Ian J. Goodfellow, David Warde-Farley, Mehdi Mirza, Aaron Courville, Yoshua
+  "Maxout Networks" Ian J. Goodfellow, David Warde-Farley, Mehdi Mirza, Aaron
+  Courville, Yoshua
   Bengio
 
-  Usually the operation is performed in the filter/channel dimension. This can also be
+  Usually the operation is performed in the filter/channel dimension. This can
+  also be
   used after fully-connected layers to reduce number of features.
 
   Arguments:
     inputs: Tensor input
-    num_units: Specifies how many features will remain after maxout in the `axis` dimension
+    num_units: Specifies how many features will remain after maxout in the
+      `axis` dimension
          (usually channel).
     This must be multiple of number of `axis`.
     axis: The dimension where max pooling will be performed. Default is the
@@ -79,13 +85,8 @@ class MaxOut(base.Layer):
     ValueError: if num_units is not multiple of number of features.
   """
 
-  def __init__(self,
-         num_units,
-         axis=-1,
-         name=None,
-         **kwargs):
-    super(MaxOut, self).__init__(
-      name=name, trainable=False, **kwargs)
+  def __init__(self, num_units, axis=-1, name=None, **kwargs):
+    super(MaxOut, self).__init__(name=name, trainable=False, **kwargs)
     self.axis = axis
     self.num_units = num_units
 
@@ -95,8 +96,8 @@ class MaxOut(base.Layer):
     num_channels = shape[self.axis]
     if num_channels % self.num_units:
       raise ValueError('number of features({}) is not '
-               'a multiple of num_units({})'
-               .format(num_channels, self.num_units))
+                       'a multiple of num_units({})'.format(
+                           num_channels, self.num_units))
     shape[self.axis] = -1
     shape += [num_channels // self.num_units]
 
@@ -104,6 +105,7 @@ class MaxOut(base.Layer):
     for i in range(len(shape)):
       if shape[i] is None:
         shape[i] = gen_array_ops.shape(inputs)[i]
-    outputs = math_ops.reduce_max(gen_array_ops.reshape(inputs, shape), -1, keep_dims=False)
+    outputs = math_ops.reduce_max(
+        gen_array_ops.reshape(inputs, shape), -1, keep_dims=False)
 
     return outputs

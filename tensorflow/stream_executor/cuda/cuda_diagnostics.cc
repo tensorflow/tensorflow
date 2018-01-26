@@ -232,7 +232,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       result = StringToDriverVersion(version);
     }
 #else
-#if !defined(PLATFORM_WINDOWS) && !defined(NVIDIA_TEGRA)
+#if !defined(PLATFORM_WINDOWS) && !defined(ANDROID_TEGRA)
   // Callback used when iterating through DSOs. Looks for the driver-interfacing
   // DSO and yields its version number into the callback data, when found.
   auto iterate_phdr =
