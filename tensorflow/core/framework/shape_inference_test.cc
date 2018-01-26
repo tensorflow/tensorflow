@@ -760,7 +760,10 @@ TEST_F(ShapeInferenceTest, MergePrefix) {
   NodeDef def;
   InferenceContext c(kVersion, &def, MakeOpDef(4, 2),
                      {
-                         Unknown(), S({-1, 2}), S({1, -1, 3}), S({2, 4}),
+                         Unknown(),
+                         S({-1, 2}),
+                         S({1, -1, 3}),
+                         S({2, 4}),
                      },
                      {}, {}, {});
 

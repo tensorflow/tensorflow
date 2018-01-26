@@ -170,20 +170,20 @@ const OpDef::ArgDef* FindInputArg(StringPiece name, const OpDef& op_def) {
   return nullptr;
 }
 
-#define VALIDATE(EXPR, ...)                                          \
-  do {                                                               \
-    if (!(EXPR)) {                                                   \
-      return errors::InvalidArgument(__VA_ARGS__, "; in OpDef: ",    \
-                                     ProtoShortDebugString(op_def)); \
-    }                                                                \
+#define VALIDATE(EXPR, ...)                                            \
+  do {                                                                 \
+    if (!(EXPR)) {                                                     \
+      return errors::InvalidArgument(                                  \
+          __VA_ARGS__, "; in OpDef: ", ProtoShortDebugString(op_def)); \
+    }                                                                  \
   } while (false)
 
 static Status ValidateArg(const OpDef::ArgDef& arg, const OpDef& op_def,
                           bool output, std::set<string>* names) {
   const string suffix = strings::StrCat(
       output ? " for output '" : " for input '", arg.name(), "'");
-  VALIDATE(gtl::InsertIfNotPresent(names, arg.name()), "Duplicate name: ",
-           arg.name());
+  VALIDATE(gtl::InsertIfNotPresent(names, arg.name()),
+           "Duplicate name: ", arg.name());
   VALIDATE(HasAttrStyleType(arg), "Missing type", suffix);
 
   if (!arg.number_attr().empty()) {
@@ -250,8 +250,8 @@ Status ValidateOpDef(const OpDef& op_def) {
   std::set<string> names;  // for detecting duplicate names
   for (const auto& attr : op_def.attr()) {
     // Validate name
-    VALIDATE(gtl::InsertIfNotPresent(&names, attr.name()), "Duplicate name: ",
-             attr.name());
+    VALIDATE(gtl::InsertIfNotPresent(&names, attr.name()),
+             "Duplicate name: ", attr.name());
     DataType dt;
     VALIDATE(!DataTypeFromString(attr.name(), &dt), "Attr can't have name ",
              attr.name(), " that matches a data type");
@@ -680,8 +680,8 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
     if (!penultimate_attr.has_default_value() ||
         !new_attr->has_default_value()) {
       return errors::InvalidArgument("Missing default for attr '",
-                                     penultimate_attr.name(), "' in op: ",
-                                     SummarizeOpDef(new_op));
+                                     penultimate_attr.name(),
+                                     "' in op: ", SummarizeOpDef(new_op));
     }
 
     // Actually test that the attr's default value hasn't changed.

@@ -296,7 +296,6 @@ static void RenameInDocs(const string& from, const string& to,
   }
 }
 
-
 namespace {
 
 // Initializes given ApiDef with data in OpDef.
