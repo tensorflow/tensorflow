@@ -711,6 +711,144 @@ class Conv3DTranspose(tf_convolutional_layers.Conv3D, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+class SeparableConv1D(tf_convolutional_layers.SeparableConv1D, Layer):
+  """Depthwise separable 1D convolution.
+
+  This layer performs a depthwise convolution that acts separately on
+  channels, followed by a pointwise convolution that mixes channels.
+  If `use_bias` is True and a bias initializer is provided,
+  it adds a bias vector to the output.
+  It then optionally applies an activation function to produce the final output.
+
+  Arguments:
+    filters: Integer, the dimensionality of the output space (i.e. the number
+      of filters in the convolution).
+    kernel_size: A single integer specifying the spatial
+      dimensions of the filters.
+    strides: A single integer specifying the strides
+      of the convolution.
+      Specifying any `stride` value != 1 is incompatible with specifying
+      any `dilation_rate` value != 1.
+    padding: One of `"valid"` or `"same"` (case-insensitive).
+    data_format: A string, one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, length, channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, length)`.
+    dilation_rate: A single integer, specifying
+      the dilation rate to use for dilated convolution.
+      Currently, specifying any `dilation_rate` value != 1 is
+      incompatible with specifying any stride value != 1.
+    depth_multiplier: The number of depthwise convolution output channels for
+      each input channel. The total number of depthwise convolution output
+      channels will be equal to `num_filters_in * depth_multiplier`.
+    activation: Activation function. Set it to None to maintain a
+      linear activation.
+    use_bias: Boolean, whether the layer uses a bias.
+    depthwise_initializer: An initializer for the depthwise convolution kernel.
+    pointwise_initializer: An initializer for the pointwise convolution kernel.
+    bias_initializer: An initializer for the bias vector. If None, the default
+      initializer will be used.
+    depthwise_regularizer: Optional regularizer for the depthwise
+      convolution kernel.
+    pointwise_regularizer: Optional regularizer for the pointwise
+      convolution kernel.
+    bias_regularizer: Optional regularizer for the bias vector.
+    activity_regularizer: Optional regularizer function for the output.
+    depthwise_constraint: Optional projection function to be applied to the
+        depthwise kernel after being updated by an `Optimizer` (e.g. used for
+        norm constraints or value constraints for layer weights). The function
+        must take as input the unprojected variable and must return the
+        projected variable (which must have the same shape). Constraints are
+        not safe to use when doing asynchronous distributed training.
+    pointwise_constraint: Optional projection function to be applied to the
+        pointwise kernel after being updated by an `Optimizer`.
+    bias_constraint: Optional projection function to be applied to the
+        bias after being updated by an `Optimizer`.
+    trainable: Boolean, if `True` also add variables to the graph collection
+      `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+    name: A string, the name of the layer.
+  """
+
+  def __init__(self,
+               filters,
+               kernel_size,
+               strides=1,
+               padding='valid',
+               data_format=None,
+               dilation_rate=1,
+               depth_multiplier=1,
+               activation=None,
+               use_bias=True,
+               depthwise_initializer='glorot_uniform',
+               pointwise_initializer='glorot_uniform',
+               bias_initializer='zeros',
+               depthwise_regularizer=None,
+               pointwise_regularizer=None,
+               bias_regularizer=None,
+               activity_regularizer=None,
+               depthwise_constraint=None,
+               pointwise_constraint=None,
+               bias_constraint=None,
+               **kwargs):
+    if data_format is None:
+      data_format = K.image_data_format()
+    super(SeparableConv1D, self).__init__(
+        filters=filters,
+        kernel_size=kernel_size,
+        strides=strides,
+        padding=padding,
+        data_format=data_format,
+        dilation_rate=dilation_rate,
+        activation=activations.get(activation),
+        use_bias=use_bias,
+        depthwise_initializer=initializers.get(depthwise_initializer),
+        pointwise_initializer=initializers.get(pointwise_initializer),
+        bias_initializer=initializers.get(bias_initializer),
+        depthwise_regularizer=regularizers.get(depthwise_regularizer),
+        pointwise_regularizer=regularizers.get(pointwise_regularizer),
+        bias_regularizer=regularizers.get(bias_regularizer),
+        activity_regularizer=regularizers.get(activity_regularizer),
+        depthwise_constraint=constraints.get(depthwise_constraint),
+        pointwise_constraint=constraints.get(pointwise_constraint),
+        bias_constraint=constraints.get(bias_constraint),
+        **kwargs)
+
+  def get_config(self):
+    config = {
+        'filters': self.filters,
+        'kernel_size': self.kernel_size,
+        'strides': self.strides,
+        'padding': self.padding,
+        'data_format': self.data_format,
+        'dilation_rate': self.dilation_rate,
+        'activation': activations.serialize(self.activation),
+        'use_bias': self.use_bias,
+        'depthwise_initializer':
+            initializers.serialize(self.depthwise_initializer),
+        'pointwise_initializer':
+            initializers.serialize(self.pointwise_initializer),
+        'bias_initializer':
+            initializers.serialize(self.bias_initializer),
+        'depthwise_regularizer':
+            regularizers.serialize(self.depthwise_regularizer),
+        'pointwise_regularizer':
+            regularizers.serialize(self.pointwise_regularizer),
+        'bias_regularizer':
+            regularizers.serialize(self.bias_regularizer),
+        'activity_regularizer':
+            regularizers.serialize(self.activity_regularizer),
+        'depthwise_constraint':
+            constraints.serialize(self.depthwise_constraint),
+        'pointwise_constraint':
+            constraints.serialize(self.pointwise_constraint),
+        'bias_constraint':
+            constraints.serialize(self.bias_constraint)
+    }
+    base_config = super(SeparableConv1D, self).get_config()
+    return dict(list(base_config.items()) + list(config.items()))
+
+
 class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
   """Depthwise separable 2D convolution.
 
@@ -1663,6 +1801,7 @@ class Cropping3D(Layer):
 Convolution1D = Conv1D
 Convolution2D = Conv2D
 Convolution3D = Conv3D
+SeparableConvolution1D = SeparableConv1D
 SeparableConvolution2D = SeparableConv2D
 Convolution2DTranspose = Conv2DTranspose
 Convolution3DTranspose = Conv3DTranspose

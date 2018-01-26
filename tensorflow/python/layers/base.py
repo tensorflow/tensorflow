@@ -99,8 +99,16 @@ class Layer(object):
         raise TypeError('Keyword argument not understood:', kwarg)
 
     # Mutable properties
+    # Indicates whether the layer's weights are updated during training
+    # and whether the layer's updates are run during training
     self.trainable = trainable
+    # A stateful layer is a layer whose updates are run during inference too,
+    # for instance stateful RNNs.
+    self.stateful = False
+    # Indicates whether `build` needs to be called upon layer call, to create
+    # the layer's weights.
     self.built = False
+    # Provides information about which inputs are compatible with the layer.
     self.input_spec = None
 
     if activity_regularizer and context.in_eager_mode():
@@ -223,6 +231,8 @@ class Layer(object):
   def updates(self):
     if context.in_eager_mode():
       raise RuntimeError('Layer.updates not supported in Eager mode.')
+    if not self.trainable and not self.stateful:
+      return []
     return self._updates
 
   def add_update(self, updates, inputs=None):
@@ -284,6 +294,8 @@ class Layer(object):
     """
     if context.in_eager_mode():
       raise RuntimeError('Layer.get_updates_for not supported in Eager mode.')
+    if not self.trainable and not self.stateful:
+      return []
     if inputs is not None:
       inputs = nest.flatten(inputs)
     if not inputs:
@@ -1268,6 +1280,15 @@ class InputSpec(object):
     self.max_ndim = max_ndim
     self.min_ndim = min_ndim
     self.axes = axes or {}
+
+  def __repr__(self):
+    spec = [('dtype=' + str(self.dtype)) if self.dtype else '',
+            ('shape=' + str(self.shape)) if self.shape else '',
+            ('ndim=' + str(self.ndim)) if self.ndim else '',
+            ('max_ndim=' + str(self.max_ndim)) if self.max_ndim else '',
+            ('min_ndim=' + str(self.min_ndim)) if self.min_ndim else '',
+            ('axes=' + str(self.axes)) if self.axes else '']
+    return 'InputSpec(%s)' % ', '.join(x for x in spec if x)
 
 
 class Node(object):
