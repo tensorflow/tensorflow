@@ -2589,10 +2589,10 @@ type ResizeBicubicAttr func(optionalAttr)
 
 // ResizeBicubicAlignCorners sets the optional align_corners attribute to value.
 //
-// value: If true, rescale input by (new_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of images and resized images. If false, rescale
-// by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
+// value: If true, the centers of the 4 corner pixels of the input and output images are
+// aligned, preserving the values at the corner pixels. If false, rescale by
+// new_height / height, new_width / width.
+// If not specified, defaults to false.
 func ResizeBicubicAlignCorners(value bool) ResizeBicubicAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -5817,10 +5817,9 @@ type ResizeBilinearGradAttr func(optionalAttr)
 
 // ResizeBilinearGradAlignCorners sets the optional align_corners attribute to value.
 //
-// value: If true, rescale grads by (orig_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of grads and original_image. If false, rescale by
-// orig_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
+// value: If true, the centers of the 4 corner pixels of the grads and the original_image are
+// aligned. If false, rescale by new_height / height, new_width / width.
+// If not specified, defaults to false.
 func ResizeBilinearGradAlignCorners(value bool) ResizeBilinearGradAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -6387,10 +6386,10 @@ type ResizeBilinearAttr func(optionalAttr)
 
 // ResizeBilinearAlignCorners sets the optional align_corners attribute to value.
 //
-// value: If true, rescale input by (new_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of images and resized images. If false, rescale
-// by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
+// value: If true, the centers of the 4 corner pixels of the input and output images are
+// aligned, preserving the values at the corner pixels. If false, rescale by
+// new_height / height, new_width / width.
+// If not specified, defaults to false.
 func ResizeBilinearAlignCorners(value bool) ResizeBilinearAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -7382,10 +7381,10 @@ type ResizeAreaAttr func(optionalAttr)
 
 // ResizeAreaAlignCorners sets the optional align_corners attribute to value.
 //
-// value: If true, rescale input by (new_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of images and resized images. If false, rescale
-// by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
+// value: If true, the centers of the 4 corner pixels of the input and output images are
+// aligned, preserving the values at the corner pixels. If false, rescale by
+// new_height / height, new_width / width.
+// If not specified, defaults to false.
 func ResizeAreaAlignCorners(value bool) ResizeAreaAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -13688,10 +13687,10 @@ type FusedResizeAndPadConv2DAttr func(optionalAttr)
 
 // FusedResizeAndPadConv2DResizeAlignCorners sets the optional resize_align_corners attribute to value.
 //
-// value: If true, rescale input by (new_height - 1) / (height - 1),
-// which exactly aligns the 4 corners of images and resized images. If false, rescale
-// by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
+// value: If true, the centers of the 4 corner pixels of the input and output images are
+// aligned, preserving the values at the corner pixels. If false, rescale by
+// new_height / height, new_width / width.
+// If not specified, defaults to false.
 func FusedResizeAndPadConv2DResizeAlignCorners(value bool) FusedResizeAndPadConv2DAttr {
 	return func(m optionalAttr) {
 		m["resize_align_corners"] = value
@@ -13833,10 +13832,10 @@ type QuantizedResizeBilinearAttr func(optionalAttr)
 
 // QuantizedResizeBilinearAlignCorners sets the optional align_corners attribute to value.
 //
-// value: If true, rescale input by (new_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of images and resized images. If false, rescale
-// by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
+// value: If true, the centers of the 4 corner pixels of the input and output images are
+// aligned, preserving the values at the corner pixels. If false, rescale by
+// new_height / height, new_width / width.
+// If not specified, defaults to false.
 func QuantizedResizeBilinearAlignCorners(value bool) QuantizedResizeBilinearAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -18668,10 +18667,9 @@ type ResizeBicubicGradAttr func(optionalAttr)
 
 // ResizeBicubicGradAlignCorners sets the optional align_corners attribute to value.
 //
-// value: If true, rescale grads by (orig_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of grads and original_image. If false, rescale by
-// orig_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
+// value: If true, the centers of the 4 corner pixels of the grads and the original_image are
+// aligned. If false, rescale by new_height / height, new_width / width.
+// If not specified, defaults to false.
 func ResizeBicubicGradAlignCorners(value bool) ResizeBicubicGradAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -18712,10 +18710,10 @@ type ResizeNearestNeighborAttr func(optionalAttr)
 
 // ResizeNearestNeighborAlignCorners sets the optional align_corners attribute to value.
 //
-// value: If true, rescale input by (new_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of images and resized images. If false, rescale
-// by new_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
+// value: If true, the centers of the 4 corner pixels of the input and output images are
+// aligned, preserving the values at the corner pixels. If false, rescale by
+// new_height / height, new_width / width.
+// If not specified, defaults to false.
 func ResizeNearestNeighborAlignCorners(value bool) ResizeNearestNeighborAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
@@ -18755,10 +18753,9 @@ type ResizeNearestNeighborGradAttr func(optionalAttr)
 
 // ResizeNearestNeighborGradAlignCorners sets the optional align_corners attribute to value.
 //
-// value: If true, rescale grads by (orig_height - 1) / (height - 1), which
-// exactly aligns the 4 corners of grads and original_image. If false, rescale by
-// orig_height / height. Treat similarly the width dimension.
-// If not specified, defaults to false
+// value: If true, the centers of the 4 corner pixels of the grads and the original_image are
+// aligned. If false, rescale by new_height / height, new_width / width.
+// If not specified, defaults to false.
 func ResizeNearestNeighborGradAlignCorners(value bool) ResizeNearestNeighborGradAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value

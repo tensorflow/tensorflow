@@ -770,8 +770,9 @@ def resize_images(images,
     size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
           new size for the images.
     method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
-    align_corners: bool. If true, exactly align all 4 corners of the input and
-                   output. Defaults to `false`.
+    align_corners: bool.  If True, the centers of the 4 corner pixels of the
+        input and output tensors are aligned, preserving the values at the
+        corner pixels. Defaults to `False`.
 
   Raises:
     ValueError: if the shape of `images` is incompatible with the
