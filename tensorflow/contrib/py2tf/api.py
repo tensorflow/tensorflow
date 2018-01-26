@@ -83,7 +83,7 @@ def convert_inline(f, *args, **kwargs):
   return convert(arg_value_hints)(f)(*args, **kwargs)
 
 
-def convert(recursive=False, arg_value_hints=None):
+def convert(recursive=False, arg_types=None):
   """Decorator that compiles a function to graph mode.
 
   The decorator is dynamic - invoking compilation whenever the decorated function
@@ -92,8 +92,7 @@ def convert(recursive=False, arg_value_hints=None):
   Args:
     recursive: Whether to recusrively convert any functions that the decorator
         function may call.
-    arg_value_hints: A dict mapping parameter names to objects that can hint
-        at the type of those parameters.
+    arg_types: See to_graph.
 
   Returns:
     A decorator that compiles the given function to graph mode.
@@ -101,8 +100,8 @@ def convert(recursive=False, arg_value_hints=None):
   Raises:
     ValueError: If any of the arguments are illegal.
   """
-  if arg_value_hints is None:
-    arg_value_hints = {}
+  if arg_types is None:
+    arg_types = {}
 
   def decorator(f):
     """Decorator implementation."""
@@ -111,22 +110,23 @@ def convert(recursive=False, arg_value_hints=None):
     def wrapper(*args, **kwargs):
       """Wrapper that calls the compiled version of the wrapped function."""
       partial_types = ()
+      arg_values = {}
       arg_names = tf_inspect.getargspec(f)[0]
       for name, arg in zip(arg_names, args):
+        arg_values[name] = arg
         arg_class = arg.__class__
-        if tf_inspect.isclass(arg_class):
-          # If arg_value_hints specifies any name, use that instead.
-          # TODO(mdan): Shouldn't this just be in the func's globals?
-          if name not in arg_value_hints:
-            arg_value_hints[name] = (arg_class.__name__, arg_class)
+        # If arg_value_hints specifies any name, use that instead.
+        if name not in arg_types:
+          arg_types[name] = (arg_class.__name__, arg_class)
+        if name == 'self' and tf_inspect.isclass(arg_class):
           # Annotated methods need to specify that their owner type is partial,
           # otherwise other members they call will not be converted.
-          if name == 'self':
-            partial_types = (arg_class,)
+          partial_types = (arg_class,)
       wrapped = to_graph(
           f,
           recursive=recursive,
-          arg_value_hints=arg_value_hints,
+          arg_values=arg_values,
+          arg_types=arg_types,
           partial_types=partial_types)
       return wrapped(*args, **kwargs)
 
@@ -138,7 +138,11 @@ def convert(recursive=False, arg_value_hints=None):
   return decorator
 
 
-def to_graph(o, recursive=True, arg_value_hints=None, partial_types=None):
+def to_graph(e,
+             recursive=True,
+             arg_values=None,
+             arg_types=None,
+             partial_types=None):
   """Compile a Python entity into equivalent TensorFlow code.
 
   Currently supported entities:
@@ -148,11 +152,13 @@ def to_graph(o, recursive=True, arg_value_hints=None, partial_types=None):
   Classes are handled by converting all their methods into a new class.
 
   Args:
-    o: A Python function or class.
+    e: A Python entity.
     recursive: Whether to recusrively convert any functions that the decorator
         function may call.
-    arg_value_hints: A dict mapping parameter names to objects that can hint
-        at the type of those parameters.
+    arg_values: A dict containing value hints for symbols like function
+        parameters.
+    arg_types: A dict containing type hints for symbols like function
+        parameters.
     partial_types: A set of types (e.g. classes) that will not be converted
         entirely. Calls to member functions for these types will be renamed
         independently.
@@ -165,7 +171,7 @@ def to_graph(o, recursive=True, arg_value_hints=None, partial_types=None):
       recursive=recursive,
       nocompile_decorators=(convert, graph_ready, convert_inline),
       partial_types=partial_types)
-  _, name = conversion.object_to_graph(o, conversion_map, arg_value_hints)
+  _, name = conversion.entity_to_graph(e, conversion_map, arg_values, arg_types)
 
   module = gast.Module([])
   for import_line in config.COMPILED_IMPORT_STATEMENTS:
@@ -176,16 +182,17 @@ def to_graph(o, recursive=True, arg_value_hints=None, partial_types=None):
 
   # The compiled code should see everything the entry function saw.
   # TODO(mdan): This might not work well if the call tree spans modules?
-  if tf_inspect.isfunction(o):
-    compiled_node.__dict__.update(six.get_function_globals(o))
+  if tf_inspect.isfunction(e):
+    compiled_node.__dict__.update(six.get_function_globals(e))
 
   compiled_fn = getattr(compiled_node, name)
   return compiled_fn
 
 
-def to_code(o,
+def to_code(e,
             recursive=True,
-            arg_value_hints=None,
+            arg_values=None,
+            arg_types=None,
             partial_types=None,
             indentation='  '):
   """Return the equivalent of an entity in TensorFlow code.
@@ -193,14 +200,11 @@ def to_code(o,
   See `to_graph` for more details.
 
   Args:
-    o: A Python function or class.
-    recursive: Whether to recusrively convert any functions that the decorator
-        function may call.
-    arg_value_hints: A dict mapping parameter names to objects that can hint
-        at the type of those parameters.
-    partial_types: A set of types (e.g. classes) that will not be converted
-        entirely. Calls to member functions for these types will be renamed
-        independently.
+    e: A Python entity.
+    recursive: See to_graph.
+    arg_values: See to_graph.
+    arg_types: See to_graph.
+    partial_types: See to_graph.
     indentation: String, when to use for each level of indentation.
 
   Returns:
@@ -210,7 +214,7 @@ def to_code(o,
       recursive=recursive,
       nocompile_decorators=(convert, graph_ready, convert_inline),
       partial_types=partial_types)
-  conversion.object_to_graph(o, conversion_map, arg_value_hints)
+  conversion.entity_to_graph(e, conversion_map, arg_values, arg_types)
 
   imports = '\n'.join(config.COMPILED_IMPORT_STATEMENTS)
   code = '\n'.join(

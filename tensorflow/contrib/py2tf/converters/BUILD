@@ -15,7 +15,7 @@ filegroup(
 )
 
 py_library(
-    name = "convert",
+    name = "converters",
     srcs = [
         "break_canonicalization.py",
         "builtin_functions.py",
@@ -35,13 +35,26 @@ py_library(
     ],
 )
 
+py_library(
+    name = "test_lib",
+    srcs = [
+        "converter_test_base.py",
+    ],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        ":converters",
+        "//tensorflow/contrib/py2tf/pyct/static_analysis",
+        "@gast_archive//:gast",
+    ],
+)
+
 py_test(
     name = "break_canonicalization_test",
     srcs = ["break_canonicalization_test.py"],
     deps = [
-        ":convert",
+        ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -50,9 +63,8 @@ py_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
     deps = [
-        ":convert",
+        ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -61,9 +73,8 @@ py_test(
     name = "continue_canonicalization_test",
     srcs = ["continue_canonicalization_test.py"],
     deps = [
-        ":convert",
+        ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -72,9 +83,8 @@ py_test(
     name = "control_flow_test",
     srcs = ["control_flow_test.py"],
     deps = [
-        ":convert",
+        ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -83,9 +93,8 @@ py_test(
     name = "builtin_functions_test",
     srcs = ["builtin_functions_test.py"],
     deps = [
-        ":convert",
+        ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -94,9 +103,8 @@ py_test(
     name = "for_canonicalization_test",
     srcs = ["for_canonicalization_test.py"],
     deps = [
-        ":convert",
+        ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -105,9 +113,8 @@ py_test(
     name = "logical_expressions_test",
     srcs = ["logical_expressions_test.py"],
     deps = [
-        ":convert",
+        ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -116,9 +123,8 @@ py_test(
     name = "print_functions_test",
     srcs = ["print_functions_test.py"],
     deps = [
-        ":convert",
+        ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",
         "@gast_archive//:gast",
     ],
@@ -128,9 +134,8 @@ py_test(
     name = "side_effect_guards_test",
     srcs = ["side_effect_guards_test.py"],
     deps = [
-        ":convert",
+        ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/python:client_testlib",
     ],
 )
