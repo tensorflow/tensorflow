@@ -35,7 +35,7 @@ _VALID_PADDING = ["VALID", b"VALID"]
 _SAME_PADDING = ["SAME", b"SAME"]
 
 
-def _stride_size(node):
+def _stride_size(node, name_to_node):
   """Computes stride size given a TF node.
 
   Args:
@@ -45,10 +45,20 @@ def _stride_size(node):
     stride_x: Stride size for horizontal direction (integer).
     stride_y: Stride size for vertical direction (integer).
   """
-  strides_attr = node.attr["strides"]
-  logging.vlog(4, "strides_attr = %s", strides_attr)
-  stride_y = strides_attr.list.i[1]
-  stride_x = strides_attr.list.i[2]
+  if node.op == "MaxPoolV2":
+    strides_input_name = node.input[2]
+    if not strides_input_name.endswith("/strides"):
+      raise ValueError("Strides name does not end with '/strides'")
+    strides_node = name_to_node[strides_input_name]
+    value = strides_node.attr["value"]
+    t = make_ndarray(value.tensor)
+    stride_y = t[1]
+    stride_x = t[2]
+  else:
+    strides_attr = node.attr["strides"]
+    logging.vlog(4, "strides_attr = %s", strides_attr)
+    stride_y = strides_attr.list.i[1]
+    stride_x = strides_attr.list.i[2]
   return stride_x, stride_y
 
 
@@ -144,7 +154,7 @@ def _padding_size_conv_pool(node, kernel_size, stride, input_resolution=None):
   return total_padding, padding
 
 
-def _pool_kernel_size(node):
+def _pool_kernel_size(node, name_to_node):
   """Computes kernel size given a TF pooling node.
 
   Args:
@@ -157,13 +167,27 @@ def _pool_kernel_size(node):
   Raises:
     ValueError: If pooling is invalid.
   """
-  ksize = node.attr["ksize"]
-  kernel_size_y = ksize.list.i[1]
-  kernel_size_x = ksize.list.i[2]
-  if ksize.list.i[0] != 1:
-    raise ValueError("pool ksize for first dim is not 1")
-  if ksize.list.i[3] != 1:
-    raise ValueError("pool ksize for last dim is not 1")
+  if node.op == "MaxPoolV2":
+    ksize_input_name = node.input[1]
+    if not ksize_input_name.endswith("/ksize"):
+      raise ValueError("Kernel size name does not end with '/ksize'")
+    ksize_node = name_to_node[ksize_input_name]
+    value = ksize_node.attr["value"]
+    t = make_ndarray(value.tensor)
+    kernel_size_y = t[1]
+    kernel_size_x = t[2]
+    if t[0] != 1:
+      raise ValueError("pool ksize for first dim is not 1")
+    if t[3] != 1:
+      raise ValueError("pool ksize for last dim is not 1")
+  else:
+    ksize = node.attr["ksize"]
+    kernel_size_y = ksize.list.i[1]
+    kernel_size_x = ksize.list.i[2]
+    if ksize.list.i[0] != 1:
+      raise ValueError("pool ksize for first dim is not 1")
+    if ksize.list.i[3] != 1:
+      raise ValueError("pool ksize for last dim is not 1")
   return kernel_size_x, kernel_size_y
 
 
@@ -243,7 +267,7 @@ def get_layer_params(node, name_to_node, input_resolution=None, force=False):
   logging.vlog(3, "node.op = %s", node.op)
   logging.vlog(4, "node = %s", node)
   if node.op == "Conv2D" or node.op == "DepthwiseConv2dNative":
-    stride_x, stride_y = _stride_size(node)
+    stride_x, stride_y = _stride_size(node, name_to_node)
     kernel_size_x, kernel_size_y = _conv_kernel_size(node, name_to_node)
     # Compute the padding for this node separately for each direction.
     total_padding_x, padding_x = _padding_size_conv_pool(
@@ -260,9 +284,9 @@ def get_layer_params(node, name_to_node, input_resolution=None, force=False):
     stride_y = 1
     total_padding_x, padding_x, total_padding_y, padding_y = (
         _padding_size_pad_layer(node, name_to_node))
-  elif node.op == "MaxPool" or node.op == "AvgPool":
-    stride_x, stride_y = _stride_size(node)
-    kernel_size_x, kernel_size_y = _pool_kernel_size(node)
+  elif node.op == "MaxPool" or node.op == "MaxPoolV2" or node.op == "AvgPool":
+    stride_x, stride_y = _stride_size(node, name_to_node)
+    kernel_size_x, kernel_size_y = _pool_kernel_size(node, name_to_node)
     # Compute the padding for this node separately for each direction.
     total_padding_x, padding_x = _padding_size_conv_pool(
         node, kernel_size_x, stride_x, input_resolution[1]
