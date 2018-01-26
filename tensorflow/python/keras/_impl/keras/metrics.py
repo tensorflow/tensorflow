@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Built-in Keras metrics functions.
+# pylint: disable=unused-import
+"""Built-in metrics.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -21,7 +22,6 @@ from __future__ import print_function
 import six
 
 from tensorflow.python.keras._impl.keras import backend as K
-# pylint: disable=unused-import
 from tensorflow.python.keras._impl.keras.losses import binary_crossentropy
 from tensorflow.python.keras._impl.keras.losses import categorical_crossentropy
 from tensorflow.python.keras._impl.keras.losses import cosine_proximity
@@ -35,7 +35,6 @@ from tensorflow.python.keras._impl.keras.losses import mean_squared_logarithmic_
 from tensorflow.python.keras._impl.keras.losses import poisson
 from tensorflow.python.keras._impl.keras.losses import sparse_categorical_crossentropy
 from tensorflow.python.keras._impl.keras.losses import squared_hinge
-# pylint: disable=unused-import
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
 
 
@@ -60,8 +59,8 @@ def top_k_categorical_accuracy(y_true, y_pred, k=5):
 
 
 def sparse_top_k_categorical_accuracy(y_true, y_pred, k=5):
-  return K.mean(K.in_top_k(y_pred,
-                           K.cast(K.max(y_true, axis=-1), 'int32'), k), axis=-1)
+  return K.mean(
+      K.in_top_k(y_pred, K.cast(K.max(y_true, axis=-1), 'int32'), k), axis=-1)
 
 
 # Aliases
