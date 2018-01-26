@@ -1200,6 +1200,9 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
   model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
   model->flags.set_allow_nonexistent_arrays(
       model_flags.allow_nonexistent_arrays());
+
+  CHECK(!model->flags.has_arrays_extra_info());
+  *model->flags.mutable_arrays_extra_info() = model_flags.arrays_extra_info();
 }
 
 void CheckIsReadyForQuantization(const Model& model) {
@@ -1708,6 +1711,17 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt64;
     default:
       return ArrayDataType::kNone;
+  }
+}
+
+void UseArraysExtraInfo(Model* model) {
+  for (const auto& entry : model->flags.arrays_extra_info().entries()) {
+    QCHECK(model->HasArray(entry.name()))
+        << "ArraysExtraInfo refers to non-existent array name: "
+        << entry.name();
+    auto& minmax = model->GetArray(entry.name()).GetOrCreateMinMax();
+    minmax.min = entry.min();
+    minmax.max = entry.max();
   }
 }
 
