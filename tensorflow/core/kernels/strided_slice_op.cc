@@ -541,5 +541,5 @@ REGISTER_KERNEL_BUILDER(Name("ResourceStridedSliceAssign")
                             .HostMemory("strides"),
                         StridedSliceAssignOp<CPUDevice, int32>)
 #undef REGISTER_SYCL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow
