@@ -152,7 +152,7 @@ MPIRemoteRendezvous::~MPIRemoteRendezvous() {}
 void MPIRendezvousMgr::AddRequest(RecvTensorRequest request,
                                   const int mpi_dst) {
   TF_CHECK_OK(recv_tensor_recent_request_ids_.TrackUnique(
-      req.request_id(), "RecvTensor (MPIRendezvousMgr)", req));
+      request.request_id(), "RecvTensor (MPIRendezvousMgr)", request));
   const int64 step_id = request.step_id();
   const std::string& key = request.rendezvous_key();
   Rendezvous::ParsedKey parsed;
