@@ -2821,7 +2821,7 @@ tf_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
-    shard_count = 3,
+    shard_count = 10,
     tags = ["no_windows_gpu"],
 )
 
