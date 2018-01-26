@@ -29,20 +29,20 @@ from tensorflow.python.ops import gen_dataset_ops
 class _SlideDataset(dataset_ops.Dataset):
   """A `Dataset` that slides a fixed window on its input."""
 
-  def __init__(self, input_dataset, window_size, slide_step=1):
+  def __init__(self, input_dataset, window_size, stride=1):
     """See `sliding_window_batch` for details."""
     super(_SlideDataset, self).__init__()
     self._input_dataset = input_dataset
     self._window_size = ops.convert_to_tensor(
       window_size, dtype=dtypes.int64, name="window_size")
-    self._slide_step = ops.convert_to_tensor(
-      slide_step, dtype=dtypes.int64, name="slide_step")
+    self._stride = ops.convert_to_tensor(
+      stride, dtype=dtypes.int64, name="stride")
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.slide_dataset(  # pylint: disable=protected-access
       self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
       window_size=self._window_size,
-      slide_step=self._slide_step,
+      stride=self._stride,
       output_shapes=nest.flatten(
         sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
       output_types=nest.flatten(
@@ -65,11 +65,11 @@ class _SlideDataset(dataset_ops.Dataset):
     return self._input_dataset.output_types
 
 
-def sliding_window_batch(window_size, slide_step=1):
-  """A sliding window with size of `window_size` and step of `slide_step`.
+def sliding_window_batch(window_size, stride=1):
+  """A sliding window with size of `window_size` and step of `stride`.
 
   This transformation passes a sliding window over this dataset. The window
-  size is `window_size` and step size is `slide_step`. If the left elements
+  size is `window_size` and step size is `stride`. If the left elements
   cannot fill up the sliding window, this transformation will drop the
   final smaller element. For example:
 
@@ -78,7 +78,7 @@ def sliding_window_batch(window_size, slide_step=1):
   # contents of a dataset.
   a = { [1], [2], [3], [4], [5], [6] }
 
-  a.apply(tf.contrib.data.sliding_window_batch(window_size=3, slide_step=2)) ==
+  a.apply(tf.contrib.data.sliding_window_batch(window_size=3, stride=2)) ==
   {
       [[1], [2], [3]],
       [[3], [4], [5]],
@@ -88,7 +88,7 @@ def sliding_window_batch(window_size, slide_step=1):
   Args:
     window_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
       elements in the window.
-    slide_step: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing
+    stride: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing
       the steps moving forward for one iteration. The default is `1`. It
       must be in [1, `window_size`).
 
@@ -97,6 +97,6 @@ def sliding_window_batch(window_size, slide_step=1):
     @{tf.contrib.data.Dataset.apply}.
   """
   def _apply_fn(dataset):
-    return _SlideDataset(dataset, window_size, slide_step)
+    return _SlideDataset(dataset, window_size, stride)
 
   return _apply_fn

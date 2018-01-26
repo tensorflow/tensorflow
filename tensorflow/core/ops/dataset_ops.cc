@@ -402,7 +402,7 @@ batch_size: A scalar representing the number of elements to accumulate in a
 REGISTER_OP("SlideDataset")
     .Input("input_dataset: variant")
     .Input("window_size: int64")
-    .Input("slide_step: int64")
+    .Input("stride: int64")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
@@ -411,7 +411,7 @@ REGISTER_OP("SlideDataset")
 Creates a dataset that slides a fixed window on `input_dataset`.
 
 window_size: A scalar representing the number of elements in the fixed window.
-slide_step: A scalar representing the steps moving forward in one iteration.
+stride: A scalar representing the steps moving forward in one iteration.
   The default is `1`. It must be in [1, `window_size`).
 )doc");
 
