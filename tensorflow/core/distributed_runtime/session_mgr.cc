@@ -43,8 +43,8 @@ SessionMgr::SessionMgr(
       worker_cache_factory_(std::move(worker_cache_factory)) {}
 
 string SessionMgr::WorkerNameFromServerDef(const ServerDef& server_def) {
-  return strings::StrCat("/job:", server_def.job_name(),
-                         "/replica:0/task:", server_def.task_index());
+  return strings::StrCat("/job:", server_def.job_name(), "/replica:0/task:",
+                         server_def.task_index());
 }
 
 Status SessionMgr::CreateSession(const string& session,
@@ -64,8 +64,13 @@ Status SessionMgr::CreateSession(const string& session,
     TF_RETURN_IF_ERROR(worker_cache_factory_(server_def, &worker_cache));
   }
 
+  if (worker_cache != nullptr & default_worker_cache_.get() != nullptr) {
+    worker_cache->SetLogging(this->is_logging_active_);
+  }
+
   CHECK(!worker_env_->local_devices.empty())
       << "The WorkerEnv must have at least one device in `local_devices`.";
+
   std::vector<Device*> renamed_devices;
   for (Device* d : worker_env_->local_devices) {
     renamed_devices.push_back(RenamedDevice::NewRenamedDevice(
@@ -113,4 +118,77 @@ std::shared_ptr<WorkerSession> SessionMgr::LegacySession() {
   return legacy_session_;
 }
 
+void SessionMgr::SetLogging(bool active) {
+  mutex_lock l(mu_);
+  this->is_logging_active_ = active;
+  // Legacy Session
+  if (legacy_session_) {
+    auto* worker_cache = legacy_session_->worker_cache.get();
+    if (worker_cache) {
+      worker_cache->SetLogging(active);
+    }
+  }
+
+  for (const auto& session_kv : sessions_) {
+    auto session = session_kv.second.get();
+    if (session) {
+      auto* worker_cache = session->worker_cache.get();
+      if (worker_cache) {
+        worker_cache->SetLogging(active);
+      }
+    }
+  }
+}
+
+void SessionMgr::RetrieveLogs(tensorflow::int64 step_id,
+                              LoggingResponse* response) {
+  mutex_lock l(mu_);
+  // Legacy Session
+  if (legacy_session_) {
+    auto* worker_cache = legacy_session_->worker_cache.get();
+    if (worker_cache) {
+      auto step_stats = StepStats();
+      if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
+        auto* labeled_step_stats = response->add_step();
+        labeled_step_stats->set_step_id(step_id);
+        labeled_step_stats->mutable_step_stats()->Swap(&step_stats);
+      }
+    }
+  }
+  for (const auto& session_kv : sessions_) {
+    auto session = session_kv.second.get();
+    if (session) {
+      auto* worker_cache = session->worker_cache.get();
+      if (worker_cache) {
+        auto step_stats = StepStats();
+        if (worker_cache->RetrieveLogs(step_id, &step_stats)) {
+          auto* labeled_step_stats = response->add_step();
+          labeled_step_stats->set_step_id(step_id);
+          labeled_step_stats->mutable_step_stats()->Swap(&step_stats);
+        }
+      }
+    }
+  }
+}
+
+void SessionMgr::ClearLogs() {
+  mutex_lock l(mu_);
+  // Legacy Session
+  if (legacy_session_) {
+    auto* worker_cache = legacy_session_->worker_cache.get();
+    if (worker_cache) {
+      worker_cache->ClearLogs();
+    }
+  }
+
+  for (const auto& session_kv : sessions_) {
+    auto session = session_kv.second.get();
+    if (session) {
+      auto* worker_cache = session->worker_cache.get();
+      if (worker_cache) {
+        worker_cache->ClearLogs();
+      }
+    }
+  }
+}
 }  // namespace tensorflow
