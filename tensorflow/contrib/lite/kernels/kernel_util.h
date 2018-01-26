@@ -44,6 +44,22 @@ inline TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
   return nullptr;
 }
 
+// Determines whether tensor is constant.
+inline bool IsConstantTensor(TfLiteTensor* tensor) {
+  return tensor->allocation_type == kTfLiteMmapRo;
+}
+
+// Determines whether tensor is dynamic. Note that a tensor can be non-const and
+// not dynamic. This function specificially checks for a dynamic tensor.
+inline bool IsDynamicTensor(TfLiteTensor* tensor) {
+  return tensor->allocation_type == kTfLiteDynamic;
+}
+
+// Sets tensor to dynamic.
+inline void SetTensorToDynamic(TfLiteTensor* tensor) {
+  tensor->allocation_type = kTfLiteDynamic;
+}
+
 // Calculates the multiplication factor for a quantized convolution (or
 // quantized depthwise convolution) involving the given tensors. Returns an
 // error if the scales of the tensors are not compatible.

@@ -575,6 +575,11 @@ class GraphNetwork(base.Layer):
     raise ValueError('No such layer: ' + name)
 
   @property
+  def stateful(self):
+    return any([(hasattr(layer, 'stateful') and layer.stateful)
+                for layer in self.layers])
+
+  @property
   def updates(self):
     """Retrieve the network's updates.
 
@@ -586,6 +591,8 @@ class GraphNetwork(base.Layer):
     Returns:
         A list of update ops.
     """
+    if not self.trainable and not self.stateful:
+      return []
     updates = []
     for layer in self.layers:
       if hasattr(layer, 'updates'):

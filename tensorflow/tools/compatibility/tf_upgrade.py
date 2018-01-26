@@ -236,8 +236,8 @@ class _ASTCallVisitor(ast.NodeVisitor):
           new_col_offset = col - m.start(1) - 1
           return line, new_col_offset
         else:
-          if (reversed_preceding_text=="" or
-             reversed_preceding_text.isspace()):
+          if (reversed_preceding_text == "" or
+              reversed_preceding_text.isspace()):
             line = line - 1
             prev_line = self._lines[line - 1]
             # TODO(aselle):

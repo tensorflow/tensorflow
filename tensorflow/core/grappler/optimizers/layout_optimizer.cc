@@ -2076,6 +2076,7 @@ Status LayoutOptimizer::Tune(const GrapplerItem& item,
                              const TuningConfig& config, GraphDef* output) {
   auto status = graph_properties.AnnotateOutputShapes(output);
   if (!status.ok()) {
+    VLOG(1) << "Annotate shape return status: " << status.ToString();
     *output = item.graph;
     return status;
   }
@@ -2100,6 +2101,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   GraphProperties graph_properties(item);
   auto status = graph_properties.InferStatically(false);
   if (!status.ok()) {
+    VLOG(1) << "Infer shape return status: " << status.ToString();
     *output = item.graph;
     return status;
   }

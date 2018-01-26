@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
+# pylint: disable=unused-import
 """VGG19 model for Keras.
 
 # Reference
@@ -29,8 +30,8 @@ import os
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
-from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions  # pylint: disable=unused-import
-from tensorflow.python.keras._impl.keras.applications.imagenet_utils import preprocess_input  # pylint: disable=unused-import
+from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
+from tensorflow.python.keras._impl.keras.applications.imagenet_utils import preprocess_input
 from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
 from tensorflow.python.keras._impl.keras.layers import Conv2D
 from tensorflow.python.keras._impl.keras.layers import Dense
@@ -42,6 +43,7 @@ from tensorflow.python.keras._impl.keras.layers import MaxPooling2D
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils import layer_utils
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.platform import tf_logging as logging
 
 
 WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.1/vgg19_weights_tf_dim_ordering_tf_kernels.h5'
@@ -59,7 +61,7 @@ def VGG19(include_top=True,
   Optionally loads weights pre-trained
   on ImageNet. Note that when using TensorFlow,
   for best performance you should set
-  `image_data_format="channels_last"` in your Keras config
+  `image_data_format='channels_last'` in your Keras config
   at ~/.keras/keras.json.
 
   The model and the weights are compatible with both
@@ -71,15 +73,15 @@ def VGG19(include_top=True,
       include_top: whether to include the 3 fully-connected
           layers at the top of the network.
       weights: one of `None` (random initialization),
-         'imagenet' (pre-training on ImageNet),
-         or the path to the weights file to be loaded.
+            'imagenet' (pre-training on ImageNet),
+            or the path to the weights file to be loaded.
       input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)
           to use as image input for the model.
       input_shape: optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` (with `channels_last` data format)
           or `(3, 224, 224)` (with `channels_first` data format).
-          It should have exactly 3 input channels,
+          It should have exactly 3 inputs channels,
           and width and height should be no smaller than 48.
           E.g. `(200, 200, 3)` would be one valid value.
       pooling: Optional pooling mode for feature extraction
@@ -125,54 +127,71 @@ def VGG19(include_top=True,
   if input_tensor is None:
     img_input = Input(shape=input_shape)
   else:
-    img_input = Input(tensor=input_tensor, shape=input_shape)
-
+    if not K.is_keras_tensor(input_tensor):
+      img_input = Input(tensor=input_tensor, shape=input_shape)
+    else:
+      img_input = input_tensor
   # Block 1
   x = Conv2D(
-      64, (3, 3), activation='relu', padding='same',
-      name='block1_conv1')(img_input)
+      64, (3, 3), activation='relu', padding='same', name='block1_conv1')(
+          img_input)
   x = Conv2D(
-      64, (3, 3), activation='relu', padding='same', name='block1_conv2')(x)
+      64, (3, 3), activation='relu', padding='same', name='block1_conv2')(
+          x)
   x = MaxPooling2D((2, 2), strides=(2, 2), name='block1_pool')(x)
 
   # Block 2
   x = Conv2D(
-      128, (3, 3), activation='relu', padding='same', name='block2_conv1')(x)
+      128, (3, 3), activation='relu', padding='same', name='block2_conv1')(
+          x)
   x = Conv2D(
-      128, (3, 3), activation='relu', padding='same', name='block2_conv2')(x)
+      128, (3, 3), activation='relu', padding='same', name='block2_conv2')(
+          x)
   x = MaxPooling2D((2, 2), strides=(2, 2), name='block2_pool')(x)
 
   # Block 3
   x = Conv2D(
-      256, (3, 3), activation='relu', padding='same', name='block3_conv1')(x)
+      256, (3, 3), activation='relu', padding='same', name='block3_conv1')(
+          x)
   x = Conv2D(
-      256, (3, 3), activation='relu', padding='same', name='block3_conv2')(x)
+      256, (3, 3), activation='relu', padding='same', name='block3_conv2')(
+          x)
   x = Conv2D(
-      256, (3, 3), activation='relu', padding='same', name='block3_conv3')(x)
+      256, (3, 3), activation='relu', padding='same', name='block3_conv3')(
+          x)
   x = Conv2D(
-      256, (3, 3), activation='relu', padding='same', name='block3_conv4')(x)
+      256, (3, 3), activation='relu', padding='same', name='block3_conv4')(
+          x)
   x = MaxPooling2D((2, 2), strides=(2, 2), name='block3_pool')(x)
 
   # Block 4
   x = Conv2D(
-      512, (3, 3), activation='relu', padding='same', name='block4_conv1')(x)
+      512, (3, 3), activation='relu', padding='same', name='block4_conv1')(
+          x)
   x = Conv2D(
-      512, (3, 3), activation='relu', padding='same', name='block4_conv2')(x)
+      512, (3, 3), activation='relu', padding='same', name='block4_conv2')(
+          x)
   x = Conv2D(
-      512, (3, 3), activation='relu', padding='same', name='block4_conv3')(x)
+      512, (3, 3), activation='relu', padding='same', name='block4_conv3')(
+          x)
   x = Conv2D(
-      512, (3, 3), activation='relu', padding='same', name='block4_conv4')(x)
+      512, (3, 3), activation='relu', padding='same', name='block4_conv4')(
+          x)
   x = MaxPooling2D((2, 2), strides=(2, 2), name='block4_pool')(x)
 
   # Block 5
   x = Conv2D(
-      512, (3, 3), activation='relu', padding='same', name='block5_conv1')(x)
+      512, (3, 3), activation='relu', padding='same', name='block5_conv1')(
+          x)
   x = Conv2D(
-      512, (3, 3), activation='relu', padding='same', name='block5_conv2')(x)
+      512, (3, 3), activation='relu', padding='same', name='block5_conv2')(
+          x)
   x = Conv2D(
-      512, (3, 3), activation='relu', padding='same', name='block5_conv3')(x)
+      512, (3, 3), activation='relu', padding='same', name='block5_conv3')(
+          x)
   x = Conv2D(
-      512, (3, 3), activation='relu', padding='same', name='block5_conv4')(x)
+      512, (3, 3), activation='relu', padding='same', name='block5_conv4')(
+          x)
   x = MaxPooling2D((2, 2), strides=(2, 2), name='block5_pool')(x)
 
   if include_top:
@@ -211,6 +230,8 @@ def VGG19(include_top=True,
           cache_subdir='models',
           file_hash='253f8cb515780f3b799900260a226db6')
     model.load_weights(weights_path)
+    if K.backend() == 'theano':
+      layer_utils.convert_all_kernels_in_model(model)
 
     if K.image_data_format() == 'channels_first':
       if include_top:
@@ -219,6 +240,8 @@ def VGG19(include_top=True,
         dense = model.get_layer(name='fc1')
         layer_utils.convert_dense_weights_data_format(dense, shape,
                                                       'channels_first')
+
   elif weights is not None:
     model.load_weights(weights)
+
   return model
