@@ -18,12 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf.convert import control_flow
+from tensorflow.contrib.py2tf.converters import control_flow
+from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.contrib.py2tf.pyct import compiler
-from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
-from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
-from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
@@ -40,14 +37,7 @@ class TestNamer(control_flow.SymbolNamer):
       i += 1
 
 
-class ControlFlowTest(test.TestCase):
-
-  def _parse_and_analyze(self, test_fn, namespace):
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, namespace, {})
-    node = type_info.resolve(node, None, None, {})
-    return node
+class ControlFlowTest(converter_test_base.TestCase):
 
   def test_simple_while(self):
 
@@ -59,7 +49,7 @@ class ControlFlowTest(test.TestCase):
         i += 1
       return s, i, n
 
-    node = self._parse_and_analyze(test_fn, {})
+    node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, TestNamer())
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
@@ -75,7 +65,7 @@ class ControlFlowTest(test.TestCase):
         n -= 1
       return n
 
-    node = self._parse_and_analyze(test_fn, {})
+    node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, TestNamer())
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
@@ -94,7 +84,7 @@ class ControlFlowTest(test.TestCase):
         b = 2 * n
       return a, b
 
-    node = self._parse_and_analyze(test_fn, {})
+    node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, TestNamer())
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
@@ -112,7 +102,7 @@ class ControlFlowTest(test.TestCase):
         n = -n
       return n
 
-    node = self._parse_and_analyze(test_fn, {})
+    node = self.parse_and_analyze(test_fn, {})
     node = control_flow.transform(node, TestNamer())
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)

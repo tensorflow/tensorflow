@@ -18,11 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf.convert import control_flow
-from tensorflow.contrib.py2tf.convert import for_canonicalization
+from tensorflow.contrib.py2tf.converters import control_flow
+from tensorflow.contrib.py2tf.converters import converter_test_base
+from tensorflow.contrib.py2tf.converters import for_canonicalization
 from tensorflow.contrib.py2tf.pyct import compiler
-from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
 from tensorflow.python.platform import test
 
 
@@ -32,12 +31,7 @@ class TestNamer(control_flow.SymbolNamer):
     return name_root
 
 
-class ControlFlowTest(test.TestCase):
-
-  def _parse_and_analyze(self, test_fn, namespace):
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    return node
+class ControlFlowTest(converter_test_base.TestCase):
 
   def test_basic_for(self):
 
@@ -47,7 +41,7 @@ class ControlFlowTest(test.TestCase):
         s += e
       return s
 
-    node = self._parse_and_analyze(test_fn, {})
+    node = self.parse_and_analyze(test_fn, {})
     node = for_canonicalization.transform(node, TestNamer())
     result = compiler.ast_to_object(node)
 
