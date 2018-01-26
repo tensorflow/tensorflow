@@ -66,7 +66,24 @@ class _SlideDataset(dataset_ops.Dataset):
 
 
 def sliding_window_batch(slide_size, slide_step=1):
-  """A sliding window.
+  """A sliding window with size of `slide_size` and step of `slide_step`.
+
+  This transformation passes a sliding window over this dataset. The window
+  size is `slide_size` and step size is `slide_step`. If the left elements
+  cannot fill up the sliding window, this transformation will drop the
+  final smaller element. For example:
+
+  ```python
+  # NOTE: The following examples use `{ ... }` to represent the
+  # contents of a dataset.
+  a = { [1], [2], [3], [4], [5], [6] }
+
+  a.apply(tf.contrib.data.sliding_window_batch(slide_size=3, slide_step=2)) ==
+  {
+      [[1], [2], [3]],
+      [[3], [4], [5]],
+  }
+  ```
 
   Args:
     slide_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
