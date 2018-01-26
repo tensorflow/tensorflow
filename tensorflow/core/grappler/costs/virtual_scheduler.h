@@ -325,7 +325,7 @@ class VirtualScheduler {
   // Boolean field for whether the cost is accurate.
   std::map<string, std::pair<int, bool>> op_costs_;
 
-  Costs graph_costs_;                // Graph cost.
+  Costs graph_costs_;                   // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 
   // Auxilliary data structures for constructing NodeState and DeviceState.
