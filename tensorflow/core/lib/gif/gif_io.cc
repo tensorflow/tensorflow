@@ -89,23 +89,49 @@ uint8* Decode(const void* srcdata, int datasize,
   uint8* const dstdata = allocate_output(num_frames, width, height, channel);
   if (!dstdata) return nullptr;
   for (int k = 0; k < num_frames; k++) {
+    uint8* this_dst = dstdata + k * width * channel * height;
+
     SavedImage* this_image = &gif_file->SavedImages[k];
     GifImageDesc* img_desc = &this_image->ImageDesc;
+
+    int imgLeft = img_desc->Left;
+    int imgTop = img_desc->Top;
+    int imgRight = img_desc->Left + img_desc->Width;
+    int imgBottom = img_desc->Top + img_desc->Height;
+
     if (img_desc->Left != 0 || img_desc->Top != 0 || img_desc->Width != width ||
         img_desc->Height != height) {
-      *error_string = strings::StrCat("can't process optimized gif");
-      return nullptr;
+      // If the first frame does not fill the entire canvas then return error.
+      if (k == 0) {
+        *error_string = strings::StrCat("the first frame does not fill the canvas");
+        return nullptr;
+      }
+      // Otherwise previous frame will be reused to fill the unoccupied canvas.
+      imgLeft = std::max(imgLeft, 0);
+      imgTop = std::max(imgTop, 0);
+      imgRight = std::min(imgRight, width);
+      imgBottom = std::min(imgBottom, height);
+
+      uint8* last_dst = dstdata + (k - 1) * width * channel * height;
+      for (int i = 0; i < height; ++i) {
+        uint8* p_dst = this_dst + i * width * channel;
+        uint8* l_dst = last_dst + i * width * channel;
+        for (int j = 0; j < width; ++j) {
+          p_dst[j * channel + 0] = l_dst[j * channel + 0];
+          p_dst[j * channel + 1] = l_dst[j * channel + 1];
+          p_dst[j * channel + 2] = l_dst[j * channel + 2];
+        }
+      }
     }
 
     ColorMapObject* color_map = this_image->ImageDesc.ColorMap
                                     ? this_image->ImageDesc.ColorMap
                                     : gif_file->SColorMap;
 
-    uint8* this_dst = dstdata + k * width * channel * height;
-    for (int i = 0; i < height; ++i) {
+    for (int i = imgTop; i < imgBottom; ++i) {
       uint8* p_dst = this_dst + i * width * channel;
-      for (int j = 0; j < width; ++j) {
-        GifByteType color_index = this_image->RasterBits[i * width + j];
+      for (int j = imgLeft; j < imgRight; ++j) {
+        GifByteType color_index = this_image->RasterBits[(i - img_desc->Top) * (img_desc->Width) + (j - img_desc->Left)];
         const GifColorType& gif_color = color_map->Colors[color_index];
         p_dst[j * channel + 0] = gif_color.Red;
         p_dst[j * channel + 1] = gif_color.Green;
