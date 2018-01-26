@@ -24,6 +24,8 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/versions.pb.h"
+#include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
@@ -52,6 +54,159 @@ ShapeRefiner::~ShapeRefiner() {
   const_tensor_map_.clear();
 }
 
+namespace {
+
+constexpr char kArgOp[] = "_Arg";
+constexpr char kRetvalOp[] = "_Retval";
+
+// Runs shape inference for the given node using the given ShapeRefiner.
+// The node must be a sub-node of a function node and the outer_context is
+// the inference context of that function node in the outer graph.
+Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
+                                     InferenceContext* outer_context) {
+  TF_RETURN_IF_ERROR(refiner->AddNode(node));
+  InferenceContext* node_context = CHECK_NOTNULL(refiner->GetContext(node));
+
+  if (StringPiece(node->type_string()) == kArgOp) {
+    // Handle special node: function input.
+    // Shapes for these nodes are provided in the outer inference
+    // context.
+
+    int index;
+    TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node->def()), "index", &index));
+
+    if (index < 0 || outer_context->num_inputs() <= index) {
+      return errors::Internal(
+          "Function instantiation included invalid input index: ", index,
+          " not in [0, ", outer_context->num_inputs(), ").");
+    }
+
+    node_context->set_output(0, outer_context->input(index));
+
+    auto* resource = outer_context->input_handle_shapes_and_types(index);
+    if (resource) {
+      node_context->set_output_handle_shapes_and_types(0, *resource);
+    }
+  } else if (StringPiece(node->type_string()) == kRetvalOp) {
+    // Handle special node: function output.
+    // Shapes inferred for these nodes go into the outer inference
+    // context.
+
+    int index;
+    TF_RETURN_IF_ERROR(GetNodeAttr(AttrSlice(node->def()), "index", &index));
+
+    if (index < 0 || outer_context->num_outputs() <= index) {
+      return errors::Internal(
+          "Function instantiation included invalid output index: ", index,
+          " not in [0, ", outer_context->num_outputs(), ").");
+    }
+
+    // outer_context outlives node_context, therefore we need to create
+    // a new shape handle owned by outer_context instead.
+    ShapeHandle handle;
+    TensorShapeProto proto;
+    node_context->ShapeHandleToProto(node_context->input(0), &proto);
+    TF_RETURN_IF_ERROR(outer_context->MakeShapeFromShapeProto(proto, &handle));
+    outer_context->set_output(index, handle);
+
+    auto* resource = node_context->input_handle_shapes_and_types(0);
+    if (resource) {
+      outer_context->set_output_handle_shapes_and_types(index, *resource);
+    }
+  }
+
+  return Status::OK();
+}
+
+}  // namespace
+
+// TODO(cwhipkey): When an inference context inside function has
+// requested_input_tensor(i) or requested_input_tensor_as_partial_shape(i)
+// set when input(i) is an _Arg op, then this request should propagate to
+// context, and vice versa.
+//
+// NOTE: Recursive user-defined functions are not supported.
+// Maybe we won't support recursive functions at all in TF, because of
+// other maintainability issues.
+Status ShapeRefiner::InferShapesForFunction(
+    const tensorflow::FunctionDef* function_def, bool keep_nested_shapes,
+    ExtendedInferenceContext* outer_context) {
+  const Graph* graph;
+  auto it = functions_.find(function_def);
+  if (it != functions_.end()) {
+    graph = it->second.get();
+  } else {
+    InstantiationResult result;
+    TF_RETURN_IF_ERROR(InstantiateFunction(
+        *function_def, outer_context->get_context()->attrs(),
+        [this](const string& op, const OpDef** sig) {
+          return this->function_library_->LookUpOpDef(op, sig);
+        },
+        &result));
+
+    Graph* new_graph = new Graph(function_library_);
+    GraphConstructorOptions options;
+    options.allow_internal_ops = true;
+    TF_RETURN_IF_ERROR(
+        ConvertNodeDefsToGraph(options, result.nodes, new_graph));
+    functions_[function_def].reset(new_graph);
+    graph = new_graph;
+  }
+
+  std::unordered_set<const Node*> function_nodes;
+  Status inference_status = Status::OK();
+  {
+    auto node_shape_inference_lambda = [this, &outer_context, &function_nodes,
+                                        &inference_status](const Node* node) {
+      if (!inference_status.ok()) return;
+      inference_status = InferShapesForFunctionSubNode(
+          node, this, outer_context->get_context());
+      function_nodes.insert(node);
+    };
+
+    // Calls inference lambda for each node after visiting all predecessors.
+    // Ensures that we are adding nodes to ShapeRefiner in the topological
+    // order.
+    ReverseDFS(*graph, {}, node_shape_inference_lambda);
+  }
+
+  if (keep_nested_shapes && inference_status.ok()) {
+    // Fill the nested inferences map.
+    //
+    // The materialized function graph has extra nodes for arguments and
+    // return values, which are not explicitly listed in the FunctionDef,
+    // we filter out these special nodes here to not expose the implementation
+    // details and keep only inferences for the nodes listed in the FunctionDef.
+    std::unordered_map<string, const NodeDef*> user_defined_nodes;
+    for (const auto& node_def : function_def->node_def()) {
+      user_defined_nodes[node_def.name()] = &node_def;
+    }
+
+    std::unordered_map<string, std::unique_ptr<ExtendedInferenceContext>>
+        nested_inferences;
+    for (const Node* node : function_nodes) {
+      const string& node_name = node->name();
+      if (user_defined_nodes.find(node_name) != user_defined_nodes.end()) {
+        nested_inferences[node_name] = std::move(node_to_context_[node]);
+        node_to_context_.erase(node);
+        // By default InferenceContext refers to a NodeDef from Graph.
+        // Change it to the publicly accessible NodeDef of the function
+        // definition.
+        nested_inferences[node_name]->get_context()->node_def_ =
+            user_defined_nodes[node_name];
+      }
+    }
+    outer_context->set_nested_inferences(std::move(nested_inferences));
+  } else {
+    // Delete the contexts created for the functions nodes to save memory.
+    for (const Node* node : function_nodes) {
+      node_to_context_.erase(node);
+    }
+  }
+
+  return inference_status;
+}
+
 Status ShapeRefiner::AddNode(const Node* node) {
   // For each 'input' of this node, fetch the corresponding shape
   // from 'input's InferenceContext, and store into a vector
@@ -71,7 +226,7 @@ Status ShapeRefiner::AddNode(const Node* node) {
           node->name(), "' was not previously added to ShapeRefiner.");
     }
 
-    InferenceContext* c = it->second.get();
+    InferenceContext* c = it->second->get_context();
     DCHECK_GE(e->dst_input(), 0);
     input_nodes[e->dst_input()] = input;
     input_shapes[e->dst_input()] = c->output(e->src_output());
@@ -109,11 +264,14 @@ Status ShapeRefiner::AddNode(const Node* node) {
     return c->construction_status();
   }
 
-  // Run the shape inference function, and return if there was an error.
-  TF_RETURN_IF_ERROR(RunShapeFn(node, op_reg_data, c.get()));
+  std::unique_ptr<ExtendedInferenceContext> ec(
+      new ExtendedInferenceContext(std::move(c), node));
 
-  // Store the resulting InferenceContext object in the map.
-  node_to_context_[node].swap(c);
+  // Run the shape inference function, and return if there was an error.
+  TF_RETURN_IF_ERROR(RunShapeFn(node, op_reg_data, ec.get()));
+
+  // Store the resulting context object in the map.
+  node_to_context_[node].swap(ec);
 
   return Status::OK();
 }
@@ -152,7 +310,8 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
     *refined = true;
     return AddNode(node);
   }
-  InferenceContext* node_context = it->second.get();
+  ExtendedInferenceContext* node_ext_context = it->second.get();
+  InferenceContext* node_context = node_ext_context->get_context();
 
   // Give up if the context wasn't successfully built by the AddNode() method.
   TF_RETURN_IF_ERROR(node_context->construction_status());
@@ -173,12 +332,17 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
           "' was not previously added to ShapeRefiner.");
     }
 
-    InferenceContext* c = iter->second.get();
+    InferenceContext* c = iter->second->get_context();
     DCHECK_GE(dst_input, 0);
     ShapeHandle existing_input = node_context->input(dst_input);
-    if (!relax && node_context->MergeInput(dst_input, c->output(src_output))) {
-      *refined = true;
-    } else if (relax) {
+    if (!relax) {
+      if (node_context->MergeInput(dst_input, c->output(src_output))) {
+        if (!SameDefinedShape(node_context, node_context->input(dst_input),
+                              existing_input)) {
+          *refined = true;
+        }
+      }
+    } else {
       if (node_context->RelaxInput(dst_input, c->output(src_output))) {
         if (!SameDefinedShape(node_context, node_context->input(dst_input),
                               existing_input)) {
@@ -236,7 +400,7 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
     return Status::OK();
   }
 
-  return RunShapeFn(node, op_reg_data, node_context);
+  return RunShapeFn(node, op_reg_data, node_ext_context);
 }
 
 Status ShapeRefiner::EvaluateConstantTensorForEdge(const Node* node,
@@ -314,7 +478,7 @@ Status ShapeRefiner::TryToInferTensorOutputFromInputShapes(const Edge* edge,
   if (it == node_to_context_.end()) {
     return errors::FailedPrecondition("Node does not have context.");
   }
-  InferenceContext* c = it->second.get();
+  InferenceContext* c = it->second->get_context();
 
   if (node->type_string() == "Shape") {
     // If input shapes to the shape op are fully defined,
@@ -394,6 +558,13 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     return Status::OK();
   }
 
+  if (target_node->type_string() == "PlaceholderWithDefault") {
+    return Status::OK();
+  }
+
+  // TODO(skyewm): more of the filtering applied in input nodes below should be
+  // applied to target_node here
+
   struct NodeAndRecursed {
     Node* new_node = nullptr;
     bool recursed = false;
@@ -440,6 +611,14 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     // Don't constant fold enter/exit currently either, as it's easy to end
     // up with a partial frame.
     if (IsEnter(current_node) || IsExit(current_node)) {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
+    // Placeholders should never be constant folded because their outputs are
+    // fed by the user. Note that "Placeholder" nodes have no inputs so are
+    // handled below.
+    if (current_node->type_string() == "PlaceholderWithDefault") {
       *is_constant_graph = false;
       return Status::OK();
     }
@@ -543,6 +722,8 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
     *result = target_context->Scalar();
   } else if (src_op == "Shape") {
     *result = src_context->input(0);
+  } else if (src_op == "ShapeN") {
+    *result = src_context->input(input_edge->src_output());
   } else if (src_op == "Pack") {
     std::vector<DimensionHandle> dims;
     // Pack is concatenating its input scalars to form the shape tensor vector.
@@ -602,7 +783,7 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
 
 Status ShapeRefiner::RunShapeFn(const Node* node,
                                 const OpRegistrationData* op_reg_data,
-                                shape_inference::InferenceContext* c) {
+                                ExtendedInferenceContext* ec) {
   // This will be filled in with real data in a second pass.
   std::vector<const Tensor*> input_tensors(node->num_inputs(), nullptr);
   std::vector<Tensor> real_tensors(node->num_inputs());
@@ -610,14 +791,32 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
   std::vector<bool> attempted_tensor_as_shape_conversion(node->num_inputs());
   std::vector<ShapeHandle> input_tensors_as_shapes;
 
-  // Run the shape inference function, and return if there was an error.
+  auto* c = ec->get_context();
+
   c->set_input_tensors(input_tensors);
   c->set_input_tensors_as_shapes(input_tensors_as_shapes);
-  if (op_reg_data->shape_inference_fn) {
-    TF_RETURN_IF_ERROR(c->Run(op_reg_data->shape_inference_fn));
-  } else {
-    TF_RETURN_IF_ERROR(c->Run(shape_inference::UnknownShape));
-  }
+
+  // Run the shape inference function, and return if there was an error.
+  // Capture as lambda, because we might need to re-run inference later on.
+  auto run_inference_lambda = [&]() {
+    if (function_library_ && op_reg_data->is_function_op) {
+      // Special inference logic for user-defined functions.
+
+      auto* func_def = function_library_->Find(op_reg_data->op_def.name());
+      if (func_def) {
+        return InferShapesForFunction(func_def, keep_nested_shape_inferences_,
+                                      ec);
+      }
+    }
+
+    if (op_reg_data->shape_inference_fn) {
+      TF_RETURN_IF_ERROR(c->Run(op_reg_data->shape_inference_fn));
+    } else {
+      TF_RETURN_IF_ERROR(c->Run(shape_inference::UnknownShape));
+    }
+    return Status::OK();
+  };
+  TF_RETURN_IF_ERROR(run_inference_lambda());
 
   // We must run the shape function repeatedly, in case users write
   // shape functions where they only conditionally call input_tensor()
@@ -678,11 +877,7 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
       // so re-run shape inference.
       c->set_input_tensors(input_tensors);
       c->set_input_tensors_as_shapes(input_tensors_as_shapes);
-      if (op_reg_data->shape_inference_fn) {
-        TF_RETURN_IF_ERROR(op_reg_data->shape_inference_fn(c));
-      } else {
-        TF_RETURN_IF_ERROR(shape_inference::UnknownShape(c));
-      }
+      TF_RETURN_IF_ERROR(run_inference_lambda());
     }
   } while (rerun_shape_fn);
 
@@ -691,15 +886,22 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
 
 bool ShapeRefiner::SameDefinedShape(InferenceContext* c, ShapeHandle s0,
                                     ShapeHandle s1) {
-  if (!c->RankKnown(s0)) {
-    return !c->RankKnown(s1);
-  } else if (!c->RankKnown(s1) || c->Rank(s0) != c->Rank(s1)) {
+  if (s0.SameHandle(s1)) {
+    return true;
+  }
+  if (c->Rank(s0) != c->Rank(s1)) {
     return false;
   }
-
+  if (!c->RankKnown(s0) && !c->RankKnown(s1)) {
+    return false;
+  }
   for (int i = 0; i < c->Rank(s0); ++i) {
-    if (c->Value(c->Dim(s0, i)) != c->Value(c->Dim(s1, i))) {
-      return false;
+    if (!c->Dim(s0, i).SameHandle(c->Dim(s1, i))) {
+      int64 val0 = c->Value(c->Dim(s0, i));
+      int64 val1 = c->Value(c->Dim(s1, i));
+      if (val0 < 0 || val1 < 0 || val0 != val1) {
+        return false;
+      }
     }
   }
 

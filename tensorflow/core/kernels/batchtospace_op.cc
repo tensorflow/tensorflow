@@ -249,40 +249,34 @@ class BatchToSpaceOp : public OpKernel {
   Tensor block_shape_;
 };
 
-#define REGISTER(T)                                                  \
-  REGISTER_KERNEL_BUILDER(Name("BatchToSpaceND")                     \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<int32>("Tblock_shape") \
-                              .TypeConstraint<int32>("Tcrops")       \
-                              .HostMemory("block_shape")             \
-                              .HostMemory("crops"),                  \
-                          BatchToSpaceNDOp<CPUDevice, T>);           \
-  REGISTER_KERNEL_BUILDER(Name("BatchToSpace")                       \
-                              .Device(DEVICE_CPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<int32>("Tidx")         \
-                              .HostMemory("crops"),                  \
+#define REGISTER(T)                                        \
+  REGISTER_KERNEL_BUILDER(Name("BatchToSpaceND")           \
+                              .Device(DEVICE_CPU)          \
+                              .TypeConstraint<T>("T")      \
+                              .HostMemory("block_shape")   \
+                              .HostMemory("crops"),        \
+                          BatchToSpaceNDOp<CPUDevice, T>); \
+  REGISTER_KERNEL_BUILDER(Name("BatchToSpace")             \
+                              .Device(DEVICE_CPU)          \
+                              .TypeConstraint<T>("T")      \
+                              .HostMemory("crops"),        \
                           BatchToSpaceOp<CPUDevice, T>);
 
 TF_CALL_REAL_NUMBER_TYPES(REGISTER);
 #undef REGISTER
 
 #if GOOGLE_CUDA
-#define REGISTER(T)                                                  \
-  REGISTER_KERNEL_BUILDER(Name("BatchToSpaceND")                     \
-                              .Device(DEVICE_GPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<int32>("Tblock_shape") \
-                              .TypeConstraint<int32>("Tcrops")       \
-                              .HostMemory("block_shape")             \
-                              .HostMemory("crops"),                  \
-                          BatchToSpaceNDOp<GPUDevice, T>);           \
-  REGISTER_KERNEL_BUILDER(Name("BatchToSpace")                       \
-                              .Device(DEVICE_GPU)                    \
-                              .TypeConstraint<T>("T")                \
-                              .TypeConstraint<int32>("Tidx")         \
-                              .HostMemory("crops"),                  \
+#define REGISTER(T)                                        \
+  REGISTER_KERNEL_BUILDER(Name("BatchToSpaceND")           \
+                              .Device(DEVICE_GPU)          \
+                              .TypeConstraint<T>("T")      \
+                              .HostMemory("block_shape")   \
+                              .HostMemory("crops"),        \
+                          BatchToSpaceNDOp<GPUDevice, T>); \
+  REGISTER_KERNEL_BUILDER(Name("BatchToSpace")             \
+                              .Device(DEVICE_GPU)          \
+                              .TypeConstraint<T>("T")      \
+                              .HostMemory("crops"),        \
                           BatchToSpaceOp<GPUDevice, T>);
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER);

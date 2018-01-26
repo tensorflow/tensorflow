@@ -31,9 +31,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/27419586) Change docstring for required dtype of x once int allowed
+@tf_export('lbeta')
 def lbeta(x, name='lbeta'):
   r"""Computes \\(ln(|Beta(x)|)\\), reducing along the last dimension.
 
@@ -82,6 +84,7 @@ def lbeta(x, name='lbeta'):
     return result
 
 
+@tf_export('einsum', 'linalg.einsum')
 def einsum(equation, *inputs, **kwargs):
   """A generalized contraction between tensors of arbitrary dimension.
 
@@ -251,9 +254,13 @@ def _einsum_reduction(t0, t0_axis_labels, t1, t1_axis_labels, axes_to_sum):
       `t1_axis_labels`.
   """
   if len(t0_axis_labels) != len(t0.get_shape()):
-    raise ValueError()
+    raise ValueError(
+        'Tensor t0 of rank %d does not match einsum reduction of length %d' %
+        (len(t0.get_shape()), len(t0_axis_labels)))
   if len(t1_axis_labels) != len(t1.get_shape()):
-    raise ValueError()
+    raise ValueError(
+        'Tensor t1 of rank %d does not match einsum reduction of length %d' %
+        (len(t1.get_shape()), len(t1_axis_labels)))
 
   # This function computes the result of a two-argument einsum() using batch
   # matrix multiplication.  This involves

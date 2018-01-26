@@ -39,7 +39,7 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
     self.sess = session.Session()
-    with self.sess:
+    with self.sess.as_default():
       self.u = variables.Variable(2.0, name="u")
       self.v = variables.Variable(3.0, name="v")
       self.w = math_ops.multiply(self.u.value(), self.v.value(), name="w")
@@ -343,7 +343,9 @@ class IdentifyGradientTest(test_util.TensorFlowTestCase):
         self.sess.graph,
         debug_urls=debug_url)
     run_metadata = config_pb2.RunMetadata()
+    self.assertAllClose(2.0, self.sess.run(self.u))
     self.sess.run(train_op, options=run_options, run_metadata=run_metadata)
+    self.assertAllClose(-1.0, self.sess.run(self.u))
 
     dump = debug_data.DebugDumpDir(
         dump_dir, partition_graphs=run_metadata.partition_graphs)

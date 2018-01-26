@@ -23,25 +23,34 @@ import tensorflow as tf
 import imports85  # pylint: disable=g-bad-import-order
 
 STEPS = 1000
+PRICE_NORM_FACTOR = 1000
 
 
 def main(argv):
   """Builds, trains, and evaluates the model."""
   assert len(argv) == 1
-  (x_train, y_train), (x_test, y_test) = imports85.load_data()
+  (train, test) = imports85.dataset()
+
+  # Switch the labels to units of thousands for better convergence.
+  def normalize_price(features, labels):
+    return features, labels / PRICE_NORM_FACTOR
+
+  train = train.map(normalize_price)
+  test = test.map(normalize_price)
 
   # Build the training input_fn.
-  input_train = tf.estimator.inputs.pandas_input_fn(
-      x=x_train,
-      y=y_train,
-      # Setting `num_epochs` to `None` lets the `inpuf_fn` generate data
-      # indefinitely, leaving the call to `Estimator.train` in control.
-      num_epochs=None,
-      shuffle=True)
+  def input_train():
+    return (
+        # Shuffling with a buffer larger than the data set ensures
+        # that the examples are well mixed.
+        train.shuffle(1000).batch(128)
+        # Repeat forever
+        .repeat().make_one_shot_iterator().get_next())
 
   # Build the validation input_fn.
-  input_test = tf.estimator.inputs.pandas_input_fn(
-      x=x_test, y=y_test, shuffle=True)
+  def input_test():
+    return (test.shuffle(1000).batch(128)
+            .make_one_shot_iterator().get_next())
 
   # The following code demonstrates two of the ways that `feature_columns` can
   # be used to build a model with categorical inputs.
@@ -58,7 +67,7 @@ def main(argv):
 
   # The second way, appropriate for an unspecified vocabulary, is to create a
   # hashed column. It will create a fixed length list of weights, and
-  # automatically assign each input categort to a weight. Due to the
+  # automatically assign each input category to a weight. Due to the
   # pseudo-randomness of the process, some weights may be shared between
   # categories, while others will remain unused.
   make_column = tf.feature_column.categorical_column_with_hash_bucket(
@@ -90,7 +99,8 @@ def main(argv):
 
   # Convert MSE to Root Mean Square Error (RMSE).
   print("\n" + 80 * "*")
-  print("\nRMS error for the test set: ${:.0f}".format(average_loss**0.5))
+  print("\nRMS error for the test set: ${:.0f}"
+        .format(PRICE_NORM_FACTOR * average_loss**0.5))
 
   print()
 

@@ -26,6 +26,8 @@ mean_square = decay * mean_square{t-1} + (1-decay) * gradient ** 2
 mom = momentum * mom{t-1} + learning_rate * g_t / sqrt(mean_square + epsilon)
 delta = - mom
 
+This implementation of RMSProp uses plain momentum, not Nesterov momentum.
+
 The centered version additionally maintains a moving (discounted) average of the
 gradients, and uses that average to estimate the variance:
 

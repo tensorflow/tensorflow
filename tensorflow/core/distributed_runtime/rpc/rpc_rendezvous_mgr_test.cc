@@ -66,7 +66,7 @@ class RpcRendezvousMgrTest : public ::testing::Test {
  protected:
   RpcRendezvousMgrTest()
       : cache_(new DummyWorkerCache),
-        worker_session_("/job:mnist/replica:1/task:2",
+        worker_session_("rpc_session", "/job:mnist/replica:1/task:2",
                         std::unique_ptr<WorkerCacheInterface>(cache_),
                         std::unique_ptr<DeviceMgr>(),
                         std::unique_ptr<GraphMgr>()),

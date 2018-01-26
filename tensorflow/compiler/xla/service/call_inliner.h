@@ -27,20 +27,17 @@ namespace xla {
 // called function, and proceed recursively.
 class CallInliner : public HloPassInterface {
  public:
+  using InlinedInstructionMap =
+      std::unordered_map<HloInstruction*, HloInstruction*>;
+
+  // Inlines one call instruction.  Returns a mapping from the original
+  // instructions to their inlined versions.
+  static StatusOr<InlinedInstructionMap> Inline(HloInstruction* call);
+
   ~CallInliner() override = default;
   tensorflow::StringPiece name() const override { return "CallInliner"; }
 
   StatusOr<bool> Run(HloModule* module) override;
-
- private:
-  // Replaces the given call operation -- which must be an operation inside the
-  // entry computation with opcode kCall -- with the called computation's body,
-  // such that the called computation is inline in the entry computation.
-  //
-  // On successful inlining, the inlined computation may have itself contained
-  // calls; if so, they are added to the work_queue.
-  Status ReplaceWithInlinedBody(HloInstruction* call,
-                                std::deque<HloInstruction*>* work_queue);
 };
 
 }  // namespace xla

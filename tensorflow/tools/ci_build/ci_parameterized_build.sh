@@ -18,7 +18,7 @@
 #   ci_parameterized_build.sh
 #
 # The script obeys the following required environment variables:
-#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | GPU_CLANG | ANDROID | ANDROID_FULL)
+#   TF_BUILD_CONTAINER_TYPE:   (CPU | GPU | ANDROID | ANDROID_FULL)
 #   TF_BUILD_PYTHON_VERSION:   (PYTHON2 | PYTHON3 | PYTHON3.5)
 #   TF_BUILD_IS_PIP:           (NO_PIP | PIP | BOTH)
 #
@@ -53,9 +53,6 @@
 #                      additional flag --copt=-mavx or --copt=-mavx2, to
 #                      perform AVX or AVX2 builds, respectively. This requires
 #                      AVX- or AVX2-compatible CPUs.
-#   TF_BUILD_ENABLE_XLA:
-#                      If it is set to any non-empty value that is not "0",
-#                      will enable XLA and run XLA tests.
 #   TF_BUILD_BAZEL_TARGET:
 #                      Used to override the default bazel build target:
 #                      //tensorflow/... -//tensorflow/compiler
@@ -79,10 +76,6 @@
 #                      If set to any non-empty and non-0 value, will perform
 #                      the benchmark tests (see *_logged_benchmark targets in
 #                      tools/test/BUILD)
-#   TF_BUILD_DISABLE_GCP:
-#                      If set to any non-empty and non-0 value, will disable
-#                      support for Google Cloud Platform (GCP), which is
-#                      enabled by default.
 #   TF_BUILD_OPTIONS:
 #                     (FASTBUILD | OPT | OPTDBG | MAVX | MAVX2_FMA | MAVX_DBG |
 #                      MAVX2_FMA_DBG)
@@ -95,6 +88,9 @@
 #   TF_NIGHTLY:
 #                     If this run is being used to build the tf_nightly pip
 #                     packages.
+#   TF_CUDA_CLANG:
+#                     If set to 1, builds and runs cuda_clang configuration.
+#                     Only available inside GPU containers.
 #
 # This script can be used by Jenkins parameterized / matrix builds.
 
@@ -136,6 +132,8 @@ BAZEL_CMD="bazel test"
 BAZEL_BUILD_ONLY_CMD="bazel build"
 BAZEL_CLEAN_CMD="bazel clean"
 
+DEFAULT_BAZEL_CONFIGS="--config=gcp --config=hdfs"
+
 PIP_CMD="${CI_BUILD_DIR}/builds/pip.sh"
 PIP_TEST_TUTORIALS_FLAG="--test_tutorials"
 PIP_INTEGRATION_TESTS_FLAG="--integration_tests"
@@ -148,17 +146,42 @@ PARALLEL_GPU_TEST_CMD='//tensorflow/tools/ci_build/gpu_build:parallel_gpu_execut
 BENCHMARK_CMD="${CI_BUILD_DIR}/builds/benchmark.sh"
 
 EXTRA_PARAMS=""
-
-export TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA:-0}
-if [[ -z $TF_BUILD_ENABLE_XLA ]] || [ $TF_BUILD_ENABLE_XLA == 0 ]; then
-  BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
-else
-  BAZEL_TARGET="//tensorflow/compiler/..."
-  EXTRA_PARAMS="${EXTRA_PARAMS} -e TF_BUILD_ENABLE_XLA=1"
-fi
+BAZEL_TARGET="//tensorflow/... -//tensorflow/compiler/..."
 
 if [[ -n "$TF_SKIP_CONTRIB_TESTS" ]]; then
   BAZEL_TARGET="$BAZEL_TARGET -//tensorflow/contrib/..."
+else
+  BAZEL_TARGET="${BAZEL_TARGET} -//tensorflow/contrib/lite/..."
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:context_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:framework"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:interpreter_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:model_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/toco:toco"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:simple_memory_arena_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite:string_util_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:activations_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:add_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:basic_rnn_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:concatenation_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:conv_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:depthwise_conv_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:embedding_lookup_sparse_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:fully_connected_test"
+  # BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/testing:generated_examples_zip_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:hashtable_lookup_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:local_response_norm_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:lsh_projection_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:lstm_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:l2norm_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:mul_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:pooling_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:reshape_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:resize_bilinear_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:skip_gram_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:softmax_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:space_to_depth_test"
+  BAZEL_TARGET="${BAZEL_TARGET} //tensorflow/contrib/lite/kernels:svdf_test"
 fi
 
 TUT_TEST_DATA_DIR="/tmp/tf_tutorial_test_data"
@@ -197,9 +220,7 @@ echo "  TF_BUILD_BAZEL_CLEAN=${TF_BUILD_BAZEL_CLEAN}"
 echo "  TF_BUILD_TEST_TUTORIALS=${TF_BUILD_TEST_TUTORIALS}"
 echo "  TF_BUILD_INTEGRATION_TESTS=${TF_BUILD_INTEGRATION_TESTS}"
 echo "  TF_BUILD_RUN_BENCHMARKS=${TF_BUILD_RUN_BENCHMARKS}"
-echo "  TF_BUILD_DISABLE_GCP=${TF_BUILD_DISABLE_GCP}"
 echo "  TF_BUILD_OPTIONS=${TF_BUILD_OPTIONS}"
-echo "  TF_BUILD_ENABLE_XLA=${TF_BUILD_ENABLE_XLA}"
 
 
 # Function that tries to determine CUDA capability, if deviceQuery binary
@@ -215,29 +236,47 @@ function get_cuda_capability_version() {
 # Container type, e.g., CPU, GPU
 CTYPE=${TF_BUILD_CONTAINER_TYPE}
 
-# Determine if Docker is available
+# Determine if the machine is a Mac
 OPT_FLAG=""
-if [[ -z "$(which docker)" ]]; then
+if [[ "$(uname -s)" == "Darwin" ]]; then
   DO_DOCKER=0
 
-  echo "It appears that Docker is not available on this system. "\
-"Will perform build without Docker."
+  echo "It appears this machine is a Mac. "\
+"We will perform this build without Docker."
   echo "Also, the additional option flags will be applied to the build:"
   echo "  ${NO_DOCKER_OPT_FLAG}"
   MAIN_CMD="${NO_DOCKER_MAIN_CMD} ${CTYPE}"
   OPT_FLAG="${OPT_FLAG} ${NO_DOCKER_OPT_FLAG}"
 fi
 
+# In DO_DOCKER mode, appends environment variable to docker's run invocation.
+# Otherwise, exports the corresponding variable.
+function set_script_variable() {
+  local VAR="$1"
+  local VALUE="$2"
+  if [[ $DO_DOCKER == "1" ]]; then
+    TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS="${TF_BUILD_APPEND_CI_DOCKER_EXTRA_PARAMS} -e $VAR=$VALUE"
+  else
+    export $VAR="$VALUE"
+  fi
+}
+
+
 # Process container type
 if [[ ${CTYPE} == "cpu" ]] || [[ ${CTYPE} == "debian.jessie.cpu" ]]; then
   :
-elif [[ ${CTYPE} == "gpu" ]] || [[ ${CTYPE} == "gpu_clang" ]]; then
-  if [[ ${CTYPE} == "gpu" ]]; then
-    OPT_FLAG="${OPT_FLAG} --config=cuda"
-  else # ${CTYPE} == "gpu_clang"
-    OPT_FLAG="${OPT_FLAG} --config=cuda_clang"
-  fi
+elif [[ ${CTYPE} == "gpu" ]]; then
+  set_script_variable TF_NEED_CUDA 1
 
+  if [[ $TF_CUDA_CLANG == "1" ]]; then
+    OPT_FLAG="${OPT_FLAG} --config=cuda_clang"
+
+    set_script_variable TF_CUDA_CLANG 1
+    # For cuda_clang we download `clang` while building.
+    set_script_variable TF_DOWNLOAD_CLANG 1
+  else
+    OPT_FLAG="${OPT_FLAG} --config=cuda"
+  fi
 
   # Attempt to determine CUDA capability version automatically and use it if
   # CUDA capability version is not specified by the environment variables.
@@ -342,7 +381,7 @@ OPT_FLAG=$(str_strip "${OPT_FLAG}")
 
 # 1) Filter out benchmark tests if this is not a benchmarks job;
 # 2) Filter out tests with the "nomac" tag if the build is on Mac OS X.
-EXTRA_ARGS=""
+EXTRA_ARGS=${DEFAULT_BAZEL_CONFIGS}
 IS_MAC=0
 if [[ "$(uname)" == "Darwin" ]]; then
   IS_MAC=1
@@ -365,7 +404,7 @@ if [[ "${TF_BUILD_APPEND_ARGUMENTS}" == *"--test_tag_filters="* ]]; then
     fi
   done
 else
-  EXTRA_ARGS="${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-oss_serial,-benchmark-test"
+  EXTRA_ARGS="${EXTRA_ARGS} ${TF_BUILD_APPEND_ARGUMENTS} --test_tag_filters=-no_oss,-oss_serial,-benchmark-test"
   if [[ ${IS_MAC} == "1" ]]; then
     EXTRA_ARGS="${EXTRA_ARGS},-nomac"
   fi
@@ -389,7 +428,7 @@ if [[ ${TF_BUILD_IS_PIP} == "no_pip" ]] ||
     # CPU only command, fully parallel.
     NO_PIP_MAIN_CMD="${MAIN_CMD} ${BAZEL_CMD} ${OPT_FLAG} ${EXTRA_ARGS} -- "\
 "${BAZEL_TARGET}"
-  elif [[ ${CTYPE} == "gpu" ]] || [[ ${CTYPE} == "gpu_clang" ]]; then
+  elif [[ ${CTYPE} == "gpu" ]]; then
     # GPU only command, run as many jobs as the GPU count only.
     NO_PIP_MAIN_CMD="${BAZEL_CMD} ${OPT_FLAG} "\
 "--local_test_jobs=${TF_GPU_COUNT} "\
@@ -528,8 +567,9 @@ echo ""
 
 TMP_DIR=""
 DOCKERFILE_FLAG=""
-if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
-  # Modify Dockerfile for Python3.5 build
+if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]] ||
+  [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
+  # Modify Dockerfile for Python3.5 | Python3.6 build
   TMP_DIR=$(mktemp -d)
   echo "Docker build will occur in temporary directory: ${TMP_DIR}"
 
@@ -545,10 +585,10 @@ if [[ "${TF_BUILD_PYTHON_VERSION}" == "python3.5" ]]; then
 
   # Replace a line in the Dockerfile
   if sed -i \
-      's/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_python3.5_pip_packages.sh/g' \
+      "s/RUN \/install\/install_pip_packages.sh/RUN \/install\/install_${TF_BUILD_PYTHON_VERSION}_pip_packages.sh/g" \
       "${DOCKERFILE}"
   then
-    echo "Copied and modified Dockerfile for Python 3.5 build: ${DOCKERFILE}"
+    echo "Copied and modified Dockerfile for ${TF_BUILD_PYTHON_VERSION} build: ${DOCKERFILE}"
   else
     die "ERROR: Faild to copy and modify Dockerfile: ${DOCKERFILE}"
   fi

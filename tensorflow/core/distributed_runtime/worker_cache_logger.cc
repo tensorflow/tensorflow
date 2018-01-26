@@ -60,7 +60,7 @@ bool WorkerCacheLogger::RetrieveLogs(int64 step_id, StepStats* ss) {
   mutex_lock l(mu_);
   LogMap::iterator iter = log_map_.find(step_id);
   if (iter != log_map_.end()) {
-    iter->second.collector->Swap(ss);
+    iter->second.collector->FinalizeAndSwap(ss);
     delete iter->second.collector;
     log_map_.erase(iter);
     return true;

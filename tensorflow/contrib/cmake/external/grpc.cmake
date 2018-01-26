@@ -17,7 +17,7 @@ include (ExternalProject)
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG 781fd6f6ea03645a520cd5c675da67ab61f87e4b)
+set(GRPC_TAG 730b778632e79cc3c96ad237f282d687ee325ce7)
 
 if(WIN32)
   set(grpc_STATIC_LIBRARIES
@@ -31,6 +31,8 @@ else()
       ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/libgpr.a)
 endif()
 
+add_definitions(-DGRPC_ARES=0)
+
 ExternalProject_Add(grpc
     PREFIX grpc
     DEPENDS protobuf zlib
@@ -38,10 +40,8 @@ ExternalProject_Add(grpc
     GIT_TAG ${GRPC_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
-    # TODO(jhseu): Remove this PATCH_COMMAND once grpc removes the dependency
-    # on "grpc" from the "grpc++_unsecure" rule.
-    PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/grpc/CMakeLists.txt ${GRPC_BUILD}
     BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc++_unsecure
+    COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc_cpp_plugin
     INSTALL_COMMAND ""
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release

@@ -21,52 +21,70 @@
 ### Quick Start
 
 ```python
-# Enable tracing and profile the time and memory information.
+# When using high-level API, session is usually hidden.
+#
+# Under the default ProfileContext, run a few hundred steps.
+# The ProfileContext will sample some steps and dump the profiles
+# to files. Users can then use command line tool or Web UI for
+# interactive profiling.
+with tf.contrib.tfprof.ProfileContext('/tmp/train_dir') as pctx:
+  # High level API, such as slim, Estimator, etc.
+  train_loop()
+
+bazel-bin/tensorflow/core/profiler/profiler \
+    --profile_path=/tmp/train_dir/profile_xx
+tfprof> op -select micros,bytes,occurrence -order_by micros
+
+# To be open sourced...
+bazel-bin/tensorflow/python/profiler/profiler_ui \
+    --profile_path=/tmp/profiles/profile_1
+```
+![ProfilerUI](g3doc/profiler_ui.jpg)
+
+```python
+# When using lower-level APIs with a Session object. User can have
+# explicit control of each step.
+#
+# Create options to profile the time and memory information.
 builder = tf.profiler.ProfileOptionBuilder
 opts = builder(builder.time_and_memory()).order_by('micros').build()
-with tf.contrib.tfprof.ProfileContext() as pctx:
+# Create a profiling context, set constructor argument `trace_steps`,
+# `dump_steps` to empty for explicit control.
+with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
+                                      trace_steps=[],
+                                      dump_steps=[]) as pctx:
   with tf.Session() as sess:
-    x = build_model()
-    sess.run(tf.global_variables_initializer())
-    for i in range(10000):
-      if i == 10:
-        pctx.capture_next_run_meta()
-        _ = sess.run(x)
-        tf.profiler.profile(sess.graph, run_meta=pctx.run_meta(), cmd='op', options=opts)
-      else:
-        _ = sess.run(x)
+    # Enable tracing for next session.run.
+    pctx.trace_next_step()
+    # Dump the profile to '/tmp/train_dir' after the step.
+    pctx.dump_next_step()
+    _ = session.run(train_op)
+    pctx.profiler.profile_operations(options=opts)
 ```
 
 ```python
-# When using high-level API, session is usually hidden.
-# Register profiling to ProfileContext that performs profiling automatically.
+# For more advanced usage, user can control the tracing steps and
+# dumping steps. User can also run online profiling during training.
+#
+# Create options to profile time/memory as well as parameters.
 builder = tf.profiler.ProfileOptionBuilder
 opts = builder(builder.time_and_memory()).order_by('micros').build()
 opts2 = tf.profiler.ProfileOptionBuilder.trainable_variables_parameter()
-with tf.contrib.tfprof.ProfileContext() as pctx:
-  # Profile time and memory from step 100 to 109.
-  # Note: High level APIs can run sessions for queue, variable initialization
-  # or training at different steps. Try profile multiple steps.
-  pctx.add_auto_profiling('op', opts, range(100, 110))
-  # Profile model parameters once at step 10 (since it is static).
-  pctx.add_auto_profiling('scope', opts2, [10])
+
+# Collect traces of steps 10~20, dump the whole profile (with traces of
+# step 10~20) at step 20. The dumped profile can be used for further profiling
+# with command line interface or Web UI.
+with tf.contrib.tfprof.ProfileContext('/tmp/train_dir',
+                                      trace_steps=range(10, 20),
+                                      dump_steps=[20]) as pctx:
+  # Run online profiling with 'op' view and 'opts' options at step 15, 18, 20.
+  pctx.add_auto_profiling('op', opts, [15, 18, 20])
+  # Run online profiling with 'scope' view and 'opts2' options at step 20.
+  pctx.add_auto_profiling('scope', opts2, [20])
   # High level API, such as slim, Estimator, etc.
   train_loop()
 ```
 
-```shell
-# Profiling from Python API is not interactive.
-# Dump the profiles to files and profile with interactive command line.
-with tf.contrib.tfprof.ProfileContext() as pctx:
-  pctx.add_auto_profile_dump('/tmp/profiles', [100])
-  train_loop()
-
-bazel-bin/tensorflow/core/profiler/profiler \
-    --graph_path=/tmp/profiles/graph.pbtxt \
-    --run_meta_path=/tmp/profiles/run_meta \
-    --op_log_path=/tmp/profiles/tfprof_log \
-tfprof> op -select micros,bytes,occurrence -order_by micros
-```
 
 <b>Detail Tutorials</b>
 
@@ -198,7 +216,7 @@ seq2seq_attention_model.py:363:build_graph:self._add_train_o..., cpu: 1.28sec, a
 
 ```shell
 # The following example generates a timeline.
-tfprof> graph -step 0 -max_depth 100000 -output timeline:outfile=<filename>
+tfprof> graph -step -1 -max_depth 100000 -output timeline:outfile=<filename>
 
 generating trace file.
 
@@ -239,5 +257,6 @@ bug fix. `OpLogProto` is a good plus if it is used.
 #### Teams
 
 * Xin Pan (xpan@google.com, github: panyx0718)
+* Chris Antaki
 * Yao Zhang
 * Jon Shlens

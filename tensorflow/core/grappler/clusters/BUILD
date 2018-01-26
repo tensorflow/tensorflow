@@ -1,5 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 filegroup(
@@ -72,11 +73,13 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "virtual_cluster_test",
     srcs = ["virtual_cluster_test.cc"],
     deps = [
         ":virtual_cluster",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -98,15 +101,16 @@ cc_library(
         "//tensorflow/cc:coordinator",
         "//tensorflow/cc:queue_runner",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "single_machine_test",
     srcs = ["single_machine_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory

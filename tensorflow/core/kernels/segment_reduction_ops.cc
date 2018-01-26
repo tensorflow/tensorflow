@@ -16,6 +16,9 @@ limitations under the License.
 // See docs in ../ops/math_ops.cc.
 
 #define EIGEN_USE_THREADS
+#if GOOGLE_CUDA
+#define EIGEN_USE_GPU
+#endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include <vector>
@@ -31,6 +34,14 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
+
+#if GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/platform/cuda.h"
+
+using ::perftools::gputools::cuda::ScopedActivateExecutorContext;
+#endif  // GOOGLE_CUDA
 
 namespace tensorflow {
 
@@ -183,6 +194,107 @@ class SegmentReductionOp : public OpKernel {
   }
 };
 
+#ifdef GOOGLE_CUDA
+//  SegmentSumGPUOp is a segment sum operator implemented for GPU only.
+//  TODO: This implementation of SegmentSumGPUOp is sometimes slower than
+//  its unsorted counterpart (mostly when problem size is small).
+//  This is due to the following two main reasons and a cost-effective way
+//  to resolve these problems is desirable.
+//  1. Sorted segment sum requires a memory transfer from device to host in
+//     order to know the size of the output dimension whereas unsorted segment
+//     sum receives the size of the output dimension as an input parameter.
+//  2. Sorted segment sum is essentially a tiled version of unsorted segment
+//     sum and therefore such optimization comes at an inherent cost. However
+//     such cost may not be justified when the problem size is small. When to
+//     use the tiled version or the untiled version depends on many factors
+//     including data alignments, ratio of calculation to memory traffic and
+//     obviously, the problem sizes.
+template <class T, class Index>
+class SegmentSumGPUOp : public AsyncOpKernel {
+ public:
+  explicit SegmentSumGPUOp(OpKernelConstruction* context)
+      : AsyncOpKernel(context) {}
+
+  void ComputeAsync(OpKernelContext* context, DoneCallback done) override {
+    const Tensor& input = context->input(0);
+    const Tensor& segment_ids = context->input(1);
+
+    OP_REQUIRES_ASYNC(
+        context, TensorShapeUtils::IsVector(segment_ids.shape()),
+        errors::InvalidArgument("segment_ids should be a vector."), done);
+
+    const int64 num_indices = segment_ids.NumElements();
+    OP_REQUIRES_ASYNC(
+        context, num_indices == input.dim_size(0),
+        errors::InvalidArgument(
+            "segment_ids should be the same size as dimension 0 of"
+            " input."),
+        done);
+
+    if (num_indices == 0) {
+      TensorShape output_shape = input.shape();
+      output_shape.set_dim(0, 0);
+
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, output_shape, &output), done);
+      done();
+      return;
+    }
+
+    perftools::gputools::DeviceMemoryBase output_rows_device(
+        const_cast<Tensor&>(segment_ids).template flat<Index>().data() +
+        (num_indices - 1));
+    ScratchSpace<Index> output_rows_host(context, 1, /* on_host */ true);
+
+    auto stream = context->op_device_context()->stream();
+    OP_REQUIRES_ASYNC(
+        context,
+        stream
+            ->ThenMemcpy(output_rows_host.mutable_data(), output_rows_device,
+                         sizeof(Index))
+            .ok(),
+        errors::Internal(
+            "SegmentSumGPUOp: failed to copy output_rows from device"),
+        done);
+
+    functor::SegmentSumFunctor<T, Index> functor_;
+    auto create_and_check_output = [context, output_rows_host, &input,
+                                    &segment_ids, &functor_, done]() {
+      // Ensure that within the callback, the proper GPU settings are
+      // configured.
+      auto stream = context->op_device_context()->stream();
+      ScopedActivateExecutorContext scoped_activation{stream->parent()};
+
+      Index output_rows = *output_rows_host.data();
+      output_rows++;
+      OP_REQUIRES_ASYNC(context, output_rows > 0,
+                        errors::InvalidArgument("segment ids must be >= 0"),
+                        done);
+
+      TensorShape output_shape = input.shape();
+      output_shape.set_dim(0, output_rows);
+
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          context, context->allocate_output(0, output_shape, &output), done);
+
+      auto output_flat = output->flat_outer_dims<T>();
+      auto data_ptr = input.template flat<T>().data();
+      auto segment_flat = segment_ids.flat<Index>();
+      functor_(context, context->eigen_device<GPUDevice>(), output_rows,
+               segment_ids.shape(), segment_flat, input.NumElements(), data_ptr,
+               output_flat);
+
+      done();
+    };
+
+    context->device()->tensorflow_gpu_device_info()->event_mgr->ThenExecute(
+        stream, create_and_check_output);
+  }
+};
+#endif  // GOOGLE_CUDA
+
 #define REGISTER_CPU_KERNEL_SEGMENT(name, functor, type, index_type, \
                                     default_value)                   \
   REGISTER_KERNEL_BUILDER(                                           \
@@ -227,6 +339,23 @@ REGISTER_COMPLEX_CPU_KERNELS_ALL(complex128);
 #undef REGISTER_REAL_CPU_KERNELS_ALL
 #undef REGISTER_COMPLEX_CPU_KERNELS_ALL
 
+#if GOOGLE_CUDA
+#define REGISTER_GPU_SORTED_KERNELS(type, index_type)                  \
+  REGISTER_KERNEL_BUILDER(Name("SegmentSum")                           \
+                              .Device(DEVICE_GPU)                      \
+                              .TypeConstraint<type>("T")               \
+                              .TypeConstraint<index_type>("Tindices"), \
+                          SegmentSumGPUOp<type, index_type>)
+
+#define REGISTER_GPU_SORTED_KERNELS_ALL(type) \
+  REGISTER_GPU_SORTED_KERNELS(type, int32);   \
+  REGISTER_GPU_SORTED_KERNELS(type, int64);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_SORTED_KERNELS_ALL);
+#undef REGISTER_GPU_SORTED_KERNELS
+#undef REGISTER_GPU_SORTED_KERNELS_ALL
+#endif  // GOOGLE_CUDA
+
 namespace functor {
 
 // UnsortedSegmentSumFunctor implementation for CPUDevice.
@@ -247,6 +376,9 @@ struct UnsortedSegmentSumFunctor<CPUDevice, T, Index>
     auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
     for (int64 i = 0; i < N; ++i) {
       Index j = internal::SubtleMustCopy(segment_ids(i));
+      if (j < 0) {
+        continue;
+      }
       OP_REQUIRES(ctx, FastBoundsCheck(j, output_rows),
                   errors::InvalidArgument(
                       "segment_ids", SliceDebugString(segment_ids_shape, i),
@@ -421,16 +553,30 @@ class SparseSegmentReductionOpBase : public OpKernel {
  public:
   explicit SparseSegmentReductionOpBase(OpKernelConstruction* context,
                                         bool is_mean, bool is_sqrtn,
-                                        T default_value)
+                                        bool has_num_segments, T default_value)
       : OpKernel(context),
         is_mean_(is_mean),
         is_sqrtn_(is_sqrtn),
+        has_num_segments_(has_num_segments),
         default_value_(default_value) {}
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
     const Tensor& indices = context->input(1);
     const Tensor& segment_ids = context->input(2);
+
+    Index output_rows = -1;
+    if (has_num_segments_) {
+      const Tensor& num_segments = context->input(3);
+
+      OP_REQUIRES(
+          context, num_segments.shape().dims() == 0,
+          errors::InvalidArgument("num_segments should be a scalar, not shape ",
+                                  num_segments.shape().DebugString()));
+      output_rows = internal::SubtleMustCopy(num_segments.scalar<int32>()());
+      OP_REQUIRES(context, output_rows >= 0,
+                  errors::InvalidArgument("segment ids must be >= 0"));
+    }
 
     OP_REQUIRES(context, TensorShapeUtils::IsVector(indices.shape()),
                 errors::InvalidArgument("indices should be a vector."));
@@ -449,10 +595,17 @@ class SparseSegmentReductionOpBase : public OpKernel {
     const auto segment_vec = segment_ids.vec<OutputRow>();
     // Note that the current implementation assumes that segment_vec values are
     // sorted.
-    const OutputRow output_rows =
+    const OutputRow last_segment_id_plus_one =
         num_indices > 0
             ? internal::SubtleMustCopy(segment_vec(num_indices - 1)) + 1
             : 0;
+    if (has_num_segments_) {
+      OP_REQUIRES(
+          context, output_rows >= last_segment_id_plus_one,
+          errors::InvalidArgument("segment ids must be < num_segments"));
+    } else {
+      output_rows = last_segment_id_plus_one;
+    }
     OP_REQUIRES(context, output_rows >= 0,
                 errors::InvalidArgument("segment ids must be >= 0"));
 
@@ -514,11 +667,20 @@ class SparseSegmentReductionOpBase : public OpKernel {
                       indices_vec(start + bad_offset), " out of range [0, ",
                       input_flat.dimension(0), ")"));
 
-      if (end >= num_indices) break;
       start = end;
       ++end;
       uninitialized_index = out_index + 1;
       out_index = next_index;
+      if (end > num_indices) break;
+    }
+
+    // Fill the gap at the end with the default value.
+    if (uninitialized_index < output_rows) {
+      Eigen::DSizes<Eigen::DenseIndex, 2> gap_slice_shape(
+          output_rows - uninitialized_index, num_col);
+      Eigen::TensorMap<Eigen::Tensor<T, 2, Eigen::RowMajor>, Eigen::Unaligned>
+          gap_slice(&output_flat(uninitialized_index, 0), gap_slice_shape);
+      gap_slice.setConstant(default_value_);
     }
   }
 
@@ -654,6 +816,7 @@ class SparseSegmentReductionOpBase : public OpKernel {
 
   const bool is_mean_;
   const bool is_sqrtn_;
+  const bool has_num_segments_;
   const T default_value_;
 };
 
@@ -662,9 +825,20 @@ class SparseSegmentReductionMeanOp
     : public SparseSegmentReductionOpBase<Device, T> {
  public:
   explicit SparseSegmentReductionMeanOp(OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(context, true /*is_mean*/,
-                                                false /*is_sqrtn*/,
-                                                T(0) /* default_value */) {}
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, true /*is_mean*/, false /*is_sqrtn*/,
+            false /* has_num_segments */, T(0) /* default_value */) {}
+};
+
+template <typename Device, class T>
+class SparseSegmentReductionMeanWithNumSegmentsOp
+    : public SparseSegmentReductionOpBase<Device, T> {
+ public:
+  explicit SparseSegmentReductionMeanWithNumSegmentsOp(
+      OpKernelConstruction* context)
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, true /*is_mean*/, false /*is_sqrtn*/,
+            true /* has_num_segments */, T(0) /* default_value */) {}
 };
 
 template <typename Device, class T>
@@ -672,9 +846,20 @@ class SparseSegmentReductionSqrtNOp
     : public SparseSegmentReductionOpBase<Device, T> {
  public:
   explicit SparseSegmentReductionSqrtNOp(OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(context, false /*is_mean*/,
-                                                true /*is_sqrtn*/,
-                                                T(0) /* default_value */) {}
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, false /*is_mean*/, true /*is_sqrtn*/,
+            false /* has_num_segments */, T(0) /* default_value */) {}
+};
+
+template <typename Device, class T>
+class SparseSegmentReductionSqrtNWithNumSegmentsOp
+    : public SparseSegmentReductionOpBase<Device, T> {
+ public:
+  explicit SparseSegmentReductionSqrtNWithNumSegmentsOp(
+      OpKernelConstruction* context)
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, false /*is_mean*/, true /*is_sqrtn*/,
+            true /* has_num_segments */, T(0) /* default_value */) {}
 };
 
 template <typename Device, class T>
@@ -682,37 +867,65 @@ class SparseSegmentReductionSumOp
     : public SparseSegmentReductionOpBase<Device, T> {
  public:
   explicit SparseSegmentReductionSumOp(OpKernelConstruction* context)
-      : SparseSegmentReductionOpBase<Device, T>(context, false /*is_mean*/,
-                                                false /*is_sqrtn*/,
-                                                T(0) /* default_value */) {}
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, false /*is_mean*/, false /*is_sqrtn*/,
+            false /* has_num_segments */, T(0) /* default_value */) {}
 };
 
-#define REGISTER_CPU_SPARSE_KERNELS(type)                     \
-  REGISTER_KERNEL_BUILDER(Name("SparseSegmentSum")            \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("T")      \
-                              .TypeConstraint<int32>("Tidx"), \
-                          SparseSegmentReductionSumOp<CPUDevice, type>);
+template <typename Device, class T>
+class SparseSegmentReductionSumWithNumSegmentsOp
+    : public SparseSegmentReductionOpBase<Device, T> {
+ public:
+  explicit SparseSegmentReductionSumWithNumSegmentsOp(
+      OpKernelConstruction* context)
+      : SparseSegmentReductionOpBase<Device, T>(
+            context, false /*is_mean*/, false /*is_sqrtn*/,
+            true /* has_num_segments */, T(0) /* default_value */) {}
+};
 
+#define REGISTER_CPU_SPARSE_KERNELS(type)                                \
+  REGISTER_KERNEL_BUILDER(Name("SparseSegmentSum")                       \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<type>("T")                 \
+                              .TypeConstraint<int32>("Tidx"),            \
+                          SparseSegmentReductionSumOp<CPUDevice, type>); \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("SparseSegmentSumWithNumSegments")                            \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<type>("T")                                     \
+          .TypeConstraint<int32>("Tidx"),                                \
+      SparseSegmentReductionSumWithNumSegmentsOp<CPUDevice, type>);
 TF_CALL_REAL_NUMBER_TYPES(REGISTER_CPU_SPARSE_KERNELS);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
-#define REGISTER_CPU_SPARSE_KERNELS(type)                     \
-  REGISTER_KERNEL_BUILDER(Name("SparseSegmentMean")           \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("T")      \
-                              .TypeConstraint<int32>("Tidx"), \
-                          SparseSegmentReductionMeanOp<CPUDevice, type>);
+#define REGISTER_CPU_SPARSE_KERNELS(type)                                 \
+  REGISTER_KERNEL_BUILDER(Name("SparseSegmentMean")                       \
+                              .Device(DEVICE_CPU)                         \
+                              .TypeConstraint<type>("T")                  \
+                              .TypeConstraint<int32>("Tidx"),             \
+                          SparseSegmentReductionMeanOp<CPUDevice, type>); \
+  REGISTER_KERNEL_BUILDER(                                                \
+      Name("SparseSegmentMeanWithNumSegments")                            \
+          .Device(DEVICE_CPU)                                             \
+          .TypeConstraint<type>("T")                                      \
+          .TypeConstraint<int32>("Tidx"),                                 \
+      SparseSegmentReductionMeanWithNumSegmentsOp<CPUDevice, type>);
 REGISTER_CPU_SPARSE_KERNELS(float);
 REGISTER_CPU_SPARSE_KERNELS(double);
 #undef REGISTER_CPU_SPARSE_KERNELS
 
-#define REGISTER_CPU_SPARSE_KERNELS(type)                     \
-  REGISTER_KERNEL_BUILDER(Name("SparseSegmentSqrtN")          \
-                              .Device(DEVICE_CPU)             \
-                              .TypeConstraint<type>("T")      \
-                              .TypeConstraint<int32>("Tidx"), \
-                          SparseSegmentReductionSqrtNOp<CPUDevice, type>);
+#define REGISTER_CPU_SPARSE_KERNELS(type)                                  \
+  REGISTER_KERNEL_BUILDER(Name("SparseSegmentSqrtN")                       \
+                              .Device(DEVICE_CPU)                          \
+                              .TypeConstraint<type>("T")                   \
+                              .TypeConstraint<int32>("Tidx"),              \
+                          SparseSegmentReductionSqrtNOp<CPUDevice, type>); \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name("SparseSegmentSqrtNWithNumSegments")                            \
+          .Device(DEVICE_CPU)                                              \
+          .TypeConstraint<type>("T")                                       \
+          .TypeConstraint<int32>("Tidx"),                                  \
+      SparseSegmentReductionSqrtNWithNumSegmentsOp<CPUDevice, type>);
 REGISTER_CPU_SPARSE_KERNELS(float);
 REGISTER_CPU_SPARSE_KERNELS(double);
 #undef REGISTER_CPU_SPARSE_KERNELS
@@ -757,9 +970,10 @@ class SparseSegmentGradOpBase : public OpKernel {
 
     // Note that similar to SparseSegmentMean, we assume that segment_vec is
     // already sorted and has non-negative values.
-    const SegmentId num_segments =
+    const SegmentId num_segments = input.dim_size(0);
+    const SegmentId last_segment_id_plus_one =
         internal::SubtleMustCopy(segment_vec(N - 1)) + 1;
-    OP_REQUIRES(context, input.dim_size(0) == num_segments,
+    OP_REQUIRES(context, last_segment_id_plus_one <= num_segments,
                 errors::InvalidArgument("Invalid number of segments"));
 
     // Compute scaling factors for input.

@@ -49,77 +49,6 @@ class DeviceNamePathConversionTest(test_util.TensorFlowTestCase):
             ",job_ps,replica_1,task_2,cpu_0"))
 
 
-class ParseNodeOrTensorNameTest(test_util.TensorFlowTestCase):
-
-  def testParseNodeName(self):
-    node_name, slot = debug_data.parse_node_or_tensor_name("namespace1/node_1")
-
-    self.assertEqual("namespace1/node_1", node_name)
-    self.assertIsNone(slot)
-
-  def testParseTensorName(self):
-    node_name, slot = debug_data.parse_node_or_tensor_name(
-        "namespace1/node_2:3")
-
-    self.assertEqual("namespace1/node_2", node_name)
-    self.assertEqual(3, slot)
-
-
-class NodeNameChecksTest(test_util.TensorFlowTestCase):
-
-  def testIsCopyNode(self):
-    self.assertTrue(debug_data.is_copy_node("__copy_ns1/ns2/node3_0"))
-
-    self.assertFalse(debug_data.is_copy_node("copy_ns1/ns2/node3_0"))
-    self.assertFalse(debug_data.is_copy_node("_copy_ns1/ns2/node3_0"))
-    self.assertFalse(debug_data.is_copy_node("_copyns1/ns2/node3_0"))
-    self.assertFalse(debug_data.is_copy_node("__dbg_ns1/ns2/node3_0"))
-
-  def testIsDebugNode(self):
-    self.assertTrue(
-        debug_data.is_debug_node("__dbg_ns1/ns2/node3:0_0_DebugIdentity"))
-
-    self.assertFalse(
-        debug_data.is_debug_node("dbg_ns1/ns2/node3:0_0_DebugIdentity"))
-    self.assertFalse(
-        debug_data.is_debug_node("_dbg_ns1/ns2/node3:0_0_DebugIdentity"))
-    self.assertFalse(
-        debug_data.is_debug_node("_dbgns1/ns2/node3:0_0_DebugIdentity"))
-    self.assertFalse(debug_data.is_debug_node("__copy_ns1/ns2/node3_0"))
-
-
-class ParseDebugNodeNameTest(test_util.TensorFlowTestCase):
-
-  def testParseDebugNodeName_valid(self):
-    debug_node_name_1 = "__dbg_ns_a/ns_b/node_c:1_0_DebugIdentity"
-    (watched_node, watched_output_slot, debug_op_index,
-     debug_op) = debug_data.parse_debug_node_name(debug_node_name_1)
-
-    self.assertEqual("ns_a/ns_b/node_c", watched_node)
-    self.assertEqual(1, watched_output_slot)
-    self.assertEqual(0, debug_op_index)
-    self.assertEqual("DebugIdentity", debug_op)
-
-  def testParseDebugNodeName_invalidPrefix(self):
-    invalid_debug_node_name_1 = "__copy_ns_a/ns_b/node_c:1_0_DebugIdentity"
-
-    with self.assertRaisesRegexp(ValueError, "Invalid prefix"):
-      debug_data.parse_debug_node_name(invalid_debug_node_name_1)
-
-  def testParseDebugNodeName_missingDebugOpIndex(self):
-    invalid_debug_node_name_1 = "__dbg_node1:0_DebugIdentity"
-
-    with self.assertRaisesRegexp(ValueError, "Invalid debug node name"):
-      debug_data.parse_debug_node_name(invalid_debug_node_name_1)
-
-  def testParseDebugNodeName_invalidWatchedTensorName(self):
-    invalid_debug_node_name_1 = "__dbg_node1_0_DebugIdentity"
-
-    with self.assertRaisesRegexp(ValueError,
-                                 "Invalid tensor name in debug node name"):
-      debug_data.parse_debug_node_name(invalid_debug_node_name_1)
-
-
 class HasNanOrInfTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -373,20 +302,6 @@ class DebugDumpDirTest(test_util.TensorFlowTestCase):
               (debug_data.METADATA_FILE_PREFIX +
                debug_data.DEVICE_TAG + "*")))]
       fake.assert_has_calls(expected_calls, any_order=True)
-
-
-class GetNodeNameAndOutputSlotTest(test_util.TensorFlowTestCase):
-
-  def testParseTensorNameInputWorks(self):
-    self.assertEqual("a", debug_data.get_node_name("a:0"))
-    self.assertEqual(0, debug_data.get_output_slot("a:0"))
-
-    self.assertEqual("_b", debug_data.get_node_name("_b:1"))
-    self.assertEqual(1, debug_data.get_output_slot("_b:1"))
-
-  def testParseNodeNameInputWorks(self):
-    self.assertEqual("a", debug_data.get_node_name("a"))
-    self.assertEqual(0, debug_data.get_output_slot("a"))
 
 
 if __name__ == "__main__":

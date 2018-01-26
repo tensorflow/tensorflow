@@ -34,8 +34,235 @@ limitations under the License.
 
 namespace xla {
 
+using ::tensorflow::str_util::Join;
 using ::tensorflow::strings::StrAppend;
 using ::tensorflow::strings::StrCat;
+
+// Data structure used to construct the alias analysis. Thrown away after alias
+// analysis is complete. This data structure keeps track of which sets of
+// HloValues must be in the same HloBuffer. This is maintained as a map from a
+// buffer identifier (BufferNumber) to set of HLoValues.
+//
+// Initially each value is its own buffer. In MergeAliasedBuffers, sets of
+// values which must share the same buffer are merged together. The end result
+// is a partitioning of all HloValues into sets where each set needs its own
+// HloBuffer. By performing this analysis without constructing HloBuffers on the
+// fly, we can after-the-fact construct a vector of contiguously numbered
+// HloBuffers after the buffer requirement has been determined.
+class BufferValueMap {
+ public:
+  // A unique identifier for a set of colocated values which must share the same
+  // buffer. This is not necessarily the same as the HloBuffer::Id which will
+  // ultimately contain the values. The reason is that HloBuffer::Id's are
+  // contiguous, while BufferNumbers may not be. BufferNumbers may not be
+  // dense because buffers may be created and destroyed during the analysis
+  // construction process.
+  using BufferNumber = int64;
+
+  explicit BufferValueMap(const HloDataflowAnalysis& dataflow)
+      : dataflow_(dataflow) {
+    buffers_.reserve(dataflow_.values().size());
+    value_to_buffer_number_.reserve(dataflow_.values().size());
+    for (const HloValue* value : dataflow_.values()) {
+      BufferNumber buffer_number = next_buffer_number_++;
+      buffers_[buffer_number].insert(value);
+      value_to_buffer_number_[value] = buffer_number;
+    }
+  }
+
+  // Merge together sets of HloValues which must be in the same HloBuffer
+  // because of aliasing rules (eg, in-place kWhile instruction).
+  void MergeAliasedBuffers() {
+    for (const HloValue* value : dataflow_.values()) {
+      VLOG(3) << "Merging colocated values, value: " << value->ToShortString();
+
+      // Gather the set of buffers with aliasing rules (eg, kWhile) which this
+      // value must be contained in.
+      std::vector<BufferNumber> aliased_buffers = ComputeAliasedBuffers(*value);
+
+      BufferNumber current_buffer = value_to_buffer_number_.at(value);
+      if (aliased_buffers.empty()) {
+        // The buffer containing 'value' aliases no other buffers. If the buffer
+        // containing 'value' already only contains 'value', then no change is
+        // necessary. If the buffer containing 'value' does contain other
+        // values, then remove 'value' from the buffer and create a new buffer
+        // containing only 'value'
+        if (buffers_.at(current_buffer).size() == 1) {
+          CHECK_EQ(*buffers_.at(current_buffer).begin(), value);
+        } else {
+          MoveValueToNewBuffer(*value);
+        }
+      } else {
+        // If multiple buffers are aliased merge these buffers together into a
+        // single buffer (arbitrarily chosen as the first buffer in the vector).
+        if (aliased_buffers.size() > 1) {
+          for (int64 i = 1; i < aliased_buffers.size(); ++i) {
+            MergeBuffers(/*from=*/aliased_buffers[i],
+                         /*to=*/aliased_buffers[0]);
+          }
+        }
+        BufferNumber new_buffer = aliased_buffers[0];
+        if (current_buffer != new_buffer) {
+          MoveValueToBuffer(*value, new_buffer);
+        }
+      }
+    }
+  }
+
+  // Compute and return a sorted vector of all BufferNumbers. Can be used to
+  // iterate through all buffers stabily.
+  std::vector<BufferNumber> ComputeSortedBufferNumbers() const {
+    std::vector<BufferNumber> buffer_numbers;
+    for (const auto& pair : buffers_) {
+      buffer_numbers.push_back(pair.first);
+    }
+    std::sort(buffer_numbers.begin(), buffer_numbers.end());
+    return buffer_numbers;
+  }
+
+  // Return a set of all the values in the given buffer.
+  const tensorflow::gtl::FlatSet<const HloValue*>& GetValuesInBuffer(
+      BufferNumber buffer_number) const {
+    return buffers_.at(buffer_number);
+  }
+
+ private:
+  // Create a new buffer.
+  void NewBuffer(const HloValue& value) {
+    BufferNumber buffer_number = next_buffer_number_++;
+    buffers_[buffer_number].insert(&value);
+    value_to_buffer_number_[&value] = buffer_number;
+  }
+
+  // Move the given value into a new buffer containing only the value.
+  void MoveValueToNewBuffer(const HloValue& value) {
+    BufferNumber new_buffer_number = next_buffer_number_++;
+    buffers_[new_buffer_number];
+    MoveValueToBuffer(value, new_buffer_number);
+  }
+
+  // Move the given value into the given buffer.
+  void MoveValueToBuffer(const HloValue& value, BufferNumber buffer_number) {
+    BufferNumber old_buffer_number = value_to_buffer_number_.at(&value);
+    tensorflow::gtl::FlatSet<const HloValue*>& old_value_set =
+        buffers_.at(old_buffer_number);
+    old_value_set.erase(&value);
+    if (old_value_set.empty()) {
+      buffers_.erase(old_buffer_number);
+    }
+
+    buffers_.at(buffer_number).insert(&value);
+    value_to_buffer_number_.at(&value) = buffer_number;
+  }
+
+  // Merge the buffer 'from' into the buffer 'to'.
+  void MergeBuffers(BufferNumber from, BufferNumber to) {
+    auto& from_value_set = buffers_.at(from);
+    buffers_.at(to).insert(from_value_set.begin(), from_value_set.end());
+    // NOTE: using a union-find algorithm to hold the colocated values might be
+    // faster.
+    for (const HloValue* value : from_value_set) {
+      value_to_buffer_number_.at(value) = to;
+    }
+    buffers_.erase(from);
+  }
+
+  BufferNumber GetBufferForValue(const HloValue& value) {
+    return value_to_buffer_number_.at(&value);
+  }
+
+  // Compute and return a vector of buffers that the given value must be
+  // contained in due to HLO aliasing rules.
+  std::vector<BufferNumber> ComputeAliasedBuffers(const HloValue& value) {
+    // Value is init of a while (use is while).
+    std::vector<BufferNumber> aliased_buffers;
+    for (const HloUse& use : value.uses()) {
+      VLOG(2) << "use of value " << value.ToShortString() << ": " << use;
+      if (use.instruction->opcode() == HloOpcode::kWhile) {
+        // Determine the while value that this shares a buffer with.
+        const HloValue& while_value =
+            dataflow_.GetUniqueValueAt(use.instruction, use.operand_index);
+        aliased_buffers.push_back(GetBufferForValue(while_value));
+        VLOG(3) << "  value is init value to a while; must share buffer with "
+                   "while value "
+                << while_value.ToShortString();
+      }
+    }
+
+    // Value is a parameter of a while body/condition.
+    if (value.defining_instruction()->opcode() == HloOpcode::kParameter) {
+      const HloComputation* computation =
+          value.defining_instruction()->parent();
+      const CallGraphNode& call_graph_node =
+          dataflow_.call_graph().GetNode(computation);
+      for (const CallSite& callsite : call_graph_node.caller_callsites()) {
+        if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
+          // Call graph must have been flattened.
+          CHECK_EQ(call_graph_node.caller_callsites().size(), 1);
+
+          const HloValue& while_value = dataflow_.GetUniqueValueAt(
+              callsite.instruction(), value.defining_index());
+          VLOG(3) << "  value is parameter value of the body or condition of a "
+                     "while; must share buffer with while value "
+                  << while_value.ToShortString();
+          aliased_buffers.push_back(GetBufferForValue(while_value));
+        }
+      }
+    }
+
+    // Value is the root of a while body.
+    for (const HloPosition& position : value.positions()) {
+      const HloComputation* computation = position.instruction->parent();
+      const CallGraphNode& call_graph_node =
+          dataflow_.call_graph().GetNode(computation);
+      if (position.instruction == computation->root_instruction()) {
+        for (const CallSite& callsite : call_graph_node.caller_callsites()) {
+          if (callsite.instruction()->opcode() == HloOpcode::kWhile &&
+              callsite.instruction()->while_body() == computation) {
+            // Call graph must have been flattened.
+            CHECK_EQ(call_graph_node.caller_callsites().size(), 1);
+
+            const HloValue& while_value = dataflow_.GetUniqueValueAt(
+                callsite.instruction(), position.index);
+            VLOG(3) << "  value is root the body computation of a while; must "
+                       "share buffer with while value "
+                    << while_value.ToShortString();
+            aliased_buffers.push_back(GetBufferForValue(while_value));
+          }
+        }
+      }
+    }
+
+    // Value is the output of the while instruction itself.
+    if (value.defining_instruction()->opcode() == HloOpcode::kWhile) {
+      VLOG(3) << "  value is output of a while instruction";
+      aliased_buffers.push_back(GetBufferForValue(value));
+    }
+
+    // Uniquify aliased buffers.
+    std::sort(aliased_buffers.begin(), aliased_buffers.end());
+    aliased_buffers.erase(
+        std::unique(aliased_buffers.begin(), aliased_buffers.end()),
+        aliased_buffers.end());
+
+    return aliased_buffers;
+  }
+
+  // Dataflow analysis used to construct the buffer map.
+  const HloDataflowAnalysis& dataflow_;
+
+  // A map containing the set of values contained in each buffer.
+  tensorflow::gtl::FlatMap<BufferNumber,
+                           tensorflow::gtl::FlatSet<const HloValue*>>
+      buffers_;
+
+  // A map indicating which buffer each value is contained in.
+  tensorflow::gtl::FlatMap<const HloValue*, BufferNumber>
+      value_to_buffer_number_;
+
+  // The buffer number of the next buffer to be created.
+  BufferNumber next_buffer_number_ = 0;
+};
 
 HloAliasAnalysis::HloAliasAnalysis(HloModule* module) : module_(module) {}
 
@@ -99,10 +326,11 @@ bool HloAliasAnalysis::InstructionBuffersAreDistinct(
       }
     } else {
       // It's possible for multiple values at this index to have the same
-      // HloBuffer. This does not result in non-distictness. To account for this
-      // case, add all of the buffers at this index after checking whether each
-      // buffer exists at an earlier index. This is a corner case, however, as
-      // the number of values at an index is almost always one.
+      // HloBuffer. This does not result in non-distictness. To account for
+      // this case, add all of the buffers at this index after checking
+      // whether each buffer exists at an earlier index. This is a corner
+      // case, however, as the number of values at an index is almost always
+      // one.
       std::vector<const HloBuffer*> buffers_at_this_index;
       for (const HloValue* value : value_set.values()) {
         const HloBuffer* buffer = &GetBufferContainingValue(*value);
@@ -118,15 +346,6 @@ bool HloAliasAnalysis::InstructionBuffersAreDistinct(
   return true;
 }
 
-void HloAliasAnalysis::InitializeBufferSets() {
-  // Initially define a buffer for every HloValue in the module.
-  for (const HloValue& value : dataflow_analysis_->values()) {
-    HloBuffer& buffer = NewHloBuffer();
-    buffer.AddValue(value);
-    value_to_buffer_[&value] = &buffer;
-  }
-}
-
 Status HloAliasAnalysis::Verify() const {
   // Verify consistency between the value_to_buffer_ map and
   // HloBuffer::values().
@@ -137,9 +356,8 @@ Status HloAliasAnalysis::Verify() const {
                            value) != buffer.values().end());
   }
 
-  for (const auto& pair : buffers_) {
-    const HloBuffer::Id id = pair.first;
-    const HloBuffer& buffer = pair.second;
+  for (HloBuffer::Id id = 0; id < buffers_.size(); ++id) {
+    const HloBuffer& buffer = buffers_[id];
     TF_RET_CHECK(buffer.id() == id);
 
     HloValue::Id last_value_id = -1;
@@ -152,123 +370,14 @@ Status HloAliasAnalysis::Verify() const {
     }
   }
 
-  if (!buffers_vector_.empty()) {
-    // buffers_vector_ should be a vector of all HloBuffers sorted by id.
-    std::vector<const HloBuffer*> buffers;
-    for (const auto& id_buffer : buffers_) {
-      buffers.push_back(&id_buffer.second);
-    }
-    std::sort(buffers.begin(), buffers.end(), HloBuffer::IdLessThan);
-    TF_RET_CHECK(buffers_vector_ == buffers);
-  }
-
   return Status::OK();
-}
-
-Status HloAliasAnalysis::VerifyAgainstReference() const {
-  TF_RETURN_IF_ERROR(Verify());
-
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<HloAliasAnalysis> reference,
-                      Run(module_));
-  TF_RETURN_IF_ERROR(reference->Verify());
-
-  VLOG(2) << "This analysis:";
-  XLA_VLOG_LINES(2, ToString());
-  VLOG(2) << "Reference:";
-  XLA_VLOG_LINES(2, reference->ToString());
-
-  // Create map from HloValue in the reference analysis to HloValue in this
-  // analysis and vice versa.
-  tensorflow::gtl::FlatMap<const HloValue*, const HloValue*> reference_to_this;
-  tensorflow::gtl::FlatMap<const HloValue*, const HloValue*> this_to_reference;
-  for (const HloValue& value : dataflow_analysis().values()) {
-    const HloValue& reference_value =
-        reference->dataflow_analysis().GetValueDefinedAt(
-            value.defining_instruction(), value.defining_index());
-    reference_to_this[&reference_value] = &value;
-    this_to_reference[&value] = &reference_value;
-  }
-
-  TF_RET_CHECK(buffers_.size() == reference->buffers_.size())
-      << "Different number of buffers (" << buffers_.size()
-      << " != " << reference->buffers_.size() << ")";
-  for (const auto& pair : reference->buffers_) {
-    const HloBuffer& reference_buffer = pair.second;
-
-    // Find the corresponding buffer in the reference by taking the first value
-    // in the buffer, finding the corresponding value in the reference, and then
-    // finding the buffer holding that value.
-    TF_RET_CHECK(!reference_buffer.values().empty());
-    const HloValue* reference_value = reference_buffer.values()[0];
-    const HloValue* value = reference_to_this.at(reference_value);
-    const HloBuffer& buffer = GetBufferContainingValue(*value);
-
-    // The buffer and the reference should have the exact same values. To make
-    // comparison easy, sort the values in the reference buffer identically to
-    // the values in the non-reference buffer (ie, by the corresponding id of
-    // the non-reference value).
-    std::vector<const HloValue*> reference_values = reference_buffer.values();
-    std::sort(reference_values.begin(), reference_values.end(),
-              [&reference_to_this](const HloValue* a, const HloValue* b) {
-                return reference_to_this.at(a)->id() <
-                       reference_to_this.at(b)->id();
-              });
-    TF_RET_CHECK(reference_values.size() == buffer.values().size());
-    for (int i = 0; i < buffer.values().size(); ++i) {
-      TF_RET_CHECK(*reference_values[i] == *buffer.values()[i])
-          << "Buffer:\n  " << buffer
-          << "\ndoes not have the same values as reference buffer:\n  "
-          << reference_buffer;
-    }
-  }
-
-  return Status::OK();
-}
-
-HloBuffer& HloAliasAnalysis::NewHloBuffer() {
-  HloBuffer::Id buffer_id = next_buffer_id_++;
-  auto emplaced = buffers_.emplace(std::piecewise_construct,
-                                   std::forward_as_tuple(buffer_id),
-                                   std::forward_as_tuple(buffer_id));
-  CHECK(emplaced.second);
-
-  buffers_vector_.clear();
-
-  return emplaced.first->second;
-}
-
-void HloAliasAnalysis::MoveValueToNewBuffer(const HloValue& value) {
-  HloBuffer& new_buffer = NewHloBuffer();
-  MoveValueToBuffer(value, &new_buffer);
-
-  VLOG(3) << "Moved value " << value.ToShortString() << " into new buffer "
-          << new_buffer.id();
-}
-
-void HloAliasAnalysis::MoveValueToBuffer(const HloValue& value,
-                                         HloBuffer* buffer) {
-  HloBuffer& old_buffer = GetBufferContainingValue(value);
-  CHECK_NE(buffer, &old_buffer);
-  VLOG(3) << "Moved value " << value.ToShortString() << " from buffer "
-          << old_buffer.id() << " into buffer " << buffer->id();
-  old_buffer.RemoveValue(value);
-  if (old_buffer.values().empty()) {
-    VLOG(3) << "Buffer " << old_buffer.id() << " now empty. Removing.";
-    buffers_.erase(old_buffer.id());
-    buffers_vector_.clear();
-  }
-
-  buffer->AddValue(value);
-  value_to_buffer_[&value] = buffer;
 }
 
 string HloAliasAnalysis::ToString() const {
   string out = StrCat("HloAliasAnalysis, module ", module_->name(), "\n");
   StrAppend(&out, "  Buffers at each position:\n");
-  for (const std::unique_ptr<HloComputation>& computation :
-       module_->computations()) {
-    for (const std::unique_ptr<HloInstruction>& instruction :
-         computation->instructions()) {
+  for (const HloComputation* computation : module_->computations()) {
+    for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
       if (ShapeUtil::IsTuple(instruction->shape())) {
         ShapeUtil::ForEachSubshape(
@@ -276,13 +385,13 @@ string HloAliasAnalysis::ToString() const {
             [&out, &instruction, this](const Shape&, const ShapeIndex& index) {
               StrAppend(&out, "      tuple index ", index.ToString(), ":\n");
               for (const HloBuffer* buffer :
-                   ComputeBuffersAt(instruction.get(), index)) {
+                   ComputeBuffersAt(instruction, index)) {
                 StrAppend(&out, "        ", buffer->ToString(), "\n");
               }
             });
       } else {
         for (const HloBuffer* buffer :
-             ComputeBuffersAt(instruction.get(), /*index=*/{})) {
+             ComputeBuffersAt(instruction, /*index=*/{})) {
           StrAppend(&out, "      ", buffer->ToString(), "\n");
         }
       }
@@ -290,10 +399,10 @@ string HloAliasAnalysis::ToString() const {
   }
 
   StrAppend(&out, "  Buffers:\n");
-  for (const HloBuffer* buffer : buffers()) {
-    StrAppend(&out, "    ", buffer->ToString(), "\n");
+  for (const HloBuffer& buffer : buffers()) {
+    StrAppend(&out, "    ", buffer.ToString(), "\n");
     StrAppend(&out, "      positions:\n");
-    for (const HloPosition& position : buffer->ComputePositions()) {
+    for (const HloPosition& position : buffer.ComputePositions()) {
       StrAppend(&out, "        ", position.ToString(), "\n");
     }
   }
@@ -301,221 +410,10 @@ string HloAliasAnalysis::ToString() const {
   return out;
 }
 
-const std::vector<const HloBuffer*>& HloAliasAnalysis::buffers() const {
-  if (buffers_vector_.empty()) {
-    // Lazily construct vector of buffers.
-    buffers_vector_.reserve(buffers_.size());
-    for (auto& pair : buffers_) {
-      buffers_vector_.push_back(&pair.second);
-    }
-    std::sort(buffers_vector_.begin(), buffers_vector_.end(),
-              HloBuffer::IdLessThan);
-  } else {
-    CHECK_EQ(buffers_vector_.size(), buffers_.size());
-    for (const HloBuffer* buffer : buffers_vector_) {
-      DCHECK(ContainsKey(buffers_, buffer->id()));
-      DCHECK(&GetBuffer(buffer->id()) == buffer);
-    }
-  }
-  return buffers_vector_;
-}
-
-void HloAliasAnalysis::UpdateAtInstructions(
-    tensorflow::gtl::ArraySlice<const HloInstruction*> instructions) {
-  VLOG(4) << "Updated HLO module:";
-  XLA_VLOG_LINES(4, module_->ToString());
-
-  VLOG(3) << "Before update:";
-  XLA_VLOG_LINES(3, ToString());
-
-  std::vector<const HloValue*> values_to_update;
-  for (const HloInstruction* instruction : instructions) {
-    for (auto& pair : dataflow_analysis().GetInstructionValueSet(instruction)) {
-      for (const HloValue* value : pair.second.values()) {
-        values_to_update.push_back(value);
-      }
-    }
-  }
-
-  UpdateBuffersForValues(values_to_update);
-
-  VLOG(3) << "After update:";
-  XLA_VLOG_LINES(3, ToString());
-}
-
-void HloAliasAnalysis::UpdateAfterChangingOperand(HloInstruction* instruction,
-                                                  HloInstruction* old_operand,
-                                                  HloInstruction* new_operand) {
-  VLOG(1) << "UpdateAfterChangingOperand(" << instruction->name() << ", "
-          << old_operand->name() << " => " << new_operand->name() << ")";
-
-  dataflow_analysis_->UpdateAfterChangingOperand(instruction, old_operand,
-                                                 new_operand);
-  TF_DCHECK_OK(dataflow_analysis_->VerifyAgainstReference());
-
-  VLOG(4) << "Updated dataflow:";
-  XLA_VLOG_LINES(4, dataflow_analysis_->ToString());
-
-  UpdateAtInstructions({instruction, old_operand, new_operand});
-}
-
-void HloAliasAnalysis::UpdateAfterChangingRoot(HloInstruction* old_root,
-                                               HloInstruction* new_root) {
-  VLOG(1) << "UpdateAfterChangingRoot(" << old_root->name() << " => "
-          << new_root->name() << ")";
-
-  dataflow_analysis_->UpdateAfterChangingRoot(old_root, new_root);
-  TF_DCHECK_OK(dataflow_analysis_->VerifyAgainstReference());
-
-  VLOG(4) << "Updated dataflow:";
-  XLA_VLOG_LINES(4, dataflow_analysis_->ToString());
-
-  UpdateAtInstructions({old_root, new_root});
-}
-
-std::vector<HloBuffer*> HloAliasAnalysis::ComputeAliasedBuffers(
-    const HloValue& value) {
-  std::vector<HloBuffer*> aliased_buffers;
-
-  // Value is init of a while (use is while).
-  for (const HloUse& use : value.uses()) {
-    VLOG(1) << "use of value " << value.ToShortString() << ": " << use;
-    if (use.instruction->opcode() == HloOpcode::kWhile) {
-      // Determine the while value that this shares a buffer with.
-      const HloValue& while_value = dataflow_analysis().GetUniqueValueAt(
-          use.instruction, use.operand_index);
-      aliased_buffers.push_back(&GetBufferContainingValue(while_value));
-      VLOG(3) << "  value is init value to a while; must share buffer with "
-                 "while value "
-              << while_value.ToShortString();
-    }
-  }
-
-  // Value is a parameter of a while body/condition.
-  if (value.defining_instruction()->opcode() == HloOpcode::kParameter) {
-    const HloComputation* computation = value.defining_instruction()->parent();
-    const CallGraphNode& call_graph_node =
-        dataflow_analysis().call_graph().GetNode(computation);
-    for (const CallSite& callsite : call_graph_node.caller_callsites()) {
-      if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
-        // Call graph must have been flattened.
-        CHECK_EQ(call_graph_node.caller_callsites().size(), 1);
-
-        const HloValue& while_value = dataflow_analysis().GetUniqueValueAt(
-            callsite.instruction(), value.defining_index());
-        VLOG(3) << "  value is parameter value of the body or condition of a "
-                   "while; must share buffer with while value "
-                << while_value.ToShortString();
-        aliased_buffers.push_back(&GetBufferContainingValue(while_value));
-      }
-    }
-  }
-
-  // Value is the root of a while body.
-  for (const HloPosition& position : value.positions()) {
-    const HloComputation* computation = position.instruction->parent();
-    const CallGraphNode& call_graph_node =
-        dataflow_analysis().call_graph().GetNode(computation);
-    if (position.instruction == computation->root_instruction()) {
-      for (const CallSite& callsite : call_graph_node.caller_callsites()) {
-        if (callsite.instruction()->opcode() == HloOpcode::kWhile &&
-            callsite.instruction()->while_body() == computation) {
-          // Call graph must have been flattened.
-          CHECK_EQ(call_graph_node.caller_callsites().size(), 1);
-
-          // If the value appears in the root of a while body, then
-          // necessarily the value is defined in the body as well.
-          CHECK_EQ(value.defining_instruction()->parent(), computation);
-
-          const HloValue& while_value = dataflow_analysis().GetUniqueValueAt(
-              callsite.instruction(), position.index);
-          VLOG(3) << "  value is root the body computation of a while; must "
-                     "share buffer with while value "
-                  << while_value.ToShortString();
-          aliased_buffers.push_back(&GetBufferContainingValue(while_value));
-        }
-      }
-    }
-  }
-
-  // Value is in the while instruction itself.
-  if (value.defining_instruction()->opcode() == HloOpcode::kWhile) {
-    VLOG(3) << "  value is output of a while instruction";
-    aliased_buffers.push_back(&GetUniqueBufferAt(value.defining_instruction(),
-                                                 value.defining_index()));
-  }
-
-  // Uniquify aliased buffers.
-  std::sort(aliased_buffers.begin(), aliased_buffers.end(),
-            HloBuffer::IdLessThan);
-  aliased_buffers.erase(
-      std::unique(aliased_buffers.begin(), aliased_buffers.end()),
-      aliased_buffers.end());
-
-  return aliased_buffers;
-}
-
-// This method recomputes the HloBuffer for each of the given HloValues. The
-// method does not necessarily update the HloBuffer of values which share a
-// buffer with the given values, but are not explicitly passed in
-// 'values'. Therefore, the caller must pass in all values which may require an
-// update according to the kind of HLO graph change which occurred: operand
-// changed (UpdateAfterChangingOperand), or root of computation changed
-// (UpdateAfterChangingRoot).
-void HloAliasAnalysis::UpdateBuffersForValues(
-    tensorflow::gtl::ArraySlice<const HloValue*> values) {
-  for (const HloValue* value : values) {
-    VLOG(3) << "Updating buffer for value: " << value->ToShortString();
-
-    // Gather the set of buffer with aliasing rules (eg, kWhile) which this
-    // value must be contained in due.
-    std::vector<HloBuffer*> aliased_buffers = ComputeAliasedBuffers(*value);
-
-    HloBuffer& current_buffer = GetBufferContainingValue(*value);
-    if (aliased_buffers.empty()) {
-      // The buffer containing 'value' aliases no other buffers. If the buffer
-      // containing 'value' already only contains 'value', then no change is
-      // necessary. If the buffer containing 'value' does contain other values,
-      // then remove 'value' from the buffer and create a new buffer containing
-      // only 'value'
-      if (current_buffer.values().size() == 1) {
-        CHECK_EQ(current_buffer.values()[0], value);
-      } else {
-        MoveValueToNewBuffer(*value);
-      }
-    } else {
-      // If multiple buffers are aliased merge these buffers together into a
-      // single buffer (arbitrarily chosen as the first buffer in the vector).
-      if (aliased_buffers.size() > 1) {
-        for (int64 i = 1; i < aliased_buffers.size(); ++i) {
-          // Make copy of values vector because MoveValueToBuffer invalidates
-          // the values iterator. The could be done more efficiently by moving
-          // all values and once.
-          std::vector<const HloValue*> values = aliased_buffers[i]->values();
-          for (const HloValue* value : values) {
-            MoveValueToBuffer(*value, aliased_buffers[0]);
-          }
-        }
-        aliased_buffers.resize(1);
-      }
-
-      CHECK_EQ(aliased_buffers.size(), 1);
-      HloBuffer* new_buffer = aliased_buffers[0];
-
-      if (&current_buffer != new_buffer) {
-        MoveValueToBuffer(*value, new_buffer);
-      }
-    }
-
-    VLOG(4) << "Analysis after update:";
-    XLA_VLOG_LINES(4, ToString());
-  }
-}
-
 /* static */
 StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
     HloModule* module) {
-  VLOG(1) << "HloAliasAnalysis::Run on module " << module->name();
+  VLOG(2) << "HloAliasAnalysis::Run on module " << module->name();
   XLA_VLOG_LINES(2, module->ToString());
 
   auto alias_analysis = WrapUnique(new HloAliasAnalysis(module));
@@ -524,22 +422,84 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
       HloDataflowAnalysis::Run(module, /*ssa_form=*/true,
                                /*bitcast_defines_value=*/false));
 
-  alias_analysis->InitializeBufferSets();
+  BufferValueMap buffer_map(alias_analysis->dataflow_analysis());
+  buffer_map.MergeAliasedBuffers();
 
-  VLOG(3) << "After initialization:";
-  XLA_VLOG_LINES(3, alias_analysis->ToString());
-
-  std::vector<const HloValue*> all_values;
-  for (const HloValue& value : alias_analysis->dataflow_analysis().values()) {
-    all_values.push_back(&value);
+  // Create a vector of HloBuffers, one for each set of values in the
+  // BufferValueMap. Create the HloBuffers as a vector of contiguously numbered
+  // buffers.
+  std::vector<BufferValueMap::BufferNumber> sorted_buffer_numbers =
+      buffer_map.ComputeSortedBufferNumbers();
+  alias_analysis->buffers_.reserve(sorted_buffer_numbers.size());
+  HloBuffer::Id next_id = 0;
+  for (BufferValueMap::BufferNumber buffer_number : sorted_buffer_numbers) {
+    auto& value_set = buffer_map.GetValuesInBuffer(buffer_number);
+    std::vector<const HloValue*> sorted_values(value_set.begin(),
+                                               value_set.end());
+    std::sort(sorted_values.begin(), sorted_values.end(), HloValue::IdLessThan);
+    alias_analysis->buffers_.emplace_back(next_id++, sorted_values);
+    for (const HloValue* value : sorted_values) {
+      alias_analysis->value_to_buffer_[value] =
+          &alias_analysis->buffers_.back();
+    }
   }
-
-  alias_analysis->UpdateBuffersForValues(all_values);
 
   TF_DCHECK_OK(alias_analysis->Verify());
 
-  XLA_VLOG_LINES(1, alias_analysis->ToString());
+  XLA_VLOG_LINES(2, alias_analysis->ToString());
   return std::move(alias_analysis);
+}
+
+bool HloAliasAnalysis::HasLiveRangeInterference(
+    const HloOrdering& ordering) const {
+  for (const HloBuffer& buffer : buffers()) {
+    // Check that the values in the buffer are totally ordered with respect to
+    // 'ordering'. Begin by sorting the values with respect to 'ordering' with a
+    // tie-break using value ID. The tie-break is necessary because we need a
+    // strict weak order for std::sort.
+    std::vector<const HloValue*> values = buffer.values();
+    std::sort(values.begin(), values.end(),
+              [&ordering](const HloValue* a, const HloValue* b) {
+                if (ordering.IsDefinedBefore(*a, *b)) {
+                  return true;
+                } else if (ordering.IsDefinedBefore(*b, *a)) {
+                  return false;
+                } else {
+                  return a->id() < b->id();
+                }
+              });
+
+    // Walk through the ordered vector of values. First verify that the values
+    // are totally ordered with respect to 'ordering', then check that no
+    // adjacent values have overlapping live ranges. Only adjacent values must
+    // be checked because of the property of live range interference. For
+    // example, if you have values A, B, and C (in program order) contained in
+    // a buffer and A interferes with C, then necessarily A also interferes
+    // with B. So to check interference you only need to check interference
+    // between A and B, and between B and C.
+    CHECK(!values.empty());
+    for (int i = 1; i < values.size(); ++i) {
+      if (!ordering.IsDefinedBefore(*values[i - 1], *values[i])) {
+        VLOG(1) << values[i - 1]->ToShortString() << " and "
+                << values[i]->ToShortString() << " are not ordered";
+        return true;
+      }
+      if (ordering.MayInterfere(*values[i - 1], *values[i],
+                                dataflow_analysis())) {
+        VLOG(1) << "In buffer " << buffer.id() << " containing values:\n  "
+                << Join(values, ", ",
+                        [](string* out, const HloValue* value) {
+                          StrAppend(out, value->ToShortString());
+                        })
+
+                << "\nValue " << values[i - 1]->ToShortString()
+                << " may interfere with value " << values[i]->ToShortString();
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 }  // namespace xla

@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for the conversion code from GTFlow format to Chauffeur."""
+"""Tests for the conversion code and for feature importances export.
+
+Tests that cover conversion from TFBT format to a tensorflow.contrib.
+decision_tree generic_tree_model format and feature importances export.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -27,7 +31,7 @@ from tensorflow.python.platform import googletest
 
 class ConvertModelTest(test_util.TensorFlowTestCase):
 
-  def testConvertModel(self):
+  def _make_trees(self):
     dtec_str = """
     trees {
       nodes {
@@ -96,9 +100,30 @@ class ConvertModelTest(test_util.TensorFlowTestCase):
         }
       }
       nodes {
+        sparse_float_binary_split_default_right {
+          split {
+            feature_column: 1
+            dimension_id:3
+            threshold: -0.4
+            left_id: 7
+            right_id: 8
+          }
+        }
+        node_metadata {
+            gain: 3600
+        }
+      }
+      nodes {
         leaf {
           vector {
-            value: 0.3
+            value: 0.36
+          }
+        }
+      }
+      nodes {
+        leaf {
+          vector {
+            value: 18
           }
         }
       }
@@ -108,13 +133,25 @@ class ConvertModelTest(test_util.TensorFlowTestCase):
     """
     dtec = tree_config_pb2.DecisionTreeEnsembleConfig()
     text_format.Merge(dtec_str, dtec)
+    feature_columns = [
+        "feature_b",
+        "feature_a",
+        "feature_a_m",
+        "feature_d",
+    ]
+    return dtec, feature_columns
+
+  def testConvertModel(self):
+    dtec, feature_columns = self._make_trees()
+    # Assume 2 sparse float columns, one with 1 dimension, the second one with
+    # 5 dimensions.
     # The feature columns in the order they were added.
-    feature_columns = ["feature_b", "feature_a", "feature_d"]
     out = custom_export_strategy.convert_to_universal_format(
-        dtec, feature_columns, 1, 1,
-        1)
+        dtec, feature_columns, 1, 2, 1)
+    # Features a and a_m are sparse float features, a_m is multidimensional.
     expected_tree = """
-    features { key: "feature_a" }
+    features { key: "feature_a_0" }
+    features { key: "feature_a_m_3" }
     features { key: "feature_b" }
     features { key: "feature_d" }
     model {
@@ -165,7 +202,6 @@ class ConvertModelTest(test_util.TensorFlowTestCase):
                   }
                 }
               }
-
               nodes {
                 node_id {
                   value: 1
@@ -192,7 +228,7 @@ class ConvertModelTest(test_util.TensorFlowTestCase):
                   inequality_left_child_test {
                     feature_id {
                       id {
-                        value: "feature_a"
+                        value: "feature_a_0"
                       }
                     }
                     threshold {
@@ -255,14 +291,51 @@ class ConvertModelTest(test_util.TensorFlowTestCase):
                 node_id {
                   value: 6
                 }
+                binary_node {
+                  left_child_id {
+                    value: 7
+                  }
+                  right_child_id {
+                    value: 8
+                  }
+                  default_direction: RIGHT
+                  inequality_left_child_test {
+                      feature_id {
+                        id {
+                          value: "feature_a_m_3"
+                        }
+                      }
+                      threshold {
+                        float_value: -0.4
+                      }
+                  }
+                }
+              }
+              nodes {
+                node_id {
+                  value: 7
+                }
                 leaf {
                   vector {
                     value {
-                      float_value: 0.03
+                      float_value: 0.036
                     }
                   }
                 }
               }
+              nodes {
+                node_id {
+                  value: 8
+                }
+                leaf {
+                  vector {
+                    value {
+                      float_value: 1.8
+                    }
+                  }
+                }
+              }
+
             }
           }
           submodel_id {
@@ -272,6 +345,19 @@ class ConvertModelTest(test_util.TensorFlowTestCase):
       }
     }"""
     self.assertProtoEquals(expected_tree, out)
+
+  def testFeatureImportance(self):
+    dtec, feature_columns = self._make_trees()
+    feature_importances = custom_export_strategy._get_feature_importances(
+        dtec, feature_columns, 1, 2, 1)
+    self.assertItemsEqual(
+        ["feature_b", "feature_a_0", "feature_a_m_3", "feature_d"],
+        feature_importances.keys())
+    self.assertAlmostEqual(50.0, feature_importances["feature_b"], places=4)
+    self.assertAlmostEqual(50.0, feature_importances["feature_a_0"], places=4)
+    self.assertAlmostEqual(50.0, feature_importances["feature_d"], places=4)
+    self.assertAlmostEqual(
+        360.0, feature_importances["feature_a_m_3"], places=4)
 
 
 if __name__ == "__main__":

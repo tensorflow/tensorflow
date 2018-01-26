@@ -15,6 +15,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function_testlib.h"
 
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
@@ -51,6 +53,26 @@ FunctionDef FindDevice() {
       {},
       // Nodes
       {{{"device_name"}, "FindDeviceOp", {}, {}}});
+}
+
+// TODO(phawkins): replace with C++ API for calling functions, when that exists.
+Output Call(Scope* scope, const string& op_name, const string& fn_name,
+            gtl::ArraySlice<Input> inputs) {
+  NodeDef def;
+  NodeDefBuilder builder(op_name, fn_name, scope->graph()->op_registry());
+  for (const Input& input : inputs) {
+    builder.Input(input.node()->name(), input.index(),
+                  input.node()->output_type(input.index()));
+  }
+  TF_CHECK_OK(builder.Finalize(&def));
+  Status status;
+  Node* n = scope->graph()->AddNode(def, &status);
+  TF_CHECK_OK(status);
+  TF_CHECK_OK(scope->DoShapeInference(n));
+  for (int i = 0; i < inputs.size(); ++i) {
+    scope->graph()->AddEdge(inputs[i].node(), inputs[i].index(), n, i);
+  }
+  return Output(n);
 }
 
 }  // namespace function

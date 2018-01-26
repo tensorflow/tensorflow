@@ -68,45 +68,10 @@ LocalService::LocalService(const ServiceOptions& options,
                            std::unique_ptr<Backend> execute_backend)
     : Service(options, std::move(execute_backend)) {}
 
-namespace {
-// Returns the space required to allocate a shape. If
-// allocate_space_for_deep_copy the space includes all sub-buffers of
-// a tuple.
-int64 RequiredSpace(const Shape& shape, bool allocate_space_for_deep_copy,
-                    TransferManager* transfer_manager) {
-  int64 size = 0;
-  // TODO(b/33492279) remove once no devices represent result tuples as
-  // contiguous buffers.
-  if (allocate_space_for_deep_copy) {
-    ShapeUtil::ForEachSubshape(
-        shape, [&size, transfer_manager](const Shape& subshape,
-                                         const ShapeIndex& /*index*/) {
-          size += transfer_manager->GetByteSizeRequirement(subshape);
-        });
-  }
-  return size;
-}
-}  // namespace
-
-StatusOr<GlobalDataHandle> LocalService::AllocateBufferOnDevice(
-    const Shape& shape, int device_ordinal, bool allocate_space_for_deep_copy) {
-  int64 allocation_size = RequiredSpace(shape, allocate_space_for_deep_copy,
-                                        execute_backend_->transfer_manager());
-
-  TF_ASSIGN_OR_RETURN(se::DeviceMemoryBase allocation,
-                      execute_backend_->memory_allocator()->Allocate(
-                          device_ordinal, allocation_size));
-
-  return allocation_tracker_.Register(
-      execute_backend_.get(), device_ordinal, allocation, shape,
-      tensorflow::strings::StrCat("AllocateBufferOnDevice of size ",
-                                  allocation_size));
-}
-
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const ComputationHandle& computation,
     const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-    const Shape* result_layout, int device_ordinal, bool has_hybrid_result) {
+    const Shape* result_layout, int device_ordinal) {
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
                       computation_tracker_.Resolve(computation));
   VersionedComputationHandle versioned_handle =
@@ -119,15 +84,30 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   // Validate incoming layouts.
   if (argument_layouts.size() != program_shape->parameters_size()) {
     return InvalidArgument(
-        "invalid number of arguments for computation: expected %d, got %zu",
+        "Invalid number of arguments for computation: expected %d, got %zu.",
         program_shape->parameters_size(), argument_layouts.size());
   }
   for (int i = 0; i < argument_layouts.size(); ++i) {
     const Shape& argument_shape = *argument_layouts[i];
     TF_RETURN_IF_ERROR(ShapeUtil::ValidateShape(argument_shape));
     if (!ShapeUtil::Compatible(argument_shape, program_shape->parameters(i))) {
+      tensorflow::gtl::optional<const OpMetadata*> metadata =
+          user_computation->ParameterMetadata(i);
+      auto metadata_string = [&metadata]() -> string {
+        if (!metadata.has_value()) {
+          return "";
+        }
+        CHECK(metadata.value() != nullptr);
+        const OpMetadata& m = *metadata.value();
+        if (!m.source_file().empty()) {
+          return tensorflow::strings::Printf(
+              " (%s:%d)", m.source_file().c_str(), m.source_line());
+        }
+        return "";
+      };
       return InvalidArgument(
-          "invalid argument shape for argument %d, expected %s, got %s", i,
+          "Invalid argument shape for argument %d%s, expected %s, got %s.", i,
+          metadata_string().c_str(),
           ShapeUtil::HumanString(program_shape->parameters(i)).c_str(),
           ShapeUtil::HumanString(argument_shape).c_str());
     }
@@ -148,16 +128,19 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, argument_layouts, &execution_options,
-                         has_hybrid_result));
+      CreateModuleConfig(*program_shape, argument_layouts, &execution_options));
 
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       execute_backend_->stream_executor(device_ordinal));
 
-  std::vector<perftools::gputools::DeviceMemoryBase> argument_buffers(
-      argument_layouts.size());
   return BuildExecutable(versioned_handle, std::move(module_config),
-                         argument_buffers, execute_backend_.get(), executor);
+                         execute_backend_.get(), executor);
+}
+
+StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {
+  return backend().computation_placer()->DeviceId(
+      replica_number, /*computation=*/0, options_.number_of_replicas(),
+      /*computation_count=*/1);
 }
 
 }  // namespace xla

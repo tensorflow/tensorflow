@@ -31,13 +31,13 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/protobuf.h"
-#include "tensorflow/core/protobuf/config.pb.h"
-#include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/core/profiler/internal/advisor/tfprof_advisor.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_stats.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
 #include "tensorflow/core/profiler/tfprof_log.pb.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
+#include "tensorflow/core/protobuf/config.pb.h"
+#include "tensorflow/core/util/command_line_flags.h"
 
 namespace tensorflow {
 namespace tfprof {
@@ -66,6 +66,7 @@ void completion(const char* buf, linenoiseCompletions* lc) {
 }
 
 int Run(int argc, char** argv) {
+  string FLAGS_profile_path = "";
   string FLAGS_graph_path = "";
   string FLAGS_run_meta_path = "";
   string FLAGS_op_log_path = "";
@@ -96,6 +97,7 @@ int Run(int argc, char** argv) {
   }
 
   std::vector<Flag> flag_list = {
+      Flag("profile_path", &FLAGS_profile_path, "Profile binary file name."),
       Flag("graph_path", &FLAGS_graph_path, "GraphDef proto text file name"),
       Flag("run_meta_path", &FLAGS_run_meta_path,
            "Comma-separated list of RunMetadata proto binary "
@@ -138,6 +140,14 @@ int Run(int argc, char** argv) {
   }
   port::InitMain(argv[0], &argc, &argv);
 
+  if (!FLAGS_profile_path.empty() &&
+      (!FLAGS_graph_path.empty() || !FLAGS_run_meta_path.empty())) {
+    fprintf(stderr,
+            "--profile_path is set, do not set --graph_path or "
+            "--run_meta_path\n");
+    return 1;
+  }
+
   std::vector<string> account_type_regexes =
       str_util::Split(FLAGS_account_type_regexes, ',', str_util::SkipEmpty());
   std::vector<string> start_name_regexes =
@@ -157,7 +167,8 @@ int Run(int argc, char** argv) {
   CHECK(s.ok()) << s.ToString();
 
   string cmd = "";
-  if (argc == 1 && FLAGS_graph_path.empty()) {
+  if (argc == 1 && FLAGS_graph_path.empty() && FLAGS_profile_path.empty() &&
+      FLAGS_run_meta_path.empty()) {
     PrintHelp();
     return 0;
   } else if (argc > 1) {
@@ -173,24 +184,6 @@ int Run(int argc, char** argv) {
   }
 
   printf("Reading Files...\n");
-  std::unique_ptr<GraphDef> graph(new GraphDef());
-  TF_CHECK_OK(
-      ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false));
-
-  std::unique_ptr<OpLogProto> op_log(new OpLogProto());
-  if (!FLAGS_op_log_path.empty()) {
-    string op_log_str;
-    s = ReadFileToString(Env::Default(), FLAGS_op_log_path, &op_log_str);
-    if (!s.ok()) {
-      fprintf(stderr, "Failed to read op_log_path: %s\n", s.ToString().c_str());
-      return 1;
-    }
-    if (!ParseProtoUnlimited(op_log.get(), op_log_str)) {
-      fprintf(stderr, "Failed to parse op_log_path\n");
-      return 1;
-    }
-  }
-
   std::unique_ptr<checkpoint::CheckpointReader> ckpt_reader;
   TF_Status* status = TF_NewStatus();
   if (!FLAGS_checkpoint_path.empty()) {
@@ -204,25 +197,55 @@ int Run(int argc, char** argv) {
     TF_DeleteStatus(status);
   }
 
-  TFStats tf_stat(std::move(graph), nullptr, std::move(op_log),
-                  std::move(ckpt_reader));
-
-  std::vector<string> run_meta_files =
-      str_util::Split(FLAGS_run_meta_path, ',', str_util::SkipEmpty());
-  for (int i = 0; i < run_meta_files.size(); ++i) {
-    std::unique_ptr<RunMetadata> run_meta(new RunMetadata());
-    s = ReadProtoFile(Env::Default(), run_meta_files[i], run_meta.get(), true);
-    if (!s.ok()) {
-      fprintf(stderr, "Failed to read run_meta_path %s. Status: %s\n",
-              run_meta_files[i].c_str(), s.ToString().c_str());
-      return 1;
+  std::unique_ptr<TFStats> tf_stat;
+  if (!FLAGS_profile_path.empty()) {
+    tf_stat.reset(new TFStats(FLAGS_profile_path, std::move(ckpt_reader)));
+  } else {
+    printf(
+        "Try to use a single --profile_path instead of "
+        "graph_path,op_log_path,run_meta_path\n");
+    std::unique_ptr<GraphDef> graph(new GraphDef());
+    if (!FLAGS_graph_path.empty()) {
+      TF_CHECK_OK(
+          ReadProtoFile(Env::Default(), FLAGS_graph_path, graph.get(), false));
     }
-    tf_stat.AddRunMeta(i, std::move(run_meta));
+
+    std::unique_ptr<OpLogProto> op_log(new OpLogProto());
+    if (!FLAGS_op_log_path.empty()) {
+      string op_log_str;
+      s = ReadFileToString(Env::Default(), FLAGS_op_log_path, &op_log_str);
+      if (!s.ok()) {
+        fprintf(stderr, "Failed to read op_log_path: %s\n",
+                s.ToString().c_str());
+        return 1;
+      }
+      if (!ParseProtoUnlimited(op_log.get(), op_log_str)) {
+        fprintf(stderr, "Failed to parse op_log_path\n");
+        return 1;
+      }
+    }
+    tf_stat.reset(new TFStats(std::move(graph), nullptr, std::move(op_log),
+                              std::move(ckpt_reader)));
+
+    std::vector<string> run_meta_files =
+        str_util::Split(FLAGS_run_meta_path, ',', str_util::SkipEmpty());
+    for (int i = 0; i < run_meta_files.size(); ++i) {
+      std::unique_ptr<RunMetadata> run_meta(new RunMetadata());
+      s = ReadProtoFile(Env::Default(), run_meta_files[i], run_meta.get(),
+                        true);
+      if (!s.ok()) {
+        fprintf(stderr, "Failed to read run_meta_path %s. Status: %s\n",
+                run_meta_files[i].c_str(), s.ToString().c_str());
+        return 1;
+      }
+      tf_stat->AddRunMeta(i, std::move(run_meta));
+      fprintf(stdout, "run graph coverage: %.2f\n", tf_stat->run_coverage());
+    }
   }
 
   if (cmd == kCmds[4]) {
-    tf_stat.BuildAllViews();
-    Advisor(&tf_stat).Advise(Advisor::DefaultOptions());
+    tf_stat->BuildAllViews();
+    Advisor(tf_stat.get()).Advise(Advisor::DefaultOptions());
     return 0;
   }
 
@@ -236,19 +259,30 @@ int Run(int argc, char** argv) {
       select, output_type, output_options);
 
   if (cmd == kCmds[2] || cmd == kCmds[3]) {
-    tf_stat.BuildView(cmd);
-    tf_stat.ShowMultiGraphNode(cmd, opts);
+    tf_stat->BuildView(cmd);
+    tf_stat->ShowMultiGraphNode(cmd, opts);
     return 0;
   } else if (cmd == kCmds[0] || cmd == kCmds[1]) {
-    tf_stat.BuildView(cmd);
-    tf_stat.ShowGraphNode(cmd, opts);
+    tf_stat->BuildView(cmd);
+    tf_stat->ShowGraphNode(cmd, opts);
     return 0;
   }
 
   linenoiseSetCompletionCallback(completion);
   linenoiseHistoryLoad(".tfprof_history.txt");
 
-  for (char* line = nullptr; (line = linenoise("tfprof> ")) != nullptr;) {
+  bool looped = false;
+  while (true) {
+    char* line = linenoise("tfprof> ");
+    if (line == nullptr) {
+      if (!looped) {
+        fprintf(stderr,
+                "Cannot start interative shell, "
+                "use 'bazel-bin' instead of 'bazel run'.\n");
+      }
+      break;
+    }
+    looped = true;
     string line_s = line;
     free(line);
 
@@ -270,14 +304,14 @@ int Run(int argc, char** argv) {
     } else if (cmd == kCmds[6]) {
       PrintHelp();
     } else if (cmd == kCmds[2] || cmd == kCmds[3]) {
-      tf_stat.BuildView(cmd);
-      tf_stat.ShowMultiGraphNode(cmd, new_opts);
+      tf_stat->BuildView(cmd);
+      tf_stat->ShowMultiGraphNode(cmd, new_opts);
     } else if (cmd == kCmds[0] || cmd == kCmds[1]) {
-      tf_stat.BuildView(cmd);
-      tf_stat.ShowGraphNode(cmd, new_opts);
+      tf_stat->BuildView(cmd);
+      tf_stat->ShowGraphNode(cmd, new_opts);
     } else if (cmd == kCmds[4]) {
-      tf_stat.BuildAllViews();
-      Advisor(&tf_stat).Advise(Advisor::DefaultOptions());
+      tf_stat->BuildAllViews();
+      Advisor(tf_stat.get()).Advise(Advisor::DefaultOptions());
     }
   }
   return 0;

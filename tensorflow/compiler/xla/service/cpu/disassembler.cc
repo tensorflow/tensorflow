@@ -44,7 +44,7 @@ Disassembler::Disassembler(const llvm::TargetMachine& target_machine)
       subtarget_info_, *mc_context_));
   inst_printer_.reset(target_machine.getTarget().createMCInstPrinter(
       target_machine.getTargetTriple(),
-      /*SyntaxVariant=*/0,  // Use AT&T syntax.
+      /*SyntaxVariant=*/1,  // Use Intel syntax.
       *target_machine.getMCAsmInfo(), *target_machine.getMCInstrInfo(),
       *target_machine.getMCRegisterInfo()));
   inst_analysis_.reset(target_machine.getTarget().createMCInstrAnalysis(

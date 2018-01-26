@@ -39,6 +39,15 @@ struct MaxPoolForwardWithOptionalArgmax {
                   const int pooled_width, const int kernel_h,
                   const int kernel_w, const int stride_h, const int stride_w,
                   const int pad_t, const int pad_l, T* top_data, int64* mask,
+                  const Eigen::GpuDevice& d, bool propagate_nans);
+};
+
+struct MaxPoolForwardNoMask_NCHW_VECT_C {
+  bool operator()(const int32* bottom_data, const int batch, const int height,
+                  const int width, int channels, const int pooled_height,
+                  const int pooled_width, const int kernel_h,
+                  const int kernel_w, const int stride_h, const int stride_w,
+                  const int pad_t, const int pad_l, int32* top_data,
                   const Eigen::GpuDevice& d);
 };
 

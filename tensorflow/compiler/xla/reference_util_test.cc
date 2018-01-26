@@ -60,7 +60,9 @@ TEST_F(ReferenceUtilTest, TransposeArray2D) {
 
 TEST_F(ReferenceUtilTest, MatmulArray2D) {
   Array2D<float> rhs({
-      {7.f, 8.f}, {9.f, 10.f}, {11.f, 12.f},
+      {7.f, 8.f},
+      {9.f, 10.f},
+      {11.f, 12.f},
   });
   auto result = ReferenceUtil::MatmulArray2D(*matrix_, rhs);
   auto actual_literal = Literal::CreateR2FromArray2D(*result);
@@ -82,6 +84,13 @@ TEST_F(ReferenceUtilTest, ReduceToRowArray2D) {
   auto actual_literal = Literal::CreateR1<float>(*result);
   LiteralTestUtil::ExpectR1Near<float>({5.f, 7.f, 9.f}, *actual_literal,
                                        ErrorSpec(0.0001));
+}
+
+TEST_F(ReferenceUtilTest, Reduce4Dto1DZeroSizedArray) {
+  auto result = Literal::CreateR1<float>(ReferenceUtil::Reduce4DTo1D(
+      Array4D<float>(1, 0, 1, 1), /*init=*/0, /*dims=*/{0, 1, 2},
+      [](float a, float b) { return a + b; }));
+  LiteralTestUtil::ExpectR1Equal<float>({0}, *result);
 }
 
 TEST_F(ReferenceUtilTest, MapArray2D) {
@@ -322,10 +331,14 @@ TEST_F(ReferenceUtilTest, ConvGeneralDimensionsWithSamePadding) {
 
   // Set the convolution dimension numbers.
   ConvolutionDimensionNumbers dimension_numbers;
-  dimension_numbers.set_batch_dimension(2);
-  dimension_numbers.set_feature_dimension(0);
-  dimension_numbers.add_spatial_dimensions(1);
-  dimension_numbers.add_spatial_dimensions(3);
+  dimension_numbers.set_input_batch_dimension(2);
+  dimension_numbers.set_input_feature_dimension(0);
+  dimension_numbers.set_output_batch_dimension(2);
+  dimension_numbers.set_output_feature_dimension(0);
+  dimension_numbers.add_input_spatial_dimensions(1);
+  dimension_numbers.add_output_spatial_dimensions(1);
+  dimension_numbers.add_input_spatial_dimensions(3);
+  dimension_numbers.add_output_spatial_dimensions(3);
   dimension_numbers.set_kernel_output_feature_dimension(0);
   dimension_numbers.set_kernel_input_feature_dimension(2);
   dimension_numbers.add_kernel_spatial_dimensions(1);
@@ -374,10 +387,14 @@ TEST_F(ReferenceUtilTest, ConvGeneralDimensionsWithValidPadding) {
 
   // Set the convolution dimension numbers.
   ConvolutionDimensionNumbers dimension_numbers;
-  dimension_numbers.set_batch_dimension(2);
-  dimension_numbers.set_feature_dimension(0);
-  dimension_numbers.add_spatial_dimensions(1);
-  dimension_numbers.add_spatial_dimensions(3);
+  dimension_numbers.set_input_batch_dimension(2);
+  dimension_numbers.set_input_feature_dimension(0);
+  dimension_numbers.set_output_batch_dimension(2);
+  dimension_numbers.set_output_feature_dimension(0);
+  dimension_numbers.add_input_spatial_dimensions(1);
+  dimension_numbers.add_output_spatial_dimensions(1);
+  dimension_numbers.add_input_spatial_dimensions(3);
+  dimension_numbers.add_output_spatial_dimensions(3);
 
   dimension_numbers.set_kernel_output_feature_dimension(0);
   dimension_numbers.set_kernel_input_feature_dimension(2);

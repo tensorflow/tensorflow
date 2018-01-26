@@ -21,7 +21,10 @@ from __future__ import print_function
 
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python import pywrap_tensorflow as tf_session
 from tensorflow.python.client import session
+from tensorflow.python.framework import c_api_util
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -36,7 +39,24 @@ class SessionListDevicesTestMethods(object):
       devices = sess.list_devices()
       self.assertTrue('/job:localhost/replica:0/task:0/device:CPU:0' in set(
           [d.name for d in devices]), devices)
-      self.assertGreaterEqual(1, len(devices), devices)
+
+  def testInvalidDeviceNumber(self):
+    opts = tf_session.TF_NewSessionOptions()
+    with errors.raise_exception_on_not_ok_status() as status:
+      c_session = tf_session.TF_NewSession(
+          ops.get_default_graph()._c_graph, opts, status)
+      raw_device_list = tf_session.TF_SessionListDevices(
+          c_session, status)
+    size = tf_session.TF_DeviceListCount(raw_device_list)
+    # Test that invalid device numbers return -1 rather than a Swig-wrapped
+    # pointer.
+    status_no_exception = c_api_util.ScopedTFStatus()
+    memory = tf_session.TF_DeviceListMemoryBytes(
+        raw_device_list, size, status_no_exception)
+    self.assertEqual(memory, -1)
+    tf_session.TF_DeleteDeviceList(raw_device_list)
+    with errors.raise_exception_on_not_ok_status() as status:
+      tf_session.TF_CloseSession(c_session, status)
 
   def testListDevicesGrpcSession(self):
     server = server_lib.Server.create_local_server()
@@ -44,7 +64,6 @@ class SessionListDevicesTestMethods(object):
       devices = sess.list_devices()
       self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in set(
           [d.name for d in devices]), devices)
-      self.assertGreaterEqual(1, len(devices), devices)
 
   def testListDevicesClusterSpecPropagation(self):
     server1 = server_lib.Server.create_local_server()
@@ -63,7 +82,6 @@ class SessionListDevicesTestMethods(object):
           '/job:worker/replica:0/task:0/device:CPU:0' in device_names)
       self.assertTrue(
           '/job:worker/replica:0/task:1/device:CPU:0' in device_names)
-      self.assertGreaterEqual(2, len(devices), devices)
 
 
 class SessionListDevicesTest(SessionListDevicesTestMethods,

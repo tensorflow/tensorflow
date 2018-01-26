@@ -23,6 +23,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys as _feature_keys
+from tensorflow.contrib.timeseries.python.timeseries import head as _head
 from tensorflow.contrib.timeseries.python.timeseries import input_pipeline as _input_pipeline
 from tensorflow.contrib.timeseries.python.timeseries import model_utils as _model_utils
 
@@ -34,7 +35,7 @@ def _colate_features_to_feeds_and_fetches(continue_from, signature, features,
   """Uses a saved model signature to construct feed and fetch dictionaries."""
   if _feature_keys.FilteringResults.STATE_TUPLE in continue_from:
     # We're continuing from an evaluation, so we need to unpack/flatten state.
-    state_values = _model_utils.state_to_dictionary(
+    state_values = _head.state_to_dictionary(
         continue_from[_feature_keys.FilteringResults.STATE_TUPLE])
   else:
     state_values = continue_from

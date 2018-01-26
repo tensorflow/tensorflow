@@ -195,7 +195,7 @@ XLA_TEST_F(VecOpsSimpleTest, AddTenValuesViaMap) {
       {2.1, -2.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
   auto y = builder.ConstantR1<float>(
       {-0.4, -0.6, -3.0, 0.2, 3.8, -2.2, -1.8, 4.9, 1.4, 0.6});
-  auto max = builder.Map({x, y}, add);
+  auto max = builder.Map({x, y}, add, {0});
 
   std::vector<float> expected = {1.7, -3.2, -0.4, -3.8, 5.9,
                                  0.1, -6.8, 4.,   -1.,  2.2};
@@ -385,8 +385,8 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
     auto two = builder.ConstantR0<float>(2.0);
     auto max = builder.Max(z_value, zero);
     auto mult = builder.Mul(two, max);
-    auto inner = builder.Map({mult}, add_half);
-    builder.Map({inner}, clamp);
+    auto inner = builder.Map({mult}, add_half, {});
+    builder.Map({inner}, clamp, {});
     auto computation_status = builder.Build();
     ASSERT_IS_OK(computation_status.status());
     mult_relu_add = computation_status.ConsumeValueOrDie();
@@ -396,7 +396,7 @@ XLA_TEST_F(VecOpsSimpleTest, MapTenValues) {
   {
     auto x = builder.ConstantR1<float>(
         {2.1, -21.6, 2.6, -4.0, 2.1, 2.3, -5.0, -0.9, -2.4, 1.6});
-    auto activations = builder.Map({x}, mult_relu_add);
+    auto activations = builder.Map({x}, mult_relu_add, {0});
   }
 
   std::vector<float> expected = {4.7, 0.5, 5.0, 0.5, 4.7,

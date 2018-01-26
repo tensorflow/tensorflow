@@ -102,16 +102,21 @@ Status CreateCond(const Scope& scope, const CondGraphBuilderFn& cond,
       scope.NewSubScope("cond").WithControlDependencies(inputs[0]);
   Output raw_cond_out;
   TF_RETURN_IF_ERROR(cond(cond_scope, inputs, &raw_cond_out));
+
+  TF_RETURN_IF_ERROR(scope.graph()->IsValidOutputTensor(raw_cond_out.node(),
+                                                        raw_cond_out.index()));
   if (raw_cond_out.type() != DT_BOOL) {
     return errors::InvalidArgument(
         "BuildWhileLoop: 'cond' argument must return a boolean output, got ",
         DataTypeString(raw_cond_out.type()));
   }
+  // TODO(skyewm): check that raw_cond_out is scalar
+
   *output = LoopCond(scope, raw_cond_out).output;
   return Status::OK();
 }
 
-// Create the bdoy subgraph defined by `body`. `outputs` must be non-null and
+// Create the body subgraph defined by `body`. `outputs` must be non-null and
 // empty.
 Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
                   const std::vector<Output>& inputs,
@@ -123,13 +128,18 @@ Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
   Scope body_scope =
       scope.NewSubScope("body").WithControlDependencies(inputs[0]);
   TF_RETURN_IF_ERROR(body(body_scope, inputs, outputs));
+
   const size_t num_loop_vars = inputs.size();
   if (outputs->size() != num_loop_vars) {
     return errors::InvalidArgument(
         "BuildWhileLoop: 'body' argument expected to return ", num_loop_vars,
-        "outputs, got ", outputs->size());
+        " output(s), got ", outputs->size());
   }
-  // TODO(skyewm): check output types/shapes
+  for (const Output& output : *outputs) {
+    TF_RETURN_IF_ERROR(
+        scope.graph()->IsValidOutputTensor(output.node(), output.index()));
+    // TODO(skyewm): check output types/shapes
+  }
   return Status::OK();
 }
 
@@ -162,7 +172,8 @@ Status CreateBody(const Scope& scope, const BodyGraphBuilderFn& body,
 Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
                       const CondGraphBuilderFn& cond,
                       const BodyGraphBuilderFn& body, const string& frame_name,
-                      OutputList* outputs) {
+                      OutputList* outputs, bool create_while_ctx,
+                      Output* cond_output) {
   DCHECK(!inputs.empty());
   DCHECK(outputs != nullptr);
   DCHECK(outputs->empty());
@@ -184,6 +195,7 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
 
   Output cond_out;
   TF_RETURN_IF_ERROR(CreateCond(scope, cond, merge_outputs, &cond_out));
+  if (cond_output != nullptr) *cond_output = cond_out;
 
   std::vector<Output> switch_trues(num_loop_vars);
   std::vector<Output> switch_falses(num_loop_vars);
@@ -216,7 +228,22 @@ Status BuildWhileLoop(const Scope& scope, const std::vector<Output>& inputs,
   for (int i = 0; i < num_loop_vars; ++i) {
     (*outputs)[i] = internal::Exit(scope, switch_falses[i]);
   }
-  return scope.status();
+  TF_RETURN_IF_ERROR(scope.status());
+
+  if (create_while_ctx) {
+    WhileContext* while_ctx;
+    TF_RETURN_IF_ERROR(scope.graph()->AddWhileContext(
+        frame_name, ToNodes(enter_outputs), ToNodes(*outputs),
+        ToOutputTensor(cond_out), ToOutputTensors(switch_trues),
+        ToOutputTensors(body_outputs), &while_ctx));
+
+    // Set while_ctx for all exit nodes. We currently don't require knowing the
+    // while_ctx for any other nodes.
+    for (int i = 0; i < num_loop_vars; ++i) {
+      (*outputs)[i].node()->set_while_ctx(while_ctx);
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace ops

@@ -44,6 +44,7 @@ namespace runtime {
 extern const char* const kEigenMatMulF32SymbolName;
 extern const char* const kEigenMatMulF64SymbolName;
 extern const char* const kEigenConvF32SymbolName;
+extern const char* const kEigenFftSymbolName;
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
 extern const char* const kEigenSingleThreadedConvF32SymbolName;
@@ -51,6 +52,7 @@ extern const char* const kAcquireInfeedBufferForDequeueSymbolName;
 extern const char* const kReleaseInfeedBufferAfterDequeueSymbolName;
 extern const char* const kAcquireOutfeedBufferForPopulationSymbolName;
 extern const char* const kReleaseOutfeedBufferAfterPopulationSymbolName;
+extern const char* const kParallelForkJoinSymbolName;
 
 // All symbol names for XLA CPU runtime functions need to start with this
 // prefix.

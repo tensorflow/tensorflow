@@ -18,10 +18,15 @@ limitations under the License.
 
 #include "tensorflow/c/c_api.h"
 
+#include <list>
 #include <set>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
+#ifndef __ANDROID__
+#include "tensorflow/core/framework/op_gen_lib.h"
+#endif
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -79,12 +84,20 @@ struct TF_Graph {
   std::unordered_map<tensorflow::string, tensorflow::Node*> name_map
       GUARDED_BY(mu);
 
-  // TF_Graph may only / must be deleted when
-  //   num_sessions == 0 && delete_requested == true
-
-  // num_sessions incremented by TF_NewSession, and decremented by
+  // The keys of this map are all the active sessions using this graph.
+  // Each value is the current "runnability" status of the corresponding
+  // session. Under normal conditions all statuses are Status::OK(), but
+  // if some operation is mutated after it was run by a session (this
+  // is detected in RecordMutation function), that session is no longer
+  // safe to run. Its status will contain the error that will be returned
+  // to the user, should she try running this session.
+  //
+  // Sessions are added to this map in TF_NewSession, and removed in
   // TF_DeleteSession.
-  int num_sessions GUARDED_BY(mu);
+  // TF_Graph may only / must be deleted when
+  //   sessions.size() == 0 && delete_requested == true
+  tensorflow::gtl::FlatMap<TF_Session*, tensorflow::Status> sessions
+      GUARDED_BY(mu);
   bool delete_requested GUARDED_BY(mu);  // set true by TF_DeleteGraph
 
   // Used to link graphs contained in TF_WhileParams to the parent graph that
@@ -124,10 +137,44 @@ struct TF_Session {
 
 struct TF_ImportGraphDefOptions {
   tensorflow::ImportGraphDefOptions opts;
+
+  // Backing memory for TensorId fields in opts.
+  // TODO(skyewm): it'd be better if ImportGraphDefOptions owned this.
+  std::list<tensorflow::string> tensor_id_data;
+};
+
+struct TF_ImportGraphDefResults {
+  std::vector<TF_Output> return_tensors;
+  std::vector<TF_Operation*> return_nodes;
+  std::vector<const char*> missing_unused_key_names;
+  std::vector<int> missing_unused_key_indexes;
+
+  // Backing memory for missing_unused_key_names values.
+  std::list<tensorflow::string> missing_unused_key_names_data;
 };
 
 struct TF_DeviceList {
   std::vector<tensorflow::DeviceAttributes> response;
+};
+
+struct TF_Function {
+  tensorflow::FunctionDef fdef;
+};
+
+struct TF_ApiDefMap {
+  explicit TF_ApiDefMap(const tensorflow::OpList& op_list)
+      :
+#ifndef __ANDROID__
+        api_def_map(op_list),
+#endif
+        update_docs_called(false) {
+  }
+
+#ifndef __ANDROID__
+  tensorflow::ApiDefMap api_def_map GUARDED_BY(lock);
+#endif
+  bool update_docs_called GUARDED_BY(lock);
+  tensorflow::mutex lock;
 };
 
 namespace tensorflow {
@@ -141,7 +188,30 @@ class TensorCApi {
   }
 };
 
+Status TF_TensorToTensor(const TF_Tensor* src, Tensor* dst);
+
 TF_Tensor* TF_TensorFromTensor(const Tensor& src, TF_Status* status);
+
+Status MessageToBuffer(const tensorflow::protobuf::Message& in, TF_Buffer* out);
+
+// Set the shapes and types of the output's handle.
+//
+// The lengths of the arrays pointed to by `shapes`, `ranks`, and `types` must
+// all be equal to `num_shapes_and_types`. If `ranks[i] != -1`, (i.e., if the
+// rank is known), then it must be equal to the length of `shapes[i]`; if
+// `ranks[i] == 1`, then `shapes[i]` may be nullptr.
+//
+// TODO(akshayka): Implement a corresponding getter method.
+void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
+                                           int num_shapes_and_types,
+                                           const int64_t** shapes,
+                                           const int* ranks,
+                                           const TF_DataType* types,
+                                           TF_Status* status);
+
+void RecordMutation(TF_Graph* graph, const TF_Operation& op,
+                    const char* mutation_type);
+
 }  // end namespace tensorflow
 
 #endif  // TENSORFLOW_C_C_API_INTERNAL_H_

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_SCOPE_H_
-#define THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_SCOPE_H_
+#ifndef TENSORFLOW_CC_FRAMEWORK_SCOPE_H_
+#define TENSORFLOW_CC_FRAMEWORK_SCOPE_H_
 
 #include <memory>
 #include <string>
@@ -107,13 +107,13 @@ class Scope {
   static Scope NewRootScope();
 
   /// Return a new scope. Ops created with this scope will have
-  /// <name>/<child_scope_name> as the prefix. The actual name will be unique
+  /// `name/child_scope_name` as the prefix. The actual name will be unique
   /// in the current scope. All other properties are inherited from the current
-  /// scope. If child_scope_name is empty, the '/' is elided.
+  /// scope. If `child_scope_name` is empty, the `/` is elided.
   Scope NewSubScope(const string& child_scope_name) const;
 
   /// Return a new scope. All ops created within the returned scope will have
-  /// names of the form <name>/<op_name>[_<suffix].
+  /// names of the form `name/op_name[_suffix]`.
   Scope WithOpName(const string& op_name) const;
 
   /// Return a new scope. All ops created within the returned scope will have as
@@ -242,4 +242,4 @@ struct CompositeOpScopes {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_FRAMEWORK_SCOPE_H_
+#endif  // TENSORFLOW_CC_FRAMEWORK_SCOPE_H_

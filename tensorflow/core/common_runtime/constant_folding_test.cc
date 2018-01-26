@@ -259,6 +259,13 @@ TEST_F(ConstantFoldingTest, TestNoReplaceLargeConstant) {
   TF_EXPECT_OK(ConstantFold(ConstantFoldingOptions{}, nullptr, Env::Default(),
                             nullptr, &g, &was_mutated));
   EXPECT_FALSE(was_mutated);
+
+  // Increase the limit and the concat should now be constant folded.
+  ConstantFoldingOptions opt;
+  opt.max_constant_size_in_bytes = 10 * 1024 * 1024 + 4;
+  TF_EXPECT_OK(
+      ConstantFold(opt, nullptr, Env::Default(), nullptr, &g, &was_mutated));
+  EXPECT_TRUE(was_mutated);
 }
 
 TEST_F(ConstantFoldingTest, TestNoReplaceFunctionCall) {
@@ -403,9 +410,9 @@ TEST_F(ConstantFoldingTest, SimpleShapeKnown) {
   PartialTensorShape ps1;
   int r1_dims[] = {2, 3, 4};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape<int>(r1_dims, 3, &ps1));
-  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
-  map[recv0].push_back(ps0);
-  map[recv1].push_back(ps1);
+  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  map[recv0->name()].push_back(ps0);
+  map[recv1->name()].push_back(ps1);
   ConstantFoldingOptions opts;
   opts.shape_map = &map;
   bool was_mutated;
@@ -480,9 +487,9 @@ TEST_F(ConstantFoldingTest, PartialShape) {
   int r0_dims[] = {-1, -1};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape(r0_dims, 2, &ps0));
   PartialTensorShape ps1;
-  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
-  map[recv0].push_back(ps0);
-  map[recv1].push_back(ps1);
+  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  map[recv0->name()].push_back(ps0);
+  map[recv1->name()].push_back(ps1);
   ConstantFoldingOptions opts;
   opts.shape_map = &map;
   bool was_mutated;
@@ -535,8 +542,8 @@ TEST_F(ConstantFoldingTest, ConstShapeKnown) {
   PartialTensorShape ps0;
   int c0_dims[] = {};
   TF_EXPECT_OK(PartialTensorShape::MakePartialShape(c0_dims, 0, &ps0));
-  std::unordered_map<const Node*, std::vector<PartialTensorShape>> map;
-  map[c0].push_back(ps0);
+  std::unordered_map<string, std::vector<PartialTensorShape>> map;
+  map[c0->name()].push_back(ps0);
   ConstantFoldingOptions opts;
   opts.shape_map = &map;
   bool was_mutated;

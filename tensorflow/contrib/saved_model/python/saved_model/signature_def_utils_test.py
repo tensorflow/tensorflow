@@ -94,7 +94,7 @@ class SignatureDefUtilsTest(test.TestCase):
 
   def testGetSignatureDefByKeyRegression(self):
     input1 = constant_op.constant("a", name="input-1")
-    output1 = constant_op.constant("b", name="output-1")
+    output1 = constant_op.constant(7.2, name="output-1")
 
     meta_graph_def = meta_graph_pb2.MetaGraphDef()
     self._add_to_signature_def_map(meta_graph_def, {
@@ -123,7 +123,7 @@ class SignatureDefUtilsTest(test.TestCase):
   def testGetSignatureDefByKeyClassification(self):
     input1 = constant_op.constant("a", name="input-1")
     output1 = constant_op.constant("b", name="output-1")
-    output2 = constant_op.constant("c", name="output-2")
+    output2 = constant_op.constant(3.0, name="output-2")
 
     meta_graph_def = meta_graph_pb2.MetaGraphDef()
     self._add_to_signature_def_map(meta_graph_def, {

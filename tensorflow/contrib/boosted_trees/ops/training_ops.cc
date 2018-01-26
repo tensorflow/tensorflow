@@ -17,7 +17,7 @@
 #include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
-namespace gtflow {
+namespace boosted_trees {
 
 REGISTER_OP("CenterTreeEnsembleBias")
     .Attr("learner_config: string")
@@ -116,5 +116,5 @@ active_tree: Scalar indicating the active tree being trained.
 active_layer: Scalar indicating the active layer being trained.
 )doc");
 
-}  // namespace gtflow
+}  // namespace boosted_trees
 }  // namespace tensorflow

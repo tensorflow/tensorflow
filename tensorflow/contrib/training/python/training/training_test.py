@@ -47,7 +47,7 @@ def logistic_classifier(inputs):
 
 
 def batchnorm_classifier(inputs):
-  inputs = layers.batch_norm(inputs, decay=0.1)
+  inputs = layers.batch_norm(inputs, decay=0.1, fused=False)
   return layers.fully_connected(inputs, 1, activation_fn=math_ops.sigmoid)
 
 

@@ -22,6 +22,7 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.platform import test
@@ -42,15 +43,35 @@ class UnstackOpTest(test.TestCase):
     np.random.seed(7)
     with self.test_session(use_gpu=True):
       for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
-        data = np.random.randn(*shape)
-        # Convert data to a single tensorflow tensor
-        x = constant_op.constant(data)
-        # Unpack into a list of tensors
-        cs = array_ops.unstack(x, num=shape[0])
-        self.assertEqual(type(cs), list)
-        self.assertEqual(len(cs), shape[0])
-        cs = [c.eval() for c in cs]
-        self.assertAllEqual(cs, data)
+        for dtype in [
+            np.bool, np.float16, np.float32, np.float64, np.int32, np.int64
+        ]:
+          data = np.random.randn(*shape).astype(dtype)
+          # Convert data to a single tensorflow tensor
+          x = constant_op.constant(data)
+          # Unpack into a list of tensors
+          cs = array_ops.unstack(x, num=shape[0])
+          self.assertEqual(type(cs), list)
+          self.assertEqual(len(cs), shape[0])
+          cs = [c.eval() for c in cs]
+          self.assertAllEqual(cs, data)
+
+  def testSimpleGpu(self):
+    if not test_util.is_gpu_available():
+      self.skipTest('No GPU available')
+    np.random.seed(7)
+    with self.test_session(use_gpu=True, force_gpu=True):
+      for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):
+        for dtype in [np.float16, np.float32, np.float64, np.int32, np.int64]:
+          data = np.random.randn(*shape).astype(dtype)
+          # Convert data to a single tensorflow tensor
+          x = constant_op.constant(data)
+          # Unpack into a list of tensors
+          cs = array_ops.unstack(x, num=shape[0])
+          self.assertEqual(type(cs), list)
+          self.assertEqual(len(cs), shape[0])
+          cs = [c.eval() for c in cs]
+          self.assertAllEqual(cs, data)
 
   def testGradientsAxis0(self):
     for shape in (2,), (3,), (2, 3), (3, 2), (4, 3, 2):

@@ -15,9 +15,13 @@ limitations under the License.
 
 #include "tensorflow/contrib/verbs/verbs_util.h"
 
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#include "tensorflow/core/lib/core/notification.h"
+#include <vector>
+
+#include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+
 namespace tensorflow {
 
 // static

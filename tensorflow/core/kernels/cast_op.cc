@@ -52,86 +52,71 @@ typedef Eigen::SyclDevice SYCLDevice;
   FN(arg0, std::complex<float>); \
   FN(arg0, std::complex<double>)
 
-class CastOpBase : public OpKernel {
- public:
-  explicit CastOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("SrcT", &src_dtype_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("DstT", &dst_dtype_));
+CastOpBase::CastOpBase(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("SrcT", &src_dtype_));
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("DstT", &dst_dtype_));
+}
+
+void CastOpBase::Compute(OpKernelContext* ctx) {
+  const Tensor& inp = ctx->input(0);
+  if (work_ == nullptr) {
+    ctx->set_output(0, inp);
+  } else {
+    Tensor* out = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, inp.shape(), &out));
+    work_(ctx, inp, out);
+  }
+}
+
+Status CastOpBase::Unimplemented() {
+  return errors::Unimplemented("Cast ", DataTypeString(src_dtype_), " to ",
+                               DataTypeString(dst_dtype_), " is not supported");
+}
+
+CpuCastOp::CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
+  OP_REQUIRES_OK(ctx, Prepare());
+}
+
+Status CpuCastOp::Prepare() {
+  if (src_dtype_ == dst_dtype_) {
+    work_ = nullptr;  // Identity
+    return Status::OK();
+  }
+  if (src_dtype_ == DT_BOOL) {
+    work_ = GetCpuCastFromBool(dst_dtype_);
+  } else if (src_dtype_ == DT_UINT8) {
+    work_ = GetCpuCastFromUint8(dst_dtype_);
+  } else if (src_dtype_ == DT_INT8) {
+    work_ = GetCpuCastFromInt8(dst_dtype_);
+  } else if (src_dtype_ == DT_UINT16) {
+    work_ = GetCpuCastFromUint16(dst_dtype_);
+  } else if (src_dtype_ == DT_INT16) {
+    work_ = GetCpuCastFromInt16(dst_dtype_);
+  } else if (src_dtype_ == DT_INT32) {
+    work_ = GetCpuCastFromInt32(dst_dtype_);
+  } else if (src_dtype_ == DT_INT64) {
+    work_ = GetCpuCastFromInt64(dst_dtype_);
+  } else if (src_dtype_ == DT_HALF) {
+    work_ = GetCpuCastFromHalf(dst_dtype_);
+  } else if (src_dtype_ == DT_FLOAT) {
+    work_ = GetCpuCastFromFloat(dst_dtype_);
+  } else if (src_dtype_ == DT_DOUBLE) {
+    work_ = GetCpuCastFromDouble(dst_dtype_);
+  } else if (src_dtype_ == DT_COMPLEX64) {
+    work_ = GetCpuCastFromComplex64(dst_dtype_);
+  } else if (src_dtype_ == DT_COMPLEX128) {
+    work_ = GetCpuCastFromComplex128(dst_dtype_);
+  } else if (src_dtype_ == DT_BFLOAT16) {
+    work_ = GetCpuCastFromBfloat(dst_dtype_);
   }
 
-  void Compute(OpKernelContext* ctx) override {
-    const Tensor& inp = ctx->input(0);
-    if (work_ == nullptr) {
-      ctx->set_output(0, inp);
-    } else {
-      Tensor* out = nullptr;
-      OP_REQUIRES_OK(ctx, ctx->allocate_output(0, inp.shape(), &out));
-      work_(ctx, inp, out);
-    }
-  }
+  // TODO(sesse): If CPU casting to or from Eigen::half ever becomes a
+  // bottleneck, we could probably implement specialized support for
+  // vectorized versions (not the least based on F16C for Haswell
+  // or newer).
 
- protected:
-  DataType src_dtype_;
-  DataType dst_dtype_;
-  std::function<void(OpKernelContext*, const Tensor&, Tensor*)> work_ = nullptr;
-
-  Status Unimplemented() {
-    return errors::Unimplemented("Cast ", DataTypeString(src_dtype_), " to ",
-                                 DataTypeString(dst_dtype_),
-                                 " is not supported");
-  }
-
-  TF_DISALLOW_COPY_AND_ASSIGN(CastOpBase);
-};
-
-class CpuCastOp : public CastOpBase {
- public:
-  explicit CpuCastOp(OpKernelConstruction* ctx) : CastOpBase(ctx) {
-    OP_REQUIRES_OK(ctx, Prepare());
-  }
-
- private:
-  Status Prepare() {
-    if (src_dtype_ == dst_dtype_) {
-      work_ = nullptr;  // Identity
-      return Status::OK();
-    }
-    if (src_dtype_ == DT_BOOL) {
-      work_ = GetCpuCastFromBool(dst_dtype_);
-    } else if (src_dtype_ == DT_UINT8) {
-      work_ = GetCpuCastFromUint8(dst_dtype_);
-    } else if (src_dtype_ == DT_INT8) {
-      work_ = GetCpuCastFromInt8(dst_dtype_);
-    } else if (src_dtype_ == DT_UINT16) {
-      work_ = GetCpuCastFromUint16(dst_dtype_);
-    } else if (src_dtype_ == DT_INT16) {
-      work_ = GetCpuCastFromInt16(dst_dtype_);
-    } else if (src_dtype_ == DT_INT32) {
-      work_ = GetCpuCastFromInt32(dst_dtype_);
-    } else if (src_dtype_ == DT_INT64) {
-      work_ = GetCpuCastFromInt64(dst_dtype_);
-    } else if (src_dtype_ == DT_HALF) {
-      work_ = GetCpuCastFromHalf(dst_dtype_);
-    } else if (src_dtype_ == DT_FLOAT) {
-      work_ = GetCpuCastFromFloat(dst_dtype_);
-    } else if (src_dtype_ == DT_DOUBLE) {
-      work_ = GetCpuCastFromDouble(dst_dtype_);
-    } else if (src_dtype_ == DT_COMPLEX64) {
-      work_ = GetCpuCastFromComplex64(dst_dtype_);
-    } else if (src_dtype_ == DT_COMPLEX128) {
-      work_ = GetCpuCastFromComplex128(dst_dtype_);
-    } else if (src_dtype_ == DT_BFLOAT16) {
-      work_ = GetCpuCastFromBfloat(dst_dtype_);
-    }
-
-    // TODO(sesse): If CPU casting to or from Eigen::half ever becomes a
-    // bottleneck, we could probably implement specialized support for
-    // vectorized versions (not the least based on F16C for Haswell
-    // or newer).
-
-    return work_ == nullptr ? Unimplemented() : Status::OK();
-  }
-};
+  return work_ == nullptr ? Unimplemented() : Status::OK();
+}
 
 #if GOOGLE_CUDA
 class GpuCastOp : public CastOpBase {

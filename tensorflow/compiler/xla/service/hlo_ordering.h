@@ -22,6 +22,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/call_graph.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_value.h"
@@ -48,15 +49,17 @@ class HloOrdering {
 
   // Returns whether the given use is before the given value definition under
   // the given ordering.
-  bool UseIsBeforeValueDefinition(const HloUse& use,
-                                  const HloValue& value) const;
+  bool UseIsBeforeValueDefinition(const HloUse& use, const HloValue& value,
+                                  const HloDataflowAnalysis& dataflow) const;
   // Returns whether the given values interfere. Two values interfere if they
   // may both be simultaneously live.
-  bool MayInterfere(const HloValue& a, const HloValue& b) const;
+  bool MayInterfere(const HloValue& a, const HloValue& b,
+                    const HloDataflowAnalysis& dataflow) const;
 
   // Returns true if the live range of the given value 'a' is strictly before
   // the live range of value 'b' using the given HLO ordering.
-  bool LiveRangeStrictlyBefore(const HloValue& a, const HloValue& b) const;
+  bool LiveRangeStrictlyBefore(const HloValue& a, const HloValue& b,
+                               const HloDataflowAnalysis& dataflow) const;
 
   // Returns the sequential instruction order for the given computation, or
   // nullptr if the computation does not have a sequential ordering.
@@ -77,7 +80,7 @@ class HloOrdering {
   // Precondition: 'a' and 'b' are in the same computation.
   //
   // Derived classes should implement this method for determining order of
-  // instructions in the same comptuation. ExecutesBefore() analyzes the
+  // instructions in the same computation. ExecutesBefore() analyzes the
   // callgraph and uses this method to determine ordering of instructions in
   // different computations.
   virtual bool ExecutesBeforeInSameComputation(

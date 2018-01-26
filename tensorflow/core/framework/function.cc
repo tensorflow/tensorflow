@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 
+#include <map>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -32,8 +33,6 @@ limitations under the License.
 #include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
-
-namespace {
 
 // Extracts the actual type from "attr_values" based on its definition
 // "arg_def".
@@ -89,6 +88,8 @@ Status ArgNumType(AttrSlice attrs, const OpDef::ArgDef& arg_def,
   dtypes->resize(num, dtype);
   return Status::OK();
 }
+
+namespace {
 
 template <typename T>
 void AddAttr(const string& name, const T& val, NodeDef* ndef) {
@@ -271,12 +272,17 @@ class FunctionInstantiationHelper {
       int nid = -1;
       const string node_name = input.substr(1);
       const string node_colon = node_name + ":";
-      for (const auto& p : index_) {
-        if (p.first == node_name ||
-            tensorflow::StringPiece(p.first).starts_with(node_colon)) {
-          nid = p.second.nid;
+      const string node_colon_bound = node_name + ";";
+      // index_ is a map sorted lexicographically, so the key we are looking for
+      // must lie in the range [node_name, node_colon_bound).
+      auto it = index_.lower_bound(node_name);
+      while (it != index_.end() && it->first <= node_colon_bound) {
+        if (it->first == node_name ||
+            tensorflow::StringPiece(it->first).starts_with(node_colon)) {
+          nid = it->second.nid;
           break;
         }
+        ++it;
       }
       if (nid == -1) {
         return errors::InvalidArgument("input[", i, "] == '", input,
@@ -421,7 +427,7 @@ class FunctionInstantiationHelper {
   GetFunctionSignature get_function_;
   InstantiationResult& result_;
   // A small index for all names that can be used as a node's input arguments.
-  std::unordered_map<string, NameInfoItem> index_;
+  std::map<string, NameInfoItem> index_;
   // This contains information about a node in the new graph including the node
   // names and input nodes' indexes.
   struct NodeInfo {
@@ -743,16 +749,7 @@ std::map<string, AttrValue> GetSetAttrs(const FunctionDef& fdef) {
 }  // end namespace
 
 bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
-  // NOTE(skyewm): Using MessageDifferencer would be better here, but that is
-  // currently not included in tensorflow/core/platform/default/protobuf.h, so
-  // play fast and loose here.  I don't see anything in OpDef that should allow
-  // multiple equivalent string serializations, with the exception of
-  // AttrValues, which can vary for tensor values (see AreAttrValuesEqual()
-  // comments).
-  string sig1, sig2;
-  f1.signature().SerializeToString(&sig1);
-  f2.signature().SerializeToString(&sig2);
-  if (sig1 != sig2) return false;
+  if (!OpDefEqual(f1.signature(), f2.signature())) return false;
 
   std::map<string, AttrValue> f1_attrs = GetSetAttrs(f1);
   std::map<string, AttrValue> f2_attrs = GetSetAttrs(f2);
@@ -774,11 +771,48 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   return true;
 }
 
-string Canonicalize(const string& funcname, AttrSlice attrs) {
+uint64 FunctionDefHash(const FunctionDef& fdef) {
+  // signature
+  uint64 h = OpDefHash(fdef.signature());
+
+  // attrs
+  std::map<string, AttrValue> attrs = GetSetAttrs(fdef);
+  for (const auto& p : attrs) {
+    h = Hash64(p.first.data(), p.first.size(), h);
+    h = Hash64Combine(AttrValueHash(p.second), h);
+  }
+
+  // node defs
+  h = Hash64Combine(RepeatedNodeDefHash(fdef.node_def()), h);
+
+  // output names
+  std::map<string, string> ret(fdef.ret().begin(), fdef.ret().end());
+  for (const auto& p : ret) {
+    h = Hash64(p.first.data(), p.first.size(), h);
+    h = Hash64(p.second.data(), p.second.size(), h);
+  }
+
+  return h;
+}
+
+string Canonicalize(const string& funcname, AttrSlice attrs,
+                    const FunctionLibraryRuntime::InstantiateOptions& options) {
   std::vector<string> entries;
-  entries.reserve(attrs.size());
+  entries.reserve(options.target.empty() ? attrs.size() : (attrs.size() + 1));
   for (auto p : attrs) {
     entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
+  }
+  if (!options.target.empty()) {
+    entries.push_back(
+        strings::StrCat("_target", "=", str_util::CEscape(options.target)));
+  }
+  if (options.overlay_lib) {
+    entries.push_back(strings::StrCat(
+        "_overlay_lib", "=", reinterpret_cast<uintptr_t>(options.overlay_lib)));
+  }
+  if (!options.state_handle.empty()) {
+    entries.push_back(
+        strings::StrCat("_state_handle", "=", options.state_handle));
   }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
@@ -871,7 +905,10 @@ Status FunctionCallFrame::SetRetval(int index, const Tensor& val) {
 FunctionLibraryDefinition::FunctionDefAndOpRegistration::
     FunctionDefAndOpRegistration(const FunctionDef& fdef_in)
     : fdef(fdef_in),
-      op_registration_data(fdef.signature(), shape_inference::UnknownShape) {}
+      // Exact shape inference for functions is handled by ShapeRefiner.
+      // Here we pass a dummy shape inference function for legacy code paths.
+      op_registration_data(fdef.signature(), shape_inference::UnknownShape,
+                           true /* is_function */) {}
 
 FunctionLibraryDefinition::FunctionLibraryDefinition(
     const FunctionLibraryDefinition& other)

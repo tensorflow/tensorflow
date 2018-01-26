@@ -41,6 +41,13 @@ class QueueOp : public ResourceOpKernel<QueueInterface> {
                    context->GetAttr("component_types", &component_types_));
   }
 
+  void Compute(OpKernelContext* context) override {
+    ResourceOpKernel<QueueInterface>::Compute(context);
+    if (resource_ && context->track_allocations()) {
+      context->record_persistent_memory_allocation(resource_->MemoryUsed());
+    }
+  }
+
  protected:
   // Variables accessible by subclasses
   int32 capacity_;
@@ -63,12 +70,8 @@ class TypedQueueOp : public QueueOp {
       return errors::ResourceExhausted("Failed to allocate queue.");
     }
     *ret = queue;
-    queue_ = queue;
     return queue->Initialize();
   }
-
- private:
-  QueueInterface* queue_ = nullptr;
 };
 
 }  // namespace tensorflow

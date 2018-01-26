@@ -27,23 +27,32 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
-from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated_args
 
 
 class Reduction(object):
-  """Types of loss reduction."""
+  """Types of loss reduction.
 
-  # Un-reduced weighted losses with the same shape as input.
+  Contains the following values:
+  `NONE`: Un-reduced weighted losses with the same shape as input.
+  `SUM`: Scalar sum of weighted losses.
+  `MEAN`: Scalar `SUM` divided by sum of weights.
+  `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
+  `SUM_OVER_NONZERO_WEIGHTS`: Scalar `SUM` divided by number of non-zero
+     weights.
+  `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`.
+  """
+
   NONE = "none"
 
-  # Scalar sum of `NONE`.
   SUM = "weighted_sum"
 
-  # Scalar `SUM` divided by sum of weights.
   MEAN = "weighted_mean"
 
-  # Scalar `SUM` divided by number of non-zero weights.
+  SUM_OVER_BATCH_SIZE = "weighted_sum_over_batch_size"
+
   SUM_BY_NONZERO_WEIGHTS = "weighted_sum_by_nonzero_weights"
+  SUM_OVER_NONZERO_WEIGHTS = SUM_BY_NONZERO_WEIGHTS
 
   @classmethod
   def all(cls):
@@ -51,6 +60,8 @@ class Reduction(object):
         cls.NONE,
         cls.SUM,
         cls.MEAN,
+        cls.SUM_OVER_BATCH_SIZE,
+        cls.SUM_OVER_NONZERO_WEIGHTS,
         cls.SUM_BY_NONZERO_WEIGHTS)
 
   @classmethod
@@ -135,6 +146,12 @@ def _num_present(losses, weights, per_batch=False):
     return math_ops.reduce_sum(present, name=scope)
 
 
+def _num_elements(losses):
+  """Computes the number of elements in `losses` tensor."""
+  with ops.name_scope(None, "num_elements", values=[losses]) as scope:
+    return array_ops.size(losses, name=scope, out_type=losses.dtype)
+
+
 def compute_weighted_loss(
     losses, weights=1.0, scope=None, loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -157,6 +174,13 @@ def compute_weighted_loss(
     ValueError: If `weights` is `None` or the shape is not compatible with
       `losses`, or if the number of dimensions (rank) of either `losses` or
       `weights` is missing.
+
+  Note:
+    When calculating the gradient of a weighted loss contributions from
+    both `losses` and `weights` are considered. If your `weights` depend
+    on some model parameters but you do not want this to affect the loss
+    gradient, you need to apply @{tf.stop_gradient} to `weights` before
+    passing them to `compute_weighted_loss`.
   """
   Reduction.validate(reduction)
   with ops.name_scope(scope, "weighted_loss", (losses, weights)):
@@ -175,8 +199,11 @@ def compute_weighted_loss(
           loss = _safe_mean(
               loss,
               math_ops.reduce_sum(array_ops.ones_like(losses) * weights))
-        elif reduction == Reduction.SUM_BY_NONZERO_WEIGHTS:
+        elif (reduction == Reduction.SUM_BY_NONZERO_WEIGHTS or
+              reduction == Reduction.SUM_OVER_NONZERO_WEIGHTS):
           loss = _safe_mean(loss, _num_present(losses, weights))
+        elif reduction == Reduction.SUM_OVER_BATCH_SIZE:
+          loss = _safe_mean(loss, _num_elements(losses))
 
       # Convert the result back to the input type.
       loss = math_ops.cast(loss, input_dtype)
@@ -231,10 +258,12 @@ def absolute_difference(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
+@deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def cosine_distance(
-    labels, predictions, dim=None, weights=1.0, scope=None,
+    labels, predictions, axis=None, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS,
+    dim=None):
   """Adds a cosine-distance loss to the training procedure.
 
   Note that the function assumes that `predictions` and `labels` are already
@@ -243,13 +272,14 @@ def cosine_distance(
   Args:
     labels: `Tensor` whose shape matches 'predictions'
     predictions: An arbitrary matrix.
-    dim: The dimension along which the cosine distance is computed.
+    axis: The dimension along which the cosine distance is computed.
     weights: Optional `Tensor` whose rank is either 0, or the same rank as
       `labels`, and must be broadcastable to `labels` (i.e., all dimensions must
       be either `1`, or the same as the corresponding `losses` dimension).
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which this loss will be added.
     reduction: Type of reduction to apply to loss.
+    dim: The old (deprecated) name for `axis`.
 
   Returns:
     Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
@@ -257,10 +287,14 @@ def cosine_distance(
 
   Raises:
     ValueError: If `predictions` shape doesn't match `labels` shape, or
-      `dim`, `labels`, `predictions` or `weights` is `None`.
+      `axis`, `labels`, `predictions` or `weights` is `None`.
   """
-  if dim is None:
-    raise ValueError("`dim` cannot be None.")
+  if dim is not None:
+    if axis is not None:
+      raise ValueError("Cannot specify both 'axis' and 'dim'")
+    axis = dim
+  if axis is None and dim is None:
+    raise ValueError("You must specify 'axis'.")
   if labels is None:
     raise ValueError("labels must not be None.")
   if predictions is None:
@@ -272,7 +306,7 @@ def cosine_distance(
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     radial_diffs = math_ops.multiply(predictions, labels)
-    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(dim,), keep_dims=True)
+    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(axis,), keep_dims=True)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
@@ -478,7 +512,7 @@ def mean_pairwise_squared_error(
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
-      if the shape of `weights` is invalid.  Also if `labels` or `predictions
+      if the shape of `weights` is invalid.  Also if `labels` or `predictions`
       is None.
   """
   if labels is None:
@@ -614,9 +648,7 @@ def sigmoid_cross_entropy(
   with ops.name_scope(scope, "sigmoid_cross_entropy_loss",
                       (logits, multi_class_labels, weights)) as scope:
     logits = ops.convert_to_tensor(logits)
-    logging.info("logits.dtype=%s.", logits.dtype)
     multi_class_labels = math_ops.cast(multi_class_labels, logits.dtype)
-    logging.info("multi_class_labels.dtype=%s.", multi_class_labels.dtype)
     logits.get_shape().assert_is_compatible_with(multi_class_labels.get_shape())
 
     if label_smoothing > 0:
@@ -626,7 +658,6 @@ def sigmoid_cross_entropy(
     losses = nn.sigmoid_cross_entropy_with_logits(labels=multi_class_labels,
                                                   logits=logits,
                                                   name="xentropy")
-    logging.info("losses.dtype=%s.", losses.dtype)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
@@ -648,7 +679,7 @@ def softmax_cross_entropy(
 
   Args:
     onehot_labels: `[batch_size, num_classes]` target one-hot-encoded labels.
-    logits: [batch_size, num_classes] logits outputs of the network .
+    logits: `[batch_size, num_classes]` logits outputs of the network .
     weights: Optional `Tensor` whose rank is either 0, or rank 1 and is
       broadcastable to the loss which is a `Tensor` of shape `[batch_size]`.
     label_smoothing: If greater than 0 then smooth the labels.
@@ -759,8 +790,8 @@ def sparse_softmax_cross_entropy(
       loss and gradient rows on GPU.
     logits: Unscaled log probabilities of shape
       `[d_0, d_1, ..., d_{r-1}, num_classes]` and dtype `float32` or `float64`.
-    weights: Coefficients for the loss. This must be scalar or of same rank as
-      `labels`
+    weights: Coefficients for the loss. This must be scalar or broadcastable to
+      `labels` (i.e. same rank and each dimension is either 1 or the same).
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
     reduction: Type of reduction to apply to loss.

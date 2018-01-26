@@ -19,11 +19,13 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_dataflow_analysis.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 
@@ -218,9 +220,147 @@ TEST_F(HloOrderingTest, InstructionsInWhileComputations) {
   EXPECT_FALSE(ordering.ExecutesBefore(body_param, cond_param));
 }
 
+TEST_F(HloOrderingTest, ValuesInWhileComputations) {
+  // Tests the ordering of values (defined by dataflow analysis) in the body and
+  // condition of a while instruction. HLO code:
+  //
+  // body(F32[]) %param):
+  //   %negate = Negate(%param)
+  //
+  // condition(F32[] %param):
+  //   %convert = Convert<PRED>(%param)
+  //
+  // entry:
+  //   %constant = Constant(1.0)
+  //   %while = While(%constant, body, condition)
+  //   %add = Add(%constant, %while)
+  //
+  auto module = CreateNewModule();
+  const Shape scalar_shape = ShapeUtil::MakeShape(xla::F32, {});
+
+  auto body_builder = HloComputation::Builder("body");
+  auto body_param = body_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "body_param"));
+  auto negate = body_builder.AddInstruction(HloInstruction::CreateUnary(
+      scalar_shape, HloOpcode::kNegate, body_param));
+  HloComputation* body = module->AddEmbeddedComputation(body_builder.Build());
+
+  auto cond_builder = HloComputation::Builder("condition");
+  auto cond_param = cond_builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape, "cond_param"));
+  auto convert = cond_builder.AddInstruction(HloInstruction::CreateConvert(
+      ShapeUtil::MakeShape(xla::PRED, {}), cond_param));
+  HloComputation* condition =
+      module->AddEmbeddedComputation(cond_builder.Build());
+
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto xla_while = builder.AddInstruction(
+      HloInstruction::CreateWhile(scalar_shape, condition, body, constant));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      scalar_shape, HloOpcode::kAdd, constant, xla_while));
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto dataflow, HloDataflowAnalysis::Run(module.get(), /*ssa_form=*/true));
+  DependencyHloOrdering ordering(module.get());
+
+  // Init value is defined before the while, but live range is not before the
+  // while because of the use of the init value in the add.
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(constant),
+                                       dataflow->GetValueDefinedAt(xla_while)));
+  EXPECT_FALSE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(constant),
+      dataflow->GetValueDefinedAt(xla_while), *dataflow));
+  EXPECT_TRUE(ordering.MayInterfere(dataflow->GetValueDefinedAt(constant),
+                                    dataflow->GetValueDefinedAt(xla_while),
+                                    *dataflow));
+
+  // Any value defined in the body or condition is defined before the while, and
+  // has a live range strictly before the while.
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(negate),
+                                       dataflow->GetValueDefinedAt(xla_while)));
+  EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(negate),
+      dataflow->GetValueDefinedAt(xla_while), *dataflow));
+  EXPECT_FALSE(ordering.MayInterfere(dataflow->GetValueDefinedAt(negate),
+                                     dataflow->GetValueDefinedAt(xla_while),
+                                     *dataflow));
+
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(convert),
+                                       dataflow->GetValueDefinedAt(xla_while)));
+  EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(convert),
+      dataflow->GetValueDefinedAt(xla_while), *dataflow));
+  EXPECT_FALSE(ordering.MayInterfere(dataflow->GetValueDefinedAt(convert),
+                                     dataflow->GetValueDefinedAt(xla_while),
+                                     *dataflow));
+
+  // The live range of the while should be before the add.
+  EXPECT_TRUE(ordering.IsDefinedBefore(dataflow->GetValueDefinedAt(xla_while),
+                                       dataflow->GetValueDefinedAt(add)));
+  ASSERT_EQ(dataflow->GetValueDefinedAt(xla_while).uses().size(), 1);
+
+  const HloUse& while_use = dataflow->GetValueDefinedAt(xla_while).uses()[0];
+  EXPECT_EQ(while_use.instruction, add);
+  EXPECT_TRUE(ordering.UseIsBeforeValueDefinition(
+      while_use, dataflow->GetValueDefinedAt(add), *dataflow));
+  EXPECT_TRUE(ordering.LiveRangeStrictlyBefore(
+      dataflow->GetValueDefinedAt(xla_while), dataflow->GetValueDefinedAt(add),
+      *dataflow));
+}
+
+// Regression test for HloOrdering::ToString() crashing when fed a computation
+// containing a fusion node.
+TEST_F(HloOrderingTest, ToStringDoesNotCrash) {
+  const char* module_str = R"(
+HloModule test_module
+
+body.v8 {
+  prev.1 = (s32[], f32[3]{0}, f32[3]{0}, f32[3]{0}) parameter(0)
+  get-tuple-element.4 = s32[] get-tuple-element(prev.1), index=0
+  constant.1 = s32[] constant(1)
+  add = s32[] add(get-tuple-element.4, constant.1)
+  get-tuple-element.5 = f32[3]{0} get-tuple-element(prev.1), index=3
+  get-tuple-element.6 = f32[3]{0} get-tuple-element(prev.1), index=1
+  get-tuple-element.7 = f32[3]{0} get-tuple-element(prev.1), index=2
+  ROOT tuple = (s32[], f32[3]{0}, f32[3]{0}, f32[3]{0}) tuple(add, get-tuple-element.5, get-tuple-element.6, get-tuple-element.7)
+}
+
+condition.v4 {
+  constant.2 = s32[] constant(2)
+  prev.2 = (s32[], f32[3]{0}, f32[3]{0}, f32[3]{0}) parameter(0)
+  get-tuple-element.8 = s32[] get-tuple-element(prev.2), index=0
+  ROOT greater-than = pred[] greater-than(constant.2, get-tuple-element.8)
+}
+
+fused_computation {
+  get-tuple-element.5.param_1 = f32[3]{0} parameter(1)
+  get-tuple-element.6.param_2 = f32[3]{0} parameter(2)
+  add.4 = f32[3]{0} add(get-tuple-element.5.param_1, get-tuple-element.6.param_2)
+  get-tuple-element.7.param_1.1 = f32[3]{0} parameter(0)
+  ROOT add.5 = f32[3]{0} add(add.4, get-tuple-element.7.param_1.1)
+}
+
+ENTRY while.v11 {
+  constant.5 = s32[] constant(0)
+  constant.6 = f32[3]{0} constant({1, 1, 1})
+  constant.7 = f32[3]{0} constant({2, 2, 2})
+  constant.8 = f32[3]{0} constant({3, 3, 3})
+  tuple.1 = (s32[], f32[3]{0}, f32[3]{0}, f32[3]{0}) tuple(constant.5, constant.6, constant.7, constant.8)
+  while = (s32[], f32[3]{0}, f32[3]{0}, f32[3]{0}) while(tuple.1), condition=condition.v4, body=body.v8
+  get-tuple-element.9 = f32[3]{0} get-tuple-element(while), index=3
+  get-tuple-element.10 = f32[3]{0} get-tuple-element(while), index=1
+  get-tuple-element.11 = f32[3]{0} get-tuple-element(while), index=2
+  ROOT fusion = f32[3]{0} fusion(get-tuple-element.9, get-tuple-element.10, get-tuple-element.11), kind=kLoop, calls=fused_computation
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          tools::Parse(module_str));
+  DependencyHloOrdering ordering(module.get());
+  ordering.ToString();  // Shouldn't crash.
+}
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

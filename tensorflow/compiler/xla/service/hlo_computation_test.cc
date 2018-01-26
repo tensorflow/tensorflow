@@ -310,7 +310,7 @@ TEST_F(HloComputationTest, DeepCopyArrayAtIndices) {
 }
 
 TEST_F(HloComputationTest, DeepCopyTupleAtIndices) {
-  // Test that DeepCopyInstruction properly copies elements of a a tuple as
+  // Test that DeepCopyInstruction properly copies elements of a tuple as
   // specified by the given indices.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(HloInstruction::CreateConstant(
@@ -553,7 +553,3 @@ TEST_F(HloComputationTest, Reachability) {
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

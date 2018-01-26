@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
@@ -26,6 +26,28 @@ namespace tensorflow {
 class OpKernelContext;
 
 namespace functor {
+
+#ifdef GOOGLE_CUDA
+typedef Eigen::GpuDevice GPUDevice;
+// Functor for SegmentSumGPUOp.
+// output_rows: the number of output segments (unique segment ids in
+//                'segment_ids').
+// segment_ids_shape: shape of 'segment_ids' tensor.
+// segment_ids: unsorted map from input to output segment ids at which to
+//                perform segment sum operation.
+// data_size: size of input data tensor.
+// data: input data tensor.
+// output: output reshaped to {output_rows, output.size/output_rows}
+template <typename T, typename Index>
+struct SegmentSumFunctor {
+  void operator()(OpKernelContext* ctx, const GPUDevice& d,
+                  const Index output_rows, const TensorShape& segment_ids_shape,
+                  typename TTypes<Index>::ConstFlat segment_ids,
+                  const Index data_size, const T* data,
+                  typename TTypes<T, 2>::Tensor output);
+};
+#endif
+
 // BaseFunctor for definition of UnsorteSegmentReductionOp
 // for usage without templates.
 template <typename Device, typename T, typename Index>
@@ -39,14 +61,14 @@ struct UnsortedSegmentBaseFunctor{
 };
 
 // Functor for UnsortedSegmentSumOp.
-// 'output_rows': the number of output segments (unique segment ids in
+// output_rows: the number of output segments (unique segment ids in
 //                'segment_ids').
-// 'segment_ids_shape': shape of 'segment_ids' tensor.
-// 'segment_ids': unsorted map from input to output segment ids at which to
+// segment_ids_shape: shape of 'segment_ids' tensor.
+// segment_ids: unsorted map from input to output segment ids at which to
 //                perform segment sum operation.
-// 'data_size': size of input data tensor.
-// 'data': input data tensor.
-// 'output': output reshaped to {output_rows, output.size/output_rows}
+// data_size: size of input data tensor.
+// data: input data tensor.
+// output: output reshaped to {output_rows, output.size/output_rows}
 template <typename Device, typename T, typename Index>
 struct UnsortedSegmentSumFunctor: public UnsortedSegmentBaseFunctor<Device, T, Index> {
   void operator()(OpKernelContext* ctx, const Device& d,
@@ -57,14 +79,14 @@ struct UnsortedSegmentSumFunctor: public UnsortedSegmentBaseFunctor<Device, T, I
 };
 
 // Functor for UnsortedSegmentMaxOp.
-// 'output_rows': the number of output segments (unique segment ids in
+// output_rows: the number of output segments (unique segment ids in
 //                'segment_ids').
-// 'segment_ids_shape': shape of 'segment_ids' tensor.
-// 'segment_ids': unsorted map from input to output segment ids at which to
+// segment_ids_shape: shape of 'segment_ids' tensor.
+// segment_ids: unsorted map from input to output segment ids at which to
 //                perform segment sum operation.
-// 'data_size': size of input data tensor.
-// 'data': input data tensor.
-// 'output': output reshaped to {output_rows, output.size/output_rows}
+// data_size: size of input data tensor.
+// data: input data tensor.
+// output: output reshaped to {output_rows, output.size/output_rows}
 template <typename Device, typename T, typename Index>
 struct UnsortedSegmentMaxFunctor: public UnsortedSegmentBaseFunctor<Device, T, Index> {
   void operator()(OpKernelContext* ctx, const Device& d,
@@ -76,4 +98,4 @@ struct UnsortedSegmentMaxFunctor: public UnsortedSegmentBaseFunctor<Device, T, I
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_

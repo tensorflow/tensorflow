@@ -16,6 +16,7 @@ load(
     "if_mobile",
     "if_not_mobile",
     "py_test",
+    "tf_cc_test",
 )
 
 filegroup(
@@ -135,7 +136,6 @@ py_test(
         ":gc",
         ":manifest_proto_py",
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -163,7 +163,6 @@ py_library(
 
 py_test(
     name = "gc_test",
-    size = "small",
     srcs = ["gc_test.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:private"],
@@ -232,9 +231,9 @@ cc_library(
     ]),
 )
 
-cc_test(
+tf_cc_test(
     name = "session_bundle_test",
-    size = "small",
+    size = "medium",
     srcs = ["session_bundle_test.cc"],
     data = [":session_bundle_half_plus_two"],
     # Link in all registered kernels.
@@ -340,7 +339,7 @@ cc_library(
     ]),
 )
 
-cc_test(
+tf_cc_test(
     name = "signature_test",
     size = "small",
     srcs = ["signature_test.cc"],
@@ -396,7 +395,7 @@ cc_library(
     ]),
 )
 
-cc_test(
+tf_cc_test(
     name = "bundle_shim_test",
     size = "small",
     srcs = ["bundle_shim_test.cc"],
@@ -411,8 +410,6 @@ cc_test(
         ":test_util",
         "//tensorflow/cc/saved_model:signature_constants",
         "//tensorflow/cc/saved_model:tag_constants",
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

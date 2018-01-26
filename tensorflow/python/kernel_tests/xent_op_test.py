@@ -181,6 +181,24 @@ class XentTest(test.TestCase):
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
 
+  def testGradientLabelWithV2(self):
+    with self.test_session():
+      l = constant_op.constant(
+          [0.0, 0.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.5, 0.0, 0.5],
+          shape=[3, 4],
+          dtype=dtypes.float64,
+          name="l")
+      f = constant_op.constant(
+          [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
+          shape=[3, 4],
+          dtype=dtypes.float64,
+          name="f")
+      x = nn_ops.softmax_cross_entropy_with_logits_v2(labels=l, logits=f,
+                                                      name="xent")
+      err = gradient_checker.compute_gradient_error(l, [3, 4], x, [3])
+
+    self.assertLess(err, 5e-8)
+
   def testSecondGradient(self):
     with self.test_session() as sess:
       l = constant_op.constant([0.0, 0.0, 1.0/3, 0.0,
@@ -221,6 +239,16 @@ class XentTest(test.TestCase):
     self._testXentWrapper(features, labels, dim=1, use_gpu=True)
     self._testXentWrapper(features, labels, dim=-1, use_gpu=False)
     self._testXentWrapper(features, labels, dim=-1, use_gpu=True)
+
+  def testZeroDimension(self):
+    features = np.zeros([0, 2, 4]).astype(np.float32)
+    labels = np.zeros([0, 2, 4]).astype(np.float32)
+    np_loss, _ = self._npXent(features, labels)
+    with self.test_session(use_gpu=True) as sess:
+      loss = nn_ops.softmax_cross_entropy_with_logits(
+          labels=labels, logits=features)
+      tf_loss = sess.run(loss)
+    self.assertAllEqual(np_loss, tf_loss)
 
 
 if __name__ == "__main__":

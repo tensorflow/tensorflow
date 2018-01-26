@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
+#ifndef TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
+#define TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
 
 #include <stddef.h>
 #include <functional>
@@ -146,8 +146,8 @@ class FlatMap {
     friend class FlatMap;
     Bucket* b_;
     Bucket* end_;
+    char space_ alignas(value_type)[sizeof(value_type)];
     uint32 i_;
-    char space_[sizeof(value_type)];
 
     pointer val() { return reinterpret_cast<pointer>(space_); }
     void FillValue() { new (space_) value_type(b_->key(i_), b_->val(i_)); }
@@ -379,4 +379,4 @@ class FlatMap {
 }  // namespace gtl
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_
+#endif  // TENSORFLOW_CORE_LIB_GTL_FLATMAP_H_

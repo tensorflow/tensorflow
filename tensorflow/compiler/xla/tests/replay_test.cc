@@ -117,7 +117,7 @@ TEST_F(ReplayTest, MapPlusTwoOverR1) {
 
   ComputationBuilder mapper_builder(client_, TestName());
   auto original = mapper_builder.ConstantR1<int32>({1, 2, 3});
-  mapper_builder.Map({original}, plus_two);
+  mapper_builder.Map({original}, plus_two, {0});
 
   Computation computation = mapper_builder.Build().ConsumeValueOrDie();
 

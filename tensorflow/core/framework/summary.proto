@@ -42,7 +42,7 @@ message SummaryMetadata {
 
     // The content to store for the plugin. The best practice is for this to be
     // a binary serialized protocol buffer.
-    string content = 2;
+    bytes content = 2;
   }
 
   // Data that associates a summary with a certain plugin.

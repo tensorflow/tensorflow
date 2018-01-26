@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMMON_RUNTIME_BFC_ALLOCATOR_H_
 #define TENSORFLOW_COMMON_RUNTIME_BFC_ALLOCATOR_H_
 
+#include <array>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -68,6 +69,8 @@ class BFCAllocator : public VisitableAllocator {
   int64 AllocationId(void* ptr) override;
 
   void GetStats(AllocatorStats* stats) override;
+
+  void ClearStats() override;
 
  private:
   struct Bin;
@@ -344,10 +347,34 @@ class BFCAllocator : public VisitableAllocator {
 
   Chunk* ChunkFromHandle(ChunkHandle h) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
+  // Information about a Bin that is useful for debugging.
+  struct BinDebugInfo {
+    size_t total_bytes_in_use = 0;
+    size_t total_bytes_in_bin = 0;
+    size_t total_requested_bytes_in_use = 0;
+    size_t total_chunks_in_use = 0;
+    size_t total_chunks_in_bin = 0;
+  };
+
+  // Computes and returns a BinDebugInfo for each Bin.
+  std::array<BinDebugInfo, kNumBins> get_bin_debug_info()
+      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+
   AllocatorRetry retry_helper_;
 
   // Structures immutable after construction
   size_t memory_limit_ = 0;
+
+  inline int Log2FloorNonZeroSlow(uint64 n) {
+    int r = 0;
+    while (n > 0) {
+      r++;
+      n >>= 1;
+    }
+    return r - 1;
+  }
+
+  // Returns floor(log2(n)).
   inline int Log2FloorNonZero(uint64 n) {
 #if defined(__GNUC__)
     return 63 ^ __builtin_clzll(n);
@@ -356,12 +383,7 @@ class BFCAllocator : public VisitableAllocator {
     _BitScanReverse64(&index, n);
     return index;
 #else
-    int r = 0;
-    while (n > 0) {
-      r++;
-      n >>= 1;
-    }
-    return r;
+    return Log2FloorNonZeroSlow(n);
 #endif
   }
 
@@ -398,11 +420,13 @@ class BFCAllocator : public VisitableAllocator {
   mutable mutex lock_;
   RegionManager region_manager_ GUARDED_BY(lock_);
 
-  std::vector<Chunk> chunks_;
-  ChunkHandle free_chunks_list_;  // Ptr to head of linked list of free Chunks
+  std::vector<Chunk> chunks_ GUARDED_BY(lock_);
+
+  // Pointer to head of linked list of free Chunks
+  ChunkHandle free_chunks_list_ GUARDED_BY(lock_);
 
   // Called once on each region, ASAP.
-  std::vector<Visitor> region_visitors_;
+  std::vector<Visitor> region_visitors_ GUARDED_BY(lock_);
 
   // Counter containing the next unique identifier to assign to a
   // newly-created chunk.
@@ -411,6 +435,7 @@ class BFCAllocator : public VisitableAllocator {
   // Stats.
   AllocatorStats stats_ GUARDED_BY(lock_);
 
+  friend class GPUBFCAllocatorPrivateMethodsTest;
   TF_DISALLOW_COPY_AND_ASSIGN(BFCAllocator);
 };
 

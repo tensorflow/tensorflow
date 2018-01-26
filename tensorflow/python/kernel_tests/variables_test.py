@@ -504,7 +504,7 @@ class VariablesTestCase(test.TestCase):
       self.assertAllClose(np.ones((5, 5), np.float32), var.eval())
 
   def testRepr(self):
-    var = variables.Variable(np.zeros((5, 5), np.float32), name='noop')
+    var = variables.Variable(np.zeros((5, 5), np.float32), name="noop")
     self.assertEqual(
         "<tf.Variable 'noop:0' shape=(5, 5) dtype=float32_ref>",
         repr(var))

@@ -24,6 +24,7 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
+
 template <typename Device, typename T, int NDIMS>
 struct Slice {
   void operator()(const Device& d, typename TTypes<T, NDIMS>::Tensor output,

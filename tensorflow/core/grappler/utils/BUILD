@@ -1,5 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 filegroup(
     name = "all_files",
     srcs = glob(
@@ -27,9 +29,8 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "scc_test",
-    size = "small",
     srcs = ["scc_test.cc"],
     data = [
         "//tensorflow/core/grappler/costs:graph_properties_testdata",
@@ -52,6 +53,7 @@ cc_library(
     hdrs = ["topological_sort.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:op_types",
@@ -59,9 +61,8 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "topological_sort_test",
-    size = "small",
     srcs = ["topological_sort_test.cc"],
     deps = [
         ":topological_sort",
@@ -78,6 +79,7 @@ cc_library(
     hdrs = ["frame.h"],
     visibility = ["//visibility:public"],
     deps = [
+        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:op_types",
@@ -85,7 +87,7 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "frame_test",
     size = "small",
     srcs = ["frame_test.cc"],

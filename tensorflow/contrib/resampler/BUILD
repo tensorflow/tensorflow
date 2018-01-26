@@ -26,9 +26,15 @@ tf_custom_op_py_library(
     deps = [
         ":resampler_ops",
         "//tensorflow/contrib/util:util_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:util",
+        "//third_party/py/numpy",
     ],
 )
 

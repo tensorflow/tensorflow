@@ -34,7 +34,7 @@ class DecodeCSVOpTest(test.TestCase):
         out = sess.run(decode)
 
         for i, field in enumerate(out):
-          if field.dtype == np.float32:
+          if field.dtype == np.float32 or field.dtype == np.float64:
             self.assertAllClose(field, expected_out[i])
           else:
             self.assertAllEqual(field, expected_out[i])
@@ -85,6 +85,17 @@ class DecodeCSVOpTest(test.TestCase):
 
     self._test(args, expected_out)
 
+  def testDouble(self):
+    args = {
+        "records": ["1.0", "-1.79e+308", '"1.79e+308"'],
+        "record_defaults": [np.array(
+            [], dtype=np.double)],
+    }
+
+    expected_out = [[1.0, -1.79e+308, 1.79e+308]]
+
+    self._test(args, expected_out)
+
   def testInt64(self):
     args = {
         "records": ["1", "2", '"2147483648"'],
@@ -113,6 +124,17 @@ class DecodeCSVOpTest(test.TestCase):
     }
 
     expected_out = [[1.0, 0.2, 3], [4, 5, 6], [b"aa", b"bb", b"cc"]]
+
+    self._test(args, expected_out)
+
+  def testNA(self):
+    args = {
+        "records": ["2.0,NA,aa", "NA,5,bb", "3,6,NA"],
+        "record_defaults": [[0.0], [0], [""]],
+        "na_value": "NA"
+    }
+
+    expected_out = [[2.0, 0.0, 3], [0, 5, 6], [b"aa", b"bb", b""]]
 
     self._test(args, expected_out)
 

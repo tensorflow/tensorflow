@@ -21,7 +21,6 @@ failing_cpu_cc_tests="\
     //tensorflow/core:lib_core_status_test + \
     //tensorflow/core:lib_monitoring_collection_registry_test + \
     //tensorflow/core:lib_strings_numbers_test + \
-    //tensorflow/core:lib_strings_str_util_test + \
     //tensorflow/core/platform/hadoop:hadoop_file_system_test + \
     //tensorflow/core:platform_file_system_test + \
     //tensorflow/core:platform_logging_test + \
@@ -43,7 +42,6 @@ broken_cpu_cc_tests="\
     //tensorflow/core/platform/cloud:gcs_file_system_test + \
     //tensorflow/core/kernels/cloud:bigquery_table_accessor_test + \
     //tensorflow/core/kernels/hexagon:graph_transferer_test + \
-    //tensorflow/core/kernels/hexagon:quantized_matmul_op_for_hexagon_test + \
     //tensorflow/core/kernels:remote_fused_graph_execute_utils_test + \
     //tensorflow/core/kernels:requantize_op_test + \
     //tensorflow/core/kernels:requantization_range_op_test + \
@@ -88,25 +86,13 @@ extra_failing_gpu_cc_tests="\
     //tensorflow/core:cuda_libdevice_path_test + \
     //tensorflow/core:common_runtime_direct_session_test + \
     //tensorflow/core:common_runtime_direct_session_with_tracking_alloc_test + \
-    //tensorflow/core:gpu_tracer_test + \
+    //tensorflow/core:device_tracer_test + \
     //tensorflow/core:ops_math_grad_test \
 "
 
 exclude_cpu_cc_tests="${failing_cpu_cc_tests} + ${broken_cpu_cc_tests}"
 
 exclude_gpu_cc_tests="${extra_failing_gpu_cc_tests} + ${exclude_cpu_cc_tests}"
-
-function clean_output_base() {
-  # TODO(pcloudy): bazel clean --expunge doesn't work on Windows yet.
-  # Clean the output base manually to ensure build correctness
-  bazel clean
-  output_base=$(bazel info output_base)
-  bazel shutdown
-  # Sleep 5s to wait for jvm shutdown completely
-  # otherwise rm will fail with device or resource busy error
-  sleep 5
-  rm -rf ${output_base}
-}
 
 function run_configure_for_cpu_build {
   # Due to a bug in Bazel: https://github.com/bazelbuild/bazel/issues/2182
@@ -116,16 +102,13 @@ function run_configure_for_cpu_build {
   if [ -z "$TF_ENABLE_XLA" ]; then
     export TF_ENABLE_XLA=0
   fi
-  if [ -z "$CC_OPT_FLAGS" ]; then
-    export CC_OPT_FLAGS="-march=native"
-  fi
   if [ -z "$TF_NEED_MKL" ]; then
     export TF_NEED_MKL=0
   fi
   export TF_NEED_VERBS=0
-  export TF_NEED_GCP=0
+  export TF_NEED_GCP=1
   export TF_NEED_HDFS=0
-  export TF_NEED_OPENCL=0
+  export TF_NEED_OPENCL_SYCL=0
   echo "" | ./configure
 }
 
@@ -134,22 +117,19 @@ function run_configure_for_gpu_build {
   # yes "" | ./configure doesn't work on Windows, so we set all the
   # environment variables in advance to avoid interact with the script.
   export TF_NEED_CUDA=1
-  export TF_CUDA_VERSION=8.0
-  export CUDA_TOOLKIT_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v8.0"
-  export TF_CUDNN_VERSION=6.0
+  export TF_CUDA_VERSION=9.0
+  export CUDA_TOOLKIT_PATH="C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v9.0"
+  export TF_CUDNN_VERSION=7.0
   export CUDNN_INSTALL_PATH="C:/tools/cuda"
   export TF_CUDA_COMPUTE_CAPABILITIES="3.7"
   if [ -z "$TF_ENABLE_XLA" ]; then
     export TF_ENABLE_XLA=0
   fi
-  if [ -z "$CC_OPT_FLAGS" ]; then
-    export CC_OPT_FLAGS="-march=native"
-  fi
   export TF_NEED_VERBS=0
   export TF_NEED_MKL=0
   export TF_NEED_GCP=0
   export TF_NEED_HDFS=0
-  export TF_NEED_OPENCL=0
+  export TF_NEED_OPENCL_SYCL=0
 
   # TODO(pcloudy): Remove this after TensorFlow uses its own CRSOOTOOL
   # for GPU build on Windows

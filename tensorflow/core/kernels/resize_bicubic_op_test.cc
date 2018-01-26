@@ -251,14 +251,15 @@ TEST_F(ResizeBicubicOpTest, TestAreaRandomDataSeveralInputsSizes4Channels) {
   RunManyRandomTests(4);
 }
 
-static Graph* ResizeBicubic(int batch_size, int size, int channels) {
+static Graph* ResizeBicubic(int batch_size, int size, int channels,
+                            float scale_y = 0.3, float scale_x = 0.7) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor input(DT_FLOAT, TensorShape({batch_size, size, size, channels}));
   input.flat<float>().setRandom();
   Tensor shape(DT_INT32, TensorShape({2}));
   auto shape_t = shape.flat<int32>();
-  shape_t(0) = 0.3 * size;
-  shape_t(1) = 0.7 * size;
+  shape_t(0) = scale_y * size;
+  shape_t(1) = scale_x * size;
   test::graph::Binary(g, "ResizeBicubic", test::graph::Constant(g, input),
                       test::graph::Constant(g, shape));
   return g;
@@ -284,5 +285,18 @@ BM_ResizeBicubicDev(32, 32, 3);
 BM_ResizeBicubicDev(32, 128, 3);
 BM_ResizeBicubicDev(32, 512, 3);
 BM_ResizeBicubicDev(32, 1024, 3);
+
+#define BM_ResizeBicubicExpand(BATCH, SIZE, CHANNELS)                          \
+  static void BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS(int iters) { \
+    testing::ItemsProcessed(static_cast<int64>(iters) * BATCH * SIZE * SIZE *  \
+                            CHANNELS * 8 * 8);                                 \
+    test::Benchmark("cpu", ResizeBicubic(BATCH, SIZE, CHANNELS, 8, 8))         \
+        .Run(iters);                                                           \
+  }                                                                            \
+  BENCHMARK(BM_ResizeBicubicExpand##_##BATCH##_##SIZE##_##CHANNELS);
+
+BM_ResizeBicubicExpand(12, 48, 1);
+BM_ResizeBicubicExpand(12, 48, 3);
+BM_ResizeBicubicExpand(12, 48, 40);
 
 }  // end namespace tensorflow

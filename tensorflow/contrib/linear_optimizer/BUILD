@@ -127,7 +127,6 @@ py_test(
     name = "sdca_estimator_test",
     srcs = ["python/sdca_estimator_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["notsan"],
     deps = [
         ":sdca_estimator_py",
         "//tensorflow/contrib/layers:layers_py",

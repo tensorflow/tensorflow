@@ -33,9 +33,6 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
        "fetch nodes will be dumped to stdout in a comma-separated list.  "
        "Typically used to format arguments for other tools, e.g. "
        "freeze_graph."},
-      {"debug_dir", &flags->debug_dir,
-       "Specifies a directory to dump debugging information, including "
-       "rewritten graphs and the XLA HLO module."},
       // Flags controlling the XLA ahead-of-time compilation, that correspond to
       // the fields of xla::cpu::CpuAotCompilationOptions.
       //
@@ -62,8 +59,19 @@ void AppendMainFlags(std::vector<Flag>* flag_list, MainFlags* flags) {
        "namespaces may precede the class name, separated by double-colons.  "
        "The class will be generated in the given namespace(s), or if no "
        "namespaces are given, within the global namespace."},
-      {"out_object", &flags->out_object, "Output object file name."},
+      {"out_function_object", &flags->out_function_object,
+       "Output object file containing the generated function for the "
+       "TensorFlow model."},
       {"out_header", &flags->out_header, "Output header file name."},
+      {"out_metadata_object", &flags->out_metadata_object,
+       "Output object file name containing optional metadata for the generated "
+       "function."},
+      {"out_session_module", &flags->out_session_module,
+       "Output session module proto."},
+      {"gen_name_to_index", &flags->gen_name_to_index,
+       "Generate name-to-index data for Lookup{Arg,Result}Index methods."},
+      {"gen_program_shape", &flags->gen_program_shape,
+       "Generate program shape data for the ProgramShape method."},
   };
   flag_list->insert(flag_list->end(), tmp.begin(), tmp.end());
 }

@@ -30,6 +30,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -526,6 +527,50 @@ class PaddingTest(test.TestCase):
       for key, val in expected_padded_seq.items():
         self.assertTrue(
             math_ops.reduce_all(math_ops.equal(val, padded_seq[key])).eval())
+
+  def testPaddingOnlySparse(self):
+    ind1 = np.array([[0], [2]])
+    val1 = np.array([3, 4])
+    shape1 = np.array([4])
+
+    ind2 = np.array([[1], [2]])
+    val2 = np.array([9, 12])
+    shape2 = np.array([5])
+
+    with ops.Graph().as_default() as g, self.test_session(graph=g):
+      sp_tensor1 = sparse_tensor.SparseTensor(
+          indices=array_ops.constant(ind1, dtypes.int64),
+          values=array_ops.constant(val1, dtypes.int64),
+          dense_shape=array_ops.constant(shape1, dtypes.int64))
+      sp_tensor2 = sparse_tensor.SparseTensor(
+          indices=array_ops.constant(ind2, dtypes.int64),
+          values=array_ops.constant(val2, dtypes.int64),
+          dense_shape=array_ops.constant(shape2, dtypes.int64))
+
+      sp_tensor1_expected = sparse_tensor.SparseTensor(
+          indices=sp_tensor1.indices,
+          values=sp_tensor1.values,
+          dense_shape=[8])
+      sp_tensor2_expected = sparse_tensor.SparseTensor(
+          indices=sp_tensor2.indices,
+          values=sp_tensor2.values,
+          dense_shape=[8])
+
+      sequences = {
+          "key_1": sp_tensor1,
+          "key_2": sp_tensor2,
+      }
+      _, padded_seq = sqss._padding(sequences, 4)
+
+      expected_padded_seq = {
+          "key_1": sp_tensor1_expected,
+          "key_2": sp_tensor2_expected,
+      }
+
+      for key, val in expected_padded_seq.items():
+        self.assertAllEqual(
+            sparse_ops.sparse_tensor_to_dense(val).eval(),
+            sparse_ops.sparse_tensor_to_dense(padded_seq[key]).eval())
 
 
 class SparseTensorReConstructionTest(test.TestCase):

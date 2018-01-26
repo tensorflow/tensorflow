@@ -108,9 +108,44 @@ TEST_F(InlinerTest, MapConstant) {
   LiteralTestUtil::ExpectEqual(*result, *expected);
 }
 
+TEST_F(InlinerTest, MapSubtractOppositeOrder) {
+  Shape r0f32 = ShapeUtil::MakeShape(F32, {});
+
+  // Note that the parameter ordinals are in the opposite order to their
+  // position as operands
+  auto max_builder = HloComputation::Builder(TestName());
+  auto param1 = max_builder.AddInstruction(
+          HloInstruction::CreateParameter(1, r0f32, "x"));
+  auto param2 = max_builder.AddInstruction(
+          HloInstruction::CreateParameter(0, r0f32, "y"));
+  max_builder.AddInstruction(HloInstruction::CreateBinary(
+          param1->shape(), HloOpcode::kSubtract, param1, param2));
+  auto max_f32 = max_builder.Build();
+
+  auto builder = HloComputation::Builder("MapSubFunction");
+  auto lhs = builder.AddInstruction(
+    HloInstruction::CreateConstant(Literal::CreateR1<float>({1, 2, 3, 4})));
+  auto rhs = builder.AddInstruction(
+    HloInstruction::CreateConstant(Literal::CreateR1<float>({4, 3, 2, 1})));
+  builder.AddInstruction(
+    HloInstruction::CreateMap(lhs->shape(), {lhs, rhs}, max_f32.get()));
+
+  auto computation = builder.Build();
+  auto hlo_module = CreateNewModule();
+  hlo_module->AddEmbeddedComputation(std::move(max_f32));
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  Inliner inliner;
+  EXPECT_TRUE(inliner.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_THAT(hlo_module->entry_computation()->root_instruction(),
+          op::Subtract(rhs, lhs));
+
+  // Verify execution on CPU.
+  auto result = ExecuteAndTransfer(std::move(hlo_module), {});
+  auto expected = Literal::CreateR1<float>({3, 1, -1, -3});
+  LiteralTestUtil::ExpectEqual(*result, *expected);
+}
+
+
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

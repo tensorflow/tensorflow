@@ -41,28 +41,42 @@ typedef Eigen::QInt32 qint32;
 typedef Eigen::QInt16 qint16;
 typedef Eigen::QUInt16 quint16;
 
-// see framework/bfloat16.h for description.
-struct bfloat16 {
-  EIGEN_DEVICE_FUNC bfloat16() {}
-  EIGEN_DEVICE_FUNC explicit bfloat16(const uint16_t v) : value(v) {}
-
-  uint16_t value;
-};
-
-}  // end namespace tensorflow
+}  // namespace tensorflow
 
 namespace Eigen {
+// TOOD(xpan): We probably need to overwrite more methods to have correct eigen
+// behavior. E.g. loest(), is_integer, etc. See NumTraits.h in eigen.
 template <>
-struct NumTraits<tensorflow::bfloat16> : GenericNumTraits<uint16_t> {};
+struct NumTraits<tensorflow::bfloat16>
+    : GenericNumTraits<tensorflow::bfloat16> {};
 
-EIGEN_STRONG_INLINE bool operator==(const tensorflow::bfloat16 a,
-                                    const tensorflow::bfloat16 b) {
-  return a.value == b.value;
+using ::tensorflow::operator==;
+using ::tensorflow::operator!=;
+
+namespace numext {
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE tensorflow::bfloat16 log(
+    const tensorflow::bfloat16& x) {
+  return static_cast<tensorflow::bfloat16>(::logf(static_cast<float>(x)));
 }
 
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE tensorflow::bfloat16 exp(
+    const tensorflow::bfloat16& x) {
+  return static_cast<tensorflow::bfloat16>(::expf(static_cast<float>(x)));
+}
+
+template <>
+EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE tensorflow::bfloat16 abs(
+    const tensorflow::bfloat16& x) {
+  return static_cast<tensorflow::bfloat16>(::fabsf(static_cast<float>(x)));
+}
+
+}  // namespace numext
 }  // namespace Eigen
 
-#ifdef COMPILER_MSVC
+#if defined(COMPILER_MSVC) && !defined(__clang__)
 namespace std {
 template <>
 struct hash<Eigen::half> {

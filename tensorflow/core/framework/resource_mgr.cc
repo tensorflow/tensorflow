@@ -160,7 +160,9 @@ Status ResourceMgr::DoLookup(const string& container, TypeIndex type,
   tf_shared_lock l(mu_);
   const Container* b = gtl::FindPtrOrNull(containers_, container);
   if (b == nullptr) {
-    return errors::NotFound("Container ", container, " does not exist.");
+    return errors::NotFound("Container ", container,
+                            " does not exist. (Could not find resource: ",
+                            container, "/", name, ")");
   }
   auto r = gtl::FindPtrOrNull(*b, {type.hash_code(), name});
   if (r == nullptr) {

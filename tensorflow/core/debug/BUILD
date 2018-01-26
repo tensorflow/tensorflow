@@ -7,6 +7,10 @@
 #    DebuggerState to be constructed at initialization time, enabling
 #    TensorFlow Debugger (tfdbg) support. For details, please see
 #    core/common_runtime/debugger_state_interface.h.
+# ":debug_callback_registry" - Depending on this target exposes a global
+#    callback registry that will be used to record any observed tensors matching
+#    a watch state.
+# ":debug_node_key" - Defines a struct used for tracking tensors.
 
 package(
     default_visibility = ["//tensorflow:internal"],
@@ -52,6 +56,7 @@ tf_proto_library(
     cc_grpc_version = 1,
     protodeps = [
         ":debugger_event_metadata_proto",
+        "//tensorflow/core/profiler:protos_all",
     ] + tf_additional_all_protos(),
     visibility = ["//tensorflow:__subpackages__"],
 )
@@ -85,9 +90,9 @@ tf_cuda_library(
     deps = [
         ":debug",
         "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:device_tracer",
         "//tensorflow/core:direct_session_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_tracer",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
@@ -119,6 +124,7 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
@@ -134,10 +140,13 @@ tf_cuda_library(
     copts = tf_copts(),
     linkstatic = 1,
     deps = [
+        ":debug_callback_registry",
+        ":debug_node_key",
         ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:proto_text",
@@ -165,6 +174,18 @@ tf_cuda_library(
         "@grpc//:grpc++_unsecure",
     ],
     alwayslink = 1,
+)
+
+tf_cuda_library(
+    name = "debug_node_key",
+    srcs = ["debug_node_key.cc"],
+    hdrs = ["debug_node_key.h"],
+    copts = tf_copts(),
+    linkstatic = 1,
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
 )
 
 # TODO(cais): Fix flakiness on GPU and change this back to a tf_cc_test_gpu.
@@ -206,8 +227,10 @@ tf_cc_test(
     srcs = ["debug_io_utils_test.cc"],
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
+        ":debug_callback_registry",
         ":debug_grpc_testlib",
         ":debug_io_utils",
+        ":debug_node_key",
         ":debug_service_proto_cc",
         ":debugger_event_metadata_proto_cc",
         "//tensorflow/core:core_cpu",
@@ -283,6 +306,19 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "debug_callback_registry",
+    srcs = ["debug_callback_registry.cc"],
+    hdrs = ["debug_callback_registry.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":debug_node_key",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
     ],
 )
 

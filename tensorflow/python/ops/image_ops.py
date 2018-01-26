@@ -21,6 +21,7 @@ See the @{$python/image} guide.
 @@decode_bmp
 @@decode_gif
 @@decode_jpeg
+@@decode_and_crop_jpeg
 @@encode_jpeg
 @@extract_jpeg_shape
 @@decode_png
@@ -48,6 +49,10 @@ See the @{$python/image} guide.
 @@grayscale_to_rgb
 @@hsv_to_rgb
 @@rgb_to_hsv
+@@rgb_to_yiq
+@@yiq_to_rgb
+@@rgb_to_yuv
+@@yuv_to_rgb
 @@convert_image_dtype
 @@adjust_brightness
 @@random_brightness

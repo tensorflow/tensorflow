@@ -24,9 +24,11 @@ function real_path() {
 function cp_external() {
   local src_dir=$1
   local dest_dir=$2
-  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*'`; do
+  for f in `find "$src_dir" -maxdepth 1 -mindepth 1 ! -name '*local_config_cuda*' ! -name '*org_tensorflow*'`; do
     cp -R "$f" "$dest_dir"
   done
+  mkdir -p "${dest_dir}/local_config_cuda/cuda/cuda/"
+  cp "${src_dir}/local_config_cuda/cuda/cuda/cuda_config.h" "${dest_dir}/local_config_cuda/cuda/cuda/"
 }
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
@@ -92,12 +94,12 @@ function main() {
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow/tensorflow \
       "${TMPDIR}"
     mkdir "${TMPDIR}/external"
-    # Note: this makes an extra copy of org_tensorflow.
     cp_external \
       bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles \
       "${TMPDIR}/external"
     RUNFILES=bazel-bin/tensorflow/tools/pip_package/simple_console_for_window_unzip/runfiles/org_tensorflow
   else
+    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
     if [ -d bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external ]; then
       # Old-style runfiles structure (--legacy_external_runfiles).
       cp -R \
@@ -108,12 +110,12 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/external \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      so_lib_dir="bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8"
-      if [ -d ${so_lib_dir} ]; then
-        mkl_so_dir=$(ls ${so_lib_dir} | grep mkl)
-        if [ $? -eq 0 ]; then
-          mkdir "${TMPDIR}/_solib_k8"
-          cp -R ${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/_solib_k8"
+      so_lib_dir=$(ls $RUNFILES | grep solib) || true
+      if [ -n "${so_lib_dir}" ]; then
+        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+        if [ -n "${mkl_so_dir}" ]; then
+          mkdir "${TMPDIR}/${so_lib_dir}"
+          cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
         fi
       fi
     else
@@ -122,21 +124,22 @@ function main() {
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/tensorflow \
         "${TMPDIR}"
       mkdir "${TMPDIR}/external"
-      # Note: this makes an extra copy of org_tensorflow.
       cp_external \
         bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles \
         "${TMPDIR}/external"
       # Copy MKL libs over so they can be loaded at runtime
-      so_lib_dir="bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow/_solib_k8"
-      if [ -d ${so_lib_dir} ]; then
-        mkl_so_dir=$(ls ${so_lib_dir} | grep mkl)
-        if [ $? -eq 0 ]; then
-          mkdir "${TMPDIR}/_solib_k8"
-          cp -R ${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/_solib_k8"
+      so_lib_dir=$(ls $RUNFILES | grep solib) || true
+      if [ -n "${so_lib_dir}" ]; then
+        mkl_so_dir=$(ls ${RUNFILES}/${so_lib_dir} | grep mkl) || true
+        if [ -n "${mkl_so_dir}" ]; then
+          mkdir "${TMPDIR}/${so_lib_dir}"
+          cp -R ${RUNFILES}/${so_lib_dir}/${mkl_so_dir} "${TMPDIR}/${so_lib_dir}"
         fi
       fi
     fi
-    RUNFILES=bazel-bin/tensorflow/tools/pip_package/build_pip_package.runfiles/org_tensorflow
+    mkdir "${TMPDIR}/tensorflow/aux-bin"
+    # Install toco as a binary in aux-bin.
+    cp bazel-bin/tensorflow/contrib/lite/toco/toco ${TMPDIR}/tensorflow/aux-bin/
   fi
 
   # protobuf pip package doesn't ship with header files. Copy the headers

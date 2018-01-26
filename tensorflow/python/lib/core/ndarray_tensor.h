@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_
+#ifndef TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_
+#define TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_
 
 // Must be included first.
 #include "tensorflow/python/lib/core/numpy.h"
@@ -22,22 +22,9 @@ limitations under the License.
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/python/lib/core/safe_ptr.h"
 
 namespace tensorflow {
-// Safe container for an owned PyObject. On destruction, the reference count of
-// the contained object will be decremented.
-inline void Py_DECREF_wrapper(PyObject* o) { Py_DECREF(o); }
-// Note: can't use decltype(&Py_DECREF_wrapper) due to SWIG
-typedef void (*Py_DECREF_wrapper_type)(PyObject*);
-typedef std::unique_ptr<PyObject, Py_DECREF_wrapper_type> Safe_PyObjectPtr;
-Safe_PyObjectPtr make_safe(PyObject* o);
-
-// Safe containers for an owned TF_Tensor. On destruction, the tensor will be
-// deleted by TF_DeleteTensor.
-// Note: can't use decltype(&TF_DeleteTensor) due to SWIG
-typedef void (*TF_DeleteTensor_type)(TF_Tensor*);
-typedef std::unique_ptr<TF_Tensor, TF_DeleteTensor_type> Safe_TF_TensorPtr;
-Safe_TF_TensorPtr make_safe(TF_Tensor* tensor);
 
 Status TF_TensorToPyArray(Safe_TF_TensorPtr tensor, PyObject** out_ndarray);
 
@@ -55,6 +42,7 @@ Status NdarrayToTensor(PyObject* obj, Tensor* ret);
 // Creates a numpy array in 'ret' which either aliases the content of 't' or has
 // a copy.
 Status TensorToNdarray(const Tensor& t, PyObject** ret);
+
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_
+#endif  // TENSORFLOW_PYTHON_LIB_CORE_NDARRAY_TENSOR_H_

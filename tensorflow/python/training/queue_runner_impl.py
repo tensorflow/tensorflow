@@ -23,6 +23,7 @@ import weakref
 
 from tensorflow.core.protobuf import queue_runner_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -43,6 +44,11 @@ class QueueRunner(object):
   and reporting exceptions, etc.
 
   The `QueueRunner`, combined with the `Coordinator`, helps handle these issues.
+
+  @compatibility(eager)
+  QueueRunners are not compatible with eager execution. Instead, please
+  use `tf.data` to get data into your model.
+  @end_compatibility
   """
 
   def __init__(self, queue=None, enqueue_ops=None, close_op=None,
@@ -79,7 +85,13 @@ class QueueRunner(object):
       ValueError: If both `queue_runner_def` and `queue` are both specified.
       ValueError: If `queue` or `enqueue_ops` are not provided when not
         restoring from `queue_runner_def`.
+      RuntimeError: If eager execution is enabled.
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "QueueRunners are not supported when eager execution is enabled. "
+          "Instead, please use tf.data to get data into your model.")
+
     if queue_runner_def:
       if queue or enqueue_ops:
         raise ValueError("queue_runner_def and queue are mutually exclusive.")
@@ -414,7 +426,18 @@ def start_queue_runners(sess=None, coord=None, daemon=True, start=True,
 
   Returns:
     A list of threads.
+
+  Raises:
+    RuntimeError: If called with eager execution enabled.
+    ValueError: If called without a default `tf.Session` registered.
+
+  @compatibility(eager)
+  Not compatible with eager execution. To ingest data under eager execution,
+  use the `tf.data` API instead.
+  @end_compatibility
   """
+  if context.in_eager_mode():
+    raise RuntimeError("Queues are not compatible with eager execution.")
   if sess is None:
     sess = ops.get_default_session()
     if not sess:

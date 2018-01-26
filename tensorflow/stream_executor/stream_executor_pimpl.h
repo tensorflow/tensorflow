@@ -104,6 +104,9 @@ class StreamExecutor {
   // platform, false is returned.
   bool GetKernel(const MultiKernelLoaderSpec &spec, KernelBase *kernel);
 
+  // Releases any state associated with the previously loaded kernel.
+  void UnloadKernel(const KernelBase *kernel);
+
   // Synchronously allocates an array on the device of type T with element_count
   // elements.
   template <typename T>
@@ -312,6 +315,10 @@ class StreamExecutor {
   // The value is cached on first use.
   const DeviceDescription &GetDeviceDescription() const;
 
+  // If implemented, returns device specific measurement of load
+  // (e.g. pending requests).
+  int64 GetDeviceLoad() const;
+
   // Returns the underlying device memory usage information, if it is available.
   // If it is not available (false is returned), free/total may not be
   // initialized.
@@ -344,18 +351,18 @@ class StreamExecutor {
 
   // Get the list of supported algorithms for the forward convolution opeartion.
   bool GetConvolveAlgorithms(bool with_winograd_nonfused,
-                             std::vector<dnn::AlgorithmType> *out_algorithms);
+                             std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on data.
   bool GetConvolveBackwardDataAlgorithms(
       bool with_winograd_nonfused,
-      std::vector<dnn::AlgorithmType> *out_algorithms);
+      std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
   // Get the list of supported algorithms for the backward convolution on the
   // filter.
   bool GetConvolveBackwardFilterAlgorithms(
       bool with_winograd_nonfused,
-      std::vector<dnn::AlgorithmType> *out_algorithms);
+      std::vector<dnn::AlgorithmDesc> *out_algorithms);
 
   // Get the list of supported algorithms for BLAS gemm.
   bool GetBlasGemmAlgorithms(std::vector<blas::AlgorithmType> *out_algorithms);
@@ -474,7 +481,7 @@ class StreamExecutor {
   // Causes the host code to synchronously wait for operations entrained onto
   // stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
-  bool BlockHostUntilDone(Stream *stream);
+  port::Status BlockHostUntilDone(Stream *stream);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // an opaque void* representing that allocation. In the case of failure,

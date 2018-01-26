@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -36,6 +37,12 @@ std::unique_ptr<DirectSession> CreateSession() {
   options.config.mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions_Level_L0);
+  options.config.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_constant_folding(RewriterConfig::OFF);
+  options.config.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_dependency_optimization(RewriterConfig::OFF);
 
   return std::unique_ptr<DirectSession>(
       dynamic_cast<DirectSession*>(NewSession(options)));
@@ -51,7 +58,7 @@ class SessionDebugMinusAXTest : public ::testing::Test {
 #elif defined(TENSORFLOW_USE_SYCL)
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
-    const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:CPU:0";
 #endif
 
     Tensor a_tensor(DT_FLOAT, TensorShape({2, 2}));
@@ -499,7 +506,7 @@ TEST_F(SessionDebugMinusAXTest,
 }
 #endif
 
-class SessionDebugOutputSlotWithoutOngoingEdgeTest : public ::testing::Test {
+class SessionDebugOutputSlotWithoutOutgoingEdgeTest : public ::testing::Test {
  public:
   void Initialize() {
     Graph graph(OpRegistry::Global());
@@ -509,7 +516,7 @@ class SessionDebugOutputSlotWithoutOngoingEdgeTest : public ::testing::Test {
 #elif defined(TENSORFLOW_USE_SYCL)
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
-    const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:CPU:0";
 #endif
 
     Tensor a_tensor(DT_FLOAT, TensorShape({1, 1}));
@@ -536,7 +543,7 @@ class SessionDebugOutputSlotWithoutOngoingEdgeTest : public ::testing::Test {
   GraphDef def_;
 };
 
-TEST_F(SessionDebugOutputSlotWithoutOngoingEdgeTest,
+TEST_F(SessionDebugOutputSlotWithoutOutgoingEdgeTest,
        WatchSlotWithoutOutgoingEdge) {
   Initialize();
   auto session = CreateSession();
@@ -611,7 +618,7 @@ class SessionDebugVariableTest : public ::testing::Test {
 #elif defined(TENSORFLOW_USE_SYCL)
     const string kDeviceName = "/job:localhost/replica:0/task:0/device:SYCL:0";
 #else
-    const string kDeviceName = "/job:localhost/replica:0/task:0/cpu:0";
+    const string kDeviceName = "/job:localhost/replica:0/task:0/device:CPU:0";
 #endif
 
     // Define variable node.

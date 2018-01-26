@@ -605,6 +605,7 @@ class TimeDependentStateSpaceModel(state_space_model.StateSpaceModel):
     super(TimeDependentStateSpaceModel, self).__init__(
         configuration=state_space_model.StateSpaceModelConfiguration(
             use_observation_noise=False,
+            transition_covariance_initial_log_scale_bias=5.,
             static_unrolling_window_size_threshold=
             static_unrolling_window_size_threshold))
 
@@ -626,9 +627,8 @@ class UnknownShapeModel(TimeDependentStateSpaceModel):
 
   def get_observation_model(self, times):
     parent_model = super(UnknownShapeModel, self).get_observation_model(times)
-    parent_model._shape = tensor_shape.unknown_shape()
-    assert parent_model.get_shape().ndims is None
-    return parent_model
+    return array_ops.placeholder_with_default(
+        input=parent_model, shape=tensor_shape.unknown_shape())
 
 
 class TimeDependentTests(test.TestCase):

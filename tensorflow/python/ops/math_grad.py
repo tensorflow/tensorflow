@@ -96,15 +96,16 @@ def _MinGrad(op, grad):
 def _MeanGrad(op, grad):
   """Gradient for Mean."""
   sum_grad = _SumGrad(op, grad)[0]
-  input_shape = array_ops.shape(op.inputs[0])
-  output_shape = array_ops.shape(op.outputs[0])
-  # TODO(apassos) remove this device hackery as eager copy to device becomes
-  # more seamless.
-  with ops.colocate_with(input_shape):
+  input_size = op.inputs[0].get_shape().num_elements()
+  output_size = op.outputs[0].get_shape().num_elements()
+  if input_size is not None and output_size is not None:
+    factor = input_size // max(output_size, 1)
+    factor = constant_op.constant(factor, dtype=sum_grad.dtype)
+  else:
+    input_shape = array_ops.shape(op.inputs[0])
+    output_shape = array_ops.shape(op.outputs[0])
     factor = _safe_shape_div(
         math_ops.reduce_prod(input_shape), math_ops.reduce_prod(output_shape))
-  if context.in_eager_mode():
-    factor = factor._copy(device_name=sum_grad.device)  # pylint: disable=protected-access
   return sum_grad / math_ops.cast(factor, sum_grad.dtype), None
 
 
@@ -183,6 +184,15 @@ def _SparseSegmentSumGrad(op, grad):
           None)
 
 
+@ops.RegisterGradient("SparseSegmentSumWithNumSegments")
+def _SparseSegmentSumWithNumSegmentsGrad(op, grad):
+  """Gradient for SparseSegmentSumWithNumSegments."""
+  input_rows = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.unsorted_segment_sum(
+      array_ops.gather(grad, op.inputs[2]), op.inputs[1], input_rows), None,
+          None, None)
+
+
 @ops.RegisterGradient("SparseSegmentMean")
 def _SparseSegmentMeanGrad(op, grad):
   """Gradient for SparseSegmentMean."""
@@ -191,12 +201,28 @@ def _SparseSegmentMeanGrad(op, grad):
                                             dim0), None, None)
 
 
+@ops.RegisterGradient("SparseSegmentMeanWithNumSegments")
+def _SparseSegmentMeanWithNumSegmentsGrad(op, grad):
+  """Gradient for SparseSegmentMeanWithNumSegments."""
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.sparse_segment_mean_grad(grad, op.inputs[1], op.inputs[2],
+                                            dim0), None, None, None)
+
+
 @ops.RegisterGradient("SparseSegmentSqrtN")
 def _SparseSegmentSqrtNGrad(op, grad):
   """Gradient for SparseSegmentSqrtN."""
   dim0 = array_ops.shape(op.inputs[0])[0]
   return (math_ops.sparse_segment_sqrt_n_grad(grad, op.inputs[1], op.inputs[2],
                                               dim0), None, None)
+
+
+@ops.RegisterGradient("SparseSegmentSqrtNWithNumSegments")
+def _SparseSegmentSqrtNWithNumSegmentsGrad(op, grad):
+  """Gradient for SparseSegmentSqrtNWithNumSegments."""
+  dim0 = array_ops.shape(op.inputs[0])[0]
+  return (math_ops.sparse_segment_sqrt_n_grad(grad, op.inputs[1], op.inputs[2],
+                                              dim0), None, None, None)
 
 
 def _SegmentMinOrMaxGrad(op, grad, is_sorted):
@@ -211,8 +237,8 @@ def _SegmentMinOrMaxGrad(op, grad, is_sorted):
     num_selected = math_ops.segment_sum(math_ops.cast(is_selected, grad.dtype),
                                         op.inputs[1])
   else:
-    num_selected = math_ops.unsorted_segment_sum(math_ops.cast(is_selected, grad.dtype),
-                                                 op.inputs[1], op.inputs[2])
+    num_selected = math_ops.unsorted_segment_sum(
+        math_ops.cast(is_selected, grad.dtype), op.inputs[1], op.inputs[2])
 
   # Compute the gradient for each segment. The gradient for the ith segment is
   # divided evenly among the selected elements in that segment.
@@ -310,7 +336,9 @@ def _SquareGrad(op, grad):
 @ops.RegisterGradient("Sqrt")
 def _SqrtGrad(op, grad):
   y = op.outputs[0]  # y = x^(1/2)
+  # pylint: disable=protected-access
   return gen_math_ops._sqrt_grad(y, grad)
+  # pylint: enable=protected-access
 
 
 @ops.RegisterGradient("SqrtGrad")
@@ -326,7 +354,9 @@ def _SqrtGradGrad(op, grad):
 def _RsqrtGrad(op, grad):
   """Returns -0.5 * grad * conj(y)^3."""
   y = op.outputs[0]  # y = x^(-1/2)
+  # pylint: disable=protected-access
   return gen_math_ops._rsqrt_grad(y, grad)
+  # pylint: enable=protected-access
 
 
 @ops.RegisterGradient("RsqrtGrad")
@@ -494,7 +524,9 @@ def _IgammaGrad(op, grad):
   x = op.inputs[1]
   sa = array_ops.shape(a)
   sx = array_ops.shape(x)
+  # pylint: disable=protected-access
   unused_ra, rx = gen_array_ops._broadcast_gradient_args(sa, sx)
+  # pylint: enable=protected-access
 
   # Perform operations in log space before summing, because Gamma(a)
   # and Gamma'(a) can grow large.
@@ -547,7 +579,9 @@ def _ZetaGrad(op, grad):
   # Broadcast gradients
   sx = array_ops.shape(x)
   sq = array_ops.shape(q)
+  # pylint: disable=protected-access
   unused_rx, rq = gen_array_ops._broadcast_gradient_args(sx, sq)
+  # pylint: enable=protected-access
   # Evaluate gradient
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
@@ -567,7 +601,9 @@ def _PolygammaGrad(op, grad):
   # Broadcast gradients
   sn = array_ops.shape(n)
   sx = array_ops.shape(x)
+  # pylint: disable=protected-access
   unused_rn, rx = gen_array_ops._broadcast_gradient_args(sn, sx)
+  # pylint: enable=protected-access
   # Evaluate gradient
   with ops.control_dependencies([grad]):
     n = math_ops.conj(n)
@@ -689,13 +725,31 @@ def _AddNGrad(op, grad):
   return [grad] * len(op.inputs)
 
 
+def _ShapesFullySpecifiedAndEqual(x, y, grad):
+  # pylint: disable=protected-access
+  x_shape = x._shape_tuple()
+  y_shape = y._shape_tuple()
+  grad_shape = grad._shape_tuple()
+  # pylint: enable=protected-access
+  return (x_shape == y_shape and
+          x_shape == grad_shape and
+          x_shape is not None and
+          None not in x_shape)
+
+
 @ops.RegisterGradient("Add")
 def _AddGrad(op, grad):
+  """Gradient for Add."""
   x = op.inputs[0]
   y = op.inputs[1]
+  if (isinstance(grad, ops.Tensor) and
+      _ShapesFullySpecifiedAndEqual(x, y, grad)):
+    return grad, grad
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
+  # pylint: disable=protected-access
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  # pylint: enable=protected-access
   return (array_ops.reshape(math_ops.reduce_sum(grad, rx), sx),
           array_ops.reshape(math_ops.reduce_sum(grad, ry), sy))
 
@@ -706,7 +760,9 @@ def _SubGrad(op, grad):
   y = op.inputs[1]
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
+  # pylint: disable=protected-access
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  # pylint: enable=protected-access
   return (array_ops.reshape(math_ops.reduce_sum(grad, rx), sx),
           array_ops.reshape(-math_ops.reduce_sum(grad, ry), sy))
 
@@ -716,10 +772,16 @@ def _MulGrad(op, grad):
   """The gradient of scalar multiplication."""
   x = op.inputs[0]
   y = op.inputs[1]
+  # pylint: disable=protected-access
+  if (isinstance(grad, ops.Tensor) and
+      _ShapesFullySpecifiedAndEqual(x, y, grad) and
+      grad.dtype in (dtypes.int32, dtypes.float32)):
+    return gen_math_ops._mul(grad, y), gen_math_ops._mul(grad, x)
   assert x.dtype.base_dtype == y.dtype.base_dtype, (x.dtype, " vs. ", y.dtype)
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  # pylint: enable=protected-access
   x = math_ops.conj(x)
   y = math_ops.conj(y)
   return (array_ops.reshape(math_ops.reduce_sum(grad * y, rx), sx),
@@ -751,9 +813,21 @@ def _FloorDivGrad(_, unused_grad):
 
 
 @ops.RegisterGradient("FloorMod")
-def _FloorModGrad(_, unused_grad):
-  """The gradient for the FloorMod operator."""
-  return None, None
+def _FloorModGrad(op, grad):
+  """Returns grad * (1, -floor(x/y))."""
+  x = math_ops.conj(op.inputs[0])
+  y = math_ops.conj(op.inputs[1])
+
+  sx = array_ops.shape(x)
+  sy = array_ops.shape(y)
+  # pylint: disable=protected-access
+  rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
+  # pylint: enable=protected-access
+  floor_xy = math_ops.floor_div(x, y)
+  gx = array_ops.reshape(math_ops.reduce_sum(grad, rx), sx)
+  gy = array_ops.reshape(
+      math_ops.reduce_sum(grad * math_ops.negative(floor_xy), ry), sy)
+  return gx, gy
 
 
 @ops.RegisterGradient("TruncateDiv")
@@ -818,7 +892,7 @@ def _MaximumMinimumGrad(op, grad, selector_op):
   xmask = selector_op(x, y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
   xgrad = array_ops.where(xmask, grad, zeros)
-  ygrad = array_ops.where(math_ops.logical_not(xmask), grad, zeros)
+  ygrad = array_ops.where(xmask, zeros, grad)
   gx = array_ops.reshape(math_ops.reduce_sum(xgrad, rx), sx)
   gy = array_ops.reshape(math_ops.reduce_sum(ygrad, ry), sy)
   return (gx, gy)

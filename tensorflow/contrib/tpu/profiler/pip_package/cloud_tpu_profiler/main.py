@@ -24,34 +24,31 @@ import sys
 
 import tensorflow as tf
 
-
 tf.flags.DEFINE_string('service_addr', '',
                        'Address of TPU profiler service e.g. localhost:8466')
-
-
 tf.flags.DEFINE_string('logdir', '',
                        'Path of TensorBoard log directory e.g. /tmp/tb_log')
-
-
 tf.flags.DEFINE_integer('duration_ms', 2000, 'Duration of tracing in ms.')
 
-
 FLAGS = tf.flags.FLAGS
-
-
 EXECUTABLE = 'data/capture_tpu_profile'
+
+
+def run_main():
+  tf.app.run(main)
 
 
 def main(unused_argv=None):
   if not FLAGS.service_addr or not FLAGS.logdir:
     sys.exit('service_addr and logdir must be provided.')
   executable_path = os.path.join(os.path.dirname(__file__), EXECUTABLE)
+  logdir = os.path.expandvars(os.path.expanduser(FLAGS.logdir))
   cmd = [executable_path]
-  cmd.append('--logdir='+FLAGS.logdir)
+  cmd.append('--logdir='+logdir)
   cmd.append('--service_addr='+FLAGS.service_addr)
   cmd.append('--duration_ms='+str(FLAGS.duration_ms))
   subprocess.call(cmd)
 
 
 if __name__ == '__main__':
-  tf.app.run(main)
+  run_main()

@@ -15,8 +15,8 @@ limitations under the License.
 
 // Build a flat structure of ops.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
 
 #include <deque>
 #include <map>
@@ -29,9 +29,9 @@ limitations under the License.
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/profiler/internal/tfprof_node.h"
-#include "tensorflow/core/profiler/internal/tfprof_options.h"
 #include "tensorflow/core/profiler/internal/tfprof_show_multi.h"
 #include "tensorflow/core/profiler/internal/tfprof_utils.h"
+#include "tensorflow/core/profiler/tfprof_options.h"
 #include "tensorflow/core/profiler/tfprof_output.pb.h"
 
 namespace tensorflow {
@@ -76,4 +76,4 @@ class TFOp : public TFMultiShow {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_

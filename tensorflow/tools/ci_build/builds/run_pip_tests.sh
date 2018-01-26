@@ -78,6 +78,7 @@ ln -s $(pwd)/tensorflow ${PIP_TEST_ROOT}/tensorflow
 # tests with no_pip_gpu tag.
 PIP_TEST_FILTER_TAG="-no_pip,-no_oss"
 if [[ ${IS_OSS_SERIAL} == "1" ]]; then
+  PIP_TEST_FILTER_TAG="$(echo "${PIP_TEST_FILTER_TAG}" | sed s/-no_oss//)"
   PIP_TEST_FILTER_TAG="${PIP_TEST_FILTER_TAG},oss_serial"
 else
   PIP_TEST_FILTER_TAG="${PIP_TEST_FILTER_TAG},-oss_serial"
@@ -109,7 +110,7 @@ bazel clean
 # virtualenv.
 export TF_NEED_GCP=0
 export TF_NEED_HDFS=0
-export TF_ENABLE_XLA=${TF_BUILD_ENABLE_XLA:-0}
+export TF_ENABLE_XLA=0
 
 # Obtain the path to Python binary
 if [[ ${IS_VIRTUALENV} == "1" ]]; then

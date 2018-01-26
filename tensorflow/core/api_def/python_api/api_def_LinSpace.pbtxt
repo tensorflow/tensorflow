@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "LinSpace"
+  endpoint {
+    name: "lin_space"
+  }
+  endpoint {
+    name: "linspace"
+  }
+}

@@ -27,7 +27,6 @@ py_library(
 
 py_test(
     name = "copy_test",
-    size = "small",
     srcs = glob(["python/util/copy_test.py"]),
     srcs_version = "PY2AND3",
     deps = [

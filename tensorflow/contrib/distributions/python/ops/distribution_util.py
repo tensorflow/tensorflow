@@ -19,14 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import linalg
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.distributions import distribution as distribution_lib
 from tensorflow.python.ops.distributions.util import *  # pylint: disable=wildcard-import
 
 
@@ -159,7 +158,7 @@ def make_tril_scale(
 
     scale_tril = array_ops.matrix_set_diag(scale_tril, tril_diag)
 
-    return linalg.LinearOperatorTriL(
+    return linalg.LinearOperatorLowerTriangular(
         tril=_maybe_attach_assertion(scale_tril),
         is_non_singular=True,
         is_self_adjoint=False,
@@ -329,52 +328,36 @@ def shapes_from_loc_and_scale(loc, scale, name="shapes_from_loc_and_scale"):
       else:
         loc_batch_shape = ops.convert_to_tensor(loc_batch_shape,
                                                 name="loc_batch_shape")
+      # This is defined in the core util module.
+      # pylint: disable=undefined-variable
       batch_shape = prefer_static_broadcast_shape(batch_shape, loc_batch_shape)
+      # pylint: enable=undefined-variable
 
   return batch_shape, event_shape
 
 
-def prefer_static_broadcast_shape(
-    shape1, shape2, name="prefer_static_broadcast_shape"):
-  """Convenience function which statically broadcasts shape when possible.
+def get_broadcast_shape(*tensors):
+  """Get broadcast shape as a Python list of integers (preferred) or `Tensor`.
 
   Args:
-    shape1:  `1-D` integer `Tensor`.  Already converted to tensor!
-    shape2:  `1-D` integer `Tensor`.  Already converted to tensor!
-    name:  A string name to prepend to created ops.
+    *tensors:  One or more `Tensor` objects (already converted!).
 
   Returns:
-    The broadcast shape, either as `TensorShape` (if broadcast can be done
-      statically), or as a `Tensor`.
+    broadcast shape:  Python list (if shapes determined statically), otherwise
+      an `int32` `Tensor`.
   """
-  with ops.name_scope(name, values=[shape1, shape2]):
-    def make_shape_tensor(x):
-      return ops.convert_to_tensor(x, name="shape", dtype=dtypes.int32)
+  # Try static.
+  s_shape = tensors[0].shape
+  for t in tensors[1:]:
+    s_shape = array_ops.broadcast_static_shape(s_shape, t.shape)
+  if s_shape.is_fully_defined():
+    return s_shape.as_list()
 
-    def get_tensor_shape(s):
-      if isinstance(s, tensor_shape.TensorShape):
-        return s
-      s_ = tensor_util.constant_value(make_shape_tensor(s))
-      if s_ is not None:
-        return tensor_shape.TensorShape(s_)
-      return None
-
-    def get_shape_tensor(s):
-      if not isinstance(s, tensor_shape.TensorShape):
-        return make_shape_tensor(s)
-      if s.is_fully_defined():
-        return make_shape_tensor(s.as_list())
-      raise ValueError("Cannot broadcast from partially "
-                       "defined `TensorShape`.")
-
-    shape1_ = get_tensor_shape(shape1)
-    shape2_ = get_tensor_shape(shape2)
-    if shape1_ is not None and shape2_ is not None:
-      return array_ops.broadcast_static_shape(shape1_, shape2_)
-
-    shape1_ = get_shape_tensor(shape1)
-    shape2_ = get_shape_tensor(shape2)
-    return array_ops.broadcast_dynamic_shape(shape1_, shape2_)
+  # Fallback on dynamic.
+  d_shape = array_ops.shape(tensors[0])
+  for t in tensors[1:]:
+    d_shape = array_ops.broadcast_dynamic_shape(d_shape, array_ops.shape(t))
+  return d_shape
 
 
 def is_diagonal_scale(scale):
@@ -395,3 +378,70 @@ def is_diagonal_scale(scale):
   return (isinstance(scale, linalg.LinearOperatorIdentity) or
           isinstance(scale, linalg.LinearOperatorScaledIdentity) or
           isinstance(scale, linalg.LinearOperatorDiag))
+
+
+def maybe_check_scalar_distribution(
+    distribution, expected_base_dtype, validate_args):
+  """Helper which checks validity of a scalar `distribution` init arg.
+
+  Valid here means:
+
+  * `distribution` has scalar batch and event shapes.
+  * `distribution` is `FULLY_REPARAMETERIZED`
+  * `distribution` has expected dtype.
+
+  Args:
+    distribution:  `Distribution`-like object.
+    expected_base_dtype:  `TensorFlow` `dtype`.
+    validate_args:  Python `bool`.  Whether to do additional checks:
+      (i)  check that reparameterization_type is `FULLY_REPARAMETERIZED`.
+      (ii) add `tf.Assert` ops to the graph to enforce that distribution
+           is scalar in the event that this cannot be determined statically.
+
+  Returns:
+    List of `tf.Assert` ops to run to enforce validity checks that could not
+      be statically determined.  Empty if `not validate_args`.
+
+  Raises:
+    ValueError:  If validate_args and distribution is not FULLY_REPARAMETERIZED
+    ValueError:  If distribution is statically determined to not have both
+      scalar batch and scalar event shapes.
+  """
+  if distribution.dtype != expected_base_dtype:
+    raise TypeError("dtype mismatch; "
+                    "distribution.dtype=\"{}\" is not \"{}\"".format(
+                        distribution.dtype.name, expected_base_dtype.name))
+
+  # Although `reparameterization_type` is a static property, we guard it by
+  # `validate_args`. This allows users to use a `distribution` which is not
+  # reparameterized itself. However, we tacitly assume that although the
+  # distribution is not reparameterized, it only depends on non-trainable
+  # variables.
+  if validate_args and (distribution.reparameterization_type
+                        != distribution_lib.FULLY_REPARAMETERIZED):
+    raise ValueError("Base distribution should be reparameterized or be "
+                     "a function of non-trainable variables; "
+                     "distribution.reparameterization_type = \"{}\" "
+                     "!= \"FULLY_REPARAMETERIZED\".".format(
+                         distribution.reparameterization_type))
+  with ops.name_scope(name="check_distribution"):
+    assertions = []
+    def check_is_scalar(is_scalar, name):
+      is_scalar_ = static_value(is_scalar)
+      if is_scalar_ is not None:
+        if not is_scalar_:
+          raise ValueError("distribution must be scalar; "
+                           "distribution.{}=False is not True".format(name))
+      elif validate_args:
+        assertions.append(check_ops.assert_equal(
+            is_scalar, True,
+            message=("distribution must be scalar; "
+                     "distribution.{}=False is not True".format(name))))
+    check_is_scalar(distribution.is_scalar_event(), "is_scalar_event")
+    check_is_scalar(distribution.is_scalar_batch(), "is_scalar_batch")
+    return assertions
+
+
+def static_value(x):
+  """Returns the static value of a `Tensor` or `None`."""
+  return tensor_util.constant_value(ops.convert_to_tensor(x))

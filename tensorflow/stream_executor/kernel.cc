@@ -57,6 +57,15 @@ void KernelMetadata::set_shared_memory_bytes(int shared_memory_bytes) {
   has_shared_memory_bytes_ = true;
 }
 
+KernelBase::KernelBase(KernelBase &&from)
+    : parent_(from.parent_),
+      implementation_(std::move(from.implementation_)),
+      name_(std::move(from.name_)),
+      demangled_name_(std::move(from.demangled_name_)),
+      metadata_(from.metadata_) {
+  from.parent_ = nullptr;
+}
+
 KernelBase::KernelBase(StreamExecutor *parent)
     : parent_(parent),
       implementation_(parent->implementation()->CreateKernelImplementation()) {}
@@ -65,7 +74,11 @@ KernelBase::KernelBase(StreamExecutor *parent,
                        internal::KernelInterface *implementation)
     : parent_(parent), implementation_(implementation) {}
 
-KernelBase::~KernelBase() {}
+KernelBase::~KernelBase() {
+  if (parent_) {
+    parent_->UnloadKernel(this);
+  }
+}
 
 unsigned KernelBase::Arity() const { return implementation_->Arity(); }
 

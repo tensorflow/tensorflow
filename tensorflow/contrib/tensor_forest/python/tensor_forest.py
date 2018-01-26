@@ -437,7 +437,7 @@ class RandomForestGraphs(object):
           if processed_sparse_features is not None:
             raise NotImplementedError(
                 'Bagging not supported with sparse features.')
-          # TODO(thomaswc): This does sampling without replacment.  Consider
+          # TODO(thomaswc): This does sampling without replacement.  Consider
           # also allowing sampling with replacement as an option.
           batch_size = array_ops.strided_slice(
               array_ops.shape(processed_dense_features), [0], [1])
@@ -470,12 +470,15 @@ class RandomForestGraphs(object):
     """Constructs a TF graph for evaluating a random forest.
 
     Args:
-      input_data: A tensor or dict of string->Tensor for input data.
+      input_data: A tensor or dict of string->Tensor for the input data.
+                  This input_data must generate the same spec as the
+                  input_data used in training_graph:  the dict must have
+                  the same keys, for example, and all tensors must have
+                  the same size in their first dimension.
       **inference_args: Keyword arguments to pass through to each tree.
 
     Returns:
-      A tuple of (probabilities, tree_paths, variance), where variance
-      is the variance over all the trees for regression problems only.
+      A tuple of (probabilities, tree_paths, variance).
 
     Raises:
       NotImplementedError: If trying to use feature bagging with sparse
@@ -509,13 +512,12 @@ class RandomForestGraphs(object):
           self.params.num_trees,
           name='probabilities')
       tree_paths = array_ops.stack(paths, axis=1)
-      regression_variance = None
-      if self.params.regression:
-        expected_squares = math_ops.div(
-            math_ops.reduce_sum(all_predict * all_predict, 1),
-            self.params.num_trees)
-        regression_variance = math_ops.maximum(
-            0., expected_squares - average_values * average_values)
+
+      expected_squares = math_ops.div(
+          math_ops.reduce_sum(all_predict * all_predict, 1),
+          self.params.num_trees)
+      regression_variance = math_ops.maximum(
+          0., expected_squares - average_values * average_values)
       return average_values, tree_paths, regression_variance
 
   def average_size(self):

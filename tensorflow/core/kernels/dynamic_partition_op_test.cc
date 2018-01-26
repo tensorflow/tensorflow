@@ -16,6 +16,7 @@ limitations under the License.
 #include <functional>
 #include <memory>
 
+#include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -23,10 +24,14 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/graph/testlib.h"
 #include "tensorflow/core/kernels/ops_testutil.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 namespace {
@@ -152,6 +157,59 @@ TEST_F(DynamicPartitionOpTest, Error_IndexOutOfRange) {
       StringPiece(s.ToString()).contains("partitions[2] = 99 is not in [0, 4)"))
       << s;
 }
+
+Node* DynamicPartitionNode(Graph* g, Node* in0, Node* in1, int num_partitions) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "DynamicPartition")
+                  .Input(in0)
+                  .Input(in1)
+                  .Attr("num_partitions", num_partitions)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+template <typename T>
+static Graph* DynamicPartition(int num_partitions, int dim) {
+  Graph* g = new Graph(OpRegistry::Global());
+  // Always use a 128MB buffer.
+  const int kRows = ((128 << 20) / sizeof(T)) / dim;
+  Tensor data(DataTypeToEnum<T>::value, TensorShape({kRows, dim}));
+  data.flat<T>().setRandom();
+
+  random::PhiloxRandom philox(301, 17);
+  random::SimplePhilox rnd(&philox);
+  Tensor partitions(DT_INT32, TensorShape({kRows}));
+  for (int i = 0; i < kRows; i++) {
+    partitions.flat<int32>()(i) = rnd.Uniform(num_partitions);
+  }
+  DynamicPartitionNode(g, test::graph::Constant(g, data),
+                       test::graph::Constant(g, partitions), num_partitions);
+  return g;
+}
+
+#define BM_DYNAMIC_PARTITION(DEVICE, T, num)                            \
+  static void BM_##DEVICE##_dynpart_##T##_##num(int iters, int dim) {   \
+    const int64 items = ((128 << 20) / sizeof(T));                      \
+    const int64 tot = static_cast<int64>(iters) * items;                \
+    testing::ItemsProcessed(tot);                                       \
+    testing::UseRealTime();                                             \
+    test::Benchmark(#DEVICE, DynamicPartition<T>(num, dim)).Run(iters); \
+  }                                                                     \
+  BENCHMARK(BM_##DEVICE##_dynpart_##T##_##num)->Arg(1)->Arg(256)
+
+BM_DYNAMIC_PARTITION(cpu, float, 2);
+BM_DYNAMIC_PARTITION(cpu, float, 100);
+BM_DYNAMIC_PARTITION(cpu, double, 2);
+BM_DYNAMIC_PARTITION(cpu, double, 100);
+BM_DYNAMIC_PARTITION(cpu, complex64, 2);
+BM_DYNAMIC_PARTITION(cpu, complex64, 100);
+
+BM_DYNAMIC_PARTITION(gpu, float, 2);
+BM_DYNAMIC_PARTITION(gpu, float, 100);
+BM_DYNAMIC_PARTITION(gpu, double, 2);
+BM_DYNAMIC_PARTITION(gpu, double, 100);
+BM_DYNAMIC_PARTITION(gpu, complex64, 2);
+BM_DYNAMIC_PARTITION(gpu, complex64, 100);
 
 }  // namespace
 }  // namespace tensorflow

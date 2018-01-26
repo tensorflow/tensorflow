@@ -33,8 +33,10 @@ limitations under the License.
 namespace tensorflow {
 
 MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env)
-    : BaseRendezvousMgr(env), worker_env_2(env), use_optimal_transfer_(false) {
-
+    : BaseRendezvousMgr(env),
+      worker_env_2(env),
+      use_optimal_transfer_(false),
+      recv_tensor_recent_request_ids_(100000) {
   const char* mpienv = getenv("MPI_OPTIMAL_PATH");
   if (mpienv && mpienv[0] == '1') {
     LOG(INFO) << "MPI Optimal copy path enabled (Requires CUDA-Aware MPI when "
@@ -149,6 +151,8 @@ MPIRemoteRendezvous::~MPIRemoteRendezvous() {}
  */
 void MPIRendezvousMgr::AddRequest(RecvTensorRequest request,
                                   const int mpi_dst) {
+  TF_CHECK_OK(recv_tensor_recent_request_ids_.TrackUnique(
+      req.request_id(), "RecvTensor (MPIRendezvousMgr)", req));
   const int64 step_id = request.step_id();
   const std::string& key = request.rendezvous_key();
   Rendezvous::ParsedKey parsed;

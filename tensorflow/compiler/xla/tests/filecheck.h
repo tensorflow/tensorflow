@@ -13,12 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_
+#ifndef TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_
+#define TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_
 
 #include <string>
 
 #include "tensorflow/compiler/xla/statusor.h"
+#include "tensorflow/compiler/xla/types.h"
 
 namespace xla {
 
@@ -29,4 +30,4 @@ StatusOr<bool> RunFileCheck(const string& input, const string& pattern);
 
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_
+#endif  // TENSORFLOW_COMPILER_XLA_TESTS_FILECHECK_H_

@@ -36,6 +36,7 @@ limitations under the License.
 #define DISABLED_ON_CPU(X) X
 #define DISABLED_ON_CPU_PARALLEL(X) X
 #define DISABLED_ON_GPU(X) X
+#define DISABLED_ON_INTERPRETER(X) X
 
 // We need this macro instead of pasting directly to support nesting
 // the DISABLED_ON_FOO macros, as in the definition of DISABLED_ON_CPU.
@@ -62,12 +63,19 @@ limitations under the License.
 # define DISABLED_ON_GPU(X) XLA_TEST_PASTE(DISABLED_, X)
 #endif  // XLA_TEST_BACKEND_GPU
 
+#ifdef XLA_TEST_BACKEND_INTERPRETER
+# undef DISABLED_ON_INTERPRETER
+# define DISABLED_ON_INTERPRETER(X) XLA_TEST_PASTE(DISABLED_, X)
+#endif  // XLA_TEST_BACKEND_INTERPRETER
+
 // clang-format on
 
 namespace xla {
 
-// Reads a disabled manifest file (and retains it as a singleton) to resolve
-// whether test cases should be disabled on a particular platform.
+// Reads a disabled manifest file to resolve whether test cases should be
+// disabled on a particular platform. For a test that should be disabled,
+// returns DISABLED_ prepended to its name; otherwise returns the test name
+// unmodified.
 string PrependDisabledIfIndicated(const string& test_case_name,
                                   const string& test_name);
 
@@ -96,7 +104,8 @@ string PrependDisabledIfIndicated(const string& test_case_name,
                                                     test_name)::test_info_ =  \
       ::testing::internal::MakeAndRegisterTestInfo(                           \
           #test_case_name,                                                    \
-          PrependDisabledIfIndicated(#test_case_name, #test_name).c_str(),    \
+          ::xla::PrependDisabledIfIndicated(#test_case_name, #test_name)      \
+              .c_str(),                                                       \
           nullptr, nullptr,                                                   \
           ::testing::internal::CodeLocation(__FILE__, __LINE__), (parent_id), \
           parent_class::SetUpTestCase, parent_class::TearDownTestCase,        \
@@ -135,7 +144,8 @@ string PrependDisabledIfIndicated(const string& test_case_name,
               ::testing::internal::CodeLocation(__FILE__, __LINE__))           \
           ->AddTestPattern(                                                    \
               #test_case_name,                                                 \
-              PrependDisabledIfIndicated(#test_case_name, #test_name).c_str(), \
+              ::xla::PrependDisabledIfIndicated(#test_case_name, #test_name)   \
+                  .c_str(),                                                    \
               new ::testing::internal::TestMetaFactory<GTEST_TEST_CLASS_NAME_( \
                   test_case_name, test_name)>());                              \
       return 0;                                                                \

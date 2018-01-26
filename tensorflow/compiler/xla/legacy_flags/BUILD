@@ -15,6 +15,8 @@ package(default_visibility = ["//tensorflow:internal"])
 
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+
 cc_library(
     name = "parse_flags_from_env",
     srcs = ["parse_flags_from_env.cc"],
@@ -27,9 +29,8 @@ cc_library(
         ],
 )
 
-cc_test(
+tf_cc_test(
     name = "parse_flags_from_env_test",
-    size = "small",
     srcs = ["parse_flags_from_env_test.cc"],
     deps =
         [
@@ -58,7 +59,7 @@ cc_library(
         ],
 )
 
-cc_test(
+tf_cc_test(
     name = "debug_options_parsers_test",
     size = "small",
     srcs = [

@@ -25,10 +25,10 @@ StatusOr<bool> HloSubcomputationUnification::Run(HloModule* module) {
   std::unordered_map<HloComputation*, HloComputation*> canon;
   const auto& computations = module->computations();
   for (auto i = computations.begin(); i != computations.end(); ++i) {
-    for (auto j = computations.begin(); j < i; ++j) {
+    for (auto j = computations.begin(); j != i; ++j) {
       // Do not waste time comparing `*i` with `*j` if `*j` is not canonical.
-      if (canon.find(j->get()) == canon.end() && **i == **j) {
-        canon[i->get()] = j->get();
+      if (canon.find(*j) == canon.end() && **i == **j) {
+        canon[*i] = *j;
         break;
       }
     }

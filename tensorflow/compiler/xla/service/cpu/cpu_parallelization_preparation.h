@@ -55,12 +55,6 @@ class ParallelizationPreparation : public HloPassInterface {
   // Returns true on success or error status otherwise.
   StatusOr<bool> RunParallelTaskAssignment(HloModule* module);
 
-  // Returns the target parallel task count for 'instruction'.
-  // Utilizes 'cost_analysis' if non-null.
-  // Otherwise defaults to a simple HLO output size-based cost model.
-  int64 GetTargetParallelTaskCount(const HloCostAnalysis* cost_analysis,
-                                   HloInstruction* instruction);
-
   // Outlines 'instruction' from entry computation, if it had
   // been assigned parallel tasks in an earlier pass through the computation.
   // Returns true if 'instruction' was successfully outlined, false otherwise.

@@ -9,7 +9,9 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-cc_binary(
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+
+tf_cc_binary(
     name = "label_image",
     srcs = [
         "main.cc",
@@ -47,6 +49,16 @@ cc_binary(
             "//tensorflow/core:tensorflow",
         ],
     }),
+)
+
+py_binary(
+    name = "label_image_py",
+    srcs = ["label_image.py"],
+    main = "label_image.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
 )
 
 filegroup(

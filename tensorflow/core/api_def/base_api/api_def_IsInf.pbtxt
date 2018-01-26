@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "IsInf"
+  summary: "Returns which elements of x are Inf."
+  description: <<END
+@compatibility(numpy)
+Equivalent to np.isinf
+@end_compatibility
+END
+}

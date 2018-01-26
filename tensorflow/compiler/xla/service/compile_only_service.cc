@@ -28,7 +28,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
@@ -83,7 +85,10 @@ CompileOnlyService::CompileAheadOfTime(
           "computation_", versioned_handle.handle.handle(), "__",
           session_module->entry().name(), "__version_",
           versioned_handle.version);
-      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(directory_path, filename,
+      const string& per_host_path = tensorflow::io::JoinPath(
+          directory_path, tensorflow::port::Hostname());
+
+      TF_RETURN_IF_ERROR(Executable::DumpToDirectory(per_host_path, filename,
                                                      *session_module));
     }
 
@@ -96,13 +101,13 @@ CompileOnlyService::CompileAheadOfTime(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
         CreateModuleConfig(*program_shape, instance.argument_layouts,
-                           &execution_options,
-                           /*has_hybrid_result=*/false));
+                           &execution_options));
 
     TF_ASSIGN_OR_RETURN(std::unique_ptr<HloModule> hlo_module,
                         computation_tracker_.BuildHloModule(
                             versioned_handle, *module_config,
                             /*include_unreachable_instructions=*/true));
+    TF_RETURN_IF_ERROR(MaybeDumpHloModule(*hlo_module));
     hlo_modules.push_back(std::move(hlo_module));
   }
 

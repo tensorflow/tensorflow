@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
+#define TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
 
 #ifdef GOOGLE_CUDA
 
@@ -75,10 +75,27 @@ class NcclManager {
                         perftools::gputools::Stream* tensor_stream,
                         Tensor* out_t, DoneCallback done_callback);
 
+  // AddReduceSend and AddReduceRecv combine to sent data from all senders
+  // to one receiver.
+  void AddReduceSend(int num_devices, const string& key,
+                     ncclRedOp_t reduction_op,
+                     perftools::gputools::StreamExecutor* executor,
+                     int gpu_device_id, EventMgr* event_mgr,
+                     perftools::gputools::Stream* tensor_stream,
+                     const Tensor* in_t, DoneCallback done_callback);
+  void AddReduceRecv(int num_devices, const string& key,
+                     ncclRedOp_t reduction_op,
+                     perftools::gputools::StreamExecutor* executor,
+                     int gpu_device_id, EventMgr* event_mgr,
+                     perftools::gputools::Stream* tensor_stream,
+                     const Tensor* in_t, Tensor* out_t,
+                     DoneCallback done_callback);
+
  private:
   enum CollectiveType {
     kAllReduce = 1,
     kBroadcast = 2,
+    kReduce = 3,
   };
   struct Collective;
   struct Communicator;
@@ -119,4 +136,4 @@ class NcclManager {
 
 #endif  // GOOGLE_CUDA
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_NCCL_COMMUNICATOR_H_

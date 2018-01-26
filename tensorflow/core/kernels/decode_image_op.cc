@@ -71,6 +71,9 @@ class DecodeImageOp : public OpKernel {
     // Determine which op we are: jpeg, png, gif, or any
     if (type_string() == "DecodeJpeg") {
       format_ = kJpgFormat;
+    } else if (type_string() == "DecodeAndCropJpeg") {
+      format_ = kJpgFormat;
+      flags_.crop = true;
     } else if (type_string() == "DecodePng") {
       format_ = kPngFormat;
     } else if (type_string() == "DecodeGif") {
@@ -84,11 +87,10 @@ class DecodeImageOp : public OpKernel {
       channels_ = 3;
     } else {
       OP_REQUIRES_OK(context, context->GetAttr("channels", &channels_));
-      OP_REQUIRES(
-          context,
-          channels_ == 0 || channels_ == 1 || channels_ == 3 || channels_ == 4,
-          errors::InvalidArgument("channels must be 0, 1, 3, or 4, got ",
-                                  channels_));
+      OP_REQUIRES(context, channels_ == 0 || channels_ == 1 || channels_ == 3 ||
+                               channels_ == 4,
+                  errors::InvalidArgument(
+                      "channels must be 0, 1, 3, or 4, got ", channels_));
     }
     flags_.components = channels_;
 
@@ -112,9 +114,8 @@ class DecodeImageOp : public OpKernel {
 
     if (format_ == kJpgFormat) {
       OP_REQUIRES_OK(context, context->GetAttr("ratio", &flags_.ratio));
-      OP_REQUIRES(context,
-                  flags_.ratio == 1 || flags_.ratio == 2 || flags_.ratio == 4 ||
-                      flags_.ratio == 8,
+      OP_REQUIRES(context, flags_.ratio == 1 || flags_.ratio == 2 ||
+                               flags_.ratio == 4 || flags_.ratio == 8,
                   errors::InvalidArgument("ratio must be 1, 2, 4, or 8, got ",
                                           flags_.ratio));
       OP_REQUIRES_OK(context, context->GetAttr("fancy_upscaling",
@@ -129,9 +130,8 @@ class DecodeImageOp : public OpKernel {
       string dct_method;
       OP_REQUIRES_OK(context, context->GetAttr("dct_method", &dct_method));
       OP_REQUIRES(
-          context,
-          (dct_method.empty() || dct_method == "INTEGER_FAST" ||
-           dct_method == "INTEGER_ACCURATE"),
+          context, (dct_method.empty() || dct_method == "INTEGER_FAST" ||
+                    dct_method == "INTEGER_ACCURATE"),
           errors::InvalidArgument("dct_method must be one of "
                                   "{'', 'INTEGER_FAST', 'INTEGER_ACCURATE'}"));
       if (dct_method == "INTEGER_FAST") {
@@ -157,9 +157,9 @@ class DecodeImageOp : public OpKernel {
         errors::InvalidArgument("Expected image (JPEG, PNG, or GIF), got ",
                                 FileFormatString(magic, input)));
     OP_REQUIRES(context, input.size() <= std::numeric_limits<int>::max(),
-                errors::InvalidArgument(
-                    FileFormatString(magic, input),
-                    " contents are too large for int: ", input.size()));
+                errors::InvalidArgument(FileFormatString(magic, input),
+                                        " contents are too large for int: ",
+                                        input.size()));
     OP_REQUIRES(context, magic == kPngFormat || channel_bits_ == 8,
                 errors::InvalidArgument(FileFormatString(magic, input),
                                         " does not support uint16 output"));
@@ -185,18 +185,36 @@ class DecodeImageOp : public OpKernel {
                 errors::InvalidArgument(
                     "channels must be 0, 1, or 3 for JPEG, got ", channels_));
 
-    // Decode jpeg, allocating tensor once the size is known
+    // Use local copy of flags to avoid race condition as the class member is
+    // shared among different invocations.
+    jpeg::UncompressFlags flags = flags_;
+    if (flags.crop) {
+      // Update flags to include crop window.
+      const Tensor& crop_window = context->input(1);
+      OP_REQUIRES(context, crop_window.dims() == 1,
+                  errors::InvalidArgument("crop_window must be 1-D, got shape ",
+                                          crop_window.shape().DebugString()));
+      OP_REQUIRES(context, crop_window.dim_size(0) == 4,
+                  errors::InvalidArgument("crop_size must have four elements ",
+                                          crop_window.shape().DebugString()));
+      auto crop_window_vec = crop_window.vec<int32>();
+      flags.crop_y = crop_window_vec(0);
+      flags.crop_x = crop_window_vec(1);
+      flags.crop_height = crop_window_vec(2);
+      flags.crop_width = crop_window_vec(3);
+    }
+
+    // Decode jpeg, allocating tensor once the size is known.
     Tensor* output = nullptr;
     OP_REQUIRES(
         context,
         jpeg::Uncompress(
-            input.data(), input.size(), flags_, nullptr /* nwarn */,
+            input.data(), input.size(), flags, nullptr /* nwarn */,
             [=, &output](int width, int height, int channels) -> uint8* {
               Status status(context->allocate_output(
-                  0,
-                  format_ == kGifFormat
-                      ? TensorShape({1, height, width, channels})
-                      : TensorShape({height, width, channels}),
+                  0, format_ == kGifFormat
+                         ? TensorShape({1, height, width, channels})
+                         : TensorShape({height, width, channels}),
                   &output));
               if (!status.ok()) {
                 VLOG(1) << status;
@@ -205,7 +223,8 @@ class DecodeImageOp : public OpKernel {
               }
               return output->flat<uint8>().data();
             }),
-        errors::InvalidArgument("Invalid JPEG data, size ", input.size()));
+        errors::InvalidArgument("Invalid JPEG data or crop window, data size ",
+                                input.size()));
   }
 
   void DecodePng(OpKernelContext* context, StringPiece input) {
@@ -271,6 +290,7 @@ class DecodeImageOp : public OpKernel {
 
     // Decode GIF, allocating tensor once the size is known.
     Tensor* output = nullptr;
+    string error_string;
     OP_REQUIRES(
         context,
         gif::Decode(input.data(), input.size(),
@@ -297,8 +317,10 @@ class DecodeImageOp : public OpKernel {
                         return nullptr;
                       }
                       return output->flat<uint8>().data();
-                    }),
-        errors::InvalidArgument("Invalid GIF data, size ", input.size()));
+                    },
+                    &error_string),
+        errors::InvalidArgument("Invalid GIF data (size ", input.size(), "), ",
+                                error_string));
   }
 
  private:
@@ -311,6 +333,8 @@ class DecodeImageOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("DecodeJpeg").Device(DEVICE_CPU), DecodeImageOp);
 REGISTER_KERNEL_BUILDER(Name("DecodePng").Device(DEVICE_CPU), DecodeImageOp);
 REGISTER_KERNEL_BUILDER(Name("DecodeGif").Device(DEVICE_CPU), DecodeImageOp);
+REGISTER_KERNEL_BUILDER(Name("DecodeAndCropJpeg").Device(DEVICE_CPU),
+                        DecodeImageOp);
 
 }  // namespace
 }  // namespace tensorflow

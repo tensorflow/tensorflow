@@ -19,6 +19,7 @@ If you open a GitHub issue, here is our policy:
 - **TensorFlow version (use command below)**:
 - **Python version**: 
 - **Bazel version (if compiling from source)**:
+- **GCC/Compiler version (if compiling from source)**:
 - **CUDA/cuDNN version**:
 - **GPU model and memory**:
 - **Exact command to reproduce**:

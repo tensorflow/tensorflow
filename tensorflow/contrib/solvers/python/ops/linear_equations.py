@@ -27,10 +27,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import linalg_ops
 
 
 def conjugate_gradient(operator,
                        rhs,
+                       preconditioner=None,
+                       x=None,
                        tol=1e-4,
                        max_iter=20,
                        name="conjugate_gradient"):
@@ -55,6 +58,15 @@ def conjugate_gradient(operator,
         vector with the result of applying the operator to `x`, i.e. if
        `operator` represents matrix `A`, `apply` should return `A * x`.
     rhs: A rank-1 `Tensor` of shape `[N]` containing the right-hand size vector.
+    preconditioner: An object representing a linear operator, see `operator`
+      for detail. The preconditioner should approximate the inverse of `A`.
+      An efficient preconditioner could dramatically improve the rate of
+      convergence. If `preconditioner` represents matrix `M`(`M` approximates
+      `A^{-1}`), the algorithm uses `preconditioner.apply(x)` to estimate
+      `A^{-1}x`. For this to be useful, the cost of applying `M` should be
+      much lower than computing `A^{-1}` directly.
+    x: A rank-1 `Tensor` of shape `[N]` containing the initial guess for the
+      solution.
     tol: A float scalar convergence tolerance.
     max_iter: An integer giving the maximum number of iterations.
     name: A name scope for the operation.
@@ -65,35 +77,51 @@ def conjugate_gradient(operator,
       - x: A rank-1 `Tensor` of shape `[N]` containing the computed solution.
       - r: A rank-1 `Tensor` of shape `[M]` containing the residual vector.
       - p: A rank-1 `Tensor` of shape `[N]`. `A`-conjugate basis vector.
-      - gamma: \\(||r||_2^2\\)
+      - gamma: \\(r \dot M \dot r\\), equivalent to  \\(||r||_2^2\\) when
+        `preconditioner=None`.
   """
   # ephemeral class holding CG state.
   cg_state = collections.namedtuple("CGState", ["i", "x", "r", "p", "gamma"])
 
   def stopping_criterion(i, state):
-    return math_ops.logical_and(i < max_iter, state.gamma > tol)
+    return math_ops.logical_and(i < max_iter,
+                                linalg_ops.norm(state.r) > tol)
 
-  # TODO(rmlarsen): add preconditioning
   def cg_step(i, state):
     z = operator.apply(state.p)
     alpha = state.gamma / util.dot(state.p, z)
     x = state.x + alpha * state.p
     r = state.r - alpha * z
-    gamma = util.l2norm_squared(r)
-    beta = gamma / state.gamma
-    p = r + beta * state.p
+    if preconditioner is None:
+      gamma = util.dot(r, r)
+      beta = gamma / state.gamma
+      p = r + beta * state.p
+    else:
+      q = preconditioner.apply(r)
+      gamma = util.dot(r, q)
+      beta = gamma / state.gamma
+      p = q + beta * state.p
     return i + 1, cg_state(i + 1, x, r, p, gamma)
 
   with ops.name_scope(name):
     n = operator.shape[1:]
     rhs = array_ops.expand_dims(rhs, -1)
-    gamma0 = util.l2norm_squared(rhs)
-    tol = tol * tol * gamma0
-    x = array_ops.expand_dims(
-        array_ops.zeros(
-            n, dtype=rhs.dtype.base_dtype), -1)
+    if x is None:
+      x = array_ops.expand_dims(
+          array_ops.zeros(
+              n, dtype=rhs.dtype.base_dtype), -1)
+      r0 = rhs
+    else:
+      x = array_ops.expand_dims(x, -1)
+      r0 = rhs - operator.apply(x)
+    if preconditioner is None:
+      p0 = r0
+    else:
+      p0 = preconditioner.apply(r0)
+    gamma0 = util.dot(r0, p0)
+    tol = tol * linalg_ops.norm(r0)
     i = constant_op.constant(0, dtype=dtypes.int32)
-    state = cg_state(i=i, x=x, r=rhs, p=rhs, gamma=gamma0)
+    state = cg_state(i=i, x=x, r=r0, p=p0, gamma=gamma0)
     _, state = control_flow_ops.while_loop(stopping_criterion, cg_step,
                                            [i, state])
     return cg_state(

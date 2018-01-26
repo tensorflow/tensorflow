@@ -56,7 +56,6 @@ PREDICTIONS = "predictions"
 PARTITION_IDS = "partition_ids"
 NUM_LAYERS_ATTEMPTED = "num_layers"
 NUM_TREES_ATTEMPTED = "num_trees"
-PREDICTIONS_NO_DROPOUT = "predictions_no_dropout"
 _FEATURE_NAME_TEMPLATE = "%s_%d"
 
 
@@ -70,15 +69,13 @@ def _get_column_by_index(tensor, indices):
   return array_ops.reshape(array_ops.gather(p_flat, i_flat), [shape[0], -1])
 
 
-def _make_predictions_dict(stamp, logits, logits_no_dropout, partition_ids,
-                           ensemble_stats):
+def _make_predictions_dict(stamp, logits, partition_ids, ensemble_stats):
   """Returns predictions for the given logits and n_classes.
 
   Args:
     stamp: The ensemble stamp.
     logits: A rank 2 `Tensor` with shape [batch_size, n_classes - 1].
-    logits_no_dropout: A rank 2 `Tensor` with shape [batch_size, n_classes - 1]
-    that contains predictions when no dropout was applied.
+        that contains predictions when no dropout was applied.
     partition_ids: A rank 1 `Tensor` with shape [batch_size].
     ensemble_stats: A TreeEnsembleStatsOp result tuple.
 
@@ -88,9 +85,7 @@ def _make_predictions_dict(stamp, logits, logits_no_dropout, partition_ids,
   result = {}
   result[ENSEMBLE_STAMP] = stamp
   result[PREDICTIONS] = logits
-  result[PREDICTIONS_NO_DROPOUT] = logits_no_dropout
   result[PARTITION_IDS] = partition_ids
-
   result[NUM_LAYERS_ATTEMPTED] = ensemble_stats.attempted_layers
   result[NUM_TREES_ATTEMPTED] = ensemble_stats.attempted_trees
   return result
@@ -213,7 +208,7 @@ def extract_features(features, feature_columns):
       if tensor.dtype == dtypes.float32:
         if len(tensor.shape) > 1 and tensor.shape[1] > 1:
           unstacked = array_ops.unstack(tensor, axis=1)
-          for i in xrange(len(unstacked)):
+          for i in range(len(unstacked)):
             dense_float_names.append(_FEATURE_NAME_TEMPLATE % (key, i))
             dense_floats.append(array_ops.reshape(unstacked[i], [-1, 1]))
         else:
@@ -261,6 +256,7 @@ class GradientBoostedDecisionTreeModel(object):
                examples_per_layer,
                learner_config,
                features,
+               logits_dimension,
                feature_columns=None):
     """Construct a new GradientBoostedDecisionTreeModel function.
 
@@ -273,8 +269,8 @@ class GradientBoostedDecisionTreeModel(object):
         a tree layer. It can also be a function that computes the number of
         examples based on the depth of the layer that's being built.
       learner_config: A learner config.
-          print split, sorted_feature_names[split.feature_column]
       features: `dict` of `Tensor` objects.
+      logits_dimension: An int, the dimension of logits.
       feature_columns: A list of feature columns.
 
     Raises:
@@ -289,18 +285,48 @@ class GradientBoostedDecisionTreeModel(object):
     if learner_config.num_classes < 2:
       raise ValueError("Number of classes must be >=2")
 
+    self._logits_dimension = logits_dimension
     self._is_chief = is_chief
     self._num_ps_replicas = num_ps_replicas
     self._ensemble_handle = ensemble_handle
     self._center_bias = center_bias
     self._examples_per_layer = examples_per_layer
+
+    # Fill in the defaults.
+    if (learner_config.multi_class_strategy ==
+        learner_pb2.LearnerConfig.MULTI_CLASS_STRATEGY_UNSPECIFIED):
+      if logits_dimension == 1:
+        learner_config.multi_class_strategy = (
+            learner_pb2.LearnerConfig.TREE_PER_CLASS)
+      else:
+        learner_config.multi_class_strategy = (
+            learner_pb2.LearnerConfig.DIAGONAL_HESSIAN)
+
+    if (learner_config.growing_mode ==
+        learner_pb2.LearnerConfig.GROWING_MODE_UNSPECIFIED):
+      learner_config.growing_mode = learner_pb2.LearnerConfig.LAYER_BY_LAYER
+
+    if (learner_config.pruning_mode ==
+        learner_pb2.LearnerConfig.PRUNING_MODE_UNSPECIFIED):
+      learner_config.pruning_mode = learner_pb2.LearnerConfig.POST_PRUNE
+
+    if learner_config.constraints.max_tree_depth == 0:
+      # Use 6 as the default maximum depth.
+      learner_config.constraints.max_tree_depth = 6
+
+    tuner = learner_config.learning_rate_tuner.WhichOneof("tuner")
+    if not tuner:
+      learner_config.learning_rate_tuner.fixed.learning_rate = 0.1
+
     self._learner_config = learner_config
     self._feature_columns = feature_columns
     self._learner_config_serialized = learner_config.SerializeToString()
     self._attempted_trees = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64), trainable=False)
+        initial_value=array_ops.zeros([], dtypes.int64), trainable=False,
+        name="attempted_trees")
     self._finalized_trees = variables.Variable(
-        initial_value=array_ops.zeros([], dtypes.int64), trainable=False)
+        initial_value=array_ops.zeros([], dtypes.int64), trainable=False,
+        name="finalized_trees")
     if not features:
       raise ValueError("Features dictionary must be specified.")
     (fc_names, dense_floats, sparse_float_indices, sparse_float_values,
@@ -319,6 +345,57 @@ class GradientBoostedDecisionTreeModel(object):
                         learner_pb2.LearnerConfig.TREE_PER_CLASS and
                         learner_config.num_classes == 2)
 
+  def _predict_and_return_dict(self, ensemble_handle, ensemble_stamp, mode):
+    """Runs prediction and returns a dictionary of the prediction results.
+
+    Args:
+      ensemble_handle: ensemble resource handle.
+      ensemble_stamp: stamp of ensemble resource.
+      mode: learn.ModeKeys.TRAIN or EVAL or INFER.
+
+    Returns:
+      a dictionary of prediction results -
+        ENSEMBLE_STAMP, PREDICTION, PARTITION_IDS,
+        NUM_LAYER_ATTEMPTED, NUM_TREES_ATTEMPED.
+    """
+    ensemble_stats = training_ops.tree_ensemble_stats(ensemble_handle,
+                                                      ensemble_stamp)
+    # We don't need dropout info - we can always restore it based on the
+    # seed.
+    apply_dropout, seed = _dropout_params(mode, ensemble_stats)
+    # Make sure ensemble stats run. This will check that the ensemble has
+    # the right stamp.
+    with ops.control_dependencies(ensemble_stats):
+      predictions, _ = prediction_ops.gradient_trees_prediction(
+          ensemble_handle,
+          seed,
+          self._dense_floats,
+          self._sparse_float_indices,
+          self._sparse_float_values,
+          self._sparse_float_shapes,
+          self._sparse_int_indices,
+          self._sparse_int_values,
+          self._sparse_int_shapes,
+          learner_config=self._learner_config_serialized,
+          apply_dropout=apply_dropout,
+          apply_averaging=mode != learn.ModeKeys.TRAIN,
+          use_locking=True,
+          center_bias=self._center_bias,
+          reduce_dim=self._reduce_dim)
+      partition_ids = prediction_ops.gradient_trees_partition_examples(
+          ensemble_handle,
+          self._dense_floats,
+          self._sparse_float_indices,
+          self._sparse_float_values,
+          self._sparse_float_shapes,
+          self._sparse_int_indices,
+          self._sparse_int_values,
+          self._sparse_int_shapes,
+          use_locking=True)
+
+    return _make_predictions_dict(ensemble_stamp, predictions, partition_ids,
+                                  ensemble_stats)
+
   def predict(self, mode):
     """Returns predictions given the features and mode.
 
@@ -331,7 +408,6 @@ class GradientBoostedDecisionTreeModel(object):
     Raises:
       ValueError: if features is not valid.
     """
-    apply_averaging = mode != learn.ModeKeys.TRAIN
 
     # Use the current ensemble to predict on the current batch of input.
     # For faster prediction we check if the inputs are on the same device
@@ -378,79 +454,15 @@ class GradientBoostedDecisionTreeModel(object):
                              local_stamp), _refresh_local_ensemble_fn,
           lambda: (control_flow_ops.no_op(), ensemble_stamp))
 
-      # Once updated, Use the the local model for prediction.
+      # Once updated, use the local model for prediction.
       with ops.control_dependencies([refresh_local_ensemble]):
-        ensemble_stats = training_ops.tree_ensemble_stats(
-            local_ensemble_handle, ensemble_stamp)
-        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
-        # We don't need dropout info - we can always restore it based on the
-        # seed.
-        predictions, predictions_no_dropout, _ = (
-            prediction_ops.gradient_trees_prediction(
-                local_ensemble_handle,
-                seed,
-                self._dense_floats,
-                self._sparse_float_indices,
-                self._sparse_float_values,
-                self._sparse_float_shapes,
-                self._sparse_int_indices,
-                self._sparse_int_values,
-                self._sparse_int_shapes,
-                learner_config=self._learner_config_serialized,
-                apply_dropout=apply_dropout,
-                apply_averaging=apply_averaging,
-                use_locking=False,
-                center_bias=self._center_bias,
-                reduce_dim=self._reduce_dim))
-        partition_ids = prediction_ops.gradient_trees_partition_examples(
-            local_ensemble_handle,
-            self._dense_floats,
-            self._sparse_float_indices,
-            self._sparse_float_values,
-            self._sparse_float_shapes,
-            self._sparse_int_indices,
-            self._sparse_int_values,
-            self._sparse_int_shapes,
-            use_locking=False)
-
+        return self._predict_and_return_dict(local_ensemble_handle,
+                                             ensemble_stamp, mode)
     else:
+      # Use ensemble_handle directly, if colocated.
       with ops.device(self._ensemble_handle.device):
-        ensemble_stats = training_ops.tree_ensemble_stats(
-            self._ensemble_handle, ensemble_stamp)
-        apply_dropout, seed = _dropout_params(mode, ensemble_stats)
-        # We don't need dropout info - we can always restore it based on the
-        # seed.
-        predictions, predictions_no_dropout, _ = (
-            prediction_ops.gradient_trees_prediction(
-                self._ensemble_handle,
-                seed,
-                self._dense_floats,
-                self._sparse_float_indices,
-                self._sparse_float_values,
-                self._sparse_float_shapes,
-                self._sparse_int_indices,
-                self._sparse_int_values,
-                self._sparse_int_shapes,
-                learner_config=self._learner_config_serialized,
-                apply_dropout=apply_dropout,
-                apply_averaging=apply_averaging,
-                use_locking=False,
-                center_bias=self._center_bias,
-                reduce_dim=self._reduce_dim))
-        partition_ids = prediction_ops.gradient_trees_partition_examples(
-            self._ensemble_handle,
-            self._dense_floats,
-            self._sparse_float_indices,
-            self._sparse_float_values,
-            self._sparse_float_shapes,
-            self._sparse_int_indices,
-            self._sparse_int_values,
-            self._sparse_int_shapes,
-            use_locking=False)
-
-    return _make_predictions_dict(ensemble_stamp, predictions,
-                                  predictions_no_dropout, partition_ids,
-                                  ensemble_stats)
+        return self._predict_and_return_dict(self._ensemble_handle,
+                                             ensemble_stamp, mode)
 
   def train(self, loss, predictions_dict, labels):
     """Grows a new tree and adds it to the ensemble.
@@ -484,7 +496,6 @@ class GradientBoostedDecisionTreeModel(object):
         gate_gradients=0,
         aggregation_method=None)[0]
     strategy = self._learner_config.multi_class_strategy
-    num_classes = self._learner_config.num_classes
 
     class_id = -1
     # Handle different multiclass strategies.
@@ -493,7 +504,7 @@ class GradientBoostedDecisionTreeModel(object):
       gradient_shape = tensor_shape.scalar()
       hessian_shape = tensor_shape.scalar()
 
-      if num_classes == 2:
+      if self._logits_dimension == 1:
         # We have only 1 score, gradients is of shape [batch, 1].
         hessians = gradients_impl.gradients(
             gradients,
@@ -511,8 +522,8 @@ class GradientBoostedDecisionTreeModel(object):
         hessians = array_ops.stack(hessian_list, axis=1)
 
         # Choose the class for which the tree is built (one vs rest).
-        class_id = predictions_dict[NUM_TREES_ATTEMPTED] % num_classes
-        class_id = math_ops.to_int32(class_id)
+        class_id = math_ops.to_int32(
+            predictions_dict[NUM_TREES_ATTEMPTED] % self._logits_dimension)
 
         # Use class id tensor to get the column with that index from gradients
         # and hessians.
@@ -522,14 +533,15 @@ class GradientBoostedDecisionTreeModel(object):
             _get_column_by_index(hessians, class_id))
     else:
       # Other multiclass strategies.
-      gradient_shape = tensor_shape.TensorShape([num_classes])
+      gradient_shape = tensor_shape.TensorShape([self._logits_dimension])
 
       if strategy == learner_pb2.LearnerConfig.FULL_HESSIAN:
-        hessian_shape = tensor_shape.TensorShape(([num_classes, num_classes]))
+        hessian_shape = tensor_shape.TensorShape(
+            ([self._logits_dimension, self._logits_dimension]))
         hessian_list = self._full_hessian(gradients, predictions)
       else:
         # Diagonal hessian strategy.
-        hessian_shape = tensor_shape.TensorShape(([num_classes]))
+        hessian_shape = tensor_shape.TensorShape(([self._logits_dimension]))
         hessian_list = self._diagonal_hessian(gradients, predictions)
 
       squeezed_gradients = gradients
@@ -676,7 +688,7 @@ class GradientBoostedDecisionTreeModel(object):
     handler_results = batch_ops_utils.run_handler_scheduled_ops(
         handler_reads, ensemble_stamp, worker_device)
     per_handler_updates = {}
-    # Two values per handler. First one is if the the handler is active for the
+    # Two values per handler. First one is if the handler is active for the
     # current layer. The second one is if the handler is going to be active
     # for the next layer.
     subsampling_type = self._learner_config.WhichOneof("feature_fraction")
@@ -729,7 +741,7 @@ class GradientBoostedDecisionTreeModel(object):
     # Accumulate a step after updating stats.
     batch_size = math_ops.cast(array_ops.shape(labels)[0], dtypes.float32)
     with ops.control_dependencies(stats_update_ops):
-      add_step_op = steps_accumulator.add(ensemble_stamp, [0], [0],
+      add_step_op = steps_accumulator.add(ensemble_stamp, [0], [[0, 0]],
                                           [batch_size], [1.0])
 
     # Determine learning rate.
@@ -768,7 +780,10 @@ class GradientBoostedDecisionTreeModel(object):
                     active_tree, active_layer, dropout_seed, class_id),
                 control_flow_ops.no_op))
 
-    # Calculate the loss to be reported - use the predictions without dropout.
+    # Calculate the loss to be reported.
+    # Note, the loss is calculated from the prediction considering dropouts, so
+    # that the value might look staggering over steps when the dropout ratio is
+    # high. eval_loss might be referred instead in the aspect of convergence.
     return control_flow_ops.group(*ensemble_update_ops)
 
   def _get_weights(self, hessian_shape, hessians):
@@ -791,10 +806,10 @@ class GradientBoostedDecisionTreeModel(object):
     # compute the full hessian with a single call to gradients, but instead
     # must compute it row-by-row.
     gradients_list = array_ops.unstack(
-        grads, num=self._learner_config.num_classes, axis=1)
+        grads, num=self._logits_dimension, axis=1)
     hessian_rows = []
 
-    for row in range(self._learner_config.num_classes):
+    for row in range(self._logits_dimension):
       # If current row is i, K is number of classes,each row returns a tensor of
       # size batch_size x K representing for each example dx_i dx_1, dx_i dx_2
       # etc dx_i dx_K
@@ -817,7 +832,7 @@ class GradientBoostedDecisionTreeModel(object):
     diag_hessian_list = []
 
     gradients_list = array_ops.unstack(
-        grads, num=self._learner_config.num_classes, axis=1)
+        grads, num=self._logits_dimension, axis=1)
 
     for row, row_grads in enumerate(gradients_list):
       # If current row is i, K is number of classes,each row returns a tensor of
@@ -878,8 +893,10 @@ class GradientBoostedDecisionTreeModel(object):
       hess_sum = math_ops.reduce_sum(hess, 0)
 
       # Accumulate gradients and hessians.
-      partition_ids = math_ops.range(predictions.get_shape()[1])
-      feature_ids = array_ops.zeros_like(partition_ids, dtype=dtypes.int64)
+      partition_ids = math_ops.range(self._logits_dimension)
+      feature_ids = array_ops.zeros(
+          [self._logits_dimension, 2], dtype=dtypes.int64)
+
       add_stats_op = bias_stats_accumulator.add(
           ensemble_stamp, partition_ids, feature_ids, grads_sum, hess_sum)
       return control_flow_ops.group(*[add_stats_op], name="update_bias_stats")

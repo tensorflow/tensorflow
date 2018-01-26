@@ -279,7 +279,7 @@ class MatrixDiagPartTest(test.TestCase):
 
 class DiagTest(test.TestCase):
 
-  def diagOp(self, diag, dtype, expected_ans, use_gpu=False):
+  def _diagOp(self, diag, dtype, expected_ans, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       tf_ans = array_ops.diag(ops.convert_to_tensor(diag.astype(dtype)))
       out = tf_ans.eval()
@@ -289,6 +289,10 @@ class DiagTest(test.TestCase):
     self.assertAllClose(inv_out, diag)
     self.assertShapeEqual(expected_ans, tf_ans)
     self.assertShapeEqual(diag, tf_ans_inv)
+
+  def diagOp(self, diag, dtype, expected_ans):
+    self._diagOp(diag, dtype, expected_ans, False)
+    self._diagOp(diag, dtype, expected_ans, True)
 
   def testEmptyTensor(self):
     x = np.array([])
@@ -400,19 +404,63 @@ class DiagTest(test.TestCase):
           dtype=dtype)
       self.diagOp(x, dtype, expected_ans)
 
+  def testRankFourNumberTensor(self):
+    for dtype in [np.float32, np.float64, np.int64, np.int32]:
+      # Input with shape [2, 1, 2, 3]
+      x = np.array([[[[ 1,  2,  3],
+                      [ 4,  5,  6]]],
+                    [[[ 7,  8,  9],
+                      [10, 11, 12]]]], dtype=dtype)
+      # Output with shape [2, 1, 2, 3, 2, 1, 2, 3]
+      expected_ans = np.array(
+          [[[[[[[[1, 0, 0], [0, 0, 0]]],
+               [[[0, 0, 0], [0, 0, 0]]]],
+              [[[[0, 2, 0], [0, 0, 0]]],
+               [[[0, 0, 0], [0, 0, 0]]]],
+              [[[[0, 0, 3], [0, 0, 0]]],
+               [[[0, 0, 0], [0, 0, 0]]]]],
+             [[[[[0, 0, 0], [4, 0, 0]]],
+               [[[0, 0, 0], [0, 0, 0]]]],
+              [[[[0, 0, 0], [0, 5, 0]]],
+               [[[0, 0, 0], [0, 0, 0]]]],
+              [[[[0, 0, 0], [0, 0, 6]]],
+               [[[0, 0, 0], [0, 0, 0]]]]]]],
+
+           [[[[[[[0, 0, 0], [0, 0, 0]]],
+               [[[7, 0, 0], [0, 0, 0]]]],
+              [[[[0, 0, 0], [0, 0, 0]]],
+               [[[0, 8, 0], [0, 0, 0]]]],
+              [[[[0, 0, 0], [0, 0, 0]]],
+               [[[0, 0, 9], [0, 0, 0]]]]],
+             [[[[[0, 0, 0], [0, 0, 0]]],
+               [[[0, 0, 0], [10, 0, 0]]]],
+              [[[[0, 0, 0], [0, 0, 0]]],
+               [[[0, 0, 0], [0, 11, 0]]]],
+              [[[[0, 0, 0], [0, 0, 0]]],
+               [[[0, 0, 0], [0, 0, 12]]]]]]]], dtype=dtype)
+      self.diagOp(x, dtype, expected_ans)
+
+  def testInvalidRank(self):
+    with self.assertRaisesRegexp(ValueError, "must be at least rank 1"):
+      array_ops.diag(0.0)
+
 
 class DiagPartOpTest(test.TestCase):
 
   def setUp(self):
     np.random.seed(0)
 
-  def diagPartOp(self, tensor, dtype, expected_ans, use_gpu=False):
+  def _diagPartOp(self, tensor, dtype, expected_ans, use_gpu):
     with self.test_session(use_gpu=use_gpu):
       tensor = ops.convert_to_tensor(tensor.astype(dtype))
       tf_ans_inv = array_ops.diag_part(tensor)
       inv_out = tf_ans_inv.eval()
     self.assertAllClose(inv_out, expected_ans)
     self.assertShapeEqual(expected_ans, tf_ans_inv)
+
+  def diagPartOp(self, tensor, dtype, expected_ans):
+    self._diagPartOp(tensor, dtype, expected_ans, False)
+    self._diagPartOp(tensor, dtype, expected_ans, True)
 
   def testRankTwoFloatTensor(self):
     x = np.random.rand(3, 3)
@@ -451,11 +499,23 @@ class DiagPartOpTest(test.TestCase):
     self.diagPartOp(x, np.float32, expected_ans)
     self.diagPartOp(x, np.float64, expected_ans)
 
+  def testRankEightComplexTensor(self):
+    x = np.random.rand(2, 2, 2, 3, 2, 2, 2, 3)
+    i = np.arange(2)[:, None, None, None]
+    j = np.arange(2)[:, None, None]
+    k = np.arange(2)[:, None]
+    l = np.arange(3)
+    expected_ans = x[i, j, k, l, i, j, k, l]
+    self.diagPartOp(x, np.complex64, expected_ans)
+    self.diagPartOp(x, np.complex128, expected_ans)
+
   def testOddRank(self):
     w = np.random.rand(2)
     x = np.random.rand(2, 2, 2)
     self.assertRaises(ValueError, self.diagPartOp, w, np.float32, 0)
     self.assertRaises(ValueError, self.diagPartOp, x, np.float32, 0)
+    with self.assertRaises(ValueError):
+      array_ops.diag_part(0.0)
 
   def testUnevenDimensions(self):
     w = np.random.rand(2, 5)

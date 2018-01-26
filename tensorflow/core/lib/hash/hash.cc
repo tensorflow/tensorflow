@@ -126,4 +126,15 @@ uint64 Hash64(const char* data, size_t n, uint64 seed) {
   return h;
 }
 
+bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
+                                    string* result) {
+  const size_t size = msg.ByteSizeLong();
+  *result = string(size, '\0');
+  protobuf::io::ArrayOutputStream array_stream(&(*result)[0], size);
+  protobuf::io::CodedOutputStream output_stream(&array_stream);
+  output_stream.SetSerializationDeterministic(true);
+  msg.SerializeWithCachedSizes(&output_stream);
+  return !output_stream.HadError() && size == output_stream.ByteCount();
+}
+
 }  // namespace tensorflow

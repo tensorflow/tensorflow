@@ -37,8 +37,9 @@ class ResourceApplyGradientDescent : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
   }
 };
-REGISTER_XLA_OP(Name("ResourceApplyGradientDescent"),
-                ResourceApplyGradientDescent);
+REGISTER_XLA_OP(
+    Name("ResourceApplyGradientDescent").TypeConstraint("T", kFloatTypes),
+    ResourceApplyGradientDescent);
 
 class ResourceApplyMomentum : public XlaOpKernel {
  public:
@@ -109,7 +110,8 @@ class ResourceApplyMomentum : public XlaOpKernel {
  private:
   bool use_nesterov_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyMomentum"), ResourceApplyMomentum);
+REGISTER_XLA_OP(Name("ResourceApplyMomentum").TypeConstraint("T", kFloatTypes),
+                ResourceApplyMomentum);
 
 class ResourceApplyAdagrad : public XlaOpKernel {
  public:
@@ -163,7 +165,8 @@ class ResourceApplyAdagrad : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, type, accum));
   }
 };
-REGISTER_XLA_OP(Name("ResourceApplyAdagrad"), ResourceApplyAdagrad);
+REGISTER_XLA_OP(Name("ResourceApplyAdagrad").TypeConstraint("T", kFloatTypes),
+                ResourceApplyAdagrad);
 
 class ResourceApplyAdam : public XlaOpKernel {
  public:
@@ -263,7 +266,8 @@ class ResourceApplyAdam : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyAdam"), ResourceApplyAdam);
+REGISTER_XLA_OP(Name("ResourceApplyAdam").TypeConstraint("T", kFloatTypes),
+                ResourceApplyAdam);
 
 class ResourceApplyRMSProp : public XlaOpKernel {
  public:
@@ -362,7 +366,8 @@ class ResourceApplyRMSProp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(2, type, new_mom));
   }
 };
-REGISTER_XLA_OP(Name("ResourceApplyRMSProp"), ResourceApplyRMSProp);
+REGISTER_XLA_OP(Name("ResourceApplyRMSProp").TypeConstraint("T", kFloatTypes),
+                ResourceApplyRMSProp);
 
 void CompileFtrl(XlaOpKernelContext* ctx, DataType dtype,
                  bool has_l2_shrinkage) {
@@ -500,7 +505,8 @@ class ResourceApplyFtrl : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyFtrl"), ResourceApplyFtrl);
+REGISTER_XLA_OP(Name("ResourceApplyFtrl").TypeConstraint("T", kFloatTypes),
+                ResourceApplyFtrl);
 
 class ResourceApplyFtrlV2 : public XlaOpKernel {
  public:
@@ -515,7 +521,8 @@ class ResourceApplyFtrlV2 : public XlaOpKernel {
  private:
   DataType dtype_;
 };
-REGISTER_XLA_OP(Name("ResourceApplyFtrlV2"), ResourceApplyFtrlV2);
+REGISTER_XLA_OP(Name("ResourceApplyFtrlV2").TypeConstraint("T", kFloatTypes),
+                ResourceApplyFtrlV2);
 
 }  // namespace
 }  // namespace tensorflow

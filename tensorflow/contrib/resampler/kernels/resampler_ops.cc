@@ -122,7 +122,7 @@ struct Resampler2DFunctor<CPUDevice, T>{
     };
     // Rough estimate of work for each batch entry.
     // From third_party/tensorflow/core/util/work_sharder.cc we gather that an
-    // estimate of the cost of each work unit is needed to correclty shard the
+    // estimate of the cost of each work unit is needed to correctly shard the
     // workload. Shard assumes each cost unit is 1ns, minimum cost per shard
     // being 10us.
     const int64 cost =  static_cast<int64>(num_sampling_points) *
@@ -406,10 +406,10 @@ class ResamplerGradOp : public ::tensorflow::OpKernel {
                                    data_channels);
     OP_REQUIRES(ctx, grad_output_shape == resampler_output_shape,
                 ::tensorflow::errors::InvalidArgument(
-                   "grad_output shape is not consistent with data and warp "
-                   "shapes; it should be ",
-                   resampler_output_shape.DebugString(), " but is ",
-                   grad_output_shape.DebugString()))
+                    "grad_output shape is not consistent with data and warp "
+                    "shapes; it should be ",
+                    resampler_output_shape.DebugString(), " but is ",
+                    grad_output_shape.DebugString()));
     const int num_sampling_points = warp.NumElements() / batch_size / 2;
     ::tensorflow::Tensor* grad_data = nullptr;
     ::tensorflow::Tensor* grad_warp = nullptr;

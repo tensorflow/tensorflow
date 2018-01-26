@@ -26,11 +26,26 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+filegroup(
+    name = "srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = ["*test*"],
+    ),
+    visibility = ["//visibility:public"],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
     srcs = ["c_api.h"],
     hdrs = ["c_api_internal.h"],
-    visibility = ["//tensorflow/c:__subpackages__"],
+    visibility = [
+        "//tensorflow:internal",
+        "//tensorflow/c:__subpackages__",
+    ],
     deps = select({
         "//tensorflow:android": [
             "//tensorflow/core:android_tensorflow_lib_lite",
@@ -39,14 +54,20 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
+            "//tensorflow/core:op_gen_lib",
         ],
     }),
 )
 
 tf_cuda_library(
     name = "c_api",
-    srcs = ["c_api.cc"],
-    hdrs = ["c_api.h"],
+    srcs = [
+        "c_api.cc",
+        "c_api_function.cc",
+    ],
+    hdrs = [
+        "c_api.h",
+    ],
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = select({
@@ -65,8 +86,10 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
+            "//tensorflow/core:op_gen_lib",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
+            "//tensorflow/core:lib_internal",
         ],
     }),
 )
@@ -154,6 +177,21 @@ tf_cc_test(
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:math",
+    ],
+)
+
+tf_cc_test(
+    name = "c_api_function_test",
+    size = "small",
+    srcs = ["c_api_function_test.cc"],
+    deps = [
+        ":c_api",
+        ":c_test_util",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

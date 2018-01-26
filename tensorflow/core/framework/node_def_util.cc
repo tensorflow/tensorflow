@@ -240,8 +240,12 @@ DEFINE_GET_ATTR(Tensor, tensor, "tensor", emplace_back, t, Tensor t;
                       ProtoShortDebugString(v),
                       " that can't be converted to a Tensor");
                 })
-
+DEFINE_GET_ATTR(NameAttrList, func, "func", emplace_back, v, ;);
 #undef DEFINE_GET_ATTR
+
+bool HasNodeAttr(const NodeDef& node_def, StringPiece attr_name) {
+  return node_def.attr().find(attr_name.ToString()) != node_def.attr().end();
+}
 
 static const string& kEmptyString = *new string();
 
@@ -283,17 +287,6 @@ Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
   TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
   TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "func"));
   *value = &attr_value->func();
-  return Status::OK();
-}
-
-Status GetNodeAttr(const AttrSlice& attrs, StringPiece attr_name,
-                   std::vector<NameAttrList>* value) {
-  const AttrValue* attr_value;
-  TF_RETURN_IF_ERROR(attrs.Find(attr_name, &attr_value));
-  TF_RETURN_IF_ERROR(AttrValueHasType(*attr_value, "list(func)"));
-  for (const auto& v : attr_value->list().func()) {
-    value->emplace_back(v);
-  }
   return Status::OK();
 }
 
@@ -353,6 +346,36 @@ Status AddArgToSig(const NodeDef& node_def, const OpDef::ArgDef& arg_def,
 }
 
 }  // namespace
+
+Status InputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                        int input_port, DataType* input_type) {
+  DataTypeVector input_types;
+  for (const auto& arg : op_def.input_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, &input_types));
+    if (input_types.size() > input_port) {
+      const DataType dtype = input_types[input_port];
+      *input_type = dtype;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Input ", input_port, " not found for node ",
+                                 node_def.name());
+}
+
+Status OutputTypeForNode(const NodeDef& node_def, const OpDef& op_def,
+                         int output_port, DataType* output_type) {
+  DataTypeVector output_types;
+  for (const auto& arg : op_def.output_arg()) {
+    TF_RETURN_IF_ERROR(AddArgToSig(node_def, arg, &output_types));
+    if (output_types.size() > output_port) {
+      const DataType dtype = output_types[output_port];
+      *output_type = dtype;
+      return Status::OK();
+    }
+  }
+  return errors::InvalidArgument("Output ", output_port, " not found for node ",
+                                 node_def.name());
+}
 
 Status InOutTypesForNode(const NodeDef& node_def, const OpDef& op_def,
                          DataTypeVector* inputs, DataTypeVector* outputs) {

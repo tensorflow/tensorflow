@@ -25,6 +25,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import cli_shared
 from tensorflow.python.debug.cli import debugger_cli_common
+from tensorflow.python.debug.cli import ui_factory
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -99,6 +100,9 @@ class LocalCLIDebuggerWrapperSessionForTest(
       self.observers["run_start_cli_run_numbers"].append(self._run_call_count)
     else:
       self.observers["run_end_cli_run_numbers"].append(self._run_call_count)
+
+    readline_cli = ui_factory.get_ui("readline")
+    self._register_this_run_info(readline_cli)
 
     while True:
       command = self._command_sequence[self._command_pointer]
@@ -421,6 +425,11 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     def v_greater_than_twelve(datum, tensor):
       return datum.node_name == "v" and tensor > 12.0
+
+    # Verify that adding the same tensor filter more than once is tolerated
+    # (i.e., as if it were added only once).
+    wrapped_sess.add_tensor_filter("v_greater_than_twelve",
+                                   v_greater_than_twelve)
     wrapped_sess.add_tensor_filter("v_greater_than_twelve",
                                    v_greater_than_twelve)
 

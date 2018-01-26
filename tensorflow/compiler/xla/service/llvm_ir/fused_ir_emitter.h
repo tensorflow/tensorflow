@@ -42,22 +42,19 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
                  ElementalIrEmitter* elemental_emitter)
       : parameter_arrays_(parameter_arrays),
         elemental_emitter_(elemental_emitter),
-        ir_builder_(elemental_emitter->ir_builder()) {}
+        ir_builder_(elemental_emitter->ir_builder()),
+        module_(elemental_emitter->module()) {}
 
   Status DefaultAction(HloInstruction* hlo) override;
 
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override;
+  Status HandleConstant(HloInstruction* constant) override;
 
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
 
   Status HandleParameter(HloInstruction* parameter) override;
 
   // Emits the ir value for each element in the tuple.
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleTuple(HloInstruction* tuple) override;
 
   Status FinishVisit(HloInstruction* root) override;
 
@@ -85,6 +82,7 @@ class FusedIrEmitter : public DfsHloVisitorWithDefault {
 
   // Borrowed
   llvm::IRBuilder<>* ir_builder_;
+  llvm::Module* module_;
 
   // Map from instruction pointers to functions to generate elements of their
   // outputs

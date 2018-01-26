@@ -24,6 +24,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
@@ -106,12 +107,6 @@ class HloComputation {
   // must have no users. Instruction is deallocated with this call.
   Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
 
-  // Replace all uses of "instruction_to_replace" with "instruction". Also, if
-  // instruction_to_replace is the root of this computation then the root is set
-  // to "instruction". Does not remove "instruction_to_replace".
-  Status ReplaceUsesOfInstruction(HloInstruction* instruction_to_replace,
-                                  HloInstruction* instruction);
-
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation and have the same shape as
   // the result of the computation for non fusion computations.
@@ -143,13 +138,53 @@ class HloComputation {
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Return a string representation of the computation.
-  string ToString(int nested_level = 0) const;
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  string ToString() const { return ToString(HloPrintOptions()); }
+  string ToString(const HloPrintOptions& options) const;
 
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
 
-  const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
-    return instructions_;
+  // Creates a computation from the given proto. Arguments:
+  //
+  //   module: the module which will contain the computation. The newly created
+  //     computation is *not* added to the module, however.
+  //   proto: the proto to convert from.
+  //   computation_map: a map from computation name to HloComputation*. This map
+  //     must contain all computations which the newly constructed computation
+  //     calls.
+  //   add_fused_computation: A function to call to add a fused
+  //     computation. Used only when the instruction is a fusion instruction.
+  //   fusion_instruction: if non-null then the newly created computation will
+  //     be constructed as a fused computation with this instruction as its
+  //     fusion parent.
+  static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
+      HloModule* module, const HloComputationProto& proto,
+      const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
+      const std::function<void(std::unique_ptr<HloComputation>)>&
+          add_fused_computation,
+      HloInstruction* fusion_instruction = nullptr);
+
+  // Gets the instructions in this computation.
+  //
+  // The returned type is a range of HloInstruction*s, so you can iterate over
+  // it using a range-based for loop in the natural way:
+  //
+  //   for (HloInstruction* instr : computation->instructions()) { ... }
+  //
+  tensorflow::gtl::iterator_range<UnwrappingIterator<
+      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
+  instructions() const {
+    return {MakeUnwrappingIterator(instructions_.begin()),
+            MakeUnwrappingIterator(instructions_.end())};
+  }
+  tensorflow::gtl::iterator_range<
+      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+  instructions() {
+    return {MakeUnwrappingIterator(instructions_.begin()),
+            MakeUnwrappingIterator(instructions_.end())};
   }
 
   // Compute and return a post-order of the instructions in the computation. In
@@ -243,7 +278,8 @@ class HloComputation {
   // via the root. The root instruction of the computation is visited last, and
   // the visitor's FinishVisit method is called once upon completion (with the
   // root instruction as the argument).
-  Status Accept(DfsHloVisitor* visitor) const;
+  template <typename HloInstructionPtr>
+  Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor) const;
 
   // Same as Accept() above, but the order of operand and control predecessor
   // visitation is determined by the given operand order; if compare(A, B) ==
@@ -254,20 +290,43 @@ class HloComputation {
 
   // Visit every node in the computation in the given order. 'order' must
   // be a topological sort of all instructions in the computation.
-  Status AcceptOrdered(DfsHloVisitor* visitor,
+  template <typename HloInstructionPtr>
+  Status AcceptOrdered(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                        const std::vector<const HloInstruction*>& order) const;
 
   // Same as Accept() above, but the visitor is given as a function.
-  Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
+  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
+  Status Accept(
+      const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
   // Returns a deep copy of this computation including all instructions.
-  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone");
+  // If the module pointer is not nullptr, it will be the module where
+  // the cloned computations will be added to (in order to support deep
+  // cloning).
+  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone",
+                                        HloModule* module = nullptr);
 
-  // Returns true if the given instruction can be removed from the
-  // computation. Instructions such as parameters and send/receive instructions
-  // cannot be removed without violating invariants of the HLO computation or
-  // module with the exception of fusion computation.  A parameter instruction
-  // is removable for a fusion computation.
+  // Like Clone(), but if an instruction is present in replacement_map, we use
+  // the map's value to replace that instruction in the cloned computation.
+  //
+  // If replacements maps a key to nullptr, we remove that instruction from the
+  // new computation.
+  std::unique_ptr<HloComputation> CloneWithReplacements(
+      std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+          replacements,
+      HloModule* module = nullptr, const string& suffix = "clone");
+
+  // Returns true if the given instruction can be removed from the computation.
+  // Parameter instructions cannot be removed without violating invariants of
+  // the HLO computation with the exception of fusion computation. A parameter
+  // instruction is removable for a fusion computation.
+  //
+  // Note that IsRemovable() is a necessariy condition to remove an instruction
+  // rather than a sufficient condition. For example, instructions with
+  // side-effect (e.g., Send, Infeed) may be removed from a computation, but the
+  // transformation must guarantee the invariants relevant to the instructions
+  // still hold (e.g., Send and Recv must be removed together to make each
+  // channel complete).
   bool IsRemovable(const HloInstruction* instruction);
 
   // Returns true if this computation has a side effect. A computation has a
@@ -280,13 +339,15 @@ class HloComputation {
   // Returns the owning fusion instruction, or nullptr if this is not a fusion
   // computation.
   HloInstruction* FusionInstruction() const { return fusion_instruction_; }
+  void SetFusionInstruction(HloInstruction* fusion_instruction) {
+    fusion_instruction_ = fusion_instruction;
+  }
 
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction,
-      HloInstruction* fusion_instruction = nullptr);
+      HloInstruction* root_instruction, HloInstruction* fusion_instruction);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
@@ -331,11 +392,6 @@ class HloComputation {
       instruction_iterators_;
 
   std::vector<HloInstruction*> param_instructions_;
-
-  // Unique name generator for instruction identifiers. Instruction names should
-  // be unique per computation and this is enforced when instructions are added
-  // to the computation.
-  NameUniquer instruction_name_uniquer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloComputation);
 };

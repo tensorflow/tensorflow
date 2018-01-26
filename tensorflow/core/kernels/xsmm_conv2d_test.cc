@@ -73,7 +73,7 @@ LIBXSMM_INLINE void naive_copy_KCRS_to_RSCK(const float* kcrs, Tensor  &rsck, in
   LIBXSMM_VLA_DECL(4, const float,  input, kcrs, C, R, S);
   int r, s, c, k;
   auto output =  rsck.flat<float>();
- 
+
   for ( r = 0; r < R; r++ ) {
     for ( s = 0; s < S; s++ ) {
       for ( c = 0; c < C; c++ ) {
@@ -94,14 +94,14 @@ LIBXSMM_INLINE void zero_buf(float* buf, long size) {
     buf[i] = 0.0f;
   }
 }
- 
+
 LIBXSMM_INLINE void copy_buf(Tensor &dst,float *src,long size) {
   long  i;
   auto output =  dst.flat<float>();
-  for (i = 0; i < size; ++i) 
+  for (i = 0; i < size; ++i)
           output(i) = src[i];
 }
- 
+
 LIBXSMM_INLINE void init_buf(float* buf, long size, int initPos, int initOne)
 {
   int i;
@@ -110,7 +110,7 @@ LIBXSMM_INLINE void init_buf(float* buf, long size, int initPos, int initOne)
     buf[i] = (float)((initOne != 0) ? 1.0 : ((initPos != 0) ? drand48() : (0.05 - drand48()/10.0)));
   }
 }
- 
+
 
 
 LIBXSMM_INLINE void naive_conv_fp(naive_conv_t* param, const float* input, float* output, const float* filter)
@@ -138,11 +138,11 @@ LIBXSMM_INLINE void naive_conv_fp(naive_conv_t* param, const float* input, float
   int stride_w  = param->stride_w;
   /* loop counters */
   int img, ofm, ifm, oj, oi, ij, ii, kj, ki;
- 
+
   LIBXSMM_VLA_DECL(4,       float, output_t, output + (pad_w_out * ofwp + pad_h_out), nOfm, ofhp, ofwp);
   LIBXSMM_VLA_DECL(4, const float,  input_t,  input + (pad_w_in * ifwp + pad_h_in), nIfm, ifhp, ifwp);
   LIBXSMM_VLA_DECL(4, const float, filter_t, filter, nIfm, kh, kw);
- 
+
   for (img = 0; img < nImg; ++img) {
     for (ofm = 0; ofm < nOfm; ++ofm) {
       for (ifm = 0; ifm < nIfm; ++ifm) {
@@ -172,7 +172,7 @@ void RunXsmmVsGeneric() {}
 class XsmmConv2DTest : public OpsTestBase {
  protected:
   void MakeOp(int stride) {
-  
+
     TF_CHECK_OK(NodeDefBuilder("xsmm", "Conv2D")
                       .Input(FakeInput(DT_FLOAT))
                       .Input(FakeInput(DT_FLOAT))
@@ -184,7 +184,7 @@ class XsmmConv2DTest : public OpsTestBase {
     TF_ASSERT_OK(InitOp());
   }
 };
- 
+
 TEST_F(XsmmConv2DTest, Basic) {
      MakeOp(1);
 
@@ -206,13 +206,13 @@ TEST_F(XsmmConv2DTest, Basic) {
      int stride_h = stride;
      int pad_h = pad;
      int pad_w = pad;
- 
+
      int pad_h_in = pad_h;
      int pad_w_in = pad_w;
- 
+
      int pad_h_out = 0;
      int pad_w_out = 0;
- 
+
   /* deriving some values for naive code */
      int ofh = (ifh + 2 * pad_h - kh) / stride_h + 1;
      int ofw = (ifw + 2 * pad_w - kw) / stride_w + 1;
@@ -223,7 +223,7 @@ TEST_F(XsmmConv2DTest, Basic) {
 
 
     //Initialization of Filter and Image
-    
+
     /* allocate data */
      float *naive_input           = (float*)libxsmm_aligned_scratch( nImg*nIfm*ifhp*ifwp*sizeof(float), 2097152);
      float *naive_output          = (float*)libxsmm_aligned_scratch( nImg*nOfm*ofhp*ofwp*sizeof(float), 2097152);
@@ -232,21 +232,21 @@ TEST_F(XsmmConv2DTest, Basic) {
      init_buf(naive_input,          nImg*nIfm*ifhp*ifwp, 0, 0);
      zero_buf(naive_output,         nImg*nOfm*ofhp*ofwp);
      init_buf(naive_filter,         nOfm*nIfm*kh*kw, 0, 0);
-        
+
 
      Tensor image(DT_FLOAT,
                  {nImg, ifhp, ifwp, nIfm});
- 
- 
+
+
      Tensor filter(DT_FLOAT, {kh,kw,nIfm,nOfm});
- 
+
 
      naive_copy_NCHW_to_NHWC(naive_input, image, nImg, ifhp, ifwp, nIfm);
-     naive_copy_KCRS_to_RSCK(naive_filter, filter, kh, kw, nIfm, nOfm); 
+     naive_copy_KCRS_to_RSCK(naive_filter, filter, kh, kw, nIfm, nOfm);
 
 
     //Run naive convolution
-    
+
      naive_conv_t naive_param;
 
      naive_param.nImg = nImg;
@@ -274,8 +274,8 @@ TEST_F(XsmmConv2DTest, Basic) {
 
      naive_conv_fp(&naive_param, naive_input, naive_output, naive_filter);
 
- 
- 
+
+
      AddInputFromArray<float>(image.shape(), image.flat<float>());
      AddInputFromArray<float>(filter.shape(), filter.flat<float>());
 
@@ -283,7 +283,7 @@ TEST_F(XsmmConv2DTest, Basic) {
 
      //Run Op (TF)
      TF_ASSERT_OK(RunOpKernel());
- 
+
      // Check the output.
      Tensor expected(DT_FLOAT, {nImg,ofhp,ofwp, nOfm});
      naive_copy_NCHW_to_NHWC(naive_output, expected, nImg, ofhp, ofwp, nOfm);
@@ -329,15 +329,15 @@ TEST(XsmmConv2DTest, Basic) {
     desc.fuse_ops = LIBXSMM_DNN_CONV_FUSE_NONE;
     desc.options = LIBXSMM_DNN_CONV_OPTION_NONE;
     desc.datatype = LIBXSMM_DNN_DATATYPE_F32;
- 
+
     if (!CanUseXsmmConv2D(desc, data_format)) {
       return false;
     }
- 
+
     auto input_ptr = input.template flat<float>().data();
     auto filter_ptr = filter.template flat<float>().data();
     auto output_ptr = output->template flat<float>().data();
- 
+
     bool success = functor::XsmmFwdConv2D<CPUDevice, float>()(
         ctx, desc, input_ptr, filter_ptr, output_ptr);
     return success;
