@@ -26,15 +26,15 @@ uint8_t* read_bmp(const std::string& input_bmp_name, int* width, int* height,
                   int* channels, Settings* s);
 
 template <class T>
-void downsize(T* out, uint8_t* in, int image_height, int image_width,
-              int image_channels, int wanted_height, int wanted_width,
-              int wanted_channels, Settings* s);
+void resize(T* out, uint8_t* in, int image_height, int image_width,
+            int image_channels, int wanted_height, int wanted_width,
+            int wanted_channels, Settings* s);
 
 // explicit instantiation
-template void downsize<uint8_t>(uint8_t*, unsigned char*, int, int, int, int,
-                                int, int, Settings*);
-template void downsize<float>(float*, unsigned char*, int, int, int, int, int,
-                              int, Settings*);
+template void resize<uint8_t>(uint8_t*, unsigned char*, int, int, int, int,
+                              int, int, Settings*);
+template void resize<float>(float*, unsigned char*, int, int, int, int, int,
+                            int, Settings*);
 
 }  // namespace label_image
 }  // namespace tflite
