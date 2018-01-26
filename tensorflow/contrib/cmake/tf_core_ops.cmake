@@ -15,7 +15,7 @@
 set(tf_op_lib_names
     "audio_ops"
     "array_ops"
-		"batch_ops"
+	"batch_ops"
     "bitwise_ops"
     "candidate_sampling_ops"
     "checkpoint_ops"
@@ -23,11 +23,12 @@ set(tf_op_lib_names
     "ctc_ops"
     "data_flow_ops"
     "dataset_ops"
+    "function_ops"
     "functional_ops"
     "image_ops"
     "io_ops"
     "linalg_ops"
-		"list_ops"
+	"list_ops"
     "lookup_ops"
     "logging_ops"
     "math_ops"
@@ -46,8 +47,9 @@ set(tf_op_lib_names
     "state_ops"
     "stateless_random_ops"
     "string_ops"
-		"summary_ops"
+	"summary_ops"
     "training_ops"
+    "word2vec_ops"
 )
 
 foreach(tf_op_lib_name ${tf_op_lib_names})
