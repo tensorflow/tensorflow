@@ -17,7 +17,7 @@
 		59A3D0091CF4E68100C4259F /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 59A3CFFC1CF4E68100C4259F /* main.m */; };
 		DE6FE52C1FBC27BD009685A1 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DE6FE52B1FBC27BD009685A1 /* Main.storyboard */; };
 		DE6FE52E1FBC27F0009685A1 /* RunModelViewController.mm in Sources */ = {isa = PBXBuildFile; fileRef = DE6FE52D1FBC27F0009685A1 /* RunModelViewController.mm */; };
-		DE6FE5301FBC3035009685A1 /* Launch Screen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DE6FE52F1FBC3035009685A1 /* Launch Screen.storyboard */; };
+		DE6FE5301FBC3035009685A1 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = DE6FE52F1FBC3035009685A1 /* LaunchScreen.storyboard */; };
 		DE912B871FBECEEA0079D7D2 /* AppDelegate.m in Sources */ = {isa = PBXBuildFile; fileRef = DE912B851FBECEEA0079D7D2 /* AppDelegate.m */; };
 /* End PBXBuildFile section */
 
@@ -38,7 +38,7 @@
 		73DBC33C5DD9A526EE6D1EF2 /* libPods-tf_simple_example.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-tf_simple_example.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		DE6FE52B1FBC27BD009685A1 /* Main.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = Main.storyboard; sourceTree = "<group>"; };
 		DE6FE52D1FBC27F0009685A1 /* RunModelViewController.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = RunModelViewController.mm; sourceTree = "<group>"; };
-		DE6FE52F1FBC3035009685A1 /* Launch Screen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = "Launch Screen.storyboard"; sourceTree = "<group>"; };
+		DE6FE52F1FBC3035009685A1 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		DE912B851FBECEEA0079D7D2 /* AppDelegate.m */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.objc; path = AppDelegate.m; sourceTree = "<group>"; };
 		DE912B861FBECEEA0079D7D2 /* AppDelegate.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = AppDelegate.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -82,7 +82,7 @@
 				59A3CFFE1CF4E68100C4259F /* RunModelViewController.h */,
 				DE6FE52D1FBC27F0009685A1 /* RunModelViewController.mm */,
 				DE6FE52B1FBC27BD009685A1 /* Main.storyboard */,
-				DE6FE52F1FBC3035009685A1 /* Launch Screen.storyboard */,
+				DE6FE52F1FBC3035009685A1 /* LaunchScreen.storyboard */,
 				5911579C1CF4011C00C31E3A /* Products */,
 				24D7686C331131624F4454A0 /* Frameworks */,
 			);
@@ -168,7 +168,7 @@
 				DE6FE52C1FBC27BD009685A1 /* Main.storyboard in Resources */,
 				594C14B11FB9037100EE8BFE /* labels.txt in Resources */,
 				59A3D0031CF4E68100C4259F /* grace_hopper.jpg in Resources */,
-				DE6FE5301FBC3035009685A1 /* Launch Screen.storyboard in Resources */,
+				DE6FE5301FBC3035009685A1 /* LaunchScreen.storyboard in Resources */,
 				594C14B21FB9037100EE8BFE /* mobilenet_v1_1.0_224.tflite in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
