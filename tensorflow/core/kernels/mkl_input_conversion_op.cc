@@ -271,8 +271,8 @@ class MklInputConversionOp : public OpKernel {
     MklDnnShape input_shape_1;
     GetMklShape(context, 1, &input_shape_1);
 
-    bool tf_shapes_are_same = context->input(0).shape() ==
-                              context->input(1).shape();
+    bool tf_shapes_are_same =
+        context->input(0).shape() == context->input(1).shape();
 
     VLOG(1) << "MklInputConversionOp: Input shapes are "
             << (tf_shapes_are_same ? "*same*" : "*different*") << ": "
@@ -400,9 +400,9 @@ class MklInputConversionOp : public OpKernel {
 
       // Create reorder between tensorflow layout and Mkl layout.
       std::vector<primitive> net;
-      CHECK_EQ(tf_input.CheckReorderToOpMem(memory::primitive_desc(
-                                            output_mkl_md, cpu_engine),
-                                            tensor_out, &net),
+      CHECK_EQ(tf_input.CheckReorderToOpMem(
+                   memory::primitive_desc(output_mkl_md, cpu_engine),
+                   tensor_out, &net),
                true);
       stream(stream::kind::eager).submit(net).wait();
 

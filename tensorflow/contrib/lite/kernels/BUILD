@@ -72,6 +72,32 @@ cc_library(
 )
 
 cc_library(
+    name = "kernel_util",
+    srcs = [
+        "kernel_util.cc",
+    ],
+    hdrs = [
+        "kernel_util.h",
+    ],
+    deps = [
+        "//tensorflow/contrib/lite:builtin_op_data",
+        "//tensorflow/contrib/lite:context",
+        "//tensorflow/contrib/lite/kernels/internal:round",
+    ],
+)
+
+tf_cc_test(
+    name = "kernel_util_test",
+    size = "small",
+    srcs = ["kernel_util_test.cc"],
+    deps = [
+        ":kernel_util",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+cc_library(
     name = "builtin_ops",
     srcs = [
         "activations.cc",
@@ -87,7 +113,6 @@ cc_library(
         "fully_connected.cc",
         "gather.cc",
         "hashtable_lookup.cc",
-        "kernel_util.cc",
         "l2norm.cc",
         "local_response_norm.cc",
         "lsh_projection.cc",
@@ -111,7 +136,6 @@ cc_library(
         "unidirectional_sequence_rnn.cc",
     ],
     hdrs = [
-        "kernel_util.h",
         "padding.h",
         "register.h",
     ],
@@ -125,6 +149,7 @@ cc_library(
     }),
     deps = [
         ":activation_functor",
+        ":kernel_util",
         ":op_macros",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
