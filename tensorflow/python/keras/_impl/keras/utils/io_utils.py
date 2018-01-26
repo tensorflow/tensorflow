@@ -19,9 +19,9 @@ from __future__ import division
 from __future__ import print_function
 
 from collections import defaultdict
-import sys
 
 import numpy as np
+import six
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -160,13 +160,11 @@ def ask_to_proceed_with_overwrite(filepath):
   Returns:
       True if we can proceed with overwrite, False otherwise.
   """
-  get_input = input
-  if sys.version_info[:2] <= (2, 7):
-    get_input = raw_input
-  overwrite = get_input('[WARNING] %s already exists - overwrite? '
-                        '[y/n]' % (filepath))
-  while overwrite not in ['y', 'n']:
-    overwrite = get_input('Enter "y" (overwrite) or "n" (cancel).')
+  overwrite = six.moves.input('[WARNING] %s already exists - overwrite? '
+                              '[y/n]' % (filepath)).strip().lower()
+  while overwrite not in ('y', 'n'):
+    overwrite = six.moves.input('Enter "y" (overwrite) or "n" '
+                                '(cancel).').strip().lower()
   if overwrite == 'n':
     return False
   print('[TIP] Next time specify overwrite=True!')
