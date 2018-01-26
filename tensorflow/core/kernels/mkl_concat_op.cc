@@ -30,7 +30,7 @@ limitations under the License.
 #include "mkl_dnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
 using mkldnn::concat;
@@ -62,7 +62,7 @@ class EigenConcatBaseOp : public OpKernel {
   // we need to have empty Compute because Compute is pure virtual function.
   void Compute(OpKernelContext* c) {}
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
   void Compute(OpKernelContext* c, const std::vector<Tensor>& values) {
     const Tensor* concat_dim_tensor;
@@ -230,7 +230,7 @@ class EigenConcatBaseOp : public OpKernel {
 #endif
 };
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 // --------------------------------------------------------------------------
 //                      Mkl Concat Op
