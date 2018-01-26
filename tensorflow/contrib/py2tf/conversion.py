@@ -23,16 +23,17 @@ import six
 
 from tensorflow.contrib.py2tf import config
 from tensorflow.contrib.py2tf import naming
-from tensorflow.contrib.py2tf.convert import break_canonicalization
-from tensorflow.contrib.py2tf.convert import builtin_functions
-from tensorflow.contrib.py2tf.convert import call_trees
-from tensorflow.contrib.py2tf.convert import continue_canonicalization
-from tensorflow.contrib.py2tf.convert import control_flow
-from tensorflow.contrib.py2tf.convert import decorators
-from tensorflow.contrib.py2tf.convert import for_canonicalization
-from tensorflow.contrib.py2tf.convert import logical_expressions
-from tensorflow.contrib.py2tf.convert import print_functions
-from tensorflow.contrib.py2tf.convert import side_effect_guards
+from tensorflow.contrib.py2tf.converters import break_canonicalization
+from tensorflow.contrib.py2tf.converters import builtin_functions
+from tensorflow.contrib.py2tf.converters import call_trees
+from tensorflow.contrib.py2tf.converters import continue_canonicalization
+from tensorflow.contrib.py2tf.converters import control_flow
+from tensorflow.contrib.py2tf.converters import decorators
+from tensorflow.contrib.py2tf.converters import for_canonicalization
+from tensorflow.contrib.py2tf.converters import logical_expressions
+from tensorflow.contrib.py2tf.converters import print_functions
+from tensorflow.contrib.py2tf.converters import side_effect_guards
+from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct.static_analysis import access
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
@@ -51,9 +52,9 @@ class ConversionMap(object):
         function may call.
     nocompile_decorators: tuple of decorator functions that toggle compilation
         off.
-    dependency_cache: dict[object]: ast; maps original objects to their
+    dependency_cache: dict[object]: ast; maps original entities to their
         converted AST
-    name_map: dict[string]: string; maps original objects to the name of
+    name_map: dict[string]: string; maps original entities to the name of
         their converted counterparts
   """
 
@@ -66,8 +67,8 @@ class ConversionMap(object):
     self.dependency_cache = {}
     self.name_map = {}
 
-  def new_namer(self, global_symbols):
-    return naming.Namer(global_symbols, self.recursive, self.name_map,
+  def new_namer(self, namespace):
+    return naming.Namer(namespace, self.recursive, self.name_map,
                         self.partial_types)
 
   def update_name_map(self, namer):
@@ -76,48 +77,47 @@ class ConversionMap(object):
         if self.name_map[o] != name:
           raise ValueError(
               'Calls to %s were converted using multiple names (%s). This is '
-              'possible when an object with one of these names already '
+              'possible when an entity with one of these names already '
               'existed. To fix, avoid using any of these names.')
       else:
         self.name_map[o] = name
 
-  def add_to_cache(self, original_object, converted_ast):
-    self.dependency_cache[original_object] = converted_ast
+  def add_to_cache(self, original_entity, converted_ast):
+    self.dependency_cache[original_entity] = converted_ast
 
 
-def object_to_graph(o, conversion_map, value_hints):
-  """Compile a Python object into equivalent TensorFlow.
+def entity_to_graph(o, conversion_map, arg_values, arg_types):
+  """Compile a Python entity into equivalent TensorFlow.
 
-  The function will also recursively compile all the objects that `o`
+  The function will also recursively compile all the entities that `o`
   references, updating `dependency_cache`.
 
   This function is reentrant, and relies on dependency_cache to avoid
   generating duplicate code.
 
   Args:
-    o: A Python object.
+    o: A Python entity.
     conversion_map: A ConversionMap object.
-    value_hints: A dict containing value hints for symbols like function
+    arg_values: A dict containing value hints for symbols like function
+        parameters.
+    arg_types: A dict containing type hints for symbols like function
         parameters.
 
   Returns:
     A tuple (ast, new_name):
-        * ast: An AST representing an object with interface equivalent to `o`,
+        * ast: An AST representing an entity with interface equivalent to `o`,
             but which when executed it creates TF a graph.
-        * new_name: The symbol name under which the new object can be found.
+        * new_name: The symbol name under which the new entity can be found.
 
   Raises:
-    ValueError: if the object is not supported.
+    ValueError: if the entity type is not supported.
   """
-  if value_hints is None:
-    value_hints = {}
-
   if tf_inspect.isclass(o):
-    node, new_name = class_to_graph(o, conversion_map, value_hints)
+    node, new_name = class_to_graph(o, conversion_map)
   elif tf_inspect.isfunction(o):
-    node, new_name = function_to_graph(o, conversion_map, value_hints)
+    node, new_name = function_to_graph(o, conversion_map, arg_values, arg_types)
   elif tf_inspect.ismethod(o):
-    node, new_name = function_to_graph(o, conversion_map, value_hints)
+    node, new_name = function_to_graph(o, conversion_map, arg_values, arg_types)
   else:
     raise ValueError(
         'Entity "%s" has unsupported type "%s". Only functions and classes are '
@@ -132,25 +132,26 @@ def object_to_graph(o, conversion_map, value_hints):
           # Class members are converted with their objects, unless they're
           # only converted partially.
           continue
-        object_to_graph(obj, conversion_map, None)
+        entity_to_graph(obj, conversion_map, {}, {})
 
   return node, new_name
 
 
-def class_to_graph(c, conversion_map, param_value_hints):
-  """Specialization of `object_to_graph` for classes."""
+def class_to_graph(c, conversion_map):
+  """Specialization of `entity_to_graph` for classes."""
   converted_members = {}
   members = tf_inspect.getmembers(c, predicate=tf_inspect.ismethod)
   if not members:
     raise ValueError('Cannot convert %s: it has no member methods.')
 
-  if 'self' in param_value_hints:
-    raise ValueError('Hints may not be provided for reserved name "self".')
-  param_value_hints['self'] = (c.__name__, c)
-
   class_globals = None
   for _, m in members:
-    node, _ = function_to_graph(m, conversion_map, param_value_hints, c)
+    node, _ = function_to_graph(
+        m,
+        conversion_map=conversion_map,
+        arg_values={},
+        arg_types={'self': (c.__name__, c)},
+        owner_type=c)
     # TODO(mdan): Do not assume all members have the same view of globals.
     if class_globals is None:
       class_globals = six.get_function_globals(m)
@@ -167,10 +168,11 @@ def class_to_graph(c, conversion_map, param_value_hints):
   return node, class_name
 
 
-def function_to_graph(f, conversion_map, param_value_hints, owner_type=None):
-  """Specialization of `object_to_graph` for callable functions."""
+def function_to_graph(f, conversion_map, arg_values, arg_types,
+                      owner_type=None):
+  """Specialization of `entity_to_graph` for callable functions."""
   node = parser.parse_object(f).body[0]
-  node_globals = six.get_function_globals(f)
+  namespace = six.get_function_globals(f)
 
   # This is needed for non-global functions.
   closure = six.get_function_closure(f)
@@ -178,12 +180,17 @@ def function_to_graph(f, conversion_map, param_value_hints, owner_type=None):
     for e in closure:
       if callable(e.cell_contents):
         fn = e.cell_contents
-        node_globals[fn.__name__] = fn
+        namespace[fn.__name__] = fn
 
-  namer = conversion_map.new_namer(node_globals)
-  node = node_to_graph(node, tf_inspect.getsource(f), tf_inspect.getfile(f),
-                       namer, node_globals, param_value_hints,
-                       conversion_map.nocompile_decorators)
+  namer = conversion_map.new_namer(namespace)
+  ctx = context.EntityContext(
+      namer=namer,
+      source_code=tf_inspect.getsource(f),
+      source_file=tf_inspect.getfile(f),
+      namespace=namespace,
+      arg_values=arg_values,
+      arg_types=arg_types)
+  node = node_to_graph(node, ctx, conversion_map.nocompile_decorators)
 
   # Simulate a rename to ensure the top level is in the name map. This is needed
   # for top level functions, and it also helps the consistency verification made
@@ -197,34 +204,26 @@ def function_to_graph(f, conversion_map, param_value_hints, owner_type=None):
   return node, conversion_map.name_map[f]
 
 
-def _static_analysis_pass(node, source, f, namespace, value_hints):
+def _static_analysis_pass(node, ctx):
   node = access.resolve(node)
-  node = live_values.resolve(node, namespace, config.PYTHON_LITERALS)
-  node = type_info.resolve(node, source, f, value_hints)
+  node = live_values.resolve(node, ctx.namespace, config.PYTHON_LITERALS)
+  node = type_info.resolve(node, ctx)
   return node
 
 
-def node_to_graph(node, source, f, namer, namespace, value_hints,
-                  nocompile_decorators):
+def node_to_graph(node, ctx, nocompile_decorators):
   """Convert Python code to equivalent TF graph mode code.
 
   Args:
     node: A Python AST node representing the code to convert.
-    source: Optional string containing the source code of the node. Used in
-        error messages.
-    f: Optional string indicating the file where the node originated. None if
-        unknown. Used in error messages.
-    namer: A naming.Namer object.
-    namespace: Dict mapping symbol names to their corresponding live objects.
-    value_hints: A dict containing value hints for symbols like function
-        parameters.
+    ctx: An EntityContext object.
     nocompile_decorators: A tuple containing decorators to be stripped from
         functions during conversion.
 
   Returns:
     A tuple (node, deps):
         * node: A Python ast node, representing the converted code.
-        * deps: A set of strings, the fully qualified names of object
+        * deps: A set of strings, the fully qualified names of entity
             dependencies that this node has.
   """
   # TODO(mdan): Verify arguments for correctness.
@@ -241,30 +240,30 @@ def node_to_graph(node, source, f, namer, namespace, value_hints,
   # tree, which must be accounted. Although less efficient, it is most robust
   # to re-run the analysis.
 
-  node = _static_analysis_pass(node, source, f, namespace, value_hints)
+  node = _static_analysis_pass(node, ctx)
   node = decorators.transform(node, nocompile_decorators)
-  node = break_canonicalization.transform(node, namer)
+  node = break_canonicalization.transform(node, ctx.namer)
 
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
-  node = continue_canonicalization.transform(node, namer)
-  namespace['len'] = len
+  node = continue_canonicalization.transform(node, ctx.namer)
+  ctx.namespace['len'] = len
 
-  node = _static_analysis_pass(node, None, None, namespace, value_hints)
-  node = for_canonicalization.transform(node, namer)
+  node = _static_analysis_pass(node, ctx)
+  node = for_canonicalization.transform(node, ctx.namer)
   # for_canonicalization may insert new global references.
   node = builtin_functions.transform(node)
   # builtin_functions may insert new global references.
-  namespace['print'] = print
+  ctx.namespace['print'] = print
 
-  node = _static_analysis_pass(node, None, None, namespace, value_hints)
+  node = _static_analysis_pass(node, ctx)
   node = print_functions.transform(node)
-  node = call_trees.transform(node, namer, namespace,
+  node = call_trees.transform(node, ctx.namer, ctx.namespace,
                               config.DEFAULT_UNCOMPILED_MODULES,
                               nocompile_decorators)
-  node = control_flow.transform(node, namer)
+  node = control_flow.transform(node, ctx.namer)
   node = logical_expressions.transform(node)
-  node = side_effect_guards.transform(node, namer)
+  node = side_effect_guards.transform(node, ctx.namer)
 
   return node

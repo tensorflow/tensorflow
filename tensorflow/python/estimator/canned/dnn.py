@@ -22,7 +22,6 @@ import six
 
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn
-from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.feature_column import feature_column as feature_column_lib
@@ -340,8 +339,8 @@ class DNNClassifier(estimator.Estimator):
           loss_reduction=loss_reduction)
 
     def _model_fn(features, labels, mode, config):
-      """Call the defined shared _dnn_model_fn and possibly warm-start."""
-      estimator_spec = _dnn_model_fn(
+      """Call the defined shared _dnn_model_fn."""
+      return _dnn_model_fn(
           features=features,
           labels=labels,
           mode=mode,
@@ -353,17 +352,10 @@ class DNNClassifier(estimator.Estimator):
           dropout=dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config)
-      # pylint: disable=protected-access
-      warm_start_settings = warm_starting_util._get_default_warm_start_settings(
-          warm_start_from)
-      if warm_start_settings:
-        warm_starting_util._warm_start(warm_start_settings)
-      # pylint: enable=protected-access
-
-      return estimator_spec
 
     super(DNNClassifier, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        warm_start_from=warm_start_from)
 
 
 class DNNRegressor(estimator.Estimator):
@@ -490,8 +482,8 @@ class DNNRegressor(estimator.Estimator):
     """
 
     def _model_fn(features, labels, mode, config):
-      """Call the defined shared _dnn_model_fn and possibly warm-start."""
-      estimator_spec = _dnn_model_fn(
+      """Call the defined shared _dnn_model_fn."""
+      return _dnn_model_fn(
           features=features,
           labels=labels,
           mode=mode,
@@ -506,14 +498,7 @@ class DNNRegressor(estimator.Estimator):
           dropout=dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config)
-      # pylint: disable=protected-access
-      warm_start_settings = warm_starting_util._get_default_warm_start_settings(
-          warm_start_from)
-      if warm_start_settings:
-        warm_starting_util._warm_start(warm_start_settings)
-      # pylint: enable=protected-access
-
-      return estimator_spec
 
     super(DNNRegressor, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        warm_start_from=warm_start_from)

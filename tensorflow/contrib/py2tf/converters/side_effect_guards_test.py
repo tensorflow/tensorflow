@@ -18,12 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf.convert import side_effect_guards
+from tensorflow.contrib.py2tf.converters import converter_test_base
+from tensorflow.contrib.py2tf.converters import side_effect_guards
 from tensorflow.contrib.py2tf.pyct import compiler
-from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
-from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
-from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
@@ -37,14 +34,7 @@ class TestNamer(side_effect_guards.SymbolNamer):
     return name_root
 
 
-class SideEffectGuardsTest(test.TestCase):
-
-  def _parse_and_analyze(self, test_fn, namespace):
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, namespace, {})
-    node = type_info.resolve(node, None, None, {})
-    return node
+class SideEffectGuardsTest(converter_test_base.TestCase):
 
   def test_transform(self):
 
@@ -52,7 +42,7 @@ class SideEffectGuardsTest(test.TestCase):
       state_ops.assign(a, a + 1)
       return a
 
-    node = self._parse_and_analyze(test_fn, {'state_ops': state_ops})
+    node = self.parse_and_analyze(test_fn, {'state_ops': state_ops})
     node = side_effect_guards.transform(node, TestNamer())
     result = compiler.ast_to_object(node)
     setattr(result, 'state_ops', state_ops)

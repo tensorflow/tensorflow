@@ -18,21 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf.convert import logical_expressions
+from tensorflow.contrib.py2tf.converters import converter_test_base
+from tensorflow.contrib.py2tf.converters import logical_expressions
 from tensorflow.contrib.py2tf.pyct import compiler
-from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class GradientsFunctionTest(test.TestCase):
+class GradientsFunctionTest(converter_test_base.TestCase):
 
   def test_equals(self):
 
     def test_fn(a, b):
       return a == b
 
-    node = parser.parse_object(test_fn)
+    node = self.parse_and_analyze(test_fn, {})
     node = logical_expressions.transform(node)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', math_ops)
@@ -46,7 +46,7 @@ class GradientsFunctionTest(test.TestCase):
     def test_fn(a, b, c):
       return (a or b) and (a or b or c)
 
-    node = parser.parse_object(test_fn)
+    node = self.parse_and_analyze(test_fn, {})
     node = logical_expressions.transform(node)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', math_ops)

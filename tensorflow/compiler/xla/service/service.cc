@@ -569,7 +569,7 @@ Service::ExecuteParallelAndRegisterResult(
     se::Stream* stream = index_to_profiled_stream.second;
     Executable* executable = executables[device];
     const HloModule& module = executable->module();
-    HloExecutionProfile hlo_profile(&executable->hlo_profile_printer(),
+    HloExecutionProfile hlo_profile(&executable->hlo_profile_printer_data(),
                                     &executable->hlo_profile_index_map());
     TF_RETURN_IF_ERROR(
         executable->PopulateExecutionProfile(&hlo_profile, stream->parent()));

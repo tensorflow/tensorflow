@@ -58,11 +58,7 @@ void PruneControlInputs(NodeDef* node) {
   int pos = 0;
   while (pos < node->input_size()) {
     const string& input = node->input(pos);
-    // TODO(rmlarsen): Remove control inputs that also appears as a regular
-    // inputs. Currently, doing so breaks testControlFlowStrictness in
-    // python/framework/function_test.
-    //    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
-    if (IsControlInput(input) && !inputs.insert(input).second) {
+    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
       VLOG(1) << "**** Removing duplicate control input: " << input
               << " from node " << node->DebugString();
       node->mutable_input()->SwapElements(pos, node->input_size() - 1);

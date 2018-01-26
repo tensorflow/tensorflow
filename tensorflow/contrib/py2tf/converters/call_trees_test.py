@@ -18,12 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf.convert import call_trees
+from tensorflow.contrib.py2tf.converters import call_trees
+from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.contrib.py2tf.pyct import compiler
-from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
-from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
-from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -35,14 +32,7 @@ class TestNamer(call_trees.FunctionNamer):
     return 'renamed_%s' % original_name
 
 
-class CallTreesTest(test.TestCase):
-
-  def _parse_and_analyze(self, test_fn, namespace):
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, namespace, {})
-    node = type_info.resolve(node, None, None, {})
-    return node
+class CallTreesTest(converter_test_base.TestCase):
 
   def test_basic(self):
 
@@ -55,7 +45,7 @@ class CallTreesTest(test.TestCase):
     def test_fn_2(a):
       return test_fn_1(a) + 1
 
-    node = self._parse_and_analyze(test_fn_2, {'test_fn_1': test_fn_1})
+    node = self.parse_and_analyze(test_fn_2, {'test_fn_1': test_fn_1})
     node = call_trees.transform(node, TestNamer(), {}, (), ())
     result = compiler.ast_to_object(node)
     # Only test_fn_2 is transformed, so we'll insert renamed_test_fn_1 manually.
@@ -70,7 +60,7 @@ class CallTreesTest(test.TestCase):
       a = math_ops.add(a, constant_op.constant(1))
       return a
 
-    node = self._parse_and_analyze(test_fn, {
+    node = self.parse_and_analyze(test_fn, {
         'math_ops': math_ops,
         'constant_op': constant_op
     })
