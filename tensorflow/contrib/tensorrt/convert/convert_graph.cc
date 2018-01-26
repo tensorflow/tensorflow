@@ -61,7 +61,7 @@ bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
   static const std::set<std::string> candidate_ops = {
       "Identity", "Const", "Conv2D", "MaxPool", "BiasAdd", "Relu",
       "Add",      "Mul",   "Sub",    "Rsqrt",   "Pad"    , "Mean",
-      "AvgPool",  "ConcatV2"
+      "AvgPool",  "ConcatV2", "DepthwiseConv2dNative"
                                                        // TODO(ben,jie): ...
   };
   if (output_nodes.count(node_def.name())) return false;

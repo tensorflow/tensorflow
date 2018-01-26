@@ -366,15 +366,20 @@ void reorder4(nvinfer1::DimsNCHW shape, T const* idata,
 }
 
 void reorder_rsck_to_kcrs(TRT_ShapedWeights const& iweights,
-                          TRT_ShapedWeights* oweights) {
+                          TRT_ShapedWeights* oweights, int nbGroups) {
   CHECK_EQ(iweights.type_, oweights->type_);
   CHECK_EQ(iweights.size_bytes(), oweights->size_bytes());
   int r = iweights.shape_.d[0];
   int s = iweights.shape_.d[1];
-  int c = iweights.shape_.d[2];
-  int k = iweights.shape_.d[3];
-  oweights->shape_.d[0] = k;
-  oweights->shape_.d[1] = c;
+  // TRT requires GKcRS, while TF depthwise has RSCK
+  //   where c=1, C=G
+  LOG(DEBUG) << "nbGroups: " << nbGroups;
+  int c = iweights.shape_.d[2]/nbGroups;
+  LOG(DEBUG) << "c" << iweights.shape_.d[2] << " then " << c;
+  int k = iweights.shape_.d[3]*nbGroups;
+  LOG(DEBUG) << "k" << iweights.shape_.d[3] << " then " << k;
+  oweights->shape_.d[0] = k/nbGroups;
+  oweights->shape_.d[1] = c*nbGroups;
   oweights->shape_.d[2] = r;
   oweights->shape_.d[3] = s;
   // nvinfer1::DimsNCHW istrides = {1, s, c*r*s, r*s};
@@ -911,6 +916,138 @@ tensorflow::Status BinaryTensorOpWeight(
   return tensorflow::Status::OK();
 }
 
+enum class ConvolutionType {
+  DEFAULT, 
+  DEPTHWISE_CONV
+};
+
+tensorflow::Status ConvertConv2DHelper(
+                                 Converter& ctx,
+                                 tensorflow::NodeDef const& node_def,
+                                 std::vector<TRT_TensorOrWeights> const& inputs,
+                                 std::vector<TRT_TensorOrWeights>* outputs,
+                                 int group // group ==0 specifies depthwise conv
+                                 ) {
+  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+
+  TFAttrs attrs(node_def);
+
+  int c_index = 1;
+  int h_index = 2;
+  int w_index = 3;
+  auto data_format = attrs.get<std::string>("data_format");
+  if (data_format == "NHWC") {
+    tensor = ctx.transposeTensor(const_cast<nvinfer1::ITensor*>(tensor),
+                                 {0, 3, 1, 2});
+    h_index = 1;
+    w_index = 2;
+    c_index = 3;
+    // TODO(jie): transpose it
+  } else {
+    LOG(DEBUG) << "NCHW !!!!";
+  }
+
+  // tensor after transpose (NCHW)
+  auto tensor_dim = tensor->getDimensions();
+
+  int nbGroups = group;
+  if (nbGroups == 0) // depthwise convolution
+    nbGroups = tensor_dim.d[0];
+  LOG(DEBUG) << "groups count: " << nbGroups;
+
+  TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
+  TRT_ShapedWeights weights = ctx.get_temp_weights_like(weights_rsck);
+  reorder_rsck_to_kcrs(weights_rsck, &weights, nbGroups);
+  TRT_ShapedWeights biases(weights.type_);
+  int noutput = weights.shape_.d[0] * nbGroups;
+  nvinfer1::DimsHW kernel_size;
+  kernel_size.h() = weights.shape_.d[2];
+  kernel_size.w() = weights.shape_.d[3];
+  LOG(DEBUG) << "kernel size: " << kernel_size.h() << ", " << kernel_size.w();
+
+  // TODO(jie): stride. (NHWC/NCHW)
+  auto tf_stride = attrs.get<std::vector<int>>("strides");
+  LOG(DEBUG) << "h_INDEX" << h_index << ", w_index " << w_index;
+  LOG(DEBUG) << "stride!!!: " << tf_stride[0] << tf_stride[1] << tf_stride[2] << tf_stride[3];
+  nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
+
+  std::vector<std::pair<int, int>> padding;
+  // TODO(jie): padding.
+  if (attrs.get<std::string>("padding") == "SAME") {
+    // This is NCHW tensor with no batch dimension.
+    //  1 -> h
+    //  2 -> w
+    padding = createSamePadding(stride, kernel_size,
+                                {static_cast<int>(tensor_dim.d[1]),
+                                 static_cast<int>(tensor_dim.d[2])});
+  } else {
+    // return tensorflow::errors::Unimplemented(
+    //          "Current Conv2D cannot support padding other than SAME");
+    padding = {{0, 0}, {0, 0}};
+  }
+
+  if (padding[0].first != padding[0].second ||
+      padding[1].first != padding[1].second) {
+    // TODO(jie): handle asymmetric padding
+    // return tensorflow::errors::Unimplemented(
+    //         "Asymmetric padding not implemented yet");
+    LOG(DEBUG) << "padding!!!: " << padding[0].first << padding[0].second
+                                 << padding[1].first << padding[1].second;
+
+    auto dim_before = tensor->getDimensions();
+    LOG(DEBUG) << "TENSOR before: " << dim_before.d[0] << ", " << dim_before.d[1]
+                                    << dim_before.d[2] << ", " << dim_before.d[3];
+    auto padLayer = ctx.network()->addPadding(
+        *const_cast<nvinfer1::ITensor*>(tensor),
+        nvinfer1::DimsHW(padding[0].first, padding[1].first),
+        nvinfer1::DimsHW(padding[0].second, padding[1].second));
+    padding = {{0, 0}, {0, 0}};
+    tensor = padLayer->getOutput(0);
+    auto dim_after = tensor->getDimensions();
+    LOG(DEBUG) << "TENSOR after: " << dim_after.d[0] << ", " << dim_after.d[1]
+                                   << dim_after.d[2] << ", " << dim_after.d[3];
+  }
+
+  nvinfer1::IConvolutionLayer* layer =
+      ctx.network()->addConvolution(*const_cast<nvinfer1::ITensor*>(tensor),
+                                    noutput, kernel_size, weights, biases);
+
+  layer->setStride(stride);
+  layer->setPadding({padding[0].first, padding[1].first});
+  layer->setName(node_def.name().c_str());
+  layer->setNbGroups(nbGroups);
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  auto dim_after = output_tensor->getDimensions();
+  LOG(DEBUG) << "TENSOR out: " << dim_after.d[0] << ", " << dim_after.d[1]
+                               << dim_after.d[2] << ", " << dim_after.d[3];
+
+  if (data_format == "NHWC") {
+    // TODO(jie): transpose it back!
+    output_tensor = ctx.transposeTensor(output_tensor, {0, 2, 3, 1});
+  } else {
+    LOG(DEBUG) << "NCHW !!!!";
+  }
+  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertConv2DHelper(
+                                 Converter& ctx,
+                                 tensorflow::NodeDef const& node_def,
+                                 std::vector<TRT_TensorOrWeights> const& inputs,
+                                 std::vector<TRT_TensorOrWeights>* outputs,
+                                 ConvolutionType type) {
+  switch(type) {
+  case ConvolutionType::DEFAULT:
+    return ConvertConv2DHelper(ctx, node_def, inputs, outputs, 1);
+  case ConvolutionType::DEPTHWISE_CONV:
+    return ConvertConv2DHelper(ctx, node_def, inputs, outputs, 0);
+  }
+  return tensorflow::errors::Unimplemented(
+           "unsupported convolution type at, " + node_def.name());
+}
+
 tensorflow::Status BinaryTensorOpTensor(
     Converter& ctx, tensorflow::NodeDef const& node_def,
     const nvinfer1::ITensor* tensor_l, const nvinfer1::ITensor* tensor_r,
@@ -978,97 +1115,17 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
                                  tensorflow::NodeDef const& node_def,
                                  std::vector<TRT_TensorOrWeights> const& inputs,
                                  std::vector<TRT_TensorOrWeights>* outputs) {
-  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
-  // nvinfer1::ITensor* tensor = inputs.at(0).tensor();
-  // TODO(jie): handle NHWC/NCHW transpose;
-  TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
-  TRT_ShapedWeights weights = ctx.get_temp_weights_like(weights_rsck);
-  reorder_rsck_to_kcrs(weights_rsck, &weights);
-  TRT_ShapedWeights biases(weights.type_);
-  int noutput = weights.shape_.d[0];
-  nvinfer1::DimsHW kernel_size;
-  kernel_size.h() = weights.shape_.d[2];
-  kernel_size.w() = weights.shape_.d[3];
-  LOG(DEBUG) << "kernel size: " << kernel_size.h() << ", " << kernel_size.w();
-  TFAttrs attrs(node_def);
+  return ConvertConv2DHelper(ctx, node_def, inputs, outputs,
+                             ConvolutionType::DEFAULT);
+}
 
-  int h_index = 2;
-  int w_index = 3;
-  auto data_format = attrs.get<std::string>("data_format");
-  if (data_format == "NHWC") {
-    tensor = ctx.transposeTensor(const_cast<nvinfer1::ITensor*>(tensor),
-                                 {0, 3, 1, 2});
-    h_index = 1;
-    w_index = 2;
-    // TODO(jie): transpose it
-  } else {
-    LOG(DEBUG) << "NCHW !!!!";
-  }
-  // TODO(jie): stride. (NHWC/NCHW)
-  auto tf_stride = attrs.get<std::vector<int>>("strides");
-  LOG(DEBUG) << "h_INDEX" << h_index << ", w_index " << w_index;
-  LOG(DEBUG) << "stride!!!: " << tf_stride[0] << tf_stride[1] << tf_stride[2] << tf_stride[3];
-  nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
-
-  auto tensor_dim = tensor->getDimensions();
-  std::vector<std::pair<int, int>> padding;
-  // TODO(jie): padding.
-  if (attrs.get<std::string>("padding") == "SAME") {
-    // This is NCHW tensor with no batch dimension.
-    //  1 -> h
-    //  2 -> w
-    padding = createSamePadding(stride, kernel_size,
-                                {static_cast<int>(tensor_dim.d[1]),
-                                 static_cast<int>(tensor_dim.d[2])});
-  } else {
-    // return tensorflow::errors::Unimplemented(
-    //          "Current Conv2D cannot support padding other than SAME");
-    padding = {{0, 0}, {0, 0}};
-  }
-
-  if (padding[0].first != padding[0].second ||
-      padding[1].first != padding[1].second) {
-    // TODO(jie): handle asymmetric padding
-    // return tensorflow::errors::Unimplemented(
-    //         "Asymmetric padding not implemented yet");
-    LOG(DEBUG) << "padding!!!: " << padding[0].first << padding[0].second
-                                 << padding[1].first << padding[1].second;
-
-    auto dim_before = tensor->getDimensions();
-    LOG(DEBUG) << "TENSOR before: " << dim_before.d[0] << ", " << dim_before.d[1]
-                                    << dim_before.d[2] << ", " << dim_before.d[3];
-    auto padLayer = ctx.network()->addPadding(
-        *const_cast<nvinfer1::ITensor*>(tensor),
-        nvinfer1::DimsHW(padding[0].first, padding[1].first),
-        nvinfer1::DimsHW(padding[0].second, padding[1].second));
-    padding = {{0, 0}, {0, 0}};
-    tensor = padLayer->getOutput(0);
-    auto dim_after = tensor->getDimensions();
-    LOG(DEBUG) << "TENSOR after: " << dim_after.d[0] << ", " << dim_after.d[1]
-                                   << dim_after.d[2] << ", " << dim_after.d[3];
-  }
-
-  nvinfer1::IConvolutionLayer* layer =
-      ctx.network()->addConvolution(*const_cast<nvinfer1::ITensor*>(tensor),
-                                    noutput, kernel_size, weights, biases);
-
-  layer->setStride(stride);
-  layer->setPadding({padding[0].first, padding[1].first});
-  layer->setName(node_def.name().c_str());
-  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
-
-  auto dim_after = output_tensor->getDimensions();
-  LOG(DEBUG) << "TENSOR out: " << dim_after.d[0] << ", " << dim_after.d[1]
-                               << dim_after.d[2] << ", " << dim_after.d[3];
-
-  if (data_format == "NHWC") {
-    // TODO(jie): transpose it back!
-    output_tensor = ctx.transposeTensor(output_tensor, {0, 2, 3, 1});
-  } else {
-    LOG(DEBUG) << "NCHW !!!!";
-  }
-  outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return tensorflow::Status::OK();
+tensorflow::Status ConvertConv2DDepthwise(
+                                 Converter& ctx,
+                                 tensorflow::NodeDef const& node_def,
+                                 std::vector<TRT_TensorOrWeights> const& inputs,
+                                 std::vector<TRT_TensorOrWeights>* outputs) {
+  return ConvertConv2DHelper(ctx, node_def, inputs, outputs,
+                             ConvolutionType::DEPTHWISE_CONV);
 }
 
 tensorflow::Status ConvertPool(Converter& ctx,
@@ -1644,6 +1701,7 @@ void Converter::register_op_converters() {
   // vgg_16 slim implementation
   _op_registry["Placeholder"] = ConvertPlaceholder;
   _op_registry["Conv2D"] = ConvertConv2D;
+  _op_registry["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   _op_registry["Relu"] = ConvertActivation;
   _op_registry["MaxPool"] = ConvertPool;
   _op_registry["AvgPool"] = ConvertPool;
