@@ -17,14 +17,16 @@ limitations under the License.
 #define TENSORFLOW_KERNELS_SCATTER_FUNCTOR_H_
 
 #include <type_traits>
+#include <atomic>
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/work_sharder.h"
+#include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
 
-class OpKernelContext;
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
@@ -131,26 +133,71 @@ struct ScatterFunctor {
                    typename TTypes<Index>::ConstFlat indices);
 };
 
-template <typename Device, typename T, typename Index, scatter_op::UpdateOp op>
-struct ScatterFunctorBase {
-  Index operator()(OpKernelContext* c, const Device& d,
+template <typename T, typename Index, scatter_op::UpdateOp op>
+struct ScatterFunctor<CPUDevice, T, Index, op> {
+  Index operator()(OpKernelContext* c, const CPUDevice& d,
                    typename TTypes<T>::Matrix params,
                    typename TTypes<T>::ConstMatrix updates,
                    typename TTypes<Index>::ConstFlat indices) {
-    // indices and params sizes were validated in DoCompute().
+    // Indices and params sizes were validated in DoCompute().
     const Index N = static_cast<Index>(indices.size());
     const Index limit = static_cast<Index>(params.dimension(0));
-    for (Index i = 0; i < N; i++) {
-      // Grab the index and check its validity.  An earlier version of the
-      // code checked it and then grabbed it from memory a second time, which
-      // was a security risk since it could have changed in between.
-      const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-      if (!FastBoundsCheck(index, limit)) return i;
-      // Copy last Ndim-1 dimensions of updates[i] to params[index]
-      scatter_op::internal::Assign<op>::Run(params.template chip<0>(index),
-                                            updates.template chip<0>(i));
-    }
-    return -1;
+    auto worker_threads = c->device()->tensorflow_cpu_worker_threads();
+
+    // Limit the max number of flags in case of too much indices.
+    // Based on the shard strategy in work_sharder.cc to limit the flags' size.
+    // Assume each cost unit ues one flag, and the minCostPerShard is 10000,
+    //   so limit the factor to 10000.
+    static constexpr int64 kMaxFactorPerThread = 10000;
+    Index flags_size = static_cast<Index>(kMaxFactorPerThread * worker_threads->num_threads);
+    flags_size = N <= flags_size ? N : flags_size;
+    // use atomic_flag and spin lock for multiple thread.
+    auto flags = std::unique_ptr<std::atomic_flag[]>(
+            new std::atomic_flag[flags_size]{ATOMIC_FLAG_INIT});
+
+    // Store the result.
+    mutex mu;
+    Index result = -1;
+    auto work = [&params, &updates, &indices, &flags, flags_size, limit, &mu, &result]
+            (int64 start, int64 end) {
+      std::function<void(Index index, Index i)> assign_func;
+      if (op != scatter_op::UpdateOp::ASSIGN || std::is_same<T, string>::value) {
+        assign_func = [&params, &updates](Index index, Index i) {
+          scatter_op::internal::Assign<op>::Run(params.template chip<0>(index),
+                                                updates.template chip<0>(i));
+        };
+      } else {
+        assign_func = [&params, &updates](Index index, Index i) {
+          memmove(params.data() + index * params.dimension(1),
+                  updates.data() + i * updates.dimension(1),
+                  updates.dimension(1) * sizeof(T));
+        };
+      }
+      Index flags_idx;
+      for (Index i = start; i < end; i++) {
+        // Grab the index and check its validity.  An earlier version of the
+        // code checked it and then grabbed it from memory a second time, which
+        // was a security risk since it could have changed in between.
+        const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
+        if (!FastBoundsCheck(index, limit)) {
+          mutex_lock l(mu);
+          result = i;
+          return;
+        }
+        // Acquire lock:
+        flags_idx = index % flags_size;
+        while (flags[flags_idx].test_and_set(std::memory_order_acquire))
+          ;
+        // Copy last Ndim-1 dimensions of updates[i] to params[index].
+        assign_func(index, i);
+        // release lock
+        flags[flags_idx].clear(std::memory_order_release);
+      }
+    };
+
+    Shard(worker_threads->num_threads, worker_threads->workers, N,
+          updates.dimension(1) * sizeof(T), work);
+    return result;
   }
 };
 
@@ -178,46 +225,6 @@ struct ScatterFunctorBase <SYCLDevice, T, Index, op> {
   }
 };
 #endif // TENSORFLOW_USE_SYCL
-
-template <typename T, typename Index>
-struct ScatterFunctorBase<CPUDevice, T, Index, scatter_op::UpdateOp::ASSIGN> {
-  Index operator()(OpKernelContext* c, const CPUDevice& d,
-                   typename TTypes<T>::Matrix params,
-                   typename TTypes<T>::ConstMatrix updates,
-                   typename TTypes<Index>::ConstFlat indices) {
-    // indices and params sizes were validated in DoCompute().
-    const Index N = static_cast<Index>(indices.size());
-    const Index limit = static_cast<Index>(params.dimension(0));
-    if (!std::is_same<T, string>::value) {
-      for (Index i = 0; i < N; i++) {
-        // Grab the index and check its validity.  An earlier version of the
-        // code checked it and then grabbed it from memory a second time, which
-        // was a security risk since it could have changed in between.
-        const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-        if (!FastBoundsCheck(index, limit)) return i;
-        memmove(params.data() + index * params.dimension(1),
-                updates.data() + i * updates.dimension(1),
-                updates.dimension(1) * sizeof(T));
-      }
-    } else {
-      for (Index i = 0; i < N; i++) {
-        // Grab the index and check its validity.  An earlier version of the
-        // code checked it and then grabbed it from memory a second time, which
-        // was a security risk since it could have changed in between.
-        const Index index = ::tensorflow::internal::SubtleMustCopy(indices(i));
-        if (!FastBoundsCheck(index, limit)) return i;
-        // Copy last Ndim-1 dimensions of updates[i] to params[index]
-        scatter_op::internal::Assign<scatter_op::UpdateOp::ASSIGN>::Run(
-            params.template chip<0>(index), updates.template chip<0>(i));
-      }
-    }
-    return -1;
-  }
-};
-
-template <typename T, typename Index, scatter_op::UpdateOp op>
-struct ScatterFunctor<CPUDevice, T, Index, op>
-        : ScatterFunctorBase<CPUDevice, T, Index, op>{};
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T, typename Index, scatter_op::UpdateOp op>
