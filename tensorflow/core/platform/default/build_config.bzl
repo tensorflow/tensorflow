@@ -489,14 +489,12 @@ def tf_additional_core_deps():
           "//tensorflow/core/platform/s3:s3_file_system",
       ],
       "//conditions:default": [],
-  })
-
-def tf_additional_kafka_kernel_deps():
-  return select({
-      "//conditions:default": [
-        "//tensorflow/contrib/kafka:kafka_kernels",
-        "//tensorflow/contrib/kafka:kafka_ops_op_lib",
+  }) + select({
+      "//tensorflow:with_kafka_support": [
+          "//tensorflow/contrib/kafka:kafka_kernels",
+          "//tensorflow/contrib/kafka:kafka_ops_op_lib",
       ],
+      "//conditions:default": [],
   })
 
 # TODO(jart, jhseu): Delete when GCP is default on.
