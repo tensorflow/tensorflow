@@ -110,13 +110,11 @@ cc_library(
 cc_library(
     name = "java_op_gen_lib",
     srcs = [
-        "src/gen/cc/java_ostream.cc",
         "src/gen/cc/op_generator.cc",
         "src/gen/cc/source_writer.cc",
     ],
     hdrs = [
         "src/gen/cc/java_defs.h",
-        "src/gen/cc/java_ostream.h",
         "src/gen/cc/op_generator.h",
         "src/gen/cc/source_writer.h",
     ],
@@ -312,20 +310,6 @@ tf_cc_test(
     size = "small",
     srcs = [
         "src/gen/cc/source_writer_test.cc",
-    ],
-    deps = [
-        ":java_op_gen_lib",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
-    ],
-)
-
-tf_cc_test(
-    name = "java_ostream_test",
-    size = "small",
-    srcs = [
-        "src/gen/cc/java_ostream_test.cc",
     ],
     data = [
         "src/gen/resources/test.snippet.java",

@@ -46,11 +46,6 @@ class Annotation;
 // supertypes are only useful when declaring a type.
 class Type {
  public:
-  struct Comparator {
-    bool operator() (const Type& type1, const Type& type2) {
-      return type1.name_ < type2.name_ || type1.package_ < type2.package_;
-    }
-  };
   enum Kind {
     PRIMITIVE, CLASS, INTERFACE, ENUM, GENERIC, ANNOTATION
   };
