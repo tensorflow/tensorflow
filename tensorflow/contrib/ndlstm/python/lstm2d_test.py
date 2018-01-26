@@ -61,16 +61,6 @@ class Lstm2DTest(test_util.TensorFlowTestCase):
       result = outputs.eval()
       self.assertEqual(tuple(result.shape), size)
 
-  def testGetBlocks(self):
-    with self.test_session():
-      size = (2, 12, 9, 5)
-      expected_size = (2, 6, 3, 30)
-      inputs = constant_op.constant(_rand(size))
-      outputs = lstm2d.get_blocks(inputs, kernel_size=[2, 3])
-      variables.global_variables_initializer().run()
-      result = outputs.eval()
-      self.assertEqual(tuple(result.shape), expected_size)
-
   def testSeparableLstmDims(self):
     with self.test_session():
       inputs = constant_op.constant(_rand(2, 7, 11, 5))
