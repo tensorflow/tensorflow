@@ -103,7 +103,8 @@ uint8* Decode(const void* srcdata, int datasize,
         img_desc->Height != height) {
       // If the first frame does not fill the entire canvas then return error.
       if (k == 0) {
-        *error_string = strings::StrCat("the first frame does not fill the canvas");
+        *error_string =
+            strings::StrCat("the first frame does not fill the canvas");
         return nullptr;
       }
       // Otherwise previous frame will be reused to fill the unoccupied canvas.
@@ -131,7 +132,9 @@ uint8* Decode(const void* srcdata, int datasize,
     for (int i = imgTop; i < imgBottom; ++i) {
       uint8* p_dst = this_dst + i * width * channel;
       for (int j = imgLeft; j < imgRight; ++j) {
-        GifByteType color_index = this_image->RasterBits[(i - img_desc->Top) * (img_desc->Width) + (j - img_desc->Left)];
+        GifByteType color_index =
+            this_image->RasterBits[(i - img_desc->Top) * (img_desc->Width) +
+                                   (j - img_desc->Left)];
         const GifColorType& gif_color = color_map->Colors[color_index];
         p_dst[j * channel + 0] = gif_color.Red;
         p_dst[j * channel + 1] = gif_color.Green;
