@@ -590,7 +590,7 @@ class NodeProcessor : public GraphProcessor {
     // to ensure added_node is in the same frame with node_.
     NodeDef* added_node = graph_->add_node();
     *added_node = *input_node;
-    string base_name = strings::StrCat(node_->name(), "-", input_node->name());
+    string base_name = strings::StrCat(node_->name(), "-", input_index);
     string node_name = LayoutOptimizerNode(base_name);
     added_node->set_name(node_name);
     *node_->mutable_input(input_index) = node_name;
@@ -1647,12 +1647,32 @@ class StridedSliceProcessor : public SliceProcessor {
       return errors::InvalidArgument("invalid mask value: ", i);
     }
     if (i == 0 || i == 1 || i == 14 || i == 15) return Status::OK();
-    if (i == 2 || i == 3) i += 2;
-    if (i == 4 || i == 5) i += 4;
-    if (i == 6 || i == 7) i += 6;
-    if (i == 8 || i == 9) i -= 6;
-    if (i == 10 || i == 11) i -= 4;
-    if (i == 12 || i == 13) i -= 2;
+    switch (i) {
+      case 2:
+      case 3:
+        i += 2;
+        break;
+      case 4:
+      case 5:
+        i += 4;
+        break;
+      case 6:
+      case 7:
+        i += 6;
+        break;
+      case 8:
+      case 9:
+        i -= 6;
+        break;
+      case 10:
+      case 11:
+        i -= 4;
+        break;
+      case 12:
+      case 13:
+        i -= 2;
+        break;
+    }
     node_->mutable_attr()->at(mask).set_i(i);
     return Status::OK();
   }
@@ -2056,6 +2076,7 @@ Status LayoutOptimizer::Tune(const GrapplerItem& item,
                              const TuningConfig& config, GraphDef* output) {
   auto status = graph_properties.AnnotateOutputShapes(output);
   if (!status.ok()) {
+    VLOG(1) << "Annotate shape return status: " << status.ToString();
     *output = item.graph;
     return status;
   }
@@ -2080,6 +2101,7 @@ Status LayoutOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   GraphProperties graph_properties(item);
   auto status = graph_properties.InferStatically(false);
   if (!status.ok()) {
+    VLOG(1) << "Infer shape return status: " << status.ToString();
     *output = item.graph;
     return status;
   }

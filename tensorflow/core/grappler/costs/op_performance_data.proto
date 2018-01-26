@@ -58,10 +58,17 @@ message LogNormalDistribution {
   double sigma = 2;
 }
 
+message SessionInfo {
+  int64 intra_op_parallelism = 1;
+}
+
 // Performance data for tensorflow operations
 message OpPerformance {
   // The op
   OpInfo op = 1;
+
+  // Information about the session configs.
+  SessionInfo session_info = 12;
 
   // The node name (optional). Makes it easier to associate the performance data
   // with a specific graph node.

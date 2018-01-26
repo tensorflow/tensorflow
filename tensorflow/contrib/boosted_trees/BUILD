@@ -196,6 +196,7 @@ py_test(
     name = "quantile_ops_test",
     size = "small",
     srcs = ["python/kernel_tests/quantile_ops_test.py"],
+    shard_count = 3,
     srcs_version = "PY2AND3",
     deps = [
         ":quantile_ops_py",

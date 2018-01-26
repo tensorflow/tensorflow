@@ -18,18 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.batching.ops import gen_batch_ops
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_batch_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from tensorflow.contrib.batching.ops.gen_batch_ops import *
+from tensorflow.python.ops.gen_batch_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.contrib.util import loader
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import resource_loader
-
-
-_batch_ops = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_batch_ops.so"))
 
 
 @ops.RegisterGradient("Batch")

@@ -145,7 +145,7 @@ cc_library(
         ":types",
         ":round",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -223,7 +223,7 @@ cc_library(
         ":round",
         ":types",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -267,6 +267,8 @@ cc_library(
         "optimized/neon_tensor_utils.cc",
     ],
     hdrs = [
+        "common.h",
+        "optimized/cpu_check.h",
         "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",
     ],
@@ -274,8 +276,11 @@ cc_library(
     deps = [
         ":cpu_check",
         ":portable_tensor_utils",
+        ":types",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
+        "@arm_neon_2_x86_sse",
+        "@gemmlowp//:gemmlowp",
     ],
 )
 
@@ -285,14 +290,21 @@ cc_library(
         "tensor_utils.cc",
     ],
     hdrs = [
+        "common.h",
+        "compatibility.h",
+        "optimized/cpu_check.h",
+        "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",
         "reference/portable_tensor_utils.h",
         "tensor_utils.h",
+        "types.h",
     ],
     copts = NEON_FLAGS_IF_APPLICABLE,
     deps = [
         "//tensorflow/contrib/lite/kernels:activation_functor",
         "//tensorflow/contrib/lite:builtin_op_data",
+        "@arm_neon_2_x86_sse",
+        "@gemmlowp//:gemmlowp",
     ] + select({
         ":arm": [
             ":neon_tensor_utils",
@@ -310,6 +322,15 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":ios_arm64": [
+            ":neon_tensor_utils",
+        ],
+        ":x86_64": [
+            ":neon_tensor_utils",
+        ],
+        ":x86": [
+            ":neon_tensor_utils",
+        ],
+        ":darwin": [
             ":neon_tensor_utils",
         ],
         "//conditions:default": [

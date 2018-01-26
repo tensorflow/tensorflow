@@ -96,7 +96,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleRng(HloInstruction* random) override;
-  Status HandleConditional(HloInstruction* conditional) override;
   Status HandleBatchNormInference(HloInstruction* batch_norm) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
@@ -366,6 +365,11 @@ class IrEmitterUnnested : public IrEmitter {
   // sequence from the 'body' sub-computation of the while instruction 'hlo'.
   std::unique_ptr<Thunk> BuildForThunk(const HloInstruction* hlo,
                                        const int64 loop_limit);
+
+  // Returns a ConditionalThunk that executes the thunk sequence for
+  // 'true_computation' or 'false_computation' depending on the value of the
+  // predicate in the given conditional instruction.
+  std::unique_ptr<Thunk> BuildConditionalThunk(const HloInstruction* hlo);
 
   Status Postprocess(HloInstruction* hlo) override;
 

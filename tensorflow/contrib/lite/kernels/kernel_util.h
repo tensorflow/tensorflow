@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_KERNEL_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_KERNEL_UTIL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_KERNEL_UTIL_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_KERNEL_UTIL_H_
 
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/context.h"
@@ -44,6 +44,22 @@ inline TfLiteTensor* GetOptionalInputTensor(TfLiteContext* context,
   return nullptr;
 }
 
+// Determines whether tensor is constant.
+inline bool IsConstantTensor(TfLiteTensor* tensor) {
+  return tensor->allocation_type == kTfLiteMmapRo;
+}
+
+// Determines whether tensor is dynamic. Note that a tensor can be non-const and
+// not dynamic. This function specificially checks for a dynamic tensor.
+inline bool IsDynamicTensor(TfLiteTensor* tensor) {
+  return tensor->allocation_type == kTfLiteDynamic;
+}
+
+// Sets tensor to dynamic.
+inline void SetTensorToDynamic(TfLiteTensor* tensor) {
+  tensor->allocation_type = kTfLiteDynamic;
+}
+
 // Calculates the multiplication factor for a quantized convolution (or
 // quantized depthwise convolution) involving the given tensors. Returns an
 // error if the scales of the tensors are not compatible.
@@ -62,4 +78,4 @@ void CalculateActivationRangeFloat(TfLiteFusedActivation activation,
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_KERNEL_UTIL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_KERNEL_UTIL_H_

@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
 
 #include <assert.h>
 #include <stdint.h>
@@ -1538,9 +1538,10 @@ void Add(const int32* input1_data, const Dims<4>& input1_dims,
 // reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
 // is no longer referenced in this file, move NdArrayDesc<T> from types.h to
 // reference_ops.h.
-template <FusedActivationFunctionType Ac, typename T>
+template <typename T>
 void BroadcastAdd(const T* input1_data, const Dims<4>& input1_dims,
                   const T* input2_data, const Dims<4>& input2_dims,
+                  T output_activation_min, T output_activation_max,
                   T* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("BroadcastAdd");
 
@@ -1563,13 +1564,28 @@ void BroadcastAdd(const T* input1_data, const Dims<4>& input1_dims,
     for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
       for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
         for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] = ActivationFunction<Ac>(
-              input1_data[SubscriptToIndex(desc1, c, x, y, b)] +
-              input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[SubscriptToIndex(desc1, c, x, y, b)] +
+                      input2_data[SubscriptToIndex(desc2, c, x, y, b)],
+                  output_activation_min, output_activation_max);
         }
       }
     }
   }
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac, typename T>
+void BroadcastAdd(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T* output_data, const Dims<4>& output_dims) {
+  T output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+
+  BroadcastAdd(input1_data, input1_dims, input2_data, input2_dims,
+               output_activation_min, output_activation_max, output_data,
+               output_dims);
 }
 
 inline void BroadcastAdd(int left_shift, const uint8* input1_data,
@@ -1772,9 +1788,10 @@ void Mul(const int32* input1_data, const Dims<4>& input1_dims,
 // reference_ops.h. Once an optimized version is implemented and NdArrayDesc<T>
 // is no longer referenced in this file, move NdArrayDesc<T> from types.h to
 // reference_ops.h.
-template <FusedActivationFunctionType Ac, typename T>
+template <typename T>
 void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
                   const T* input2_data, const Dims<4>& input2_dims,
+                  T output_activation_min, T output_activation_max,
                   T* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("BroadcastMul");
 
@@ -1797,13 +1814,28 @@ void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
     for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
       for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
         for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] = ActivationFunction<Ac>(
-              input1_data[SubscriptToIndex(desc1, c, x, y, b)] *
-              input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[SubscriptToIndex(desc1, c, x, y, b)] *
+                      input2_data[SubscriptToIndex(desc2, c, x, y, b)],
+                  output_activation_min, output_activation_max);
         }
       }
     }
   }
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac, typename T>
+void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T* output_data, const Dims<4>& output_dims) {
+  T output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+
+  BroadcastMul(input1_data, input1_dims, input2_data, input2_dims,
+               output_activation_min, output_activation_max, output_data,
+               output_dims);
 }
 
 inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
@@ -3805,4 +3837,4 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
 #pragma GCC diagnostic pop
 #endif
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_OPS_H_

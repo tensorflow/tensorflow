@@ -258,16 +258,6 @@ TEST_F(OperatorTest, BuiltinMaxPool) {
   EXPECT_EQ(op.kheight, output_toco_op->kheight);
 }
 
-TEST_F(OperatorTest, BuiltinPad) {
-  PadOperator op;
-  op.left_padding = {1, 2, 3};
-  op.right_padding = {1, 2, 3};
-  auto output_toco_op =
-      SerializeAndDeserialize(GetOperator("PAD", OperatorType::kPad), op);
-  EXPECT_EQ(op.left_padding, output_toco_op->left_padding);
-  EXPECT_EQ(op.right_padding, output_toco_op->right_padding);
-}
-
 TEST_F(OperatorTest, BuiltinReshape) {
   TensorFlowReshapeOperator op;
   op.shape = {1, 2, 4, 5, 8};
@@ -396,6 +386,28 @@ TEST_F(OperatorTest, Squeeze) {
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("SQUEEZE", OperatorType::kSqueeze), op);
   EXPECT_EQ(op.squeeze_dims, output_toco_op->squeeze_dims);
+}
+
+TEST_F(OperatorTest, StridedSlice) {
+  StridedSliceOperator op;
+
+  op.begin_mask = 1;
+  op.end_mask = 2;
+  op.ellipsis_mask = 1;
+  op.new_axis_mask = 1;
+  op.shrink_axis_mask = 2;
+
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("STRIDED_SLICE", OperatorType::kStridedSlice), op);
+  EXPECT_EQ(op.start_indices, output_toco_op->start_indices);
+  EXPECT_EQ(op.stop_indices, output_toco_op->stop_indices);
+  EXPECT_EQ(op.strides, output_toco_op->strides);
+  EXPECT_EQ(op.begin_mask, output_toco_op->begin_mask);
+  EXPECT_EQ(op.end_mask, output_toco_op->end_mask);
+  EXPECT_EQ(op.end_mask, output_toco_op->end_mask);
+  EXPECT_EQ(op.ellipsis_mask, output_toco_op->ellipsis_mask);
+  EXPECT_EQ(op.new_axis_mask, output_toco_op->new_axis_mask);
+  EXPECT_EQ(op.shrink_axis_mask, output_toco_op->shrink_axis_mask);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

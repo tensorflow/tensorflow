@@ -370,12 +370,21 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# TODO(laigd): consider removing this option and make TensorRT enabled
+# automatically when CUDA is enabled.
+config_setting(
+    name = "with_tensorrt_support",
+    values = {"define": "with_tensorrt_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = [
         "//learning/meta_rank/...",
         "//tensorflow/...",
         "//tensorflow_fold/llgtm/...",
+        "//third_party/py/tensor2tensor/...",
     ],
 )
 
@@ -441,9 +450,6 @@ filegroup(
         "//tensorflow/contrib/all_reduce:all_files",
         "//tensorflow/contrib/android:all_files",
         "//tensorflow/contrib/batching:all_files",
-        "//tensorflow/contrib/batching/kernels:all_files",
-        "//tensorflow/contrib/batching/test_util:all_files",
-        "//tensorflow/contrib/batching/util:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
         "//tensorflow/contrib/boosted_trees:all_files",
         "//tensorflow/contrib/boosted_trees/estimator_batch:all_files",
@@ -537,7 +543,7 @@ filegroup(
         "//tensorflow/contrib/periodic_resample:all_files",
         "//tensorflow/contrib/predictor:all_files",
         "//tensorflow/contrib/py2tf:all_files",
-        "//tensorflow/contrib/py2tf/convert:all_files",
+        "//tensorflow/contrib/py2tf/converters:all_files",
         "//tensorflow/contrib/py2tf/pyct:all_files",
         "//tensorflow/contrib/py2tf/pyct/static_analysis:all_files",
         "//tensorflow/contrib/quantize:all_files",
@@ -568,6 +574,7 @@ filegroup(
         "//tensorflow/contrib/tensor_forest/proto:all_files",
         "//tensorflow/contrib/tensorboard:all_files",
         "//tensorflow/contrib/tensorboard/db:all_files",
+        "//tensorflow/contrib/tensorrt:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/text:all_files",
         "//tensorflow/contrib/tfprof:all_files",

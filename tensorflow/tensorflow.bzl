@@ -11,6 +11,10 @@ load(
     "if_static",
 )
 load(
+    "@local_config_tensorrt//:build_defs.bzl",
+    "if_tensorrt",
+)
+load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
     "cuda_default_copts",
@@ -197,6 +201,7 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
           "-fno-exceptions",
           "-ftemplate-depth=900"])
       + if_cuda(["-DGOOGLE_CUDA=1"])
+      + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML", "-fopenmp",])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
@@ -258,6 +263,8 @@ def _rpath_linkopts(name):
       clean_dep("//tensorflow:darwin"): [
           "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
       ],
+      clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,%s" % (_make_search_paths("$$ORIGIN", levels_to_root),),
       ],
@@ -289,6 +296,7 @@ def tf_cc_shared_object(
               "-Wl,-install_name,@rpath/" + name.split("/")[-1],
           ],
           "//conditions:default": [
+              "-Wl,-soname," + name.split("/")[-1],
           ],
       }),
       **kwargs)
@@ -600,6 +608,8 @@ def tf_cc_test(name,
         "//tensorflow:android": [
             "-pie",
           ],
+        clean_dep("//tensorflow:windows"): [],
+        clean_dep("//tensorflow:windows_msvc"): [],
         "//conditions:default": [
             "-lpthread",
             "-lm"
@@ -861,9 +871,11 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
 
   When the library is built with --config=cuda:
 
-  - both deps and cuda_deps are used as dependencies
-  - the cuda runtime is added as a dependency (if necessary)
-  - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts
+  - Both deps and cuda_deps are used as dependencies.
+  - The cuda runtime is added as a dependency (if necessary).
+  - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
+  - In addition, when the library is also built with TensorRT enabled, it
+      additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
 
   Args:
   - cuda_deps: BUILD dependencies which will be linked if and only if:
@@ -882,7 +894,8 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
           clean_dep("//tensorflow/core:cuda"),
           "@local_config_cuda//cuda:cuda_headers"
       ]),
-      copts=copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]),
+      copts=(copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]) +
+             if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
       **kwargs)
 
 register_extension_info(
@@ -1246,6 +1259,8 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
           "//conditions:default": [
               "-lm",
           ],
+          clean_dep("//tensorflow:windows"): [],
+          clean_dep("//tensorflow:windows_msvc"): [],
           clean_dep("//tensorflow:darwin"): [],
       }),)
 

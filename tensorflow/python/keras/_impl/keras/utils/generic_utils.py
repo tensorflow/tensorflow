@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import binascii
 import codecs
 import marshal
 import os
@@ -29,10 +30,12 @@ import six
 
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.tf_export import tf_export
 
 _GLOBAL_CUSTOM_OBJECTS = {}
 
 
+@tf_export('keras.utils.CustomObjectScope')
 class CustomObjectScope(object):
   """Provides a scope that changes to `_GLOBAL_CUSTOM_OBJECTS` cannot escape.
 
@@ -68,6 +71,7 @@ class CustomObjectScope(object):
     _GLOBAL_CUSTOM_OBJECTS.update(self.backup)
 
 
+@tf_export('keras.utils.custom_object_scope')
 def custom_object_scope(*args):
   """Provides a scope that changes to `_GLOBAL_CUSTOM_OBJECTS` cannot escape.
 
@@ -98,6 +102,7 @@ def custom_object_scope(*args):
   return CustomObjectScope(*args)
 
 
+@tf_export('keras.utils.get_custom_objects')
 def get_custom_objects():
   """Retrieves a live reference to the global dictionary of custom objects.
 
@@ -118,6 +123,7 @@ def get_custom_objects():
   return _GLOBAL_CUSTOM_OBJECTS
 
 
+@tf_export('keras.utils.serialize_keras_object')
 def serialize_keras_object(instance):
   _, instance = tf_decorator.unwrap(instance)
   if instance is None:
@@ -133,6 +139,7 @@ def serialize_keras_object(instance):
     raise ValueError('Cannot serialize', instance)
 
 
+@tf_export('keras.utils.deserialize_keras_object')
 def deserialize_keras_object(identifier,
                              module_objects=None,
                              custom_objects=None,
@@ -249,7 +256,10 @@ def func_load(code, defaults=None, closure=None, globs=None):
 
   if closure is not None:
     closure = tuple(ensure_value_to_cell(_) for _ in closure)
-  raw_code = codecs.decode(code.encode('ascii'), 'base64')
+  try:
+    raw_code = codecs.decode(code.encode('ascii'), 'base64')
+  except (UnicodeEncodeError, binascii.Error):
+    raw_code = code.encode('raw_unicode_escape')
   code = marshal.loads(raw_code)
   if globs is None:
     globs = globals()
@@ -275,6 +285,7 @@ def has_arg(fn, name, accept_all=False):
   return name in arg_spec.args
 
 
+@tf_export('keras.utils.Progbar')
 class Progbar(object):
   """Displays a progress bar.
 

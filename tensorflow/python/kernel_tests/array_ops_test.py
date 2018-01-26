@@ -82,7 +82,9 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
       matrix_ph = array_ops.placeholder(dtypes.int32)
       transposed = array_ops.matrix_transpose(matrix_ph)
       self.assertAllEqual(
-          expected_transposed, transposed.eval(feed_dict={matrix_ph: matrix}))
+          expected_transposed, transposed.eval(feed_dict={
+              matrix_ph: matrix
+          }))
 
   def testBatchMatrixDynamicallyDefined(self):
     matrix_0 = [[1, 2, 3], [4, 5, 6]]
@@ -96,7 +98,9 @@ class BatchMatrixTransposeTest(test_util.TensorFlowTestCase):
       transposed = array_ops.matrix_transpose(batch_matrix_ph)
       self.assertAllEqual(
           expected_transposed,
-          transposed.eval(feed_dict={batch_matrix_ph: batch_matrix}))
+          transposed.eval(feed_dict={
+              batch_matrix_ph: batch_matrix
+          }))
 
   def testTensorWithStaticRankLessThanTwoRaisesBecauseNotAMatrix(self):
     vector = [1, 2, 3]
@@ -203,8 +207,10 @@ class BooleanMaskTest(test_util.TensorFlowTestCase):
 
       masked_tensor = sess.run(
           array_ops.boolean_mask(ph_tensor, ph_mask),
-          feed_dict={ph_tensor: arr,
-                     ph_mask: mask})
+          feed_dict={
+              ph_tensor: arr,
+              ph_mask: mask
+          })
       np.testing.assert_allclose(masked_tensor, arr[mask])
 
   def testMaskDimensionsSetToNoneRaises(self):
@@ -280,7 +286,8 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
       for axis_dtype in [dtypes.int32, dtypes.int64]:
         with self.test_session(use_gpu=use_gpu):
           x_tf = array_ops.reverse_v2(x_np,
-              constant_op.constant([0], dtype=axis_dtype)).eval()
+                                      constant_op.constant(
+                                          [0], dtype=axis_dtype)).eval()
           self.assertAllEqual(x_tf, np.asarray(x_np)[::-1])
 
   def _reverse2DimAuto(self, np_dtype):
@@ -290,16 +297,17 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
       for use_gpu in [False, True]:
         for axis_dtype in [dtypes.int32, dtypes.int64]:
           with self.test_session(use_gpu=use_gpu):
-            x_tf_1 = reverse_f(x_np,
-                constant_op.constant([0], dtype=axis_dtype)).eval()
-            x_tf_2 = reverse_f(x_np,
-                constant_op.constant([-2], dtype=axis_dtype)).eval()
-            x_tf_3 = reverse_f(x_np,
-                constant_op.constant([1], dtype=axis_dtype)).eval()
-            x_tf_4 = reverse_f(x_np,
-                constant_op.constant([-1], dtype=axis_dtype)).eval()
+            x_tf_1 = reverse_f(x_np, constant_op.constant(
+                [0], dtype=axis_dtype)).eval()
+            x_tf_2 = reverse_f(x_np, constant_op.constant(
+                [-2], dtype=axis_dtype)).eval()
+            x_tf_3 = reverse_f(x_np, constant_op.constant(
+                [1], dtype=axis_dtype)).eval()
+            x_tf_4 = reverse_f(x_np, constant_op.constant(
+                [-1], dtype=axis_dtype)).eval()
             x_tf_5 = reverse_f(x_np,
-                constant_op.constant([1, 0], dtype=axis_dtype)).eval()
+                               constant_op.constant([1, 0],
+                                                    dtype=axis_dtype)).eval()
             self.assertAllEqual(x_tf_1, np.asarray(x_np)[::-1, :])
             self.assertAllEqual(x_tf_2, np.asarray(x_np)[::-1, :])
             self.assertAllEqual(x_tf_3, np.asarray(x_np)[:, ::-1])
@@ -324,18 +332,16 @@ class ReverseV2Test(test_util.TensorFlowTestCase):
 
   def testReverse1DimAuto(self):
     for dtype in [
-        np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64,
-        np.bool, np.float16, np.float32,
-        np.float64, np.complex64, np.complex128,
+        np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64, np.bool,
+        np.float16, np.float32, np.float64, np.complex64, np.complex128,
         np.array(b"").dtype.type
     ]:
       self._reverse1DimAuto(dtype)
 
   def testReverse2DimAuto(self):
     for dtype in [
-        np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64,
-        np.bool, np.float16, np.float32,
-        np.float64, np.complex64, np.complex128,
+        np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64, np.bool,
+        np.float16, np.float32, np.float64, np.complex64, np.complex128,
         np.array(b"").dtype.type
     ]:
       self._reverse2DimAuto(dtype)
@@ -711,8 +717,8 @@ class GradSliceChecker(object):
     slice_val_grad2, = gradients_impl.gradients(
         slice_val_grad, dy, grad_ys=self.var)
     self.sess.run(assign)
-    slice_val_grad_evaled, slice_val_grad2_evaled = (self.sess.run(
-        [slice_val_grad, slice_val_grad2]))
+    slice_val_grad_evaled, slice_val_grad2_evaled = (
+        self.sess.run([slice_val_grad, slice_val_grad2]))
     analytic_grad2_evaled = analytic_grad2.eval()
     self.test.assertAllEqual(slice_val_grad2_evaled, analytic_grad2_evaled)
 
@@ -975,6 +981,7 @@ class ShapeSizeRankTest(test_util.TensorFlowTestCase):
       self.assertEqual(2, array_ops.rank(sp).eval())
 
 
+@test_util.with_c_api
 class SequenceMaskTest(test_util.TensorFlowTestCase):
 
   def testExceptions(self):
@@ -986,36 +993,41 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
     with self.test_session():
       res = array_ops.sequence_mask(constant_op.constant([1, 3, 2]), 5)
       self.assertAllEqual(res.get_shape(), [3, 5])
-      self.assertAllEqual(res.eval(), [[True, False, False, False, False],
-                                       [True, True, True, False, False],
-                                       [True, True, False, False, False]])
+      self.assertAllEqual(
+          res.eval(),
+          [[True, False, False, False, False], [True, True, True, False, False],
+           [True, True, False, False, False]])
 
       # test dtype and default maxlen:
       res = array_ops.sequence_mask(
           constant_op.constant([0, 1, 4]), dtype=dtypes.float32)
-      self.assertAllEqual(res.get_shape().as_list(), [3, None])
-      self.assertAllEqual(res.eval(), [[0.0, 0.0, 0.0,
-                                        0.0], [1.0, 0.0, 0.0, 0.0],
-                                       [1.0, 1.0, 1.0, 1.0]])
+      if ops._USE_C_API:
+        self.assertAllEqual(res.get_shape().as_list(), [3, 4])
+      else:
+        self.assertAllEqual(res.get_shape().as_list(), [3, None])
+      self.assertAllEqual(
+          res.eval(),
+          [[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]])
 
   def testTwoDimensional(self):
     with self.test_session():
       res = array_ops.sequence_mask(constant_op.constant([[1, 3, 2]]), 5)
       self.assertAllEqual(res.get_shape(), [1, 3, 5])
-      self.assertAllEqual(res.eval(), [[[True, False, False, False, False],
-                                        [True, True, True, False, False],
-                                        [True, True, False, False, False]]])
+      self.assertAllEqual(res.eval(), [[[True, False, False, False, False], [
+          True, True, True, False, False
+      ], [True, True, False, False, False]]])
 
       # test dtype and default maxlen:
       res = array_ops.sequence_mask(
           constant_op.constant([[0, 1, 4], [1, 2, 3]]), dtype=dtypes.float32)
-      self.assertAllEqual(res.get_shape().as_list(), [2, 3, None])
-      self.assertAllEqual(res.eval(), [[[0.0, 0.0, 0.0, 0.0],
-                                        [1.0, 0.0, 0.0, 0.0],
-                                        [1.0, 1.0, 1.0, 1.0]],
-                                       [[1.0, 0.0, 0.0, 0.0],
-                                        [1.0, 1.0, 0.0, 0.0],
-                                        [1.0, 1.0, 1.0, 0.0]]])
+      if ops._USE_C_API:
+        self.assertAllEqual(res.get_shape().as_list(), [2, 3, 4])
+      else:
+        self.assertAllEqual(res.get_shape().as_list(), [2, 3, None])
+      self.assertAllEqual(
+          res.eval(),
+          [[[0.0, 0.0, 0.0, 0.0], [1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 1.0, 1.0]],
+           [[1.0, 0.0, 0.0, 0.0], [1.0, 1.0, 0.0, 0.0], [1.0, 1.0, 1.0, 0.0]]])
 
   def testDtypes(self):
 
@@ -1024,9 +1036,10 @@ class SequenceMaskTest(test_util.TensorFlowTestCase):
           constant_op.constant([1, 3, 2], dtype=lengths_dtype),
           constant_op.constant(5, dtype=maxlen_dtype))
       self.assertAllEqual(res.get_shape(), [3, 5])
-      self.assertAllEqual(res.eval(), [[True, False, False, False, False],
-                                       [True, True, True, False, False],
-                                       [True, True, False, False, False]])
+      self.assertAllEqual(
+          res.eval(),
+          [[True, False, False, False, False], [True, True, True, False, False],
+           [True, True, False, False, False]])
 
     with self.test_session():
       check_dtypes(dtypes.int32, dtypes.int32)
@@ -1081,13 +1094,14 @@ class PadTest(test_util.TensorFlowTestCase):
   def testEager(self):
     with context.eager_mode():
       t = constant_op.constant([[1, 2, 3], [4, 5, 6]])
-      paddings = constant_op.constant([[1, 1,], [2, 2]])
+      paddings = constant_op.constant([[
+          1,
+          1,
+      ], [2, 2]])
       padded = array_ops.pad(t, paddings, "CONSTANT")
       self.assertAllEqual(padded.numpy(),
-                          [[0, 0, 0, 0, 0, 0, 0],
-                           [0, 0, 1, 2, 3, 0, 0],
-                           [0, 0, 4, 5, 6, 0, 0],
-                           [0, 0, 0, 0, 0, 0, 0]])
+                          [[0, 0, 0, 0, 0, 0, 0], [0, 0, 1, 2, 3, 0, 0],
+                           [0, 0, 4, 5, 6, 0, 0], [0, 0, 0, 0, 0, 0, 0]])
 
 
 class InvertPermutationTest(test_util.TensorFlowTestCase):

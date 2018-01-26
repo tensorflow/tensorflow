@@ -47,7 +47,7 @@ namespace cpu {
 namespace {
 
 // A simple SymbolResolver that delegates to the host dynamic linker.
-class SimpleResolver : public llvm::JITSymbolResolver {
+class SimpleResolver : public llvm::LegacyJITSymbolResolver {
  public:
   explicit SimpleResolver(ExternalConstantPool* external_constant_pool)
       : external_constant_pool_(external_constant_pool) {}

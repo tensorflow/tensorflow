@@ -111,6 +111,41 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
       head_lib._multi_class_head_with_softmax_cross_entropy_loss(
           n_classes=3, loss_reduction=losses.Reduction.NONE)
 
+  def test_loss_fn_arg_labels_missing(self):
+    def _loss_fn(logits):
+      del logits  # Unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn must contain argument: labels\. '
+        r'Given arguments: \(\'logits\',\)'):
+      head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+          n_classes=3, loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_logits_missing(self):
+    def _loss_fn(labels):
+      del labels  # unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn must contain argument: logits\. '
+        r'Given arguments: \(\'labels\',\)'):
+      head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+          n_classes=3, loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_features_ok(self):
+    def _loss_fn(labels, logits, features):
+      del labels, logits, features  # Unused
+    head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes=3, loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_invalid(self):
+    def _loss_fn(labels, logits, name=None):
+      del labels, logits, name  # Unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn has unexpected args: \[\'name\'\]'):
+      head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+          n_classes=3, loss_fn=_loss_fn)
+
   def test_invalid_logits_shape(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(n_classes)
@@ -406,6 +441,56 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
       self.assertAllClose(
           expected_training_loss, training_loss.eval(), rtol=1e-2, atol=1e-2)
 
+  def test_eval_create_loss_loss_fn(self):
+    """Tests head.create_loss for eval mode and custom loss_fn."""
+    loss = np.array([[1.], [2.]], dtype=np.float32)
+    logits_input = np.array([[-10., 10., 0.], [-15., 10., 0]], dtype=np.float32)
+    labels_input = np.array([[1], [2]], dtype=np.int64)
+    def _loss_fn(labels, logits):
+      check_labels = control_flow_ops.Assert(
+          math_ops.reduce_all(math_ops.equal(labels, labels_input)),
+          data=[labels])
+      check_logits = control_flow_ops.Assert(
+          math_ops.reduce_all(math_ops.equal(logits, logits_input)),
+          data=[logits])
+      with ops.control_dependencies([check_labels, check_logits]):
+        return constant_op.constant(loss)
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes=3, loss_fn=_loss_fn)
+
+    actual_training_loss = head.create_loss(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits_input,
+        labels=labels_input)[0]
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      self.assertAllClose(np.sum(loss), actual_training_loss.eval())
+
+  def test_eval_create_loss_loss_fn_wrong_shape(self):
+    """Tests custom loss_fn that returns Tensor of unexpected shape."""
+    loss = np.array([1., 2.], dtype=np.float32)
+    def _loss_fn(labels, logits):
+      del labels, logits  # Unused
+      return constant_op.constant(loss)
+    head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
+        n_classes=3, loss_fn=_loss_fn)
+
+    logits = np.array([[-10., 10., 0.], [-15., 10., 0.]], dtype=np.float32)
+    labels = np.array([[1], [2]], dtype=np.int64)
+    actual_training_loss = head.create_loss(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels)[0]
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[loss_fn must return Tensor of shape \[D0, D1, ... DN, 1\]\. \] '
+          r'\[logits_shape: \] \[2 3\] \[loss_shape: \] \[2\]'):
+        actual_training_loss.eval()
+
   def test_eval_labels_none(self):
     """Tests that error is raised when labels is None."""
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
@@ -487,7 +572,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_eval_with_regularization_losses(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, loss_reduction=losses.Reduction.MEAN)
+        n_classes, loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
     logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
     labels = np.array(((1,), (1,)), dtype=np.int64)
     features = {'x': np.array(((42,),), dtype=np.int32)}
@@ -790,7 +875,7 @@ class MultiClassHeadWithSoftmaxCrossEntropyLoss(test.TestCase):
   def test_train_with_regularization_losses(self):
     n_classes = 3
     head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(
-        n_classes, loss_reduction=losses.Reduction.MEAN)
+        n_classes, loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
 
     logits = np.array(((10, 0, 0), (0, 10, 0),), dtype=np.float32)
     labels = np.array(((1,), (1,)), dtype=np.int64)
@@ -1204,6 +1289,41 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
           loss_reduction=losses.Reduction.NONE)
 
+  def test_loss_fn_arg_labels_missing(self):
+    def _loss_fn(logits):
+      del logits  # Unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn must contain argument: labels\. '
+        r'Given arguments: \(\'logits\',\)'):
+      head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+          loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_logits_missing(self):
+    def _loss_fn(labels):
+      del labels  # unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn must contain argument: logits\. '
+        r'Given arguments: \(\'labels\',\)'):
+      head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+          loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_features_ok(self):
+    def _loss_fn(labels, logits, features):
+      del labels, logits, features  # Unused
+      head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+          loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_invalid(self):
+    def _loss_fn(labels, logits, name=None):
+      del labels, logits, name  # Unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn has unexpected args: \[\'name\'\]'):
+      head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+          loss_fn=_loss_fn)
+
   def test_invalid_logits_shape(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
     self.assertEqual(1, head.logits_dimension)
@@ -1485,6 +1605,53 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
     ]
     self.assertItemsEqual(expected_metric_keys, spec.eval_metric_ops.keys())
 
+  def test_eval_with_regularization_losses(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
+    logits = np.array(((45,), (-41,),), dtype=np.float32)
+    labels = np.array(((1,), (1,),), dtype=np.int32)
+    features = {'x': np.array(((42,),), dtype=np.int32)}
+    regularization_losses = [1.5, 0.5]
+    expected_regularization_loss = 2.
+    # unregularized_loss = sum(cross_entropy(labels, logits)) / batch_size
+    #                    = sum(0, 41) / 2 = 20.5
+    expected_unregularized_loss = 20.5
+    expected_regularized_loss = (
+        expected_unregularized_loss + expected_regularization_loss)
+
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels,
+        regularization_losses=regularization_losses)
+
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        keys.LOSS_MEAN: expected_unregularized_loss,
+        keys.LOSS_REGULARIZATION: expected_regularization_loss,
+        keys.ACCURACY: 1./2,
+        keys.PREDICTION_MEAN: 1./2,
+        keys.LABEL_MEAN: 2./2,
+        keys.ACCURACY_BASELINE: 2./2,
+        keys.AUC: 0.,
+        keys.AUC_PR: 1.,
+    }
+
+    # Assert predictions, loss, and metrics.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNone(spec.scaffold.summary_op)
+      value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
+      update_ops = {k: spec.eval_metric_ops[k][1] for k in spec.eval_metric_ops}
+      loss, metrics = sess.run((spec.loss, update_ops))
+      self.assertAllClose(expected_regularized_loss, loss)
+      # Check results of both update (in `metrics`) and value ops.
+      self.assertAllClose(expected_metrics, metrics)
+      self.assertAllClose(
+          expected_metrics, {k: value_ops[k].eval() for k in value_ops})
+
   def test_eval_with_vocabulary_list_create_loss(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
         label_vocabulary=['aang', 'iroh'])
@@ -1652,6 +1819,56 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
       self.assertAllClose(expected_unreduced_loss, unreduced_loss.eval())
       self.assertAllClose(expected_weights, actual_weights)
 
+  def test_eval_create_loss_loss_fn(self):
+    """Tests head.create_loss for eval mode and custom loss_fn."""
+    loss = np.array([[1.], [2.]], dtype=np.float32)
+    logits_input = np.array([[-10.], [10.]], dtype=np.float32)
+    labels_input = np.array([[1], [0]], dtype=np.int64)
+    def _loss_fn(labels, logits):
+      check_labels = control_flow_ops.Assert(
+          math_ops.reduce_all(math_ops.equal(labels, labels_input)),
+          data=[labels])
+      check_logits = control_flow_ops.Assert(
+          math_ops.reduce_all(math_ops.equal(logits, logits_input)),
+          data=[logits])
+      with ops.control_dependencies([check_labels, check_logits]):
+        return constant_op.constant(loss)
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        loss_fn=_loss_fn)
+
+    actual_training_loss = head.create_loss(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits_input,
+        labels=labels_input)[0]
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      self.assertAllClose(np.sum(loss), actual_training_loss.eval())
+
+  def test_eval_create_loss_loss_fn_wrong_shape(self):
+    """Tests custom loss_fn that returns Tensor of unexpected shape."""
+    loss = np.array([1., 2.], dtype=np.float32)
+    def _loss_fn(labels, logits):
+      del labels, logits  # Unused
+      return constant_op.constant(loss)
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        loss_fn=_loss_fn)
+
+    logits = np.array([[-10.], [10.]], dtype=np.float32)
+    labels = np.array([[1], [0]], dtype=np.int64)
+    actual_training_loss = head.create_loss(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels)[0]
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[loss_fn must return Tensor of shape \[D0, D1, ... DN, 1\]\. \] '
+          r'\[logits_shape: \] \[2 1\] \[loss_shape: \] \[2\]'):
+        actual_training_loss.eval()
+
   def test_train_labels_none(self):
     """Tests that error is raised when labels is None."""
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
@@ -1748,6 +1965,49 @@ class BinaryLogisticHeadWithSigmoidCrossEntropyLossTest(test.TestCase):
                   20.5,
           },
           summary_str)
+
+  def test_train_with_regularization_losses(self):
+    head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(
+        loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
+
+    logits = np.array(((45,), (-41,),), dtype=np.float32)
+    labels = np.array(((1,), (1,),), dtype=np.float64)
+    expected_train_result = b'my_train_op'
+    features = {'x': np.array(((42,),), dtype=np.float32)}
+    regularization_losses = [1.5, 0.5]
+    expected_regularization_loss = 2.
+    # unregularized_loss = sum(cross_entropy(labels, logits)) / batch_size
+    #                    = sum(0, 41) / 2 = 20.5
+    # loss = unregularized_loss + regularization_loss = 7.
+    expected_loss = 22.5
+    def _train_op_fn(loss):
+      with ops.control_dependencies((check_ops.assert_equal(
+          math_ops.to_float(expected_loss), math_ops.to_float(loss),
+          name='assert_loss'),)):
+        return constant_op.constant(expected_train_result)
+
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        regularization_losses=regularization_losses)
+
+    # Assert predictions, loss, train_op, and summaries.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNotNone(spec.scaffold.summary_op)
+      loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
+                                                  spec.scaffold.summary_op))
+      self.assertAllClose(expected_loss, loss)
+      self.assertEqual(expected_train_result, train_result)
+      _assert_simple_summaries(self, {
+          metric_keys.MetricKeys.LOSS: expected_loss,
+          metric_keys.MetricKeys.LOSS_REGULARIZATION: (
+              expected_regularization_loss),
+      }, summary_str)
 
   def test_float_labels_train_create_loss(self):
     head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss()
@@ -2265,6 +2525,37 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
       head_lib._regression_head_with_mean_squared_error_loss(
           loss_reduction=losses.Reduction.NONE)
 
+  def test_loss_fn_arg_labels_missing(self):
+    def _loss_fn(logits):
+      del logits  # Unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn must contain argument: labels\. '
+        r'Given arguments: \(\'logits\',\)'):
+      head_lib._regression_head_with_mean_squared_error_loss(loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_logits_missing(self):
+    def _loss_fn(labels):
+      del labels  # unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn must contain argument: logits\. '
+        r'Given arguments: \(\'labels\',\)'):
+      head_lib._regression_head_with_mean_squared_error_loss(loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_features_ok(self):
+    def _loss_fn(labels, logits, features):
+      del labels, logits, features  # Unused
+      head_lib._regression_head_with_mean_squared_error_loss(loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_invalid(self):
+    def _loss_fn(labels, logits, name=None):
+      del labels, logits, name  # Unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn has unexpected args: \[\'name\'\]'):
+      head_lib._regression_head_with_mean_squared_error_loss(loss_fn=_loss_fn)
+
   def test_invalid_logits(self):
     head = head_lib._regression_head_with_mean_squared_error_loss(
         label_dimension=3)
@@ -2440,6 +2731,56 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
       # loss = [(43-45)^2, (44-41)] = [4, 9]
       self.assertAllClose(13., training_loss.eval())
 
+  def test_eval_create_loss_loss_fn(self):
+    """Tests head.create_loss for eval mode and custom loss_fn."""
+    loss = np.array([[0., 1.], [2., 3.]], dtype=np.float32)
+    logits_input = np.array([[-1., 1.], [-2., 2.]], dtype=np.float32)
+    labels_input = np.array([[1., 0.], [2., -1.]], dtype=np.float32)
+    def _loss_fn(labels, logits):
+      check_labels = control_flow_ops.Assert(
+          math_ops.reduce_all(math_ops.equal(labels, labels_input)),
+          data=[labels])
+      check_logits = control_flow_ops.Assert(
+          math_ops.reduce_all(math_ops.equal(logits, logits_input)),
+          data=[logits])
+      with ops.control_dependencies([check_labels, check_logits]):
+        return constant_op.constant(loss)
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        label_dimension=2, loss_fn=_loss_fn)
+
+    actual_training_loss = head.create_loss(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits_input,
+        labels=labels_input)[0]
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      self.assertAllClose(np.sum(loss), actual_training_loss.eval())
+
+  def test_eval_create_loss_loss_fn_wrong_shape(self):
+    """Tests custom loss_fn that returns Tensor of unexpected shape."""
+    loss = np.array([[1.], [2.]], dtype=np.float32)
+    def _loss_fn(labels, logits):
+      del labels, logits  # Unused
+      return constant_op.constant(loss)
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        label_dimension=2, loss_fn=_loss_fn)
+
+    logits = np.array([[-1., 1.], [-2., 2.]], dtype=np.float32)
+    labels = np.array([[1., 0.], [2., -1.]], dtype=np.float32)
+    actual_training_loss = head.create_loss(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels)[0]
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[loss_fn must return Tensor of shape \[D0, D1, ... DN, 2\]\. \] '
+          r'\[logits_shape: \] \[2 2\] \[loss_shape: \] \[2 1\]'):
+        actual_training_loss.eval()
+
   def test_eval_labels_none(self):
     """Tests that error is raised when labels is None."""
     head = head_lib._regression_head_with_mean_squared_error_loss()
@@ -2511,6 +2852,51 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
         '{}/some_regression_head'.format(metric_keys.MetricKeys.LOSS_MEAN),
     ]
     self.assertItemsEqual(expected_metric_keys, spec.eval_metric_ops.keys())
+
+  def test_eval_with_regularization_losses(self):
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
+    self.assertEqual(1, head.logits_dimension)
+
+    logits = np.array(((45,), (41,),), dtype=np.float32)
+    labels = np.array(((43,), (44,),), dtype=np.int32)
+    features = {'x': np.array(((42,),), dtype=np.float32)}
+    regularization_losses = [1.5, 0.5]
+    expected_regularization_loss = 2.
+    # unregularized_loss = ((43-45)^2 + (44-41)^2) / batch_size
+    #                    = (4 + 9) / 2 = 6.5
+    expected_unregularized_loss = 6.5
+    expected_regularized_loss = (
+        expected_unregularized_loss + expected_regularization_loss)
+    # Create estimator spec.
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels,
+        regularization_losses=regularization_losses)
+
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        keys.LOSS_MEAN: expected_unregularized_loss,
+        keys.LOSS_REGULARIZATION: expected_regularization_loss,
+    }
+
+    # Assert predictions, loss, and metrics.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNone(spec.scaffold.summary_op)
+      value_ops = {k: spec.eval_metric_ops[k][0] for k in spec.eval_metric_ops}
+      update_ops = {k: spec.eval_metric_ops[k][1] for k in spec.eval_metric_ops}
+      prediction_key = prediction_keys.PredictionKeys.PREDICTIONS
+      predictions, loss, metrics = sess.run((
+          spec.predictions[prediction_key], spec.loss, update_ops))
+      self.assertAllClose(logits, predictions)
+      self.assertAllClose(expected_regularized_loss, loss)
+      # Check results of both update (in `metrics`) and value ops.
+      self.assertAllClose(expected_metrics, metrics)
+      self.assertAllClose(
+          expected_metrics, {k: value_ops[k].eval() for k in value_ops})
 
   def test_train_create_loss(self):
     head = head_lib._regression_head_with_mean_squared_error_loss()
@@ -2665,6 +3051,53 @@ class RegressionHeadWithMeanSquaredErrorLossTest(test.TestCase):
                   6.5,
           },
           summary_str)
+
+  def test_train_with_regularization_losses(self):
+    head = head_lib._regression_head_with_mean_squared_error_loss(
+        loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
+    self.assertEqual(1, head.logits_dimension)
+
+    # Create estimator spec.
+    logits = np.array(((45,), (41,),), dtype=np.float32)
+    labels = np.array(((43.,), (44.,),), dtype=np.float64)
+    expected_train_result = b'my_train_op'
+    features = {'x': np.array(((42.,),), dtype=np.float32)}
+    regularization_losses = [1.5, 0.5]
+    expected_regularization_loss = 2.
+    # unregularized_loss = ((43-45)^2 + (44-41)^2) / batch_size
+    #                    = (4 + 9) / 2 = 6.5
+    # loss = unregularized_loss + regularization_loss = 8.5
+    expected_loss = 8.5
+    def _train_op_fn(loss):
+      with ops.control_dependencies((check_ops.assert_equal(
+          math_ops.to_float(expected_loss), math_ops.to_float(loss),
+          name='assert_loss'),)):
+        return constant_op.constant(expected_train_result)
+
+    spec = head.create_estimator_spec(
+        features=features,
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        regularization_losses=regularization_losses)
+
+    # Assert predictions, loss, train_op, and summaries.
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNotNone(spec.scaffold.summary_op)
+      prediction_key = prediction_keys.PredictionKeys.PREDICTIONS
+      predictions, loss, train_result, summary_str = sess.run((
+          spec.predictions[prediction_key], spec.loss, spec.train_op,
+          spec.scaffold.summary_op))
+      self.assertAllClose(logits, predictions)
+      self.assertAllClose(expected_loss, loss)
+      self.assertEqual(expected_train_result, train_result)
+      _assert_simple_summaries(self, {
+          metric_keys.MetricKeys.LOSS: expected_loss,
+          metric_keys.MetricKeys.LOSS_REGULARIZATION: (
+              expected_regularization_loss),
+      }, summary_str)
 
   def test_weighted_multi_example_eval(self):
     """1d label, 3 examples, 1 batch."""

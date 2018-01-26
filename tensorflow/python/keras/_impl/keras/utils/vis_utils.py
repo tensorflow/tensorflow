@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,30 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=protected-access
+# pylint: disable=g-import-not-at-top
 """Utilities related to model visualization."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import os
-import sys
+
 
 try:
   # pydot-ng is a fork of pydot that is better maintained.
-  import pydot_ng as pydot  # pylint: disable=g-import-not-at-top
+  import pydot_ng as pydot
 except ImportError:
-  # Fall back on pydot if necessary.
-  # Silence a `print` statement that occurs in case of import error,
-  # by temporarily replacing sys.stdout.
-  _stdout = sys.stdout
-  sys.stdout = sys.stderr
+  # pydotplus is an improved version of pydot
   try:
-    import pydot  # pylint: disable=g-import-not-at-top
+    import pydotplus as pydot
   except ImportError:
-    pydot = None
-  finally:
-    # Restore sys.stdout.
-    sys.stdout = _stdout
+    # Fall back on pydot if necessary.
+    try:
+      import pydot
+    except ImportError:
+      pydot = None
 
 
 def _check_pydot():
@@ -65,8 +64,8 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   Returns:
       A `pydot.Dot` instance representing the Keras model.
   """
-  from tensorflow.python.keras._impl.keras.layers.wrappers import Wrapper  # pylint: disable=g-import-not-at-top
-  from tensorflow.python.keras._impl.keras.models import Sequential  # pylint: disable=g-import-not-at-top
+  from tensorflow.python.keras._impl.keras.layers.wrappers import Wrapper
+  from tensorflow.python.keras._impl.keras.models import Sequential
 
   _check_pydot()
   dot = pydot.Dot()
@@ -118,9 +117,9 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   # Connect nodes with edges.
   for layer in layers:
     layer_id = str(id(layer))
-    for i, node in enumerate(layer._inbound_nodes):  # pylint: disable=protected-access
+    for i, node in enumerate(layer._inbound_nodes):
       node_key = layer.name + '_ib-' + str(i)
-      if node_key in model._network_nodes:  # pylint: disable=protected-access
+      if node_key in model._container_nodes:
         for inbound_layer in node.inbound_layers:
           inbound_layer_id = str(id(inbound_layer))
           layer_id = str(id(layer))

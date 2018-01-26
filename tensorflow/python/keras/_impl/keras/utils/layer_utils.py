@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities related to Keras layers.
+# pylint: disable=protected-access
+"""Utilities related to layer/model functionality.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -28,10 +29,10 @@ def count_params(weights):
   """Count the total number of scalars composing the weights.
 
   Arguments:
-    weights: An iterable containing the weights on which to compute params
+      weights: An iterable containing the weights on which to compute params
 
   Returns:
-    The total number of scalars composing the weights
+      The total number of scalars composing the weights
   """
   return int(np.sum([K.count_params(p) for p in set(weights)]))
 
@@ -46,10 +47,11 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
           terminal window sizes).
       positions: Relative or absolute positions of log elements in each line.
           If not provided, defaults to `[.33, .55, .67, 1.]`.
-      print_fn: Print function to use (defaults to `print`).
+      print_fn: Print function to use.
           It will be called on each line of the summary.
           You can set it to a custom function
           in order to capture the string summary.
+          It defaults to `print` (prints to stdout).
   """
   if print_fn is None:
     print_fn = print
@@ -58,12 +60,13 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     sequential_like = True
   else:
     sequential_like = True
-    nodes_by_depth = model._nodes_by_depth.values()  # pylint: disable=protected-access
+    nodes_by_depth = model._nodes_by_depth.values()
     nodes = []
     for v in nodes_by_depth:
       if (len(v) > 1) or (len(v) == 1 and len(v[0].inbound_layers) > 1):
-        # If the model has multiple nodes or if the nodes have
-        # multiple inbound_layers, the model is no longer sequential.
+        # if the model has multiple nodes
+        # or if the nodes have multiple inbound_layers
+        # the model is no longer sequential
         sequential_like = False
         break
       nodes += v
@@ -71,7 +74,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
       # search for shared layers
       for layer in model.layers:
         flag = False
-        for node in layer.inbound_nodes:
+        for node in layer._inbound_nodes:
           if node in nodes:
             if flag:
               sequential_like = False
@@ -96,7 +99,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     # header names for the different log elements
     to_display = ['Layer (type)', 'Output Shape', 'Param #', 'Connected to']
     relevant_nodes = []
-    for v in model._nodes_by_depth.values():  # pylint: disable=protected-access
+    for v in model._nodes_by_depth.values():
       relevant_nodes += v
 
   def print_row(fields, positions):
@@ -134,7 +137,7 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     except AttributeError:
       output_shape = 'multiple'
     connections = []
-    for node in layer._inbound_nodes:  # pylint: disable=protected-access
+    for node in layer._inbound_nodes:
       if relevant_nodes and node not in relevant_nodes:
         # node is not part of the current network
         continue
@@ -142,8 +145,8 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
         inbound_layer = node.inbound_layers[i].name
         inbound_node_index = node.node_indices[i]
         inbound_tensor_index = node.tensor_indices[i]
-        connections.append(inbound_layer + '[' + str(inbound_node_index) + ']['
-                           + str(inbound_tensor_index) + ']')
+        connections.append(inbound_layer + '[' + str(inbound_node_index) +
+                           '][' + str(inbound_tensor_index) + ']')
 
     name = layer.name
     cls_name = layer.__class__.__name__
@@ -172,9 +175,9 @@ def print_summary(model, line_length=None, positions=None, print_fn=None):
     else:
       print_fn('_' * line_length)
 
-  model._check_trainable_weights_consistency()  # pylint: disable=protected-access
+  model._check_trainable_weights_consistency()
   if hasattr(model, '_collected_trainable_weights'):
-    trainable_count = count_params(model._collected_trainable_weights)  # pylint: disable=protected-access
+    trainable_count = count_params(model._collected_trainable_weights)
   else:
     trainable_count = count_params(model.trainable_weights)
 

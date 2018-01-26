@@ -114,7 +114,6 @@ cc_library(
     name = "contrib_kernels",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/batching:batch_ops_kernels",
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
         "//tensorflow/contrib/coder:all_kernels",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_kernels",
@@ -137,7 +136,6 @@ cc_library(
     name = "contrib_ops_op_lib",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/batching:batch_ops_op_lib",
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
         "//tensorflow/contrib/coder:all_ops",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_ops_op_lib",

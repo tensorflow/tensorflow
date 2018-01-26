@@ -251,7 +251,8 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutionOptions& execution_options);
+      const ExecutionOptions& execution_options,
+      const UserComputation& user_computation);
 
  protected:
   friend class LocalExecutable;
@@ -275,7 +276,8 @@ class Service : public ServiceInterface {
   StatusOr<std::unique_ptr<HloModuleConfig>> CreateModuleConfig(
       const ProgramShape& program_shape,
       tensorflow::gtl::ArraySlice<const Shape*> argument_shapes,
-      const ExecutionOptions* execution_options);
+      const ExecutionOptions* execution_options,
+      const UserComputation& user_computation);
 
   // Builds an Executable for the given parameters.
   StatusOr<std::unique_ptr<Executable>> BuildExecutable(
@@ -339,6 +341,8 @@ class Service : public ServiceInterface {
   // represents a set of physical devices for the replicas.
   StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Replicas(
       const Backend& backend, const DeviceHandle& device_handle) const;
+
+  Status MaybeDumpHloModule(const HloModule& module) const;
 
   // Returns the device handle that represents the replicated device for a
   // single computation that is not model-parallelized.
