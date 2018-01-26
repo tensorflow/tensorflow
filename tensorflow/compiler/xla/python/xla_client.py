@@ -36,15 +36,22 @@ from tensorflow.compiler.xla.python import pywrap_xla as c_api
 # pylint: disable=invalid-name
 
 
-OpMetadata = collections.namedtuple(
-    'OpMetadata',
-    [
-        'op_type',
-        'op_name',
-        'source_file',
-        'source_line',
-    ],
-)
+_OP_METADATA_FIELDS = [
+    'op_type',
+    'op_name',
+    'source_file',
+    'source_line',
+]
+OpMetadata = collections.namedtuple('OpMetadata', _OP_METADATA_FIELDS)
+
+
+def OpMetadataToProto(pyobj):
+  proto = xla_data_pb2.OpMetadata()
+  for field in _OP_METADATA_FIELDS:
+    attr = getattr(pyobj, field)
+    if attr is not None:
+      setattr(proto, field, attr)
+  return proto
 
 
 def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):

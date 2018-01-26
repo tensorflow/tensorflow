@@ -462,6 +462,7 @@ cc_library(
         ":hlo_proto_util",
         ":platform_util",
         ":session_proto",
+        ":source_map_util",
         ":transfer_manager",
         ":user_computation",
         ":versioned_computation_handle",
@@ -2347,6 +2348,18 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "source_map_util",
+    srcs = ["source_map_util.cc"],
+    hdrs = ["source_map_util.h"],
+    deps = [
+        ":executable",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
     ],
 )
 
