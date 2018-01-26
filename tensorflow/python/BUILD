@@ -2668,6 +2668,7 @@ cuda_py_test(
         ":nn_ops_gen",
         "//third_party/py/numpy",
     ],
+    shard_count = 4,
     tags = ["no_windows"],
 )
 
