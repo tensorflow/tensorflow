@@ -25,42 +25,6 @@ using shape_inference::ShapeHandle;
 
 namespace {
 
-const char kDecodeJpegCommonDocStr[] = R"doc(
-The attr `channels` indicates the desired number of color channels for the
-decoded image.
-
-Accepted values are:
-
-*   0: Use the number of channels in the JPEG-encoded image.
-*   1: output a grayscale image.
-*   3: output an RGB image.
-
-If needed, the JPEG-encoded image is transformed to match the requested number
-of color channels.
-
-The attr `ratio` allows downscaling the image by an integer factor during
-decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
-downscaling the image later.
-
-)doc";
-
-const char kDecodeJpegCommonParamsDocStr[] = R"doc(
-channels: Number of color channels for the decoded image.
-ratio: Downscaling ratio.
-fancy_upscaling: If true use a slower but nicer upscaling of the
-  chroma planes (yuv420/422 only).
-try_recover_truncated:  If true try to recover an image from truncated input.
-acceptable_fraction: The minimum required fraction of lines before a truncated
-  input is accepted.
-dct_method: string specifying a hint about the algorithm used for
-  decompression.  Defaults to "" which maps to a system-specific
-  default.  Currently valid values are ["INTEGER_FAST",
-  "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
-  jpeg library changes to a version that does not have that specific
-  option.)
-image: 3-D with shape `[height, width, channels]`..
-)doc";
-
 // Sets output[0] to shape [batch_dim,height,width,channel_dim], where
 // height and width come from the size_tensor.
 Status SetOutputToSizedImage(InferenceContext* c, DimensionHandle batch_dim,

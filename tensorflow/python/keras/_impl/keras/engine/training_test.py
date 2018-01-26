@@ -28,6 +28,11 @@ from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.keras._impl.keras.engine.training import _weighted_masked_objective
 from tensorflow.python.platform import test
 
+try:
+  import scipy.sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
+except ImportError:
+  scipy_sparse = None
+
 
 class TrainingTest(test.TestCase):
 
@@ -169,7 +174,7 @@ class TrainingTest(test.TestCase):
       with self.assertRaises(ValueError):
         model.train_on_batch({'input_a': input_a_np},
                              [output_d_np, output_e_np])
-      with self.assertRaises(TypeError):
+      with self.assertRaises(AttributeError):
         model.fit(
             [input_a_np, input_b_np], [output_d_np, output_e_np],
             epochs=1,
@@ -177,7 +182,7 @@ class TrainingTest(test.TestCase):
             verbose=0)
       with self.assertRaises(ValueError):
         model.train_on_batch([input_a_np], [output_d_np, output_e_np])
-      with self.assertRaises(TypeError):
+      with self.assertRaises(AttributeError):
         model.train_on_batch(1, [output_d_np, output_e_np])
       with self.assertRaises(ValueError):
         model.train_on_batch(input_a_np, [output_d_np, output_e_np])
@@ -311,6 +316,63 @@ class TrainingTest(test.TestCase):
       with self.assertRaises(ValueError):
         model.compile(loss=None,
                       optimizer='rmsprop')
+
+  def test_training_on_sparse_data_with_dense_placeholders(self):
+    if scipy_sparse is None:
+      return
+
+    test_inputs = [
+        scipy_sparse.random(6, 3, density=0.25).tocsr() for _ in range(2)]
+    test_outputs = [
+        scipy_sparse.random(6, i, density=0.25).tocsr() for i in range(3, 5)]
+    in1 = keras.layers.Input(shape=(3,))
+    in2 = keras.layers.Input(shape=(3,))
+    out1 = keras.layers.Dropout(0.5, name='dropout')(in1)
+    out2 = keras.layers.Dense(4, name='dense_1')(in2)
+    model = keras.Model([in1, in2], [out1, out2])
+    model.predict(test_inputs, batch_size=2)
+    model.compile('rmsprop', 'mse')
+    model.fit(test_inputs, test_outputs,
+              epochs=1, batch_size=2, validation_split=0.5)
+    model.evaluate(test_inputs, test_outputs, batch_size=2)
+
+  def test_that_trainable_disables_updates(self):
+    val_a = np.random.random((10, 4))
+    val_out = np.random.random((10, 4))
+
+    with self.test_session():
+      a = keras.layers.Input(shape=(4,))
+      layer = keras.layers.BatchNormalization(input_shape=(4,))
+      b = layer(a)
+      model = keras.Model(a, b)
+
+      model.trainable = False
+      assert not model.updates
+
+      model.compile('sgd', 'mse')
+      assert not model.updates
+
+      x1 = model.predict(val_a)
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      self.assertAllClose(x1, x2, atol=1e-7)
+
+      model.trainable = True
+      model.compile('sgd', 'mse')
+      assert model.updates
+
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      assert np.abs(np.sum(x1 - x2)) > 1e-5
+
+      layer.trainable = False
+      model.compile('sgd', 'mse')
+      assert not model.updates
+
+      x1 = model.predict(val_a)
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      self.assertAllClose(x1, x2, atol=1e-7)
 
 
 class LossWeightingTest(test.TestCase):
@@ -869,25 +931,6 @@ class TestGeneratorMethods(test.TestCase):
                                  use_multiprocessing=False,
                                  workers=0)
 
-        # Test legacy API
-        model.fit_generator(custom_generator(),
-                            steps_per_epoch=5,
-                            epochs=1,
-                            verbose=1,
-                            max_q_size=10,
-                            workers=4,
-                            pickle_safe=True)
-        model.predict_generator(custom_generator(),
-                                steps=5,
-                                max_q_size=10,
-                                workers=2,
-                                pickle_safe=True)
-        model.evaluate_generator(custom_generator(),
-                                 steps=5,
-                                 max_q_size=10,
-                                 workers=2,
-                                 pickle_safe=True)
-
   def test_generator_methods_with_sample_weights(self):
     arr_data = np.random.random((50, 2))
     arr_labels = np.random.random((50,))
@@ -960,7 +1003,7 @@ class TestGeneratorMethods(test.TestCase):
                             use_multiprocessing=False,
                             validation_data=custom_generator(),
                             validation_steps=10)
-      with self.assertRaises(TypeError):
+      with self.assertRaises(AttributeError):
         model.predict_generator(custom_generator(),
                                 steps=5,
                                 max_queue_size=10,

@@ -27,6 +27,7 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
@@ -712,8 +713,8 @@ class Network(tf_network.GraphNetwork, Layer):
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 
-    self.internal_input_shapes = [K.int_shape(x) for x in self.inputs]
-    self.internal_output_shapes = [K.int_shape(x) for x in self.outputs]
+    self._internal_input_shapes = [K.int_shape(x) for x in self.inputs]
+    self._internal_output_shapes = [K.int_shape(x) for x in self.outputs]
 
   @property
   def uses_learning_phase(self):
@@ -1303,18 +1304,17 @@ def preprocess_weights_for_loading(layer,
   Returns:
       A list of weights values (Numpy arrays).
   """
+  if layer.__class__.__name__ == 'Bidirectional':
+    num_weights_per_layer = len(weights) // 2
+    forward_weights = preprocess_weights_for_loading(
+        layer.forward_layer, weights[:num_weights_per_layer],
+        original_keras_version, original_backend)
+    backward_weights = preprocess_weights_for_loading(
+        layer.backward_layer, weights[num_weights_per_layer:],
+        original_keras_version, original_backend)
+    weights = forward_weights + backward_weights
+
   if original_keras_version == '1':
-    if layer.__class__.__name__ == 'Bidirectional':
-      num_weights_per_layer = len(weights) // 2
-
-      forward_weights = preprocess_weights_for_loading(
-          layer.forward_layer, weights[:num_weights_per_layer],
-          original_keras_version, original_backend)
-      backward_weights = preprocess_weights_for_loading(
-          layer.backward_layer, weights[num_weights_per_layer:],
-          original_keras_version, original_backend)
-      weights = forward_weights + backward_weights
-
     if layer.__class__.__name__ == 'TimeDistributed':
       weights = preprocess_weights_for_loading(
           layer.layer, weights, original_keras_version, original_backend)
@@ -1418,7 +1418,7 @@ def preprocess_weights_for_loading(layer,
 
   conv_layers = ['Conv1D', 'Conv2D', 'Conv3D', 'Conv2DTranspose', 'ConvLSTM2D']
   if layer.__class__.__name__ in conv_layers:
-    if original_backend and K.backend() != original_backend:
+    if original_backend == 'theano':
       weights[0] = conv_utils.convert_kernel(weights[0])
       if layer.__class__.__name__ == 'ConvLSTM2D':
         weights[1] = conv_utils.convert_kernel(weights[1])
@@ -1427,10 +1427,9 @@ def preprocess_weights_for_loading(layer,
       if layer.__class__.__name__ == 'ConvLSTM2D':
         weights[1] = np.transpose(weights[1], (3, 2, 0, 1))
 
-  # convert the weights of CuDNNLSTM so that they could be loaded into LSTM
+  # Convert the weights of CuDNNLSTM so that they could be loaded into LSTM
   if layer.__class__.__name__ == 'LSTM' and len(weights) == 3:
-    # determine if we're loading a CuDNNLSTM layer from the number of bias
-    # weights:
+    # Determine if loading a CuDNNLSTM layer from the number of bias weights:
     # CuDNNLSTM has (units * 8) weights; while LSTM has (units * 4)
     # if there's no bias weight in the file, skip this conversion
     units = weights[1].shape[0]
@@ -1572,3 +1571,31 @@ def load_weights_from_hdf5_group_by_name(f, layers):
       for i in range(len(weight_values)):
         weight_value_tuples.append((symbolic_weights[i], weight_values[i]))
   K.batch_set_value(weight_value_tuples)
+
+
+def shape_type_conversion(fn):
+  """Decorator that handles tuple/TensorShape conversion.
+
+  Used in `compute_output_shape` and `build`.
+
+  Arguments:
+    fn: function to wrap.
+
+  Returns:
+    Wrapped function.
+  """
+
+  def wrapper(instance, input_shape):
+    if input_shape is not None:
+      if isinstance(input_shape, list):
+        input_shape = [
+            tuple(tensor_shape.TensorShape(x).as_list()) for x in input_shape]
+      else:
+        input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
+    output_shape = fn(instance, input_shape)
+    if output_shape is not None:
+      if isinstance(output_shape, list):
+        return [tensor_shape.TensorShape(x) for x in output_shape]
+      return tensor_shape.TensorShape(output_shape)
+
+  return wrapper

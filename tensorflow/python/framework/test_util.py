@@ -53,6 +53,7 @@ from tensorflow.python.eager import tape
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
@@ -1460,3 +1461,14 @@ def get_node_def_from_graph(node_name, graph_def):
     if node_def.name == node_name:
       return node_def
   return None
+
+
+def set_producer_version(graph, producer_version):
+  """Sets graph.graph_def_versions.producer to `producer_version`."""
+  # The C API doesn't expose altering GraphDefVersions. We can indirectly set
+  # it via import_graph_def though.
+  graph_def = graph_pb2.GraphDef()
+  graph_def.versions.producer = producer_version
+  with graph.as_default():
+    importer.import_graph_def(graph_def)
+  assert graph.graph_def_versions.producer, producer_version
