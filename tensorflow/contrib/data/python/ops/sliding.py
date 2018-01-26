@@ -39,7 +39,7 @@ class _SlideDataset(dataset_ops.Dataset):
       stride, dtype=dtypes.int64, name="stride")
 
   def _as_variant_tensor(self):
-    return gen_dataset_ops.slide_dataset(  # pylint: disable=protected-access
+    return gen_dataset_ops.slide_dataset(
       self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
       window_size=self._window_size,
       stride=self._stride,

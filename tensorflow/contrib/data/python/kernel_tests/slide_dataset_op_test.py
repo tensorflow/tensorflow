@@ -17,7 +17,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
@@ -191,7 +190,7 @@ class SlideDatasetTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(init_op)
-      # slide: 1st batch.
+      # Slide: 1st batch.
       actual = sess.run(get_next)
       expected = sparse_tensor.SparseTensorValue(
         indices=[[0, 0, 0], [0, 1, 0], [0, 2, 0], [0, 3, 0],
@@ -201,7 +200,7 @@ class SlideDatasetTest(test.TestCase):
         dense_shape=[3, 4, 1])
       self.assertTrue(sparse_tensor.is_sparse(actual))
       self.assertSparseValuesEqual(actual, expected)
-      # slide: 2nd batch.
+      # Slide: 2nd batch.
       actual = sess.run(get_next)
       expected = sparse_tensor.SparseTensorValue(
         indices=[[0, 0, 0], [0, 1, 0], [0, 2, 0], [0, 3, 0],
