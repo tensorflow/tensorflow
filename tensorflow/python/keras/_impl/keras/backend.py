@@ -1419,7 +1419,7 @@ def max(x, axis=None, keepdims=False):
   Returns:
       A tensor with maximum values of `x`.
   """
-  return math_ops.reduce_max(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_max(x, axis=axis, keepdims=keepdims)
 
 
 def min(x, axis=None, keepdims=False):
@@ -1436,7 +1436,7 @@ def min(x, axis=None, keepdims=False):
   Returns:
       A tensor with miminum values of `x`.
   """
-  return math_ops.reduce_min(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_min(x, axis=axis, keepdims=keepdims)
 
 
 def sum(x, axis=None, keepdims=False):
@@ -1453,7 +1453,7 @@ def sum(x, axis=None, keepdims=False):
   Returns:
       A tensor with sum of `x`.
   """
-  return math_ops.reduce_sum(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_sum(x, axis=axis, keepdims=keepdims)
 
 
 def prod(x, axis=None, keepdims=False):
@@ -1470,7 +1470,7 @@ def prod(x, axis=None, keepdims=False):
   Returns:
       A tensor with the product of elements of `x`.
   """
-  return math_ops.reduce_prod(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_prod(x, axis=axis, keepdims=keepdims)
 
 
 def cumsum(x, axis=0):
@@ -1515,10 +1515,10 @@ def var(x, axis=None, keepdims=False):
   """
   if x.dtype.base_dtype == dtypes_module.bool:
     x = math_ops.cast(x, floatx())
-  m = math_ops.reduce_mean(x, axis=axis, keep_dims=True)
+  m = math_ops.reduce_mean(x, axis=axis, keepdims=True)
   devs_squared = math_ops.square(x - m)
   return math_ops.reduce_mean(
-      devs_squared, axis=axis, keep_dims=keepdims)
+      devs_squared, axis=axis, keepdims=keepdims)
 
 
 def std(x, axis=None, keepdims=False):
@@ -1546,7 +1546,7 @@ def mean(x, axis=None, keepdims=False):
       axis: A list of integer. Axes to compute the mean.
       keepdims: A boolean, whether to keep the dimensions or not.
           If `keepdims` is `False`, the rank of the tensor is reduced
-          by 1 for each entry in `axis`. If `keep_dims` is `True`,
+          by 1 for each entry in `axis`. If `keepdims` is `True`,
           the reduced dimensions are retained with length 1.
 
   Returns:
@@ -1554,7 +1554,7 @@ def mean(x, axis=None, keepdims=False):
   """
   if x.dtype.base_dtype == dtypes_module.bool:
     x = math_ops.cast(x, floatx())
-  return math_ops.reduce_mean(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_mean(x, axis=axis, keepdims=keepdims)
 
 
 def any(x, axis=None, keepdims=False):
@@ -1569,7 +1569,7 @@ def any(x, axis=None, keepdims=False):
       A uint8 tensor (0s and 1s).
   """
   x = math_ops.cast(x, dtypes_module.bool)
-  return math_ops.reduce_any(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_any(x, axis=axis, keepdims=keepdims)
 
 
 def all(x, axis=None, keepdims=False):
@@ -1584,7 +1584,7 @@ def all(x, axis=None, keepdims=False):
       A uint8 tensor (0s and 1s).
   """
   x = math_ops.cast(x, dtypes_module.bool)
-  return math_ops.reduce_all(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_all(x, axis=axis, keepdims=keepdims)
 
 
 def argmax(x, axis=-1):
@@ -1694,7 +1694,7 @@ def logsumexp(x, axis=None, keepdims=False):
   Returns:
       The reduced tensor.
   """
-  return math_ops.reduce_logsumexp(x, axis=axis, keep_dims=keepdims)
+  return math_ops.reduce_logsumexp(x, axis=axis, keepdims=keepdims)
 
 
 def round(x):
@@ -1899,7 +1899,7 @@ def normalize_batch_in_training(x, gamma, beta, reduction_axes, epsilon=1e-3):
       A tuple length of 3, `(normalized_tensor, mean, variance)`.
   """
   mean, var = nn.moments(
-      x, reduction_axes, shift=None, name=None, keep_dims=False)
+      x, reduction_axes, shift=None, name=None, keepdims=False)
   if sorted(reduction_axes) == list(range(ndim(x)))[:-1]:
     normed = nn.batch_normalization(x, mean, var, beta, gamma, epsilon)
   else:
@@ -3083,7 +3083,7 @@ def categorical_crossentropy(target, output, from_logits=False):
   if not from_logits:
     # scale preds so that the class probas of each sample sum to 1
     output /= math_ops.reduce_sum(
-        output, axis=len(output.get_shape()) - 1, keep_dims=True)
+        output, axis=len(output.get_shape()) - 1, keepdims=True)
     # manual computation of crossentropy
     epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
     output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
