@@ -38,7 +38,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 namespace {
 
@@ -1885,7 +1885,7 @@ BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);
 
 }  // namespace
 
-#else  // INTEL_MKL_DNN
+#else  // INTEL_MKL_ML
 
 namespace {
 
@@ -3503,7 +3503,7 @@ BENCHMARK(BM_MklLayoutRewritePass)->Arg(1000)->Arg(10000);
 
 }  // namespace
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
 }  // namespace tensorflow
 
