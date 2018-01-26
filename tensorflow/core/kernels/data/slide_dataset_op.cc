@@ -31,27 +31,27 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 slide_size = 0;
+    int64 window_size = 0;
     int64 slide_step = 1;
     OP_REQUIRES_OK(ctx,
-                   ParseScalarArgument<int64>(ctx, "slide_size", &slide_size));
+                   ParseScalarArgument<int64>(ctx, "window_size", &window_size));
     OP_REQUIRES_OK(ctx,
                    ParseScalarArgument<int64>(ctx, "slide_step", &slide_step));
     OP_REQUIRES(
-        ctx, slide_size > 0,
+        ctx, window_size > 0,
         errors::InvalidArgument("Slide size must be greater than zero."));
     OP_REQUIRES(
-        ctx, slide_step > 0 && slide_step < slide_size,
+        ctx, slide_step > 0 && slide_step < window_size,
         errors::InvalidArgument("Slide step must be in [1, size)."));
 
-    *output = new Dataset(ctx, slide_size, slide_step, input);
+    *output = new Dataset(ctx, window_size, slide_step, input);
   }
 
  private:
   class Dataset : public GraphDatasetBase {
    public:
-    Dataset(OpKernelContext* ctx, int64 slide_size, int64 slide_step, const DatasetBase* input)
-        : GraphDatasetBase(ctx), slide_size_(slide_size), slide_step_(slide_step), input_(input) {
+    Dataset(OpKernelContext* ctx, int64 window_size, int64 slide_step, const DatasetBase* input)
+        : GraphDatasetBase(ctx), window_size_(window_size), slide_step_(slide_step), input_(input) {
       input_->Ref();
 
       const auto& input_shapes = input_->output_shapes();
@@ -79,7 +79,7 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
     }
 
     string DebugString() override {
-      return strings::StrCat("SlideDatasetOp(", slide_size_, ", ", slide_step_, ")::Dataset");
+      return strings::StrCat("SlideDatasetOp(", window_size_, ", ", slide_step_, ")::Dataset");
     }
 
    protected:
@@ -87,12 +87,12 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
                               Node** output) const override {
       Node* input_graph_node = nullptr;
       TF_RETURN_IF_ERROR(b->AddParentDataset(ctx, input_, &input_graph_node));
-      Node* slide_size = nullptr;
+      Node* window_size = nullptr;
       Node* slide_step = nullptr;
-      TF_RETURN_IF_ERROR(b->AddScalar(slide_size_, &slide_size));
+      TF_RETURN_IF_ERROR(b->AddScalar(window_size_, &window_size));
       TF_RETURN_IF_ERROR(b->AddScalar(slide_step_, &slide_step));
       TF_RETURN_IF_ERROR(
-          b->AddDataset(this, {input_graph_node, slide_size, slide_step}, output));
+          b->AddDataset(this, {input_graph_node, window_size, slide_step}, output));
       return Status::OK();
     }
 
@@ -107,7 +107,7 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
       Status GetNextInternal(IteratorContext* ctx,
                              std::vector<Tensor>* out_tensors,
                              bool* end_of_sequence) override {
-        const int64 slide_size = dataset()->slide_size_;
+        const int64 window_size = dataset()->window_size_;
         const int64 slide_step = dataset()->slide_step_;
         std::vector<std::vector<Tensor>> batch_elements;
         {
@@ -116,17 +116,17 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
             *end_of_sequence = true;
             return Status::OK();
           }
-          batch_elements.reserve(slide_size);
+          batch_elements.reserve(window_size);
           const bool first_call = cache_.empty();
           if (first_call) {
-            cache_.reserve(slide_size);
+            cache_.reserve(window_size);
           } else {
             // Reuse cache in previous iteration.
             cache_.swap(batch_elements);
           }
           // Fill up with new elements.
           *end_of_sequence = false;
-          for (size_t i = batch_elements.size(); i < slide_size && !*end_of_sequence;
+          for (size_t i = batch_elements.size(); i < window_size && !*end_of_sequence;
               ++i) {
             std::vector<Tensor> batch_element_tuple;
             TF_RETURN_IF_ERROR(input_impl_->GetNext(ctx, &batch_element_tuple,
@@ -138,13 +138,13 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
             }
           }
 
-          if (batch_elements.size() < slide_size) {
+          if (batch_elements.size() < window_size) {
             DCHECK(*end_of_sequence);
             return Status::OK();
           }
 
           // Cache the data used in next iteration.
-          for (size_t i = slide_step; i < slide_size; ++i) {
+          for (size_t i = slide_step; i < window_size; ++i) {
             cache_.emplace_back(batch_elements[i]);
           }
         }
@@ -238,7 +238,7 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
       std::unique_ptr<IteratorBase> input_impl_ GUARDED_BY(mu_);
     };
 
-    const int64 slide_size_;
+    const int64 window_size_;
     const int64 slide_step_;
     const DatasetBase* const input_;
     std::vector<PartialTensorShape> output_shapes_;

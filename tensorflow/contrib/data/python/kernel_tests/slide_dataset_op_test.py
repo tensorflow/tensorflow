@@ -35,13 +35,13 @@ class SlideDatasetTest(test.TestCase):
   def testSlideDataset(self):
     """Test an dataset that maps a TF function across its input elements."""
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
-    # RepeatDataset(count) -> SlideDataset(slide_size, slide_step).
+    # RepeatDataset(count) -> SlideDataset(window_size, slide_step).
     components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
                   np.array(37.0) * np.arange(7))
 
     count = array_ops.placeholder(dtypes.int64, shape=[])
-    slide_size = array_ops.placeholder(dtypes.int64, shape=[])
+    window_size = array_ops.placeholder(dtypes.int64, shape=[])
     slide_step = array_ops.placeholder(dtypes.int64, shape=[])
 
     def _map_fn(x, y, z):
@@ -49,7 +49,7 @@ class SlideDatasetTest(test.TestCase):
 
     iterator = (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
                 .repeat(count)
-                .apply(sliding.sliding_window_batch(slide_size, slide_step))
+                .apply(sliding.sliding_window_batch(window_size, slide_step))
                 .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
@@ -58,9 +58,9 @@ class SlideDatasetTest(test.TestCase):
                      [t.shape.as_list() for t in get_next])
 
     with self.test_session() as sess:
-      # Batch of a finite input, where the slide_size divides the
+      # Batch of a finite input, where the window_size divides the
       # total number of elements.
-      sess.run(init_op, feed_dict={count: 20, slide_size: 14, slide_step: 7})
+      sess.run(init_op, feed_dict={count: 20, window_size: 14, slide_step: 7})
       # Same formula with convolution layer.
       num_batches = (20 * 7 - 14) // 7 + 1
       for i in range(num_batches):
@@ -72,9 +72,9 @@ class SlideDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-      # Slide of a finite input, where the slide_size does not
+      # Slide of a finite input, where the window_size does not
       # divide the total number of elements.
-      sess.run(init_op, feed_dict={count: 20, slide_size: 17, slide_step: 9})
+      sess.run(init_op, feed_dict={count: 20, window_size: 17, slide_step: 9})
 
       num_batches = (20 * 7 - 17) // 9 + 1
       for i in range(num_batches):
@@ -86,31 +86,31 @@ class SlideDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-      # Slide of input, which is less than slide_size, should fail straight away.
-      sess.run(init_op, feed_dict={count: 1, slide_size: 10, slide_step: 4})
+      # Slide of input, which is less than window_size, should fail straight away.
+      sess.run(init_op, feed_dict={count: 1, window_size: 10, slide_step: 4})
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-      sess.run(init_op, feed_dict={count: 1, slide_size: 10, slide_step: 8})
+      sess.run(init_op, feed_dict={count: 1, window_size: 10, slide_step: 8})
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
       # Slide of an empty input should fail straight away.
-      sess.run(init_op, feed_dict={count: 0, slide_size: 8, slide_step: 4})
+      sess.run(init_op, feed_dict={count: 0, window_size: 8, slide_step: 4})
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-      # Empty slide_size should be an initialization time error.
+      # Empty window_size should be an initialization time error.
       with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(init_op, feed_dict={count: 14, slide_size: 0, slide_step: 0})
+        sess.run(init_op, feed_dict={count: 14, window_size: 0, slide_step: 0})
 
       # Invalid slide_step should be an initialization time error.
       with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(init_op, feed_dict={count: 14, slide_size: 3, slide_step: 0})
+        sess.run(init_op, feed_dict={count: 14, window_size: 3, slide_step: 0})
       with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(init_op, feed_dict={count: 14, slide_size: 3, slide_step: 3})
+        sess.run(init_op, feed_dict={count: 14, window_size: 3, slide_step: 3})
       with self.assertRaises(errors.InvalidArgumentError):
-        sess.run(init_op, feed_dict={count: 14, slide_size: 3, slide_step: 5})
+        sess.run(init_op, feed_dict={count: 14, window_size: 3, slide_step: 5})
 
   def assertSparseValuesEqual(self, a, b):
     self.assertAllEqual(a.indices, b.indices)
