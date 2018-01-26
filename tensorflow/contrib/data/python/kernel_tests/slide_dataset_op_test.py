@@ -214,6 +214,7 @@ class SlideDatasetTest(test.TestCase):
         sess.run(get_next)
 
   def testSlideShapeError(self):
+
     def generator():
       yield [1.0, 2.0, 3.0]
       yield [4.0, 5.0, 6.0]

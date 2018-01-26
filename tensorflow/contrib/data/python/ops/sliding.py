@@ -27,7 +27,7 @@ from tensorflow.python.ops import gen_dataset_ops
 
 
 class _SlideDataset(dataset_ops.Dataset):
-  """A `Dataset` that slides a fixed window on its input."""
+  """A `Dataset` that passes a sliding window over its input."""
 
   def __init__(self, input_dataset, window_size, stride=1):
     """See `sliding_window_batch` for details."""
@@ -68,10 +68,10 @@ class _SlideDataset(dataset_ops.Dataset):
 def sliding_window_batch(window_size, stride=1):
   """A sliding window with size of `window_size` and step of `stride`.
 
-  This transformation passes a sliding window over this dataset. The window
-  size is `window_size` and step size is `stride`. If the left elements
-  cannot fill up the sliding window, this transformation will drop the
-  final smaller element. For example:
+  This transformation passes a sliding window over this dataset. The
+  window size is `window_size` and step size is `stride`. If the left
+  elements cannot fill up the sliding window, this transformation will
+  drop the final smaller element. For example:
 
   ```python
   # NOTE: The following examples use `{ ... }` to represent the
@@ -87,10 +87,10 @@ def sliding_window_batch(window_size, stride=1):
 
   Args:
     window_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
-      elements in the window.
+      elements in the sliding window.
     stride: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
-      steps moving forward for one iteration. The default is `1`. It must be
-      in [1, `window_size`).
+      steps moving the sliding window forward for one iteration. The default
+      is `1`. It must be in `[1, window_size)`.
 
   Returns:
     A `Dataset` transformation function, which can be passed to

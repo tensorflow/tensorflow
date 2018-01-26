@@ -137,13 +137,12 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
               input_impl_.reset();
             }
           }
-
+          // Drop the final smaller blocks.
           if (batch_elements.size() < window_size) {
             DCHECK(*end_of_sequence);
             return Status::OK();
           }
-
-          // Cache the data used in the next iteration.
+          // Cache the data used for the next iteration.
           for (size_t i = stride; i < window_size; ++i) {
             cache_.emplace_back(batch_elements[i]);
           }

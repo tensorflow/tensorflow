@@ -413,7 +413,7 @@ Creates a dataset that passes a sliding window over `input_dataset`.
 window_size: A scalar representing the number of elements in the
   sliding window.
 stride: A scalar representing the steps moving the sliding window
-  forward in one iteration. It must be in [1, `window_size`).
+  forward in one iteration. It must be in `[1, window_size)`.
 )doc");
 
 REGISTER_OP("PaddedBatchDataset")
