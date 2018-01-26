@@ -812,7 +812,10 @@ def _dynamic_rnn_loop(cell,
     return (time + 1, output_ta_t, new_state)
 
   if in_graph_mode:
-    loop_bound = max_sequence_length
+    # Make sure that we run at least 1 step, if necessary, to ensure
+    # the TensorArrays pick up the dynamic shape.
+    loop_bound = math_ops.minimum(
+        time_steps, math_ops.maximum(1, max_sequence_length))
   else:
     # Using max_sequence_length isn't currently supported in the Eager branch.
     loop_bound = time_steps

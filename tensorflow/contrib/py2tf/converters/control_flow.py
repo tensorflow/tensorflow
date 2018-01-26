@@ -75,29 +75,6 @@ class ControlFlowTransformer(gast.NodeTransformer):
       raise ValueError(
           'The else branch creates new symbols that the if branch does not.')
 
-    def template(  # pylint:disable=missing-docstring
-        test,
-        body_name,
-        body,
-        orelse_name,
-        orelse,
-        aliased,
-        aliases,  # pylint:disable=unused-argument
-        aliased_results,
-        results):  # pylint:disable=unused-argument
-
-      def body_name():  # pylint:disable=function-redefined
-        aliases, = aliased,  # pylint:disable=unused-variable
-        body  # pylint:disable=pointless-statement
-        return (aliased_results,)
-
-      def orelse_name():  # pylint:disable=function-redefined
-        aliases, = aliased,  # pylint:disable=unused-variable
-        orelse  # pylint:disable=pointless-statement
-        return (aliased_results,)
-
-      results = tf.cond(test, body_name, orelse_name)  # pylint:disable=undefined-variable
-
     all_modified = tuple(body_scope.modified | orelse_scope.modified)
     all_referenced = body_scope.referenced | orelse_scope.referenced
 
@@ -107,10 +84,10 @@ class ControlFlowTransformer(gast.NodeTransformer):
     need_alias = (
         (body_scope.modified | orelse_scope.modified) -
         (body_scope.created | orelse_scope.created))
-    aliased = tuple(need_alias)
-    aliases = tuple(
-        self.namer.new_symbol(s, all_referenced) for s in aliased)
-    alias_map = dict(zip(aliased, aliases))
+    aliased_orig_names = tuple(need_alias)
+    aliased_new_names = tuple(
+        self.namer.new_symbol(s, all_referenced) for s in aliased_orig_names)
+    alias_map = dict(zip(aliased_orig_names, aliased_new_names))
     node_body = node.body
     node_body = [SymbolRenamer(alias_map).visit(n) for n in node_body]
     node_orelse = node.orelse
@@ -122,20 +99,29 @@ class ControlFlowTransformer(gast.NodeTransformer):
       results = gast.Tuple(
           tuple(gast.Name(s, None, None) for s in all_modified), None)
 
+    template = """
+      def body_name():
+        aliased_new_names, = aliased_orig_names,
+        body
+        return (all_results,)
+      def orelse_name():
+        aliased_new_names, = aliased_orig_names,
+        orelse
+        return (all_results,)
+      results = tf.cond(test, body_name, orelse_name)
+    """
+    body_name = self.namer.new_symbol('if_true', all_referenced)
     return templates.replace(
         template,
         test=node.test,
-        body_name=gast.Name(
-            self.namer.new_symbol('if_true', all_referenced), None, None),
+        body_name=body_name,
         body=node_body,
-        orelse_name=gast.Name(
-            self.namer.new_symbol('if_false', all_referenced), None, None),
+        orelse_name=self.namer.new_symbol('if_false', all_referenced),
         orelse=node_orelse,
-        aliased=tuple(gast.Name(s, None, None) for s in aliased),
-        aliases=tuple(gast.Name(s, None, None) for s in aliases),
-        aliased_results=tuple(
-            gast.Name(alias_map[s] if s in aliased else s, None, None)
-            for s in all_modified),
+        aliased_orig_names=tuple(aliased_orig_names),
+        aliased_new_names=tuple(aliased_new_names),
+        all_results=tuple(alias_map[s] if s in aliased_orig_names else s
+                          for s in all_modified),
         results=results)
 
   def visit_While(self, node):
@@ -144,38 +130,28 @@ class ControlFlowTransformer(gast.NodeTransformer):
     body_scope = anno.getanno(node, 'body_scope')
     body_closure = tuple(body_scope.modified - body_scope.created)
 
-    def template(
-        state,  # pylint:disable=unused-argument
-        state_ast_tuple,  # pylint:disable=unused-argument
-        test_name,
-        test,  # pylint:disable=unused-argument
-        body_name,
-        body):
-
-      def test_name(state):  # pylint:disable=function-redefined,unused-argument
-        return test
-
-      def body_name(state):  # pylint:disable=function-redefined,unused-argument
-        body  # pylint:disable=pointless-statement
-        return state,
-
-      state_ast_tuple = tf.while_loop(test_name, body_name, [state])  # pylint:disable=undefined-variable
-
-    test_name = self.namer.new_symbol('loop_test', body_scope.referenced)
-    body_name = self.namer.new_symbol('loop_body', body_scope.referenced)
     if len(body_closure) == 1:
-      state = gast.Name(body_closure[0], None, None)
+      state = body_closure[0]
       state_ast_tuple = state
     else:
-      state = tuple(gast.Name(n, None, None) for n in body_closure)
-      state_ast_tuple = gast.Tuple(state, None)
+      state = tuple(body_closure)
+      state_ast_tuple = gast.Tuple(
+          tuple(gast.Name(n, None, None) for n in state), None)
+    template = """
+      def test_name(state):
+        return test
+      def body_name(state):
+        body
+        return state,
+      state_ast_tuple = tf.while_loop(test_name, body_name, [state])
+    """
     node = templates.replace(
         template,
         state=state,
         state_ast_tuple=state_ast_tuple,
-        test_name=gast.Name(test_name, gast.Load(), None),
+        test_name=self.namer.new_symbol('loop_test', body_scope.referenced),
         test=node.test,
-        body_name=gast.Name(body_name, gast.Load(), None),
+        body_name=self.namer.new_symbol('loop_body', body_scope.referenced),
         body=node.body)
 
     return node

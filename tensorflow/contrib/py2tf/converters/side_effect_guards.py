@@ -96,12 +96,10 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
     return node
 
   def _gate_symbols(self, guard_statement, guarded_args):
-
-    def template(args):  # pylint:disable=unused-argument
-      (args,) = (tf.identity(a) for a in (args,))  # pylint:disable=undefined-variable
-
-    guards = templates.replace(
-        template, args=tuple(gast.Name(a, None, None) for a in guarded_args))
+    template = """
+      (args,) = (tf.identity(a) for a in (args,))
+    """
+    guards = templates.replace(template, args=tuple(guarded_args))
     guard_statement.body.extend(guards)
     return guard_statement
 
@@ -112,29 +110,25 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
       #   opt.minimize(loss)
       # or:
       #   tf.py_func(...)
-
       args_scope = anno.getanno(node.value, 'args_scope')
       temp_name = self.namer.new_symbol('temp', args_scope.parent.referenced)
       # TODO(mdan): Unsafe reference modification!
       args_scope.mark_write(temp_name)
-
-      def template(call, temp_result):
+      template = """
         temp_result = call
         if temp_result is not None:
           if not isinstance(temp_result, (list, tuple)):
             temp_result = (temp_result,)
-          ctx = tf.control_dependencies(temp_result)  # pylint:disable=undefined-variable
+          ctx = tf.control_dependencies(temp_result)
         else:
           ctx = contextmanager(lambda: (yield))()
         with ctx:
           # TODO(mdan): Also insert ops to re-fetch if variables are involved.
           pass  # Will be removed below.
-
-      # TODO(mdan): This is brittle. Reorganize this mechanism.
+      """
+      # TODO(mdan): This is brittle. Reorganize the mechanism.
       statements = templates.replace(
-          template,
-          call=node.value,
-          temp_result=gast.Name(temp_name, None, None))
+          template, call=node.value, temp_result=temp_name)
       control_deps_guard = statements[-1]
       control_deps_guard.body = []
 

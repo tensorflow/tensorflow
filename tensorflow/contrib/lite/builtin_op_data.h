@@ -167,8 +167,6 @@ typedef struct {
 } TfLiteLSTMParams;
 
 typedef struct {
-  int new_height;
-  int new_width;
 } TfLiteResizeBilinearParams;
 
 typedef struct {

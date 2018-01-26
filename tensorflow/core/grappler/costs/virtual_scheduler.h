@@ -139,8 +139,8 @@ class FIFOManager : public ReadyNodeManager {
  public:
   FIFOManager() : ReadyNodeManager() {}
   ~FIFOManager() override {}
-  virtual void Init(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state) {}
+  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
+      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override {
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";

@@ -339,9 +339,9 @@ def streaming_mean_tensor(values,
       name=name)
 
 
-@deprecated(
-    None, 'Please switch to tf.metrics.accuracy. Note that the order of the '
-    'labels and predictions arguments has been switched.')
+@deprecated(None,
+            'Please switch to tf.metrics.accuracy. Note that the order of the '
+            'labels and predictions arguments has been switched.')
 def streaming_accuracy(predictions,
                        labels,
                        weights=None,
@@ -936,8 +936,9 @@ def streaming_curve_points(labels=None,
     if curve != 'ROC' and curve != 'PR':
       raise ValueError('curve must be either ROC or PR, %s unknown' % (curve))
     kepsilon = _EPSILON  # to account for floating point imprecisions
-    thresholds = [(i + 1) * 1.0 / (num_thresholds - 1)
-                  for i in range(num_thresholds - 2)]
+    thresholds = [
+        (i + 1) * 1.0 / (num_thresholds - 1) for i in range(num_thresholds - 2)
+    ]
     thresholds = [0.0 - kepsilon] + thresholds + [1.0 + kepsilon]
 
     values, update_ops = _streaming_confusion_matrix_at_thresholds(
@@ -973,9 +974,8 @@ def streaming_curve_points(labels=None,
     return points, update_op
 
 
-@deprecated(
-    None, 'Please switch to tf.metrics.auc. Note that the order of the '
-    'labels and predictions arguments has been switched.')
+@deprecated(None, 'Please switch to tf.metrics.auc. Note that the order of the '
+            'labels and predictions arguments has been switched.')
 def streaming_auc(predictions,
                   labels,
                   weights=None,
@@ -1105,8 +1105,7 @@ def _compute_dynamic_auc(labels, predictions, curve='ROC'):
       # For conformance, set precision to 1 when the number of positive
       # classifications is 0.
       y_axis_values = array_ops.where(
-          math_ops.greater(splits, 0),
-          math_ops.truediv(true_positives, splits),
+          math_ops.greater(splits, 0), math_ops.truediv(true_positives, splits),
           array_ops.ones_like(true_positives, dtype=dtypes.float64))
 
     # Calculate trapezoid areas.
@@ -1119,9 +1118,8 @@ def _compute_dynamic_auc(labels, predictions, curve='ROC'):
   # exception seems excessive) so we return 0, otherwise we finish computing.
   return control_flow_ops.cond(
       math_ops.logical_or(
-          math_ops.equal(total_positive, 0),
-          math_ops.equal(total_positive, size)
-      ),
+          math_ops.equal(total_positive, 0), math_ops.equal(
+              total_positive, size)),
       true_fn=lambda: array_ops.constant(0, dtypes.float64),
       false_fn=continue_computing_dynamic_auc)
 
@@ -1185,10 +1183,10 @@ def streaming_dynamic_auc(labels,
             array_ops.ones_like(labels, dtypes.int64),
             message='labels must be 0 or 1, at least one is >1')
     ]):
-      preds_accum, update_preds = streaming_concat(predictions,
-                                                   name='concat_preds')
-      labels_accum, update_labels = streaming_concat(labels,
-                                                     name='concat_labels')
+      preds_accum, update_preds = streaming_concat(
+          predictions, name='concat_preds')
+      labels_accum, update_labels = streaming_concat(
+          labels, name='concat_labels')
       update_op = control_flow_ops.group(update_labels, update_preds)
       auc = _compute_dynamic_auc(labels_accum, preds_accum, curve=curve)
       if updates_collections:
@@ -1571,9 +1569,9 @@ def streaming_precision_at_thresholds(predictions,
       name=name)
 
 
-@deprecated(
-    None, 'Please switch to tf.metrics.recall_at_thresholds. Note that the '
-    'order of the labels and predictions arguments has been switched.')
+@deprecated(None,
+            'Please switch to tf.metrics.recall_at_thresholds. Note that the '
+            'order of the labels and predictions arguments has been switched.')
 def streaming_recall_at_thresholds(predictions,
                                    labels,
                                    thresholds,
@@ -3299,8 +3297,13 @@ def count(values,
     return count_, update_op
 
 
-def cohen_kappa(labels, predictions_idx, num_classes, weights=None,
-                metrics_collections=None, updates_collections=None, name=None):
+def cohen_kappa(labels,
+                predictions_idx,
+                num_classes,
+                weights=None,
+                metrics_collections=None,
+                updates_collections=None,
+                name=None):
   """Calculates Cohen's kappa.
 
   [Cohen's kappa](https://en.wikipedia.org/wiki/Cohen's_kappa) is a statistic
@@ -3367,14 +3370,15 @@ def cohen_kappa(labels, predictions_idx, num_classes, weights=None,
       labels = array_ops.squeeze(labels, axis=[-1])
     predictions_idx, labels, weights = (
         metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
-            predictions=predictions_idx, labels=labels, weights=weights))
+            predictions=predictions_idx,
+            labels=labels,
+            weights=weights))
     predictions_idx.get_shape().assert_is_compatible_with(labels.get_shape())
 
-    stat_dtype = (dtypes.int64
-                  if weights is None or weights.dtype.is_integer
-                  else dtypes.float32)
-    po = metrics_impl.metric_variable(
-        (num_classes,), stat_dtype, name='po')
+    stat_dtype = (
+        dtypes.int64
+        if weights is None or weights.dtype.is_integer else dtypes.float32)
+    po = metrics_impl.metric_variable((num_classes,), stat_dtype, name='po')
     pe_row = metrics_impl.metric_variable(
         (num_classes,), stat_dtype, name='pe_row')
     pe_col = metrics_impl.metric_variable(
@@ -3382,9 +3386,12 @@ def cohen_kappa(labels, predictions_idx, num_classes, weights=None,
 
     # Table of the counts of agreement:
     counts_in_table = confusion_matrix.confusion_matrix(
-      labels, predictions_idx,
-      num_classes=num_classes, weights=weights,
-      dtype=stat_dtype, name="counts_in_table")
+        labels,
+        predictions_idx,
+        num_classes=num_classes,
+        weights=weights,
+        dtype=stat_dtype,
+        name='counts_in_table')
 
     po_t = array_ops.diag_part(counts_in_table)
     pe_row_t = math_ops.reduce_sum(counts_in_table, axis=0)
@@ -3404,12 +3411,14 @@ def cohen_kappa(labels, predictions_idx, num_classes, weights=None,
                                math_ops.to_double(total))
       # kappa = (po - pe) / (N - pe)
       k = metrics_impl._safe_scalar_div(  # pylint: disable=protected-access
-          po_sum - pe_sum, total - pe_sum, name=name)
+          po_sum - pe_sum,
+          total - pe_sum,
+          name=name)
       return k
 
     kappa = _calculate_k(po, pe_row, pe_col, name='value')
-    update_op = _calculate_k(update_po, update_pe_row, update_pe_col,
-                             name='update_op')
+    update_op = _calculate_k(
+        update_po, update_pe_row, update_pe_col, name='update_op')
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, kappa)
