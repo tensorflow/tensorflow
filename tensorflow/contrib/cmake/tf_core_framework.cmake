@@ -203,10 +203,10 @@ file(GLOB tf_core_platform_srcs
     "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.h"
     "${tensorflow_source_dir}/tensorflow/core/framework/resource_handle.cc")
 if (NOT tensorflow_ENABLE_GPU)
-  file(GLOB tf_core_platform_gpu_srcs
+  file(GLOB tf_core_platform_gpu_srcs_exclude
       "${tensorflow_source_dir}/tensorflow/core/platform/cuda_libdevice_path.*"
       "${tensorflow_source_dir}/tensorflow/core/platform/default/cuda_libdevice_path.*")
-  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs})
+  list(REMOVE_ITEM tf_core_platform_srcs ${tf_core_platform_gpu_srcs_exclude})
 else()
   file(GLOB tf_core_platform_srcs_exclude
       "${tensorflow_source_dir}/tensorflow/core/platform/default/device_tracer.cc")
