@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Batching dataset transformations."""
+"""Sliding dataset transformations."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -88,9 +88,9 @@ def sliding_window_batch(window_size, stride=1):
   Args:
     window_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
       elements in the window.
-    stride: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing
-      the steps moving forward for one iteration. The default is `1`. It
-      must be in [1, `window_size`).
+    stride: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
+      steps moving forward for one iteration. The default is `1`. It must be
+      in [1, `window_size`).
 
   Returns:
     A `Dataset` transformation function, which can be passed to

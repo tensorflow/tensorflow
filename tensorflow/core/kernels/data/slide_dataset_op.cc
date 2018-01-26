@@ -39,10 +39,10 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
                    ParseScalarArgument<int64>(ctx, "stride", &stride));
     OP_REQUIRES(
         ctx, window_size > 0,
-        errors::InvalidArgument("Slide size must be greater than zero."));
+        errors::InvalidArgument("Window size must be greater than zero."));
     OP_REQUIRES(
         ctx, stride > 0 && stride < window_size,
-        errors::InvalidArgument("Slide step must be in [1, size)."));
+        errors::InvalidArgument("Stride must be in [1, window_size)."));
 
     *output = new Dataset(ctx, window_size, stride, input);
   }
@@ -121,7 +121,7 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
           if (first_call) {
             cache_.reserve(window_size);
           } else {
-            // Reuse cache in previous iteration.
+            // Reuse cache in the previous iteration.
             cache_.swap(batch_elements);
           }
           // Fill up with new elements.
@@ -143,7 +143,7 @@ class SlideDatasetOp : public UnaryDatasetOpKernel {
             return Status::OK();
           }
 
-          // Cache the data used in next iteration.
+          // Cache the data used in the next iteration.
           for (size_t i = stride; i < window_size; ++i) {
             cache_.emplace_back(batch_elements[i]);
           }

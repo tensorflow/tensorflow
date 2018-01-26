@@ -34,8 +34,6 @@ class SlideDatasetTest(test.TestCase):
 
   def testSlideDataset(self):
     """Test an dataset that maps a TF function across its input elements."""
-    # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
-    # RepeatDataset(count) -> SlideDataset(window_size, stride).
     components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
                   np.array(37.0) * np.arange(7))
@@ -47,6 +45,8 @@ class SlideDatasetTest(test.TestCase):
     def _map_fn(x, y, z):
       return math_ops.square(x), math_ops.square(y), math_ops.square(z)
 
+    # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
+    # RepeatDataset(count) -> _SlideDataset(window_size, stride).
     iterator = (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
                 .repeat(count)
                 .apply(sliding.sliding_window_batch(window_size, stride))
@@ -58,7 +58,7 @@ class SlideDatasetTest(test.TestCase):
                      [t.shape.as_list() for t in get_next])
 
     with self.test_session() as sess:
-      # Batch of a finite input, where the window_size divides the
+      # Slide over a finite input, where the window_size divides the
       # total number of elements.
       sess.run(init_op, feed_dict={count: 20, window_size: 14, stride: 7})
       # Same formula with convolution layer.
@@ -72,7 +72,7 @@ class SlideDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-      # Slide of a finite input, where the window_size does not
+      # Slide over a finite input, where the window_size does not
       # divide the total number of elements.
       sess.run(init_op, feed_dict={count: 20, window_size: 17, stride: 9})
 
@@ -86,7 +86,8 @@ class SlideDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-      # Slide of input, which is less than window_size, should fail straight away.
+      # Slide over a finite input, which is less than window_size,
+      # should fail straight away.
       sess.run(init_op, feed_dict={count: 1, window_size: 10, stride: 4})
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
@@ -95,7 +96,7 @@ class SlideDatasetTest(test.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-      # Slide of an empty input should fail straight away.
+      # Slide over an empty input should fail straight away.
       sess.run(init_op, feed_dict={count: 0, window_size: 8, stride: 4})
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
