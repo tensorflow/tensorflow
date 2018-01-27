@@ -24,12 +24,12 @@ limitations under the License.
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#if !defined(_MSC_VER)
-#define UNROLL _Pragma("unroll")
-#define NOUNROLL _Pragma("nounroll")
-#else
+#if defined(_MSC_VER) && !defined(__clang__)
 #define UNROLL
 #define NOUNROLL
+#else
+#define UNROLL _Pragma("unroll")
+#define NOUNROLL _Pragma("nounroll")
 #endif
 
 namespace tensorflow {
