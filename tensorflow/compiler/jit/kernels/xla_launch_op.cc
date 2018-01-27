@@ -45,7 +45,7 @@ namespace tensorflow {
 // see comment on `AllowsAsynchronousDeallocation()`.
 class XlaAllocator : public xla::DeviceMemoryAllocator {
  public:
-  XlaAllocator(gpu::Platform* platform, OpKernelContext* op_context);
+  XlaAllocator(const gpu::Platform* platform, OpKernelContext* op_context);
   ~XlaAllocator() override;
   xla::StatusOr<gpu::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
                                                 bool retry_on_failure) override;
@@ -79,7 +79,8 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
   std::unordered_map<void*, Tensor> tensors_;
 };
 
-XlaAllocator::XlaAllocator(gpu::Platform* platform, OpKernelContext* op_context)
+XlaAllocator::XlaAllocator(const gpu::Platform* platform,
+                           OpKernelContext* op_context)
     : xla::DeviceMemoryAllocator(platform), op_context_(op_context) {}
 
 XlaAllocator::~XlaAllocator() = default;
