@@ -60,17 +60,3 @@ py_binary(
         "//tensorflow:tensorflow_py",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "bin/**",
-            "gen/**",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

@@ -20,20 +20,6 @@ load(
     "tf_proto_library",
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 tf_kernel_library(
     name = "bigquery_reader_ops",
     srcs = ["bigquery_reader_ops.cc"],

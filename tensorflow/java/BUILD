@@ -385,15 +385,3 @@ genrule(
     cmd = "cp $< $@",
     output_to_bindir = 1,
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)

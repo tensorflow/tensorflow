@@ -3664,18 +3664,6 @@ cc_library(
 # -----------------------------------------------------------------------------
 # Google-internal targets go here (must be at the end).
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 alias(
     name = "android_srcs_no_runtime",
     actual = ":mobile_srcs_no_runtime",

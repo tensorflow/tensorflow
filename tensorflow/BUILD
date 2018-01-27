@@ -394,19 +394,6 @@ package_group(
     ],
 )
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-            "g3doc/sitemap.md",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "tensorflow_py",
     srcs = ["__init__.py"],

@@ -4,18 +4,6 @@ exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        ["**/*"],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
 py_library(
     name = "pyct",
     srcs = [

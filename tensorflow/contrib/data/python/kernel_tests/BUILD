@@ -492,17 +492,3 @@ py_test(
         "//tensorflow/python/data/ops:iterator_ops",
     ],
 )
-
-filegroup(
-    name = "all_files",
-    srcs = glob(
-        include = [
-            "**/*",
-        ],
-        exclude = [
-            "**/METADATA",
-            "**/OWNERS",
-        ],
-    ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
