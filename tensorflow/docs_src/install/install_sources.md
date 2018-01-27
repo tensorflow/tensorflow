@@ -133,7 +133,7 @@ The following NVIDIA <i>hardware</i> must be installed on your system:
 
 The following NVIDIA <i>software</i> must be installed on your system:
 
-  * NVIDIA's Cuda Toolkit (>= 7.0). We recommend version 8.0.
+  * NVIDIA's Cuda Toolkit (>= 7.0). We recommend version 9.0.
     For details, see
     [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/#axzz4VZnqTJ2A).
     Ensure that you append the relevant Cuda pathnames to the
@@ -291,11 +291,11 @@ Do you wish to build TensorFlow with CUDA support? [y/N] <b>Y</b>
 CUDA support will be enabled for TensorFlow
 Do you want to use clang as CUDA compiler? [y/N]
 nvcc will be used as CUDA compiler
-Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: <b>8.0</b>
-Please specify the location where CUDA 8.0 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
+Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 9.0]: <b>9.0</b>
+Please specify the location where CUDA 9.0 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
 Please specify which gcc should be used by nvcc as the host compiler. [Default is /usr/bin/gcc]:
-Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: <b>6</b>
-Please specify the location where cuDNN 6 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
+Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 7.0]: <b>7</b>
+Please specify the location where cuDNN 7 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
 Please specify a list of comma-separated Cuda compute capabilities you want to build with.
 You can find the compute capability of your device at: https://developer.nvidia.com/cuda-gpus.
 Please note that each additional compute capability significantly increases your build time and binary size.
