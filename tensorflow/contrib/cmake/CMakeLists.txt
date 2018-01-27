@@ -2,7 +2,7 @@
 cmake_minimum_required(VERSION 3.5)
 
 # Project
-project(tensorflow C CXX)
+project(tensorflow VERSION 1.5.0 LANGUAGES C CXX)
 
 # Set C++14 as standard for the whole project
 set(CMAKE_CXX_STANDARD 14)
@@ -134,9 +134,6 @@ if(WIN32)
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /D_ITERATOR_DEBUG_LEVEL=0")
-
-  # Try to avoid flaky failures due to failed generation of generate.stamp files.
-  set(CMAKE_SUPPRESS_REGENERATION ON)
 endif()
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
