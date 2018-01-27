@@ -73,7 +73,7 @@ TEST(BasicFlatBufferModel, TestNonExistantFiles) {
 // Make sure a model with nothing in it loads properly.
 TEST(BasicFlatBufferModel, TestEmptyModelsAndNullDestination) {
   auto model = FlatBufferModel::BuildFromFile(
-      "C:\\Development\\tensorflow\\tensorflow\\contrib\\lite\\testdata\\empty_model.bin");
+      "tensorflow/contrib/lite/testdata/empty_model.bin");
   ASSERT_TRUE(model);
   // Now try to build it into a model.
   std::unique_ptr<Interpreter> interpreter;
@@ -87,14 +87,14 @@ TEST(BasicFlatBufferModel, TestEmptyModelsAndNullDestination) {
 // TODO(aselle): Replace this test when multiple subgraphs are supported.
 TEST(BasicFlatBufferModel, TestZeroAndMultipleSubgraphs) {
   auto m1 = FlatBufferModel::BuildFromFile(
-      "C:\\Development\\tensorflow\\tensorflow\\contrib\\lite\\testdata\\0_subgraphs.bin");
+      "tensorflow/contrib/lite/testdata/0_subgraphs.bin");
   ASSERT_TRUE(m1);
   std::unique_ptr<Interpreter> interpreter1;
   ASSERT_NE(InterpreterBuilder(*m1, TrivialResolver())(&interpreter1),
             kTfLiteOk);
 
   auto m2 = FlatBufferModel::BuildFromFile(
-      "C:\\Development\\tensorflow\\tensorflow\\contrib\\lite\\testdata\\2_subgraphs.bin");
+      "tensorflow/contrib/lite/testdata/2_subgraphs.bin");
   ASSERT_TRUE(m2);
   std::unique_ptr<Interpreter> interpreter2;
   ASSERT_NE(InterpreterBuilder(*m2, TrivialResolver())(&interpreter2),
@@ -104,7 +104,7 @@ TEST(BasicFlatBufferModel, TestZeroAndMultipleSubgraphs) {
 // Test what happens if we cannot bind any of the ops.
 TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
   auto model = FlatBufferModel::BuildFromFile(
-      "C:\\Development\\tensorflow\\tensorflow\\contrib\\lite\\testdata\\test_model.bin");
+      "tensorflow/contrib/lite/testdata/test_model.bin");
   ASSERT_TRUE(model);
   // Check that we get an error code and interpreter pointer is reset.
   std::unique_ptr<Interpreter> interpreter(new Interpreter);
@@ -116,7 +116,7 @@ TEST(BasicFlatBufferModel, TestModelWithoutNullRegistrations) {
 // Make sure model is read to interpreter propelrly
 TEST(BasicFlatBufferModel, TestModelInInterpreter) {
   auto model = FlatBufferModel::BuildFromFile(
-      "C:\\Development\\tensorflow\\tensorflow\\contrib\\lite\\testdata\\test_model.bin");
+      "tensorflow/contrib/lite/testdata/test_model.bin");
   ASSERT_TRUE(model);
   // Check that we get an error code and interpreter pointer is reset.
   std::unique_ptr<Interpreter> interpreter(new Interpreter);
@@ -196,7 +196,7 @@ TEST(BasicFlatBufferModel, TestModelInInterpreter) {
 // buffer. But the buffer is provided to be only 1 element.
 TEST(BasicFlatBufferModel, TestBrokenMmap) {
   ASSERT_FALSE(FlatBufferModel::BuildFromFile(
-      "C:\\Development\\tensorflow\\tensorflow\\contrib\\lite\\testdata\\test_model_broken.bin"));
+      "tensorflow/contrib/lite/testdata/test_model_broken.bin"));
 }
 
 TEST(BasicFlatBufferModel, TestNullModel) {
@@ -221,7 +221,7 @@ struct TestErrorReporter : public ErrorReporter {
 TEST(BasicFlatBufferModel, TestCustomErrorReporter) {
   TestErrorReporter reporter;
   auto model = FlatBufferModel::BuildFromFile(
-      "C:\\Development\\tensorflow\\tensorflow\\contrib\\lite\\testdata\\empty_model.bin",
+      "tensorflow/contrib/lite/testdata/empty_model.bin",
       &reporter);
   ASSERT_TRUE(model);
 
@@ -236,7 +236,7 @@ TEST(BasicFlatBufferModel, TestCustomErrorReporter) {
 // the Interpreter.
 TEST(BasicFlatBufferModel, TestNullErrorReporter) {
   auto model = FlatBufferModel::BuildFromFile(
-      "C:\\Development\\tensorflow\\tensorflow\\contrib\\lite\\testdata\\empty_model.bin", nullptr);
+      "tensorflow/contrib/lite/testdata/empty_model.bin", nullptr);
   ASSERT_TRUE(model);
 
   std::unique_ptr<Interpreter> interpreter;
@@ -257,7 +257,7 @@ TEST(BasicFlatBufferModel, TestBuildModelFromCorruptedData) {
 TEST(BasicFlatBufferModel, TestBuildFromModel) {
   TestErrorReporter reporter;
   FileCopyAllocation model_allocation(
-      "C:\\Development\\tensorflow\\tensorflow\\contrib\\lite\\testdata\\test_model.bin", &reporter);
+      "tensorflow/contrib/lite/testdata/test_model.bin", &reporter);
   ASSERT_TRUE(model_allocation.valid());
   ::flatbuffers::Verifier verifier(
       reinterpret_cast<const uint8_t*>(model_allocation.base()),
