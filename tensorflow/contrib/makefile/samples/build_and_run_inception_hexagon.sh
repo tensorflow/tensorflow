@@ -76,6 +76,8 @@ GEN_LIBS_DIR="${GEN_DIR}/libs"
 GEN_DOWNLOAD_DIR="${GEN_DIR}/downloads"
 URL_BASE="https://storage.googleapis.com/download.tensorflow.org"
 
+ARCH="armeabi-v7a"
+
 source "${SCRIPT_DIR}/../build_helper.subr"
 
 rm -rf "${GEN_DIR}"
@@ -219,7 +221,7 @@ if [[ "${BUILD_ONLY}" != "true" ]]; then
     adb push "${GEN_LIBS_DIR}/libhexagon_nn_skel.so" "/vendor/lib/rfsa/adsp"
 
     adb push -p \
-        "${TF_ROOT_DIR}/tensorflow/contrib/makefile/gen/bin/hexagon_graph_execution" \
+        "${TF_ROOT_DIR}/tensorflow/contrib/makefile/gen/bin/android_${ARCH}/hexagon_graph_execution" \
         "/data/local/tmp/"
     adb wait-for-device
     adb shell chmod "${ANDROID_EXEC_FILE_MODE}" \

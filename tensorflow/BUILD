@@ -211,6 +211,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "with_kafka_support",
+    define_values = {"with_kafka_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Crosses between platforms and file system libraries not supported on those
 # platforms due to limitations in nested select() statements.
 config_setting(
@@ -367,6 +373,14 @@ config_setting(
 config_setting(
     name = "override_eigen_strong_inline",
     values = {"define": "override_eigen_strong_inline=true"},
+    visibility = ["//visibility:public"],
+)
+
+# TODO(laigd): consider removing this option and make TensorRT enabled
+# automatically when CUDA is enabled.
+config_setting(
+    name = "with_tensorrt_support",
+    values = {"define": "with_tensorrt_support=true"},
     visibility = ["//visibility:public"],
 )
 
@@ -566,6 +580,7 @@ filegroup(
         "//tensorflow/contrib/tensor_forest/proto:all_files",
         "//tensorflow/contrib/tensorboard:all_files",
         "//tensorflow/contrib/tensorboard/db:all_files",
+        "//tensorflow/contrib/tensorrt:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/text:all_files",
         "//tensorflow/contrib/tfprof:all_files",

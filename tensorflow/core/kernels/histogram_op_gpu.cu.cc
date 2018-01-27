@@ -17,16 +17,16 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
-#include "tensorflow/core/kernels/histogram_op.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "external/cub_archive/cub/device/device_histogram.cuh"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/kernels/histogram_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -104,8 +104,8 @@ struct HistogramFixedWidthFunctor<GPUDevice, T, Tout> {
         /* num_samples */ num_samples,
         /* stream */ stream);
     if (err != cudaSuccess) {
-      return errors::Internal("Could not launch HistogramRange: ",
-                              cudaGetErrorString(err), ".");
+      return errors::Internal(
+          "Could not launch HistogramRange: ", cudaGetErrorString(err), ".");
     }
 
     return Status::OK();

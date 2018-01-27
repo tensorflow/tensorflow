@@ -78,6 +78,9 @@ struct Costs {
     MilliSeconds asMilliSeconds() const {
       return std::chrono::duration_cast<std::chrono::milliseconds>(*this);
     }
+    static NanoSeconds infinity() {
+      return NanoSeconds(std::chrono::nanoseconds::max());
+    }
   };
 
   // We store all our times in nanoseconds. If needs be, we can always switch to
@@ -85,10 +88,7 @@ struct Costs {
   typedef NanoSeconds Duration;
 
   // Overall cost of running the graph; latency.
-  // Mean
   Duration execution_time;
-  Duration min_execution_time;
-  Duration max_execution_time;
 
   // Computation cost of running the graph.
   Duration compute_time;
@@ -100,6 +100,8 @@ struct Costs {
   // requirements of a graph. For example, it might assume that all activations
   // are live for all of a graph's execution.
   int64 max_memory;  // Maximum main memory requirement in bytes over all ops.
+  int64 persistent_memory;
+  int64 temporary_memory;
 
   // These fields are used for TPU-related estimations. They are per-op
   // maximums, so each op is evaluated independently, but we want the maximum of
@@ -132,6 +134,8 @@ Costs::Costs() {
   compute_time = Duration::zero();
   memory_time = Duration::zero();
   max_memory = kMemoryUnknown;
+  persistent_memory = kMemoryUnknown;
+  temporary_memory = kMemoryUnknown;
   max_per_op_buffers = kMemoryUnknown;
   max_per_op_streaming = kMemoryUnknown;
 }
@@ -142,6 +146,8 @@ Costs Costs::ZeroCosts() {
   costs.compute_time = Duration::zero();
   costs.memory_time = Duration::zero();
   costs.max_memory = kZeroMemory;
+  costs.persistent_memory = kZeroMemory;
+  costs.temporary_memory = kZeroMemory;
   costs.max_per_op_buffers = kZeroMemory;
   costs.max_per_op_streaming = kZeroMemory;
   return costs;

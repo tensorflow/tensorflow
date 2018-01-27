@@ -35,7 +35,7 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
 using mkldnn::engine;
@@ -324,7 +324,7 @@ class MklShape {
       nullptr;  // TF dimension corresponding to this MKL dimension
 };
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 
 // Forward decl
 TensorFormat MklDnnDataFormatToTFDataFormat(memory::format format);
@@ -659,7 +659,7 @@ class MklDnnShape {
 
 typedef std::vector<MklShape> MklShapeList;
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 typedef std::vector<MklDnnShape> MklDnnShapeList;
 #endif
 
@@ -673,7 +673,7 @@ inline bool AreAllMklTensors(const MklShapeList& shapes) {
   return true;
 }
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 template <typename T>
 inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
                              const MklShape& mkl_shape) {
@@ -724,7 +724,7 @@ inline void GetMklShape(OpKernelContext* ctext, int n, MklShape* mklshape) {
           sizeof(uint8));
 }
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 inline void GetMklShape(OpKernelContext* ctext, int n, MklDnnShape* mklshape) {
   mklshape->DeSerializeMklDnnShape(
       ctext->input(GetTensorMetaDataIndex(n, ctext->num_inputs()))
@@ -749,7 +749,7 @@ inline void GetMklInputList(OpKernelContext* ctext, StringPiece name,
 }
 
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
                             MklShapeList* mkl_shapes) {
@@ -779,7 +779,7 @@ inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
 
 #endif
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 /// Get shape of input tensor pointed by 'input_idx' in TensorShape format.
 /// If the input tensor is in MKL layout, then obtains TensorShape from
 /// MklShape.
@@ -814,7 +814,7 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
       second_tensor->flat<uint8>().size() * sizeof(uint8));
 }
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 // Allocate the second output tensor that will contain
 // the MKL shape serialized
 inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
@@ -851,7 +851,7 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
       second_tensor->flat<uint8>().size() * sizeof(uint8));
 }
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 // Allocate the output tensor, create a second output tensor that will contain
 // the MKL shape serialized
 inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
@@ -875,7 +875,7 @@ inline void AllocateOutputSetMklShape(OpKernelContext* ctext, int n,
 
 // Allocates a temp tensor and returns the data buffer for temporary storage.
 // Currently
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 template <typename T>
 inline void AllocTmpBuffer(OpKernelContext* context, Tensor* tensor_out,
                            const memory::primitive_desc& pd, void** buf_out) {
@@ -994,7 +994,7 @@ inline void CopyMklTensorInToOut(OpKernelContext* context,
   context->set_output(idx_meta_out, meta_output);
 }
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 inline void CopyTfTensorInToOutWithShape(OpKernelContext* context,
                                          int idx_in, int idx_out,
                                          const TensorShape& shape) {
@@ -1032,7 +1032,7 @@ inline void CopyTfTensorInToOutWithShape(OpKernelContext* context,
 }
 #endif
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 inline void ForwardTfTensorInToOut(OpKernelContext* context,
                                   int idx_in, int idx_out) {
@@ -1090,7 +1090,7 @@ inline void ForwardMklTensorInToOut(OpKernelContext* context,
   }
 }
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 inline void ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
                                              int idx_in, int idx_out,
                                              const MklDnnShape& mkl_shape) {
@@ -1132,7 +1132,7 @@ inline void SetDummyMklShapeOutput(OpKernelContext* context,
   AllocateOutputSetMklShape(context, idx_data_out, mkl_shape_output);
 }
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 // We don't need these functions in MKLDNN. We have defined equality operator
 // on MklDnnShape class directly.
 
@@ -1242,7 +1242,7 @@ inline void MklNCHWToNHWC(const Tensor& input, Tensor** output) {
 
 // -------------------------------------------------------------------
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 
 /// Return MKL-DNN data type (memory::data_type) for input type T
 ///
@@ -1753,7 +1753,7 @@ class MklDnnData {
   }
 };
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL

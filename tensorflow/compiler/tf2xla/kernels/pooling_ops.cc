@@ -37,21 +37,23 @@ class PoolingOp : public XlaOpKernel {
  public:
   PoolingOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
-    std::vector<int32> ksize_int;
-    std::vector<int32> stride_int;
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_int));
-    OP_REQUIRES(ctx, ksize_int.size() == num_dims(),
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify ",
-                                        num_dims(), " dimensions"));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_int));
-    OP_REQUIRES(ctx, stride_int.size() == num_dims(),
-                errors::InvalidArgument("Sliding window stride field must "
-                                        "specify ",
-                                        num_dims(), " dimensions"));
-    for (int i = 0; i < num_dims(); ++i) {
-      ksize_.push_back(ksize_int[i]);
-      stride_.push_back(stride_int[i]);
+    if (ctx->num_inputs() == 1) {
+      std::vector<int32> ksize_int;
+      std::vector<int32> stride_int;
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_int));
+      OP_REQUIRES(ctx, ksize_int.size() == num_dims(),
+                  errors::InvalidArgument("Sliding window ksize field must "
+                                          "specify ",
+                                          num_dims(), " dimensions"));
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_int));
+      OP_REQUIRES(ctx, stride_int.size() == num_dims(),
+                  errors::InvalidArgument("Sliding window stride field must "
+                                          "specify ",
+                                          num_dims(), " dimensions"));
+      for (int i = 0; i < num_dims(); ++i) {
+        ksize_.push_back(ksize_int[i]);
+        stride_.push_back(stride_int[i]);
+      }
     }
     Padding padding;
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding));
@@ -77,6 +79,33 @@ class PoolingOp : public XlaOpKernel {
     xla::ComputationDataHandle input = ctx->Input(0);
     const TensorShape input_shape = ctx->InputShape(0);
 
+    std::vector<int64> ksize = ksize_;
+    std::vector<int64> stride = stride_;
+    if (ctx->num_inputs() != 1) {
+      const TensorShape ksize_shape = ctx->InputShape(1);
+      // Validate input sizes.
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(ksize_shape),
+                  errors::InvalidArgument("ksize must be a vector, not shape ",
+                                          ksize_shape.DebugString()));
+      OP_REQUIRES(ctx, ksize_shape.num_elements() == num_dims(),
+                  errors::InvalidArgument("Sliding window ksize field must "
+                                          "specify ",
+                                          num_dims(), " dimensions"));
+      ksize.clear();
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(1, &ksize));
+
+      const TensorShape stride_shape = ctx->InputShape(2);
+      // Validate input sizes.
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(stride_shape),
+                  errors::InvalidArgument("stride must be a vector, not shape ",
+                                          stride_shape.DebugString()));
+      OP_REQUIRES(ctx, stride_shape.num_elements() == num_dims(),
+                  errors::InvalidArgument("Sliding window stride field must "
+                                          "specify ",
+                                          num_dims(), " dimensions"));
+      stride.clear();
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(2, &stride));
+    }
     OP_REQUIRES(ctx, input_shape.dims() == num_dims(),
                 errors::InvalidArgument("Input to ", type_string(),
                                         " operator must have ", num_dims(),
@@ -84,8 +113,8 @@ class PoolingOp : public XlaOpKernel {
 
     const DataType type = input_type(0);
     xla::ComputationDataHandle pooled = ctx->builder()->ReduceWindow(
-        input, InitValue(ctx->builder(), type), *Reduction(ctx, type), ksize_,
-        stride_, padding_);
+        input, InitValue(ctx->builder(), type), *Reduction(ctx, type), ksize,
+        stride, padding_);
     ctx->SetOutput(0, PostProcessOutput(ctx, pooled, type, input_shape));
   }
 
@@ -130,6 +159,10 @@ class MaxPool2DOp : public MaxPoolOp {
   }
 };
 REGISTER_XLA_OP(Name("MaxPool"), MaxPool2DOp);
+REGISTER_XLA_OP(Name("MaxPoolV2")
+                    .CompileTimeConstInput("ksize")
+                    .CompileTimeConstInput("strides"),
+                MaxPool2DOp);
 
 class MaxPool3DOp : public MaxPoolOp {
  public:

@@ -266,35 +266,6 @@ static void StringReplace(const string& from, const string& to, string* s) {
   *s = str_util::Join(split, to.c_str());
 }
 
-static void RenameInDocs(const string& from, const string& to, OpDef* op_def) {
-  const string from_quoted = strings::StrCat("`", from, "`");
-  const string to_quoted = strings::StrCat("`", to, "`");
-  for (int i = 0; i < op_def->input_arg_size(); ++i) {
-    if (!op_def->input_arg(i).description().empty()) {
-      StringReplace(from_quoted, to_quoted,
-                    op_def->mutable_input_arg(i)->mutable_description());
-    }
-  }
-  for (int i = 0; i < op_def->output_arg_size(); ++i) {
-    if (!op_def->output_arg(i).description().empty()) {
-      StringReplace(from_quoted, to_quoted,
-                    op_def->mutable_output_arg(i)->mutable_description());
-    }
-  }
-  for (int i = 0; i < op_def->attr_size(); ++i) {
-    if (!op_def->attr(i).description().empty()) {
-      StringReplace(from_quoted, to_quoted,
-                    op_def->mutable_attr(i)->mutable_description());
-    }
-  }
-  if (!op_def->summary().empty()) {
-    StringReplace(from_quoted, to_quoted, op_def->mutable_summary());
-  }
-  if (!op_def->description().empty()) {
-    StringReplace(from_quoted, to_quoted, op_def->mutable_description());
-  }
-}
-
 static void RenameInDocs(const string& from, const string& to,
                          ApiDef* api_def) {
   const string from_quoted = strings::StrCat("`", from, "`");
@@ -324,7 +295,6 @@ static void RenameInDocs(const string& from, const string& to,
     StringReplace(from_quoted, to_quoted, api_def->mutable_description());
   }
 }
-
 
 namespace {
 

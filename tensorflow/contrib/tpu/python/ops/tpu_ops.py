@@ -47,7 +47,7 @@ if platform.system() != "Windows":
   # types are supported.
 
   _SUPPORTED_INFEED_DTYPES = set([
-      dtypes.int32, dtypes.bfloat16, dtypes.float32
+      dtypes.bool, dtypes.int32, dtypes.bfloat16, dtypes.float32
   ])
 
   def infeed_dequeue(dtype, shape, name=None):
