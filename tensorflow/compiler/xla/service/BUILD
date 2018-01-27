@@ -1112,8 +1112,6 @@ cc_library(
         ":hlo",
         ":hlo_evaluator",
         ":hlo_pass",
-        ":tuple_util",
-        ":while_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
     ],
