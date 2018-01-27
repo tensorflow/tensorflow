@@ -20,10 +20,10 @@ limitations under the License.
 
 #include <stddef.h>
 #include <stdint.h>
-#if defined(WIN32)
-#include "extras/CUPTI/include/cupti.h"
-#else
+#if defined(PLATFORM_GOOGLE)
 #include "cuda/extras/CUPTI/include/cupti.h"
+#else
+#include "extras/CUPTI/include/cupti.h"
 #endif
 namespace perftools {
 namespace gputools {
