@@ -1,8 +1,5 @@
-#include <algorithm>
 #include <cmath>
-#include <iostream>
 #include <limits>
-#include <random>
 
 #include <poplar/HalfFloat.hpp>
 #include <poplar/Vertex.hpp>
@@ -37,8 +34,8 @@ template class NAME<float>; \
 template class NAME<half>; \
 template class NAME<int>;
 
-REDUCTION_ELEMENTWISE(ReductionMax, std::numeric_limits<T>::lowest(), std::max(a[i], v))
-REDUCTION_ELEMENTWISE(ReductionMin, std::numeric_limits<T>::max(),    std::min(a[i], v))
+REDUCTION_ELEMENTWISE(ReductionMax, std::numeric_limits<T>::lowest(), ((a[i] > v) ? a[i] : v))
+REDUCTION_ELEMENTWISE(ReductionMin, std::numeric_limits<T>::max(),    ((a[i] < v) ? a[i] : v))
 REDUCTION_ELEMENTWISE(ReductionAdd, 0.0, v + a[i])
 REDUCTION_ELEMENTWISE(ReductionMul, 1.0, v * a[i])
 

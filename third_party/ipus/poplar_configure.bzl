@@ -14,6 +14,7 @@ def _poplar_autoconf_impl(repository_ctx):
     if not repository_ctx.path(poplar_base + "/lib").exists:
       fail("Cannot find poplar libary path.")
 
+    repository_ctx.symlink(poplar_base + "/colossus", "poplar/colossus")
     repository_ctx.symlink(poplar_base + "/include", "poplar/include")
     repository_ctx.symlink(poplar_base + "/lib", "poplar/lib")
     repository_ctx.symlink(poplar_base + "/bin", "poplar/bin")
