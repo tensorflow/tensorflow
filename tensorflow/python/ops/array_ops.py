@@ -1319,6 +1319,18 @@ def unique(x, out_idx=dtypes.int32, name=None):
 unique.__doc__ = gen_array_ops._unique.__doc__
 
 
+@tf_export("unique_with_counts")
+def unique_with_counts(x, out_idx=dtypes.int32, name=None):
+  # TODO(yongtang): switch to v2 once API deprecation
+  # period (3 weeks) pass.
+  # TODO(yongtang): The documentation should also
+  # be updated when switch  to v2.
+  return gen_array_ops._unique_with_counts(x, out_idx, name)
+
+
+unique_with_counts.__doc__ = gen_array_ops._unique_with_counts.__doc__
+
+
 @tf_export("split")
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor into sub tensors.
