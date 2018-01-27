@@ -155,9 +155,6 @@ add_library(tensorflow-lite STATIC
     )
 
 
-add_executable(testapp ${TENSORFLOW_LITE_ROOT_DIR}/testapp/testapp.cc)
-target_link_libraries(testapp tensorflow-lite)
-
 
 add_library(tensorflow-lite_test_util STATIC
     ${TENSORFLOW_LITE_KERNEL_DIR}/test_util.cc
