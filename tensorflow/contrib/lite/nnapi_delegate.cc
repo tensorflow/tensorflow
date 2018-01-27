@@ -19,13 +19,6 @@ limitations under the License.
 #include "tensorflow/contrib/lite/model.h"
 #include "tensorflow/contrib/lite/nnapi/NeuralNetworksShim.h"
 
-#ifdef _WIN32
-static constexpr void* MAP_FAILED = nullptr;
-#define PROT_READ (0x1)
-#else
-#include <sys/mman.h>
-
-#endif
 
 namespace tflite {
 

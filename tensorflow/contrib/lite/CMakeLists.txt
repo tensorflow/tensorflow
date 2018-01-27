@@ -44,24 +44,17 @@ macro(configure_msvc_runtime)
   endif()
 endmacro()
 
-configure_msvc_runtime()
-set(variables
-  CMAKE_C_FLAGS_DEBUG
-  CMAKE_C_FLAGS_MINSIZEREL
-  CMAKE_C_FLAGS_RELEASE
-  CMAKE_C_FLAGS_RELWITHDEBINFO
-  CMAKE_CXX_FLAGS_DEBUG
-  CMAKE_CXX_FLAGS_MINSIZEREL
-  CMAKE_CXX_FLAGS_RELEASE
-  CMAKE_CXX_FLAGS_RELWITHDEBINFO
-)
+
+
+
+
 
 
 # Set C++14 as standard for the whole project
 set(CMAKE_CXX_STANDARD 14)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}" )
 
-set(GTEST_LIB_DIR "${SDK_DIR}/googletest/lib")
+# set(GTEST_LIB_DIR "${SDK_DIR}/googletest/lib")
 
 set(TENSORFLOW_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../..")
 set(TENSORFLOW_LITE_ROOT_DIR "${TENSORFLOW_ROOT_DIR}/tensorflow/contrib/lite")
@@ -74,12 +67,29 @@ set(TENSORFLOW_LITE_FARMHASH_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/farmhash
 set(TENSORFLOW_LITE_GMOCK_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/googletest/googlemock/include")
 set(TENSORFLOW_LITE_GTEST_DIR "${TENSORFLOW_LITE_ROOT_DIR}/downloads/googletest/googletest/include")
 
+if (WIN32)
+    set(PLATFORM_ENV_TIME_SRC ${TENSORFLOW_ROOT_DIR}/tensorflow/core/platform/windows/env_time.cc)
+    configure_msvc_runtime()
+    set(variables
+      CMAKE_C_FLAGS_DEBUG
+      CMAKE_C_FLAGS_MINSIZEREL
+      CMAKE_C_FLAGS_RELEASE
+      CMAKE_C_FLAGS_RELWITHDEBINFO
+      CMAKE_CXX_FLAGS_DEBUG
+      CMAKE_CXX_FLAGS_MINSIZEREL
+      CMAKE_CXX_FLAGS_RELEASE
+      CMAKE_CXX_FLAGS_RELWITHDEBINFO
+    )
+else()
+    set(PLATFORM_ENV_TIME_SRC ${TENSORFLOW_ROOT_DIR}/tensorflow/core/platform/unix/env_time.cc)
+endif (WIN32)
+
+
 # TODO: SIMD Visual studio
 add_definitions(
     -DGEMMLOWP_ALLOW_SLOW_SCALAR_FALLBACK
     -DNOMINMAX
     -DFARMHASH_NO_BUILTIN_EXPECT)
-
 
 
 include_directories(${TENSORFLOW_ROOT_DIR}
@@ -147,12 +157,6 @@ add_library(tensorflow-lite STATIC
 
 add_executable(testapp ${TENSORFLOW_LITE_ROOT_DIR}/testapp/testapp.cc)
 target_link_libraries(testapp tensorflow-lite)
-
-if (WIN32)
-    set(PLATFORM_ENV_TIME_SRC ${TENSORFLOW_ROOT_DIR}/tensorflow/core/platform/windows/env_time.cc)
-else()
-    set(PLATFORM_ENV_TIME_SRC ${TENSORFLOW_ROOT_DIR}/tensorflow/core/platform/unix/env_time.cc)
-endif (WIN32)
 
 
 add_library(tensorflow-lite_test_util STATIC
