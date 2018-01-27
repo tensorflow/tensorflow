@@ -20,20 +20,20 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.specs import python
-from tensorflow.contrib.specs.python import specs_lib
 from tensorflow.contrib.specs.python import summaries
+
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.math_ops  # pylint: disable=unused-import
+from tensorflow.python.ops.spec_ops import Cr
+from tensorflow.python.ops.spec_ops import Fr
+from tensorflow.python.ops.spec_ops import Shared
+from tensorflow.python.ops.spec_ops import Var
 from tensorflow.python.platform import test
 
 specs = python
-Fun = specs_lib.Function
-Cr = Fun(layers.conv2d, activation_fn=nn_ops.relu)
 
 
 def _rand(*size):
