@@ -198,10 +198,7 @@ class SpecsTest(test.TestCase):
     self.assertTrue("z" in bindings)
     self.assertTrue("q" in bindings)
 
-  # XXX: the cleverness of this code is over 9000
-  # TODO: original author please fix
-  def DISABLED_testSpecsOps(self):
-    # pylint: disable=undefined-variable
+  def testSpecsOps(self):
     with self.assertRaises(NameError):
       _ = Cr
     with specs.ops:
@@ -210,12 +207,9 @@ class SpecsTest(test.TestCase):
     with self.assertRaises(NameError):
       _ = Cr
 
-  # XXX: the cleverness of this code is over 9000
-  # TODO: original author please fix
-  def DISABLED_testVar(self):
+  def testVar(self):
     with self.test_session() as sess:
       with specs.ops:
-        # pylint: disable=undefined-variable
         v = Var("test_var",
                 shape=[2, 2],
                 initializer=init_ops.constant_initializer(42.0))
@@ -227,12 +221,9 @@ class SpecsTest(test.TestCase):
       self.assertEqual(outputs_value.shape, (2, 2))
       self.assertEqual(outputs_value[1, 1], 42.0)
 
-  # XXX: the cleverness of this code is over 9000
-  # TODO: original author please fix
-  def DISABLED_testShared(self):
+  def testShared(self):
     with self.test_session():
       with specs.ops:
-        # pylint: disable=undefined-variable
         f = Shared(Fr(100))
         g = f | f | f | f
       inputs = constant_op.constant(_rand(10, 100))
