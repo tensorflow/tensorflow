@@ -1358,6 +1358,43 @@ void BufferAssigner::BuildColocatedBufferSets(
                   index, points_to_analysis, &colocated_set);
               AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
             });
+
+        // Add true_operand and conditional.true_computation.parameter(0) as a
+        // colocated buffer set. Note that this has to be done for each subshape
+        // in the true_operand of the conditional.
+        ShapeUtil::ForEachSubshape(
+            conditional_hlo->operand(1)->shape(),
+            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
+                const Shape& /*subshape*/, const ShapeIndex& index) {
+              std::vector<const LogicalBuffer*> true_set;
+              // Add conditional.true_operand.
+              AddBufferToColocatedSet(conditional_hlo->operand(1), index,
+                                      points_to_analysis, &true_set);
+              // Add conditional.true_computation.parameter_instruction(0).
+              AddBufferToColocatedSet(
+                  conditional_hlo->true_computation()->parameter_instruction(0),
+                  index, points_to_analysis, &true_set);
+              AddSetToColocatedBufferSets(true_set, colocated_buffer_sets);
+            });
+
+        // Add false_operand and conditional.false_computation.parameter(0) as a
+        // colocated buffer set. Note that this has to be done for each subshape
+        // in the false_operand of the conditional.
+        ShapeUtil::ForEachSubshape(
+            conditional_hlo->operand(2)->shape(),
+            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
+                const Shape& /*subshape*/, const ShapeIndex& index) {
+              std::vector<const LogicalBuffer*> false_set;
+              // Add conditional.false_operand.
+              AddBufferToColocatedSet(conditional_hlo->operand(2), index,
+                                      points_to_analysis, &false_set);
+              // Add conditional.false_computation.parameter_instruction(0).
+              AddBufferToColocatedSet(
+                  conditional_hlo->false_computation()->parameter_instruction(
+                      0),
+                  index, points_to_analysis, &false_set);
+              AddSetToColocatedBufferSets(false_set, colocated_buffer_sets);
+            });
       }
     }
   }

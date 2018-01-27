@@ -47,12 +47,14 @@ string GetCurrentTimeStampAsString() {
   return s;
 }
 
-ProfileResponse Profile(const string& service_addr, int duration_ms) {
+ProfileResponse Profile(const string& service_addr, int duration_ms,
+                        const ProfileOptions& opts) {
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
   request.set_max_events(kMaxEvents);
   request.add_tools("input_pipeline");
   request.add_tools("overview_page");
+  *request.mutable_opts() = opts;
   std::cout << "Limiting the number of trace events to " << kMaxEvents
             << std::endl;
   ::grpc::ClientContext context;
@@ -76,6 +78,7 @@ int main(int argc, char** argv) {
   tensorflow::string FLAGS_service_addr;
   tensorflow::string FLAGS_logdir;
   int FLAGS_duration_ms = 2000;
+  bool FLAGS_include_dataset_ops = true;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("service_addr", &FLAGS_service_addr,
                        "Address of TPU profiler service e.g. localhost:8466"),
@@ -83,6 +86,8 @@ int main(int argc, char** argv) {
                        "Path of TensorBoard log directory e.g. /tmp/tb_log"),
       tensorflow::Flag("duration_ms", &FLAGS_duration_ms,
                        "Duration of tracing in ms. Default is 2000ms."),
+      tensorflow::Flag("include_dataset_ops", &FLAGS_include_dataset_ops,
+                       "Set to false to profile longer TPU device traces."),
   };
 
   std::cout << "Welcome to the Cloud TPU Profiler v" << TPU_PROFILER_VERSION
@@ -97,8 +102,10 @@ int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
   int duration_ms = FLAGS_duration_ms;
+  tensorflow::ProfileOptions opts;
+  opts.set_include_dataset_ops(FLAGS_include_dataset_ops);
   tensorflow::ProfileResponse response =
-      tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms);
+      tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms, opts);
   // Use the current timestamp as the run name.
   tensorflow::string run = tensorflow::tpu::GetCurrentTimeStampAsString();
   TF_CHECK_OK(tensorflow::tpu::WriteTensorboardTPUProfile(

@@ -1155,9 +1155,9 @@ Status TopKShapeFn(InferenceContext* c) {
   DimensionHandle last_dim = c->Dim(input, -1);
   if (c->ValueKnown(last_dim) && c->ValueKnown(k_dim) &&
       c->Value(last_dim) < c->Value(k_dim)) {
-    return errors::InvalidArgument("input must have last dimension >= k = ",
-                                   c->Value(k_dim), " but is ",
-                                   c->Value(last_dim));
+    return errors::InvalidArgument(
+        "input must have last dimension >= k = ", c->Value(k_dim), " but is ",
+        c->Value(last_dim));
   }
 
   // Replace last_dim with k_dim.
@@ -1211,9 +1211,9 @@ REGISTER_OP("NthElement")
       DimensionHandle last_dim = c->Dim(input, -1);
       if (c->ValueKnown(last_dim) && c->ValueKnown(n_dim) &&
           c->Value(last_dim) <= c->Value(n_dim)) {
-        return errors::InvalidArgument("Input must have last dimension > n = ",
-                                       c->Value(n_dim), " but is ",
-                                       c->Value(last_dim));
+        return errors::InvalidArgument(
+            "Input must have last dimension > n = ", c->Value(n_dim),
+            " but is ", c->Value(last_dim));
       }
 
       // Reduce last_dim for output tensor
@@ -1818,7 +1818,7 @@ REGISTER_OP("_MklMaxPool")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Output("workspace: T")
 #else
     .Output("workspace: uint8")
@@ -1844,7 +1844,7 @@ REGISTER_OP("_MklMaxPoolGrad")
     .Input("orig_input: T")
     .Input("orig_output: T")
     .Input("grad: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Input("workspace: T")
 #else
     .Input("workspace: uint8")
@@ -1916,7 +1916,7 @@ REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Output("workspace: T")
 #else
     .Output("workspace: uint8")
@@ -1944,7 +1944,7 @@ REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Input("workspace: T")
 #else
     .Input("workspace: uint8")

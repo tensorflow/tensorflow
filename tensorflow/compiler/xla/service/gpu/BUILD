@@ -228,6 +228,7 @@ cc_library(
 cc_library(
     name = "gpu_executable",
     srcs = [
+        "conditional_thunk.cc",
         "convolution_thunk.cc",
         "copy_thunk.cc",
         "cudnn_batchnorm_thunk.cc",
@@ -243,6 +244,7 @@ cc_library(
         "while_thunk.cc",
     ],
     hdrs = [
+        "conditional_thunk.h",
         "convolution_thunk.h",
         "copy_thunk.h",
         "cudnn_batchnorm_thunk.h",

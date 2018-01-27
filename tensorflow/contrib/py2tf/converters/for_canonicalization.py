@@ -42,46 +42,40 @@ class ForLoopCanonicalizationTransformer(gast.NodeTransformer):
     # Or maybe we should replace range with tf.range?
 
     if anno.hasanno(node, 'extra_cond'):
-
-      def template(loop_iter, target, body, i, n, extra_cond):  # pylint:disable=unused-argument
+      template = """
         i = 0
-        n = len(loop_iter)  # pylint:disable=undefined-variable
+        n = len(loop_iter)
         while i < n and extra_cond:
           # TODO(mdan): Use TensorListFromTensor(loop_iter) here.
           target = loop_iter[i]
-          body  # pylint:disable=pointless-statement
+          body
           i += 1
-
+      """
       return templates.replace(
           template,
           loop_iter=node.iter,
           target=node.target,
           body=node.body,
-          i=gast.Name(
-              self.namer.new_symbol('i', body_scope.referenced), None, None),
-          n=gast.Name(
-              self.namer.new_symbol('n', body_scope.referenced), None, None),
+          i=self.namer.new_symbol('i', body_scope.referenced),
+          n=self.namer.new_symbol('n', body_scope.referenced),
           extra_cond=anno.getanno(node, 'extra_cond'))
     else:
-
-      def template(loop_iter, target, body, i, n):  # pylint:disable=unused-argument
+      template = """
         i = 0
-        n = len(loop_iter)  # pylint:disable=undefined-variable
+        n = len(loop_iter)
         while i < n:
           # TODO(mdan): Use TensorListFromTensor(loop_iter) here.
           target = loop_iter[i]
           body  # pylint:disable=pointless-statement
           i += 1
-
+      """
       return templates.replace(
           template,
           loop_iter=node.iter,
           target=node.target,
           body=node.body,
-          i=gast.Name(
-              self.namer.new_symbol('i', body_scope.referenced), None, None),
-          n=gast.Name(
-              self.namer.new_symbol('n', body_scope.referenced), None, None))
+          i=self.namer.new_symbol('i', body_scope.referenced),
+          n=self.namer.new_symbol('n', body_scope.referenced))
 
   def visit_Continue(self, node):
     assert False, 'continue statement should be desugared at this point'

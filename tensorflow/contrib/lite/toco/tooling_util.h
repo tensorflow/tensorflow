@@ -23,7 +23,6 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "google/protobuf/text_format.h"
 #include "tensorflow/core/platform/logging.h"
 #if TOCO_SUPPORT_PORTABLE_PROTOS
 #include "third_party/protobuf/src/google/protobuf/text_format.h"
@@ -83,25 +82,6 @@ string HelpfulOperatorTypeName(const Operator& op);
 void DumpGraphvizVideoFrame(const Model& model);
 void LogDump(int log_level, const string& message, const Model& model);
 void LogSummary(int log_level, const string& message, const Model& model);
-
-inline bool ParseFromStringOverload(const std::string& in,
-                                    TFLITE_PROTO_NS::Message* proto) {
-  return TFLITE_PROTO_NS::TextFormat::ParseFromString(in, proto);
-}
-
-template <typename Proto>
-bool ParseFromStringEitherTextOrBinary(const std::string& input_file_contents,
-                                       Proto* proto) {
-  if (proto->ParseFromString(input_file_contents)) {
-    return true;
-  }
-
-  if (ParseFromStringOverload(input_file_contents, proto)) {
-    return true;
-  }
-
-  return false;
-}
 
 // TODO(b/36075966): Clean up when dims superseded by array shape.
 void ExtendShape(Shape* shape, int new_shape_size);
@@ -297,6 +277,8 @@ bool IsDiscardableArray(const Model& model, const string& array_name);
 void CheckFinalDataTypesSatisfied(const Model& model);
 
 ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
+
+void UseArraysExtraInfo(Model* model);
 
 }  // namespace toco
 

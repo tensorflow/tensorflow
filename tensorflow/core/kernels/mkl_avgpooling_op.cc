@@ -24,24 +24,23 @@
 
 #include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
-using mkldnn::memory;
-using mkldnn::error;
-using mkldnn::pooling_forward;
-using mkldnn::pooling_backward;
-using mkldnn::padding_kind;
-using mkldnn::engine;
-using mkldnn::prop_kind;
 using mkldnn::algorithm;
+using mkldnn::engine;
+using mkldnn::error;
+using mkldnn::memory;
+using mkldnn::padding_kind;
+using mkldnn::pooling_backward;
+using mkldnn::pooling_forward;
+using mkldnn::prop_kind;
 #endif
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-// For now, MKL-ML is default. So making MKL-DNN not a default choice.
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 template <typename Device, typename T>
 class MklAvgPoolingOp : public OpKernel {
@@ -358,10 +357,11 @@ class MklAvgPoolingGradOp : public OpKernel {
       if (!outbackprop_in_mkl_format) {
         // For avgpooling, tensor_in_shape should have 1 dimension, and 4
         // elements.
-        OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
-                                 tensor_in_shape.NumElements() == 4,
-                    errors::InvalidArgument("original input shape must be "
-                                            "1-dimensional and 4 elements"));
+        OP_REQUIRES(
+            context,
+            tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
+            errors::InvalidArgument("original input shape must be "
+                                    "1-dimensional and 4 elements"));
 
         // For avgpooling, out_backprop should have 4 dimensions.
         OP_REQUIRES(context, out_backprop.dims() == 4,
@@ -429,13 +429,15 @@ class MklAvgPoolingGradOp : public OpKernel {
 };  // MklAvgPoolingGradOp
 
 
-#else  // INTEL_MKL_DNN is defined
+
+#else
+
 
 template <typename Device, typename T>
 class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
  public:
   explicit MklAvgPoolingOp(OpKernelConstruction* context)
-  : MklPoolingForwardOpBase<T>(context) {
+      : MklPoolingForwardOpBase<T>(context) {
     // Workspace is an MKLDNN construct that is only used in Max Pooling.
     // So set workspace_enabled_ to false.
     this->workspace_enabled_ = false;
@@ -444,8 +446,8 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
   void Compute(OpKernelContext* context) override {
     try {
       auto cpu_engine = engine(engine::cpu, 0);
-      const Tensor& input_tensor = MklGetInput(context,
-              this->kInputTensorIndexInput);
+      const Tensor& input_tensor =
+          MklGetInput(context, this->kInputTensorIndexInput);
       MklDnnShape dnn_shape_input;
       GetMklShape(context, this->kInputTensorIndexInput, &dnn_shape_input);
       this->SanityCheckInput(context, input_tensor, dnn_shape_input);
@@ -457,9 +459,8 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       // initialize variables for the pooling op
       MklPoolParameters pool_params;
       // Get the input tensor and initialize the pooling parameters
-      this->ConfigureInput(context, dnn_shape_input,
-                          input_tensor, &pool_params,
-                          &dnn_data_input);
+      this->ConfigureInput(context, dnn_shape_input, input_tensor, &pool_params,
+                           &dnn_data_input);
       OP_REQUIRES_OK(context, context->status());
 
       // Declare output tensor
@@ -470,56 +471,52 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
       // If input is in Mkl layout, then just get the memory format from it
       // directly, instead of using input data_format to AvgPool.
       if (dnn_shape_input.IsMklTensor()) {
-        dnn_data_output.SetUsrMem(output_dims_mkl_order,
-                static_cast<memory::format>(dnn_data_input.GetUsrMemDesc()
-                    .data.format));
+        dnn_data_output.SetUsrMem(
+            output_dims_mkl_order,
+            static_cast<memory::format>(
+                dnn_data_input.GetUsrMemDesc().data.format));
 
       } else {
-          dnn_data_output.SetUsrMem(output_dims_mkl_order,
-              this->data_format_mkldnn_);
+        dnn_data_output.SetUsrMem(output_dims_mkl_order,
+                                  this->data_format_mkldnn_);
       }
 
-        // describe the memory layout
+      // describe the memory layout
       dnn_data_output.SetOpMemDesc(output_dims_mkl_order, memory::format::any);
 
       // 3. create a pooling primitive descriptor
-      auto pool_desc = pooling_forward::desc(prop_kind::forward,
-              algorithm::pooling_avg_exclude_padding,
-              dnn_data_input.GetUsrMemDesc(),
-              dnn_data_output.GetUsrMemDesc(),
-              memory::dims({  pool_params.row_stride,
-                              pool_params.col_stride}),
-              memory::dims({  pool_params.window_rows,
-                              pool_params.window_cols}),
-              memory::dims({  static_cast<int>(pool_params.pad_top),
-                              static_cast<int>(pool_params.pad_left)}),
-              memory::dims({  static_cast<int>(pool_params.pad_bottom),
-                              static_cast<int>(pool_params.pad_right)}),
-              TFPaddingToMklDnnPadding(this->padding_));
-      auto pool_prim_desc = pooling_forward::primitive_desc(pool_desc,
-                                                 cpu_engine);
+      auto pool_desc = pooling_forward::desc(
+          prop_kind::forward, algorithm::pooling_avg_exclude_padding,
+          dnn_data_input.GetUsrMemDesc(), dnn_data_output.GetUsrMemDesc(),
+          memory::dims({pool_params.row_stride, pool_params.col_stride}),
+          memory::dims({pool_params.window_rows, pool_params.window_cols}),
+          memory::dims({static_cast<int>(pool_params.pad_top),
+                        static_cast<int>(pool_params.pad_left)}),
+          memory::dims({static_cast<int>(pool_params.pad_bottom),
+                        static_cast<int>(pool_params.pad_right)}),
+          TFPaddingToMklDnnPadding(this->padding_));
+      auto pool_prim_desc =
+          pooling_forward::primitive_desc(pool_desc, cpu_engine);
 
       this->AllocateOutputTensor(context, pool_prim_desc, output_dims_mkl_order,
-                            this->data_format_mkldnn_, &output_tensor);
+                                 this->data_format_mkldnn_, &output_tensor);
       CHECK_NOTNULL(output_tensor);
 
       OP_REQUIRES_OK(context, context->status());
       dnn_data_output.SetUsrMemDataHandle(output_tensor);
 
-      this->PrepareAndExecuteNet(pool_prim_desc,
-                                &dnn_data_input,
-                                &dnn_data_output);
-    } catch (mkldnn::error &e) {
-        string error_msg = "Status: " + std::to_string(e.status) +
-                        ", message: " + string(e.message) +
-                        ", in file " + string(__FILE__) + ":" +
-                        std::to_string(__LINE__);
-        OP_REQUIRES_OK(context,
-                        errors::Aborted("Operation received an exception:",
-                                         error_msg));
+      this->PrepareAndExecuteNet(pool_prim_desc, &dnn_data_input,
+                                 &dnn_data_output);
+    } catch (mkldnn::error& e) {
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      OP_REQUIRES_OK(
+          context,
+          errors::Aborted("Operation received an exception:", error_msg));
     }
   }  // Compute
-};  // MklAvgPoolingOp
+};   // MklAvgPoolingOp
 
 //-----------------------------------------------------------------------------
 
@@ -527,27 +524,23 @@ template <class Device, class T>
 class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
  public:
   explicit MklAvgPoolingGradOp(OpKernelConstruction* context)
-      : MklPoolingBackwardOpBase<T>(context) {
-  }
+      : MklPoolingBackwardOpBase<T>(context) {}
 
   void Compute(OpKernelContext* context) override {
     try {
       auto cpu_engine = engine(engine::cpu, 0);
       MklDnnShape original_input_mkl_shape, input_gradient_mkl_shape;
-      const Tensor& tensor_in_shape = MklGetInput(context,
-          kInputTensorIndexInputShape);
-      const Tensor& input_gradient_tensor = MklGetInput(context,
-          kInputTensorIndexInputGradient);
+      const Tensor& tensor_in_shape =
+          MklGetInput(context, kInputTensorIndexInputShape);
+      const Tensor& input_gradient_tensor =
+          MklGetInput(context, kInputTensorIndexInputGradient);
       GetMklShape(context, kInputTensorIndexInputShape,
-            &original_input_mkl_shape);
+                  &original_input_mkl_shape);
       GetMklShape(context, kInputTensorIndexInputGradient,
-            &input_gradient_mkl_shape);
+                  &input_gradient_mkl_shape);
 
-
-      SanityCheckInputs(context, tensor_in_shape,
-                        input_gradient_tensor,
-                        original_input_mkl_shape,
-                        input_gradient_mkl_shape);
+      SanityCheckInputs(context, tensor_in_shape, input_gradient_tensor,
+                        original_input_mkl_shape, input_gradient_mkl_shape);
       if (!context->status().ok()) return;
 
       // Used to allocate output_diff_src/diff_src
@@ -562,90 +555,70 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
       MklPoolParameters pool_params;
       memory::dims output_dims_mkl_order, original_input_dims_nchw;
       // Configure the original input memory descriptor
-      memory::desc original_input_md = ConfigureOriginalInput(context,
-                                      tensor_in_shape,
-                                      original_input_mkl_shape,
-                                      &original_input_dims_nchw,
-                                      &pool_params,
-                                      &original_input_shape);
+      memory::desc original_input_md = ConfigureOriginalInput(
+          context, tensor_in_shape, original_input_mkl_shape,
+          &original_input_dims_nchw, &pool_params, &original_input_shape);
 
       // configure the original output memory descriptor
       // by definition, the shape of the original output is the same
       // as the shape of the gradient diff_dst
       memory::desc original_output_md = this->ConfigureOriginalOutput(
-                pool_params, input_gradient_mkl_shape, output_dims_mkl_order);
+          pool_params, input_gradient_mkl_shape, output_dims_mkl_order);
 
       memory::desc target_diff_dst_md = this->ConfigureInputGradient(
-                                    input_gradient_mkl_shape,
-                                    input_gradient_tensor,
-                                    &input_gradient_diff_dst,
-                                    original_output_md);
+          input_gradient_mkl_shape, input_gradient_tensor,
+          &input_gradient_diff_dst, original_output_md);
       // The shape of the output diff src needs to be the same shape as the
       // original input. But we will set its format to be same as the format of
       // input gradient. We won't use format of original input since it will
       // always be in Tensorflow layout (given that AvgPoolGrad gets shape of
       // the input rather than actual input).
-      output_diff_src.SetUsrMem(original_input_dims_nchw,
-                                static_cast<memory::format>(
-                                  target_diff_dst_md.data.format));
+      output_diff_src.SetUsrMem(
+          original_input_dims_nchw,
+          static_cast<memory::format>(target_diff_dst_md.data.format));
 
       // Create the forward pooling primitive descriptor so we can reference it
       // in the backward pooling primitive descriptor
-      auto pool_fwd_desc = pooling_forward::desc(prop_kind::forward,
-              algorithm::pooling_avg_exclude_padding,
-              original_input_md,
-              original_output_md,
-              memory::dims({  pool_params.row_stride,
-                              pool_params.col_stride}),
-              memory::dims({  pool_params.window_rows,
-                              pool_params.window_cols}),
-              memory::dims({  static_cast<int>(pool_params.pad_top),
-                              static_cast<int>(pool_params.pad_left)}),
-              memory::dims({  static_cast<int>(pool_params.pad_bottom),
-                              static_cast<int>(pool_params.pad_right)}),
-              TFPaddingToMklDnnPadding(this->padding_));
-      auto pool_fwd_prim_desc
-              = pooling_forward::primitive_desc(pool_fwd_desc,
-                                                  cpu_engine);
+      auto pool_fwd_desc = pooling_forward::desc(
+          prop_kind::forward, algorithm::pooling_avg_exclude_padding,
+          original_input_md, original_output_md,
+          memory::dims({pool_params.row_stride, pool_params.col_stride}),
+          memory::dims({pool_params.window_rows, pool_params.window_cols}),
+          memory::dims({static_cast<int>(pool_params.pad_top),
+                        static_cast<int>(pool_params.pad_left)}),
+          memory::dims({static_cast<int>(pool_params.pad_bottom),
+                        static_cast<int>(pool_params.pad_right)}),
+          TFPaddingToMklDnnPadding(this->padding_));
+      auto pool_fwd_prim_desc =
+          pooling_forward::primitive_desc(pool_fwd_desc, cpu_engine);
 
       auto pool_bkwd_desc = pooling_backward::desc(
-              algorithm::pooling_avg_exclude_padding,
-              output_diff_src.GetUsrMemDesc(),
-              target_diff_dst_md,
-              memory::dims({  pool_params.row_stride,
-                              pool_params.col_stride}),
-              memory::dims({  pool_params.window_rows,
-                              pool_params.window_cols}),
-              memory::dims({  static_cast<int>(pool_params.pad_top),
-                              static_cast<int>(pool_params.pad_left)}),
-              memory::dims({  static_cast<int>(pool_params.pad_bottom),
-                              static_cast<int>(pool_params.pad_right)}),
-              TFPaddingToMklDnnPadding(this->padding_));
-      auto pool_bkwd_prim_desc
-                = pooling_backward::primitive_desc(pool_bkwd_desc,
-                                              cpu_engine,
-                                              pool_fwd_prim_desc);
-      this->AllocateOutputTensor(context, pool_bkwd_prim_desc,
-                      original_input_dims_nchw,
-                      this->data_format_mkldnn_,
-                      &output_tensor_diff_src);
+          algorithm::pooling_avg_exclude_padding,
+          output_diff_src.GetUsrMemDesc(), target_diff_dst_md,
+          memory::dims({pool_params.row_stride, pool_params.col_stride}),
+          memory::dims({pool_params.window_rows, pool_params.window_cols}),
+          memory::dims({static_cast<int>(pool_params.pad_top),
+                        static_cast<int>(pool_params.pad_left)}),
+          memory::dims({static_cast<int>(pool_params.pad_bottom),
+                        static_cast<int>(pool_params.pad_right)}),
+          TFPaddingToMklDnnPadding(this->padding_));
+      auto pool_bkwd_prim_desc = pooling_backward::primitive_desc(
+          pool_bkwd_desc, cpu_engine, pool_fwd_prim_desc);
+      this->AllocateOutputTensor(
+          context, pool_bkwd_prim_desc, original_input_dims_nchw,
+          this->data_format_mkldnn_, &output_tensor_diff_src);
 
       output_diff_src.SetUsrMemDataHandle(output_tensor_diff_src);
 
-      this->PrepareAndExecuteNet(pool_bkwd_prim_desc,
-                          &input_gradient_diff_dst,
-                          &output_diff_src,
-                          memory::primitive_desc(
-                              target_diff_dst_md,
-                              cpu_engine));
-    } catch (mkldnn::error &e) {
+      this->PrepareAndExecuteNet(
+          pool_bkwd_prim_desc, &input_gradient_diff_dst, &output_diff_src,
+          memory::primitive_desc(target_diff_dst_md, cpu_engine));
+    } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
-                      ", message: " + string(e.message) +
-                      ", in file " + string(__FILE__) + ":" +
-                      std::to_string(__LINE__);
-      OP_REQUIRES_OK(context,
-                      errors::Aborted("Compute received an exception:",
-                                      error_msg));
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      OP_REQUIRES_OK(context, errors::Aborted("Compute received an exception:",
+                                              error_msg));
     }
   }  // Compute
 
@@ -655,12 +628,11 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   const int kInputTensorIndexInputShape = 0;
   const int kInputTensorIndexInputGradient = 1;
 
-  memory::desc ConfigureOriginalInput(OpKernelContext* context,
-        const Tensor& tensor_original_input_shape,
-        const MklDnnShape& original_input_mkl_shape,
-        memory::dims* original_input_dims_mkl_order,
-        MklPoolParameters* pool_params,
-        TensorShape* input_tensor_shape) {
+  memory::desc ConfigureOriginalInput(
+      OpKernelContext* context, const Tensor& tensor_original_input_shape,
+      const MklDnnShape& original_input_mkl_shape,
+      memory::dims* original_input_dims_mkl_order,
+      MklPoolParameters* pool_params, TensorShape* input_tensor_shape) {
     CHECK_NOTNULL(original_input_dims_mkl_order);
     CHECK_NOTNULL(pool_params);
     CHECK_NOTNULL(input_tensor_shape);
@@ -672,47 +644,47 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
     }
 
     return MklPoolingBackwardOpBase<T>::ConfigureOriginalInput(
-                                              context,
-                                              tensor_original_input_shape,
-                                              original_input_mkl_shape,
-                                              original_input_dims_mkl_order,
-                                              pool_params,
-                                              *input_tensor_shape);
-}
+        context, tensor_original_input_shape, original_input_mkl_shape,
+        original_input_dims_mkl_order, pool_params, *input_tensor_shape);
+  }
 
   void SanityCheckInputs(OpKernelContext* context,
-                        const Tensor& tensor_in_shape,
-                        const Tensor& input_gradient_tensor,
-                        const MklDnnShape& original_input_mkl_shape,
-                        const MklDnnShape& input_gradient_mkl_shape) {
+                         const Tensor& tensor_in_shape,
+                         const Tensor& input_gradient_tensor,
+                         const MklDnnShape& original_input_mkl_shape,
+                         const MklDnnShape& input_gradient_mkl_shape) {
     if (!original_input_mkl_shape.IsMklTensor()) {
-      OP_REQUIRES(context, tensor_in_shape.dims() == 1 &&
-          tensor_in_shape.NumElements() == 4,
+      OP_REQUIRES(
+          context,
+          tensor_in_shape.dims() == 1 && tensor_in_shape.NumElements() == 4,
           errors::InvalidArgument("original input shape must be "
-                "1-dimensional and 4 elements"));
+                                  "1-dimensional and 4 elements"));
     } else {
-      OP_REQUIRES(context, original_input_mkl_shape.GetDimension() == 1 &&
-          original_input_mkl_shape.DimSize(0) == 4,
-          errors::InvalidArgument("original input shape must be "
-                "1-dimensional and 4 elements"));
+      OP_REQUIRES(context,
+                  original_input_mkl_shape.GetDimension() == 1 &&
+                      original_input_mkl_shape.DimSize(0) == 4,
+                  errors::InvalidArgument("original input shape must be "
+                                          "1-dimensional and 4 elements"));
     }
 
     if (!input_gradient_mkl_shape.IsMklTensor()) {
       // For avgpooling, input_gradient_diff_dst should have 4 dimensions.
       OP_REQUIRES(context, input_gradient_tensor.dims() == 4,
-          errors::InvalidArgument("Gradient shape must be "
-                              "4-dimensional"));
+                  errors::InvalidArgument("Gradient shape must be "
+                                          "4-dimensional"));
     } else {
       OP_REQUIRES(context, input_gradient_mkl_shape.GetDimension() == 4,
-          errors::InvalidArgument("Gradient shape must be "
-                              "4-dimensional"));
+                  errors::InvalidArgument("Gradient shape must be "
+                                          "4-dimensional"));
     }
   }
 };  // MklAvgPoolingGradOp
 
 
 
-#endif  // INTEL_MKL_DNN
+
+#endif  // INTEL_MKL_ML
+
 
 REGISTER_KERNEL_BUILDER(Name("_MklAvgPool")
                             .Device(DEVICE_CPU)
@@ -728,4 +700,3 @@ REGISTER_KERNEL_BUILDER(Name("_MklAvgPoolGrad")
 
 }  // namespace tensorflow
 #endif  // INTEL_MKL
-

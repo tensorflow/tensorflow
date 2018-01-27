@@ -31,6 +31,7 @@ import warnings
 
 import numpy as np
 
+from six import integer_types
 from tensorflow.contrib.saved_model.python.saved_model import reader
 from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
 from tensorflow.core.example import example_pb2
@@ -440,7 +441,7 @@ def _create_example_string(example_dict):
     elif isinstance(feature_list[0], str):
       example.features.feature[feature_name].bytes_list.value.extend(
           feature_list)
-    elif isinstance(feature_list[0], (int, long)):
+    elif isinstance(feature_list[0], integer_types):
       example.features.feature[feature_name].int64_list.value.extend(
           feature_list)
     else:

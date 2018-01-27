@@ -63,7 +63,7 @@ TF_CALL_int64(DEFINE_TYPE);
 
 #undef DEFINE_DIM
 #undef DEFINE_TYPE
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 }  // end namespace tensorflow
