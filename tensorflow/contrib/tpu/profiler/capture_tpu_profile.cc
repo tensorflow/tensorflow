@@ -107,8 +107,8 @@ int main(int argc, char** argv) {
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
   // Sets the minimum duration_ms and tracing attempts to one.
-  int duration_ms = max(FLAGS_duration_ms, 1);
-  int remaining_attempts = max(FLAGS_num_tracing_attempts, 1);
+  int duration_ms = std::max(FLAGS_duration_ms, 1);
+  int remaining_attempts = std::max(FLAGS_num_tracing_attempts, 1);
   tensorflow::ProfileOptions opts;
   opts.set_include_dataset_ops(FLAGS_include_dataset_ops);
   tensorflow::ProfileResponse response;
