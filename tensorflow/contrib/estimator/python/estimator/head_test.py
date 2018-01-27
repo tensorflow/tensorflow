@@ -381,8 +381,8 @@ class MultiLabelHead(test.TestCase):
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
-          r'loss_fn must return Tensor of shape \[batch_size, 1\]\. '
-          r'Given: \] \[2\]'):
+          r'\[loss_fn must return Tensor of shape \[D0, D1, ... DN, 1\]\. \] '
+          r'\[logits_shape: \] \[2 2\] \[loss_shape: \] \[2\]'):
         actual_training_loss.eval()
 
   def test_eval_labels_none(self):

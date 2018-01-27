@@ -57,7 +57,7 @@ struct Split<Eigen::SyclDevice, T> {
                   const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_indices,
                   const Eigen::DSizes<Eigen::DenseIndex, 3>& slice_sizes);
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 }  // namespace tensorflow

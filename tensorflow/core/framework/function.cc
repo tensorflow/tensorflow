@@ -1264,8 +1264,8 @@ FunctionDef FunctionDefHelper::Define(const string& name,
     }
     for (const string& a : src.arg) {
       const auto iter = ret_index.find(a);
-      CHECK(iter != ret_index.end()) << "Node input '" << a << "' in '"
-                                     << src.ret[0] << "' of " << name;
+      CHECK(iter != ret_index.end())
+          << "Node input '" << a << "' in '" << src.ret[0] << "' of " << name;
       n->add_input(iter->second);
     }
     for (const string& d : src.dep) {

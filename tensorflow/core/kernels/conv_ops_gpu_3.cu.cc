@@ -25,9 +25,9 @@ limitations under the License.
 #include "cuda/include/cuda.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/core/lib/math/math_util.h"
 
 namespace tensorflow {
 
@@ -252,11 +252,14 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   int x = threadIdx.x;
 
   Dimension<3> output_dims = {
-      input_dims[0], input_dims[2], input_dims[1],
+      input_dims[0],
+      input_dims[2],
+      input_dims[1],
   };
 
   Dimension<3> input_dims_in_tiles = {
-      input_dims[0], (input_dims[1] + TileSizeI - 1) / TileSizeI,
+      input_dims[0],
+      (input_dims[1] + TileSizeI - 1) / TileSizeI,
       (input_dims[2] + TileSizeJ - 1) / TileSizeJ,
   };
 
@@ -264,7 +267,8 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
       FlatToTensorIndex(blockIdx.x, input_dims_in_tiles);
 
   Index<3> input_tile_origin = {
-      input_tile_index[0], input_tile_index[1] * TileSizeI,
+      input_tile_index[0],
+      input_tile_index[1] * TileSizeI,
       input_tile_index[2] * TileSizeJ,
   };
 
@@ -322,11 +326,14 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   __syncthreads();
 
   Index<3> output_tile_index = {
-      input_tile_index[0], input_tile_index[2], input_tile_index[1],
+      input_tile_index[0],
+      input_tile_index[2],
+      input_tile_index[1],
   };
 
   Index<3> output_tile_origin = {
-      output_tile_index[0], output_tile_index[1] * TileSizeJ,
+      output_tile_index[0],
+      output_tile_index[1] * TileSizeJ,
       output_tile_index[2] * TileSizeI,
   };
 
@@ -799,7 +806,7 @@ struct TransposeElemType<16> {
 // A helper function to make RunSwapDimension1And2InTensor3 concise. This
 // helper function looks at the data type and input matrix sizes and decides
 // the thread numbers and tile sizes to use.
-template <typename T, bool conjugate = false >
+template <typename T, bool conjugate = false>
 void SwapDimension1And2InTensor3WithNarrowMatrices(
     const GPUDevice& d, const T* input, const Dimension<3>& input_dims,
     T* output, const int kMinDimensionToUseTiles) {
@@ -902,19 +909,21 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
     constexpr int kNumThreads = 256;
 
     Dimension<3> input_dims_in_tiles = {
-        input_dims[0], MathUtil::CeilOfRatio<int>(input_dims[1], kTileSize),
+        input_dims[0],
+        MathUtil::CeilOfRatio<int>(input_dims[1], kTileSize),
         MathUtil::CeilOfRatio<int>(input_dims[2], kTileSize),
     };
 
     int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
                             input_dims_in_tiles[2];
-    SwapDimension1And2InTensor3UsingTiles<T, kNumThreads, kTileSize, kTileSize, conjugate>
+    SwapDimension1And2InTensor3UsingTiles<T, kNumThreads, kTileSize, kTileSize,
+                                          conjugate>
         <<<total_tiles_count, kNumThreads, 0, d.stream()>>>(input, input_dims,
                                                             output);
 
   } else if (narrow_matrix) {
-    SwapDimension1And2InTensor3WithNarrowMatrices<T, conjugate>(d, input, input_dims, output,
-                                                  kMinDimensionToUseTiles);
+    SwapDimension1And2InTensor3WithNarrowMatrices<T, conjugate>(
+        d, input, input_dims, output, kMinDimensionToUseTiles);
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_element_count, d);

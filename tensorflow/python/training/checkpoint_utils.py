@@ -176,7 +176,8 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   ckpt_file = _get_checkpoint_filename(ckpt_dir_or_file)
   reader = load_checkpoint(ckpt_dir_or_file)
   variable_map = reader.get_variable_to_shape_map()
-  for tensor_name_in_ckpt, current_var_or_name in six.iteritems(assignment_map):
+  for tensor_name_in_ckpt, current_var_or_name in sorted(
+      six.iteritems(assignment_map)):
     var = None
     # Check if this is Variable object or list of Variable objects (in case of
     # partitioned variables).
@@ -233,7 +234,7 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
           if "/part_" in var_name:
             var_name = var_name[:var_name.index("/part_")]
           scope_variables.add(var_name)
-      for var_name in scope_variables:
+      for var_name in sorted(scope_variables):
         # Lookup name with specified prefix and suffix from current variable.
         # If tensor_name given is '/' (root), don't use it for full name.
         full_tensor_name = var_name[len(scopes):]

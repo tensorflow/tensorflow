@@ -492,13 +492,13 @@ class Sequential(Model):
         # to the input layer we just created.
         layer(x)
 
-      if len(layer.inbound_nodes[-1].output_tensors) != 1:
+      if len(layer._inbound_nodes[-1].output_tensors) != 1:
         raise ValueError('All layers in a Sequential model '
                          'should have a single output tensor. '
                          'For multi-output layers, '
                          'use the functional API.')
 
-      self.outputs = [layer.inbound_nodes[-1].output_tensors[0]]
+      self.outputs = [layer._inbound_nodes[-1].output_tensors[0]]
       self.inputs = topology.get_source_inputs(self.outputs[0])
 
       # We create an input node, which we will keep updated
