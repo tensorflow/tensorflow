@@ -328,6 +328,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
       TfLiteSequenceRNNParams* params = MallocPOD<TfLiteSequenceRNNParams>();
       if (auto* sequence_rnn_params =
