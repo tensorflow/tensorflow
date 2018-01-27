@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.contrib.specs import python
 from tensorflow.contrib.specs.python import summaries
-
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variables
