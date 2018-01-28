@@ -121,7 +121,7 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
     * `tensorflow_BUILD_PYTHON_BINDING` is default to be `on`. Set to `off` if you don't need python interaface. If SWIG is not in system path, you need set it manually. (optional)
     * `tensorflow_BUILD_SHARED_LIB` is default to be `off`. Set to `on` if you want the c++ interface. (optional)
     * `tensorflow_ENABLE_GPU` is default to be `off`. Set to `on` if you want GPU support. It will search CUDA and CUDNN dependecies if you have set them to system path, otherwise CMake would prompt error and request you to set it manually. (optional)
-    * `tensorflow_ENABLE_GRPC_SUPPORT` is default to be `on`. For Linux build, this option must always be `on`. In Windows you may turn it to `off`.
+    * `tensorflow_ENABLE_GRPC_SUPPORT` is default to be `on`. For Linux build, this option must always be `on`. In Windows you need to turn it to `off`.
     * `tensorflow_ENABLE_POSITION_INDEPENDENT_CODE` should always be `on`
     * `tensorflow_ENABLE_SNAPPY_SUPPORT` should always be `on` 
     * `tensorflow_OPTIMIZE_FOR_NATIVE_ARCH` should always be `on`
@@ -333,7 +333,7 @@ Step-by-step Windows build (command prompt)
 
    * `-Dtensorflow_ENABLE_GRPC_SUPPORT=(ON|OFF)`. Defaults to `ON`. Include
      gRPC support and the distributed client and server code in the TensorFlow
-     runtime.
+     runtime. 
 
    * `-Dtensorflow_ENABLE_SSL_SUPPORT=(ON|OFF)`. Defaults to `OFF`. Include
      SSL support (for making secure HTTP requests) in the TensorFlow runtime.
