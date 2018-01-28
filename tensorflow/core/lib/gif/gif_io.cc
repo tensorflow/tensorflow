@@ -17,6 +17,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/gif/gif_io.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/gif.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -44,7 +45,8 @@ int input_callback(GifFileType* gif_file, GifByteType* buf, int size) {
 }
 
 uint8* Decode(const void* srcdata, int datasize,
-              std::function<uint8*(int, int, int, int)> allocate_output) {
+              const std::function<uint8*(int, int, int, int)>& allocate_output,
+              string* error_string) {
   int error_code = D_GIF_SUCCEEDED;
   InputBufferInfo info = {reinterpret_cast<const uint8*>(srcdata), datasize};
   GifFileType* gif_file =
@@ -57,17 +59,17 @@ uint8* Decode(const void* srcdata, int datasize,
     }
   });
   if (error_code != D_GIF_SUCCEEDED) {
-    LOG(ERROR) << "Fail to open gif file, reason: "
-               << GifErrorString(error_code);
+    *error_string = strings::StrCat("failed to open gif file: ",
+                                    GifErrorString(error_code));
     return nullptr;
   }
   if (DGifSlurp(gif_file) != GIF_OK) {
-    LOG(ERROR) << "Fail to slurp gif file, reason: "
-               << GifErrorString(gif_file->Error);
+    *error_string = strings::StrCat("failed to slurp gif file: ",
+                                    GifErrorString(gif_file->Error));
     return nullptr;
   }
   if (gif_file->ImageCount <= 0) {
-    LOG(ERROR) << "Gif file does not contain any image";
+    *error_string = strings::StrCat("gif file does not contain any image");
     return nullptr;
   }
 
@@ -83,7 +85,7 @@ uint8* Decode(const void* srcdata, int datasize,
     GifImageDesc* img_desc = &this_image->ImageDesc;
     if (img_desc->Left != 0 || img_desc->Top != 0 || img_desc->Width != width ||
         img_desc->Height != height) {
-      LOG(ERROR) << "Can't process optimized gif.";
+      *error_string = strings::StrCat("can't process optimized gif");
       return nullptr;
     }
 

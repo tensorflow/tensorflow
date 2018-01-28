@@ -44,9 +44,11 @@ bool ParseTocoFlagsFromCommandLineFlags(
            "For Protobuf formats, the binary format will be used."),
       Flag("input_format", parsed_flags.input_format.bind(),
            parsed_flags.input_format.default_value(),
-           "Input file format. One of: tensorflow_graphdef, "),
+           "Input file format. One of: TENSORFLOW_GRAPHDEF, TFLITE."),
       Flag("output_format", parsed_flags.output_format.bind(),
-           parsed_flags.output_format.default_value(), "Output file format."),
+           parsed_flags.output_format.default_value(),
+           "Output file format. "
+           "One of TENSORFLOW_GRAPHDEF, TFLITE, GRAPHVIZ_DOT."),
       Flag("default_ranges_min", parsed_flags.default_ranges_min.bind(),
            parsed_flags.default_ranges_min.default_value(),
            "If defined, will be used as the default value for the min bound "
@@ -58,11 +60,13 @@ bool ParseTocoFlagsFromCommandLineFlags(
       Flag("inference_type", parsed_flags.inference_type.bind(),
            parsed_flags.inference_type.default_value(),
            "Target data type of arrays in the output file (for input_arrays, "
-           "this may be overridden by inference_input_type)."),
+           "this may be overridden by inference_input_type). "
+           "One of FLOAT, QUANTIZED_UINT8."),
       Flag("inference_input_type", parsed_flags.inference_input_type.bind(),
            parsed_flags.inference_input_type.default_value(),
-           "Target data type of input arrays. If not specified, inference_type "
-           "is used."),
+           "Target data type of input arrays. "
+           "If not specified, inference_type is used. "
+           "One of FLOAT, QUANTIZED_UINT8."),
       Flag("input_type", parsed_flags.input_type.bind(),
            parsed_flags.input_type.default_value(),
            "Deprecated ambiguous flag that set both --input_data_types and "
@@ -76,35 +80,31 @@ bool ParseTocoFlagsFromCommandLineFlags(
 
       Flag("drop_fake_quant", parsed_flags.drop_fake_quant.bind(),
            parsed_flags.drop_fake_quant.default_value(),
-           "Ignore and discard FakeQuant nodes. For instance, that can be used "
-           "to "
+           "Ignore and discard FakeQuant nodes. For instance, to "
            "generate plain float code without fake-quantization from a "
-           "quantized "
-           "graph."),
+           "quantized graph."),
       Flag(
           "reorder_across_fake_quant",
           parsed_flags.reorder_across_fake_quant.bind(),
           parsed_flags.reorder_across_fake_quant.default_value(),
           "Normally, FakeQuant nodes must be strict boundaries for graph "
           "transformations, in order to ensure that quantized inference has "
-          "the "
-          "exact same arithmetic behavior as quantized training --- which is "
-          "the "
-          "whole point of quantized training and of FakeQuant nodes in the "
-          "first "
-          "place. However, that entails subtle requirements on where exactly "
+          "the exact same arithmetic behavior as quantized training --- which "
+          "is the whole point of quantized training and of FakeQuant nodes in "
+          "the first place. "
+          "However, that entails subtle requirements on where exactly "
           "FakeQuant nodes must be placed in the graph. Some quantized graphs "
           "have FakeQuant nodes at unexpected locations, that prevent graph "
           "transformations that are necessary in order to generate inference "
           "code for these graphs. Such graphs should be fixed, but as a "
           "temporary work-around, setting this reorder_across_fake_quant flag "
-          "allows toco to perform necessary graph transformaitons on them, "
+          "allows TOCO to perform necessary graph transformaitons on them, "
           "at the cost of no longer faithfully matching inference and training "
           "arithmetic."),
       Flag("allow_custom_ops", parsed_flags.allow_custom_ops.bind(),
            parsed_flags.allow_custom_ops.default_value(),
-           "If true, allow TOCO to create TF Lite Custom operators for all the"
-           "unsupported Tensorflow ops."),
+           "If true, allow TOCO to create TF Lite Custom operators for all the "
+           "unsupported TensorFlow ops."),
       Flag(
           "drop_control_dependency",
           parsed_flags.drop_control_dependency.bind(),

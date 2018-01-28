@@ -42,6 +42,8 @@ tf_cc_binary(
     }),
     deps = [
         ":mutable_op_resolver",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
     ],
 )
@@ -90,4 +92,29 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+cc_library(
+    name = "verifier",
+    srcs = ["verifier.cc"],
+    hdrs = ["verifier.h"],
+    deps = [
+        "//tensorflow/contrib/lite:schema_fbs_version",
+        "//tensorflow/contrib/lite/schema:schema_fbs",
+    ],
+)
+
+cc_test(
+    name = "verifier_test",
+    size = "small",
+    srcs = ["verifier_test.cc"],
+    deps = [
+        ":verifier",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite:schema_fbs_version",
+        "//tensorflow/contrib/lite/schema:schema_fbs",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
 )

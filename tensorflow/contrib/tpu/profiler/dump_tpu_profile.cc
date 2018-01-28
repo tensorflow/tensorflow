@@ -171,7 +171,6 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
           DumpToolDataToLogDirectory(profile_run_dir, tool_data, os));
     }
   }
-  TF_RETURN_IF_ERROR(DumpGraphEvents(logdir, run, response, os));
 
   return Status::OK();
 }

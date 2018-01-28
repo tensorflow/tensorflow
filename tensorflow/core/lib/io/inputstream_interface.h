@@ -54,4 +54,4 @@ class InputStreamInterface {
 }  // namespace io
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_IO_INPUTSTREAM_INTERFACE_H_
+#endif  // TENSORFLOW_CORE_LIB_IO_INPUTSTREAM_INTERFACE_H_

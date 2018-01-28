@@ -266,7 +266,7 @@ def map_structure(func, *structure, **check_types_dict):
   and the return value will contain the results in the same structure.
 
   Args:
-    func: A callable that acceps as many arguments are there are structures.
+    func: A callable that accepts as many arguments are there are structures.
     *structure: scalar, or tuple or list of constructed scalars and/or other
       tuples/lists, or scalars.  Note: numpy arrays are considered scalars.
     **check_types_dict: only valid keyword argument is `check_types`. If set to
@@ -479,7 +479,7 @@ def map_structure_up_to(shallow_tree, func, *inputs):
   The `inputs`, can be thought of as having the same structure as
   `shallow_tree`, but with leaf nodes that are themselves tree structures.
 
-  This function therefore will return something with the same base structure as
+  This function, therefore, will return something with the same base structure as
   `shallow_tree`.
 
   Examples:

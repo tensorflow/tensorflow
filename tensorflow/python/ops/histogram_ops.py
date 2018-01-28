@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 def histogram_fixed_width_bins(values,
@@ -56,7 +57,7 @@ def histogram_fixed_width_bins(values,
 
   Returns:
     A `Tensor` holding the indices of the binned values whose shape matches
-    `values`. 
+    `values`.
 
   Examples:
 
@@ -73,7 +74,7 @@ def histogram_fixed_width_bins(values,
   ```
   """
   with ops.name_scope(name, 'histogram_fixed_width_bins',
-                      [values, value_range, nbins]) as scope:
+                      [values, value_range, nbins]):
     values = ops.convert_to_tensor(values, name='values')
     shape = array_ops.shape(values)
 
@@ -83,9 +84,10 @@ def histogram_fixed_width_bins(values,
     nbins_float = math_ops.cast(nbins, values.dtype)
 
     # Map tensor values that fall within value_range to [0, 1].
-    scaled_values = math_ops.truediv(values - value_range[0],
-                                     value_range[1] - value_range[0],
-                                     name='scaled_values')
+    scaled_values = math_ops.truediv(
+        values - value_range[0],
+        value_range[1] - value_range[0],
+        name='scaled_values')
 
     # map tensor values within the open interval value_range to {0,.., nbins-1},
     # values outside the open interval will be zero or less, or nbins or more.
@@ -97,6 +99,7 @@ def histogram_fixed_width_bins(values,
     return array_ops.reshape(indices, shape)
 
 
+@tf_export('histogram_fixed_width')
 def histogram_fixed_width(values,
                           value_range,
                           nbins=100,
@@ -136,5 +139,5 @@ def histogram_fixed_width(values,
   """
   with ops.name_scope(name, 'histogram_fixed_width',
                       [values, value_range, nbins]) as name:
-    return gen_math_ops._histogram_fixed_width(values, value_range, nbins,
-                                               dtype=dtype, name=name)
+    return gen_math_ops._histogram_fixed_width(  # pylint: disable=protected-access
+        values, value_range, nbins, dtype=dtype, name=name)

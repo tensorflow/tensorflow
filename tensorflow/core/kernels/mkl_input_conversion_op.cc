@@ -31,7 +31,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/mkl_tfconv_op.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
 using mkldnn::stream;
@@ -59,7 +59,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 //     convert the TF format input to MKL format
 ///////////////////////////////////////////////////////////
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 template <typename Device, typename T>
 class MklInputConversionOp : public OpKernel {
  public:
@@ -271,8 +271,8 @@ class MklInputConversionOp : public OpKernel {
     MklDnnShape input_shape_1;
     GetMklShape(context, 1, &input_shape_1);
 
-    bool tf_shapes_are_same = context->input(0).shape() ==
-                              context->input(1).shape();
+    bool tf_shapes_are_same =
+        context->input(0).shape() == context->input(1).shape();
 
     VLOG(1) << "MklInputConversionOp: Input shapes are "
             << (tf_shapes_are_same ? "*same*" : "*different*") << ": "
@@ -396,13 +396,13 @@ class MklInputConversionOp : public OpKernel {
       auto cpu_engine = engine(engine::cpu, 0);
       MklDnnData<T> tf_input(&cpu_engine);
       auto input_tf_md = mkl_output_mkl_shape.GetTfLayout();
-      tf_input.SetUsrMem(input_tf_md, &tf_tensor);
+      tf_input.SetUsrMem(input_tf_md, tf_tensor);
 
       // Create reorder between tensorflow layout and Mkl layout.
       std::vector<primitive> net;
-      CHECK_EQ(tf_input.CheckReorderToOpMem(memory::primitive_desc(
-                                            output_mkl_md, cpu_engine),
-                                            tensor_out, &net),
+      CHECK_EQ(tf_input.CheckReorderToOpMem(
+                   memory::primitive_desc(output_mkl_md, cpu_engine),
+                   tensor_out, &net),
                true);
       stream(stream::kind::eager).submit(net).wait();
 

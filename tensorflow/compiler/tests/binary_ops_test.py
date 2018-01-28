@@ -43,7 +43,7 @@ class BinaryOpsTest(XLATestCase):
         output = op(pa, pb)
       result = session.run(output, {pa: a, pb: b})
       if equality_test is None:
-        equality_test = self.assertAllClose
+        equality_test = self.assertAllCloseAccordingToType
       equality_test(result, expected, rtol=1e-3)
 
   def _testSymmetricBinary(self, op, a, b, expected, equality_test=None):
@@ -54,14 +54,20 @@ class BinaryOpsTest(XLATestCase):
     """Tests closeness of two lists of floats."""
     self.assertEqual(len(result), len(expected))
     for i in range(len(result)):
-      self.assertAllClose(result[i], expected[i], rtol)
+      self.assertAllCloseAccordingToType(result[i], expected[i], rtol)
 
   def testFloatOps(self):
     for dtype in self.float_types:
+      if dtype == dtypes.bfloat16.as_numpy_dtype:
+        a = -1.01
+        b = 4.1
+      else:
+        a = -1.001
+        b = 4.01
       self._testBinary(
           lambda x, y: math_ops.approximate_equal(x, y, tolerance=0.0001),
-          np.array([[[[-1, 2.00009999], [-3, 4.01]]]], dtype=dtype),
-          np.array([[[[-1.001, 2], [-3.00009, 4]]]], dtype=dtype),
+          np.array([[[[-1, 2.00009999], [-3, b]]]], dtype=dtype),
+          np.array([[[[a, 2], [-3.00009, 4]]]], dtype=dtype),
           expected=np.array([[[[False, True], [True, False]]]], dtype=dtype))
 
       self._testBinary(
@@ -768,15 +774,15 @@ class BinaryOpsTest(XLATestCase):
   def DISABLED_testSparseMatMul(self):
     # Binary wrappers for sparse_matmul with different hints
     def SparseMatmulWrapperTF(a, b):
-      return tf.sparse_matmul(a, b, a_is_sparse=True)
+      return math_ops.sparse_matmul(a, b, a_is_sparse=True)
 
     def SparseMatmulWrapperFT(a, b):
-      return tf.sparse_matmul(a, b, b_is_sparse=True)
+      return math_ops.sparse_matmul(a, b, b_is_sparse=True)
 
     def SparseMatmulWrapperTT(a, b):
-      return tf.sparse_matmul(a, b, a_is_sparse=True, b_is_sparse=True)
+      return math_ops.sparse_matmul(a, b, a_is_sparse=True, b_is_sparse=True)
 
-    self._testMatMul(tf.sparse_matmul)
+    self._testMatMul(math_ops.sparse_matmul)
     self._testMatMul(SparseMatmulWrapperTF)
     self._testMatMul(SparseMatmulWrapperFT)
     self._testMatMul(SparseMatmulWrapperTT)

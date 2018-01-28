@@ -13,37 +13,37 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_SPATIAL_CONVOLUTIONS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_SPATIAL_CONVOLUTIONS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_SPATIAL_CONVOLUTIONS_H_
+#define TENSORFLOW_CORE_KERNELS_EIGEN_BACKWARD_SPATIAL_CONVOLUTIONS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace Eigen {
 
 /** SpatialConvolutionBackwardInput
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Computes the backprop for the input of a 2D convolution.
-  *
-  * The output_backward parameter is expected to be a tensor with a rank of 3 or
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Computes the backprop for the input of a 2D convolution.
+ *
+ * The output_backward parameter is expected to be a tensor with a rank of 3 or
  * more (channels, height, width, and optionally others)
-  * The kernel parameter is expected to be a 4D tensor (filters, channels,
+ * The kernel parameter is expected to be a 4D tensor (filters, channels,
  * kernel_height, kernel_width)
-  * The output_backward and the kernel must both be in col-major layout. The
+ * The output_backward and the kernel must both be in col-major layout. The
  * result will also be in col-major layout.
-  *
-  * If row_in_stride, col_in_stride > 1, then applies convolution with holes
+ *
+ * If row_in_stride, col_in_stride > 1, then applies convolution with holes
  * (aka atrous convolution), sampling every row_in_stride, col_in_stride input
  * pixels.
-  *
-  * The result can be assigned to a tensor of rank equal to the rank of the
+ *
+ * The result can be assigned to a tensor of rank equal to the rank of the
  * output_backward. The dimensions of the result will be filters, height, width
  * (and others if applicable).
-  *
-  * It is possible to swap the order of the width and height dimensions provided
+ *
+ * It is possible to swap the order of the width and height dimensions provided
  * that the same order is used in the input, the kernel, and the output.
-  *
-  */
+ *
+ */
 #ifdef EIGEN_HAS_INDEX_LIST
 typedef IndexList<type2index<0>, type2index<0>, type2index<1>, type2index<1> >
     ReverseColMajor;
@@ -293,29 +293,29 @@ SpatialConvolutionBackwardInput(
 }
 
 /** SpatialConvolutionBackwardKernel
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Computes the backprop for the filter of a 2D convolution.
-  *
-  * The output_backward parameter is expected to be a tensor with a rank of 3 or
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Computes the backprop for the filter of a 2D convolution.
+ *
+ * The output_backward parameter is expected to be a tensor with a rank of 3 or
  * more (channels, height, width, and optionally others)
-  * The kernel parameter is expected to be a 4D tensor (filters, channels,
+ * The kernel parameter is expected to be a 4D tensor (filters, channels,
  * kernel_height, kernel_width)
-  * The output_backward and the kernel must both be in col-major layout. The
+ * The output_backward and the kernel must both be in col-major layout. The
  * result will also be in col-major layout.
-  *
-  * If row_in_stride, col_stride > 1, then applies convolution with holes (aka
+ *
+ * If row_in_stride, col_stride > 1, then applies convolution with holes (aka
  * atrous convolution), sampling every row_in_stride, col_in_stride input
  * pixels.
-  *
-  * The result can be assigned to a tensor of rank equal to the rank of the
+ *
+ * The result can be assigned to a tensor of rank equal to the rank of the
  * output_backward. The dimensions of the result will be filters, height, width
  * (and others if applicable).
-  *
-  * It is possible to swap the order of the width and height dimensions provided
+ *
+ * It is possible to swap the order of the width and height dimensions provided
  * that the same order is used in the input, the kernel, and the output.
-  *
-  */
+ *
+ */
 
 template <typename OutputBackward, typename Input>
 EIGEN_ALWAYS_INLINE static const typename internal::conditional<

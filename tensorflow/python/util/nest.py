@@ -47,10 +47,25 @@ def _sorted(dict_):
     raise TypeError("nest only supports dicts with sortable keys.")
 
 
-def _is_namedtuple(instance):
-  """Returns True iff `instance` is a `namedtuple`."""
+def _is_namedtuple(instance, strict=False):
+  """Returns True iff `instance` is a `namedtuple`.
+
+  Args:
+    instance: An instance of a Python object.
+    strict: If True, `instance` is considered to be a `namedtuple` only if
+        it is a "plain" namedtuple. For instance, a class inheriting
+        from a `namedtuple` will be considered to be a `namedtuple`
+        iff `strict=False`.
+
+  Returns:
+    True if `instance` is a `namedtuple`.
+  """
+  # Attemp to limit the test to plain namedtuple (not stuff inheriting from it).
+  if not isinstance(instance, tuple):
+    return False
+  if strict and instance.__class__.__base__ != tuple:
+    return False
   return (
-      isinstance(instance, tuple) and
       hasattr(instance, "_fields") and
       isinstance(instance._fields, _collections.Sequence) and
       all(isinstance(f, _six.string_types) for f in instance._fields))
@@ -140,8 +155,37 @@ def flatten(nest):
   return _pywrap_tensorflow.Flatten(nest)
 
 
+def _same_namedtuples(nest1, nest2):
+  """Returns True if the two namedtuples have the same name and fields."""
+  if nest1._fields != nest2._fields:
+    return False
+  if nest1.__class__.__name__ != nest2.__class__.__name__:
+    return False
+  return True
+
+
 def _recursive_assert_same_structure(nest1, nest2, check_types):
-  """Helper function for `assert_same_structure`."""
+  """Helper function for `assert_same_structure`.
+
+  See `assert_same_structure` for further information about namedtuples.
+
+  Args:
+    nest1: An arbitrarily nested structure.
+    nest2: An arbitrarily nested structure.
+    check_types: If `True` (default) types of sequences are checked as
+        well, including the keys of dictionaries. If set to `False`, for example
+        a list and a tuple of objects will look the same if they have the same
+        size. Note that namedtuples with identical name and fields are always
+        considered to have the same shallow structure.
+
+  Returns:
+    True if `nest1` and `nest2` have the same structure.
+
+  Raises:
+    ValueError: If the two structure don't have the same nested structre.
+    TypeError: If the two structure don't have the same sequence type.
+    ValueError: If the two dictionaries don't have the same set of keys.
+  """
   is_sequence_nest1 = is_sequence(nest1)
   if is_sequence_nest1 != is_sequence(nest2):
     raise ValueError(
@@ -154,11 +198,21 @@ def _recursive_assert_same_structure(nest1, nest2, check_types):
   if check_types:
     type_nest1 = type(nest1)
     type_nest2 = type(nest2)
-    if type_nest1 != type_nest2:
-      raise TypeError(
-          "The two structures don't have the same sequence type. First "
-          "structure has type %s, while second structure has type %s."
-          % (type_nest1, type_nest2))
+
+    # Duck-typing means that nest should be fine with two different namedtuples
+    # with identical name and fields.
+    if _is_namedtuple(nest1, True) and _is_namedtuple(nest2, True):
+      if not _same_namedtuples(nest1, nest2):
+        raise TypeError(
+            "The two namedtuples don't have the same sequence type. First "
+            "structure has type %s, while second structure has type %s."
+            % (type_nest1, type_nest2))
+    else:
+      if type_nest1 != type_nest2:
+        raise TypeError(
+            "The two structures don't have the same sequence type. First "
+            "structure has type %s, while second structure has type %s."
+            % (type_nest1, type_nest2))
 
     if isinstance(nest1, dict):
       keys1 = set(_six.iterkeys(nest1))
@@ -178,13 +232,24 @@ def _recursive_assert_same_structure(nest1, nest2, check_types):
 def assert_same_structure(nest1, nest2, check_types=True):
   """Asserts that two structures are nested in the same way.
 
+  Note that namedtuples with identical name and fields are always considered
+  to have the same shallow structure (even with `check_types=True`).
+  For intance, this code will print `True`:
+
+  ```python
+  def nt(a, b):
+    return collections.namedtuple('foo', 'a b')(a, b)
+  print(assert_same_structure(nt(0, 1), nt(2, 3)))
+  ```
+
   Args:
     nest1: an arbitrarily nested structure.
     nest2: an arbitrarily nested structure.
     check_types: if `True` (default) types of sequences are checked as
         well, including the keys of dictionaries. If set to `False`, for example
         a list and a tuple of objects will look the same if they have the same
-        size.
+        size. Note that namedtuples with identical name and fields are always
+        considered to have the same shallow structure.
 
   Raises:
     ValueError: If the two structures do not have the same number of elements or
@@ -354,6 +419,8 @@ def map_structure(func, *structure, **check_types_dict):
       `True` (default) the types of iterables within the structures have to be
       same (e.g. `map_structure(func, [1], (1,))` raises a `TypeError`
       exception). To allow this set this argument to `False`.
+      Note that namedtuples with identical name and fields are always
+      considered to have the same shallow structure.
 
   Returns:
     A new structure with the same arity as `structure`, whose values correspond

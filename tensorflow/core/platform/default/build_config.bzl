@@ -378,6 +378,14 @@ def tf_protos_all():
       extra_deps=tf_protos_all_impl(),
       otherwise=["//tensorflow/core:protos_all_cc"])
 
+def tf_protos_grappler_impl():
+  return ["//tensorflow/core/grappler/costs:op_performance_data_cc_impl"]
+
+def tf_protos_grappler():
+  return if_static(
+      extra_deps=tf_protos_grappler_impl(),
+      otherwise=["//tensorflow/core/grappler/costs:op_performance_data_cc"])
+
 def tf_env_time_hdrs():
   return [
       "platform/env_time.h",
@@ -479,6 +487,12 @@ def tf_additional_core_deps():
       "//tensorflow:with_s3_support_ios_override": [],
       "//tensorflow:with_s3_support": [
           "//tensorflow/core/platform/s3:s3_file_system",
+      ],
+      "//conditions:default": [],
+  }) + select({
+      "//tensorflow:with_kafka_support": [
+          "//tensorflow/contrib/kafka:kafka_kernels",
+          "//tensorflow/contrib/kafka:kafka_ops_op_lib",
       ],
       "//conditions:default": [],
   })

@@ -30,10 +30,12 @@ limitations under the License.
 
 #include <iostream>
 
+#include "tensorflow/contrib/mpi/mpi_msg.pb.h"
 #include "tensorflow/contrib/mpi/mpi_utils.h"
 #include "tensorflow/core/distributed_runtime/base_rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/recent_request_ids.h"
+#include "tensorflow/core/distributed_runtime/request_id.h"
 #include "tensorflow/core/distributed_runtime/worker_env.h"
-#include "tensorflow/contrib/mpi/mpi_msg.pb.h"
 #include "tensorflow/core/protobuf/worker.pb.h"
 
 #define TAG_REQTENSOR 1010
@@ -104,6 +106,7 @@ class MPIRequestTensorCall {
   void Init(const Rendezvous::ParsedKey& parsed, const int64 step_id) {
     req_.set_step_id(step_id);
     req_.set_rendezvous_key(parsed.FullKey().data(), parsed.FullKey().size());
+    req_.set_request_id(GetUniqueRequestId());
     request_buffer_size_ = req_.ByteSize();
     //   request_buffer_ = new char[request_buffer_size_];
     //  req_.SerializeToArray(request_buffer_, request_buffer_size_);
@@ -176,6 +179,8 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
   std::queue<RequestQueueEntry> request_queue_ GUARDED_BY(mrq_);
   std::map<std::string, std::shared_ptr<MPIRequestTensorCall>> recv_tensor_map_
       GUARDED_BY(mrq_);
+
+  RecentRequestIds recv_tensor_recent_request_ids_;
 
   void AddRequest(RecvTensorRequest, const int);
   void MPIBackgroundThread();

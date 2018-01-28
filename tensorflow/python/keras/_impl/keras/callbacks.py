@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras callbacks: utilities called at certain points during model training.
+# pylint: disable=g-import-not-at-top
+"""Callbacks: utilities called at certain points during model training.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -36,12 +37,10 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary as tf_summary
 
 
-# pylint: disable=g-import-not-at-top
 try:
   import requests
 except ImportError:
   requests = None
-# pylint: enable=g-import-not-at-top
 
 
 class CallbackList(object):
@@ -109,9 +108,9 @@ class CallbackList(object):
     delta_t_median = np.median(self._delta_ts_batch_begin)
     if (self._delta_t_batch > 0. and
         delta_t_median > 0.95 * self._delta_t_batch and delta_t_median > 0.1):
-      logging.warning(
-          'Method on_batch_begin() is slow compared '
-          'to the batch update (%f). Check your callbacks.' % delta_t_median)
+      logging.warning('Method on_batch_begin() is slow compared '
+                      'to the batch update (%f). Check your callbacks.',
+                      delta_t_median)
     self._t_enter_batch = time.time()
 
   def on_batch_end(self, batch, logs=None):
@@ -132,9 +131,9 @@ class CallbackList(object):
     delta_t_median = np.median(self._delta_ts_batch_end)
     if (self._delta_t_batch > 0. and
         (delta_t_median > 0.95 * self._delta_t_batch and delta_t_median > 0.1)):
-      logging.warning(
-          'Method on_batch_end() is slow compared '
-          'to the batch update (%f). Check your callbacks.' % delta_t_median)
+      logging.warning('Method on_batch_end() is slow compared '
+                      'to the batch update (%f). Check your callbacks.',
+                      delta_t_median)
 
   def on_train_begin(self, logs=None):
     """Called at the beginning of training.
@@ -246,7 +245,8 @@ class BaseLogger(Callback):
 
 
 class TerminateOnNaN(Callback):
-  """Callback that terminates training when a NaN loss is encountered."""
+  """Callback that terminates training when a NaN loss is encountered.
+  """
 
   def __init__(self):
     super(TerminateOnNaN, self).__init__()
@@ -396,7 +396,7 @@ class ModelCheckpoint(Callback):
 
     if mode not in ['auto', 'min', 'max']:
       logging.warning('ModelCheckpoint mode %s is unknown, '
-                      'fallback to auto mode.' % mode)
+                      'fallback to auto mode.', (mode), RuntimeWarning)
       mode = 'auto'
 
     if mode == 'min':
@@ -423,11 +423,11 @@ class ModelCheckpoint(Callback):
         current = logs.get(self.monitor)
         if current is None:
           logging.warning('Can save best model only with %s available, '
-                          'skipping.' % (self.monitor))
+                          'skipping.', self.monitor, RuntimeWarning)
         else:
           if self.monitor_op(current, self.best):
             if self.verbose > 0:
-              print('Epoch %05d: %s improved from %0.5f to %0.5f,'
+              print('\nEpoch %05d: %s improved from %0.5f to %0.5f,'
                     ' saving model to %s' % (epoch + 1, self.monitor, self.best,
                                              current, filepath))
             self.best = current
@@ -437,11 +437,11 @@ class ModelCheckpoint(Callback):
               self.model.save(filepath, overwrite=True)
           else:
             if self.verbose > 0:
-              print('Epoch %05d: %s did not improve' % (epoch + 1,
-                                                        self.monitor))
+              print('\nEpoch %05d: %s did not improve' % (epoch + 1,
+                                                          self.monitor))
       else:
         if self.verbose > 0:
-          print('Epoch %05d: saving model to %s' % (epoch + 1, filepath))
+          print('\nEpoch %05d: saving model to %s' % (epoch + 1, filepath))
         if self.save_weights_only:
           self.model.save_weights(filepath, overwrite=True)
         else:
@@ -486,7 +486,7 @@ class EarlyStopping(Callback):
 
     if mode not in ['auto', 'min', 'max']:
       logging.warning('EarlyStopping mode %s is unknown, '
-                      'fallback to auto mode.' % mode)
+                      'fallback to auto mode.', mode, RuntimeWarning)
       mode = 'auto'
 
     if mode == 'min':
@@ -514,8 +514,8 @@ class EarlyStopping(Callback):
     current = logs.get(self.monitor)
     if current is None:
       logging.warning('Early stopping conditioned on metric `%s` '
-                      'which is not available. Available metrics are: %s' %
-                      (self.monitor, ','.join(list(logs.keys()))))
+                      'which is not available. Available metrics are: %s',
+                      self.monitor, ','.join(list(logs.keys())), RuntimeWarning)
       return
     if self.monitor_op(current - self.min_delta, self.best):
       self.best = current
@@ -544,8 +544,6 @@ class RemoteMonitor(Callback):
       path: String; path relative to `root` to which the events will be sent.
       field: String; JSON field under which the data will be stored.
       headers: Dictionary; optional custom HTTP headers.
-          Defaults to:
-          `{'Accept': 'application/json', 'Content-Type': 'application/json'}`
   """
 
   def __init__(self,
@@ -554,11 +552,7 @@ class RemoteMonitor(Callback):
                field='data',
                headers=None):
     super(RemoteMonitor, self).__init__()
-    if headers is None:
-      headers = {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json'
-      }
+
     self.root = root
     self.path = path
     self.field = field
@@ -588,11 +582,13 @@ class LearningRateScheduler(Callback):
       schedule: a function that takes an epoch index as input
           (integer, indexed from 0) and returns a new
           learning rate as output (float).
+      verbose: int. 0: quiet, 1: update messages.
   """
 
-  def __init__(self, schedule):
+  def __init__(self, schedule, verbose=0):
     super(LearningRateScheduler, self).__init__()
     self.schedule = schedule
+    self.verbose = verbose
 
   def on_epoch_begin(self, epoch, logs=None):
     if not hasattr(self.model.optimizer, 'lr'):
@@ -602,6 +598,9 @@ class LearningRateScheduler(Callback):
       raise ValueError('The output of the "schedule" function '
                        'should be float.')
     K.set_value(self.model.optimizer.lr, lr)
+    if self.verbose > 0:
+      print('\nEpoch %05d: LearningRateScheduler reducing learning '
+            'rate to %s.' % (epoch + 1, lr))
 
 
 class TensorBoard(Callback):
@@ -842,7 +841,7 @@ class ReduceLROnPlateau(Callback):
     """
     if self.mode not in ['auto', 'min', 'max']:
       logging.warning('Learning Rate Plateau Reducing mode %s is unknown, '
-                      'fallback to auto mode.' % (self.mode))
+                      'fallback to auto mode.', self.mode, RuntimeWarning)
       self.mode = 'auto'
     if (self.mode == 'min' or
         (self.mode == 'auto' and 'acc' not in self.monitor)):
@@ -853,7 +852,6 @@ class ReduceLROnPlateau(Callback):
       self.best = -np.Inf
     self.cooldown_counter = 0
     self.wait = 0
-    self.lr_epsilon = self.min_lr * 1e-4
 
   def on_train_begin(self, logs=None):
     self._reset()
@@ -864,8 +862,9 @@ class ReduceLROnPlateau(Callback):
     current = logs.get(self.monitor)
     if current is None:
       logging.warning('Reduce LR on plateau conditioned on metric `%s` '
-                      'which is not available. Available metrics are: %s' %
-                      (self.monitor, ','.join(list(logs.keys()))))
+                      'which is not available. Available metrics are: %s',
+                      self.monitor, ','.join(list(logs.keys())), RuntimeWarning)
+
     else:
       if self.in_cooldown():
         self.cooldown_counter -= 1
@@ -877,13 +876,13 @@ class ReduceLROnPlateau(Callback):
       elif not self.in_cooldown():
         if self.wait >= self.patience:
           old_lr = float(K.get_value(self.model.optimizer.lr))
-          if old_lr > self.min_lr + self.lr_epsilon:
+          if old_lr > self.min_lr:
             new_lr = old_lr * self.factor
             new_lr = max(new_lr, self.min_lr)
             K.set_value(self.model.optimizer.lr, new_lr)
             if self.verbose > 0:
-              print('\nEpoch %05d: reducing learning rate to %s.' % (epoch,
-                                                                     new_lr))
+              print('\nEpoch %05d: ReduceLROnPlateau reducing learning '
+                    'rate to %s.' % (epoch + 1, new_lr))
             self.cooldown_counter = self.cooldown
             self.wait = 0
         self.wait += 1
@@ -899,10 +898,11 @@ class CSVLogger(Callback):
   including 1D iterables such as np.ndarray.
 
   Example:
-      ```python
-      csv_logger = CSVLogger('training.log')
-      model.fit(X_train, Y_train, callbacks=[csv_logger])
-      ```
+
+  ```python
+  csv_logger = CSVLogger('training.log')
+  model.fit(X_train, Y_train, callbacks=[csv_logger])
+  ```
 
   Arguments:
       filename: filename of the csv file, e.g. 'run/log.csv'.
@@ -942,12 +942,14 @@ class CSVLogger(Callback):
       else:
         return k
 
+    if self.keys is None:
+      self.keys = sorted(logs.keys())
+
     if self.model.stop_training:
       # We set NA so that csv parsers do not fail for this last epoch.
       logs = dict([(k, logs[k]) if k in logs else (k, 'NA') for k in self.keys])
 
     if not self.writer:
-      self.keys = sorted(logs.keys())
 
       class CustomDialect(csv.excel):
         delimiter = self.sep
@@ -993,32 +995,32 @@ class LambdaCallback(Callback):
 
   Example:
 
-      ```python
-      # Print the batch number at the beginning of every batch.
-      batch_print_callback = LambdaCallback(
-          on_batch_begin=lambda batch,logs: print(batch))
+  ```python
+  # Print the batch number at the beginning of every batch.
+  batch_print_callback = LambdaCallback(
+      on_batch_begin=lambda batch,logs: print(batch))
 
-      # Stream the epoch loss to a file in JSON format. The file content
-      # is not well-formed JSON but rather has a JSON object per line.
-      import json
-      json_log = open('loss_log.json', mode='wt', buffering=1)
-      json_logging_callback = LambdaCallback(
-          on_epoch_end=lambda epoch, logs: json_log.write(
-              json.dumps({'epoch': epoch, 'loss': logs['loss']}) + '\n'),
-          on_train_end=lambda logs: json_log.close()
-      )
+  # Stream the epoch loss to a file in JSON format. The file content
+  # is not well-formed JSON but rather has a JSON object per line.
+  import json
+  json_log = open('loss_log.json', mode='wt', buffering=1)
+  json_logging_callback = LambdaCallback(
+      on_epoch_end=lambda epoch, logs: json_log.write(
+          json.dumps({'epoch': epoch, 'loss': logs['loss']}) + '\n'),
+      on_train_end=lambda logs: json_log.close()
+  )
 
-      # Terminate some processes after having finished model training.
-      processes = ...
-      cleanup_callback = LambdaCallback(
-          on_train_end=lambda logs: [
-              p.terminate() for p in processes if p.is_alive()])
+  # Terminate some processes after having finished model training.
+  processes = ...
+  cleanup_callback = LambdaCallback(
+      on_train_end=lambda logs: [
+          p.terminate() for p in processes if p.is_alive()])
 
-      model.fit(...,
-                callbacks=[batch_print_callback,
-                           json_logging_callback,
-                           cleanup_callback])
-      ```
+  model.fit(...,
+            callbacks=[batch_print_callback,
+                       json_logging_callback,
+                       cleanup_callback])
+  ```
   """
 
   def __init__(self,

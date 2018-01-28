@@ -16,7 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_S3_S3_FILE_SYSTEM_H_
 #define TENSORFLOW_CONTRIB_S3_S3_FILE_SYSTEM_H_
 
+#include <aws/s3/S3Client.h>
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/mutex.h"
 
 namespace tensorflow {
 
@@ -53,6 +55,13 @@ class S3FileSystem : public FileSystem {
   Status GetFileSize(const string& fname, uint64* size) override;
 
   Status RenameFile(const string& src, const string& target) override;
+ private:
+  // Returns the member S3 client, initializing as-needed.
+  std::shared_ptr<Aws::S3::S3Client> GetS3Client();
+
+  std::shared_ptr<Aws::S3::S3Client> s3_client_;
+  // Lock held when checking for s3_client_ initialization.
+  mutex client_lock_;
 };
 
 }  // namespace tensorflow

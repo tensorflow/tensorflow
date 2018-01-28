@@ -24,6 +24,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.python.util import tf_inspect
 
 
@@ -69,7 +70,7 @@ class Scope(object):
     raise KeyError(name)
 
 
-class TypeInfoResolver(gast.NodeTransformer):
+class TypeInfoResolver(transformer.Base):
   """Annotates symbols with type information where possible.
 
   Nodes currently annotated:
@@ -77,9 +78,9 @@ class TypeInfoResolver(gast.NodeTransformer):
     * Attribute (helps resolve object methods)
   """
 
-  def __init__(self, value_hints):
+  def __init__(self, context):
+    super(TypeInfoResolver, self).__init__(context)
     self.scope = Scope(None)
-    self.value_hints = value_hints
     self.function_level = 0
 
   def visit_FunctionDef(self, node):
@@ -120,13 +121,11 @@ class TypeInfoResolver(gast.NodeTransformer):
     self.generic_visit(node)
     if isinstance(node.ctx, gast.Param):
       self.scope.setval(node.id, gast.Name(node.id, gast.Load(), None))
-      # TODO(mdan): Member functions should not need type hints.
-      # We could attemp to extract im_class from the live_val annotation.
-      if self.function_level == 1 and node.id in self.value_hints:
+      if self.function_level == 1 and node.id in self.context.arg_types:
         # Forge a node to hold the type information, so that method calls on
         # it can resolve the type.
         type_holder = gast.Name(node.id, gast.Load(), None)
-        type_string, type_obj = self.value_hints[node.id]
+        type_string, type_obj = self.context.arg_types[node.id]
         anno.setanno(type_holder, 'type', type_obj)
         anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
         self.scope.setval(node.id, type_holder)
@@ -206,6 +205,5 @@ class TypeInfoResolver(gast.NodeTransformer):
     return node
 
 
-def resolve(node, value_hints):
-  assert value_hints is not None
-  return TypeInfoResolver(value_hints).visit(node)
+def resolve(node, context):
+  return TypeInfoResolver(context).visit(node)

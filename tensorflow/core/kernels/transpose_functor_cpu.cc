@@ -88,6 +88,18 @@ struct Transpose<CPUDevice, T, conjugate> {
         internal::TransposeUsingEigen<CPUDevice, T, 5>(d, in, perm, conjugate,
                                                        out);
         break;
+      case 6:
+        internal::TransposeUsingEigen<CPUDevice, T, 6>(d, in, perm, conjugate,
+                                                       out);
+        break;
+      case 7:
+        internal::TransposeUsingEigen<CPUDevice, T, 7>(d, in, perm, conjugate,
+                                                       out);
+        break;
+      case 8:
+        internal::TransposeUsingEigen<CPUDevice, T, 8>(d, in, perm, conjugate,
+                                                       out);
+        break;
       default:
         TransposeSimple<T, conjugate>(d, in, perm, out);
         break;

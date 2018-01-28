@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#define TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
@@ -51,13 +51,14 @@ struct SegmentSumFunctor {
 // BaseFunctor for definition of UnsorteSegmentReductionOp
 // for usage without templates.
 template <typename Device, typename T, typename Index>
-struct UnsortedSegmentBaseFunctor{
-  virtual ~UnsortedSegmentBaseFunctor(){}
+struct UnsortedSegmentBaseFunctor {
+  virtual ~UnsortedSegmentBaseFunctor() {}
   virtual void operator()(OpKernelContext* ctx, const Device& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
-                  typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output){};
+                          const Index output_rows,
+                          const TensorShape& segment_ids_shape,
+                          typename TTypes<Index>::ConstFlat segment_ids,
+                          const Index data_size, const T* data,
+                          typename TTypes<T, 2>::Tensor output){};
 };
 
 // Functor for UnsortedSegmentSumOp.
@@ -70,7 +71,8 @@ struct UnsortedSegmentBaseFunctor{
 // data: input data tensor.
 // output: output reshaped to {output_rows, output.size/output_rows}
 template <typename Device, typename T, typename Index>
-struct UnsortedSegmentSumFunctor: public UnsortedSegmentBaseFunctor<Device, T, Index> {
+struct UnsortedSegmentSumFunctor
+    : public UnsortedSegmentBaseFunctor<Device, T, Index> {
   void operator()(OpKernelContext* ctx, const Device& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
@@ -88,7 +90,8 @@ struct UnsortedSegmentSumFunctor: public UnsortedSegmentBaseFunctor<Device, T, I
 // data: input data tensor.
 // output: output reshaped to {output_rows, output.size/output_rows}
 template <typename Device, typename T, typename Index>
-struct UnsortedSegmentMaxFunctor: public UnsortedSegmentBaseFunctor<Device, T, Index> {
+struct UnsortedSegmentMaxFunctor
+    : public UnsortedSegmentBaseFunctor<Device, T, Index> {
   void operator()(OpKernelContext* ctx, const Device& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
@@ -98,4 +101,4 @@ struct UnsortedSegmentMaxFunctor: public UnsortedSegmentBaseFunctor<Device, T, I
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
