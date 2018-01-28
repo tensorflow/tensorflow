@@ -389,6 +389,17 @@ __global__ void SetZero(const int count, T* ptr) {
   }
 }
 
+// Helper to set all tensor entries to a specific value.
+template <typename T>
+__global__ void SetToValue(const int count, T* ptr, T value) {
+  // Check that the grid is one dimensional and index doesn't overflow.
+  assert(blockDim.y == 1 && blockDim.z == 1);
+  assert(blockDim.x * gridDim.x / blockDim.x == gridDim.x);
+  for (int i : CudaGridRangeX(count)) {
+    ptr[i] = value;
+  }
+}
+
 namespace detail {
 // Helper function for atomic accumulation implemented as CAS.
 template <typename T, typename F>
@@ -433,6 +444,28 @@ template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicAdd(T* ptr, U value) {
   return atomicAdd(ptr, value);
 }
+
+// Specializations of CudaAtomicAdd for complex types, which CudaAtomicAdd does
+// not support. We treat a std::complex<T>* as a T* (the C++ standard section
+// 26.4.4 allows this explicitly) and atomic add the real and imaginary
+// components individually. The operation as a whole is not atomic, but we can
+// safely treat the components independently for the purpose of accumulating.
+template <>
+__device__ inline std::complex<float> CudaAtomicAdd(std::complex<float>* ptr,
+                                                    std::complex<float> value) {
+  auto ptr_scalar = reinterpret_cast<float*>(ptr);
+  return std::complex<float>(CudaAtomicAdd(ptr_scalar, value.real()),
+                             CudaAtomicAdd(ptr_scalar + 1, value.imag()));
+}
+
+template <>
+__device__ inline std::complex<double> CudaAtomicAdd(
+    std::complex<double>* ptr, std::complex<double> value) {
+  auto ptr_scalar = reinterpret_cast<double*>(ptr);
+  return std::complex<double>(CudaAtomicAdd(ptr_scalar, value.real()),
+                              CudaAtomicAdd(ptr_scalar + 1, value.imag()));
+}
+
 #if __CUDA_ARCH__ < 600
 __device__ inline double CudaAtomicAdd(double* ptr, double value) {
   return detail::CudaAtomicCasHelper(ptr,
@@ -471,11 +504,39 @@ template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicMax(T* ptr, U value) {
   return atomicMax(ptr, value);
 }
+__device__ inline float CudaAtomicMax(float* ptr, float value) {
+  return detail::CudaAtomicCasHelper(
+      ptr, [value](float a) { return max(a, value); });
+}
+__device__ inline double CudaAtomicMax(double* ptr, double value) {
+  return detail::CudaAtomicCasHelper(
+      ptr, [value](double a) { return max(a, value); });
+}
 #if __CUDA_ARCH__ < 320
 __device__ inline tensorflow::uint64 CudaAtomicMax(tensorflow::uint64* ptr,
                                                    tensorflow::uint64 value) {
   return detail::CudaAtomicCasHelper(
       ptr, [value](tensorflow::uint64 a) { return max(a, value); });
+}
+#endif
+
+template <typename T, typename U>
+__device__ detail::ToTypeIfConvertible<U, T> CudaAtomicMin(T* ptr, U value) {
+  return atomicMin(ptr, value);
+}
+__device__ inline float CudaAtomicMin(float* ptr, float value) {
+  return detail::CudaAtomicCasHelper(
+      ptr, [value](float a) { return min(a, value); });
+}
+__device__ inline double CudaAtomicMin(double* ptr, double value) {
+  return detail::CudaAtomicCasHelper(
+      ptr, [value](double a) { return min(a, value); });
+}
+#if __CUDA_ARCH__ < 320
+__device__ inline tensorflow::uint64 CudaAtomicMin(tensorflow::uint64* ptr,
+                                                   tensorflow::uint64 value) {
+  return detail::CudaAtomicCasHelper(
+      ptr, [value](tensorflow::uint64 a) { return min(a, value); });
 }
 #endif
 

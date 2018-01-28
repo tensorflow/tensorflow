@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
-#define TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include <limits>
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -46,59 +47,73 @@ struct SegmentSumFunctor {
                   const Index data_size, const T* data,
                   typename TTypes<T, 2>::Tensor output);
 };
+
 #endif
 
-// BaseFunctor for definition of UnsorteSegmentReductionOp
-// for usage without templates.
-template <typename Device, typename T, typename Index>
-struct UnsortedSegmentBaseFunctor {
-  virtual ~UnsortedSegmentBaseFunctor() {}
-  virtual void operator()(OpKernelContext* ctx, const Device& d,
-                          const Index output_rows,
-                          const TensorShape& segment_ids_shape,
-                          typename TTypes<Index>::ConstFlat segment_ids,
-                          const Index data_size, const T* data,
-                          typename TTypes<T, 2>::Tensor output){};
-};
-
-// Functor for UnsortedSegmentSumOp.
-// output_rows: the number of output segments (unique segment ids in
-//                'segment_ids').
-// segment_ids_shape: shape of 'segment_ids' tensor.
-// segment_ids: unsorted map from input to output segment ids at which to
-//                perform segment sum operation.
-// data_size: size of input data tensor.
-// data: input data tensor.
-// output: output reshaped to {output_rows, output.size/output_rows}
-template <typename Device, typename T, typename Index>
-struct UnsortedSegmentSumFunctor
-    : public UnsortedSegmentBaseFunctor<Device, T, Index> {
-  void operator()(OpKernelContext* ctx, const Device& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
+template <typename Device, typename T, typename Index, typename InitialValueF,
+          typename ReductionF>
+struct UnsortedSegmentFunctor {
+  void operator()(OpKernelContext* ctx, const Index num_segments,
+                  const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
                   typename TTypes<T, 2>::Tensor output);
 };
 
-// Functor for UnsortedSegmentMaxOp.
-// output_rows: the number of output segments (unique segment ids in
-//                'segment_ids').
-// segment_ids_shape: shape of 'segment_ids' tensor.
-// segment_ids: unsorted map from input to output segment ids at which to
-//                perform segment sum operation.
-// data_size: size of input data tensor.
-// data: input data tensor.
-// output: output reshaped to {output_rows, output.size/output_rows}
-template <typename Device, typename T, typename Index>
-struct UnsortedSegmentMaxFunctor
-    : public UnsortedSegmentBaseFunctor<Device, T, Index> {
-  void operator()(OpKernelContext* ctx, const Device& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
-                  typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output);
+#ifdef GOOGLE_CUDA
+// reduction functors for the gpu
+template <typename T>
+struct SumOpGpu {
+  __device__ __forceinline__ void operator()(T* dest, const T& value) {
+    CudaAtomicAdd(dest, value);
+  }
 };
+
+template <typename T>
+struct ProdOpGpu {
+  __device__ __forceinline__ void operator()(T* dest, const T& value) {
+    CudaAtomicMul(dest, value);
+  }
+};
+
+template <typename T>
+struct MaxOpGpu {
+  __device__ __forceinline__ void operator()(T* dest, const T& value) {
+    CudaAtomicMax(dest, value);
+  }
+};
+
+template <typename T>
+struct MinOpGpu {
+  __device__ __forceinline__ void operator()(T* dest, const T& value) {
+    CudaAtomicMin(dest, value);
+  }
+};
+
+#endif  // GOOGLE_CUDA
+
+// initial value functors
+template <typename T>
+struct Zero {
+  inline T operator()() const { return T(0); }
+};
+
+template <typename T>
+struct One {
+  inline T operator()() const { return T(1); }
+};
+
+template <typename T>
+struct Lowest {
+  inline T operator()() const { return std::numeric_limits<T>::lowest(); }
+};
+
+template <typename T>
+struct Highest {
+  inline T operator()() const { return std::numeric_limits<T>::max(); }
+};
+
 }  // namespace functor
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
+#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
