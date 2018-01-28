@@ -31,9 +31,14 @@ option(tensorflow_BUILD_PYTHON_TESTS "Build python unit tests " OFF)
 option(tensorflow_BUILD_MORE_PYTHON_TESTS "Build more python unit tests for contrib packages" OFF)
 option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
-option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
+
+# enable SIMD instructions with MSVC, as AVX and SSE
+if (WIN32)
+SET(tensorflow_WIN_CPU_SIMD_OPTIONS "/arch:AVX" CACHE STRING "Enables CPU SIMD instructions")
+SET_PROPERTY(CACHE tensorflow_WIN_CPU_SIMD_OPTIONS PROPERTY STRINGS /arch:AVX) 
+endif()
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
