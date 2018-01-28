@@ -121,14 +121,12 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
     * `tensorflow_BUILD_PYTHON_BINDING` is default to be `on`. Set to `off` if you don't need python interaface. If SWIG is not in system path, you need set it manually. (optional)
     * `tensorflow_BUILD_SHARED_LIB` is default to be `off`. Set to `on` if you want the c++ interface. (optional)
     * `tensorflow_ENABLE_GPU` is default to be `off`. Set to `on` if you want GPU support. It will search CUDA and CUDNN dependecies if you have set them to system path, otherwise CMake would prompt error and request you to set it manually. (optional)
-    * `tensorflow_ENABLE_GRPC_SUPPORT` is default to be `on`. For Linux build, this option must always be `on`. In Windows you need to turn it to `off`.
+    * `tensorflow_ENABLE_GRPC_SUPPORT` is default to be `on`. For Linux build, this option must always be `on`. In Windows this need to be `on` for gpu build.
     * `tensorflow_ENABLE_POSITION_INDEPENDENT_CODE` should always be `on`
     * `tensorflow_ENABLE_SNAPPY_SUPPORT` should always be `on` 
     * `tensorflow_OPTIMIZE_FOR_NATIVE_ARCH` should always be `on`
     * `CMAKE_INSTALL_PREFIX` is the location where the final package will be installed. You may change it to you own preferred path (optional)
 
-    ##### Current known bug
-    * `WIN_CPU_SIMD_OPTIONS` cannot be turned on now. Going to be fix
 6. After changing the configuration in step 5, press `Configure` again
 7. If not error is found, press `Generate`
 
