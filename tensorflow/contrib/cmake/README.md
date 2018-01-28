@@ -179,6 +179,10 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
 
     ##### Python
 
+    **Important Note** CMake generated python wheel for Linux/MacOs is currently under development. Please use bazel build.
+
+    Follow code is an expected Linux/MacOS python package build after development work is completed.
+
     ```
     make -sj<number-of-threads> tf_python_build_pip_package
     cd tf_python
