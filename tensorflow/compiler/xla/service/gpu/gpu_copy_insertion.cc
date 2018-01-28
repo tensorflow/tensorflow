@@ -36,7 +36,7 @@ namespace gpu {
 
 StatusOr<HloInstruction*> GpuCopyInsertion::FindOrInsertCopy(
     HloInstruction* hlo) {
-  HloInstruction*& copy = inserted_copies_[hlo];
+  HloInstruction*& copy = hlo_to_copy_map_[hlo];
   if (copy == nullptr) {
     TF_ASSIGN_OR_RETURN(copy, hlo->parent()->DeepCopyInstruction(hlo));
   }
@@ -86,27 +86,34 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
     }
   }
 
-  // Init values of a while node cannot be constants. Insert copies for any
-  // constants found at the operand of a while.
-  tensorflow::gtl::FlatSet<HloInstruction*> copied_constants;
+  // Init values of while and conditional nodes cannot be constants. Insert
+  // copies for any constants found at the operands of these nodes.
+  tensorflow::gtl::FlatSet<HloInstruction*> inserted_copies;
   for (HloComputation* computation : module->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      if (instruction->opcode() != HloOpcode::kWhile) {
+      if (instruction->opcode() != HloOpcode::kWhile &&
+          instruction->opcode() != HloOpcode::kConditional) {
         continue;
       }
-      for (auto& pair :
-               dataflow->GetInstructionValueSet(instruction->operand(0))) {
-        const HloValueSet& value_set = pair.second;
-        for (const HloValue* value : value_set.values()) {
-          if (value->defining_instruction()->opcode() ==
-              HloOpcode::kConstant &&
-              !ContainsKey(copied_constants, value->defining_instruction())) {
-            HloInstruction* constant = value->defining_instruction();
-            TF_ASSIGN_OR_RETURN(HloInstruction * copy,
-                                FindOrInsertCopy(constant));
-            TF_RETURN_IF_ERROR(constant->ReplaceAllUsesWith(copy));
-            copied_constants.insert(constant);
-            changed = true;
+      for (auto operand : instruction->operands()) {
+        // Skip the operands that have already been replaced with a copy in a
+        // previous iteration (which is possible when a constant is used as an
+        // operand in multiple places).
+        if (ContainsKey(inserted_copies, operand)) {
+          continue;
+        }
+        for (auto& pair : dataflow->GetInstructionValueSet(operand)) {
+          const HloValueSet& value_set = pair.second;
+          for (const HloValue* value : value_set.values()) {
+            if (value->defining_instruction()->IsConstant() &&
+                !ContainsKey(hlo_to_copy_map_, value->defining_instruction())) {
+              HloInstruction* constant = value->defining_instruction();
+              TF_ASSIGN_OR_RETURN(HloInstruction * copy,
+                                  FindOrInsertCopy(constant));
+              TF_RETURN_IF_ERROR(constant->ReplaceAllUsesWith(copy));
+              inserted_copies.insert(copy);
+              changed = true;
+            }
           }
         }
       }

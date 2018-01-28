@@ -178,7 +178,6 @@ class Timeline {
   int64 step_;
   const string outfile_;
   int64 next_pid_ = 0;
-  int64 allocator_pid_ = -1;
   MemoryTracker mem_tracker_;
   ChromeTraceFormatter chrome_formatter_;
   std::map<string, int64> device_pids_;

@@ -28,7 +28,7 @@ limitations under the License.
 #include "mkl_dnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 using mkldnn::stream;
 using mkldnn::sum;
@@ -37,7 +37,7 @@ using mkldnn::sum;
 namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 template <typename Device, typename T>
 class MklAddNOp : public OpKernel {
@@ -285,7 +285,7 @@ class MklAddNOp : public OpKernel {
   } MklAddNOpContext;
 };
 
-#else  // INTEL_MKL_DNN
+#else  // INTEL_MKL_ML
 template <typename Device, typename T>
 class MklAddNOp : public OpKernel {
  public:

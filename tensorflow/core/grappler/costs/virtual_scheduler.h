@@ -139,8 +139,8 @@ class FIFOManager : public ReadyNodeManager {
  public:
   FIFOManager() : ReadyNodeManager() {}
   ~FIFOManager() override {}
-  virtual void Init(
-      const std::unordered_map<const NodeDef*, NodeState>* node_state) {}
+  void Init(const std::unordered_map<const NodeDef*, NodeState>* node_state)
+      override {}
   void AddNode(const NodeDef* node) override { nodes_.push_back(node); }
   const NodeDef* GetCurrNode() override {
     CHECK(!nodes_.empty()) << "GetCurrNode(), but there's no ready node";
@@ -325,7 +325,7 @@ class VirtualScheduler {
   // Boolean field for whether the cost is accurate.
   std::map<string, std::pair<int, bool>> op_costs_;
 
-  Costs graph_costs_;                // Graph cost.
+  Costs graph_costs_;                   // Graph cost.
   std::map<string, Costs> op_to_cost_;  // Per-op cost.
 
   // Auxilliary data structures for constructing NodeState and DeviceState.

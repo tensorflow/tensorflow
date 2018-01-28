@@ -40,15 +40,16 @@ def _SumGrad(op, grad):
   """Gradient for Sum."""
   # Fast path for when reducing to a scalar and ndims is known: adds only
   # Reshape and Tile ops (and possibly a Shape).
-  if op.inputs[0].get_shape().ndims is not None:
+  input_0_shape = op.inputs[0]._shape_tuple()  # pylint: disable=protected-access
+  if input_0_shape is not None:
     axes = tensor_util.constant_value(op.inputs[1])
     if axes is not None:
-      rank = op.inputs[0].get_shape().ndims
+      rank = len(input_0_shape)
       if np.array_equal(axes, np.arange(rank)):  # Reduce all dims.
         grad = array_ops.reshape(grad, [1] * rank)
         # If shape is not fully defined (but rank is), we use Shape.
-        if op.inputs[0].get_shape().is_fully_defined():
-          input_shape = op.inputs[0].get_shape().as_list()
+        if None not in input_0_shape:
+          input_shape = input_0_shape
         else:
           input_shape = array_ops.shape(op.inputs[0])
         return [array_ops.tile(grad, input_shape), None]
@@ -96,9 +97,12 @@ def _MinGrad(op, grad):
 def _MeanGrad(op, grad):
   """Gradient for Mean."""
   sum_grad = _SumGrad(op, grad)[0]
-  input_size = op.inputs[0].get_shape().num_elements()
-  output_size = op.outputs[0].get_shape().num_elements()
-  if input_size is not None and output_size is not None:
+  input_shape = op.inputs[0]._shape_tuple()  # pylint: disable=protected-access
+  output_shape = op.outputs[0]._shape_tuple()  # pylint: disable=protected-access
+  if (input_shape is not None and output_shape is not None and
+      None not in input_shape and None not in output_shape):
+    input_size = np.prod(input_shape)
+    output_size = np.prod(output_shape)
     factor = input_size // max(output_size, 1)
     factor = constant_op.constant(factor, dtype=sum_grad.dtype)
   else:
@@ -106,7 +110,7 @@ def _MeanGrad(op, grad):
     output_shape = array_ops.shape(op.outputs[0])
     factor = _safe_shape_div(
         math_ops.reduce_prod(input_shape), math_ops.reduce_prod(output_shape))
-  return sum_grad / math_ops.cast(factor, sum_grad.dtype), None
+  return math_ops.truediv(sum_grad, math_ops.cast(factor, sum_grad.dtype)), None
 
 
 @ops.RegisterGradient("Prod")
@@ -330,7 +334,7 @@ def _SquareGrad(op, grad):
   # Added control dependencies to prevent 2*x from being computed too early.
   with ops.control_dependencies([grad]):
     x = math_ops.conj(x)
-    return grad * (2.0 * x)
+    return math_ops.multiply(grad, math_ops.multiply(x, 2.0))
 
 
 @ops.RegisterGradient("Sqrt")
@@ -756,8 +760,12 @@ def _AddGrad(op, grad):
 
 @ops.RegisterGradient("Sub")
 def _SubGrad(op, grad):
+  """Gradient for Sub."""
   x = op.inputs[0]
   y = op.inputs[1]
+  if (isinstance(grad, ops.Tensor) and
+      _ShapesFullySpecifiedAndEqual(x, y, grad)):
+    return grad, -grad
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   # pylint: disable=protected-access

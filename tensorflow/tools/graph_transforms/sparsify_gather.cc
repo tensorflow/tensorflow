@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 #include <memory>
+#include <unordered_map>
 
 #include "tensorflow/c/checkpoint_reader.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,9 +29,10 @@ limitations under the License.
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
-using strings::StrCat;
 using str_util::Join;
 using str_util::Split;
+using str_util::StringReplace;
+using strings::StrCat;
 
 namespace graph_transforms {
 
@@ -89,7 +91,7 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
                          string* shape_slice_string) {
   string restore_node_name;
   for (const auto& node : input_graph_def.node()) {
-    std::vector<string> node_name_parts = str_util::Split(node.name(), "/");
+    std::vector<string> node_name_parts = Split(node.name(), "/");
     if (node_name_parts.size() == 2 &&
         StringPiece(node_name_parts[0]).starts_with("save") &&
         StringPiece(node_name_parts[1]).starts_with("Assign") &&
@@ -119,13 +121,13 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
 }
 
 string GetMonolithicTensorKey(const string& tensor_slice_name) {
-  std::vector<string> names = str_util::Split(tensor_slice_name, "/");
+  std::vector<string> names = Split(tensor_slice_name, "/");
   CHECK_GE(names.size(), 2);
   CHECK(StringPiece(names[names.size() - 1]).starts_with("part_"));
 
   // Remove the "part_x" suffix
   names.pop_back();
-  return str_util::Join(names, "/");
+  return Join(names, "/");
 }
 
 Status ReadTensorFromCheckpoint(
@@ -193,6 +195,15 @@ Status SparsifyGatherInternal(
   GraphDef current_graph_def = input_graph_def;
   bool any_match_found = false;
 
+  // Populate references.
+  std::unordered_map<string, int> refs;
+  for (const auto& node : current_graph_def.node()) {
+    for (const auto& input : node.input()) {
+      auto parsed_input = StringReplace(input, "^", "", true);
+      refs[parsed_input] += 1;
+    }
+  }
+
   // The subgraphs may have overlapping components, therefore GraphMatcher
   // doesn't return all subgraphs in one round -- this has to be multi-round
   // update.
@@ -200,15 +211,15 @@ Status SparsifyGatherInternal(
     any_match_found = false;
     GraphDef replaced_graph_def = current_graph_def;
     std::vector<string> init_table_node_names;
-    std::vector<string> removed_variable_names;
+    std::vector<string> removed_node_names;
 
     TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
         current_graph_def, pattern,
         [&ckpt_reader, &any_match_found, &init_table_node_names,
-         &shapes_and_slices, &removed_variable_names](
-            const NodeMatch& match, const std::set<string>& input_nodes,
-            const std::set<string>& output_nodes,
-            std::vector<NodeDef>* new_nodes) {
+         &shapes_and_slices, &removed_node_names,
+         &refs](const NodeMatch& match, const std::set<string>& input_nodes,
+                const std::set<string>& output_nodes,
+                std::vector<NodeDef>* new_nodes) {
           any_match_found = true;
 
           // The captured subgraph should be of the following pattern:
@@ -291,8 +302,12 @@ Status SparsifyGatherInternal(
                 weights_node.name(), ckpt_reader,
                 (*shapes_and_slices)[weights_node.name()], &weight));
             // Add both both weight and identity node names.
-            removed_variable_names.push_back(weights_node.name());
-            removed_variable_names.push_back(match.inputs[0].node.name());
+            removed_node_names.push_back(weights_node.name());
+            removed_node_names.push_back(match.inputs[0].node.name());
+            for (auto input_node : match.inputs[0].node.input()) {
+              auto parsed_input = StringReplace(input_node, "^", "", true);
+              refs[parsed_input]--;
+            }
           }
           Tensor indices_tensor;
           Tensor values_tensor;
@@ -362,15 +377,23 @@ Status SparsifyGatherInternal(
 
           // Connect nodes
           AddNodeInput(hashtable_node.name(), &init_table_node);
+          refs[hashtable_node.name()]++;
           AddNodeInput(indices_node.name(), &init_table_node);
+          refs[indices_node.name()]++;
           AddNodeInput(values_node.name(), &init_table_node);
+          refs[values_node.name()]++;
 
           AddNodeInput(hashtable_node.name(), &lookup_node);
+          refs[hashtable_node.name()]++;
           AddNodeInput(gather_node.input(1), &lookup_node);
+          refs[gather_node.input(1)]++;
           AddNodeInput(default_value_node.name(), &lookup_node);
+          refs[default_value_node.name()]++;
 
           AddNodeInput(lookup_node.name(), &expand_dims_node);
+          refs[lookup_node.name()]++;
           AddNodeInput(dim_idx_node.name(), &expand_dims_node);
+          refs[dim_idx_node.name()]++;
 
           // Copy 'ids' input of original 'Gather'
           new_nodes->push_back(match.inputs[1].node);
@@ -404,22 +427,44 @@ Status SparsifyGatherInternal(
     for (const string& name : init_table_node_names) {
       // Add control dependence from init_table_node to group_deps_node
       AddNodeInput(StrCat("^", name), init_op);
+      refs[name]++;
     }
 
-    // Remove all dependencies associated with removed variables.
-    while (!removed_variable_names.empty()) {
-      auto name = removed_variable_names.back();
-      removed_variable_names.pop_back();
+    // Erase inputs and outputs as they are not considered for deletion.
+    for (const auto& output : context.output_names) {
+      refs.erase(output);
+    }
+
+    for (const auto& input : context.input_names) {
+      refs.erase(input);
+    }
+
+    // Add nodes with a reference count of 0 for deletion.
+    for (auto entry : refs) {
+      if (entry.second == 0) {
+        removed_node_names.push_back(entry.first);
+      }
+    }
+
+    while (!removed_node_names.empty()) {
+      auto name = removed_node_names.back();
+      removed_node_names.pop_back();
+
       int i = 0;
       while (i < replaced_graph_def.node_size()) {
-        if (!replaced_graph_def.node(i).input_size()) {
-          if (replaced_graph_def.node(i).name() == name) {
-            replaced_graph_def.mutable_node()->SwapElements(
-                i, replaced_graph_def.node_size() - 1);
-            replaced_graph_def.mutable_node()->RemoveLast();
-            continue;
+        // Revisit this to see if we can safely remove RestoreV2 nodes.
+        if ((replaced_graph_def.node(i).name() == name) &&
+            (replaced_graph_def.node(i).op() != "RestoreV2")) {
+          for (const auto& input : replaced_graph_def.node(i).input()) {
+            auto parsed_input = StringReplace(input, "^", "", true);
+            refs[parsed_input] -= 1;
+            if (refs[parsed_input] == 0) {
+              removed_node_names.push_back(parsed_input);
+            }
           }
-          i++;
+          replaced_graph_def.mutable_node()->SwapElements(
+              i, replaced_graph_def.node_size() - 1);
+          replaced_graph_def.mutable_node()->RemoveLast();
           continue;
         }
         int j = 0;
@@ -433,18 +478,16 @@ Status SparsifyGatherInternal(
           }
           j++;
         }
-        if ((replaced_graph_def.node(i).input_size() == 0) ||
-            (replaced_graph_def.node(i).op() == "Assign" &&
-             replaced_graph_def.node(i).input_size() == 1)) {
-          removed_variable_names.push_back(replaced_graph_def.node(i).name());
-          if (replaced_graph_def.node(i).input_size() == 1) {
-            removed_variable_names.push_back(
-                replaced_graph_def.node(i).input(0));
+        if (!replaced_graph_def.node(i).input_size()) {
+          if ((refs.find(replaced_graph_def.node(i).name()) != refs.end()) &&
+              (refs[replaced_graph_def.node(i).name()] == 0)) {
+            removed_node_names.push_back(replaced_graph_def.node(i).name());
           }
-          replaced_graph_def.mutable_node()->SwapElements(
-              i, replaced_graph_def.node_size() - 1);
-          replaced_graph_def.mutable_node()->RemoveLast();
-          continue;
+        }
+
+        if (replaced_graph_def.node(i).op() == "Assign" &&
+            replaced_graph_def.node(i).input_size() == 1) {
+          removed_node_names.push_back(replaced_graph_def.node(i).name());
         }
         i++;
       }

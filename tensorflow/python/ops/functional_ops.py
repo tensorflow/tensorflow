@@ -458,7 +458,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   For example, if `elems` is `(t1, [t2, t3])` and `initializer` is
   `[i1, i2]` then an appropriate signature for `fn` in `python2` is:
-  `fn = lambda (acc_p1, acc_p2), (t1 [t2, t3]):` and `fn` must return a list,
+  `fn = lambda (acc_p1, acc_p2), (t1, [t2, t3]):` and `fn` must return a list,
   `[acc_n1, acc_n2]`.  An alternative correct signature for `fn`, and the
    one that works in `python3`, is:
   `fn = lambda a, t:`, where `a` and `t` correspond to the input tuples.

@@ -37,9 +37,8 @@ void FeatureWeightsDenseStorage::UpdateDenseDeltaWeights(
   const size_t num_weight_vectors = normalized_bounded_dual_delta.size();
   if (num_weight_vectors == 1) {
     deltas_.device(device) =
-        deltas_ +
-        dense_vector.RowAsMatrix() *
-            deltas_.constant(normalized_bounded_dual_delta[0]);
+        deltas_ + dense_vector.RowAsMatrix() *
+                      deltas_.constant(normalized_bounded_dual_delta[0]);
   } else {
     // Transform the dual vector into a column matrix.
     const Eigen::TensorMap<Eigen::Tensor<const double, 2, Eigen::RowMajor>>
@@ -61,9 +60,8 @@ void FeatureWeightsSparseStorage::UpdateSparseDeltaWeights(
     const Example::SparseFeatures& sparse_features,
     const std::vector<double>& normalized_bounded_dual_delta) {
   for (int64 k = 0; k < sparse_features.indices->size(); ++k) {
-    const double feature_value = sparse_features.values == nullptr
-                                     ? 1.0
-                                     : (*sparse_features.values)(k);
+    const double feature_value =
+        sparse_features.values == nullptr ? 1.0 : (*sparse_features.values)(k);
     auto it = indices_to_id_.find((*sparse_features.indices)(k));
     for (size_t l = 0; l < normalized_bounded_dual_delta.size(); ++l) {
       deltas_(l, it->second) +=
@@ -122,23 +120,24 @@ Status ModelWeights::Initialize(OpKernelContext* const context) {
   }
 
   // Reads in the weights, and allocates and initializes the delta weights.
-  const auto initialize_weights = [&](
-      const OpInputList& weight_inputs, OpOutputList* const weight_outputs,
-      std::vector<FeatureWeightsDenseStorage>* const feature_weights) {
-    for (int i = 0; i < weight_inputs.size(); ++i) {
-      Tensor* delta_t;
-      TF_RETURN_IF_ERROR(
-          weight_outputs->allocate(i, weight_inputs[i].shape(), &delta_t));
-      // Convert the input vector to a row matrix in internal representation.
-      auto deltas = delta_t->shaped<float, 2>({1, delta_t->NumElements()});
-      deltas.setZero();
-      feature_weights->emplace_back(
-          FeatureWeightsDenseStorage{weight_inputs[i].shaped<float, 2>(
-                                         {1, weight_inputs[i].NumElements()}),
-                                     deltas});
-    }
-    return Status::OK();
-  };
+  const auto initialize_weights =
+      [&](const OpInputList& weight_inputs, OpOutputList* const weight_outputs,
+          std::vector<FeatureWeightsDenseStorage>* const feature_weights) {
+        for (int i = 0; i < weight_inputs.size(); ++i) {
+          Tensor* delta_t;
+          TF_RETURN_IF_ERROR(
+              weight_outputs->allocate(i, weight_inputs[i].shape(), &delta_t));
+          // Convert the input vector to a row matrix in internal
+          // representation.
+          auto deltas = delta_t->shaped<float, 2>({1, delta_t->NumElements()});
+          deltas.setZero();
+          feature_weights->emplace_back(FeatureWeightsDenseStorage{
+              weight_inputs[i].shaped<float, 2>(
+                  {1, weight_inputs[i].NumElements()}),
+              deltas});
+        }
+        return Status::OK();
+      };
 
   return initialize_weights(dense_weights_inputs, &dense_weights_outputs,
                             &dense_weights_);

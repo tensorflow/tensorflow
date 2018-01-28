@@ -33,9 +33,11 @@ tensorflow/python/grappler
 tensorflow/python/keras
 tensorflow/python/keras/activations
 tensorflow/python/keras/applications
+tensorflow/python/keras/applications/densenet
 tensorflow/python/keras/applications/inception_resnet_v2
 tensorflow/python/keras/applications/inception_v3
 tensorflow/python/keras/applications/mobilenet
+tensorflow/python/keras/applications/nasnet
 tensorflow/python/keras/applications/resnet50
 tensorflow/python/keras/applications/vgg16
 tensorflow/python/keras/applications/vgg19

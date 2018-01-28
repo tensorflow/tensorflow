@@ -24,5 +24,5 @@ REGISTER3(UnaryOp, GPU, "Ceil", functor::ceil, float, Eigen::half, double);
 
 #if TENSORFLOW_USE_SYCL
 REGISTER2(UnaryOp, SYCL, "Ceil", functor::ceil, float, double);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

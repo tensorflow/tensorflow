@@ -22,7 +22,7 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 
 TEST(MklUtilTest, MklDnnTfShape) {
   auto cpu_engine = engine(engine::cpu, 0);
@@ -84,7 +84,7 @@ TEST(MklUtilTest, MklDnnBlockedFormatTest) {
   EXPECT_EQ(b_md2.data.format, mkldnn_blocked);
 }
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 }  // namespace
 }  // namespace tensorflow
 

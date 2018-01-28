@@ -19,6 +19,7 @@ limitations under the License.
 // can build and use on google internal environments and on OSX.
 
 #include <string>
+#include "google/protobuf/text_format.h"
 #include "tensorflow/contrib/lite/toco/format_port.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/platform.h"
@@ -75,6 +76,26 @@ void CopyToBuffer(const ::Cord& src, char* dest);
 #endif  // PLATFORM_GOOGLE
 void CopyToBuffer(const string& src, char* dest);
 }  // namespace port
+
+inline bool ParseFromStringOverload(const std::string& in,
+                                    TFLITE_PROTO_NS::Message* proto) {
+  return TFLITE_PROTO_NS::TextFormat::ParseFromString(in, proto);
+}
+
+template <typename Proto>
+bool ParseFromStringEitherTextOrBinary(const std::string& input_file_contents,
+                                       Proto* proto) {
+  if (proto->ParseFromString(input_file_contents)) {
+    return true;
+  }
+
+  if (ParseFromStringOverload(input_file_contents, proto)) {
+    return true;
+  }
+
+  return false;
+}
+
 }  // namespace toco
 
 #endif  // TENSORFLOW_CONTRIB_LITE_TOCO_TOCO_PORT_H_

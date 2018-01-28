@@ -33,31 +33,25 @@ class BreakCanonicalizationTransformer(gast.NodeTransformer):
     self.break_uses = []
 
   def _create_break_check(self):
-
-    def template(var_name):
-      (not var_name)  # pylint:disable=pointless-statement
-
-    expr, = templates.replace(
-        template, var_name=gast.Name(self.break_uses[-1][1], None, None))
+    template = """
+      (not var_name)
+    """
+    expr, = templates.replace(template, var_name=self.break_uses[-1][1])
     return expr.value
 
   def _create_break_trigger(self):
-
-    def template(var_name):  # pylint:disable=unused-argument
+    template = """
       var_name = True
-
-    block = templates.replace(
-        template, var_name=gast.Name(self.break_uses[-1][1], None, None))
+    """
+    block = templates.replace(template, var_name=self.break_uses[-1][1])
     block.append(gast.Continue())
     return block
 
   def _create_break_init(self):
-
-    def template(var_name):  # pylint:disable=unused-argument
+    template = """
       var_name = False
-
-    assign, = templates.replace(
-        template, var_name=gast.Name(self.break_uses[-1][1], None, None))
+    """
+    assign, = templates.replace(template, var_name=self.break_uses[-1][1])
     return assign
 
   # TODO(mdan): Surely the transformer supports this better?

@@ -49,9 +49,6 @@ class Dense(base.Layer):
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
 
-  Note: if the input to the layer has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `kernel`.
-
   Arguments:
     units: Integer or Long, dimensionality of the output space.
     activation: Activation function (callable). Set it to None to maintain a
@@ -199,9 +196,6 @@ def dense(
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
 
-  Note: if the `inputs` tensor has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `kernel`.
-
   Arguments:
     inputs: Tensor input.
     units: Integer or Long, dimensionality of the output space.
@@ -230,7 +224,8 @@ def dense(
       by the same name.
 
   Returns:
-    Output tensor.
+    Output tensor the same shape as `inputs` except the last dimension is of
+    size `units`.
 
   Raises:
     ValueError: if eager execution is enabled.
