@@ -687,7 +687,8 @@ StatusOr<bool> HloVerifier::Run(HloModule* module) {
       instructions[instruction->name()] = instruction;
     }
 
-    TF_RETURN_IF_ERROR(computation->Accept(shape_verifier_.get()));
+    std::unique_ptr<ShapeVerifier> shape_verifier = shape_verifier_factory_();
+    TF_RETURN_IF_ERROR(computation->Accept(shape_verifier.get()));
   }
 
   return false;
