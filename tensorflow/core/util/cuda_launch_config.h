@@ -21,7 +21,11 @@ limitations under the License.
 #include <algorithm>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#ifdef PLATFORM_GOOGLE
 #include "cuda/include/cuda.h"
+#else
+#include "cuda.h"
+#endif
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"

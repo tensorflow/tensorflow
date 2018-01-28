@@ -28,7 +28,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
-#ifdef GOOGLE_PLATFORM
+#ifdef PLATFORM_GOOGLE
 #include "cuda/include/cuda.h"
 #include "cuda/include/device_functions.h"
 #else
@@ -38,7 +38,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 #if CUDA_VERSION >= 7050
-#ifdef GOOGLE_PLATFORM
+#ifdef PLATFORM_GOOGLE
 #include "cuda/include/cuda_fp16.h"
 #else
 #include "cuda_fp16.h"
