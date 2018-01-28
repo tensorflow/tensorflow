@@ -1063,14 +1063,19 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   // node -- there the shape and layout is present in the output node.
   if (instr->opcode() != HloOpcode::kFusion ||
       !ShouldShowFusionSubcomputation(instr)) {
-    string instr_shape = ShapeUtil::HumanString(instr->shape());
-
-    // Show layout of non-tuple shapes with more than one dimension.
-    if (LayoutUtil::HasLayout(instr->shape()) &&
-        instr->shape().dimensions_size() > 1 &&
-        !ShapeUtil::IsTuple(instr->shape())) {
-      StrAppend(&instr_shape, "{",
-                Join(LayoutUtil::MinorToMajor(instr->shape()), ","), "}");
+    // Show layout of instructions with more than one dimension.  Don't show
+    // layout on tuples or tensors with just one dimension (which only have one
+    // possible layout) to avoid visual noise.
+    bool shape_is_multidim = false;
+    ShapeUtil::ForEachSubshape(instr->shape(),
+                               [&](const Shape& s, const ShapeIndex&) {
+                                 shape_is_multidim |= s.dimensions_size() > 1;
+                               });
+    string instr_shape;
+    if (instr->opcode() != HloOpcode::kTuple && shape_is_multidim) {
+      instr_shape = ShapeUtil::HumanStringWithLayout(instr->shape());
+    } else {
+      instr_shape = ShapeUtil::HumanString(instr->shape());
     }
 
     // Some instructions have giant tuples as their shapes, so truncate the
