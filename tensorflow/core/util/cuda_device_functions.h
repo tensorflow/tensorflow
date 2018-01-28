@@ -28,12 +28,21 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#ifdef GOOGLE_PLATFORM
 #include "cuda/include/cuda.h"
 #include "cuda/include/device_functions.h"
+#else
+#include "cuda.h"
+#include "device_functions.h"
+#endif
 #include "tensorflow/core/platform/types.h"
 
 #if CUDA_VERSION >= 7050
+#ifdef GOOGLE_PLATFORM
 #include "cuda/include/cuda_fp16.h"
+#else
+#include "cuda_fp16.h"
+#endif
 #endif  // CUDA_VERSION >= 7050
 
 namespace tensorflow {
