@@ -122,11 +122,7 @@ class SyntheticTest(test.TestCase):
       spir1 = synthetic.spirals(n_samples = 1000, noise = noise/2., seed = seed)
       self.assertRaises(AssertionError, np.testing.assert_array_equal, spir0.data, spir1.data)
 
-  def test_spirals_typo(self):
-    """Test if a typo was made in a variable name such as x_exrta instead of x_extra
-
-       May raise NameError if there is a typo like in pull request ##16500
-    """
+  def test_spirals(self):
     synthetic.spirals(3)
 
 
