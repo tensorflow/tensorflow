@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #include <algorithm>
 #include <fstream>
 #include <list>
@@ -44,8 +43,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "NvInfer.h"
+#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #define CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
 //------------------------------------------------------------------------------
@@ -322,7 +321,6 @@ void reorder_rsck_to_kcrs(TRT_ShapedWeights const& iweights,
   }
 }
 
-
 struct InferDeleter {
   template <typename T>
   void operator()(T* obj) const {
@@ -449,9 +447,9 @@ class Converter {
 };
 
 // ****************************************************************************
-//  Constant folding functions
-//  TODO(jie): once optimizer kicks in, we should have done constant folding
-//    there.
+// Constant folding functions
+// TODO(jie): once optimizer kicks in, we should have done constant folding
+// there.
 //*****************************************************************************/
 struct LambdaFactory {
   enum class OP_CATEGORY : int { RSQRT = 0, NEG, ADD, MUL, SUB };
@@ -499,7 +497,7 @@ struct LambdaFactory {
           LOG(DEBUG) << "LAMBDA VAL : " << val;
           return l + val;
         };
-        // return [val](T l)-> T {return l+val;};
+      // return [val](T l)-> T {return l+val;};
       case OP_CATEGORY::SUB:
         return [val](T l) -> T {
           LOG(DEBUG) << "LAMBDA VAL : " << val;
@@ -739,35 +737,33 @@ tensorflow::Status BinaryTensorOpWeight(
   // default to channel-wise
   auto scale_mode = nvinfer1::ScaleMode::kELEMENTWISE;
 
-
   if (weights.count() == 1) {
     LOG(DEBUG) << "UNIFORM";
     scale_mode = nvinfer1::ScaleMode::kUNIFORM;
   } else {
     // no broadcasting on Batch dimension;
-    assert(dims_w.d[0]==1);
+    assert(dims_w.d[0] == 1);
 
     // broadcasting on Channel dimension only allowed in kUNIFORM
-    assert(dims_w.d[1]==dims_t.d[0]);
-    assert(dims_w.nbDims==dims_t.nbDims);
+    assert(dims_w.d[1] == dims_t.d[0]);
+    assert(dims_w.nbDims == dims_t.nbDims);
 
     // default is element;
-    for (int i=2; i<dims_w.nbDims; i++) {
-      if (dims_w.d[i]!=dims_t.d[i-1]) {
+    for (int i = 2; i < dims_w.nbDims; i++) {
+      if (dims_w.d[i] != dims_t.d[i - 1]) {
         scale_mode = nvinfer1::ScaleMode::kCHANNEL;
         break;
       }
     }
     if (scale_mode == nvinfer1::ScaleMode::kELEMENTWISE) {
       scale_mode = nvinfer1::ScaleMode::kELEMENTWISE;
-      for (int i=2; i<dims_w.nbDims; i++) {
-        if (dims_w.d[i]!=1)
+      for (int i = 2; i < dims_w.nbDims; i++) {
+        if (dims_w.d[i] != 1)
           return tensorflow::errors::InvalidArgument(
-                   "Weight shape not compatible at, " + node_def.name());
+              "Weight shape not compatible at, " + node_def.name());
       }
     }
   }
-
 
   // prepare weights
   TRT_ShapedWeights shiftWeights(weights.type_);
@@ -826,9 +822,9 @@ tensorflow::Status BinaryTensorOpTensor(
   CHECK_EQ_TYPE(tensor_r->getType(), dtype);
   auto op_pair = ops.find(node_def.op());
   if (op_pair == ops.end())
-    return tensorflow::errors::Unimplemented(
-        "binary op: " + node_def.op() +
-        " not supported at: " + node_def.name());
+    return tensorflow::errors::Unimplemented("binary op: " + node_def.op() +
+                                             " not supported at: " +
+                                             node_def.name());
 
   nvinfer1::IElementWiseLayer* layer = ctx.network()->addElementWise(
       *const_cast<nvinfer1::ITensor*>(tensor_l),
@@ -878,7 +874,6 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
   nvinfer1::DimsHW kernel_size;
   kernel_size.h() = weights.shape_.d[2];
   kernel_size.w() = weights.shape_.d[3];
-  LOG(DEBUG) << "kernel size: " << kernel_size.h() << ", " << kernel_size.w();
   TFAttrs attrs(node_def);
 
   int h_index = 2;
@@ -890,13 +885,10 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
     h_index = 1;
     w_index = 2;
     // TODO(jie): transpose it
-  } else {
-    LOG(DEBUG) << "NCHW !!!!";
   }
+
   // TODO(jie): stride. (NHWC/NCHW)
   auto tf_stride = attrs.get<std::vector<int>>("strides");
-  LOG(DEBUG) << "h_INDEX" << h_index << ", w_index " << w_index;
-  LOG(DEBUG) << "stride!!!: " << tf_stride[0] << tf_stride[1] << tf_stride[2] << tf_stride[3];
   nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
 
   auto tensor_dim = tensor->getDimensions();
@@ -906,9 +898,9 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
     // This is NCHW tensor with no batch dimension.
     //  1 -> h
     //  2 -> w
-    padding = createSamePadding(stride, kernel_size,
-                                {static_cast<int>(tensor_dim.d[1]),
-                                 static_cast<int>(tensor_dim.d[2])});
+    padding = createSamePadding(
+        stride, kernel_size,
+        {static_cast<int>(tensor_dim.d[1]), static_cast<int>(tensor_dim.d[2])});
   } else {
     padding = {{0, 0}, {0, 0}};
   }
@@ -917,11 +909,11 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
       padding[1].first != padding[1].second) {
     // TODO(jie): handle asymmetric padding
     LOG(DEBUG) << "padding!!!: " << padding[0].first << padding[0].second
-                                 << padding[1].first << padding[1].second;
+               << padding[1].first << padding[1].second;
 
     auto dim_before = tensor->getDimensions();
-    LOG(DEBUG) << "TENSOR before: " << dim_before.d[0] << ", " << dim_before.d[1]
-                                    << dim_before.d[2] << ", " << dim_before.d[3];
+    LOG(DEBUG) << "TENSOR before: " << dim_before.d[0] << ", "
+               << dim_before.d[1] << dim_before.d[2] << ", " << dim_before.d[3];
     auto padLayer = ctx.network()->addPadding(
         *const_cast<nvinfer1::ITensor*>(tensor),
         nvinfer1::DimsHW(padding[0].first, padding[1].first),
@@ -930,7 +922,7 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
     tensor = padLayer->getOutput(0);
     auto dim_after = tensor->getDimensions();
     LOG(DEBUG) << "TENSOR after: " << dim_after.d[0] << ", " << dim_after.d[1]
-                                   << dim_after.d[2] << ", " << dim_after.d[3];
+               << dim_after.d[2] << ", " << dim_after.d[3];
   }
 
   nvinfer1::IConvolutionLayer* layer =
@@ -944,7 +936,7 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
 
   auto dim_after = output_tensor->getDimensions();
   LOG(DEBUG) << "TENSOR out: " << dim_after.d[0] << ", " << dim_after.d[1]
-                               << dim_after.d[2] << ", " << dim_after.d[3];
+             << dim_after.d[2] << ", " << dim_after.d[3];
 
   if (data_format == "NHWC") {
     // TODO(jie): transpose it back!
@@ -1011,7 +1003,8 @@ tensorflow::Status ConvertPool(Converter& ctx,
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     // TODO(jie): handle asymmetric padding
-    LOG(DEBUG) << "padding!!!: " << padding[0].first << padding[0].second << padding[1].first << padding[1].second;
+    LOG(DEBUG) << "padding!!!: " << padding[0].first << padding[0].second
+               << padding[1].first << padding[1].second;
     auto padLayer = ctx.network()->addPadding(
         *const_cast<nvinfer1::ITensor*>(tensor),
         nvinfer1::DimsHW(padding[0].first, padding[1].first),
@@ -1593,12 +1586,12 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     int output_idx = input_inds.at(i).second;
     // we wired up the input here already, it is redundant to do it again in
     //  ConvertSubGraphToTensorRT(convert_graph.cc)
-    auto incoming_edge = tensorflow::NodeDefBuilder::NodeOut(input_names.at(i),
-                           output_idx, input_dtypes.at(i));
+    auto incoming_edge = tensorflow::NodeDefBuilder::NodeOut(
+        input_names.at(i), output_idx, input_dtypes.at(i));
     income_edges.push_back(incoming_edge);
   }
-  tensorflow::gtl::ArraySlice<tensorflow::NodeDefBuilder::NodeOut>
-    input_list(income_edges);
+  tensorflow::gtl::ArraySlice<tensorflow::NodeDefBuilder::NodeOut> input_list(
+      income_edges);
   op_builder.Input(input_list);
 
   LOG(INFO) << "finished op preparation";
@@ -1619,5 +1612,5 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif GOOGLE_TENSORRT
-#endif GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
