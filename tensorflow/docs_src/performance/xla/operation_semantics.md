@@ -595,7 +595,7 @@ replica, so if one replica executes a CrossReplicaSum node more times than
 another, then the former replica will wait forever. Since the replicas are all
 running the same program, there are not a lot of ways for that to happen, but it
 is possible when a while loop's condition depends on data from infeed and the
-data that is infeed causes the while loop to iterate more times on one replica
+data that is infed causes the while loop to iterate more times on one replica
 than another.
 
 ## CustomCall
