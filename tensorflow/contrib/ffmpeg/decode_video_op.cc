@@ -34,7 +34,7 @@ namespace ffmpeg {
 class DecodeVideoOp : public OpKernel {
  public:
   explicit DecodeVideoOp(OpKernelConstruction* context) : OpKernel(context) {
-   string stream;
+    string stream;
     if (context->GetAttr("stream", &stream).ok()) {
       stream_ = stream;
     }
@@ -64,8 +64,8 @@ class DecodeVideoOp : public OpKernel {
 
     // Run FFmpeg on the data and verify results.
     std::vector<uint8> output_data;
-    const Status result = ffmpeg::ReadVideoFile(temp_filename, stream_, &output_data,
-                                                &width, &height, &frames);
+    const Status result = ffmpeg::ReadVideoFile(
+        temp_filename, stream_, &output_data, &width, &height, &frames);
     if (result.code() == error::Code::NOT_FOUND) {
       OP_REQUIRES(
           context, result.ok(),
@@ -75,8 +75,8 @@ class DecodeVideoOp : public OpKernel {
       LOG(ERROR) << "Ffmpeg failed with error '" << result.error_message()
                  << "'. Returning empty tensor.";
       Tensor* output = nullptr;
-      OP_REQUIRES_OK(context,
-                     context->allocate_output(0, TensorShape({0, 0, 0, 0}), &output));
+      OP_REQUIRES_OK(context, context->allocate_output(
+                                  0, TensorShape({0, 0, 0, 0}), &output));
       return;
     } else {
       OP_REQUIRES_OK(context, result);
@@ -95,7 +95,8 @@ class DecodeVideoOp : public OpKernel {
     auto output_flat = output->flat<uint8>();
     std::copy_n(output_data.begin(), output_data.size(), &output_flat(0));
   }
-private:
+
+ private:
   string stream_;
 };
 
