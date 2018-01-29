@@ -153,6 +153,20 @@ class RNNCellTest(test.TestCase):
                   m.name: np.array([[0.1, 0.1]])})
         # Smoke test
         self.assertAllClose(res[0], [[0.509682,  0.509682]])
+    
+  def testSRUCellWithDiffSize(self):
+    with self.test_session() as sess:
+      with variable_scope.variable_scope(
+          "root", initializer=init_ops.constant_initializer(0.5)):
+        x = array_ops.zeros([1, 3])
+        m = array_ops.zeros([1, 2])
+        g, _ = contrib_rnn_cell.SRUCell(2)(x, m)
+        sess.run([variables_lib.global_variables_initializer()])
+        res = sess.run(
+            [g], {x.name: np.array([[1., 1., 1.]]),
+                  m.name: np.array([[0.1, 0.1]])})
+        # Smoke test
+        self.assertAllClose(res[0], [[0.55255556, 0.55255556]])
 
   def testBasicLSTMCell(self):
     for dtype in [dtypes.float16, dtypes.float32]:
