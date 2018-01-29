@@ -16,6 +16,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/shape_fn/trt_shfn.h"
 #include "tensorrt/include/NvInfer.h"
@@ -80,3 +82,6 @@ tensorflow::Status TRTEngineOpShapeInference(InferenceContext* c) {
 }
 }  // namespace shape_inference
 }  // namespace tensorflow
+
+#endif // GOOGLE_TENSORRT
+#endif // GOOGLE_CUDA

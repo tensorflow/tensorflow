@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
 
 #include <list>
 #include <set>
@@ -25,8 +24,6 @@ limitations under the License.
 #include <map>
 #include <utility>
 
-#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
-#include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
@@ -46,6 +43,14 @@ limitations under the License.
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorrt/include/NvInfer.h"
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+#include "NvInfer.h"
+#include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
+#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
+#include "tensorflow/contrib/tensorrt/segment/segment.h"
+
 
 //------------------------------------------------------------------------------
 namespace tensorflow {
@@ -281,3 +286,6 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif // GOOGLE_TENSORRT
+#endif // GOOGLE_CUDA

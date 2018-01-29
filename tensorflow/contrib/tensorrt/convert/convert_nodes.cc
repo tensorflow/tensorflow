@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 
 #include <algorithm>
 #include <fstream>
@@ -27,7 +26,6 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -43,6 +41,12 @@ limitations under the License.
 #define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
 //  Check if the types are equal. Cast to int first so that failure log message
 //  would work!
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
+#include "NvInfer.h"
+#include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #define CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
 //------------------------------------------------------------------------------
 namespace tensorflow {
@@ -1614,3 +1618,6 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif GOOGLE_TENSORRT
+#endif GOOGLE_CUDA

@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 
 #include <set>
@@ -265,3 +267,6 @@ tensorflow::Status SegmentGraph(
 }  // namespace segment
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif // GOOGLE_TENSORRT
+#endif // GOOGLE_CUDA
