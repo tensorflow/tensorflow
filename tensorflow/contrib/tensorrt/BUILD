@@ -77,6 +77,7 @@ cc_library(
         "@nsync//:nsync_headers",
         "@protobuf_archive//:protobuf",
     ],
+    visibility = ["//visibility:public"], #for c/c++ linking    
 )
 
 tf_kernel_library(

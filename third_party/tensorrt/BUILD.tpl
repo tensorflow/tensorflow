@@ -34,37 +34,6 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-cc_library(
-    name = "nv_infer_plugin",
-    srcs = [%{nv_infer_plugin}],
-    data = [%{nv_infer_plugin}],
-    includes = [
-        "include",
-    ],
-    copts= cuda_default_copts(),
-    deps = [
-        "@local_config_cuda//cuda:cuda",
-        ":nv_infer",
-        ":tensorrt_headers",
-    ],
-    linkstatic = 1,
-    visibility = ["//visibility:public"],
-)
-
-cc_library(
-    name = "nv_parsers",
-    srcs = [%{nv_parsers}],
-    data = [%{nv_parsers}],
-    includes = [
-        "include",
-    ],
-    copts= cuda_default_copts(),
-    deps = [
-        ":tensorrt_headers",
-    ],
-    linkstatic = 1,
-    visibility = ["//visibility:public"],
-)
 
 %{tensorrt_genrules}
 

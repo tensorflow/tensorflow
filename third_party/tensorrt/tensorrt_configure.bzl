@@ -19,9 +19,9 @@ load(
 _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
 _TF_TENSORRT_VERSION = "TF_TENSORRT_VERSION"
 
-_TF_TENSORRT_LIBS = ["nvinfer", "nvinfer_plugin", "nvparsers"]
+_TF_TENSORRT_LIBS = ["nvinfer"]
 _TF_TENSORRT_HEADERS = [
-    "NvInfer.h", "NvInferPlugin.h", "NvCaffeParser.h", "NvUffParser.h",
+    "NvInfer.h",
     "NvUtils.h"
 ]
 
