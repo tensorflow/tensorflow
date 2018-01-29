@@ -30,7 +30,7 @@ if (WIN32)
   # go
   if(NOT GO)
     find_program(GO go
-      "$ENV{ProgramFiles}/go")
+      "$ENV{ProgramFiles}/Go/bin")
   endif()
   if(NOT GO)
     message(FATAL_ERROR "Go not found!")
