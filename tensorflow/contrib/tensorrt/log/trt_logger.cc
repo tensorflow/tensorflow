@@ -27,10 +27,8 @@ namespace tensorrt {
 void Logger::log(Severity severity, const char* msg) {
   // Suppress info-level messages
   switch (severity) {
-    case Severity::kINFO: {  // mark TRT info messages as debug!
-      VLOG(-1) << msg;
     case Severity::kINFO: {  // Mark TRT info messages as debug!
-      LOG(DEBUG) << msg;
+      VLOG(-1) << msg;
       break;
     }
     case Severity::kWARNING: {
