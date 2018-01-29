@@ -17,13 +17,13 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_NODES_H_
 
 #include <set>
-#include <vector>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/graph/graph.h"
-#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/lib/core/status.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -35,7 +35,8 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
         input_inds,  // {node_id, output_idx}
     const std::vector<std::pair<int, int>>&
         output_inds,  // {node_id, output_idx}
-    size_t max_batch_size, size_t max_workspace_size,
+    size_t max_batch_size,
+    size_t max_workspace_size,
     const tensorflow::grappler::GraphProperties& graph_prop,
     tensorflow::NodeDef* trt_node);
 }  // namespace convert

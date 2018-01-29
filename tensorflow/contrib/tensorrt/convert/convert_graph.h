@@ -30,11 +30,9 @@ namespace convert {
 // max_workspace_size: The upper bound of memory allowence for engine building.
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
-    const std::vector<std::string>& output_names,
-    size_t max_batch_size,
-    size_t max_workspace_size,
-    tensorflow::GraphDef* new_graph_def);
-}
+    const std::vector<std::string>& output_names, size_t max_batch_size,
+    size_t max_workspace_size, tensorflow::GraphDef* new_graph_def);
+}  // namespace convert
 }  // namespace tensorrt
-}  // namespace tensorrt
+}  // namespace tensorflow
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_GRAPH_H_

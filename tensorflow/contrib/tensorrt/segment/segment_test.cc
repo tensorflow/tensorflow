@@ -160,11 +160,10 @@ TEST_F(SegmentTest, Simple) {
   ASSERT_TRUE(GetGraphDef(graph, &graph_def));
 
   SegmentNodesVector segments;
-  ASSERT_EQ(
-      SegmentGraph(graph_def,
-                   MakeCandidateFn({"add0", "add1", "add2", "add3", "add4"}),
-                   default_options_, &segments),
-      tensorflow::Status::OK());
+  ASSERT_EQ(SegmentGraph(graph_def, MakeCandidateFn({"add0", "add1", "add2",
+                                                     "add3", "add4"}),
+                         default_options_, &segments),
+            tensorflow::Status::OK());
 
   // Expect all Add operations to be collapsed into a single segment
   ASSERT_EQ(segments.size(), 1);
@@ -270,11 +269,11 @@ TEST_F(SegmentTest, Multiple) {
   ASSERT_TRUE(GetGraphDef(graph, &graph_def));
 
   SegmentNodesVector segments;
-  ASSERT_EQ(SegmentGraph(graph_def,
-                         MakeCandidateFn({"add0", "add1", "add2", "add3",
-                                          "add4", "add6", "add7", "add8"}),
-                         default_options_, &segments),
-            tensorflow::Status::OK());
+  ASSERT_EQ(
+      SegmentGraph(graph_def, MakeCandidateFn({"add0", "add1", "add2", "add3",
+                                               "add4", "add6", "add7", "add8"}),
+                   default_options_, &segments),
+      tensorflow::Status::OK());
 
   // Expect two subgraphs
   EXPECT_EQ(segments.size(), 2);
@@ -339,11 +338,11 @@ TEST_F(SegmentTest, BigIfElse) {
   ASSERT_TRUE(GetGraphDef(graph, &graph_def));
 
   SegmentNodesVector segments;
-  ASSERT_EQ(SegmentGraph(graph_def,
-                         MakeCandidateFn({"add0", "add1", "add3", "add4",
-                                          "add5", "add6", "add7"}),
-                         default_options_, &segments),
-            tensorflow::Status::OK());
+  ASSERT_EQ(
+      SegmentGraph(graph_def, MakeCandidateFn({"add0", "add1", "add3", "add4",
+                                               "add5", "add6", "add7"}),
+                   default_options_, &segments),
+      tensorflow::Status::OK());
 
   // Expect 2 subgraphs
   EXPECT_EQ(segments.size(), 2);
@@ -367,5 +366,5 @@ TEST_F(SegmentTest, BigIfElse) {
 
 }  // namespace tensorflow
 
-#endif // GOOGLE_TENSORRT
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
