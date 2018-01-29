@@ -1840,14 +1840,14 @@ cc_library(
         "tools/opt/*.c",
         "tools/opt/*.cpp",
         "tools/opt/*.h",
-    ]),  
+    ]),
     hdrs = glob([
         "tools/opt/*.h",
-    ]),  
+    ]),
     copts = ["-Iexternal/llvm/include"],
     deps = [
         ":intrinsics_gen",
-    ],   
+    ],
 )
 
 cc_library(
