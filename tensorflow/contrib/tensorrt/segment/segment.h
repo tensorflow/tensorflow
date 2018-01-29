@@ -52,4 +52,5 @@ tensorflow::Status SegmentGraph(
 }  // namespace segment
 }  // namespace tensorrt
 }  // namespace tensorflow
+
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_SEGMENT_SEGMENT_H_

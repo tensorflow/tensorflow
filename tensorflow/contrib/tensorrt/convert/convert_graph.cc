@@ -41,14 +41,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
-#include "tensorrt/include/NvInfer.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "NvInfer.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
+#include "tensorrt/include/NvInfer.h"
 
 //------------------------------------------------------------------------------
 namespace tensorflow {

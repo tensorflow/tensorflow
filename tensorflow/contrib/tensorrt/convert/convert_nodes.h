@@ -39,6 +39,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     size_t max_workspace_size,
     const tensorflow::grappler::GraphProperties& graph_prop,
     tensorflow::NodeDef* trt_node);
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

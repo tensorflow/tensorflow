@@ -75,4 +75,5 @@ UnionFind<T>* UnionFind<T>::FindRoot() {
 }  // namespace segment
 }  // namespace tensorrt
 }  // namespace tensorflow
+
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_SEGMENT_UNION_FIND_H_

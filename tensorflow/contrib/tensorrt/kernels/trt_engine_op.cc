@@ -71,8 +71,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
     }
     switch (trt_engine_ptr_->getBindingDataType(binding_index)) {
       case nvinfer1::DataType::kFLOAT:
-        buffers[binding_index] =
-            reinterpret_cast<void*>(input_tensor.flat<float>().data());
+        buffers[binding_index] = (void*)(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
         LOG(FATAL) << "half size is not supported yet!";

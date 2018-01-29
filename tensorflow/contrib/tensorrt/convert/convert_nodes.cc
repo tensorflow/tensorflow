@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
-#include "tensorrt/include/NvInfer.h"
 
 #define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
 //  Check if the types are equal. Cast to int first so that failure log message
@@ -43,11 +42,13 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "NvInfer.h"
+
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorrt/include/NvInfer.h"
+
 #define CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
-//------------------------------------------------------------------------------
+
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -234,7 +235,7 @@ class TFAttrs {
   bool count(std::string key) const { return _attrs.count(key); }
   tensorflow::AttrValue const* at(std::string key) const {
     if (!_attrs.count(key)) {
-      throw std::out_of_range("Attribute not found: " + key);
+      LOG(FATAL) << "Attribute not found: " << key;
     }
     return _attrs.at(key);
   }

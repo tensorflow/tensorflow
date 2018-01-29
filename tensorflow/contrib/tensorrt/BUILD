@@ -19,8 +19,8 @@ load(
     "tf_cc_test",
     "tf_kernel_library",
     "tf_cuda_cc_test",
+    "tf_cuda_library",
     "tf_custom_op_py_library",
-    "tf_copts",
 )
 load(
     "@local_config_tensorrt//:build_defs.bzl",
@@ -62,13 +62,12 @@ tf_custom_op_library(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "trt_shape_function",
     srcs = [
         "shape_fn/trt_shfn.cc",
     ],
     hdrs = ["shape_fn/trt_shfn.h"],
-    copts = tf_copts(),
     deps = [
         ":trt_logging",
         "//tensorflow/core:framework_headers_lib",
@@ -111,7 +110,7 @@ tf_gen_op_libs(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "trt_logging",
     srcs = [
         "log/trt_logger.cc",
@@ -130,6 +129,7 @@ tf_gen_op_wrapper_py(
     name = "trt_engine_op",
     deps = [
         ":trt_engine_op_op_lib",
+        ":trt_logging",
         ":trt_shape_function",
     ],
 )
@@ -189,23 +189,21 @@ tf_py_wrap_cc(
     ],
 )
 
-cc_library(
+tf_cuda_library(
     name = "trt_conversion",
     srcs = [
         "convert/convert_graph.cc",
         "convert/convert_nodes.cc",
-        "segment/segment.cc",
     ],
     hdrs = [
         "convert/convert_graph.h",
         "convert/convert_nodes.h",
-        "segment/segment.h",
-        "segment/union_find.h",
     ],
     deps = [
         "@local_config_tensorrt//:nv_infer",
         "@protobuf_archive//:protobuf_headers",
         "@nsync//:nsync_headers",
+        ":segment",
         ":trt_logging",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
@@ -217,16 +215,6 @@ cc_library(
         "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler/costs:graph_properties",
         #"//tensorflow/core/grappler/clusters:single_machine",
-    ],
-)
-
-tf_custom_op_library(
-    name = "tensorrt_ops.so",
-    srcs = [
-        "ops/tensorrt_ops.cc",
-    ],
-    deps = [
-        "@local_config_tensorrt//:nv_infer",
     ],
 )
 
