@@ -108,7 +108,7 @@ class Interpreter {
 
   // Adds a node with the given parameters and returns the index of the new
   // node in `node_index` (optionally). Interpreter will take ownership of
-  // `builtin_data` and destroy it with `delete`. Ownership of 'init_data'
+  // `builtin_data` and destroy it with `free`. Ownership of 'init_data'
   // remains with the caller.
   TfLiteStatus AddNodeWithParameters(const std::vector<int>& inputs,
                                      const std::vector<int>& outputs,
