@@ -32,6 +32,7 @@ using SegmentNodesVector = std::vector<std::set<std::string>>;
 struct SegmentOptions {
   // Segment must contain at least this many nodes.
   int minimum_segment_size = 2;
+  std::set<std::string> exclude_node_list;
 };
 
 // Get the subgraphs of a graph that can be handled by TensorRT.

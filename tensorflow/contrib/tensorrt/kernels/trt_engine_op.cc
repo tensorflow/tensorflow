@@ -48,36 +48,6 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   // runtime is safe to delete after engine creation
   infer->destroy();
   std::stringstream oss;
-  // debug iterate through all binding instances
-  for (int i = 0; i < trt_engine_ptr_->getNbBindings(); i++) {
-    LOG(INFO) << "index: " << i
-              << ", binding name: " << trt_engine_ptr_->getBindingName(i);
-
-    if (trt_engine_ptr_->bindingIsInput(i)) {
-      LOG(INFO) << "INPUT";
-    } else {
-      LOG(INFO) << "OUTPUT";
-    }
-    oss << "Dimension: ";
-    auto dims = trt_engine_ptr_->getBindingDimensions(i);
-    oss << " nbDims: " << dims.nbDims << " -> ";
-    for (int j = 0; j < Dims::MAX_DIMS; j++) {
-      oss << dims.d[j] << ", ";
-    }
-    LOG(INFO) << oss.str();
-    oss.str("");
-    switch (trt_engine_ptr_->getBindingDataType(i)) {
-      case nvinfer1::DataType::kFLOAT:
-        LOG(INFO) << "data type float" << std::endl;
-        break;
-      case nvinfer1::DataType::kHALF:
-        LOG(INFO) << "data type half" << std::endl;
-        break;
-      case nvinfer1::DataType::kINT8:
-        LOG(INFO) << "data type int8" << std::endl;
-        break;
-    }
-  }
 
 }
 
@@ -103,7 +73,6 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
     }
     switch (trt_engine_ptr_->getBindingDataType(bindingIndex)) {
       case nvinfer1::DataType::kFLOAT:
-        LOG(INFO) << "float";
         buffers[bindingIndex] = (void*)(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
@@ -115,6 +84,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
     }
   }
 
+  // Might want a different way to inform the user of batch size inconsistency
   if (!valid) LOG(WARNING) << "input data inconsistent batch size";
 
   for (int i = 0; i < static_cast<int>(output_nodes_.size()); i++) {
@@ -125,7 +95,6 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
 
     TensorShape output_shape;
     if (bindingIndex != -1) {
-      LOG(INFO) << "got binding " << bindingIndex;
       auto dims = trt_engine_ptr_->getBindingDimensions(bindingIndex);
       std::vector<int> trt_shape(dims.nbDims + 1);
       trt_shape[0] = nbBatch;
@@ -133,7 +102,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
       TensorShapeUtils::MakeShape(trt_shape.data(), trt_shape.size(),
                                   &output_shape);
     } else {
-      LOG(INFO) << "no binding ";
+      LOG(FATAL) << "output node not found, at " << output_nodes_[i];
       break;
     }
 
@@ -141,7 +110,6 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
                    context->allocate_output(i, output_shape, &output_tensor));
     switch (trt_engine_ptr_->getBindingDataType(bindingIndex)) {
       case nvinfer1::DataType::kFLOAT:
-        LOG(INFO) << "float";
         buffers[bindingIndex] =
             reinterpret_cast<void*>(output_tensor->flat<float>().data());
         break;
@@ -160,8 +128,8 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
                                                 ->implementation()
                                                 ->CudaStreamMemberHack()));
 
+  // execution handled by TF since we are getting stream from TF.
   trt_execution_context_ptr_->enqueue(nbBatch, &buffers[0], *stream, nullptr);
-  cudaStreamSynchronize(*stream);
 }
 
 REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);

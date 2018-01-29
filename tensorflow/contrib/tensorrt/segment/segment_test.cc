@@ -22,7 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 //------------------------------------------------------------------------------
-using namespace tensorflow;
+namespace tensorflow {
 
 namespace tensorrt {
 namespace segment {
@@ -361,3 +361,5 @@ TEST_F(SegmentTest, BigIfElse) {
 }  // namespace test
 }  // namespace segment
 }  // namespace tensorrt
+
+}  // namespace tensorflow

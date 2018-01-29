@@ -51,34 +51,6 @@ namespace convert {
 
 namespace {
 
-inline int get_dtype_size(nvinfer1::DataType trt_dtype) {
-  switch (trt_dtype) {
-    case nvinfer1::DataType::kFLOAT:
-      return 4;
-    case nvinfer1::DataType::kINT8:
-      return 1;
-    case nvinfer1::DataType::kHALF:
-      return 2;
-    default:
-      return -1;
-  }
-}
-
-inline int get_dtype_size(tensorflow::DataType trt_dtype) {
-  switch (trt_dtype) {
-    case tensorflow::DataType::DT_FLOAT:
-      return 4;
-    case tensorflow::DataType::DT_INT8:
-      return 1;
-    case tensorflow::DataType::DT_HALF:
-      return 2;
-    case tensorflow::DataType::DT_INT32:
-      return 4;
-    default:
-      return -1;
-  }
-}
-
 inline tensorflow::Status convert_dtype(tensorflow::DataType tf_dtype,
                                         nvinfer1::DataType* trt_dtype) {
   switch (tf_dtype) {
@@ -166,7 +138,8 @@ class TRT_ShapedWeights {
     return nvinfer1::Weights{trt_type, values_, get_shape_size(shape_)};
   }
   size_t size_bytes() const {
-    return this->count() * get_dtype_size(this->type_);
+    int type_size = tensorflow::DataTypeSize(this->type_);
+    return this->count() * type_size;
   }
   // default converter
   operator nvinfer1::Weights() const { return getWeightsForTRT(); }
@@ -395,6 +368,7 @@ class Converter {
   TRT_ShapedWeights get_temp_weights(tensorflow::DataType type,
                                      nvinfer1::Dims shape) {
     TRT_ShapedWeights weights(type, nullptr, shape);
+    // TODO(jie): check weights size_bytes. 0 means type error
     _temp_bufs.push_back(std::vector<uint8_t>(weights.size_bytes()));
     weights.values_ = _temp_bufs.back().data();
     return weights;
