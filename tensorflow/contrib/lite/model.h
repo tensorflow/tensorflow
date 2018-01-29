@@ -48,7 +48,8 @@ class FlatBufferModel {
   // Builds a model based on a file. Returns a nullptr in case of failure.
   static std::unique_ptr<FlatBufferModel> BuildFromFile(
       const char* filename,
-      ErrorReporter* error_reporter = DefaultErrorReporter());
+      ErrorReporter* error_reporter = DefaultErrorReporter(),
+      bool use_nnapi = true);
 
   // Builds a model based on a pre-loaded flatbuffer. The caller retains
   // ownership of the buffer and should keep it alive until the returned object

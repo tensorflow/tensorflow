@@ -456,10 +456,9 @@ void Interpreter::UseNNAPI(bool enable) {
   // TODO(aselle): This is a workaround for finding if NNAPI exists.
   // We also need to make sure getLibraryHandle() is renamed to be NNAPI
   // prefixed.
-  if (!NNAPIExists()) enable = false;
   if (!enable) {
     nnapi_delegate_.reset();
-  } else if (!nnapi_delegate_) {
+  } else if (!nnapi_delegate_ && NNAPIExists()) {
     nnapi_delegate_.reset(new NNAPIDelegate);
   }
 }
