@@ -55,7 +55,8 @@ Status CreateAudioFile(const string& audio_format_id, int32 bits_per_second,
 
 // Reads an video file using ffmpeg and converts it into a RGB24 in uint8
 // [frames, height, width, 3]. The w, h, and frames are obtained from ffmpeg.
-Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
+Status ReadVideoFile(const string& filename, const string& stream,
+                     std::vector<uint8>* output_data,
                      uint32* width, uint32* height, uint32* frames);
 
 }  // namespace ffmpeg

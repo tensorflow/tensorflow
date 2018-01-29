@@ -33,7 +33,12 @@ namespace ffmpeg {
 
 class DecodeVideoOp : public OpKernel {
  public:
-  explicit DecodeVideoOp(OpKernelConstruction* context) : OpKernel(context) {}
+  explicit DecodeVideoOp(OpKernelConstruction* context) : OpKernel(context) {
+   string stream;
+    if (context->GetAttr("stream", &stream).ok()) {
+      stream_ = stream;
+    }
+  }
 
   void Compute(OpKernelContext* context) override {
     OP_REQUIRES(
@@ -59,7 +64,7 @@ class DecodeVideoOp : public OpKernel {
 
     // Run FFmpeg on the data and verify results.
     std::vector<uint8> output_data;
-    const Status result = ffmpeg::ReadVideoFile(temp_filename, &output_data,
+    const Status result = ffmpeg::ReadVideoFile(temp_filename, stream_, &output_data,
                                                 &width, &height, &frames);
     if (result.code() == error::Code::NOT_FOUND) {
       OP_REQUIRES(
@@ -71,7 +76,7 @@ class DecodeVideoOp : public OpKernel {
                  << "'. Returning empty tensor.";
       Tensor* output = nullptr;
       OP_REQUIRES_OK(context,
-                     context->allocate_output(0, TensorShape({0, 0}), &output));
+                     context->allocate_output(0, TensorShape({0, 0, 0, 0}), &output));
       return;
     } else {
       OP_REQUIRES_OK(context, result);
@@ -90,6 +95,8 @@ class DecodeVideoOp : public OpKernel {
     auto output_flat = output->flat<uint8>();
     std::copy_n(output_data.begin(), output_data.size(), &output_flat(0));
   }
+private:
+  string stream_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("DecodeVideo").Device(DEVICE_CPU), DecodeVideoOp);
@@ -97,6 +104,7 @@ REGISTER_KERNEL_BUILDER(Name("DecodeVideo").Device(DEVICE_CPU), DecodeVideoOp);
 REGISTER_OP("DecodeVideo")
     .Input("contents: string")
     .Output("output: uint8")
+    .Attr("stream: string = ''")
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       c->set_output(0, c->UnknownShapeOfRank(4));
       return Status::OK();

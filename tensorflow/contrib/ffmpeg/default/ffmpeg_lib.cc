@@ -71,8 +71,10 @@ std::vector<string> FfmpegAudioCommandLine(const string& input_filename,
 }
 
 std::vector<string> FfmpegVideoCommandLine(const string& input_filename,
-                                           const string& output_filename) {
-  return {"-nostats",  // No additional progress display.
+                                           const string& output_filename,
+                                           const string& stream) {
+  std::vector<string> command({
+          "-nostats",  // No additional progress display.
           "-nostdin",  // No interactive commands accepted.
           "-i", input_filename, "-f", "image2pipe", "-probesize",
           StrCat(kDefaultProbeSize), "-loglevel",
@@ -82,7 +84,13 @@ std::vector<string> FfmpegVideoCommandLine(const string& input_filename,
           "-hide_banner",  // Skip printing build options, version, etc.
           "-vcodec", "rawvideo", "-pix_fmt", "rgb24",
           "-y",  // Overwrite output file.
-          StrCat(output_filename)};
+  });
+  if (!stream.empty()) {
+    command.emplace_back("-map");
+    command.emplace_back(StrCat("0:", stream));
+  }
+  command.emplace_back(StrCat(output_filename));
+  return command;
 }
 
 // Is a named binary installed and executable by the current process?
@@ -361,7 +369,7 @@ Status CreateAudioFile(const string& audio_format_id, int32 bits_per_second,
   return Status::OK();
 }
 
-Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
+Status ReadVideoFile(const string& filename, const string& stream, std::vector<uint8>* output_data,
                      uint32* width, uint32* height, uint32* frames) {
   if (!IsBinaryInstalled(kFfmpegExecutable)) {
     return Status(error::Code::NOT_FOUND, StrCat("FFmpeg could not be found."));
@@ -372,7 +380,7 @@ Status ReadVideoFile(const string& filename, std::vector<uint8>* output_data,
 
   // Create an argument list.
   const std::vector<string> args =
-      FfmpegVideoCommandLine(filename, output_filename);
+      FfmpegVideoCommandLine(filename, output_filename, stream);
   // Execute ffmpeg and report errors.
   pid_t child_pid = ::fork();
   if (child_pid < 0) {
