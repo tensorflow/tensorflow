@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/c/c_api.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -363,3 +366,6 @@ TEST_F(SegmentTest, BigIfElse) {
 }  // namespace tensorrt
 
 }  // namespace tensorflow
+
+#endif // GOOGLE_TENSORRT
+#endif // GOOGLE_CUDA
