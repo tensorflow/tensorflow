@@ -99,17 +99,20 @@ ops.NotDifferentiable('EncodeAudio')
 
 
 @deprecated('2018-09-04', 'This will be deleted and should not be used.')
-def decode_video(contents):
+def decode_video(contents, stream=None):
   """Create an op that decodes the contents of a video file.
 
   Args:
     contents: The binary contents of the video file to decode. This is a
       scalar.
+    stream: A string specifying which stream from the content file
+      should be decoded, e.g., '0' means the 0-th stream.
+      The default value is '' which leaves the decision to ffmpeg.
 
   Returns:
     A rank-4 `Tensor` that has `[frames, height, width, 3]` RGB as output.
   """
-  return gen_decode_video_op_py.decode_video(contents)
+  return gen_decode_video_op_py.decode_video(contents, stream=stream)
 
 
 ops.NotDifferentiable('DecodeVideo')
