@@ -316,7 +316,7 @@ void CompilerFunctor::AddOptimizationPasses(
 
   builder.populateFunctionPassManager(*function_passes);
 
-  llvm::PassRegistry &Registry = *llvm::PassRegistry::getPassRegistry();
+  llvm::PassRegistry& Registry = *llvm::PassRegistry::getPassRegistry();
   ::polly::initializePollyPasses(Registry);
   ::polly::registerPollyPasses(*module_passes);
 
