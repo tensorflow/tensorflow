@@ -401,8 +401,12 @@ if (tensorflow_ENABLE_GPU)
 	    cudnn_version_number=${tensorflow_CUDNN_VERSION})
   endif(WIN32)
 else(tensorflow_ENABLE_GPU)
-  set(tensorflow_BUILD_INFO_FLAGS --build_config cpu --key_value
-    msvcp_dll_name=msvcp140.dll)
+  if(WIN32)
+    set(tensorflow_BUILD_INFO_FLAGS --build_config cpu --key_value
+      msvcp_dll_name=msvcp140.dll)
+  else()
+    set(tensorflow_BUILD_INFO_FLAGS --build_config cpu)
+  endif()
 endif(tensorflow_ENABLE_GPU)
 
 if(tensorflow_BUILD_PYTHON_BINDINGS)
