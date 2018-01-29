@@ -87,7 +87,7 @@ class SpecsTest(test.TestCase):
       self.assertEqual(tuple(result.shape), (1, 8, 8, 5))
       self.assertEqual(
           summaries.tf_spec_structure(spec, inputs),
-          "_ _ _ maxpoolv2 _ _ maxpoolv2 _ _ maxpoolv2")
+          "_ maxpool maxpool maxpool")
 
   def testAbbrevPower(self):
     with self.test_session():
@@ -100,10 +100,10 @@ class SpecsTest(test.TestCase):
       self.assertEqual(tuple(result.shape), (1, 8, 8, 5))
       self.assertEqual(
           summaries.tf_spec_structure(spec, inputs),
-          "_ variablev2 conv variablev2 biasadd relu _ _ maxpoolv2"
+          "_ variablev2 conv variablev2 biasadd relu maxpool"
           " variablev2 conv variablev2"
-          " biasadd relu _ _ maxpoolv2 variablev2 conv variablev2"
-          " biasadd relu _ _ maxpoolv2")
+          " biasadd relu maxpool variablev2 conv variablev2"
+          " biasadd relu maxpool")
 
   def testAbbrevPower2(self):
     with self.test_session():
@@ -117,10 +117,10 @@ class SpecsTest(test.TestCase):
       self.assertEqual(tuple(result.shape), (1, 8, 8, 5))
       self.assertEqual(
           summaries.tf_spec_structure(spec, inputs),
-          "_ variablev2 conv variablev2 biasadd relu _ _ maxpoolv2"
+          "_ variablev2 conv variablev2 biasadd relu maxpool"
           " variablev2 conv variablev2 biasadd relu"
-          " _ _ maxpoolv2 variablev2 conv variablev2 biasadd relu"
-          " _ _ maxpoolv2")
+          " maxpool variablev2 conv variablev2 biasadd relu"
+          " maxpool")
 
   def testConc(self):
     with self.test_session():
