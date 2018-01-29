@@ -438,6 +438,18 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "reverse_sequence_op_test",
+    size = "small",
+    srcs = ["reverse_sequence_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "rmsprop_test",
     size = "small",
     srcs = ["rmsprop_test.py"],
