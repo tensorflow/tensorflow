@@ -556,9 +556,9 @@ class BasicLSTMCell(_LayerRNNCell):
     Args:
       inputs: `2-D` tensor with shape `[batch_size, input_size]`.
       state: An `LSTMStateTuple` of state tensors, each shaped
-        `[batch_size, self.state_size]`, if `state_is_tuple` has been set to
+        `[batch_size, self._num_units]`, if `state_is_tuple` has been set to
         `True`.  Otherwise, a `Tensor` shaped
-        `[batch_size, 2 * self.state_size]`.
+        `[batch_size, 2 * self._num_units]`.
 
     Returns:
       A pair containing the new hidden state, and the new state (either a
