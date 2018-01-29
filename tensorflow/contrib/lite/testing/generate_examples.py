@@ -1533,8 +1533,9 @@ def make_strided_slice_tests(zip_path):
           "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
           "end": [[8, 2, 2, 3], [12, 2, 2, 5]],
           "strides": [None, [1, 1, 1, 1], [2, 1, 3, 1]],
-          "begin_mask": [None, 0, 1, 2, 8],
-          "end_mask": [None, 0, 1, 2, 8],
+          "begin_mask": [None, 1, 2, 8],
+          "end_mask": [None, 1, 2, 8],
+          "shrink_axis_mask": [None, 1, 2, 4, 8, 11, 15, -1],
       },
       # 2-D
       {
@@ -1544,8 +1545,9 @@ def make_strided_slice_tests(zip_path):
           "begin": [[0, 0], [1, 0]],
           "end": [[2, 3], [2, 2]],
           "strides": [None, [1, 1], [2, 2]],
-          "begin_mask": [None, 0, 1, 2],
-          "end_mask": [None, 0, 1, 2],
+          "begin_mask": [None, 1, 2],
+          "end_mask": [None, 1, 2],
+          "shrink_axis_mask": [None, 1, 2, 3, -1],
       },
       # Negative strides
       {
@@ -1555,8 +1557,9 @@ def make_strided_slice_tests(zip_path):
           "begin": [[0, -1]],
           "end": [[2, -3]],
           "strides": [[1, -1]],
-          "begin_mask": [None, 0, 1, 2],
-          "end_mask": [None, 0, 1, 2],
+          "begin_mask": [None, 1, 2],
+          "end_mask": [None, 1, 2],
+          "shrink_axis_mask": [None, 1, 2, 3, -1],
       },
   ]
 
