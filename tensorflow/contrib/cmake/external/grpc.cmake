@@ -14,6 +14,29 @@
 # ==============================================================================
 include (ExternalProject)
 
+if (WIN32)
+  # perl
+  find_package(Perl REQUIRED)
+
+  # nasm
+  if(NOT NASM_COMPILER)
+    find_program(NASM_COMPILER nasm
+      "$ENV{ProgramFiles}/NASM" DOC "path to NASM.exe")
+  endif()
+  if(NOT NASM_COMPILER)
+    message(FATAL_ERROR "NASM not found!" DOC "path to go.exe")
+  endif()
+
+  # go
+  if(NOT GO)
+    find_program(GO go
+      "$ENV{ProgramFiles}/go")
+  endif()
+  if(NOT GO)
+    message(FATAL_ERROR "Go not found!")
+  endif()
+endif()
+
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
@@ -51,6 +74,8 @@ ExternalProject_Add(grpc
         -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
         -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
+        -DCMAKE_ASM_NASM_COMPILER:STRING=${NASM_COMPILER}
+        -DGO_EXECUTABLE:STRING=${GO}
 )
 
 # grpc/src/core/ext/census/tracing.c depends on the existence of openssl/rand.h.
