@@ -26,7 +26,6 @@ limitations under the License.
 #include <unordered_map>
 #include <utility>
 #include <vector>
-#include "NvInfer.h"
 
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -39,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorrt/include/NvInfer.h"
 
 #define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
 //  Check if the types are equal. Cast to int first so that failure log message

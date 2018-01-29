@@ -7,7 +7,7 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
-load("@local_config_tensorrt//:build_defs.bzl", "if_trt")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 py_library(
     name = "contrib_py",
@@ -106,7 +106,7 @@ py_library(
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_ops_py"])
-    + if_trt(["//tensorflow/contrib/tensorrt:init_py"]),
+    + if_tensorrt(["//tensorflow/contrib/tensorrt:init_py"]),
 
 )
 

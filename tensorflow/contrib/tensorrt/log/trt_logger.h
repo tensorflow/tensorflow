@@ -18,8 +18,9 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
 
 // Use TF logging f
-#include <NvInfer.h>
 #include <string>
+
+#include "tensorrt/include/NvInfer.h"
 
 //------------------------------------------------------------------------------
 namespace tensorflow {
