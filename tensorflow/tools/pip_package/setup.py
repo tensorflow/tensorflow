@@ -37,9 +37,10 @@ REQUIRED_PACKAGES = [
     'gast >= 0.2.0',
     'numpy >= 1.12.1',
     'six >= 1.10.0',
-    'protobuf >= 3.4.0',
+    'protobuf >= 3.5.0',
     'tensorflow-tensorboard >= 0.4.0',
     'termcolor >= 1.1.0',
+    'absl-py >= 0.1.9'
 ]
 
 project_name = 'tensorflow'
