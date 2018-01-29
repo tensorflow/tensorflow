@@ -265,27 +265,11 @@ darwin_cmake_vars = {
 # TODO(phawkins): use a better method to select the right host triple, rather
 # than hardcoding x86_64.
 all_cmake_vars = select({
-<<<<<<< HEAD
-<<<<<<< HEAD
     "@org_tensorflow//tensorflow:darwin": cmake_var_string(
         cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
         darwin_cmake_vars,
     ),
     "@org_tensorflow//tensorflow:linux_ppc64le": cmake_var_string(
-=======
-    "@//tensorflow:darwin": cmake_var_string(
-        cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
-        darwin_cmake_vars,
-    ),
-    "@//tensorflow:linux_ppc64le": cmake_var_string(
->>>>>>> Changes in bazel rules for building with jsoncpp_git instead of polly_json
-=======
-    "@%ws%//tensorflow:darwin": cmake_var_string(
-        cmake_vars + llvm_target_cmake_vars("X86", "x86_64-apple-darwin") +
-        darwin_cmake_vars,
-    ),
-    "@%ws%//tensorflow:linux_ppc64le": cmake_var_string(
->>>>>>> Conditional build for Polly
         cmake_vars +
         llvm_target_cmake_vars("PowerPC", "powerpc64le-unknown-linux_gnu") +
         linux_cmake_vars,
