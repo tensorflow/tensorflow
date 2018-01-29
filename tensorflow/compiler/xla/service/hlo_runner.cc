@@ -121,12 +121,14 @@ StatusOr<std::unique_ptr<Literal>> HloRunner::ExecuteInternal(
   if (run_hlo_passes) {
     TF_ASSIGN_OR_RETURN(
         module, backend().compiler()->RunHloPasses(
-                    std::move(module), backend().default_stream_executor()));
+                    std::move(module), backend().default_stream_executor(),
+                    /*device_allocator=*/nullptr));
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       backend().compiler()->RunBackend(std::move(module),
-                                       backend().default_stream_executor()));
+                                       backend().default_stream_executor(),
+                                       /*device_allocator=*/nullptr));
 
   se::Stream stream(backend().default_stream_executor());
   stream.Init();

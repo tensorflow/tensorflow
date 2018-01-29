@@ -152,9 +152,7 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
 
   // Ignore computation_graph for now.
   const bool empty_trace = response.encoded_trace().empty();
-  if (empty_trace) {
-    *os << "No trace event is collected." << std::endl;
-  } else {
+  if (!empty_trace) {
     LOG(INFO) << "Converting trace events to TraceViewer JSON.";
     TF_RETURN_IF_ERROR(
         DumpTraceToLogDirectory(profile_run_dir, response.encoded_trace(), os));

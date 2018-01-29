@@ -118,11 +118,13 @@ class CpuCompiler : public LLVMCompiler {
 
   StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* stream_exec) override;
+      perftools::gputools::StreamExecutor* stream_exec,
+      DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* stream_exec) override;
+      perftools::gputools::StreamExecutor* stream_exec,
+      DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
