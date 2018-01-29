@@ -1886,6 +1886,7 @@ cc_library(
         ":hlo",
         ":hlo_graph_dumper",
         ":hlo_pass",
+        ":hlo_proto_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
