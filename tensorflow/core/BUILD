@@ -1151,6 +1151,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
