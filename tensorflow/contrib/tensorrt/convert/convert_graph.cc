@@ -55,31 +55,28 @@ namespace tensorrt {
 namespace convert {
 namespace {
 
-static std::unordered_set<std::string> output_nodes;
-bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
+static bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
 // LINT.IfChange
+  // TODO(jie): Segmentation shouldn't associated with op name.
+  //            Split it into a registration for each kernel.
   static const std::set<std::string> candidate_ops = {
       "Identity", "Const", "Conv2D", "MaxPool", "BiasAdd", "Relu",
       "Add",      "Mul",   "Sub",    "Rsqrt",   "Pad"  // "Placeholder" ,"Mean"
-                                                       // TODO(ben,jie): ...
   };
 // LINT.ThenChange(
 //    https://www.tensorflow.org/code/tensorflow/contrib/tensorrt/convert/convert_nodes.h)
-
-  if (output_nodes.count(node_def.name())) return false;
   return candidate_ops.count(node_def.op());
 }
+
 
 void GetSubGraphIncomingEdges(const tensorflow::Graph & graph,
                               const std::set<int> &subgraph_node_ids,
                               tensorflow::EdgeSet* incoming_edges) {
   for (int node_id : subgraph_node_ids) {
-    tensorflow::Node const* node = graph.FindNodeId(node_id);
-    LOG(DEBUG) << node->name() << " has incoming edges: ";
-    for (tensorflow::Edge const* edge : node->in_edges()) {
+    const tensorflow::Node* node = graph.FindNodeId(node_id);
+    for (const tensorflow::Edge* edge : node->in_edges()) {
       if (!subgraph_node_ids.count(edge->src()->id()) &&
           !edge->src()->IsSource()) {
-        LOG(DEBUG) << edge->src()->name() << ", ";
         incoming_edges->insert(edge);
       }
     }
@@ -90,9 +87,8 @@ void GetSubGraphOutgoingEdges(const tensorflow::Graph &graph,
                               const std::set<int> &subgraph_node_ids,
                               tensorflow::EdgeSet* outgoing_edges) {
   for (int node_id : subgraph_node_ids) {
-    tensorflow::Node const* node = graph.FindNodeId(node_id);
-    LOG(DEBUG) << node->name() << " has outgoing edges: ";
-    for (tensorflow::Edge const* edge : node->out_edges()) {
+    const tensorflow::Node* node = graph.FindNodeId(node_id);
+    for (const tensorflow::Edge* edge : node->out_edges()) {
       if (!subgraph_node_ids.count(edge->dst()->id()) &&
           !edge->dst()->IsSink()) {
         outgoing_edges->insert(edge);
@@ -138,7 +134,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
 
 
   // Collect inputs by looking for incoming edges
-  for (tensorflow::Edge const* edge : subgraph_incoming_edges) {
+  for (const tensorflow::Edge* edge : subgraph_incoming_edges) {
     subgraph_inputs.push_back({edge->src()->id(), edge->src_output()});
   }
   std::set<std::pair<int, int>> subgraph_outputs_set;
@@ -155,7 +151,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   // Collect outputs referenced from outgoing edges
   tensorflow::EdgeSet subgraph_outgoing_edges;
   GetSubGraphOutgoingEdges(graph, subgraph_node_ids, &subgraph_outgoing_edges);
-  for (tensorflow::Edge const* edge : subgraph_outgoing_edges) {
+  for (const tensorflow::Edge* edge : subgraph_outgoing_edges) {
     subgraph_outputs_set.insert({edge->src()->id(), edge->src_output()});
   }
   // Impose an ordering on the outputs
@@ -177,7 +173,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
     subgraph_edge_to_output_map.insert({subgraph_outputs.at(i), i});
   }
   TF_RETURN_IF_ERROR(status);
-  for (tensorflow::Edge const* edge : subgraph_outgoing_edges) {
+  for (const tensorflow::Edge* edge : subgraph_outgoing_edges) {
     std::pair<int, int> old_src = {edge->src()->id(), edge->src_output()};
     int new_src_output = subgraph_edge_to_output_map.at(old_src);
     graph.UpdateEdge(trt_node, new_src_output, edge->dst(), edge->dst_input());
@@ -230,12 +226,6 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   gCluster =
     new tensorflow::grappler::VirtualCluster({{"/GPU:0", device_properties}});
 
-  // single machine
-  int num_cpu_cores = tensorflow::grappler::GetNumAvailableLogicalCPUCores();
-  int num_gpus = tensorflow::grappler::GetNumAvailableGPUs();
-  LOG(DEBUG) << "cpu_cores: " << num_cpu_cores;
-  LOG(DEBUG) << "gpus: " << num_gpus;
-
   tensorflow::Status status = optimizer.Optimize(gCluster, item, &gdef);
 
   if (status !=tensorflow::Status::OK())
@@ -261,8 +251,11 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 
   // Segment the graph into subgraphs that can be converted to TensorRT
   tensorflow::tensorrt::segment::SegmentOptions segment_options;
+
   // TODO(ben,jie,sami): exclude output nodes (DISCUSS IT)
-  for (auto node : output_names) output_nodes.insert(node);
+  for (auto node : output_names) {
+    segment_options.exclude_node_list.insert(node);
+  }
 
   // TODO(sami): this should be passed as a knob!!!!
   segment_options.minimum_segment_size = 2;

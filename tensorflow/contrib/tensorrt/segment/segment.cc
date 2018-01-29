@@ -140,7 +140,8 @@ tensorflow::Status SegmentGraph(
   std::vector<UnionFind<tensorflow::Node*>> node_segments;
   for (int i = 0; i < graph.num_node_ids(); ++i) {
     tensorflow::Node* node = graph.FindNodeId(i);
-    if (!candidate_fn(node->def())) {
+    if (options.exclude_node_list.count(node->name())!=0
+        || !candidate_fn(node->def())) {
       node = nullptr;
     }
     node_segments.emplace_back(node);
