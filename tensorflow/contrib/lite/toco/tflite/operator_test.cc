@@ -132,19 +132,6 @@ TEST_F(OperatorTest, BuiltinSpaceToBatchND) {
   EXPECT_EQ(op.after_paddings, output_toco_op->after_paddings);
 }
 
-TEST_F(OperatorTest, BuiltinBatchToSpaceND) {
-  BatchToSpaceNDOperator op;
-  op.block_shape = {2, 2};
-  op.before_crops = {1, 2};
-  op.after_crops = {3, 4};
-
-  auto output_toco_op = SerializeAndDeserialize(
-      GetOperator("BATCH_TO_SPACE_ND", OperatorType::kBatchToSpaceND), op);
-  EXPECT_EQ(op.block_shape, output_toco_op->block_shape);
-  EXPECT_EQ(op.before_crops, output_toco_op->before_crops);
-  EXPECT_EQ(op.after_crops, output_toco_op->after_crops);
-}
-
 TEST_F(OperatorTest, BuiltinMean) {
   MeanOperator op;
   op.axis = {1, 2};

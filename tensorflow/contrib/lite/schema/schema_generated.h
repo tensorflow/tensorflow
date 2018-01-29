@@ -2929,33 +2929,14 @@ flatbuffers::Offset<SpaceToBatchNDOptions> CreateSpaceToBatchNDOptions(
 
 struct BatchToSpaceNDOptionsT : public flatbuffers::NativeTable {
   typedef BatchToSpaceNDOptions TableType;
-  std::vector<int32_t> block_shape;
-  std::vector<int32_t> before_crops;
-  std::vector<int32_t> after_crops;
   BatchToSpaceNDOptionsT() {}
 };
 
 struct BatchToSpaceNDOptions FLATBUFFERS_FINAL_CLASS
     : private flatbuffers::Table {
   typedef BatchToSpaceNDOptionsT NativeTableType;
-  enum { VT_BLOCK_SHAPE = 4, VT_BEFORE_CROPS = 6, VT_AFTER_CROPS = 8 };
-  const flatbuffers::Vector<int32_t> *block_shape() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_BLOCK_SHAPE);
-  }
-  const flatbuffers::Vector<int32_t> *before_crops() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_BEFORE_CROPS);
-  }
-  const flatbuffers::Vector<int32_t> *after_crops() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_AFTER_CROPS);
-  }
   bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyOffset(verifier, VT_BLOCK_SHAPE) &&
-           verifier.Verify(block_shape()) &&
-           VerifyOffset(verifier, VT_BEFORE_CROPS) &&
-           verifier.Verify(before_crops()) &&
-           VerifyOffset(verifier, VT_AFTER_CROPS) &&
-           verifier.Verify(after_crops()) && verifier.EndTable();
+    return VerifyTableStart(verifier) && verifier.EndTable();
   }
   BatchToSpaceNDOptionsT *UnPack(
       const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2970,18 +2951,6 @@ struct BatchToSpaceNDOptions FLATBUFFERS_FINAL_CLASS
 struct BatchToSpaceNDOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_block_shape(
-      flatbuffers::Offset<flatbuffers::Vector<int32_t>> block_shape) {
-    fbb_.AddOffset(BatchToSpaceNDOptions::VT_BLOCK_SHAPE, block_shape);
-  }
-  void add_before_crops(
-      flatbuffers::Offset<flatbuffers::Vector<int32_t>> before_crops) {
-    fbb_.AddOffset(BatchToSpaceNDOptions::VT_BEFORE_CROPS, before_crops);
-  }
-  void add_after_crops(
-      flatbuffers::Offset<flatbuffers::Vector<int32_t>> after_crops) {
-    fbb_.AddOffset(BatchToSpaceNDOptions::VT_AFTER_CROPS, after_crops);
-  }
   explicit BatchToSpaceNDOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
       : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2995,27 +2964,9 @@ struct BatchToSpaceNDOptionsBuilder {
 };
 
 inline flatbuffers::Offset<BatchToSpaceNDOptions> CreateBatchToSpaceNDOptions(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> block_shape = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> before_crops = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> after_crops = 0) {
+    flatbuffers::FlatBufferBuilder &_fbb) {
   BatchToSpaceNDOptionsBuilder builder_(_fbb);
-  builder_.add_after_crops(after_crops);
-  builder_.add_before_crops(before_crops);
-  builder_.add_block_shape(block_shape);
   return builder_.Finish();
-}
-
-inline flatbuffers::Offset<BatchToSpaceNDOptions>
-CreateBatchToSpaceNDOptionsDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<int32_t> *block_shape = nullptr,
-    const std::vector<int32_t> *before_crops = nullptr,
-    const std::vector<int32_t> *after_crops = nullptr) {
-  return tflite::CreateBatchToSpaceNDOptions(
-      _fbb, block_shape ? _fbb.CreateVector<int32_t>(*block_shape) : 0,
-      before_crops ? _fbb.CreateVector<int32_t>(*before_crops) : 0,
-      after_crops ? _fbb.CreateVector<int32_t>(*after_crops) : 0);
 }
 
 flatbuffers::Offset<BatchToSpaceNDOptions> CreateBatchToSpaceNDOptions(
@@ -5774,33 +5725,6 @@ inline void BatchToSpaceNDOptions::UnPackTo(
     const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = block_shape();
-    if (_e) {
-      _o->block_shape.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->block_shape[_i] = _e->Get(_i);
-      }
-    }
-  };
-  {
-    auto _e = before_crops();
-    if (_e) {
-      _o->before_crops.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->before_crops[_i] = _e->Get(_i);
-      }
-    }
-  };
-  {
-    auto _e = after_crops();
-    if (_e) {
-      _o->after_crops.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->after_crops[_i] = _e->Get(_i);
-      }
-    }
-  };
 }
 
 inline flatbuffers::Offset<BatchToSpaceNDOptions> BatchToSpaceNDOptions::Pack(
@@ -5820,14 +5744,7 @@ inline flatbuffers::Offset<BatchToSpaceNDOptions> CreateBatchToSpaceNDOptions(
     const flatbuffers::rehasher_function_t *__rehasher;
   } _va = {&_fbb, _o, _rehasher};
   (void)_va;
-  auto _block_shape =
-      _o->block_shape.size() ? _fbb.CreateVector(_o->block_shape) : 0;
-  auto _before_crops =
-      _o->before_crops.size() ? _fbb.CreateVector(_o->before_crops) : 0;
-  auto _after_crops =
-      _o->after_crops.size() ? _fbb.CreateVector(_o->after_crops) : 0;
-  return tflite::CreateBatchToSpaceNDOptions(_fbb, _block_shape, _before_crops,
-                                             _after_crops);
+  return tflite::CreateBatchToSpaceNDOptions(_fbb);
 }
 
 inline SkipGramOptionsT *SkipGramOptions::UnPack(

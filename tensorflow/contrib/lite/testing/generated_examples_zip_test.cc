@@ -67,7 +67,11 @@ std::map<string, string> kBrokenTests = {
     // L2Norm only supports tensors with 4D or fewer.
     {R"(^\/l2normdim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
 
-    // SpaceToBatch only supports 4D tensors.
+    // BatchToSpaceND doesn't support cropping. This catches test cases with
+    // non-const tensors as crops.
+    {R"(^\/batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\])", "70594634"},
+
+    // SpaceToBatchND only supports 4D tensors.
     {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
 
     // L2Norm only works for dim=-1.

@@ -536,21 +536,6 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
     case BuiltinOperator_BATCH_TO_SPACE_ND: {
-      auto* params = MallocPOD<TfLiteBatchToSpaceNDParams>();
-      if (auto* schema_params =
-              op->builtin_options_as_BatchToSpaceNDOptions()) {
-        const auto& block_shape = schema_params->block_shape();
-        FlatBufferIntVectorToArray(sizeof(params->block_shape), block_shape,
-                                   params->block_shape, error_reporter);
-        const auto& before_crops = schema_params->before_crops();
-        FlatBufferIntVectorToArray(sizeof(params->before_crops), before_crops,
-                                   params->before_crops, error_reporter);
-        const auto& after_crops = schema_params->after_crops();
-        FlatBufferIntVectorToArray(sizeof(params->after_crops), after_crops,
-                                   params->after_crops, error_reporter);
-        params->num_spatial_dimensions = block_shape->Length();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_TRANSPOSE: {

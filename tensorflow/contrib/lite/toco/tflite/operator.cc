@@ -211,24 +211,11 @@ class BatchToSpaceND
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    auto block_shape = builder->CreateVector(op.block_shape);
-    auto before_crops = builder->CreateVector(op.before_crops);
-    auto after_crops = builder->CreateVector(op.after_crops);
-    return ::tflite::CreateBatchToSpaceNDOptions(*builder, block_shape,
-                                                 before_crops, after_crops);
+    return ::tflite::CreateBatchToSpaceNDOptions(*builder);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->block_shape.insert(op->block_shape.end(),
-                           options.block_shape()->begin(),
-                           options.block_shape()->end());
-    op->before_crops.insert(op->before_crops.end(),
-                            options.before_crops()->begin(),
-                            options.before_crops()->end());
-    op->after_crops.insert(op->after_crops.end(),
-                           options.after_crops()->begin(),
-                           options.after_crops()->end());
   }
 };
 

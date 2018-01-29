@@ -94,7 +94,8 @@ KNOWN_BUGS = {
     r"softmax.*input_shape=\[1,3,4,3\]": "67749831",
     # SpaceToDepth only supports float32.
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
-    # BatchToSpaceND doesn't support cropping.
+    # BatchToSpaceND doesn't support cropping. This catches test cases with
+    # const tensors as crops.
     r"batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\]": "70594634",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
@@ -1361,6 +1362,8 @@ def make_batch_to_space_nd_tests(zip_path):
           "input_shape": [[12, 2, 2, 1]],
           "block_shape": [[1, 4], [2, 2], [3, 4]],
           "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
+          "constant_block_shape": [True, False],
+          "constant_crops": [True, False],
       },
       # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
       {
@@ -1368,23 +1371,47 @@ def make_batch_to_space_nd_tests(zip_path):
           "input_shape": [[8, 2, 2, 2, 1, 1]],
           "block_shape": [[2, 2, 2]],
           "crops": [[[0, 0], [0, 0], [0, 0]]],
+          "constant_block_shape": [True, False],
+          "constant_crops": [True, False],
       },
   ]
 
   def build_graph(parameters):
+    """Build a batch_to_space graph given `parameters`."""
     input_tensor = tf.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.batch_to_space_nd(input_tensor, parameters["block_shape"],
-                               parameters["crops"])
-    return [input_tensor], [out]
+    input_tensors = [input_tensor]
+
+    # Get block_shape either as a const or as a placeholder (tensor).
+    if parameters["constant_block_shape"]:
+      block_shape = parameters["block_shape"]
+    else:
+      shape = [len(parameters["block_shape"])]
+      block_shape = tf.placeholder(dtype=tf.int32, name="shape", shape=shape)
+      input_tensors.append(block_shape)
+
+    # Get crops either as a const or as a placeholder (tensor).
+    if parameters["constant_crops"]:
+      crops = parameters["crops"]
+    else:
+      shape = [len(parameters["crops"]), 2]
+      crops = tf.placeholder(dtype=tf.int32, name="crops", shape=shape)
+      input_tensors.append(crops)
+
+    out = tf.batch_to_space_nd(input_tensor, block_shape, crops)
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+    ]
+    if not parameters["constant_block_shape"]:
+      values.append(np.array(parameters["block_shape"]))
+    if not parameters["constant_crops"]:
+      values.append(np.array(parameters["crops"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 

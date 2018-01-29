@@ -295,9 +295,6 @@ table SpaceToBatchNDOptions {
 }
 
 table BatchToSpaceNDOptions {
-  block_shape:[int];
-  before_crops:[int];
-  after_crops:[int];
 }
 
 table SkipGramOptions {
