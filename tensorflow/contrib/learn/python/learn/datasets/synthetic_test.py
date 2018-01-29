@@ -125,7 +125,7 @@ class SyntheticTest(test.TestCase):
   def test_spirals_typo(self):
     """Test if a typo was made in a variable name such as x_exrta instead of x_extra
 
-       May raise NameError if there is a typo link in pull request ##16500
+       May raise NameError if there is a typo like in pull request ##16500
     """
     synthetic.spirals(3)
 
