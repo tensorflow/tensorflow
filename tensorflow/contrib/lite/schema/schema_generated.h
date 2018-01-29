@@ -3388,21 +3388,16 @@ flatbuffers::Offset<TransposeOptions> CreateTransposeOptions(
 
 struct MeanOptionsT : public flatbuffers::NativeTable {
   typedef MeanOptions TableType;
-  std::vector<int32_t> axis;
   bool keep_dims;
   MeanOptionsT() : keep_dims(false) {}
 };
 
 struct MeanOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef MeanOptionsT NativeTableType;
-  enum { VT_AXIS = 4, VT_KEEP_DIMS = 6 };
-  const flatbuffers::Vector<int32_t> *axis() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_AXIS);
-  }
+  enum { VT_KEEP_DIMS = 4 };
   bool keep_dims() const { return GetField<uint8_t>(VT_KEEP_DIMS, 0) != 0; }
   bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) && VerifyOffset(verifier, VT_AXIS) &&
-           verifier.Verify(axis()) &&
+    return VerifyTableStart(verifier) &&
            VerifyField<uint8_t>(verifier, VT_KEEP_DIMS) && verifier.EndTable();
   }
   MeanOptionsT *UnPack(
@@ -3418,9 +3413,6 @@ struct MeanOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 struct MeanOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_axis(flatbuffers::Offset<flatbuffers::Vector<int32_t>> axis) {
-    fbb_.AddOffset(MeanOptions::VT_AXIS, axis);
-  }
   void add_keep_dims(bool keep_dims) {
     fbb_.AddElement<uint8_t>(MeanOptions::VT_KEEP_DIMS,
                              static_cast<uint8_t>(keep_dims), 0);
@@ -3438,20 +3430,10 @@ struct MeanOptionsBuilder {
 };
 
 inline flatbuffers::Offset<MeanOptions> CreateMeanOptions(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> axis = 0,
-    bool keep_dims = false) {
+    flatbuffers::FlatBufferBuilder &_fbb, bool keep_dims = false) {
   MeanOptionsBuilder builder_(_fbb);
-  builder_.add_axis(axis);
   builder_.add_keep_dims(keep_dims);
   return builder_.Finish();
-}
-
-inline flatbuffers::Offset<MeanOptions> CreateMeanOptionsDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<int32_t> *axis = nullptr, bool keep_dims = false) {
-  return tflite::CreateMeanOptions(
-      _fbb, axis ? _fbb.CreateVector<int32_t>(*axis) : 0, keep_dims);
 }
 
 flatbuffers::Offset<MeanOptions> CreateMeanOptions(
@@ -6040,15 +6022,6 @@ inline void MeanOptions::UnPackTo(
   (void)_o;
   (void)_resolver;
   {
-    auto _e = axis();
-    if (_e) {
-      _o->axis.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->axis[_i] = _e->Get(_i);
-      }
-    }
-  };
-  {
     auto _e = keep_dims();
     _o->keep_dims = _e;
   };
@@ -6071,9 +6044,8 @@ inline flatbuffers::Offset<MeanOptions> CreateMeanOptions(
     const flatbuffers::rehasher_function_t *__rehasher;
   } _va = {&_fbb, _o, _rehasher};
   (void)_va;
-  auto _axis = _o->axis.size() ? _fbb.CreateVector(_o->axis) : 0;
   auto _keep_dims = _o->keep_dims;
-  return tflite::CreateMeanOptions(_fbb, _axis, _keep_dims);
+  return tflite::CreateMeanOptions(_fbb, _keep_dims);
 }
 
 inline SqueezeOptionsT *SqueezeOptions::UnPack(

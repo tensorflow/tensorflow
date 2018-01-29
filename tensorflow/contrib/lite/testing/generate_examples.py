@@ -695,6 +695,7 @@ def make_mean_tests(zip_path):
           [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1], [-1, 0],
           [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
       ],
+      "const_axis": [True, False],
       "keep_dims": [True, False],
   }, {
       "input_dtype": [tf.float32, tf.int32, tf.int64],
@@ -705,6 +706,7 @@ def make_mean_tests(zip_path):
           -3, -4, [0, -2], [2, 3, -1, 0], [3, 1, 2, -3], [3, -4], [2, 2, 2],
           [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
       ],
+      "const_axis": [True, False],
       "keep_dims": [True, False],
   }]
 
@@ -714,17 +716,31 @@ def make_mean_tests(zip_path):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
+
+    # Get axis as either a placeholder or constants.
+    if parameters["const_axis"]:
+      axis = parameters["axis"]
+      input_tensors = [input_tensor]
+    else:
+      if isinstance(parameters["axis"], list):
+        shape = [len(parameters["axis"])]
+      else:
+        shape = [0]  # shape for None or integers.
+      axis = tf.placeholder(dtype=tf.int32, name="axis", shape=shape)
+      input_tensors = [input_tensor, axis]
+
     out = tf.reduce_mean(
-        input_tensor,
-        axis=parameters["axis"],
-        keep_dims=parameters["keep_dims"])
-    return [input_tensor], [out]
+        input_tensor, axis=axis, keep_dims=parameters["keep_dims"])
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["input_dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["input_dtype"], parameters["input_shape"])
+    ]
+    if not parameters["const_axis"]:
+      if parameters["axis"]:
+        values.append(np.array(parameters["axis"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 

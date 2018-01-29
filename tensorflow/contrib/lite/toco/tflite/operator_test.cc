@@ -134,12 +134,10 @@ TEST_F(OperatorTest, BuiltinSpaceToBatchND) {
 
 TEST_F(OperatorTest, BuiltinMean) {
   MeanOperator op;
-  op.axis = {1, 2};
   op.keep_dims = false;
 
   auto output_toco_op =
       SerializeAndDeserialize(GetOperator("MEAN", OperatorType::kMean), op);
-  EXPECT_EQ(op.axis, output_toco_op->axis);
   EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
 }
 

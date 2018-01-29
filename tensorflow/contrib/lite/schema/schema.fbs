@@ -333,7 +333,6 @@ table TransposeOptions {
 }
 
 table MeanOptions {
-  axis:[int];
   keep_dims: bool;
 }
 
