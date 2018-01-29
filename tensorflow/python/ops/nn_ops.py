@@ -2150,18 +2150,20 @@ def _get_noise_shape(x, noise_shape):
   try:
     # Best effort to figure out the intended shape.
     # If not possible, let the op to handle it.
+    # In eager mode exception will show up.
     noise_shape_ = tensor_shape.as_shape(noise_shape)
-    if (x.shape.dims is not None and
-        len(x.shape.dims) == len(noise_shape_.dims)):
-      new_dims = []
-      for i, dim in enumerate(x.shape.dims):
-        if noise_shape_.dims[i].value is None and dim.value is not None:
-          new_dims.append(dim.value)
-        else:
-          new_dims.append(noise_shape_.dims[i].value)
-      return tensor_shape.TensorShape(new_dims)
   except (TypeError, ValueError):
     return noise_shape
+
+  if (x.shape.dims is not None and
+      len(x.shape.dims) == len(noise_shape_.dims)):
+    new_dims = []
+    for i, dim in enumerate(x.shape.dims):
+      if noise_shape_.dims[i].value is None and dim.value is not None:
+        new_dims.append(dim.value)
+      else:
+        new_dims.append(noise_shape_.dims[i].value)
+    return tensor_shape.TensorShape(new_dims)
 
   return noise_shape
 
