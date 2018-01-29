@@ -35,9 +35,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_utils.h"
+#include "tensorflow/compiler/xla/tools/parser/hlo_parser.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace op = xla::testing::opcode_matchers;
@@ -587,5 +589,74 @@ TEST_F(LayoutAssignmentTest, TransposeToBitcastToUser) {
   EXPECT_TRUE(ShapeUtil::TransposeIsBitcast(transpose->operand(0)->shape(),
                                             transpose->shape(), {2, 3, 0, 1}));
 }
+
+// A GTE inside of a fusion node inherits the layout of its operand (which
+// should, if we keep following operands, eventually be a parameter).
+TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
+  const char* module_str = R"(
+    HloModule test_module
+
+    fused_computation {
+      fparam = (f32[2,2,2], (f32[2,2,2], f32[2,2,2])) parameter(0)
+      gte0 = f32[2,2,2] get-tuple-element(fparam), index=0
+      gte1 = (f32[2,2,2], f32[2,2,2]) get-tuple-element(fparam), index=1
+      gte1a = f32[2,2,2] get-tuple-element(gte1), index=0
+      gte1b = f32[2,2,2] get-tuple-element(gte1), index=1
+      add = f32[2,2,2] add(gte1a, gte1b)
+      ROOT fresult = f32[2,2,2] add(gte0, add)
+    }
+
+    ENTRY entry_computation {
+      param = (f32[2,2,2], (f32[2,2,2], f32[2,2,2])) parameter(0)
+      ROOT fusion =
+        f32[2,2,2] fusion(param), kind=kLoop, calls=fused_computation
+    }
+  )";
+
+  auto module = tools::Parse(module_str).ValueOrDie();
+  ComputationLayout computation_layout(
+      module->entry_computation()->ComputeProgramShape());
+  Shape param_shape = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShapeWithLayout(F32, {2, 2, 2}, {0, 1, 2}),
+       ShapeUtil::MakeTupleShape({
+           ShapeUtil::MakeShapeWithLayout(F32, {2, 2, 2}, {1, 2, 0}),
+           ShapeUtil::MakeShapeWithLayout(F32, {2, 2, 2}, {2, 0, 1}),
+       })});
+  TF_ASSERT_OK(
+      computation_layout.mutable_parameter_layout(0)->CopyLayoutFromShape(
+          param_shape));
+  computation_layout.mutable_result_layout()->ResetLayout(
+      LayoutUtil::MakeLayout({2, 1, 0}));
+  AssignLayouts(module.get(), &computation_layout);
+
+  HloComputation* fused_computation = *std::find_if(
+      module->computations().begin(), module->computations().end(),
+      [](const HloComputation* c) { return c->name() == "fused_computation"; });
+
+  auto fused_instr = [&](const string& name) {
+    auto it = std::find_if(
+        fused_computation->instructions().begin(),
+        fused_computation->instructions().end(),
+        [&](const HloInstruction* i) { return i->name() == name; });
+    CHECK(it != fused_computation->instructions().end());
+    return *it;
+  };
+
+  EXPECT_THAT(fused_instr("gte0")->shape().layout().minor_to_major(),
+              ElementsAre(0, 1, 2));
+  EXPECT_THAT(
+      fused_instr("gte1")->shape().tuple_shapes(0).layout().minor_to_major(),
+      ElementsAre(1, 2, 0));
+  EXPECT_THAT(
+      fused_instr("gte1")->shape().tuple_shapes(1).layout().minor_to_major(),
+      ElementsAre(2, 0, 1));
+  EXPECT_THAT(fused_instr("gte1a")->shape().layout().minor_to_major(),
+              ElementsAre(1, 2, 0));
+  EXPECT_THAT(fused_instr("gte1b")->shape().layout().minor_to_major(),
+              ElementsAre(2, 0, 1));
+  EXPECT_THAT(fused_instr("fresult")->shape().layout().minor_to_major(),
+              ElementsAre(2, 1, 0));
+}
+
 }  // namespace
 }  // namespace xla

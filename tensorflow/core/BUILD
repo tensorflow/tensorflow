@@ -381,7 +381,6 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
-        ":abi",
         ":lib",
         ":lib_platform",
     ],
@@ -2413,7 +2412,6 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":stacktrace_handler",
         ":test",  # buildcleaner: keep
         "//tensorflow/core/platform/default/build_config:test_main",
     ],

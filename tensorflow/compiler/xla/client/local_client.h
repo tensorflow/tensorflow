@@ -53,10 +53,22 @@ class ExecutableBuildOptions {
   ExecutableBuildOptions& set_result_layout(const Shape& shape_with_layout);
   const Shape* result_layout() const;
 
+  // If set, this specifies an allocator that can be used to allocate temporary
+  // space on the device during compilation.  For example, the compiler might
+  // want to run various algorithms on the device and pick the fastest one -- it
+  // might allocate buffers for use by these algorithms using this allocator.
+  //
+  // This does not need to be the same as the DeviceMemoryAllocator passed when
+  // running the executable.
+  ExecutableBuildOptions& set_device_allocator(
+      DeviceMemoryAllocator* allocator);
+  DeviceMemoryAllocator* device_allocator() const;
+
  private:
   int device_ordinal_ = -1;
   Shape result_layout_;
   bool result_layout_set_ = false;
+  DeviceMemoryAllocator* device_allocator_ = nullptr;
 };
 
 class LocalExecutable {

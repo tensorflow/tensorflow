@@ -1397,29 +1397,44 @@ def make_transpose_tests(zip_path):
       "dtype": [tf.int32, tf.int64, tf.float32],
       "input_shape": [[2, 2, 3]],
       "perm": [[0, 1, 2], [0, 2, 1]],
+      "constant_perm": [True, False],
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 2, 3, 4]],
       "perm": [[0, 1, 2, 3], [3, 0, 1, 2]],
+      "constant_perm": [True, False],
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 2, 3, 4, 5]],
       "perm": [[0, 1, 2, 3, 4]],
+      "constant_perm": [True, False],
   }]
 
   def build_graph(parameters):
+    """Build a transpose graph given `parameters`."""
     input_tensor = tf.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.transpose(input_tensor, perm=parameters["perm"])
-    return [input_tensor], [out]
+
+    if parameters["constant_perm"]:
+      perm = parameters["perm"]
+      input_tensors = [input_tensor]
+    else:
+      shape = [len(parameters["perm"]), 2]
+      perm = tf.placeholder(dtype=tf.int32, name="perm", shape=shape)
+      input_tensors = [input_tensor, perm]
+
+    out = tf.transpose(input_tensor, perm=perm)
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+    ]
+    if not parameters["constant_perm"]:
+      values.append(np.array(parameters["perm"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 

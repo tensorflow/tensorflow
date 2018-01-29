@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/bitmap.h"
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
@@ -1704,6 +1705,115 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
 
   Status HandleCos(HloInstruction* cos) override {
     return HandleCos<ElementwiseT>(cos);
+  }
+
+  template <typename NativeT, typename std::enable_if<std::is_same<
+                                  float, NativeT>::value>::type* = nullptr>
+  Status HandleReducePrecision(HloInstruction* reduce_precision) {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[reduce_precision],
+        ElementWiseUnaryOp(reduce_precision, [reduce_precision](
+                                                 ElementwiseT elem) {
+          uint32_t value_as_int = tensorflow::bit_cast<uint32_t>(elem);
+          const uint32_t mantissa_bits = reduce_precision->mantissa_bits();
+          const uint32_t exponent_bits = reduce_precision->exponent_bits();
+
+          // Code is based on the CPU/GPU implementation in LLVM-emitting code.
+          //
+          // Bits in float type:
+          //   mantissa : bits [0:22]
+          //   exponent : bits [23:30]
+          //   sign     : bits [31]
+          if (mantissa_bits < 23) {
+            const uint32_t last_mantissa_bit_mask = 1u << (23 - mantissa_bits);
+
+            // Compute rounding bias for round-to-nearest with ties to even.
+            // This is equal to a base value of 0111... plus one bit if the last
+            // remaining mantissa bit is 1.
+            const uint32_t base_rounding_bias =
+                (last_mantissa_bit_mask >> 1) - 1;
+            const uint32_t x_last_mantissa_bit =
+                (value_as_int & last_mantissa_bit_mask) >> (23 - mantissa_bits);
+            const uint32_t x_rounding_bias =
+                x_last_mantissa_bit + base_rounding_bias;
+
+            // Add rounding bias, and mask out truncated bits.  Note that the
+            // case where adding the rounding bias overflows into the exponent
+            // bits is correct; the non-masked mantissa bits will all be zero,
+            // and the exponent will be incremented by one.
+            const uint32_t truncation_mask = ~(last_mantissa_bit_mask - 1);
+            value_as_int = value_as_int + x_rounding_bias;
+            value_as_int = value_as_int & truncation_mask;
+          }
+          if (exponent_bits < 8) {
+            // Masks for f32 values.
+            const uint32_t f32_sign_bit_mask = 1u << 31;
+            const uint32_t f32_exp_bits_mask = 0xffu << 23;
+
+            // An exponent of 2^(n-1)-1 -- that is, 0111... with the zero in the
+            // most- significant bit -- is equal to 1.0f for all exponent sizes.
+            // Adding 2^(n-1)-1 to this gives us the highest non-infinite
+            // exponent for a bit- size of n, and subtracting 2^(n-1)-1 from
+            // this gives us the lowest' exponent (corresponding to 0.0f).
+            //
+            // Thus, the f32 exponent corresponding to the highest non-infinite
+            // exponent for a bit size of n is (2^7-1) + 2^(n-1)-1, and the f32
+            // exponent corresponding to the lowest exponent for a bit size of n
+            // is (2^7-1) - 2^(n-1)-1.
+            //
+            // Note that we have already checked that exponents_bits >= 1.
+            const uint32_t f32_exponent_bias = (1 << 7) - 1;
+            const uint32_t reduced_exponent_bias =
+                (1 << (exponent_bits - 1)) - 1;
+            const uint32_t reduced_max_exponent =
+                f32_exponent_bias + reduced_exponent_bias;
+            const uint32_t reduced_min_exponent =
+                f32_exponent_bias - reduced_exponent_bias;
+
+            // Do we overflow or underflow?
+            const uint32_t x_exponent = value_as_int & f32_exp_bits_mask;
+            const bool x_overflows = x_exponent > (reduced_max_exponent << 23);
+            const bool x_underflows =
+                x_exponent <= (reduced_min_exponent << 23);
+
+            // Compute appropriately-signed values of zero and infinity.
+            const uint32_t x_signed_zero = value_as_int & f32_sign_bit_mask;
+            const uint32_t x_signed_inf = x_signed_zero | f32_exp_bits_mask;
+
+            // Force to zero or infinity if overflow or underflow.  (Note that
+            // this truncates all denormal values to zero, rather than rounding
+            // them.)
+            value_as_int = x_overflows ? x_signed_inf : value_as_int;
+            value_as_int = x_underflows ? x_signed_zero : value_as_int;
+          }
+
+          float reduced_result = tensorflow::bit_cast<float>(value_as_int);
+          if (std::isnan(elem)) {
+            reduced_result = mantissa_bits > 0
+                                 ? elem
+                                 : std::numeric_limits<float>::infinity();
+          }
+          return reduced_result;
+        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT, typename std::enable_if<std::is_same<
+                                  double, NativeT>::value>::type* = nullptr>
+  Status HandleReducePrecision(HloInstruction* reduce_precision) {
+    return InvalidArgument("Double not supported for reduce precision");
+  }
+
+  template <
+      typename NativeT,
+      typename std::enable_if<std::is_integral<NativeT>::value ||
+                              is_complex_t<NativeT>::value>::type* = nullptr>
+  Status HandleReducePrecision(HloInstruction* reduce_precision) {
+    return InvalidArgument("Unsupported type for reduce precision");
+  }
+
+  Status HandleReducePrecision(HloInstruction* reduce_precision) override {
+    return HandleReducePrecision<ElementwiseT>(reduce_precision);
   }
 
  private:

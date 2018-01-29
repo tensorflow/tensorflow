@@ -49,6 +49,16 @@ const Shape* ExecutableBuildOptions::result_layout() const {
   return result_layout_set_ ? &result_layout_ : nullptr;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_device_allocator(
+    DeviceMemoryAllocator* allocator) {
+  device_allocator_ = allocator;
+  return *this;
+}
+
+DeviceMemoryAllocator* ExecutableBuildOptions::device_allocator() const {
+  return device_allocator_;
+}
+
 namespace {
 StatusOr<Backend::StreamPtr> BorrowStreamForDevice(int device_ordinal,
                                                    Backend* backend) {
@@ -270,10 +280,11 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
   int device_ordinal = options.device_ordinal() == -1
                            ? default_device_ordinal()
                            : options.device_ordinal();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      local_service_->CompileExecutable(
-                          computation.handle(), argument_layouts,
-                          options.result_layout(), device_ordinal));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      local_service_->CompileExecutable(computation.handle(), argument_layouts,
+                                        options.result_layout(), device_ordinal,
+                                        options.device_allocator()));
   return WrapUnique(new LocalExecutable(std::move(executable),
                                         local_service_->mutable_backend(),
                                         device_ordinal, options));
