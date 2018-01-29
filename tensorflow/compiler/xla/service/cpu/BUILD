@@ -414,7 +414,7 @@ cc_library(
     name = "compiler_functor",
     srcs = ["compiler_functor.cc"],
     hdrs = ["compiler_functor.h"],
-    deps = if_polly([
+    deps = append_polly_dep_if_enabled([
         ":cpu_runtime",
         ":cpu_runtime_avx",
         ":cpu_runtime_neon",

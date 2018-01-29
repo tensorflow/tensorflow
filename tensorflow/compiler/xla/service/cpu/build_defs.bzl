@@ -11,7 +11,7 @@ def runtime_copts():
       "//conditions:default": []
   }))
 
-def if_polly(basic_deps):
+def append_polly_dep_if_enabled(basic_deps):
     """Shorthand for select()'ing on whether we're building with Polly.
     Returns a select statement which evaluates to basic_deps if we're building
     with Polly enabled.  Otherwise, the select statement evaluates to basic_deps.
