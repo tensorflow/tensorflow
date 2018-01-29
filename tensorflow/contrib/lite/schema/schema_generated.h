@@ -3392,19 +3392,13 @@ flatbuffers::Offset<GatherOptions> CreateGatherOptions(
 
 struct TransposeOptionsT : public flatbuffers::NativeTable {
   typedef TransposeOptions TableType;
-  std::vector<int32_t> perm;
   TransposeOptionsT() {}
 };
 
 struct TransposeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef TransposeOptionsT NativeTableType;
-  enum { VT_PERM = 4 };
-  const flatbuffers::Vector<int32_t> *perm() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_PERM);
-  }
   bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) && VerifyOffset(verifier, VT_PERM) &&
-           verifier.Verify(perm()) && verifier.EndTable();
+    return VerifyTableStart(verifier) && verifier.EndTable();
   }
   TransposeOptionsT *UnPack(
       const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -3419,9 +3413,6 @@ struct TransposeOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 struct TransposeOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_perm(flatbuffers::Offset<flatbuffers::Vector<int32_t>> perm) {
-    fbb_.AddOffset(TransposeOptions::VT_PERM, perm);
-  }
   explicit TransposeOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
       : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -3435,18 +3426,9 @@ struct TransposeOptionsBuilder {
 };
 
 inline flatbuffers::Offset<TransposeOptions> CreateTransposeOptions(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> perm = 0) {
+    flatbuffers::FlatBufferBuilder &_fbb) {
   TransposeOptionsBuilder builder_(_fbb);
-  builder_.add_perm(perm);
   return builder_.Finish();
-}
-
-inline flatbuffers::Offset<TransposeOptions> CreateTransposeOptionsDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<int32_t> *perm = nullptr) {
-  return tflite::CreateTransposeOptions(
-      _fbb, perm ? _fbb.CreateVector<int32_t>(*perm) : 0);
 }
 
 flatbuffers::Offset<TransposeOptions> CreateTransposeOptions(
@@ -6107,15 +6089,6 @@ inline void TransposeOptions::UnPackTo(
     const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = perm();
-    if (_e) {
-      _o->perm.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->perm[_i] = _e->Get(_i);
-      }
-    }
-  };
 }
 
 inline flatbuffers::Offset<TransposeOptions> TransposeOptions::Pack(
@@ -6135,8 +6108,7 @@ inline flatbuffers::Offset<TransposeOptions> CreateTransposeOptions(
     const flatbuffers::rehasher_function_t *__rehasher;
   } _va = {&_fbb, _o, _rehasher};
   (void)_va;
-  auto _perm = _o->perm.size() ? _fbb.CreateVector(_o->perm) : 0;
-  return tflite::CreateTransposeOptions(_fbb, _perm);
+  return tflite::CreateTransposeOptions(_fbb);
 }
 
 inline MeanOptionsT *MeanOptions::UnPack(

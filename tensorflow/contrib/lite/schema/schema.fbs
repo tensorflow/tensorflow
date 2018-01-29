@@ -333,7 +333,6 @@ table GatherOptions {
 }
 
 table TransposeOptions {
-  perm:[int];
 }
 
 table MeanOptions {
