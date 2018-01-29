@@ -229,4 +229,4 @@ passed through to the `model_fn` when the `model_fn` is called.
 The `model_fn` returns an
 @{tf.estimator.EstimatorSpec$`EstimatorSpec`} which is a simple structure
 indicating to the `Estimator` which operations should be run to accomplish
-varions tasks.
+various tasks.
