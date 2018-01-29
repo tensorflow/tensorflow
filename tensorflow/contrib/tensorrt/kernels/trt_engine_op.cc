@@ -19,14 +19,12 @@ limitations under the License.
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 
-#include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 #include <cuda_runtime_api.h>
+#include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 
 namespace tensorflow {
 static ::tensorflow::tensorrt::Logger gLogger;
-
-using namespace nvinfer1;
 
 namespace tensorrt {
 
@@ -43,15 +41,13 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   // TODO(samikama) runtime should be taken from a resourcemanager as well.
   //  Only engine should be in the op and context and runtime should be taken
   //  from resourcemanager
-  IRuntime* infer = createInferRuntime(gLogger);
+  nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(gLogger);
   trt_engine_ptr_.reset(infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(), nullptr));
 
   trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
   // runtime is safe to delete after engine creation
   infer->destroy();
-  std::stringstream oss;
-
 }
 
 void TRTEngineOp::Compute(OpKernelContext* context) {
@@ -138,5 +134,5 @@ REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif // GOOGLE_TENSORRT
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

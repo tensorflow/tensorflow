@@ -13,8 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 
 #include <set>
@@ -29,15 +27,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 
-//------------------------------------------------------------------------------
 namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 
-//------------------------------------------------------------------------------
 namespace {
 
-//------------------------------------------------------------------------------
 bool CanContractEdge(const tensorflow::Edge* edge,
                      const tensorflow::Graph& graph) {
   const tensorflow::Node* src = edge->src();
@@ -122,7 +117,6 @@ void ContractEdge(tensorflow::Edge* edge, tensorflow::Graph* graph,
 
 }  // namespace
 
-//------------------------------------------------------------------------------
 tensorflow::Status SegmentGraph(
     const tensorflow::GraphDef& gdef,
     const std::function<bool(const tensorflow::NodeDef&)>& candidate_fn,
@@ -142,8 +136,8 @@ tensorflow::Status SegmentGraph(
   std::vector<UnionFind<tensorflow::Node*>> node_segments;
   for (int i = 0; i < graph.num_node_ids(); ++i) {
     tensorflow::Node* node = graph.FindNodeId(i);
-    if (options.exclude_node_list.count(node->name())!=0
-        || !candidate_fn(node->def())) {
+    if (options.exclude_node_list.count(node->name()) != 0 ||
+        !candidate_fn(node->def())) {
       node = nullptr;
     }
     node_segments.emplace_back(node);
@@ -267,6 +261,3 @@ tensorflow::Status SegmentGraph(
 }  // namespace segment
 }  // namespace tensorrt
 }  // namespace tensorflow
-
-#endif // GOOGLE_TENSORRT
-#endif // GOOGLE_CUDA
