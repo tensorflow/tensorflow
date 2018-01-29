@@ -1283,5 +1283,114 @@ class AddLossTest(test.TestCase):
     self.assertFalse(loss_ops.get_losses())
 
 
+class FocalLossTest(test.TestCase):
+
+  def setUp(self):
+    predictions = np.asarray([.9, .2, .2, .8, .4, .6]).reshape((2, 3))
+    labels = np.asarray([1.0, 0.0, 1.0, 1.0, 0.0, 0.0]).reshape((2, 3))
+
+    self._np_predictions = predictions
+    self._np_labels = labels
+
+    epsilon = 1e-7
+    gamma = 2
+    alpha = 1
+    preds = np.where(labels == 1, predictions, 1 - predictions)
+    self._expected_losses = -alpha * (1. - preds)**gamma * np.log(preds + epsilon)
+
+    self._predictions = constant_op.constant(predictions)
+    self._labels = constant_op.constant(labels)
+
+  def testValueErrorThrownWhenWeightIsNone(self):
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        loss_ops.focal_loss(self._labels, self._labels, weights=None)
+
+  def testAllCorrectNoLossWeight(self):
+    loss = loss_ops.focal_loss(self._labels, self._labels)
+    with self.test_session():
+      self.assertAlmostEqual(0.0, loss.eval(), 3)
+
+  def testAllCorrectNoLossWeightWithPlaceholder(self):
+    tf_predictions = array_ops.placeholder(
+        dtypes.float32, shape=self._np_labels.shape)
+    loss = loss_ops.focal_loss(tf_predictions, self._labels)
+    with self.test_session():
+      self.assertAlmostEqual(
+          0.0, loss.eval(feed_dict={tf_predictions: self._np_labels}), 3)
+
+  def testNonZeroLoss(self):
+    loss = loss_ops.focal_loss(self._predictions, self._labels)
+    with self.test_session():
+      self.assertAlmostEqual(np.sum(self._expected_losses) / 6.0,
+                             loss.eval(), 3)
+
+  def testNonZeroLossWithPythonScalarWeight(self):
+    weights = 2.3
+    loss = loss_ops.focal_loss(self._predictions, self._labels, weights=weights)
+    with self.test_session():
+      self.assertAlmostEqual(weights * np.sum(self._expected_losses) / 6.0,
+                             loss.eval(), 3)
+
+  def testNonZeroLossWithScalarTensorWeight(self):
+    weights = 2.3
+    loss = loss_ops.focal_loss(self._predictions, self._labels,
+                             weights=constant_op.constant(weights))
+    with self.test_session():
+      self.assertAlmostEqual(weights * np.sum(self._expected_losses) / 6.0,
+                             loss.eval(), 3)
+
+  def testNonZeroLossWithOneDimBatchSpecificWeights(self):
+    weights = constant_op.constant([1.2, 3.4], shape=[2])
+    expected_losses = np.multiply(
+        self._expected_losses,
+        np.asarray([1.2, 1.2, 1.2, 3.4, 3.4, 3.4]).reshape((2, 3)))
+    loss = loss_ops.focal_loss(self._predictions, self._labels, weights=weights)
+    with self.test_session():
+      self.assertAlmostEqual(np.sum(expected_losses) / 6.0, loss.eval(), 3)
+
+  def testNonZeroLossWithOneDimBatchSpecificWeightsSomeZero(self):
+    weights = constant_op.constant([1.2, 0], shape=[2])
+    expected_losses = np.multiply(self._expected_losses,
+                                  np.asarray([1.2, 1.2, 1.2, 0, 0, 0]).reshape(
+                                      (2, 3)))
+    loss = loss_ops.focal_loss(self._predictions, self._labels, weights=weights)
+    with self.test_session():
+      self.assertAlmostEqual(np.sum(expected_losses) / 3.0, loss.eval(), 3)
+
+  def testNonZeroLossWithTwoDimBatchSpecificWeightsSomeZero(self):
+    weights = constant_op.constant([1.2, 0], shape=[2, 1])
+    expected_losses = np.multiply(self._expected_losses,
+                                  np.asarray([1.2, 1.2, 1.2, 0, 0, 0]).reshape(
+                                      (2, 3)))
+    loss = loss_ops.focal_loss(self._predictions, self._labels, weights=weights)
+    with self.test_session():
+      self.assertAlmostEqual(np.sum(expected_losses) / 3.0, loss.eval(), 3)
+
+  def testWeightsWithSameNumDimsButWrongShapeThrowsException(self):
+    weights = constant_op.constant(np.random.normal(size=(2, 4)), shape=[2, 4])
+    with self.test_session():
+      with self.assertRaises(ValueError):
+        loss_ops.focal_loss(self._predictions, self._labels, weights=weights)
+
+  def testNonZeroLossWithMeasurementSpecificWeights(self):
+    weights = np.array([3, 6, 5, 0, 4, 2]).reshape((2, 3))
+    expected_losses = np.multiply(self._expected_losses, weights)
+
+    loss = loss_ops.focal_loss(
+        self._predictions,
+        self._labels,
+        weights=constant_op.constant(
+            weights, shape=(2, 3)))
+    with self.test_session():
+      self.assertAlmostEqual(np.sum(expected_losses) / 5.0, loss.eval(), 3)
+
+  def testLossWithSampleSpecificWeightsAllZero(self):
+    tf_weights = array_ops.zeros(shape=(2, 3))
+    loss = loss_ops.focal_loss(self._predictions, self._labels, weights=tf_weights)
+    with self.test_session():
+      self.assertAlmostEqual(0.0, loss.eval(), 3)
+
+
 if __name__ == '__main__':
   test.main()
