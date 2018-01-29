@@ -35,6 +35,12 @@ bindings.
 
 * [SWIG](http://www.swig.org/download.html)
 
+* [Perl](https://www.perl.org/get.html)
+
+* [Go](https://golang.org/)
+
+* [NASM](http://www.nasm.us/)
+
 * Additional pre-requisites for Microsoft Windows:
   - Visual Studio 2015 (latest version of MSVC 2017 is not suppored by CUDA yet, try it on your own)
   - Python 3.5
@@ -104,12 +110,16 @@ CMake GUI build (all platforms)
 Install from CMake GUI would be a convenient way to generate C++ build projects. The software supports Windows, MacOS and Linux, while the posix platform provides an extra ccmake binary to run command line GUI. Both working principal of cmake, ccmake and cmake-gui are the same, the only difference is by providing suitable interface for project configuration and dependency setting.
 
 0. Pre-buid checklist:
+    The following binary/libraries should be setted in system path, otherwise you need to set manualy via cmake.
     * Compiler (GCC for Linux, MSVC for Windows)
     * Make sure compiler directory has been set to system path
     * CUDA 9.0 (GPU build)
     * CUDNN (GPU build)
     * NCCL (GPU build on Linux)
     * SWIG (python binding) 
+    * Perl (GPU build on Windows, required by grpc)
+    * Go (GPU build on Windows, required by grpc)
+    * NASM (GPU build on Windows, required by grpc)
 1. Start CMake GUI
 2. Click on `Browse Source` and direct to the the folder `<tensorflow-source>/tensorflow/contrib/cmake`
 3. Click on `Browse Build` and spectify a location that you want tensorflow to be build
@@ -121,7 +131,7 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
     * `tensorflow_BUILD_PYTHON_BINDING` is default to be `on`. Set to `off` if you don't need python interaface. If SWIG is not in system path, you need set it manually. (optional)
     * `tensorflow_BUILD_SHARED_LIB` is default to be `off`. Set to `on` if you want the c++ interface. (optional)
     * `tensorflow_ENABLE_GPU` is default to be `off`. Set to `on` if you want GPU support. It will search CUDA and CUDNN dependecies if you have set them to system path, otherwise CMake would prompt error and request you to set it manually. (optional)
-    * `tensorflow_ENABLE_GRPC_SUPPORT` is default to be `on`. For Linux build, this option must always be `on`. In Windows this need to be `on` for gpu build.
+    * `tensorflow_ENABLE_GRPC_SUPPORT` is default to be `on`. For Linux build, this option must always be `on`. In Windows this need to be `on` for gpu build. Reminded that Perl, Go and NASM is required for this option in windows.
     * `tensorflow_ENABLE_POSITION_INDEPENDENT_CODE` should always be `on`
     * `tensorflow_ENABLE_SNAPPY_SUPPORT` should always be `on` 
     * `tensorflow_OPTIMIZE_FOR_NATIVE_ARCH` should always be `on`
@@ -135,6 +145,7 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
 1. Open `tensorflow.sln` in the build folder (Windows). Change build type from `Debug` to `Release`. Choose `Build`->`Build Solution`. This may take more than hours of compilation. If everything is alright, the output window would show no error.
 
     ##### Python
+
     In solution explorer, right click on `tf_python_build_pip_package` -> `build`. It will generate the wheel file in `<tensorflow-build>/tf_python/dist`. Install with following command:
 
      ```pip install --upgrade tensorflow-<config>.whl```
@@ -144,6 +155,7 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
     Remind that some pip installation requires administrator right command prompt.
 
     ##### C++
+
     You can directly use the build folder tree for C++ interface with cmake. If you want to do installation for api releasing, right click on `Install` -> `build`. The headers and library will be installed in the directory specify by `CMAKE_INSTALL_PREFIX` during configuration.
 
 2. For smaller RAM computer, it is noticed that out of heap space error appears. Change to command prompt build is an alternative to do step 1. 
@@ -151,7 +163,9 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
     Open `VS2015 x64 Native Tools Command Prompt`. You can open it by press `Start`, then type the binary name. Use `VS2017 x64 Native Tools Command Prompt` if you are using MSVC 2017.
 
     ##### Python
+
     Directly build python wheel package by following command:
+
     ```MSBuild /p:Configuration=Release <path-to-tf_python_build_pip_package.vcxproj>```
 
     Remember to change `<path-to-tf_python_build_pip_package.vcxproj>` to the actual path of the file, it can be found at the root of build directory
