@@ -101,7 +101,8 @@ OpKernel::OpKernel(OpKernelConstruction* context)
 
   // Kernels executing on GPU/SYCL tie very few resources on the CPU where the
   // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) && context->device_type() != DeviceType(DEVICE_SYCL);
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
+               context->device_type() != DeviceType(DEVICE_SYCL);
 }
 
 OpKernel::~OpKernel() {}
@@ -941,13 +942,6 @@ Status FindKernelRegistration(const DeviceType& device_type,
     }
   }
   return Status::OK();
-}
-
-Status FindKernelRegistration(const DeviceType& device_type, const Node& node,
-                              const KernelRegistration** reg,
-                              bool* was_attr_mismatch) {
-  return FindKernelRegistration(device_type, node.def(), reg,
-                                was_attr_mismatch);
 }
 
 }  // namespace

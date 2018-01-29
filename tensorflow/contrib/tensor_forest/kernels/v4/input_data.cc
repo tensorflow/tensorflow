@@ -21,8 +21,6 @@ namespace tensorflow {
 namespace tensorforest {
 namespace {
 
-const int32 SPARSE_DEFAULT = 0;
-
 bool DecideInequalityTest(const decision_trees::InequalityTest& test,
                           float value) {
   float bias = test.threshold().float_value();

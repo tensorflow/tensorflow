@@ -251,7 +251,7 @@ def main(unused_args):
                FLAGS.output_graph, FLAGS.clear_devices, FLAGS.initializer_nodes,
                FLAGS.variable_names_whitelist, FLAGS.variable_names_blacklist,
                FLAGS.input_meta_graph, FLAGS.input_saved_model_dir,
-               FLAGS.saved_model_tags, checkpoint_version=checkpoint_version)
+               FLAGS.saved_model_tags, FLAGS.checkpoint_version)
 
 
 if __name__ == "__main__":

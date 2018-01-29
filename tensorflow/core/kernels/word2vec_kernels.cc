@@ -188,9 +188,9 @@ class SkipgramOp : public OpKernel {
       ++corpus_size_;
     }
     if (corpus_size_ < window_size_ * 10) {
-      return errors::InvalidArgument("The text file ", filename,
-                                     " contains too little data: ",
-                                     corpus_size_, " words");
+      return errors::InvalidArgument(
+          "The text file ", filename,
+          " contains too little data: ", corpus_size_, " words");
     }
     typedef std::pair<string, int32> WordFreq;
     std::vector<WordFreq> ordered;

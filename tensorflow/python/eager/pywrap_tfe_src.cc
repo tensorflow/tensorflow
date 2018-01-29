@@ -766,6 +766,9 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
     return;
   }
   std::vector<tensorflow::int64> input_ids = MakeTensorIDList(input_tensors);
+  if (PyErr_Occurred()) {
+    return;
+  }
   std::vector<tensorflow::eager::TapeTensor> output_info;
   PyObject* seq = PySequence_Fast(output_tensors,
                                   "expected a sequence of integer tensor ids");

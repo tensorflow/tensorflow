@@ -128,7 +128,8 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, argument_layouts, &execution_options));
+      CreateModuleConfig(*program_shape, argument_layouts, &execution_options,
+                         *user_computation));
 
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       execute_backend_->stream_executor(device_ordinal));

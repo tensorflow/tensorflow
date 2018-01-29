@@ -32,7 +32,7 @@ class ShapeRefinerTest;
 namespace grappler {
 class GraphProperties;
 class SymbolicShapeManager;
-}
+}  // namespace grappler
 
 namespace shape_inference {
 

@@ -309,10 +309,10 @@ struct AvgPoolMeanReducer {
   _mm512_castsi512_ps( \
       _mm512_maskz_set1_epi32(_mm512_cmp_ps_mask(a, b, _CMP_EQ_UQ), -1))
 
-// The ternarylogic function immediate determines the values in the result
-// In the case below, 0xd8 implies (false_mask) ? (b) : (a)
-// For details, refer to the vpternlogd instruction table at
-// http://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2c-manual.pdf
+  // The ternarylogic function immediate determines the values in the result
+  // In the case below, 0xd8 implies (false_mask) ? (b) : (a)
+  // For details, refer to the vpternlogd instruction table at
+  // http://www.intel.com/content/dam/www/public/us/en/documents/manuals/64-ia-32-architectures-software-developer-vol-2c-manual.pdf
 
 #define psel(a, b, false_mask)                        \
   _mm512_castsi512_ps(_mm512_ternarylogic_epi32(      \
