@@ -5008,9 +5008,22 @@ def init_scope():
   """
   # pylint: enable=g-doc-return-or-yield,line-too-long
 
+  in_graph_mode = context.in_graph_mode()
+  # Retrieve the active name scope: entering an `init_scope` preserves
+  # the name scope of the current context.
+  if in_graph_mode:
+    default_graph = get_default_graph()
+    scope = default_graph.get_name_scope()
+  else:
+    scope = context.context().scope_name
+  if scope and scope[-1] != '/':
+    # Names that end with trailing slashes are treated by `name_scope` as
+    # absolute.
+    scope = scope + '/'
+
   outer_context = None
-  if context.in_graph_mode() and not _default_graph_stack.stack:
-    outer_context = get_default_graph().as_default
+  if in_graph_mode and not _default_graph_stack.stack:
+    outer_context = default_graph.as_default
   else:
     for stack_entry in reversed(context.context_stack.stack):
       if not stack_entry.is_building_function:
@@ -5022,7 +5035,8 @@ def init_scope():
                          "eager context was previously active.")
 
   try:
-    with outer_context(), control_dependencies(None), tape.stop_recording():
+    with outer_context(), name_scope(scope), control_dependencies(
+        None), tape.stop_recording():
       yield
   finally:
     pass
