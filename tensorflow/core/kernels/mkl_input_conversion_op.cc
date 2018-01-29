@@ -293,14 +293,56 @@ class MklInputConversionOp : public OpKernel {
     // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
     // If both inputs are in MKL format
     if (input_shape_0.IsMklTensor() && input_shape_1.IsMklTensor()) {
-      // If both have the same shape, pass them through
       if (tf_shapes_are_same) {
-        VLOG(1) << "MklInputConversionOp: No conversion needed, "
-                << "copying MKL inputs with identical shapes to output";
+        auto input0_md = input_shape_0.GetMklLayout();
+        auto input1_md = input_shape_1.GetMklLayout();
+        
+        // If both have the same shape and same format, pass them through
+        if ( input0_md.data.format == input1_md.data.format) {
+          VLOG(1) << "MklInputConversionOp: No conversion needed, "
+                  << "copying MKL inputs with identical shapes to output";
 
-        ForwardMklTensorInToOut(context, 0, 0);
-        ForwardMklTensorInToOut(context, 1, 1);
-        return;
+          ForwardMklTensorInToOut(context, 0, 0);
+          ForwardMklTensorInToOut(context, 1, 1);
+          return;
+        } else {
+          VLOG(1) << "MklInputConversionOp: Shape is same, but format is different, "
+                  << "need to convert to same format";
+          
+          // Convert input0, and keep input1 unchanged
+          // Create MklDnnShape for output mkl tensor based on input0
+          Tensor* tensor_out;
+          MklDnnShape mkl_output_mkl_shape;
+          mkl_output_mkl_shape.SetMklTensor(true);
+          mkl_output_mkl_shape.SetElemType(MklDnnType<T>());
+          mkl_output_mkl_shape.SetTfLayout(input_shape_0.GetDimension(),
+                                           input_shape_0.GetSizesAsMklDnnDims(),
+                                           input_shape_0.GetTfDataFormat());
+
+          // Get MKL layout from input1 as destination layout
+          mkl_output_mkl_shape.SetMklLayout(&input1_md);
+
+          // Create output Mkl tensor for index 0
+          AllocateOutputSetMklShape(context, 0, &tensor_out,
+                                    input_tensor_0.shape(), mkl_output_mkl_shape);
+
+          // Create MklDnnData object for input0 tesnsor
+          auto cpu_engine = engine(engine::cpu, 0);
+          MklDnnData<T> input(&cpu_engine);
+          input.SetUsrMem(input0_md, &input_tensor_0);
+
+          // Create reorder from input0's layout to input1's layout
+          std::vector<primitive> net;
+          CHECK_EQ(input.CheckReorderToOpMem(memory::primitive_desc(
+                                             input1_md, cpu_engine),
+                                             tensor_out, &net),
+                                             true);
+          stream(stream::kind::eager).submit(net).wait();
+
+          // Input1 will be passed through
+          ForwardMklTensorInToOut(context, 1, 1);
+          return;         
+        }
       }
 
       // Sanity check
