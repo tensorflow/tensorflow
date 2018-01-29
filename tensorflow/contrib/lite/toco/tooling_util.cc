@@ -304,6 +304,19 @@ string HelpfulOperatorTypeName(const Operator& op) {
   return OperatorTypeName(op.type);
 }
 
+bool OperatorSupportsFusedActivation(OperatorType type) {
+  switch (type) {
+    case OperatorType::kConcatenation:
+    case OperatorType::kSlice:
+    case OperatorType::kSqueeze:
+    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kTensorFlowSplit:
+      return false;
+    default:
+      return true;
+  }
+}
+
 void LogSummary(int log_level, const Model& model) {
   VLOG(log_level) << "Operators summary (" << model.operators.size()
                   << " operators):";
