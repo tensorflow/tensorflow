@@ -35,8 +35,8 @@ namespace tensorflow {
 
 string SummarizeGraphDef(const GraphDef& graph_def) {
   string ret;
-  strings::StrAppend(&ret, "versions = ",
-                     ProtoShortDebugString(graph_def.versions()), ";\n");
+  strings::StrAppend(
+      &ret, "versions = ", ProtoShortDebugString(graph_def.versions()), ";\n");
   for (const NodeDef& node : graph_def.node()) {
     strings::StrAppend(&ret, SummarizeNodeDef(node), ";\n");
   }
@@ -90,9 +90,9 @@ static Status RemoveNewDefaultAttrsFromNodeDef(
           FindAttr(attr.first, *producer_op_def);
       if (producer_attr_def == nullptr) {
         return errors::InvalidArgument(
-            "Attr '", attr.first, "' missing in producer's OpDef: ",
-            SummarizeOpDef(*producer_op_def), " but found in node: ",
-            SummarizeNodeDef(*node_def));
+            "Attr '", attr.first,
+            "' missing in producer's OpDef: ", SummarizeOpDef(*producer_op_def),
+            " but found in node: ", SummarizeNodeDef(*node_def));
       }
       // ...and it has the same value as the default in producer,
       if (producer_attr_def->has_default_value() &&

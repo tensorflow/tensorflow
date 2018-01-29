@@ -2070,12 +2070,12 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
   """
   with ops.name_scope(name, "MaxPool", [value]) as name:
     value = ops.convert_to_tensor(value, name="input")
-    return gen_nn_ops._max_pool(value,
-                                ksize=ksize,
-                                strides=strides,
-                                padding=padding,
-                                data_format=data_format,
-                                name=name)
+    return gen_nn_ops._max_pool_v2(value,
+                                  ksize=ksize,
+                                  strides=strides,
+                                  padding=padding,
+                                  data_format=data_format,
+                                  name=name)
 
 
 @ops.RegisterStatistics("Conv2D", "flops")

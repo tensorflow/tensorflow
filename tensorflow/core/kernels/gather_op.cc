@@ -106,8 +106,7 @@ class GatherOp : public OpKernel {
       auto out_flat = out->shaped<T, 3>({outer_size, N, inner_size});
 
       functor::GatherFunctor<Device, T, Index> functor;
-      int64 bad_i = functor(c, params_flat,
-                            indices_flat, out_flat);
+      int64 bad_i = functor(c, params_flat, indices_flat, out_flat);
 
       OP_REQUIRES(
           c, bad_i < 0,

@@ -41,6 +41,6 @@ REGISTER_KERNEL_BUILDER(Name("Sign")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::sign<int32>>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

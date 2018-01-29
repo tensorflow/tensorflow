@@ -812,7 +812,10 @@ def _dynamic_rnn_loop(cell,
     return (time + 1, output_ta_t, new_state)
 
   if in_graph_mode:
-    loop_bound = max_sequence_length
+    # Make sure that we run at least 1 step, if necessary, to ensure
+    # the TensorArrays pick up the dynamic shape.
+    loop_bound = math_ops.minimum(
+        time_steps, math_ops.maximum(1, max_sequence_length))
   else:
     # Using max_sequence_length isn't currently supported in the Eager branch.
     loop_bound = time_steps
@@ -1122,6 +1125,12 @@ def raw_rnn(cell, loop_fn,
       def _copy_some_through(current, candidate):
         """Copy some tensors through via array_ops.where."""
         def copy_fn(cur_i, cand_i):
+          # TensorArray and scalar get passed through.
+          if isinstance(cur_i, tensor_array_ops.TensorArray):
+            return cand_i
+          if cur_i.shape.ndims == 0:
+            return cand_i
+          # Otherwise propagate the old or the new value.
           with ops.colocate_with(cand_i):
             return array_ops.where(elements_finished, cur_i, cand_i)
         return nest.map_structure(copy_fn, current, candidate)

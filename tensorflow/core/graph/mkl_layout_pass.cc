@@ -42,7 +42,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -2215,7 +2215,7 @@ Status MklLayoutRewritePass::Run(
   return Status::OK();
 }
 
-#else  // INTEL_MKL_DNN
+#else  // INTEL_MKL_ML
 
 // This pass implements rewriting of graph to support following scenarios:
 // (A) Merging nodes in the graph
@@ -4325,7 +4325,7 @@ Status MklLayoutRewritePass::Run(
 
   return Status::OK();
 }
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 }  // namespace tensorflow
 
 #endif

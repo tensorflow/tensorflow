@@ -1512,5 +1512,20 @@ TEST_F(ShapeInferenceTest, Conditional) {
                         "must have the same shape"));
 }
 
+TEST_F(ShapeInferenceTest, BadSlice) {
+  auto arg = ShapeUtil::MakeShape(F32, {4});
+  StatusOr<Shape> statusor =
+      ShapeInference::InferSliceShape(arg, {0}, {5}, {1});
+  ASSERT_FALSE(statusor.ok());
+
+  LOG(INFO) << statusor.status();
+
+  EXPECT_THAT(statusor.status().error_message(),
+              HasSubstr("less than or equal to dimension size"))
+      << statusor.status();
+  EXPECT_THAT(statusor.status().error_message(), HasSubstr("argument shape"))
+      << statusor.status();
+}
+
 }  // namespace
 }  // namespace xla

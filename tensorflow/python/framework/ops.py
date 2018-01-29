@@ -2103,6 +2103,10 @@ class Operation(object):
     logging.warning("Operation._control_inputs is private, use "
                     "Operation.control_inputs instead. "
                     "Operation._control_inputs will eventually be removed.")
+    # Copy value because it may be self._control_inputs_val (in particular if
+    # this is called from self._control_inputs += ...), and we don't want to
+    # clear value below.
+    value = copy.copy(value)
     self._remove_all_control_inputs()
     self._add_control_inputs(value)
 
