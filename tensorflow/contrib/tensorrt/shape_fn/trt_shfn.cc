@@ -24,11 +24,12 @@ limitations under the License.
 
 namespace tensorflow {
 namespace shape_inference {
+
 tensorflow::Status TRTEngineOpShapeInference(InferenceContext* c) {
-  tensorflow::tensorrt::Logger gLogger;
+  tensorflow::tensorrt::Logger logger;
   string serialized_engine;
   c->GetAttr("serialized_engine", &serialized_engine);
-  nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(gLogger);
+  nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(logger);
   nvinfer1::ICudaEngine* trt_engine = infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(), nullptr);
 
