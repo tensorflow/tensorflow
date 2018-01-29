@@ -151,7 +151,7 @@ def spirals(n_samples=100,
   # Add more points if n_samples is not divisible by n_classes (unbalanced!)
   extras = n_samples % n_classes
   if extras > 0:
-    x_exrta, y_extra = _modes[mode](np.random.rand(extras) * 2 * np.pi, *args,
+    x_extra, y_extra = _modes[mode](np.random.rand(extras) * 2 * np.pi, *args,
                                     **kwargs)
     spir_x = np.append(spir_x, x_extra)
     spir_y = np.append(spir_y, y_extra)
