@@ -1103,7 +1103,7 @@ def _write_dict_to_summary(output_dir,
           isinstance(dictionary[key], np.int32) or
           isinstance(dictionary[key], int)):
       summary_proto.value.add(tag=key, simple_value=int(dictionary[key]))
-    elif isinstance(dictionary[key], six.string_types):
+    elif isinstance(dictionary[key], six.binary_type):
       try:
         summ = summary_pb2.Summary.FromString(dictionary[key])
         for i, _ in enumerate(summ.value):
