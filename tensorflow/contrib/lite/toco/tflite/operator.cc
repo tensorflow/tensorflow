@@ -140,24 +140,11 @@ class SpaceToBatchND
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    auto block_shape = builder->CreateVector(op.block_shape);
-    auto before_paddings = builder->CreateVector(op.before_paddings);
-    auto after_paddings = builder->CreateVector(op.after_paddings);
-    return ::tflite::CreateSpaceToBatchNDOptions(
-        *builder, block_shape, before_paddings, after_paddings);
+    return ::tflite::CreateSpaceToBatchNDOptions(*builder);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->block_shape.insert(op->block_shape.end(),
-                           options.block_shape()->begin(),
-                           options.block_shape()->end());
-    op->before_paddings.insert(op->before_paddings.end(),
-                               options.before_paddings()->begin(),
-                               options.before_paddings()->end());
-    op->after_paddings.insert(op->after_paddings.end(),
-                              options.after_paddings()->begin(),
-                              options.after_paddings()->end());
   }
 };
 

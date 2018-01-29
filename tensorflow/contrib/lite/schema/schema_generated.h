@@ -2834,33 +2834,14 @@ flatbuffers::Offset<ReshapeOptions> CreateReshapeOptions(
 
 struct SpaceToBatchNDOptionsT : public flatbuffers::NativeTable {
   typedef SpaceToBatchNDOptions TableType;
-  std::vector<int32_t> block_shape;
-  std::vector<int32_t> before_paddings;
-  std::vector<int32_t> after_paddings;
   SpaceToBatchNDOptionsT() {}
 };
 
 struct SpaceToBatchNDOptions FLATBUFFERS_FINAL_CLASS
     : private flatbuffers::Table {
   typedef SpaceToBatchNDOptionsT NativeTableType;
-  enum { VT_BLOCK_SHAPE = 4, VT_BEFORE_PADDINGS = 6, VT_AFTER_PADDINGS = 8 };
-  const flatbuffers::Vector<int32_t> *block_shape() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_BLOCK_SHAPE);
-  }
-  const flatbuffers::Vector<int32_t> *before_paddings() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_BEFORE_PADDINGS);
-  }
-  const flatbuffers::Vector<int32_t> *after_paddings() const {
-    return GetPointer<const flatbuffers::Vector<int32_t> *>(VT_AFTER_PADDINGS);
-  }
   bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) &&
-           VerifyOffset(verifier, VT_BLOCK_SHAPE) &&
-           verifier.Verify(block_shape()) &&
-           VerifyOffset(verifier, VT_BEFORE_PADDINGS) &&
-           verifier.Verify(before_paddings()) &&
-           VerifyOffset(verifier, VT_AFTER_PADDINGS) &&
-           verifier.Verify(after_paddings()) && verifier.EndTable();
+    return VerifyTableStart(verifier) && verifier.EndTable();
   }
   SpaceToBatchNDOptionsT *UnPack(
       const flatbuffers::resolver_function_t *_resolver = nullptr) const;
@@ -2875,18 +2856,6 @@ struct SpaceToBatchNDOptions FLATBUFFERS_FINAL_CLASS
 struct SpaceToBatchNDOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
-  void add_block_shape(
-      flatbuffers::Offset<flatbuffers::Vector<int32_t>> block_shape) {
-    fbb_.AddOffset(SpaceToBatchNDOptions::VT_BLOCK_SHAPE, block_shape);
-  }
-  void add_before_paddings(
-      flatbuffers::Offset<flatbuffers::Vector<int32_t>> before_paddings) {
-    fbb_.AddOffset(SpaceToBatchNDOptions::VT_BEFORE_PADDINGS, before_paddings);
-  }
-  void add_after_paddings(
-      flatbuffers::Offset<flatbuffers::Vector<int32_t>> after_paddings) {
-    fbb_.AddOffset(SpaceToBatchNDOptions::VT_AFTER_PADDINGS, after_paddings);
-  }
   explicit SpaceToBatchNDOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
       : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2900,27 +2869,9 @@ struct SpaceToBatchNDOptionsBuilder {
 };
 
 inline flatbuffers::Offset<SpaceToBatchNDOptions> CreateSpaceToBatchNDOptions(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> block_shape = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> before_paddings = 0,
-    flatbuffers::Offset<flatbuffers::Vector<int32_t>> after_paddings = 0) {
+    flatbuffers::FlatBufferBuilder &_fbb) {
   SpaceToBatchNDOptionsBuilder builder_(_fbb);
-  builder_.add_after_paddings(after_paddings);
-  builder_.add_before_paddings(before_paddings);
-  builder_.add_block_shape(block_shape);
   return builder_.Finish();
-}
-
-inline flatbuffers::Offset<SpaceToBatchNDOptions>
-CreateSpaceToBatchNDOptionsDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<int32_t> *block_shape = nullptr,
-    const std::vector<int32_t> *before_paddings = nullptr,
-    const std::vector<int32_t> *after_paddings = nullptr) {
-  return tflite::CreateSpaceToBatchNDOptions(
-      _fbb, block_shape ? _fbb.CreateVector<int32_t>(*block_shape) : 0,
-      before_paddings ? _fbb.CreateVector<int32_t>(*before_paddings) : 0,
-      after_paddings ? _fbb.CreateVector<int32_t>(*after_paddings) : 0);
 }
 
 flatbuffers::Offset<SpaceToBatchNDOptions> CreateSpaceToBatchNDOptions(
@@ -5639,33 +5590,6 @@ inline void SpaceToBatchNDOptions::UnPackTo(
     const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
-  {
-    auto _e = block_shape();
-    if (_e) {
-      _o->block_shape.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->block_shape[_i] = _e->Get(_i);
-      }
-    }
-  };
-  {
-    auto _e = before_paddings();
-    if (_e) {
-      _o->before_paddings.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->before_paddings[_i] = _e->Get(_i);
-      }
-    }
-  };
-  {
-    auto _e = after_paddings();
-    if (_e) {
-      _o->after_paddings.resize(_e->size());
-      for (flatbuffers::uoffset_t _i = 0; _i < _e->size(); _i++) {
-        _o->after_paddings[_i] = _e->Get(_i);
-      }
-    }
-  };
 }
 
 inline flatbuffers::Offset<SpaceToBatchNDOptions> SpaceToBatchNDOptions::Pack(
@@ -5685,14 +5609,7 @@ inline flatbuffers::Offset<SpaceToBatchNDOptions> CreateSpaceToBatchNDOptions(
     const flatbuffers::rehasher_function_t *__rehasher;
   } _va = {&_fbb, _o, _rehasher};
   (void)_va;
-  auto _block_shape =
-      _o->block_shape.size() ? _fbb.CreateVector(_o->block_shape) : 0;
-  auto _before_paddings =
-      _o->before_paddings.size() ? _fbb.CreateVector(_o->before_paddings) : 0;
-  auto _after_paddings =
-      _o->after_paddings.size() ? _fbb.CreateVector(_o->after_paddings) : 0;
-  return tflite::CreateSpaceToBatchNDOptions(_fbb, _block_shape,
-                                             _before_paddings, _after_paddings);
+  return tflite::CreateSpaceToBatchNDOptions(_fbb);
 }
 
 inline BatchToSpaceNDOptionsT *BatchToSpaceNDOptions::UnPack(

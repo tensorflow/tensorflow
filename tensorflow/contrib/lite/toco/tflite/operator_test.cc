@@ -119,19 +119,6 @@ TEST_F(OperatorTest, BuiltinAdd) {
             output_toco_op->fused_activation_function);
 }
 
-TEST_F(OperatorTest, BuiltinSpaceToBatchND) {
-  SpaceToBatchNDOperator op;
-  op.block_shape = {2, 2};
-  op.before_paddings = {1, 2};
-  op.after_paddings = {3, 4};
-
-  auto output_toco_op = SerializeAndDeserialize(
-      GetOperator("SPACE_TO_BATCH_ND", OperatorType::kSpaceToBatchND), op);
-  EXPECT_EQ(op.block_shape, output_toco_op->block_shape);
-  EXPECT_EQ(op.before_paddings, output_toco_op->before_paddings);
-  EXPECT_EQ(op.after_paddings, output_toco_op->after_paddings);
-}
-
 TEST_F(OperatorTest, BuiltinMean) {
   MeanOperator op;
   op.keep_dims = false;

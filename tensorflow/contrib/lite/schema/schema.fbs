@@ -289,9 +289,6 @@ table ReshapeOptions {
 }
 
 table SpaceToBatchNDOptions {
-  block_shape:[int];
-  before_paddings:[int];
-  after_paddings:[int];
 }
 
 table BatchToSpaceNDOptions {
