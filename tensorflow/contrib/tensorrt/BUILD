@@ -49,34 +49,34 @@ tf_custom_op_library(
     name = "python/ops/_trt_engine_op.so",
     srcs = [
         "kernels/trt_engine_op.cc",
-        "ops/trt_engine_op.cc",
         "kernels/trt_engine_op.h",
+        "ops/trt_engine_op.cc",
     ],
     gpu_srcs = [],
     deps = [
-        "@local_config_tensorrt//:tensorrt",
         ":trt_shape_function",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//tensorflow/core/kernels:ops_util_hdrs",
+        "@local_config_tensorrt//:nv_infer",
     ],
 )
 
 cc_library(
     name = "trt_shape_function",
-    srcs=[
+    srcs = [
         "shape_fn/trt_shfn.cc",
     ],
-    hdrs=["shape_fn/trt_shfn.h"],
-    copts=tf_copts(),
-    deps=[
+    hdrs = ["shape_fn/trt_shfn.h"],
+    copts = tf_copts(),
+    deps = [
         ":trt_logging",
-        "//third_party/eigen3",
-        "@local_config_tensorrt//:tensorrt",
-        "@protobuf_archive//:protobuf",
-        "@nsync//:nsync_headers",
         "//tensorflow/core:framework_headers_lib",
-    ]
+        "//third_party/eigen3",
+        "@local_config_tensorrt//:nv_infer",
+        "@nsync//:nsync_headers",
+        "@protobuf_archive//:protobuf",
+    ],
 )
 
 tf_kernel_library(
@@ -84,7 +84,7 @@ tf_kernel_library(
     srcs = [
         "kernels/trt_engine_op.cc",
     ],
-    hdrs=[
+    hdrs = [
         "kernels/trt_engine_op.h",
     ],
     gpu_srcs = [
@@ -93,37 +93,37 @@ tf_kernel_library(
         ":trt_logging",
         ":trt_shape_function",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//third_party/eigen3",
         "//tensorflow/core:gpu_headers_lib",
-        "@local_config_tensorrt//:tensorrt",
-        "//tensorflow/core:lib_proto_parsing",        
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
+        "//third_party/eigen3",
+        "@local_config_tensorrt//:nv_infer",
     ],
-    alwayslink=1,
+    alwayslink = 1,
 )
 
 tf_gen_op_libs(
-   op_lib_names = [
-	"trt_engine_op",
-   ],
-    deps=[
-        "@local_config_tensorrt//:tensorrt",
-    ]
+    op_lib_names = [
+        "trt_engine_op",
+    ],
+    deps = [
+        "@local_config_tensorrt//:nv_infer",
+    ],
 )
 
 cc_library(
-    name="trt_logging",
+    name = "trt_logging",
     srcs = [
-         "log/trt_logger.cc",
+        "log/trt_logger.cc",
     ],
-    hdrs=[
-         "log/trt_logger.h",
-    ],
-    deps=[
-        "@local_config_tensorrt//:tensorrt",
-        "//tensorflow/core:lib_proto_parsing",
+    hdrs = [
+        "log/trt_logger.h",
     ],
     visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib_proto_parsing",
+        "@local_config_tensorrt//:nv_infer",
+    ],
 )
 
 tf_gen_op_wrapper_py(
@@ -137,8 +137,9 @@ tf_gen_op_wrapper_py(
 tf_custom_op_py_library(
     name = "trt_engine_op_loader",
     srcs = ["python/ops/trt_engine_op.py"],
-    dso = [":python/ops/_trt_engine_op.so",
-           "@local_config_tensorrt//:tensorrt",
+    dso = [
+        ":python/ops/_trt_engine_op.so",
+        "@local_config_tensorrt//:nv_infer",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -155,33 +156,33 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":trt_convert_py",
         ":trt_ops_py",
-        ":trt_convert_py",        
     ],
 )
 
 py_library(
-    name="trt_ops_py",
+    name = "trt_ops_py",
     srcs_version = "PY2AND3",
-    deps=[":trt_engine_op",
-          ":trt_engine_op_loader",
+    deps = [
+        ":trt_engine_op",
+        ":trt_engine_op_loader",
     ],
-    
 )
 
 py_library(
-    name="trt_convert_py",
-    srcs=["python/trt_convert.py"],
+    name = "trt_convert_py",
+    srcs = ["python/trt_convert.py"],
     srcs_version = "PY2AND3",
-    deps=[
-        ":wrap_conversion"
+    deps = [
+        ":wrap_conversion",
     ],
 )
 
 tf_py_wrap_cc(
-    name="wrap_conversion",
-    srcs=["trt_conversion.i"],
-    deps=[
+    name = "wrap_conversion",
+    srcs = ["trt_conversion.i"],
+    deps = [
         ":trt_conversion",
         "//tensorflow/core:framework_lite",
         "//util/python:python_headers",
@@ -189,20 +190,20 @@ tf_py_wrap_cc(
 )
 
 cc_library(
-    name= "trt_conversion",
-    srcs=[
-        "convert/convert_nodes.cc",
+    name = "trt_conversion",
+    srcs = [
         "convert/convert_graph.cc",
+        "convert/convert_nodes.cc",
         "segment/segment.cc",
     ],
-    hdrs=[
-        "convert/convert_nodes.h",
+    hdrs = [
         "convert/convert_graph.h",
+        "convert/convert_nodes.h",
         "segment/segment.h",
         "segment/union_find.h",
     ],
-    deps=[
-        "@local_config_tensorrt//:tensorrt",
+    deps = [
+        "@local_config_tensorrt//:nv_infer",
         "@protobuf_archive//:protobuf_headers",
         "@nsync//:nsync_headers",
         ":trt_logging",
@@ -225,7 +226,7 @@ tf_custom_op_library(
         "ops/tensorrt_ops.cc",
     ],
     deps = [
-        "@local_config_tensorrt//:tensorrt",
+        "@local_config_tensorrt//:nv_infer",
     ],
 )
 
@@ -236,16 +237,16 @@ cc_library(
         "segment/segment.cc",
     ],
     hdrs = [
-        "segment/union_find.h",
         "segment/segment.h",
+        "segment/union_find.h",
     ],
+    linkstatic = 1,
     deps = [
-        "@protobuf_archive//:protobuf_headers",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:lib_proto_parsing",
         "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
     ],
-    linkstatic = 1,
 )
 
 tf_cc_test(
@@ -265,13 +266,13 @@ tf_cc_test(
 filegroup(
     name = "cppfiles",
     srcs = glob(["**/*.cc"]),
-    visibility=["//visibility:private"],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(
     name = "headers",
     srcs = glob(["**/*.h"]),
-    visibility=["//visibility:private"],
+    visibility = ["//visibility:private"],
 )
 
 filegroup(

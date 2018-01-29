@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorrt/shape_fn/trt_shfn.h"
 #include <string>
 #include <vector>
-#include "NvInfer.h"
+
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorflow/contrib/tensorrt/shape_fn/trt_shfn.h"
+#include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 namespace shape_inference {

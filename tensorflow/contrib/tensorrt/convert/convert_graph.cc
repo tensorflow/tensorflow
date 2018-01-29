@@ -25,8 +25,6 @@ limitations under the License.
 #include <map>
 #include <utility>
 
-#include "NvInfer.h"
-
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/core/framework/graph.pb.h"
@@ -46,8 +44,8 @@ limitations under the License.
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
-
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorrt/include/NvInfer.h"
 
 //------------------------------------------------------------------------------
 namespace tensorflow {

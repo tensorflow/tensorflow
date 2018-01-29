@@ -11,7 +11,7 @@ load(
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
-load("@local_config_tensorrt//:build_defs.bzl", "if_trt")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -183,7 +183,7 @@ sh_binary(
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"])
-    + if_trt(["//tensorflow/contrib/tensorrt:init_py"]),
+    + if_tensorrt(["//tensorflow/contrib/tensorrt:init_py"]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows
