@@ -546,14 +546,11 @@ class Transpose
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateTransposeOptions(*builder,
-                                            builder->CreateVector(op.perm));
+    return ::tflite::CreateTransposeOptions(*builder);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->perm.insert(op->perm.end(), options.perm()->begin(),
-                    options.perm()->end());
   }
 };
 

@@ -92,7 +92,7 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/resize_bilinearalign_corners=True,.*,size=\[5,6\])", "72401483"},
 
     // Transpose only supports 1D-4D input tensors.
-    {R"(^\/transposedtype=.*,input_shape=\[.,.,.,.,.\],perm=.*)", "71545879"},
+    {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes

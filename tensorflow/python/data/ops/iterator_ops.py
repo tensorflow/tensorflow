@@ -165,8 +165,10 @@ class Iterator(object):
     iterator_resource = gen_dataset_ops.iterator(
         container="",
         shared_name=shared_name,
-        output_types=nest.flatten(output_types),
-        output_shapes=nest.flatten(output_shapes))
+        output_types=nest.flatten(
+            sparse.as_dense_types(output_types, output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(output_shapes, output_classes)))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 
@@ -232,8 +234,10 @@ class Iterator(object):
     string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
     iterator_resource = gen_dataset_ops.iterator_from_string_handle(
         string_handle,
-        output_types=nest.flatten(output_types),
-        output_shapes=nest.flatten(output_shapes))
+        output_types=nest.flatten(
+            sparse.as_dense_types(output_types, output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(output_shapes, output_classes)))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
 

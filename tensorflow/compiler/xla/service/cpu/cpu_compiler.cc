@@ -437,7 +437,8 @@ Status VerifyLlvmModule(const llvm::Module& llvm_module) {
 
 StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
     std::unique_ptr<HloModule> module,
-    perftools::gputools::StreamExecutor* /*stream_exec*/) {
+    perftools::gputools::StreamExecutor* /*stream_exec*/,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   VLOG(2) << "Before optimization:";
   XLA_VLOG_LINES(2, module->ToString());
 
@@ -450,7 +451,8 @@ StatusOr<std::unique_ptr<HloModule>> CpuCompiler::RunHloPasses(
 
 StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     std::unique_ptr<HloModule> module,
-    perftools::gputools::StreamExecutor* stream_exec) {
+    perftools::gputools::StreamExecutor* stream_exec,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   const string timer_message =
       "Compiling [" + module->name() + "] for CPU using JIT";
   XLA_SCOPED_LOGGING_TIMER(timer_message);

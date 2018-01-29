@@ -119,6 +119,7 @@ enum BuiltinOperator : byte {
   SQUEEZE = 43,
   UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
   STRIDED_SLICE = 45,
+  BIDIRECTIONAL_SEQUENCE_RNN = 46,
 }
 
 // Options for the builtin operators.
@@ -220,6 +221,12 @@ table RNNOptions {
 
 // An implementation of TensorFlow dynamic_rnn with RNNCell.
 table SequenceRNNOptions {
+  time_major:bool;
+  fused_activation_function:ActivationFunctionType;
+}
+
+// An implementation of TensorFlow bidrectional_dynamic_rnn with RNNCell.
+table BidirectionalSequenceRNNOptions {
   time_major:bool;
   fused_activation_function:ActivationFunctionType;
 }
@@ -326,7 +333,6 @@ table GatherOptions {
 }
 
 table TransposeOptions {
-  perm:[int];
 }
 
 table MeanOptions {
