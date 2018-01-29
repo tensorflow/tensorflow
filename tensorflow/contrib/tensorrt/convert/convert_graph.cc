@@ -13,16 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-
 #include <list>
+#include <map>
 #include <set>
 #include <sstream>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
-#include <vector>
-#include <map>
 #include <utility>
+#include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -34,23 +33,21 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 #define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
-#include "tensorflow/core/grappler/optimizers/constant_folding.h"
-#include "tensorflow/core/grappler/optimizers/layout_optimizer.h" 
-#include "tensorflow/core/grappler/devices.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
-#include "tensorflow/core/protobuf/device_properties.pb.h"
-#include "tensorflow/core/grappler/grappler_item.h"
-#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
-#include "tensorrt/include/NvInfer.h"
+#include "tensorflow/core/grappler/devices.h"
+#include "tensorflow/core/grappler/grappler_item.h"
+#include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+#include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/protobuf/device_properties.pb.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "NvInfer.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
-
+#include "tensorrt/include/NvInfer.h"
 
 //------------------------------------------------------------------------------
 namespace tensorflow {
@@ -59,21 +56,20 @@ namespace convert {
 namespace {
 
 static bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
-// LINT.IfChange
+  // LINT.IfChange
   // TODO(jie): Segmentation shouldn't associated with op name.
   //            Split it into a registration for each kernel.
   static const std::set<std::string> candidate_ops = {
       "Identity", "Const", "Conv2D", "MaxPool", "BiasAdd", "Relu",
       "Add",      "Mul",   "Sub",    "Rsqrt",   "Pad"  // "Placeholder" ,"Mean"
   };
-// LINT.ThenChange(
-//    https://www.tensorflow.org/code/tensorflow/contrib/tensorrt/convert/convert_nodes.h)
+  // LINT.ThenChange(
+  //    https://www.tensorflow.org/code/tensorflow/contrib/tensorrt/convert/convert_nodes.h)
   return candidate_ops.count(node_def.op());
 }
 
-
-void GetSubGraphIncomingEdges(const tensorflow::Graph & graph,
-                              const std::set<int> &subgraph_node_ids,
+void GetSubGraphIncomingEdges(const tensorflow::Graph& graph,
+                              const std::set<int>& subgraph_node_ids,
                               tensorflow::EdgeSet* incoming_edges) {
   for (int node_id : subgraph_node_ids) {
     const tensorflow::Node* node = graph.FindNodeId(node_id);
@@ -86,8 +82,8 @@ void GetSubGraphIncomingEdges(const tensorflow::Graph & graph,
   }
 }
 
-void GetSubGraphOutgoingEdges(const tensorflow::Graph &graph,
-                              const std::set<int> &subgraph_node_ids,
+void GetSubGraphOutgoingEdges(const tensorflow::Graph& graph,
+                              const std::set<int>& subgraph_node_ids,
                               tensorflow::EdgeSet* outgoing_edges) {
   for (int node_id : subgraph_node_ids) {
     const tensorflow::Node* node = graph.FindNodeId(node_id);
@@ -126,7 +122,7 @@ std::unordered_map<std::string, std::vector<int>> BuildTensorNameMap(
 tensorflow::Status ConvertSubGraphToTensorRT(
     tensorflow::Graph& graph, const std::vector<std::string>& output_names,
     const std::set<int>& subgraph_node_ids,
-    size_t max_batch_size, // max batch size that engine will be created for
+    size_t max_batch_size,  // max batch size that engine will be created for
     // max amount of memory that engine will be allowed to consume, in bytes
     size_t max_workspace_size,
     const tensorflow::grappler::GraphProperties& graph_properties) {
@@ -134,7 +130,6 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   GetSubGraphIncomingEdges(graph, subgraph_node_ids, &subgraph_incoming_edges);
 
   std::vector<std::pair<int, int>> subgraph_inputs;
-
 
   // Collect inputs by looking for incoming edges
   for (const tensorflow::Edge* edge : subgraph_incoming_edges) {
@@ -211,7 +206,6 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<std::string>& output_names, size_t max_batch_size,
     size_t max_workspace_size, tensorflow::GraphDef* new_graph_def) {
-
   // optimization pass
   tensorflow::grappler::GrapplerItem item;
   item.fetch = output_names;
@@ -227,20 +221,18 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   device_properties.set_type("GPU");
   device_properties.mutable_environment()->insert({"architecture", "6"});
   gCluster =
-    new tensorflow::grappler::VirtualCluster({{"/GPU:0", device_properties}});
+      new tensorflow::grappler::VirtualCluster({{"/GPU:0", device_properties}});
 
   tensorflow::Status status = optimizer.Optimize(gCluster, item, &gdef);
 
-  if (status !=tensorflow::Status::OK())
-    return status;
- 
+  if (status != tensorflow::Status::OK()) return status;
+
   // constant folding
   item.graph = gdef;
   tensorflow::grappler::ConstantFolding fold(nullptr);
   status = fold.Optimize(nullptr, item, &gdef);
-  if (status !=tensorflow::Status::OK())
-    return status;
-  
+  if (status != tensorflow::Status::OK()) return status;
+
   // AJ refactoring shape inference through grappler/GraphProperties.
   tensorflow::grappler::GraphProperties static_graph_properties(item);
   static_graph_properties.InferStatically(false);
@@ -270,9 +262,9 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   }
   std::unordered_map<std::string, tensorflow::Node*> node_map;
   TF_RETURN_IF_ERROR(BuildNodeMap(graph, &node_map));
-  for (const std::set<std::string> &subgraph_node_names : segments) {
+  for (const std::set<std::string>& subgraph_node_names : segments) {
     std::set<int> subgraph_node_ids;
-    for (const std::string &node_name : subgraph_node_names) {
+    for (const std::string& node_name : subgraph_node_names) {
       subgraph_node_ids.insert(node_map.at(node_name)->id());
     }
     TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRT(
@@ -287,5 +279,5 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif // GOOGLE_TENSORRT
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

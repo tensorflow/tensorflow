@@ -25,8 +25,8 @@ limitations under the License.
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorrt/include/NvInfer.h"
 #include <cuda_runtime_api.h>
+#include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
 
@@ -56,7 +56,7 @@ class TRTEngineOp : public OpKernel {
 
 }  // namespace tensorflow
 
-#endif // GOOGLE_TENSORRT
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
-#endif // TENSORFLOW_CONTRIB_TENSORRT_KERNELS_TRT_ENGINE_OP_H_
+#endif  // TENSORFLOW_CONTRIB_TENSORRT_KERNELS_TRT_ENGINE_OP_H_

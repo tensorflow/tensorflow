@@ -17,15 +17,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
 #define TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
 
-// Use TF logging f
 #include <string>
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #include "tensorrt/include/NvInfer.h"
 
-//------------------------------------------------------------------------------
 namespace tensorflow {
-
-//------------------------------------------------------------------------------
 namespace tensorrt {
 
 // Logger for GIE info/warning/errors
@@ -37,6 +35,8 @@ class Logger : public nvinfer1::ILogger {
 };
 
 }  // namespace tensorrt
-
 }  // namespace tensorflow
+
+#endif // GOOGLE_TENSORRT
+#endif // GOOGLE_CUDA
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_

@@ -24,14 +24,14 @@ limitations under the License.
 
 namespace tensorflow {
 namespace shape_inference {
+
 tensorflow::Status TRTEngineOpShapeInference(InferenceContext* c) {
-  tensorflow::tensorrt::Logger gLogger;
+  tensorflow::tensorrt::Logger logger;
   string serialized_engine;
   c->GetAttr("serialized_engine", &serialized_engine);
-  nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(gLogger);
+  nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(logger);
   nvinfer1::ICudaEngine* trt_engine = infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(), nullptr);
-
 
   int nbBatch = -1;
   // debug print out input arrays
@@ -61,8 +61,7 @@ tensorflow::Status TRTEngineOpShapeInference(InferenceContext* c) {
   std::vector<string> output_nodes;
   c->GetAttr("output_nodes", &output_nodes);
   for (size_t i = 0; i < output_nodes.size(); i++) {
-    int binding_index =
-        trt_engine->getBindingIndex(output_nodes[i].c_str());
+    int binding_index = trt_engine->getBindingIndex(output_nodes[i].c_str());
     ShapeHandle output_shape;
     std::vector<DimensionHandle> vecDim;
     vecDim.emplace_back(c->MakeDim(nbBatch));
@@ -71,8 +70,7 @@ tensorflow::Status TRTEngineOpShapeInference(InferenceContext* c) {
       for (int j = 0; j < dims.nbDims; j++)
         vecDim.emplace_back(c->MakeDim(dims.d[j]));
     } else {
-      LOG(FATAL) << "TensorRT engine cannot find binding: "
-                 << output_nodes[i];
+      LOG(FATAL) << "TensorRT engine cannot find binding: " << output_nodes[i];
     }
     output_shape = c->MakeShape(vecDim);
     c->set_output(i, output_shape);
@@ -83,5 +81,5 @@ tensorflow::Status TRTEngineOpShapeInference(InferenceContext* c) {
 }  // namespace shape_inference
 }  // namespace tensorflow
 
-#endif // GOOGLE_TENSORRT
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

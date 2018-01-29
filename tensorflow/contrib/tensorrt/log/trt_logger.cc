@@ -14,21 +14,23 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
-// Use TF logging for TensorRT informations
+
 #include "tensorflow/core/platform/logging.h"
 
-#define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
-//------------------------------------------------------------------------------
-namespace tensorflow {
+// Use TF logging for TensorRT informations
 
-//------------------------------------------------------------------------------
+#define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
+
+namespace tensorflow {
 namespace tensorrt {
 
 void Logger::log(Severity severity, const char* msg) {
-  // suppress info-level messages
+  // Suppress info-level messages
   switch (severity) {
     case Severity::kINFO: {  // mark TRT info messages as debug!
       VLOG(-1) << msg;
+    case Severity::kINFO: {  // Mark TRT info messages as debug!
+      LOG(DEBUG) << msg;
       break;
     }
     case Severity::kWARNING: {
@@ -53,5 +55,4 @@ void Logger::log(Severity severity, const char* msg) {
 }
 
 }  // namespace tensorrt
-
 }  // namespace tensorflow

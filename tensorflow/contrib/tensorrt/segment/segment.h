@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_TENSORRT_SEGMENT_SEGMENT_H_
 
 #include <set>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -52,4 +52,5 @@ tensorflow::Status SegmentGraph(
 }  // namespace segment
 }  // namespace tensorrt
 }  // namespace tensorflow
+
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_SEGMENT_SEGMENT_H_
