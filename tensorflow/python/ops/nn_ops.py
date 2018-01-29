@@ -2202,8 +2202,8 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
         # Best effort to figure out the intended shape.
         # If not possible, let the op to handle it.
         noise_shape_ = tensor_shape.as_shape(noise_shape)
-        if (x.shape.dims is not None
-            and len(x.shape.dims) == len(noise_shape_.dims)):
+        if (x.shape.dims is not None and
+            len(x.shape.dims) == len(noise_shape_.dims)):
           new_dims = []
           for i, dim in enumerate(x.shape.dims):
             if noise_shape_.dims[i].value is None and dim.value is not None:
