@@ -27,6 +27,7 @@ from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -235,8 +236,7 @@ class DatasetSerializationTestBase(test.TestCase):
           ds_fn, sparse_tensors=sparse_tensors)
       with self.test_session(graph=g) as sess:
         self._restore(saver, sess)
-        sess.run(variables.global_variables_initializer())
-        sess.run(init_op)
+        self._initialize(init_op, sess)
         for _ in range(num_outputs):
           actual.append(sess.run(get_next_op))
         if verify_exhausted:
@@ -390,8 +390,7 @@ class DatasetSerializationTestBase(test.TestCase):
       init_op, get_next_op, saver = self._build_graph(
           ds_fn, sparse_tensors=sparse_tensors)
       with self.test_session(graph=g) as sess:
-        sess.run(variables.global_variables_initializer())
-        sess.run(init_op)
+        self._initialize(init_op, sess)
         for _ in range(break_point):
           sess.run(get_next_op)
         with self.assertRaises(error):
@@ -493,12 +492,10 @@ class DatasetSerializationTestBase(test.TestCase):
         with self.test_session(graph=g) as sess:
           if ckpt_saved:
             if init_before_restore:
-              sess.run(variables.global_variables_initializer())
-              sess.run(init_op)
+              self._initialize(init_op, sess)
             self._restore(saver, sess)
           else:
-            sess.run(variables.global_variables_initializer())
-            sess.run(init_op)
+            self._initialize(init_op, sess)
           start = break_points[i - 1] if i > 0 else 0
           end = break_points[i] if i < len(break_points) else num_outputs
           num_iters = end - start
@@ -621,7 +618,13 @@ class DatasetSerializationTestBase(test.TestCase):
     saver.save(sess, self._ckpt_path())
 
   def _restore(self, saver, sess):
+    sess.run(lookup_ops.tables_initializer())
     saver.restore(sess, self._latest_ckpt())
+
+  def _initialize(self, init_op, sess):
+    sess.run(variables.global_variables_initializer())
+    sess.run(lookup_ops.tables_initializer())
+    sess.run(init_op)
 
   def _import_meta_graph(self):
     meta_file_path = self._ckpt_path() + ".meta"

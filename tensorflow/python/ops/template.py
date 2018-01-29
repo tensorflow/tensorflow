@@ -140,7 +140,7 @@ def make_template(name_, func_, create_scope_now_=False, unique_name_=None,
     re-enter the scope and reuse those variables.
 
   Raises:
-    ValueError: if the name is None.
+    ValueError: if `name_` is None.
   """
   return make_template_internal(
       name_,
@@ -176,16 +176,14 @@ def make_template_internal(name_,
     custom_getter_: Optional custom getter for variables used in `func_`. See
       the @{tf.get_variable} `custom_getter` documentation for
       more information.
-    create_graph_function_: When True, the first invocation of the template will
-      execute `func_` as is, to allow for variable creation; however, the second
-      invocation and every invocation thereafter will execute func as a graph
-      function.  In particular, this implies that `func_` must satisfy the
-      properties that `function.defun` requires of functions: See the
-      documentation of `function.defun` for details. When executing eagerly,
-      setting this flag to True can improve performance. Regardless of whether
-      eager execution is enabled, enabling this flag gives the caller access to
-      graph-function semantics, i.e., accesses to variables are totally ordered
-      and side-effecting ops are not pruned.
+    create_graph_function_: When True, `func_` will be executed as a graph
+      function. This implies that `func_` must satisfy the properties that
+      `function.defun` requires of functions: See the documentation of
+      `function.defun` for details. When executing eagerly, setting this flag to
+      True can improve performance. Regardless of whether eager execution is
+      enabled, enabling this flag gives the caller access to graph-function
+      semantics, i.e., accesses to variables are totally ordered and
+      side-effecting ops are not pruned.
     **kwargs: Keyword arguments to apply to `func_`.
 
   Returns:
@@ -198,8 +196,8 @@ def make_template_internal(name_,
     re-enter the scope and reuse those variables.
 
   Raises:
-    ValueError: if the name is None.
-    ValueError: if unique_name_ is not None and eager execution is enabled.
+    ValueError: if `name_` is None.
+    ValueError: if `unique_name_` is not None and eager execution is enabled.
   """
 
   if kwargs:
@@ -266,18 +264,18 @@ class Template(object):
         template of the same scope/unique_name already exists and reuse is
         false, an error is raised. Defaults to None.
       custom_getter: optional custom getter to pass to `variable_scope()`
-      create_graph_function: When True, the first invocation of the template
-        will execute `func` as is, to allow for variable creation; however, the
-        second invocation and every invocation thereafter will execute `func` as
-        a graph function. Enabling this flag gives the caller access to
-        graph-function semantics, i.e., accesses to variables are totally
-        ordered and side-effecting ops are not pruned.
-
+      create_graph_function: When True, `func` will be executed as a graph
+        function. Enabling this flag gives the caller access to graph-function
+        semantics, i.e., accesses to variables are totally ordered and
+        side-effecting ops are not pruned.
 
     Raises:
-      ValueError: if the name is None.
+      ValueError: if `name` is None.
     """
-    self._func = func
+    if create_graph_function:
+      self._func = function.defun(func)
+    else:
+      self._func = func
     self._stacktrace = traceback.format_stack()[:-2]
     self._name = name
     self._unique_name = unique_name
@@ -295,19 +293,13 @@ class Template(object):
     # This variable keeps track of whether the template has been called yet,
     # which is not the same as whether the scope has been created.
     self._variables_created = False
-    self._create_graph_function = create_graph_function
 
   def _call_func(self, args, kwargs):
     try:
       vars_at_start = len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
       trainable_at_start = len(
           ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES))
-
       result = self._func(*args, **kwargs)
-      if self._create_graph_function and not self._variables_created:
-        # Only execute self._func as a graph function once variables are
-        # created.
-        self._func = function.defun(self._func)
 
       if self._variables_created:
         # Variables were previously created, implying this is not the first
@@ -542,14 +534,11 @@ class EagerTemplate(Template):
         names of all created Tensors. If set to False, the scope will be created
         at the first call location.
       custom_getter: optional custom getter to pass to `variable_scope()`
-      create_graph_function: When True, the first invocation of the template
-        will execute `func` as is, to allow for variable creation; however, the
-        second invocation and every invocation thereafter will execute `func` as
-        a graph function. Enabling this flag allows the caller to reap the
-        performance benefits associated with executing graphs, at the cost of
-        sacrificing debuggability; however, not all functions can be compiled
-        into graph functions. See the documentation for `function.defun` for
-        details.
+      create_graph_function: When True, `func` will be executed as a graph
+        function. Enabling this flag allows the caller to reap the performance
+        benefits associated with executing graphs, at the cost of sacrificing
+        debuggability; however, not all Python functions can be compiled into
+        graph functions. See the documentation for `function.defun` for details.
 
     Raises:
       RuntimeError: if eager execution is not enabled.
@@ -573,12 +562,7 @@ class EagerTemplate(Template):
     try:
       vars_at_start = self._template_store.variables()
       trainable_at_start = self._template_store.trainable_variables()
-
       result = self._func(*args, **kwargs)
-      if self._create_graph_function and not self._variables_created:
-        # Only execute self._func as a graph function once variables are
-        # created.
-        self._func = function.defun(self._func)
 
       if self._variables_created:
         # Variables were previously created, implying this is not the first

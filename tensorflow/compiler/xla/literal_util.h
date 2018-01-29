@@ -486,6 +486,7 @@ class Literal {
       std::vector<std::unique_ptr<Literal>> elements);
 
   // Returns a string representation of the literal value.
+  // Warning: this function can take minutes for multi-million element Literals.
   string ToString(bool print_layout = false) const;
 
   // Invokes the "per cell" callback for each element in the provided

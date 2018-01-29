@@ -223,6 +223,7 @@ Status XlaCompilationCache::BuildExecutable(
   xla::ExecutableBuildOptions build_options;
   build_options.set_device_ordinal(client_->default_device_ordinal());
   build_options.set_result_layout(result.xla_output_shape);
+  build_options.set_device_allocator(options.device_allocator);
 
   auto compile_result =
       client_->Compile(*result.computation, argument_layouts, build_options);

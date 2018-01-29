@@ -81,9 +81,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:variable_ops",
     ],
 )

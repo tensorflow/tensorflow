@@ -33,6 +33,24 @@ limitations under the License.
 
 namespace toco {
 
+// Find the longest common prefix of two strings.
+absl::string_view FindLongestCommonPrefix(absl::string_view a,
+                                          absl::string_view b) {
+  if (a.empty() || b.empty()) return absl::string_view();
+
+  const char* pa = a.data();
+  const char* pb = b.data();
+  size_t count = 0;
+  const size_t limit = std::min(a.size(), b.size());
+  while (count < limit && *pa == *pb) {
+    ++pa;
+    ++pb;
+    ++count;
+  }
+
+  return absl::string_view(a.data(), count);
+}
+
 string LogName(const Operator& op) {
   const string& opname = HelpfulOperatorTypeName(op);
   if (op.outputs.empty()) {
@@ -1317,13 +1335,14 @@ bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
 }
 
 string AvailableArrayName(const Model& model, const string& name) {
-  if (!model.HasArray(name) && !model.optional_arrays.count(name)) {
+  if (!model.HasArray(name) && !model.IsOptionalArray(name)) {
     return name;
   }
   const int kNumSuffixesToTry = 1000;
   for (int i = 0; i < kNumSuffixesToTry; i++) {
     const string& name_with_suffix = toco::port::StringF("%s_%d", name, i);
-    if (!model.HasArray(name_with_suffix)) {
+    if (!model.HasArray(name_with_suffix) &&
+        !model.IsOptionalArray(name_with_suffix)) {
       return name_with_suffix;
     }
   }
