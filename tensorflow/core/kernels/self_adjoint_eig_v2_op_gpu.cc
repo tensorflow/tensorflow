@@ -21,6 +21,8 @@ limitations under the License.
 #include <type_traits>
 
 #define EIGEN_USE_GPU
+
+#include "absl/memory/memory.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -81,8 +83,7 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
     }
 
     // Allocate workspace.
-    // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    auto solver = absl::make_unique<CudaSolver>(context);
     Tensor eigenvalues_real;
     using RealScalar = typename Eigen::NumTraits<Scalar>::Real;
     if (std::is_same<Scalar, RealScalar>::value) {

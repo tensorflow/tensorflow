@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <numeric>
 
+#include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/Eigen/LU"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -167,8 +168,7 @@ class MatrixSolveOpGpu : public AsyncOpKernel {
       return;
     }
 
-    // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    auto solver = absl::make_unique<CudaSolver>(context);
 
     // Make a copy of the input for the factorization step, or, if adjoint_ is
     // false, try to reuse the input buffer if this op owns it exclusively.
