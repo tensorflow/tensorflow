@@ -23,8 +23,8 @@ from functools import wraps
 import gast
 import six
 
-from tensorflow.contrib.py2tf import config
-from tensorflow.contrib.py2tf import conversion
+from tensorflow.contrib.py2tf.impl import config
+from tensorflow.contrib.py2tf.impl import conversion
 from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.python.util import tf_inspect
