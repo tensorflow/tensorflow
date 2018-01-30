@@ -177,9 +177,7 @@ TfLiteRegistration* Register_PAD_GENERIC_OPT() {
   return &r;
 }
 
-TfLiteRegistration* Register_PAD() {
-  return Register_PAD_GENERIC_OPT();
-}
+TfLiteRegistration* Register_PAD() { return Register_PAD_GENERIC_OPT(); }
 
 }  // namespace builtin
 }  // namespace ops

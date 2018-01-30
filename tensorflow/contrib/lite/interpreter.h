@@ -171,7 +171,7 @@ class Interpreter {
   // read/write access to structure
   TfLiteTensor* tensor(int tensor_index) {
     if (tensor_index >= context_.tensors_size || tensor_index < 0)
-        return nullptr;
+      return nullptr;
     return &context_.tensors[tensor_index];
   }
 

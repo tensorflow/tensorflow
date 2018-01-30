@@ -144,8 +144,7 @@ class SpaceToBatchND
   }
 
   void ReadOptions(const TfLiteOptions& options,
-                   TocoOperator* op) const override {
-  }
+                   TocoOperator* op) const override {}
 };
 
 class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
@@ -202,8 +201,7 @@ class BatchToSpaceND
   }
 
   void ReadOptions(const TfLiteOptions& options,
-                   TocoOperator* op) const override {
-  }
+                   TocoOperator* op) const override {}
 };
 
 class Cast : public CustomOperator<CastOperator> {
@@ -452,8 +450,7 @@ class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
   }
 
   void ReadOptions(const TfLiteOptions& options,
-                   TocoOperator* op) const override {
-  }
+                   TocoOperator* op) const override {}
 };
 
 class Reshape
@@ -524,8 +521,7 @@ class Transpose
   }
 
   void ReadOptions(const TfLiteOptions& options,
-                   TocoOperator* op) const override {
-  }
+                   TocoOperator* op) const override {}
 };
 
 class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
