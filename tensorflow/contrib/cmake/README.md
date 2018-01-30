@@ -135,7 +135,7 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
     * `tensorflow_ENABLE_POSITION_INDEPENDENT_CODE` should always be `on`
     * `tensorflow_ENABLE_SNAPPY_SUPPORT` should always be `on` 
     * `tensorflow_OPTIMIZE_FOR_NATIVE_ARCH` should always be `on`
-    * `CMAKE_INSTALL_PREFIX` is the location where the final package will be installed. You may change it to you own preferred path (optional)
+    * `CMAKE_INSTALL_PREFIX` is the location where the final package will be installed. You may change it to your own preferred path (optional)
 
 6. After changing the configuration in step 5, press `Configure` again
 7. If not error is found, press `Generate`
