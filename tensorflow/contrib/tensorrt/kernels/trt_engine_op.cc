@@ -123,6 +123,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
                                                 ->CudaStreamMemberHack()));
 
   // execution handled by TF since we are getting stream from TF.
+  // it is safe for CPU pointer array (buffers) to go out of scope after enqueue
   trt_execution_context_ptr_->enqueue(num_batch, &buffers[0], *stream, nullptr);
 }
 
