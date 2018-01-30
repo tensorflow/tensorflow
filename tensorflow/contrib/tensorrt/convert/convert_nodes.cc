@@ -36,7 +36,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
-#define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
 //  Check if the types are equal. Cast to int first so that failure log message
 //  would work!
 
@@ -107,7 +106,7 @@ static std::vector<std::pair<int, int>> createSamePadding(
     int left = p / 2;
     int right = p - left;
 
-    LOG(DEBUG) << "PADDING_" << i << " pre: " << left << ", post: " << right
+    VLOG(-1) << "PADDING_" << i << " pre: " << left << ", post: " << right
                << "paras: " << inputDims[i] << ", " << stride.d[i] << ", "
                << "kernel: " << kernel.d[i];
     padding[i] = {left, right};
@@ -356,7 +355,7 @@ class Converter {
       tensorflow::NodeDef const& node_def) {
     std::vector<TRT_TensorOrWeights> inputs;
     for (auto const& input_name : node_def.input()) {
-      LOG(DEBUG) << "retrieve input: " << input_name;
+      VLOG(-1) << "retrieve input: " << input_name;
       inputs.push_back(_trt_tensors.at(input_name));
     }
     return inputs;
@@ -399,7 +398,7 @@ class Converter {
       if (output.is_tensor()) {
         output.tensor()->setName(output_name.c_str());
       }
-      LOG(DEBUG) << "write out tensor: " << output_name;
+      VLOG(-1) << "write out tensor: " << output_name;
       if (!_trt_tensors.insert({output_name, output}).second) {
         return tensorflow::errors::AlreadyExists(
             "output tensor already exists for op: " + op);
@@ -460,13 +459,13 @@ struct LambdaFactory {
   std::function<T(T)> unary() {
     switch (op) {
       case OP_CATEGORY::RSQRT: {
-        LOG(DEBUG) << "RSQRT GETS DONE";
+        VLOG(-1) << "RSQRT GETS DONE";
         return [](T t) -> T { return 1.0 / std::sqrt(t); };
       }
       case OP_CATEGORY::NEG:
         return [](T t) -> T { return -t; };
       default:
-        LOG(DEBUG) << "not supported op for unary: " << static_cast<int>(op);
+        VLOG(-1) << "not supported op for unary: " << static_cast<int>(op);
         return nullptr;
     }
   }
@@ -491,22 +490,22 @@ struct LambdaFactory {
 
   template <typename T>
   std::function<T(T)> broadcast_r(T val) {
-    LOG(DEBUG) << "LAMBDA VAL : " << val;
+    VLOG(-1) << "LAMBDA VAL : " << val;
     switch (op) {
       case OP_CATEGORY::ADD:
         return [val](T l) -> T {
-          LOG(DEBUG) << "LAMBDA VAL : " << val;
+          VLOG(-1) << "LAMBDA VAL : " << val;
           return l + val;
         };
       // return [val](T l)-> T {return l+val;};
       case OP_CATEGORY::SUB:
         return [val](T l) -> T {
-          LOG(DEBUG) << "LAMBDA VAL : " << val;
+          VLOG(-1) << "LAMBDA VAL : " << val;
           return l - val;
         };
       case OP_CATEGORY::MUL:
         return [val](T l) -> T {
-          LOG(DEBUG) << "LAMBDA VAL : " << val;
+          VLOG(-1) << "LAMBDA VAL : " << val;
           return l * val;
         };
       default:
@@ -520,21 +519,21 @@ struct LambdaFactory {
 
   template <typename T>
   std::function<T(T)> broadcast_l(T val) {
-    LOG(DEBUG) << "LAMBDA VAL : " << val;
+    VLOG(-1) << "LAMBDA VAL : " << val;
     switch (op) {
       case OP_CATEGORY::ADD:
         return [val](T l) -> T {
-          LOG(DEBUG) << "LAMBDA VAL : " << val;
+          VLOG(-1) << "LAMBDA VAL : " << val;
           return val + l;
         };
       case OP_CATEGORY::SUB:
         return [val](T l) -> T {
-          LOG(DEBUG) << "LAMBDA VAL : " << val;
+          VLOG(-1) << "LAMBDA VAL : " << val;
           return val - l;
         };
       case OP_CATEGORY::MUL:
         return [val](T l) -> T {
-          LOG(DEBUG) << "LAMBDA VAL : " << val;
+          VLOG(-1) << "LAMBDA VAL : " << val;
           return val * l;
         };
       default:
@@ -574,7 +573,7 @@ tensorflow::Status BinaryCompute(TRT_ShapedWeights const& iweights_l,
   // assume iweights_l.type == iweight_r.type
   CHECK_EQ(iweights_l.type_, oweights->type_);
   CHECK_EQ(iweights_r.type_, oweights->type_);
-  LOG(DEBUG) << "SANITY CHECK!";
+  VLOG(-1) << "SANITY CHECK!";
 
   switch (iweights_l.type_) {
     case tensorflow::DataType::DT_FLOAT: {
@@ -585,11 +584,11 @@ tensorflow::Status BinaryCompute(TRT_ShapedWeights const& iweights_l,
       if (iweights_l.count() != iweights_r.count()) {
         // we only supports broadcast of RankZero
         if (iweights_l.count() == 1) {
-          LOG(DEBUG) << "I bet it is not working!" << (*inp_l);
+          VLOG(-1) << "I bet it is not working!" << (*inp_l);
           std::transform(inp_r, inp_r + iweights_r.count(), oup,
                          binary_op.broadcast_l<float>(*inp_l));
         } else if (iweights_r.count() == 1) {
-          LOG(DEBUG) << "I bet it is not working!" << (*inp_r);
+          VLOG(-1) << "I bet it is not working!" << (*inp_r);
           std::transform(inp_l, inp_l + iweights_l.count(), oup,
                          binary_op.broadcast_r<float>(*inp_r));
         } else {
@@ -664,7 +663,7 @@ tensorflow::Status ConstantFoldBinary(
   int nbDims = weights_input_l.shape_.nbDims;
   nvinfer1::Dims output_shape;
   output_shape.nbDims = nbDims;
-  LOG(DEBUG) << "nbDims: " << nbDims
+  VLOG(-1) << "nbDims: " << nbDims
              << "the other: " << weights_input_r.shape_.nbDims;
   for (int i = 0; i < nbDims; i++) {
     if (weights_input_l.shape_.d[i] == weights_input_r.shape_.d[i]) {
@@ -677,7 +676,7 @@ tensorflow::Status ConstantFoldBinary(
       return tensorflow::errors::Unimplemented(
           "Binary op with incompatible shape at, " + node_def.op());
     }
-    LOG(DEBUG) << "left: " << weights_input_l.shape_.d[i]
+    VLOG(-1) << "left: " << weights_input_l.shape_.d[i]
                << "right: " << weights_input_r.shape_.d[i]
                << "output: " << output_shape.d[i];
   }
@@ -739,7 +738,7 @@ tensorflow::Status BinaryTensorOpWeight(
   auto scale_mode = nvinfer1::ScaleMode::kELEMENTWISE;
 
   if (weights.count() == 1) {
-    LOG(DEBUG) << "UNIFORM";
+    VLOG(-1) << "UNIFORM";
     scale_mode = nvinfer1::ScaleMode::kUNIFORM;
   } else {
     // no broadcasting on Batch dimension;
@@ -842,7 +841,7 @@ tensorflow::Status ConvertPlaceholder(
     Converter& ctx, tensorflow::NodeDef const& node_def,
     std::vector<TRT_TensorOrWeights> const& inputs,
     std::vector<TRT_TensorOrWeights>* outputs) {
-  LOG(DEBUG) << "Placeholder should have been replace already";
+  VLOG(-1) << "Placeholder should have been replace already";
   return tensorflow::errors::Unimplemented("cannot convert Placeholder op");
   // OK this make sense since we are supposed to replace it with input
   TFAttrs attrs(node_def);
@@ -909,11 +908,11 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     // TODO(jie): handle asymmetric padding
-    LOG(DEBUG) << "padding!!!: " << padding[0].first << padding[0].second
+    VLOG(-1) << "padding!!!: " << padding[0].first << padding[0].second
                << padding[1].first << padding[1].second;
 
     auto dim_before = tensor->getDimensions();
-    LOG(DEBUG) << "TENSOR before: " << dim_before.d[0] << ", "
+    VLOG(-1) << "TENSOR before: " << dim_before.d[0] << ", "
                << dim_before.d[1] << dim_before.d[2] << ", " << dim_before.d[3];
     auto padLayer = ctx.network()->addPadding(
         *const_cast<nvinfer1::ITensor*>(tensor),
@@ -922,7 +921,7 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
     padding = {{0, 0}, {0, 0}};
     tensor = padLayer->getOutput(0);
     auto dim_after = tensor->getDimensions();
-    LOG(DEBUG) << "TENSOR after: " << dim_after.d[0] << ", " << dim_after.d[1]
+    VLOG(-1) << "TENSOR after: " << dim_after.d[0] << ", " << dim_after.d[1]
                << dim_after.d[2] << ", " << dim_after.d[3];
   }
 
@@ -936,14 +935,14 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   auto dim_after = output_tensor->getDimensions();
-  LOG(DEBUG) << "TENSOR out: " << dim_after.d[0] << ", " << dim_after.d[1]
+  VLOG(-1) << "TENSOR out: " << dim_after.d[0] << ", " << dim_after.d[1]
              << dim_after.d[2] << ", " << dim_after.d[3];
 
   if (data_format == "NHWC") {
     // TODO(jie): transpose it back!
     output_tensor = ctx.transposeTensor(output_tensor, {0, 2, 3, 1});
   } else {
-    LOG(DEBUG) << "NCHW !!!!";
+    VLOG(-1) << "NCHW !!!!";
   }
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
@@ -965,7 +964,7 @@ tensorflow::Status ConvertPool(Converter& ctx,
     tensor = ctx.transposeTensor(const_cast<nvinfer1::ITensor*>(tensor),
                                  {0, 3, 1, 2});
   } else {
-    LOG(DEBUG) << "NCHW !!!!";
+    VLOG(-1) << "NCHW !!!!";
   }
   nvinfer1::PoolingType type;
   // TODO(jie): support other pooling type
@@ -993,7 +992,7 @@ tensorflow::Status ConvertPool(Converter& ctx,
         {static_cast<int>(tensor_dim.d[1]), static_cast<int>(tensor_dim.d[2])});
   } else if (attrs.get<std::string>("padding") == "VALID") {
     // No padding for valid padding here
-    LOG(DEBUG) << "no padding added for VALID padding in pool"
+    VLOG(-1) << "no padding added for VALID padding in pool"
                << node_def.name();
     padding = {{0, 0}, {0, 0}};
   } else {
@@ -1004,7 +1003,7 @@ tensorflow::Status ConvertPool(Converter& ctx,
   if (padding[0].first != padding[0].second ||
       padding[1].first != padding[1].second) {
     // TODO(jie): handle asymmetric padding
-    LOG(DEBUG) << "padding!!!: " << padding[0].first << padding[0].second
+    VLOG(-1) << "padding!!!: " << padding[0].first << padding[0].second
                << padding[1].first << padding[1].second;
     auto padLayer = ctx.network()->addPadding(
         *const_cast<nvinfer1::ITensor*>(tensor),
@@ -1026,7 +1025,7 @@ tensorflow::Status ConvertPool(Converter& ctx,
     // TODO(jie): transpose it back!
     output_tensor = ctx.transposeTensor(output_tensor, {0, 2, 3, 1});
   } else {
-    LOG(DEBUG) << "NCHW !!!!";
+    VLOG(-1) << "NCHW !!!!";
   }
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
@@ -1068,7 +1067,7 @@ tensorflow::Status ConvertScale(Converter& ctx,
                                  {0, 3, 1, 2});
     // TODO(jie): transpose it
   } else {
-    LOG(DEBUG) << "NCHW !!!!";
+    VLOG(-1) << "NCHW !!!!";
   }
   nvinfer1::IScaleLayer* layer = ctx.network()->addScale(
       *const_cast<nvinfer1::ITensor*>(tensor), nvinfer1::ScaleMode::kCHANNEL,
@@ -1079,7 +1078,7 @@ tensorflow::Status ConvertScale(Converter& ctx,
     // TODO(jie): transpose it back!
     output_tensor = ctx.transposeTensor(output_tensor, {0, 2, 3, 1});
   } else {
-    LOG(DEBUG) << "NCHW !!!!";
+    VLOG(-1) << "NCHW !!!!";
   }
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
@@ -1104,14 +1103,14 @@ tensorflow::Status ConvertConst(Converter& ctx,
 
   TRT_ShapedWeights weights(dtype);
   if (!weights_tensor.float_val().empty()) {
-    LOG(DEBUG) << "SCALAR!!!" << node_def.name();
+    VLOG(-1) << "SCALAR!!!" << node_def.name();
     nvinfer1::Dims scalar_shape;
     if (tensor.dims() > 0) {
-      LOG(DEBUG) << "dimensions: " << tensor.dims();
+      VLOG(-1) << "dimensions: " << tensor.dims();
       weights = TRT_ShapedWeights(dtype, weights_tensor.float_val().data(),
                                   get_tensor_shape(tensor));
     } else {
-      LOG(DEBUG) << "dimensions: " << tensor.dims();
+      VLOG(-1) << "dimensions: " << tensor.dims();
       scalar_shape.nbDims = 1;
       scalar_shape.d[0] = 1;
       scalar_shape.type[0] = nvinfer1::DimensionType::kSPATIAL;
@@ -1123,7 +1122,7 @@ tensorflow::Status ConvertConst(Converter& ctx,
                                   scalar_shape);
     }
   } else if (!weights_tensor.tensor_content().empty()) {
-    LOG(DEBUG) << "TENSOR!!!" << node_def.name();
+    VLOG(-1) << "TENSOR!!!" << node_def.name();
     weights = TRT_ShapedWeights(dtype, weights_tensor.tensor_content().data(),
                                 get_tensor_shape(tensor));
   } else {
@@ -1425,11 +1424,11 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     }
   }
   // topological order is needed to build TRT network
-  LOG(DEBUG) << "BUILDING 1";
+  VLOG(-1) << "BUILDING 1";
 
   tensorflow::tensorrt::Logger trt_logger;
 
-  LOG(DEBUG) << "BUILDING 2";
+  VLOG(-1) << "BUILDING 2";
 
   auto trt_builder = infer_object(nvinfer1::createInferBuilder(trt_logger));
   if (!trt_builder) {
@@ -1437,7 +1436,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
         "failed to create TensorRT builder object");
   }
 
-  LOG(DEBUG) << "BUILDING 3";
+  VLOG(-1) << "BUILDING 3";
 
   auto trt_network = infer_object(trt_builder->createNetwork());
   if (!trt_network) {
@@ -1445,16 +1444,16 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
         "failed to create TensorRT network object");
   }
 
-  LOG(DEBUG) << "BUILDING 4";
+  VLOG(-1) << "BUILDING 4";
 
   // Build the network
   Converter converter(trt_network.get());
 
-  LOG(DEBUG) << "BUILDING 5";
+  VLOG(-1) << "BUILDING 5";
   std::vector<std::string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
   for (std::pair<int, int> const& input : input_inds) {
-    LOG(DEBUG) << "parsing input!!!!!";
+    VLOG(-1) << "parsing input!!!!!";
     int node_id = input.first;
     int output_idx = input.second;
     tensorflow::Node* node = graph.FindNodeId(node_id);
@@ -1480,7 +1479,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     nvinfer1::DataType dtype(nvinfer1::DataType::kFLOAT);
     TF_CHECK_OK(convert_dtype(tf_dtype, &dtype));
 
-    LOG(DEBUG) << "accessing output index of: " << std::to_string(output_idx)
+    VLOG(-1) << "accessing output index of: " << std::to_string(output_idx)
                << ", at node: " << node_name
                << "with output entry from shape_map: "
                << std::to_string(op_info_vec.size());
@@ -1490,7 +1489,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
 
     for (int i = 1; i < op_info.shape().dim_size(); i++) {
-      LOG(DEBUG) << "dimension: " << i
+      VLOG(-1) << "dimension: " << i
                  << " , size: " << op_info.shape().dim(i).size();
       input_dim_psuedo_chw.d[i - 1] = op_info.shape().dim(i).size();
     }
@@ -1506,23 +1505,23 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     if (!input_tensor)
       return tensorflow::errors::InvalidArgument(
           "Failed to create Input layer");
-    LOG(DEBUG) << "input tensor name :" << input_tensor_name;
+    VLOG(-1) << "input tensor name :" << input_tensor_name;
 
     if (!converter.insert_input_tensor(input_tensor_name, input_tensor))
       return tensorflow::errors::AlreadyExists(
           "output tensor already exists for op: " + input_tensor_name);
   }
 
-  LOG(DEBUG) << "finished sorting";
+  VLOG(-1) << "finished sorting";
 
   for (const tensorflow::Node* node : order) {
     tensorflow::NodeDef const& node_def = node->def();
-    LOG(DEBUG) << "converting node: " << node_def.name() << " , "
+    VLOG(-1) << "converting node: " << node_def.name() << " , "
                << node_def.op();
     TF_RETURN_IF_ERROR(converter.convert_node(node_def));
   }
 
-  LOG(DEBUG) << "finished conversion";
+  VLOG(-1) << "finished conversion";
 
   // Gather output metadata
   std::vector<std::string> output_names;
@@ -1535,7 +1534,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     std::string tensor_name = op_name;
     if (output_idx != 0)
       tensor_name = tensor_name + ":" + std::to_string(output_idx);
-    LOG(DEBUG) << "output tensor name: " << tensor_name;
+    VLOG(-1) << "output tensor name: " << tensor_name;
     output_names.push_back(tensor_name);
     auto tensor_or_weights = converter.get_tensor(tensor_name);
     if (!tensor_or_weights.is_tensor()) {
@@ -1555,7 +1554,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     tensor->setType(trt_dtype);
   }
 
-  LOG(DEBUG) << "finished output";
+  VLOG(-1) << "finished output";
 
   // Build the engine
   trt_builder->setMaxBatchSize(max_batch_size);
