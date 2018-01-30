@@ -89,6 +89,7 @@ _UNARY_OPS = [
     'Abs',
     'Exp',
     'Floor',
+    'Round',
     'Ceil',
     'Log',
     'Sign',
@@ -618,6 +619,13 @@ class ComputationBuilder(object):
     """Rev op."""
     return _wrap_data_handle(
         self._client.Rev(_unwrap_data_handle(operand), dimensions))
+
+  def Clamp(self, min, operand, max):  # pylint: disable=redefined-builtin
+    """Clamp op."""
+    return _wrap_data_handle(
+        self._client.Clamp(_unwrap_data_handle(min),
+                           _unwrap_data_handle(operand),
+                           _unwrap_data_handle(max)))
 
   def SelectAndScatter(self, operand, select, window_dimensions, window_strides,
                        padding, source, init_value, scatter):
