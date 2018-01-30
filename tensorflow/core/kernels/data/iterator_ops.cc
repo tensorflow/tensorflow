@@ -82,7 +82,7 @@ class IteratorResource : public ResourceBase {
  public:
   IteratorResource(const DataTypeVector& output_dtypes,
                    const std::vector<PartialTensorShape>& output_shapes,
-                   const int graph_def_version,
+                   const int /*unused: graph_def_version*/,
                    std::unique_ptr<DeviceMgr> device_mgr,
                    std::unique_ptr<FunctionLibraryDefinition> flib_def,
                    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
@@ -93,8 +93,7 @@ class IteratorResource : public ResourceBase {
         lib_(lib),
         iterator_(nullptr),
         output_dtypes_(output_dtypes),
-        output_shapes_(output_shapes),
-        graph_def_version_(graph_def_version) {}
+        output_shapes_(output_shapes) {}
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) {
@@ -223,7 +222,6 @@ class IteratorResource : public ResourceBase {
   std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
-  const int graph_def_version_;
 };
 
 // Helper class for reading data from a VariantTensorData object.

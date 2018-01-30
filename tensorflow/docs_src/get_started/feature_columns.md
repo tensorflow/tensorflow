@@ -461,8 +461,8 @@ permitting a richer palette of numbers for every cell, an embedding column
 contains far fewer cells than an indicator column.
 
 Let's look at an example comparing indicator and embedding columns. Suppose our
-input examples consists of different words from a limited palette of only 81
-words. Further suppose that the data set provides provides the following input
+input examples consist of different words from a limited palette of only 81
+words. Further suppose that the data set provides the following input
 words in 4 separate examples:
 
 * `"dog"`
