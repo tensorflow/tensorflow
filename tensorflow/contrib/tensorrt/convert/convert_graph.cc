@@ -280,7 +280,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   for (auto node : output_names) output_nodes.insert(node);
 
   // TODO(sami): this should be passed as a knob!!!!
-  segment_options.minimum_segment_size = 2;
+  segment_options.minimum_segment_size = 10;
   tensorrt::segment::SegmentNodesVector segments;
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
       gdef, IsTensorRTCandidate, segment_options, &segments));

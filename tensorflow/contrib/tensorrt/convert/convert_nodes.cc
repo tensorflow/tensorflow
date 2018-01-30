@@ -437,8 +437,14 @@ class Converter {
       tensorflow::NodeDef const& node_def) {
     std::vector<TRT_TensorOrWeights> inputs;
     for (auto const& input_name : node_def.input()) {
-      LOG(DEBUG) << "retrieve input: " << input_name;
-      inputs.push_back(_trt_tensors.at(input_name));
+      std::string name = input_name[0] == '^'? input_name.substr(1) : input_name;
+      LOG(DEBUG) << "retrieve input: " << name;
+      if (_trt_tensors.count(name)) {
+        inputs.push_back(_trt_tensors.at(name));
+      } else {
+        LOG(FATAL) << "input: " << name << "not availabled for node at, "
+                   << node_def.name();
+      }
     }
     return inputs;
   }
@@ -462,6 +468,7 @@ class Converter {
   }
 
   tensorflow::Status convert_node(tensorflow::NodeDef const& node_def) {
+    //LOG(DEBUG) << node_def.DebugString();
     std::vector<TRT_TensorOrWeights> inputs = this->get_inputs(node_def);
     std::string op = node_def.op();
     if (!_op_registry.count(op)) {
@@ -1292,20 +1299,24 @@ tensorflow::Status ConvertConst(Converter& ctx,
     nvinfer1::Dims scalar_shape;
     if (tensor.dims() > 0) {
       LOG(DEBUG) << "dimensions: " << tensor.dims();
-      weights = TRT_ShapedWeights(dtype, weights_tensor.float_val().data(),
-                                  get_tensor_shape(tensor));
+      scalar_shape = get_tensor_shape(tensor);
+      if (get_shape_size(scalar_shape) != weights_tensor.float_val_size()) {
+        LOG(FATAL) << "Broadcast on weights not supported, at: "
+                   << node_def.name();
+        }
     } else {
       LOG(DEBUG) << "dimensions: " << tensor.dims();
       scalar_shape.nbDims = 1;
-      scalar_shape.d[0] = 1;
+      // no dimension provided. flatten it
+      scalar_shape.d[0] = weights_tensor.float_val_size();
       scalar_shape.type[0] = nvinfer1::DimensionType::kSPATIAL;
       for (int i = 1; i < nvinfer1::Dims::MAX_DIMS; i++) {
         scalar_shape.d[i] = 0;
         scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
       }
-      weights = TRT_ShapedWeights(dtype, weights_tensor.float_val().data(),
-                                  scalar_shape);
     }
+    weights = TRT_ShapedWeights(dtype, weights_tensor.float_val().data(),
+                                scalar_shape);
     // LOG(INFO) << " add: " << weights_tensor.float_val().data();
     // LOG(INFO) << " value: " << (*weights_tensor.float_val().data());
 
@@ -1317,20 +1328,24 @@ tensorflow::Status ConvertConst(Converter& ctx,
     nvinfer1::Dims scalar_shape;
     if (tensor.dims() > 0) {
       LOG(DEBUG) << "dimensions: " << tensor.dims();
-      weights = TRT_ShapedWeights(dtype, weights_tensor.int_val().data(),
-                                  get_tensor_shape(tensor));
+      scalar_shape = get_tensor_shape(tensor);
+      if (get_shape_size(scalar_shape) != weights_tensor.int_val_size()) {
+        LOG(FATAL) << "Broadcast on weights not supported, at: "
+                   << node_def.name();
+        }
     } else {
       LOG(DEBUG) << "dimensions: " << tensor.dims();
       scalar_shape.nbDims = 1;
-      scalar_shape.d[0] = 1;
+      // no dimension provided. flatten it
+      scalar_shape.d[0] = weights_tensor.int_val_size();
       scalar_shape.type[0] = nvinfer1::DimensionType::kSPATIAL;
       for (int i = 1; i < nvinfer1::Dims::MAX_DIMS; i++) {
         scalar_shape.d[i] = 0;
         scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
       }
-      weights = TRT_ShapedWeights(dtype, weights_tensor.int_val().data(),
-                                  scalar_shape);
     }
+    weights = TRT_ShapedWeights(dtype, weights_tensor.int_val().data(),
+                                scalar_shape);
   } else if (!weights_tensor.tensor_content().empty()) {
     LOG(DEBUG) << "TENSOR!!!" << node_def.name();
     weights = TRT_ShapedWeights(dtype, weights_tensor.tensor_content().data(),
