@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,34 +13,38 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/tf2xla/lib/batch_dot.h"
+#include "tensorflow/compiler/tf2xla/lib/triangular_solve.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
 namespace tensorflow {
 namespace {
 
-class BatchMatMulOp : public XlaOpKernel {
+class MatrixTriangularSolveOp : public XlaOpKernel {
  public:
-  explicit BatchMatMulOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adj_x", &adj_x_));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("adj_y", &adj_y_));
+  explicit MatrixTriangularSolveOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("lower", &lower_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("adjoint", &adjoint_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
-    auto result = BatchDot(ctx->builder(), ctx->Input(0), ctx->Input(1),
-                           /*transpose_x=*/adj_x_, /*transpose_y=*/adj_y_,
-                           /*conjugate_x=*/adj_x_, /*conjugate_y=*/adj_y_);
-    OP_REQUIRES_OK(ctx, result.status());
+    auto result = TriangularSolve(
+        ctx->builder(), ctx->Input(0), ctx->Input(1), /*left_side=*/true,
+        /*lower=*/lower_, /*transpose_a=*/adjoint_, /*conjugate_a=*/adjoint_);
+    if (!result.ok()) {
+      ctx->SetStatus(result.status());
+      return;
+    }
     ctx->SetOutput(0, result.ValueOrDie());
   }
 
  private:
-  bool adj_x_;
-  bool adj_y_;
+  bool lower_;
+  bool adjoint_;
 };
 
-REGISTER_XLA_OP(Name("BatchMatMul"), BatchMatMulOp);
+REGISTER_XLA_OP(Name("MatrixTriangularSolve"), MatrixTriangularSolveOp);
 
 }  // namespace
 }  // namespace tensorflow
