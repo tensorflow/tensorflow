@@ -94,7 +94,8 @@ KNOWN_BUGS = {
     r"softmax.*input_shape=\[1,3,4,3\]": "67749831",
     # SpaceToDepth only supports float32.
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
-    # BatchToSpaceND doesn't support cropping.
+    # BatchToSpaceND doesn't support cropping. This catches test cases with
+    # const tensors as crops.
     r"batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\]": "70594634",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
@@ -694,6 +695,7 @@ def make_mean_tests(zip_path):
           [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1], [-1, 0],
           [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
       ],
+      "const_axis": [True, False],
       "keep_dims": [True, False],
   }, {
       "input_dtype": [tf.float32, tf.int32, tf.int64],
@@ -704,6 +706,7 @@ def make_mean_tests(zip_path):
           -3, -4, [0, -2], [2, 3, -1, 0], [3, 1, 2, -3], [3, -4], [2, 2, 2],
           [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
       ],
+      "const_axis": [True, False],
       "keep_dims": [True, False],
   }]
 
@@ -713,17 +716,31 @@ def make_mean_tests(zip_path):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
+
+    # Get axis as either a placeholder or constants.
+    if parameters["const_axis"]:
+      axis = parameters["axis"]
+      input_tensors = [input_tensor]
+    else:
+      if isinstance(parameters["axis"], list):
+        shape = [len(parameters["axis"])]
+      else:
+        shape = [0]  # shape for None or integers.
+      axis = tf.placeholder(dtype=tf.int32, name="axis", shape=shape)
+      input_tensors = [input_tensor, axis]
+
     out = tf.reduce_mean(
-        input_tensor,
-        axis=parameters["axis"],
-        keep_dims=parameters["keep_dims"])
-    return [input_tensor], [out]
+        input_tensor, axis=axis, keep_dims=parameters["keep_dims"])
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["input_dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["input_dtype"], parameters["input_shape"])
+    ]
+    if not parameters["const_axis"]:
+      if parameters["axis"]:
+        values.append(np.array(parameters["axis"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -1318,12 +1335,16 @@ def make_space_to_batch_nd_tests(zip_path):
           "input_shape": [[1, 2, 2, 3], [2, 2, 4, 1]],
           "block_shape": [[1, 3], [2, 2]],
           "paddings": [[[0, 0], [0, 0]], [[0, 0], [2, 0]], [[1, 1], [1, 1]]],
+          "constant_block_shape": [True, False],
+          "constant_paddings": [True, False],
       },
       {
           "dtype": [tf.float32],
           "input_shape": [[2, 3, 7, 3]],
           "block_shape": [[1, 3], [2, 2]],
           "paddings": [[[0, 0], [2, 0]], [[1, 0], [1, 0]]],
+          "constant_block_shape": [True, False],
+          "constant_paddings": [True, False],
       },
       # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
       {
@@ -1331,23 +1352,47 @@ def make_space_to_batch_nd_tests(zip_path):
           "input_shape": [[1, 4, 4, 4, 1, 1]],
           "block_shape": [[2, 2, 2]],
           "paddings": [[[0, 0], [0, 0], [0, 0]]],
+          "constant_block_shape": [True, False],
+          "constant_paddings": [True, False],
       },
   ]
 
   def build_graph(parameters):
+    """Build a space_to_batch graph given `parameters`."""
     input_tensor = tf.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.space_to_batch_nd(input_tensor, parameters["block_shape"],
-                               parameters["paddings"])
-    return [input_tensor], [out]
+    input_tensors = [input_tensor]
+
+    # Get block_shape either as a const or as a placeholder (tensor).
+    if parameters["constant_block_shape"]:
+      block_shape = parameters["block_shape"]
+    else:
+      shape = [len(parameters["block_shape"])]
+      block_shape = tf.placeholder(dtype=tf.int32, name="shape", shape=shape)
+      input_tensors.append(block_shape)
+
+    # Get paddings either as a const or as a placeholder (tensor).
+    if parameters["constant_paddings"]:
+      paddings = parameters["paddings"]
+    else:
+      shape = [len(parameters["paddings"]), 2]
+      paddings = tf.placeholder(dtype=tf.int32, name="paddings", shape=shape)
+      input_tensors.append(paddings)
+
+    out = tf.space_to_batch_nd(input_tensor, block_shape, paddings)
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+    ]
+    if not parameters["constant_block_shape"]:
+      values.append(np.array(parameters["block_shape"]))
+    if not parameters["constant_paddings"]:
+      values.append(np.array(parameters["paddings"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -1361,6 +1406,8 @@ def make_batch_to_space_nd_tests(zip_path):
           "input_shape": [[12, 2, 2, 1]],
           "block_shape": [[1, 4], [2, 2], [3, 4]],
           "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
+          "constant_block_shape": [True, False],
+          "constant_crops": [True, False],
       },
       # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
       {
@@ -1368,23 +1415,47 @@ def make_batch_to_space_nd_tests(zip_path):
           "input_shape": [[8, 2, 2, 2, 1, 1]],
           "block_shape": [[2, 2, 2]],
           "crops": [[[0, 0], [0, 0], [0, 0]]],
+          "constant_block_shape": [True, False],
+          "constant_crops": [True, False],
       },
   ]
 
   def build_graph(parameters):
+    """Build a batch_to_space graph given `parameters`."""
     input_tensor = tf.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.batch_to_space_nd(input_tensor, parameters["block_shape"],
-                               parameters["crops"])
-    return [input_tensor], [out]
+    input_tensors = [input_tensor]
+
+    # Get block_shape either as a const or as a placeholder (tensor).
+    if parameters["constant_block_shape"]:
+      block_shape = parameters["block_shape"]
+    else:
+      shape = [len(parameters["block_shape"])]
+      block_shape = tf.placeholder(dtype=tf.int32, name="shape", shape=shape)
+      input_tensors.append(block_shape)
+
+    # Get crops either as a const or as a placeholder (tensor).
+    if parameters["constant_crops"]:
+      crops = parameters["crops"]
+    else:
+      shape = [len(parameters["crops"]), 2]
+      crops = tf.placeholder(dtype=tf.int32, name="crops", shape=shape)
+      input_tensors.append(crops)
+
+    out = tf.batch_to_space_nd(input_tensor, block_shape, crops)
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+    ]
+    if not parameters["constant_block_shape"]:
+      values.append(np.array(parameters["block_shape"]))
+    if not parameters["constant_crops"]:
+      values.append(np.array(parameters["crops"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -1490,8 +1561,9 @@ def make_strided_slice_tests(zip_path):
           "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
           "end": [[8, 2, 2, 3], [12, 2, 2, 5]],
           "strides": [None, [1, 1, 1, 1], [2, 1, 3, 1]],
-          "begin_mask": [None, 0, 1, 2, 8],
-          "end_mask": [None, 0, 1, 2, 8],
+          "begin_mask": [None, 1, 2, 8],
+          "end_mask": [None, 1, 2, 8],
+          "shrink_axis_mask": [None, 1, 2, 4, 8, 11, 15, -1],
       },
       # 2-D
       {
@@ -1501,8 +1573,9 @@ def make_strided_slice_tests(zip_path):
           "begin": [[0, 0], [1, 0]],
           "end": [[2, 3], [2, 2]],
           "strides": [None, [1, 1], [2, 2]],
-          "begin_mask": [None, 0, 1, 2],
-          "end_mask": [None, 0, 1, 2],
+          "begin_mask": [None, 1, 2],
+          "end_mask": [None, 1, 2],
+          "shrink_axis_mask": [None, 1, 2, 3, -1],
       },
       # Negative strides
       {
@@ -1512,8 +1585,9 @@ def make_strided_slice_tests(zip_path):
           "begin": [[0, -1]],
           "end": [[2, -3]],
           "strides": [[1, -1]],
-          "begin_mask": [None, 0, 1, 2],
-          "end_mask": [None, 0, 1, 2],
+          "begin_mask": [None, 1, 2],
+          "end_mask": [None, 1, 2],
+          "shrink_axis_mask": [None, 1, 2, 3, -1],
       },
   ]
 

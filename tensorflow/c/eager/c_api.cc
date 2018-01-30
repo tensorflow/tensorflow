@@ -85,15 +85,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
     return nullptr;
   }
 
-  TFE_Context* ret = new TFE_Context(session);
-  ret->policy = opts->policy;
-  ret->pflr.reset(new tensorflow::ProcessFunctionLibraryRuntime(
-      ret->session->device_mgr, opts->session_options.options.env,
-      TF_GRAPH_DEF_VERSION, &ret->func_lib_def, {}));
-  ret->rendezvous =
-      new tensorflow::IntraProcessRendezvous(ret->session->device_mgr);
-
-  return ret;
+  return new TFE_Context(*opts, session);
 }
 
 void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {

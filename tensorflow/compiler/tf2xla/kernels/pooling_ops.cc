@@ -276,22 +276,44 @@ class MaxPoolGradOp : public XlaOpKernel {
  public:
   MaxPoolGradOp(OpKernelConstruction* ctx, int num_spatial_dims)
       : XlaOpKernel(ctx), num_spatial_dims_(num_spatial_dims) {
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_));
-    OP_REQUIRES(ctx, ksize_.size() == num_dims(),
-                errors::InvalidArgument("Sliding window ksize field must "
-                                        "specify ",
-                                        num_dims(), " dimensions"));
-    OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
-    OP_REQUIRES(ctx, stride_.size() == num_dims(),
-                errors::InvalidArgument("Sliding window strides field must "
-                                        "specify ",
-                                        num_dims(), " dimensions"));
+    if (ctx->num_inputs() == 3) {
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("ksize", &ksize_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("strides", &stride_));
+    }
     OP_REQUIRES_OK(ctx, ctx->GetAttr("padding", &padding_));
   }
 
   int num_dims() const { return num_spatial_dims_ + 2; }
 
   void Compile(XlaOpKernelContext* ctx) override {
+    if (ctx->num_inputs() != 3) {
+      OP_REQUIRES(
+          ctx, ctx->num_inputs() == 5,
+          errors::InvalidArgument("Must supply ksize and stride arguments."));
+      const TensorShape ksize_shape = ctx->InputShape(3);
+      // Validate input sizes.
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(ksize_shape),
+                  errors::InvalidArgument("ksize must be a vector, not shape ",
+                                          ksize_shape.DebugString()));
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(3, &ksize_));
+
+      const TensorShape stride_shape = ctx->InputShape(4);
+      // Validate input sizes.
+      OP_REQUIRES(ctx, TensorShapeUtils::IsVector(stride_shape),
+                  errors::InvalidArgument("stride must be a vector, not shape ",
+                                          stride_shape.DebugString()));
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(4, &stride_));
+    }
+
+    OP_REQUIRES(ctx, ksize_.size() == num_dims(),
+                errors::InvalidArgument("Sliding window ksize field must "
+                                        "specify ",
+                                        num_dims(), " dimensions"));
+    OP_REQUIRES(ctx, stride_.size() == num_dims(),
+                errors::InvalidArgument("Sliding window strides field must "
+                                        "specify ",
+                                        num_dims(), " dimensions"));
+
     const TensorShape tensor_in_shape = ctx->InputShape(0);
     const TensorShape tensor_out_shape = ctx->InputShape(1);
     const TensorShape out_backprop_shape = ctx->InputShape(2);
@@ -348,6 +370,10 @@ class MaxPool2DGradOp : public MaxPoolGradOp {
   }
 };
 REGISTER_XLA_OP(Name("MaxPoolGrad"), MaxPool2DGradOp);
+REGISTER_XLA_OP(Name("MaxPoolGradV2")
+                    .CompileTimeConstInput("ksize")
+                    .CompileTimeConstInput("strides"),
+                MaxPool2DGradOp);
 
 class MaxPool3DGradOp : public MaxPoolGradOp {
  public:

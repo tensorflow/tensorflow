@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite Sequential RNN op.
 
-#include <vector>
 #include <iomanip>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -120,8 +120,7 @@ static float rnn_golden_output[] = {
 
     0.415153,   0.210318,   0,         0,         0,         0,
     0,          2.02616,    0,         0.728256,  0.84183,   0.0907453,
-    0.628881,   3.58099,    1.49974,   0
-};
+    0.628881,   3.58099,    1.49974,   0};
 
 class UnidirectionalRNNOpModel : public SingleOpModel {
  public:

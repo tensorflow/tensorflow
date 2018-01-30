@@ -17,6 +17,7 @@ filegroup(
 py_library(
     name = "converters",
     srcs = [
+        "asserts.py",
         "break_canonicalization.py",
         "builtin_functions.py",
         "call_trees.py",
@@ -50,6 +51,17 @@ py_library(
 )
 
 py_test(
+    name = "asserts_test",
+    srcs = ["asserts_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "break_canonicalization_test",
     srcs = ["break_canonicalization_test.py"],
     srcs_version = "PY2AND3",
@@ -63,6 +75,17 @@ py_test(
 py_test(
     name = "call_trees_test",
     srcs = ["call_trees_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":test_lib",
+        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "decorators_test",
+    srcs = ["decorators_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",

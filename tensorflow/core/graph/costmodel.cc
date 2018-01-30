@@ -158,8 +158,8 @@ void CostModel::SetNumOutputs(const Node* node, int num_outputs) {
   Ensure(id, 0);
   auto perslot = &slot_bytes_[id];
   if (!perslot->empty()) {
-    CHECK_EQ(num_outputs, perslot->size()) << "Cannot resize slot_bytes, node="
-                                           << node->name();
+    CHECK_EQ(num_outputs, perslot->size())
+        << "Cannot resize slot_bytes, node=" << node->name();
   }
   Ensure(id, num_outputs);
 }
