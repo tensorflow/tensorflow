@@ -39,7 +39,7 @@ bindings.
 
 * [Go](https://golang.org/) (optional, for full grpc build)
 
-* [NASM](http://www.nasm.us/)/[yasm](http://yasm.tortall.net/) (optional, for full grpc build)
+* [NASM](http://www.nasm.us/)/[YASM](http://yasm.tortall.net/) (optional, for full grpc build)
 
 * Additional pre-requisites for Microsoft Windows:
   - Visual Studio 2015 (latest version of MSVC 2017 is not suppored by CUDA yet, try it on your own)
@@ -117,9 +117,9 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
     * CUDNN (GPU build)
     * NCCL (GPU build on Linux)
     * SWIG (python binding) 
-    * Perl (GPU build on Windows, required by full function grpc, optional)
-    * Go (GPU build on Windows, required by full function grpc, optional)
-    * NASM (GPU build on Windows, required by full function grpc, optional)
+    * Perl (required by grpc for ssl support, optional)
+    * Go (required by grpc for ssl support, optional)
+    * NASM/YASM (required by grpc for ssl support, optional)
 1. Start CMake GUI
 2. Click on `Browse Source` and direct to the the folder `<tensorflow-source>/tensorflow/contrib/cmake`
 3. Click on `Browse Build` and spectify a location that you want tensorflow to be build
@@ -131,7 +131,7 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
     * `tensorflow_BUILD_PYTHON_BINDING` is default to be `on`. Set to `off` if you don't need python interaface. If SWIG is not in system path, you need set it manually. (optional)
     * `tensorflow_BUILD_SHARED_LIB` is default to be `off`. Set to `on` if you want the c++ interface. (optional)
     * `tensorflow_ENABLE_GPU` is default to be `off`. Set to `on` if you want GPU support. It will search CUDA and CUDNN dependecies if you have set them to system path, otherwise CMake would prompt error and request you to set it manually. (optional)
-    * `tensorflow_ENABLE_GRPC_SUPPORT` is default to be `on`. For Linux build, this option must always be `on`. This need to be `on` for a gpu build. Reminded that Perl, Go and NASM is required for this option if you want to build grpc with offical SSL support.
+    * `tensorflow_ENABLE_GRPC_SUPPORT` is default to be `on`. For Linux build, this option must always be `on`. This need to be `on` for a gpu build. Reminded that Perl, Go and NASM/YASM are required for this option if you want to build grpc with offical SSL support.
     * `tensorflow_ENABLE_POSITION_INDEPENDENT_CODE` should always be `on`
     * `tensorflow_ENABLE_SNAPPY_SUPPORT` should always be `on` 
     * `tensorflow_OPTIMIZE_FOR_NATIVE_ARCH` should always be `on`
@@ -152,7 +152,7 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
 
     ***The wheel name varies depends on you config. Change to your own wheel filename.***
 
-    Remind that some pip installation requires administrator right command prompt.
+    Reminded that some pip installation requires administrator right command prompt.
 
     ##### C++
 
