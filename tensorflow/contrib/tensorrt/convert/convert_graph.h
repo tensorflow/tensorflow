@@ -28,13 +28,14 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
-// max_batch_size: maximum batch size which can be used for inferencefor;
+// max_batch_size: maximum batch size which can be used for inference for
 //                 optimization targets inference run with max batch size.
-// max_workspace_size: The upper bound of memory allowence for engine building.
+// max_workspace_size_bytes: The upper bound of memory allowence for
+//                 engine building.
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<std::string>& output_names, size_t max_batch_size,
-    size_t max_workspace_size, tensorflow::GraphDef* new_graph_def);
+    size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def);
 
 }  // namespace convert
 }  // namespace tensorrt

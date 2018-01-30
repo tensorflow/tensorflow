@@ -258,7 +258,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
       gdef, IsTensorRTCandidate, segment_options, &segments));
   if (segments.size() > 1) {
-    LOG(INFO) << "MULTIPLE tensorrt candidate conversion: " << segments.size();
+    VLOG(INFO) << "MULTIPLE tensorrt candidate conversion: " << segments.size();
   }
   std::unordered_map<std::string, tensorflow::Node*> node_map;
   TF_RETURN_IF_ERROR(BuildNodeMap(graph, &node_map));
