@@ -14,47 +14,45 @@
 # ==============================================================================
 include (ExternalProject)
 
-# perl
-find_package(Perl REQUIRED)
+# # perl
+# find_package(Perl REQUIRED)
 
-if(${PROTOBUF_VERSION} STREQUAL "3.5.0")
-	# nasm
-	if(NOT CMAKE_ASM_NASM_COMPILER)
-	  if (WIN32)  
-	    find_program(CMAKE_ASM_NASM_COMPILER 
-	        NAMES nasm
-	        PATHS "$ENV{ProgramFiles}/NASM" 
-	        DOC "path to NASM compiler")
-	  else()
-	    find_program(CMAKE_ASM_NASM_COMPILER 
-	      NAMES nasm
-	      PATHS "/usr/bin" 
-	      DOC "path to NASM compiler")
-	  endif()
-	endif()
+# # nasm
+# if(NOT CMAKE_ASM_NASM_COMPILER)
+#   if (WIN32)  
+#     find_program(CMAKE_ASM_NASM_COMPILER 
+#         NAMES nasm
+#         PATHS "$ENV{ProgramFiles}/NASM" 
+#         DOC "path to NASM compiler")
+#   else()
+#     find_program(CMAKE_ASM_NASM_COMPILER 
+#       NAMES nasm
+#       PATHS "/usr/bin" 
+#       DOC "path to NASM compiler")
+#   endif()
+# endif()
 
-	if(NOT CMAKE_ASM_NASM_COMPILER)
-		message(FATAL_ERROR "NASM not found!")
-	endif()
+# if(NOT CMAKE_ASM_NASM_COMPILER)
+# 	message(FATAL_ERROR "NASM not found!")
+# endif()
 
-	# go
-	if(NOT GO_EXECUTABLE)
-	  if (WIN32)  
-	    find_program(GO_EXECUTABLE 
-	        NAMES go
-	        PATHS "$ENV{ProgramFiles}/Go/bin"
-	        DOC "path to go compiler")
-	  else()
-	    find_program(GO_EXECUTABLE 
-	        NAMES go
-	        PATHS "/usr/bin" "/usr/local/bin" "/usr/local/go"
-	        DOC "path to go compiler")
-	  endif()
-	endif()
-	if(NOT GO_EXECUTABLE)
-	  message(FATAL_ERROR "Go not found!")
-	endif()
-endif()
+# # go
+# if(NOT GO_EXECUTABLE)
+#   if (WIN32)  
+#     find_program(GO_EXECUTABLE 
+#         NAMES go
+#         PATHS "$ENV{ProgramFiles}/Go/bin"
+#         DOC "path to go compiler")
+#   else()
+#     find_program(GO_EXECUTABLE 
+#         NAMES go
+#         PATHS "/usr/bin" "/usr/local/bin" "/usr/local/go"
+#         DOC "path to go compiler")
+#   endif()
+# endif()
+# if(NOT GO_EXECUTABLE)
+#   message(FATAL_ERROR "Go not found!")
+# endif()
 
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
@@ -93,8 +91,9 @@ ExternalProject_Add(grpc
         -DPROTOBUF_INCLUDE_DIRS:STRING=${PROTOBUF_INCLUDE_DIRS}
         -DPROTOBUF_LIBRARIES:STRING=${protobuf_STATIC_LIBRARIES}
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
-        -DCMAKE_ASM_NASM_COMPILER:STRING=${CMAKE_ASM_NASM_COMPILER}
-        -DGO_EXECUTABLE:STRING=${GO_EXECUTABLE}
+        -DgRPC_SSL_PROVIDER:STRING=NONE
+        # -DCMAKE_ASM_NASM_COMPILER:STRING=${CMAKE_ASM_NASM_COMPILER}
+        # -DGO_EXECUTABLE:STRING=${GO_EXECUTABLE}
 )
 
 # grpc/src/core/ext/census/tracing.c depends on the existence of openssl/rand.h.
