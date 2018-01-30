@@ -187,7 +187,7 @@ def _zero_debias(unbiased_var, value, decay):
   with variable_scope.variable_scope(
       unbiased_var.op.name, values=[unbiased_var, value, decay]) as scope:
     with ops.colocate_with(unbiased_var):
-      with ops.control_dependencies(None):
+      with ops.init_scope():
         biased_initializer = init_ops.zeros_initializer(
             dtype=unbiased_var.dtype)(unbiased_var.get_shape())
         local_step_initializer = init_ops.zeros_initializer()
@@ -385,7 +385,7 @@ class ExponentialMovingAverage(object):
       # For variables: to lower communication bandwidth across devices we keep
       # the moving averages on the same device as the variables. For other
       # tensors, we rely on the existing device allocation mechanism.
-      with ops.control_dependencies(None):
+      with ops.init_scope():
         if isinstance(var, variables.Variable):
           avg = slot_creator.create_slot(var,
                                          var.initialized_value(),

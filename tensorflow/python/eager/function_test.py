@@ -504,6 +504,24 @@ class FunctionTest(test.TestCase):
     self.assertAllEqual(ret[0][2], 10)
     self.assertAllEqual(ret[1], 15)
 
+  def testVariableNamesRespectNameScopesWithDefun(self):
+    @function.defun
+    def create_variable():
+      with ops.name_scope('foo'):
+        v = resource_variable_ops.ResourceVariable(0.0, name='bar')
+      self.assertEqual(v.name, 'foo/bar:0')
+    create_variable()
+
+  def testVariableNamesRespectNameScopesWithDefunInGraph(self):
+    with context.graph_mode():
+      @function.defun
+      def create_variable():
+        with ops.name_scope('foo'):
+          v = resource_variable_ops.ResourceVariable([1.0, 2.0], name='bar')
+        self.assertEqual(v.name, 'foo/bar:0')
+      with ops.get_default_graph().as_default():
+        create_variable()
+
 
 if __name__ == '__main__':
   test.main()

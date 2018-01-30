@@ -954,20 +954,8 @@ class BackendNNOpsTest(test.TestCase):
     x = keras.backend.variable(val)
     reduction_axes = (0, 2, 3)
 
-    # case: need broadcasting
     g_val = np.random.random((3,))
     b_val = np.random.random((3,))
-    gamma = keras.backend.variable(g_val)
-    beta = keras.backend.variable(b_val)
-    normed, mean, var = keras.backend.normalize_batch_in_training(
-        x, gamma, beta, reduction_axes, epsilon=1e-3)
-    self.assertEqual(normed.get_shape().as_list(), [10, 3, 10, 10])
-    self.assertEqual(mean.get_shape().as_list(), [3,])
-    self.assertEqual(var.get_shape().as_list(), [3,])
-
-    # case: doesn't need broadcasting
-    g_val = np.random.random((1, 3, 1, 1))
-    b_val = np.random.random((1, 3, 1, 1))
     gamma = keras.backend.variable(g_val)
     beta = keras.backend.variable(b_val)
     normed, mean, var = keras.backend.normalize_batch_in_training(

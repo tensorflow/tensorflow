@@ -21,9 +21,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/service_executable_run_options.h"
+#include "tensorflow/compiler/xla/service/source_map_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 
 namespace se = ::perftools::gputools;
+
+using xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {
 
@@ -44,6 +47,16 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_result_layout(
 
 const Shape* ExecutableBuildOptions::result_layout() const {
   return result_layout_set_ ? &result_layout_ : nullptr;
+}
+
+ExecutableBuildOptions& ExecutableBuildOptions::set_device_allocator(
+    DeviceMemoryAllocator* allocator) {
+  device_allocator_ = allocator;
+  return *this;
+}
+
+DeviceMemoryAllocator* ExecutableBuildOptions::device_allocator() const {
+  return device_allocator_;
 }
 
 namespace {
@@ -79,9 +92,10 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
   for (int i = 0; i < arguments.size(); ++i) {
     if (!computation_layout.parameter_layout(i).MatchesLayoutInShape(
             arguments[i]->on_host_shape())) {
-      return InvalidArgument(
-          "argument does not match shape or layout of computation parameter "
-          "%d: expected %s, got %s",
+      return InvalidParameterArgument(
+          executable_.get(), i,
+          "Argument does not match shape or layout of computation parameter "
+          "%d: want %s, got %s",
           i,
           ShapeUtil::HumanString(computation_layout.parameter_layout(i).shape())
               .c_str(),
@@ -266,10 +280,11 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
   int device_ordinal = options.device_ordinal() == -1
                            ? default_device_ordinal()
                            : options.device_ordinal();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      local_service_->CompileExecutable(
-                          computation.handle(), argument_layouts,
-                          options.result_layout(), device_ordinal));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      local_service_->CompileExecutable(computation.handle(), argument_layouts,
+                                        options.result_layout(), device_ordinal,
+                                        options.device_allocator()));
   return WrapUnique(new LocalExecutable(std::move(executable),
                                         local_service_->mutable_backend(),
                                         device_ordinal, options));

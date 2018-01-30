@@ -40,6 +40,13 @@ limitations under the License.
 
 namespace xla {
 
+// Logs the provided status message with a backtrace.
+//
+// For use by Status-factories, logs a backtrace at the point where the status
+// is created, such that we can use --vmodule=util=1 to see all status
+// creation backtraces.
+Status WithLogBacktrace(const Status& status);
+
 // Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
 // the bounds and indices. And for the rare cases of ranks greater than 8,
 // the InlinedVector will just behave like an std::vector<> and allocate the
@@ -207,6 +214,9 @@ Status ResourceExhausted(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status NotFound(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 
+// Passed-varargs variant of the InvalidArgument factory above.
+Status InvalidArgumentV(const char* format, va_list args);
+
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
 // side effect, any additional trailing whitespace is removed.
@@ -332,7 +342,7 @@ T CeilOfRatio(T dividend, T divisor) {
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
-// then multiplying by the divisor. For example: RoundUpToMultiple(13, 8) => 16
+// then multiplying by the divisor. For example: RoundUpToNearest(13, 8) => 16
 template <typename T>
 T RoundUpToNearest(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
@@ -340,7 +350,7 @@ T RoundUpToNearest(T value, T divisor) {
 
 // Rounds the value down to a multiple of the divisor by first calling
 // FloorOfRatio then multiplying by the divisor. For example:
-// RoundUpToMultiple(13, 8) => 8
+// RoundDownToNearest(13, 8) => 8
 template <typename T>
 T RoundDownToNearest(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;

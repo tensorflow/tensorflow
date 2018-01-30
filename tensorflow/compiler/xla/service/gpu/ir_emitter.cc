@@ -758,37 +758,6 @@ Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
       "to a cudnn CustomCall using CudnnBatchNormRewriter.");
 }
 
-Status IrEmitter::HandleConditional(HloInstruction* conditional) {
-  auto pred = conditional->operand(0);
-  auto true_arg = conditional->operand(1);
-  auto false_arg = conditional->operand(2);
-
-  llvm::Value* conditional_result = GetBasePointer(*conditional);
-
-  llvm::LoadInst* pred_value = ir_builder_.CreateLoad(
-      GetBasePointer(*pred),
-      llvm_ir::AsStringRef(IrName(conditional, "load_predicate_value")));
-  llvm::Value* pred_cond = ir_builder_.CreateICmpNE(
-      pred_value,
-      llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
-      llvm_ir::AsStringRef(IrName(conditional, "boolean_predicate")));
-  llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
-      pred_cond, IrName(conditional, "if_then_else"), &ir_builder_);
-
-  SetToFirstInsertPoint(if_data.true_block, &ir_builder_);
-  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
-      *conditional->true_computation(), {GetBasePointer(*true_arg)},
-      conditional_result));
-
-  SetToFirstInsertPoint(if_data.false_block, &ir_builder_);
-  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
-      *conditional->false_computation(), {GetBasePointer(*false_arg)},
-      conditional_result));
-
-  SetToFirstInsertPoint(if_data.after_block, &ir_builder_);
-  return Status::OK();
-}
-
 llvm_ir::IrArray::Index IrEmitter::EmitOperandArrayLoopNest(
     const llvm_ir::IrArray& operand_array, int64 reduction_dimension,
     tensorflow::StringPiece name_suffix, llvm_ir::ForLoopNest* loop_nest) {

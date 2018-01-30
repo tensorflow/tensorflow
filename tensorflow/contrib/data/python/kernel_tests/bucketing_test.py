@@ -41,8 +41,7 @@ class GroupByWindowTest(test.TestCase):
         dataset_ops.Dataset.from_tensor_slices(components).map(lambda x: x * x)
         .apply(
             grouping.group_by_window(lambda x: x % 2, lambda _, xs: xs.batch(4),
-                                     4))
-        .make_initializable_iterator())
+                                     4)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -53,7 +52,8 @@ class GroupByWindowTest(test.TestCase):
         while True:
           result = sess.run(get_next)
           self.assertTrue(
-              all(x % 2 == 0 for x in result) or all(x % 2 == 1)
+              all(x % 2 == 0
+                  for x in result) or all(x % 2 == 1)
               for x in result)
           counts.append(result.shape[0])
 
@@ -116,8 +116,8 @@ class GroupByWindowTest(test.TestCase):
     iterator = (
         dataset_ops.Dataset.from_tensor_slices(components)
         .map(lambda x: (x, ops.convert_to_tensor([x * x]))).apply(
-            grouping.group_by_window(lambda x, _: x % 2, reduce_func, 32))
-        .make_initializable_iterator())
+            grouping.group_by_window(lambda x, _: x % 2, reduce_func,
+                                     32)).make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -136,7 +136,8 @@ class GroupByWindowTest(test.TestCase):
           window.padded_batch(
               4, padded_shapes=tensor_shape.TensorShape([None])),
           window.padded_batch(
-              4, padded_shapes=ops.convert_to_tensor([(key + 1) * 10])),))
+              4, padded_shapes=ops.convert_to_tensor([(key + 1) * 10])),
+      ))
 
     iterator = (
         dataset_ops.Dataset.from_tensor_slices(components)
@@ -200,9 +201,10 @@ class BucketTest(test.TestCase):
     # dynamically and does not rely on static shape information about
     # the arguments.
     return dataset_ops.Dataset.zip(
-        (dataset_ops.Dataset.from_tensors(bucket), window.padded_batch(
-            32, (tensor_shape.TensorShape([]), tensor_shape.TensorShape([None]),
-                 tensor_shape.TensorShape([3])))))
+        (dataset_ops.Dataset.from_tensors(bucket),
+         window.padded_batch(
+             32, (tensor_shape.TensorShape([]), tensor_shape.TensorShape(
+                 [None]), tensor_shape.TensorShape([3])))))
 
   def testSingleBucket(self):
 
@@ -307,12 +309,13 @@ class BucketTest(test.TestCase):
 
     def _dynamic_pad_fn(bucket, window, _):
       return dataset_ops.Dataset.zip(
-          (dataset_ops.Dataset.from_tensors(bucket), window.padded_batch(
-              32, {
-                  "x": tensor_shape.TensorShape([]),
-                  "y": tensor_shape.TensorShape([None]),
-                  "z": tensor_shape.TensorShape([3])
-              })))
+          (dataset_ops.Dataset.from_tensors(bucket),
+           window.padded_batch(
+               32, {
+                   "x": tensor_shape.TensorShape([]),
+                   "y": tensor_shape.TensorShape([None]),
+                   "z": tensor_shape.TensorShape([3])
+               })))
 
     input_dataset = (
         dataset_ops.Dataset.from_tensor_slices(math_ops.range(128)).map(_map_fn)

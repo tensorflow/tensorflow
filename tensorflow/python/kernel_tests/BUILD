@@ -1043,6 +1043,7 @@ tf_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
+        "//tensorflow/python/eager:function",
     ],
 )
 
@@ -1598,6 +1599,19 @@ cuda_py_test(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_grad",
     ],
+)
+
+cuda_py_test(
+    name = "manip_ops_test",
+    size = "small",
+    srcs = ["manip_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:manip_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+    tags = ["no_windows_gpu"],
 )
 
 cuda_py_test(
@@ -2821,7 +2835,7 @@ tf_py_test(
         "//tensorflow/python:random_ops",
         "//tensorflow/python:variables",
     ],
-    shard_count = 3,
+    shard_count = 10,
     tags = ["no_windows_gpu"],
 )
 

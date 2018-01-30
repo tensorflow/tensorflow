@@ -151,7 +151,7 @@ class CallTreeTransformer(gast.NodeTransformer):
     else:
       new_name = self.namer.compiled_function_name(
           '__'.join(target_fqn), live_object=target_obj)
-    node.func = gast.Name(id=new_name, ctx=gast.Load(), annotation=None)
+    node.func = gast.Name(new_name, gast.Load(), None)
     return node
 
   def _rename_member_function_of_known_type(self, node):
@@ -184,26 +184,17 @@ class CallTreeTransformer(gast.NodeTransformer):
   def _wrap_to_py_func_no_return(self, node):
     args_scope = anno.getanno(node, 'args_scope')
     # TODO(mdan): Properly handle varargs, kwargs, etc.
-    args = tuple(gast.Name(n, gast.Load(), None) for n in args_scope.used)
-
-    # pylint:disable=undefined-variable,unused-argument,function-redefined
-
-    def template(call, wrapper, args):
-
+    template = """
       def wrapper(args):
         call(args)
         return 1
-
       tf.py_func(wrapper, [args], [tf.int64])
-
-    # pylint:enable=undefined-variable,unused-argument,function-redefined
-
-    wrapper_name = self.namer.compiled_function_name(node.func.id)
+    """
     wrapper_def, call_expr = templates.replace(
         template,
         call=node.func,
-        wrapper=gast.Name(wrapper_name, gast.Load(), None),
-        args=args)
+        wrapper=self.namer.compiled_function_name(node.func.id),
+        args=tuple(gast.Name(n, gast.Load(), None) for n in args_scope.used))
     anno.setanno(call_expr.value, 'args_scope', args_scope)
     # TODO(mdan): Rename this annotation to 'graph_ready'
     anno.setanno(wrapper_def, 'skip_processing', True)

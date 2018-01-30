@@ -71,7 +71,8 @@ LocalService::LocalService(const ServiceOptions& options,
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const ComputationHandle& computation,
     const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-    const Shape* result_layout, int device_ordinal) {
+    const Shape* result_layout, int device_ordinal,
+    DeviceMemoryAllocator* device_allocator) {
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
                       computation_tracker_.Resolve(computation));
   VersionedComputationHandle versioned_handle =
@@ -128,13 +129,14 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   }
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<HloModuleConfig> module_config,
-      CreateModuleConfig(*program_shape, argument_layouts, &execution_options));
+      CreateModuleConfig(*program_shape, argument_layouts, &execution_options,
+                         *user_computation));
 
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       execute_backend_->stream_executor(device_ordinal));
 
   return BuildExecutable(versioned_handle, std::move(module_config),
-                         execute_backend_.get(), executor);
+                         execute_backend_.get(), executor, device_allocator);
 }
 
 StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {

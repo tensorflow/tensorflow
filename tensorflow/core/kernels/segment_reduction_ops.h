@@ -51,13 +51,14 @@ struct SegmentSumFunctor {
 // BaseFunctor for definition of UnsorteSegmentReductionOp
 // for usage without templates.
 template <typename Device, typename T, typename Index>
-struct UnsortedSegmentBaseFunctor{
-  virtual ~UnsortedSegmentBaseFunctor(){}
+struct UnsortedSegmentBaseFunctor {
+  virtual ~UnsortedSegmentBaseFunctor() {}
   virtual void operator()(OpKernelContext* ctx, const Device& d,
-                  const Index output_rows, const TensorShape& segment_ids_shape,
-                  typename TTypes<Index>::ConstFlat segment_ids,
-                  const Index data_size, const T* data,
-                  typename TTypes<T, 2>::Tensor output){};
+                          const Index output_rows,
+                          const TensorShape& segment_ids_shape,
+                          typename TTypes<Index>::ConstFlat segment_ids,
+                          const Index data_size, const T* data,
+                          typename TTypes<T, 2>::Tensor output){};
 };
 
 // Functor for UnsortedSegmentSumOp.
@@ -70,7 +71,8 @@ struct UnsortedSegmentBaseFunctor{
 // data: input data tensor.
 // output: output reshaped to {output_rows, output.size/output_rows}
 template <typename Device, typename T, typename Index>
-struct UnsortedSegmentSumFunctor: public UnsortedSegmentBaseFunctor<Device, T, Index> {
+struct UnsortedSegmentSumFunctor
+    : public UnsortedSegmentBaseFunctor<Device, T, Index> {
   void operator()(OpKernelContext* ctx, const Device& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
@@ -88,7 +90,8 @@ struct UnsortedSegmentSumFunctor: public UnsortedSegmentBaseFunctor<Device, T, I
 // data: input data tensor.
 // output: output reshaped to {output_rows, output.size/output_rows}
 template <typename Device, typename T, typename Index>
-struct UnsortedSegmentMaxFunctor: public UnsortedSegmentBaseFunctor<Device, T, Index> {
+struct UnsortedSegmentMaxFunctor
+    : public UnsortedSegmentBaseFunctor<Device, T, Index> {
   void operator()(OpKernelContext* ctx, const Device& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,

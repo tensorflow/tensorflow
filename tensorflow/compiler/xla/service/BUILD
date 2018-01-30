@@ -460,6 +460,7 @@ cc_library(
         ":hlo_proto_util",
         ":platform_util",
         ":session_proto",
+        ":source_map_util",
         ":transfer_manager",
         ":user_computation",
         ":versioned_computation_handle",
@@ -1109,8 +1110,6 @@ cc_library(
         ":hlo",
         ":hlo_evaluator",
         ":hlo_pass",
-        ":tuple_util",
-        ":while_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
     ],
@@ -1149,6 +1148,34 @@ tf_cc_test(
     deps = [
         ":defuser",
         ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+    ],
+)
+
+cc_library(
+    name = "implicit_broadcast_remover",
+    srcs = ["implicit_broadcast_remover.cc"],
+    hdrs = ["implicit_broadcast_remover.h"],
+    deps = [
+        ":hlo",
+        ":hlo_dce",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "implicit_broadcast_remover_test",
+    srcs = ["implicit_broadcast_remover_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":implicit_broadcast_remover",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
@@ -1824,7 +1851,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
     ],
 )
 
@@ -2345,6 +2374,18 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "source_map_util",
+    srcs = ["source_map_util.cc"],
+    hdrs = ["source_map_util.h"],
+    deps = [
+        ":executable",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
     ],
 )
 

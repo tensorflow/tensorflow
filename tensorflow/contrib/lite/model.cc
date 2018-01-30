@@ -30,17 +30,6 @@ limitations under the License.
 
 namespace tflite {
 
-namespace {
-inline const tflite::Model* VerifyAndGetModel(const void* buf, size_t len) {
-  ::flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
-  if (VerifyModelBuffer(verifier)) {
-    return ::tflite::GetModel(buf);
-  } else {
-    return nullptr;
-  }
-}
-}  // namespace
-
 const char* kEmptyTensorName = "";
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
@@ -82,7 +71,7 @@ FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
   }
   if (!allocation_->valid() || !CheckModelIdentifier()) return;
 
-  model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
+  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 bool FlatBufferModel::CheckModelIdentifier() const {
@@ -103,7 +92,7 @@ FlatBufferModel::FlatBufferModel(const char* ptr, size_t num_bytes,
   allocation_ = new MemoryAllocation(ptr, num_bytes, error_reporter);
   if (!allocation_->valid()) return;
 
-  model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
+  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 FlatBufferModel::FlatBufferModel(const Model* model,
@@ -339,6 +328,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
       TfLiteSequenceRNNParams* params = MallocPOD<TfLiteSequenceRNNParams>();
       if (auto* sequence_rnn_params =
@@ -476,6 +466,11 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
     case BuiltinOperator_RESIZE_BILINEAR: {
+      auto* params = MallocPOD<TfLiteResizeBilinearParams>();
+      if (auto* schema_params =
+              op->builtin_options_as_ResizeBilinearOptions()) {
+      }
+      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_PAD: {
@@ -559,14 +554,6 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
     case BuiltinOperator_TRANSPOSE: {
-      auto* params = MallocPOD<TfLiteTransposeParams>();
-      if (auto* schema_params = op->builtin_options_as_TransposeOptions()) {
-        const auto& perm = schema_params->perm();
-        FlatBufferIntVectorToArray(sizeof(params->perm), perm, params->perm,
-                                   error_reporter);
-        params->num_dimensions = perm->Length();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_MEAN: {

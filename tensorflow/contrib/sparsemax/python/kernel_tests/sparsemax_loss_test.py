@@ -105,8 +105,8 @@ class SparsemaxLossTest(test.TestCase):
     tf_loss_op, tf_loss_out = self._tf_sparsemax_loss(z, q, dtype, use_gpu)
     np_loss = self._np_sparsemax_loss(z, q).astype(dtype)
 
-    self.assertAllCloseAccordingToType(np_loss, tf_loss_out,
-                                       half_atol=1e-2, half_rtol=5e-3)
+    self.assertAllCloseAccordingToType(
+        np_loss, tf_loss_out, half_atol=1e-2, half_rtol=5e-3)
     self.assertShapeEqual(np_loss, tf_loss_op)
 
   def _test_constant_add(self, dtype, random, use_gpu):
@@ -116,17 +116,17 @@ class SparsemaxLossTest(test.TestCase):
     q = np.zeros((test_obs, 10))
     q[np.arange(0, test_obs), np.random.randint(0, 10, size=test_obs)] = 1
 
-    _, tf_loss_zpc = self._tf_sparsemax_loss(
-        z + c, q, dtype, use_gpu
-    )
+    _, tf_loss_zpc = self._tf_sparsemax_loss(z + c, q, dtype, use_gpu)
 
-    _, tf_loss_z = self._tf_sparsemax_loss(
-        z, q, dtype, use_gpu
-    )
+    _, tf_loss_z = self._tf_sparsemax_loss(z, q, dtype, use_gpu)
 
-    self.assertAllCloseAccordingToType(tf_loss_zpc, tf_loss_z,
-                                       float_atol=5e-6, float_rtol=5e-6,
-                                       half_atol=1e-2, half_rtol=1e-2)
+    self.assertAllCloseAccordingToType(
+        tf_loss_zpc,
+        tf_loss_z,
+        float_atol=5e-6,
+        float_rtol=5e-6,
+        half_atol=1e-2,
+        half_rtol=1e-2)
 
   def _test_sparsemax_loss_positive(self, dtype, random, use_gpu):
     """check sparsemax-loss proposition 4"""
@@ -170,10 +170,7 @@ class SparsemaxLossTest(test.TestCase):
 
     with self.test_session(use_gpu=use_gpu):
       err = gradient_checker.compute_gradient_error(
-        logits, z.shape,
-        loss_op, (test_obs, ),
-        x_init_value=z, delta=1e-9
-      )
+          logits, z.shape, loss_op, (test_obs,), x_init_value=z, delta=1e-9)
 
     self.assertLess(err, 1e-4)
 
@@ -192,8 +189,8 @@ class SparsemaxLossTest(test.TestCase):
       tf_grad = loss_grad_op.eval()
       np_grad = self._np_sparsemax_loss_grad(z, q).astype(dtype)
 
-      self.assertAllCloseAccordingToType(np_grad, tf_grad,
-                                         half_atol=1e-2, half_rtol=5e-3)
+      self.assertAllCloseAccordingToType(
+          np_grad, tf_grad, half_atol=1e-2, half_rtol=5e-3)
       self.assertShapeEqual(np_grad, loss_grad_op)
 
   def _test_dtype(self, dtype):
@@ -220,5 +217,6 @@ class SparsemaxLossTest(test.TestCase):
   def testDouble(self):
     self._test_dtype('float64')
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
   test.main()

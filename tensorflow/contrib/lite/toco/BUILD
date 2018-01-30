@@ -160,6 +160,7 @@ cc_library(
     ],
     deps = [
         # Placeholder for internal file dependency.
+        "@protobuf_archive//:protobuf_headers",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
