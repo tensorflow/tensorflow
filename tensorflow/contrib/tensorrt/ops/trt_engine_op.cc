@@ -13,6 +13,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/shape_inference.h"
@@ -33,5 +36,8 @@ REGISTER_OP("TRTEngineOp")
     .Input("in_tensor: InT")
     .Output("out_tensor: OutT")
     .SetShapeFn(shape_inference::TRTEngineOpShapeInference);
+
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

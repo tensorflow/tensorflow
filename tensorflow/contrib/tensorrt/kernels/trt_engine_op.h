@@ -20,18 +20,17 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/framework/op.h"
-#include "tensorflow/core/framework/op_kernel.h"
-
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include <cuda_runtime_api.h>
+#include "cuda/include/cuda_runtime_api.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
-
 namespace tensorrt {
 class Logger;
+
 class TRTEngineOp : public OpKernel {
  public:
   explicit TRTEngineOp(OpKernelConstruction* context);
@@ -43,17 +42,18 @@ class TRTEngineOp : public OpKernel {
   struct Destroyer {
     void operator()(T* d) { d->destroy(); }
   };
+
   template <typename T>
   using destroyed_ptr = std::unique_ptr<T, Destroyer<T>>;
   destroyed_ptr<nvinfer1::ICudaEngine> trt_engine_ptr_;
-  // TODO(samikama) context should go to a resource manager!
+  // TODO(samikama): context should go to a resource manager!
   destroyed_ptr<nvinfer1::IExecutionContext> trt_execution_context_ptr_;
+
   std::vector<string> input_nodes_;
   std::vector<string> output_nodes_;
 };
 
 }  // namespace tensorrt
-
 }  // namespace tensorflow
 
 #endif  // GOOGLE_TENSORRT

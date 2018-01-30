@@ -12,21 +12,17 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <sstream>
-#include "tensorflow/core/platform/logging.h"
-#include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-
-#include <cuda_runtime_api.h>
-#include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
+#include "cuda/include/cuda_runtime_api.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorflow/core/platform/logging.h"
 
 namespace tensorflow {
-static ::tensorflow::tensorrt::Logger gLogger;
-
 namespace tensorrt {
+static ::tensorflow::tensorrt::Logger logger;
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   // read serialized_engine
@@ -39,14 +35,14 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   OP_REQUIRES_OK(context, context->GetAttr("output_nodes", &output_nodes_));
 
   // TODO(samikama) runtime should be taken from a resourcemanager as well.
-  //  Only engine should be in the op and context and runtime should be taken
-  //  from resourcemanager
-  nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(gLogger);
+  // Only engine should be in the op and context and runtime should be taken
+  // from resourcemanager
+  nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(logger);
   trt_engine_ptr_.reset(infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(), nullptr));
 
   trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
-  // runtime is safe to delete after engine creation
+  // Runtime is safe to delete after engine creation
   infer->destroy();
 }
 
@@ -89,7 +85,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
     // This is bad that we have to reallocate output buffer every run.
     // Create an output tensor
     binding_index = trt_engine_ptr_->getBindingIndex(output_nodes_[i].c_str());
-    Tensor* output_tensor = NULL;
+    Tensor* output_tensor = nullptr;
 
     TensorShape output_shape;
     if (binding_index != -1) {
@@ -131,6 +127,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
 }
 
 REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);
+
 }  // namespace tensorrt
 }  // namespace tensorflow
 

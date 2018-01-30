@@ -29,9 +29,13 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 
+
 # TODO(skama): get outputs from session when implemented as c++
 # optimization pass
-def CreateInferenceGraph(input_graph_def, outputs,max_batch_size=1,max_workspace_size=2<<20):
+def CreateInferenceGraph(input_graph_def,
+                         outputs,
+                         max_batch_size=1,
+                         max_workspace_size=2 << 20):
   """Python wrapper for the TRT transormation.
 
 
@@ -45,35 +49,34 @@ def CreateInferenceGraph(input_graph_def, outputs,max_batch_size=1,max_workspace
     New GraphDef with TRTEngineOps placed in graph replacing subgraphs.
   """
 
-  out_names=[]
+  out_names = []
   for i in outputs:
-    if isinstance(i,ops.Tensor):
+    if isinstance(i, ops.Tensor):
       out_names.append(i.name)
     else:
       out_names.append(i)
-      
-  input_graph_def_str= \
-    input_graph_def.SerializeToString()
+
+  input_graph_def_str = input_graph_def.SerializeToString()
 
   # TODO(sami): Fix this when we can return status from C++ library
   # There is a problem with the TF internal library setup that doesn't
   # allow us to return a status object from C++.  Thus we return a
   # pair or strings where first one is encoded status and the second
   # one is the transformed graphs protobuf string.
-  out = trt_convert(
-      input_graph_def_str ,outputs,
-      max_batch_size,max_workspace_size)
+  out = trt_convert(input_graph_def_str, outputs, max_batch_size,
+                    max_workspace_size)
   status = out[0]
   output_graph_def_string = out[1]
-  del input_graph_def_str #save some memory
+  del input_graph_def_str  #save some memory
   if len(status) < 2:
-    raise _impl.UnknownError(None,None,status)
+    raise _impl.UnknownError(None, None, status)
   if status[:2] != "OK":
-    msg=status.split(";")
+    msg = status.split(";")
     if len(msg) == 1:
       raise RuntimeError("Status message is malformed {}".format(status))
-    raise _impl._make_specific_exception(None,None,";".join(msg[1:]), int(msg[0]))
+    raise _impl._make_specific_exception(None, None, ";".join(msg[1:]),
+                                         int(msg[0]))
   output_graph_def = graph_pb2.GraphDef()
   output_graph_def.ParseFromString(output_graph_def_string)
-  del output_graph_def_string #save some memory
+  del output_graph_def_string  #save some memory
   return output_graph_def

@@ -68,7 +68,6 @@ bool CanContractEdge(const tensorflow::Edge* edge,
   return !is_cycle;
 }
 
-//------------------------------------------------------------------------------
 void ContractEdge(tensorflow::Edge* edge, tensorflow::Graph* graph,
                   std::vector<const tensorflow::Edge*>* remove_edges) {
   // Transfer all inputs and outputs of 'dst' to 'src' except edges

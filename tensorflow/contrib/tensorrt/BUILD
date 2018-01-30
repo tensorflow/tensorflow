@@ -17,7 +17,6 @@ load(
     "tf_gen_op_wrapper_py",
     "tf_py_wrap_cc",
     "tf_cc_test",
-    "tf_kernel_library",
     "tf_cuda_cc_test",
     "tf_cuda_library",
     "tf_custom_op_py_library",
@@ -47,13 +46,9 @@ tf_cuda_cc_test(
 
 tf_custom_op_library(
     name = "python/ops/_trt_engine_op.so",
-    srcs = [
-        "kernels/trt_engine_op.cc",
-        "kernels/trt_engine_op.h",
-        "ops/trt_engine_op.cc",
-    ],
-    gpu_srcs = [],
+    srcs = ["ops/trt_engine_op.cc"],
     deps = [
+        ":trt_engine_op_kernel",
         ":trt_shape_function",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/kernels:bounds_check_lib",
@@ -64,10 +59,9 @@ tf_custom_op_library(
 
 tf_cuda_library(
     name = "trt_shape_function",
-    srcs = [
-        "shape_fn/trt_shfn.cc",
-    ],
+    srcs = ["shape_fn/trt_shfn.cc"],
     hdrs = ["shape_fn/trt_shfn.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":trt_logging",
         "//tensorflow/core:framework_headers_lib",
@@ -76,36 +70,26 @@ tf_cuda_library(
         "@nsync//:nsync_headers",
         "@protobuf_archive//:protobuf",
     ],
-    visibility = ["//visibility:public"], #for c/c++ linking    
 )
 
-tf_kernel_library(
+cc_library(
     name = "trt_engine_op_kernel",
-    srcs = [
-        "kernels/trt_engine_op.cc",
-    ],
-    hdrs = [
-        "kernels/trt_engine_op.h",
-    ],
-    gpu_srcs = [
-    ],
+    srcs = ["kernels/trt_engine_op.cc"],
+    hdrs = ["kernels/trt_engine_op.h"],
     deps = [
         ":trt_logging",
-        ":trt_shape_function",
-        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:gpu_headers_lib",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
         "//third_party/eigen3",
         "@local_config_tensorrt//:nv_infer",
+        "@nsync//:nsync_headers",
     ],
     alwayslink = 1,
 )
 
 tf_gen_op_libs(
-    op_lib_names = [
-        "trt_engine_op",
-    ],
+    op_lib_names = ["trt_engine_op"],
     deps = [
         "@local_config_tensorrt//:nv_infer",
     ],
@@ -113,12 +97,8 @@ tf_gen_op_libs(
 
 tf_cuda_library(
     name = "trt_logging",
-    srcs = [
-        "log/trt_logger.cc",
-    ],
-    hdrs = [
-        "log/trt_logger.h",
-    ],
+    srcs = ["log/trt_logger.cc"],
+    hdrs = ["log/trt_logger.h"],
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib_proto_parsing",
@@ -190,6 +170,7 @@ tf_py_wrap_cc(
     ],
 )
 
+# Library for the node-level conversion portion of TensorRT operation creation
 tf_cuda_library(
     name = "trt_conversion",
     srcs = [
@@ -201,29 +182,27 @@ tf_cuda_library(
         "convert/convert_nodes.h",
     ],
     deps = [
-        "@local_config_tensorrt//:nv_infer",
-        "@protobuf_archive//:protobuf_headers",
-        "@nsync//:nsync_headers",
         ":segment",
         ":trt_logging",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:framework_headers_lib",
-        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/optimizers:constant_folding",
         "//tensorflow/core/grappler/optimizers:layout_optimizer",
-        "//tensorflow/core/grappler/clusters:virtual_cluster",
-        "//tensorflow/core/grappler:devices",
-        "//tensorflow/core/grappler/costs:graph_properties",
+        "@local_config_tensorrt//:nv_infer",
+        "@nsync//:nsync_headers",
+        "@protobuf_archive//:protobuf_headers",
     ],
 )
 
 # Library for the segmenting portion of TensorRT operation creation
 cc_library(
     name = "segment",
-    srcs = [
-        "segment/segment.cc",
-    ],
+    srcs = ["segment/segment.cc"],
     hdrs = [
         "segment/segment.h",
         "segment/union_find.h",
@@ -248,8 +227,6 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
-
-# Library for the node-level conversion portion of TensorRT operation creation
 
 filegroup(
     name = "cppfiles",

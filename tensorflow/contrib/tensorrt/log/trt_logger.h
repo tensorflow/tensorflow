@@ -1,4 +1,3 @@
-// -*- c++ -*-
 /* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,9 +27,9 @@ namespace tensorrt {
 
 // Logger for GIE info/warning/errors
 class Logger : public nvinfer1::ILogger {
+ private:
   void log(nvinfer1::ILogger::Severity severity, const char* msg) override;
 
- private:
   std::string name_;
 };
 
