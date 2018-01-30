@@ -67,7 +67,6 @@ __all__ = [
 
 
 INCEPTION_URL = 'http://download.tensorflow.org/models/frozen_inception_v1_2015_12_05.tar.gz'
-INCEPTION_TAR = 'frozen_inception_v3_2017_09_13.tar.gz'  # location of temporary download file
 INCEPTION_FROZEN_GRAPH = 'inceptionv1_for_inception_score.pb'
 INCEPTION_INPUT = 'Mul:0'
 INCEPTION_OUTPUT = 'logits:0'
@@ -214,7 +213,8 @@ def get_graph_def_from_url_tarball(url, filename, tar_filename=None):
 
 
 def _default_graph_def_fn():
-  return get_graph_def_from_url_tarball(INCEPTION_URL, INCEPTION_FROZEN_GRAPH, INCEPTION_TAR)
+  return get_graph_def_from_url_tarball(INCEPTION_URL, INCEPTION_FROZEN_GRAPH,
+                                        os.path.basename(INCEPTION_URL))
 
 
 def run_inception(images,
