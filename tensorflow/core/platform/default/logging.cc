@@ -29,8 +29,8 @@ limitations under the License.
 namespace tensorflow {
 namespace internal {
 
-LogMessage::LogMessage(const char* fname, int line, int severity)
-    : fname_(fname), line_(line), severity_(severity) {}
+LogMessage::LogMessage(const char* fname, int line, int severity, int64 vlog_lvl)
+    : fname_(fname), line_(line), severity_(severity), vlog_lvl_(vlog_lvl) {}
 
 #if defined(PLATFORM_POSIX_ANDROID)
 void LogMessage::GenerateLogMessage() {
@@ -86,8 +86,16 @@ void LogMessage::GenerateLogMessage() {
 	   localtime(&now_seconds));
 
   // TODO(jeff,sanjay): Replace this with something that logs through the env.
-  fprintf(stderr, "%s.%06d: %c %s:%d] %s\n", time_buffer, micros_remainder,
-	  "IWEF"[severity_], fname_, line_, str().c_str());
+  if (vlog_lvl_ != 0) {
+    // output VLOG
+    fprintf(stderr, "%s.%06d: %c V%lld %s:%d] %s\n", time_buffer,
+            micros_remainder, "IWEF"[severity_], vlog_lvl_, fname_, line_,
+            str().c_str());
+  } else {
+    // output LOG
+    fprintf(stderr, "%s.%06d: %c %s:%d] %s\n", time_buffer, micros_remainder,
+	    "IWEF"[severity_], fname_, line_, str().c_str());
+  }
 }
 #endif
 

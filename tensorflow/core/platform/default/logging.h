@@ -38,7 +38,7 @@ namespace internal {
 
 class LogMessage : public std::basic_ostringstream<char> {
  public:
-  LogMessage(const char* fname, int line, int severity);
+  LogMessage(const char* fname, int line, int severity, int64 vlog_lvl=0);
   ~LogMessage();
 
   // Returns the minimum log level for VLOG statements.
@@ -53,6 +53,7 @@ class LogMessage : public std::basic_ostringstream<char> {
   const char* fname_;
   int line_;
   int severity_;
+  int64 vlog_lvl_;
 };
 
 // LogMessageFatal ensures the process will exit in failure after
@@ -88,7 +89,7 @@ class LogMessageFatal : public LogMessage {
 
 #define VLOG(lvl)                        \
   if (TF_PREDICT_FALSE(VLOG_IS_ON(lvl))) \
-  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO)
+  ::tensorflow::internal::LogMessage(__FILE__, __LINE__, tensorflow::INFO, lvl)
 
 // CHECK dies with a fatal error if condition is not true.  It is *not*
 // controlled by NDEBUG, so the check will be executed regardless of
