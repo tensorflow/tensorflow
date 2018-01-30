@@ -1420,11 +1420,8 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     }
   }
   // topological order is needed to build TRT network
-  VLOG(-1) << "BUILDING 1";
 
   tensorflow::tensorrt::Logger trt_logger;
-
-  VLOG(-1) << "BUILDING 2";
 
   auto trt_builder = infer_object(nvinfer1::createInferBuilder(trt_logger));
   if (!trt_builder) {
@@ -1432,24 +1429,18 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
         "failed to create TensorRT builder object");
   }
 
-  VLOG(-1) << "BUILDING 3";
-
   auto trt_network = infer_object(trt_builder->createNetwork());
   if (!trt_network) {
     return tensorflow::errors::Internal(
         "failed to create TensorRT network object");
   }
 
-  VLOG(-1) << "BUILDING 4";
-
   // Build the network
   Converter converter(trt_network.get());
 
-  VLOG(-1) << "BUILDING 5";
   std::vector<std::string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
   for (std::pair<int, int> const& input : input_inds) {
-    VLOG(-1) << "parsing input!!!!!";
     int node_id = input.first;
     int output_idx = input.second;
     tensorflow::Node* node = graph.FindNodeId(node_id);
@@ -1551,11 +1542,12 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   }
 
   VLOG(-1) << "finished output";
+  static int static_id = 0;
 
   // Build the engine
   trt_builder->setMaxBatchSize(max_batch_size);
   trt_builder->setMaxWorkspaceSize(max_workspace_size);
-  LOG(INFO) << "starting build engine";
+  LOG(INFO) << "starting build engine "<<static_id;
   // TODO(ben,jie): half2 and int8 mode support
   std::string engine_plan_string;
   {
@@ -1563,18 +1555,17 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
         infer_object(trt_builder->buildCudaEngine(*converter.network()));
     LOG(INFO) << "built network";
     auto engine_plan = infer_object(trt_engine->serialize());
-    LOG(INFO) << "serialized engine";
+    VLOG(INFO) << "serialized engine";
     const char* engine_plan_data =
         static_cast<const char*>(engine_plan->data());
     engine_plan_string = std::move(
         std::string(engine_plan_data, engine_plan_data + engine_plan->size()));
   }
 
-  LOG(INFO) << "finished engine";
+  VLOG(INFO) << "finished engine";
 
   // Build the TRT op
   // TODO(sami,ben,jie): proper naming!
-  static int static_id = 0;
   tensorflow::NodeDefBuilder op_builder(
       "my_trt_op" + std::to_string(static_id++), "TRTEngineOp");
   std::vector<tensorflow::NodeDefBuilder::NodeOut> income_edges;
@@ -1590,7 +1581,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
       income_edges);
   op_builder.Input(input_list);
 
-  LOG(INFO) << "finished op preparation";
+  VLOG(INFO) << "finished op preparation";
 
   auto status = op_builder.Attr("serialized_engine", engine_plan_string)
                     .Attr("input_nodes", input_names)
@@ -1598,8 +1589,8 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
                     .Attr("OutT", output_dtypes)
                     .Finalize(trt_node);
 
-  LOG(INFO) << status.ToString();
-  LOG(INFO) << "finished op building";
+  VLOG(INFO) << status.ToString();
+  VLOG(INFO) << "finished op building";
 
   return tensorflow::Status::OK();
 }
