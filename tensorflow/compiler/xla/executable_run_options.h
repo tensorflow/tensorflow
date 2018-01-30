@@ -16,8 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_EXECUTABLE_RUN_OPTIONS_H_
 #define TENSORFLOW_COMPILER_XLA_EXECUTABLE_RUN_OPTIONS_H_
 
-#include "tensorflow/compiler/xla/types.h"
-
 // Intentionally forward declared so that ExecutableRunOptions can be linked
 // into an XLA-compiled binary without having to link all of the pointed-to
 // objects (e.g., for an ahead-of-time compiled CPU binary, the gpu tools don't
@@ -86,8 +84,6 @@ class ExecutableRunOptions {
       DeviceAssignment* device_assignment);
   const DeviceAssignment* device_assignment() const;
 
-  string ToString() const;
-
  private:
   DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
@@ -97,9 +93,6 @@ class ExecutableRunOptions {
   const Eigen::ThreadPoolDevice* intra_op_thread_pool_ = nullptr;
   ExecutionProfile* execution_profile_ = nullptr;
 };
-
-std::ostream& operator<<(std::ostream& out,
-                         const ExecutableRunOptions& options);
 
 }  // namespace xla
 
