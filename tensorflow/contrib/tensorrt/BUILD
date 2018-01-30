@@ -229,18 +229,6 @@ tf_cc_test(
 )
 
 filegroup(
-    name = "cppfiles",
-    srcs = glob(["**/*.cc"]),
-    visibility = ["//visibility:private"],
-)
-
-filegroup(
-    name = "headers",
-    srcs = glob(["**/*.h"]),
-    visibility = ["//visibility:private"],
-)
-
-filegroup(
     name = "all_files",
     srcs = glob(
         ["**/*"],
