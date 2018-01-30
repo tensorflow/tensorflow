@@ -32,7 +32,7 @@ if(NOT CMAKE_ASM_NASM_COMPILER)
   endif()
 endif()
     
-if(NOT NASM_COMPILER)
+if(NOT CMAKE_ASM_NASM_COMPILER)
   message(FATAL_ERROR "NASM not found!")
 endif()
 
