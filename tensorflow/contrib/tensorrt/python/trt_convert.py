@@ -29,7 +29,8 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 
-
+# TODO(skama): get outputs from session when implemented as c++
+# optimization pass
 def CreateInferenceGraph(input_graph_def, outputs,max_batch_size=1,max_workspace_size=2<<20):
   """Python wrapper for the TRT transormation.
 
