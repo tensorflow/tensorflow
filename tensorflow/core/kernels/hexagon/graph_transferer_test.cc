@@ -42,8 +42,7 @@ constexpr float VALUE_TOLERANCE_FLOAT = 1e-8f;
 
 class GraphTransfererTest : public ::testing::Test {
  protected:
-  void SetUp() final {
-  }
+  void SetUp() final {}
 
   GraphTransferer gt_;
 };
@@ -61,7 +60,7 @@ class TestGraphTransferOpsDefinitions : public IRemoteFusedGraphOpsDefinitions {
       }
     }
     return -1;
-}
+  }
 
  private:
   const std::vector<string> op_types_{"INPUT",   "OUTPUT",  "Conv2D",

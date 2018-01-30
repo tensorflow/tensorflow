@@ -23,10 +23,15 @@ import itertools
 import numpy as np
 
 from tensorflow.contrib.distributions.python.ops import distribution_util
+from tensorflow.contrib.distributions.python.ops import mixture
+from tensorflow.contrib.distributions.python.ops import mixture_same_family
+from tensorflow.contrib.distributions.python.ops import mvn_diag
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.distributions import categorical
+from tensorflow.python.ops.distributions import normal
 from tensorflow.python.ops.linalg import linear_operator_diag
 import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
@@ -393,6 +398,41 @@ class MixtureStddevTest(test.TestCase):
       actual_devs = sess.run(mix_dev)
 
     self.assertAllClose(actual_devs, expected_devs)
+
+
+class PadMixtureDimensionsTest(test.TestCase):
+
+  def test_pad_mixture_dimensions_mixture(self):
+    with self.test_session() as sess:
+      gm = mixture.Mixture(
+          cat=categorical.Categorical(probs=[[0.3, 0.7]]),
+          components=[
+              normal.Normal(loc=[-1.0], scale=[1.0]),
+              normal.Normal(loc=[1.0], scale=[0.5])
+          ])
+
+      x = array_ops.constant([[1.0, 2.0], [3.0, 4.0]])
+      x_pad = distribution_util.pad_mixture_dimensions(
+          x, gm, gm.cat, gm.event_shape.ndims)
+      x_out, x_pad_out = sess.run([x, x_pad])
+
+    self.assertAllEqual(x_pad_out.shape, [2, 2])
+    self.assertAllEqual(x_out.reshape([-1]), x_pad_out.reshape([-1]))
+
+  def test_pad_mixture_dimensions_mixture_same_family(self):
+    with self.test_session() as sess:
+      gm = mixture_same_family.MixtureSameFamily(
+          mixture_distribution=categorical.Categorical(probs=[0.3, 0.7]),
+          components_distribution=mvn_diag.MultivariateNormalDiag(
+              loc=[[-1., 1], [1, -1]], scale_identity_multiplier=[1.0, 0.5]))
+
+      x = array_ops.constant([[1.0, 2.0], [3.0, 4.0]])
+      x_pad = distribution_util.pad_mixture_dimensions(
+          x, gm, gm.mixture_distribution, gm.event_shape.ndims)
+      x_out, x_pad_out = sess.run([x, x_pad])
+
+    self.assertAllEqual(x_pad_out.shape, [2, 2, 1])
+    self.assertAllEqual(x_out.reshape([-1]), x_pad_out.reshape([-1]))
 
 
 class _PadTest(object):

@@ -31,6 +31,7 @@ py_library(
     deps = [
         "@astor_archive//:astor",
         "@gast_archive//:gast",
+        "@six_archive//:six",
         "@termcolor_archive//:termcolor",
     ],
 )

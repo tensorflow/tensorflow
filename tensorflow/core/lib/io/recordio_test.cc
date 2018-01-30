@@ -218,8 +218,8 @@ TEST_F(RecordioTest, RandomRead) {
 
 // Tests of all the error paths in log_reader.cc follow:
 static void AssertHasSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(StringPiece(s).contains(expected)) << s << " does not contain "
-                                                 << expected;
+  EXPECT_TRUE(StringPiece(s).contains(expected))
+      << s << " does not contain " << expected;
 }
 
 TEST_F(RecordioTest, ReadError) {

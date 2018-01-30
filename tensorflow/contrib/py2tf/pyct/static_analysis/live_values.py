@@ -26,26 +26,19 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import transformer
 
 
-class LiveValueResolver(gast.NodeTransformer):
+class LiveValueResolver(transformer.Base):
   """Annotates nodes with live values."""
 
-  def __init__(self, namespace, literals):
-    """Create a new resolver.
-
-    Args:
-      namespace: A dict representing the namespace visible to the AST in the
-          intended execution context.
-      literals: A dict mapping literal lymbol names to their value. An example
-          literal is "None".
-    """
-    self.namespace = namespace
+  def __init__(self, context, literals):
+    super(LiveValueResolver, self).__init__(context)
     self.literals = literals
 
   def visit_ClassDef(self, node):
     self.generic_visit(node)
-    anno.setanno(node, 'live_val', self.namespace[node.name])
+    anno.setanno(node, 'live_val', self.context.namespace[node.name])
     return node
 
   def visit_Name(self, node):
@@ -53,20 +46,31 @@ class LiveValueResolver(gast.NodeTransformer):
     if isinstance(node.ctx, gast.Load):
       assert anno.hasanno(node, 'is_local'), node
       symbol_is_local = anno.getanno(node, 'is_local')
-      if not symbol_is_local:
+      assert anno.hasanno(node, 'is_modified_since_entry'), node
+      symbol_is_modified = anno.getanno(node, 'is_modified_since_entry')
+      assert anno.hasanno(node, 'is_param'), node
+      symbol_is_param = anno.getanno(node, 'is_param')
+
+      if not symbol_is_local and not symbol_is_param:
         if node.id in self.literals:
           anno.setanno(node, 'live_val', self.literals[node.id])
           # TODO(mdan): Could live values have FQNs? i.e. 'a'.join()
-        elif node.id in self.namespace:
-          obj = self.namespace[node.id]
+        elif node.id in self.context.namespace:
+          obj = self.context.namespace[node.id]
           anno.setanno(node, 'live_val', obj)
           anno.setanno(node, 'fqn', (obj.__name__,))
         else:
-          raise ValueError('Could not find global symbol %s.' % node.id)
+          raise ValueError('Could not resolve symbol "%s".' % node.id)
       else:
         pass
         # TODO(mdan): Attempt to trace its value through the local chain.
         # TODO(mdan): Use type annotations as fallback.
+
+      if not symbol_is_modified:
+        if node.id in self.context.arg_values:
+          obj = self.context.arg_values[node.id]
+          anno.setanno(node, 'live_val', obj)
+          anno.setanno(node, 'fqn', (obj.__class__.__name__,))
     return node
 
   def visit_Attribute(self, node):
@@ -79,15 +83,25 @@ class LiveValueResolver(gast.NodeTransformer):
                                                          node.attr))
       anno.setanno(node, 'live_val', getattr(parent_object, node.attr))
       anno.setanno(node, 'fqn', anno.getanno(node.value, 'fqn') + (node.attr,))
+    # TODO(mdan): Investigate the role built-in annotations can play here.
+    elif anno.hasanno(node.value, 'type'):
+      parent_type = anno.getanno(node.value, 'type')
+      if hasattr(parent_type, node.attr):
+        # This should hold for static members like methods.
+        # This would not hold for dynamic members like function attributes.
+        # For the dynamic case, we simply leave the node without an annotation,
+        # and let downstream consumers figure out what to do.
+        anno.setanno(node, 'live_val', getattr(parent_type, node.attr))
+        anno.setanno(node, 'fqn',
+                     anno.getanno(node.value, 'type_fqn') + (node.attr,))
     elif isinstance(node.value, gast.Name):
       stem_name = node.value
       # All nonlocal symbols should be fully resolved.
       assert anno.hasanno(stem_name, 'is_local'), stem_name
-      assert anno.getanno(stem_name, 'is_local'), stem_name
       # TODO(mdan): Figure out what to do when calling attribute on local object
       # Maybe just leave as-is?
     return node
 
 
-def resolve(node, namespace, literals):
-  return LiveValueResolver(namespace, literals).visit(node)
+def resolve(node, context, literals):
+  return LiveValueResolver(context, literals).visit(node)

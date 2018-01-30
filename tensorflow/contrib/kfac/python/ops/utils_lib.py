@@ -24,6 +24,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long,wildcard-import
 
 _allowed_symbols = [
+    "set_global_constants",
     "SequenceDict",
     "tensors_to_column",
     "column_to_tensors",
