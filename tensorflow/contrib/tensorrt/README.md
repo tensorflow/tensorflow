@@ -15,11 +15,9 @@ configure script should find the necessary components from the system
 automatically. If installed from tar packages, user has to set path to
 location where the library is installed during configuration.
 
-In order to enable TensorRT support, user has to add `--config=tensorrt` to
-the build flags during the compilation such as
 
 ```
-bazel build --config=cuda --config=opt --config=tensorrt //tensorflow/tools/pip_package:build_pip_package
+bazel build --config=cuda --config=opt //tensorflow/tools/pip_package:build_pip_package
 bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/
 ```
 

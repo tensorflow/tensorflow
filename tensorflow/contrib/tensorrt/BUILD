@@ -215,7 +215,6 @@ tf_cuda_library(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
         "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler/costs:graph_properties",
-        #"//tensorflow/core/grappler/clusters:single_machine",
     ],
 )
 
