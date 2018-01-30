@@ -20,6 +20,7 @@ load(
     "tf_cuda_cc_test",
     "tf_cuda_library",
     "tf_custom_op_py_library",
+    "tf_copts",
 )
 load(
     "@local_config_tensorrt//:build_defs.bzl",
@@ -163,6 +164,7 @@ py_library(
 tf_py_wrap_cc(
     name = "wrap_conversion",
     srcs = ["trt_conversion.i"],
+    copts = tf_copts(),
     deps = [
         ":trt_conversion",
         "//tensorflow/core:framework_lite",
