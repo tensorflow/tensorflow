@@ -36,7 +36,7 @@ class Logger : public nvinfer1::ILogger {
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif // GOOGLE_TENSORRT
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
