@@ -209,9 +209,10 @@ cc_library(
     ],
     linkstatic = 1,
     deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:lib_proto_parsing",
-        "//third_party/eigen3",
+        "//tensorflow/core:graph",
+        # "//tensorflow/core:core_cpu",
+        # "//tensorflow/core:lib_proto_parsing",
+        # "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
