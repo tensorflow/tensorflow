@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -93,7 +94,8 @@ class LocalComputation {
  public:
   LocalComputation(Computation computation);
   StatusOr<CompiledLocalComputation*> Compile(
-      const std::vector<Shape>& argument_shapes);
+      const std::vector<Shape>& argument_shapes,
+      const ExecutableBuildOptions* build_options);
   const Computation& computation() const;
 
  private:

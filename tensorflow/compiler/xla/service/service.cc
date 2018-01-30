@@ -1619,14 +1619,14 @@ StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Service::Replicas(
 }
 
 Status Service::MaybeDumpHloModule(const HloModule& module) const {
-  const string xla_dump_prepass_hlo_proto_to =
-      module.config().debug_options().xla_dump_prepass_hlo_proto_to();
-  if (xla_dump_prepass_hlo_proto_to.empty()) {
+  const string xla_dump_unoptimized_hlo_proto_to =
+      module.config().debug_options().xla_dump_unoptimized_hlo_proto_to();
+  if (xla_dump_unoptimized_hlo_proto_to.empty()) {
     return Status::OK();
   }
   HloProto proto = MakeHloProto(module);
   return protobuf_util::DumpProtoToDirectory(
-      proto, xla_dump_prepass_hlo_proto_to, module.name());
+      proto, xla_dump_unoptimized_hlo_proto_to, module.name());
 }
 
 }  // namespace xla

@@ -1355,6 +1355,25 @@ class EstimatorPredictTest(test.TestCase):
     est.train(dummy_input_fn, steps=1)
     self.assertEqual(10., next(est.predict(dummy_input_fn)))
 
+  def test_predictionhooks_are_used(self):
+    hook = test.mock.MagicMock(
+        wraps=training.SessionRunHook(), spec=training.SessionRunHook)
+
+    def _model_fn_hooks(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]),
+          prediction_hooks=[hook])
+
+    est = estimator.Estimator(model_fn=_model_fn_hooks)
+    est.train(dummy_input_fn, steps=1)
+    self.assertFalse(hook.begin.called)
+    next(est.predict(dummy_input_fn))
+    self.assertTrue(hook.begin.called)
+
   def test_warn_if_no_queue_runner(self):
 
     def _model_fn(features, labels, mode):

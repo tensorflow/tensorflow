@@ -96,6 +96,7 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
     return node
 
   def _gate_symbols(self, guard_statement, guarded_args):
+    # TODO(mdan): This won't work for variables.
     template = """
       (args,) = (tf.identity(a) for a in (args,))
     """
@@ -135,8 +136,8 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
       # First, attempt to gate future evaluation of args. If that's not
       # possible, gate all remaining statements (and that may fail too, see
       # _visit_and_reindent.
-      guarded_args = tuple(
-          n for n in args_scope.used if n in args_scope.parent.modified)
+      guarded_args = tuple(args_scope.used & (args_scope.parent.modified
+                                              | args_scope.parent.returned))
       if guarded_args:
         node = tuple(statements[:-1]) + (
             self._gate_symbols(control_deps_guard, guarded_args),)

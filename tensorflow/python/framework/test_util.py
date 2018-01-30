@@ -320,12 +320,17 @@ def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
   prev_value = ops._USE_C_API
   ops._USE_C_API = use_c_api
   try:
-    with ops.Graph().as_default():
-      fn(*args, **kwargs)
+    # Reset the default graph so it has the C API enabled. We call
+    # reset_default_graph() instead of creating a new default Graph context to
+    # make this robust to tests that call reset_default_graph(), which requires
+    # that the current default graph isn't nested.
+    ops.reset_default_graph()
+    fn(*args, **kwargs)
   finally:
     ops._USE_C_API = prev_value
-
-
+    # Make sure default graph reflects prev_value in case next test doesn't call
+    # reset_default_graph().
+    ops.reset_default_graph()
 # pylint: disable=protected-access
 
 
