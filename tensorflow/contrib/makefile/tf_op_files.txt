@@ -91,6 +91,7 @@ tensorflow/core/kernels/reduction_ops_max.cc
 tensorflow/core/kernels/reduction_ops_common.cc
 tensorflow/core/kernels/reduction_ops_any.cc
 tensorflow/core/kernels/reduction_ops_all.cc
+tensorflow/core/kernels/roll_op.cc
 tensorflow/core/kernels/queue_ops.cc
 tensorflow/core/kernels/queue_base.cc
 tensorflow/core/kernels/pooling_ops_common.cc
@@ -270,6 +271,7 @@ tensorflow/core/ops/parsing_ops.cc
 tensorflow/core/ops/no_op.cc
 tensorflow/core/ops/nn_ops.cc
 tensorflow/core/ops/nn_grad.cc
+tensorflow/core/ops/manip_ops.cc
 tensorflow/core/ops/math_ops.cc
 tensorflow/core/ops/math_grad.cc
 tensorflow/core/ops/logging_ops.cc

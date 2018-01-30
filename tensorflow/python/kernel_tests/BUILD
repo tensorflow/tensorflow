@@ -1602,6 +1602,19 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "manip_ops_test",
+    size = "small",
+    srcs = ["manip_ops_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:manip_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+    tags = ["no_windows_gpu"],
+)
+
+cuda_py_test(
     name = "matmul_op_test",
     size = "small",
     srcs = ["matmul_op_test.py"],
