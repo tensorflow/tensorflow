@@ -23,6 +23,7 @@ import six
 
 from tensorflow.contrib.py2tf import config
 from tensorflow.contrib.py2tf import naming
+from tensorflow.contrib.py2tf.converters import asserts
 from tensorflow.contrib.py2tf.converters import break_canonicalization
 from tensorflow.contrib.py2tf.converters import builtin_functions
 from tensorflow.contrib.py2tf.converters import call_trees
@@ -245,6 +246,7 @@ def node_to_graph(node, ctx, nocompile_decorators):
   node = _static_analysis_pass(node, ctx)
   node = decorators.transform(node, nocompile_decorators)
   node = break_canonicalization.transform(node, ctx.namer)
+  node = asserts.transform(node, ctx)
 
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
