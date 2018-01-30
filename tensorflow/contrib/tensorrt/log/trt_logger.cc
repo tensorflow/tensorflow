@@ -12,14 +12,13 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
-
 #include "tensorflow/core/platform/logging.h"
 
 // Use TF logging for TensorRT informations
-
-
 namespace tensorflow {
 namespace tensorrt {
 
@@ -50,6 +49,8 @@ void Logger::log(Severity severity, const char* msg) {
     }
   }
 }
-
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif
+#endif
