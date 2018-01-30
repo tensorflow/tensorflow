@@ -42,7 +42,7 @@ bindings.
 * [NASM](http://www.nasm.us/)/[YASM](http://yasm.tortall.net/) (optional, for full grpc build)
 
 * Additional pre-requisites for Microsoft Windows:
-  - Visual Studio 2015 (latest version of MSVC 2017 is not suppored by CUDA yet, try it on your own)
+  - Visual Studio 2015 (latest version of MSVC 2017 is not supported by CUDA yet, try it on your own risk)
   - Python 3.5
   - NumPy 1.11.0 or later
 
