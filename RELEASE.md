@@ -2,8 +2,6 @@
 
 ## Breaking Changes
 * Prebuilt binaries are now built against CUDA 9 and cuDNN 7.
-* Our Linux binaries are built using ubuntu 16 containers, potentially
-  introducing glibc incompatibility issues with ubuntu 14.
 * Starting from 1.6 release, our prebuilt binaries will use AVX instructions.
   This may break TF on older CPUs.
 
