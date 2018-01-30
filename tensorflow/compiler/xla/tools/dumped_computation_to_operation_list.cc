@@ -85,12 +85,10 @@ void RealMain(tensorflow::gtl::ArraySlice<char*> args) {
     for (int i = 0; i < program_shape->parameters_size(); ++i) {
       layouts.push_back(&program_shape->parameters(i));
     }
-    ExecutableBuildOptions build_options;
-    build_options.set_device_ordinal(0);
-    build_options.set_result_layout(program_shape->result());
     StatusOr<std::unique_ptr<Executable>> executable =
-        local_service->CompileExecutable(computation.handle(), layouts,
-                                         build_options);
+        local_service->CompileExecutable(
+            computation.handle(), layouts, &program_shape->result(),
+            /*device_ordinal=*/0, /*device_allocator=*/nullptr);
 
     const HloModule& module = executable.ValueOrDie()->module();
 
