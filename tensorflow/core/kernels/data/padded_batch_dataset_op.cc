@@ -376,7 +376,7 @@ class PaddedBatchDatasetOp : public UnaryDatasetOpKernel {
 
           // 2. Copy each batch element to the appropriate location in
           // the output component tensor.
-          Tensor batch_component(cpu_allocator(),
+          Tensor batch_component(ctx->allocator({}),
                                  output_dtypes()[component_index],
                                  batch_component_shape);
           TF_RETURN_IF_ERROR(SetElementZero(

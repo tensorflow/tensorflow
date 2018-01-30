@@ -205,7 +205,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
   struct Item : public core::RefCounted {
-    const Graph* graph = nullptr;  // Owned by exec.
+    const Graph* graph = nullptr;                            // Owned by exec.
     const FunctionLibraryDefinition* overlay_lib = nullptr;  // Not owned.
     FunctionBody* func_graph = nullptr;
     Executor* exec = nullptr;

@@ -89,9 +89,9 @@ class MasterService final {
     ::grpc::Status ExtendSession(::grpc::ClientContext* context,
                                  const ExtendSessionRequest& request,
                                  ExtendSessionResponse* response) override;
-    ::grpc::Status PartialRunSetup(
-        ::grpc::ClientContext* context, const PartialRunSetupRequest& request,
-        PartialRunSetupResponse* response) override;
+    ::grpc::Status PartialRunSetup(::grpc::ClientContext* context,
+                                   const PartialRunSetupRequest& request,
+                                   PartialRunSetupResponse* response) override;
     ::grpc::Status RunStep(::grpc::ClientContext* context,
                            const RunStepRequest& request,
                            RunStepResponse* response) override;

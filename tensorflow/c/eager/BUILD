@@ -46,6 +46,7 @@ tf_cuda_library(
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_internal",

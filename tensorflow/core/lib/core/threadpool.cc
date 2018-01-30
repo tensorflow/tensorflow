@@ -66,7 +66,9 @@ struct EigenEnvironment {
     }
     return Task{
         std::unique_ptr<TaskImpl>(new TaskImpl{
-            std::move(f), Context(ContextKind::kThread), id,
+            std::move(f),
+            Context(ContextKind::kThread),
+            id,
         }),
     };
   }

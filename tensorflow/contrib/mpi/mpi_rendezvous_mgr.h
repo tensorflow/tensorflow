@@ -18,12 +18,12 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_MPI
 
-#include <queue>
-#include <thread>
 #include <list>
-#include <string>
-#include <memory>
 #include <map>
+#include <memory>
+#include <queue>
+#include <string>
+#include <thread>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -161,7 +161,8 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
  private:
   typedef std::function<MPISendTensorCall*(
       const Status&, const Rendezvous::Args&, const Rendezvous::Args&,
-      const Tensor&, const bool, MPISendTensorCall*)> MPIRecvTensorCallBack;
+      const Tensor&, const bool, MPISendTensorCall*)>
+      MPIRecvTensorCallBack;
 
   typedef std::pair<std::string, std::function<void()>> RequestQueueEntry;
   typedef std::pair<std::string, std::function<MPISendTensorCall*()>>
