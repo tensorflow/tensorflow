@@ -1560,10 +1560,11 @@ def make_strided_slice_tests(zip_path):
           "input_shape": [[12, 2, 2, 5]],
           "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
           "end": [[8, 2, 2, 3], [12, 2, 2, 5]],
-          "strides": [None, [1, 1, 1, 1], [2, 1, 3, 1]],
-          "begin_mask": [None, 1, 2, 8],
-          "end_mask": [None, 1, 2, 8],
-          "shrink_axis_mask": [None, 1, 2, 4, 8, 11, 15, -1],
+          "strides": [None, [2, 1, 3, 1]],
+          "begin_mask": [None, 1, 8],
+          "end_mask": [None, 1, 8],
+          "shrink_axis_mask": [None, 1, 8, 11, 15, -1],
+          "constant_indices": [False, True],
       },
       # 2-D
       {
@@ -1572,10 +1573,11 @@ def make_strided_slice_tests(zip_path):
           "input_shape": [[2, 3]],
           "begin": [[0, 0], [1, 0]],
           "end": [[2, 3], [2, 2]],
-          "strides": [None, [1, 1], [2, 2]],
+          "strides": [None, [2, 2]],
           "begin_mask": [None, 1, 2],
           "end_mask": [None, 1, 2],
           "shrink_axis_mask": [None, 1, 2, 3, -1],
+          "constant_indices": [False, True],
       },
       # Negative strides
       {
@@ -1588,6 +1590,7 @@ def make_strided_slice_tests(zip_path):
           "begin_mask": [None, 1, 2],
           "end_mask": [None, 1, 2],
           "shrink_axis_mask": [None, 1, 2, 3, -1],
+          "constant_indices": [False],
       },
   ]
 
@@ -1597,23 +1600,29 @@ def make_strided_slice_tests(zip_path):
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    begin = tf.placeholder(
-        dtype=parameters["index_type"],
-        name="begin",
-        shape=[len(parameters["input_shape"])])
-    end = tf.placeholder(
-        dtype=parameters["index_type"],
-        name="end",
-        shape=[len(parameters["input_shape"])])
-    strides = (
-        tf.placeholder(
-            dtype=parameters["index_type"],
-            name="strides",
-            shape=[len(parameters["input_shape"])])
-        if parameters["strides"] is not None else None)
-    tensors = [input_tensor, begin, end]
-    if strides is not None:
-      tensors.append(strides)
+    if parameters["constant_indices"]:
+      begin = parameters["begin"]
+      end = parameters["end"]
+      strides = parameters["strides"]
+      tensors = [input_tensor]
+    else:
+      begin = tf.placeholder(
+          dtype=parameters["index_type"],
+          name="begin",
+          shape=[len(parameters["input_shape"])])
+      end = tf.placeholder(
+          dtype=parameters["index_type"],
+          name="end",
+          shape=[len(parameters["input_shape"])])
+      strides = (
+          tf.placeholder(
+              dtype=parameters["index_type"],
+              name="strides",
+              shape=[len(parameters["input_shape"])])
+          if parameters["strides"] is not None else None)
+      tensors = [input_tensor, begin, end]
+      if strides is not None:
+        tensors.append(strides)
     out = tf.strided_slice(
         input_tensor,
         begin,
@@ -1628,14 +1637,17 @@ def make_strided_slice_tests(zip_path):
     input_values = create_tensor_data(parameters["dtype"],
                                       parameters["input_shape"])
     index_type = _TF_TYPE_INFO[parameters["index_type"]][0]
-    begin_values = np.array(parameters["begin"]).astype(index_type)
-    end_values = np.array(parameters["end"]).astype(index_type)
-    stride_values = (
-        np.array(parameters["strides"]).astype(index_type)
-        if parameters["strides"] is not None else None)
-    values = [input_values, begin_values, end_values]
-    if stride_values is not None:
-      values.append(stride_values)
+    values = [input_values]
+    if not parameters["constant_indices"]:
+      begin_values = np.array(parameters["begin"]).astype(index_type)
+      end_values = np.array(parameters["end"]).astype(index_type)
+      stride_values = (
+          np.array(parameters["strides"]).astype(index_type)
+          if parameters["strides"] is not None else None)
+      values.append(begin_values)
+      values.append(end_values)
+      if stride_values is not None:
+        values.append(stride_values)
 
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
