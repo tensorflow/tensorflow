@@ -107,4 +107,15 @@ xla::StatusOr<xla::ComputationDataHandle> UpdateSliceInMinorDims(
   return UpdateSlice(builder, x, update, padded_start);
 }
 
+xla::StatusOr<xla::ComputationDataHandle> TransposeInMinorDims(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x) {
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<xla::Shape> shape, builder->GetShape(x));
+  const int64 n_dims = xla::ShapeUtil::Rank(*shape);
+  TF_RET_CHECK(n_dims >= 2);
+  std::vector<int64> permutation(n_dims);
+  std::iota(permutation.begin(), permutation.end(), 0);
+  std::swap(permutation[n_dims - 1], permutation[n_dims - 2]);
+  return builder->Transpose(x, permutation);
+}
+
 }  // namespace tensorflow

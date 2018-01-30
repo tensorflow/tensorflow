@@ -242,6 +242,9 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
           full_tensor_name = full_tensor_name[1:]
         if tensor_name_in_ckpt != "/":
           full_tensor_name = tensor_name_in_ckpt + full_tensor_name
+        # Remove trailing '/', if any, in the full_tensor_name
+        if full_tensor_name.endswith("/"):
+          full_tensor_name = full_tensor_name[:-1]
         if full_tensor_name not in variable_map:
           raise ValueError(
               "Tensor %s (%s in %s) is not found in %s checkpoint" % (

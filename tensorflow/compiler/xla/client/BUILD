@@ -81,12 +81,25 @@ cc_library(
 )
 
 cc_library(
+    name = "executable_build_options",
+    srcs = ["executable_build_options.cc"],
+    hdrs = ["executable_build_options.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "local_client",
     srcs = ["local_client.cc"],
     hdrs = ["local_client.h"],
     deps = [
         ":client",
         ":computation",
+        ":executable_build_options",
         "//tensorflow/compiler/xla:executable_run_options",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
