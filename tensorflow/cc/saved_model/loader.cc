@@ -96,9 +96,7 @@ Status FindMetaGraphDefToLoad(const SavedModel& saved_model_proto,
 Status LoadMetaGraphIntoSession(const MetaGraphDef& meta_graph_def,
                                 const SessionOptions& session_options,
                                 std::unique_ptr<Session>* session) {
-  Session* session_p = nullptr;
-  TF_RETURN_IF_ERROR(NewSession(session_options, &session_p));
-  session->reset(session_p);
+  session->reset(NewSession(session_options));
   return (*session)->Create(meta_graph_def.graph_def());
 }
 
