@@ -153,10 +153,11 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "
           "(operator name: %s)" % op.name)
-    # pylint: enable=protected-access
     if _TPU_REPLICATE_ATTR in op.node_def.attr:
       raise ValueError("TPU computations cannot be nested")
-    op.node_def.attr[_TPU_REPLICATE_ATTR].s = compat.as_bytes(self._name)
+    op._set_attr(_TPU_REPLICATE_ATTR,
+                 attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
+    # pylint: enable=protected-access
     op.graph.prevent_feeding(op)
     op.graph.prevent_fetching(op)
 

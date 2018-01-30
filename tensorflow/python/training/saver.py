@@ -1229,7 +1229,7 @@ class Saver(object):
         The `saver_def` proto should be the one returned by the
         `as_saver_def()` call of the `Saver` that was created for that `Graph`.
       builder: Optional `SaverBuilder` to use if a `saver_def` was not provided.
-        Defaults to `BaseSaverBuilder()`.
+        Defaults to `BulkSaverBuilder()`.
       defer_build: If `True`, defer adding the save and restore ops to the
         `build()` call. In that case `build()` should be called before
         finalizing the graph or using the saver.
@@ -1309,7 +1309,7 @@ class Saver(object):
 
     if not self.saver_def or context.in_eager_mode():
       if self._builder is None:
-        self._builder = BaseSaverBuilder(self._write_version)
+        self._builder = BulkSaverBuilder(self._write_version)
 
       if self._var_list is None:
         # pylint: disable=protected-access

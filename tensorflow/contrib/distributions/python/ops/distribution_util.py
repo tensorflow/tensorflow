@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import linalg
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
@@ -440,6 +441,44 @@ def maybe_check_scalar_distribution(
     check_is_scalar(distribution.is_scalar_event(), "is_scalar_event")
     check_is_scalar(distribution.is_scalar_batch(), "is_scalar_batch")
     return assertions
+
+
+def pad_mixture_dimensions(x, mixture_distribution, categorical_distribution,
+                           event_ndims):
+  """Pad dimensions of event tensors for mixture distributions.
+
+  See `Mixture._sample_n` and `MixtureSameFamily._sample_n` for usage examples.
+
+  Args:
+    x: event tensor to pad.
+    mixture_distribution: Base distribution of the mixture.
+    categorical_distribution: `Categorical` distribution that mixes the base
+      distribution.
+    event_ndims: Integer specifying the number of event dimensions in the event
+      tensor.
+
+  Returns:
+    A padded version of `x` that can broadcast with `categorical_distribution`.
+  """
+  with ops.name_scope("pad_mix_dims", values=[x]):
+    def _get_ndims(d):
+      if d.batch_shape.ndims is not None:
+        return d.batch_shape.ndims
+      return array_ops.shape(d.batch_shape_tensor())[0]
+    dist_batch_ndims = _get_ndims(mixture_distribution)
+    cat_batch_ndims = _get_ndims(categorical_distribution)
+    pad_ndims = array_ops.where(
+        categorical_distribution.is_scalar_batch(),
+        dist_batch_ndims,
+        dist_batch_ndims - cat_batch_ndims)
+    s = array_ops.shape(x)
+    x = array_ops.reshape(x, shape=array_ops.concat([
+        s[:-1],
+        array_ops.ones([pad_ndims], dtype=dtypes.int32),
+        s[-1:],
+        array_ops.ones([event_ndims], dtype=dtypes.int32),
+    ], axis=0))
+    return x
 
 
 def static_value(x):

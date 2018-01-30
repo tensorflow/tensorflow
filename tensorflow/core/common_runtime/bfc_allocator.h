@@ -127,10 +127,10 @@ class BFCAllocator : public VisitableAllocator {
     string DebugString(BFCAllocator* a,
                        bool recurse) NO_THREAD_SAFETY_ANALYSIS {
       string dbg;
-      strings::StrAppend(&dbg, "  Size: ", strings::HumanReadableNumBytes(size),
-                         " | Requested Size: ",
-                         strings::HumanReadableNumBytes(requested_size),
-                         " | in_use: ", in_use());
+      strings::StrAppend(
+          &dbg, "  Size: ", strings::HumanReadableNumBytes(size),
+          " | Requested Size: ", strings::HumanReadableNumBytes(requested_size),
+          " | in_use: ", in_use());
       if (recurse && prev != BFCAllocator::kInvalidChunkHandle) {
         Chunk* p = a->ChunkFromHandle(prev);
         strings::StrAppend(&dbg, ", prev: ", p->DebugString(a, false));

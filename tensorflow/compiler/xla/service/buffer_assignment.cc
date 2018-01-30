@@ -997,14 +997,15 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       auto color = single_colored_set.first;
       VLOG(2) << "Simulating heap for color " << color;
       int64 alignment = assignment->color_alignment_(color);
+      HeapSimulator::Options options;
+      options.buffers_to_assign = &single_colored_set.second;
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
           HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
                                  MakeUnique<LazyBestFitHeap>(alignment)),
                              assignment->module(), module_sequence,
                              assignment->points_to_analysis(),
-                             assignment->buffer_size_,
-                             &single_colored_set.second));
+                             assignment->buffer_size_, options));
       AssignBuffersFromHeapSimulator(result, assignment,
                                      single_colored_set.first);
     }
@@ -1024,14 +1025,15 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         auto color = single_colored_set.first;
         VLOG(2) << "Simulating heap for color " << color;
         int64 alignment = assignment->color_alignment_(color);
+        HeapSimulator::Options options;
+        options.buffers_to_assign = &single_colored_set.second;
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
             HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
                                    MakeUnique<LazyBestFitHeap>(alignment)),
                                *computation, *instruction_sequence,
                                assignment->points_to_analysis(),
-                               assignment->buffer_size_,
-                               &single_colored_set.second));
+                               assignment->buffer_size_, options));
         AssignBuffersFromHeapSimulator(result, assignment,
                                        single_colored_set.first);
       }

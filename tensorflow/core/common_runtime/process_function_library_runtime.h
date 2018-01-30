@@ -85,7 +85,7 @@ class ProcessFunctionLibraryRuntime {
 
   static const char kDefaultFLRDevice[];
   // Returns the FunctionLibraryRuntime for the corresponding device_name.
-  FunctionLibraryRuntime* GetFLR(const string& device_name);
+  FunctionLibraryRuntime* GetFLR(const string& device_name) const;
 
   // Returns the device incarnation for the given device_name.
   Status GetDeviceIncarnation(const string& device_name, int64* incarnation);

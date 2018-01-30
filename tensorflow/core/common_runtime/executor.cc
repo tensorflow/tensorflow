@@ -1609,7 +1609,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         auto done = [this, state]() {
           Device* device = impl_->params_.device;
           NodeExecStatsWrapper* stats = state->stats;  // Shorthand
-          Entry* first_input = state->first_input;  // Shorthand
+          Entry* first_input = state->first_input;     // Shorthand
 
           nodestats::SetOpEnd(stats);
           EntryVector outputs;
