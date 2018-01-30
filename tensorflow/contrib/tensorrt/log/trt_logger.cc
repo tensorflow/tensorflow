@@ -19,7 +19,6 @@ limitations under the License.
 
 // Use TF logging for TensorRT informations
 
-#define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
 
 namespace tensorflow {
 namespace tensorrt {
