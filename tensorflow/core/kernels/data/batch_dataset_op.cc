@@ -92,7 +92,6 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
    private:
-
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)

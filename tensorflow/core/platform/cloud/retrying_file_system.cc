@@ -25,7 +25,6 @@ namespace tensorflow {
 
 namespace {
 
-
 class RetryingRandomAccessFile : public RandomAccessFile {
  public:
   RetryingRandomAccessFile(std::unique_ptr<RandomAccessFile> base_file,

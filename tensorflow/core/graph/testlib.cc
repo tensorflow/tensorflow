@@ -40,7 +40,7 @@ REGISTER_KERNEL_BUILDER(
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(
     Name("HostConst").Device(DEVICE_SYCL).HostMemory("output"), HostConstantOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Register the HostConst Op
 // Returns a constant tensor on the host.  Useful for writing C++ tests
