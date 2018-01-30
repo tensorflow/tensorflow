@@ -1419,11 +1419,6 @@ def main():
       if not is_windows():
         set_gcc_host_compiler_path(environ_cp)
     set_other_cuda_vars(environ_cp)
-    # superceeded by call above
-    # enable tensorrt if desired. Disabled on non-linux
-    # set_action_env_var(environ_cp, 'TF_NEED_TENSORRT', 'TensorRT', False)
-    # if environ_cp.get('TF_NEED_TENSORRT') == '1':
-    #   set_tf_trt_version(environ_cp)
 
   set_build_var(environ_cp, 'TF_NEED_MPI', 'MPI', 'with_mpi_support', False)
   if environ_cp.get('TF_NEED_MPI') == '1':
