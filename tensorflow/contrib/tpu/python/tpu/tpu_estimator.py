@@ -215,16 +215,11 @@ class _TPUContext(object):
   def is_running_on_cpu(self):
     """Determines whether the input_fn and model_fn should be invoked on CPU."""
     mode = self._assert_mode()
-    return ((not self._use_tpu) or mode == model_fn_lib.ModeKeys.PREDICT or
-            (mode == model_fn_lib.ModeKeys.EVAL and
-             self._eval_batch_size is None))
+    return (not self._use_tpu) or mode == model_fn_lib.ModeKeys.PREDICT
 
   @property
   def global_batch_size(self):
     mode = self._assert_mode()
-    if mode == model_fn_lib.ModeKeys.EVAL and self._eval_batch_size is None:
-      raise RuntimeError('Internal error, EVAL on TPU is not enabled, but '
-                         '`global_batch_size` is called.')
     return (self._train_batch_size
             if mode == model_fn_lib.ModeKeys.TRAIN else self._eval_batch_size)
 
@@ -232,9 +227,6 @@ class _TPUContext(object):
   def batch_size_for_input_fn(self):
     """Returns the shard batch size for `input_fn`."""
     mode = self._assert_mode()
-    # Special case for eval.
-    if mode == model_fn_lib.ModeKeys.EVAL and self._eval_batch_size is None:
-      return None
     if self.is_running_on_cpu():
       if mode == model_fn_lib.ModeKeys.TRAIN:
         return self._train_batch_size
@@ -255,9 +247,6 @@ class _TPUContext(object):
   def batch_size_for_model_fn(self):
     """Returns the shard batch size for `model_fn`."""
     mode = self._assert_mode()
-    # Special case for eval.
-    if mode == model_fn_lib.ModeKeys.EVAL and self._eval_batch_size is None:
-      return None
     if self.is_running_on_cpu():
       if mode == model_fn_lib.ModeKeys.TRAIN:
         return self._train_batch_size
@@ -1464,29 +1453,27 @@ class TPUEstimator(estimator_lib.Estimator):
   replicating inputs and models for each core, and returning to host
   periodically to run hooks.
 
-  If `use_tpu` is false, all training, evaluation, and predict are executed on
-  CPU.
+  TPUEstimator transforms a global batch size in params to a per-shard batch
+  size when calling the `input_fn` and `model_fn`. Users should specify
+  global batch size in constructor, and then get the batch size for each shard
+  in `input_fn` and `model_fn` by `params['batch_size']`.
+  For training, `model_fn` gets per-core batch size; `input_fn` may get
+  per-core or per-host batch size depending on
+  `per_host_input_for_training` in `TPUConfig`.
+  For evaluation, `model_fn` gets per-core batch size and `input_fn` get
+  per-host batch size.
 
-  For training, TPUEstimator transforms a global batch size in params to a
-  per-shard batch size when calling the `input_fn` and `model_fn`. Users should
-  specify `train_batch_size` in constructor, and then get the batch size for
-  each shard in `input_fn` and `model_fn` by `params['batch_size']`. If
-  `TPUConfig.per_host_input_for_training` is `True`, `input_fn` is invoked per
-  host rather than per core. In this case, a global batch size is transformed a
-  per-host batch size in params for `input_fn`, but `model_fn` still gets
-  per-core batch size.
-
-  For evaluation, if `eval_batch_size` is None, it is executed on CPU, even if
-  `use_tpu` is `True`. If `eval_batch_size` is not `None`, it is executed on
-  TPU, which is an experimental feature. In this case, `model_fn` should return
-  `TPUEstimatorSpec` instead of `EstimatorSpec`, which expects the
-  `eval_metrics` for TPU evaluation.
-
+  `model_fn` should return `TPUEstimatorSpec`, which expects the `eval_metrics`
+  for TPU evaluation.
   `TPUEstimatorSpec.eval_metrics` is a tuple of `metric_fn` and `tensors`, where
   `tensors` could be a list of `Tensor`s or dict of names to `Tensor`s. (See
   `TPUEstimatorSpec` for details).  `metric_fn` takes the `tensors` and returns
   a dict from metric string name to the result of calling a metric function,
   namely a `(metric_tensor, update_op)` tuple.
+
+  One can set `use_tpu` to `False` for testing. All training, evaluation, and
+  predict will be executed on CPU. `input_fn` and `model_fn` will receive
+  `train_batch_size` or `eval_batch_size` unmodified as `params['batch_size']`.
 
   Current limitations:
 
@@ -1560,8 +1547,7 @@ class TPUEstimator(estimator_lib.Estimator):
         basic python types. There are reserved keys for `TPUEstimator`,
         including 'batch_size'.
       use_tpu: A bool indicating whether TPU support is enabled. Currently,
-        - TPU training respects this bit.
-        - If true, see `eval_batch_size` for evaluate support.
+        - TPU training and evaluation respect this bit.
         - Predict still happens on CPU.
       train_batch_size: An int representing the global training batch size.
         TPUEstimator transforms this global batch size to a per-shard batch
@@ -1569,9 +1555,7 @@ class TPUEstimator(estimator_lib.Estimator):
         Cannot be `None` if `use_tpu` is `True`. Must be divisible by
         `config.tpu_config.num_shards`.
       eval_batch_size: An int representing the global training batch size.
-        Currently, if `None`, evaluation is still executed on CPU (even when
-        `use_tpu` is True). In near future, `use_tpu` will be the only option to
-        switch between TPU/CPU evaluation.
+        Must be divisible by `config.tpu_config.num_shards`.
       batch_axis: A python tuple of int values describing how each tensor
         produced by the Estimator `input_fn` should be split across the TPU
         compute shards. For example, if your input_fn produced (images, labels)
@@ -1611,10 +1595,10 @@ class TPUEstimator(estimator_lib.Estimator):
             .format(train_batch_size, config.tpu_config.num_shards))
 
       if eval_batch_size is not None:
-        if config.tpu_config.num_shards > 8:
-          raise NotImplementedError(
-              'TPU evaluation is only supported with one host.')
-
+        if not isinstance(eval_batch_size, int):
+          raise ValueError('`eval_batch_size` must be an int')
+        if eval_batch_size < 1:
+          raise ValueError('`eval_batch_size` must be positive')
         if eval_batch_size % config.tpu_config.num_shards != 0:
           raise ValueError(
               'eval batch size {} must be divisible by number of shards {}'
@@ -1686,6 +1670,14 @@ class TPUEstimator(estimator_lib.Estimator):
       raise ValueError('Evaluate `steps` must be set on TPU. Cannot be `None`.')
 
     util_lib.check_positive_integer(steps, 'Eval steps')
+
+    if self._config.tpu_config.num_shards > 8:
+      raise NotImplementedError(
+          'TPU evaluation is only supported with one host.')
+
+    if self._ctx._eval_batch_size is None:  # pylint: disable=protected-access
+      raise ValueError('`eval_batch_size` cannot be `None`'
+                       'if evaluate() is called on TPU.')
 
     return [
         evaluation._StopAfterNEvalsHook(  # pylint: disable=protected-access
