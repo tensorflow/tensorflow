@@ -222,7 +222,7 @@ def has_inf_or_nan(datum, tensor):
     # Also return False for data types that cannot be represented as numpy
     # arrays.
     return False
-  elif (np.issubdtype(tensor.dtype, np.float) or
+  elif (np.issubdtype(tensor.dtype, np.floating) or
         np.issubdtype(tensor.dtype, np.complex) or
         np.issubdtype(tensor.dtype, np.integer)):
     return np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
