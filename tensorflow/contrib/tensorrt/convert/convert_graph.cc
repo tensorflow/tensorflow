@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
+
 #include <list>
 #include <map>
 #include <set>
@@ -28,10 +30,6 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
-#include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
-
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/grappler/devices.h"
@@ -39,11 +37,13 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/protobuf/device_properties.pb.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-#include "tensorflow/contrib/tensorrt/convert/convert_graph.h"
 #include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorrt/include/NvInfer.h"
@@ -119,14 +119,15 @@ std::unordered_map<std::string, std::vector<int>> BuildTensorNameMap(
 }
 
 tensorflow::Status ConvertSubGraphToTensorRT(
-    tensorflow::Graph& graph, const std::vector<std::string>& output_names,
+    const std::vector<std::string>& output_names,
     const std::set<int>& subgraph_node_ids,
     size_t max_batch_size,  // max batch size that engine will be created for
     // max amount of memory that engine will be allowed to consume, in bytes
     size_t max_workspace_size,
-    const tensorflow::grappler::GraphProperties& graph_properties) {
+    const tensorflow::grappler::GraphProperties& graph_properties,
+    tensorflow::Graph* graph) {
   tensorflow::EdgeSet subgraph_incoming_edges;
-  GetSubGraphIncomingEdges(graph, subgraph_node_ids, &subgraph_incoming_edges);
+  GetSubGraphIncomingEdges(*graph, subgraph_node_ids, &subgraph_incoming_edges);
 
   std::vector<std::pair<int, int>> subgraph_inputs;
 
@@ -138,7 +139,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   // Collect outputs referenced from output_names
   auto output_name_to_index_map = BuildTensorNameMap(output_names);
   for (int node_id : subgraph_node_ids) {
-    tensorflow::Node* node = graph.FindNodeId(node_id);
+    tensorflow::Node* node = graph->FindNodeId(node_id);
     if (output_name_to_index_map.count(node->name())) {
       for (int index : output_name_to_index_map.at(node->name())) {
         subgraph_outputs_set.insert({node_id, index});
@@ -147,7 +148,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   }
   // Collect outputs referenced from outgoing edges
   tensorflow::EdgeSet subgraph_outgoing_edges;
-  GetSubGraphOutgoingEdges(graph, subgraph_node_ids, &subgraph_outgoing_edges);
+  GetSubGraphOutgoingEdges(*graph, subgraph_node_ids, &subgraph_outgoing_edges);
   for (const tensorflow::Edge* edge : subgraph_outgoing_edges) {
     subgraph_outputs_set.insert({edge->src()->id(), edge->src_output()});
   }
@@ -157,10 +158,10 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   // Build TensorRT node and add it to the graph
   tensorflow::NodeDef trt_node_def;
   TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRTNodeDef(
-      graph, subgraph_node_ids, subgraph_inputs, subgraph_outputs,
+      *graph, subgraph_node_ids, subgraph_inputs, subgraph_outputs,
       max_batch_size, max_workspace_size, graph_properties, &trt_node_def));
   tensorflow::Status status;
-  tensorflow::Node* trt_node = graph.AddNode(trt_node_def, &status);
+  tensorflow::Node* trt_node = graph->AddNode(trt_node_def, &status);
 
   TF_RETURN_IF_ERROR(status);
 
@@ -173,16 +174,16 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   for (const tensorflow::Edge* edge : subgraph_outgoing_edges) {
     std::pair<int, int> old_src = {edge->src()->id(), edge->src_output()};
     int new_src_output = subgraph_edge_to_output_map.at(old_src);
-    graph.UpdateEdge(trt_node, new_src_output, edge->dst(), edge->dst_input());
+    graph->UpdateEdge(trt_node, new_src_output, edge->dst(), edge->dst_input());
   }
   // Remove the original subgraph
   for (int node_id : subgraph_node_ids) {
-    tensorflow::Node* node = graph.FindNodeId(node_id);
+    tensorflow::Node* node = graph->FindNodeId(node_id);
     // Don't remove the input placeholders
     if (node->type_string() == "Placeholder") {
       continue;
     }
-    graph.RemoveNode(node);
+    graph->RemoveNode(node);
   }
   return tensorflow::Status::OK();
 }
@@ -213,16 +214,16 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   // layout optimization
   item.graph = graph_def;
   tensorflow::grappler::LayoutOptimizer optimizer;
-  tensorflow::grappler::Cluster* gCluster;
+  tensorflow::grappler::Cluster* cluster;
 
   // virtual cluster
   tensorflow::DeviceProperties device_properties;
   device_properties.set_type("GPU");
   device_properties.mutable_environment()->insert({"architecture", "6"});
-  gCluster =
+  cluster =
       new tensorflow::grappler::VirtualCluster({{"/GPU:0", device_properties}});
 
-  tensorflow::Status status = optimizer.Optimize(gCluster, item, &gdef);
+  tensorflow::Status status = optimizer.Optimize(cluster, item, &gdef);
 
   if (status != tensorflow::Status::OK()) return status;
 
@@ -267,8 +268,8 @@ tensorflow::Status ConvertGraphDefToTensorRT(
       subgraph_node_ids.insert(node_map.at(node_name)->id());
     }
     TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRT(
-        graph, output_names, subgraph_node_ids, max_batch_size,
-        max_workspace_size, static_graph_properties));
+        output_names, subgraph_node_ids, max_batch_size, max_workspace_size,
+        static_graph_properties, &graph));
   }
   graph.ToGraphDef(new_graph_def);
   return tensorflow::Status::OK();

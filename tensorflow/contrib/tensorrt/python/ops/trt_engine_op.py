@@ -31,5 +31,3 @@ if platform.system() != "Windows":
       resource_loader.get_path_to_datafile("_trt_engine_op.so"))
 else:
   raise RuntimeError("Windows platforms are not supported")
-
-

@@ -16,13 +16,18 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_SHAPE_FN_TRT_SHFN_H_
 #define TENSORFLOW_CONTRIB_TENSORRT_SHAPE_FN_TRT_SHFN_H_
 
-#include "tensorflow/core/framework/shape_inference.h"
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/framework/shape_inference.h"
 
 namespace tensorflow {
 namespace shape_inference {
 Status TRTEngineOpShapeInference(InferenceContext* c);
 }  // namespace shape_inference
 }  // namespace tensorflow
+
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_SHAPE_FN_TRT_SHFN_H_

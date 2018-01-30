@@ -28,12 +28,12 @@ will be available. An example use is shown below.
 import tensorflow as tf
 import tensorflow.contrib.tensorrt as trt
 #... create and train or load model
-gdef=sess.graph.as_graph_def()
-trt_gdef=trt.CreateInferenceGraph(gdef, #original graph_def
-				  ["output"], #name of output node(s)
-				  max_batch_size, #maximum batch size to run the inference
-				  max_workspace_size # max memory for TensorRT to use 
-				  )
+gdef = sess.graph.as_graph_def()
+trt_gdef = trt.CreateInferenceGraph(
+    gdef, #original graph_def
+    ["output"], #name of output node(s)
+    max_batch_size, #maximum batch size to run the inference
+    max_workspace_size) # max memory for TensorRT to use
 tf.reset_default_graph()
 tf.import_graph_def(graph_def=trt_gdef)
 #...... run inference

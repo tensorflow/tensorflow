@@ -13,16 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-
-#include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/platform/logging.h"
 
-// Use TF logging for TensorRT informations
 namespace tensorflow {
 namespace tensorrt {
 
+// Use TF logging for TensorRT informations
 void Logger::log(Severity severity, const char* msg) {
   // Suppress info-level messages
   switch (severity) {

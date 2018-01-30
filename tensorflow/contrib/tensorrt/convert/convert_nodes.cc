@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
+
 #include <algorithm>
-#include <fstream>
 #include <list>
 #include <map>
 #include <memory>
 #include <set>
-#include <sstream>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -36,16 +36,13 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 
-//  Check if the types are equal. Cast to int first so that failure log message
-//  would work!
-
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
-
-#include "tensorflow/contrib/tensorrt/convert/convert_nodes.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorrt/include/NvInfer.h"
 
+//  Check if the types are equal. Cast to int first so that failure log message
+//  would work!
 #define CHECK_EQ_TYPE(val1, val2) CHECK_EQ((int)val1, (int)val2)
 
 namespace tensorflow {
@@ -107,8 +104,8 @@ static std::vector<std::pair<int, int>> createSamePadding(
     int right = p - left;
 
     VLOG(-1) << "PADDING_" << i << " pre: " << left << ", post: " << right
-               << "paras: " << inputDims[i] << ", " << stride.d[i] << ", "
-               << "kernel: " << kernel.d[i];
+             << "paras: " << inputDims[i] << ", " << stride.d[i] << ", "
+             << "kernel: " << kernel.d[i];
     padding[i] = {left, right};
   }
   return padding;
@@ -664,7 +661,7 @@ tensorflow::Status ConstantFoldBinary(
   nvinfer1::Dims output_shape;
   output_shape.nbDims = nbDims;
   VLOG(-1) << "nbDims: " << nbDims
-             << "the other: " << weights_input_r.shape_.nbDims;
+           << "the other: " << weights_input_r.shape_.nbDims;
   for (int i = 0; i < nbDims; i++) {
     if (weights_input_l.shape_.d[i] == weights_input_r.shape_.d[i]) {
       output_shape.d[i] = weights_input_l.shape_.d[i];
@@ -677,8 +674,8 @@ tensorflow::Status ConstantFoldBinary(
           "Binary op with incompatible shape at, " + node_def.op());
     }
     VLOG(-1) << "left: " << weights_input_l.shape_.d[i]
-               << "right: " << weights_input_r.shape_.d[i]
-               << "output: " << output_shape.d[i];
+             << "right: " << weights_input_r.shape_.d[i]
+             << "output: " << output_shape.d[i];
   }
 
   // FIXME assume type matches input weights
@@ -822,9 +819,9 @@ tensorflow::Status BinaryTensorOpTensor(
   CHECK_EQ_TYPE(tensor_r->getType(), dtype);
   auto op_pair = ops.find(node_def.op());
   if (op_pair == ops.end())
-    return tensorflow::errors::Unimplemented("binary op: " + node_def.op() +
-                                             " not supported at: " +
-                                             node_def.name());
+    return tensorflow::errors::Unimplemented(
+        "binary op: " + node_def.op() +
+        " not supported at: " + node_def.name());
 
   nvinfer1::IElementWiseLayer* layer = ctx.network()->addElementWise(
       *const_cast<nvinfer1::ITensor*>(tensor_l),
@@ -909,11 +906,11 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
       padding[1].first != padding[1].second) {
     // TODO(jie): handle asymmetric padding
     VLOG(-1) << "padding!!!: " << padding[0].first << padding[0].second
-               << padding[1].first << padding[1].second;
+             << padding[1].first << padding[1].second;
 
     auto dim_before = tensor->getDimensions();
-    VLOG(-1) << "TENSOR before: " << dim_before.d[0] << ", "
-               << dim_before.d[1] << dim_before.d[2] << ", " << dim_before.d[3];
+    VLOG(-1) << "TENSOR before: " << dim_before.d[0] << ", " << dim_before.d[1]
+             << dim_before.d[2] << ", " << dim_before.d[3];
     auto padLayer = ctx.network()->addPadding(
         *const_cast<nvinfer1::ITensor*>(tensor),
         nvinfer1::DimsHW(padding[0].first, padding[1].first),
@@ -922,7 +919,7 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
     tensor = padLayer->getOutput(0);
     auto dim_after = tensor->getDimensions();
     VLOG(-1) << "TENSOR after: " << dim_after.d[0] << ", " << dim_after.d[1]
-               << dim_after.d[2] << ", " << dim_after.d[3];
+             << dim_after.d[2] << ", " << dim_after.d[3];
   }
 
   nvinfer1::IConvolutionLayer* layer =
@@ -936,7 +933,7 @@ tensorflow::Status ConvertConv2D(Converter& ctx,
 
   auto dim_after = output_tensor->getDimensions();
   VLOG(-1) << "TENSOR out: " << dim_after.d[0] << ", " << dim_after.d[1]
-             << dim_after.d[2] << ", " << dim_after.d[3];
+           << dim_after.d[2] << ", " << dim_after.d[3];
 
   if (data_format == "NHWC") {
     // TODO(jie): transpose it back!
@@ -992,8 +989,7 @@ tensorflow::Status ConvertPool(Converter& ctx,
         {static_cast<int>(tensor_dim.d[1]), static_cast<int>(tensor_dim.d[2])});
   } else if (attrs.get<std::string>("padding") == "VALID") {
     // No padding for valid padding here
-    VLOG(-1) << "no padding added for VALID padding in pool"
-               << node_def.name();
+    VLOG(-1) << "no padding added for VALID padding in pool" << node_def.name();
     padding = {{0, 0}, {0, 0}};
   } else {
     return tensorflow::errors::Unimplemented(
@@ -1004,7 +1000,7 @@ tensorflow::Status ConvertPool(Converter& ctx,
       padding[1].first != padding[1].second) {
     // TODO(jie): handle asymmetric padding
     VLOG(-1) << "padding!!!: " << padding[0].first << padding[0].second
-               << padding[1].first << padding[1].second;
+             << padding[1].first << padding[1].second;
     auto padLayer = ctx.network()->addPadding(
         *const_cast<nvinfer1::ITensor*>(tensor),
         nvinfer1::DimsHW(padding[0].first, padding[1].first),
@@ -1480,9 +1476,9 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     TF_CHECK_OK(convert_dtype(tf_dtype, &dtype));
 
     VLOG(-1) << "accessing output index of: " << std::to_string(output_idx)
-               << ", at node: " << node_name
-               << "with output entry from shape_map: "
-               << std::to_string(op_info_vec.size());
+             << ", at node: " << node_name
+             << "with output entry from shape_map: "
+             << std::to_string(op_info_vec.size());
 
     // TODO(ben,jie): update TRT input format/dimension
     nvinfer1::DimsCHW input_dim_psuedo_chw;
@@ -1490,7 +1486,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 
     for (int i = 1; i < op_info.shape().dim_size(); i++) {
       VLOG(-1) << "dimension: " << i
-                 << " , size: " << op_info.shape().dim(i).size();
+               << " , size: " << op_info.shape().dim(i).size();
       input_dim_psuedo_chw.d[i - 1] = op_info.shape().dim(i).size();
     }
 
@@ -1517,7 +1513,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   for (const tensorflow::Node* node : order) {
     tensorflow::NodeDef const& node_def = node->def();
     VLOG(-1) << "converting node: " << node_def.name() << " , "
-               << node_def.op();
+             << node_def.op();
     TF_RETURN_IF_ERROR(converter.convert_node(node_def));
   }
 

@@ -25,6 +25,9 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_properties.h"
 #include "tensorflow/core/lib/core/status.h"
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+
 namespace tensorflow {
 namespace tensorrt {
 namespace convert {
@@ -35,12 +38,15 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
         input_inds,  // {node_id, output_idx}
     const std::vector<std::pair<int, int>>&
         output_inds,  // {node_id, output_idx}
-    size_t max_batch_size,
-    size_t max_workspace_size,
+    size_t max_batch_size, size_t max_workspace_size,
     const tensorflow::grappler::GraphProperties& graph_prop,
     tensorflow::NodeDef* trt_node);
 
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
+
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_NODES_H_
