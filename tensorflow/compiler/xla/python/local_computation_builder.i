@@ -176,6 +176,16 @@ tensorflow::ImportNumpy();
   }
 }
 
+%typemap(out) StatusOr< std::unique_ptr<Literal> > {
+  if ($1.ok()) {
+    std::unique_ptr<Literal> value = $1.ConsumeValueOrDie();
+    $result = numpy::PyObjectFromXlaLiteral(*value);
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    return NULL;
+  }
+}
+
 %typemap(out) StatusOr<xla::swig::LocalComputation*> {
   if ($1.ok()) {
     auto* value = $1.ValueOrDie();
@@ -621,6 +631,30 @@ tensorflow::ImportNumpy();
   Py_DECREF(o);
 
   $1 = &dimension_numbers;
+}
+
+// ExecutableBuildOptions
+
+%typemap(in) const ExecutableBuildOptions*
+    (ExecutableBuildOptions build_options) {
+  if ($input == Py_None) {
+    $1 = NULL;
+  } else {
+    PyObject* o = PyObject_GetAttrString($input, "generate_hlo_graph");
+    if (!o) {
+      return NULL;
+    }
+    if (o != Py_None) {
+      if (!PyString_Check(o)) {
+        PyErr_SetString(PyExc_TypeError, "ExecutableBuildOptions.generate_hlo_graph must be a string or None.");
+        return NULL;
+      }
+      build_options.set_generate_hlo_graph(PyString_AsString(o));
+    }
+    Py_DECREF(o);
+
+    $1 = &build_options;
+  }
 }
 
 %ignoreall

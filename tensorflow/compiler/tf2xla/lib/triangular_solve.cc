@@ -419,16 +419,15 @@ xla::StatusOr<xla::ComputationDataHandle> TriangularSolveLeftLooking(
   //   init = (m-2, output, a, b)
   // else:
   //   init = (1, output, a, b)
-  std::vector<xla::Shape> tuple_shapes({
+  std::vector<xla::Shape> tuple_shapes = {
       // The loop iteration counter is a scalar, incremented each iteration.
       xla::ShapeUtil::MakeShape(xla::S32, {}),
       // The output has the shape of b, with one row updated each iteration.
-      xla::ShapeUtil::MakeShape(b_shape->element_type(), b_shape->dimensions()),
+      *b_shape,
       // The coefficient matrix a is a loop invariant.
-      xla::ShapeUtil::MakeShape(a_shape->element_type(), a_shape->dimensions()),
+      *a_shape,
       // The right-hand-side matrix b is a loop invariant.
-      xla::ShapeUtil::MakeShape(b_shape->element_type(), b_shape->dimensions()),
-  });
+      *b_shape};
   xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(tuple_shapes);
   auto init_i = builder->ConstantR0<int32>(transpose_a ? m - 2 : 1);
   auto init = builder->Tuple({init_i, output, a, b});
