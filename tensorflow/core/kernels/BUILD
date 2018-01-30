@@ -2409,6 +2409,7 @@ LINALG_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:linalg_ops_op_lib",
+    "@com_google_absl//absl/memory"
 ] + if_cuda([
     ":cuda_solvers",
     ":transpose_functor",

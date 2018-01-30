@@ -19,6 +19,7 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
+#include "absl/memory/memory.h"
 #include "third_party/eigen3/Eigen/Cholesky"
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/framework/kernel_def_builder.h"
@@ -121,8 +122,7 @@ class CholeskyOpGpu : public AsyncOpKernel {
     }
 
     // Allocate output.
-    // TODO(rmlarsen): Convert to std::make_unique when available.
-    std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
+    auto solver = absl::make_unique<CudaSolver>(context);
     Tensor* output;
     OP_REQUIRES_OK_ASYNC(context,
                          context->forward_input_or_allocate_output(
