@@ -16,9 +16,24 @@ namespace tflite {
 namespace ops {
 namespace custom {
 
+// NEON takes precedence, then EIGEN. If both commented,
+// then reference is used.
+//#define SSD_USE_NEON
+#define SSD_USE_EIGEN
 
 inline void Exp(const float* input_data, const Dims<4>& input_dims,
                 float* output_data, const Dims<4>& output_dims) {
+
+#ifdef SSD_USE_EIGEN
+
+  using tflite::optimized_ops::MapAsVector;
+
+  // Implementation using EIGEN
+  auto input_map = MapAsVector(input_data, input_dims);
+  auto output_map = MapAsVector(output_data, output_dims);
+  output_map.array() = input_map.array().exp();
+
+#else
   // Get sizes
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
@@ -40,12 +55,23 @@ inline void Exp(const float* input_data, const Dims<4>& input_dims,
       }
     }
   }
+#endif // SSD_USE_EIGEN
 }
 
 inline void Scale(const float* input_data, const Dims<4>& input_dims,
                   float scale,
                   float* output_data, const Dims<4>& output_dims) {
-  // Get sizes
+#ifdef SSD_USE_EIGEN
+
+  using tflite::optimized_ops::MapAsVector;
+
+  // Implementation using EIGEN
+  auto input_map = MapAsVector(input_data, input_dims);
+  auto output_map = MapAsVector(output_data, output_dims);
+  output_map.array() = input_map.array() * scale;
+
+#else
+   // Get sizes
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
   const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
@@ -66,12 +92,23 @@ inline void Scale(const float* input_data, const Dims<4>& input_dims,
       }
     }
   }
+#endif // SSD_USE_EIGEN
 }
 
 inline void ClipMinMax(const float* input_data, const Dims<4>& input_dims,
                        float min_val, float max_val,
                        float* output_data, const Dims<4>& output_dims) {
-  // Get sizes
+#ifdef SSD_USE_EIGEN
+
+  using tflite::optimized_ops::MapAsVector;
+
+  // Implementation using EIGEN
+  auto input_map = MapAsVector(input_data, input_dims);
+  auto output_map = MapAsVector(output_data, output_dims);
+  output_map = input_map.cwiseMax(min_val).cwiseMin(max_val);
+
+#else
+   // Get sizes
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
   const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
@@ -94,6 +131,7 @@ inline void ClipMinMax(const float* input_data, const Dims<4>& input_dims,
       }
     }
   }
+#endif // SSD_USE_EIGEN
 }
 
 
@@ -101,18 +139,31 @@ inline void Mul(const float* input1_data, const Dims<4>& input1_dims,
                 const float* input2_data, const Dims<4>& input2_dims,
                 float* output_data, const Dims<4>& output_dims) {
 
-  /*
+#ifdef SSD_USE_NEON
+
   // Activation min/max
   // TODO(maly): Make more generic
   float ac_min = std::numeric_limits<float>::min();
   float ac_max = std::numeric_limits<float>::max();
 
-  // TODO(maly: Use optimized impementations instead
   tflite::reference_ops::Mul(input1_data, input1_dims,
           input2_data, input2_dims,
           ac_min, ac_max,
           output_data, output_dims);
-  */
+
+#elif defined(SSD_USE_EIGEN)
+
+  using tflite::optimized_ops::MapAsVector;
+
+  // Implementation using EIGEN
+  auto input1_map = MapAsVector(input1_data, input1_dims);
+  auto input2_map = MapAsVector(input2_data, input2_dims);
+
+  auto output_map = MapAsVector(output_data, output_dims);
+
+  output_map = input1_map.cwiseProduct(input2_map);
+
+#else
 
   const int batches =
       MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
@@ -138,24 +189,39 @@ inline void Mul(const float* input1_data, const Dims<4>& input1_dims,
       }
     }
   }
+#endif
 }
 
 inline void Add(const float* input1_data, const Dims<4>& input1_dims,
                 const float* input2_data, const Dims<4>& input2_dims,
                 float* output_data, const Dims<4>& output_dims) {
 
-  /*
+#ifdef SSD_USE_NEON
+
   // Activation min/max
   // TODO(maly): Make more generic
   float ac_min = std::numeric_limits<float>::min();
   float ac_max = std::numeric_limits<float>::max();
 
-  // TODO(maly: Use optimized impementations instead
   tflite::reference_ops::Add(input1_data, input1_dims,
           input2_data, input2_dims,
           ac_min, ac_max,
           output_data, output_dims);
-  */
+
+#elif defined(SSD_USE_EIGEN)
+
+  using tflite::optimized_ops::MapAsVector;
+
+  // Implementation using EIGEN
+  auto input1_map = MapAsVector(input1_data, input1_dims);
+  auto input2_map = MapAsVector(input2_data, input2_dims);
+
+  auto output_map = MapAsVector(output_data, output_dims);
+
+  output_map = input1_map + input2_map;
+
+#else
+
   const int batches =
       MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
   const int height =
@@ -180,23 +246,37 @@ inline void Add(const float* input1_data, const Dims<4>& input1_dims,
       }
     }
   }
+#endif
 }
 
 inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
                 const float* input2_data, const Dims<4>& input2_dims,
                 float* output_data, const Dims<4>& output_dims) {
-  /*
+#ifdef SSD_USE_NEON
+
   // Activation min/max
   // TODO(maly): Make more generic
   float ac_min = std::numeric_limits<float>::min();
   float ac_max = std::numeric_limits<float>::max();
 
-  // TODO(maly: Use optimized impementations instead
   tflite::reference_ops::Sub(input1_data, input1_dims,
           input2_data, input2_dims,
           ac_min, ac_max,
           output_data, output_dims);
-  */
+
+#elif defined(SSD_USE_EIGEN)
+
+  using tflite::optimized_ops::MapAsVector;
+
+  // Implementation using EIGEN
+  auto input1_map = MapAsVector(input1_data, input1_dims);
+  auto input2_map = MapAsVector(input2_data, input2_dims);
+
+  auto output_map = MapAsVector(output_data, output_dims);
+
+  output_map = input1_map - input2_map;
+
+#else
 
   const int batches =
       MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
@@ -222,28 +302,49 @@ inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
       }
     }
   }
+#endif
 }
 
 // Copied from reference_ops.h
 inline void Logistic(const float* input_data, const Dims<4>& input_dims,
                      float* output_data, const Dims<4>& output_dims) {
+
+#ifdef SSD_USE_NEON
+
   tflite::optimized_ops::Logistic(input_data, input_dims,
                                   output_data, output_dims);
-/*  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);*/
-  //const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
-  //const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
-  //const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
-  //for (int b = 0; b < batches; ++b) {
-    //for (int y = 0; y < height; ++y) {
-      //for (int x = 0; x < width; ++x) {
-        //for (int c = 0; c < depth; ++c) {
-          //float val = input_data[Offset(input_dims, c, x, y, b)];
-          //float result = 1.f / (1.f + std::exp(-val));
-          //output_data[Offset(output_dims, c, x, y, b)] = result;
-        //}
-      //}
-    //}
-  /*}*/
+
+#elif defined(SSD_USE_EIGEN)
+
+  using tflite::optimized_ops::MapAsVector;
+
+  // Implementation using EIGEN
+  auto input_map = MapAsVector(input_data, input_dims);
+  auto output_map = MapAsVector(output_data, output_dims);
+
+  output_map.array() = input_map.array().unaryExpr(
+          Eigen::internal::scalar_sigmoid_op<float>());
+
+  //output_map.array() = 1.f / (1.f + (-input_map.array()).exp());
+
+#else
+
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
+  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          float val = input_data[Offset(input_dims, c, x, y, b)];
+          float result = 1.f / (1.f + std::exp(-val));
+          output_data[Offset(output_dims, c, x, y, b)] = result;
+        }
+      }
+    }
+  }
+#endif
 }
 
 // Copied from: tensorflow/core/kernels/non_max_suppression_op.cc
@@ -328,24 +429,24 @@ std::tuple<float*, float*, float*, float*, Dims<4>>
 }
 
 // Prints out the dimensions of a tensor t
-#define PRINT_DIMS(t) \
-  std::cerr << #t << ": "; \
-  for (int i = 0; i < NumDimensions(t); ++i) \
-      std::cerr << t->dims->data[i] << " "; \
-  std::cerr << std::endl
+#define PRINT_DIMS(t)
+/*  std::cerr << #t << ": "; \*/
+  //for (int i = 0; i < NumDimensions(t); ++i) \
+      //std::cerr << t->dims->data[i] << " "; \
+/*  s*/td::cerr << std::endl
 
-#define PRINT_DIM4(t) \
-  std::cerr << #t << ": "; \
-  for (int i = 0; i < 4; ++i) \
-      std::cerr << t.sizes[i] << "&" << t.strides[i] << ", "; \
-  std::cerr << std::endl
+#define PRINT_DIM4(t)
+/*  std::cerr << #t << ": "; \*/
+  //for (int i = 0; i < 4; ++i) \
+      //std::cerr << t.sizes[i] << "&" << t.strides[i] << ", "; \
+/*  s*/td::cerr << std::endl
 
-#define PRINT_VEC(t, l) \
-  std::cerr << #t << ": "; \
-  for (int i = 0; i < l; ++i) { \
-      std::cerr << (t)[i] << " "; \
-  } \
-  std::cerr << std::endl
+#define PRINT_VEC(t, l)
+/*  std::cerr << #t << ": "; \*/
+  //for (int i = 0; i < l; ++i) { \
+      //std::cerr << (t)[i] << " "; \
+  //} \
+  //std::cerr << std::endl
 
 #define EXTRACT_SINGLE(tensor, b) \
   float * tensor##_y_data, * tensor##_x_data,  \
@@ -770,8 +871,11 @@ TfLiteStatus PostprocessProbsEval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   // Compute sigmoid on probs_out
-  Logistic(probs_out_data, probs_out_dims,
-           probs_out_data, probs_out_dims);
+  // TODO(maly): Don't compute Logistic here, and instead compute it
+  // at the end of NMS after all is done, and we could just compare
+  // the score to the logit (inverse of logistic/sigmoid)
+/*  Logistic(probs_out_data, probs_out_dims,*/
+           /*probs_out_data, probs_out_dims);*/
 
   // print first 5 boxes in first 5 classes
   for (int c = 0; c < 5; ++c) {
@@ -932,6 +1036,12 @@ TfLiteStatus NonMaxSuppressionEval(TfLiteContext* context, TfLiteNode* node) {
   // Stores flags for empty boxes
   std::vector<bool> empty_boxes(A, false);
 
+  // Score theshold to compare to: inverse of kNMSScoreThreshold
+  // This is used when the probs_in are not passed through the
+  // Logistic/Sigmoid function to save time.
+  const float kNMSLogitThreshold = std::log(kNMSScoreThreshold /
+                                            (1.f - kNMSScoreThreshold));
+
   // Loop on batch
   for (int b = 0; b < B; ++b) {
     // Extract single dimensions
@@ -941,6 +1051,8 @@ TfLiteStatus NonMaxSuppressionEval(TfLiteContext* context, TfLiteNode* node) {
     // Clip boxes
     // TODO(maly): Modify this to use scratch space for boxes_in
     // instead of overwriting the input tensors
+    // TODO(maly): Look into moving these clip operations inside
+    // PostprocessBoxes instead.
     //
     std::cerr << "ClipMinMax\n";
     // ymin
@@ -1018,7 +1130,8 @@ TfLiteStatus NonMaxSuppressionEval(TfLiteContext* context, TfLiteNode* node) {
       // loop on boxes
       for (int a = 0; a < A; ++a) {
         // If not empty and has good score
-        if (!empty_boxes[a] && probs_in_c_data[a] > kNMSScoreThreshold) {
+        // if (!empty_boxes[a] && probs_in_c_data[a] > kNMSScoreThreshold) {
+        if (!empty_boxes[a] && probs_in_c_data[a] > kNMSLogitThreshold) {
           // save its prob and index
           presort_probs[presort_num] = probs_in_c_data[a];
           presort_indices[presort_num] = a;
@@ -1147,6 +1260,11 @@ TfLiteStatus NonMaxSuppressionEval(TfLiteContext* context, TfLiteNode* node) {
     PRINT_VEC(classes_out_data + classes_offset, 5);
     PRINT_VEC(scores_out_data + scores_offset, 5);
   } // for b
+
+  // Compute Lopgistic on scores_out
+  Logistic(scores_out_data, scores_out_dims,
+           scores_out_data, scores_out_dims);
+  PRINT_VEC(scores_out_data, 5);
 
   STOP_TIMER(NMS);
   PRINT_TIMER(NMS);
