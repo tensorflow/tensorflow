@@ -1350,6 +1350,7 @@ def main():
 
   if len(sys.argv) == 2 and (sys.argv[1] == '--help' or sys.argv[1] == '-h'):
     show_config_info()
+    return
 
   # Make a copy of os.environ to be clear when functions and getting and setting
   # environment variables.
