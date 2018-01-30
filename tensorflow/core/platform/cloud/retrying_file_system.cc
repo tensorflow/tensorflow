@@ -202,4 +202,6 @@ Status RetryingFileSystem::DeleteRecursively(const string& dirname,
       initial_delay_microseconds_);
 }
 
+void RetryingFileSystem::FlushCaches() { base_file_system_->FlushCaches(); }
+
 }  // namespace tensorflow
