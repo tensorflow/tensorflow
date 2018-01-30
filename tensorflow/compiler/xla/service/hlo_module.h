@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_MODULE_H_
 
+#include <atomic>
 #include <list>
 #include <memory>
 #include <random>
@@ -201,6 +202,10 @@ class HloModule {
   // this point are guaranteed to be in the range [0..NumUniqueInstructionIds())
   int NumUniqueInstructionIds() const { return next_unique_id_; }
 
+  // Returns an id that is unique to this module across all modules created over
+  // the lifetime of this process.
+  int unique_id() const { return unique_id_; }
+
  private:
   HloComputation* AddComputationInternal(
       std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -227,6 +232,11 @@ class HloModule {
   NameUniquer computation_name_uniquer_{/*separator=*/"."};
   NameUniquer instruction_name_uniquer_{/*separator=*/"."};
   int next_unique_id_ = 0;
+
+  // Used to keep track of the next unique module id that should be assigned.
+  static std::atomic<int> next_unique_module_id_;
+  // A unique id to label modules with.
+  int unique_id_;
 };
 
 }  // namespace xla

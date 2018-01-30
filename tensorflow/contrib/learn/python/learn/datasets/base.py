@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Base utilities for loading datasets."""
 
 from __future__ import absolute_import
@@ -100,9 +99,7 @@ def load_iris(data_path=None):
     module_path = path.dirname(__file__)
     data_path = path.join(module_path, 'data', 'iris.csv')
   return load_csv_with_header(
-      data_path,
-      target_dtype=np.int,
-      features_dtype=np.float)
+      data_path, target_dtype=np.int, features_dtype=np.float)
 
 
 def load_boston(data_path=None):
@@ -118,16 +115,10 @@ def load_boston(data_path=None):
     module_path = path.dirname(__file__)
     data_path = path.join(module_path, 'data', 'boston_house_prices.csv')
   return load_csv_with_header(
-      data_path,
-      target_dtype=np.float,
-      features_dtype=np.float)
+      data_path, target_dtype=np.float, features_dtype=np.float)
 
 
-def retry(initial_delay,
-          max_delay,
-          factor=2.0,
-          jitter=0.25,
-          is_retriable=None):
+def retry(initial_delay, max_delay, factor=2.0, jitter=0.25, is_retriable=None):
   """Simple decorator for wrapping retriable functions.
 
   Args:
@@ -152,7 +143,7 @@ def retry(initial_delay,
   def delays():
     delay = initial_delay
     while delay <= max_delay:
-      yield delay * random.uniform(1 - jitter,  1 + jitter)
+      yield delay * random.uniform(1 - jitter, 1 + jitter)
       delay *= factor
 
   def wrap(fn):
@@ -172,7 +163,9 @@ def retry(initial_delay,
           else:
             raise
       return fn(*args, **kwargs)
+
     return wrapped_fn
+
   return wrap
 
 

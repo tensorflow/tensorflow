@@ -140,24 +140,11 @@ class SpaceToBatchND
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    auto block_shape = builder->CreateVector(op.block_shape);
-    auto before_paddings = builder->CreateVector(op.before_paddings);
-    auto after_paddings = builder->CreateVector(op.after_paddings);
-    return ::tflite::CreateSpaceToBatchNDOptions(
-        *builder, block_shape, before_paddings, after_paddings);
+    return ::tflite::CreateSpaceToBatchNDOptions(*builder);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->block_shape.insert(op->block_shape.end(),
-                           options.block_shape()->begin(),
-                           options.block_shape()->end());
-    op->before_paddings.insert(op->before_paddings.end(),
-                               options.before_paddings()->begin(),
-                               options.before_paddings()->end());
-    op->after_paddings.insert(op->after_paddings.end(),
-                              options.after_paddings()->begin(),
-                              options.after_paddings()->end());
   }
 };
 
@@ -211,24 +198,11 @@ class BatchToSpaceND
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    auto block_shape = builder->CreateVector(op.block_shape);
-    auto before_crops = builder->CreateVector(op.before_crops);
-    auto after_crops = builder->CreateVector(op.after_crops);
-    return ::tflite::CreateBatchToSpaceNDOptions(*builder, block_shape,
-                                                 before_crops, after_crops);
+    return ::tflite::CreateBatchToSpaceNDOptions(*builder);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->block_shape.insert(op->block_shape.end(),
-                           options.block_shape()->begin(),
-                           options.block_shape()->end());
-    op->before_crops.insert(op->before_crops.end(),
-                            options.before_crops()->begin(),
-                            options.before_crops()->end());
-    op->after_crops.insert(op->after_crops.end(),
-                           options.after_crops()->begin(),
-                           options.after_crops()->end());
   }
 };
 
@@ -561,14 +535,11 @@ class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    auto axis = builder->CreateVector(op.axis);
-    return ::tflite::CreateMeanOptions(*builder, axis, op.keep_dims);
+    return ::tflite::CreateMeanOptions(*builder, op.keep_dims);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->axis.insert(op->axis.end(), options.axis()->begin(),
-                    options.axis()->end());
     op->keep_dims = options.keep_dims();
   }
 };

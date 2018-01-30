@@ -145,6 +145,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "matrix_triangular_solve_op_test",
+    size = "small",
+    srcs = ["matrix_triangular_solve_op_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "clustering_test",
     size = "small",
     srcs = ["clustering_test.py"],
@@ -434,6 +449,18 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_xla_py_test(
+    name = "reverse_sequence_op_test",
+    size = "small",
+    srcs = ["reverse_sequence_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
     ],
 )
 

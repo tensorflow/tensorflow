@@ -197,7 +197,7 @@ cc_binary(
 
 tf_cc_test(
     name = "generated_examples_zip_test",
-    size = "medium",
+    size = "large",
     srcs = ["generated_examples_zip_test.cc"],
     args = [
         "--zip_files_dir=tensorflow/contrib/lite/testing/optest",
