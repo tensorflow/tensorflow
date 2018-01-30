@@ -15,8 +15,6 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/executable_run_options.h"
 
-#include "tensorflow/core/lib/strings/stringprintf.h"
-
 namespace xla {
 
 ExecutableRunOptions& ExecutableRunOptions::set_device_ordinal(
@@ -87,21 +85,6 @@ ExecutableRunOptions& ExecutableRunOptions::set_device_assignment(
 
 const DeviceAssignment* ExecutableRunOptions::device_assignment() const {
   return device_assignment_;
-}
-
-string ExecutableRunOptions::ToString() const {
-  return tensorflow::strings::Printf(
-      "ExecutableRunOptions{allocator=%p, device_ordinal=%d, "
-      "device_assignment=%p, stream=%p, inter_op_thread_pool=%p, "
-      "intra_op_thread_pool=%p, execution_profile=%p}",
-      allocator_, device_ordinal_, device_assignment_, stream_,
-      inter_op_thread_pool_, intra_op_thread_pool_, execution_profile_);
-}
-
-std::ostream& operator<<(std::ostream& out,
-                         const ExecutableRunOptions& options) {
-  out << options.ToString();
-  return out;
 }
 
 }  // namespace xla

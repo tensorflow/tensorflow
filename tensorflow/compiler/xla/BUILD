@@ -444,10 +444,6 @@ cc_library(
     srcs = ["executable_run_options.cc"],
     hdrs = ["executable_run_options.h"],
     visibility = ["//visibility:public"],
-    deps = [
-        ":types",
-        "//tensorflow/core:lib",
-    ],
 )
 
 cc_library(
