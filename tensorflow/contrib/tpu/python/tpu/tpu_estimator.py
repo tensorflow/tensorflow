@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 from contextlib import contextmanager
 import copy
+import signal
 import threading
 import time
 import traceback
@@ -467,12 +468,12 @@ class _OpQueueContext(object):
 
   def read_iteration_counts(self):
     while True:
-      signal = self._queue.get(block=True)
-      logging.debug('%s read signal %s', self._name, signal)
-      if signal == _SIGNAL.STOP:
-        logging.info('%s received signal, stopping.', self._name)
+      iterations = self._queue.get(block=True)
+      logging.debug('%s read iterations %s', self._name, iterations)
+      if iterations == _SIGNAL.STOP:
+        logging.info('%s received shutdown signal, stopping.', self._name)
         return
-      yield signal
+      yield iterations
 
   def join(self):
     logging.info('Shutting down %s thread.' % self._name)
@@ -1387,6 +1388,23 @@ class ExamplesPerSecondHook(basic_session_run_hooks.StepCounterHook):
     logging.info('examples/sec: %g', examples_per_sec)
 
 
+class InstallSignalHandlerHook(session_run_hook.SessionRunHook):
+  """Change SIGINT (CTRL^C) handler to force quit the process.
+
+  The default behavior often results in hanging processes.
+  The original handler is restored after training/evaluation.
+  """
+
+  def __init__(self):
+    self._signal_fn = signal.getsignal(signal.SIGINT)
+
+  def before_run(self, run_context):
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+  def end(self, session):
+    signal.signal(signal.SIGINT, self._signal_fn)
+
+
 class TPUEstimator(estimator_lib.Estimator):
   """Estimator with TPU support.
 
@@ -1704,6 +1722,7 @@ class TPUEstimator(estimator_lib.Estimator):
           hooks = [
               TPUInfeedOutfeedSessionHook(ctx, enqueue_ops),
               ExamplesPerSecondHook(ctx.global_batch_size),
+              InstallSignalHandlerHook(),
               training.LoggingTensorHook(
                   {
                       'loss': array_ops.identity(loss),

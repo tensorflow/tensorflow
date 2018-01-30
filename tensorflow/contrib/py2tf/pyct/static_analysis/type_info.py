@@ -36,8 +36,6 @@ class Scope(object):
         most recently assigned to the symbol.
   """
 
-  # TODO(mdan): Should rather use a CFG here?
-
   def __init__(self, parent):
     """Create a new scope.
 
@@ -117,18 +115,32 @@ class TypeInfoResolver(transformer.Base):
     node.orelse = self._visit_block(node.orelse)
     return node
 
+  def _process_function_arg(self, arg_name):
+    if self.function_level == 1 and arg_name in self.context.arg_types:
+      # Forge a node to hold the type information, so that method calls on
+      # it can resolve the type.
+      type_holder = gast.Name(arg_name, gast.Load(), None)
+      type_string, type_obj = self.context.arg_types[arg_name]
+      anno.setanno(type_holder, 'type', type_obj)
+      anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
+      self.scope.setval(arg_name, type_holder)
+
+  def visit_arg(self, node):
+    self._process_function_arg(node.arg)
+    return node
+
   def visit_Name(self, node):
     self.generic_visit(node)
     if isinstance(node.ctx, gast.Param):
-      self.scope.setval(node.id, gast.Name(node.id, gast.Load(), None))
-      if self.function_level == 1 and node.id in self.context.arg_types:
-        # Forge a node to hold the type information, so that method calls on
-        # it can resolve the type.
-        type_holder = gast.Name(node.id, gast.Load(), None)
-        type_string, type_obj = self.context.arg_types[node.id]
-        anno.setanno(type_holder, 'type', type_obj)
-        anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
-        self.scope.setval(node.id, type_holder)
+      self._process_function_arg(node.id)
+    elif isinstance(node.ctx, gast.Load) and self.scope.hasval(node.id):
+      # E.g. if we had
+      # a = b
+      # then for future references to `a` we should have traced_source = `b`
+      traced_source = self.scope.getval(node.id)
+      if anno.hasanno(traced_source, 'type'):
+        anno.setanno(node, 'type', anno.getanno(traced_source, 'type'))
+        anno.setanno(node, 'type_fqn', anno.getanno(traced_source, 'type_fqn'))
     return node
 
   def _process_variable_assignment(self, source, targets):
@@ -170,38 +182,6 @@ class TypeInfoResolver(transformer.Base):
   def visit_Assign(self, node):
     self.generic_visit(node)
     self._process_variable_assignment(node.value, node.targets)
-    return node
-
-  def visit_Call(self, node):
-    target = node.func
-    if not anno.hasanno(target, 'live_val'):
-      if not isinstance(target, gast.Attribute):
-        # Suspecting this pattern would reach here:
-        #   foo = bar
-        #   foo()
-        raise ValueError('Dont know how to handle dynamic functions.')
-      if not isinstance(target.value, gast.Name):
-        # Possible example of this kind:
-        #   foo = module.Foo()
-        #   foo.bar.baz()
-        # TODO(mdan): This should be doable by using the FQN.
-        raise ValueError('Dont know how to handle object properties yet.')
-      # In the example below, object_source is 'tr.train.Optimizer()':
-      #   opt = tf.train.Optimizer()
-      #   opt.foo()
-      if self.scope.hasval(target.value.id):
-        object_source = self.scope.getval(target.value.id)
-        if not anno.hasanno(object_source, 'type'):
-          raise ValueError('Could not determine type of "%s". Is it dynamic?' %
-                           (target.value.id))
-        anno.setanno(target, 'type', anno.getanno(object_source, 'type'))
-        anno.setanno(target, 'type_fqn', anno.getanno(object_source,
-                                                      'type_fqn'))
-      else:
-        # TODO(mdan): Figure out what could the user do to get past this.
-        raise ValueError('No info on "%s". Is it dynamically built?' %
-                         (target.value.id))
-    self.generic_visit(node)
     return node
 
 
