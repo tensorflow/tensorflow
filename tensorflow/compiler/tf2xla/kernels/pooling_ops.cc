@@ -94,8 +94,8 @@ class PoolingOp : public XlaOpKernel {
 
     const DataType type = input_type(0);
     xla::ComputationDataHandle pooled = ctx->builder()->ReduceWindow(
-        input, InitValue(ctx->builder(), type), *Reduction(ctx, type), ksize,
-        stride, padding_);
+        input, InitValue(ctx->builder(), type), *Reduction(ctx, type), ksize_,
+        stride_, padding_);
     ctx->SetOutput(0, PostProcessOutput(ctx, pooled, type, input_shape));
   }
 
