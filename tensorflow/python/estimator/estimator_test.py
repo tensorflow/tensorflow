@@ -90,8 +90,8 @@ def check_eventfile_for_keyword(keyword, dir_):
   last_event = None
   for last_event in summary_iterator.summary_iterator(event_paths[-1]):
     if last_event.summary is not None:
-      if last_event.summary.value:
-        if keyword in last_event.summary.value[0].tag:
+      for value in last_event.summary.value:
+        if keyword in value.tag:
           return True
 
   return False
