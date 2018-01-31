@@ -143,6 +143,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   for (tensorflow::Edge const* edge : subgraph_incoming_edges) {
     subgraph_inputs.push_back({edge->src()->id(), edge->src_output()});
   }
+
   std::set<std::pair<int, int>> subgraph_outputs_set;
   // Collect outputs referenced from output_names
   auto output_name_to_index_map = BuildTensorNameMap(output_names);
@@ -168,11 +169,11 @@ tensorflow::Status ConvertSubGraphToTensorRT(
       subgraph_outputs_set.begin(), subgraph_outputs_set.end());
   // Build TensorRT node and add it to the graph
   tensorflow::NodeDef trt_node_def;
+  tensorflow::Status status;
   TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRTNodeDef(
       graph, subgraph_node_ids, subgraph_inputs, subgraph_outputs,
       max_batch_size, max_workspace_size, graph_properties, output_edge_map, 
       &trt_node_def));
-  tensorflow::Status status;
   tensorflow::Node* trt_node = graph.AddNode(trt_node_def, &status);
 
   // AddNode does not wire edges.
@@ -253,6 +254,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
 
   // virtual cluster
   tensorflow::DeviceProperties device_properties;
+
   device_properties.set_type("GPU");
   device_properties.mutable_environment()->insert({"architecture", "6"});
   gCluster =
@@ -322,14 +324,21 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   std::unordered_map<std::string, tensorflow::Node*> node_map;
   TF_RETURN_IF_ERROR(BuildNodeMap(graph, &node_map));
   std::unordered_map<std::string, std::pair<int, std::string>> output_edge_map;
+  int count = 0;
   for (std::set<std::string> const& subgraph_node_names : segments) {
     std::set<int> subgraph_node_ids;
     for (std::string const& node_name : subgraph_node_names) {
       subgraph_node_ids.insert(node_map.at(node_name)->id());
     }
-    TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRT(
-        graph, output_names, subgraph_node_ids, max_batch_size,
-        max_workspace_size, &output_edge_map, static_graph_properties));
+    tensorflow::Status status = 
+        ConvertSubGraphToTensorRT(graph, output_names, subgraph_node_ids,
+        max_batch_size, max_workspace_size, &output_edge_map,
+        static_graph_properties);
+    if ( status != tensorflow::Status::OK()) {
+      LOG(WARNING) << "subgraph conversion error for subgraph_index:" << count
+                   << " due to: \n" << status.ToString() << "SKIPPING......";
+    }
+    count++;
   }
   graph.ToGraphDef(new_graph_def);
   return tensorflow::Status::OK();

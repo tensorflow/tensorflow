@@ -1866,8 +1866,6 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     }
     LOG(DEBUG) << "shapeinference name: " << shape_inference_node_name << " idx: " << shape_inference_output_idx;
 
-    // TODO(jie): alternative :)
-    // tensorflow::DataType tf_dtype = node->output_type(<shape_inference_output_idx>);
     if (!graph_properties.HasOutputProperties(shape_inference_node_name))
       return tensorflow::errors::Internal("failed to find input node: " +
                                           shape_inference_node_name);
@@ -1885,7 +1883,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     input_dtypes.push_back(tf_dtype);
 
     nvinfer1::DataType dtype(nvinfer1::DataType::kFLOAT);
-    TF_CHECK_OK(convert_dtype(tf_dtype, &dtype));
+    TF_RETURN_IF_ERROR(convert_dtype(tf_dtype, &dtype));
 
     LOG(DEBUG) << "accessing output index of: " << std::to_string(shape_inference_output_idx)
                << ", at node: " << shape_inference_node_name
@@ -1895,6 +1893,11 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     // TODO(ben,jie): update TRT input format/dimension
     nvinfer1::DimsCHW input_dim_psuedo_chw;
     for (int i = 0; i < 3; i++) input_dim_psuedo_chw.d[i] = 1;
+
+    // TODO(jie): TRT 3.x only support 4 dimensional input tensor.
+    //            update the code once TRT 4.0 comes out.
+    if (op_info.shape().dim_size() != 4)
+      return tensorflow::errors::Unimplemented("require 4 dimensional input");
 
     for (int i = 1; i < op_info.shape().dim_size(); i++) {
       LOG(DEBUG) << "dimension: " << i
