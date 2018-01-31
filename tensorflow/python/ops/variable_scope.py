@@ -1578,22 +1578,7 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
           name_scope=name_scope,
           use_resource=self._name_or_scope.use_resource,
           constraint=self._constraint)
-      if self._initializer is not None:
-        variable_scope_object.set_initializer(self._initializer)
-      if self._regularizer is not None:
-        variable_scope_object.set_regularizer(self._regularizer)
-      if self._caching_device is not None:
-        variable_scope_object.set_caching_device(self._caching_device)
-      if self._partitioner is not None:
-        variable_scope_object.set_partitioner(self._partitioner)
-      if self._custom_getter is not None:
-        variable_scope_object.set_custom_getter(
-            _maybe_wrap_custom_getter(
-                self._custom_getter, self._name_or_scope.custom_getter))
-      if self._dtype is not None:
-        variable_scope_object.set_dtype(self._dtype)
-      if self._use_resource is not None:
-        variable_scope_object.set_use_resource(self._use_resource)
+      self._set_variable_scope_properties(variable_scope_object)
       self._cached_variable_scope_object = variable_scope_object
 
   def __enter__(self):
@@ -1636,25 +1621,28 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
           custom_getter=self._old.custom_getter,
           name_scope=name_scope,
           constraint=self._constraint)
-      if self._initializer is not None:
-        variable_scope_object.set_initializer(self._initializer)
-      if self._regularizer is not None:
-        variable_scope_object.set_regularizer(self._regularizer)
-      if self._caching_device is not None:
-        variable_scope_object.set_caching_device(self._caching_device)
-      if self._partitioner is not None:
-        variable_scope_object.set_partitioner(self._partitioner)
-      if self._custom_getter is not None:
-        variable_scope_object.set_custom_getter(
-            _maybe_wrap_custom_getter(self._custom_getter,
-                                      self._old.custom_getter))
-      if self._dtype is not None:
-        variable_scope_object.set_dtype(self._dtype)
-      if self._use_resource is not None:
-        variable_scope_object.set_use_resource(self._use_resource)
+      self._set_variable_scope_properties(variable_scope_object)
       self._var_store.open_variable_scope(self._new_name)
     self._default_varscope[0] = variable_scope_object
     return variable_scope_object
+
+  def _set_variable_scope_properties(self, variable_scope_object):
+    if self._initializer is not None:
+      variable_scope_object.set_initializer(self._initializer)
+    if self._regularizer is not None:
+      variable_scope_object.set_regularizer(self._regularizer)
+    if self._caching_device is not None:
+      variable_scope_object.set_caching_device(self._caching_device)
+    if self._partitioner is not None:
+      variable_scope_object.set_partitioner(self._partitioner)
+    if self._custom_getter is not None:
+      variable_scope_object.set_custom_getter(
+        _maybe_wrap_custom_getter(self._custom_getter,
+                                  self._old.custom_getter))
+    if self._dtype is not None:
+      variable_scope_object.set_dtype(self._dtype)
+    if self._use_resource is not None:
+      variable_scope_object.set_use_resource(self._use_resource)
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
     # If jumping out from a non-prolonged scope, restore counts.
