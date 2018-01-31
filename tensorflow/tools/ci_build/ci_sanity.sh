@@ -183,7 +183,9 @@ do_pylint() {
   # W0311 bad-indentation
   # W0312 mixed-indentation
   # C0330 bad-continuation
-  grep -E '(\[E|\[W0311|\[W0312|\[C0330)' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  # C0301 line-too-long
+  # C0326 bad-whitespace
+  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
   while read -r LINE; do

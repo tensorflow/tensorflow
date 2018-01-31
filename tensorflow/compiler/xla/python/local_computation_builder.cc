@@ -233,7 +233,8 @@ LocalComputation::LocalComputation(Computation computation)
     : computation_(std::move(computation)) {}
 
 StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
-    const std::vector<Shape>& argument_shapes) {
+    const std::vector<Shape>& argument_shapes,
+    const ExecutableBuildOptions* build_options) {
   std::vector<const Shape*> argument_shape_pointers;
   argument_shape_pointers.reserve(argument_shapes.size());
   for (auto& argument_shape : argument_shapes) {
@@ -242,6 +243,9 @@ StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
 
   LocalClient* client = GetOrCreateLocalClient();
   ExecutableBuildOptions options;
+  if (build_options != nullptr) {
+    options = *build_options;
+  }
   TF_ASSIGN_OR_RETURN(
       auto local_executable,
       client->Compile(computation_, argument_shape_pointers, options));

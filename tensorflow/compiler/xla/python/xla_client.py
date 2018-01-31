@@ -260,6 +260,17 @@ def require_numpy_array_layout(value):
     return np.require(value, requirements=['C', 'A'])
 
 
+class CompileOptions(object):
+  """Python object for XLA compile options.
+
+  These options can be passed to the 'compile' step when using a local XLA
+  client.
+  """
+
+  def __init__(self):
+    self.generate_hlo_graph = None
+
+
 def transfer_to_infeed(value, replica_number=None):
   """Transfers the given value into the XLA infeed queue.
 
@@ -313,16 +324,18 @@ class LocalComputation(object):
     else:
       self._delete = c_api.DeleteLocalComputation
 
-  def Compile(self, argument_shapes=()):
+  def Compile(self, argument_shapes=(), compile_options=None):
     if self.is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
     return LocalComputation(
-        self.c_local_computation.Compile(_unwrap_shapes(argument_shapes)),
+        self.c_local_computation.Compile(
+            _unwrap_shapes(argument_shapes), compile_options),
         is_compiled=True)
 
-  def CompileWithExampleArguments(self, arguments=()):
+  def CompileWithExampleArguments(self, arguments=(), compile_options=None):
     return self.Compile(
-        argument_shapes=[Shape.from_numpy(arg) for arg in arguments])
+        argument_shapes=[Shape.from_numpy(arg) for arg in arguments],
+        compile_options=compile_options)
 
   def Execute(self, arguments=()):
     if not self.is_compiled:

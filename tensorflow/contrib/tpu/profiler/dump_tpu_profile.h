@@ -27,7 +27,8 @@ namespace tpu {
 // The following tools are supported:
 //   - Trace viewer
 //   - Op profile
-//   - HLO computation graph
+//   - Input pipeline analyzer
+//   - Overview page
 Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
                                   const ProfileResponse& response,
                                   std::ostream* os);

@@ -38,9 +38,8 @@ class XentTest(test.TestCase):
       dim = len(features.shape) - 1
     one_only_on_dim = list(features.shape)
     one_only_on_dim[dim] = 1
-    e = np.exp(features - np.reshape(
-        np.amax(
-            features, axis=dim), one_only_on_dim))
+    e = np.exp(
+        features - np.reshape(np.amax(features, axis=dim), one_only_on_dim))
     probs = e / np.reshape(np.sum(e, axis=dim), one_only_on_dim)
     bp = (probs - labels)
     l = -np.sum(labels * np.log(probs + 1.0e-20), axis=dim)
@@ -85,10 +84,10 @@ class XentTest(test.TestCase):
 
   def testRankTooLarge(self):
     for dtype in np.float16, np.float32:
-      np_features = np.array(
-          [[[1., 1., 1., 1.]], [[1., 2., 3., 4.]]]).astype(dtype)
-      np_labels = np.array(
-          [[[0., 0., 0., 1.]], [[0., .5, .5, 0.]]]).astype(dtype)
+      np_features = np.array([[[1., 1., 1., 1.]], [[1., 2., 3.,
+                                                    4.]]]).astype(dtype)
+      np_labels = np.array([[[0., 0., 0., 1.]], [[0., .5, .5,
+                                                  0.]]]).astype(dtype)
       self.assertRaisesRegexp(ValueError, "must be rank 2",
                               gen_nn_ops._softmax_cross_entropy_with_logits,
                               np_features, np_labels)
@@ -121,8 +120,8 @@ class XentTest(test.TestCase):
     # = [1.3862, 1.9401]
     np_loss, np_backprop = self._npXent(np.array(features), np.array(labels))
     self.assertAllClose(
-        np.array([[0.25, 0.25, 0.25, -0.75],
-                  [0.0321, -0.4129, -0.2632, 0.6439]]),
+        np.array([[0.25, 0.25, 0.25, -0.75], [0.0321, -0.4129, -0.2632,
+                                              0.6439]]),
         np_backprop,
         rtol=1.e-3,
         atol=1.e-3)
@@ -168,15 +167,17 @@ class XentTest(test.TestCase):
           shape=[3, 4],
           dtype=dtypes.float64,
           name="f")
-      x = nn_ops.softmax_cross_entropy_with_logits(labels=l, logits=f,
-                                                   name="xent")
+      x = nn_ops.softmax_cross_entropy_with_logits(
+          labels=l, logits=f, name="xent")
       err = gradient_checker.compute_gradient_error(f, [3, 4], x, [3])
 
       # Check that no extra computation performed. When only first derivative is requested,
       # second derivative must not be computed. So when there is no second derivative,
       # there is no `BatchMatMul` op in the graph.
-      op_names = [op.op_def.name for op in sess.graph.get_operations() if op.op_def]
-      self.assertNotIn('BatchMatMul', op_names)
+      op_names = [
+          op.op_def.name for op in sess.graph.get_operations() if op.op_def
+      ]
+      self.assertNotIn("BatchMatMul", op_names)
 
     print("cross entropy gradient err = ", err)
     self.assertLess(err, 5e-8)
@@ -193,24 +194,29 @@ class XentTest(test.TestCase):
           shape=[3, 4],
           dtype=dtypes.float64,
           name="f")
-      x = nn_ops.softmax_cross_entropy_with_logits_v2(labels=l, logits=f,
-                                                      name="xent")
+      x = nn_ops.softmax_cross_entropy_with_logits_v2(
+          labels=l, logits=f, name="xent")
       err = gradient_checker.compute_gradient_error(l, [3, 4], x, [3])
 
     self.assertLess(err, 5e-8)
 
   def testSecondGradient(self):
     with self.test_session() as sess:
-      l = constant_op.constant([0.0, 0.0, 1.0/3, 0.0,
-                                1.0/3, 0.0, 0.0, 0.0,
-                                0.0, 0.5/3, 0.0, 0.5/3], shape=[12],
-                               dtype=dtypes.float64, name="l")
-      f = constant_op.constant([0.1, 0.2, 0.3, 0.4,
-                                0.1, 0.4, 0.9, 1.6,
-                                0.1, 0.8, 2.7, 6.4], shape=[12],
-                               dtype=dtypes.float64, name="f")
-      x = nn_ops.softmax_cross_entropy_with_logits(labels=l, logits=f,
-                                                   name="xent")
+      l = constant_op.constant(
+          [
+              0.0, 0.0, 1.0 / 3, 0.0, 1.0 / 3, 0.0, 0.0, 0.0, 0.0, 0.5 / 3, 0.0,
+              0.5 / 3
+          ],
+          shape=[12],
+          dtype=dtypes.float64,
+          name="l")
+      f = constant_op.constant(
+          [0.1, 0.2, 0.3, 0.4, 0.1, 0.4, 0.9, 1.6, 0.1, 0.8, 2.7, 6.4],
+          shape=[12],
+          dtype=dtypes.float64,
+          name="f")
+      x = nn_ops.softmax_cross_entropy_with_logits(
+          labels=l, logits=f, name="xent")
       loss = math_ops.reduce_sum(x)
 
       gradients = gradients_impl.gradients(loss, [f])[0]
@@ -219,20 +225,23 @@ class XentTest(test.TestCase):
 
       # Check that second derivative is calculated.
       # (it is equivalent to being `BatchMatMul` op in the graph because of implementation of xentropy grad)
-      op_names = [op.op_def.name for op in sess.graph.get_operations() if op.op_def]
-      self.assertIn('BatchMatMul', op_names)
+      op_names = [
+          op.op_def.name for op in sess.graph.get_operations() if op.op_def
+      ]
+      self.assertIn("BatchMatMul", op_names)
 
     print("cross entropy hessian err = ", err)
     self.assertLess(err, 5e-8)
 
   def testWrapper(self):
-    features = np.array(
-        [[[1., 1., 1., 1.], [1., 2., 3., 4.]],
-         [[2., 3., 4., 5.], [6., 7., 8., 9.]],
-         [[5., 4., 3., 2.], [1., 2., 3., 4.]]]).astype(np.float32)
+    features = np.array([[[1., 1., 1., 1.], [1., 2., 3., 4.]],
+                         [[2., 3., 4., 5.], [6., 7., 8., 9.]],
+                         [[5., 4., 3., 2.], [1., 2., 3., 4.]]]).astype(
+                             np.float32)
     labels = np.array([[[0., 0., 0., 1.], [0., 1., 0., 0.]],
                        [[0., 0.5, 0.5, 0.], [0.5, 0.5, 0., 0.]],
-                       [[0., 1., 0., 0.], [0., 0., 1., 0.]]]).astype(np.float32)
+                       [[0., 1., 0., 0.], [0., 0., 1., 0.]]]).astype(
+                           np.float32)
     self._testXentWrapper(features, labels, dim=0, use_gpu=False)
     self._testXentWrapper(features, labels, dim=0, use_gpu=True)
     self._testXentWrapper(features, labels, dim=1, use_gpu=False)

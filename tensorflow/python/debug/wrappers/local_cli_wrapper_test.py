@@ -664,6 +664,20 @@ class LocalCLIDebugWrapperSessionTest(test_util.TensorFlowTestCase):
         [["run"], ["run"]], monitored_sess)
     self.assertFalse(wrapped_monitored_sess.should_stop())
 
+  def testRunsWithEmptyFetchWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]], self.sess, dump_root="")
+
+    run_output = wrapped_sess.run([])
+    self.assertEqual([], run_output)
+
+  def testRunsWithEmptyNestedFetchWorks(self):
+    wrapped_sess = LocalCLIDebuggerWrapperSessionForTest(
+        [["run"]], self.sess, dump_root="")
+
+    run_output = wrapped_sess.run({"foo": {"baz": []}, "bar": ()})
+    self.assertEqual({"foo": {"baz": []}, "bar": ()}, run_output)
+
 
 if __name__ == "__main__":
   googletest.main()

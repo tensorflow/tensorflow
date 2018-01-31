@@ -212,7 +212,9 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module) {
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-tensorflow::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
+tensorflow::Status PrepareHloModuleForIrEmitting(
+    HloModule* hlo_module, se::StreamExecutor* stream_exec,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
@@ -410,7 +412,8 @@ GpuCompiler::GpuCompiler()
                         .getPointerSize(0 /* default address space */)) {}
 
 StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* /*stream_exec*/) {
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+    DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
   Tracing::TraceMe annotation("HLO Transforms", module->name(),
                               /*is_expensive=*/true);
@@ -419,12 +422,14 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
 }
 
 StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
-    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec) {
+    std::unique_ptr<HloModule> module, se::StreamExecutor* stream_exec,
+    DeviceMemoryAllocator* device_allocator) {
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunBackend");
 
   TF_RET_CHECK(stream_exec != nullptr);
 
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get(), stream_exec,
+                                                   device_allocator));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -463,12 +468,12 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
   // print one ourselves.
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
   XLA_VLOG_LINES(2, module->ToString());
-  const string xla_dump_hlo_proto_to =
-      module->config().debug_options().xla_dump_hlo_proto_to();
-  if (!xla_dump_hlo_proto_to.empty()) {
+  const string xla_dump_optimized_hlo_proto_to =
+      module->config().debug_options().xla_dump_optimized_hlo_proto_to();
+  if (!xla_dump_optimized_hlo_proto_to.empty()) {
     HloProto proto = MakeHloProto(*module, *buffer_assignment);
     TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-        proto, xla_dump_hlo_proto_to, module->name()));
+        proto, xla_dump_optimized_hlo_proto_to, module->name()));
   }
 
   IrEmitterContext ir_emitter_context(module.get(), buffer_assignment.get(),

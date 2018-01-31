@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 #if TOCO_SUPPORT_PORTABLE_PROTOS
 #include "third_party/protobuf/src/google/protobuf/text_format.h"
@@ -49,6 +50,8 @@ namespace toco {
 constexpr int kLogLevelModelChanged = 1;
 constexpr int kLogLevelModelUnchanged = 2;
 
+absl::string_view FindLongestCommonPrefix(absl::string_view a,
+                                          absl::string_view b);
 string LogName(const Operator& op);
 
 bool IsInputArray(const Model& model, const string& name);
@@ -78,6 +81,8 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOp(Model& model,
 
 const char* OperatorTypeName(OperatorType type);
 string HelpfulOperatorTypeName(const Operator& op);
+
+bool OperatorSupportsFusedActivation(OperatorType type);
 
 void DumpGraphvizVideoFrame(const Model& model);
 void LogDump(int log_level, const string& message, const Model& model);

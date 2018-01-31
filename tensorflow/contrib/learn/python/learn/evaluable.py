@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """`Evaluable` interface."""
 
 from __future__ import absolute_import
@@ -59,9 +58,12 @@ class Evaluable(object):
     for which this evaluation was performed.
 
     Args:
-      x: Matrix of shape [n_samples, n_features...] or dictionary of many matrices
-        containing the input samples for fitting the model. Can be iterator that returns
-        arrays of features or dictionary of array of features. If set, `input_fn` must
+      x: Matrix of shape [n_samples, n_features...] or dictionary of many
+        matrices
+        containing the input samples for fitting the model. Can be iterator that
+          returns
+        arrays of features or dictionary of array of features. If set,
+          `input_fn` must
         be `None`.
       y: Vector or matrix [n_samples] or [n_samples, n_outputs] containing the
         label values (class labels in classification, real numbers in
