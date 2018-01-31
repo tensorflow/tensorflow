@@ -232,13 +232,9 @@ def load(sess, tags, export_dir, **saver_kwargs):
     asset_tensors_dictionary = _get_asset_tensors(export_dir,
                                                   meta_graph_def_to_load)
 
-    main_op_tensor = _get_main_op_tensor(meta_graph_def_to_load)
+    main_op_tensor = (_get_main_op_tensor(meta_graph_def_to_load) or
+                      (_get_legacy_init_op_tensor(meta_graph_def_to_load)))
     if main_op_tensor is not None:
       sess.run(fetches=[main_op_tensor], feed_dict=asset_tensors_dictionary)
-    else:
-      legacy_init_op_tensor = _get_legacy_init_op_tensor(meta_graph_def_to_load)
-      if legacy_init_op_tensor is not None:
-        sess.run(
-            fetches=[legacy_init_op_tensor], feed_dict=asset_tensors_dictionary)
 
     return meta_graph_def_to_load
