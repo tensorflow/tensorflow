@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_DATASET_H_
 #define TENSORFLOW_FRAMEWORK_DATASET_H_
 
+#include "tensorflow/core/lib/core/status.h"
+
 namespace tensorflow {
 namespace dataset {
 // Registry for stateful ops that need to be used in dataset functions.
