@@ -77,6 +77,7 @@ genrule(
         "api/nn/rnn_cell/__init__.py",
         "api/sets/__init__.py",
         "api/summary/__init__.py",
+        "api/train/queue_runner/__init__.py",
     ],
     cmd = "$(location create_python_api) $(OUTS)",
     tools = ["create_python_api"],
