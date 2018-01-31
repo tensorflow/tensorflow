@@ -82,21 +82,24 @@ def _standardize_input_data(data,
           if data[x].__class__.__name__ == 'DataFrame' else data[x]
           for x in names
       ]
-      data = [np.expand_dims(x, 1) if x.ndim == 1 else x for x in data]
     except KeyError as e:
       raise ValueError('No data provided for "' + e.args[0] + '". Need data '
                        'for each key in: ' + str(names))
   elif isinstance(data, list):
-    data = [
-        x.values if x.__class__.__name__ == 'DataFrame' else x for x in data
-    ]
-    data = [
-        np.expand_dims(x, 1) if x is not None and x.ndim == 1 else x
-        for x in data
-    ]
+    if isinstance(data[0], list):
+      data = [np.asarray(d) for d in data]
+    elif len(names) == 1 and isinstance(data[0], (float, int)):
+      data = [np.asarray(data)]
+    else:
+      data = [
+          x.values if x.__class__.__name__ == 'DataFrame' else x for x in data
+      ]
   else:
     data = data.values if data.__class__.__name__ == 'DataFrame' else data
-    data = [np.expand_dims(data, 1)] if data.ndim == 1 else [data]
+    data = [data]
+  data = [
+      np.expand_dims(x, 1) if x is not None and x.ndim == 1 else x for x in data
+  ]
 
   if len(data) != len(names):
     if data and hasattr(data[0], 'shape'):
