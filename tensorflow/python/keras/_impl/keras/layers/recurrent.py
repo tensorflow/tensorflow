@@ -213,6 +213,19 @@ class StackedRNNCells(Layer):
     return losses
 
 
+def _set_to_first_item_if_list(container):
+  if isinstance(container, list):
+    container = container[0]
+  return container
+
+
+def _check_lengths_of_states(initial_state, self_states):
+  if len(initial_state) != len(self_states):
+    raise ValueError('Layer has ' + str(len(self_states)) +
+                     ' states but was passed ' + str(len(initial_state)) +
+                     ' initial states.')
+
+
 class RNN(Layer):
   """Base class for recurrent layers.
 
@@ -413,8 +426,7 @@ class RNN(Layer):
 
   @shape_type_conversion
   def compute_output_shape(self, input_shape):
-    if isinstance(input_shape, list):
-      input_shape = input_shape[0]
+    input_shape = _set_to_first_item_if_list(input_shape)
 
     if hasattr(self.cell.state_size, '__len__'):
       state_size = self.cell.state_size
@@ -434,8 +446,7 @@ class RNN(Layer):
       return output_shape
 
   def compute_mask(self, inputs, mask):
-    if isinstance(mask, list):
-      mask = mask[0]
+    mask = _set_to_first_item_if_list(mask)
     output_mask = mask if self.return_sequences else None
     if self.return_state:
       state_mask = [None for _ in self.states]
@@ -452,8 +463,7 @@ class RNN(Layer):
     else:
       constants_shape = None
 
-    if isinstance(input_shape, list):
-      input_shape = input_shape[0]
+    input_shape = _set_to_first_item_if_list(input_shape)
 
     batch_size = input_shape[0] if self.stateful else None
     input_dim = input_shape[-1]
@@ -554,22 +564,18 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if isinstance(inputs, list):
-      inputs = inputs[0]
+    inputs = _set_to_first_item_if_list(inputs)
+    self_states = self.states
     if initial_state is not None:
       pass
     elif self.stateful:
-      initial_state = self.states
+      initial_state = self_states
     else:
       initial_state = self.get_initial_state(inputs)
 
-    if isinstance(mask, list):
-      mask = mask[0]
+    mask = _set_to_first_item_if_list(mask)
 
-    if len(initial_state) != len(self.states):
-      raise ValueError(
-          'Layer has ' + str(len(self.states)) + ' states but was passed ' +
-          str(len(initial_state)) + ' initial states.')
+    _check_lengths_of_states(initial_state, self_states)
     input_shape = K.int_shape(inputs)
     timesteps = input_shape[1]
     if self.unroll and timesteps in [None, 1]:
@@ -614,7 +620,7 @@ class RNN(Layer):
     if self.stateful:
       updates = []
       for i in range(len(states)):
-        updates.append((self.states[i], states[i]))
+        updates.append((self_states[i], states[i]))
       self.add_update(updates, inputs)
 
     if self.return_sequences:
@@ -2411,23 +2417,20 @@ class Recurrent(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
+    self_states = self.states
     if isinstance(inputs, list):
       initial_state = inputs[1:]
       inputs = inputs[0]
     elif initial_state is not None:
       pass
     elif self.stateful:
-      initial_state = self.states
+      initial_state = self_states
     else:
       initial_state = self.get_initial_state(inputs)
 
-    if isinstance(mask, list):
-      mask = mask[0]
+    mask = _set_to_first_item_if_list(mask)
 
-    if len(initial_state) != len(self.states):
-      raise ValueError('Layer has ' + str(len(self.states)) +
-                       ' states but was passed ' + str(len(initial_state)) +
-                       ' initial states.')
+    _check_lengths_of_states(initial_state, self_states)
     input_shape = K.int_shape(inputs)
     if self.unroll and input_shape[1] is None:
       raise ValueError('Cannot unroll a RNN if the '
@@ -2454,7 +2457,7 @@ class Recurrent(Layer):
     if self.stateful:
       updates = []
       for i in range(len(states)):
-        updates.append((self.states[i], states[i]))
+        updates.append((self_states[i], states[i]))
       self.add_update(updates, inputs)
 
     # Properly set learning phase
