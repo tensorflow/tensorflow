@@ -77,8 +77,10 @@ void GetSubGraphIncomingEdges(tensorflow::Graph const& graph,
     for (tensorflow::Edge const* edge : node->in_edges()) {
       if (!subgraph_node_ids.count(edge->src()->id()) &&
           !edge->src()->IsSource()) {
-        LOG(DEBUG) << edge->src()->name() << ", ";
+        LOG(DEBUG) << edge->src()->name() << " Y, ";
         incoming_edges->insert(edge);
+      } else {
+        LOG(DEBUG) << edge->src()->name() << " N, ";
       }
     }
   }
@@ -93,7 +95,10 @@ void GetSubGraphOutgoingEdges(tensorflow::Graph const& graph,
     for (tensorflow::Edge const* edge : node->out_edges()) {
       if (!subgraph_node_ids.count(edge->dst()->id()) &&
           !edge->dst()->IsSink()) {
+        LOG(DEBUG) << edge->dst()->name() << " Y, ";
         outgoing_edges->insert(edge);
+      } else {
+        LOG(DEBUG) << edge->dst()->name() << " N, ";
       }
     }
   }
@@ -126,6 +131,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
     tensorflow::Graph& graph, const std::vector<std::string>& output_names,
     const std::set<int>& subgraph_node_ids, size_t max_batch_size,
     size_t max_workspace_size,
+    std::unordered_map<std::string, std::pair<int, std::string>>* output_edge_map,
     const tensorflow::grappler::GraphProperties& graph_properties) {
   tensorflow::EdgeSet subgraph_incoming_edges;
   GetSubGraphIncomingEdges(graph, subgraph_node_ids, &subgraph_incoming_edges);
@@ -164,9 +170,31 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   tensorflow::NodeDef trt_node_def;
   TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRTNodeDef(
       graph, subgraph_node_ids, subgraph_inputs, subgraph_outputs,
-      max_batch_size, max_workspace_size, graph_properties, &trt_node_def));
+      max_batch_size, max_workspace_size, graph_properties, output_edge_map, 
+      &trt_node_def));
   tensorflow::Status status;
   tensorflow::Node* trt_node = graph.AddNode(trt_node_def, &status);
+
+  // AddNode does not wire edges.
+  // Re-map incoming edges to use the new TRT node instead of the orig subgraph
+  std::map<std::pair<int,int>, int> subgraph_edge_to_input_map;
+  for (size_t i=0; i<subgraph_inputs.size(); ++i ) {
+    subgraph_edge_to_input_map.insert(
+      {subgraph_inputs.at(i), i});
+  }
+  for (tensorflow::Edge const* edge : subgraph_incoming_edges) {
+    std::pair<int, int> old_src = {edge->src()->id(), edge->src_output()};
+    int new_src_output = subgraph_edge_to_input_map.at(old_src);
+    graph.AddEdge(
+      edge->src(), edge->src_output(), trt_node, new_src_output);
+    graph.RemoveEdge(edge);
+  }
+
+
+  LOG(DEBUG) << "new wiring edges: " << trt_node->in_edges().size();
+  for (tensorflow::Edge const* edge : trt_node->in_edges()) {
+    LOG(DEBUG) << edge->src()->name() << " port: " << edge->src_output();
+  }
 
   TF_RETURN_IF_ERROR(status);
 
@@ -176,6 +204,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
     subgraph_edge_to_output_map.insert({subgraph_outputs.at(i), i});
   }
   TF_RETURN_IF_ERROR(status);
+  LOG(DEBUG) << "OUT going edge size: " << subgraph_outgoing_edges.size();
   for (tensorflow::Edge const* edge : subgraph_outgoing_edges) {
     std::pair<int, int> old_src = {edge->src()->id(), edge->src_output()};
     int new_src_output = subgraph_edge_to_output_map.at(old_src);
@@ -280,7 +309,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   for (auto node : output_names) output_nodes.insert(node);
 
   // TODO(sami): this should be passed as a knob!!!!
-  segment_options.minimum_segment_size = 10;
+  segment_options.minimum_segment_size = 2;
   tensorrt::segment::SegmentNodesVector segments;
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
       gdef, IsTensorRTCandidate, segment_options, &segments));
@@ -292,6 +321,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   }
   std::unordered_map<std::string, tensorflow::Node*> node_map;
   TF_RETURN_IF_ERROR(BuildNodeMap(graph, &node_map));
+  std::unordered_map<std::string, std::pair<int, std::string>> output_edge_map;
   for (std::set<std::string> const& subgraph_node_names : segments) {
     std::set<int> subgraph_node_ids;
     for (std::string const& node_name : subgraph_node_names) {
@@ -299,7 +329,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
     }
     TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRT(
         graph, output_names, subgraph_node_ids, max_batch_size,
-        max_workspace_size, static_graph_properties));
+        max_workspace_size, &output_edge_map, static_graph_properties));
   }
   graph.ToGraphDef(new_graph_def);
   return tensorflow::Status::OK();
