@@ -257,6 +257,12 @@ def depthwise_conv2d_native_shape(op):
   # Check that the input depths are compatible.
   input_shape[3].assert_is_compatible_with(filter_shape[2])
 
+  out_cols, out_rows = _prepare_tensor_shape(filter_cols, filter_rows, in_cols, in_rows, op)
+
+  return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth_out])]
+
+
+def _prepare_tensor_shape(filter_cols, filter_rows, in_cols, in_rows, op):
   stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
   if stride_b != 1 or stride_d != 1:
     raise ValueError("Current implementation does not yet support "
@@ -274,8 +280,7 @@ def depthwise_conv2d_native_shape(op):
   out_rows, out_cols = get2d_conv_output_size(in_rows, in_cols, filter_rows,
                                               filter_cols, stride, stride,
                                               padding)
-
-  return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth_out])]
+  return out_cols, out_rows
 
 
 def separable_conv2d_shape(op):
@@ -320,23 +325,7 @@ def separable_conv2d_shape(op):
   filter_cols = depthwise_filter_shape[1]
   depth_out = pointwise_filter_shape[3]
 
-  stride_b, stride_r, stride_c, stride_d = op.get_attr("strides")
-  if stride_b != 1 or stride_d != 1:
-    raise ValueError("Current implementation does not yet support "
-                     "strides in the batch and depth dimensions.")
-  if stride_r != stride_c:
-    # TODO(shlens): Add support for this.
-    raise ValueError("Current implementation only supports equal length "
-                     "strides in the row and column dimensions.")
-
-  # TODO(mrry,shlens): Raise an error if the stride would cause
-  # information in the input to be ignored. This will require a change
-  # in the kernel implementation.
-  stride = stride_r
-  padding = op.get_attr("padding")
-  out_rows, out_cols = get2d_conv_output_size(in_rows, in_cols, filter_rows,
-                                              filter_cols, stride, stride,
-                                              padding)
+  out_cols, out_rows = _prepare_tensor_shape(filter_cols, filter_rows, in_cols, in_rows, op)
 
   return [tensor_shape.TensorShape([batch_size, out_rows, out_cols, depth_out])]
 
