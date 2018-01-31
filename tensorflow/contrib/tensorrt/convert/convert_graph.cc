@@ -123,7 +123,7 @@ tensorflow::Status ConvertSubGraphToTensorRT(
     const std::set<int>& subgraph_node_ids,
     size_t max_batch_size,  // max batch size that engine will be created for
     // max amount of memory that engine will be allowed to consume, in bytes
-    size_t max_workspace_size,
+    size_t max_workspace_size_bytes,
     const tensorflow::grappler::GraphProperties& graph_properties,
     tensorflow::Graph* graph) {
   tensorflow::EdgeSet subgraph_incoming_edges;
@@ -159,7 +159,8 @@ tensorflow::Status ConvertSubGraphToTensorRT(
   tensorflow::NodeDef trt_node_def;
   TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRTNodeDef(
       *graph, subgraph_node_ids, subgraph_inputs, subgraph_outputs,
-      max_batch_size, max_workspace_size, graph_properties, &trt_node_def));
+      max_batch_size, max_workspace_size_bytes, graph_properties,
+      &trt_node_def));
   tensorflow::Status status;
   tensorflow::Node* trt_node = graph->AddNode(trt_node_def, &status);
 
@@ -205,7 +206,7 @@ tensorflow::Status BuildNodeMap(
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<std::string>& output_names, size_t max_batch_size,
-    size_t max_workspace_size, tensorflow::GraphDef* new_graph_def) {
+    size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def) {
   // optimization pass
   tensorflow::grappler::GrapplerItem item;
   item.fetch = output_names;
@@ -258,7 +259,7 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   TF_RETURN_IF_ERROR(tensorrt::segment::SegmentGraph(
       gdef, IsTensorRTCandidate, segment_options, &segments));
   if (segments.size() > 1) {
-    VLOG(INFO) << "MULTIPLE tensorrt candidate conversion: " << segments.size();
+    VLOG(0) << "MULTIPLE tensorrt candidate conversion: " << segments.size();
   }
   std::unordered_map<std::string, tensorflow::Node*> node_map;
   TF_RETURN_IF_ERROR(BuildNodeMap(graph, &node_map));
@@ -268,8 +269,8 @@ tensorflow::Status ConvertGraphDefToTensorRT(
       subgraph_node_ids.insert(node_map.at(node_name)->id());
     }
     TF_RETURN_IF_ERROR(ConvertSubGraphToTensorRT(
-        output_names, subgraph_node_ids, max_batch_size, max_workspace_size,
-        static_graph_properties, &graph));
+        output_names, subgraph_node_ids, max_batch_size,
+        max_workspace_size_bytes, static_graph_properties, &graph));
   }
   graph.ToGraphDef(new_graph_def);
   return tensorflow::Status::OK();
