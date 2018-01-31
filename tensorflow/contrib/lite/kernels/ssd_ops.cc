@@ -12,13 +12,77 @@
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/reference/reference_ops.h"
 
+//#include "tensorflow/contrib/lite/kernels/internal/optimized/eigen_tensor_reduced_instantiations_google.h"
+//#include "tensorflow/contrib/lite/kernels/internal/optimized/eigen_spatial_convolutions.h"
+#define EIGEN_USE_THREADS
+#include <unsupported/Eigen/CXX11/Tensor>
+
 namespace tflite {
 namespace ops {
 namespace custom {
 
+// Copied from
+// tensorflow/contrib/lite/kernels/internal/optimized/multithreaded_conv.h
+class EigenThreadPoolWrapper : public Eigen::ThreadPoolInterface {
+ public:
+  explicit EigenThreadPoolWrapper(Eigen::ThreadPool* pool) : pool_(pool) {}
+  ~EigenThreadPoolWrapper() override {}
+
+  void Schedule(std::function<void()> fn) override {
+    pool_->Schedule(std::move(fn));
+  }
+  int NumThreads() const override { return pool_->NumThreads(); }
+  int CurrentThreadId() const override { return pool_->CurrentThreadId(); }
+
+ private:
+  Eigen::ThreadPool* pool_ = nullptr;
+};
+
+// We have a single global threadpool for all convolution operations. This means
+// that inferences started from different threads may block each other, but
+// since the underlying resource of CPU cores should be consumed by the
+// operations anyway, it shouldn't affect overall performance.
+const Eigen::ThreadPoolDevice& GetThreadPoolDevice() {
+  const int thread_count = 4;
+  static Eigen::ThreadPool* tp = new Eigen::ThreadPool(thread_count);
+  static EigenThreadPoolWrapper* thread_pool_wrapper =
+      new EigenThreadPoolWrapper(tp);
+  static Eigen::ThreadPoolDevice* device =
+      new Eigen::ThreadPoolDevice(thread_pool_wrapper, thread_count);
+  return *device;
+}
+
+
+// Shorthands for the types we need when interfacing with the EigenTensor
+// library.
+typedef Eigen::TensorMap<
+    Eigen::Tensor<float, 2, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned>
+    EigenMatrix;
+typedef Eigen::TensorMap<
+    Eigen::Tensor<const float, 2, Eigen::RowMajor, Eigen::DenseIndex>,
+    Eigen::Aligned>
+    ConstEigenMatrix;
+
+/*typedef Eigen::TensorMap<
+    Eigen::Tensor<float, 1, Eigen::ColMajor, Eigen::DenseIndex>, Eigen::Aligned>
+    EigenVector;
+typedef Eigen::TensorMap<
+    Eigen::Tensor<const float, 1, Eigen::ColMajor, Eigen::DenseIndex>,
+    Eigen::Aligned>
+    ConstEigenVector;
+*/
+
+typedef Eigen::TensorMap<
+    Eigen::Tensor<float, 4, Eigen::RowMajor, Eigen::DenseIndex>, Eigen::Aligned>
+    EigenTensor;
+typedef Eigen::TensorMap<
+    Eigen::Tensor<const float, 4, Eigen::RowMajor, Eigen::DenseIndex>,
+    Eigen::Aligned>
+    ConstEigenTensor;
+
 // NEON takes precedence, then EIGEN. If both commented,
 // then reference is used.
-//#define SSD_USE_NEON
+#define SSD_USE_NEON
 #define SSD_USE_EIGEN
 
 inline void Exp(const float* input_data, const Dims<4>& input_dims,
@@ -146,7 +210,7 @@ inline void Mul(const float* input1_data, const Dims<4>& input1_dims,
   float ac_min = std::numeric_limits<float>::min();
   float ac_max = std::numeric_limits<float>::max();
 
-  tflite::reference_ops::Mul(input1_data, input1_dims,
+  tflite::optimized_ops::Mul(input1_data, input1_dims,
           input2_data, input2_dims,
           ac_min, ac_max,
           output_data, output_dims);
@@ -203,7 +267,7 @@ inline void Add(const float* input1_data, const Dims<4>& input1_dims,
   float ac_min = std::numeric_limits<float>::min();
   float ac_max = std::numeric_limits<float>::max();
 
-  tflite::reference_ops::Add(input1_data, input1_dims,
+  tflite::optimized_ops::Add(input1_data, input1_dims,
           input2_data, input2_dims,
           ac_min, ac_max,
           output_data, output_dims);
@@ -259,7 +323,7 @@ inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
   float ac_min = std::numeric_limits<float>::min();
   float ac_max = std::numeric_limits<float>::max();
 
-  tflite::reference_ops::Sub(input1_data, input1_dims,
+  tflite::optimized_ops::Sub(input1_data, input1_dims,
           input2_data, input2_dims,
           ac_min, ac_max,
           output_data, output_dims);
@@ -318,12 +382,21 @@ inline void Logistic(const float* input_data, const Dims<4>& input_dims,
 
   using tflite::optimized_ops::MapAsVector;
 
-  // Implementation using EIGEN
+  // Implementation using EIGEN Matrix
   auto input_map = MapAsVector(input_data, input_dims);
   auto output_map = MapAsVector(output_data, output_dims);
 
   output_map.array() = input_map.array().unaryExpr(
           Eigen::internal::scalar_sigmoid_op<float>());
+
+/*  // Get device*/
+  //auto device = GetThreadPoolDevice();
+  //// Make Tensor maps
+  //const int size = RequiredBufferSizeForDims(input_dims);
+  //ConstEigenMatrix input_map(input_data, size, 1);
+  //EigenMatrix output_map(output_data, size, 1);
+  //// Apply
+  //output_map.device(device) = input_map.sigmoid();
 
   //output_map.array() = 1.f / (1.f + (-input_map.array()).exp());
 
@@ -875,7 +948,7 @@ TfLiteStatus PostprocessProbsEval(TfLiteContext* context, TfLiteNode* node) {
   // at the end of NMS after all is done, and we could just compare
   // the score to the logit (inverse of logistic/sigmoid)
 /*  Logistic(probs_out_data, probs_out_dims,*/
-           /*probs_out_data, probs_out_dims);*/
+           //probs_out_data, probs_out_dims);
 
   // print first 5 boxes in first 5 classes
   for (int c = 0; c < 5; ++c) {
