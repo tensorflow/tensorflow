@@ -71,7 +71,7 @@ class SparsifyGatherTest : public ::testing::Test {
   }
 
   void TestSinglePartition(bool gather_v2, bool include_shared_init,
-                           bool test_variable,
+                           bool test_variable, bool test_kept_concat,
                            const string& shared_init_name = "group_deps") {
     GraphDef graph_def;
 
@@ -139,6 +139,26 @@ class SparsifyGatherTest : public ::testing::Test {
       }
     }
 
+    NodeDef* concat_axis_node =
+        CreateNode("linear/concat/axis", "Const", {}, &graph_def);
+    NodeDef* concat_input_node =
+        CreateNode("concat/input/node", "Const", {}, &graph_def);
+    NodeDef* concat_node = nullptr;
+    if (!test_kept_concat) {
+      concat_node = CreateNode(
+          "concat/node", "ConcatV2",
+          {identity_node, concat_input_node, concat_axis_node}, &graph_def);
+      SetNodeAttr("N", 2, concat_node);
+    } else {
+      NodeDef* concat_input_node_2 =
+          CreateNode("concat/input/node_2", "Const", {}, &graph_def);
+      concat_node = CreateNode("concat/node", "ConcatV2",
+                               {identity_node, concat_input_node,
+                                concat_input_node_2, concat_axis_node},
+                               &graph_def);
+      SetNodeAttr("N", 3, concat_node);
+    }
+
     // Run the op.
     GraphDef result;
     TransformFuncContext context;
@@ -165,6 +185,23 @@ class SparsifyGatherTest : public ::testing::Test {
 
     EXPECT_EQ(1, node_lookup.count("ids"));
     EXPECT_EQ("Const", node_lookup.at("ids")->op());
+
+    EXPECT_EQ(1, node_lookup.count("concat/node"));
+
+    if (!test_kept_concat) {
+      EXPECT_EQ(0, node_lookup.count("linear/concat/axis"));
+      EXPECT_EQ("Identity", node_lookup.at("concat/node")->op());
+      EXPECT_EQ(1, node_lookup.at("concat/node")->input_size());
+      EXPECT_EQ("concat/input/node", node_lookup.at("concat/node")->input(0));
+    } else {
+      EXPECT_EQ(1, node_lookup.count("linear/concat/axis"));
+      EXPECT_EQ("ConcatV2", node_lookup.at("concat/node")->op());
+      EXPECT_EQ(3, node_lookup.at("concat/node")->input_size());
+      EXPECT_EQ("concat/input/node", node_lookup.at("concat/node")->input(0));
+      EXPECT_EQ("concat/input/node_2", node_lookup.at("concat/node")->input(1));
+      EXPECT_EQ("linear/concat/axis", node_lookup.at("concat/node")->input(2));
+      EXPECT_EQ(2, node_lookup.at("concat/node")->attr().at("N").i());
+    }
 
     EXPECT_EQ(1, node_lookup.count("w/part_1/indices"));
     EXPECT_EQ("Const", node_lookup.at("w/part_1/indices")->op());
@@ -344,6 +381,13 @@ class SparsifyGatherTest : public ::testing::Test {
     MakeGather("gather1", gather_v2, identity_node1, input_node, &graph_def);
     MakeGather("gather2", gather_v2, identity_node2, input_node, &graph_def);
 
+    NodeDef* concat_axis_node =
+        CreateNode("linear/concat/axis", "Const", {}, &graph_def);
+    NodeDef* concat_node = CreateNode(
+        "concat/node", "ConcatV2",
+        {identity_node1, identity_node2, concat_axis_node}, &graph_def);
+    SetNodeAttr("N", 2, concat_node);
+
     // Shared init node
     if (include_shared_init) {
       if (!test_variable) {
@@ -515,6 +559,9 @@ class SparsifyGatherTest : public ::testing::Test {
               node_lookup.at("gather2/LookupTableFind")->input(2));
     EXPECT_EQ("gather2/LookupTableFind", node_lookup.at("gather2")->input(0));
 
+    EXPECT_EQ(0, node_lookup.count("linear/concat/axis"));
+    EXPECT_EQ(0, node_lookup.count("concat/node"));
+
     // Check control deps.
     EXPECT_EQ(2, node_lookup.at(shared_init_name)->input_size());
     EXPECT_NE(std::find(node_lookup.at(shared_init_name)->input().begin(),
@@ -550,18 +597,31 @@ class SparsifyGatherTest : public ::testing::Test {
 };
 
 TEST_F(SparsifyGatherTest, TestSinglePartition) {
-  TestSinglePartition(false, false, false);
-  TestSinglePartition(false, true, false);
-  TestSinglePartition(true, false, false);
-  TestSinglePartition(true, true, false);
-  TestSinglePartition(false, false, true);
-  TestSinglePartition(false, true, true);
-  TestSinglePartition(true, false, true);
-  TestSinglePartition(true, true, true);
-  TestSinglePartition(false, true, false, "shared_inits");
-  TestSinglePartition(true, true, false, "shared_inits");
-  TestSinglePartition(false, true, true, "shared_inits");
-  TestSinglePartition(true, true, true, "shared_inits");
+  TestSinglePartition(false, false, false, false);
+  TestSinglePartition(false, true, false, false);
+  TestSinglePartition(true, false, false, false);
+  TestSinglePartition(true, true, false, false);
+  TestSinglePartition(false, false, true, false);
+  TestSinglePartition(false, true, true, false);
+  TestSinglePartition(true, false, true, false);
+  TestSinglePartition(true, true, true, false);
+  TestSinglePartition(false, true, false, false, "shared_inits");
+  TestSinglePartition(true, true, false, false, "shared_inits");
+  TestSinglePartition(false, true, true, false, "shared_inits");
+  TestSinglePartition(true, true, true, false, "shared_inits");
+
+  TestSinglePartition(false, false, false, true);
+  TestSinglePartition(false, true, false, true);
+  TestSinglePartition(true, false, false, true);
+  TestSinglePartition(true, true, false, true);
+  TestSinglePartition(false, false, true, true);
+  TestSinglePartition(false, true, true, true);
+  TestSinglePartition(true, false, true, true);
+  TestSinglePartition(true, true, true, true);
+  TestSinglePartition(false, true, false, true, "shared_inits");
+  TestSinglePartition(true, true, false, true, "shared_inits");
+  TestSinglePartition(false, true, true, true, "shared_inits");
+  TestSinglePartition(true, true, true, true, "shared_inits");
 }
 
 TEST_F(SparsifyGatherTest, TestMultiPartition) {
