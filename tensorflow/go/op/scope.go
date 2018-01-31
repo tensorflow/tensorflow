@@ -109,15 +109,20 @@ func (s *Scope) SubScope(namespace string) *Scope {
 // added to the graph to execute only after all the provided operations have
 // executed first (in addition to any other control dependencies in s).
 func (s *Scope) WithControlDependencies(ops ...*tf.Operation) *Scope {
+	// Force a copy of the control dependencies into a new underlying array on
+	// every call.  We cannot alias the same underlying array as `ops`, otherwise
+	// the user could modify that array after calling s.WithControlDependencies,
+	// which would be confusing.  We cannot alias the same underlying array as the
+	// original `s.controlDependencies`, since Scopes form a logical tree, and
+	// other calls to s.WithControlDependencies could stomp on each other.
+	deps := make([]*tf.Operation, 0, len(s.controlDependencies)+len(ops))
+	deps = append(deps, s.controlDependencies...)
+	deps = append(deps, ops...)
 	return &Scope{
-		graph:     s.graph,
-		namemap:   s.namemap,
-		namespace: s.namespace,
-		// append(ops, s.controlDependencies) and not the other way
-		// around so that we end up with a copy of the underlying array
-		// (and other calls to s.WithControlDependencies() do not stomp
-		// on each other).
-		controlDependencies: append(ops, s.controlDependencies...),
+		graph:               s.graph,
+		namemap:             s.namemap,
+		namespace:           s.namespace,
+		controlDependencies: deps,
 		err:                 s.err,
 	}
 }

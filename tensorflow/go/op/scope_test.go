@@ -77,8 +77,17 @@ func TestControlDependencies(t *testing.T) {
 		variable = VarHandleOp(s, tf.Int32, tf.ScalarShape())
 		init     = AssignVariableOp(s, variable, zero)
 		update   = AssignAddVariableOp(s, variable, one)
-		read     = ReadVariableOp(s.WithControlDependencies(update), variable, tf.Int32)
+		readDeps = []*tf.Operation{update}
 	)
+	// We intend for `read` to have a control dependency on `update`.
+	s = s.WithControlDependencies(readDeps...)
+	// Ensure that Scope.WithControlDependencies makes a copy of the underlying
+	// array, rather than just holding a slice reference to the same user-supplied
+	// underlying array.  If the copy is correctly performed, overwriting
+	// readDeps[0] should have no effect on control dependencies for `read`.
+	readDeps[0] = init
+	read := ReadVariableOp(s, variable, tf.Int32)
+
 	graph, err := s.Finalize()
 	if err != nil {
 		t.Fatal(err)
