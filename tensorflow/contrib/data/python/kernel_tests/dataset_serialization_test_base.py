@@ -41,8 +41,9 @@ class DatasetSerializationTestBase(test.TestCase):
   def tearDown(self):
     self._delete_ckpt()
 
-  # TODO(b/72657739): Remove sparse_tensor argument to test the (deprecated)
-  # `from_sparse_tensor_slices()` API once the API and tests are deleted.
+  # TODO(b/72657739): Remove sparse_tensor argument, which is to test the
+  # (deprecated) saveable `SparseTensorSliceDataset`, once the API
+  # `from_sparse_tensor_slices()`and related tests are deleted.
   def run_core_tests(self, ds_fn1, ds_fn2, num_outputs, sparse_tensors=False):
     """Runs the core tests.
 
@@ -589,7 +590,7 @@ class DatasetSerializationTestBase(test.TestCase):
     # `_get_iterator_ops_from_collection`.
 
     # TODO(shivaniagrwal): `output_classes` is a nested structure of classes,
-    # this base class is specific to current test cases. Update when test are
+    # this base class is specific to current test cases. Update when tests are
     # added with `output_classes` as a nested structure with at least one of the
     # component being `tf.SparseTensor`.
     if (sparse_tensors or
