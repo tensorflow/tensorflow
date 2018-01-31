@@ -63,6 +63,11 @@ if (NOT WIN32)
     # option's default value is OFF. Fill it with real default values
     set(tensorflow_CUDNN_INCLUDE /usr/include)
   endif (NOT tensorflow_CUDNN_INCLUDE)
+  option(tensorflow_NCCL_INCLUDE "nccl.h headher install path" /usr/include/)
+  if (NOT tensorflow_NCCL_INCLUDE)
+    # option's default value is OFF. Fill it with real default values
+    set(tensorflow_NCCL_INCLUDE /usr/include)
+  endif (NOT tensorflow_NCCL_INCLUDE)
   option(tensorflow_PATH_CUDNN_STATIC_LIB "Override PATH_STATIC_LIB for libcudnn_static.a" ${tensorflow_PATH_STATIC_LIB})
   if (NOT tensorflow_PATH_CUDNN_STATIC_LIB)
     # option's default value is OFF. Fill it with real default values

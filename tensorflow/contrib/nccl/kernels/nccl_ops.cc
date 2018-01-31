@@ -17,7 +17,11 @@ limitations under the License.
 
 #include <vector>
 
+#ifdef (PLATFORM_GOOGLE)
 #include "src/nccl.h"
+#else
+#include "nccl.h"
+#endif
 #include "tensorflow/contrib/nccl/kernels/nccl_manager.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
