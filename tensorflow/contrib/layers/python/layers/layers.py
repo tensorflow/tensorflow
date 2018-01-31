@@ -1273,20 +1273,23 @@ def convolution2d_transpose(
         dtype=inputs.dtype.base_dtype,
         _scope=sc,
         _reuse=reuse)
-    outputs = layer.apply(inputs)
+    return _normalize_and_activate_outputs(activation_fn, inputs, layer, normalizer_fn, normalizer_params,
+                                           outputs_collections, sc, variables_collections)
 
-    # Add variables to collections.
-    _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.bias is not None:
-      _add_variable_to_collections(layer.bias, variables_collections, 'biases')
 
-    if normalizer_fn is not None:
-      normalizer_params = normalizer_params or {}
-      outputs = normalizer_fn(outputs, **normalizer_params)
-
-    if activation_fn is not None:
-      outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+def _normalize_and_activate_outputs(activation_fn, inputs, layer, normalizer_fn, normalizer_params, outputs_collections,
+                                    sc, variables_collections):
+  outputs = layer.apply(inputs)
+  # Add variables to collections.
+  _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
+  if layer.bias is not None:
+    _add_variable_to_collections(layer.bias, variables_collections, 'biases')
+  if normalizer_fn is not None:
+    normalizer_params = normalizer_params or {}
+    outputs = normalizer_fn(outputs, **normalizer_params)
+  if activation_fn is not None:
+    outputs = activation_fn(outputs)
+  return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
 
 
 @add_arg_scope
@@ -1386,21 +1389,8 @@ def convolution3d_transpose(
         dtype=inputs.dtype.base_dtype,
         _scope=sc,
         _reuse=reuse)
-    outputs = layer.apply(inputs)
-
-    # Add variables to collections.
-    _add_variable_to_collections(layer.kernel, variables_collections, 'weights')
-    if layer.bias is not None:
-      _add_variable_to_collections(layer.bias, variables_collections, 'biases')
-
-    if normalizer_fn is not None:
-      normalizer_params = normalizer_params or {}
-      outputs = normalizer_fn(outputs, **normalizer_params)
-
-    if activation_fn is not None:
-      outputs = activation_fn(outputs)
-    return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
-
+    return _normalize_and_activate_outputs(activation_fn, inputs, layer, normalizer_fn, normalizer_params,
+                                           outputs_collections, sc, variables_collections)
 
 @add_arg_scope
 def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
