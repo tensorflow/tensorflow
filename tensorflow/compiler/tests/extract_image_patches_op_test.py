@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -20,12 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import constant_op
+from tensorflow.compiler.tests.xla_test import XLATestCase
+from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-class ExtractImagePatches(test.TestCase):
+class ExtractImagePatches(XLATestCase):
   """Functional tests for ExtractImagePatches op."""
 
   def _VerifyValues(self, image, ksizes, strides, rates, padding, patches):
@@ -43,15 +44,18 @@ class ExtractImagePatches(test.TestCase):
     strides = [1] + strides + [1]
     rates = [1] + rates + [1]
 
-    with self.test_session(use_gpu=True):
-      out_tensor = array_ops.extract_image_patches(
-          constant_op.constant(image),
-          ksizes=ksizes,
-          strides=strides,
-          rates=rates,
-          padding=padding,
-          name="im2col")
-      self.assertAllClose(patches, out_tensor.eval())
+    with self.test_session():
+      image_placeholder = array_ops.placeholder(dtypes.float32)
+      with self.test_scope():
+        out_tensor = array_ops.extract_image_patches(
+            image_placeholder,
+            ksizes=ksizes,
+            strides=strides,
+            rates=rates,
+            padding=padding,
+            name="im2col")
+      feed_dict = {image_placeholder: image}
+      self.assertAllClose(patches, out_tensor.eval(feed_dict=feed_dict))
 
   def testKsize1x1Stride1x1Rate1x1(self):
     """Verifies that for 1x1 kernel the output equals the input."""
