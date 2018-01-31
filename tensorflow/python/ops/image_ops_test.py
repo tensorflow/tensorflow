@@ -1869,8 +1869,8 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       image_size = constant_op.constant(
           [40, 50, 1], shape=[3], dtype=dtypes.int32)
       bounding_box = constant_op.constant(
-          [0.0, 0.0, 1.0, 1.0],
-          shape=[4],
+          [[[0.0, 0.0, 1.0, 1.0]]],
+          shape=[1, 1, 4],
           dtype=dtypes.float32,
       )
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
@@ -1907,8 +1907,8 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       image_size = constant_op.constant(
           [40, 50, 1], shape=[3], dtype=dtypes.int32)
       bounding_box = constant_op.constant(
-          [0.0, 0.0, 1.0, 1.0],
-          shape=[4],
+          [[[0.0, 0.0, 1.0, 1.0]]],
+          shape=[1, 1, 4],
           dtype=dtypes.float32,)
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
           image_size=image_size,
