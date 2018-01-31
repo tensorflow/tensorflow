@@ -857,7 +857,7 @@ def set_tf_cuda_version(environ_cp):
     if is_windows():
       cuda_rt_lib_path = 'lib/x64/cudart.lib'
     elif is_linux():
-      cuda_rt_lib_path = 'lib64/libcudart.so.%s' % tf_cuda_version
+      cuda_rt_lib_path = 'libcudart.so.%s' % tf_cuda_version
     elif is_macos():
       cuda_rt_lib_path = 'lib/libcudart.%s.dylib' % tf_cuda_version
 
