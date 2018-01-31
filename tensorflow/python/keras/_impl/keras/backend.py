@@ -2516,17 +2516,22 @@ def set_value(x, value):
       value: Value to set the tensor to, as a Numpy array
           (of the same shape).
   """
-  value = np.asarray(value, dtype=dtype(x))
-  tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
-  if hasattr(x, '_assign_placeholder'):
-    assign_placeholder = x._assign_placeholder
-    assign_op = x._assign_op
+  assign_op, assign_placeholder, value = _set_tensor_value(value, x)
+  get_session().run(assign_op, feed_dict={assign_placeholder: value})
+
+
+def _set_tensor_value(value, tensor):
+  value = np.asarray(value, dtype=dtype(tensor))
+  tf_dtype = dtypes_module.as_dtype(tensor.dtype.name.split('_')[0])
+  if hasattr(tensor, '_assign_placeholder'):
+    assign_placeholder = tensor._assign_placeholder
+    assign_op = tensor._assign_op
   else:
     assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
-    assign_op = x.assign(assign_placeholder)
-    x._assign_placeholder = assign_placeholder
-    x._assign_op = assign_op
-  get_session().run(assign_op, feed_dict={assign_placeholder: value})
+    assign_op = tensor.assign(assign_placeholder)
+    tensor._assign_placeholder = assign_placeholder
+    tensor._assign_op = assign_op
+  return assign_op, assign_placeholder, value
 
 
 def batch_set_value(tuples):
@@ -2540,16 +2545,7 @@ def batch_set_value(tuples):
     assign_ops = []
     feed_dict = {}
     for x, value in tuples:
-      value = np.asarray(value, dtype=dtype(x))
-      tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
-      if hasattr(x, '_assign_placeholder'):
-        assign_placeholder = x._assign_placeholder
-        assign_op = x._assign_op
-      else:
-        assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
-        assign_op = x.assign(assign_placeholder)
-        x._assign_placeholder = assign_placeholder
-        x._assign_op = assign_op
+      assign_op, assign_placeholder, value = _set_tensor_value(value, x)
       assign_ops.append(assign_op)
       feed_dict[assign_placeholder] = value
     get_session().run(assign_ops, feed_dict=feed_dict)
