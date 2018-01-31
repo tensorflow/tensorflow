@@ -85,76 +85,71 @@ def LastValueQuantize(inputs,
   """
   with variable_scope.variable_scope(
       scope, 'LastValueQuantize', values=[inputs], reuse=reuse):
-    input_shape = inputs.get_shape()
-    input_dim = len(input_shape)
-    if per_channel:
-      # Only support quantizing 1-, 2- and 4-dimensional tensors.
-      assert input_dim in [1, 2, 4], ('Expected 1D, 2D or 4D input, was: %s in '
-                                      ' scope: %s' % (input_shape, scope))
-      min_max_shape = [input_shape[-1]]
-    else:
-      min_max_shape = []
-
-    min_var = model_variable(
-        'min',
-        shape=min_max_shape,
-        initializer=init_ops.constant_initializer(init_min),
-        collections=[vars_collection],
-        trainable=False)
-    max_var = model_variable(
-        'max',
-        shape=min_max_shape,
-        initializer=init_ops.constant_initializer(init_max),
-        collections=[vars_collection],
-        trainable=False)
+    num_channels = inputs.get_shape()[-1]
+    input_dim = len(inputs.get_shape())
+    max_var, min_var = _set_min_var_and_max_var_model_variables(init_max, init_min, input_dim, num_channels, per_channel, scope,
+                                                                vars_collection)
     if not is_training:
-      return _FakeQuantWithMinMaxVars(
-          inputs,
-          min_var,
-          max_var,
-          per_channel=per_channel,
-          num_bits=num_bits,
-          narrow_range=narrow_range)
+      return _initialize_fake_quant_with_min_max_vars(inputs, max_var, min_var, narrow_range, num_bits, per_channel)
 
-    if per_channel:
-      if input_dim == 2:
-        reduce_dims = [0]
-      elif input_dim == 4:
-        reduce_dims = [0, 1, 2]
+    reduce_dims = _set_reduce_dims(input_dim, per_channel)
 
-    if per_channel:
-      if input_dim >= 2:
-        batch_min = math_ops.reduce_min(
-            inputs, reduction_indices=reduce_dims, name='BatchMin')
-      else:
-        batch_min = inputs
-    else:
-      batch_min = math_ops.reduce_min(inputs, name='BatchMin')
+    batch_min = _set_batch_min(input_dim, inputs, per_channel, reduce_dims)
     # TFLite requires that 0.0 if always in the [min; max] range.
     batch_min = math_ops.minimum(batch_min, 0.0)
     assign_min = state_ops.assign(min_var, batch_min, name='AssignMinLast')
-    ops.add_to_collection(updates_collection, assign_min.op)
+    _add_op_to_collection(assign_min.op, updates_collection)
 
-    if per_channel:
-      if input_dim >= 2:
-        batch_max = math_ops.reduce_max(
-            inputs, reduction_indices=reduce_dims, name='BatchMax')
-      else:
-        batch_max = inputs
-    else:
-      batch_max = math_ops.reduce_max(inputs, name='BatchMax')
+    batch_max = _set_batch_max(input_dim, inputs, per_channel, reduce_dims)
     # TFLite requires that 0.0 if always in the [min; max] range.
     batch_max = math_ops.maximum(batch_max, 0.0)
     assign_max = state_ops.assign(max_var, batch_max, name='AssignMaxLast')
-    ops.add_to_collection(updates_collection, assign_max.op)
+    _add_op_to_collection(assign_max.op, updates_collection)
 
-    return _FakeQuantWithMinMaxVars(
-        inputs,
-        assign_min,
-        assign_max,
-        per_channel=per_channel,
-        num_bits=num_bits,
-        narrow_range=narrow_range)
+    return _initialize_fake_quant_with_min_max_vars(inputs, assign_max, assign_min, narrow_range, num_bits, per_channel)
+
+
+def _add_op_to_collection(op, updates_collection):
+  ops.add_to_collection(updates_collection, op)
+
+
+def _set_min_var_and_max_var_model_variables(init_max, init_min, input_dim, num_channels, per_channel, scope, vars_collection):
+  min_max_shape = _set_min_max_shape(input_dim, num_channels, per_channel, scope)
+  min_var = model_variable(
+    'min',
+    shape=min_max_shape,
+    initializer=init_ops.constant_initializer(init_min),
+    collections=[vars_collection],
+    trainable=False)
+  max_var = model_variable(
+    'max',
+    shape=min_max_shape,
+    initializer=init_ops.constant_initializer(init_max),
+    collections=[vars_collection],
+    trainable=False)
+  return max_var, min_var
+
+
+def _set_batch_max(input_dim, inputs, per_channel, reduce_dims):
+  if per_channel:
+    if input_dim >= 2:
+      batch_max = math_ops.reduce_max(
+        inputs, reduction_indices=reduce_dims, name='BatchMax')
+    else:
+      batch_max = inputs
+  else:
+    batch_max = math_ops.reduce_max(inputs, name='BatchMax')
+  return batch_max
+
+
+def _set_reduce_dims(input_dim, per_channel):
+  reduce_dims = None
+  if per_channel:
+    if input_dim == 2:
+      reduce_dims = [0]
+    elif input_dim == 4:
+      reduce_dims = [0, 1, 2]
+  return reduce_dims
 
 
 @add_arg_scope
@@ -198,77 +193,61 @@ def MovingAvgQuantize(inputs,
   """
   with variable_scope.variable_scope(
       scope, 'MovingAvgQuantize', values=[inputs], reuse=reuse):
-    input_shape = inputs.get_shape()
-    input_dim = len(input_shape)
-    if per_channel:
-      # Only support quantizing 1-, 2- and 4-dimensional tensors.
-      assert input_dim in [1, 2, 4], ('Expected 1D, 2D or 4D input, was: %s in '
-                                      ' scope: %s' % (input_shape, scope))
-      min_max_shape = [input_shape[-1]]
-    else:
-      min_max_shape = []
-
-    min_var = model_variable(
-        'min',
-        shape=min_max_shape,
-        initializer=init_ops.constant_initializer(init_min),
-        collections=[vars_collection],
-        trainable=False)
-    max_var = model_variable(
-        'max',
-        shape=min_max_shape,
-        initializer=init_ops.constant_initializer(init_max),
-        collections=[vars_collection],
-        trainable=False)
+    num_channels = inputs.get_shape()[-1]
+    input_dim = len(inputs.get_shape())
+    max_var, min_var = _set_min_var_and_max_var_model_variables(init_max, init_min, input_dim, num_channels, per_channel, scope,
+                                                                vars_collection)
     if not is_training:
-      return _FakeQuantWithMinMaxVars(
-          inputs,
-          min_var,
-          max_var,
-          per_channel=per_channel,
-          num_bits=num_bits,
-          narrow_range=narrow_range)
-    if per_channel:
-      if input_dim == 2:
-        reduce_dims = [0]
-      elif input_dim == 4:
-        reduce_dims = [0, 1, 2]
+      return _initialize_fake_quant_with_min_max_vars(inputs, max_var, min_var, narrow_range, num_bits, per_channel)
 
-    if per_channel:
-      if input_dim >= 2:
-        batch_min = math_ops.reduce_min(
-            inputs, reduction_indices=reduce_dims, name='BatchMin')
-      else:
-        batch_min = inputs
-    else:
-      batch_min = math_ops.reduce_min(inputs, name='BatchMin')
+    reduce_dims = _set_reduce_dims(input_dim, per_channel)
+
+    batch_min = _set_batch_min(input_dim, inputs, per_channel, reduce_dims)
     # B-eng requires that 0.0 if always in the [min; max] range.
     batch_min = math_ops.minimum(batch_min, 0.0)
     assign_min = moving_averages.assign_moving_average(
         min_var, batch_min, ema_decay, name='AssignMinEma')
-    ops.add_to_collection(updates_collection, assign_min.op)
+    _add_op_to_collection(assign_min.op, updates_collection)
 
-    if per_channel:
-      if input_dim >= 2:
-        batch_max = math_ops.reduce_max(
-            inputs, reduction_indices=reduce_dims, name='BatchMax')
-      else:
-        batch_max = inputs
-    else:
-      batch_max = math_ops.reduce_max(inputs, name='BatchMax')
+    batch_max = _set_batch_max(input_dim, inputs, per_channel, reduce_dims)
     # B-eng requires that 0.0 if always in the [min; max] range.
     batch_max = math_ops.maximum(batch_max, 0.0)
     assign_max = moving_averages.assign_moving_average(
         max_var, batch_max, ema_decay, name='AssignMaxEma')
-    ops.add_to_collection(updates_collection, assign_max.op)
+    _add_op_to_collection(assign_max.op, updates_collection)
 
-    return _FakeQuantWithMinMaxVars(
-        inputs,
-        assign_min,
-        assign_max,
-        per_channel=per_channel,
-        num_bits=num_bits,
-        narrow_range=narrow_range)
+    return _initialize_fake_quant_with_min_max_vars(inputs, assign_max, assign_min, narrow_range, num_bits, per_channel)
+
+
+def _set_batch_min(input_dim, inputs, per_channel, reduce_dims):
+  if per_channel:
+    if input_dim >= 2:
+      batch_min = math_ops.reduce_min(
+        inputs, reduction_indices=reduce_dims, name='BatchMin')
+    else:
+      batch_min = inputs
+  else:
+    batch_min = math_ops.reduce_min(inputs, name='BatchMin')
+  return batch_min
+
+
+def _initialize_fake_quant_with_min_max_vars(inputs, max_var, min_var, narrow_range, num_bits, per_channel):
+  return _FakeQuantWithMinMaxVars(
+    inputs,
+    min_var,
+    max_var,
+    per_channel=per_channel,
+    num_bits=num_bits,
+    narrow_range=narrow_range)
+
+
+def _set_min_max_shape(input_dim, input_shape, per_channel, scope):
+  if per_channel:
+    # Only support quantizing 1-, 2- and 4-dimensional tensors.
+    assert input_dim in [1, 2, 4], ('Expected 1D, 2D or 4D input, was: %s in '
+                                    ' scope: %s' % (input_shape, scope))
+    return [input_shape[-1]]
+  return []
 
 
 def _FakeQuantWithMinMaxVars(inputs, min_var, max_var, per_channel, num_bits,
