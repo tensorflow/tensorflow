@@ -146,22 +146,23 @@ def classifier_parse_example_spec(feature_columns,
   if weight_column is None:
     return parsing_spec
 
+  _update_parsing_spec(parsing_spec, weight_column)
+  return parsing_spec
+
+
+def _update_parsing_spec(parsing_spec, weight_column):
   if isinstance(weight_column, six.string_types):
     weight_column = fc.numeric_column(weight_column)
-
   if not isinstance(weight_column, fc._NumericColumn):  # pylint: disable=protected-access
     raise ValueError('weight_column should be an instance of '
                      'tf.feature_column.numeric_column. '
                      'Given type: {} value: {}'.format(
-                         type(weight_column), weight_column))
-
+      type(weight_column), weight_column))
   if weight_column.key in parsing_spec:
     raise ValueError('weight_column should not be used as feature. '
                      'weight_column: {}, features: {}'.format(
-                         weight_column.key, parsing_spec.keys()))
-
+      weight_column.key, parsing_spec.keys()))
   parsing_spec.update(weight_column._parse_example_spec)  # pylint: disable=protected-access
-  return parsing_spec
 
 
 def regressor_parse_example_spec(feature_columns,
@@ -281,19 +282,5 @@ def regressor_parse_example_spec(feature_columns,
   if weight_column is None:
     return parsing_spec
 
-  if isinstance(weight_column, six.string_types):
-    weight_column = fc.numeric_column(weight_column)
-
-  if not isinstance(weight_column, fc._NumericColumn):  # pylint: disable=protected-access
-    raise ValueError('weight_column should be an instance of '
-                     'tf.feature_column.numeric_column. '
-                     'Given type: {} value: {}'.format(
-                         type(weight_column), weight_column))
-
-  if weight_column.key in parsing_spec:
-    raise ValueError('weight_column should not be used as feature. '
-                     'weight_column: {}, features: {}'.format(
-                         weight_column.key, parsing_spec.keys()))
-
-  parsing_spec.update(weight_column._parse_example_spec)  # pylint: disable=protected-access
+  _update_parsing_spec(parsing_spec, weight_column)
   return parsing_spec
