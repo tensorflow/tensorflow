@@ -8,7 +8,6 @@ build:
   args:
     tcsetup: "--cuda"
     tcbuild: "--gpu"
-  pyver: '2.7.13'
   metadata:
-    name: "TensorFlow Linux AMD64 CUDA Py2.7"
-    description: "Building TensorFlow for Linux/AMD64, Python 2.7, CUDA-enabled, optimized version"
+    name: "TensorFlow Linux AMD64 CUDA"
+    description: "Building TensorFlow for Linux/AMD64, CUDA-enabled, optimized version"

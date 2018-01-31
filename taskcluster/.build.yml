@@ -4,4 +4,3 @@ build:
   args:
     tcsetup: ''
     tcbuild: ''
-  pyver: ''
