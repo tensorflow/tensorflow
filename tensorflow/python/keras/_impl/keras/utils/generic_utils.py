@@ -346,7 +346,7 @@ class Progbar(object):
       else:
         sys.stdout.write('\n')
 
-      if self.target is not None:
+      if self.target != -1:
         numdigits = int(np.floor(np.log10(self.target))) + 1
         barstr = '%%%dd/%d [' % (numdigits, self.target)
         bar = barstr % current
@@ -360,8 +360,6 @@ class Progbar(object):
             bar += '='
         bar += ('.' * (self.width - prog_width))
         bar += ']'
-        sys.stdout.write(bar)
-        self.total_width = len(bar)
       else:
         bar = '%7d/Unknown' % current
 
@@ -372,7 +370,7 @@ class Progbar(object):
         time_per_unit = (now - self.start) / current
       else:
         time_per_unit = 0
-      if self.target is not None and current < self.target:
+      if self.target != -1 and current < self.target:
         eta = time_per_unit * (self.target - current)
         if eta > 3600:
           eta_format = '%d:%02d:%02d' % (eta // 3600, (eta % 3600) // 60,
@@ -405,7 +403,7 @@ class Progbar(object):
       self.total_width += len(info)
       if prev_total_width > self.total_width:
         info += (' ' * (prev_total_width - self.total_width))
-      if self.target is not None and current >= self.target:
+      if self.target != -1 and current >= self.target:
         info += '\n'
 
       sys.stdout.write(info)
@@ -415,7 +413,7 @@ class Progbar(object):
         sys.stdout.write('\n')
 
     elif self.verbose == 2:
-      if self.target is None or current >= self.target:
+      if self.target != -1 and current >= self.target:
         for k in self.unique_values:
           info += ' - %s:' % k
           avg = np.mean(
