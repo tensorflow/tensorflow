@@ -822,22 +822,26 @@ def _shuffle_batch(tensors, batch_size, capacity, min_after_dequeue,
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
         dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue(queue, tensor_list, num_threads, enqueue_many, keep_input)
-    full = (math_ops.to_float(
-        math_ops.maximum(0, queue.size() - min_after_dequeue)) *
-            (1. / (capacity - min_after_dequeue)))
-    # Note that name contains a '/' at the end so we intentionally do not place
-    # a '/' after %s below.
-    summary_name = (
-        "fraction_over_%d_of_%d_full" %
-        (min_after_dequeue, capacity - min_after_dequeue))
-    summary.scalar(summary_name, full)
-
-    if allow_smaller_final_batch:
-      dequeued = queue.dequeue_up_to(batch_size, name=name)
-    else:
-      dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _restore_sparse_tensors(dequeued, sparse_info)
+    dequeued = _dequeue(allow_smaller_final_batch, batch_size, capacity, min_after_dequeue, name, queue, sparse_info)
     return _as_original_type(tensors, dequeued)
+
+
+def _dequeue(allow_smaller_final_batch, batch_size, capacity, min_after_dequeue, name, queue, sparse_info):
+  full = (math_ops.to_float(
+    math_ops.maximum(0, queue.size() - min_after_dequeue)) *
+          (1. / (capacity - min_after_dequeue)))
+  # Note that name contains a '/' at the end so we intentionally do not place
+  # a '/' after %s below.
+  summary_name = (
+    "fraction_over_%d_of_%d_full" %
+    (min_after_dequeue, capacity - min_after_dequeue))
+  summary.scalar(summary_name, full)
+  if allow_smaller_final_batch:
+    dequeued = queue.dequeue_up_to(batch_size, name=name)
+  else:
+    dequeued = queue.dequeue_many(batch_size, name=name)
+  dequeued = _restore_sparse_tensors(dequeued, sparse_info)
+  return dequeued
 
 
 def _shuffle_batch_join(tensors_list, batch_size, capacity,
@@ -864,21 +868,7 @@ def _shuffle_batch_join(tensors_list, batch_size, capacity,
         capacity=capacity, min_after_dequeue=min_after_dequeue, seed=seed,
         dtypes=types, shapes=shapes, shared_name=shared_name)
     _enqueue_join(queue, tensor_list_list, enqueue_many, keep_input)
-    full = (math_ops.to_float(
-        math_ops.maximum(0, queue.size() - min_after_dequeue)) *
-            (1. / (capacity - min_after_dequeue)))
-    # Note that name contains a '/' at the end so we intentionally do not place
-    # a '/' after %s below.
-    summary_name = (
-        "fraction_over_%d_of_%d_full" %
-        (min_after_dequeue, capacity - min_after_dequeue))
-    summary.scalar(summary_name, full)
-
-    if allow_smaller_final_batch:
-      dequeued = queue.dequeue_up_to(batch_size, name=name)
-    else:
-      dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _restore_sparse_tensors(dequeued, sparse_info)
+    dequeued = _dequeue(allow_smaller_final_batch, batch_size, capacity, min_after_dequeue, name, queue, sparse_info)
     # tensors_list was validated to not be empty.
     return _as_original_type(tensors_list[0], dequeued)
 
