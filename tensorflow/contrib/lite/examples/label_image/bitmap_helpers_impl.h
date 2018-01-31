@@ -67,7 +67,9 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
   // fill input image
   // in[] are integers, cannot do memcpy() directly
   auto input = interpreter->typed_tensor<float>(0);
-  for (int i = 0; i < number_of_pixels; i++) input[i] = in[i];
+  for (int i = 0; i < number_of_pixels; i++) {
+    input[i] = in[i];
+  }
 
   // fill new_sizes
   interpreter->typed_tensor<int>(1)[0] = wanted_height;
