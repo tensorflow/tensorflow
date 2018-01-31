@@ -331,7 +331,7 @@ class CheckpointSaverListener(object):
   `CheckpointSaverHook`, as in this example:
 
   ```python
-  class ExampleCheckpointSaverListerner(CheckpointSaverListener):
+  class ExampleCheckpointSaverListener(CheckpointSaverListener):
     def begin(self):
       # You can add ops to the graph here.
       print('Starting the session.')
@@ -347,7 +347,7 @@ class CheckpointSaverListener(object):
       print('Done with the session.')
 
   ...
-  listener = ExampleCheckpointSaverListerner()
+  listener = ExampleCheckpointSaverListener()
   saver_hook = tf.train.CheckpointSaverHook(
       checkpoint_dir, listeners=[listener])
   with tf.train.MonitoredTrainingSession(chief_only_hooks=[saver_hook]):

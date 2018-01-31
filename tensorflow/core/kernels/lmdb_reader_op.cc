@@ -26,9 +26,8 @@ namespace tensorflow {
 
 class LMDBReader : public ReaderBase {
  public:
-  LMDBReader(const string& node_name, Env* env)
+  LMDBReader(const string& node_name, Env* /*unused*/)
       : ReaderBase(strings::StrCat("LMDBReader '", node_name, "'")),
-        env_(env),
         mdb_env_(nullptr),
         mdb_dbi_(0),
         mdb_txn_(nullptr),
@@ -107,7 +106,6 @@ class LMDBReader : public ReaderBase {
     }
   }
 
-  Env* const env_;
   MDB_env* mdb_env_;
   MDB_dbi mdb_dbi_;
 

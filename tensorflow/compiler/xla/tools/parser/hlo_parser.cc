@@ -2173,7 +2173,7 @@ bool HloParser::ParseConvolutionDimensionNumbers(
 //
 //  {[2:3:4], [5:6:7], [8:9]}
 //
-// The the parsed result will be:
+// The parsed result will be:
 //
 //  {/*starts=*/{2, 5, 8}, /*limits=*/{3, 6, 9}, /*strides=*/{4, 7, 1}}
 //

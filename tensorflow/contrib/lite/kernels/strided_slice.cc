@@ -81,8 +81,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
                      "ellipsis_mask is not implemented yet.");
   TF_LITE_ENSURE_MSG(context, op_context.params->new_axis_mask == 0,
                      "new_axis_mask is not implemented yet.");
-  TF_LITE_ENSURE_MSG(context, op_context.params->shrink_axis_mask == 0,
-                     "shrink_axis_mask is not implemented yet.");
 
   // TODO(soroosh): optimize for constant tensors to do allocation in Prepare
   op_context.output->allocation_type = kTfLiteDynamic;
@@ -153,9 +151,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   std::vector<int> starts;
   std::vector<int> stops;
   std::vector<int> strides;
+  std::vector<int> output_shape_vector;
 
-  // Determine size of output tensor and map indices
-  TfLiteIntArray* output_shape = TfLiteIntArrayCreate(op_context.dims);
   for (int idx = op_context.dims - 1; idx >= 0; --idx) {
     int dim = op_context.input->dims->data[idx];
     int32_t stride = GetTensorData<int32_t>(op_context.strides)[idx];
@@ -174,13 +171,23 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                            pos_stride);
 
     // This is valid for both positive and negative strides
-    output_shape->data[idx] = ceil((end - begin) / static_cast<float>(stride));
-    output_shape->data[idx] =
-        output_shape->data[idx] < 0 ? 0 : output_shape->data[idx];
+    int32_t dim_shape = ceil((end - begin) / static_cast<float>(stride));
+    dim_shape = dim_shape < 0 ? 0 : dim_shape;
+
+    if (!(op_context.params->shrink_axis_mask & (1 << idx))) {
+      output_shape_vector.push_back(dim_shape);
+    }
+
     starts.emplace_back(begin);
     stops.emplace_back(end);
     strides.emplace_back(stride);
   }
+
+  TfLiteIntArray* output_shape =
+      TfLiteIntArrayCreate(output_shape_vector.size());
+
+  std::reverse_copy(output_shape_vector.begin(), output_shape_vector.end(),
+                    output_shape->data);
 
   for (int i = op_context.dims; i < kMaxDim; i++) {
     starts.emplace_back(0);
@@ -202,13 +209,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       ReverseMaskBits(op_context.params->begin_mask, op_context.dims);
   op_context.params->end_mask =
       ReverseMaskBits(op_context.params->end_mask, op_context.dims);
+  op_context.params->shrink_axis_mask =
+      ReverseMaskBits(op_context.params->shrink_axis_mask, op_context.dims);
 
-#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                 \
-  kernel_type::StridedSlice(                                          \
-      GetTensorData<data_type>(op_context.input),                     \
-      GetTensorDims(op_context.input), op_context.params->begin_mask, \
-      op_context.params->end_mask, starts, stops, strides,            \
-      GetTensorData<data_type>(op_context.output),                    \
+#define TF_LITE_STRIDED_SLICE(kernel_type, data_type)                      \
+  kernel_type::StridedSlice(                                               \
+      GetTensorData<data_type>(op_context.input),                          \
+      GetTensorDims(op_context.input), op_context.params->begin_mask,      \
+      op_context.params->end_mask, op_context.params->shrink_axis_mask,    \
+      starts, stops, strides, GetTensorData<data_type>(op_context.output), \
       GetTensorDims(op_context.output))
 
   switch (op_context.input->type) {

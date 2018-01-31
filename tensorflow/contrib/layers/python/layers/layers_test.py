@@ -127,8 +127,8 @@ class AvgPool3DTest(test.TestCase):
   def testInvalidDataFormat(self):
     depth, height, width = 3, 6, 9
     images = np.random.uniform(size=(5, depth, height, width, 3))
-    with self.assertRaisesRegexp(ValueError,
-                                 'data_format has to be either NCDHW or NDHWC.'):
+    with self.assertRaisesRegexp(
+        ValueError, 'data_format has to be either NCDHW or NDHWC.'):
       _layers.avg_pool3d(images, [3, 3, 3], data_format='CDHWN')
 
   def testCreateAvgPool(self):
@@ -148,7 +148,8 @@ class AvgPool3DTest(test.TestCase):
   def testCollectOutputs(self):
     depth, height, width = 3, 6, 9
     images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
-    output = _layers.avg_pool3d(images, [3, 3, 3], outputs_collections='outputs')
+    output = _layers.avg_pool3d(
+        images, [3, 3, 3], outputs_collections='outputs')
     output_collected = ops.get_collection('outputs')[0]
     self.assertEqual(output_collected.aliases, ['AvgPool3D'])
     self.assertEqual(output_collected, output)
@@ -183,7 +184,8 @@ class AvgPool3DTest(test.TestCase):
     depth, height, width = 3, 6, 9
     images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
     output = _layers.avg_pool3d(images, [3, 3, 3], stride=1, padding='SAME')
-    self.assertListEqual(output.get_shape().as_list(), [5, depth, height, width, 3])
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, depth, height, width, 3])
 
   def testGlobalAvgPool(self):
     depth, height, width = 3, 6, 9
@@ -515,7 +517,9 @@ class ConvolutionTest(test.TestCase):
       with arg_scope(
           [layers_lib.convolution2d],
           normalizer_fn=_layers.batch_norm,
-          normalizer_params={'decay': 0.9}):
+          normalizer_params={
+              'decay': 0.9
+          }):
         net = layers_lib.convolution2d(images, 32, [3, 3])
         net = layers_lib.convolution2d(net, 32, [3, 3])
       self.assertEqual(len(variables.get_variables()), 8)
@@ -529,7 +533,9 @@ class ConvolutionTest(test.TestCase):
       with arg_scope(
           [layers_lib.convolution2d],
           normalizer_fn=_layers.batch_norm,
-          normalizer_params={'decay': 0.9}):
+          normalizer_params={
+              'decay': 0.9
+          }):
         net = layers_lib.convolution2d(images, 32, [3, 3], scope='Conv')
         net = layers_lib.convolution2d(
             net, 32, [3, 3], scope='Conv', reuse=True)
@@ -1031,7 +1037,8 @@ class Convolution2dTransposeTests(test.TestCase):
     for _ in range(10):
       num_filters = 1
       input_size = [
-          1, np.random.randint(1, max_image_size),
+          1,
+          np.random.randint(1, max_image_size),
           np.random.randint(1, max_image_size), 1
       ]
       filter_size = [
@@ -1185,8 +1192,10 @@ class ConvolutionInPlaneTest(test.TestCase):
 
     with self.test_session() as sess:
       sess.run(init_op)
-      result = sess.run(horz_gradients,
-                        feed_dict={image: np.ones((1, 10, 10, 1))})
+      result = sess.run(
+          horz_gradients, feed_dict={
+              image: np.ones((1, 10, 10, 1))
+          })
       expected = np.zeros((1, 10, 9, 1))
 
       self.assertAllEqual(result, expected)
@@ -1418,8 +1427,7 @@ class FlattenTest(test.TestCase):
     with ops.Graph().as_default() as g, self.test_session(g):
       inputs = array_ops.placeholder(dtype=dtypes.float32)
       inputs.set_shape(tensor_shape.TensorShape((5,)))
-      with self.assertRaisesRegexp(ValueError,
-                                   'incompatible with the layer'):
+      with self.assertRaisesRegexp(ValueError, 'incompatible with the layer'):
         _layers.flatten(inputs)
 
   def testUnknownLastDim(self):
@@ -1729,7 +1737,9 @@ class FCTest(test.TestCase):
       with arg_scope(
           [_layers.fully_connected],
           normalizer_fn=_layers.batch_norm,
-          normalizer_params={'decay': 0.9}):
+          normalizer_params={
+              'decay': 0.9
+          }):
         net = _layers.fully_connected(images, 27)
         net = _layers.fully_connected(net, 27)
       self.assertEqual(len(variables.get_variables()), 8)
@@ -1745,7 +1755,9 @@ class FCTest(test.TestCase):
       with arg_scope(
           [_layers.fully_connected],
           normalizer_fn=_layers.batch_norm,
-          normalizer_params={'decay': 0.9}):
+          normalizer_params={
+              'decay': 0.9
+          }):
         net = _layers.fully_connected(images, 27, scope='fc1')
         net = _layers.fully_connected(net, 27, scope='fc1', reuse=True)
       self.assertEqual(len(variables.get_variables()), 4)
@@ -1762,8 +1774,8 @@ class BatchNormTest(test.TestCase):
   def testBatchNormCenterFalse(self):
     a = array_ops.placeholder(dtype=dtypes.float32, shape=(10, 10, 10, 10))
     # Test that center=False builds a valid graph.
-    _layers.batch_norm(a, center=False, data_format='NCHW',
-                       zero_debias_moving_mean=True)
+    _layers.batch_norm(
+        a, center=False, data_format='NCHW', zero_debias_moving_mean=True)
 
   def testUnknownShape(self):
     with ops.Graph().as_default() as g, self.test_session(g):
@@ -1800,8 +1812,8 @@ class BatchNormTest(test.TestCase):
       images = np.random.uniform(size=(5, height, width, 3)).astype(
           dtype.as_numpy_dtype)
       output = _layers.batch_norm(images, fused=fused)
-      expected_name = ('BatchNorm/FusedBatchNorm' if fused else
-                       'BatchNorm/batchnorm')
+      expected_name = ('BatchNorm/FusedBatchNorm'
+                       if fused else 'BatchNorm/batchnorm')
       self.assertTrue(output.op.name.startswith(expected_name))
       self.assertListEqual(output.get_shape().as_list(), [5, height, width, 3])
       self.assertEqual(
@@ -2020,8 +2032,8 @@ class BatchNormTest(test.TestCase):
       expected_var = np.var(image_values, axis=axis)
       if fused:
         # Add Bessel's correction
-        expected_var, _ = self._addBesselsCorrection(batch_size * height *
-                                                     width, expected_var)
+        expected_var, _ = self._addBesselsCorrection(
+            batch_size * height * width, expected_var)
       images = constant_op.constant(
           image_values, shape=image_shape, dtype=dtypes.float32)
       output = _layers.batch_norm(
@@ -2540,8 +2552,8 @@ class BatchNormTest(test.TestCase):
       expected_var = np.var(image_values, axis=axis)
       if fused:
         # Add Bessel's correction
-        expected_var, _ = self._addBesselsCorrection(batch_size * height *
-                                                     width, expected_var)
+        expected_var, _ = self._addBesselsCorrection(
+            batch_size * height * width, expected_var)
       images = constant_op.constant(
           image_values, shape=image_shape, dtype=dtypes.float32)
       output = _layers.batch_norm(
@@ -2571,8 +2583,9 @@ class BatchNormTest(test.TestCase):
         np_output, new_images_gradients = sess.run([output, images_gradients])
         # The outputs should be close to 0.0 mean and 1.0 variance
         self.assertAllClose(
-            np.mean(
-                np_output, axis=axis), [0] * channels, rtol=0.001, atol=0.001)
+            np.mean(np_output, axis=axis), [0] * channels,
+            rtol=0.001,
+            atol=0.001)
         self.assertAllClose(
             np.var(np_output, axis=axis), [1] * channels, rtol=0.01, atol=0.01)
         # The gradients should change slowly while updating moving_mean.
@@ -2600,14 +2613,14 @@ class BatchNormTest(test.TestCase):
     channels = 3
     with self.test_session() as sess:
       images = (np.ones((5, height, width, channels)) * 9.0).astype('f')
-      beta = init_ops.constant_initializer((np.ones(channels) * 5.0).astype(
-          'f'))
-      gamma = init_ops.constant_initializer((np.ones(channels) * 2.0).astype(
-          'f'))
-      mean = init_ops.constant_initializer((np.ones(channels) * 5.0).astype(
-          'f'))
-      variance = init_ops.constant_initializer((np.ones(channels) * 4.0).astype(
-          'f'))
+      beta = init_ops.constant_initializer(
+          (np.ones(channels) * 5.0).astype('f'))
+      gamma = init_ops.constant_initializer(
+          (np.ones(channels) * 2.0).astype('f'))
+      mean = init_ops.constant_initializer(
+          (np.ones(channels) * 5.0).astype('f'))
+      variance = init_ops.constant_initializer(
+          (np.ones(channels) * 4.0).astype('f'))
       output = _layers.batch_norm(
           images,
           is_training=False,
@@ -2628,21 +2641,18 @@ class BatchNormTest(test.TestCase):
     with self.test_session(use_gpu=True) as sess:
       images = np.arange(np.product(shape), dtype=np.float32).reshape(shape)
       beta = init_ops.constant_initializer(
-          np.arange(
-              2, channels + 2, dtype=np.float32))
+          np.arange(2, channels + 2, dtype=np.float32))
       gamma = init_ops.constant_initializer(
-          np.arange(
-              10, channels + 10, dtype=np.float32) * 2.0)
+          np.arange(10, channels + 10, dtype=np.float32) * 2.0)
       mean = init_ops.constant_initializer(
-          np.arange(
-              3, channels + 3, dtype=np.float32) * 5.0)
+          np.arange(3, channels + 3, dtype=np.float32) * 5.0)
       variance = init_ops.constant_initializer(
-          np.arange(
-              1, channels + 1, dtype=np.float32) * 4.0)
+          np.arange(1, channels + 1, dtype=np.float32) * 4.0)
       if data_format == 'NCHW':
         # Reshape inputs from NHWC to NCHW format.
         images = array_ops.transpose(
-            images, [0, len(shape) - 1] + list(range(1, len(shape) - 1)))
+            images, [0, len(shape) - 1] + list(range(1,
+                                                     len(shape) - 1)))
       output = _layers.batch_norm(
           images,
           is_training=is_training,
@@ -2745,16 +2755,16 @@ class BatchNormTest(test.TestCase):
     # Tests that the adjustment is appropriately passed to and used by the core
     # BN layer.
     all_adjustments = []
+
     def _create_adjustment(shape):
       adjustments = [array_ops.ones(shape[-1:]), array_ops.zeros(shape[-1:])]
       all_adjustments.extend(adjustments)
       return adjustments
+
     depth = 8
     images = array_ops.zeros([10, 5, 5, depth])
     output = _layers.batch_norm(
-        images,
-        is_training=True,
-        adjustment=_create_adjustment)
+        images, is_training=True, adjustment=_create_adjustment)
     self.assertListEqual(output.shape.as_list(), images.shape.as_list())
     self.assertEqual(len(all_adjustments), 2)
     self.assertListEqual(all_adjustments[0].shape.as_list(), [depth])
@@ -2819,7 +2829,10 @@ class LayerNormTest(test.TestCase):
       # output_train and output_eval should be the same.
       self.assertAllClose(sess.run([output_train]), sess.run([output_eval]))
 
-  def doOutputTest(self, input_shape, tol=1e-5, begin_norm_axis=1,
+  def doOutputTest(self,
+                   input_shape,
+                   tol=1e-5,
+                   begin_norm_axis=1,
                    dtype=dtypes.float64):
     expected_mean = np.zeros(input_shape[:begin_norm_axis])
     expected_var = np.ones(input_shape[:begin_norm_axis])
@@ -2850,13 +2863,10 @@ class LayerNormTest(test.TestCase):
             # Layer-norm implemented in numpy
             eps = 1e-12
             expected_out = (
-                (gamma * (
-                    input_values
-                    - np.mean(input_values, axis=moments_axis, keepdims=True))
-                 / np.sqrt(
-                     eps
-                     + np.var(input_values, axis=moments_axis, keepdims=True)))
-                + beta)
+                (gamma * (input_values - np.mean(
+                    input_values, axis=moments_axis, keepdims=True)) /
+                 np.sqrt(eps + np.var(
+                     input_values, axis=moments_axis, keepdims=True))) + beta)
             self.assertAllClose(expected_mean, mean, atol=tol, rtol=tol)
             self.assertAllClose(expected_var, var, atol=tol)
             # The full computation gets a bigger tolerance
@@ -2874,10 +2884,10 @@ class LayerNormTest(test.TestCase):
 
   def testOutput4DInputNormOnInnermostAxis(self):
     # Equivalent tests
-    self.doOutputTest((100, 10, 10, 3), begin_norm_axis=3, tol=1e-4,
-                      dtype=dtypes.float64)
-    self.doOutputTest((100, 10, 10, 3), begin_norm_axis=-1, tol=1e-4,
-                      dtype=dtypes.float64)
+    self.doOutputTest(
+        (100, 10, 10, 3), begin_norm_axis=3, tol=1e-4, dtype=dtypes.float64)
+    self.doOutputTest(
+        (100, 10, 10, 3), begin_norm_axis=-1, tol=1e-4, dtype=dtypes.float64)
 
   def testOutputSmallInput(self):
     self.doOutputTest((10, 10, 10, 30))
@@ -2914,7 +2924,7 @@ class GDNTest(test.TestCase):
       x = np.random.uniform(size=(1, 2, 3, 4)[:ndim])
       y = self._runGDN(x, x.shape, False, 'channels_last')
       self.assertEqual(x.shape, y.shape)
-      self.assertAllClose(y, x / np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+      self.assertAllClose(y, x / np.sqrt(1 + .1 * (x**2)), rtol=0, atol=1e-6)
 
   def testChannelsFirst(self):
     # `bias_add` doesn't support NCHW on CPU.
@@ -2923,8 +2933,7 @@ class GDNTest(test.TestCase):
         x = np.random.uniform(size=(4, 3, 2, 1)[:ndim])
         y = self._runGDN(x, x.shape, False, 'channels_first')
         self.assertEqual(x.shape, y.shape)
-        self.assertAllClose(
-            y, x / np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+        self.assertAllClose(y, x / np.sqrt(1 + .1 * (x**2)), rtol=0, atol=1e-6)
 
   def testWrongDims(self):
     for ndim in [1, 2, 6]:
@@ -2936,7 +2945,7 @@ class GDNTest(test.TestCase):
     x = np.random.uniform(size=(1, 2, 3, 4))
     y = self._runGDN(x, x.shape, True, 'channels_last')
     self.assertEqual(x.shape, y.shape)
-    self.assertAllClose(y, x * np.sqrt(1 + .1 * (x ** 2)), rtol=0, atol=1e-6)
+    self.assertAllClose(y, x * np.sqrt(1 + .1 * (x**2)), rtol=0, atol=1e-6)
 
 
 class MaxPool2DTest(test.TestCase):
@@ -3013,20 +3022,22 @@ class MaxPool3DTest(test.TestCase):
   def testInvalidDataFormat(self):
     depth, height, width = 3, 6, 9
     images = np.random.uniform(size=(5, depth, height, width, 3))
-    with self.assertRaisesRegexp(ValueError,
-                                 'data_format has to be either NCDHW or NDHWC.'):
+    with self.assertRaisesRegexp(
+        ValueError, 'data_format has to be either NCDHW or NDHWC.'):
       _layers.max_pool3d(images, [3, 3, 3], data_format='CDHWN')
 
   def testCreateMaxPool(self):
     depth, height, width = 3, 6, 9
-    images = np.random.uniform(size=(5, depth, height, width, 3)).astype(np.float32)
+    images = np.random.uniform(size=(5, depth, height, width, 3)).astype(
+        np.float32)
     output = _layers.max_pool3d(images, [3, 3, 3])
     self.assertEqual(output.op.name, 'MaxPool3D/MaxPool3D')
     self.assertListEqual(output.get_shape().as_list(), [5, 1, 2, 4, 3])
 
   def testCreateMaxPoolNCDHW(self):
     depth, height, width = 3, 6, 9
-    images = np.random.uniform(size=(5, 3, depth, height, width)).astype(np.float32)
+    images = np.random.uniform(size=(5, 3, depth, height, width)).astype(
+        np.float32)
     output = _layers.max_pool3d(images, [3, 3, 3], data_format='NCDHW')
     self.assertEquals(output.op.name, 'MaxPool3D/transpose_1')
     self.assertListEqual(output.get_shape().as_list(), [5, 3, 1, 2, 4])
@@ -3034,7 +3045,8 @@ class MaxPool3DTest(test.TestCase):
   def testCollectOutputs(self):
     depth, height, width = 3, 6, 9
     images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
-    output = _layers.max_pool3d(images, [3, 3, 3], outputs_collections='outputs')
+    output = _layers.max_pool3d(
+        images, [3, 3, 3], outputs_collections='outputs')
     output_collected = ops.get_collection('outputs')[0]
     self.assertEqual(output_collected.aliases, ['MaxPool3D'])
     self.assertEqual(output_collected, output)
@@ -3069,7 +3081,8 @@ class MaxPool3DTest(test.TestCase):
     depth, height, width = 3, 6, 9
     images = random_ops.random_uniform((5, depth, height, width, 3), seed=1)
     output = _layers.max_pool3d(images, [3, 3, 3], stride=1, padding='SAME')
-    self.assertListEqual(output.get_shape().as_list(), [5, depth, height, width, 3])
+    self.assertListEqual(output.get_shape().as_list(),
+                         [5, depth, height, width, 3])
 
   def testGlobalMaxPool(self):
     depth, height, width = 3, 6, 9
@@ -3481,8 +3494,7 @@ class SpatialSoftmaxTests(test.TestCase):
       sess.run(variables_lib.global_variables_initializer())
       feed_dict = {features: np_features}
       keypoints = sess.run(spatial_softmax, feed_dict)
-      self.assertAllEqual(keypoints.shape,
-                          (batch_shape[0], batch_shape[3] * 2))
+      self.assertAllEqual(keypoints.shape, (batch_shape[0], batch_shape[3] * 2))
 
   def testSpatialSoftmaxShapeNCHW(self):
     batch_shape = (2, 2, 35, 35)
@@ -3493,8 +3505,7 @@ class SpatialSoftmaxTests(test.TestCase):
       sess.run(variables_lib.global_variables_initializer())
       feed_dict = {features: np_features}
       keypoints = sess.run(spatial_softmax, feed_dict)
-      self.assertAllEqual(keypoints.shape,
-                          (batch_shape[0], batch_shape[1] * 2))
+      self.assertAllEqual(keypoints.shape, (batch_shape[0], batch_shape[1] * 2))
 
   def testTwoMaxActivationsSameChannel(self):
     batch_size, height, width, nchannels = (2, 35, 35, 1)
@@ -3513,8 +3524,8 @@ class SpatialSoftmaxTests(test.TestCase):
     x_loc = [avg_x]
     y_loc = [avg_y]
 
-    np_keypoints = self._SpatialSoftmax(
-        x_loc, y_loc, height, width, batch_size, nchannels)
+    np_keypoints = self._SpatialSoftmax(x_loc, y_loc, height, width, batch_size,
+                                        nchannels)
 
     # Make sure expected location keypoints matches actual location keypoints.
     with self.test_session() as sess:
@@ -3532,13 +3543,13 @@ class SpatialSoftmaxTests(test.TestCase):
     spatial_softmax = _layers.spatial_softmax(features)
     np_features = np.zeros(batch_shape, dtype=np.float32)
 
-    edges = [(0, 0), (0, width-1), (height-1, 0), (height-1, width-1)]
+    edges = [(0, 0), (0, width - 1), (height - 1, 0), (height - 1, width - 1)]
     x_loc, y_loc = zip(*edges)
     for c in range(nchannels):
       np_features[:, x_loc[c], y_loc[c], c] = 100.
 
-    np_keypoints = self._SpatialSoftmax(
-        x_loc, y_loc, height, width, batch_size, nchannels)
+    np_keypoints = self._SpatialSoftmax(x_loc, y_loc, height, width, batch_size,
+                                        nchannels)
 
     # Make sure expected location keypoints matches actual location keypoints.
     with self.test_session() as sess:
@@ -3567,10 +3578,10 @@ class SpatialSoftmaxTests(test.TestCase):
       np_features1[:, x_loc[c], y_loc[c], c] = 100.
       np_features2[:, x_loc[c], y_loc[c], c] = 100.
 
-    np_keypoints1 = self._SpatialSoftmax(
-        x_loc, y_loc, height1, width1, batch_size, nchannels)
-    np_keypoints2 = self._SpatialSoftmax(
-        x_loc, y_loc, height2, width2, batch_size, nchannels)
+    np_keypoints1 = self._SpatialSoftmax(x_loc, y_loc, height1, width1,
+                                         batch_size, nchannels)
+    np_keypoints2 = self._SpatialSoftmax(x_loc, y_loc, height2, width2,
+                                         batch_size, nchannels)
 
     # Make sure expected location keypoints matches actual location keypoints.
     with self.test_session() as sess:
@@ -3596,8 +3607,8 @@ class SpatialSoftmaxTests(test.TestCase):
     for c in range(nchannels):
       np_features[:, x_loc[c], y_loc[c], c] = 100.
 
-    np_keypoints = self._SpatialSoftmax(
-        x_loc, y_loc, height, width, batch_size, nchannels)
+    np_keypoints = self._SpatialSoftmax(x_loc, y_loc, height, width, batch_size,
+                                        nchannels)
 
     # Make sure expected location keypoints matches actual location keypoints.
     with self.test_session() as sess:
@@ -3619,8 +3630,8 @@ class SpatialSoftmaxTests(test.TestCase):
     for c in range(nchannels):
       np_features[:, c, x_loc[c], y_loc[c]] = 100.
 
-    np_keypoints = self._SpatialSoftmax(
-        x_loc, y_loc, height, width, batch_size, nchannels)
+    np_keypoints = self._SpatialSoftmax(x_loc, y_loc, height, width, batch_size,
+                                        nchannels)
 
     # Make sure expected location keypoints matches actual location keypoints.
     with self.test_session() as sess:
@@ -3715,8 +3726,7 @@ class UnitNormTests(test.TestCase):
       image = random_ops.random_uniform((height, width, 3))
       output = _layers.unit_norm(image, dim=dim, epsilon=1e-6)
       norms = math_ops.sqrt(
-          math_ops.reduce_sum(
-              math_ops.square(output), reduction_indices=dim))
+          math_ops.reduce_sum(math_ops.square(output), reduction_indices=dim))
 
       shape = [height, width, 3]
       del shape[dim]
@@ -3752,8 +3762,7 @@ class UnitNormTests(test.TestCase):
       image = array_ops.placeholder(dtypes.float32, (None, None, 3))
       output = _layers.unit_norm(image, dim=dim, epsilon=1e-6)
       norms = math_ops.sqrt(
-          math_ops.reduce_sum(
-              math_ops.square(output), reduction_indices=dim))
+          math_ops.reduce_sum(math_ops.square(output), reduction_indices=dim))
 
       with self.test_session():
         actual = norms.eval({image: placeholder_value})
@@ -3817,8 +3826,8 @@ class PoincareNormalizeTest(test.TestCase):
       with self.test_session():
         x_tf = constant_op.constant(x_np, name='x')
         y_tf = _layers.poincare_normalize(x_tf, dim)
-        err = gradient_checker.compute_gradient_error(x_tf, x_shape,
-                                                      y_tf, x_shape)
+        err = gradient_checker.compute_gradient_error(x_tf, x_shape, y_tf,
+                                                      x_shape)
       print('PoinCareNormalize gradient err = %g ' % err)
       self.assertLess(err, 1e-4)
 
@@ -3830,14 +3839,9 @@ class LegacyFullyConnectedTest(test.TestCase):
     test.TestCase.setUp(self)
     random_seed.set_random_seed(1234)
     self.input = constant_op.constant([[1., 2., 3.], [-4., 15., -6.]])
-    self.input_3_dim_arr = [[[1., 1.1, 1.2],
-                             [2., 2.1, 2.2],
-                             [3., 3.1, 3.2],
-                             [4., 4.1, 4.2]],
-                            [[5., 5.1, 5.2],
-                             [6., 6.1, 6.2],
-                             [7., 7.1, 7.2],
-                             [8., 8.1, 8.2]]]
+    self.input_3_dim_arr = [[[1., 1.1, 1.2], [2., 2.1, 2.2], [3., 3.1, 3.2],
+                             [4., 4.1, 4.2]], [[5., 5.1, 5.2], [6., 6.1, 6.2],
+                                               [7., 7.1, 7.2], [8., 8.1, 8.2]]]
     self.input_3_dim = constant_op.constant(self.input_3_dim_arr)
 
     assert not ops.get_collection(ops.GraphKeys.SUMMARIES)
@@ -3932,15 +3936,10 @@ class LegacyFullyConnectedTest(test.TestCase):
     self._custom_initializers(self.input, 2, [[13.0, 13.0], [11.0, 11.0]])
 
   def test_custom_initializers_multi_dim(self):
-    self._custom_initializers(self.input_3_dim, 2,
-                              [[[7.6, 7.6],
-                                [13.6, 13.6],
-                                [19.6, 19.6],
-                                [25.6, 25.6]],
-                               [[31.6, 31.6],
-                                [37.6, 37.6],
-                                [43.6, 43.6],
-                                [49.6, 49.6]]])
+    self._custom_initializers(
+        self.input_3_dim, 2,
+        [[[7.6, 7.6], [13.6, 13.6], [19.6, 19.6], [25.6, 25.6]],
+         [[31.6, 31.6], [37.6, 37.6], [43.6, 43.6], [49.6, 49.6]]])
 
   def test_custom_collections(self):
     layers_lib.legacy_relu(
@@ -4050,12 +4049,16 @@ class LegacyFullyConnectedTest(test.TestCase):
     with self.test_session() as sess:
       variables_lib.global_variables_initializer().run()
       # we can feed in input with first dimension 2
-      shape_value = sess.run(array_ops.shape(y),
-                             feed_dict={x: self.input_3_dim_arr})
+      shape_value = sess.run(
+          array_ops.shape(y), feed_dict={
+              x: self.input_3_dim_arr
+          })
       self.assertAllClose(shape_value, [2, 4, 1])
       # we can feed in input with first dimension 1
-      shape_value = sess.run(array_ops.shape(y),
-                             feed_dict={x: [self.input_3_dim_arr[0]]})
+      shape_value = sess.run(
+          array_ops.shape(y), feed_dict={
+              x: [self.input_3_dim_arr[0]]
+          })
       self.assertAllClose(shape_value, [1, 4, 1])
       # we cannot feed in input with inconsistent dimensions
       with self.assertRaises(ValueError):

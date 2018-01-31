@@ -47,20 +47,19 @@ std::vector<string> FfmpegAudioCommandLine(const string& input_filename,
                                            int32 channel_count,
                                            const string& stream) {
   std::vector<string> command({
-          "-nostats",             // No additional progress display.
-          "-nostdin",             // No interactive commands accepted.
-          "-f", input_format_id,  // eg: "mp3"
-          "-probesize", StrCat(kDefaultProbeSize), "-i", input_filename,
-          "-loglevel", "error",   // Print errors only.
-          "-hide_banner",         // Skip printing build options, version, etc.
-          "-map_metadata", "-1",  // Copy global metadata from input to output.
-          "-vn",                  // No video recording.
-          "-ac:a:0", StrCat(channel_count), "-ar:a:0",
-          StrCat(samples_per_second),
-          // Output set (in several ways) to signed 16-bit little-endian ints.
-          "-codec:a:0", "pcm_s16le", "-sample_fmt", "s16", "-f", "s16le",
-          "-sn",  // No subtitle recording.
-          "-y"   // Overwrite output file.
+      "-nostats",             // No additional progress display.
+      "-nostdin",             // No interactive commands accepted.
+      "-f", input_format_id,  // eg: "mp3"
+      "-probesize", StrCat(kDefaultProbeSize), "-i", input_filename,
+      "-loglevel", "error",   // Print errors only.
+      "-hide_banner",         // Skip printing build options, version, etc.
+      "-map_metadata", "-1",  // Copy global metadata from input to output.
+      "-vn",                  // No video recording.
+      "-ac:a:0", StrCat(channel_count), "-ar:a:0", StrCat(samples_per_second),
+      // Output set (in several ways) to signed 16-bit little-endian ints.
+      "-codec:a:0", "pcm_s16le", "-sample_fmt", "s16", "-f", "s16le",
+      "-sn",  // No subtitle recording.
+      "-y"    // Overwrite output file.
   });
   if (!stream.empty()) {
     command.emplace_back("-map");
@@ -75,21 +74,13 @@ std::vector<string> FfmpegVideoCommandLine(const string& input_filename,
                                            const string& output_filename) {
   return {"-nostats",  // No additional progress display.
           "-nostdin",  // No interactive commands accepted.
-          "-i",
-          input_filename,
-          "-f",
-          "image2pipe",
-          "-probesize",
-          StrCat(kDefaultProbeSize),
-          "-loglevel",
+          "-i", input_filename, "-f", "image2pipe", "-probesize",
+          StrCat(kDefaultProbeSize), "-loglevel",
           // Info is needed to get the information about stream, etc.
           // It is generated to a separate file, not stdout/stderr.
           "info",
           "-hide_banner",  // Skip printing build options, version, etc.
-          "-vcodec",
-          "rawvideo",
-          "-pix_fmt",
-          "rgb24",
+          "-vcodec", "rawvideo", "-pix_fmt", "rgb24",
           "-y",  // Overwrite output file.
           StrCat(output_filename)};
 }

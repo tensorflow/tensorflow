@@ -251,9 +251,8 @@ REGISTER_OP("CudnnRNNParamsToCanonical")
       TF_RETURN_IF_ERROR(c->GetAttr("num_params", &num_params));
       // Set shape for weight matrices
       for (int i = 0; i < num_params; i++) {
-        c->set_output(i,
-                      c->Matrix(InferenceContext::kUnknownDim,
-                                InferenceContext::kUnknownDim));
+        c->set_output(i, c->Matrix(InferenceContext::kUnknownDim,
+                                   InferenceContext::kUnknownDim));
       }
       // Set shape for bias vectors
       for (int i = 0; i < num_params; i++) {
@@ -300,6 +299,7 @@ upcoming training or inferences.
 num_params: number of parameter sets for all layers.
     Each layer may contain multiple parameter sets, with each set consisting of
     a weight matrix and a bias vector.
-)doc", kCudnnRNNCommonAttrs));
+)doc",
+                         kCudnnRNNCommonAttrs));
 
 }  // namespace tensorflow

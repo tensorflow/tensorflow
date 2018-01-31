@@ -139,9 +139,6 @@ class Layer(object):
 
     self._init_set_name(name)
 
-    # Holds functions for creating regularizer ops.
-    self._regularizer_factories = []
-
     # Determine variable scope.
     scope = kwargs.get('_scope')
     if scope:
@@ -306,22 +303,6 @@ class Layer(object):
       inputs_hash = None
     return self._per_input_updates.get(inputs_hash, [])
 
-  def _get_regularizer_factories(self):
-    try:
-      # Some subclasses of Layer do not use its constructor.
-      return self._regularizer_factories
-    except AttributeError:
-      self._regularizer_factories = []
-      return self._regularizer_factories
-
-  def _maybe_create_variable_regularizers(self):
-    """Creates added but uninstantiated regularizers."""
-    factories = self._get_regularizer_factories()
-    if factories:
-      for factory in factories:
-        factory()
-      factories[:] = []
-
   @property
   def losses(self):
     """Losses which are associated with this `Layer`.
@@ -333,7 +314,6 @@ class Layer(object):
     Returns:
       A list of tensors.
     """
-    self._maybe_create_variable_regularizers()
     if context.in_eager_mode():
       # _losses may only contain variable regularization losses when executing
       # eagerly, and they have been saved as lambdas to be executed when
@@ -417,7 +397,6 @@ class Layer(object):
       inputs_hash = layers_util.object_list_uid(inputs)
     else:
       inputs_hash = None
-    self._maybe_create_variable_regularizers()
     return self._per_input_losses.get(inputs_hash, [])
 
   def build(self, _):

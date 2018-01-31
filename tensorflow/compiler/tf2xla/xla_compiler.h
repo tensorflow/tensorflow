@@ -235,6 +235,19 @@ class XlaCompiler {
     // device is created, and can be used to create metadata objects
     // that can be accessed by XLA op kernels.
     std::function<Status(ResourceMgr*)>* populate_resource_manager = nullptr;
+
+    // If not nullptr, this memory allocator can be used by the compiler for
+    // temporary allocations it might want to make during compilation.
+    //
+    // For example, the compiler may want to try out different algorithms and
+    // choose the fastest one, and it might run those algorithms over buffers
+    // created using this allocator.
+    //
+    // The compiler can function correctly without an explicit allocator given
+    // here, but on some devices (notably, GPUs), TensorFlow tends to eagerly
+    // allocate most or all available memory on the device, leaving none for the
+    // compiler to access, unless it can use TensorFlow's allocator.
+    xla::DeviceMemoryAllocator* device_allocator = nullptr;
   };
 
   explicit XlaCompiler(Options options);

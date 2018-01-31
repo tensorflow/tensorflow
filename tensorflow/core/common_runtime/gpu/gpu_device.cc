@@ -762,9 +762,11 @@ int64 MinSystemMemory(int64 available_memory) {
   // is necessary.
   min_system_memory *= 2;
 #endif
+
 #if defined(ANDROID_TEGRA)
-  // 1GB system mem for NVIDIA Tegra devices since they use the same mem for RAM and Video RAM
-  min_system_memory = 1<<30;
+  // 1GB system mem for NVIDIA Tegra devices since they use the same mem for RAM
+  // and Video RAM
+  min_system_memory = 1 << 30;
 #endif
   return min_system_memory;
 }

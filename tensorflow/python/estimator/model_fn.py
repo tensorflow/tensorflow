@@ -56,7 +56,7 @@ class EstimatorSpec(
     collections.namedtuple('EstimatorSpec', [
         'mode', 'predictions', 'loss', 'train_op', 'eval_metric_ops',
         'export_outputs', 'training_chief_hooks', 'training_hooks', 'scaffold',
-        'evaluation_hooks'
+        'evaluation_hooks', 'prediction_hooks'
     ])):
   """Ops and objects returned from a `model_fn` and passed to an `Estimator`.
 
@@ -73,7 +73,8 @@ class EstimatorSpec(
               training_chief_hooks=None,
               training_hooks=None,
               scaffold=None,
-              evaluation_hooks=None):
+              evaluation_hooks=None,
+              prediction_hooks=None):
     """Creates a validated `EstimatorSpec` instance.
 
     Depending on the value of `mode`, different arguments are required. Namely
@@ -154,6 +155,8 @@ class EstimatorSpec(
         initialization, saver, and more to be used in training.
       evaluation_hooks: Iterable of `tf.train.SessionRunHook` objects to
         run during evaluation.
+      prediction_hooks: Iterable of `tf.train.SessionRunHook` objects to
+        run during predictions.
 
     Returns:
       A validated `EstimatorSpec` object.
@@ -282,7 +285,10 @@ class EstimatorSpec(
     training_chief_hooks = tuple(training_chief_hooks or [])
     training_hooks = tuple(training_hooks or [])
     evaluation_hooks = tuple(evaluation_hooks or [])
-    for hook in training_hooks + training_chief_hooks + evaluation_hooks:
+    prediction_hooks = tuple(prediction_hooks or [])
+
+    for hook in (training_hooks + training_chief_hooks + evaluation_hooks +
+                 prediction_hooks):
       if not isinstance(hook, session_run_hook.SessionRunHook):
         raise TypeError(
             'All hooks must be SessionRunHook instances, given: {}'.format(
@@ -305,7 +311,8 @@ class EstimatorSpec(
         training_chief_hooks=training_chief_hooks,
         training_hooks=training_hooks,
         scaffold=scaffold,
-        evaluation_hooks=evaluation_hooks)
+        evaluation_hooks=evaluation_hooks,
+        prediction_hooks=prediction_hooks)
 
   def _replace(self, **kwds):
     """Return a new EstimatorSpec replacing specified fields with new values."""

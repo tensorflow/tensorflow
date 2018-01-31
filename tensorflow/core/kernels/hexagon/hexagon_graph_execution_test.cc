@@ -420,7 +420,7 @@ TEST(GraphTransferer,
       false,  // is_text_proto
       false,  // shape_inference_for_unknown_shape
       true    // dry_run_for_unknown_shape
-      );
+  );
   ASSERT_TRUE(status.ok()) << status;
   prof.Stop();
   prof.DumpStatistics("LoadGraphFromProtoFile");
@@ -487,7 +487,7 @@ TEST(GraphTransferer,
       false,  // is_text_proto
       true,   // shape_inference_for_unknown_shape
       false   // dry_run_for_unknown_shape
-      );
+  );
   ASSERT_TRUE(status.ok()) << status;
   prof.Stop();
   prof.DumpStatistics("LoadGraphFromProtoFile");
@@ -556,7 +556,7 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
       false,  // is_text_proto
       false,  // shape_inference_for_unknown_shape
       true    // dry_run_for_unknown_shape
-      );
+  );
   const GraphTransferInfo& gfi0 = gt0.GetGraphTransferInfo();
 
   ASSERT_TRUE(status.ok());
@@ -576,7 +576,7 @@ TEST(GraphTransferer, DISABLED_CheckShapeInferencePerformance) {
       false,  // is_text_proto
       true,   // shape_inference_for_unknown_shape
       false   // dry_run_for_unknown_shape
-      );
+  );
   const GraphTransferInfo& gfi1 = gt1.GetGraphTransferInfo();
 
   ASSERT_TRUE(status.ok());
