@@ -206,7 +206,8 @@ static void DumpGraph(const HloComputation* comp) {
 
 StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
         std::unique_ptr<HloModule> module,
-        perftools::gputools::StreamExecutor* executor) {
+        perftools::gputools::StreamExecutor* executor,
+        DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << "Begin HloPasses: " << module->name();
 
   HloPassPipeline pipeline("IPU");
@@ -239,7 +240,8 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
 
 StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
         std::unique_ptr<HloModule> module,
-        perftools::gputools::StreamExecutor* stream_exec) {
+        perftools::gputools::StreamExecutor* stream_exec,
+        DeviceMemoryAllocator* device_allocator) {
 
   VLOG(1) << "Begin compilation: " << module->name();
 
@@ -361,7 +363,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> PoplarCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> hlo_modules,
-    std::vector<std::vector<perftools::gputools::StreamExecutor*>> execs) {
+    std::vector<std::vector<perftools::gputools::StreamExecutor*>> execs,
+    DeviceMemoryAllocator* device_allocator) {
 
   return tensorflow::errors::Unimplemented(
           "Compilation of multiple HLO modules is not supported on Poplar.");
