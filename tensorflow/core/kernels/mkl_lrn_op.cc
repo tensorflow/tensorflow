@@ -538,7 +538,7 @@ class MklLRNGradOp : public OpKernel {
       const Tensor& out_image = MklGetInput(context, 2);
       const Tensor& workspace = MklGetInput(
           context,
-          3); /*Worskpsace is enabled, get the buffer to the workspace */
+          3); /*Workspace is enabled, get the buffer to the workspace */
 
       void* user_input = const_cast<void*>(
           static_cast<const void*>(in_grads.flat<T>().data()));

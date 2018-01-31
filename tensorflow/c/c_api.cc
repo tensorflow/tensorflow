@@ -195,7 +195,7 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
       reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
     // TF_STRING and TF_RESOURCE tensors have a different representation in
     // TF_Tensor than they do in tensorflow::Tensor. So a copy here is a waste
-    // (any alignement requirements will be taken care of by TF_TensorToTensor
+    // (any alignment requirements will be taken care of by TF_TensorToTensor
     // and TF_TensorFromTensor).
     //
     // Other types have the same represntation, so copy only if it is safe to do

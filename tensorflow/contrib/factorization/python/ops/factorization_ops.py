@@ -435,7 +435,7 @@ class WALSModel(object):
       gramian: Variable storing the gramian calculated from the factors.
 
     Returns:
-      A op that updates the gramian with the calcuated value from the factors.
+      A op that updates the gramian with the calculated value from the factors.
     """
     partial_gramians = []
     for f in factors:

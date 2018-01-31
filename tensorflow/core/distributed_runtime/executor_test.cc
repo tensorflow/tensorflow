@@ -247,7 +247,7 @@ void BuildConcurrentAddAssign(Graph* g) {
   auto one = test::graph::Constant(g, V(1.0));
   // A variable holds one float.
   auto var = test::graph::Var(g, DT_FLOAT, TensorShape({}));
-  // Initilize the variable with 1.0.
+  // Initialize the variable with 1.0.
   auto init = test::graph::Assign(g, var, one);
   // Output
   auto out = test::graph::Send(g, var, "out", ALICE, kIncarnation, BOB);
