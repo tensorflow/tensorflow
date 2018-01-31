@@ -184,20 +184,8 @@ def evaluate_once(master,
   Returns:
     The value of `final_op` or `None` if `final_op` is `None`.
   """
-  if summary_op == _USE_DEFAULT:
-    summary_op = summary.merge_all()
-
-  all_hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
-
-  if summary_op is not None:
-    all_hooks.append(evaluation.SummaryAtEndHook(
-        log_dir=logdir, summary_op=summary_op, feed_dict=summary_op_feed_dict))
-  if hooks is not None:
-    all_hooks.extend(hooks)
-
-  saver = None
-  if variables_to_restore is not None:
-    saver = tf_saver.Saver(variables_to_restore)
+  all_hooks, saver = _create_hooks_and_saver(hooks, logdir, num_evals, summary_op, summary_op_feed_dict,
+                                             variables_to_restore)
 
   return evaluation.evaluate_once(
       checkpoint_path,
@@ -210,6 +198,21 @@ def evaluate_once(master,
       final_ops_feed_dict=final_op_feed_dict,
       hooks=all_hooks,
       config=session_config)
+
+
+def _create_hooks_and_saver(hooks, logdir, num_evals, summary_op, summary_op_feed_dict, variables_to_restore):
+  if summary_op == _USE_DEFAULT:
+    summary_op = summary.merge_all()
+  all_hooks = [evaluation.StopAfterNEvalsHook(num_evals), ]
+  if summary_op is not None:
+    all_hooks.append(evaluation.SummaryAtEndHook(
+      log_dir=logdir, summary_op=summary_op, feed_dict=summary_op_feed_dict))
+  if hooks is not None:
+    all_hooks.extend(hooks)
+  saver = None
+  if variables_to_restore is not None:
+    saver = tf_saver.Saver(variables_to_restore)
+  return all_hooks, saver
 
 
 def evaluation_loop(master,
@@ -267,22 +270,8 @@ def evaluation_loop(master,
   Returns:
     The value of `final_op` or `None` if `final_op` is `None`.
   """
-  if summary_op == _USE_DEFAULT:
-    summary_op = summary.merge_all()
-
-  all_hooks = [evaluation.StopAfterNEvalsHook(num_evals),]
-
-  if summary_op is not None:
-    all_hooks.append(evaluation.SummaryAtEndHook(
-        log_dir=logdir, summary_op=summary_op, feed_dict=summary_op_feed_dict))
-
-  if hooks is not None:
-    # Add custom hooks if provided.
-    all_hooks.extend(hooks)
-
-  saver = None
-  if variables_to_restore is not None:
-    saver = tf_saver.Saver(variables_to_restore)
+  all_hooks, saver = _create_hooks_and_saver(hooks, logdir, num_evals, summary_op, summary_op_feed_dict,
+                                             variables_to_restore)
 
   return evaluation.evaluate_repeatedly(
       checkpoint_dir,
