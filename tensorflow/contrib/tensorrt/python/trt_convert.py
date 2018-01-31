@@ -35,7 +35,7 @@ from tensorflow.python.framework import ops
 def CreateInferenceGraph(input_graph_def,
                          outputs,
                          max_batch_size=1,
-                         max_workspace_size=2 << 20):
+                         max_workspace_size_bytes=2 << 20):
   """Python wrapper for the TRT transormation.
 
 
@@ -43,7 +43,7 @@ def CreateInferenceGraph(input_graph_def,
     input_graph_def: GraphDef object containing a model to be transformed.
     outputs: List of tensors or node names for the model outputs.
     max_batch_size: max size for the input batch
-    max_workspace_size: parameter to control memory allocation (in Bytes)
+    max_workspace_size_bytes: parameter to control memory allocation (in Bytes)
 
   Returns:
     New GraphDef with TRTEngineOps placed in graph replacing subgraphs.
@@ -64,7 +64,7 @@ def CreateInferenceGraph(input_graph_def,
   # pair or strings where first one is encoded status and the second
   # one is the transformed graphs protobuf string.
   out = trt_convert(input_graph_def_str, outputs, max_batch_size,
-                    max_workspace_size)
+                    max_workspace_size_bytes)
   status = out[0]
   output_graph_def_string = out[1]
   del input_graph_def_str  #save some memory
