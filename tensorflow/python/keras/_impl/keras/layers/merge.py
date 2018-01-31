@@ -197,17 +197,20 @@ class _Merge(Layer):
   def compute_mask(self, inputs, mask=None):
     if mask is None:
       return None
-    if not isinstance(mask, list):
-      raise ValueError('`mask` should be a list.')
-    if not isinstance(inputs, list):
-      raise ValueError('`inputs` should be a list.')
-    if len(mask) != len(inputs):
-      raise ValueError('The lists `inputs` and `mask` '
-                       'should have the same length.')
+    _validate_mask_and_inputs(inputs, mask)
     if all([m is None for m in mask]):
       return None
     masks = [K.expand_dims(m, 0) for m in mask if m is not None]
     return K.all(K.concatenate(masks, axis=0), axis=0, keepdims=False)
+
+def _validate_mask_and_inputs(inputs, mask):
+  if not isinstance(mask, list):
+    raise ValueError('`mask` should be a list.')
+  if not isinstance(inputs, list):
+    raise ValueError('`inputs` should be a list.')
+  if len(mask) != len(inputs):
+    raise ValueError('The lists `inputs` and `mask` '
+                     'should have the same length.')
 
 
 class Add(_Merge):
@@ -396,13 +399,7 @@ class Concatenate(_Merge):
   def compute_mask(self, inputs, mask=None):
     if mask is None:
       return None
-    if not isinstance(mask, list):
-      raise ValueError('`mask` should be a list.')
-    if not isinstance(inputs, list):
-      raise ValueError('`inputs` should be a list.')
-    if len(mask) != len(inputs):
-      raise ValueError('The lists `inputs` and `mask` '
-                       'should have the same length.')
+    _validate_mask_and_inputs(inputs, mask)
     if all([m is None for m in mask]):
       return None
     # Make a list of masks while making sure
