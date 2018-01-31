@@ -556,6 +556,8 @@ class Dataset(object):
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
+    NOTE: The order of the file names returned can be non-deterministic.
+
     Args:
       file_pattern: A string or scalar string `tf.Tensor`, representing
         the filename pattern that will be matched.
