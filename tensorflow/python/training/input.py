@@ -748,12 +748,17 @@ def _batch(tensors, batch_size, keep_input, num_threads=1, capacity=32,
     summary.scalar("fraction_of_%d_full" % capacity,
                    math_ops.to_float(queue.size()) * (1. / capacity))
 
-    if allow_smaller_final_batch:
-      dequeued = queue.dequeue_up_to(batch_size, name=name)
-    else:
-      dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _restore_sparse_tensors(dequeued, sparse_info)
+    dequeued = _dequeue_then_restore_sparse_tensors(allow_smaller_final_batch, batch_size, name, queue, sparse_info)
     return _as_original_type(tensors, dequeued)
+
+
+def _dequeue_then_restore_sparse_tensors(allow_smaller_final_batch, batch_size, name, queue, sparse_info):
+  if allow_smaller_final_batch:
+    dequeued = queue.dequeue_up_to(batch_size, name=name)
+  else:
+    dequeued = queue.dequeue_many(batch_size, name=name)
+  dequeued = _restore_sparse_tensors(dequeued, sparse_info)
+  return dequeued
 
 
 # TODO(josh11b): Add a thread_multiplier or num_threads (that has to be
@@ -787,11 +792,7 @@ def _batch_join(tensors_list, batch_size, keep_input, capacity=32,
     summary.scalar("fraction_of_%d_full" % capacity,
                    math_ops.to_float(queue.size()) * (1. / capacity))
 
-    if allow_smaller_final_batch:
-      dequeued = queue.dequeue_up_to(batch_size, name=name)
-    else:
-      dequeued = queue.dequeue_many(batch_size, name=name)
-    dequeued = _restore_sparse_tensors(dequeued, sparse_info)
+    dequeued = _dequeue_then_restore_sparse_tensors(allow_smaller_final_batch, batch_size, name, queue, sparse_info)
     # tensors_list was validated to not be empty.
     return _as_original_type(tensors_list[0], dequeued)
 
