@@ -445,6 +445,24 @@ __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicAdd(T* ptr, U value) {
   return atomicAdd(ptr, value);
 }
 
+#if __CUDA_ARCH__ < 600
+__device__ inline double CudaAtomicAdd(double* ptr, double value) {
+  return detail::CudaAtomicCasHelper(ptr,
+                                     [value](double a) { return a + value; });
+}
+#elif __clang__
+// Clang cannot compile __nvvm_atom_add_gen_d builtin yet, use inline PTX.
+// see https://reviews.llvm.org/D39638
+__device__ inline double CudaAtomicAdd(double* ptr, double value) {
+  double result;
+  asm volatile("atom.add.f64 %0, [%1], %2;"
+               : "=d"(result)
+               : "l"(ptr), "d"(value)
+               : "memory");
+  return result;
+}
+#endif
+
 // Specializations of CudaAtomicAdd for complex types, which CudaAtomicAdd does
 // not support. We treat a std::complex<T>* as a T* (the C++ standard section
 // 26.4.4 allows this explicitly) and atomic add the real and imaginary
@@ -465,24 +483,6 @@ __device__ inline std::complex<double> CudaAtomicAdd(
   return std::complex<double>(CudaAtomicAdd(ptr_scalar, value.real()),
                               CudaAtomicAdd(ptr_scalar + 1, value.imag()));
 }
-
-#if __CUDA_ARCH__ < 600
-__device__ inline double CudaAtomicAdd(double* ptr, double value) {
-  return detail::CudaAtomicCasHelper(ptr,
-                                     [value](double a) { return a + value; });
-}
-#elif __clang__
-// Clang cannot compile __nvvm_atom_add_gen_d builtin yet, use inline PTX.
-// see https://reviews.llvm.org/D39638
-__device__ inline double CudaAtomicAdd(double* ptr, double value) {
-  double result;
-  asm volatile("atom.add.f64 %0, [%1], %2;"
-               : "=d"(result)
-               : "l"(ptr), "d"(value)
-               : "memory");
-  return result;
-}
-#endif
 
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicSub(T* ptr, U value) {
