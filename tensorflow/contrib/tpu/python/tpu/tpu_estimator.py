@@ -41,6 +41,7 @@ from tensorflow.contrib.tpu.python.tpu import util as util_lib
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
 
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import util
@@ -70,7 +71,12 @@ _BATCH_SIZE_KEY = 'batch_size'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
-# TODO(b/65703635): Flip the value and remove all dead code.
+
+# TODO(b/65703635): Flip the value and remove all dead code. Currently, this is
+# only used for per-core based deployments. For per-host based pipelines, if a
+# user returns a Dataset instance it will be automatically wrapped in a
+# tf.while_loop (This can be disabled by returning features and labels
+# explicitly).
 _WRAP_INPUT_FN_INTO_WHILE_LOOP = False
 
 
@@ -499,12 +505,19 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
      dequeue.
   """
 
-  def __init__(self, ctx, enqueue_ops, dequeue_ops):
+  def __init__(self,
+               ctx,
+               enqueue_ops,
+               dequeue_ops,
+               run_infeed_loop_on_coordinator=True):
     self._master_job = ctx.master_job
     self._enqueue_ops = enqueue_ops
     self._dequeue_ops = dequeue_ops
+
+    self._run_infeed_loop_on_coordinator = run_infeed_loop_on_coordinator
     self._initial_infeed_sleep_secs = (
         ctx.config.tpu_config.initial_infeed_sleep_secs)
+
     self._session_cancel_timer = None
 
     self._feed_error = None
@@ -587,15 +600,15 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
       logging.info('%s thread starting after sleep', self._name)
 
     try:
-      if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
-        for _ in queue_ctx.read_iteration_counts():
-          session.run(self._enqueue_ops)
-      else:
+      if self._run_infeed_loop_on_coordinator:
         for count, steps in enumerate(queue_ctx.read_iteration_counts()):
           for i in xrange(steps):
             logging.debug('Infeed enqueue for iteration (%d, %d)', count, i)
             session.run(self._enqueue_ops)
-      logging.debug('Infeed thread finished, shutting down.')
+      else:
+        for _ in queue_ctx.read_iteration_counts():
+          session.run(self._enqueue_ops)
+      logging.info('Infeed thread finished, shutting down.')
     except Exception as e:  # pylint: disable=broad-except
       self._log_error(session, e)
 
@@ -606,6 +619,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
         for i in xrange(steps):
           logging.debug('Outfeed dequeue for iteration (%d, %d)', count, i)
           session.run(self._dequeue_ops)
+      logging.info('Outfeed thread finished, shutting down.')
     except Exception as e:  # pylint: disable=broad-except
       self._log_error(session, e)
 
@@ -633,7 +647,6 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
     logging.info('Enqueue next (%d) batch(es) of data to infeed.', iterations)
     self._infeed_controller.send_next_batch_signal(iterations)
 
-    # TODO(xiejw): Refactor the outfeed dequeue into tf.while_loop.
     logging.info('Dequeue next (%d) batch(es) of data from outfeed.',
                  iterations)
     self._outfeed_controller.send_next_batch_signal(iterations)
@@ -752,11 +765,14 @@ def generate_per_core_enqueue_ops_fn_for_host(ctx, input_fn,
     per_host_sharded_inputs = []
     for core_ordinal in range(num_cores_per_host):
       with ops.name_scope('ordinal_%d' % (core_ordinal)):
-        inputs = input_fn()
-        if isinstance(inputs, tuple):
-          features, labels = inputs
-        else:
-          features, labels = inputs, None
+        inputs = _Inputs.from_input_fn(input_fn())
+        if inputs.is_dataset:
+          raise TypeError(
+              '`input_fn` returning `Dataset`  is not yet supported in '
+              'per-Core input pipeline deployment yet. Please set '
+              'TPUConfig.per_host_input_for_training to True or return '
+              '`features` and `labels` from `input_fn`')
+        features, labels = inputs.features_and_labels()
 
         inputs_structure_recorder.validate_and_record_structure(
             features, labels)
@@ -783,14 +799,23 @@ def generate_per_host_enqueue_ops_fn_for_host(
   """Generates infeed enqueue ops for per-host input_fn on a single host."""
   captured_infeed_queue = _CapturedObject()
 
+  hooks = []
+
+  with ops.device(device):
+    inputs = _Inputs.from_input_fn(input_fn())
+
+    is_dataset = inputs.is_dataset
+    if is_dataset:
+      hooks.append(inputs.dataset_initializer_hook())
+
   def enqueue_ops_fn():
     with ops.device(device):
       num_cores_per_host = ctx.num_of_cores_per_host
-      inputs = input_fn()
-      if isinstance(inputs, tuple):
-        features, labels = inputs
-      else:
-        features, labels = inputs, None
+      # Convert user input to features and labels.  If the user returns a
+      # dataset, it is initialized and the features and labels extracted via
+      # `dataset.iterator.get_next()`
+      features, labels = inputs.features_and_labels()
+
       inputs_structure_recorder.validate_and_record_structure(features, labels)
       unsharded_tensor_list = (
           inputs_structure_recorder.flatten_features_and_labels(
@@ -808,7 +833,7 @@ def generate_per_host_enqueue_ops_fn_for_host(
               unsharded_tensor_list, placement_function=lambda x: device))
       return per_host_enqueue_ops
 
-  return enqueue_ops_fn, captured_infeed_queue
+  return enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset
 
 
 class _InputPipeline(object):
@@ -944,7 +969,7 @@ class _InputPipeline(object):
         # Single tensor case.
         unflattened_label = flattened_inputs[expected_num_features]
 
-      return unflattened_features, unflattened_label
+      return _Inputs(unflattened_features, unflattened_label)
 
   def __init__(self, input_fn, batch_axis, ctx):
     """Constructor.
@@ -972,7 +997,8 @@ class _InputPipeline(object):
     # While tf.while_loop is called, the body function, which invokes
     # `enqueue_fn` passed in, is called to construct the graph. So, input_fn
     # structure is recorded.
-    enqueue_ops = self._invoke_input_fn_and_record_structure()
+    enqueue_ops, all_hooks, run_infeed_loop_on_coordinator = (
+        self._invoke_input_fn_and_record_structure())
 
     self._validate_input_pipeline()
 
@@ -983,14 +1009,18 @@ class _InputPipeline(object):
       return self._inputs_structure_recorder.unflatten_features_and_labels(
           values)
 
-    return (enqueue_ops, dequeue_fn)
+    return (enqueue_ops, dequeue_fn, all_hooks, run_infeed_loop_on_coordinator)
 
   def _invoke_input_fn_and_record_structure(self):
     """Deploys the input pipeline and record input structure."""
     enqueue_ops = []
     infeed_queues = []
+    all_hooks = []
     num_hosts = self._ctx.num_hosts
     tpu_host_placement_fn = self._ctx.tpu_host_placement_function
+
+    run_infeed_loop_on_coordinator = True
+
     if self._sharded_per_core:
       # Per-Core input pipeline deployment.
       # Invoke input pipeline for each core and placed on the corresponding
@@ -1004,6 +1034,7 @@ class _InputPipeline(object):
                     self._ctx, self._input_fn, self._inputs_structure_recorder))
 
             if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
+              run_infeed_loop_on_coordinator = False
               enqueue_ops.append(
                   _wrap_computation_in_while_loop(
                       device=host_device, op_fn=enqueue_ops_fn))
@@ -1017,12 +1048,26 @@ class _InputPipeline(object):
         host_device = tpu_host_placement_fn(host_id=host_id)
         with ops.device(host_device):
           with ops.name_scope('input_pipeline_task%d' % (host_id)):
-            enqueue_ops_fn, captured_infeed_queue = (
+            enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
                 generate_per_host_enqueue_ops_fn_for_host(
                     self._ctx, self._input_fn, self._inputs_structure_recorder,
                     self._batch_axis, host_device))
+            all_hooks.extend(hooks)
 
-            if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
+            # NOTE(xiejw): We dispatch here based on the return type of the
+            # users `input_fn`.
+            #
+            # 1. If input_fn returns a Dataset instance, we initialize the
+            # iterator outside of tf.while_loop, and call the iterator.get_next
+            # inside tf.while_loop.  This should be always safe.
+            #
+            # 2. If input_fn returns (features, labels), it is too late to wrap
+            # them inside tf.while_loop, as resource initialization cannot be
+            # handled in TF control flow properly. In this case, we will use
+            # python loop to enqueue the data into TPU system.  This may be
+            # slow compared to the previous case.
+            if is_dataset:
+              run_infeed_loop_on_coordinator = False
               enqueue_ops.append(
                   _wrap_computation_in_while_loop(
                       device=host_device, op_fn=enqueue_ops_fn))
@@ -1033,7 +1078,7 @@ class _InputPipeline(object):
     # dequeue is dtypes and types. So, any one can be used. Here, grab the
     # first one.
     self._infeed_queue = infeed_queues[0]
-    return enqueue_ops
+    return enqueue_ops, all_hooks, run_infeed_loop_on_coordinator
 
   def _validate_input_pipeline(self):
     # Perform some sanity checks to log user friendly information. We should
@@ -1099,7 +1144,8 @@ class _ModelFnWrapper(object):
     def train_step(loss):
       """Training step function for use inside a while loop."""
       del loss  # unused; required in function signature.
-      features, labels = dequeue_fn()
+      inputs = dequeue_fn()
+      features, labels = inputs.features_and_labels()
 
       estimator_spec = self._verify_estimator_spec(
           self._call_model_fn(features, labels))
@@ -1150,7 +1196,8 @@ class _ModelFnWrapper(object):
 
     def eval_step(total_loss):
       """Evaluation step function for use inside a while loop."""
-      features, labels = dequeue_fn()
+      inputs = dequeue_fn()
+      features, labels = inputs.features_and_labels()
 
       tpu_estimator_spec = self._call_model_fn(features, labels)
       if not isinstance(tpu_estimator_spec, TPUEstimatorSpec):
@@ -1757,7 +1804,7 @@ class TPUEstimator(estimator_lib.Estimator):
         input_fn = features
 
         input_holders = _InputPipeline(input_fn, batch_axis, ctx)
-        enqueue_ops, dequeue_fn = (
+        enqueue_ops, dequeue_fn, input_hooks, run_infeed_loop_on_coordinator = (
             input_holders.generate_infeed_enqueue_ops_and_dequeue_fn())
 
         if mode == model_fn_lib.ModeKeys.TRAIN:
@@ -1767,7 +1814,12 @@ class TPUEstimator(estimator_lib.Estimator):
           if host_ops is None:
             host_ops = []
           hooks = [
-              TPUInfeedOutfeedSessionHook(ctx, enqueue_ops, host_ops),
+              TPUInfeedOutfeedSessionHook(
+                  ctx,
+                  enqueue_ops,
+                  host_ops,
+                  run_infeed_loop_on_coordinator=(
+                      run_infeed_loop_on_coordinator)),
               ExamplesPerSecondHook(ctx.global_batch_size),
               InstallSignalHandlerHook(),
               training.LoggingTensorHook(
@@ -1776,7 +1828,7 @@ class TPUEstimator(estimator_lib.Estimator):
                       'step': training.get_global_step()
                   },
                   every_n_secs=30)
-          ]
+          ] + input_hooks
           summary.scalar(model_fn_lib.LOSS_METRIC_KEY, loss)
           with ops.control_dependencies([loss]):
             update_ops = _sync_variables_ops()
@@ -1826,9 +1878,12 @@ class TPUEstimator(estimator_lib.Estimator):
         else:
           host_ops = host_call_ret['host_call']
         hooks = [
-            TPUInfeedOutfeedSessionHook(ctx, enqueue_ops,
-                                        eval_update_ops + host_ops),
-        ]
+            TPUInfeedOutfeedSessionHook(
+                ctx,
+                enqueue_ops,
+                eval_update_ops + host_ops,
+                run_infeed_loop_on_coordinator=run_infeed_loop_on_coordinator),
+        ] + input_hooks
 
         return model_fn_lib.EstimatorSpec(
             mode,
@@ -1996,3 +2051,60 @@ class _CapturingContext(control_flow_ops.ControlFlowContext):
 
   def __exit__(self, _, __, ___):  # pylint: disable=invalid-name
     self._g._set_control_flow_context(self._old)  # pylint: disable=protected-access
+
+
+# TODO(xiejw): Extend this to support internal signal.
+class _Inputs(object):
+  """A data structure representing the input_fn returned values.
+
+  This also supports the returned value from input_fn as `Dataset`.
+  """
+
+  def __init__(self, features=None, labels=None, dataset=None):
+    if dataset is not None and (features is not None or labels is not None):
+      raise RuntimeError('Internal Error: Either (features and labels) or '
+                         'dataset should be provided, not both. Please file '
+                         'bug')
+
+    self._features = features
+    self._labels = labels
+
+    self._dataset = dataset
+    self._iterator = None
+
+  @staticmethod
+  def from_input_fn(return_values):
+    """Returns an `_Inputs` instance according to `input_fn` return value."""
+    if isinstance(return_values, dataset_ops.Dataset):
+      dataset = return_values
+      return _Inputs(dataset=dataset)
+
+    if isinstance(return_values, tuple):
+      features, labels = return_values
+    else:
+      features, labels = return_values, None
+    return _Inputs(features, labels)
+
+  @property
+  def is_dataset(self):
+    """Returns True if the return value from input_fn is Dataset."""
+    return self._dataset is not None
+
+  def dataset_initializer_hook(self):
+    """Returns a `SessionRunHook` to initialize this dataset.
+
+    This must be called before `features_and_labels`.
+    """
+    iterator = self._dataset.make_initializable_iterator()
+    # pylint: disable=protected-access
+    hook = estimator_lib._DatasetInitializerHook(iterator)
+    self._iterator = iterator
+    return hook
+
+  def features_and_labels(self):
+    """Gets `features` and `labels`."""
+    if self.is_dataset:
+      return (_Inputs.from_input_fn(
+          self._iterator.get_next()).features_and_labels())
+
+    return (self._features, self._labels)
