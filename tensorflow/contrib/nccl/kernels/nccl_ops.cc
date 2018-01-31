@@ -17,7 +17,7 @@ limitations under the License.
 
 #include <vector>
 
-#ifdef (PLATFORM_GOOGLE)
+#ifdef PLATFORM_GOOGLE
 #include "src/nccl.h"
 #else
 #include "nccl.h"

@@ -20,7 +20,7 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#ifdef (PLATFORM_GOOGLE)
+#ifdef PLATFORM_GOOGLE
 #include "src/nccl.h"
 #else
 #include "nccl.h"
