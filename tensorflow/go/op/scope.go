@@ -33,10 +33,11 @@ import (
 // A Scope object and all its derivates (e.g., obtained from Scope.SubScope)
 // are not safe for concurrent use by multiple goroutines.
 type Scope struct {
-	graph     *tf.Graph
-	namemap   map[string]int
-	namespace string
-	err       *scopeErr
+	graph               *tf.Graph
+	namemap             map[string]int
+	namespace           string
+	controlDependencies []*tf.Operation
+	err                 *scopeErr
 }
 
 // scopeErr is used to share errors between all derivatives of a root scope.
@@ -80,6 +81,7 @@ func (s *Scope) AddOperation(args tf.OpSpec) *tf.Operation {
 	if s.namespace != "" {
 		args.Name = s.namespace + "/" + args.Name
 	}
+	args.ControlDependencies = append(args.ControlDependencies, s.controlDependencies...)
 	op, err := s.graph.AddOperation(args)
 	if err != nil {
 		s.UpdateErr(args.Type, err)
@@ -100,6 +102,23 @@ func (s *Scope) SubScope(namespace string) *Scope {
 		namemap:   make(map[string]int),
 		namespace: namespace,
 		err:       s.err,
+	}
+}
+
+// WithControlDependencies returns a new Scope which will cause all operations
+// added to the graph to execute only after all the provided operations have
+// executed first (in addition to any other control dependencies in s).
+func (s *Scope) WithControlDependencies(ops ...*tf.Operation) *Scope {
+	return &Scope{
+		graph:     s.graph,
+		namemap:   s.namemap,
+		namespace: s.namespace,
+		// append(ops, s.controlDependencies) and not the other way
+		// around so that we end up with a copy of the underlying array
+		// (and other calls to s.WithControlDependencies() do not stomp
+		// on each other).
+		controlDependencies: append(ops, s.controlDependencies...),
+		err:                 s.err,
 	}
 }
 

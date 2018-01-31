@@ -69,6 +69,40 @@ func TestScopeSubScopeErrors(t *testing.T) {
 	}
 }
 
+func TestControlDependencies(t *testing.T) {
+	var (
+		s        = NewScope()
+		zero     = Const(s.SubScope("zero"), int32(0))
+		one      = Const(s.SubScope("one"), int32(1))
+		variable = VarHandleOp(s, tf.Int32, tf.ScalarShape())
+		init     = AssignVariableOp(s, variable, zero)
+		update   = AssignAddVariableOp(s, variable, one)
+		read     = ReadVariableOp(s.WithControlDependencies(update), variable, tf.Int32)
+	)
+	graph, err := s.Finalize()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sess, err := tf.NewSession(graph, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = sess.Run(nil, nil, []*tf.Operation{init}); err != nil {
+		t.Fatal(err)
+	}
+	// Without the control dependency, the read operation may not see the
+	// update.
+	for i := int32(0); i < 10; i++ {
+		out, err := sess.Run(nil, []tf.Output{read}, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got, want := out[0].Value().(int32), i+1; got != want {
+			t.Errorf("Got %d, want %d", got, want)
+		}
+	}
+}
+
 func TestScopeFinalize(t *testing.T) {
 	var (
 		root = NewScope()
