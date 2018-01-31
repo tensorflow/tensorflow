@@ -41,8 +41,10 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("data.Dataset")
 class Dataset(object):
   """Represents a potentially large set of elements.
 
