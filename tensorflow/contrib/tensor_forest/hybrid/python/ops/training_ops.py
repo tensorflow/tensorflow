@@ -103,19 +103,20 @@ def _RoutingFunctionGradient(op, grad):
   # df / dt is the derivative of the decision function with respect to its
   # bias parameter. f_i(x) = (-t_i * x + b_i), so df_i / d t_i = 1.
   #
+  return _prepare_input_gradients(df_dt, df_dx, dl_du, du_df, tree_thresholds_tensor)
+
+
+def _prepare_input_gradients(df_dt, df_dx, dl_du, du_df, tree_thresholds_tensor):
   # df / db has dimension (num_nodes), which we expand to
   # (1, num_nodes, 1).
   df_db = array_ops.expand_dims(
-      array_ops.expand_dims(array_ops.ones_like(tree_thresholds_tensor), 0), 2)
-
+    array_ops.expand_dims(array_ops.ones_like(tree_thresholds_tensor), 0), 2)
   # Compute the derivatives of the loss with respect to the inputs using the
   # chain rule (backpropagation).
   dl_dx = math_ops.reduce_mean(dl_du * du_df * df_dx, 1)
   dl_dt = math_ops.reduce_mean(dl_du * du_df * df_dt, 0)
   dl_db = math_ops.reduce_mean(array_ops.squeeze(dl_du * du_df * df_db, [2]), 0)
-
   input_gradients = [dl_dx, dl_dt, dl_db]
-
   return input_gradients
 
 
@@ -260,20 +261,7 @@ def _KFeatureRoutingFunctionGradient(op, grad):
   # df / dt is the derivative of the decision function with respect to its
   # bias parameter. f(x) = (-t * x + b), so df / dt = 1.
   #
-  # df / db has dimension (num_nodes), which we expand to
-  # (1, num_nodes, 1).
-  df_db = array_ops.expand_dims(
-      array_ops.expand_dims(array_ops.ones_like(tree_thresholds_tensor), 0), 2)
-
-  # Compute the derivatives of the loss with respect to the inputs using the
-  # chain rule (backpropagation).
-  dl_dx = math_ops.reduce_mean(dl_du * du_df * df_dx, 1)
-  dl_dt = math_ops.reduce_mean(dl_du * du_df * df_dt, 0)
-  dl_db = math_ops.reduce_mean(array_ops.squeeze(dl_du * du_df * df_db, [2]), 0)
-
-  input_gradients = [dl_dx, dl_dt, dl_db]
-
-  return input_gradients
+  return _prepare_input_gradients(df_dt, df_dx, dl_du, du_df, tree_thresholds_tensor)
 
 
 # Workaround for the fact that importing tensorflow imports contrib
