@@ -33,10 +33,11 @@ class EntityContext(object):
   """
 
   def __init__(self, namer, source_code, source_file, namespace, arg_values,
-               arg_types):
+               arg_types, recursive):
     self.namer = namer
     self.source_code = source_code
     self.source_file = source_file
     self.namespace = namespace
     self.arg_values = {} if arg_values is None else arg_values
     self.arg_types = {} if arg_types is None else arg_types
+    self.recursive = recursive

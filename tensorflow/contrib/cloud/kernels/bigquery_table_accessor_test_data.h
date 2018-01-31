@@ -399,6 +399,6 @@ const string kTestEmptyRow = R"({
     }]}]})";
 
 }  // namespace
-}  // namepsace tensorflow
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_CLOUD_BIGQUERY_TABLE_ACCESSOR_TEST_DATA_H_

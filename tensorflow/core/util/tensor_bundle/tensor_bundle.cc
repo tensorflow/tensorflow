@@ -913,8 +913,8 @@ Status BundleReader::LookupSlice(StringPiece full_tensor_key,
 Status BundleReader::GetSliceValue(StringPiece full_tensor_key,
                                    const BundleEntryProto& full_tensor_entry,
                                    const TensorSlice& slice_spec, Tensor* val) {
-  using checkpoint::TensorSliceSet;
   using checkpoint::RegisterTensorSlice;
+  using checkpoint::TensorSliceSet;
   DCHECK_GE(full_tensor_entry.slices_size(), 0);
 
   const TensorShape full_shape(TensorShape(full_tensor_entry.shape()));

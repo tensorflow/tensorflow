@@ -17,10 +17,10 @@ limitations under the License.
 
 #define EIGEN_USE_GPU
 
+#include "tensorflow/contrib/reduce_slice_ops/kernels/reduce_slice_ops.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
-#include "tensorflow/contrib/reduce_slice_ops/kernels/reduce_slice_ops.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 namespace tensorflow {

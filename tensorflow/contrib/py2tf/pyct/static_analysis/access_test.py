@@ -21,6 +21,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct.static_analysis import access
 from tensorflow.python.platform import test
@@ -95,6 +96,19 @@ class ScopeTest(test.TestCase):
 
 class AccessResolverTest(test.TestCase):
 
+  def _parse_and_analyze(self, test_fn):
+    node, source = parser.parse_entity(test_fn)
+    ctx = context.EntityContext(
+        namer=None,
+        source_code=source,
+        source_file=None,
+        namespace={},
+        arg_values=None,
+        arg_types=None,
+        recursive=True)
+    node = access.resolve(node, ctx)
+    return node
+
   def test_local_markers(self):
 
     def test_fn(a):  # pylint:disable=unused-argument
@@ -103,9 +117,7 @@ class AccessResolverTest(test.TestCase):
         b -= 1
       return b
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-
+    node = self._parse_and_analyze(test_fn)
     self.assertFalse(anno.getanno(node.body[0].body[0].value,
                                   'is_local'))  # c in b = c
     self.assertTrue(anno.getanno(node.body[0].body[1].test.left,
@@ -126,9 +138,7 @@ class AccessResolverTest(test.TestCase):
       print(a, b)
       return c
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-
+    node = self._parse_and_analyze(test_fn)
     print_node = node.body[0].body[2]
     if isinstance(print_node, gast.Print):
       # Python 2
@@ -151,9 +161,7 @@ class AccessResolverTest(test.TestCase):
       foo(a, b)  # pylint:disable=undefined-variable
       return c
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-
+    node = self._parse_and_analyze(test_fn)
     call_node = node.body[0].body[2].value
     # We basically need to detect which variables are captured by the call
     # arguments.
@@ -169,15 +177,13 @@ class AccessResolverTest(test.TestCase):
         b -= 1
       return b, c
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-
+    node = self._parse_and_analyze(test_fn)
     while_node = node.body[0].body[1]
     self.assertScopeIs(
         anno.getanno(while_node, 'body_scope'), ('b',), ('b', 'c'), ('c',))
     self.assertScopeIs(
         anno.getanno(while_node, 'body_parent_scope'), ('a', 'b', 'c'),
-        ('a', 'b', 'c'), ('a', 'b', 'c'))
+        ('b', 'c'), ('a', 'b', 'c'))
 
   def test_for(self):
 
@@ -188,15 +194,13 @@ class AccessResolverTest(test.TestCase):
         b -= 1
       return b, c
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-
+    node = self._parse_and_analyze(test_fn)
     for_node = node.body[0].body[1]
     self.assertScopeIs(
         anno.getanno(for_node, 'body_scope'), ('b',), ('b', 'c'), ('c',))
     self.assertScopeIs(
         anno.getanno(for_node, 'body_parent_scope'), ('a', 'b', 'c'),
-        ('a', 'b', 'c', '_'), ('a', 'b', 'c', '_'))
+        ('b', 'c', '_'), ('a', 'b', 'c', '_'))
 
   def test_if(self):
 
@@ -211,9 +215,7 @@ class AccessResolverTest(test.TestCase):
         u = -y
       return z, u
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-
+    node = self._parse_and_analyze(test_fn)
     if_node = node.body[0].body[0]
     self.assertScopeIs(
         anno.getanno(if_node, 'body_scope'), ('x', 'y'), ('x', 'y', 'z'),

@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Handles decorators."""
+"""Handles decorators.
+
+Note: this module only deals with functions whose decorators are still recorded
+in the AST. This does not always happen. See the unit test for an example.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -34,17 +38,19 @@ class DecoratorsTransformer(gast.NodeTransformer):
 
   def visit_FunctionDef(self, node):
     self.generic_visit(node)
+    kept_decorators = []
     for dec in node.decorator_list:
       if isinstance(dec, gast.Call):
-        dec = dec.func
-      if not anno.hasanno(dec, 'live_val'):
+        dec_func = dec.func
+      else:
+        dec_func = dec
+      if not anno.hasanno(dec_func, 'live_val'):
         raise ValueError(
-            'Could not resolve decorator: %s' % pretty_printer.fmt(dec))
-      dec_value = anno.getanno(dec, 'live_val')
-      if dec_value in self.remove_decorators:
-        continue
-      raise ValueError('Dont know how to convert decorators for now.')
-    node.decorator_list = []
+            'Could not resolve decorator: %s' % pretty_printer.fmt(dec_func))
+      dec_value = anno.getanno(dec_func, 'live_val')
+      if dec_value not in self.remove_decorators:
+        kept_decorators.append(dec)
+    node.decorator_list = kept_decorators
     return node
 
   # pylint:enable=invalid-name

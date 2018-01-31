@@ -19,28 +19,33 @@ to models defined without using eager execution.
 
 ## Installation
 
-Eager execution is **not** included in the latest release (version 1.4) of
-TensorFlow. To use it, you will need to [build TensorFlow from
-source](https://www.tensorflow.org/install/install_sources) or install the
-nightly builds.
+Eager execution is included in TensorFlow versions 1.5 and above.
+Installation instructions at https://www.tensorflow.org/install/
 
-For example, the nightly builds can be installed using `pip`:
+The contents of this guide are compatible with TensorFlow 1.5.
+However, if you run into bugs that are fixed in source but not the
+release, you may want to either either [building from
+source](https://www.tensorflow.org/install/install_sources)
+or the try latest nightly builds. The nightly builds are available as:
 
--   `pip install tf-nightly` (for CPU-only TensorFlow)
--   `pip install tf-nightly-gpu` (for GPU-enabled TensorFlow)
+- [`pip` packages](https://github.com/tensorflow/tensorflow/blob/master/README.md#installation) and
 
-Or using `docker`, with [Jupyter Notebook](http://jupyter.org/) support:
+- [docker](https://hub.docker.com/r/tensorflow/tensorflow/) images.
+
+For example, to run the latest nightly docker image:
 
 ```sh
-# For CPU-only TensorFlow
+# If you have a GPU, use https://github.com/NVIDIA/nvidia-docker
+docker pull tensorflow/tensorflow:nightly-gpu
+docker run --runtime=nvidia -it -p 8888:8888 tensorflow/tensorflow:nightly-gpu
+
+# If you do not have a GPU, use the CPU-only image
 docker pull tensorflow/tensorflow:nightly
 docker run -it -p 8888:8888 tensorflow/tensorflow:nightly
-
-# For GPU-enabled TensorFlow:
-# (Requires https://github.com/NVIDIA/nvidia-docker)
-nvidia-docker pull tensorflow/tensorflow:nightly-gpu
-nvidia-docker run -it -p 8888:8888 tensorflow/tensorflow:nightly-gpu
 ```
+
+And then visit http://localhost:8888 in your browser for a Jupyter notebook
+environment.
 
 ## Getting Started
 

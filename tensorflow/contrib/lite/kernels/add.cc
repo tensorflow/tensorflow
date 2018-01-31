@@ -70,10 +70,10 @@ void EvalAddFloat(TfLiteContext* context, TfLiteNode* node,
             GetTensorData<float>(input2), GetTensorDims(input2), \
             output_activation_min, output_activation_max,        \
             GetTensorData<float>(output), GetTensorDims(output))
-    if (kernel_type == kReference) {
-      TF_LITE_ADD(reference_ops);
-    } else {
-      TF_LITE_ADD(optimized_ops);
+  if (kernel_type == kReference) {
+    TF_LITE_ADD(reference_ops);
+  } else {
+    TF_LITE_ADD(optimized_ops);
   }
 #undef TF_LITE_ADD
 }
