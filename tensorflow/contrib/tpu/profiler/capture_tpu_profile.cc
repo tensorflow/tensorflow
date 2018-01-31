@@ -154,6 +154,8 @@ int main(int argc, char** argv) {
               << std::endl
               << "Tip: increase number of attempts with --num_tracing_attempts."
               << std::endl;
+    // Don't dump profile data if no trace is collected.
+    return 0;
   }
 
   // Use the current timestamp as the run name.
