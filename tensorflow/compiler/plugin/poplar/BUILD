@@ -334,6 +334,16 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "monitored_session_test",
+    size = "small",
+    srcs = ["tests/monitored_session_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -355,6 +365,7 @@ test_suite(
         "outliner_test",
         "hlo_matcher_test",
         "wide_const_finder_test",
+        "monitored_session_test",
     ],
 )
 
@@ -375,6 +386,7 @@ test_suite(
         "fuse_ops_test",
         "hlo_matcher_test",
         "wide_const_finder_test",
+        "monitored_session_test",
     ],
 )
 
