@@ -36,6 +36,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
         output_inds,  // {node_id, output_idx}
     size_t max_batch_size, size_t max_workspace_size,
     const tensorflow::grappler::GraphProperties& graph_prop,
+    std::unordered_map<std::string, std::pair<int, std::string>>* output_edge_map,
     tensorflow::NodeDef* trt_node);
 }  // namespace convert
 }  // namespace tensorrt

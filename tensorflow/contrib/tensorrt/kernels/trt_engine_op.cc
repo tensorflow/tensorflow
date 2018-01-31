@@ -175,7 +175,8 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
                                                 ->CudaStreamMemberHack()));
 
   trt_context_ptr_->enqueue(nbBatch, &buffers[0], *stream, nullptr);
-  cudaStreamSynchronize(*stream);
+  // sync should be done by TF.
+  //cudaStreamSynchronize(*stream);
 }
 
 REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);
