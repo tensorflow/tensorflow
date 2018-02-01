@@ -286,7 +286,7 @@ def tf_cc_shared_object(
     linkopts=[],
     framework_so=tf_binary_additional_srcs(),
     **kwargs):
-    native.cc_binary(
+  native.cc_binary(
       name=name,
       srcs=srcs + framework_so,
       deps=deps,

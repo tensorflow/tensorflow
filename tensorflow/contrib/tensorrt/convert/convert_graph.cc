@@ -224,15 +224,12 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   cluster =
       new tensorflow::grappler::VirtualCluster({{"/GPU:0", device_properties}});
 
-  tensorflow::Status status = optimizer.Optimize(cluster, item, &gdef);
-
-  if (status != tensorflow::Status::OK()) return status;
+  TF_RETURN_IF_ERROR(optimizer.Optimize(cluster, item, &gdef));
 
   // constant folding
   item.graph = gdef;
   tensorflow::grappler::ConstantFolding fold(nullptr);
-  status = fold.Optimize(nullptr, item, &gdef);
-  if (status != tensorflow::Status::OK()) return status;
+  TF_RETURN_IF_ERROR(fold.Optimize(nullptr, item, &gdef));
 
   // AJ refactoring shape inference through grappler/GraphProperties.
   tensorflow::grappler::GraphProperties static_graph_properties(item);
