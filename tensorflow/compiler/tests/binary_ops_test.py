@@ -1181,6 +1181,50 @@ class BinaryOpsTest(XLATestCase):
                        np.array([4, 5, 6], dtype=np.int32),
                        expected=None)
 
+  def testMatrixSetDiag(self):
+    for dtype in self.numeric_types:
+      # Square
+      self._testBinary(
+          array_ops.matrix_set_diag,
+          np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0]],
+                   dtype=dtype),
+          np.array([1.0, 2.0, 3.0], dtype=dtype),
+          expected=np.array([[1.0, 1.0, 0.0], [1.0, 2.0, 1.0], [1.0, 1.0, 3.0]],
+                            dtype=dtype))
+
+      self._testBinary(
+          array_ops.matrix_set_diag,
+          np.array([[[1.0, 0.0, 3.0], [0.0, 2.0, 0.0], [1.0, 0.0, 3.0]],
+                    [[4.0, 0.0, 4.0], [0.0, 5.0, 0.0], [2.0, 0.0, 6.0]]],
+                   dtype=dtype),
+          np.array([[-1.0, 0.0, -3.0], [-4.0, -5.0, -6.0]], dtype=dtype),
+          expected=np.array(
+              [[[-1.0, 0.0, 3.0], [0.0, 0.0, 0.0], [1.0, 0.0, -3.0]],
+               [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0], [2.0, 0.0, -6.0]]],
+              dtype=dtype))
+
+      # Rectangular
+      self._testBinary(
+          array_ops.matrix_set_diag,
+          np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0]], dtype=dtype),
+          np.array([3.0, 4.0], dtype=dtype),
+          expected=np.array([[3.0, 1.0, 0.0], [1.0, 4.0, 1.0]], dtype=dtype))
+
+      self._testBinary(
+          array_ops.matrix_set_diag,
+          np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 1.0]], dtype=dtype),
+          np.array([3.0, 4.0], dtype=dtype),
+          expected=np.array([[3.0, 1.0], [1.0, 4.0], [1.0, 1.0]], dtype=dtype))
+
+      self._testBinary(
+          array_ops.matrix_set_diag,
+          np.array([[[1.0, 0.0, 3.0], [0.0, 2.0, 0.0]],
+                    [[4.0, 0.0, 4.0], [0.0, 5.0, 0.0]]], dtype=dtype),
+          np.array([[-1.0, -2.0], [-4.0, -5.0]],
+                   dtype=dtype),
+          expected=np.array([[[-1.0, 0.0, 3.0], [0.0, -2.0, 0.0]],
+                             [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0]]],
+                            dtype=dtype))
 
 if __name__ == "__main__":
   googletest.main()
