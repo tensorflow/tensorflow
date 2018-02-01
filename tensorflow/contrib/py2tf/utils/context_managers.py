@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,22 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Py2TF compiles Python code into equivalent TensorFlow code.
-
-Equivalent here means that they have the same effect when executed.
-"""
+"""Various context managers."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf import utils
-from tensorflow.contrib.py2tf.impl.api import convert
-from tensorflow.contrib.py2tf.impl.api import graph_ready
-from tensorflow.contrib.py2tf.impl.api import to_code
-from tensorflow.contrib.py2tf.impl.api import to_graph
-from tensorflow.python.util.all_util import remove_undocumented
+import contextlib
 
-_allowed_symbols = ['to_graph', 'to_code', 'convert', 'graph_ready', 'utils']
 
-remove_undocumented(__name__, _allowed_symbols)
+def control_dependency_on_returns(tf, return_value):
+  """Create a TF control dependency on the return values of a function.
+
+  If the function had no return value, a no-op context is returned.
+
+  Args:
+    tf: The TensorFlow module.
+    return_value: The return value to set as control dependency.
+
+  Returns:
+    A context manager.
+  """
+  if return_value is None:
+    return contextlib.contextmanager(lambda: (yield))()
+  # TODO(mdan): Filter to tensor objects.
+  if not isinstance(return_value, (list, tuple)):
+    return_value = (return_value,)
+  return tf.control_dependencies(return_value)

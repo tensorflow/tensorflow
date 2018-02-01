@@ -15,16 +15,23 @@ filegroup(
 )
 
 py_library(
-    name = "py2tf",
+    name = "utils",
     srcs = [
         "__init__.py",
+        "context_managers.py",
     ],
     srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
+    visibility = ["//tensorflow:__subpackages__"],
     deps = [
-        "//tensorflow/contrib/py2tf/impl",
-        "//tensorflow/contrib/py2tf/utils",
-        "@gast_archive//:gast",
-        "@six_archive//:six",
+    ],
+)
+
+py_test(
+    name = "context_managers_test",
+    srcs = ["context_managers_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":utils",
+        "//tensorflow/python:client_testlib",
     ],
 )
