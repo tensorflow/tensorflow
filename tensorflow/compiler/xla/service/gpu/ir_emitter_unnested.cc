@@ -1658,8 +1658,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
   // TODO(b/31410564): Implement dilation rate for select-and-scatter.
   if (window_util::HasDilation(window)) {
     return Unimplemented(
-        "Dilation for select-and-scatter not implemented on GPU. "
-        "See b/31410564.");
+        "Dilation for SelectAndScatter not implemented on GPU.");
   }
 
   // kSelectAndScatter is implemented as two kernel launches: the first launch

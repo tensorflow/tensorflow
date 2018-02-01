@@ -31,6 +31,7 @@ tf_kernel_library(
         "diag_op.cc",
         "dynamic_stitch_op.cc",
         "elu_op.cc",
+        "extract_image_patches_op.cc",
         "fft_ops.cc",
         "fill_op.cc",
         "function_ops.cc",

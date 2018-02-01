@@ -615,8 +615,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
 
 Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
   // TODO(b/33011107): Support cross replica sum on GPU.
-  return Unimplemented(
-      "Cross replica sum not implemented on GPU. See b/33011107.");
+  return Unimplemented("CrossReplicaSum is not implemented on GPU.");
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
@@ -710,11 +709,13 @@ Status IrEmitter::HandleCustomCall(HloInstruction*) {
 }
 
 Status IrEmitter::HandleInfeed(HloInstruction*) {
-  return Unimplemented("Infeed is not supported on GPU (b/30467474).");
+  // TODO(b/30467474): Implement infeed on GPU.
+  return Unimplemented("Infeed is not supported on GPU.");
 }
 
 Status IrEmitter::HandleOutfeed(HloInstruction*) {
-  return Unimplemented("Outfeed is not supported on GPU (b/34359662).");
+  // TODO(b/34359662): Implement outfeed on GPU.
+  return Unimplemented("Outfeed is not supported on GPU.");
 }
 
 Status IrEmitter::HandleRng(HloInstruction* random) {
