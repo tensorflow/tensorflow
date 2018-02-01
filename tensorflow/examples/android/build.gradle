@@ -150,7 +150,7 @@ task buildNativeMake(type: Exec) {
     environment "NDK_ROOT", android.ndkDirectory
     // Tip: install ccache and uncomment the following to speed up
     // builds significantly.
-    environment "CC_PREFIX", 'ccache'
+    // environment "CC_PREFIX", 'ccache'
     workingDir '../../..'
     commandLine 'tensorflow/contrib/makefile/build_all_android.sh',  \
          '-s',  \
