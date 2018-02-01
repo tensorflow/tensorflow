@@ -84,6 +84,7 @@ from tensorflow.python.feature_column import feature_column_lib as feature_colum
 from tensorflow.python.layers import layers
 from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import image_ops as image
+from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sets
@@ -241,6 +242,7 @@ _allowed_symbols.extend([
     'linalg',
     'logging',
     'losses',
+    'manip',
     'metrics',
     'newaxis',
     'nn',

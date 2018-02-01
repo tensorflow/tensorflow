@@ -337,8 +337,9 @@ TEST_F(MemoryOptimizerTest, UnswappableInputs) {
   for (const auto& node : output.node()) {
     if (node.name() == "e") {
       // The d node isn't swappable.
-      EXPECT_EQ(4, node.input_size());
+      EXPECT_EQ(5, node.input_size());
       EXPECT_EQ("d", node.input(2));
+      EXPECT_EQ("^swap_out_d_2", node.input(4));
     }
   }
 }

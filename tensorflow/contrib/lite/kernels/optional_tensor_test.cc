@@ -243,7 +243,6 @@ class LSTMOpModel : public SingleOpModel {
   int n_output_;
 };
 
-
 TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
   const int n_batch = 1;
   const int n_input = 2;
@@ -281,7 +280,6 @@ TEST(LSTMOpTest, BlackBoxTestWithCifgWithPeepholeNoProjectionNoClipping) {
                        {0, 0},  // projection_weight tensor
                        {0},     // projection_bias tensor
                    });
-
 
   lstm.SetInputToCellWeights({-0.49770179, -0.27711356, -0.09624726, 0.05100781,
                               0.04717243, 0.48944736, -0.38535351,

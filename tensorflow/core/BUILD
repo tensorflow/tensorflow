@@ -381,7 +381,6 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
-        ":abi",
         ":lib",
         ":lib_platform",
     ],
@@ -611,6 +610,7 @@ tf_gen_op_libs(
         "list_ops",
         "lookup_ops",
         "logging_ops",
+        "manip_ops",
         "math_ops",
         "nn_ops",
         "no_op",
@@ -693,6 +693,7 @@ cc_library(
         ":list_ops_op_lib",
         ":logging_ops_op_lib",
         ":lookup_ops_op_lib",
+        ":manip_ops_op_lib",
         ":math_ops_op_lib",
         ":nn_ops_op_lib",
         ":no_op_op_lib",
@@ -830,6 +831,7 @@ cc_library(
         "//tensorflow/core/kernels:list_kernels",
         "//tensorflow/core/kernels:lookup",
         "//tensorflow/core/kernels:logging",
+        "//tensorflow/core/kernels:manip",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:multinomial_op",
         "//tensorflow/core/kernels:nn",
@@ -1152,6 +1154,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
@@ -1896,6 +1899,14 @@ cc_library(
     ],
 )
 
+tf_cuda_library(
+    name = "cuda_device_functions",
+    hdrs = ["util/cuda_device_functions.h"],
+    cuda_deps = ["//third_party_gpus/cuda:cuda_headers"],
+    visibility = ["//visibility:public"],
+    deps = [":framework_lite"],
+)
+
 # TODO(josh11b): Is this needed, or can we just use ":protos_all_cc"?
 cc_library(
     name = "protos_cc",
@@ -2406,7 +2417,6 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":stacktrace_handler",
         ":test",  # buildcleaner: keep
         "//tensorflow/core/platform/default/build_config:test_main",
     ],

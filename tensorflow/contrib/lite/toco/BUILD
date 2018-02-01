@@ -160,6 +160,7 @@ cc_library(
     ],
     deps = [
         # Placeholder for internal file dependency.
+        "@protobuf_archive//:protobuf_headers",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -204,6 +205,7 @@ cc_library(
         "graph_transformations/remove_trivial_quantized_activation_func.cc",
         "graph_transformations/remove_trivial_reshape.cc",
         "graph_transformations/remove_unused_op.cc",
+        "graph_transformations/reorder_activation_functions.cc",
         "graph_transformations/resolve_batch_normalization.cc",
         "graph_transformations/resolve_batch_to_space_nd_attributes.cc",
         "graph_transformations/resolve_constant_binary.cc",

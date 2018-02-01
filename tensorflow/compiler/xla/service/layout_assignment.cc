@@ -1236,7 +1236,8 @@ Status CopyOperandIfLayoutsDiffer(const ShapeLayout& operand_layout,
 // instruction itself.
 Status SetFusionLayouts(HloInstruction* fusion) {
   TF_RET_CHECK(fusion->opcode() == HloOpcode::kFusion);
-  for (auto* fused_instruction : fusion->fused_instructions()) {
+  for (auto* fused_instruction :
+       fusion->fused_instructions_computation()->MakeInstructionPostOrder()) {
     if (fused_instruction->opcode() == HloOpcode::kParameter) {
       const HloInstruction* fusion_operand =
           fusion->operand(fused_instruction->parameter_number());
@@ -1251,11 +1252,22 @@ Status SetFusionLayouts(HloInstruction* fusion) {
           ShapeUtil::Compatible(fusion->shape(), fused_instruction->shape()));
       TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
           fusion->shape(), fused_instruction->mutable_shape()));
-    } else if (fused_instruction->opcode() != HloOpcode::kConstant &&
-               fused_instruction->opcode() != HloOpcode::kGetTupleElement &&
-               fused_instruction->opcode() != HloOpcode::kInfeed) {
-      // Internal fused instructions with the exception of constants
-      // and infeed need no layout.
+    } else if (fused_instruction->opcode() == HloOpcode::kGetTupleElement) {
+      // A GTE inherits its layout from its operand (which should ultimately be
+      // a parameter).
+      TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+          fused_instruction->operand(0)->shape().tuple_shapes(
+              fused_instruction->tuple_index()),
+          fused_instruction->mutable_shape()));
+    } else if (fused_instruction->opcode() == HloOpcode::kConstant) {
+      // Give constants the layout of their literal.
+      TF_RETURN_IF_ERROR(LayoutUtil::CopyLayoutBetweenShapes(
+          fused_instruction->literal().shape(),
+          fused_instruction->mutable_shape()));
+    } else if (fused_instruction->opcode() == HloOpcode::kInfeed) {
+      // Nop; leave the infeed layout alone.
+    } else {
+      // Other instructions don't have layouts inside of fusion nodes.
       LayoutUtil::ClearLayout(fused_instruction->mutable_shape());
     }
   }
@@ -1367,20 +1379,6 @@ Status LayoutAssignment::RunOnComputation(
           << ")";
   VLOG(2) << "  ComputationLayout = " << computation_layout.ToString();
 
-  // Clear existing layouts of the instructions. All layouts must be assigned by
-  // the LayoutAssignment pass, except for Infeed, Outfeed, Parameters and the
-  // computation result. The latter two are specified in computation_layout, so
-  // we only need to keep the existing layouts for Infeed and Outfeed. Clearing
-  // the layouts here avoids hiding potential bugs in the layout assignment pass
-  // that may accidently use the existing layout.
-  for (HloInstruction* instruction : computation->instructions()) {
-    if (instruction->opcode() == HloOpcode::kInfeed ||
-        instruction->opcode() == HloOpcode::kOutfeed) {
-      continue;
-    }
-    LayoutUtil::ClearLayout(instruction->mutable_shape());
-  }
-
   // Construct LayoutConstraints with all layout constraints of the computation.
   LayoutConstraints constraints(points_to_analysis, computation);
 
@@ -1458,6 +1456,18 @@ StatusOr<bool> LayoutAssignment::Run(HloModule* module) {
   // is handled before its caller computation. This ensures that the layout of
   // all callers of a computation will agree.
   for (auto* computation : module->MakeComputationPostOrder()) {
+    // Clear existing layouts of the instructions.  All layouts must be assigned
+    // by the LayoutAssignment pass, except for those on infeeds, parameters,
+    // and the computation result. The latter two are specified in
+    // computation_layout, so we only need to keep the existing layouts for
+    // infeeds.  Clearing the layouts here avoids hiding potential bugs in the
+    // layout assignment pass that may accidently use the existing layout.
+    for (HloInstruction* instruction : computation->instructions()) {
+      if (instruction->opcode() != HloOpcode::kInfeed) {
+        LayoutUtil::ClearLayout(instruction->mutable_shape());
+      }
+    }
+
     if (computation == module->entry_computation()) {
       TF_RETURN_IF_ERROR(RunOnComputation(
           *entry_computation_layout_, *points_to_analysis,

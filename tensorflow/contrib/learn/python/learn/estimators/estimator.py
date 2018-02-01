@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Base Estimator class."""
 
 from __future__ import absolute_import
@@ -75,7 +74,6 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
-
 
 AS_ITERABLE_DATE = '2016-09-15'
 AS_ITERABLE_INSTRUCTIONS = (
@@ -223,8 +221,11 @@ def _get_replica_device_setter(config):
 
   if config.num_ps_replicas > 0:
     return device_setter.replica_device_setter(
-        ps_tasks=config.num_ps_replicas, worker_device=worker_device,
-        merge_devices=True, ps_ops=ps_ops, cluster=config.cluster_spec)
+        ps_tasks=config.num_ps_replicas,
+        worker_device=worker_device,
+        merge_devices=True,
+        ps_ops=ps_ops,
+        cluster=config.cluster_spec)
   else:
     return None
 
@@ -284,10 +285,10 @@ def _make_metrics_ops(metrics, features, labels, predictions):
         raise ValueError('Invalid metric for {}. It returned a tuple with '
                          'len {}, expected 2.'.format(name, len(name)))
       if not isinstance(predictions, dict):
-        raise ValueError(
-            'Metrics passed provide (name, prediction), '
-            'but predictions are not dict. '
-            'Metrics: %s, Predictions: %s.' % (metrics, predictions))
+        raise ValueError('Metrics passed provide (name, prediction), '
+                         'but predictions are not dict. '
+                         'Metrics: %s, Predictions: %s.' % (metrics,
+                                                            predictions))
       # Here are two options: labels are single Tensor or a dict.
       if isinstance(labels, dict) and name[1] in labels:
         # If labels are dict and the prediction name is in it, apply metric.
@@ -298,10 +299,10 @@ def _make_metrics_ops(metrics, features, labels, predictions):
     else:
       # Single head metrics.
       if isinstance(predictions, dict):
-        raise ValueError(
-            'Metrics passed provide only name, no prediction, '
-            'but predictions are dict. '
-            'Metrics: %s, Labels: %s.' % (metrics, labels_tensor_or_dict))
+        raise ValueError('Metrics passed provide only name, no prediction, '
+                         'but predictions are dict. '
+                         'Metrics: %s, Labels: %s.' % (metrics,
+                                                       labels_tensor_or_dict))
       result[name] = metric(predictions, labels_tensor_or_dict)
   return result
 
@@ -369,9 +370,8 @@ def _write_dict_to_summary(output_dir, dictionary, current_global_step):
       logging.info(
           'Summary for np.ndarray is not visible in Tensorboard by default. '
           'Consider using a Tensorboard plugin for visualization (see '
-          'https://github.com/tensorflow/tensorboard-plugin-example/blob/master/README.md '  # pylint:disable=line-too-long
-          'for more information).'
-      )
+          'https://github.com/tensorflow/tensorboard-plugin-example/blob/master/README.md'
+          ' for more information).')
     else:
       logging.warn(
           'Skipping summary for %s, must be a float, np.float32, np.int64, '
@@ -385,8 +385,8 @@ GraphRewriteSpec = collections.namedtuple('GraphRewriteSpec',
                                           ['tags', 'transforms'])
 
 
-class BaseEstimator(
-    sklearn.BaseEstimator, evaluable.Evaluable, trainable.Trainable):
+class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
+                    trainable.Trainable):
   """Abstract BaseEstimator class to train and evaluate TensorFlow models.
 
   Users should not instantiate or subclass this class. Instead, use an
@@ -428,7 +428,7 @@ class BaseEstimator(
         #                  necessary.
         # pylint: disable=g-doc-exception
         raise ValueError(
-            "model_dir are set both in constructor and RunConfig, but with "
+            'model_dir are set both in constructor and RunConfig, but with '
             "different values. In constructor: '{}', in RunConfig: "
             "'{}' ".format(model_dir, self._config.model_dir))
         # pylint: enable=g-doc-exception
@@ -457,12 +457,16 @@ class BaseEstimator(
     # TODO(wicke): make RunConfig immutable, and then return it without a copy.
     return copy.deepcopy(self._config)
 
-  @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
-      ('y', None), ('batch_size', None)
-  )
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+  @deprecated_args(SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS,
+                   ('x', None), ('y', None), ('batch_size', None))
+  def fit(self,
+          x=None,
+          y=None,
+          input_fn=None,
+          steps=None,
+          batch_size=None,
+          monitors=None,
+          max_steps=None):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See `Trainable`.
 
@@ -494,13 +498,15 @@ class BaseEstimator(
     logging.info('Loss for final step: %s.', loss)
     return self
 
-  @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
-      ('y', None), ('batch_size', None)
-  )
-  def partial_fit(
-      self, x=None, y=None, input_fn=None, steps=1, batch_size=None,
-      monitors=None):
+  @deprecated_args(SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS,
+                   ('x', None), ('y', None), ('batch_size', None))
+  def partial_fit(self,
+                  x=None,
+                  y=None,
+                  input_fn=None,
+                  steps=1,
+                  batch_size=None,
+                  monitors=None):
     """Incremental fit on a batch of samples.
 
     This method is expected to be called several times consecutively
@@ -536,13 +542,16 @@ class BaseEstimator(
     """
     logging.warning('The current implementation of partial_fit is not optimized'
                     ' for use in a loop. Consider using fit() instead.')
-    return self.fit(x=x, y=y, input_fn=input_fn, steps=steps,
-                    batch_size=batch_size, monitors=monitors)
+    return self.fit(
+        x=x,
+        y=y,
+        input_fn=input_fn,
+        steps=steps,
+        batch_size=batch_size,
+        monitors=monitors)
 
-  @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
-      ('y', None), ('batch_size', None)
-  )
+  @deprecated_args(SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS,
+                   ('x', None), ('y', None), ('batch_size', None))
   def evaluate(self,
                x=None,
                y=None,
@@ -584,13 +593,14 @@ class BaseEstimator(
       eval_results.update({'global_step': global_step})
     return eval_results
 
-  @deprecated_args(
-      SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS, ('x', None),
-      ('batch_size', None), ('as_iterable', True)
-  )
-  def predict(
-      self, x=None, input_fn=None, batch_size=None, outputs=None,
-      as_iterable=True):
+  @deprecated_args(SCIKIT_DECOUPLE_DATE, SCIKIT_DECOUPLE_INSTRUCTIONS,
+                   ('x', None), ('batch_size', None), ('as_iterable', True))
+  def predict(self,
+              x=None,
+              input_fn=None,
+              batch_size=None,
+              outputs=None,
+              as_iterable=True):
     """Returns predictions for given features.
 
     Args:
@@ -651,16 +661,17 @@ class BaseEstimator(
     return self._model_dir
 
   @deprecated('2017-03-25', 'Please use Estimator.export_savedmodel() instead.')
-  def export(self,
-             export_dir,
-             input_fn=export._default_input_fn,  # pylint: disable=protected-access
-             input_feature_key=None,
-             use_deprecated_input_fn=True,
-             signature_fn=None,
-             prediction_key=None,
-             default_batch_size=1,
-             exports_to_keep=None,
-             checkpoint_path=None):
+  def export(
+      self,
+      export_dir,
+      input_fn=export._default_input_fn,  # pylint: disable=protected-access
+      input_feature_key=None,
+      use_deprecated_input_fn=True,
+      signature_fn=None,
+      prediction_key=None,
+      default_batch_size=1,
+      exports_to_keep=None,
+      checkpoint_path=None):
     """Exports inference graph into given dir.
 
     Args:
@@ -798,8 +809,8 @@ class BaseEstimator(
       logging.debug('Setting feature info to %s.', str(self._features_info))
     if labels is not None:
       if self._labels_info is not None:
-        logging.debug('Given labels: %s, required signatures: %s.',
-                      str(labels), str(self._labels_info))
+        logging.debug('Given labels: %s, required signatures: %s.', str(labels),
+                      str(self._labels_info))
         if not tensor_signature.tensors_compatible(labels, self._labels_info):
           raise ValueError('Labels are incompatible with given information. '
                            'Given labels: %s, required signatures: %s.' %
@@ -850,13 +861,13 @@ class BaseEstimator(
     if not checkpoint_path:
       latest_path = saver.latest_checkpoint(self._model_dir)
       if not latest_path:
-        raise NotFittedError("Couldn't find trained model at %s."
-                             % self._model_dir)
+        raise NotFittedError(
+            "Couldn't find trained model at %s." % self._model_dir)
       checkpoint_path = latest_path
 
     # Setup output directory.
-    eval_dir = os.path.join(self._model_dir, 'eval' if not name else
-                            'eval_' + name)
+    eval_dir = os.path.join(self._model_dir, 'eval'
+                            if not name else 'eval_' + name)
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
@@ -879,8 +890,7 @@ class BaseEstimator(
                         'Use steps=None if intended.')
       if steps:
         hooks.append(
-            evaluation.StopAfterNEvalsHook(
-                steps, log_progress=log_progress))
+            evaluation.StopAfterNEvalsHook(steps, log_progress=log_progress))
 
       global_step_key = 'global_step'
       while global_step_key in eval_dict:
@@ -916,8 +926,8 @@ class BaseEstimator(
     # Check that model has been trained.
     checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:
-      raise NotFittedError("Couldn't find trained model at %s."
-                           % self._model_dir)
+      raise NotFittedError(
+          "Couldn't find trained model at %s." % self._model_dir)
 
     with ops.Graph().as_default() as g:
       random_seed.set_random_seed(self._config.tf_random_seed)
@@ -979,7 +989,8 @@ class BaseEstimator(
     existing_keys = predictions.keys()
     predictions = {
         key: value
-        for key, value in six.iteritems(predictions) if key in outputs
+        for key, value in six.iteritems(predictions)
+        if key in outputs
     }
     if not predictions:
       raise ValueError('Expected to run at least one output from %s, '
@@ -1045,8 +1056,7 @@ class BaseEstimator(
           chief_only_hooks=chief_hooks + model_fn_ops.training_chief_hooks,
           save_checkpoint_secs=0,  # Saving is handled by a hook.
           save_summaries_steps=self._config.save_summary_steps,
-          config=self._session_config
-      ) as mon_sess:
+          config=self._session_config) as mon_sess:
         loss = None
         while not mon_sess.should_stop():
           _, loss = mon_sess.run([model_fn_ops.train_op, model_fn_ops.loss])
@@ -1137,8 +1147,7 @@ class Estimator(BaseEstimator):
       if params is not None and 'params' not in model_fn_args:
         raise ValueError('Estimator\'s model_fn (%s) does not have a params '
                          'argument, but params (%s) were passed to the '
-                         'Estimator\'s constructor.' %
-                         (model_fn, params))
+                         'Estimator\'s constructor.' % (model_fn, params))
       if params is None and 'params' in model_fn_args:
         logging.warning('Estimator\'s model_fn (%s) includes params '
                         'argument, but params are not passed to Estimator.',
@@ -1192,8 +1201,9 @@ class Estimator(BaseEstimator):
 
     # Custom metrics should overwrite defaults.
     if metrics:
-      model_fn_ops.eval_metric_ops.update(_make_metrics_ops(
-        metrics, features, labels, model_fn_ops.predictions))
+      model_fn_ops.eval_metric_ops.update(
+          _make_metrics_ops(metrics, features, labels,
+                            model_fn_ops.predictions))
 
     return model_fn_ops
 
@@ -1238,8 +1248,8 @@ class Estimator(BaseEstimator):
     Raises:
       ValueError: if `metrics` don't match `labels`.
     """
-    model_fn_ops = self._call_model_fn(
-        features, labels, model_fn_lib.ModeKeys.EVAL, metrics)
+    model_fn_ops = self._call_model_fn(features, labels,
+                                       model_fn_lib.ModeKeys.EVAL, metrics)
 
     if metric_key.MetricKey.LOSS not in model_fn_ops.eval_metric_ops:
       model_fn_ops.eval_metric_ops[metric_key.MetricKey.LOSS] = (
@@ -1263,14 +1273,16 @@ class Estimator(BaseEstimator):
         self._labels_info)
     return self._call_model_fn(features, labels, model_fn_lib.ModeKeys.INFER)
 
-  def export_savedmodel(
-      self, export_dir_base, serving_input_fn,
-      default_output_alternative_key=None,
-      assets_extra=None,
-      as_text=False,
-      checkpoint_path=None,
-      graph_rewrite_specs=(GraphRewriteSpec((tag_constants.SERVING,), ()),),
-      strip_default_attrs=False):
+  def export_savedmodel(self,
+                        export_dir_base,
+                        serving_input_fn,
+                        default_output_alternative_key=None,
+                        assets_extra=None,
+                        as_text=False,
+                        checkpoint_path=None,
+                        graph_rewrite_specs=(GraphRewriteSpec(
+                            (tag_constants.SERVING,), ()),),
+                        strip_default_attrs=False):
     # pylint: disable=line-too-long
     """Exports inference graph as a SavedModel into given dir.
 
@@ -1297,7 +1309,8 @@ class Estimator(BaseEstimator):
         default serving tag ("serve") and no rewriting.
       strip_default_attrs: Boolean. If `True`, default-valued attributes will be
         removed from the NodeDefs. For a detailed guide, see
-        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
+        [Stripping Default-Valued
+          Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
       The string path to the exported directory.
@@ -1313,8 +1326,8 @@ class Estimator(BaseEstimator):
       # Locate the latest checkpoint
       checkpoint_path = saver.latest_checkpoint(self._model_dir)
     if not checkpoint_path:
-      raise NotFittedError("Couldn't find trained model at %s."
-                           % self._model_dir)
+      raise NotFittedError(
+          "Couldn't find trained model at %s." % self._model_dir)
 
     export_dir = saved_model_export_utils.get_timestamped_export_dir(
         export_dir_base)
@@ -1348,10 +1361,10 @@ class Estimator(BaseEstimator):
           saved_model_export_utils.get_output_alternatives(
               model_fn_ops, default_output_alternative_key))
 
-      init_op = control_flow_ops.group(
-          variables.local_variables_initializer(),
-          resources.initialize_resources(resources.shared_resources()),
-          lookup_ops.tables_initializer())
+      init_op = control_flow_ops.group(variables.local_variables_initializer(),
+                                       resources.initialize_resources(
+                                           resources.shared_resources()),
+                                       lookup_ops.tables_initializer())
 
       # Build the SignatureDefs from all pairs of input and output alternatives
       signature_def_map = saved_model_export_utils.build_all_signature_defs(
@@ -1381,10 +1394,10 @@ class Estimator(BaseEstimator):
 
         # TODO(soergel): switch to main_op or otherwise update when dust settles
         builder.add_meta_graph_and_variables(
-            session, untransformed_tags,
+            session,
+            untransformed_tags,
             signature_def_map=signature_def_map,
-            assets_collection=ops.get_collection(
-                ops.GraphKeys.ASSET_FILEPATHS),
+            assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS),
             legacy_init_op=init_op,
             strip_default_attrs=strip_default_attrs)
 
@@ -1395,12 +1408,16 @@ class Estimator(BaseEstimator):
     if graph_rewrite_specs[1:]:
       # Prepare the input_names and output_names needed for the
       # meta_graph_transform call below.
-      input_names = [tensor.name
-                     for input_dict in input_alternatives.values()
-                     for tensor in input_dict.values()]
-      output_names = [tensor.name
-                      for output_alternative in output_alternatives.values()
-                      for tensor in output_alternative[1].values()]
+      input_names = [
+          tensor.name
+          for input_dict in input_alternatives.values()
+          for tensor in input_dict.values()
+      ]
+      output_names = [
+          tensor.name
+          for output_alternative in output_alternatives.values()
+          for tensor in output_alternative[1].values()
+      ]
 
     # Write the additional MetaGraphDefs
     for graph_rewrite_spec in graph_rewrite_specs[1:]:
@@ -1419,11 +1436,11 @@ class Estimator(BaseEstimator):
 
     # Add the extra assets
     if assets_extra:
-      assets_extra_path = os.path.join(compat.as_bytes(temp_export_dir),
-                                       compat.as_bytes('assets.extra'))
+      assets_extra_path = os.path.join(
+          compat.as_bytes(temp_export_dir), compat.as_bytes('assets.extra'))
       for dest_relative, source in assets_extra.items():
-        dest_absolute = os.path.join(compat.as_bytes(assets_extra_path),
-                                     compat.as_bytes(dest_relative))
+        dest_absolute = os.path.join(
+            compat.as_bytes(assets_extra_path), compat.as_bytes(dest_relative))
         dest_path = os.path.dirname(dest_absolute)
         gfile.MakeDirs(dest_path)
         gfile.Copy(source, dest_absolute)
@@ -1443,25 +1460,36 @@ class SKCompat(sklearn.BaseEstimator):
 
   def fit(self, x, y, batch_size=128, steps=None, max_steps=None,
           monitors=None):
-    input_fn, feed_fn = _get_input_fn(x, y, input_fn=None, feed_fn=None,
-                                      batch_size=batch_size, shuffle=True,
-                                      epochs=None)
+    input_fn, feed_fn = _get_input_fn(
+        x,
+        y,
+        input_fn=None,
+        feed_fn=None,
+        batch_size=batch_size,
+        shuffle=True,
+        epochs=None)
     all_monitors = []
     if feed_fn:
       all_monitors = [basic_session_run_hooks.FeedFnHook(feed_fn)]
     if monitors:
       all_monitors.extend(monitors)
 
-    self._estimator.fit(input_fn=input_fn,
-                        steps=steps,
-                        max_steps=max_steps,
-                        monitors=all_monitors)
+    self._estimator.fit(
+        input_fn=input_fn,
+        steps=steps,
+        max_steps=max_steps,
+        monitors=all_monitors)
     return self
 
   def score(self, x, y, batch_size=128, steps=None, metrics=None, name=None):
-    input_fn, feed_fn = _get_input_fn(x, y, input_fn=None,
-                                      feed_fn=None, batch_size=batch_size,
-                                      shuffle=False, epochs=1)
+    input_fn, feed_fn = _get_input_fn(
+        x,
+        y,
+        input_fn=None,
+        feed_fn=None,
+        batch_size=batch_size,
+        shuffle=False,
+        epochs=1)
     if metrics is not None and not isinstance(metrics, dict):
       raise ValueError('Metrics argument should be None or dict. '
                        'Got %s.' % metrics)
@@ -1477,8 +1505,13 @@ class SKCompat(sklearn.BaseEstimator):
 
   def predict(self, x, batch_size=128, outputs=None):
     input_fn, feed_fn = _get_input_fn(
-        x, None, input_fn=None, feed_fn=None, batch_size=batch_size,
-        shuffle=False, epochs=1)
+        x,
+        None,
+        input_fn=None,
+        feed_fn=None,
+        batch_size=batch_size,
+        shuffle=False,
+        epochs=1)
     results = list(
         self._estimator._infer_model(
             input_fn=input_fn,
@@ -1489,7 +1522,6 @@ class SKCompat(sklearn.BaseEstimator):
     if not isinstance(results[0], dict):
       return np.concatenate([output for output in results], axis=0)
     return {
-        key: np.concatenate(
-            [output[key] for output in results], axis=0)
+        key: np.concatenate([output[key] for output in results], axis=0)
         for key in results[0]
     }

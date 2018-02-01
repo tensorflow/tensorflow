@@ -57,6 +57,7 @@ py_library(
 py_test(
     name = "api_test",
     srcs = ["api_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":py2tf_internal",
         "//tensorflow/python:client_testlib",
@@ -66,6 +67,7 @@ py_test(
 py_test(
     name = "conversion_test",
     srcs = ["conversion_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":py2tf_internal",
         "//tensorflow/python:client_testlib",
@@ -76,6 +78,7 @@ py_test(
 py_test(
     name = "naming_test",
     srcs = ["naming_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":py2tf_internal",
         "//tensorflow/python:client_testlib",

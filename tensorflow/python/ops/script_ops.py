@@ -50,19 +50,21 @@ class EagerFunc(object):
     self._func = func
     self._out_dtypes = Tout
 
-  def __call__(self, *args, **kwargs):
-    """Passes args, kwargs to `self._func`, which is executed eagerly."""
+  def __call__(self, on_gpu, args):
+    """Passes `args` to `self._func`, which is executed eagerly."""
     with context.eager_mode():
-      ret = self._func(*args, **kwargs)
+      ret = self._func(*args)
+      maybe_copy_to_gpu = lambda x: x if not on_gpu else x.gpu()
       if isinstance(ret, (tuple, list)):
         return [
-            ops.convert_to_tensor(x, dtype=dtype)
+            maybe_copy_to_gpu(ops.convert_to_tensor(x, dtype=dtype))
             for (x, dtype) in zip(ret, self._out_dtypes)
         ]
       elif ret is None:
         return ret
       else:
-        return ops.convert_to_tensor(ret, dtype=self._out_dtypes[0])
+        return maybe_copy_to_gpu(
+            ops.convert_to_tensor(ret, dtype=self._out_dtypes[0]))
 
 
 class FuncRegistry(object):
@@ -116,16 +118,29 @@ class FuncRegistry(object):
     else:
       return result
 
-  def __call__(self, token, args):
-    """Calls the registered function for `token` with args."""
+  def __call__(self, token, on_gpu, args):
+    """Calls the registered function for `token` with args.
+
+    Args:
+      token: A key into this `FuncRegistry` identifying which function to call.
+      on_gpu: A boolean indicating whether or not `token`'s corresponding
+        operation was placed on GPU; only used if the function registered for
+        `token` is an `EagerPyFunc`.
+      args: The arguments to pass to the function registered for `token`.
+
+    Returns:
+      The output of the function registered for `token`.
+
+    Raises:
+      ValueError: if no function is registered for `token`.
+    """
     func = self._funcs[token]
     if func is None:
       raise ValueError("callback %s is not found" % token)
-    ret = func(*args)
-
     if isinstance(func, EagerFunc):
-      return ret
+      return func(on_gpu, args)
     else:
+      ret = func(*args)
       # Strings seem to lead to a memory leak here if they're not wrapped in a
       # list.
       if isinstance(ret, six.binary_type):
@@ -302,8 +317,5 @@ def py_func(func, inp, Tout, stateful=True, name=None):
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
 
 
-# TODO(akshayka): PyFuncs where the 'eager' attribute is set to True should be
-# differentiable, i.e., the gradient of PyFunc should propagate Nones if the
-# eager attribute is not set, and otherwise, it should return the gradient.
 ops.NotDifferentiable("PyFunc")
 ops.NotDifferentiable("PyFuncStateless")

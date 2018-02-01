@@ -276,12 +276,6 @@ with tf.Session(graph=graph) as session:
     if step == (num_steps - 1):
       writer.add_run_metadata(run_metadata, 'step%d' % step)
 
-    # Add returned summaries to writer in each step.
-    writer.add_summary(summary, step)
-    # Add metadata to visualize the graph for the last run.
-    if step == (num_steps - 1):
-      writer.add_run_metadata(run_metadata, 'step%d' % step)
-
     if step % 2000 == 0:
       if step > 0:
         average_loss /= 2000

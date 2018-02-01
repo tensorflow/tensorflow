@@ -99,8 +99,16 @@ class Layer(object):
         raise TypeError('Keyword argument not understood:', kwarg)
 
     # Mutable properties
+    # Indicates whether the layer's weights are updated during training
+    # and whether the layer's updates are run during training
     self.trainable = trainable
+    # A stateful layer is a layer whose updates are run during inference too,
+    # for instance stateful RNNs.
+    self.stateful = False
+    # Indicates whether `build` needs to be called upon layer call, to create
+    # the layer's weights.
     self.built = False
+    # Provides information about which inputs are compatible with the layer.
     self.input_spec = None
 
     if activity_regularizer and context.in_eager_mode():
@@ -130,9 +138,6 @@ class Layer(object):
     self._outbound_nodes = []
 
     self._init_set_name(name)
-
-    # Holds functions for creating regularizer ops.
-    self._regularizer_factories = []
 
     # Determine variable scope.
     scope = kwargs.get('_scope')
@@ -223,6 +228,8 @@ class Layer(object):
   def updates(self):
     if context.in_eager_mode():
       raise RuntimeError('Layer.updates not supported in Eager mode.')
+    if not self.trainable and not self.stateful:
+      return []
     return self._updates
 
   def add_update(self, updates, inputs=None):
@@ -284,6 +291,8 @@ class Layer(object):
     """
     if context.in_eager_mode():
       raise RuntimeError('Layer.get_updates_for not supported in Eager mode.')
+    if not self.trainable and not self.stateful:
+      return []
     if inputs is not None:
       inputs = nest.flatten(inputs)
     if not inputs:
@@ -293,22 +302,6 @@ class Layer(object):
     else:
       inputs_hash = None
     return self._per_input_updates.get(inputs_hash, [])
-
-  def _get_regularizer_factories(self):
-    try:
-      # Some subclasses of Layer do not use its constructor.
-      return self._regularizer_factories
-    except AttributeError:
-      self._regularizer_factories = []
-      return self._regularizer_factories
-
-  def _maybe_create_variable_regularizers(self):
-    """Creates added but uninstantiated regularizers."""
-    factories = self._get_regularizer_factories()
-    if factories:
-      for factory in factories:
-        factory()
-      factories[:] = []
 
   @property
   def losses(self):
@@ -321,7 +314,6 @@ class Layer(object):
     Returns:
       A list of tensors.
     """
-    self._maybe_create_variable_regularizers()
     if context.in_eager_mode():
       # _losses may only contain variable regularization losses when executing
       # eagerly, and they have been saved as lambdas to be executed when
@@ -405,7 +397,6 @@ class Layer(object):
       inputs_hash = layers_util.object_list_uid(inputs)
     else:
       inputs_hash = None
-    self._maybe_create_variable_regularizers()
     return self._per_input_losses.get(inputs_hash, [])
 
   def build(self, _):
@@ -500,13 +491,30 @@ class Layer(object):
       instance is returned.
 
     Raises:
-      RuntimeError: If called in Eager mode with partioned variable
-        regularization.
+      RuntimeError: If called with partioned variable regularization and
+        eager execution is enabled.
     """
 
-    in_graph_mode = context.in_graph_mode()
-    if in_graph_mode:
-      existing_variables = set(tf_variables.global_variables())
+    # `init_graph` should point to the graph in which variable initialization
+    # will occur; it should be None if and only if initialization will take
+    # place in the eager context.
+    init_graph = None
+    if context.in_graph_mode():
+      default_graph = ops.get_default_graph()
+      if default_graph.building_function:
+        with ops.init_scope():
+          # Retrieve the variables from the graph into which variables
+          # will be lifted; if initialization ops will be lifted into
+          # the eager context, then there is nothing to retrieve, since variable
+          # collections are not supported when eager execution is enabled.
+          if context.in_graph_mode():
+            init_graph = ops.get_default_graph()
+            existing_variables = set(tf_variables.global_variables())
+      else:
+        # Initialization ops will not be lifted out of the default graph.
+        init_graph = default_graph
+        existing_variables = set(tf_variables.global_variables())
+
     if dtype is None:
       dtype = self.dtype or dtypes.float32
 
@@ -523,54 +531,51 @@ class Layer(object):
                                    trainable=trainable and self.trainable,
                                    partitioner=partitioner)
 
-        if in_graph_mode:
-          if (trainable and self.trainable
-              and variable not in tf_variables.trainable_variables()):
-            # A custom getter / variable scope overrode the trainable flag.
-            trainable = False
+        if init_graph is not None:  # pylint: disable=protected-access
+          # The variable was created and initialized in a graph.
+
           if variable in existing_variables:
             # To match the behavior of tf.get_variable(), we only apply
             # regularization if the variable is newly created.
             return variable
 
-        if regularizer:
-          def regularizer_factory():
-            if context.in_graph_mode():
-              with vs.variable_scope(scope, reuse=reuse,
-                                     auxiliary_name_scope=False):
-                with ops.name_scope(self._name_scope_name(scope)):
-                  if isinstance(variable, tf_variables.PartitionedVariable):
-                    for v in variable:
-                      with ops.colocate_with(v.op):
-                        with ops.name_scope(name + '/Regularizer'):
-                          regularization = regularizer(v)
-                      if regularization is not None:
-                        self.add_loss(regularization)
-                  else:
-                    with ops.colocate_with(variable.op):
-                      with ops.name_scope(name + '/Regularizer'):
-                        regularization = regularizer(variable)
-                    if regularization is not None:
-                      self.add_loss(regularization)
-            else:
-              if isinstance(variable, tf_variables.PartitionedVariable):
-                raise RuntimeError(
-                    'Partitioned variable regularization is not yet '
-                    'supported when executing eagerly. File a feature request'
-                    'if this is important to you.')
-              # Save a zero-argument lambda which runs the regularizer on the
-              # variable, to be executed when `Layer.losses` is requested.
-              # This makes losses responsive to variable updates when
-              # executing eagerly.
-              self._losses.append(lambda: regularizer(variable))
+          with init_graph.as_default():
+            trainable_variables = tf_variables.trainable_variables()
+          if (trainable and self.trainable and
+              variable not in trainable_variables):
+            # A custom getter / variable scope overrode the trainable flag.
+            trainable = False
 
-          if hasattr(self, '_defer_regularizers') and self._defer_regularizers:
-            # _defer_regularizers exists and is set to True if `build` was
-            # invoked in `__call__`: deferring regularizer construction
-            # prevents the regularizer from being created in an `init_scope`.
-            self._get_regularizer_factories().append(regularizer_factory)
-          else:
-            regularizer_factory()
+          if regularizer:
+            if isinstance(variable, tf_variables.PartitionedVariable):
+              for v in variable:
+                with ops.colocate_with(v.op):
+                  with ops.name_scope(name + '/Regularizer'):
+                    regularization = regularizer(v)
+                if regularization is not None:
+                  self.add_loss(regularization)
+            else:
+              with ops.colocate_with(variable.op):
+                with ops.name_scope(name + '/Regularizer'):
+                  regularization = regularizer(variable)
+              if regularization is not None:
+                self.add_loss(regularization)
+        elif regularizer:  # and initialization took place in an eager context
+          if isinstance(variable, tf_variables.PartitionedVariable):
+            raise RuntimeError(
+                'Partitioned variable regularization is not yet '
+                'supported when executing eagerly. File a feature request'
+                'if this is important to you.')
+          # Save a zero-argument lambda which runs the regularizer on the
+          # variable, to be executed when `Layer.losses` is requested.
+          # This makes losses responsive to variable updates when executing
+          # eagerly.
+          #
+          # TODO(akshayka): Do the same for graphs as well, so that losses
+          # collected in a while_loop can be run outside its control flow
+          # context and so that losses won't be swallowed up by graph functions
+          # (i.e., `.losses()` should always create regularizers).
+          self._losses.append(lambda: regularizer(variable))
 
     if trainable:
       self._trainable_weights.append(variable)
@@ -670,15 +675,7 @@ class Layer(object):
             except AttributeError:
               pass
           input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
-
-          # Signal to `add_variable` that regularizer construction should be
-          # deferred.
-          self._defer_regularizers = True
-          with ops.init_scope():
-            self.build(input_shapes)
-          # Create any regularizers added by `build`.
-          self._maybe_create_variable_regularizers()
-          self._defer_regularizers = False
+          self.build(input_shapes)
         try:
           # Note: not all sub-classes of Layer call Layer.__init__ (especially
           # the ones under tensorflow/python/keras). Hence we recompute this
@@ -1262,6 +1259,15 @@ class InputSpec(object):
     self.max_ndim = max_ndim
     self.min_ndim = min_ndim
     self.axes = axes or {}
+
+  def __repr__(self):
+    spec = [('dtype=' + str(self.dtype)) if self.dtype else '',
+            ('shape=' + str(self.shape)) if self.shape else '',
+            ('ndim=' + str(self.ndim)) if self.ndim else '',
+            ('max_ndim=' + str(self.max_ndim)) if self.max_ndim else '',
+            ('min_ndim=' + str(self.min_ndim)) if self.min_ndim else '',
+            ('axes=' + str(self.axes)) if self.axes else '']
+    return 'InputSpec(%s)' % ', '.join(x for x in spec if x)
 
 
 class Node(object):

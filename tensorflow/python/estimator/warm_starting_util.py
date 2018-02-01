@@ -415,8 +415,8 @@ def _warm_start(warm_start_settings):
       a stronger check for variable configuration than relying on users to
       examine the logs.
   """
-  logging.info("Warm-starting from: ",
-               warm_start_settings.ckpt_to_initialize_from)
+  logging.info("Warm-starting from: %s",
+               (warm_start_settings.ckpt_to_initialize_from,))
   # We have to deal with partitioned variables, since get_collection flattens
   # out the list.
   grouped_variables = {}

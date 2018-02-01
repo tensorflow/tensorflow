@@ -29,10 +29,9 @@ class BuiltinFunctionTransformer(gast.NodeTransformer):
   # TODO(mdan): Bring print_functions in here.
 
   def _convert_len(self, node):
-
-    def template(args):
-      tf.shape(args)[0]  # pylint:disable=undefined-variable,expression-not-assigned
-
+    template = """
+      tf.shape(args)[0]
+    """
     new_call = templates.replace(template, args=node.args)[0].value
     return new_call
 

@@ -18,7 +18,7 @@
 set -e
 
 usage() {
-  echo "Usage: NDK_ROOT=<path to ndk root> $(basename "$0") [-Es:t:Tx:a:X]"
+  echo "Usage: NDK_ROOT=<path to ndk root> $(basename "$0") [-Es:t:Tx:a]"
   echo "-E enable experimental hexnn ops"
   echo "-s [sub_makefiles] sub makefiles separated by white space"
   echo "-t [build_target] build target for Android makefile [default=all]"
@@ -37,7 +37,7 @@ fi
 
 ARCH=armeabi-v7a
 
-while getopts "Es:t:Tx:a:" opt_name; do
+while getopts "Es:t:Tx:a" opt_name; do
   case "$opt_name" in
     E) ENABLE_EXPERIMENTAL_HEXNN_OPS="true";;
     s) SUB_MAKEFILES="${OPTARG}";;

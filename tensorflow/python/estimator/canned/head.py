@@ -24,6 +24,7 @@ import collections
 import six
 
 from tensorflow.python.estimator import model_fn
+from tensorflow.python.estimator import util
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
 from tensorflow.python.estimator.export import export_output
@@ -371,6 +372,64 @@ def _check_logits_final_dim(logits, expected_logits_dimension):
         return array_ops.identity(logits, name=scope)
 
 
+def _validate_loss_fn_args(loss_fn):
+  """Validates loss_fn arguments.
+
+  Required arguments: labels, logits.
+  Optional arguments: features.
+
+  Args:
+    loss_fn: The loss function.
+  Raises:
+    ValueError: If the signature is unexpected.
+  """
+  loss_fn_args = util.fn_args(loss_fn)
+  for required_arg in ['labels', 'logits']:
+    if required_arg not in loss_fn_args:
+      raise ValueError(
+          'loss_fn must contain argument: {}. '
+          'Given arguments: {}'.format(required_arg, loss_fn_args))
+  invalid_args = list(set(loss_fn_args) - set(['labels', 'logits', 'features']))
+  if invalid_args:
+    raise ValueError('loss_fn has unexpected args: {}'.format(invalid_args))
+
+
+def _call_loss_fn(loss_fn, labels, logits, features, expected_loss_dim=1):
+  """Calls loss_fn and checks the returned shape.
+
+  Args:
+    loss_fn: The loss function.
+    labels: Processed labels Tensor.
+    logits: Logits Tensor of shape [D0, D1, ... DN, logits_dimension].
+    features: Features dict.
+    expected_loss_dim: The expected last dimension of loss Tensor.
+  Returns:
+    Loss Tensor with shape [D0, D1, ... DN, expected_loss_dim].
+  """
+  loss_fn_args = util.fn_args(loss_fn)
+  kwargs = {}
+  if 'features' in loss_fn_args:
+    kwargs['features'] = features
+  with ops.name_scope(
+      None, 'call_loss_fn',
+      values=[labels, logits] + list(six.itervalues(features))):
+    unweighted_loss = loss_fn(labels=labels, logits=logits, **kwargs)
+    logits_shape = array_ops.shape(logits, name='logits_shape')
+    expected_loss_shape = array_ops.concat(
+        [logits_shape[:-1], [expected_loss_dim]], axis=0,
+        name='expected_loss_shape')
+    loss_shape = array_ops.shape(unweighted_loss, name='loss_shape')
+    check_loss_shape_op = control_flow_ops.Assert(
+        math_ops.reduce_all(math_ops.equal(loss_shape, expected_loss_shape)),
+        data=[
+            'loss_fn must return Tensor of shape '
+            '[D0, D1, ... DN, {}]. '.format(expected_loss_dim),
+            'logits_shape: ', logits_shape, 'loss_shape: ', loss_shape],
+        name='check_loss_shape')
+    with ops.control_dependencies([check_loss_shape_op]):
+      return array_ops.identity(unweighted_loss)
+
+
 def _indicator_labels_mean(labels, weights=None, name=None):
   with ops.name_scope(name, 'labels_mean', (labels, weights)) as scope:
     labels = math_ops.to_float(labels, name='labels')
@@ -467,6 +526,7 @@ def _multi_class_head_with_softmax_cross_entropy_loss(
     weight_column=None,
     label_vocabulary=None,
     loss_reduction=losses.Reduction.SUM,
+    loss_fn=None,
     name=None):
   """Creates a '_Head' for multi class classification.
 
@@ -485,6 +545,12 @@ def _multi_class_head_with_softmax_cross_entropy_loss(
   labels have shape `[batch_size, 1]`, the loss is the weighted sum over
   `batch_size`.
 
+  Also supports custom `loss_fn`. `loss_fn` takes `(labels, logits)` or
+  `(labels, logits, features)` as arguments and returns unreduced loss with
+  shape `[D0, D1, ... DN, 1]`. `loss_fn` must support integer `labels` with
+  shape `[D0, D1, ... DN, 1]`. Namely, the head applies `label_vocabulary` to
+  the input labels before passing them to `loss_fn`.
+
   Args:
     n_classes: Number of classes, must be greater than 2 (for 2 classes, use
       `_BinaryLogisticHeadWithSigmoidCrossEntropyLoss`).
@@ -499,6 +565,7 @@ def _multi_class_head_with_softmax_cross_entropy_loss(
       `label_vocabulary` is not provided but labels are strings.
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
       reduce training loss over batch. Defaults to `SUM`.
+    loss_fn: Optional loss function.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -517,11 +584,14 @@ def _multi_class_head_with_softmax_cross_entropy_loss(
   if (loss_reduction not in losses.Reduction.all() or
       loss_reduction == losses.Reduction.NONE):
     raise ValueError('Invalid loss_reduction: {}'.format(loss_reduction))
+  if loss_fn:
+    _validate_loss_fn_args(loss_fn)
   return _MultiClassHeadWithSoftmaxCrossEntropyLoss(
       n_classes=n_classes,
       weight_column=weight_column,
       label_vocabulary=label_vocabulary,
       loss_reduction=loss_reduction,
+      loss_fn=loss_fn,
       name=name)
 
 
@@ -533,6 +603,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
                weight_column=None,
                label_vocabulary=None,
                loss_reduction=losses.Reduction.SUM,
+               loss_fn=None,
                name=None):
     if (n_classes is None) or (n_classes <= 2):
       raise ValueError('n_classes must be > 2: %s.' % n_classes)
@@ -540,6 +611,7 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
     self._weight_column = weight_column
     self._label_vocabulary = label_vocabulary
     self._loss_reduction = loss_reduction
+    self._loss_fn = loss_fn
     self._name = name
 
   @property
@@ -602,10 +674,15 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
     labels = _check_dense_labels_match_logits_and_reshape(
         labels=labels, logits=logits, expected_labels_dimension=1)
     label_ids = self._label_ids(labels)
-    unweighted_loss = losses.sparse_softmax_cross_entropy(
-        labels=label_ids, logits=logits, reduction=losses.Reduction.NONE)
-    # Restore the squeezed dim, so unweighted_loss matches the weights shape.
-    unweighted_loss = array_ops.expand_dims(unweighted_loss, axis=-1)
+    if self._loss_fn:
+      unweighted_loss = _call_loss_fn(
+          loss_fn=self._loss_fn, labels=label_ids, logits=logits,
+          features=features, expected_loss_dim=1)
+    else:
+      unweighted_loss = losses.sparse_softmax_cross_entropy(
+          labels=label_ids, logits=logits, reduction=losses.Reduction.NONE)
+      # Restore the squeezed dim, so unweighted_loss matches the weights shape.
+      unweighted_loss = array_ops.expand_dims(unweighted_loss, axis=-1)
     weights = _get_weights_and_check_match_logits(
         features=features, weight_column=self._weight_column, logits=logits)
     training_loss = losses.compute_weighted_loss(
@@ -734,8 +811,12 @@ class _MultiClassHeadWithSoftmaxCrossEntropyLoss(_Head):
 
 
 def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
-    weight_column=None, thresholds=None, label_vocabulary=None,
-    loss_reduction=losses.Reduction.SUM, name=None):
+    weight_column=None,
+    thresholds=None,
+    label_vocabulary=None,
+    loss_reduction=losses.Reduction.SUM,
+    loss_fn=None,
+    name=None):
   """Creates a `_Head` for single label binary classification.
 
   This head uses `sigmoid_cross_entropy_with_logits` loss.
@@ -755,6 +836,12 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
   labels have shape `[batch_size, 1]`, the loss is the weighted sum over
   `batch_size`.
 
+  Also supports custom `loss_fn`. `loss_fn` takes `(labels, logits)` or
+  `(labels, logits, features)` as arguments and returns unreduced loss with
+  shape `[D0, D1, ... DN, 1]`. `loss_fn` must support float `labels` with
+  shape `[D0, D1, ... DN, 1]`. Namely, the head applies `label_vocabulary` to
+  the input labels before passing them to `loss_fn`.
+
   Args:
     weight_column: A string or a `_NumericColumn` created by
       `tf.feature_column.numeric_column` defining feature column representing
@@ -772,6 +859,7 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
       is not provided but labels are strings.
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
       reduce training loss over batch. Defaults to `SUM`.
+    loss_fn: Optional loss function.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -795,11 +883,14 @@ def _binary_logistic_head_with_sigmoid_cross_entropy_loss(
   if (loss_reduction not in losses.Reduction.all() or
       loss_reduction == losses.Reduction.NONE):
     raise ValueError('Invalid loss_reduction: {}'.format(loss_reduction))
+  if loss_fn:
+    _validate_loss_fn_args(loss_fn)
   return _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(
       weight_column=weight_column,
       thresholds=thresholds,
       label_vocabulary=label_vocabulary,
       loss_reduction=loss_reduction,
+      loss_fn=loss_fn,
       name=name)
 
 
@@ -811,11 +902,13 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
                thresholds=None,
                label_vocabulary=None,
                loss_reduction=losses.Reduction.SUM,
+               loss_fn=None,
                name=None):
     self._weight_column = weight_column
     self._thresholds = thresholds
     self._label_vocabulary = label_vocabulary
     self._loss_reduction = loss_reduction
+    self._loss_fn = loss_fn
     self._name = name
 
   @property
@@ -916,8 +1009,13 @@ class _BinaryLogisticHeadWithSigmoidCrossEntropyLoss(_Head):
           name='class_id_lookup').lookup(labels)
     labels = math_ops.to_float(labels)
     labels = _assert_range(labels, 2)
-    unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
-        labels=labels, logits=logits)
+    if self._loss_fn:
+      unweighted_loss = _call_loss_fn(
+          loss_fn=self._loss_fn, labels=labels, logits=logits,
+          features=features, expected_loss_dim=1)
+    else:
+      unweighted_loss = nn.sigmoid_cross_entropy_with_logits(
+          labels=labels, logits=logits)
     weights = _get_weights_and_check_match_logits(
         features=features, weight_column=self._weight_column, logits=logits)
     training_loss = losses.compute_weighted_loss(
@@ -1057,6 +1155,7 @@ def _regression_head_with_mean_squared_error_loss(
     weight_column=None,
     label_dimension=1,
     loss_reduction=losses.Reduction.SUM,
+    loss_fn=None,
     name=None):
   """Creates a `_Head` for regression using the `mean_squared_error` loss.
 
@@ -1075,6 +1174,10 @@ def _regression_head_with_mean_squared_error_loss(
   `[D0, D1, ... DN]`, `[D0, D1, ... DN, 1]` or
   `[D0, D1, ... DN, label_dimension]`.
 
+  Also supports custom `loss_fn`. `loss_fn` takes `(labels, logits)` or
+  `(labels, logits, features)` as arguments and returns unreduced loss with
+  shape `[D0, D1, ... DN, label_dimension]`.
+
   Args:
     weight_column: A string or a `_NumericColumn` created by
       `tf.feature_column.numeric_column` defining feature column representing
@@ -1085,6 +1188,7 @@ def _regression_head_with_mean_squared_error_loss(
       `[batch_size, label_dimension]`).
     loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how to
       reduce training loss over batch. Defaults to `SUM`.
+    loss_fn: Optional loss function.
     name: name of the head. If provided, summary and metrics keys will be
       suffixed by `"/" + name`. Also used as `name_scope` when creating ops.
 
@@ -1097,10 +1201,13 @@ def _regression_head_with_mean_squared_error_loss(
   if (loss_reduction not in losses.Reduction.all() or
       loss_reduction == losses.Reduction.NONE):
     raise ValueError('Invalid loss_reduction: {}'.format(loss_reduction))
+  if loss_fn:
+    _validate_loss_fn_args(loss_fn)
   return _RegressionHeadWithMeanSquaredErrorLoss(
       weight_column=weight_column,
       label_dimension=label_dimension,
       loss_reduction=loss_reduction,
+      loss_fn=loss_fn,
       name=name)
 
 
@@ -1112,6 +1219,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
       label_dimension,
       weight_column=None,
       loss_reduction=losses.Reduction.SUM,
+      loss_fn=None,
       name=None):
     """`Head` for regression."""
     if label_dimension < 1:
@@ -1119,6 +1227,7 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
     self._logits_dimension = label_dimension
     self._weight_column = weight_column
     self._loss_reduction = loss_reduction
+    self._loss_fn = loss_fn
     self._name = name
 
   @property
@@ -1137,8 +1246,13 @@ class _RegressionHeadWithMeanSquaredErrorLoss(_Head):
         labels=labels, logits=logits,
         expected_labels_dimension=self._logits_dimension)
     labels = math_ops.to_float(labels)
-    unweighted_loss = losses.mean_squared_error(
-        labels=labels, predictions=logits, reduction=losses.Reduction.NONE)
+    if self._loss_fn:
+      unweighted_loss = _call_loss_fn(
+          loss_fn=self._loss_fn, labels=labels, logits=logits,
+          features=features, expected_loss_dim=self._logits_dimension)
+    else:
+      unweighted_loss = losses.mean_squared_error(
+          labels=labels, predictions=logits, reduction=losses.Reduction.NONE)
     weights = _get_weights_and_check_match_logits(
         features=features, weight_column=self._weight_column, logits=logits,
         allow_per_logit_weights=True)

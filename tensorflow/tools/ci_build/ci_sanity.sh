@@ -177,7 +177,15 @@ do_pylint() {
   echo "pylint took $((PYLINT_END_TIME - PYLINT_START_TIME)) s"
   echo ""
 
-  grep -E '(\[E|\[W0311|\[W0312)' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  # Report only what we care about
+  # Ref https://pylint.readthedocs.io/en/latest/technical_reference/features.html
+  # E: all errors
+  # W0311 bad-indentation
+  # W0312 mixed-indentation
+  # C0330 bad-continuation
+  # C0301 line-too-long
+  # C0326 bad-whitespace
+  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
   while read -r LINE; do

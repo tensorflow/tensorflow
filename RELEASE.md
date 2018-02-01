@@ -1,18 +1,39 @@
 # Release 1.5.0
 
 ## Breaking Changes
-* Prebuilt binaries are now built against CUDA 9 and cuDNN 7.
+* Prebuilt binaries are now built against CUDA 9.0 and cuDNN 7.
 * Our Linux binaries are built using ubuntu 16 containers, potentially
   introducing glibc incompatibility issues with ubuntu 14.
 * Starting from 1.6 release, our prebuilt binaries will use AVX instructions.
   This may break TF on older CPUs.
+
+## Known Bugs
+* Using XLA:GPU with CUDA 9 and CUDA 9.1 results in garbage results and/or
+  `CUDA_ILLEGAL_ADDRESS` failures.
+
+  Google discovered in mid-December 2017 that the PTX-to-SASS compiler in CUDA 9
+  and CUDA 9.1 sometimes does not properly compute the carry bit when
+  decomposing 64-bit address calculations with large offsets (e.g. `load [x +
+  large_constant]`) into 32-bit arithmetic in SASS.
+
+  As a result, these versions of `ptxas` miscompile most XLA programs which use
+  more than 4GB of temp memory.  This results in garbage results and/or
+  `CUDA_ERROR_ILLEGAL_ADDRESS` failures.
+
+  A fix in CUDA 9.1.121 is expected in late February 2018.  We do not expect a
+  fix for CUDA 9.0.x.  Until the fix is available, the only workaround is to
+  [downgrade](https://developer.nvidia.com/cuda-toolkit-archive) to CUDA 8.0.x
+  or disable XLA:GPU.
+
+  TensorFlow will print a warning if you use XLA:GPU with a known-bad version of
+  CUDA; see e00ba24c4038e7644da417ddc639169b6ea59122.
 
 ## Major Features And Improvements
 * [Eager execution](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/eager)
   preview version is now available.
 * [TensorFlow Lite](https://github.com/tensorflow/tensorflow/tree/r1.5/tensorflow/contrib/lite)
   dev preview is now available.
-* CUDA 9 and cuDNN 7 support.
+* CUDA 9.0 and cuDNN 7 support.
 * Accelerated Linear Algebra (XLA):
   * Add `complex64` support to XLA compiler.
   * `bfloat` support is now added to XLA infrastructure.
