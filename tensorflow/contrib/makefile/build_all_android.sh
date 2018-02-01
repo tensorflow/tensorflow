@@ -37,7 +37,7 @@ fi
 
 ARCH=armeabi-v7a
 
-while getopts "Es:t:Tx:a" opt_name; do
+while getopts "Es:t:Tx:a:" opt_name; do
   case "$opt_name" in
     E) ENABLE_EXPERIMENTAL_HEXNN_OPS="true";;
     s) SUB_MAKEFILES="${OPTARG}";;
