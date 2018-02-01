@@ -54,7 +54,8 @@ def generator_fn(noise_dict, mode):
   return layers.fully_connected(noise, noise.shape[1].value)
 
 
-def discriminator_fn(data, _):
+def discriminator_fn(data, unused_conditioning, mode):
+  del unused_conditioning, mode
   return layers.fully_connected(data, 1)
 
 
@@ -99,7 +100,6 @@ def mock_head(testcase, expected_generator_inputs, expected_real_data,
     else:
       testcase.assertEqual(discriminator_scope_name,
                            gan_model.discriminator_scope.name)
-    testcase.assertEqual(_or_none(discriminator_fn), gan_model.discriminator_fn)
 
     with ops.control_dependencies(assertions):
       if mode == model_fn_lib.ModeKeys.TRAIN:

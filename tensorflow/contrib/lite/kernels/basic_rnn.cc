@@ -15,8 +15,8 @@ limitations under the License.
 #include <unistd.h>
 #include <cassert>
 #include <cmath>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 
@@ -76,8 +76,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* output_size_array = TfLiteIntArrayCreate(2);
   output_size_array->data[0] = batch_size;
   output_size_array->data[1] = num_units;
-  TF_LITE_ENSURE_OK(context, context->ResizeTensor(context, output,
-                                                   output_size_array));
+  TF_LITE_ENSURE_OK(context,
+                    context->ResizeTensor(context, output, output_size_array));
 
   return kTfLiteOk;
 }

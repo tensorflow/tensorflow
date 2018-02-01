@@ -197,8 +197,8 @@ bool CommonInitDecode(StringPiece png_string, int desired_channels,
                       int desired_channel_bits, DecodeContext* context) {
   CHECK(desired_channel_bits == 8 || desired_channel_bits == 16)
       << "desired_channel_bits = " << desired_channel_bits;
-  CHECK(0 <= desired_channels && desired_channels <= 4) << "desired_channels = "
-                                                        << desired_channels;
+  CHECK(0 <= desired_channels && desired_channels <= 4)
+      << "desired_channels = " << desired_channels;
   context->error_condition = false;
   context->channels = desired_channels;
   context->png_ptr = png_create_read_struct(PNG_LIBPNG_VER_STRING, context,

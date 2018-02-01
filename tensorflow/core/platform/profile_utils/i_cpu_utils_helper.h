@@ -47,7 +47,7 @@ class ICpuUtilsHelper {
   TF_DISALLOW_COPY_AND_ASSIGN(ICpuUtilsHelper);
 };
 
-}  // profile_utils
-}  // tensorflow
+}  // namespace profile_utils
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_PLATFORM_PROFILEUTILS_I_CPU_UTILS_HELPER_H__

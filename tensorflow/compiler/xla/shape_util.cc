@@ -475,8 +475,6 @@ StatusOr<PrimitiveType> StringToPrimitiveType(const string& name) {
       if (LayoutUtil::HasLayout(shape)) {
         tensorflow::strings::StrAppend(&result,
                                        LayoutUtil::HumanString(shape.layout()));
-      } else {
-        tensorflow::strings::StrAppend(&result, "{no layout}");
       }
     }
     return result;

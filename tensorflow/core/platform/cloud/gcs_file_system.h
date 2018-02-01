@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/platform/cloud/expiring_lru_cache.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
+#include "tensorflow/core/platform/cloud/gcs_throttle.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/cloud/retrying_file_system.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -194,6 +195,7 @@ class GcsFileSystem : public FileSystem {
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
   std::unique_ptr<FileBlockCache> file_block_cache_;
   std::unique_ptr<GcsDnsCache> dns_cache_;
+  GcsThrottle throttle_;
 
   using StatCache = ExpiringLRUCache<FileStatistics>;
   std::unique_ptr<StatCache> stat_cache_;

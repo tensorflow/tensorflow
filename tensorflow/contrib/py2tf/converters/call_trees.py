@@ -29,46 +29,46 @@ import gast
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import templates
+from tensorflow.contrib.py2tf.pyct import transformer
+from tensorflow.python.util import tf_inspect
 
 
 class FunctionNamer(object):
   """Describes the interface for CallTreeTransformer's namer."""
 
   def compiled_function_name(self,
-                             original_name,
-                             live_object=None,
+                             original_fqn,
+                             live_entity=None,
                              owner_type=None):
     """Generate the name corresponding to the compiled version of a function.
 
     Args:
-      original_name: String
-      live_object: Callable, the actual target function, if known.
+      original_fqn: string or tuple(string)
+      live_entity: Callable, the actual target function, if known.
       owner_type: Optional object. If present, it indicates that the function is
           a member of the given type.
     Returns:
-      String.
+      string, bool
     """
     raise NotImplementedError()
 
-  def compiled_class_name(self, original_name, live_object=None):
+  def compiled_class_name(self, original_fqn, live_entity=None):
     """Generate the name corresponding to the compiled version of a class.
 
     Args:
-      original_name: String
-      live_object: The actual target class, if known.
+      original_fqn: string or tuple(string)
+      live_entity: The actual target class, if known.
     Returns:
-      String.
+      string
     """
     raise NotImplementedError()
 
 
-class CallTreeTransformer(gast.NodeTransformer):
+class CallTreeTransformer(transformer.Base):
   """Transforms the call tree by renaming transformed symbols."""
 
-  def __init__(self, namer, namespace, uncompiled_modules,
-               nocompile_decorators):
-    self.namer = namer
-    self.namespace = namespace
+  def __init__(self, context, uncompiled_modules, nocompile_decorators):
+    super(CallTreeTransformer, self).__init__(context)
     self.uncompiled_modules = uncompiled_modules
     self.nocompile_decorators = nocompile_decorators
 
@@ -78,7 +78,7 @@ class CallTreeTransformer(gast.NodeTransformer):
     if isinstance(node, gast.Call):
       return self._resolve_name(node.func)
     if isinstance(node, gast.Name):
-      return self.namespace.get(node.id)
+      return self.context.namespace.get(node.id)
     if isinstance(node, gast.Attribute):
       parent = self._resolve_name(node.value)
       if parent is not None:
@@ -91,8 +91,12 @@ class CallTreeTransformer(gast.NodeTransformer):
     if anno.hasanno(node, 'live_val'):
       return anno.getanno(node, 'live_val')
     if isinstance(node, gast.Attribute) and anno.hasanno(node, 'type'):
-      member = getattr(anno.getanno(node, 'type'), node.attr)
-      return member
+      owner_type = anno.getanno(node, 'type')
+      if hasattr(owner_type, node.attr):
+        return getattr(owner_type, node.attr)
+      else:
+        raise ValueError('Type "%s" has not attribute "%s". Is it dynamic?' %
+                         (owner_type, node.attr))
     return None
 
   def _should_compile(self, node, fqn):
@@ -106,14 +110,14 @@ class CallTreeTransformer(gast.NodeTransformer):
 
     # The decorators themselves are not to be converted.
     # If present, the decorators should appear as static functions.
-    target_obj = self._try_resolve_target(node.func)
-    if target_obj is not None:
+    target_entity = self._try_resolve_target(node.func)
+    if target_entity is not None:
       # This attribute is set by the decorator itself.
       # TODO(mdan): This may not play nicely with other wrapping decorators.
-      if hasattr(target_obj, '__pyct_is_compile_decorator'):
+      if hasattr(target_entity, '__pyct_is_compile_decorator'):
         return False
 
-      if target_obj in self.nocompile_decorators:
+      if target_entity in self.nocompile_decorators:
         return False
 
       # Inspect the target function decorators. If any include a @convert
@@ -122,7 +126,8 @@ class CallTreeTransformer(gast.NodeTransformer):
       # To parse and re-analize each function for every call site could be quite
       # wasteful. Maybe we could cache the parsed AST?
       try:
-        target_node = parser.parse_object(target_obj).body[0]
+        target_node, _ = parser.parse_entity(target_entity)
+        target_node = target_node.body[0]
       except TypeError:
         # Functions whose source we cannot access are compilable (e.g. wrapped
         # to py_func).
@@ -136,48 +141,57 @@ class CallTreeTransformer(gast.NodeTransformer):
 
     return True
 
+  def _determine_function_owner(self, m):
+    # TODO(mdan): The parent type should be known at analysis. Use that instead.
+    if hasattr(m, 'im_class'):  # Python 2
+      return m.im_class
+    if hasattr(m, '__qualname__'):  # Python 3
+      # Object attributes: should be bound to "self".
+      if hasattr(m, '__self__'):
+        return type(m.__self__)
+
+      # Class attributes: should have the owner name in their namespace.
+      qn = m.__qualname__.split('.')
+      if len(qn) < 2:
+        return None
+      owner_name, func_name = qn[-2:]
+      if func_name != m.__name__:
+        raise ValueError('Inconsistent names detected '
+                         '(__qualname__[1] = "%s", __name__ = "%s") for %s.' %
+                         (func_name, m.__name__, m))
+      if owner_name == '<locals>':
+        return None
+      if owner_name not in self.context.namespace:
+        raise ValueError(
+            'Could not resolve name "%s" while analyzing %s. Namespace:\n%s' %
+            (owner_name, m, self.context.namespace))
+      return self.context.namespace[owner_name]
+    return None
+
   def _rename_compilable_function(self, node):
     assert anno.hasanno(node.func, 'live_val')
     assert anno.hasanno(node.func, 'fqn')
-    target_obj = anno.getanno(node.func, 'live_val')
+    target_entity = anno.getanno(node.func, 'live_val')
     target_fqn = anno.getanno(node.func, 'fqn')
 
     if not self._should_compile(node, target_fqn):
       return node
 
     if anno.hasanno(node, 'is_constructor'):
-      new_name = self.namer.compiled_class_name(
-          '__'.join(target_fqn), live_object=target_obj)
+      new_name = self.context.namer.compiled_class_name(
+          target_fqn, live_entity=target_entity)
+      do_rename = True
     else:
-      new_name = self.namer.compiled_function_name(
-          '__'.join(target_fqn), live_object=target_obj)
-    node.func = gast.Name(new_name, gast.Load(), None)
-    return node
+      owner_type = self._determine_function_owner(target_entity)
+      new_name, do_rename = self.context.namer.compiled_function_name(
+          target_fqn, live_entity=target_entity, owner_type=owner_type)
 
-  def _rename_member_function_of_known_type(self, node):
-    assert isinstance(node.func, gast.Attribute)
-
-    type_fqn = anno.getanno(node.func, 'type_fqn')
-    assert anno.hasanno(node.func, 'type')
-    target_type = anno.getanno(node.func, 'type')
-
-    if not self._should_compile(node, type_fqn):
-      return node
-
-    # TODO(mdan): We should not assume that the namer only needs the
-    # member function name.
-    method_name = node.func.attr
-    method_object = getattr(target_type, method_name)
-    new_name = self.namer.compiled_function_name(
-        method_name, live_object=method_object, owner_type=target_type)
-    if new_name != node.func.attr:
-      # If a member function call is renamed, then the new function is no
-      # longer bound to the target object. We then refactor the call from:
-      #   foo.bar(...)
-      # to:
-      #   renamed_foo(bar, ...)
-      # TODO(mdan): This risks causing duplication, if target_type is renamed.
-      node.args = [node.func.value] + node.args
+    if do_rename:
+      if target_entity is not None:
+        if tf_inspect.ismethod(target_entity):
+          # The renaming process will transform it into a regular function.
+          # TODO(mdan): Is this complete? How does it work with nested members?
+          node.args = [node.func.value] + node.args
       node.func = gast.Name(new_name, gast.Load(), None)
     return node
 
@@ -193,7 +207,7 @@ class CallTreeTransformer(gast.NodeTransformer):
     wrapper_def, call_expr = templates.replace(
         template,
         call=node.func,
-        wrapper=self.namer.compiled_function_name(node.func.id),
+        wrapper=self.context.namer.compiled_function_name(node.func.id)[0],
         args=tuple(gast.Name(n, gast.Load(), None) for n in args_scope.used))
     anno.setanno(call_expr.value, 'args_scope', args_scope)
     # TODO(mdan): Rename this annotation to 'graph_ready'
@@ -201,15 +215,15 @@ class CallTreeTransformer(gast.NodeTransformer):
 
     return (wrapper_def, call_expr)
 
-  def _function_is_compilable(self, target_obj):
+  def _function_is_compilable(self, target_entity):
     # TODO(mdan): This is just a placeholder. Implement.
-    return not isinstance(target_obj, types.BuiltinFunctionType)
+    return not isinstance(target_entity, types.BuiltinFunctionType)
 
   def visit_Expr(self, node):
     if isinstance(node.value, gast.Call):
       if anno.hasanno(node.value.func, 'live_val'):
-        target_obj = anno.getanno(node.value.func, 'live_val')
-        if not self._function_is_compilable(target_obj):
+        target_entity = anno.getanno(node.value.func, 'live_val')
+        if not self._function_is_compilable(target_entity):
           if anno.hasanno(node.value.func, 'fqn'):
             target_fqn = anno.getanno(node.value.func, 'fqn')
             if not self._should_compile(node.value, target_fqn):
@@ -227,8 +241,8 @@ class CallTreeTransformer(gast.NodeTransformer):
     # If the function is wrapped by one of the marker decorators,
     # consider it graph ready.
     if anno.hasanno(node.func, 'live_val'):
-      target_obj = anno.getanno(node.func, 'live_val')
-      if target_obj in self.nocompile_decorators:
+      target_entity = anno.getanno(node.func, 'live_val')
+      if target_entity in self.nocompile_decorators:
         if len(node.args) < 1:
           raise ValueError(
               'Found call to decorator function "%s", but it had no arguments. '
@@ -237,28 +251,28 @@ class CallTreeTransformer(gast.NodeTransformer):
 
     self.generic_visit(node)
     if anno.hasanno(node.func, 'live_val'):
-      target_obj = anno.getanno(node.func, 'live_val')
-      if self._function_is_compilable(target_obj):
+      target_entity = anno.getanno(node.func, 'live_val')
+      if self._function_is_compilable(target_entity):
         node = self._rename_compilable_function(node)
       else:
         raise NotImplementedError('py_func with return values')
-    elif anno.hasanno(node.func, 'type_fqn'):
-      node = self._rename_member_function_of_known_type(node)
     else:
-      raise NotImplementedError(
-          'Member function call (of unknown type): %s.' % node.func.id)
+      if self.context.recursive:
+        raise NotImplementedError('Could not resolve target function.')
+      else:
+        # TODO(mdan): Double check. Is this reachable code?
+        pass
     return node
 
   # pylint:enable=invalid-name
 
 
-def transform(node, namer, namespace, uncompiled_modules, nocompile_decorators):
+def transform(node, context, uncompiled_modules, nocompile_decorators):
   """Transform function call to the compiled counterparts.
 
   Args:
     node: AST to transform.
-    namer: FunctionNamer-like.
-    namespace: Dict mapping symbol names to their corresponding live objects.
+    context: An EntityContext object.
     uncompiled_modules: set of string tuples, each tuple represents the fully
         qualified name of a package containing functions that will not be
         compiled.
@@ -269,7 +283,6 @@ def transform(node, namer, namespace, uncompiled_modules, nocompile_decorators):
         node: The transformed AST
         new_names: set(string), containing any newly-generated names
   """
-  transformer = CallTreeTransformer(namer, namespace, uncompiled_modules,
-                                    nocompile_decorators)
-  node = transformer.visit(node)
+  t = CallTreeTransformer(context, uncompiled_modules, nocompile_decorators)
+  node = t.visit(node)
   return node

@@ -78,40 +78,43 @@ class TFShow {
       return nodes;
     }
     std::vector<T*> sorted_nodes = nodes;
-    std::sort(sorted_nodes.begin(), sorted_nodes.end(), [&opts](const T* n1,
-                                                                const T* n2) {
-      if (n1->name() == kTFProfRoot) return true;
-      if (n2->name() == kTFProfRoot) return false;
-      bool name_cmp = n1->name() < n2->name();
-      if (opts.order_by == kOrderBy[0]) {
-        return name_cmp;
-      } else if (opts.order_by == kOrderBy[1]) {
-        return n1->proto().total_requested_bytes() >
-               n2->proto().total_requested_bytes();
-      } else if (opts.order_by == kOrderBy[2]) {
-        return n1->proto().total_peak_bytes() > n2->proto().total_peak_bytes();
-      } else if (opts.order_by == kOrderBy[3]) {
-        return n1->proto().total_residual_bytes() >
-               n2->proto().total_residual_bytes();
-      } else if (opts.order_by == kOrderBy[4]) {
-        return n1->proto().total_output_bytes() >
-               n2->proto().total_output_bytes();
-      } else if (opts.order_by == kOrderBy[5]) {
-        return n1->proto().total_exec_micros() >
-               n2->proto().total_exec_micros();
-      } else if (opts.order_by == kOrderBy[6]) {
-        return n1->proto().total_accelerator_exec_micros() >
-               n2->proto().total_accelerator_exec_micros();
-      } else if (opts.order_by == kOrderBy[7]) {
-        return n1->proto().total_cpu_exec_micros() >
-               n2->proto().total_cpu_exec_micros();
-      } else if (opts.order_by == kOrderBy[8]) {
-        return n1->proto().total_parameters() > n2->proto().total_parameters();
-      } else if (opts.order_by == kOrderBy[9]) {
-        return n1->proto().total_float_ops() > n2->proto().total_float_ops();
-      }
-      return name_cmp;
-    });
+    std::sort(sorted_nodes.begin(), sorted_nodes.end(),
+              [&opts](const T* n1, const T* n2) {
+                if (n1->name() == kTFProfRoot) return true;
+                if (n2->name() == kTFProfRoot) return false;
+                bool name_cmp = n1->name() < n2->name();
+                if (opts.order_by == kOrderBy[0]) {
+                  return name_cmp;
+                } else if (opts.order_by == kOrderBy[1]) {
+                  return n1->proto().total_requested_bytes() >
+                         n2->proto().total_requested_bytes();
+                } else if (opts.order_by == kOrderBy[2]) {
+                  return n1->proto().total_peak_bytes() >
+                         n2->proto().total_peak_bytes();
+                } else if (opts.order_by == kOrderBy[3]) {
+                  return n1->proto().total_residual_bytes() >
+                         n2->proto().total_residual_bytes();
+                } else if (opts.order_by == kOrderBy[4]) {
+                  return n1->proto().total_output_bytes() >
+                         n2->proto().total_output_bytes();
+                } else if (opts.order_by == kOrderBy[5]) {
+                  return n1->proto().total_exec_micros() >
+                         n2->proto().total_exec_micros();
+                } else if (opts.order_by == kOrderBy[6]) {
+                  return n1->proto().total_accelerator_exec_micros() >
+                         n2->proto().total_accelerator_exec_micros();
+                } else if (opts.order_by == kOrderBy[7]) {
+                  return n1->proto().total_cpu_exec_micros() >
+                         n2->proto().total_cpu_exec_micros();
+                } else if (opts.order_by == kOrderBy[8]) {
+                  return n1->proto().total_parameters() >
+                         n2->proto().total_parameters();
+                } else if (opts.order_by == kOrderBy[9]) {
+                  return n1->proto().total_float_ops() >
+                         n2->proto().total_float_ops();
+                }
+                return name_cmp;
+              });
     return sorted_nodes;
   }
 
