@@ -199,24 +199,32 @@ struct ExampleFunctor {
 
 #if GOOGLE_CUDA
 // Partially specialize functor for GpuDevice.
-template <typename Eigen::GpuDevice, typename T>
-struct ExampleFunctor {
+template <typename T>
+struct ExampleFunctor<Eigen::GpuDevice, T> {
   void operator()(const Eigen::GpuDevice& d, int size, const T* in, T* out);
 };
 #endif
 
-#endif KERNEL_EXAMPLE_H_
+#endif // KERNEL_EXAMPLE_H_
 ```
 
 ```c++
 // kernel_example.cc
-#include "example.h"
+#include "kernel_example.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
 using namespace tensorflow;
 
 using CPUDevice = Eigen::ThreadPoolDevice;
 using GPUDevice = Eigen::GpuDevice;
+
+REGISTER_OP("Example")
+    .Attr("T: {float, int32} = DT_FLOAT")
+    .Input("input: T")
+    .Output("output: T")
+    .Doc(R"doc(
+Doubles all elements of input.
+)doc");
 
 // CPU specialization of actual computation.
 template <typename T>
@@ -280,7 +288,8 @@ REGISTER_GPU(int32);
 // kernel_example.cu.cc
 #ifdef GOOGLE_CUDA
 #define EIGEN_USE_GPU
-#include "example.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "kernel_example.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
 using namespace tensorflow;
@@ -341,9 +350,9 @@ Assuming you have `g++` installed, here is the sequence of commands you can use
 to compile your op into a dynamic library.
 
 ```bash
-TF_CFLAGS=( $(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))') )
-TF_LFLAGS=( $(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC ${TF_CFLAGS[@]} ${TF_LFLAGS[@]} -O2
+TF_INC=( $(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_include()))') )
+TF_LIB=( $(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_lib()))') )
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I${TF_INC} -L${TF_LIB} -O2
 ```
 
 On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
@@ -1228,10 +1237,10 @@ into a single dynamically loadable library:
 
 ```bash
 nvcc -std=c++11 -c -o cuda_op_kernel.cu.o cuda_op_kernel.cu.cc \
-  ${TF_CFLAGS[@]} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
+  -I${TF_INC} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
 
 g++ -std=c++11 -shared -o cuda_op_kernel.so cuda_op_kernel.cc \
-  cuda_op_kernel.cu.o ${TF_CFLAGS[@]} -fPIC -lcudart ${TF_LFLAGS[@]}
+  cuda_op_kernel.cu.o ${TF_INC} -fPIC -lcudart -L${TF_LIB}
 ```
 
 `cuda_op_kernel.so` produced above can be loaded as usual in Python, using the
