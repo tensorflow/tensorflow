@@ -952,6 +952,32 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
         v = variables.Variable([1, 2])
         sess.run(v[:].assign([1, 2]))
 
+  def testTypeError(self):
+    init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
+    too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
+    too_large_val = constant_op.constant([3, 4], dtype=dtypes.int64)
+    v = variables.Variable(init_val)
+    with self.assertRaises(TypeError):
+      v[:].assign(too_small_val)
+    with self.assertRaises(TypeError):
+      v[:].assign(too_large_val)
+
+  def testTypeErrorResource(self):
+    init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
+    too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
+    too_large_val = constant_op.constant([3, 4], dtype=dtypes.int64)
+    v = resource_variable_ops.ResourceVariable(init_val)
+    with self.test_session() as sess:
+      sess.run(v.initializer)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "l-value dtype int32 does not match r-value dtype int64"):
+        sess.run(v[:].assign(too_large_val))
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "l-value dtype int32 does not match r-value dtype int8"):
+        sess.run(v[:].assign(too_small_val))
+
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
