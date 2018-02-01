@@ -449,6 +449,10 @@ class Converter {
        *    remove this and annotate the edge as a control dependency.
        ************************************************************************/
       std::string name = input_name[0] == '^'? input_name.substr(1) : input_name;
+      auto first = name.find_first_of(':');
+      if (first != std::string::npos && first+2 == name.size() && name[first+1]=='0')
+        name.erase(first);
+
       LOG(DEBUG) << "retrieve input: " << name;
       if (_trt_tensors.count(name)) {
         inputs.push_back(_trt_tensors.at(name));
@@ -833,8 +837,11 @@ tensorflow::Status BinaryTensorOpWeight(
   auto dims_w = weights.shape_;
   auto dims_t = tensor->getDimensions();
 
-  // default to channel-wise
+  // default to element-wise
   auto scale_mode = nvinfer1::ScaleMode::kELEMENTWISE;
+
+  // TODO(jie): maybe use a permuatation instead to support more cases;
+  bool permutation_flag = false;
 
   /*
   if (weights.count() == 1) {
@@ -857,44 +864,63 @@ tensorflow::Status BinaryTensorOpWeight(
     scale_mode = nvinfer1::ScaleMode::kUNIFORM;
   } else {
     // no broadcasting on Batch dimension;
-    assert(dims_w.d[0]==1);
-
-    // broadcasting on Channel dimension only allowed in kUNIFORM
-    assert(dims_w.d[1]==dims_t.d[0]);
-    assert(dims_w.nbDims==dims_t.nbDims);
-
-    // default is element;
-    for (int i=2; i<dims_w.nbDims; i++) {
-      if (dims_w.d[i]!=dims_t.d[i-1]) {
-        scale_mode = nvinfer1::ScaleMode::kCHANNEL;
-        break;
-      }
+    LOG(DEBUG) << "WEIGHTS DIM: " << dims_w.nbDims
+               << " tensor DIM: " << dims_t.nbDims;
+    if (dims_w.nbDims==dims_t.nbDims && dims_w.d[0]==1) {
+      for (int i=1; i<dims_w.nbDims; i++)
+        dims_w.d[i-1] = dims_w.d[i];
+      dims_w.nbDims--;
     }
-    if (scale_mode == nvinfer1::ScaleMode::kELEMENTWISE) {
+
+    if (dims_w.nbDims==dims_t.nbDims-1 && dims_w.d[0]==dims_t.d[0]) {
       scale_mode = nvinfer1::ScaleMode::kELEMENTWISE;
-      for (int i=2; i<dims_w.nbDims; i++) {
-        if (dims_w.d[i]!=1)
-          return tensorflow::errors::InvalidArgument(
-                   "Weight shape not compatible at, " + node_def.name());
+      // default is element;
+      for (int i=1; i<dims_w.nbDims; i++) {
+        if (dims_w.d[i]!=dims_t.d[i-1]) {
+          // if dimension does not match, switch back to channel;
+          LOG(DEBUG) << "channel";
+          scale_mode = nvinfer1::ScaleMode::kCHANNEL;
+          break;
+        }
       }
+      // if channel as candidate, validate it
+      if (scale_mode == nvinfer1::ScaleMode::kCHANNEL) {
+        LOG(DEBUG) << "elementwise";
+        scale_mode = nvinfer1::ScaleMode::kELEMENTWISE;
+        for (int i=1; i<dims_w.nbDims; i++) {
+          if (dims_w.d[i]!=1)
+            return tensorflow::errors::InvalidArgument(
+                     "Weight shape not compatible at, " + node_def.name());
+        }
+      }
+    } else if (dims_w.nbDims==1 && dims_w.d[0] == dims_t.d[dims_t.nbDims-1]) {
+      // channel wise and broadcast required;
+      permutation_flag = true;
+      scale_mode = nvinfer1::ScaleMode::kCHANNEL;
+    } else {
+      return tensorflow::errors::InvalidArgument(
+               "Weight shape not compatible at, " + node_def.name());
     }
   }
 
   // transpose last dimension
-  /*
   std::vector<int> permutation(dims_t.nbDims + 1);
-  if (scale_mode == nvinfer1::ScaleMode::kCHANNEL && dims_t.nbDims > 1) {
-    // we swap the last dimension into channel for trt.
-    // because of tensorflow default broadcasting rules.
-    for (int i = 0; i < static_cast<int>(permutation.size()); i++) {
-      permutation[i] = i;
+  if (permutation_flag) {
+    if (scale_mode == nvinfer1::ScaleMode::kCHANNEL && dims_t.nbDims > 1) {
+      // we swap the last dimension into channel for trt.
+      // because of tensorflow default broadcasting rules.
+      for (int i = 0; i < static_cast<int>(permutation.size()); i++) {
+        permutation[i] = i;
+      }
+      permutation[1] = dims_t.nbDims;
+      permutation[dims_t.nbDims] = 1;
+      tensor = ctx.transposeTensor(const_cast<nvinfer1::ITensor*>(tensor),
+                                   permutation);
+    } else {
+      return tensorflow::errors::InvalidArgument(
+               "Transpose cannot be applied, " + node_def.name());
     }
-    permutation[1] = dims_t.nbDims;
-    permutation[dims_t.nbDims] = 1;
-    tensor = ctx.transposeTensor(const_cast<nvinfer1::ITensor*>(tensor),
-                                 permutation);
   }
-  */
 
   // prepare weights
   TRT_ShapedWeights shiftWeights(weights.type_);
@@ -923,11 +949,9 @@ tensorflow::Status BinaryTensorOpWeight(
 
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   // transpose back dimension
-  /*
-  if (scale_mode == nvinfer1::ScaleMode::kCHANNEL && dims_t.nbDims > 1) {
+  if (permutation_flag) {
     output_tensor = ctx.transposeTensor(output_tensor, permutation);
   }
-  */
 
   // pass the output
   outputs->push_back(TRT_TensorOrWeights(output_tensor));
@@ -1847,9 +1871,11 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     int output_idx = input.second;
     tensorflow::Node* node = graph.FindNodeId(node_id);
     auto node_name = node->name();
+
     // input_names should use the node name in the graph
+    // here it should be the input tensor name -> matching the binding
     // insert original node name without port
-    input_names.push_back(node_name);
+    // input_names.push_back(node_name);
 
     auto tensor_name = node_name;
     if (output_idx != 0)
@@ -1910,6 +1936,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     if (output_idx != 0)
       input_tensor_name = node_name + ":" + std::to_string(output_idx);
 
+    input_names.push_back(input_tensor_name);
     nvinfer1::ITensor* input_tensor = converter.network()->addInput(
         input_tensor_name.c_str(), dtype, input_dim_psuedo_chw);
 
@@ -1951,9 +1978,9 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
 
     output_edge_map->insert( 
         {trt_engine_op_output_idx == 0 ? 
-         engine_name : engine_name + std::to_string(trt_engine_op_output_idx), 
+         engine_name : engine_name + ":" + std::to_string(trt_engine_op_output_idx), 
          {output_idx, tensor_name}});
-
+    trt_engine_op_output_idx++;
     if (output_idx != 0)
       tensor_name = tensor_name + ":" + std::to_string(output_idx);
     LOG(DEBUG) << "output tensor name: " << tensor_name;
@@ -1999,7 +2026,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   // engine_out << engine_plan_string;
   // engine_out.close();
 
-  LOG(INFO) << "finished engine";
+  LOG(INFO) << "finished engine" << engine_name;
 
   // Build the TRT op
   tensorflow::NodeDefBuilder op_builder(
