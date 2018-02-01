@@ -343,6 +343,13 @@ do_external_licenses_check(){
   comm -2 -3 ${EXTERNAL_DEPENDENCIES_FILE}  ${LICENSES_FILE} 2>&1 | tee ${MISSING_LICENSES_FILE}
 
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
+  
+  
+  # Things okay to miss
+  echo ${MISSING_LICENSES_FILE}
+  grep -e "@bazel_tools//third_party/" -e "@com_google_absl//absl" -e "@org_tensorflow//" -v ${MISSING_LICENSES_FILE} > temp.txt
+  mv temp.txt ${MISSING_LICENSES_FILE}
+
 
   echo
   echo "do_external_licenses_check took $((EXTERNAL_LICENSES_CHECK_END_TIME - EXTERNAL_LICENSES_CHECK_START_TIME)) s"
@@ -525,6 +532,7 @@ do_check_file_name_test() {
 # Supply all sanity step commands and descriptions
 SANITY_STEPS=("do_pylint PYTHON2" "do_pylint PYTHON3" "do_check_futures_test" "do_buildifier" "do_bazel_nobuild" "do_pip_package_licenses_check" "do_lib_package_licenses_check" "do_java_package_licenses_check" "do_pip_smoke_test" "do_check_load_py_test" "do_code_link_check" "do_cmake_python_sanity" "do_check_file_name_test")
 SANITY_STEPS_DESC=("Python 2 pylint" "Python 3 pylint" "Check that python files have certain __future__ imports" "buildifier check" "bazel nobuild" "pip: license check for external dependencies" "C library: license check for external dependencies" "Java Native Library: license check for external dependencies" "Pip Smoke Test: Checking py_test dependencies exist in pip package" "Check load py_test: Check that BUILD files with py_test target properly load py_test" "Code Link Check: Check there are no broken links" "Test entries in /tensorflow/contrib/cmake/python_{modules|protos|protos_cc}.txt for validity and consistency" "Check file names for cases")
+
 INCREMENTAL_FLAG=""
 DEFAULT_BAZEL_CONFIGS="--config=hdfs --config=gcp"
 
