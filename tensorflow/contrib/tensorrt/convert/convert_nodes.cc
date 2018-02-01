@@ -347,7 +347,7 @@ template <>
 tensorflow::DataType TFAttrs::get<tensorflow::DataType>(std::string key) const {
   return this->at(key)->type();
 }
-
+// TODO(jie): reorder4 & reorder2 should be merged?
 template <typename T>
 void reorder4(nvinfer1::DimsNCHW shape, T const* idata,
               nvinfer1::DimsNCHW istrides, T* odata,
@@ -362,6 +362,38 @@ void reorder4(nvinfer1::DimsNCHW shape, T const* idata,
         }
       }
     }
+  }
+}
+
+template <typename T>
+void reorder2(nvinfer1::DimsHW shape, T const* idata,
+              nvinfer1::DimsHW istrides, T* odata,
+              nvinfer1::DimsHW ostrides) {
+  for (int h = 0; h < shape.h(); ++h) {
+    for (int w = 0; w < shape.w(); ++w) {
+      odata[h * ostrides.h() + w * ostrides.w()]
+          = idata[h * ostrides.h() + w * ostrides.w()];
+    }
+  }
+}
+
+// TODO(jie): fail to tensorflow!!
+void reorder_ck_to_kc(TRT_ShapedWeights const& iweights,
+                      TRT_ShapedWeights* oweights) {
+  int c = iweights.shape_.d[0];
+  int k = iweights.shape_.d[1];
+  oweights->shape_.d[0] = k;
+  oweights->shape_.d[1] = c;
+  nvinfer1::DimsHW istrides = {1, k};
+  nvinfer1::DimsHW ostrides = {c, 1};
+  switch (iweights.type_) {
+    case tensorflow::DataType::DT_FLOAT:
+      reorder2(
+          {k, c}, static_cast<float const*>(iweights.values_), istrides,
+          static_cast<float*>(const_cast<void*>(oweights->values_)), ostrides);
+      break;
+    default:
+      LOG(FATAL) << "!!!!!!!!!!!!!!!!!!!!!!!!broke!!!!!!!!!!!!";
   }
 }
 
@@ -382,7 +414,6 @@ void reorder_rsck_to_kcrs(TRT_ShapedWeights const& iweights,
   oweights->shape_.d[1] = c*nbGroups;
   oweights->shape_.d[2] = r;
   oweights->shape_.d[3] = s;
-  // nvinfer1::DimsNCHW istrides = {1, s, c*r*s, r*s};
   nvinfer1::DimsNCHW istrides = {1, k, s * k * c, c * k};
   nvinfer1::DimsNCHW ostrides = {c * r * s, r * s, s, 1};
   switch (iweights.type_) {
@@ -1782,6 +1813,37 @@ tensorflow::Status ConvertConcat(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertMatMul(
+                                 Converter& ctx,
+                                 tensorflow::NodeDef const& node_def,
+                                 std::vector<TRT_TensorOrWeights> const& inputs,
+                                 std::vector<TRT_TensorOrWeights>* outputs) {
+  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+
+  // TODO(jie): transpose!
+  TFAttrs attrs(node_def);
+  //bool transpose_w = bool(attrs->at("transpose_b")->i());
+
+  // tensor after transpose (NCHW)
+  auto tensor_dim = tensor->getDimensions();
+
+  TRT_ShapedWeights weights_ck = inputs.at(1).weights();
+  TRT_ShapedWeights weights = ctx.get_temp_weights_like(weights_ck);
+  reorder_ck_to_kc(weights_ck, &weights);
+  TRT_ShapedWeights biases(weights.type_);
+
+  int noutput = weights.shape_.d[0];
+
+  nvinfer1::IFullyConnectedLayer* layer =
+      ctx.network()->addFullyConnected(*const_cast<nvinfer1::ITensor*>(tensor),
+                                       noutput, weights, biases);
+
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
+
+}
+
 void Converter::register_op_converters() {
   // vgg_16 slim implementation
   _op_registry["Placeholder"] = ConvertPlaceholder;
@@ -1804,6 +1866,7 @@ void Converter::register_op_converters() {
   _op_registry["Rsqrt"] = ConvertUnary;
   _op_registry["Mean"] = ConvertReduce;
   _op_registry["Pad"] = ConvertPad;
+  _op_registry["MatMul"] = ConvertMatMul;
   // TODO(ben,jie): Add more ops
 
   _op_registry["ConcatV2"] = ConvertConcat;
