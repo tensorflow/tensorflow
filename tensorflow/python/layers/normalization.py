@@ -26,6 +26,7 @@ import numpy as np
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import base
@@ -141,7 +142,10 @@ class BatchNormalization(base.Layer):
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
-    self.axis = axis
+    if isinstance(axis, list):
+      self.axis = axis[:]
+    else:
+      self.axis = axis
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
@@ -211,16 +215,13 @@ class BatchNormalization(base.Layer):
                          'be specified')
 
     if self.fused:
-      # Currently fused batch norm doesn't support renorm and beta/gamma
-      # regularizer; and only supports an input tensor of rank 4 and a channel
-      # dimension on axis 1 and 3.
+      # Currently fused batch norm doesn't support renorm. It also only supports
+      # an input tensor of rank 4 and a channel dimension on axis 1 or 3.
       # TODO(yaozhang): if input is not 4D, reshape it to 4D and reshape the
       # output back to its original shape accordingly.
       self.fused = (not self.renorm and
                     ndims == 4 and
                     self.axis in [[1], [3]] and
-                    self.beta_regularizer is None and
-                    self.gamma_regularizer is None and
                     self.virtual_batch_size is None and
                     self.adjustment is None)
       # TODO(chrisying): fused batch norm is currently not supported for
@@ -238,6 +239,12 @@ class BatchNormalization(base.Layer):
       else:
         raise ValueError('Unsupported axis, fused batch norm only supports '
                          'axis == [1] or axis == [3]')
+
+    # Raise parameters of fp16 batch norm to fp32
+    if self.dtype == dtypes.float16 or self.dtype == dtypes.bfloat16:
+      param_dtype = dtypes.float32
+    else:
+      param_dtype = self.dtype or dtypes.float32
 
     axis_to_dim = {x: input_shape[x].value for x in self.axis}
     for x in axis_to_dim:
@@ -260,28 +267,34 @@ class BatchNormalization(base.Layer):
           self.axis[idx] = x + 1      # Account for added dimension
 
     if self.scale:
-      self.gamma = self.add_variable(name='gamma',
-                                     shape=param_shape,
-                                     initializer=self.gamma_initializer,
-                                     regularizer=self.gamma_regularizer,
-                                     constraint=self.gamma_constraint,
-                                     trainable=True)
+      self.gamma = self.add_variable(
+          name='gamma',
+          shape=param_shape,
+          dtype=param_dtype,
+          initializer=self.gamma_initializer,
+          regularizer=self.gamma_regularizer,
+          constraint=self.gamma_constraint,
+          trainable=True)
     else:
       self.gamma = None
       if self.fused:
-        self._gamma_const = array_ops.constant(1.0, shape=param_shape)
+        self._gamma_const = array_ops.constant(
+            1.0, dtype=param_dtype, shape=param_shape)
 
     if self.center:
-      self.beta = self.add_variable(name='beta',
-                                    shape=param_shape,
-                                    initializer=self.beta_initializer,
-                                    regularizer=self.beta_regularizer,
-                                    constraint=self.beta_constraint,
-                                    trainable=True)
+      self.beta = self.add_variable(
+          name='beta',
+          shape=param_shape,
+          dtype=param_dtype,
+          initializer=self.beta_initializer,
+          regularizer=self.beta_regularizer,
+          constraint=self.beta_constraint,
+          trainable=True)
     else:
       self.beta = None
       if self.fused:
-        self._beta_const = array_ops.constant(0.0, shape=param_shape)
+        self._beta_const = array_ops.constant(
+            0.0, dtype=param_dtype, shape=param_shape)
 
     # Disable variable partitioning when creating the moving mean and variance
     try:
@@ -293,12 +306,14 @@ class BatchNormalization(base.Layer):
       self.moving_mean = self.add_variable(
           name='moving_mean',
           shape=param_shape,
+          dtype=param_dtype,
           initializer=self.moving_mean_initializer,
           trainable=False)
 
       self.moving_variance = self.add_variable(
           name='moving_variance',
           shape=param_shape,
+          dtype=param_dtype,
           initializer=self.moving_variance_initializer,
           trainable=False)
 
@@ -312,10 +327,12 @@ class BatchNormalization(base.Layer):
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
         def _renorm_variable(name, shape):
-          var = self.add_variable(name=name,
-                                  shape=shape,
-                                  initializer=init_ops.zeros_initializer(),
-                                  trainable=False)
+          var = self.add_variable(
+              name=name,
+              shape=shape,
+              dtype=param_dtype,
+              initializer=init_ops.zeros_initializer(),
+              trainable=False)
           return var
 
         with ops.device(None):
@@ -356,7 +373,6 @@ class BatchNormalization(base.Layer):
 
   def _fused_batch_norm(self, inputs, training):
     """Returns the output of fused batch norm."""
-    # TODO(reedwm): Add support for fp16 inputs.
     beta = self.beta if self.center else self._beta_const
     gamma = self.gamma if self.scale else self._gamma_const
 
@@ -436,27 +452,30 @@ class BatchNormalization(base.Layer):
     if dmax is not None:
       d = math_ops.maximum(d, -dmax)
       d = math_ops.minimum(d, dmax)
-    # When not training, use r=1, d=0, and decay=1 meaning no updates.
+    # When not training, use r=1, d=0.
     r = utils.smart_cond(training, lambda: r, lambda: array_ops.ones_like(r))
     d = utils.smart_cond(training, lambda: d, lambda: array_ops.zeros_like(d))
-    decay = utils.smart_cond(training, lambda: self.renorm_momentum, lambda: 1.)
 
     def _update_renorm_variable(var, weight, value):
       """Updates a moving average and weight, returns the unbiased value."""
-      # Update the variables without zero debiasing. The debiasing will be
-      # accomplished by dividing the exponential moving average by the weight.
-      # For example, after a single update, the moving average would be
-      # (1-decay) * value. and the weight will be 1-decay, with their ratio
-      # giving value.
-      # Make sure the weight is not updated until before r and d computation.
       value = array_ops.identity(value)
-      with ops.control_dependencies([value]):
-        weight_value = array_ops.constant(1., dtype=weight.dtype)
-      new_var = moving_averages.assign_moving_average(
-          var, value, decay, zero_debias=False)
-      new_weight = moving_averages.assign_moving_average(
-          weight, weight_value, decay, zero_debias=False)
-      return new_var / new_weight
+      def _do_update():
+        # Update the variables without zero debiasing. The debiasing will be
+        # accomplished by dividing the exponential moving average by the weight.
+        # For example, after a single update, the moving average would be
+        # (1-decay) * value. and the weight will be 1-decay, with their ratio
+        # giving the value.
+        # Make sure the weight is not updated until before r and d computation.
+        with ops.control_dependencies([value]):
+          weight_value = array_ops.constant(1., dtype=weight.dtype)
+        new_var = moving_averages.assign_moving_average(
+            var, value, self.renorm_momentum, zero_debias=False)
+        new_weight = moving_averages.assign_moving_average(
+            weight, weight_value, self.renorm_momentum, zero_debias=False)
+        return new_var / new_weight
+      def _fake_update():
+        return array_ops.identity(var)
+      return utils.smart_cond(training, _do_update, _fake_update)
 
     with ops.colocate_with(self.moving_mean):
       new_mean = _update_renorm_variable(self.renorm_mean,
@@ -562,8 +581,6 @@ class BatchNormalization(base.Layer):
       else:
         new_mean, new_variance = mean, variance
 
-      # Update moving averages when training, and prevent updates otherwise.
-      decay = utils.smart_cond(training, lambda: self.momentum, lambda: 1.)
       if self.virtual_batch_size is not None:
         # This isn't strictly correct since in ghost batch norm, you are
         # supposed to sequentially update the moving_mean and moving_variance
@@ -575,10 +592,18 @@ class BatchNormalization(base.Layer):
         new_variance = math_ops.reduce_mean(new_variance,
                                             axis=1, keep_dims=True)
 
-      mean_update = moving_averages.assign_moving_average(
-          self.moving_mean, new_mean, decay, zero_debias=False)
-      variance_update = moving_averages.assign_moving_average(
-          self.moving_variance, new_variance, decay, zero_debias=False)
+      def _do_update(var, value):
+        return moving_averages.assign_moving_average(
+            var, value, self.momentum, zero_debias=False)
+
+      mean_update = utils.smart_cond(
+          training,
+          lambda: _do_update(self.moving_mean, new_mean),
+          lambda: self.moving_mean)
+      variance_update = utils.smart_cond(
+          training,
+          lambda: _do_update(self.moving_variance, new_variance),
+          lambda: self.moving_variance)
       if context.in_graph_mode():
         self.add_update(mean_update, inputs=inputs)
         self.add_update(variance_update, inputs=inputs)
@@ -599,6 +624,9 @@ class BatchNormalization(base.Layer):
       return undo_virtual_batching(outputs)
 
     return outputs
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
 
 def batch_normalization(inputs,
@@ -721,10 +749,6 @@ def batch_normalization(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.BactchNormalization instead.')
   layer = BatchNormalization(
       axis=axis,
       momentum=momentum,
@@ -747,6 +771,7 @@ def batch_normalization(inputs,
       virtual_batch_size=virtual_batch_size,
       adjustment=adjustment,
       name=name,
+      dtype=inputs.dtype.base_dtype,
       _reuse=reuse,
       _scope=name)
   return layer.apply(inputs, training=training)

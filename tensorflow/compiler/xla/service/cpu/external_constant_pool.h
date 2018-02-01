@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_
 
 #include <memory>
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace xla {
 namespace cpu {
@@ -49,10 +50,10 @@ class ExternalConstantPool {
   const uint8* Find(const string& name);
 
  private:
-  // We need to `free()` pointers allocated into `entries_` since we allocate
-  // them with `posix_memalign`.
+  // We need to `AlignedFree` pointers allocated into `entries_` since we
+  // allocate them with `AlignedMalloc`.
   struct FreeDeleter {
-    void operator()(void* ptr) { free(ptr); }
+    void operator()(void* ptr) { tensorflow::port::AlignedFree(ptr); }
   };
 
   tensorflow::gtl::FlatMap<string, std::unique_ptr<uint8, FreeDeleter>>
@@ -61,4 +62,4 @@ class ExternalConstantPool {
 }  // namespace cpu
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_EXTERNAL_CONSTANT_POOL_H_

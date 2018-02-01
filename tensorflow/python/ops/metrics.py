@@ -34,11 +34,14 @@
 @@precision_at_thresholds
 @@recall
 @@recall_at_k
+@@recall_at_top_k
 @@recall_at_thresholds
 @@root_mean_squared_error
 @@sensitivity_at_specificity
 @@sparse_average_precision_at_k
+@@average_precision_at_k
 @@sparse_precision_at_k
+@@precision_at_k
 @@precision_at_top_k
 @@specificity_at_sensitivity
 @@true_negatives

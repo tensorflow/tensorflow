@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
+#ifndef TENSORFLOW_C_C_TEST_UTIL_H_
+#define TENSORFLOW_C_C_TEST_UTIL_H_
 
 #include "tensorflow/c/c_api.h"
 
@@ -74,7 +74,10 @@ TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
 
 TF_Operation* LessThan(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s);
 
-// Split `input` along the first dimention into 3 tensors
+TF_Operation* RandomUniform(TF_Operation* shape, TF_DataType dtype,
+                            TF_Graph* graph, TF_Status* s);
+
+// Split `input` along the first dimension into 3 tensors
 TF_Operation* Split3(TF_Operation* input, TF_Graph* graph, TF_Status* s,
                      const char* name = "split3");
 
@@ -133,4 +136,4 @@ class CSession {
   std::vector<TF_Operation*> targets_;
 };
 
-#endif  // THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
+#endif  // TENSORFLOW_C_C_TEST_UTIL_H_

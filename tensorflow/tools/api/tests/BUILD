@@ -18,8 +18,9 @@ py_test(
     srcs = ["api_compatibility_test.py"],
     data = [
         ":convert_from_multiline",
-        "//tensorflow/core:base_api_def",
-        "//tensorflow/core:python_api_def",
+        "//tensorflow/core/api_def:base_api_def",
+        "//tensorflow/core/api_def:python_api_def",
+        "//tensorflow/python:hidden_ops",
         "//tensorflow/tools/api/golden:api_golden",
         "//tensorflow/tools/api/tests:API_UPDATE_WARNING.txt",
         "//tensorflow/tools/api/tests:README.txt",

@@ -144,8 +144,8 @@ TEST(XlaCompilationTest, UnsupportedTypes) {
     Node* a = ops::SourceOp(
         "Const", builder.opts()
                      .WithName("A")
-                     .WithAttr("dtype", DT_COMPLEX64)
-                     .WithAttr("value", Tensor(DT_COMPLEX64, TensorShape())));
+                     .WithAttr("dtype", DT_COMPLEX128)
+                     .WithAttr("value", Tensor(DT_COMPLEX128, TensorShape())));
     Node* b = ops::UnaryOp("Neg", a, builder.opts().WithName("B"));
     ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
@@ -523,6 +523,33 @@ TEST(XlaCompilationTest, IllegalCycle_UsefulErrorMessage) {
                             "+-> a\n"
                             "|   b\n"
                             "+-- c\n"));
+}
+
+TEST(XlaCompilationTest, Retval) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphDef graphdef;
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* a = ops::SourceOp("Const", builder.opts()
+                                         .WithName("A")
+                                         .WithAttr("dtype", DT_FLOAT)
+                                         .WithAttr("value", Tensor()));
+    Node* b = ops::UnaryOp("Relu", a, builder.opts().WithName("B"));
+    ops::UnaryOp("_Retval", b,
+                 builder.opts()
+                     .WithName("R")
+                     .WithAttr("T", DT_FLOAT)
+                     .WithAttr("index", 0));
+
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
+  }
+
+  TF_ASSERT_OK(MarkForCompilation(&graph));
+  auto clusters = GetClusters(*graph);
+
+  EXPECT_EQ(2, clusters.size());
+  EXPECT_TRUE(clusters.find("R") == clusters.cend());
+  EXPECT_EQ(clusters["A"], clusters["B"]);
 }
 
 }  // namespace

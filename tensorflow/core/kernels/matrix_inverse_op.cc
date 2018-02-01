@@ -33,6 +33,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/cuda_solvers.h"
+#include "tensorflow/core/kernels/eye_functor.h"
 #include "tensorflow/core/kernels/transpose_functor.h"
 #endif
 
@@ -209,7 +210,7 @@ class MatrixInverseOpGpu : public AsyncOpKernel {
             done);
       }
     } else {
-      // For large matrices, we wompute the inverse of each matrix in the batch
+      // For large matrices, we compute the inverse of each matrix in the batch
       // sequentially. Here we use the cuSolver methods GETRF/GETRS because they
       // are MUCH faster than their batched cuBlas equivalents for large
       // matrices.

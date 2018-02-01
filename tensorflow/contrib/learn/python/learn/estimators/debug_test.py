@@ -44,7 +44,6 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import input as input_lib
 
-
 NUM_EXAMPLES = 100
 N_CLASSES = 5  #  Cardinality of multiclass labels.
 LABEL_DIMENSION = 3  #  Dimensionality of regression labels.
@@ -52,8 +51,10 @@ LABEL_DIMENSION = 3  #  Dimensionality of regression labels.
 
 def _train_test_split(features_and_labels):
   features, labels = features_and_labels
-  train_set = (features[:int(len(features) / 2)], labels[:int(len(features) / 2)])
-  test_set = (features[int(len(features) / 2):], labels[int(len(features) / 2):])
+  train_set = (features[:int(len(features) / 2)],
+               labels[:int(len(features) / 2)])
+  test_set = (features[int(len(features) / 2):],
+              labels[int(len(features) / 2):])
   return train_set, test_set
 
 
@@ -86,17 +87,17 @@ class DebugClassifierTest(test.TestCase):
     (train_features, train_labels), (test_features,
                                      test_labels) = _train_test_split(
                                          [self.features, self.labels])
-    majority_class, _ = max(collections.Counter(train_labels).items(),
-                            key=operator.itemgetter(1))
+    majority_class, _ = max(
+        collections.Counter(train_labels).items(), key=operator.itemgetter(1))
     expected_prediction = np.vstack(
         [[majority_class] for _ in range(test_labels.shape[0])])
 
     classifier = debug.DebugClassifier(n_classes=N_CLASSES)
-    classifier.fit(input_fn=_input_fn_builder(train_features, train_labels),
-                   steps=50)
+    classifier.fit(
+        input_fn=_input_fn_builder(train_features, train_labels), steps=50)
 
-    pred = classifier.predict_classes(input_fn=_input_fn_builder(test_features,
-                                                                 None))
+    pred = classifier.predict_classes(
+        input_fn=_input_fn_builder(test_features, None))
     self.assertAllEqual(expected_prediction, np.vstack(pred))
 
   def testPredictBinary(self):
@@ -105,34 +106,34 @@ class DebugClassifierTest(test.TestCase):
                                      test_labels) = _train_test_split(
                                          [self.features, self.binary_labels])
 
-    majority_class, _ = max(collections.Counter(train_labels).items(),
-                            key=operator.itemgetter(1))
+    majority_class, _ = max(
+        collections.Counter(train_labels).items(), key=operator.itemgetter(1))
     expected_prediction = np.vstack(
         [[majority_class] for _ in range(test_labels.shape[0])])
 
     classifier = debug.DebugClassifier(n_classes=2)
-    classifier.fit(input_fn=_input_fn_builder(train_features, train_labels),
-                   steps=50)
+    classifier.fit(
+        input_fn=_input_fn_builder(train_features, train_labels), steps=50)
 
-    pred = classifier.predict_classes(input_fn=_input_fn_builder(test_features,
-                                                                 None))
+    pred = classifier.predict_classes(
+        input_fn=_input_fn_builder(test_features, None))
     self.assertAllEqual(expected_prediction, np.vstack(pred))
 
-    (train_features, train_labels), (
-        test_features, test_labels) = _train_test_split(
-            [self.features, self.binary_float_labels])
+    (train_features,
+     train_labels), (test_features, test_labels) = _train_test_split(
+         [self.features, self.binary_float_labels])
 
-    majority_class, _ = max(collections.Counter(train_labels).items(),
-                            key=operator.itemgetter(1))
+    majority_class, _ = max(
+        collections.Counter(train_labels).items(), key=operator.itemgetter(1))
     expected_prediction = np.vstack(
         [[majority_class] for _ in range(test_labels.shape[0])])
 
     classifier = debug.DebugClassifier(n_classes=2)
-    classifier.fit(input_fn=_input_fn_builder(train_features, train_labels),
-                   steps=50)
+    classifier.fit(
+        input_fn=_input_fn_builder(train_features, train_labels), steps=50)
 
-    pred = classifier.predict_classes(input_fn=_input_fn_builder(test_features,
-                                                                 None))
+    pred = classifier.predict_classes(
+        input_fn=_input_fn_builder(test_features, None))
     self.assertAllEqual(expected_prediction, np.vstack(pred))
 
   def testPredictProba(self):
@@ -150,8 +151,8 @@ class DebugClassifierTest(test.TestCase):
         [class_distribution for _ in range(test_labels.shape[0])])
 
     classifier = debug.DebugClassifier(n_classes=N_CLASSES)
-    classifier.fit(input_fn=_input_fn_builder(train_features, train_labels),
-                   steps=50)
+    classifier.fit(
+        input_fn=_input_fn_builder(train_features, train_labels), steps=50)
 
     pred = classifier.predict_proba(
         input_fn=_input_fn_builder(test_features, None))
@@ -173,17 +174,17 @@ class DebugClassifierTest(test.TestCase):
         [class_distribution for _ in range(test_labels.shape[0])])
 
     classifier = debug.DebugClassifier(n_classes=2)
-    classifier.fit(input_fn=_input_fn_builder(train_features, train_labels),
-                   steps=50)
+    classifier.fit(
+        input_fn=_input_fn_builder(train_features, train_labels), steps=50)
 
     pred = classifier.predict_proba(
         input_fn=_input_fn_builder(test_features, None))
 
     self.assertAllClose(expected_prediction, np.vstack(pred), atol=0.1)
 
-    (train_features, train_labels), (
-        test_features, test_labels) = _train_test_split(
-            [self.features, self.binary_float_labels])
+    (train_features,
+     train_labels), (test_features, test_labels) = _train_test_split(
+         [self.features, self.binary_float_labels])
 
     class_distribution = np.zeros((1, 2))
     for label in train_labels:
@@ -194,8 +195,8 @@ class DebugClassifierTest(test.TestCase):
         [class_distribution for _ in range(test_labels.shape[0])])
 
     classifier = debug.DebugClassifier(n_classes=2)
-    classifier.fit(input_fn=_input_fn_builder(train_features, train_labels),
-                   steps=50)
+    classifier.fit(
+        input_fn=_input_fn_builder(train_features, train_labels), steps=50)
 
     pred = classifier.predict_proba(
         input_fn=_input_fn_builder(test_features, None))
@@ -232,13 +233,12 @@ class DebugClassifierTest(test.TestCase):
     def _input_fn():
       iris = test_data.prepare_iris_data_for_logistic_regression()
       return {
-          'feature': constant_op.constant(
-              iris.data, dtype=dtypes.float32)
+          'feature': constant_op.constant(iris.data, dtype=dtypes.float32)
       }, constant_op.constant(
           iris.target, shape=[100], dtype=dtypes.int32)
 
-    classifier = debug.DebugClassifier(config=run_config.RunConfig(
-        tf_random_seed=1))
+    classifier = debug.DebugClassifier(
+        config=run_config.RunConfig(tf_random_seed=1))
     classifier.fit(input_fn=_input_fn, steps=5)
     scores = classifier.evaluate(input_fn=_input_fn, steps=1)
     self.assertIn('loss', scores)
@@ -342,8 +342,7 @@ class DebugClassifierTest(test.TestCase):
     def _input_fn():
       iris = base.load_iris()
       return {
-          'feature': constant_op.constant(
-              iris.data, dtype=dtypes.float32)
+          'feature': constant_op.constant(iris.data, dtype=dtypes.float32)
       }, constant_op.constant(
           iris.target, shape=[150], dtype=dtypes.int32)
 
@@ -387,7 +386,9 @@ class DebugClassifierTest(test.TestCase):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # The logistic prediction should be (y = 0.25).
       labels = constant_op.constant([[1], [0], [0], [0]])
-      features = {'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),}
+      features = {
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
+      }
       return features, labels
 
     classifier = debug.DebugClassifier(n_classes=2)
@@ -404,8 +405,7 @@ class DebugClassifierTest(test.TestCase):
       # The logistic prediction should be (y = 0.25).
       labels = constant_op.constant([[1.], [0.], [0.], [0.]])
       features = {
-          'x': array_ops.ones(
-              shape=[4, 1], dtype=dtypes.float32),
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
           'w': constant_op.constant([[1.], [1.], [1.], [1.]])
       }
       return features, labels
@@ -414,8 +414,7 @@ class DebugClassifierTest(test.TestCase):
       # 4 rows, with different weights.
       labels = constant_op.constant([[1.], [0.], [0.], [0.]])
       features = {
-          'x': array_ops.ones(
-              shape=[4, 1], dtype=dtypes.float32),
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
           'w': constant_op.constant([[7.], [1.], [1.], [1.]])
       }
       return features, labels
@@ -438,8 +437,7 @@ class DebugClassifierTest(test.TestCase):
       # than (y=Not(x)) due to the relative higher weight of the first row.
       labels = constant_op.constant([[1], [0], [0], [0]])
       features = {
-          'x': array_ops.ones(
-              shape=[4, 1], dtype=dtypes.float32),
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
           'w': constant_op.constant([[100.], [3.], [2.], [2.]])
       }
       return features, labels
@@ -448,8 +446,7 @@ class DebugClassifierTest(test.TestCase):
       # Create 4 rows (y = x)
       labels = constant_op.constant([[1], [1], [1], [1]])
       features = {
-          'x': array_ops.ones(
-              shape=[4, 1], dtype=dtypes.float32),
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
           'w': constant_op.constant([[1.], [1.], [1.], [1.]])
       }
       return features, labels
@@ -469,8 +466,7 @@ class DebugClassifierTest(test.TestCase):
       features = {
           'x':
               input_lib.limit_epochs(
-                  array_ops.ones(
-                      shape=[4, 1], dtype=dtypes.float32),
+                  array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
                   num_epochs=num_epochs),
       }
       return features, labels
@@ -578,12 +574,11 @@ class DebugClassifierTest(test.TestCase):
     language = feature_column.sparse_column_with_hash_bucket('language', 100)
     feature_columns = [
         feature_column.real_valued_column('age'),
-        feature_column.embedding_column(
-            language, dimension=1)
+        feature_column.embedding_column(language, dimension=1)
     ]
 
-    classifier = debug.DebugClassifier(config=run_config.RunConfig(
-        tf_random_seed=1))
+    classifier = debug.DebugClassifier(
+        config=run_config.RunConfig(tf_random_seed=1))
     classifier.fit(input_fn=input_fn, steps=5)
 
     def default_input_fn(unused_estimator, examples):
@@ -614,8 +609,8 @@ class DebugRegressorTest(test.TestCase):
     classifier.fit(
         input_fn=_input_fn_builder(train_features, train_labels), steps=50)
 
-    pred = classifier.predict_scores(input_fn=_input_fn_builder(test_features,
-                                                                None))
+    pred = classifier.predict_scores(
+        input_fn=_input_fn_builder(test_features, None))
     self.assertAllClose(expected_prediction, np.vstack(pred), atol=0.1)
 
   def testExperimentIntegration(self):
@@ -698,7 +693,9 @@ class DebugRegressorTest(test.TestCase):
       # Create 4 rows, one of them (y = x), three of them (y=Not(x))
       # The algorithm should learn (y = 0.25).
       labels = constant_op.constant([[1.], [0.], [0.], [0.]])
-      features = {'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),}
+      features = {
+          'x': array_ops.ones(shape=[4, 1], dtype=dtypes.float32),
+      }
       return features, labels
 
     regressor = debug.DebugRegressor(
@@ -852,6 +849,7 @@ class DebugRegressorTest(test.TestCase):
         model_dir=model_dir, config=run_config.RunConfig(tf_random_seed=1))
     predictions2 = list(regressor2.predict_scores(input_fn=predict_input_fn))
     self.assertAllClose(predictions, predictions2)
+
 
 if __name__ == '__main__':
   test.main()

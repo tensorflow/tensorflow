@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Layers for regularization models via the addition of noise.
+"""Layers that operate regularization via the addition of noise.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine import Layer
+from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 
 
 class GaussianNoise(Layer):
@@ -64,6 +65,10 @@ class GaussianNoise(Layer):
     base_config = super(GaussianNoise, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
 
 class GaussianDropout(Layer):
   """Apply multiplicative 1-centered Gaussian noise.
@@ -83,10 +88,6 @@ class GaussianDropout(Layer):
   Output shape:
       Same shape as input.
 
-  References:
-      - [Dropout: A Simple Way to Prevent Neural Networks from Overfitting
-        Srivastava, Hinton, et al.
-        2014](http://www.cs.toronto.edu/~rsalakhu/papers/srivastava14a.pdf)
   """
 
   def __init__(self, rate, **kwargs):
@@ -109,6 +110,10 @@ class GaussianDropout(Layer):
     config = {'rate': self.rate}
     base_config = super(GaussianDropout, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
 
 class AlphaDropout(Layer):
@@ -134,8 +139,6 @@ class AlphaDropout(Layer):
   Output shape:
       Same shape as input.
 
-  References:
-      - [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
   """
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
@@ -151,17 +154,24 @@ class AlphaDropout(Layer):
   def call(self, inputs, training=None):
     if 0. < self.rate < 1.:
       noise_shape = self._get_noise_shape(inputs)
-      alpha = 1.6732632423543772848170429916717
-      scale = 1.0507009873554804934193349852946
 
-      def dropped_inputs(inputs=inputs, rate=self.rate, seed=self.seed):
+      def dropped_inputs(inputs=inputs, rate=self.rate, seed=self.seed):  # pylint: disable=missing-docstring
+        alpha = 1.6732632423543772848170429916717
+        scale = 1.0507009873554804934193349852946
         alpha_p = -alpha * scale
-        kept_idx = K.greater_equal(K.random_uniform(noise_shape, seed=seed),
-                                   rate)
+
+        kept_idx = K.greater_equal(
+            K.random_uniform(noise_shape, seed=seed), rate)
         kept_idx = K.cast(kept_idx, K.floatx())
-        a = ((1 - rate) * (1 + rate * alpha_p ** 2)) ** -0.5
+
+        # Get affine transformation params
+        a = ((1 - rate) * (1 + rate * alpha_p**2))**-0.5
         b = -a * alpha_p * rate
+
+        # Apply mask
         x = inputs * kept_idx + alpha_p * (1 - kept_idx)
+
+        # Do affine transformation
         return a * x + b
 
       return K.in_train_phase(dropped_inputs, inputs, training=training)
@@ -171,3 +181,7 @@ class AlphaDropout(Layer):
     config = {'rate': self.rate}
     base_config = super(AlphaDropout, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
+
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    return input_shape

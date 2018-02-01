@@ -33,18 +33,20 @@ tf_cuda_library(
             "//tensorflow/core:lib_internal",
             "//tensorflow/core:protos_all_cc",
         ],
-    }),
+    }) + ["//tensorflow/core:gpu_runtime"],
 )
 
 tf_cuda_library(
     name = "c_api_internal",
     hdrs = ["c_api_internal.h"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":c_api",
         ":runtime",
         "//tensorflow/c:c_api",
         "//tensorflow/c:c_api_internal",
         "//tensorflow/core:core_cpu_lib",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib_internal",
@@ -54,6 +56,10 @@ tf_cuda_library(
 tf_cuda_cc_test(
     name = "c_api_test",
     srcs = ["c_api_test.cc"],
+    tags = [
+        "guitar",
+        "multi_gpu",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/core:lib",
@@ -105,11 +111,16 @@ tf_cc_test(
 
 cc_library(
     name = "tape",
-    srcs = ["tape.cc"],
     hdrs = ["tape.h"],
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
+)
+
+filegroup(
+    name = "headers",
+    srcs = ["c_api.h"],
+    visibility = ["//tensorflow:__subpackages__"],
 )

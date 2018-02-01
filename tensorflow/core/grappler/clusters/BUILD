@@ -78,6 +78,8 @@ tf_cc_test(
     srcs = ["virtual_cluster_test.cc"],
     deps = [
         ":virtual_cluster",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -99,7 +101,9 @@ cc_library(
         "//tensorflow/cc:coordinator",
         "//tensorflow/cc:queue_runner",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",

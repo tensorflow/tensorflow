@@ -423,6 +423,15 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
                     .Finalize(&op.node_def));
   };
 
+  // Invalid rank for input
+  INFER_ERROR("must be rank 4", op, "[4,4];[2,1,1,1]");
+  // Invalid rank for filter
+  INFER_ERROR("must be rank 4", op, "[1,4,4,1];[2,1,1]");
+
+  // Invalid value for strides
+  set_op({{1, 1, 0, 1}}, "VALID", "NHWC", "HWIO");
+  INFER_ERROR("must be > 0", op, "[1,2,2,1];[1,1,1,1]");
+
   // 1x1 filter
   set_op({{1, 1, 1, 1}}, "VALID", "NHWC", "HWIO");
   INFER_OK(op, "[1,2,2,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
@@ -442,11 +451,6 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   // 4x4 input, 2x1 filter, 1x2 stride
   set_op({{1, 1, 2, 1}}, "VALID", "NHWC", "HWIO");
   INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
-
-  // Invalid rank for input
-  INFER_ERROR("must be rank 4", op, "[4,4];[2,1,1,1]");
-  // Invalid rank for filter
-  INFER_ERROR("must be rank 4", op, "[1,4,4,1];[2,1,1]");
 
   // Unknown dims in the critical fields lead to partial inference.
   INFER_OK(op, "[1,4,4,1];[2,1,1,1]", "[d0_0,3,2,d1_3]");
@@ -536,6 +540,98 @@ TEST(CommonShapeFnsTest, Conv2DShapeTest) {
   INFER_OK(op, "[1,?,4,1];[?,?,?,?]", "[d0_0,?,2,d1_3]");
   INFER_OK(op, "[1,4,?,1];[?,?,?,?]", "[d0_0,2,?,d1_3]");
   INFER_OK(op, "[1,4,4,?];[?,?,?,?]", "[d0_0,2,2,d1_3]");
+}
+
+TEST(CommonShapeFnsTest, Conv2DDilatedShapeTest) {
+  ShapeInferenceTestOp op("Conv2D");
+  auto set_op = [&op](const std::vector<int32>& dilations,
+                      const std::vector<int32>& strides, const string& padding,
+                      const string& data_format) {
+    TF_CHECK_OK(NodeDefBuilder("test", "Conv2D")
+                    .Input("input", 0, DT_FLOAT)
+                    .Input("filter", 0, DT_FLOAT)
+                    .Attr("dilations", dilations)
+                    .Attr("strides", strides)
+                    .Attr("padding", padding)
+                    .Attr("data_format", data_format)
+                    .Finalize(&op.node_def));
+  };
+
+  // Invalid rank for dilation
+  set_op({{1, 2, 1}}, {{1, 1, 1, 1}}, "VALID", "NHWC");
+  INFER_ERROR("contain 4 values", op, "[1,2,2,1];[1,1,1,1]");
+
+  // Invalid value for dilation
+  set_op({{1, 0, 1, 1}}, {{1, 1, 1, 1}}, "VALID", "NHWC");
+  INFER_ERROR("must be >= 1", op, "[1,2,2,1];[1,1,1,1]");
+
+  // Tests for NHWC
+  // 1x1 filter, 2x1 dilations, 1x1 strides
+  set_op({{1, 2, 1, 1}}, {{1, 1, 1, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,2,2,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
+
+  // 1x1 filter, 2x1 dilations, 2x1 strides
+  set_op({{1, 2, 1, 1}}, {{1, 2, 1, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,2,4,d1_3]");
+
+  // 1x1 filter, 2x1 dilations, 2x2 strides
+  set_op({{1, 2, 1, 1}}, {{1, 2, 2, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,2,2,d1_3]");
+
+  // 3x3 filter, 2x1 dilations, 1x1 strides
+  set_op({{1, 2, 1, 1}}, {{1, 1, 1, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,5,5,1];[3,3,1,1]", "[d0_0,1,3,d1_3]");
+
+  // 3x3 filter, 2x1 dilations, 2x1 strides
+  set_op({{1, 2, 1, 1}}, {{1, 2, 1, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,5,5,1];[3,3,1,1]", "[d0_0,1,3,d1_3]");
+
+  // 3x3 filter, 1x2 dilations, 2x2 strides
+  set_op({{1, 1, 2, 1}}, {{1, 2, 2, 1}}, "VALID", "NHWC");
+  INFER_OK(op, "[1,5,5,1];[3,3,1,1]", "[d0_0,2,1,d1_3]");
+
+  // Tests for NCHW
+  // 1x1 filter, 2x1 dilations, 1x1 strides
+  set_op({{1, 1, 2, 1}}, {{1, 1, 1, 1}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,2,2];[1,1,1,1]", "[d0_0,d1_3,2,2]");
+
+  // 1x1 filter, 2x1 dilations, 2x1 strides
+  set_op({{1, 1, 2, 1}}, {{1, 1, 2, 1}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,4,4];[1,1,1,1]", "[d0_0,d1_3,2,4]");
+
+  // 1x1 filter, 2x1 dilations, 2x2 strides
+  set_op({{1, 1, 2, 1}}, {{1, 1, 2, 2}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,4,4];[1,1,1,1]", "[d0_0,d1_3,2,2]");
+
+  // 3x3 filter, 2x1 dilations, 1x1 strides
+  set_op({{1, 1, 2, 1}}, {{1, 1, 1, 1}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,5,5];[3,3,1,1]", "[d0_0,d1_3,1,3]");
+
+  // 3x3 filter, 2x1 dilations, 2x1 strides
+  set_op({{1, 1, 2, 1}}, {{1, 1, 2, 1}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,5,5];[3,3,1,1]", "[d0_0,d1_3,1,3]");
+
+  // 3x3 filter, 1x2 dilations, 2x2 strides
+  set_op({{1, 1, 1, 2}}, {{1, 1, 2, 2}}, "VALID", "NCHW");
+  INFER_OK(op, "[1,1,5,5];[3,3,1,1]", "[d0_0,d1_3,2,1]");
+
+  // Some tests for "SAME" padding
+
+  // 4x4 input, 1x1 filter, 2x1 dilations, 1x1 stride
+  set_op({{1, 2, 1, 1}}, {{1, 1, 1, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[1,1,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
+
+  // 3x3 input, 2x2 filter, 2x2 dilations, 1x1 stride
+  set_op({{1, 2, 2, 1}}, {{1, 1, 1, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,3,3,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
+
+  // 4x4 input, 2x2 filter, 1x2 dilations, 2x2 stride
+  set_op({{1, 1, 2, 1}}, {{1, 2, 2, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,2,2,d1_3]");
+
+  // 4x4 input, 2x2 filter, 2x2 dilations, 1x1 stride
+  set_op({{1, 2, 2, 1}}, {{1, 1, 1, 1}}, "SAME", "NHWC");
+  INFER_OK(op, "[1,4,4,1];[2,2,1,1]", "[d0_0,d0_1,d0_2,d1_3]");
 }
 
 TEST(CommonShapeFnsTest, Conv3DShapeTest) {

@@ -38,9 +38,44 @@ _to_replace = re.compile("[^A-Za-z0-9.]")
 class Metric(object):
   """A metric holds state for aggregating statistics over an evaluation run.
 
-  Users will use Evaluator.add_metric() to add Metric objects to their
-  evaluation, call them in each step (treating the object as a callable),
-  and then use Evaluator.all_metric_results() at the end.
+  Example use with eager execution:
+
+  ```python
+  m = SomeMetric(...)
+  for input in ...:
+    m(input)
+  print(m.result())
+  ```
+
+  Example use with graph execution:
+
+  ```python
+  m = SomeMetric(...)
+  inputs = ... # Some tensors to compute the metric on.
+  m_update = m(inputs)
+  # Variables defined in first call, so get the initialization op afterwards.
+  m_init = m.init_variables()  # or tf.global_variables_initializer()
+  m_result = m.result()
+  with tf.Session() as sess:
+    sess.run(m_init)
+    for input in ...:
+      sess.run(m_update)
+    print(sess.run(m_result))
+  ```
+  Example use with graph execution with placeholders and feed_dict:
+  ```python
+  m = SomeMetric(...)
+  m_placeholder = tf.placeholder(...)
+  m_update = m(m_placeholder)
+  # Variables defined in first call, so get the initialization op afterwards.
+  m_init = m.init_variables()  # or tf.global_variables_initializer()
+  m_result = m.result()
+  with tf.Session() as sess:
+    sess.run(m_init)
+    for input in ...:
+      sess.run(m_update, feed_dict={m_placeholder: input})
+    print(sess.run(m_result))
+  ```
 
   Descendants will implement:
   * `build()`: All variables should be created in this method, by calling
@@ -52,18 +87,16 @@ class Metric(object):
   * `result()`: Computes and returns a final value for the metric
     from the variables in `self`.
 
-  Decendants may override, but usually won't need to:
-  * `aggregate()`: Adds in the state from a list of metrics of the same type
-    as `self`.  (Default is to sum all the variables.)
-  * `reset()`: Reset all variables to their initial state. (Default is to
-    zero all the variables.)
-  Note that users should not call `aggregate()` or `reset()`, they are for
-  use by TensorFlow infrastructure.
+  Descendants may override `aggregate()`, but usually won't need to.  It
+  adds in the state from a list of metrics of the same type as `self`.
+  (Default is to sum all the variables.) Note that users should not call
+  `aggregate()`, it is for use by TensorFlow infrastructure.
   """
 
   def __init__(self, name=None):
     self._built = False
     self._vars = []
+    self._initial_values = {}
     self._updates = []
     name = name or self.__class__.__name__
     # Replace things like spaces in name to create a valid scope name.
@@ -71,7 +104,7 @@ class Metric(object):
     # We create the variable scope now to get the unique name that will
     # be used as a variable prefix when build() calls add_variable().
     with variable_scope.variable_scope(
-        None, default_name=scope_name, use_resource=True, reuse=False) as scope:
+        scope_name, use_resource=True, reuse=False) as scope:
       pos = scope.name.rfind(scope_name)
       self._name = name + scope.name[pos + len(scope_name):]
       self._scope = scope
@@ -88,6 +121,7 @@ class Metric(object):
     """Returns op to execute to update this metric for these inputs.
 
     Returns None if eager execution is enabled.
+    Returns a graph-mode function if graph execution is enabled.
 
     Args:
       *args:
@@ -109,16 +143,22 @@ class Metric(object):
     return self._vars
 
   def init_variables(self):
-    """Return an op for initializing this Metric's variables.
+    """Initializes this Metric's variables.
 
-    Only for graph execution. Should be called after variables are created
-    in the first execution of __call__().
+    Should be called after variables are created in the first execution
+    of `__call__()`. If using graph execution, the return value should be
+    `run()` in a session before running the op returned by `__call__()`.
+    (See example above.)
 
     Returns:
-      An op to run.
+      If using graph execution, this returns an op to perform the
+      initialization. Under eager execution, the variables are reset to their
+      initial values as a side effect and this function returns None.
     """
-    assert context.in_graph_mode()
-    return control_flow_ops.group([v.initializer for v in self._vars])
+    if context.in_graph_mode():
+      return control_flow_ops.group([v.initializer for v in self._vars])
+    for v in self._vars:
+      v.assign(self._initial_values[v])
 
   # ---- To be implemented by descendants ---
   def build(self, *args, **kwargs):
@@ -158,6 +198,13 @@ class Metric(object):
     """Computes and returns a final value for the metric."""
     raise NotImplementedError("Metrics must define a result() member function")
 
+  def value(self):
+    """In graph mode returns the result Tensor while in eager the callable."""
+    if context.in_graph_mode():
+      return self.result()
+    else:
+      return self.result
+
   # We can support two different strategies of for doing data-parallel
   # distributed metric computations:
   # * Put metric variables on the first device and rely on small
@@ -193,22 +240,25 @@ class Metric(object):
       self._vars[i].assign_add(math_ops.add_n([m._vars[i] for m in metrics]))
     # pylint: enable=protected-access
 
-  def reset(self):
-    """Reset this metric to a freshly initialized state.
-
-    Default implementation zeros all the metric variables.
-    """
-    for v in self._vars:
-      v.assign(math_ops.zeros_like(v))
-
   # ---- For use by descendants ---
   def add_variable(self, name, shape=None, dtype=None, initializer=None):
     """***Only for use by descendants of Metric***."""
     if self._built:
       raise RuntimeError("Can't call add_variable() except in build().")
-    v = variable_scope.get_variable(name, shape, dtype, initializer,
-                                    trainable=False, use_resource=True)
+    collections = None if context.in_eager_mode() else [
+        ops.GraphKeys.LOCAL_VARIABLES, ops.GraphKeys.METRIC_VARIABLES
+    ]
+    v = variable_scope.get_variable(
+        name,
+        shape,
+        dtype,
+        initializer,
+        trainable=False,
+        collections=collections,
+        use_resource=True)
     self._vars.append(v)
+    if context.in_eager_mode():
+      self._initial_values[v] = v.value()
     return v
 
 
@@ -241,10 +291,13 @@ class Mean(Metric):
     Args:
       values: Tensor with the per-example value.
       weights: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      The arguments, for easy chaining.
     """
     if weights is None:
       self.denom.assign_add(
-          math_ops.cast(array_ops.size(values), self.dtype))
+          math_ops.cast(array_ops.identity(array_ops.size(values)), self.dtype))
       values = math_ops.reduce_sum(values)
       self.numer.assign_add(math_ops.cast(values, self.dtype))
     else:
@@ -252,6 +305,9 @@ class Mean(Metric):
       self.denom.assign_add(math_ops.reduce_sum(weights))
       values = math_ops.cast(values, self.dtype) * weights
       self.numer.assign_add(math_ops.reduce_sum(values))
+    if weights is None:
+      return values
+    return values, weights
 
   def result(self):
     t = self.numer / self.denom
@@ -279,7 +335,13 @@ class Accuracy(Mean):
         per element of the Tensor.
       predictions: Tensor with the predicted label for each example.
       weights: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      The arguments, for easy chaining.
     """
     matches = math_ops.equal(labels, predictions)
     matches = math_ops.cast(matches, dtypes.float64)
     super(Accuracy, self).call(matches, weights=weights)
+    if weights is None:
+      return labels, predictions
+    return labels, predictions, weights

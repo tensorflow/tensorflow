@@ -17,7 +17,7 @@ cesnsu model:
 
     ./local_test.sh --model_name CENSUS_WIDENDEEP
 
-**2) Launch a remote k8s cluster on Google Container Engine (GKE) and run the
+**2) Launch a remote k8s cluster on Google Kubernetes Engine (GKE) and run the
 test suite on it**
 
 For example:

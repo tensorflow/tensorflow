@@ -32,6 +32,7 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util import nest
@@ -299,6 +300,7 @@ class Optimizer(object):
     # Dictionary of slots.
     #  {slot_name : { variable_to_train: slot_for_the_variable, ...}, ... }
     self._slots = {}
+    self._non_slot_dict = {}
 
   def get_name(self):
     return self._name
@@ -381,7 +383,7 @@ class Optimizer(object):
       loss: A Tensor containing the value to minimize.
       var_list: Optional list or tuple of `tf.Variable` to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph
-        under the key `GraphKey.TRAINABLE_VARIABLES`.
+        under the key `GraphKeys.TRAINABLE_VARIABLES`.
       gate_gradients: How to gate the computation of gradients.  Can be
         `GATE_NONE`, `GATE_OP`, or `GATE_GRAPH`.
       aggregation_method: Specifies the method used to combine gradient terms.
@@ -397,6 +399,8 @@ class Optimizer(object):
     Raises:
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid.
+      RuntimeError: If called with eager execution enabled and if `grad_loss`
+        is not `None` or `loss` is not callable.
 
     @compatibility(eager)
     When eager execution is enabled, `loss` should be a Python function that
@@ -411,11 +415,13 @@ class Optimizer(object):
     """
     if context.in_eager_mode():
       if grad_loss is not None:
-        raise ValueError("`grad_loss` argument to Optimizer.compute_gradients "
-                         "not supported when eager execution is enabled.")
+        raise RuntimeError(
+            "`grad_loss` argument to Optimizer.compute_gradients "
+            "not supported when eager execution is enabled.")
       if not callable(loss):
-        raise ValueError("`loss` passed to Optimizer.compute_gradients should "
-                         "be a function when eager execution is enabled.")
+        raise RuntimeError(
+            "`loss` passed to Optimizer.compute_gradients should "
+            "be a function when eager execution is enabled.")
       # TODO(agarwal): consider passing parameters to the `loss` function.
       if var_list is None:
         return backprop.implicit_grad(loss)()
@@ -508,7 +514,7 @@ class Optimizer(object):
     if not var_list:
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, _, v in converted_grads_and_vars],))
-    with ops.control_dependencies(None):
+    with ops.init_scope():
       self._create_slots([_get_variable_for(v) for v in var_list])
     update_ops = []
     with ops.name_scope(name, self._name) as name:
@@ -527,7 +533,15 @@ class Optimizer(object):
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
           with ops.colocate_with(global_step):
-            apply_updates = state_ops.assign_add(global_step, 1, name=name)
+            if isinstance(global_step, resource_variable_ops.ResourceVariable):
+              # TODO(apassos): the implicit read in assign_add is slow; consider
+              # making it less so.
+              apply_updates = resource_variable_ops.assign_add_variable_op(
+                  global_step.handle,
+                  ops.convert_to_tensor(1, dtype=global_step.dtype),
+                  name=name)
+            else:
+              apply_updates = state_ops.assign_add(global_step, 1, name=name)
 
       if context.in_graph_mode():
         if isinstance(apply_updates, ops.Tensor):
@@ -570,6 +584,62 @@ class Optimizer(object):
     """
     return sorted(self._slots.keys())
 
+  def variables(self):
+    """A list of variables which encode the current state of `Optimizer`.
+
+    Includes slot variables and additional global variables created by the
+    optimizer in the current default graph.
+
+    Returns:
+      A list of variables.
+    """
+    executing_eagerly = context.in_eager_mode()
+    current_graph = ops.get_default_graph()
+
+    def _from_current_graph(variable):
+      if executing_eagerly:
+        # No variable.op in eager mode. We don't expect lots of eager graphs,
+        # but behavior should be consistent with graph mode.
+        return variable._container_prefix == current_graph._container_prefix  # pylint: disable=protected-access
+      else:
+        return variable.op.graph is current_graph
+
+    optimizer_variables = [v for v in self._non_slot_variables()
+                           if _from_current_graph(v)]
+    for _, variable_dict in self._slots.items():
+      for _, slot_for_variable in variable_dict.items():
+        if _from_current_graph(slot_for_variable):
+          optimizer_variables.append(slot_for_variable)
+    # Sort variables by name so that the return is deterministic.
+    return sorted(optimizer_variables, key=lambda v: v.name)
+
+  def _create_non_slot_variable(self, initial_value, name, colocate_with):
+    """Add an extra variable, not associated with a slot."""
+    if context.in_graph_mode():
+      graph = colocate_with.graph
+    else:
+      graph = None
+
+    key = (name, graph)
+    v = self._non_slot_dict.get(key, None)
+    if v is None:
+      with ops.colocate_with(colocate_with):
+        v = variable_scope.variable(initial_value, name=name, trainable=False)
+      self._non_slot_dict[key] = v
+
+    return v
+
+  def _get_non_slot_variable(self, name, graph=None):
+    return self._non_slot_dict.get((name, graph), None)
+
+  def _non_slot_variables(self):
+    """Additional variables created by the `Optimizer`.
+
+    Returns:
+      A list or tuple of variables.
+    """
+    return self._non_slot_dict.values()
+
   def _assert_valid_dtypes(self, tensors):
     """Asserts tensors are all valid types (see `_valid_dtypes`).
 
@@ -599,7 +669,8 @@ class Optimizer(object):
     Returns:
       Valid types for loss, variables and gradients.
     """
-    return set([dtypes.float16, dtypes.float32, dtypes.float64])
+    return set(
+        [dtypes.float16, dtypes.bfloat16, dtypes.float32, dtypes.float64])
 
   def _create_slots(self, var_list):
     """Create all slots needed by the variables.

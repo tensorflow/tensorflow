@@ -42,6 +42,8 @@ REGISTER_KERNEL_BUILDER(Name("RefIdentity").Device(DEVICE_CPU), IdentityOp);
 // Python).
 REGISTER_KERNEL_BUILDER(Name("DebugGradientIdentity").Device(DEVICE_CPU),
                         IdentityOp);
+REGISTER_KERNEL_BUILDER(Name("DebugGradientRefIdentity").Device(DEVICE_CPU),
+                        IdentityOp);
 
 #if TENSORFLOW_USE_SYCL
 #define REGISTER_SYCL_KERNEL(type)                                           \
@@ -102,7 +104,6 @@ REGISTER_SYCL_HOST_KERNEL(bool);
                           IdentityOp)
 
 TF_CALL_NUMBER_TYPES_NO_INT32(REGISTER_GPU_KERNEL);
-REGISTER_GPU_KERNEL(bfloat16);
 REGISTER_GPU_KERNEL(Variant);
 
 #undef REGISTER_GPU_KERNEL

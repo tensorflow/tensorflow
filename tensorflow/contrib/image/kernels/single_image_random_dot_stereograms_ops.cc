@@ -143,8 +143,8 @@ class SingleImageRandomDotStereogramsOp : public OpKernel {
     }
 
     data_box_left = deltaX_border_image / 2;  // Center DATA in X dimension
-    data_box_width = data_Xwindow;             // width of scan line
-    data_box_height = data_Ywindow;            // hight of image
+    data_box_width = data_Xwindow;            // width of scan line
+    data_box_height = data_Ywindow;           // hight of image
 
     const T* inputZ = input_tensor.flat<T>().data();  // Flatten input Z buffer
 

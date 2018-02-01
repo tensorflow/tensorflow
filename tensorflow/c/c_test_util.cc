@@ -193,6 +193,15 @@ TF_Operation* LessThan(TF_Output l, TF_Output r, TF_Graph* graph,
   return TF_FinishOperation(desc, s);
 }
 
+TF_Operation* RandomUniform(TF_Operation* shape, TF_DataType dtype,
+                            TF_Graph* graph, TF_Status* s) {
+  TF_OperationDescription* desc =
+      TF_NewOperation(graph, "RandomUniform", "random_uniform");
+  TF_AddInput(desc, {shape, 0});
+  TF_SetAttrType(desc, "dtype", dtype);
+  return TF_FinishOperation(desc, s);
+}
+
 void Split3Helper(TF_Operation* input, TF_Graph* graph, TF_Status* s,
                   const char* name, TF_Operation** op) {
   TF_Operation* zero = ScalarConst(

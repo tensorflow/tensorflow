@@ -41,6 +41,12 @@ namespace {
   };                                                                   \
   REGISTER_XLA_OP(Name(#NAME), NAME##Op);
 
+XLAJIT_MAKE_UNARY(ComplexAbs, b->Abs(x));
+
+XLAJIT_MAKE_UNARY(Angle, b->Atan2(b->Imag(x), b->Real(x)));
+
+XLAJIT_MAKE_UNARY(Conj, b->Conj(x));
+
 // Return x if x>0, otherwise -x.
 XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
 
@@ -161,6 +167,9 @@ XLAJIT_MAKE_UNARY(Sqrt,
 XLAJIT_MAKE_UNARY(Square, b->Mul(x, x));
 XLAJIT_MAKE_UNARY(Tan, b->Div(b->Sin(x), b->Cos(x)));
 XLAJIT_MAKE_UNARY(Tanh, b->Tanh(x));
+
+XLAJIT_MAKE_UNARY(Real, b->Real(x));
+XLAJIT_MAKE_UNARY(Imag, b->Imag(x));
 
 #undef XLAJIT_MAKE_UNARY
 

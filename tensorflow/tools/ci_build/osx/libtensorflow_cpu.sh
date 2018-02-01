@@ -27,7 +27,7 @@ export PYTHON_BIN_PATH="/usr/bin/python"
 export TF_NEED_GCP=0
 export TF_NEED_HDFS=0
 export TF_NEED_CUDA=0
-export TF_NEED_OPENCL=0
+export TF_NEED_OPENCL_SYCL=0
 export TF_NEED_MKL=0
 export COMPUTECPP_PATH="/usr/local"
 

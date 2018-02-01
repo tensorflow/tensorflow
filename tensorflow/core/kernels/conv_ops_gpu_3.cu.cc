@@ -19,10 +19,13 @@ limitations under the License.
 
 #include <algorithm>
 #include <array>
+#include <limits>
+#include <utility>
 
 #include "cuda/include/cuda.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -223,31 +226,28 @@ __global__ void SwapDimension1And2InTensor3Simple(int nthreads, const T* input,
 // Use shared memory tiles to swap dimension-1 and dimension-2 of a 3D tensor,
 // where dimensions are zero-based: output[i][j][k] = input[i][k][j].
 //
-// Each thread block operates on a single tile, a square of dimensions TileSize
-// x TileSize.  We require that the thread block's X dimension equals TileSize,
-// and its Y dimension equals NumSubTiles.
+// Each thread block operates on a single tile, a rectangle of dimensions
+// TileSizeI x TileSizeJ.
 //
-// For best performance, you should probably set TileSize equal to the number of
-// threads in a warp (32 in nvidia GPUs).  With a TileSize of 32, NumSubTiles ==
-// 4 or 8 seems to get the best performance on K40 GPUs.
-template <typename T, int TileSize, int NumSubTiles, bool conjugate = false>
-__global__ void SwapDimension1And2InTensor3UsingTiles(const T* input,
-                                                      Dimension<3> input_dims,
-                                                      T* output) {
-  // One extra line in the inner dimension to avoid share memory bank conflict.
-  __shared__ T shared_memory_tile[TileSize][TileSize + 1];
-
-  static_assert(TileSize % NumSubTiles == 0,
-                "TileSize must be divisible by NumSubTiles");
-  eigen_assert(blockDim.x == TileSize);
-  eigen_assert(blockDim.y == NumSubTiles);
+// In general, for best performance, you should probably set TileSizeI,
+// TileSizeJ equal to the number of threads in a warp (32 in nvidia GPUs).
+// With a TileSizeI, TileSizeJ of 32, NumThreads of 128 or 256 seems to get
+// the best performance on K40 GPUs.
+template <typename T, int NumThreads, int TileSizeI, int TileSizeJ,
+          bool conjugate = false>
+__global__ void SwapDimension1And2InTensor3UsingTiles(
+    const T* __restrict__ input, Dimension<3> input_dims,
+    T* __restrict__ output) {
+  eigen_assert(blockDim.x == NumThreads);
+  eigen_assert(blockDim.y == 1);
   eigen_assert(blockDim.z == 1);
   eigen_assert(gridDim.y == 1);
   eigen_assert(gridDim.z == 1);
 
-  // We break down the tile into NumSubTiles groups, so each thread processes
-  // kSubTileSize elements (except at the edges of the input).
-  const int kSubTileSize = TileSize / NumSubTiles;
+  constexpr int ReadRowPerPass = NumThreads / TileSizeJ;
+  constexpr int WriteRowPerPass = NumThreads / TileSizeI;
+  // One extra line in the inner dimension to avoid share memory bank conflict.
+  __shared__ T shared_memory_tile[TileSizeI][TileSizeJ + 1];
 
   int x = threadIdx.x;
 
@@ -259,8 +259,8 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(const T* input,
 
   Dimension<3> input_dims_in_tiles = {
       input_dims[0],
-      (input_dims[1] + TileSize - 1) / TileSize,
-      (input_dims[2] + TileSize - 1) / TileSize,
+      (input_dims[1] + TileSizeI - 1) / TileSizeI,
+      (input_dims[2] + TileSizeJ - 1) / TileSizeJ,
   };
 
   Index<3> input_tile_index =
@@ -268,32 +268,58 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(const T* input,
 
   Index<3> input_tile_origin = {
       input_tile_index[0],
-      input_tile_index[1] * TileSize,
-      input_tile_index[2] * TileSize,
+      input_tile_index[1] * TileSizeI,
+      input_tile_index[2] * TileSizeJ,
   };
 
   int input_origin_flat_index =
       TensorIndexToFlat(input_tile_origin, input_dims);
 
-  int tile_width = TileSize;
+  bool full_tile = true;
+  int tile_width = TileSizeJ;
+
   // Only the last row or column may not have the full size.
   if (input_tile_index[2] == input_dims_in_tiles[2] - 1) {
-    tile_width = input_dims[2] - (input_dims_in_tiles[2] - 1) * TileSize;
+    tile_width = input_dims[2] - (input_dims_in_tiles[2] - 1) * TileSizeJ;
+    full_tile &= false;
   }
-  int tile_height = TileSize;
+
+  int tile_height = TileSizeI;
+
   if (input_tile_index[1] == input_dims_in_tiles[1] - 1) {
-    tile_height = input_dims[1] - (input_dims_in_tiles[1] - 1) * TileSize;
+    tile_height = input_dims[1] - (input_dims_in_tiles[1] - 1) * TileSizeI;
+    full_tile &= false;
   }
 
-  int input_flat_index = input_origin_flat_index + x;
-  int y_start = static_cast<int>(threadIdx.y) * kSubTileSize;
+  // Calculate effective thread number. This ensures that we use the largest
+  // number of threads available to form a regular thread block with no
+  // trailing incomplete lines.
+  constexpr int in_effective_thread_num = NumThreads / TileSizeJ * TileSizeJ;
 
-  // Load the data from input memory to the shared memory tile.
-  if (x < tile_width) {
-    int y_end = min(y_start + kSubTileSize, tile_height);
-    for (int y = y_start; y < y_end; y++) {
-      shared_memory_tile[y][x] = maybe_conj<T, conjugate>::run(
-          input[input_flat_index + y * input_dims[2]]);
+  if (x < in_effective_thread_num) {
+    // Orient the logical thread block with respect to the input array.
+    // ie. align the contiguous dimension of thread blocks with the contiguous
+    // dimension of the input array.
+    int ti = x / TileSizeJ;
+    int tj = x % TileSizeJ;
+    int input_index = input_origin_flat_index + ti * input_dims[2] + tj;
+    int input_increment = ReadRowPerPass * input_dims[2];
+
+    if (full_tile) {
+#pragma unroll
+      for (int i_loc = ti; i_loc < (TileSizeI); i_loc += ReadRowPerPass) {
+        shared_memory_tile[i_loc][tj] =
+            maybe_conj<T, conjugate>::run(input[input_index]);
+        input_index += input_increment;
+      }
+    } else {
+      if (tj < tile_width) {
+        for (int i_loc = ti; i_loc < (tile_height); i_loc += ReadRowPerPass) {
+          shared_memory_tile[i_loc][tj] =
+              maybe_conj<T, conjugate>::run(input[input_index]);
+          input_index += input_increment;
+        }
+      }
     }
   }
 
@@ -307,101 +333,36 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(const T* input,
 
   Index<3> output_tile_origin = {
       output_tile_index[0],
-      output_tile_index[1] * TileSize,
-      output_tile_index[2] * TileSize,
+      output_tile_index[1] * TileSizeJ,
+      output_tile_index[2] * TileSizeI,
   };
 
   int output_origin_flat_index =
       TensorIndexToFlat(output_tile_origin, output_dims);
 
-  int output_flat_index = output_origin_flat_index + x;
+  constexpr int out_effective_thread_num = NumThreads / TileSizeI * TileSizeI;
 
-  // Load the data from the shared memory tile to the output memory.
-  if (x < tile_height) {
-    int y_end = min(y_start + kSubTileSize, tile_width);
-    for (int y = y_start; y < y_end; y++) {
-      output[output_flat_index + y * output_dims[2]] = shared_memory_tile[x][y];
-    }
-  }
-}
+  if (x < out_effective_thread_num) {
+    // Re-orient the logical thread block with respect to the output array.
+    // ie. align the contiguous dimension of thread blocks with contiguous
+    // dimension of the output array.
+    int ti = x / TileSizeI;
+    int tj = x % TileSizeI;
+    int output_index = output_origin_flat_index + ti * output_dims[2] + tj;
+    int output_increment = WriteRowPerPass * output_dims[2];
 
-// Use shared memory tiles to swap dimension-1 and dimension-2 of a 3D tensor
-// when only one of the dimension sizes is smaller than 16,
-// where dimensions are zero-based: output[i][j][k] = input[i][k][j].
-//
-// small_dim = the_smaller_dimension_size
-// large_dim = the_larger_dimension_size
-// tile_num_per_block = blockDim.x
-// kTileLength = small_dim
-//
-// Each thread block operates on a single rectangle tile, where its width is
-// kTileLength (we currently set it to 64) and its height is small_dim,
-// We set the thread block's X dimension to be tile_num_per_block, and its Y
-// and Z to be one.
-template <typename T, int ShmemSize, bool SmallDim2, bool conjugate = false>
-__global__ void SwapDimension1And2InTensor3SmallDim(const T* input,
-                                                    int batch_per_block,
-                                                    Dimension<3> input_dims,
-                                                    T* output) {
-  // TODO(yangzihao) avoid share memory bank conflict.
-  __shared__ T shared_memory_tile[ShmemSize];
-
-  eigen_assert(blockDim.y == 1);
-  eigen_assert(blockDim.z == 1);
-  eigen_assert(gridDim.z == 1);
-
-  int block_offset = blockIdx.x * blockDim.x;
-
-  int x = threadIdx.x;
-  int tile_height = blockDim.x;
-
-  // Get tile height, width, and thread/block origin indices.
-  int small_dim = SmallDim2 ? input_dims[2] : input_dims[1];
-  int large_dim = SmallDim2 ? input_dims[1] : input_dims[2];
-
-  int global_offset = small_dim * large_dim * (blockIdx.y * batch_per_block) +
-                      (SmallDim2 ? block_offset * small_dim : block_offset);
-  if (global_offset >= (input_dims[0] * input_dims[1] * input_dims[2])) return;
-
-  for (int batch = 0; batch < batch_per_block; ++batch) {
-    int block_origin_idx =
-        small_dim * large_dim * (blockIdx.y * batch_per_block + batch);
-    int thread_origin_idx =
-        block_origin_idx +
-        (SmallDim2 ? block_offset * small_dim : block_offset) + x;
-
-    if (block_offset + blockDim.x > large_dim) {
-      tile_height = large_dim - block_offset;
-    }
-
-    __syncthreads();
-
-    // Load a continuous memory region to shared memory tile.
-    if (x < tile_height) {
-      for (int y = 0; y < small_dim; y++) {
-        int shmem_index =
-            SmallDim2 ? (x + y * tile_height) : (x * small_dim + y);
-        shared_memory_tile[shmem_index] = maybe_conj<T, conjugate>::run(
-            ldg(input + thread_origin_idx +
-                y * (SmallDim2 ? tile_height : large_dim)));
+    if (full_tile) {
+#pragma unroll
+      for (int i_loc = ti; i_loc < (TileSizeJ); i_loc += WriteRowPerPass) {
+        output[output_index] = shared_memory_tile[tj][i_loc];
+        output_index += output_increment;
       }
-    }
-
-    __syncthreads();
-
-    // Get block origin index for output array.
-    int output_block_offset = block_origin_idx;
-    int output_block_idx = SmallDim2 ? block_offset : block_offset * small_dim;
-    int output_block_origin_idx = output_block_offset + output_block_idx;
-
-    // Store the transposed memory region in shared memory to device.
-    if (x < tile_height) {
-      for (int y = 0; y < small_dim; y++) {
-        int output_idx = output_block_origin_idx + x +
-                         y * (SmallDim2 ? large_dim : tile_height);
-        int shmem_index =
-            SmallDim2 ? (x * small_dim + y) : (x + y * tile_height);
-        output[output_idx] = shared_memory_tile[shmem_index];
+    } else {
+      if (tj < tile_height) {
+        for (int i_loc = ti; i_loc < (tile_width); i_loc += WriteRowPerPass) {
+          output[output_index] = shared_memory_tile[tj][i_loc];
+          output_index += output_increment;
+        }
       }
     }
   }
@@ -548,6 +509,382 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
   }
 };
 
+// We want std::equal_to and std::greater, but they're not constexpr until
+// C++14.
+struct EqualTo {
+  constexpr bool operator()(int a, int b) const { return a == b; }
+};
+
+struct GreaterThan {
+  constexpr bool operator()(int a, int b) const { return a > b; }
+};
+
+// For each data type, the tile size possibility frontier denotes the tile size
+// combinations that consume the most computational resources constrained by
+// - number of threads per SM limit,
+// - limit on size of the short dimension (<=15) due to the definition of
+//   narrow matrix,
+// - shared memory limit and
+// - some experimentally determined, type-specific constraint on the product of
+//   two side lengths to increase grid-level parallelism.
+//
+// A tile size combination lies on the frontier if and only if one or more
+// constraint mentioned above is hit. Tile size combinations lying outside this
+// frontier are either not possible, or are slower than the alternatives.
+//
+// It is instrumental to consider, for each data type, two subsets of the
+// corresponding frontier:
+// - long side frontier: the union of the biggest tile size combination for
+//   each legal long side len.
+// - non long side frontier: the frontier set minus the long side frontier.
+//
+// TileSizePossibilityFrontierCheck defines the frontier using only the long
+// side frontier tile size combinations (since one can easily extrapolate
+// the entire frontier from this subset). It serves as a utility function
+// to help us determine where a tile size combination of interest lies with
+// resepect to the frontier.
+template <typename Op>
+constexpr bool TileSizePossibilityFrontierCheck(int TileLongSide,
+                                                int TileShortSide,
+                                                int size_of_t, Op op) {
+  // clang-format off
+
+  return (size_of_t == 16 && ((TileLongSide == 32   && op(TileShortSide, 4))  ||
+                             (TileLongSide == 64   && op(TileShortSide, 4))  ||
+                             (TileLongSide == 128  && op(TileShortSide, 4))  ||
+                             (TileLongSide == 256  && op(TileShortSide, 2)))) ||
+          (size_of_t == 8 && ((TileLongSide == 32   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 64   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 128  && op(TileShortSide, 8))  ||
+                             (TileLongSide == 256  && op(TileShortSide, 4))  ||
+                             (TileLongSide == 512  && op(TileShortSide, 2)))) ||
+          (size_of_t == 4 && ((TileLongSide == 32   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 64   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 128  && op(TileShortSide, 15)) ||
+                             (TileLongSide == 256  && op(TileShortSide, 8))  ||
+                             (TileLongSide == 512  && op(TileShortSide, 4))  ||
+                             (TileLongSide == 1024 && op(TileShortSide, 2)))) ||
+          (size_of_t == 2 && ((TileLongSide == 32   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 64   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 128  && op(TileShortSide, 15)) ||
+                             (TileLongSide == 256  && op(TileShortSide, 8))  ||
+                             (TileLongSide == 512  && op(TileShortSide, 4))  ||
+                             (TileLongSide == 1024 && op(TileShortSide, 2)))) ||
+          (size_of_t == 1 && ((TileLongSide == 32   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 64   && op(TileShortSide, 15)) ||
+                             (TileLongSide == 128  && op(TileShortSide, 15)) ||
+                             (TileLongSide == 256  && op(TileShortSide, 8))  ||
+                             (TileLongSide == 512  && op(TileShortSide, 4))  ||
+                             (TileLongSide == 1024 && op(TileShortSide, 2))));
+
+  // clang-format on
+}
+
+constexpr bool TileSizeOnLongSideFrontier(int TileLongSide, int TileShortSide,
+                                          int size_of_t) {
+  return TileSizePossibilityFrontierCheck(TileLongSide, TileShortSide,
+                                          size_of_t, EqualTo());
+}
+constexpr bool TileSizeOutsideFrontier(int TileLongSide, int TileShortSide,
+                                       int size_of_t) {
+  return TileSizePossibilityFrontierCheck(TileLongSide, TileShortSide,
+                                          size_of_t, GreaterThan());
+}
+constexpr bool TileSizeOnNonLongSideFrontier(int TileLongSide,
+                                             int TileShortSide, int size_of_t) {
+  // For a tile size combination (longside, shortside), lying on the frontier
+  // implies that (longside, shortside) is on or within the frontier but
+  // (longside*2, shortside) or (longside, shortside+1) is not. With the above
+  // critereon, we simply need to use !TileSizeOnLongSideFrontier to ensure that
+  // it is not on the long side frontier.
+  return !TileSizeOutsideFrontier(TileLongSide, TileShortSide, size_of_t) &&
+         (TileSizeOutsideFrontier(TileLongSide * 2, TileShortSide, size_of_t) ||
+          TileSizeOutsideFrontier(TileLongSide, TileShortSide + 1,
+                                  size_of_t)) &&
+         !TileSizeOnLongSideFrontier(TileLongSide, TileShortSide, size_of_t);
+}
+
+// Helper function to launch a batch narrow matirx transpose kernel.
+template <typename T, int TileLongSide, int TileShortSide>
+void LaunchBatchNarrowMatrixTransposeKernel(
+    const GPUDevice& d, int tile_size_i, int tile_size_j, int total_tiles_count,
+    const T* input, const Dimension<3>& input_dims, T* output) {
+  constexpr int NumThreads = TileLongSide;
+  if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide) {
+    SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileLongSide,
+                                          TileShortSide>
+        <<<total_tiles_count, NumThreads, 0, d.stream()>>>(input, input_dims,
+                                                           output);
+  } else {
+    SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileShortSide,
+                                          TileLongSide>
+        <<<total_tiles_count, NumThreads, 0, d.stream()>>>(input, input_dims,
+                                                           output);
+  }
+}
+
+// Recursive template function to search, in a trial-and-error manner, for the
+// minimum tile size configuration satisfying the requested tile side lengths.
+// An important invariant of this search procedure is that for an unsatisfied
+// request, we always try doubling the long side len first, and only after
+// the request is satisfied for the long side len do we begin incrementing
+// the short side len.
+//
+// We have three specializations of this search function depending on where the
+// current tile size combination lies with respect to the frontier.
+// - It lies within the frontier. If request is not satisfied, for the next tile
+// size combination, we first try doubling the long side len and if that does
+// not work, we then increment the short side len.
+// - It lies on the non long side frontier. If the request is not satisfied, we
+// can only increment the short side len.
+// - It lies on the long side frontier. We launch the kernel without checking if
+// the request is satisfied or not.
+template <typename T, int TileLongSide, int TileShortSide,
+          typename dummy = void>
+struct BatchNarrowMatrixTransposeDispatcher {
+  static void DoIt(const GPUDevice& d, int tile_size_i, int tile_size_j,
+                   int total_tiles_count, const T* input,
+                   const Dimension<3>& input_dims, T* output) {
+    static_assert(
+        (TileLongSide & (TileLongSide - 1)) == 0,
+        "The length of the longer side of the tile is always a power of 2.");
+    bool request_satisfied = max(tile_size_i, tile_size_j) <= TileLongSide &&
+                             min(tile_size_i, tile_size_j) <= TileShortSide;
+
+    if (request_satisfied) {
+      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+          d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
+          output);
+      return;
+    }
+
+    // If the execution reaches here, then the kernel was not launched; we then
+    // determine whether it is the long side or the short side that falls short
+    // of the request and increase that parameter accordingly.
+    const bool long_side_request_not_satisfied =
+        max(tile_size_i, tile_size_j) > TileLongSide;
+
+    if (long_side_request_not_satisfied) {
+      BatchNarrowMatrixTransposeDispatcher<
+          T, TileLongSide * 2, TileShortSide>::DoIt(d, tile_size_i, tile_size_j,
+                                                    total_tiles_count, input,
+                                                    input_dims, output);
+    } else {
+      BatchNarrowMatrixTransposeDispatcher<
+          T, TileLongSide, TileShortSide + 1>::DoIt(d, tile_size_i, tile_size_j,
+                                                    total_tiles_count, input,
+                                                    input_dims, output);
+    }
+  }
+};
+
+template <typename T, int TileLongSide, int TileShortSide>
+struct BatchNarrowMatrixTransposeDispatcher<
+    T, TileLongSide, TileShortSide,
+    typename std::enable_if<TileSizeOnNonLongSideFrontier(
+                                TileLongSide, TileShortSide, sizeof(T)),
+                            void>::type> {
+  static void DoIt(const GPUDevice& d, int tile_size_i, int tile_size_j,
+                   int total_tiles_count, const T* input,
+                   const Dimension<3>& input_dims, T* output) {
+    static_assert(
+        (TileLongSide & (TileLongSide - 1)) == 0,
+        "The length of the longer side of the tile is always a power of 2.");
+    bool request_satisfied = max(tile_size_i, tile_size_j) <= TileLongSide &&
+                             min(tile_size_i, tile_size_j) <= TileShortSide;
+
+    if (request_satisfied) {
+      LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+          d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
+          output);
+      return;
+    }
+
+    // If the execution reaches here, then the kernel was not launched; since
+    // we are on the non long side frontier, we increment the short dimension
+    // and try again.
+    BatchNarrowMatrixTransposeDispatcher<
+        T, TileLongSide, TileShortSide + 1>::DoIt(d, tile_size_i, tile_size_j,
+                                                  total_tiles_count, input,
+                                                  input_dims, output);
+  }
+};
+
+template <typename T, int TileLongSide, int TileShortSide>
+struct BatchNarrowMatrixTransposeDispatcher<
+    T, TileLongSide, TileShortSide,
+    typename std::enable_if<TileSizeOnLongSideFrontier(
+                                TileLongSide, TileShortSide, sizeof(T)),
+                            void>::type> {
+  static void DoIt(const GPUDevice& d, int tile_size_i, int tile_size_j,
+                   int total_tiles_count, const T* input,
+                   const Dimension<3>& input_dims, T* output) {
+    static_assert(
+        (TileLongSide & (TileLongSide - 1)) == 0,
+        "The length of the longer side of the tile is always a power of 2.");
+
+    LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
+        d, tile_size_i, tile_size_j, total_tiles_count, input, input_dims,
+        output);
+  }
+};
+
+// This function tries to recover, in a brute force way, the frontier defined in
+// TileSizePossibilityFrontierCheck as a vector of tile size combinations lying
+// on the long side frontier. This vector is sufficient to determine the entire
+// frontier.
+//
+// Note that if one changes the frontier definition in
+// TileSizePossibilityFrontierCheck and forgets to set the largest short
+// side len of the largest legal long side len to 2, this function will fail
+// and crash the program.
+template <int SizeOfT>
+const std::vector<std::pair<int, int>>& GetTileSizesFrontier() {
+  static_assert(
+      SizeOfT <= 16,
+      "Currently, only data types of sizes 16 bytes or less are supported.");
+  static_assert((SizeOfT & (SizeOfT - 1)) == 0,
+                "Data types must have sizes that are powers of 2.");
+
+  // Expensive work to populate sizes, lazily run in a thread-safe
+  // manner the first time GetTileSizesFrontier<N> is called.
+  static auto* frontier = [] {
+    auto* frontier = new std::vector<std::pair<int, int>>();
+    const int kMaxLongSideLen = 1024;
+    const int kMaxShortSideLen = 15;
+    for (int long_side = 32; long_side <= kMaxLongSideLen; long_side *= 2) {
+      for (int short_side = 2; short_side <= kMaxShortSideLen;
+           short_side += 1) {
+        if (TileSizeOnLongSideFrontier(long_side, short_side, SizeOfT)) {
+          // The current combination lies on the frontier, thus we
+          // add it to the frontier definition.
+          frontier->push_back(std::make_pair(long_side, short_side));
+
+          // The long side length is the largest one allowed iff its
+          // corresponding short side length is 2.
+          if (short_side == 2) return frontier;
+
+          // We have exhausted all the possibilities in the frontier
+          // with the given long side length.
+          break;
+        }
+      }
+    }
+    LOG(FATAL)
+        << "The corresponding short side length of the largest long side "
+           "length has to be 2.";
+  }();
+  return *frontier;
+}
+
+// Helper structs to help determine which data type to use given the size of
+// the matrix data type. A transpose of elements of size N will use a kernel
+// which operates on an array of TransposeElemType<N>::type.
+template <int ElemBytes>
+struct TransposeElemType;
+template <>
+struct TransposeElemType<1> {
+  using type = uint8;
+};
+template <>
+struct TransposeElemType<2> {
+  using type = uint16;
+};
+template <>
+struct TransposeElemType<4> {
+  using type = uint32;
+};
+template <>
+struct TransposeElemType<8> {
+  using type = uint64;
+};
+template <>
+struct TransposeElemType<16> {
+  using type = float4;
+};
+
+// A helper function to make RunSwapDimension1And2InTensor3 concise. This
+// helper function looks at the data type and input matrix sizes and decides
+// the thread numbers and tile sizes to use.
+template <typename T, bool conjugate = false>
+void SwapDimension1And2InTensor3WithNarrowMatrices(
+    const GPUDevice& d, const T* input, const Dimension<3>& input_dims,
+    T* output, const int kMinDimensionToUseTiles) {
+  // Get available tile sizes here for the data type requested:
+  const auto& tile_spec = GetTileSizesFrontier<sizeof(T)>();
+
+  int tile_long_side_len = 0;
+  int tile_short_side_len = 0;
+  float lowest_cost = std::numeric_limits<float>::max();
+  int data_long_side = max(input_dims[1], input_dims[2]);
+
+  for (auto tile_size_pair : tile_spec) {
+    int proposed_tile_long_side_len = tile_size_pair.first;
+
+    // Number of threads that will not be doing anything useful when reading
+    // the matrix because the thread block size is bigger than the data block
+    // size.
+    int num_wasted_threads =
+        data_long_side - MathUtil::FloorOfRatio<int>(
+                             data_long_side, proposed_tile_long_side_len) *
+                             proposed_tile_long_side_len;
+
+    int num_full_tiles = MathUtil::FloorOfRatio<int>(
+        data_long_side, proposed_tile_long_side_len);
+
+    float cost = 0;
+
+    // However, if we can execute two or more full tiles, then we gladly
+    // accept any number of wasted threads and ignore its cost.
+    if (num_full_tiles <= 1) cost = num_wasted_threads;
+
+    // Using less than or equal to here because given the same cost, we
+    // would like to launch as many threads as possible.
+    if (cost <= lowest_cost) {
+      tile_long_side_len = proposed_tile_long_side_len;
+      tile_short_side_len = tile_size_pair.second;
+      lowest_cost = cost;
+    }
+  }
+
+  // Request tile sizes such that the longer side of threadblock aligns with
+  // the longer side of input data block to maximize read throughput.
+  // The ideal tile shape is one where the length of the shorter side of the
+  // tile is equal to the length of the shorter side of the input matrix.
+  int requested_tile_size_i = input_dims[1] >= kMinDimensionToUseTiles
+                                  ? tile_long_side_len
+                                  : input_dims[1];
+  int requested_tile_size_j = input_dims[1] >= kMinDimensionToUseTiles
+                                  ? input_dims[2]
+                                  : tile_long_side_len;
+
+  // Truncate the shorter size requested according to the manual limit set in
+  // tile_spec to make sure that we do not launch configurations violating
+  // hardware limits.
+  requested_tile_size_i = requested_tile_size_i == tile_long_side_len
+                              ? tile_long_side_len
+                              : min(requested_tile_size_i, tile_short_side_len);
+  requested_tile_size_j = requested_tile_size_j == tile_long_side_len
+                              ? tile_long_side_len
+                              : min(requested_tile_size_j, tile_short_side_len);
+
+  Dimension<3> input_dims_in_tiles = {
+      input_dims[0],
+      MathUtil::CeilOfRatio<int>(input_dims[1], requested_tile_size_i),
+      MathUtil::CeilOfRatio<int>(input_dims[2], requested_tile_size_j),
+  };
+
+  int total_tiles_count =
+      input_dims_in_tiles[0] * input_dims_in_tiles[1] * input_dims_in_tiles[2];
+
+  using ElemType = typename TransposeElemType<sizeof(T)>::type;
+  static_assert(alignof(T) >= alignof(ElemType), "Unexpected data alignment.");
+  BatchNarrowMatrixTransposeDispatcher<ElemType, 32, 2>::DoIt(
+      d, requested_tile_size_i, requested_tile_size_j, total_tiles_count,
+      reinterpret_cast<const ElemType*>(input), input_dims,
+      reinterpret_cast<ElemType*>(output));
+}
+
 // Launch the GPU kernel that would swap dimension-1 and dimension-2 in a
 // 3D tensor. It looks at the shape of the incoming data, and decides the best
 // strategy to launch.
@@ -558,60 +895,35 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
   // If one dimension is trivial, use SmallDim kernel for swapping.
   // Otherwise, the trivial swapping relying on the ldg cache is more efficient.
   static const int kMinDimensionToUseTiles = 16;
-  bool use_tiles = (input_dims[1] >= kMinDimensionToUseTiles &&
-                    input_dims[2] >= kMinDimensionToUseTiles);
-  bool use_small_dim = ((input_dims[1] >= kMinDimensionToUseTiles &&
-                         input_dims[2] < kMinDimensionToUseTiles)) ||
-                       ((input_dims[1] < kMinDimensionToUseTiles &&
-                         input_dims[2] >= kMinDimensionToUseTiles));
-  static const int NumSubTiles = 8;
+  static const int kMinDimensionToUseRectTiles = 96;
 
-  if (use_tiles) {
-    static const int TileSize = 32;
-    Dimension<3> input_dims_in_tiles = {
-        input_dims[0],
-        (input_dims[1] + TileSize - 1) / TileSize,
-        (input_dims[2] + TileSize - 1) / TileSize,
-    };
-    int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
-                            input_dims_in_tiles[2];
-    // We get best performance when TileSize is the number of threads in a warp
+  bool large_matrix = input_dims[1] >= kMinDimensionToUseTiles &&
+                      input_dims[2] >= kMinDimensionToUseTiles;
+  bool narrow_matrix = input_dims[1] >= kMinDimensionToUseRectTiles ||
+                       input_dims[2] >= kMinDimensionToUseRectTiles;
+  if (large_matrix) {
+    // We get best performance when kTileSize is the number of threads in a warp
     // (32 on our GPUs) and NumSubTiles is 8, so our block size is 8 * 32 = 256
     // threads.
-    SwapDimension1And2InTensor3UsingTiles<T, TileSize, NumSubTiles, conjugate>
-        <<<total_tiles_count, dim3(TileSize, NumSubTiles), 0, d.stream()>>>(
-            input, input_dims, output);
-  } else if (use_small_dim) {
-    // When only one of the dimensions is smaller than kMinDimensionToUseTiles,
-    // we use one block to process a rectangle region with the size of
-    // kTileLength * small_dim. We found that when set kTileLength to 64 on
-    // TitanX Maxwell GPU, it achieves the best performance.
-    //              large_dim
-    //            +---------------...--------+
-    //            |            |        |    |
-    // small_dim  |            |  ...   |    |
-    //            |            |        |    |
-    //            +--------------...---------+
-    //            \----- ------/         \- -/
-    //                  V                  V
-    //    kTileLength(tile_height)    tile_height
-    static const int kTileLength = 64;
-    static const int kGridDimY = 65535;
-    int large_dim = std::max(input_dims[2], input_dims[1]);
-    int tile_num_per_block = (large_dim + kTileLength - 1) / kTileLength;
-    int grid_dim_y = std::min(input_dims[0], kGridDimY);
-    int batch_per_block = (input_dims[0] + grid_dim_y - 1) / grid_dim_y;
-    if (input_dims[2] < input_dims[1]) {
-      SwapDimension1And2InTensor3SmallDim<
-          T, kTileLength * kMinDimensionToUseTiles, true, conjugate>
-          <<<dim3(tile_num_per_block, grid_dim_y), kTileLength, 0,
-             d.stream()>>>(input, batch_per_block, input_dims, output);
-    } else {
-      SwapDimension1And2InTensor3SmallDim<
-          T, kTileLength * kMinDimensionToUseTiles, false, conjugate>
-          <<<dim3(tile_num_per_block, grid_dim_y), kTileLength, 0,
-             d.stream()>>>(input, batch_per_block, input_dims, output);
-    }
+    constexpr int kTileSize = 32;
+    constexpr int kNumThreads = 256;
+
+    Dimension<3> input_dims_in_tiles = {
+        input_dims[0],
+        MathUtil::CeilOfRatio<int>(input_dims[1], kTileSize),
+        MathUtil::CeilOfRatio<int>(input_dims[2], kTileSize),
+    };
+
+    int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
+                            input_dims_in_tiles[2];
+    SwapDimension1And2InTensor3UsingTiles<T, kNumThreads, kTileSize, kTileSize,
+                                          conjugate>
+        <<<total_tiles_count, kNumThreads, 0, d.stream()>>>(input, input_dims,
+                                                            output);
+
+  } else if (narrow_matrix) {
+    SwapDimension1And2InTensor3WithNarrowMatrices<T, conjugate>(
+        d, input, input_dims, output, kMinDimensionToUseTiles);
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_element_count, d);

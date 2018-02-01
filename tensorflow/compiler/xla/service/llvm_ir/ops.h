@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
 
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
@@ -40,11 +40,24 @@ bool CanUpdateDynamicSliceInPlace(HloInstruction* dynamic_update_slice,
 inline bool CanEmitFusedDynamicUpdateSliceInPlace(
     HloInstruction* fusion, const BufferAssignment& assignment) {
   CHECK_EQ(fusion->opcode(), HloOpcode::kFusion);
-  return fusion->fusion_kind() == HloInstruction::FusionKind::kLoop &&
-         fusion->fused_expression_root()->opcode() ==
-             HloOpcode::kDynamicUpdateSlice &&
-         CanUpdateDynamicSliceInPlace(fusion->fused_expression_root(),
-                                      assignment);
+  HloInstruction* fused_root = fusion->fused_expression_root();
+  if (fused_root->opcode() != HloOpcode::kDynamicUpdateSlice ||
+      fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
+    return false;
+  }
+  // Walk DynamicUpdateSlice operand(0) to fused parameter and get its
+  // associated operand. See if it shares an allocation with this operand.
+  HloInstruction* fusion_operand;
+  ShapeIndex index;
+  std::tie(fusion_operand, index) =
+      fused_root->mutable_operand(0)->LatestNonGteAncestorAndIndex();
+  if (fusion_operand->opcode() != HloOpcode::kParameter) {
+    return false;
+  }
+  auto* operand = fusion->operand(fusion_operand->parameter_number());
+  return assignment.HasAllocationAt(operand, index) &&
+         assignment.HasAllocationAt(fusion, {}) &&
+         assignment.SharesSliceAtIndex(fusion, {}, operand, index);
 }
 
 // Emits IR for running the given dynamic-update-slice op in-place -- that is,
@@ -77,4 +90,4 @@ Status EmitParallelFusedDynamicUpdateSliceInPlace(
 }  // namespace llvm_ir
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_OPS_H_

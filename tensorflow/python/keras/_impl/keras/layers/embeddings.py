@@ -18,12 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import Layer
+from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 
 
 class Embedding(Layer):
@@ -58,13 +58,13 @@ class Embedding(Layer):
     output_dim: int >= 0. Dimension of the dense embedding.
     embeddings_initializer: Initializer for the `embeddings` matrix.
     embeddings_regularizer: Regularizer function applied to
-          the `embeddings` matrix.
+        the `embeddings` matrix.
     embeddings_constraint: Constraint function applied to
-          the `embeddings` matrix.
+        the `embeddings` matrix.
     mask_zero: Whether or not the input value 0 is a special "padding"
         value that should be masked out.
-        This is useful when using recurrent layers,
-        which may take variable length inputs.
+        This is useful when using recurrent layers
+        which may take variable length input.
         If this is `True` then all subsequent layers
         in the model need to support masking or an exception will be raised.
         If mask_zero is set to True, as a consequence, index 0 cannot be
@@ -81,9 +81,6 @@ class Embedding(Layer):
   Output shape:
       3D tensor with shape: `(batch_size, sequence_length, output_dim)`.
 
-  References:
-      - [A Theoretically Grounded Application of Dropout in Recurrent Neural
-        Networks](http://arxiv.org/abs/1512.05287)
   """
 
   def __init__(self,
@@ -101,19 +98,19 @@ class Embedding(Layer):
         kwargs['input_shape'] = (input_length,)
       else:
         kwargs['input_shape'] = (None,)
-    super(Embedding, self).__init__(
-        activity_regularizer=regularizers.get(activity_regularizer), **kwargs)
+    super(Embedding, self).__init__(**kwargs)
 
     self.input_dim = input_dim
     self.output_dim = output_dim
     self.embeddings_initializer = initializers.get(embeddings_initializer)
     self.embeddings_regularizer = regularizers.get(embeddings_regularizer)
+    self.activity_regularizer = regularizers.get(activity_regularizer)
     self.embeddings_constraint = constraints.get(embeddings_constraint)
     self.mask_zero = mask_zero
     self.input_length = input_length
 
+  @shape_type_conversion
   def build(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
     self.embeddings = self.add_weight(
         shape=(self.input_dim, self.output_dim),
         initializer=self.embeddings_initializer,
@@ -129,10 +126,10 @@ class Embedding(Layer):
     else:
       return K.not_equal(inputs, 0)
 
-  def _compute_output_shape(self, input_shape):
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
     if self.input_length is None:
-      return tensor_shape.TensorShape(input_shape + [self.output_dim])
+      return input_shape + (self.output_dim,)
     else:
       # input_length can be tuple if input is 3D or higher
       if isinstance(self.input_length, (list, tuple)):
@@ -149,8 +146,7 @@ class Embedding(Layer):
                        (str(self.input_length), str(input_shape)))
           elif s1 is None:
             in_lens[i] = s2
-      return tensor_shape.TensorShape(
-          (input_shape[0],) + tuple(in_lens) + (self.output_dim,))
+      return (input_shape[0],) + tuple(in_lens) + (self.output_dim,)
 
   def call(self, inputs):
     if K.dtype(inputs) != 'int32':

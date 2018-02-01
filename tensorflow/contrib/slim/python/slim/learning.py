@@ -753,9 +753,10 @@ def train(train_op,
           if logdir:
             sv.start_standard_services(sess)
         elif startup_delay_steps > 0:
+           # (use sys.maxsize because sys.maxint doesn't exist in Python 3)
           _wait_for_step(sess, global_step,
                          min(startup_delay_steps, number_of_steps or
-                             sys.maxint))
+                             sys.maxsize))
         threads = sv.start_queue_runners(sess)
         logging.info('Starting Queues.')
         if is_chief and sync_optimizer is not None:

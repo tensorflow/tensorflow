@@ -70,24 +70,6 @@ XlaContext::XlaContext(XlaCompiler* compiler, xla::ComputationBuilder* builder,
       allow_cpu_custom_calls_(allow_cpu_custom_calls),
       resolve_compile_time_constants_(resolve_compile_time_constants) {}
 
-const xla::ComputationDataHandle&
-XlaContext::GetOrCreateRuntimeContextParameter() {
-  CHECK(allow_cpu_custom_calls_);
-  if (has_context_parameter_) return context_parameter_;
-  has_context_parameter_ = true;
-
-  // Allocate the next available parameter for the context parameter.
-  int num_parameters = 0;
-  for (const XlaExpression& arg : args_) {
-    if (!arg.has_constant_value()) {
-      ++num_parameters;
-    }
-  }
-  context_parameter_ = builder_->Parameter(
-      num_parameters, xla::ShapeUtil::MakeOpaqueShape(), "tf_context");
-  return context_parameter_;
-}
-
 string XlaContext::DebugString() { return "TLA JIT context"; }
 
 // This is called by the Retval Op to associate a computed value
@@ -125,14 +107,9 @@ Status XlaContext::CreateResource(XlaResource::Kind kind, int arg_num,
                                   string name, DataType type,
                                   const xla::ComputationDataHandle& handle,
                                   XlaResource** resource) {
-  resources_.emplace_back(new XlaResource);
+  resources_.emplace_back(
+      new XlaResource(kind, arg_num, std::move(name), type, handle));
   *resource = resources_.back().get();
-  XlaResource& r = **resource;
-  r.kind = kind;
-  r.arg_num = arg_num;
-  r.name = std::move(name);
-  r.type = type;
-  r.initial_value = r.value = handle;
   return Status::OK();
 }
 
@@ -174,6 +151,20 @@ const xla::Computation* XlaContext::GetOrCreateAdd(const DataType type) {
     auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
     auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     b.Add(x, y);
+    return b.Build().ConsumeValueOrDie();
+  });
+}
+
+const xla::Computation* XlaContext::GetOrCreateMul(const DataType type) {
+  return LookupOrCreate(type, &mul_func_, [this, type] {
+    const string type_string = DataTypeString(type);
+    VLOG(1) << "Building Mul() for " << type_string;
+    xla::ComputationBuilder b(builder()->client(), "mul<" + type_string + ">");
+    xla::PrimitiveType xla_type;
+    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    b.Mul(x, y);
     return b.Build().ConsumeValueOrDie();
   });
 }

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_GRPC_VERBS_SERVICE_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_GRPC_VERBS_SERVICE_IMPL_H_
+#ifndef TENSORFLOW_CONTRIB_GRPC_VERBS_SERVICE_IMPL_H_
+#define TENSORFLOW_CONTRIB_GRPC_VERBS_SERVICE_IMPL_H_
 
 #include "grpc++/impl/codegen/async_stream.h"
 #include "grpc++/impl/codegen/async_unary_call.h"
@@ -28,15 +28,6 @@ limitations under the License.
 #include "tensorflow/contrib/verbs/verbs_service.pb.h"
 
 namespace grpc {
-
-// ensure internal namespace exists
-namespace internal {
-// bring in contents of external namespace
-using namespace ::grpc;
-}  // namespace internal
-// bring in contents of internal namespace
-using namespace internal;
-
 class CompletionQueue;
 class Channel;
 class RpcService;
@@ -70,7 +61,7 @@ class VerbsService GRPC_FINAL {
 
    private:
     std::shared_ptr< ::grpc::ChannelInterface> channel_;
-    const ::grpc::RpcMethod rpcmethod_GetRemoteAddress_;
+    const ::grpc::internal::RpcMethod rpcmethod_GetRemoteAddress_;
   };
   static std::unique_ptr<Stub> NewStub(
       const std::shared_ptr< ::grpc::ChannelInterface>& channel,
@@ -95,4 +86,4 @@ class VerbsService GRPC_FINAL {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_GRPC_VERBS_SERVICE_IMPL_H_
+#endif  // TENSORFLOW_CONTRIB_GRPC_VERBS_SERVICE_IMPL_H_

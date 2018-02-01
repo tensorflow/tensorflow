@@ -40,12 +40,13 @@ message NodeOutput {
 
 // For memory tracking.
 message MemoryStats {
-  int64 host_temp_memory_size = 1;
-  int64 device_temp_memory_size = 2;
-  int64 host_persistent_memory_size = 3;
-  int64 device_persistent_memory_size = 4;
-  repeated int64 host_persistent_tensor_alloc_ids = 5;
-  repeated int64 device_persistent_tensor_alloc_ids = 6;
+  int64 temp_memory_size = 1;
+  int64 persistent_memory_size = 3;
+  repeated int64 persistent_tensor_alloc_ids = 5;
+
+  int64 device_temp_memory_size = 2 [deprecated = true];
+  int64 device_persistent_memory_size = 4 [deprecated = true];
+  repeated int64 device_persistent_tensor_alloc_ids = 6 [deprecated = true];
 }
 
 // Time/size stats recorded for a single execution of a graph node.

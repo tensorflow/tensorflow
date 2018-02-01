@@ -1121,6 +1121,87 @@ class SparseSplitHandlerTest(test_util.TensorFlowTestCase):
     self.assertEqual(len(gains), 0)
     self.assertEqual(len(splits), 0)
 
+  def testDegenerativeCase(self):
+    with self.test_session() as sess:
+      # One data example only, one leaf and thus one quantile bucket.The same
+      # situation is when all examples have the same values. This case was
+      # causing before a failure.
+      gradients = array_ops.constant([0.2])
+      hessians = array_ops.constant([0.12])
+      example_partitions = array_ops.constant([1], dtype=dtypes.int32)
+      indices = array_ops.constant([[0, 0]], dtype=dtypes.int64)
+      values = array_ops.constant([0.58])
+      sparse_column = sparse_tensor.SparseTensor(indices, values, [1, 1])
+
+      gradient_shape = tensor_shape.scalar()
+      hessian_shape = tensor_shape.scalar()
+      class_id = -1
+
+      split_handler = ordinal_split_handler.SparseSplitHandler(
+          l1_regularization=0,
+          l2_regularization=2,
+          tree_complexity_regularization=0,
+          min_node_weight=0,
+          epsilon=0.01,
+          num_quantiles=2,
+          feature_column_group_id=0,
+          sparse_float_column=sparse_column,
+          init_stamp_token=0,
+          gradient_shape=gradient_shape,
+          hessian_shape=hessian_shape,
+          multiclass_strategy=learner_pb2.LearnerConfig.TREE_PER_CLASS)
+      resources.initialize_resources(resources.shared_resources()).run()
+
+      empty_gradients, empty_hessians = get_empty_tensors(
+          gradient_shape, hessian_shape)
+      example_weights = array_ops.ones([1, 1], dtypes.float32)
+
+      update_1 = split_handler.update_stats_sync(
+          0,
+          example_partitions,
+          gradients,
+          hessians,
+          empty_gradients,
+          empty_hessians,
+          example_weights,
+          is_active=array_ops.constant([True, True]))
+      with ops.control_dependencies([update_1]):
+        are_splits_ready = split_handler.make_splits(0, 1, class_id)[0]
+
+      with ops.control_dependencies([are_splits_ready]):
+        update_2 = split_handler.update_stats_sync(
+            1,
+            example_partitions,
+            gradients,
+            hessians,
+            empty_gradients,
+            empty_hessians,
+            example_weights,
+            is_active=array_ops.constant([True, True]))
+      with ops.control_dependencies([update_2]):
+        are_splits_ready2, partitions, gains, splits = (
+            split_handler.make_splits(1, 2, class_id))
+        are_splits_ready, are_splits_ready2, partitions, gains, splits = (
+            sess.run([
+                are_splits_ready, are_splits_ready2, partitions, gains, splits
+            ]))
+
+    # During the first iteration, inequality split handlers are not going to
+    # have any splits. Make sure that we return not_ready in that case.
+    self.assertFalse(are_splits_ready)
+    self.assertTrue(are_splits_ready2)
+
+    self.assertAllEqual([1], partitions)
+    self.assertAllEqual([0.0], gains)
+
+    split_info = split_info_pb2.SplitInfo()
+    split_info.ParseFromString(splits[0])
+    split_node = split_info.split_node.sparse_float_binary_split_default_left
+
+    self.assertEqual(0, split_node.split.feature_column)
+
+    self.assertAllClose(0.58, split_node.split.threshold)
+
 
 if __name__ == "__main__":
   googletest.main()

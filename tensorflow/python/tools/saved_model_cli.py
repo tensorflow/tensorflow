@@ -31,8 +31,10 @@ import warnings
 
 import numpy as np
 
+from six import integer_types
 from tensorflow.contrib.saved_model.python.saved_model import reader
 from tensorflow.contrib.saved_model.python.saved_model import signature_def_utils
+from tensorflow.core.example import example_pb2
 from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
@@ -152,7 +154,9 @@ def _print_tensor_info(tensor_info):
   Args:
     tensor_info: TensorInfo object to be printed.
   """
-  print('    dtype: ' + types_pb2.DataType.keys()[tensor_info.dtype])
+  print('    dtype: ' +
+        {value: key
+         for (key, value) in types_pb2.DataType.items()}[tensor_info.dtype])
   # Display shape as tuple.
   if tensor_info.tensor_shape.unknown_rank:
     shape = 'unknown_rank'
@@ -375,7 +379,7 @@ def preprocess_input_exprs_arg_string(input_exprs_str):
         'input_key=<python expression>'
 
   Returns:
-    A dictionary that maps input keys to python expressions.
+    A dictionary that maps input keys to their values.
 
   Raises:
     RuntimeError: An error when the given input string is in a bad format.
@@ -386,17 +390,75 @@ def preprocess_input_exprs_arg_string(input_exprs_str):
     if '=' not in input_exprs_str:
       raise RuntimeError('--input_exprs "%s" format is incorrect. Please follow'
                          '"<input_key>=<python expression>"' % input_exprs_str)
-    input_key, expr = input_raw.split('=')
-    input_dict[input_key] = expr
-
+    input_key, expr = input_raw.split('=', 1)
+    # ast.literal_eval does not work with numpy expressions
+    input_dict[input_key] = eval(expr)  # pylint: disable=eval-used
   return input_dict
 
 
-def load_inputs_from_input_arg_string(inputs_str, input_exprs_str):
+def preprocess_input_examples_arg_string(input_examples_str):
+  """Parses input into dict that maps input keys to lists of tf.Example.
+
+  Parses input string in the format of 'input_key1=[{feature_name:
+  feature_list}];input_key2=[{feature_name:feature_list}];' into a dictionary
+  that maps each input_key to its list of serialized tf.Example.
+
+  Args:
+    input_examples_str: A string that specifies a list of dictionaries of
+    feature_names and their feature_lists for each input.
+    Each input is separated by semicolon. For each input key:
+      'input=[{feature_name1: feature_list1, feature_name2:feature_list2}]'
+      items in feature_list can be the type of float, int, long or str.
+
+  Returns:
+    A dictionary that maps input keys to lists of serialized tf.Example.
+
+  Raises:
+    ValueError: An error when the given tf.Example is not a list.
+  """
+  input_dict = preprocess_input_exprs_arg_string(input_examples_str)
+  for input_key, example_list in input_dict.items():
+    if not isinstance(example_list, list):
+      raise ValueError(
+          'tf.Example input must be a list of dictionaries, but "%s" is %s' %
+          (example_list, type(example_list)))
+    input_dict[input_key] = [
+        _create_example_string(example) for example in example_list
+    ]
+  return input_dict
+
+
+def _create_example_string(example_dict):
+  """Create a serialized tf.example from feature dictionary."""
+  example = example_pb2.Example()
+  for feature_name, feature_list in example_dict.items():
+    if not isinstance(feature_list, list):
+      raise ValueError('feature value must be a list, but %s: "%s" is %s' %
+                       (feature_name, feature_list, type(feature_list)))
+    if isinstance(feature_list[0], float):
+      example.features.feature[feature_name].float_list.value.extend(
+          feature_list)
+    elif isinstance(feature_list[0], str):
+      example.features.feature[feature_name].bytes_list.value.extend(
+          feature_list)
+    elif isinstance(feature_list[0], integer_types):
+      example.features.feature[feature_name].int64_list.value.extend(
+          feature_list)
+    else:
+      raise ValueError(
+          'Type %s for value %s is not supported for tf.train.Feature.' %
+          (type(feature_list[0]), feature_list[0]))
+  return example.SerializeToString()
+
+
+def load_inputs_from_input_arg_string(inputs_str, input_exprs_str,
+                                      input_examples_str):
   """Parses input arg strings and create inputs feed_dict.
 
   Parses '--inputs' string for inputs to be loaded from file, and parses
   '--input_exprs' string for inputs to be evaluated from python expression.
+  '--input_examples' string for inputs to be created from tf.example feature
+  dictionary list.
 
   Args:
     inputs_str: A string that specified where to load inputs. Each input is
@@ -422,9 +484,11 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str):
         to the specified input tensor, else SavedModel CLI will assume a
         dictionary is stored in the pickle file and the value corresponding to
         the variable_name will be used.
-    input_exprs_str: A string that specified python expressions for inputs.
+    input_exprs_str: A string that specifies python expressions for inputs.
         * In the format of: '<input_key>=<python expression>'.
         * numpy module is available as np.
+    input_examples_str: A string that specifies tf.Example with dictionary.
+        * In the format of: '<input_key>=<[{feature:value list}]>'
 
   Returns:
     A dictionary that maps input tensor keys to numpy ndarrays.
@@ -439,6 +503,7 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str):
 
   inputs = preprocess_inputs_arg_string(inputs_str)
   input_exprs = preprocess_input_exprs_arg_string(input_exprs_str)
+  input_examples = preprocess_input_examples_arg_string(input_examples_str)
 
   for input_tensor_key, (filename, variable_name) in inputs.items():
     data = np.load(filename)
@@ -472,15 +537,20 @@ def load_inputs_from_input_arg_string(inputs_str, input_exprs_str):
         tensor_key_feed_dict[input_tensor_key] = data
 
   # When input is a python expression:
-  for input_tensor_key, py_expr in input_exprs.items():
+  for input_tensor_key, py_expr_evaluated in input_exprs.items():
     if input_tensor_key in tensor_key_feed_dict:
       warnings.warn(
           'input_key %s has been specified with both --inputs and --input_exprs'
           ' options. Value in --input_exprs will be used.' % input_tensor_key)
+    tensor_key_feed_dict[input_tensor_key] = py_expr_evaluated
 
-    # ast.literal_eval does not work with numpy expressions
-    tensor_key_feed_dict[input_tensor_key] = eval(py_expr)  # pylint: disable=eval-used
-
+  # When input is a tf.Example:
+  for input_tensor_key, example in input_examples.items():
+    if input_tensor_key in tensor_key_feed_dict:
+      warnings.warn(
+          'input_key %s has been specified in multiple options. Value in '
+          '--input_examples will be used.' % input_tensor_key)
+    tensor_key_feed_dict[input_tensor_key] = example
   return tensor_key_feed_dict
 
 
@@ -516,11 +586,12 @@ def run(args):
     AttributeError: An error when neither --inputs nor --input_exprs is passed
     to run command.
   """
-  if not args.inputs and not args.input_exprs:
+  if not args.inputs and not args.input_exprs and not args.input_examples:
     raise AttributeError(
-        'At least one of --inputs and --input_exprs must be required')
+        'At least one of --inputs, --input_exprs or --input_examples must be '
+        'required')
   tensor_key_feed_dict = load_inputs_from_input_arg_string(
-      args.inputs, args.input_exprs)
+      args.inputs, args.input_exprs, args.input_examples)
   run_saved_model_with_feed_dict(args.dir, args.tag_set, args.signature_def,
                                  tensor_key_feed_dict, args.outdir,
                                  args.overwrite, tf_debug=args.tf_debug)
@@ -553,7 +624,7 @@ def create_parser():
       'To show all inputs and outputs TensorInfo for a specific'
       ' SignatureDef specified by the SignatureDef key in a'
       ' MetaGraph.\n'
-      '$saved_model_cli show --dir /tmp/saved_model --tag_set serve'
+      '$saved_model_cli show --dir /tmp/saved_model --tag_set serve '
       '--signature_def serving_default\n\n'
       'To show all available information in the SavedModel\n:'
       '$saved_model_cli show --dir /tmp/saved_model --all')
@@ -587,10 +658,12 @@ def create_parser():
   run_msg = ('Usage example:\n'
              'To run input tensors from files through a MetaGraphDef and save'
              ' the output tensors to files:\n'
-             '$saved_model_cli show --dir /tmp/saved_model --tag_set serve'
+             '$saved_model_cli show --dir /tmp/saved_model --tag_set serve '
              '--signature_def serving_default '
-             '--inputs input1_key=/tmp/124.npz[x],input2_key=/tmp/123.npy'
-             '--input_exprs \'input3_key=np.ones(2)\' --outdir=/out\n\n'
+             '--inputs input1_key=/tmp/124.npz[x],input2_key=/tmp/123.npy '
+             '--input_exprs \'input3_key=np.ones(2)\' --input_examples '
+             '\'input4_key=[{"id":[26],"weights":[0.5, 0.5]}]\' '
+             '--outdir=/out\n\n'
              'For more information about input file format, please see:\n'
              'https://www.tensorflow.org/programmers_guide/saved_model_cli\n')
   parser_run = subparsers.add_parser(
@@ -618,8 +691,14 @@ def create_parser():
   msg = ('Specifying inputs by python expressions, in the format of'
          ' "<input_key>=\'<python expression>\'", separated by \';\'. '
          'numpy module is available as \'np\'. '
-         'Will override duplicate input_keys from --inputs option.')
+         'Will override duplicate input keys from --inputs option.')
   parser_run.add_argument('--input_exprs', type=str, default='', help=msg)
+  msg = (
+      'Specifying tf.Example inputs as list of dictionaries. For example: '
+      '<input_key>=[{feature0:value_list,feature1:value_list}]. Use ";" to '
+      'separate input keys. Will override duplicate input keys from --inputs '
+      'and --input_exprs option.')
+  parser_run.add_argument('--input_examples', type=str, default='', help=msg)
   parser_run.add_argument(
       '--outdir',
       type=str,

@@ -373,6 +373,7 @@ def _max_pool_grad_flops(graph, node):
   kernel_area = _list_product(kernel_shape)
   orig_out_shape = graph_util.tensor_shape_from_node_def_name(graph,
                                                               node.input[1])
+  orig_out_shape.assert_is_fully_defined()
   max_pool_ops = kernel_area * orig_out_shape.num_elements()
   return ops.OpStats("flops", max_pool_ops + orig_out_shape.num_elements())
 

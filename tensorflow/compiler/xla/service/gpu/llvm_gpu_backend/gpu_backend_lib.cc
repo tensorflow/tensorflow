@@ -34,7 +34,7 @@ limitations under the License.
 #include "llvm/Analysis/TargetTransformInfo.h"
 #include "llvm/Bitcode/BitcodeReader.h"
 #include "llvm/Bitcode/BitcodeWriter.h"
-#include "llvm/CodeGen/CommandFlags.h"
+#include "llvm/CodeGen/CommandFlags.def"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
@@ -60,6 +60,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/platform/tracing.h"
 
 namespace xla {
 namespace gpu {
@@ -76,7 +77,7 @@ static string GetLibdeviceFilename(const string& libdevice_dir_path,
   // Since CUDA 9.0, all GPU versions are included in a single file
   const char* unified_libdevice_filename = "libdevice.10.bc";
   std::vector<string> unified_libdevice_files;
-  const tensorflow::Status status = 
+  const tensorflow::Status status =
     tensorflow::Env::Default()->GetMatchingPaths(
       tensorflow::io::JoinPath(libdevice_dir_path, unified_libdevice_filename),
       &unified_libdevice_files);
@@ -342,6 +343,13 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
                                     std::pair<int, int> compute_capability,
                                     const HloModuleConfig& hlo_module_config,
                                     const string& libdevice_dir_path) {
+  // If the module has no functions or globals, there's nothing to compile. Just
+  // return an empty string.
+  if (module->empty() && module->global_empty()) {
+    VLOG(2) << "Module '" << llvm_ir::AsString(module->getName())
+            << "' is empty. Skipping compilation.";
+    return string();
+  }
   // Link the input module with libdevice, to pull in implementations of some
   // builtins.
   TF_RETURN_IF_ERROR(
@@ -432,7 +440,7 @@ StatusOr<string> CompileModuleToPtx(llvm::Module* module,
 
 // One-time module initializer.
 // Must be called only once -- DO NOT CALL DIRECTLY.
-void GPUBackendInit() {
+void GPUBackendInit(const HloModuleConfig& hlo_module_config) {
   // Feed all customized flags here, so we can override them with llvm_cl_opts
   // without redeploy the compiler for development purpose.
 
@@ -458,6 +466,8 @@ void GPUBackendInit() {
   // between those loads.
   FeedLLVMWithFlags({"-memdep-block-scan-limit=500"});
 
+  llvm_ir::InitializeLLVMCommandLineOptions(hlo_module_config);
+
   // Initialize the NVPTX target; it's the only target we link with, so call its
   // specific initialization functions instead of the catch-all InitializeAll*.
   LLVMInitializeNVPTXTarget();
@@ -477,13 +487,15 @@ StatusOr<string> CompileToPtx(llvm::Module* module,
                               const HloModuleConfig& hlo_module_config,
                               const string& libdevice_dir_path) {
   static std::once_flag backend_init_flag;
-  std::call_once(backend_init_flag, GPUBackendInit);
+  std::call_once(backend_init_flag, GPUBackendInit, hlo_module_config);
 
   string ptx;
   {
-    ScopedLoggingTimer compilation_timer(
-        "Compile module " + llvm_ir::AsString(module->getName()),
-        /*vlog_level=*/2);
+    tensorflow::port::Tracing::TraceMe annotation(
+        "Compiling IR", llvm_ir::AsString(module->getName()),
+        /*is_expensive=*/true);
+    XLA_SCOPED_LOGGING_TIMER("Compile module " +
+                             llvm_ir::AsString(module->getName()));
     TF_ASSIGN_OR_RETURN(
         ptx, CompileModuleToPtx(module, compute_capability, hlo_module_config,
                                 libdevice_dir_path));

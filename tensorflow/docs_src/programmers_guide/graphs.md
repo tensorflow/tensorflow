@@ -89,7 +89,7 @@ to all API functions in the same context.  For example:
 * Executing `v = tf.Variable(0)` adds to the graph a @{tf.Operation} that will
   store a writeable tensor value that persists between @{tf.Session.run} calls.
   The @{tf.Variable} object wraps this operation, and can be used [like a
-  tensor](#tensor-like-objects), which will read the current value of the
+  tensor](#tensor-like_objects), which will read the current value of the
   stored value. The @{tf.Variable} object also has methods such as
   @{tf.Variable.assign$`assign`} and @{tf.Variable.assign_add$`assign_add`} that
   create @{tf.Operation} objects that, when executed, update the stored value.
@@ -329,7 +329,7 @@ described below.
 * **`graph`.** By default, a new @{tf.Session} will be bound to---and only able
   to run operations in---the current default graph. If you are using multiple
   graphs in your program (see [Programming with multiple
-  graphs](programming-with-multiple-graphs) for more details), you can specify
+  graphs](#programming_with_multiple_graphs) for more details), you can specify
   an explicit @{tf.Graph} when you construct the session.
 
 * **`config`.** This argument allows you to specify a @{tf.ConfigProto} that
@@ -487,7 +487,7 @@ subgraph inside.
 ![](../images/mnist_deep.png)
 
 For more information about visualizing your TensorFlow application with
-TensorBoard, see the [TensorBoard tutorial](TODO).
+TensorBoard, see the [TensorBoard tutorial](../get_started/summaries_and_tensorboard.md).
 
 ## Programming with multiple graphs
 

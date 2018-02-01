@@ -18,18 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
 import tempfile
 
 from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.summary import summary_ops
-from tensorflow.core.util import event_pb2
+from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
-from tensorflow.python.lib.io import tf_record
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.platform import gfile
 from tensorflow.python.training import training_util
 
 
@@ -44,25 +43,39 @@ class MetricsTest(test.TestCase):
     self.assertEqual(dtypes.float64, m.dtype)
     self.assertEqual(dtypes.float64, m.result().dtype)
 
+  def testVariableCollections(self):
+    with context.graph_mode(), ops.Graph().as_default():
+      m = metrics.Mean()
+      m(1000)
+      self.assertEqual(
+          set(m.variables),
+          set(ops.get_collection(ops.GraphKeys.LOCAL_VARIABLES)))
+      self.assertEqual(
+          set(m.variables),
+          set(ops.get_collection(ops.GraphKeys.METRIC_VARIABLES)))
+
+  def testInitVariables(self):
+    m = metrics.Mean()
+    m([1, 10, 100, 1000])
+    m([10000.0, 100000.0])
+    self.assertEqual(111111.0/6, m.result().numpy())
+    m.init_variables()
+    m(7)
+    self.assertEqual(7.0, m.result().numpy())
+
   def testWriteSummaries(self):
     m = metrics.Mean()
     m([1, 10, 100])
     training_util.get_or_create_global_step()
     logdir = tempfile.mkdtemp()
-    with summary_ops.create_summary_file_writer(
+    with summary_ops.create_file_writer(
         logdir, max_queue=0,
         name="t0").as_default(), summary_ops.always_record_summaries():
       m.result()  # As a side-effect will write summaries.
 
-    self.assertTrue(gfile.Exists(logdir))
-    files = gfile.ListDirectory(logdir)
-    self.assertEqual(len(files), 1)
-    records = list(
-        tf_record.tf_record_iterator(os.path.join(logdir, files[0])))
-    self.assertEqual(len(records), 2)
-    event = event_pb2.Event()
-    event.ParseFromString(records[1])
-    self.assertEqual(event.summary.value[0].simple_value, 37.0)
+    events = summary_test_util.events_from_logdir(logdir)
+    self.assertEqual(len(events), 2)
+    self.assertEqual(events[1].summary.value[0].simple_value, 37.0)
 
   def testWeightedMean(self):
     m = metrics.Mean()
@@ -111,26 +124,21 @@ class MetricsTest(test.TestCase):
     # Verify two metrics with the same class and name don't
     # accidentally share state.
     m1 = metrics.Mean()
-    m2 = metrics.Mean()
     m1(0)
+    m2 = metrics.Mean()
     m2(2)
-    self.assertEqual(0, m1.result().numpy())
-    self.assertEqual(2, m2.result().numpy())
-    self.assertNotEqual(m1.name, m2.name)
+    self.assertAllEqual(0.0, m1.result())
+    self.assertAllEqual(2.0, m2.result())
 
   def testNamesWithSpaces(self):
     # Verify two metrics with the same class and name don't
     # accidentally share state.
     m1 = metrics.Mean("has space")
-    m2 = metrics.Mean("has space")
-    m2(2)
     m1(0)
     self.assertEqual(m1.name, "has space")
     self.assertEqual(m1.numer.name, "has_space/numer:0")
-    self.assertEqual(m2.name, "has space_1")
-    self.assertEqual(m2.numer.name, "has_space_1/numer:0")
 
-  def testGraph(self):
+  def testGraphWithPlaceholder(self):
     with context.graph_mode(), self.test_session() as sess:
       m = metrics.Mean()
       p = array_ops.placeholder(dtypes.float32)
@@ -146,19 +154,44 @@ class MetricsTest(test.TestCase):
       sess.run(accumulate, feed_dict={p: 7})
       self.assertAllEqual(m.result().eval(), 7)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testGraphAndEagerTensor(self):
+    m = metrics.Mean()
+    inputs = ops.convert_to_tensor([1.0, 2.0])
+    accumulate = m(inputs)
+    result = m.result()
+    self.evaluate(m.init_variables())
+    self.evaluate(accumulate)
+    self.assertEqual(self.evaluate(result), 1.5)
+    # Second init resets all the variables.
+    self.evaluate(m.init_variables())
+    inputs = ops.convert_to_tensor([2.0, 3.0])
+    self.evaluate(m(inputs))
+    value = m.value()
+    self.assertEqual(self.evaluate(value), 2.5)
+
   def testTwoMeansGraph(self):
     # Verify two metrics with the same class and name don't
     # accidentally share state.
-    with context.graph_mode(), self.test_session() as sess:
+    with context.graph_mode():
       m1 = metrics.Mean()
-      m2 = metrics.Mean()
-      accumulate1 = m1(0)
-      accumulate2 = m2(2)
+      m1(0)
+      with self.assertRaises(ValueError):
+        m2 = metrics.Mean()
+        m2(2)
+
+  def testMetricsChain(self):
+    with context.graph_mode(), self.test_session():
+      m1 = metrics.Mean()
+      m2 = metrics.Mean(name="m2")
+      update_m2 = m2(3.0)
+      update_m2_2 = m2(m1(1.0))
       m1.init_variables().run()
       m2.init_variables().run()
-      sess.run([accumulate1, accumulate2])
-      self.assertEqual(0, m1.result().eval())
-      self.assertEqual(2, m2.result().eval())
+      update_m2.eval()
+      update_m2_2.eval()
+      self.assertAllEqual(m2.result().eval(), 2.0)
+      self.assertAllEqual(m1.result().eval(), 1.0)
 
 
 if __name__ == "__main__":

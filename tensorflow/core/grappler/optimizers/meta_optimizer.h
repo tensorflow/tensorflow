@@ -37,6 +37,8 @@ class MetaOptimizer : public GraphOptimizer {
   Status Optimize(Cluster* cluster, const GrapplerItem& item,
                   GraphDef* optimized_graph) override;
 
+  void PrintResult();
+
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimized_graph, double result) override;
 
@@ -44,6 +46,7 @@ class MetaOptimizer : public GraphOptimizer {
   std::unique_ptr<GraphOptimizer> NewOptimizer(const string& optimizer);
   DeviceBase* const cpu_device_;  // may be NULL
   RewriterConfig cfg_;
+  std::vector<std::pair<string, string>> result_;
 };
 
 bool MetaOptimizerEnabled(const RewriterConfig& cfg);

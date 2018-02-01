@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/strings/numbers.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/regexp.h"
 
 namespace xla {
@@ -122,7 +123,7 @@ TokKind HloLexer::LexToken() {
           current_ptr_++;
           return TokKind::kArrow;
         }
-        return LexDigitOrNegative();
+        return LexNumberOrPattern();
       case '=':
         return TokKind::kEqual;
       case ',':
@@ -143,22 +144,29 @@ TokKind HloLexer::LexToken() {
         return TokKind::kLparen;
       case ')':
         return TokKind::kRparen;
+      case '/':
+        return LexComment();
+      case '"':
+        return LexString();
     }
   }
 }
 
-// Lex a shape, name, keyword, or opcode.
+// Lex a shape, name, keyword, attribute name, the dim labels pattern, and
+// other identifiers.
+//
 // shape    ::= ([a-zA-Z0-9_]*[0-9]*)\[([0-9,]*)\](?:\s*{([0-9,]*)})?
 // name     ::= [a-zA-Z_][a-zA-Z0-9_.-]*:
 // keyword  ::= HloModule, ENTRY, ...
-// opcode   ::= add, greater-than, ...
 // attribute_name ::= condition, body, dimensions, ...
+// dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
+// identifiers ::= other cases that match [a-zA-Z_][a-zA-Z0-9_.-]*
 TokKind HloLexer::LexIdentifier() {
   {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
     // 'consumable' will be advanced iff its prefix matches the pattern.
     static LazyRE2 shape_pattern = {
-        R"(^(\w*\d*)\[([\d,]*)\](?:\s*{([\d,]*)})?)"};
+        R"(^(\w*\d*)\[([\d,]*)\](?:(dense|sparse)?{([\d,]+)})?)"};
     if (RE2::Consume(&consumable, *shape_pattern)) {
       auto status_or_shape = ShapeUtil::ParseShapeString(
           StringPieceFromPointers(token_start_, consumable.begin()));
@@ -201,21 +209,29 @@ TokKind HloLexer::LexIdentifier() {
 
   KEYWORD(true);
   KEYWORD(false);
+  KEYWORD(inf);
+  KEYWORD(nan);
   KEYWORD(HloModule);
   KEYWORD(ENTRY);
   KEYWORD(ROOT);
+  KEYWORD(maximal);
+  KEYWORD(replicated);
 
 #undef KEYWORD
 
-  // See if this is an opcode.
-  auto opcode = StringToHloOpcode(identifier.ToString());
-  if (opcode.ok()) {
-    opcode_val_ = opcode.ValueOrDie();
-    return TokKind::kOpcode;
+  {
+    auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
+    static LazyRE2 dim_labels_pattern = {
+        R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
+    if (RE2::Consume(&consumable, *dim_labels_pattern)) {
+      current_ptr_ = consumable.begin();
+      str_val_.assign(token_start_, current_ptr_);
+      return TokKind::kDimLabels;
+    }
   }
 
-  current_ptr_ = token_start_ + 1;
-  return TokKind::kError;
+  str_val_ = identifier.ToString();
+  return TokKind::kIdent;
 }
 
 // Lex names after a % character.
@@ -234,19 +250,50 @@ TokKind HloLexer::LexPercent() {
   return TokKind::kError;
 }
 
-// Lex integer and floating-point values.
-// int             [-]?[0-9]+
-// fp with exp     [-]?([0-9]+|[0-9]+[.][0-9]*|[0-9]*[.][0-9]+)([eE][+-]?[0-9]+)
-// fp without exp  [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
-TokKind HloLexer::LexDigitOrNegative() {
+// Lex integer and floating-point values, -inf, and patterns for dim labels,
+// dxd (e.g. 1x2x3), and pad.
+//
+// fp with exp ::= [-]?([0-9]+|[0-9]+[.][0-9]*|[0-9]*[.][0-9]+)([eE][+-]?[0-9]+)
+// fp without exp ::= [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
+// dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
+// dxd_pattern ::= [0-9]+(x[0-9]+)+
+// pad_pattern ::=
+//   [-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*
+// int ::=  [-]?[0-9]+
+// negative inf ::= '-inf'
+TokKind HloLexer::LexNumberOrPattern() {
   auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
   static LazyRE2 float_pattern = {
-      R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|(\d+[.]\d*|\d*[.]\d+))"};
+      R"([-]?((\d+|\d+[.]\d*|\d*[.]\d+)([eE][+-]?\d+))|[-]?(\d+[.]\d*|\d*[.]\d+))"};
   if (RE2::Consume(&consumable, *float_pattern)) {
     current_ptr_ = consumable.begin();
     tensorflow::strings::safe_strtod(string(token_start_, current_ptr_).c_str(),
                                      &decimal_val_);
     return TokKind::kDecimal;
+  }
+
+  static LazyRE2 dim_labels_pattern = {
+      R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
+  static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
+  static LazyRE2 pad_pattern = {
+      R"([-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*)"};
+
+  if (RE2::Consume(&consumable, *dim_labels_pattern)) {
+    current_ptr_ = consumable.begin();
+    str_val_.assign(token_start_, current_ptr_);
+    return TokKind::kDimLabels;
+  }
+
+  if (RE2::Consume(&consumable, *dxd_pattern)) {
+    current_ptr_ = consumable.begin();
+    str_val_.assign(token_start_, current_ptr_);
+    return TokKind::kDxD;
+  }
+
+  if (RE2::Consume(&consumable, *pad_pattern)) {
+    current_ptr_ = consumable.begin();
+    str_val_.assign(token_start_, current_ptr_);
+    return TokKind::kPad;
   }
 
   static LazyRE2 int_pattern = {R"([-]?\d+)"};
@@ -257,22 +304,153 @@ TokKind HloLexer::LexDigitOrNegative() {
     return TokKind::kInt;
   }
 
+  static LazyRE2 neg_inf = {"-inf"};
+  if (RE2::Consume(&consumable, *neg_inf)) {
+    current_ptr_ = consumable.begin();
+    return TokKind::kNegInf;
+  }
+
   return TokKind::kError;
 }
 
-StringPiece HloLexer::GetCurrentLine() const {
-  const char* start = token_start_;
-  const char* end = current_ptr_;
-  if (!CanDereference(start) || !CanDereference(end)) {
+std::pair<unsigned, unsigned> HloLexer::GetLineAndColumn(LocTy location) const {
+  unsigned line_no = 1;
+  const char* start = buf_.begin();
+  const char* ptr = start;
+  if (line_no_cache_.last_query && CanDereference(line_no_cache_.last_query) &&
+      line_no_cache_.last_query <= location) {
+    ptr = line_no_cache_.last_query;
+    line_no = line_no_cache_.line_no_of_query;
+  }
+  for (; ptr != location; ptr++) {
+    if (*ptr == '\n') {
+      line_no++;
+    }
+  }
+
+  // Update the line number cache.
+  line_no_cache_.last_query = ptr;
+  line_no_cache_.line_no_of_query = line_no;
+  size_t line_offset = StringPieceFromPointers(start, ptr).rfind('\n');
+  if (line_offset == StringPiece::npos) {
+    line_offset = 0;
+  }
+  return {line_no, ptr - start - line_offset};
+}
+
+StringPiece HloLexer::GetLine(LocTy loc) const {
+  if (!CanDereference(loc)) {
     return "LINE OUT OF RANGE";
   }
-  while (start > buf_.begin() && *start != '\n') {
-    start--;
-  }
-  while (end < buf_.end() && *end != '\n') {
-    end++;
-  }
+  size_t line_start =
+      StringPieceFromPointers(buf_.begin(), loc + 1).rfind('\n');
+  const char* start = line_start == StringPiece::npos
+                          ? buf_.begin()
+                          : buf_.begin() + line_start + 1;
+  size_t line_end = StringPieceFromPointers(loc, buf_.end()).find('\n');
+  const char* end = line_end == StringPiece::npos ? buf_.end() : loc + line_end;
+
   return StringPieceFromPointers(start, end);
+}
+
+TokKind HloLexer::LexComment() {
+  auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
+  static LazyRE2 comment_pattern = {R"(\/\*.*?\*\/)"};
+  if (RE2::Consume(&consumable, *comment_pattern)) {
+    current_ptr_ = consumable.begin();
+    return TokKind::kComment;
+  }
+  return TokKind::kError;
+}
+
+// Lexes quoted string with escaping characters. If matched, the quoted string
+// will be unescaped and stored to str_val_.
+TokKind HloLexer::LexString() {
+  auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
+  static LazyRE2 escaping_pattern = {R"("([^"\\]|\\.)*")"};
+  if (RE2::Consume(&consumable, *escaping_pattern)) {
+    current_ptr_ = consumable.begin();
+    StringPiece raw =
+        StringPieceFromPointers(token_start_ + 1, current_ptr_ - 1);
+    string error;
+    if (!tensorflow::str_util::CUnescape(raw, &str_val_, &error)) {
+      LOG(ERROR) << "Failed unescaping string: " << raw << ". error: " << error;
+      return TokKind::kError;
+    }
+    return TokKind::kString;
+  }
+  return TokKind::kError;
+}
+
+string TokKindToString(TokKind kind) {
+  switch (kind) {
+    case TokKind::kEof:
+      return "kEof";
+    case TokKind::kError:
+      return "kError";
+    case TokKind::kEqual:
+      return "kEqaul";
+    case TokKind::kComma:
+      return "kComma";
+    case TokKind::kColon:
+      return "kColon";
+    case TokKind::kLsquare:
+      return "kLsquare";
+    case TokKind::kRsquare:
+      return "kRsquare";
+    case TokKind::kLbrace:
+      return "kLbrace";
+    case TokKind::kRbrace:
+      return "kRbrace";
+    case TokKind::kLparen:
+      return "kLparen";
+    case TokKind::kRparen:
+      return "kRparen";
+    case TokKind::kArrow:
+      return "kArrow";
+    case TokKind::kComment:
+      return "kComment";
+    case TokKind::kw_HloModule:
+      return "kw_HloModule";
+    case TokKind::kw_ENTRY:
+      return "kw_ENTRY";
+    case TokKind::kw_ROOT:
+      return "kw_ROOT";
+    case TokKind::kw_true:
+      return "kw_true";
+    case TokKind::kw_false:
+      return "kw_false";
+    case TokKind::kw_maximal:
+      return "kw_maximal";
+    case TokKind::kw_replicated:
+      return "kw_replicated";
+    case TokKind::kw_nan:
+      return "kw_nan";
+    case TokKind::kw_inf:
+      return "kw_inf";
+    case TokKind::kNegInf:
+      return "kNegInf";
+    case TokKind::kName:
+      return "kName";
+    case TokKind::kAttributeName:
+      return "kAttributeName";
+    case TokKind::kDimLabels:
+      return "kDimLabels";
+    case TokKind::kDxD:
+      return "kDxD";
+    case TokKind::kPad:
+      return "kPad";
+    case TokKind::kIdent:
+      return "kIdent";
+    case TokKind::kString:
+      return "kString";
+    case TokKind::kShape:
+      return "kShape";
+    case TokKind::kInt:
+      return "kInt";
+    case TokKind::kDecimal:
+      return "kDecimal";
+  }
 }
 
 }  // namespace tools

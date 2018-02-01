@@ -26,6 +26,7 @@ limitations under the License.
 
 #include "tensorflow/contrib/tpu/profiler/dump_tpu_profile.h"
 #include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
+#include "tensorflow/contrib/tpu/profiler/version.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/init_main.h"
@@ -46,10 +47,14 @@ string GetCurrentTimeStampAsString() {
   return s;
 }
 
-ProfileResponse Profile(const string& service_addr, int duration_ms) {
+ProfileResponse Profile(const string& service_addr, int duration_ms,
+                        const ProfileOptions& opts) {
   ProfileRequest request;
   request.set_duration_ms(duration_ms);
   request.set_max_events(kMaxEvents);
+  request.add_tools("input_pipeline");
+  request.add_tools("overview_page");
+  *request.mutable_opts() = opts;
   std::cout << "Limiting the number of trace events to " << kMaxEvents
             << std::endl;
   ::grpc::ClientContext context;
@@ -73,14 +78,25 @@ int main(int argc, char** argv) {
   tensorflow::string FLAGS_service_addr;
   tensorflow::string FLAGS_logdir;
   int FLAGS_duration_ms = 2000;
+  int FLAGS_num_tracing_attempts = 3;
+  bool FLAGS_include_dataset_ops = true;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("service_addr", &FLAGS_service_addr,
                        "Address of TPU profiler service e.g. localhost:8466"),
       tensorflow::Flag("logdir", &FLAGS_logdir,
-                       "Path of TensorBoard log directory e.g. /tmp/tb_log"),
+                       "Path of TensorBoard log directory e.g. /tmp/tb_log, "
+                       "gs://tb_bucket"),
       tensorflow::Flag("duration_ms", &FLAGS_duration_ms,
                        "Duration of tracing in ms. Default is 2000ms."),
+      tensorflow::Flag("num_tracing_attempts", &FLAGS_num_tracing_attempts,
+                       "Automatically retry N times when no trace event "
+                       "is collected. Default is 3."),
+      tensorflow::Flag("include_dataset_ops", &FLAGS_include_dataset_ops,
+                       "Set to false to profile longer TPU device traces."),
   };
+
+  std::cout << "Welcome to the Cloud TPU Profiler v" << TPU_PROFILER_VERSION
+            << std::endl;
 
   tensorflow::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parse_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
@@ -90,9 +106,32 @@ int main(int argc, char** argv) {
   }
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
-  int duration_ms = FLAGS_duration_ms;
-  tensorflow::ProfileResponse response =
-      tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms);
+  // Sets the minimum duration_ms and tracing attempts to one.
+  int duration_ms = std::max(FLAGS_duration_ms, 1);
+  int remaining_attempts = std::max(FLAGS_num_tracing_attempts, 1);
+  tensorflow::ProfileOptions opts;
+  opts.set_include_dataset_ops(FLAGS_include_dataset_ops);
+  tensorflow::ProfileResponse response;
+
+  while (true) {
+    std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
+              << "Remaining attempt(s): " << remaining_attempts-- << std::endl;
+    response = tensorflow::tpu::Profile(FLAGS_service_addr, duration_ms, opts);
+    if (remaining_attempts <= 0 || !response.encoded_trace().empty()) break;
+    std::cout << "No trace event is collected. Automatically retrying."
+              << std::endl
+              << std::endl;
+  }
+
+  if (response.encoded_trace().empty()) {
+    std::cout << "No trace event is collected after "
+              << FLAGS_num_tracing_attempts << " attempt(s). "
+              << "Perhaps, you want to try again (with more attempts?)."
+              << std::endl
+              << "Tip: increase number of attempts with --num_tracing_attempts."
+              << std::endl;
+  }
+
   // Use the current timestamp as the run name.
   tensorflow::string run = tensorflow::tpu::GetCurrentTimeStampAsString();
   TF_CHECK_OK(tensorflow::tpu::WriteTensorboardTPUProfile(

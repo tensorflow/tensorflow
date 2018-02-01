@@ -160,7 +160,7 @@ public class TensorFlowInferenceInterface {
       throw new RuntimeException("Failed to load model from the input stream", e);
     }
   }
-  
+
   /*
    * Construct a TensorFlowInferenceInterface with provided Graph
    *
@@ -168,7 +168,7 @@ public class TensorFlowInferenceInterface {
    */
   public TensorFlowInferenceInterface(Graph g) {
     prepareNativeRuntime();
-      
+
     // modelName is redundant here, here is for
     // avoiding error in initialization as modelName is marked final.
     this.modelName = "";
@@ -194,6 +194,13 @@ public class TensorFlowInferenceInterface {
    * @param outputNames A list of output nodes which should be filled by the inference pass.
    */
   public void run(String[] outputNames, boolean enableStats) {
+    run(outputNames, enableStats, new String[] {});
+  }
+
+  /**
+   * An overloaded version of runInference that allows supplying targetNodeNames as well
+   */
+  public void run(String[] outputNames, boolean enableStats, String[] targetNodeNames) {
     // Release any Tensors from the previous run calls.
     closeFetches();
 
@@ -202,6 +209,11 @@ public class TensorFlowInferenceInterface {
       fetchNames.add(o);
       TensorId tid = TensorId.parse(o);
       runner.fetch(tid.name, tid.outputIndex);
+    }
+
+	// Add targets.
+    for (String t : targetNodeNames) {
+      runner.addTarget(t);
     }
 
     // Run the session.
@@ -281,6 +293,22 @@ public class TensorFlowInferenceInterface {
   }
 
   // Methods for taking a native Tensor and filling it with values from Java arrays.
+
+  /**
+   * Given a source array with shape {@link dims} and content {@link src}, copy the contents into
+   * the input Tensor with name {@link inputName}. The source array {@link src} must have at least
+   * as many elements as that of the destination Tensor. If {@link src} has more elements than the
+   * destination has capacity, the copy is truncated.
+   */
+  public void feed(String inputName, boolean[] src, long... dims) {
+    byte[] b = new byte[src.length];
+
+    for (int i = 0; i < src.length; i++) {
+      b[i] = src[i] ? (byte) 1 : (byte) 0;
+    }
+
+    addFeed(inputName, Tensor.create(Boolean.class, dims, ByteBuffer.wrap(b)));
+  }
 
   /**
    * Given a source array with shape {@link dims} and content {@link src}, copy the contents into

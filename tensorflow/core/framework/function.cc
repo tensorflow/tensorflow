@@ -795,11 +795,24 @@ uint64 FunctionDefHash(const FunctionDef& fdef) {
   return h;
 }
 
-string Canonicalize(const string& funcname, AttrSlice attrs) {
+string Canonicalize(const string& funcname, AttrSlice attrs,
+                    const FunctionLibraryRuntime::InstantiateOptions& options) {
   std::vector<string> entries;
-  entries.reserve(attrs.size());
+  entries.reserve(options.target.empty() ? attrs.size() : (attrs.size() + 1));
   for (auto p : attrs) {
     entries.push_back(strings::StrCat(p.first, "=", Print(p.second)));
+  }
+  if (!options.target.empty()) {
+    entries.push_back(
+        strings::StrCat("_target", "=", str_util::CEscape(options.target)));
+  }
+  if (options.overlay_lib) {
+    entries.push_back(strings::StrCat(
+        "_overlay_lib", "=", reinterpret_cast<uintptr_t>(options.overlay_lib)));
+  }
+  if (!options.state_handle.empty()) {
+    entries.push_back(
+        strings::StrCat("_state_handle", "=", options.state_handle));
   }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
@@ -1251,8 +1264,8 @@ FunctionDef FunctionDefHelper::Define(const string& name,
     }
     for (const string& a : src.arg) {
       const auto iter = ret_index.find(a);
-      CHECK(iter != ret_index.end()) << "Node input '" << a << "' in '"
-                                     << src.ret[0] << "' of " << name;
+      CHECK(iter != ret_index.end())
+          << "Node input '" << a << "' in '" << src.ret[0] << "' of " << name;
       n->add_input(iter->second);
     }
     for (const string& d : src.dep) {

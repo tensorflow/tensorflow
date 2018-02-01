@@ -193,6 +193,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
     ],
+    tags = ["manual"],  # b/69001419
 )
 
 cuda_py_test(

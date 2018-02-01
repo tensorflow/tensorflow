@@ -49,75 +49,77 @@ MasterService::Stub::Stub(
     const std::shared_ptr< ::grpc::ChannelInterface>& channel)
     : channel_(channel),
       rpcmethod_CreateSession_(grpcMasterService_method_names[0],
-                               ::grpc::RpcMethod::NORMAL_RPC, channel),
+                               ::grpc::internal::RpcMethod::NORMAL_RPC,
+                               channel),
       rpcmethod_ExtendSession_(grpcMasterService_method_names[1],
-                               ::grpc::RpcMethod::NORMAL_RPC, channel),
+                               ::grpc::internal::RpcMethod::NORMAL_RPC,
+                               channel),
       rpcmethod_PartialRunSetup_(grpcMasterService_method_names[2],
-                                 ::grpc::RpcMethod::NORMAL_RPC, channel),
+                                 ::grpc::internal::RpcMethod::NORMAL_RPC,
+                                 channel),
       rpcmethod_RunStep_(grpcMasterService_method_names[3],
-                         ::grpc::RpcMethod::NORMAL_RPC, channel),
+                         ::grpc::internal::RpcMethod::NORMAL_RPC, channel),
       rpcmethod_CloseSession_(grpcMasterService_method_names[4],
-                              ::grpc::RpcMethod::NORMAL_RPC, channel),
+                              ::grpc::internal::RpcMethod::NORMAL_RPC, channel),
       rpcmethod_ListDevices_(grpcMasterService_method_names[5],
-                             ::grpc::RpcMethod::NORMAL_RPC, channel),
+                             ::grpc::internal::RpcMethod::NORMAL_RPC, channel),
       rpcmethod_Reset_(grpcMasterService_method_names[6],
-                       ::grpc::RpcMethod::NORMAL_RPC, channel) {}
+                       ::grpc::internal::RpcMethod::NORMAL_RPC, channel) {}
 
 ::grpc::Status MasterService::Stub::CreateSession(
     ::grpc::ClientContext* context, const CreateSessionRequest& request,
     CreateSessionResponse* response) {
-  return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_CreateSession_,
-                                   context, request, response);
+  return ::grpc::internal::BlockingUnaryCall(
+      channel_.get(), rpcmethod_CreateSession_, context, request, response);
 }
 
 ::grpc::Status MasterService::Stub::ExtendSession(
     ::grpc::ClientContext* context, const ExtendSessionRequest& request,
     ExtendSessionResponse* response) {
-  return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_ExtendSession_,
-                                   context, request, response);
+  return ::grpc::internal::BlockingUnaryCall(
+      channel_.get(), rpcmethod_ExtendSession_, context, request, response);
 }
 
 ::grpc::Status MasterService::Stub::PartialRunSetup(
     ::grpc::ClientContext* context, const PartialRunSetupRequest& request,
     PartialRunSetupResponse* response) {
-  return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_PartialRunSetup_,
-                                   context, request, response);
+  return ::grpc::internal::BlockingUnaryCall(
+      channel_.get(), rpcmethod_PartialRunSetup_, context, request, response);
 }
 
 ::grpc::Status MasterService::Stub::RunStep(::grpc::ClientContext* context,
                                             const RunStepRequest& request,
                                             RunStepResponse* response) {
-  return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_RunStep_, context,
-                                   request, response);
+  return ::grpc::internal::BlockingUnaryCall(channel_.get(), rpcmethod_RunStep_,
+                                             context, request, response);
 }
 
 ::grpc::Status MasterService::Stub::CloseSession(
     ::grpc::ClientContext* context, const CloseSessionRequest& request,
     CloseSessionResponse* response) {
-  return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_CloseSession_,
-                                   context, request, response);
+  return ::grpc::internal::BlockingUnaryCall(
+      channel_.get(), rpcmethod_CloseSession_, context, request, response);
 }
 
 ::grpc::Status MasterService::Stub::ListDevices(
     ::grpc::ClientContext* context, const ListDevicesRequest& request,
     ListDevicesResponse* response) {
-  return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_ListDevices_,
-                                   context, request, response);
+  return ::grpc::internal::BlockingUnaryCall(
+      channel_.get(), rpcmethod_ListDevices_, context, request, response);
 }
 
 ::grpc::Status MasterService::Stub::Reset(::grpc::ClientContext* context,
                                           const ResetRequest& request,
                                           ResetResponse* response) {
-  return ::grpc::BlockingUnaryCall(channel_.get(), rpcmethod_Reset_, context,
-                                   request, response);
+  return ::grpc::internal::BlockingUnaryCall(channel_.get(), rpcmethod_Reset_,
+                                             context, request, response);
 }
 
 MasterService::AsyncService::AsyncService() {
   for (int i = 0; i < 7; ++i) {
-    AddMethod(new ::grpc::RpcServiceMethod(
+    AddMethod(new ::grpc::internal::RpcServiceMethod(
         grpcMasterService_method_names[i],
-        ::grpc::RpcMethod::NORMAL_RPC,
-        nullptr));
+        ::grpc::internal::RpcMethod::NORMAL_RPC, nullptr));
     ::grpc::Service::MarkMethodAsync(i);
   }
 }

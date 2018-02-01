@@ -62,8 +62,8 @@ class Node;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;  // Declared below
-class NodeIter;      // Declared below
+class NeighborIter;    // Declared below
+class NodeIter;        // Declared below
 class NodeProperties;  // Defined in .cc
 
 class Node {
@@ -451,6 +451,10 @@ class Graph {
   // REQUIRES: The edge must exist.
   void RemoveEdge(const Edge* edge);
 
+  // Removes control edge `edge` from the graph. Note that this also updates
+  // the corresponding NodeDef to reflect the change.
+  // REQUIRES: The control edge must exist.
+  void RemoveControlEdge(const Edge* e);
   // Updates the input to a node.  The existing edge to `dst` is removed and an
   // edge from `new_src` to `dst` is created. The NodeDef associated with `dst`
   // is also updated.

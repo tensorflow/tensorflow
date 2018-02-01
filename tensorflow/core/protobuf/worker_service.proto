@@ -44,6 +44,10 @@ service WorkerService {
       returns (CreateWorkerSessionResponse);
 
   // See worker.proto for details.
+  rpc DeleteWorkerSession(DeleteWorkerSessionRequest)
+      returns (DeleteWorkerSessionResponse);
+
+  // See worker.proto for details.
   rpc RegisterGraph(RegisterGraphRequest) returns (RegisterGraphResponse);
 
   // See worker.proto for details.

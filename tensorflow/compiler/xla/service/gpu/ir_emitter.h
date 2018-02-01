@@ -74,39 +74,31 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   // The following methods implement the DfsHloVisitorWithDefault interface.
   Status DefaultAction(HloInstruction* hlo) override;
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override;
+  Status HandleConstant(HloInstruction* constant) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
-  Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
-                   HloInstruction* rhs) override;
-  Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
-                           HloInstruction* rhs, const Window& window) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  Status HandleDot(HloInstruction* dot) override;
+  Status HandleConvolution(HloInstruction* convolution) override;
+  Status HandleFft(HloInstruction* fft) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSort(HloInstruction* sort, HloInstruction* operand) override;
+  Status HandleSort(HloInstruction* sort) override;
   Status HandleSend(HloInstruction* send) override;
+  Status HandleSendDone(HloInstruction* send_done) override;
   Status HandleRecv(HloInstruction* recv) override;
+  Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override;
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
+  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleSelect(HloInstruction* select) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
-  Status HandleCustomCall(HloInstruction* custom_call,
-                          tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                          tensorflow::StringPiece custom_call_target) override;
-  Status HandleRng(HloInstruction* random,
-                   RandomDistribution /*distribution*/) override;
+  Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleRng(HloInstruction* random) override;
+  Status HandleBatchNormInference(HloInstruction* batch_norm) override;
+  Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
+  Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
 
   Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
 
@@ -117,10 +109,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   explicit IrEmitter(const HloModuleConfig& hlo_module_config,
                      IrEmitterContext* ir_emitter_context, bool is_nested);
 
-  // A convenient helper for calling HloToIrBindings::GetIrArray.
+  // Helper for calling HloToIrBindings::GetIrArray.
+  //
+  // Gets the IrArray which contains inst.  This array has metadata that makes
+  // it valid only within the IR that implements consumer.  If you are
+  // implementing an HLO and want to get its own output buffer, call
+  // GetIrArray(hlo, hlo).
   llvm_ir::IrArray GetIrArray(const HloInstruction& inst,
+                              const HloInstruction& consumer,
                               const ShapeIndex& shape_index = {}) {
-    return bindings_.GetIrArray(inst, shape_index);
+    return bindings_.GetIrArray(inst, consumer, shape_index);
   }
   // A convenient helper for calling HloToIrBindings::GetBasePointer.
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {
@@ -162,6 +160,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   }
 
   IrEmitterContext* ir_emitter_context_;
+  llvm::Module* module_;
 
   // The following fields track the IR emission state. According to LLVM memory
   // management rules, their memory is owned by the module.
@@ -190,9 +189,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // be simply implemented using an LLVM atomic instruction. If "computation" is
   // one of this kind, emits code to do that and returns true; otherwise,
   // returns false.
-  bool MaybeEmitSpecialAtomicOperation(const HloComputation& computation,
-                                       llvm::Value* output_address,
-                                       llvm::Value* source_address);
+  bool MaybeEmitDirectAtomicOperation(const HloComputation& computation,
+                                      llvm::Value* output_address,
+                                      llvm::Value* source_address);
+
+  // A helper method for EmitAtomicOperationForNestedComputation. It implements
+  // binary atomic operations using atomicCAS with special handling to support
+  // small data types.
+  Status EmitAtomicOperationUsingCAS(const HloComputation& computation,
+                                     llvm::Value* output_address,
+                                     llvm::Value* source_address);
 
   StatusOr<llvm::Value*> ComputeNestedElement(
       const HloComputation& computation,
@@ -232,28 +238,20 @@ class IrEmitterUnnested : public IrEmitter {
   // IrEmitterUnnested handles the following instructions differently from
   // IrEmitter.
   Status HandleCopy(HloInstruction* copy) override;
-  Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
-                           HloInstruction* rhs, const Window& window) override;
-  Status HandleDot(HloInstruction* dot, HloInstruction* lhs_instruction,
-                   HloInstruction* rhs_instruction) override;
+  Status HandleConditional(HloInstruction* conditional) override;
+  Status HandleConvolution(HloInstruction* convolution) override;
+  Status HandleCustomCall(HloInstruction* custom_call) override;
+  Status HandleDot(HloInstruction* dot) override;
+  Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  Status HandleReduce(HloInstruction* reduce) override;
   Status HandleSelectAndScatter(HloInstruction* instruction) override;
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleTuple(HloInstruction* tuple) override;
   Status HandleWhile(HloInstruction* xla_while) override;
   Status HandleInfeed(HloInstruction* xla_infeed) override;
-  Status HandleRng(HloInstruction* random,
-                   RandomDistribution distribution) override;
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
+  Status HandleRng(HloInstruction* random) override;
+  Status HandleSelect(HloInstruction* select) override;
 
   Status EmitTargetElementLoop(
       const HloInstruction& hlo,
@@ -308,6 +306,12 @@ class IrEmitterUnnested : public IrEmitter {
                           const llvm_ir::ElementGenerator& init_value_gen,
                           HloComputation* reducer);
 
+  // Emits code that reduces a tensor of arbitrary rank to a scalar.
+  Status EmitReductionToScalar(HloInstruction* reduce, const Shape& input_shape,
+                               const llvm_ir::ElementGenerator& input_gen,
+                               const llvm_ir::ElementGenerator& init_value_gen,
+                               HloComputation* reducer);
+
   // Figures out whether `reduce` is a row or column reduction, and which
   // dimensions to reduce, and calls either `EmitRowReduction` or
   // `EmitColumnReduction` as appropriate. `input_shape` is the shape of the
@@ -335,6 +339,9 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a ConvolutionThunk that calls DNN to implement `inst`.
   std::unique_ptr<Thunk> BuildConvolutionThunk(const HloInstruction* inst);
 
+  // Returns a FftThunk that calls cuFFT to implement `inst`.
+  std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
+
   // Returns a GemmThunk that calls gemm to implement `inst`. The caller needs
   // to make sure `inst` outlives the lifetime of the returned Thunk object.
   std::unique_ptr<Thunk> BuildGemmThunk(const HloInstruction* inst);
@@ -358,6 +365,11 @@ class IrEmitterUnnested : public IrEmitter {
   // sequence from the 'body' sub-computation of the while instruction 'hlo'.
   std::unique_ptr<Thunk> BuildForThunk(const HloInstruction* hlo,
                                        const int64 loop_limit);
+
+  // Returns a ConditionalThunk that executes the thunk sequence for
+  // 'true_computation' or 'false_computation' depending on the value of the
+  // predicate in the given conditional instruction.
+  std::unique_ptr<Thunk> BuildConditionalThunk(const HloInstruction* hlo);
 
   Status Postprocess(HloInstruction* hlo) override;
 

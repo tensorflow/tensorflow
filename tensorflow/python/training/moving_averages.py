@@ -187,7 +187,7 @@ def _zero_debias(unbiased_var, value, decay):
   with variable_scope.variable_scope(
       unbiased_var.op.name, values=[unbiased_var, value, decay]) as scope:
     with ops.colocate_with(unbiased_var):
-      with ops.control_dependencies(None):
+      with ops.init_scope():
         biased_initializer = init_ops.zeros_initializer(
             dtype=unbiased_var.dtype)(unbiased_var.get_shape())
         local_step_initializer = init_ops.zeros_initializer()
@@ -385,7 +385,7 @@ class ExponentialMovingAverage(object):
       # For variables: to lower communication bandwidth across devices we keep
       # the moving averages on the same device as the variables. For other
       # tensors, we rely on the existing device allocation mechanism.
-      with ops.control_dependencies(None):
+      with ops.init_scope():
         if isinstance(var, variables.Variable):
           avg = slot_creator.create_slot(var,
                                          var.initialized_value(),
@@ -498,8 +498,9 @@ class ExponentialMovingAverage(object):
     # Collect all the variables with moving average,
     for v in moving_avg_variables:
       name_map[self.average_name(v)] = v
-    # Make sure we restore variables without moving average as well.
-    for v in list(set(variables.global_variables()) - moving_avg_variables):
-      if v.op.name not in name_map:
+    # Make sure we restore variables without moving averages as well.
+    moving_avg_variable_names = set([v.name for v in moving_avg_variables])
+    for v in list(set(variables.global_variables())):
+      if v.name not in moving_avg_variable_names and v.op.name not in name_map:
         name_map[v.op.name] = v
     return name_map

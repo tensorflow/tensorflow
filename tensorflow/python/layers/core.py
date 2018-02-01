@@ -43,14 +43,11 @@ class Dense(base.Layer):
   """Densely-connected layer class.
 
   This layer implements the operation:
-  `outputs = activation(inputs.kernel + bias)`
+  `outputs = activation(inputs * kernel + bias)`
   Where `activation` is the activation function passed as the `activation`
   argument (if not `None`), `kernel` is a weights matrix created by the layer,
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
-
-  Note: if the input to the layer has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `kernel`.
 
   Arguments:
     units: Integer or Long, dimensionality of the output space.
@@ -166,7 +163,7 @@ class Dense(base.Layer):
       return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
     if input_shape[-1].value is None:
@@ -199,9 +196,6 @@ def dense(
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
 
-  Note: if the `inputs` tensor has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `kernel`.
-
   Arguments:
     inputs: Tensor input.
     units: Integer or Long, dimensionality of the output space.
@@ -230,15 +224,12 @@ def dense(
       by the same name.
 
   Returns:
-    Output tensor.
+    Output tensor the same shape as `inputs` except the last dimension is of
+    size `units`.
 
   Raises:
     ValueError: if eager execution is enabled.
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.Dense instead.')
   layer = Dense(units,
                 activation=activation,
                 use_bias=use_bias,
@@ -290,11 +281,19 @@ class Dropout(base.Layer):
     self.noise_shape = noise_shape
     self.seed = seed
 
-  def _get_noise_shape(self, _):
+  def _get_noise_shape(self, inputs):
     # Subclasses of `Dropout` may implement `_get_noise_shape(self, inputs)`,
     # which will override `self.noise_shape`, and allows for custom noise
     # shapes with dynamically sized inputs.
-    return self.noise_shape
+    if self.noise_shape is None:
+      return self.noise_shape
+
+    symbolic_shape = array_ops.shape(inputs)
+    noise_shape = [
+        symbolic_shape[axis] if shape is None else shape
+        for axis, shape in enumerate(self.noise_shape)
+    ]
+    return noise_shape
 
   def call(self, inputs, training=False):
 
@@ -305,6 +304,9 @@ class Dropout(base.Layer):
     return utils.smart_cond(training,
                             dropped_inputs,
                             lambda: array_ops.identity(inputs))
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
 
 def dropout(inputs,
@@ -344,10 +346,6 @@ def dropout(inputs,
   Raises:
     ValueError: if eager execution is enabled.
   """
-  if context.in_eager_mode():
-    raise ValueError(
-        'Functional layers are currently not compatible with eager execution.'
-        'Use tf.layers.Dropout instead.')
   layer = Dropout(rate, noise_shape=noise_shape, seed=seed, name=name)
   return layer.apply(inputs, training=training)
 
@@ -375,10 +373,10 @@ class Flatten(base.Layer):
   def call(self, inputs):
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
     if context.in_graph_mode():
-      outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
+      outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     output_shape = [input_shape[0]]
     if all(input_shape[1:]):

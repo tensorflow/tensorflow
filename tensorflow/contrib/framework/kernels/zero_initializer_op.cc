@@ -21,8 +21,8 @@ limitations under the License.
 
 #include "tensorflow/contrib/framework/kernels/zero_initializer_op.h"
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 
@@ -81,8 +81,8 @@ TF_CALL_GPU_NUMBER_TYPES(DECLARE_GPU_SPEC);
 #define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
-#endif // GOOGLE_CUDA
+#endif  // GOOGLE_CUDA
 
 #undef REGISTER_KERNELS
 
-} // namespace tensorflow
+}  // namespace tensorflow

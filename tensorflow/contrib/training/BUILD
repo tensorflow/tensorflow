@@ -26,7 +26,6 @@ py_library(
         "python/training/resample.py",
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
-        "python/training/sgdr_learning_rate_decay.py",
         "python/training/training.py",
         "python/training/tuner.py",
     ],
@@ -42,6 +41,7 @@ py_library(
         "//tensorflow/python:data_flow_ops",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:layers_base",
         "//tensorflow/python:logging_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:parsing_ops",
@@ -112,6 +112,7 @@ py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:sparse_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
@@ -126,9 +127,12 @@ py_test(
     srcs = ["python/training/feeding_queue_runner_test.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":training_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python/estimator:inputs_queues",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -140,7 +144,6 @@ py_test(
     deps = [
         ":training_py",
         "//tensorflow/python:client_testlib",
-        "@six_archive//:six",
     ],
 )
 
@@ -244,12 +247,12 @@ py_test(
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_seed",
+        "//tensorflow/python:session",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:summary",
         "//tensorflow/python:training",
@@ -271,6 +274,7 @@ py_test(
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:random_seed",

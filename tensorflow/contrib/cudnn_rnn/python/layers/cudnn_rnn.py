@@ -18,7 +18,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.cudnn_rnn.python.ops import cudnn_rnn_ops
-from tensorflow.contrib.util import loader
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -26,11 +25,8 @@ from tensorflow.python.layers import base as base_layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import tf_logging as logging
 
-_cudnn_rnn_ops_so = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_cudnn_rnn_ops.so"))
 
 CUDNN_RNN_UNIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_UNIDIRECTION
 CUDNN_RNN_BIDIRECTION = cudnn_rnn_ops.CUDNN_RNN_BIDIRECTION
@@ -48,6 +44,9 @@ CUDNN_RNN_RELU_PARAMS_PER_LAYER = cudnn_rnn_ops.CUDNN_RNN_RELU_PARAMS_PER_LAYER
 CUDNN_INPUT_LINEAR_MODE = cudnn_rnn_ops.CUDNN_INPUT_LINEAR_MODE
 CUDNN_INPUT_SKIP_MODE = cudnn_rnn_ops.CUDNN_INPUT_SKIP_MODE
 CUDNN_INPUT_AUTO_MODE = cudnn_rnn_ops.CUDNN_INPUT_AUTO_MODE
+
+
+__all__ = ["CudnnLSTM", "CudnnGRU", "CudnnRNNTanh", "CudnnRNNRelu"]
 
 
 class _CudnnRNN(base_layer.Layer):
@@ -151,7 +150,6 @@ class _CudnnRNN(base_layer.Layer):
   # Custom SaveableObject class for the CudnnRNN class.
   _saveable_cls = None
 
-  # TODO(jamesqin): support float16 CuDNN RNN
   def __init__(self,
                num_layers,
                num_units,
@@ -178,11 +176,12 @@ class _CudnnRNN(base_layer.Layer):
           otherwise, it implies 'linear_input'.
       direction: the direction model that the model operates. Can be either
           'unidirectional' or 'bidirectional'
-      dropout: dropout rate, a number between [0, 1]. Dropout is applied on
-          inputs of each layer. When set to 0, dropout is disabled.
+      dropout: dropout rate, a number between [0, 1]. Dropout is applied between
+          each layer (no dropout is applied for a model with a single layer).
+          When set to 0, dropout is disabled.
       seed: the op seed used for initializing dropout. See @{tf.set_random_seed}
           for behavior.
-      dtype: tf.float32 or tf.float64
+      dtype: tf.float16, tf.float32 or tf.float64
       kernel_initializer: starting value to initialize the weight.
       bias_initializer: starting value to initialize the bias
         (default is all zeros).
@@ -197,8 +196,9 @@ class _CudnnRNN(base_layer.Layer):
     cudnn_rnn_ops.check_direction(direction)
     cudnn_rnn_ops.check_input_mode(input_mode)
 
-    if dtype not in [dtypes.float32, dtypes.float64]:
-      raise ValueError("Only support float32, float64, provided %s" % dtype)
+    if dtype not in [dtypes.float16, dtypes.float32, dtypes.float64]:
+      raise ValueError(
+          "Only support float16, float32, float64, provided %s" % dtype)
     # Layer self.dtype is type name, the original DType object is kept here.
     self._plain_dtype = dtype
     self._num_layers = num_layers
@@ -359,7 +359,7 @@ class _CudnnRNN(base_layer.Layer):
     # Create saveable in the outer scope of the cudnn subgraph, such that
     # alternative subgraph with platform-independent rnn cells can load the
     # checkpoints directly.
-    if not (self.built or vs.get_variable_scope().reuse):
+    if not (self.built or vs.get_variable_scope().reuse is True):
       self._create_saveable()
     self.built = True
 
@@ -451,15 +451,18 @@ class _CudnnRNN(base_layer.Layer):
       raise RuntimeError(
           "%s._canonical_to_opaque invoked before input shape is known" %
           type(self).__name__)
-    return cudnn_rnn_ops.cudnn_rnn_canonical_to_opaque_params(
-        rnn_mode=self._rnn_mode,
-        num_layers=self._num_layers,
-        num_units=self._num_units,
-        input_size=self._input_size,
-        weights=cu_weights,
-        biases=cu_biases,
-        input_mode=self._input_mode,
-        direction=self._direction)
+    with ops.device("/gpu:0"):
+      return cudnn_rnn_ops.cudnn_rnn_canonical_to_opaque_params(
+          rnn_mode=self._rnn_mode,
+          num_layers=self._num_layers,
+          num_units=self._num_units,
+          input_size=self._input_size,
+          weights=cu_weights,
+          biases=cu_biases,
+          input_mode=self._input_mode,
+          seed=self._seed,
+          dropout=self._dropout,
+          direction=self._direction)
 
   def _forward(self, inputs, h, c, opaque_params, training):
     output, output_h, output_c = cudnn_rnn_ops._cudnn_rnn(  # pylint:disable=protected-access
@@ -488,14 +491,14 @@ class _CudnnRNN(base_layer.Layer):
     if self._saveable is not None:
       raise RuntimeError("Cudnn saveable already created.")
     self._saveable = self._saveable_cls(  # pylint:disable=not-callable
-        self.trainable_variables[0],
-        self.num_layers,
-        self.num_units,
-        self.input_size,
-        self.input_mode,
-        self.direction,
+        opaque_params=self.trainable_variables[0],
+        num_layers=self.num_layers,
+        num_units=self.num_units,
+        input_size=self.input_size,
+        input_mode=self.input_mode,
+        direction=self.direction,
         scope=vs.get_variable_scope(),
-        name="%s_saveable" % self.trainable_variables[0].op.name)
+        name="%s_saveable" % self.trainable_variables[0].name.split(":")[0])
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
 

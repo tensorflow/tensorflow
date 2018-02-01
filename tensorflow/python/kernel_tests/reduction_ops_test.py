@@ -50,7 +50,7 @@ def _powerset(iterable):
   """
   s = list(iterable)
   return itertools.chain.from_iterable(
-      itertools.combinations(s, r) for r in range(len(s)+1))
+      itertools.combinations(s, r) for r in range(len(s) + 1))
 
 
 class ReducedShapeTest(test.TestCase):
@@ -89,6 +89,23 @@ class ReducedShapeTest(test.TestCase):
       self._check([10, 10, 10], [-1, -1], [10, 10, 1])
       self._check([10, 10, 10], [-1, 0], [1, 10, 1])
       self._check([10, 10, 10], [-3], [1, 10, 10])
+
+
+class ReductionUnknownShape(test.TestCase):
+
+  def testBasic(self):
+    with self.test_session():
+      for dtype, reductions in [(dtypes.float32,
+                                 (math_ops.reduce_sum, math_ops.reduce_mean,
+                                  math_ops.reduce_prod, math_ops.reduce_max,
+                                  math_ops.reduce_min)),
+                                (dtypes.bool, (math_ops.reduce_all,
+                                               math_ops.reduce_any))]:
+        for reduction in reductions:
+          x = array_ops.placeholder(
+              dtype=dtype, shape=None)  # Some tensor w/ unknown shape.
+          y = reduction(x)
+          self.assertEqual(y.shape, ())
 
 
 class BaseReductionTest(test.TestCase):
@@ -200,7 +217,6 @@ class SumReductionTest(BaseReductionTest):
       tf_out_mean = sess.run(tf_mean)
     self.assertAllClose(tf_out_mean, 1.)
 
-
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
       np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
@@ -309,8 +325,9 @@ class SumReductionTest(BaseReductionTest):
   # Int64??
 
   def testGradient(self):
-    for dtype in [dtypes.float32, dtypes.float64, dtypes.complex64,
-                  dtypes.complex128]:
+    for dtype in [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128
+    ]:
       x = self._makeIncremental([2, 3, 4, 2], dtype)
       self._compareGradientAxes(x)
 
@@ -913,8 +930,9 @@ class CountNonzeroReductionTest(test.TestCase):
   def testFloatReduce4D(self):
     # Create a 4D array of floats and reduce across some
     # dimensions
-    np_arr = np.floor(np.arange(0.0, 210.0) / 100.0).reshape(
-        [2, 3, 5, 7]).astype(np.float32)
+    np_arr = np.floor(np.arange(0.0, 210.0) / 100.0).reshape([2, 3, 5,
+                                                              7]).astype(
+                                                                  np.float32)
     self._compareAll(np_arr, None)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])

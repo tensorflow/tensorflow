@@ -32,17 +32,18 @@ namespace xla {
     const HloInstruction& instruction) {
   switch (instruction.opcode()) {
     // Cheap instructions.
-    case HloOpcode::kAbs:
     case HloOpcode::kAdd:
+    case HloOpcode::kAnd:
     case HloOpcode::kBitcast:
+    case HloOpcode::kBitcastConvert:
     case HloOpcode::kBroadcast:
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
+    case HloOpcode::kComplex:
     case HloOpcode::kConcatenate:
     case HloOpcode::kConstant:
     case HloOpcode::kConvert:
     case HloOpcode::kCopy:
-    case HloOpcode::kCos:
     case HloOpcode::kDynamicSlice:
     case HloOpcode::kDynamicUpdateSlice:
     case HloOpcode::kEq:
@@ -50,20 +51,21 @@ namespace xla {
     case HloOpcode::kGe:
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kGt:
+    case HloOpcode::kImag:
     case HloOpcode::kInfeed:
     case HloOpcode::kIsFinite:
     case HloOpcode::kLe:
-    case HloOpcode::kAnd:
-    case HloOpcode::kNot:
-    case HloOpcode::kOr:
     case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
     case HloOpcode::kNe:
     case HloOpcode::kNegate:
+    case HloOpcode::kNot:
+    case HloOpcode::kOr:
     case HloOpcode::kOutfeed:
     case HloOpcode::kPad:
+    case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
     case HloOpcode::kReshape:
     case HloOpcode::kReverse:
@@ -72,42 +74,51 @@ namespace xla {
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
-    case HloOpcode::kSign:
-    case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSubtract:
     case HloOpcode::kTranspose:
     case HloOpcode::kTuple:
       return false;
 
+    // Cheap instructions for reals, but expensive for complex.
+    case HloOpcode::kAbs:
+    case HloOpcode::kCos:
+    case HloOpcode::kSign:
+    case HloOpcode::kSin:
+      return ShapeUtil::ElementIsComplex(instruction.shape());
+
     // Expensive instructions.
-    case HloOpcode::kBatchNormTraining:
-    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kAtan2:
     case HloOpcode::kBatchNormGrad:
+    case HloOpcode::kBatchNormInference:
+    case HloOpcode::kBatchNormTraining:
     case HloOpcode::kCall:
+    case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
     case HloOpcode::kDivide:
     case HloOpcode::kDot:
     case HloOpcode::kExp:
+    case HloOpcode::kFft:
     case HloOpcode::kFusion:
-    case HloOpcode::kIndex:
     case HloOpcode::kLog:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:
     case HloOpcode::kPower:
+    case HloOpcode::kRecv:
+    case HloOpcode::kRecvDone:
     case HloOpcode::kReduce:
     case HloOpcode::kReduceWindow:
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kSelectAndScatter:
+    case HloOpcode::kSend:
+    case HloOpcode::kSendDone:
     case HloOpcode::kSort:
     case HloOpcode::kTanh:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
-    case HloOpcode::kSend:
-    case HloOpcode::kRecv:
       return true;
   }
 

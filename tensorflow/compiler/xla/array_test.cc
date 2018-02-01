@@ -71,6 +71,19 @@ TEST(ArrayTest, IndexingReadWrite) {
   EXPECT_EQ(arr(1, 2), 61);
 }
 
+TEST(ArrayTest, DynamicIndexingReadWrite) {
+  Array<int> arr({2, 3});
+
+  std::vector<int64> index1 = {1, 1};
+  std::vector<int64> index2 = {1, 2};
+  EXPECT_EQ(arr(index1), 0);
+  EXPECT_EQ(arr(index2), 0);
+  arr(index1) = 51;
+  arr(index2) = 61;
+  EXPECT_EQ(arr(1, 1), 51);
+  EXPECT_EQ(arr(1, 2), 61);
+}
+
 TEST(ArrayTest, IndexingReadWriteBool) {
   Array<bool> arr{{false, true, false}, {false, true, false}};
 
@@ -139,6 +152,38 @@ TEST(ArrayTest, Each) {
   });
   EXPECT_EQ(arr.num_elements(), each_count);
   EXPECT_EQ(arr.num_elements() * (arr.num_elements() - 1) / 2, each_sum);
+}
+
+TEST(ArrayTest, Slice) {
+  Array<int64> arr({2, 4});
+  arr.FillWithMultiples(1);
+
+  Array<int64> identity_slice = arr.Slice({0, 0}, {2, 4});
+  EXPECT_EQ(identity_slice.dimensions(), arr.dimensions());
+  for (auto it1 = arr.begin(), it2 = identity_slice.begin(), e = arr.end();
+       it1 != e; ++it1, ++it2) {
+    EXPECT_EQ(*it1, *it2);
+  }
+
+  Array<int64> sub_slice = arr.Slice({1, 0}, {2, 2});
+  EXPECT_EQ(sub_slice.dimensions(), (std::vector<int64>{1, 2}));
+  const string expected = R"([[4, 5]])";
+  EXPECT_EQ(expected, sub_slice.ToString());
+}
+
+TEST(ArrayTest, UpdateSlice) {
+  Array<int64> arr({3, 4});
+  arr.FillWithMultiples(1);
+
+  Array<int64> sub_arr({2, 2});
+  sub_arr.FillWithMultiples(3);
+
+  arr.UpdateSlice(sub_arr, {1, 1});
+
+  const string expected = R"([[0, 1, 2, 3],
+ [4, 0, 3, 7],
+ [8, 6, 9, 11]])";
+  EXPECT_EQ(expected, arr.ToString());
 }
 
 }  // namespace

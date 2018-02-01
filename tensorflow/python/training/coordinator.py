@@ -212,9 +212,9 @@ class Coordinator(object):
       if not self._stop_event.is_set():
         if ex and self._exc_info_to_raise is None:
           if isinstance(ex, tuple):
-            logging.info("Error reported to Coordinator: %s, %s",
-                         type(ex[1]),
-                         compat.as_str_any(ex[1]))
+            logging.info("Error reported to Coordinator: %s",
+                         compat.as_str_any(ex[1]),
+                         exc_info=ex)
             self._exc_info_to_raise = ex
           else:
             logging.info("Error reported to Coordinator: %s, %s",
@@ -284,19 +284,17 @@ class Coordinator(object):
     ```python
     try:
       ...body...
-    exception Exception as ex:
-      coord.request_stop(ex)
+    except:
+      coord.request_stop(sys.exc_info())
     ```
 
     Yields:
       nothing.
     """
-    # pylint: disable=broad-except
     try:
       yield
-    except Exception as ex:
-      self.request_stop(ex)
-    # pylint: enable=broad-except
+    except:  # pylint: disable=bare-except
+      self.request_stop(ex=sys.exc_info())
 
   def wait_for_stop(self, timeout=None):
     """Wait till the Coordinator is told to stop.

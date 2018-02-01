@@ -33,7 +33,7 @@ roughly speaking, map variable names to tensor values.
 
 Create a `Saver` with `tf.train.Saver()` to manage all variables in the
 model. For example, the following snippet demonstrates how to call the
-`tf.train.Saver.save` method to save variables to a checkpoint file:
+`tf.train.Saver.save` method to save variables to checkpoint files:
 
 ```python
 # Create some variables.
@@ -58,7 +58,7 @@ with tf.Session() as sess:
   dec_v2.op.run()
   # Save the variables to disk.
   save_path = saver.save(sess, "/tmp/model.ckpt")
-  print("Model saved in file: %s" % save_path)
+  print("Model saved in path: %s" % save_path)
 ```
 
 
@@ -66,10 +66,10 @@ with tf.Session() as sess:
 ### Restoring variables
 
 The `tf.train.Saver` object not only saves variables to checkpoint files, it
-also restores variables.  Note that when you restore variables from a file you
-do not have to initialize them beforehand. For example, the following snippet
-demonstrates how to call the `tf.train.Saver.restore` method to restore
-variables from a checkpoint file:
+also restores variables. Note that when you restore variables you do not have
+to initialize them beforehand. For example, the following snippet demonstrates
+how to call the `tf.train.Saver.restore` method to restore variables from the
+checkpoint files:
 
 ```python
 tf.reset_default_graph()
@@ -91,6 +91,12 @@ with tf.Session() as sess:
   print("v1 : %s" % v1.eval())
   print("v2 : %s" % v2.eval())
 ```
+
+Notes:
+
+*  There is not a physical file called "/tmp/model.ckpt". It is the **prefix**
+   of filenames created for the checkpoint. Users only interact with the
+   prefix instead of physical checkpoint files.
 
 
 ### Choosing which variables to save and restore
@@ -160,7 +166,7 @@ Notes:
 
 ### Inspect variables in a checkpoint
 
-We can quickly inspect variables in a checkpoint with the 
+We can quickly inspect variables in a checkpoint with the
 [`inspect_checkpoint`](https://www.tensorflow.org/code/tensorflow/python/tools/inspect_checkpoint.py) library.
 
 Continuing from the save/restore examples shown earlier:
@@ -238,7 +244,7 @@ For example, the following code suggests a typical way to use
 ```python
 export_dir = ...
 ...
-builder = tf.saved_model_builder.SavedModelBuilder(export_dir)
+builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
 with tf.Session(graph=tf.Graph()) as sess:
   ...
   builder.add_meta_graph_and_variables(sess,
@@ -343,10 +349,10 @@ SavedModel format. This section explains how to:
 
 ### Preparing serving inputs
 
-During training, an @{$input_fn$`input_fn()`} ingests data and prepares it for
-use by the model.  At serving time, similarly, a `serving_input_receiver_fn()`
-accepts inference requests and prepares them for the model.  This function
-has the following purposes:
+During training, an @{$premade_estimators#input_fn$`input_fn()`} ingests data
+and prepares it for use by the model.  At serving time, similarly, a
+`serving_input_receiver_fn()` accepts inference requests and prepares them for
+the model.  This function has the following purposes:
 
 *  To add placeholders to the graph that the serving system will feed
    with inference requests.
@@ -473,10 +479,10 @@ does not specify one.
 ### Serving the exported model locally
 
 For local deployment, you can serve your model using
-[TensorFlow Serving](http://github.com/tensorflow/serving), an open-source project that loads a
-SavedModel and exposes it as a [gRPC](http://www.grpc.io/) service.
+[TensorFlow Serving](https://github.com/tensorflow/serving), an open-source project that loads a
+SavedModel and exposes it as a [gRPC](https://www.grpc.io/) service.
 
-First, [install TensorFlow Serving](http://github.com/tensorflow/serving).
+First, [install TensorFlow Serving](https://github.com/tensorflow/serving).
 
 Then build and run the local model server, substituting `$export_dir_base` with
 the path to the SavedModel you exported above:
@@ -730,6 +736,7 @@ The `run` command provides the following two ways to pass inputs to the model:
 
 * `--inputs` option enables you to pass numpy ndarray in files.
 * `--input_exprs` option enables you to pass Python expressions.
+* `--input_examples` option enables you to pass `tf.train.Example`.
 
 
 #### `--inputs`
@@ -783,18 +790,30 @@ inputs that match the dtype and shape of the model's `SignatureDef`s.
 For example:
 
 ```bsh
-`input_key=[[1], [2], [3]]`
+`<input_key>=[[1],[2],[3]]`
 ```
 
 In addition to Python expressions, you may also pass numpy functions. For
 example:
 
 ```bsh
-input_key=np.ones((32, 32, 3))
+`<input_key>=np.ones((32,32,3))`
 ```
 
 (Note that the `numpy` module is already available to you as `np`.)
 
+
+#### `--inputs_examples`
+
+To pass `tf.train.Example` as inputs, specify the `--input_examples` option.
+For each input key, it takes a list of dictionary, where each dictionary is an
+instance of `tf.train.Example`. The dictionary keys are the features and the
+values are the value lists for each feature.
+For example:
+
+```bsh
+`<input_key>=[{"age":[22,24],"education":["BS","MS"]}]`
+```
 
 #### Save Output
 

@@ -17,6 +17,10 @@ tf_module {
     mtype: "<type \'str\'>"
   }
   member {
+    name: "CXX11_ABI_FLAG"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "ConditionalAccumulator"
     mtype: "<type \'type\'>"
   }
@@ -119,6 +123,10 @@ tf_module {
   member {
     name: "LogMessage"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "MONOLITHIC_BUILD"
+    mtype: "<type \'int\'>"
   }
   member {
     name: "MetaGraphDef"
@@ -389,6 +397,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "manip"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "metrics"
     mtype: "<type \'module\'>"
   }
@@ -649,6 +661,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\', \'data\', \'summarize\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "assert_near"
+    argspec: "args=[\'x\', \'y\', \'rtol\', \'atol\', \'data\', \'summarize\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "assert_negative"
     argspec: "args=[\'x\', \'data\', \'summarize\', \'message\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
@@ -746,7 +762,7 @@ tf_module {
   }
   member_method {
     name: "boolean_mask"
-    argspec: "args=[\'tensor\', \'mask\', \'name\'], varargs=None, keywords=None, defaults=[\'boolean_mask\'], "
+    argspec: "args=[\'tensor\', \'mask\', \'name\', \'axis\'], varargs=None, keywords=None, defaults=[\'boolean_mask\', \'None\'], "
   }
   member_method {
     name: "broadcast_dynamic_shape"
@@ -854,7 +870,7 @@ tf_module {
   }
   member_method {
     name: "count_nonzero"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keep_dims\', \'dtype\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \"<dtype: \'int64\'>\", \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'dtype\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \"<dtype: \'int64\'>\", \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "count_up_to"
@@ -1137,11 +1153,19 @@ tf_module {
     argspec: "args=[], varargs=inputs, keywords=kwargs, defaults=None"
   }
   member_method {
+    name: "guarantee_const"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "hessians"
     argspec: "args=[\'ys\', \'xs\', \'name\', \'colocate_gradients_with_ops\', \'gate_gradients\', \'aggregation_method\'], varargs=None, keywords=None, defaults=[\'hessians\', \'False\', \'False\', \'None\'], "
   }
   member_method {
     name: "histogram_fixed_width"
+    argspec: "args=[\'values\', \'value_range\', \'nbins\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'100\', \"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "histogram_fixed_width_bins"
     argspec: "args=[\'values\', \'value_range\', \'nbins\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'100\', \"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
@@ -1390,7 +1414,7 @@ tf_module {
   }
   member_method {
     name: "multinomial"
-    argspec: "args=[\'logits\', \'num_samples\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+    argspec: "args=[\'logits\', \'num_samples\', \'seed\', \'name\', \'output_dtype\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "multiply"
@@ -1410,7 +1434,7 @@ tf_module {
   }
   member_method {
     name: "norm"
-    argspec: "args=[\'tensor\', \'ord\', \'axis\', \'keep_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'tensor\', \'ord\', \'axis\', \'keepdims\', \'name\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "not_equal"
@@ -1481,6 +1505,10 @@ tf_module {
     argspec: "args=[\'input\', \'full_matrices\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
   }
   member_method {
+    name: "quantize"
+    argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'round_mode\', \'name\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'HALF_AWAY_FROM_ZERO\', \'None\'], "
+  }
+  member_method {
     name: "quantize_v2"
     argspec: "args=[\'input\', \'min_range\', \'max_range\', \'T\', \'mode\', \'name\', \'round_mode\'], varargs=None, keywords=None, defaults=[\'MIN_COMBINED\', \'None\', \'HALF_AWAY_FROM_ZERO\'], "
   }
@@ -1538,11 +1566,11 @@ tf_module {
   }
   member_method {
     name: "reduce_all"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keep_dims\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "reduce_any"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keep_dims\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "reduce_join"
@@ -1550,27 +1578,27 @@ tf_module {
   }
   member_method {
     name: "reduce_logsumexp"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keep_dims\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "reduce_max"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keep_dims\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "reduce_mean"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keep_dims\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "reduce_min"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keep_dims\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "reduce_prod"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keep_dims\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "reduce_sum"
-    argspec: "args=[\'input_tensor\', \'axis\', \'keep_dims\', \'name\', \'reduction_indices\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'None\'], "
+    argspec: "args=[\'input_tensor\', \'axis\', \'keepdims\', \'name\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "register_tensor_conversion_function"
@@ -1698,11 +1726,11 @@ tf_module {
   }
   member_method {
     name: "serialize_many_sparse"
-    argspec: "args=[\'sp_input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'sp_input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\"], "
   }
   member_method {
     name: "serialize_sparse"
-    argspec: "args=[\'sp_input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'sp_input\', \'name\', \'out_type\'], varargs=None, keywords=None, defaults=[\'None\', \"<dtype: \'string\'>\"], "
   }
   member_method {
     name: "serialize_tensor"
@@ -1830,15 +1858,15 @@ tf_module {
   }
   member_method {
     name: "sparse_segment_mean"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\', \'num_segments\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "sparse_segment_sqrt_n"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\', \'num_segments\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "sparse_segment_sum"
-    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'data\', \'indices\', \'segment_ids\', \'name\', \'num_segments\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "sparse_slice"
@@ -2021,6 +2049,10 @@ tf_module {
     argspec: "args=[\'x\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
   }
   member_method {
+    name: "unravel_index"
+    argspec: "args=[\'indices\', \'dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "unsorted_segment_max"
     argspec: "args=[\'data\', \'segment_ids\', \'num_segments\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -2054,7 +2086,7 @@ tf_module {
   }
   member_method {
     name: "while_loop"
-    argspec: "args=[\'cond\', \'body\', \'loop_vars\', \'shape_invariants\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'None\'], "
+    argspec: "args=[\'cond\', \'body\', \'loop_vars\', \'shape_invariants\', \'parallel_iterations\', \'back_prop\', \'swap_memory\', \'name\', \'maximum_iterations\'], varargs=None, keywords=None, defaults=[\'None\', \'10\', \'True\', \'False\', \'None\', \'None\'], "
   }
   member_method {
     name: "write_file"

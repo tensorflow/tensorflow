@@ -23,6 +23,7 @@ import time
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
@@ -35,10 +36,14 @@ from tensorflow.python.training import coordinator
 from tensorflow.python.training import saver as saver_mod
 from tensorflow.python.training import session_manager as session_manager_mod
 from tensorflow.python.training import training_util
+from tensorflow.python.util import deprecation
 
 
 class Supervisor(object):
   """A training helper that checkpoints models and computes summaries.
+
+  This class is deprecated. Please use
+  ${tf.train.MonitoredTrainingSession} instead.
 
   The Supervisor is a small wrapper around a `Coordinator`, a `Saver`,
   and a `SessionManager` that takes care of common needs of TensorFlow
@@ -197,6 +202,8 @@ class Supervisor(object):
   # the default behavior should be used.
   USE_DEFAULT = 0
 
+  @deprecation.deprecated(None,
+                          "Please switch to tf.train.MonitoredTrainingSession")
   def __init__(self,
                graph=None,
                ready_op=USE_DEFAULT,
@@ -288,7 +295,16 @@ class Supervisor(object):
 
     Returns:
       A `Supervisor`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    `Supervisor`s are not supported when eager execution is enabled.
+    @end_compatibility
     """
+    if context.in_eager_mode():
+      raise RuntimeError("Supervisors are compatible with eager execution.")
     # Set default values of arguments.
     if graph is None:
       graph = ops.get_default_graph()
@@ -735,7 +751,17 @@ class Supervisor(object):
 
     Returns:
       The list of threads started for the `QueueRunners`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    Queues are not compatible with eager execution. To ingest data when eager
+    execution is enabled, use the `tf.data` API.
+    @end_compatibility
     """
+    if context.in_eager_mode():
+      raise RuntimeError("Queues are not compatible with eager execution.")
     if queue_runners is None:
       queue_runners = self._graph.get_collection(ops.GraphKeys.QUEUE_RUNNERS)
     threads = []

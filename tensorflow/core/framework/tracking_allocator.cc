@@ -156,6 +156,8 @@ void TrackingAllocator::GetStats(AllocatorStats* stats) {
   allocator_->GetStats(stats);
 }
 
+void TrackingAllocator::ClearStats() { allocator_->ClearStats(); }
+
 std::tuple<size_t, size_t, size_t> TrackingAllocator::GetSizes() {
   size_t high_watermark;
   size_t total_bytes;
@@ -179,6 +181,17 @@ gtl::InlinedVector<AllocRecord, 4> TrackingAllocator::GetRecordsAndUnRef() {
   }
   if (should_delete) {
     delete this;
+  }
+  return allocations;
+}
+
+gtl::InlinedVector<AllocRecord, 4> TrackingAllocator::GetCurrentRecords() {
+  gtl::InlinedVector<AllocRecord, 4> allocations;
+  {
+    mutex_lock lock(mu_);
+    for (const AllocRecord& alloc : allocations_) {
+      allocations.push_back(alloc);
+    }
   }
   return allocations;
 }

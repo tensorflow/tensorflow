@@ -250,5 +250,4 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("QuantizeV2").Device(DEVICE_CPU).TypeConstraint<qint32>("T"),
     QuantizeV2Op<CPUDevice, qint32>);
-
 }  // namespace tensorflow

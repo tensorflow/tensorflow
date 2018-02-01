@@ -26,6 +26,18 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+filegroup(
+    name = "srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = ["*test*"],
+    ),
+    visibility = ["//visibility:public"],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
     srcs = ["c_api.h"],
@@ -42,6 +54,7 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
+            "//tensorflow/core:op_gen_lib",
         ],
     }),
 )
@@ -73,6 +86,7 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:core_cpu_internal",
             "//tensorflow/core:framework",
+            "//tensorflow/core:op_gen_lib",
             "//tensorflow/core:protos_all_cc",
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",

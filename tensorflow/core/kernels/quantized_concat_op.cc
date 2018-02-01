@@ -135,8 +135,8 @@ class QuantizedConcatOp : public OpKernel {
           context, in.dims() == input_dims || (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
-              input_shape.DebugString(), " vs. shape[", i, "] = ",
-              in.shape().DebugString()));
+              input_shape.DebugString(), " vs. shape[", i,
+              "] = ", in.shape().DebugString()));
       for (int j = 0; j < input_dims; ++j) {
         if (j == concat_dim) {
           continue;
@@ -145,8 +145,8 @@ class QuantizedConcatOp : public OpKernel {
             context, in.dim_size(j) == input_shape.dim_size(j),
             errors::InvalidArgument(
                 "ConcatOp : Dimensions of inputs should match: shape[0] = ",
-                input_shape.DebugString(), " vs. shape[", i, "] = ",
-                in.shape().DebugString()));
+                input_shape.DebugString(), " vs. shape[", i,
+                "] = ", in.shape().DebugString()));
       }
       if (in.NumElements() > 0) {
         int64 inputs_flat_dim1 = in.NumElements() / inputs_flat_dim0;
@@ -174,13 +174,13 @@ class QuantizedConcatOp : public OpKernel {
     OP_REQUIRES(context, (input_mins.size() == N),
                 errors::InvalidArgument(
                     "QuantizedConcatOp : Expected mins input list length ",
-                    input_mins.size(), " to equal values length ", N))
+                    input_mins.size(), " to equal values length ", N));
     OpInputList input_maxes;
     OP_REQUIRES_OK(context, context->input_list("input_maxes", &input_maxes));
     OP_REQUIRES(context, (input_maxes.size() == N),
                 errors::InvalidArgument(
                     "QuantizedConcatOp : Expected maxes input list length ",
-                    input_maxes.size(), " to equal values length ", N))
+                    input_maxes.size(), " to equal values length ", N));
     const int input_dims = values[0].dims();
     const TensorShape& input_shape = values[0].shape();
     OP_REQUIRES(

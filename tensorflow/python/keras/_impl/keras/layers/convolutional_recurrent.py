@@ -20,13 +20,13 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import activations
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
+from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 from tensorflow.python.keras._impl.keras.layers.recurrent import Recurrent
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 
@@ -127,10 +127,10 @@ class ConvRecurrent2D(Recurrent):
     self.input_spec = [InputSpec(ndim=5)]
     self.state_spec = None
 
-  def _compute_output_shape(self, input_shape):
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
-    input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if self.data_format == 'channels_first':
       rows = input_shape[3]
       cols = input_shape[4]
@@ -151,30 +151,28 @@ class ConvRecurrent2D(Recurrent):
         dilation=self.dilation_rate[1])
     if self.return_sequences:
       if self.data_format == 'channels_first':
-        output_shape = [input_shape[0], input_shape[1],
-                        self.filters, rows, cols]
+        output_shape = (input_shape[0], input_shape[1], self.filters, rows,
+                        cols)
       elif self.data_format == 'channels_last':
-        output_shape = [input_shape[0], input_shape[1],
-                        rows, cols, self.filters]
+        output_shape = (input_shape[0], input_shape[1], rows, cols,
+                        self.filters)
     else:
       if self.data_format == 'channels_first':
-        output_shape = [input_shape[0], self.filters, rows, cols]
+        output_shape = (input_shape[0], self.filters, rows, cols)
       elif self.data_format == 'channels_last':
-        output_shape = [input_shape[0], rows, cols, self.filters]
+        output_shape = (input_shape[0], rows, cols, self.filters)
 
     if self.return_state:
       if self.data_format == 'channels_first':
-        output_shapes = [output_shape] + [(input_shape[0],
-                                           self.filters,
-                                           rows,
-                                           cols) for _ in range(2)]
+        output_shape = [output_shape] + [
+            (input_shape[0], self.filters, rows, cols) for _ in range(2)
+        ]
       elif self.data_format == 'channels_last':
-        output_shapes = [output_shape] + [(input_shape[0],
-                                           rows,
-                                           cols,
-                                           self.filters) for _ in range(2)]
-      return [tensor_shape.TensorShape(shape) for shape in output_shapes]
-    return tensor_shape.TensorShape(output_shape)
+        output_shape = [output_shape] + [
+            (input_shape[0], rows, cols, self.filters) for _ in range(2)
+        ]
+
+    return output_shape
 
   def get_config(self):
     config = {
@@ -294,11 +292,6 @@ class ConvLSTM2D(ConvRecurrent2D):
   Raises:
       ValueError: in case of invalid constructor arguments.
 
-  References:
-      - [Convolutional LSTM Network: A Machine Learning Approach for
-      Precipitation Nowcasting](http://arxiv.org/abs/1506.04214v1)
-      The current implementation does not include the feedback loop on the
-      cells output
   """
 
   def __init__(self,
@@ -338,7 +331,6 @@ class ConvLSTM2D(ConvRecurrent2D):
         return_sequences=return_sequences,
         go_backwards=go_backwards,
         stateful=stateful,
-        activity_regularizer=regularizers.get(activity_regularizer),
         **kwargs)
     self.activation = activations.get(activation)
     self.recurrent_activation = activations.get(recurrent_activation)
@@ -352,6 +344,7 @@ class ConvLSTM2D(ConvRecurrent2D):
     self.kernel_regularizer = regularizers.get(kernel_regularizer)
     self.recurrent_regularizer = regularizers.get(recurrent_regularizer)
     self.bias_regularizer = regularizers.get(bias_regularizer)
+    self.activity_regularizer = regularizers.get(activity_regularizer)
 
     self.kernel_constraint = constraints.get(kernel_constraint)
     self.recurrent_constraint = constraints.get(recurrent_constraint)
@@ -361,13 +354,12 @@ class ConvLSTM2D(ConvRecurrent2D):
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
     self.state_spec = [InputSpec(ndim=4), InputSpec(ndim=4)]
 
+  @shape_type_conversion
   def build(self, input_shape):
     if isinstance(input_shape, list):
       input_shape = input_shape[0]
-    input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
     batch_size = input_shape[0] if self.stateful else None
     self.input_spec[0] = InputSpec(shape=(batch_size, None) + input_shape[2:])
-
     if self.stateful:
       self.reset_states()
     else:
@@ -467,9 +459,9 @@ class ConvLSTM2D(ConvRecurrent2D):
                        'Got input shape: ' + str(input_shape))
 
     if self.return_state:
-      output_shape = tuple(self._compute_output_shape(input_shape)[0].as_list())
+      output_shape = tuple(self.compute_output_shape(input_shape)[0].as_list())
     else:
-      output_shape = tuple(self._compute_output_shape(input_shape).as_list())
+      output_shape = tuple(self.compute_output_shape(input_shape).as_list())
     if self.return_sequences:
       output_shape = (input_shape[0],) + output_shape[2:]
     else:
@@ -536,7 +528,7 @@ class ConvLSTM2D(ConvRecurrent2D):
       conv_out = K.bias_add(conv_out, b, data_format=self.data_format)
     return conv_out
 
-  def reccurent_conv(self, x, w):
+  def recurrent_conv(self, x, w):
     conv_out = K.conv2d(
         x, w, strides=(1, 1), padding='same', data_format=self.data_format)
     return conv_out
@@ -556,10 +548,10 @@ class ConvLSTM2D(ConvRecurrent2D):
         inputs * dp_mask[2], self.kernel_c, self.bias_c, padding=self.padding)
     x_o = self.input_conv(
         inputs * dp_mask[3], self.kernel_o, self.bias_o, padding=self.padding)
-    h_i = self.reccurent_conv(h_tm1 * rec_dp_mask[0], self.recurrent_kernel_i)
-    h_f = self.reccurent_conv(h_tm1 * rec_dp_mask[1], self.recurrent_kernel_f)
-    h_c = self.reccurent_conv(h_tm1 * rec_dp_mask[2], self.recurrent_kernel_c)
-    h_o = self.reccurent_conv(h_tm1 * rec_dp_mask[3], self.recurrent_kernel_o)
+    h_i = self.recurrent_conv(h_tm1 * rec_dp_mask[0], self.recurrent_kernel_i)
+    h_f = self.recurrent_conv(h_tm1 * rec_dp_mask[1], self.recurrent_kernel_f)
+    h_c = self.recurrent_conv(h_tm1 * rec_dp_mask[2], self.recurrent_kernel_c)
+    h_o = self.recurrent_conv(h_tm1 * rec_dp_mask[3], self.recurrent_kernel_o)
 
     i = self.recurrent_activation(x_i + h_i)
     f = self.recurrent_activation(x_f + h_f)

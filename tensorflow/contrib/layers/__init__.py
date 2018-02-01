@@ -27,6 +27,7 @@ See the @{$python/contrib.layers} guide.
 @@convolution2d_transpose
 @@conv3d_transpose
 @@convolution3d_transpose
+@@dense_to_sparse
 @@dropout
 @@elu
 @@embedding_lookup_unique
@@ -42,6 +43,9 @@ See the @{$python/contrib.layers} guide.
 @@relu
 @@relu6
 @@repeat
+@@recompute_grad
+@@RevBlock
+@@rev_block
 @@safe_embedding_lookup_sparse
 @@scale_gradient
 @@separable_conv2d

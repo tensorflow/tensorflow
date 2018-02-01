@@ -117,7 +117,8 @@ def _build_class_page(page_info):
   parts.append(page_info.guides)
   parts.append(page_info.doc.docstring)
   parts.append(_build_function_details(page_info.doc.function_details))
-  assert not page_info.doc.compatibility
+  parts.append(_build_compatibility(page_info.doc.compatibility))
+
   parts.append('\n\n')
 
   if page_info.classes:
@@ -139,7 +140,8 @@ def _build_class_page(page_info):
 
       parts.append(prop_info.doc.docstring)
       parts.append(_build_function_details(prop_info.doc.function_details))
-      assert not prop_info.doc.compatibility
+      parts.append(_build_compatibility(prop_info.doc.compatibility))
+
       parts.append('\n\n')
 
     parts.append('\n\n')
@@ -206,6 +208,8 @@ def _build_module_page(page_info):
     parts.append(str(page_info.defined_in))
 
   parts.append(page_info.doc.docstring)
+  parts.append(_build_compatibility(page_info.doc.compatibility))
+
   parts.append('\n\n')
 
   if page_info.modules:
@@ -319,7 +323,7 @@ class _Metadata(object):
   """
 
   def __init__(self, name):
-    """Creata a Metadata builder.
+    """Create a Metadata builder.
 
     Args:
       name: The name of the page being described by the Metadata block.

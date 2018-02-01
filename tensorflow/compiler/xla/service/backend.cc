@@ -13,13 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#define EIGEN_USE_THREADS
+
 #include "tensorflow/compiler/xla/service/backend.h"
 
 #include <algorithm>
 #include <string>
 #include <utility>
-
-#define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/compiler/xla/service/compiler.h"

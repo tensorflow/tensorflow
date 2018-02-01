@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_OPTIMIZER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_OPTIMIZER_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_OPTIMIZER_H_
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
@@ -42,11 +42,15 @@ class GraphOptimizer {
   // pass may replace a node with a different node of the same name that has a
   // different number of outputs, or outputs with different known shapes.
   // TODO(b/65453533) introduce a unique way to name nodes in a graph.
+  //
+  // If cse_consider_fn is not null then only nodes for which cse_consider_fn
+  // returns true will be considered for CSE.
   void Optimize(
       FunctionLibraryRuntime* runtime, Env* env, Device* device,
       std::unique_ptr<Graph>* graph,
       const std::unordered_map<string, std::vector<PartialTensorShape>>*
-          shape_map);
+          shape_map,
+      const std::function<bool(const Node*)>& cse_consider_fn = nullptr);
 
  private:
   OptimizerOptions opts_;
@@ -56,4 +60,4 @@ class GraphOptimizer {
 
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GRAPH_OPTIMIZER_H_

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=invalid-name
+# pylint: disable=unused-import
 """MobileNet v1 models for Keras.
 
 MobileNet is a general architecture and can be used for multiple use cases.
@@ -56,7 +58,7 @@ the 100 % MobileNet on various input sizes:
 ------------------------------------------------------------------------
 
 The weights for all 16 models are obtained and translated
-from Tensorflow checkpoints found at
+from TensorFlow checkpoints found at
 https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1.md
 
 # Reference
@@ -67,16 +69,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import warnings
+import os
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
 from tensorflow.python.keras._impl.keras import regularizers
+from tensorflow.python.keras._impl.keras.applications import imagenet_utils
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
-from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions  # pylint: disable=unused-import
+from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
+from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 from tensorflow.python.keras._impl.keras.layers import Activation
 from tensorflow.python.keras._impl.keras.layers import BatchNormalization
 from tensorflow.python.keras._impl.keras.layers import Conv2D
@@ -88,6 +92,8 @@ from tensorflow.python.keras._impl.keras.layers import Reshape
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.platform import tf_logging as logging
+
 
 BASE_WEIGHT_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.6/'
 
@@ -97,10 +103,15 @@ def relu6(x):
 
 
 def preprocess_input(x):
-  x /= 255.
-  x -= 0.5
-  x *= 2.
-  return x
+  """Preprocesses a numpy array encoding a batch of images.
+
+  Arguments:
+      x: a 4D numpy array consists of RGB values within [0, 255].
+
+  Returns:
+      Preprocessed array.
+  """
+  return imagenet_utils.preprocess_input(x, mode='tf')
 
 
 class DepthwiseConv2D(Conv2D):
@@ -123,7 +134,7 @@ class DepthwiseConv2D(Conv2D):
           all spatial dimensions.
           Specifying any stride value != 1 is incompatible with specifying
           any `dilation_rate` value != 1.
-      padding: one of `"valid"` or `"same"` (case-insensitive).
+      padding: one of `'valid'` or `'same'` (case-insensitive).
       depth_multiplier: The number of depthwise convolution output channels
           for each input channel.
           The total number of depthwise convolution output
@@ -137,29 +148,21 @@ class DepthwiseConv2D(Conv2D):
           `(batch, channels, height, width)`.
           It defaults to the `image_data_format` value found in your
           Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
-      activation: Activation function to use
-          (see [activations](../activations.md)).
+          If you never set it, then it will be 'channels_last'.
+      activation: Activation function to use.
           If you don't specify anything, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
+          (ie. 'linear' activation: `a(x) = x`).
       use_bias: Boolean, whether the layer uses a bias vector.
-      depthwise_initializer: Initializer for the depthwise kernel matrix
-          (see [initializers](../initializers.md)).
-      bias_initializer: Initializer for the bias vector
-          (see [initializers](../initializers.md)).
+      depthwise_initializer: Initializer for the depthwise kernel matrix.
+      bias_initializer: Initializer for the bias vector.
       depthwise_regularizer: Regularizer function applied to
-          the depthwise kernel matrix
-          (see [regularizer](../regularizers.md)).
-      bias_regularizer: Regularizer function applied to the bias vector
-          (see [regularizer](../regularizers.md)).
+          the depthwise kernel matrix.
+      bias_regularizer: Regularizer function applied to the bias vector.
       activity_regularizer: Regularizer function applied to
-          the output of the layer (its "activation").
-          (see [regularizer](../regularizers.md)).
+          the output of the layer (its 'activation')..
       depthwise_constraint: Constraint function applied to
-          the depthwise kernel matrix
-          (see [constraints](../constraints.md)).
-      bias_constraint: Constraint function applied to the bias vector
-          (see [constraints](../constraints.md)).
+          the depthwise kernel matrix.
+      bias_constraint: Constraint function applied to the bias vector.
 
   Input shape:
       4D tensor with shape:
@@ -209,6 +212,7 @@ class DepthwiseConv2D(Conv2D):
     self.depthwise_constraint = constraints.get(depthwise_constraint)
     self.bias_initializer = initializers.get(bias_initializer)
 
+  @shape_type_conversion
   def build(self, input_shape):
     if len(input_shape) < 4:
       raise ValueError('Inputs to `DepthwiseConv2D` should have rank 4. '
@@ -262,6 +266,7 @@ class DepthwiseConv2D(Conv2D):
 
     return outputs
 
+  @shape_type_conversion
   def compute_output_shape(self, input_shape):
     if self.data_format == 'channels_first':
       rows = input_shape[2]
@@ -298,7 +303,7 @@ class DepthwiseConv2D(Conv2D):
     return config
 
 
-def MobileNet(input_shape=None,  # pylint: disable=invalid-name
+def MobileNet(input_shape=None,
               alpha=1.0,
               depth_multiplier=1,
               dropout=1e-3,
@@ -327,7 +332,7 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
           if `include_top` is False (otherwise the input shape
           has to be `(224, 224, 3)` (with `channels_last` data format)
           or (3, 224, 224) (with `channels_first` data format).
-          It should have exactly 3 input channels,
+          It should have exactly 3 inputs channels,
           and width and height should be no smaller than 32.
           E.g. `(200, 200, 3)` would be one valid value.
       alpha: controls the width of the network.
@@ -342,8 +347,9 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
       dropout: dropout rate
       include_top: whether to include the fully-connected
           layer at the top of the network.
-      weights: `None` (random initialization) or
-          `imagenet` (ImageNet weights)
+      weights: one of `None` (random initialization),
+            'imagenet' (pre-training on ImageNet),
+            or the path to the weights file to be loaded.
       input_tensor: optional Keras tensor (i.e. output of
           `layers.Input()`)
           to use as image input for the model.
@@ -378,16 +384,17 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
                        'as other backends do not support '
                        'depthwise convolution.')
 
-  if weights not in {'imagenet', None}:
+  if not (weights in {'imagenet', None} or os.path.exists(weights)):
     raise ValueError('The `weights` argument should be either '
-                     '`None` (random initialization) or `imagenet` '
-                     '(pre-training on ImageNet).')
+                     '`None` (random initialization), `imagenet` '
+                     '(pre-training on ImageNet), '
+                     'or the path to the weights file to be loaded.')
 
   if weights == 'imagenet' and include_top and classes != 1000:
     raise ValueError('If using `weights` as ImageNet with `include_top` '
                      'as true, `classes` should be 1000')
 
-  # Determine proper input shape.
+  # Determine proper input shape and default size.
   if input_shape is None:
     default_size = 224
   else:
@@ -397,10 +404,12 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
     else:
       rows = input_shape[0]
       cols = input_shape[1]
+
     if rows == cols and rows in [128, 160, 192, 224]:
       default_size = rows
     else:
       default_size = 224
+
   input_shape = _obtain_input_shape(
       input_shape,
       default_size=default_size,
@@ -408,6 +417,7 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
       data_format=K.image_data_format(),
       require_flatten=include_top,
       weights=weights)
+
   if K.image_data_format() == 'channels_last':
     row_axis, col_axis = (0, 1)
   else:
@@ -432,15 +442,15 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
                        ' Input shape provided = %s' % (input_shape,))
 
   if K.image_data_format() != 'channels_last':
-    warnings.warn('The MobileNet family of models is only available '
-                  'for the input data format "channels_last" '
-                  '(width, height, channels). '
-                  'However your settings specify the default '
-                  'data format "channels_first" (channels, width, height).'
-                  ' You should set `image_data_format="channels_last"` '
-                  'in your Keras config located at ~/.keras/keras.json. '
-                  'The model being returned right now will expect inputs '
-                  'to follow the "channels_last" data format.')
+    logging.warning('The MobileNet family of models is only available '
+                    'for the input data format "channels_last" '
+                    '(width, height, channels). '
+                    'However your settings specify the default '
+                    'data format "channels_first" (channels, width, height).'
+                    ' You should set `image_data_format="channels_last"` '
+                    'in your Keras config located at ~/.keras/keras.json. '
+                    'The model being returned right now will expect inputs '
+                    'to follow the "channels_last" data format.')
     K.set_image_data_format('channels_last')
     old_data_format = 'channels_first'
   else:
@@ -528,6 +538,8 @@ def MobileNet(input_shape=None,  # pylint: disable=invalid-name
       weigh_path = BASE_WEIGHT_PATH + model_name
       weights_path = get_file(model_name, weigh_path, cache_subdir='models')
     model.load_weights(weights_path)
+  elif weights is not None:
+    model.load_weights(weights)
 
   if old_data_format:
     K.set_image_data_format(old_data_format)
@@ -588,7 +600,8 @@ def _conv_block(inputs, filters, alpha, kernel=(3, 3), strides=(1, 1)):
       padding='same',
       use_bias=False,
       strides=strides,
-      name='conv1')(inputs)
+      name='conv1')(
+          inputs)
   x = BatchNormalization(axis=channel_axis, name='conv1_bn')(x)
   return Activation(relu6, name='conv1_relu')(x)
 
@@ -655,7 +668,8 @@ def _depthwise_conv_block(inputs,
       depth_multiplier=depth_multiplier,
       strides=strides,
       use_bias=False,
-      name='conv_dw_%d' % block_id)(inputs)
+      name='conv_dw_%d' % block_id)(
+          inputs)
   x = BatchNormalization(axis=channel_axis, name='conv_dw_%d_bn' % block_id)(x)
   x = Activation(relu6, name='conv_dw_%d_relu' % block_id)(x)
 
@@ -664,6 +678,7 @@ def _depthwise_conv_block(inputs,
       padding='same',
       use_bias=False,
       strides=(1, 1),
-      name='conv_pw_%d' % block_id)(x)
+      name='conv_pw_%d' % block_id)(
+          x)
   x = BatchNormalization(axis=channel_axis, name='conv_pw_%d_bn' % block_id)(x)
   return Activation(relu6, name='conv_pw_%d_relu' % block_id)(x)

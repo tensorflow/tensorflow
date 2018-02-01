@@ -53,6 +53,7 @@ See the @{$python/contrib.framework} guide.
 @@assign_from_values_fn
 @@create_global_step
 @@filter_variables
+@@fuse_op
 @@get_global_step
 @@get_or_create_global_step
 @@get_local_variables
@@ -65,6 +66,7 @@ See the @{$python/contrib.framework} guide.
 @@get_variable_full_name
 @@get_variables_to_restore
 @@get_variables
+@@global_variable
 @@local_variable
 @@model_variable
 @@variable
@@ -79,6 +81,11 @@ See the @{$python/contrib.framework} guide.
 @@load_embedding_initializer
 @@load_linear_multiclass_bias_initializer
 @@load_variable_slot_initializer
+
+@@py_func
+@@sort
+
+@@CriticalSection
 """
 
 from __future__ import absolute_import

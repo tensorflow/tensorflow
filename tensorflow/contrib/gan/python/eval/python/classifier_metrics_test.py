@@ -190,6 +190,23 @@ class ClassifierMetricsTest(test.TestCase):
     # Check that none of the model variables are trainable.
     self.assertListEqual([], variables.trainable_variables())
 
+  def test_run_inception_multiple_outputs(self):
+    """Test `run_inception` graph construction with multiple outputs."""
+    batch_size = 3
+    img = array_ops.ones([batch_size, 299, 299, 3])
+    logits, pool = _run_with_mock(
+        classifier_metrics.run_inception, img,
+        output_tensor=[classifier_metrics.INCEPTION_OUTPUT,
+                       classifier_metrics.INCEPTION_FINAL_POOL])
+
+    self.assertTrue(isinstance(logits, ops.Tensor))
+    self.assertTrue(isinstance(pool, ops.Tensor))
+    logits.shape.assert_is_compatible_with([batch_size, 1001])
+    pool.shape.assert_is_compatible_with([batch_size, 2048])
+
+    # Check that none of the model variables are trainable.
+    self.assertListEqual([], variables.trainable_variables())
+
   def test_inception_score_graph(self):
     """Test `inception_score` graph construction."""
     score = _run_with_mock(classifier_metrics.inception_score,
@@ -277,7 +294,7 @@ class ClassifierMetricsTest(test.TestCase):
 
     expected_fid = _expected_fid(test_pool_real_a, test_pool_gen_a)
 
-    self.assertAllClose(expected_fid, actual_fid, 0.01)
+    self.assertAllClose(expected_fid, actual_fid, 0.0001)
 
   def test_trace_sqrt_product_value(self):
     """Test that `trace_sqrt_product` gives the correct value."""

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_C_PYTHON_API_H_
-#define THIRD_PARTY_TENSORFLOW_C_PYTHON_API_H_
+#ifndef TENSORFLOW_C_PYTHON_API_H_
+#define TENSORFLOW_C_PYTHON_API_H_
 
 #include "tensorflow/c/c_api.h"
 
@@ -25,11 +25,18 @@ namespace tensorflow {
 
 void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input);
 
+// Changes an attr value in the node_def Protocol Buffer and sets a status upon
+// completion.
+void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
+             TF_Buffer* attr_value_proto, TF_Status* status);
+
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device);
 
 void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
                 TF_Status* status);
 
+void RemoveAllControlInputs(TF_Graph* graph, TF_Operation* op);
+
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_C_PYTHON_API_H_
+#endif  // TENSORFLOW_C_PYTHON_API_H_

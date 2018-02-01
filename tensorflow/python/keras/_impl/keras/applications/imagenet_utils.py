@@ -12,13 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utilities used by models pre-trained on ImageNet.
+"""Utilities for ImageNet data preprocessing & prediction decoding.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 import json
+
+import numpy as np
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
@@ -28,42 +30,167 @@ from tensorflow.python.platform import tf_logging as logging
 CLASS_INDEX = None
 CLASS_INDEX_PATH = 'https://s3.amazonaws.com/deep-learning-models/image-models/imagenet_class_index.json'
 
+# Global tensor of imagenet mean for preprocessing symbolic inputs
+_IMAGENET_MEAN = None
 
-def preprocess_input(x, data_format=None):
+
+def _preprocess_numpy_input(x, data_format, mode):
+  """Preprocesses a Numpy array encoding a batch of images.
+
+  Arguments:
+      x: Input array, 3D or 4D.
+      data_format: Data format of the image array.
+      mode: One of "caffe", "tf" or "torch".
+          - caffe: will convert the images from RGB to BGR,
+              then will zero-center each color channel with
+              respect to the ImageNet dataset,
+              without scaling.
+          - tf: will scale pixels between -1 and 1,
+              sample-wise.
+          - torch: will scale pixels between 0 and 1 and then
+              will normalize each channel with respect to the
+              ImageNet dataset.
+
+  Returns:
+      Preprocessed Numpy array.
+  """
+  if mode == 'tf':
+    x /= 127.5
+    x -= 1.
+    return x
+
+  if mode == 'torch':
+    x /= 255.
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+  else:
+    if data_format == 'channels_first':
+      # 'RGB'->'BGR'
+      if x.ndim == 3:
+        x = x[::-1, ...]
+      else:
+        x = x[:, ::-1, ...]
+    else:
+      # 'RGB'->'BGR'
+      x = x[..., ::-1]
+    mean = [103.939, 116.779, 123.68]
+    std = None
+
+  # Zero-center by mean pixel
+  if data_format == 'channels_first':
+    if x.ndim == 3:
+      x[0, :, :] -= mean[0]
+      x[1, :, :] -= mean[1]
+      x[2, :, :] -= mean[2]
+      if std is not None:
+        x[0, :, :] /= std[0]
+        x[1, :, :] /= std[1]
+        x[2, :, :] /= std[2]
+    else:
+      x[:, 0, :, :] -= mean[0]
+      x[:, 1, :, :] -= mean[1]
+      x[:, 2, :, :] -= mean[2]
+      if std is not None:
+        x[:, 0, :, :] /= std[0]
+        x[:, 1, :, :] /= std[1]
+        x[:, 2, :, :] /= std[2]
+  else:
+    x[..., 0] -= mean[0]
+    x[..., 1] -= mean[1]
+    x[..., 2] -= mean[2]
+    if std is not None:
+      x[..., 0] /= std[0]
+      x[..., 1] /= std[1]
+      x[..., 2] /= std[2]
+  return x
+
+
+def _preprocess_symbolic_input(x, data_format, mode):
   """Preprocesses a tensor encoding a batch of images.
 
   Arguments:
-      x: input Numpy tensor, 4D.
-      data_format: data format of the image tensor.
+      x: Input tensor, 3D or 4D.
+      data_format: Data format of the image tensor.
+      mode: One of "caffe", "tf" or "torch".
+          - caffe: will convert the images from RGB to BGR,
+              then will zero-center each color channel with
+              respect to the ImageNet dataset,
+              without scaling.
+          - tf: will scale pixels between -1 and 1,
+              sample-wise.
+          - torch: will scale pixels between 0 and 1 and then
+              will normalize each channel with respect to the
+              ImageNet dataset.
 
   Returns:
       Preprocessed tensor.
   """
+  global _IMAGENET_MEAN
+
+  if mode == 'tf':
+    x /= 127.5
+    x -= 1.
+    return x
+
+  if mode == 'torch':
+    x /= 255.
+    mean = [0.485, 0.456, 0.406]
+    std = [0.229, 0.224, 0.225]
+  else:
+    if data_format == 'channels_first':
+      # 'RGB'->'BGR'
+      if K.ndim(x) == 3:
+        x = x[::-1, ...]
+      else:
+        x = x[:, ::-1, ...]
+    else:
+      # 'RGB'->'BGR'
+      x = x[..., ::-1]
+    mean = [103.939, 116.779, 123.68]
+    std = None
+
+  if _IMAGENET_MEAN is None:
+    _IMAGENET_MEAN = K.constant(-np.array(mean))
+
+  # Zero-center by mean pixel
+  if K.dtype(x) != K.dtype(_IMAGENET_MEAN):
+    x = K.bias_add(x, K.cast(_IMAGENET_MEAN, K.dtype(x)), data_format)
+  else:
+    x = K.bias_add(x, _IMAGENET_MEAN, data_format)
+  if std is not None:
+    x /= std
+  return x
+
+
+def preprocess_input(x, data_format=None, mode='caffe'):
+  """Preprocesses a tensor or Numpy array encoding a batch of images.
+
+  Arguments:
+      x: Input Numpy or symbolic tensor, 3D or 4D.
+      data_format: Data format of the image tensor/array.
+      mode: One of "caffe", "tf".
+          - caffe: will convert the images from RGB to BGR,
+              then will zero-center each color channel with
+              respect to the ImageNet dataset,
+              without scaling.
+          - tf: will scale pixels between -1 and 1,
+              sample-wise.
+
+  Returns:
+      Preprocessed tensor or Numpy array.
+
+  Raises:
+      ValueError: In case of unknown `data_format` argument.
+  """
   if data_format is None:
     data_format = K.image_data_format()
-  assert data_format in {'channels_last', 'channels_first'}
+  if data_format not in {'channels_first', 'channels_last'}:
+    raise ValueError('Unknown data_format ' + str(data_format))
 
-  if data_format == 'channels_first':
-    if x.ndim == 3:
-      # 'RGB'->'BGR'
-      x = x[::-1, ...]
-      # Zero-center by mean pixel
-      x[0, :, :] -= 103.939
-      x[1, :, :] -= 116.779
-      x[2, :, :] -= 123.68
-    else:
-      x = x[:, ::-1, ...]
-      x[:, 0, :, :] -= 103.939
-      x[:, 1, :, :] -= 116.779
-      x[:, 2, :, :] -= 123.68
+  if isinstance(x, np.ndarray):
+    return _preprocess_numpy_input(x, data_format=data_format, mode=mode)
   else:
-    # 'RGB'->'BGR'
-    x = x[..., ::-1]
-    # Zero-center by mean pixel
-    x[..., 0] -= 103.939
-    x[..., 1] -= 116.779
-    x[..., 2] -= 123.68
-  return x
+    return _preprocess_symbolic_input(x, data_format=data_format, mode=mode)
 
 
 def decode_predictions(preds, top=5):
@@ -71,7 +198,7 @@ def decode_predictions(preds, top=5):
 
   Arguments:
       preds: Numpy tensor encoding a batch of predictions.
-      top: integer, how many top-guesses to return.
+      top: Integer, how many top-guesses to return.
 
   Returns:
       A list of lists of top class prediction tuples
@@ -79,7 +206,7 @@ def decode_predictions(preds, top=5):
       One list of tuples per sample in batch input.
 
   Raises:
-      ValueError: in case of invalid shape of the `pred` array
+      ValueError: In case of invalid shape of the `pred` array
           (must be 2D).
   """
   global CLASS_INDEX
@@ -90,7 +217,10 @@ def decode_predictions(preds, top=5):
                      'Found array with shape: ' + str(preds.shape))
   if CLASS_INDEX is None:
     fpath = get_file(
-        'imagenet_class_index.json', CLASS_INDEX_PATH, cache_subdir='models')
+        'imagenet_class_index.json',
+        CLASS_INDEX_PATH,
+        cache_subdir='models',
+        file_hash='c2c37ea517e94d9795004a39431a14cb')
     CLASS_INDEX = json.load(open(fpath))
   results = []
   for pred in preds:
@@ -107,17 +237,17 @@ def _obtain_input_shape(input_shape,
                         data_format,
                         require_flatten,
                         weights=None):
-  """Internal utility to compute/validate an ImageNet model's input shape.
+  """Internal utility to compute/validate a model's input shape.
 
   Arguments:
-      input_shape: either None (will return the default network input shape),
+      input_shape: Either None (will return the default network input shape),
           or a user-provided shape to be validated.
-      default_size: default input width/height for the model.
-      min_size: minimum input width/height accepted by the model.
-      data_format: image data format to use.
-      require_flatten: whether the model is expected to
+      default_size: Default input width/height for the model.
+      min_size: Minimum input width/height accepted by the model.
+      data_format: Image data format to use.
+      require_flatten: Whether the model is expected to
           be linked to a classifier via a Flatten layer.
-      weights: one of `None` (random initialization)
+      weights: One of `None` (random initialization)
           or 'imagenet' (pre-training on ImageNet).
           If weights='imagenet' input channels must be equal to 3.
 
@@ -125,7 +255,7 @@ def _obtain_input_shape(input_shape,
       An integer shape tuple (may include None entries).
 
   Raises:
-      ValueError: in case of invalid argument values.
+      ValueError: In case of invalid argument values.
   """
   if weights != 'imagenet' and input_shape and len(input_shape) == 3:
     if data_format == 'channels_first':
@@ -162,8 +292,8 @@ def _obtain_input_shape(input_shape,
                            '`input_shape=' + str(input_shape) + '`')
         if ((input_shape[1] is not None and input_shape[1] < min_size) or
             (input_shape[2] is not None and input_shape[2] < min_size)):
-          raise ValueError('Input size must be at least ' + str(min_size) + 'x'
-                           + str(min_size) + '; got '
+          raise ValueError('Input size must be at least ' + str(min_size) +
+                           'x' + str(min_size) + '; got '
                            '`input_shape=' + str(input_shape) + '`')
     else:
       if input_shape is not None:
@@ -174,8 +304,8 @@ def _obtain_input_shape(input_shape,
                            '`input_shape=' + str(input_shape) + '`')
         if ((input_shape[0] is not None and input_shape[0] < min_size) or
             (input_shape[1] is not None and input_shape[1] < min_size)):
-          raise ValueError('Input size must be at least ' + str(min_size) + 'x'
-                           + str(min_size) + '; got '
+          raise ValueError('Input size must be at least ' + str(min_size) +
+                           'x' + str(min_size) + '; got '
                            '`input_shape=' + str(input_shape) + '`')
   else:
     if require_flatten:

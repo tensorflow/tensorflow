@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -108,6 +109,32 @@ class ZipDatasetTest(test.TestCase):
         self.assertAllEqual(equal_length_components[2][i], result3)
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
+
+
+class ZipDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_dataset(self, arr):
+    components = [
+        np.tile(np.array([[1], [2], [3], [4]]), 20),
+        np.tile(np.array([[12], [13], [14], [15]]), 22),
+        np.array(arr)
+    ]
+    datasets = [
+        dataset_ops.Dataset.from_tensor_slices(component)
+        for component in components
+    ]
+    return dataset_ops.Dataset.zip((datasets[0], (datasets[1], datasets[2])))
+
+  def testCore(self):
+    # Equal length components
+    arr = [37.0, 38.0, 39.0, 40.0]
+    num_outputs = len(arr)
+    self.run_core_tests(lambda: self._build_dataset(arr), None, num_outputs)
+    # Variable length components
+    diff_size_arr = [1.0, 2.0]
+    self.run_core_tests(lambda: self._build_dataset(diff_size_arr),
+                        lambda: self._build_dataset(arr), 2)
 
 
 if __name__ == "__main__":

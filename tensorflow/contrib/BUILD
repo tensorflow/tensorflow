@@ -6,10 +6,16 @@ licenses(["notice"])  # Apache 2.0
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//third_party/mpi:mpi.bzl", "if_mpi")
+load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 
 py_library(
     name = "contrib_py",
-    srcs = glob(["**/*.py"]),
+    srcs = glob(
+        ["**/*.py"],
+        exclude = [
+            "**/*_test.py",
+        ],
+    ),
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = [
@@ -19,6 +25,7 @@ py_library(
         "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/cloud:cloud_py",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_py",
+        "//tensorflow/contrib/coder:coder_ops_py",
         "//tensorflow/contrib/compiler:compiler_py",
         "//tensorflow/contrib/copy_graph:copy_graph_py",
         "//tensorflow/contrib/crf:crf_py",
@@ -41,6 +48,7 @@ py_library(
         "//tensorflow/contrib/image:single_image_random_dot_stereograms_py",
         "//tensorflow/contrib/input_pipeline:input_pipeline_py",
         "//tensorflow/contrib/integrate:integrate_py",
+        "//tensorflow/contrib/kafka",
         "//tensorflow/contrib/keras",
         "//tensorflow/contrib/kernel_methods",
         "//tensorflow/contrib/kfac",
@@ -48,23 +56,29 @@ py_library(
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/contrib/legacy_seq2seq:seq2seq_py",
+        "//tensorflow/contrib/libsvm",
         "//tensorflow/contrib/linalg:linalg_py",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
         "//tensorflow/contrib/linear_optimizer:sdca_ops_py",
+        "//tensorflow/contrib/lite/python:lite",
         "//tensorflow/contrib/lookup:lookup_py",
         "//tensorflow/contrib/losses:losses_py",
         "//tensorflow/contrib/losses:metric_learning_py",
         "//tensorflow/contrib/memory_stats:memory_stats_py",
         "//tensorflow/contrib/meta_graph_transform",
         "//tensorflow/contrib/metrics:metrics_py",
+        "//tensorflow/contrib/model_pruning",
         "//tensorflow/contrib/nccl:nccl_py",
         "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_py",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
+        "//tensorflow/contrib/periodic_resample:init_py",
         "//tensorflow/contrib/predictor",
         "//tensorflow/contrib/quantization:quantization_py",
         "//tensorflow/contrib/quantize:quantize_graph",
+        "//tensorflow/contrib/py2tf",
+        "//tensorflow/contrib/receptive_field:receptive_field_py",
         "//tensorflow/contrib/reduce_slice_ops:reduce_slice_ops_py",
         "//tensorflow/contrib/remote_fused_graph/pylib:remote_fused_graph_ops_py",
         "//tensorflow/contrib/resampler:resampler_py",
@@ -88,22 +102,23 @@ py_library(
         "//tensorflow/contrib/tfprof",
         "//tensorflow/contrib/timeseries",
         "//tensorflow/contrib/tpu",
+        "//tensorflow/contrib/tpu:tpu_py",
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_ops_py"]),
+        "//tensorflow/python:util",
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]),
 )
 
 cc_library(
     name = "contrib_kernels",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/batching:batch_ops_kernels",
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
+        "//tensorflow/contrib/coder:all_kernels",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
-        "//tensorflow/contrib/nccl:nccl_kernels",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_kernels",
         "//tensorflow/contrib/rnn:all_kernels",
         "//tensorflow/contrib/seq2seq:beam_search_ops_kernels",
@@ -111,19 +126,22 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_kernels",
         "//tensorflow/contrib/tensor_forest:tensor_forest_kernels",
         "//tensorflow/contrib/text:all_kernels",
-    ],
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_cuda([
+        "//tensorflow/contrib/nccl:nccl_kernels",
+    ]),
 )
 
 cc_library(
     name = "contrib_ops_op_lib",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/contrib/batching:batch_ops_op_lib",
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
+        "//tensorflow/contrib/coder:all_ops",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",
+        "//tensorflow/contrib/kafka:kafka_ops_op_lib",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_op_lib",
         "//tensorflow/contrib/nccl:nccl_ops_op_lib",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_ops_op_lib",
