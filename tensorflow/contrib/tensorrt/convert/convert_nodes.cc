@@ -897,17 +897,22 @@ tensorflow::Status BinaryTensorOpWeight(
     // no broadcasting on Batch dimension;
     LOG(DEBUG) << "WEIGHTS DIM: " << dims_w.nbDims
                << " tensor DIM: " << dims_t.nbDims;
-    if (dims_w.nbDims==dims_t.nbDims && dims_w.d[0]==1) {
-      for (int i=1; i<dims_w.nbDims; i++)
-        dims_w.d[i-1] = dims_w.d[i];
-      dims_w.nbDims--;
+    if (dims_w.nbDims==dims_t.nbDims+1) {
+      if (dims_w.d[0]==1) {
+        for (int i=1; i<dims_w.nbDims; i++)
+          dims_w.d[i-1] = dims_w.d[i];
+        dims_w.nbDims--;
+      } else {
+        return tensorflow::errors::InvalidArgument(
+                 "Binary op cannot operate on batch, " + node_def.name());
+      }
     }
 
-    if (dims_w.nbDims==dims_t.nbDims-1 && dims_w.d[0]==dims_t.d[0]) {
+    if (dims_w.nbDims==dims_t.nbDims && dims_w.d[0]==dims_t.d[0]) {
       scale_mode = nvinfer1::ScaleMode::kELEMENTWISE;
       // default is element;
       for (int i=1; i<dims_w.nbDims; i++) {
-        if (dims_w.d[i]!=dims_t.d[i-1]) {
+        if (dims_w.d[i]!=dims_t.d[i]) {
           // if dimension does not match, switch back to channel;
           LOG(DEBUG) << "channel";
           scale_mode = nvinfer1::ScaleMode::kCHANNEL;
@@ -916,13 +921,13 @@ tensorflow::Status BinaryTensorOpWeight(
       }
       // if channel as candidate, validate it
       if (scale_mode == nvinfer1::ScaleMode::kCHANNEL) {
-        LOG(DEBUG) << "elementwise";
-        scale_mode = nvinfer1::ScaleMode::kELEMENTWISE;
         for (int i=1; i<dims_w.nbDims; i++) {
           if (dims_w.d[i]!=1)
             return tensorflow::errors::InvalidArgument(
                      "Weight shape not compatible at, " + node_def.name());
         }
+      } else {
+        LOG(DEBUG) << "elementwise";
       }
     } else if (dims_w.nbDims==1 && dims_w.d[0] == dims_t.d[dims_t.nbDims-1]) {
       // channel wise and broadcast required;
@@ -1866,10 +1871,11 @@ void Converter::register_op_converters() {
   _op_registry["Rsqrt"] = ConvertUnary;
   _op_registry["Mean"] = ConvertReduce;
   _op_registry["Pad"] = ConvertPad;
-  _op_registry["MatMul"] = ConvertMatMul;
   // TODO(ben,jie): Add more ops
 
   _op_registry["ConcatV2"] = ConvertConcat;
+  _op_registry["MatMul"] = ConvertMatMul;
+  //_op_registry["Reshape"] = ConvertReshape;
 }
 
 }  // namespace
