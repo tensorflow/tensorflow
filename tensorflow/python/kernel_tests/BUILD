@@ -295,7 +295,6 @@ tf_py_test(
         "//tensorflow/python:nn_grad",
     ],
     data = ["//tensorflow/core:image_testdata"],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -1138,7 +1137,6 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     data = ["//tensorflow/core:lmdb_testdata"],
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2325,7 +2323,6 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 4,
-    tags = ["no_windows"],
 )
 
 cuda_py_test(
@@ -2456,7 +2453,6 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     shard_count = 10,
-    tags = ["no_windows"],
 )
 
 cuda_py_test(

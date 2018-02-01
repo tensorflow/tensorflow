@@ -71,6 +71,7 @@ py_test(
     name = "py_func_test",
     srcs = ["py_func_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_windows"],  # TODO: needs investigation on Windows
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",
