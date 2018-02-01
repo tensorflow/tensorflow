@@ -52,8 +52,6 @@ tf_custom_op_library(
         ":trt_engine_op_kernel",
         ":trt_shape_function",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core/kernels:bounds_check_lib",
-        "//tensorflow/core/kernels:ops_util_hdrs",
         "@local_config_tensorrt//:nv_infer",
     ],
 )
@@ -77,8 +75,10 @@ cc_library(
     name = "trt_engine_op_kernel",
     srcs = ["kernels/trt_engine_op.cc"],
     hdrs = ["kernels/trt_engine_op.h"],
+    copts = tf_copts(),
     deps = [
         ":trt_logging",
+        "//tensorflow/core:stream_executor_headers_lib",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -212,9 +212,6 @@ cc_library(
     linkstatic = 1,
     deps = [
         "//tensorflow/core:graph",
-        # "//tensorflow/core:core_cpu",
-        # "//tensorflow/core:lib_proto_parsing",
-        # "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
