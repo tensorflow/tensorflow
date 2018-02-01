@@ -31,7 +31,7 @@ class KafkaDataset(Dataset):
   """
 
   def __init__(
-          self, topics, servers="localhost", group="", eof=False, timeout=1000):
+      self, topics, servers="localhost", group="", eof=False, timeout=1000):
     """Create a KafkaReader.
 
     Args:
