@@ -312,14 +312,6 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // This operation is atomic.
   Status AddGradientDef(const GradientDef& grad);
 
-  // Remove function `func` from the library. Returns non-OK Status unless
-  // `func` is in the library.
-  Status RemoveFunction(const string& func);
-
-  // Remove gradient of function `func` from the library. Returns non-OK Status
-  // unless `func` has a gradient.
-  Status RemoveGradient(const string& func);
-
   // Adds the functions and gradients in 'other' to this function library.
   // Duplicate functions and gradients are ignored.
   // This operation is atomic.
@@ -391,6 +383,13 @@ class FunctionLibraryDefinition : public OpRegistryInterface {
   // Helper function for GetAttr. Returns the FunctionDef* to get the
   // attr from.
   const FunctionDef* GetAttrImpl(const NodeDef& ndef) const;
+
+  // Remove function `func` from the library. `func` must be in the library.
+  void RemoveFunction(const string& func);
+
+  // Remove gradient of function `func` from the library. `func` must have
+  // a gradient.
+  void RemoveGradient(const string& func);
 
   // Remove all functions in `funcs` and all gradients of
   // functions in `funcs_with_grads` from this library.

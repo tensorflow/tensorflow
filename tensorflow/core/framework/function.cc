@@ -1064,36 +1064,26 @@ Status FunctionLibraryDefinition::AddLibrary(
   return Status::OK();
 }
 
-Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
+void FunctionLibraryDefinition::RemoveFunction(const string& func) {
   const auto& i = function_defs_.find(func);
-  if (i == function_defs_.end()) {
-    return errors::InvalidArgument("Tried to remove non-existent function ",
-                                   func);
-  }
+  DCHECK(i != function_defs_.end());
   function_defs_.erase(i);
-  return Status::OK();
 }
 
-Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
+void FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
-  if (i == func_grad_.end()) {
-    return errors::InvalidArgument("Tried to remove non-existent gradient ",
-                                   func);
-  }
+  DCHECK(i != func_grad_.end());
   func_grad_.erase(i);
-  return Status::OK();
 }
 
 void FunctionLibraryDefinition::Remove(
     const std::vector<string>& funcs,
     const std::vector<string>& funcs_with_grads) {
   for (const string& f : funcs) {
-    Status s = RemoveFunction(f);
-    DCHECK(s.ok());
+    RemoveFunction(f);
   }
   for (const string& f : funcs_with_grads) {
-    Status s = RemoveGradient(f);
-    DCHECK(s.ok());
+    RemoveGradient(f);
   }
 }
 
