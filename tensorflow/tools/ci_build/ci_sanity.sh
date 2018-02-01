@@ -321,7 +321,7 @@ do_external_licenses_check(){
   EXTRA_LICENSES_FILE="$(mktemp)_extra_licenses.log"
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
- bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --no_implicit_deps --no_host_deps --keep_going \
+ bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going \
   | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
@@ -330,7 +330,7 @@ do_external_licenses_check(){
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
-  bazel query "deps(${LICENSES_TARGET})" --no_implicit_deps --no_host_deps --keep_going \
+  bazel query "deps(${LICENSES_TARGET})" --keep_going \
   | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
