@@ -15,6 +15,7 @@ limitations under the License.
 #include <cstdarg>
 
 #include <gtest/gtest.h>
+#include "absl/memory/memory.h"
 #include "tensorflow/contrib/lite/interpreter.h"
 #include "tensorflow/contrib/lite/kernels/register.h"
 #include "tensorflow/contrib/lite/kernels/test_util.h"
