@@ -44,11 +44,10 @@ CreateSliceUpdateOp(poplar::Graph &graph,
                         "Invalid update slice start");
   }
 
-  // We try to update in-place but it is possible that the input is a constant
-  // tensor in which case we need to make a copy of it to update it.
   poplar::program::Sequence seq;
+  poplar::Tensor copy;
+
   if (!input.isParallelWriteable()) {
-    poplar::Tensor copy;
     TF_ASSIGN_OR_RETURN(copy,
                         AddTensor(graph,
                                   std::make_pair(inst,0),
@@ -58,6 +57,9 @@ CreateSliceUpdateOp(poplar::Graph &graph,
                                   res));
     seq.add(poplar::program::Copy(input, copy));
     input = copy;
+  } else {
+    copy = graph.clone(input);
+    seq.add(poplar::program::Copy(input, copy));
   }
 
   std::vector<std::size_t> s_begin =
@@ -66,10 +68,10 @@ CreateSliceUpdateOp(poplar::Graph &graph,
   for (unsigned int i = 0; i < s_end.size(); i++) {
     s_end[i] += update.dim(i);
   }
-  poplar::Tensor slice = input.slice(s_begin, s_end);
+  poplar::Tensor slice = copy.slice(s_begin, s_end);
   seq.add(poplar::program::Copy(update, slice));
 
-  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, input));
+  TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, 0, copy));
 
   return seq;
 }
@@ -151,8 +153,12 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
   std::vector<std::size_t> slice_sizes;
   poplar::Tensor slice_indices;
   for (unsigned d=0; d<inst->shape().dimensions_size(); d++) {
-    if (inst->shape().dimensions(d) != update.shape()[d]) {
-      auto t = indices.index({d}).reshape({1});
+    auto t = indices.index({d}).reshape({1});
+    bool same_shape = inst->shape().dimensions(d) == update.shape()[d];
+    unsigned int index;
+    bool zero_index = t.getConstantValue(&index) && (index == 0);
+
+    if (!(same_shape && zero_index)) {
       if (slice_dims.size() == 0) {
         slice_indices = t;
       } else {
@@ -204,8 +210,12 @@ CreateDynamicSliceOp(poplar::Graph &graph,
   std::vector<std::size_t> slice_sizes;
   poplar::Tensor slice_indices;
   for (unsigned d=0; d<inst->shape().dimensions_size(); d++) {
-    if (inst->shape().dimensions(d) != input.shape()[d]) {
-      auto t = indices.index({d}).reshape({1});
+    auto t = indices.index({d}).reshape({1});
+    bool same_shape = inst->shape().dimensions(d) == input.shape()[d];
+    unsigned int index;
+    bool zero_index = t.getConstantValue(&index) && (index == 0);
+
+    if (!(same_shape && zero_index)) {
       if (slice_dims.size() == 0) {
         slice_indices = t;
       } else {
