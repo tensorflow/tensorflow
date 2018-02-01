@@ -39,6 +39,7 @@ py_library(
         "_impl/keras/engine/__init__.py",
         "_impl/keras/engine/topology.py",
         "_impl/keras/engine/training.py",
+        "_impl/keras/engine/training_eager.py",
         "_impl/keras/estimator.py",
         "_impl/keras/initializers.py",
         "_impl/keras/layers/__init__.py",
@@ -710,6 +711,19 @@ py_test(
     name = "training_test",
     size = "medium",
     srcs = ["_impl/keras/engine/training_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "training_eager_test",
+    size = "medium",
+    srcs = ["_impl/keras/engine/training_eager_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [

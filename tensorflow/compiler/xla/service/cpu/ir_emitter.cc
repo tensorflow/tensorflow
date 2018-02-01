@@ -479,7 +479,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
 
 Status IrEmitter::HandleSort(HloInstruction* sort) {
   // TODO(b/26783907): Implement sort on CPU.
-  return Unimplemented("Sort is not supported on CPU (b/26783907).");
+  return Unimplemented("Sort is not implemented on CPU.");
 }
 
 Status IrEmitter::HandleTuple(HloInstruction* tuple) {
@@ -522,7 +522,7 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   // TODO(b/31410564): Implement dilation for reduce-window.
   if (window_util::HasDilation(window)) {
     return Unimplemented(
-        "Dilation for reduce-window not implemented on CPU. See b/31410564.");
+        "Dilation for ReduceWindow is not implemented on CPU.");
   }
 
   // The called computation should have been emitted previously.
@@ -625,8 +625,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // TODO(b/31410564): Implement dilation for select-and-scatter.
   if (window_util::HasDilation(window)) {
     return Unimplemented(
-        "Dilation for select-and-scatter not implemented on CPU. "
-        "See b/31410564.");
+        "Dilation for SelectAndScatter is not implemented on CPU. ");
   }
 
   // The select and scatter computations should have been emitted previously.
@@ -1196,8 +1195,7 @@ Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
   }
 
   // TODO(b/33011107): Support cross replica sum on CPU.
-  return Unimplemented(
-      "Cross replica sum is not implemented on CPU. See b/33011107.");
+  return Unimplemented("CrossReplicaSum is not implemented on CPU.");
 }
 
 // Fills up the free variables in 'index_with_free_var' with values from
@@ -1811,12 +1809,12 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
 
 Status IrEmitter::HandleSend(HloInstruction* send) {
   // TODO(b/33942983): Support Send/Recv on CPU.
-  return Unimplemented("Send is not implemented on CPU. See b/33942983.");
+  return Unimplemented("Send is not implemented on CPU.");
 }
 
 Status IrEmitter::HandleSendDone(HloInstruction* send_done) {
   // TODO(b/33942983): Support Send/Recv on CPU.
-  return Unimplemented("Send-done is not implemented on CPU. See b/33942983.");
+  return Unimplemented("Send-done is not implemented on CPU.");
 }
 
 Status IrEmitter::HandleSlice(HloInstruction* slice) {
@@ -1981,12 +1979,12 @@ Status IrEmitter::HandleDynamicUpdateSlice(
 
 Status IrEmitter::HandleRecv(HloInstruction* recv) {
   // TODO(b/33942983): Support Send/Recv on CPU.
-  return Unimplemented("Recv is not implemented on CPU. See b/33942983.");
+  return Unimplemented("Recv is not implemented on CPU.");
 }
 
 Status IrEmitter::HandleRecvDone(HloInstruction* recv_done) {
   // TODO(b/33942983): Support Send/Recv on CPU.
-  return Unimplemented("Recv-done is not implemented on CPU. See b/33942983.");
+  return Unimplemented("Recv-done is not implemented on CPU.");
 }
 
 Status IrEmitter::HandlePad(HloInstruction* pad) {
@@ -1995,10 +1993,10 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   for (auto& padding_dimension : pad->padding_config().dimensions()) {
     if (padding_dimension.edge_padding_low() < 0 ||
         padding_dimension.edge_padding_high() < 0) {
-      return Unimplemented(
-          "Negative padding not supported in the CPU backend (b/34628603); "
-          "this should have been eliminated at the HLO level: %s",
-          pad->padding_config().ShortDebugString().c_str());
+      return InternalErrorStrCat(
+          "Encountered negative padding in IrEmitter on CPU. "
+          "This should have been eliminated at the HLO level. ",
+          pad->ToString());
     }
   }
 

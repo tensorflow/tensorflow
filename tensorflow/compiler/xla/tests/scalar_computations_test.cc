@@ -852,5 +852,12 @@ XLA_TEST_F(ScalarComputationsTest, SqrtF320) {
   ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
 }
 
+XLA_TEST_F(ScalarComputationsTest, RoundScalar) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Round(builder.ConstantR0<float>(1.4f));
+
+  ComputeAndCompareR0<float>(&builder, 1.0f, {}, error_spec_);
+}
+
 }  // namespace
 }  // namespace xla

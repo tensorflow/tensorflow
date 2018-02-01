@@ -21,8 +21,6 @@ from __future__ import print_function
 import gast
 import six
 
-from tensorflow.contrib.py2tf import config
-from tensorflow.contrib.py2tf import naming
 from tensorflow.contrib.py2tf.converters import asserts
 from tensorflow.contrib.py2tf.converters import break_canonicalization
 from tensorflow.contrib.py2tf.converters import builtin_functions
@@ -34,6 +32,8 @@ from tensorflow.contrib.py2tf.converters import for_canonicalization
 from tensorflow.contrib.py2tf.converters import logical_expressions
 from tensorflow.contrib.py2tf.converters import print_functions
 from tensorflow.contrib.py2tf.converters import side_effect_guards
+from tensorflow.contrib.py2tf.impl import config
+from tensorflow.contrib.py2tf.impl import naming
 from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct.static_analysis import access

@@ -57,6 +57,7 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 BatchToSpaceNDContext* op_context) {
   TfLiteIntArray* input_size = op_context->input->dims;
   const int* block_shape = GetTensorData<int32>(op_context->block_shape);
+  const int* crops = GetTensorData<int32>(op_context->crops);
 
   TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->block_shape),
                     kBlockSizeDimensionNum);
@@ -65,7 +66,13 @@ TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
   TF_LITE_ENSURE_EQ(context, NumDimensions(op_context->crops),
                     kSpatialDimensionNum);
 
-  // TODO(ycling): Add crops as part of calculation.
+  // TODO(ycling): Add crops as part of calculation. Remove check for a crops
+  // containing all zeroes.
+  TF_LITE_ENSURE_EQ(context, crops[0], 0);
+  TF_LITE_ENSURE_EQ(context, crops[1], 0);
+  TF_LITE_ENSURE_EQ(context, crops[2], 0);
+  TF_LITE_ENSURE_EQ(context, crops[3], 0);
+
   // Number of batch must be multiple of (block_shape[0] * block_shape[1]).
   TF_LITE_ENSURE_EQ(context,
                     input_size->data[0] % (block_shape[0] * block_shape[1]), 0);
