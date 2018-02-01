@@ -162,7 +162,7 @@ def _build_class_page(page_info):
       parts.append(h3.format(**method_info.__dict__))
 
       if method_info.signature is not None:
-        parts.append(_build_signature(method_info))
+        parts.append(_build_signature(method_info, use_full_name=False))
 
       parts.append(method_info.doc.docstring)
       parts.append(_build_function_details(method_info.doc.function_details))
@@ -259,14 +259,14 @@ def _build_module_page(page_info):
   return ''.join(parts)
 
 
-def _build_signature(obj_info):
+def _build_signature(obj_info, use_full_name=True):
   """Returns a md code block showing the function signature."""
   # Special case tf.range, since it has an optional first argument
   if obj_info.full_name == 'tf.range':
     return (
         '``` python\n'
-        "range(limit, delta=1, dtype=None, name='range')\n"
-        "range(start, limit, delta=1, dtype=None, name='range')\n"
+        "tf.range(limit, delta=1, dtype=None, name='range')\n"
+        "tf.range(start, limit, delta=1, dtype=None, name='range')\n"
         '```\n\n')
 
   parts = ['``` python']
@@ -281,7 +281,11 @@ def _build_signature(obj_info):
     sig = ',\n'.join('    %s' % sig_item for sig_item in obj_info.signature)
     sig = '\n'+sig+'\n'
 
-  parts.append(signature_template.format(name=obj_info.short_name, sig=sig))
+  if use_full_name:
+    obj_name = obj_info.full_name
+  else:
+    obj_name = obj_info.short_name
+  parts.append(signature_template.format(name=obj_name, sig=sig))
   parts.append('```\n\n')
 
   return '\n'.join(parts)
