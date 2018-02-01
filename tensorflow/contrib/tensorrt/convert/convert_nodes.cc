@@ -1849,6 +1849,76 @@ tensorflow::Status ConvertMatMul(
 
 }
 
+tensorflow::Status ConvertReshape(Converter& ctx,
+                              tensorflow::NodeDef const& node_def,
+                              std::vector<TRT_TensorOrWeights> const& inputs,
+                              std::vector<TRT_TensorOrWeights>* outputs) {
+  if (inputs.size() != 2 || !inputs.at(0).is_tensor() ||
+      !inputs.at(1).is_weights())
+    return tensorflow::errors::InvalidArgument(
+        "Input expects tensor and weights, at" + node_def.name());
+
+  // implement tensor binaryOp weight [channel wise] for now;
+  nvinfer1::ITensor const* tensor = inputs.at(0).tensor();
+  auto dims = tensor->getDimensions();
+  // restore implicit batch dimension
+  int nbDims = dims.nbDims + 1;
+
+  TRT_ShapedWeights shape = inputs.at(1).weights();
+
+  TFAttrs attrs(node_def);
+
+  auto padding_type = attrs.get<tensorflow::DataType>("Tshape");
+
+  if (shape.shape_.nbDims != 1)
+    return tensorflow::errors::InvalidArgument(
+        "reshape new shape is not 1 dimensional, at " + node_def.name());
+
+  // Only expect to handle INT32 as attributes for now
+  if (padding_type != tensorflow::DataType::DT_INT32)
+    return tensorflow::errors::Unimplemented(
+        "reshape new shape supports only DT_INT32, at "+ node_def.name());
+
+  auto shape_data = static_cast<int*>(const_cast<void*>(shape.values_));
+
+  if (shape_data[0] != -1)
+    return tensorflow::errors::InvalidArgument(
+        "reshape new shape first dimension is not -1, at "+ node_def.name());
+
+  auto shape_num_dims = shape.shape_.d[0];
+  LOG(DEBUG) << "shape dimensions: " << shape_num_dims;
+  int volume_w = 1;
+  for (int i = 1; i < shape.shape_.d[0]; i++)
+    volume_w *= shape_data[i];
+
+  int volume_t = 1;
+  for (int i = 0; i < dims.nbDims; i++)
+    volume_t *= dims.d[i];
+
+  LOG(DEBUG) << "volume: " << volume_t <<  " volume weights: " << volume_w;
+  if (volume_w != volume_t)
+    return tensorflow::errors::InvalidArgument(
+        "volume does not agree between tensor and new shape, at "+ node_def.name());
+
+  nvinfer1::IShuffleLayer* layer =
+    ctx.network()->addShuffle(*const_cast<nvinfer1::ITensor*>(tensor));
+
+  nvinfer1::Dims reshapeDims;
+  LOG(DEBUG) << "new dimension: " << shape_num_dims-1;
+  reshapeDims.nbDims = shape_num_dims-1;
+  for (int32_t i = 0; i < reshapeDims.nbDims; ++i) {
+    reshapeDims.d[i] = shape_data[i+1];
+  }
+  layer->setReshapeDimensions(reshapeDims);
+  LOG(DEBUG) << "new dimension: " << shape_num_dims-1;
+
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  auto dims_output = output_tensor->getDimensions();
+  LOG(DEBUG) << "output tensor dimension:" << dims_output.nbDims;
+  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
+}
+
 void Converter::register_op_converters() {
   // vgg_16 slim implementation
   _op_registry["Placeholder"] = ConvertPlaceholder;
@@ -1875,7 +1945,7 @@ void Converter::register_op_converters() {
 
   _op_registry["ConcatV2"] = ConvertConcat;
   _op_registry["MatMul"] = ConvertMatMul;
-  //_op_registry["Reshape"] = ConvertReshape;
+  _op_registry["Reshape"] = ConvertReshape;
 }
 
 }  // namespace
