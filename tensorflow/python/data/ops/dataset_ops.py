@@ -903,10 +903,11 @@ class Dataset(object):
 
     Args:
       transformation_func: A function that takes one `Dataset` argument and
-        returns a `Dataset`.
+          returns a `Dataset`.
 
     Returns:
-      Dataset: The `Dataset` returned by applying `transformation_func` to this dataset.
+      Dataset: The `Dataset` returned by applying `transformation_func` to this
+          dataset.
     """
     dataset = transformation_func(self)
     if not isinstance(dataset, Dataset):
