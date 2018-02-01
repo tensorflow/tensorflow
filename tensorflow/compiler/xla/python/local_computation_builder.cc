@@ -404,6 +404,12 @@ ComputationDataHandle LocalComputationBuilder::Dot(
   return builder_.Dot(lhs, rhs);
 }
 
+ComputationDataHandle LocalComputationBuilder::DotGeneral(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    const DotDimensionNumbers& dimension_numbers) {
+  return builder_.DotGeneral(lhs, rhs, dimension_numbers);
+}
+
 ComputationDataHandle LocalComputationBuilder::ConvGeneralDilated(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,

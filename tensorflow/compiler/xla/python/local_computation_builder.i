@@ -34,6 +34,7 @@ limitations under the License.
 //  ArraySlice<pair<int64, in64>>      <-  sequence of int pairs
 //  PaddingConfig proto                <-  corresponding Python proto
 //  ConvolutionDimensionNumbers proto  <-  corresponding Python proto
+//  DotDimensionNumbers proto          <-  corresponding Python proto
 //
 // Arrows indicate whether a conversion only ever occurs in one
 // direction, or whether it is maintained bidirectionally.
@@ -511,6 +512,135 @@ tensorflow::ImportNumpy();
   $1 = temps;
 }
 
+// DotDimensionNumbers
+
+%typemap(in) const DotDimensionNumbers&
+    (DotDimensionNumbers dimension_numbers) {
+  int length;
+
+  /* lhs_contracting_dimensions */
+  PyObject* lhs_contracting_dimensions = PyObject_GetAttrString(
+      $input, "lhs_contracting_dimensions");
+  if (!lhs_contracting_dimensions) {
+    return NULL;
+  }
+
+  length = PySequence_Size(lhs_contracting_dimensions);
+  if (length == -1) {
+    Py_DECREF(lhs_contracting_dimensions);
+    return NULL;
+  }
+
+  for (int i = 0; i < length; ++i) {
+    PyObject* item = PySequence_GetItem(lhs_contracting_dimensions, i);
+    if (!item) {
+      Py_DECREF(lhs_contracting_dimensions);
+      return NULL;
+    }
+    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
+    if (dimension == -1 && PyErr_Occurred()) {
+      Py_DECREF(item);
+      Py_DECREF(lhs_contracting_dimensions);
+      return NULL;
+    }
+    dimension_numbers.add_lhs_contracting_dimensions(dimension);
+    Py_DECREF(item);
+  }
+  Py_DECREF(lhs_contracting_dimensions);
+
+  /* rhs_contracting_dimensions */
+  PyObject* rhs_contracting_dimensions = PyObject_GetAttrString(
+      $input, "rhs_contracting_dimensions");
+  if (!lhs_contracting_dimensions) {
+    return NULL;
+  }
+
+  length = PySequence_Size(rhs_contracting_dimensions);
+  if (length == -1) {
+    Py_DECREF(rhs_contracting_dimensions);
+    return NULL;
+  }
+
+  for (int i = 0; i < length; ++i) {
+    PyObject* item = PySequence_GetItem(rhs_contracting_dimensions, i);
+    if (!item) {
+      Py_DECREF(rhs_contracting_dimensions);
+      return NULL;
+    }
+    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
+    if (dimension == -1 && PyErr_Occurred()) {
+      Py_DECREF(item);
+      Py_DECREF(rhs_contracting_dimensions);
+      return NULL;
+    }
+    dimension_numbers.add_rhs_contracting_dimensions(dimension);
+    Py_DECREF(item);
+  }
+  Py_DECREF(rhs_contracting_dimensions);
+
+  /* lhs_batch_dimensions */
+  PyObject* lhs_batch_dimensions = PyObject_GetAttrString(
+      $input, "lhs_batch_dimensions");
+  if (!lhs_batch_dimensions) {
+    return NULL;
+  }
+
+  length = PySequence_Size(lhs_batch_dimensions);
+  if (length == -1) {
+    Py_DECREF(lhs_batch_dimensions);
+    return NULL;
+  }
+
+  for (int i = 0; i < length; ++i) {
+    PyObject* item = PySequence_GetItem(lhs_batch_dimensions, i);
+    if (!item) {
+      Py_DECREF(lhs_batch_dimensions);
+      return NULL;
+    }
+    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
+    if (dimension == -1 && PyErr_Occurred()) {
+      Py_DECREF(item);
+      Py_DECREF(lhs_batch_dimensions);
+      return NULL;
+    }
+    dimension_numbers.add_lhs_batch_dimensions(dimension);
+    Py_DECREF(item);
+  }
+  Py_DECREF(lhs_batch_dimensions);
+
+  /* rhs_batch_dimensions */
+  PyObject* rhs_batch_dimensions = PyObject_GetAttrString(
+      $input, "rhs_batch_dimensions");
+  if (!rhs_batch_dimensions) {
+    return NULL;
+  }
+
+  length = PySequence_Size(rhs_batch_dimensions);
+  if (length == -1) {
+    Py_DECREF(rhs_batch_dimensions);
+    return NULL;
+  }
+
+  for (int i = 0; i < length; ++i) {
+    PyObject* item = PySequence_GetItem(rhs_batch_dimensions, i);
+    if (!item) {
+      Py_DECREF(rhs_batch_dimensions);
+      return NULL;
+    }
+    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
+    if (dimension == -1 && PyErr_Occurred()) {
+      Py_DECREF(item);
+      Py_DECREF(rhs_batch_dimensions);
+      return NULL;
+    }
+    dimension_numbers.add_rhs_batch_dimensions(dimension);
+    Py_DECREF(item);
+  }
+  Py_DECREF(rhs_batch_dimensions);
+
+  $1 = &dimension_numbers;
+}
+
 // PaddingConfig
 
 %typemap(in) const PaddingConfig&
@@ -756,6 +886,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::Lt;
 %unignore xla::swig::LocalComputationBuilder::Le;
 %unignore xla::swig::LocalComputationBuilder::Dot;
+%unignore xla::swig::LocalComputationBuilder::DotGeneral;
 %unignore xla::swig::LocalComputationBuilder::ConvGeneralDilated;
 %unignore xla::swig::LocalComputationBuilder::Add;
 %unignore xla::swig::LocalComputationBuilder::Sub;

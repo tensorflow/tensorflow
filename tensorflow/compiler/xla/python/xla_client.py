@@ -931,9 +931,36 @@ class ComputationBuilder(object):
                            _unwrap_data_handle(init)))
 
   def Dot(self, lhs, rhs):
-    """Matrix multiplication between lhs and rhs."""
+    """Enqueues a dot operation onto the computation.
+
+    Args:
+      lhs: ComputationDataHandle for the rank 1 or rank 2 left-hand-side array.
+      rhs: ComputationDataHandle for the rank 1 or rank 2 right-hand-side array.
+
+    Returns: a ComputationDataHandle representing the Dot operation.
+    """
     return _wrap_data_handle(
         self._client.Dot(_unwrap_data_handle(lhs), _unwrap_data_handle(rhs)))
+
+  def DotGeneral(self, lhs, rhs, dimension_numbers):
+    """Enqueues a general dot operation onto the computation.
+
+    Args:
+      lhs: ComputationDataHandle for the left-hand-side array.
+      rhs: ComputationDataHandle for the right-hand-side array.
+      dimension_numbers: either an xla_data_pb2.DotDimensionNumbers or a nested
+        tuple ((lhs_contract, rhs_contract), (lhs_batch, rhs_batch)) of lists of
+        integers representing the dimensions to treat as contracting dimensions
+        and batch dimensions on each input operand.
+
+    Returns: a ComputationDataHandle representing the DotGeneral operation.
+    """
+    if not isinstance(dimension_numbers, xla_data_pb2.DotDimensionNumbers):
+      dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
+    return _wrap_data_handle(
+        self._client.DotGeneral(
+            _unwrap_data_handle(lhs), _unwrap_data_handle(rhs),
+            dimension_numbers))
 
   def Conv(self, lhs, rhs, window_strides, padding):
     """Enqueues a Conv operation onto the computation.
@@ -1071,3 +1098,13 @@ def GetPaddingConfigFromTriples(triples):
     dimension.edge_padding_high = hi
     dimension.interior_padding = interior
   return padding_config
+
+
+def GetDotDimensionsFromLists(dimension_numbers):
+  (lhs_contract, rhs_contract), (lhs_batch, rhs_batch) = dimension_numbers
+  dot_dims_proto = xla_data_pb2.DotDimensionNumbers()
+  dot_dims_proto.lhs_contracting_dimensions.extend(lhs_contract)
+  dot_dims_proto.rhs_contracting_dimensions.extend(rhs_contract)
+  dot_dims_proto.lhs_batch_dimensions.extend(lhs_batch)
+  dot_dims_proto.rhs_batch_dimensions.extend(rhs_batch)
+  return dot_dims_proto
