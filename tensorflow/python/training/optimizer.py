@@ -36,6 +36,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _get_variable_for(v):
@@ -187,6 +188,7 @@ def _get_processor(v):
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
+@tf_export("train.Optimizer")
 class Optimizer(object):
   """Base class for optimizers.
 

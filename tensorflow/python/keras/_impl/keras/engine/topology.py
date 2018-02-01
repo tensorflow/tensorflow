@@ -708,8 +708,10 @@ class Network(tf_network.GraphNetwork, Layer):
       self.input_names.append(layer.name)
       if layer.is_placeholder:
         self._feed_input_names.append(layer.name)
-        self._feed_inputs.append(layer.input)
         self._feed_input_shapes.append(K.int_shape(self.inputs[i]))
+        # layer.input gives an error in eager mode
+        if context.in_graph_mode():
+          self._feed_inputs.append(layer.input)
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 

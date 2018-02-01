@@ -376,6 +376,10 @@ class NearComparator {
     abs_expected_miscompare_sum_ = 0.0;
     max_rel_err_ = 0.0;
     max_abs_err_ = 0.0;
+    first_linear_index_ = -1;
+    last_linear_index_ = -1;
+    max_rel_linear_index_ = -1;
+    max_abs_linear_index_ = -1;
     miscompares_ = Literal(ShapeUtil::ChangeElementType(actual.shape(), PRED));
     miscompares_.PopulateWithValue(false);
     multi_index_.resize(expected.shape().dimensions_size(), 0);
@@ -482,11 +486,11 @@ class NearComparator {
     const float rel_err = abs_diff / std::abs(expected);
     abs_diff_sum_ += abs_diff;
     abs_expected_sum_ += std::abs(expected);
-    if (rel_err > max_rel_err_) {
+    if (rel_err > max_rel_err_ || std::isnan(rel_err)) {
       max_rel_err_ = rel_err;
       max_rel_linear_index_ = linear_index;
     }
-    if (abs_diff > max_abs_err_) {
+    if (abs_diff > max_abs_err_ || std::isnan(abs_diff)) {
       max_abs_err_ = abs_diff;
       max_abs_linear_index_ = linear_index;
     }

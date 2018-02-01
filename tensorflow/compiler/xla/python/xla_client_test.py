@@ -496,6 +496,12 @@ class SingleOpTest(LocalComputationTest):
     c.Exp(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=np.exp(arr))
 
+  def testRound(self):
+    c = self._NewComputation()
+    arr = NumpyArrayF32([3.3, 12.1])
+    c.Round(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=np.round(arr))
+
   def testLog(self):
     c = self._NewComputation()
     arr = NumpyArrayF32([3.3, 12.1])
@@ -698,6 +704,23 @@ class SingleOpTest(LocalComputationTest):
         dimensions=[0, 2])
     self._ExecuteAndCompareExact(
         c, expected=[[[6, 5], [8, 7]], [[2, 1], [4, 3]]])
+
+  def testClampF32(self):
+    c = self._NewComputation()
+    c.Clamp(
+        c.Constant(NumpyArrayF32(-1)),
+        c.Constant(NumpyArrayF32([-2, -1, 0, 1, 2, 3])),
+        c.Constant(NumpyArrayF32(2)))
+    self._ExecuteAndCompareExact(c, expected=[-1, -1, 0, 1, 2, 2])
+
+  # TODO(b/72689392): re-enable when bug S32 resolved
+  def DISABLED_testClampS32(self):
+    c = self._NewComputation()
+    c.Clamp(
+        c.Constant(NumpyArrayS32(-1)),
+        c.Constant(NumpyArrayS32([-2, -1, 0, 1, 2, 3])),
+        c.Constant(NumpyArrayS32(2)))
+    self._ExecuteAndCompareExact(c, expected=[-1, 0, 1, 2, 2])
 
   def testSelect(self):
     c = self._NewComputation()

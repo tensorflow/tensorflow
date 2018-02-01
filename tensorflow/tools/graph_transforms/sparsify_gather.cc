@@ -181,6 +181,14 @@ Status ObtainVariableInfo(
   return Status::OK();
 }
 
+Status RemoveInputAtIndex(NodeDef* n, int index) {
+  for (int i = index; i < n->input_size() - 1; i++) {
+    n->mutable_input()->SwapElements(i, i + 1);
+  }
+  n->mutable_input()->RemoveLast();
+  return Status::OK();
+}
+
 Status SparsifyGatherInternal(
     const GraphDef& input_graph_def,
     const std::unique_ptr<std::unordered_map<string, string> >&
@@ -301,13 +309,13 @@ Status SparsifyGatherInternal(
             TF_RETURN_IF_ERROR(ReadTensorFromCheckpoint(
                 weights_node.name(), ckpt_reader,
                 (*shapes_and_slices)[weights_node.name()], &weight));
-            // Add both both weight and identity node names.
-            removed_node_names.push_back(weights_node.name());
-            removed_node_names.push_back(match.inputs[0].node.name());
-            for (auto input_node : match.inputs[0].node.input()) {
-              auto parsed_input = StringReplace(input_node, "^", "", true);
-              refs[parsed_input]--;
-            }
+          }
+          // Add both both weight and identity node names.
+          removed_node_names.push_back(weights_node.name());
+          removed_node_names.push_back(match.inputs[0].node.name());
+          for (auto input_node : match.inputs[0].node.input()) {
+            auto parsed_input = StringReplace(input_node, "^", "", true);
+            refs[parsed_input]--;
           }
           Tensor indices_tensor;
           Tensor values_tensor;
@@ -468,26 +476,49 @@ Status SparsifyGatherInternal(
           continue;
         }
         int j = 0;
+        bool deleted_inputs = false;
         while (j < replaced_graph_def.node(i).input_size()) {
           if (replaced_graph_def.node(i).input(j) == name ||
               replaced_graph_def.node(i).input(j) == ("^" + name)) {
-            replaced_graph_def.mutable_node(i)->mutable_input()->SwapElements(
-                j, replaced_graph_def.node(i).input_size() - 1);
-            replaced_graph_def.mutable_node(i)->mutable_input()->RemoveLast();
+            TF_RETURN_IF_ERROR(
+                RemoveInputAtIndex(replaced_graph_def.mutable_node(i), j));
+            deleted_inputs = true;
             continue;
           }
           j++;
         }
-        if (!replaced_graph_def.node(i).input_size()) {
-          if ((refs.find(replaced_graph_def.node(i).name()) != refs.end()) &&
-              (refs[replaced_graph_def.node(i).name()] == 0)) {
+        if (deleted_inputs) {
+          if (replaced_graph_def.node(i).op() == "ConcatV2") {
+            if (replaced_graph_def.node(i).input_size() > 2) {
+              SetNodeAttr("N", replaced_graph_def.node(i).input_size() - 1,
+                          replaced_graph_def.mutable_node(i));
+            } else if (replaced_graph_def.node(i).input_size() == 2) {
+              if (refs[replaced_graph_def.node(i).input(1)] != 1) {
+                return errors::Internal(
+                    "Expect axis tensor of ConcatV2 node to only be referenced "
+                    "once.");
+              }
+              refs[replaced_graph_def.node(i).input(1)] -= 1;
+              removed_node_names.push_back(replaced_graph_def.node(i).input(1));
+              replaced_graph_def.mutable_node(i)->mutable_input()->RemoveLast();
+              replaced_graph_def.mutable_node(i)->mutable_attr()->erase("N");
+              replaced_graph_def.mutable_node(i)->set_op("Identity");
+            } else {
+              return errors::Internal(
+                  "ConcatV2 should have at least two elements");
+            }
+          }
+          if ((replaced_graph_def.node(i).op() == "Assign" ||
+               replaced_graph_def.node(i).op() == "Reshape" ||
+               replaced_graph_def.node(i).op() == "Equal" ||
+               replaced_graph_def.node(i).op() == "Mean" ||
+               replaced_graph_def.node(i).op() == "ScalarSummary") &&
+              replaced_graph_def.node(i).input_size() == 1) {
             removed_node_names.push_back(replaced_graph_def.node(i).name());
           }
-        }
-
-        if (replaced_graph_def.node(i).op() == "Assign" &&
-            replaced_graph_def.node(i).input_size() == 1) {
-          removed_node_names.push_back(replaced_graph_def.node(i).name());
+          if (!replaced_graph_def.node(i).input_size()) {
+            removed_node_names.push_back(replaced_graph_def.node(i).name());
+          }
         }
         i++;
       }
@@ -528,17 +559,22 @@ Status SparsifyGather(const GraphDef& input_graph_def,
     };
   // clang-format on
 
+  GraphDef cleaned_input_graph_def;
+  RemoveAttributes(input_graph_def, {"_output_shapes"},
+                   &cleaned_input_graph_def);
+
   GraphDef temp_output;
 
   std::unique_ptr<BundleReader> ckpt_reader;
   TF_RETURN_IF_ERROR(InitializeCheckpointReader(context, &ckpt_reader));
 
   std::unique_ptr<std::unordered_map<string, string> > shapes_and_slices;
-  TF_RETURN_IF_ERROR(ObtainVariableInfo(input_graph_def, &shapes_and_slices));
+  TF_RETURN_IF_ERROR(
+      ObtainVariableInfo(cleaned_input_graph_def, &shapes_and_slices));
 
-  TF_RETURN_IF_ERROR(SparsifyGatherInternal(input_graph_def, shapes_and_slices,
-                                            context, gather_pattern,
-                                            ckpt_reader, &temp_output));
+  TF_RETURN_IF_ERROR(SparsifyGatherInternal(
+      cleaned_input_graph_def, shapes_and_slices, context, gather_pattern,
+      ckpt_reader, &temp_output));
 
   TF_RETURN_IF_ERROR(SparsifyGatherInternal(temp_output, shapes_and_slices,
                                             context, gather_v2_pattern,

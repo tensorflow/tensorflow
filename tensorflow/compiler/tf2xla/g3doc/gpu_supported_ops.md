@@ -71,6 +71,7 @@ Operator                              | Type Constraint
 `Exp`                                 | `T={complex64,double,float}`
 `ExpandDims`                          | `Tdim={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Expm1`                               | `T={complex64,double,float}`
+`ExtractImagePatches`                 | `T={double,float,int32,int64,uint32,uint64}`
 `FFT`                                 |
 `FFT2D`                               |
 `FFT3D`                               |
@@ -124,6 +125,8 @@ Operator                              | Type Constraint
 `MaxPool3D`                           | `T={float}`
 `MaxPool3DGrad`                       | `TInput={float}`<br>`T={float}`
 `MaxPoolGrad`                         | `T={double,float,int32,int64,uint32,uint64}`
+`MaxPoolGradV2`                       | `T={double,float,int32,int64,uint32,uint64}`
+`MaxPoolV2`                           | `T={double,float,int32,int64}`
 `Maximum`                             | `T={double,float,int32,int64}`
 `Mean`                                | `Tidx={int32,int64}`<br>`T={complex64,double,float,int32,int64,uint32,uint64}`
 `Min`                                 | `Tidx={int32,int64}`<br>`T={complex64,double,float,int32,int64,uint32,uint64}`
@@ -173,6 +176,7 @@ Operator                              | Type Constraint
 `ResourceGather`                      | `Tindices={int32,int64}`<br>`dtype={complex64,double,float,int32,int64,uint32,uint64}`
 `ResourceStridedSliceAssign`          | `Index={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `Reverse`                             | `T={bool,complex64,double,float,int32,int64}`
+`ReverseSequence`                     | `Tlen={int32,int64}`<br>`T={bool,complex64,double,float,int32,int64,uint32,uint64}`
 `ReverseV2`                           | `T={bool,complex64,double,float,int32,int64}`<br>`Tidx={int32,int64}`
 `RightShift`                          | `T={int32,int64,uint32,uint64}`
 `Rint`                                | `T={double,float}`

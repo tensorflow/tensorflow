@@ -41,8 +41,9 @@ class DatasetSerializationTestBase(test.TestCase):
   def tearDown(self):
     self._delete_ckpt()
 
-  # TODO(b/70988345): Support native `tf.SparseTensor` objects and get rid of
-  # `sparse_tensors` argument.
+  # TODO(b/72657739): Remove sparse_tensor argument, which is to test the
+  # (deprecated) saveable `SparseTensorSliceDataset`, once the API
+  # `from_sparse_tensor_slices()`and related tests are deleted.
   def run_core_tests(self, ds_fn1, ds_fn2, num_outputs, sparse_tensors=False):
     """Runs the core tests.
 
@@ -559,13 +560,16 @@ class DatasetSerializationTestBase(test.TestCase):
       get_next = sparse_tensor.SparseTensor(*iterator.get_next())
     else:
       get_next = iterator.get_next()
-    self._add_iterator_ops_to_collection(init_op, get_next, sparse_tensors)
+    self._add_iterator_ops_to_collection(init_op, get_next, ds_fn,
+                                         sparse_tensors)
     saver = saver_lib.Saver(allow_empty=True)
     return init_op, get_next, saver
 
   def _build_empty_graph(self, ds_fn, sparse_tensors=False):
     iterator = iterator_ops.Iterator.from_structure(
-        self._get_output_types(ds_fn), self._get_output_shapes(ds_fn))
+        self._get_output_types(ds_fn),
+        output_shapes=self._get_output_shapes(ds_fn),
+        output_classes=self._get_output_classes(ds_fn))
     saveable = contrib_iterator_ops.make_saveable_from_iterator(iterator)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
     if sparse_tensors:
@@ -578,12 +582,19 @@ class DatasetSerializationTestBase(test.TestCase):
   def _add_iterator_ops_to_collection(self,
                                       init_op,
                                       get_next,
+                                      ds_fn,
                                       sparse_tensors=False):
     ops.add_to_collection("iterator_ops", init_op)
     # `get_next` may be a tuple e.g. in TensorSliceDataset. Since Collections
     # do not support tuples we flatten the tensors and restore the shape in
     # `_get_iterator_ops_from_collection`.
-    if sparse_tensors:
+
+    # TODO(shivaniagrwal): `output_classes` is a nested structure of classes,
+    # this base class is specific to current test cases. Update when tests are
+    # added with `output_classes` as a nested structure with at least one of the
+    # component being `tf.SparseTensor`.
+    if (sparse_tensors or
+        self._get_output_classes(ds_fn) is sparse_tensor.SparseTensor):
       ops.add_to_collection("iterator_ops", get_next.indices)
       ops.add_to_collection("iterator_ops", get_next.values)
       ops.add_to_collection("iterator_ops", get_next.dense_shape)
@@ -593,7 +604,8 @@ class DatasetSerializationTestBase(test.TestCase):
 
   def _get_iterator_ops_from_collection(self, ds_fn, sparse_tensors=False):
     all_ops = ops.get_collection("iterator_ops")
-    if sparse_tensors:
+    if (sparse_tensors or
+        self._get_output_classes(ds_fn) is sparse_tensor.SparseTensor):
       init_op, indices, values, dense_shape = all_ops
       return init_op, sparse_tensor.SparseTensor(indices, values, dense_shape)
     else:
@@ -607,6 +619,10 @@ class DatasetSerializationTestBase(test.TestCase):
   def _get_output_shapes(self, ds_fn):
     with ops.Graph().as_default():
       return ds_fn().output_shapes
+
+  def _get_output_classes(self, ds_fn):
+    with ops.Graph().as_default():
+      return ds_fn().output_classes
 
   def _ckpt_path(self):
     return os.path.join(self.get_temp_dir(), "iterator")
