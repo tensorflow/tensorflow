@@ -83,7 +83,7 @@ def _convert_default_signature_to_signature_def(signatures):
   default_signature = signatures.default_signature
   signature_def = meta_graph_pb2.SignatureDef()
   if (default_signature.WhichOneof("type") ==
-          legacy_constants.REGRESSION_SIGNATURE):
+      legacy_constants.REGRESSION_SIGNATURE):
     regression_signature = default_signature.regression_signature
     signature_def.method_name = signature_constants.REGRESS_METHOD_NAME
     _add_input_to_signature_def(regression_signature.input.tensor_name,
@@ -93,7 +93,7 @@ def _convert_default_signature_to_signature_def(signatures):
                                  signature_constants.REGRESS_OUTPUTS,
                                  signature_def)
   elif (default_signature.WhichOneof("type") ==
-          legacy_constants.CLASSIFICATION_SIGNATURE):
+        legacy_constants.CLASSIFICATION_SIGNATURE):
     classification_signature = default_signature.classification_signature
     signature_def.method_name = signature_constants.CLASSIFY_METHOD_NAME
     _add_input_to_signature_def(classification_signature.input.tensor_name,
