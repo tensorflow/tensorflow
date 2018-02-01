@@ -25,6 +25,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 # NOTE(mrry): It is legitimate to call `Iterator.get_next()` multiple
@@ -47,6 +48,7 @@ GET_NEXT_CALL_WARNING_MESSAGE = (
     "`next_element` inside the loop.")
 
 
+@tf_export("data.Iterator")
 class Iterator(object):
   """Represents the state of iterating through a `Dataset`."""
 

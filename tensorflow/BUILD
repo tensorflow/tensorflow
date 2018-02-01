@@ -550,6 +550,7 @@ filegroup(
         "//tensorflow/contrib/predictor:all_files",
         "//tensorflow/contrib/py2tf:all_files",
         "//tensorflow/contrib/py2tf/converters:all_files",
+        "//tensorflow/contrib/py2tf/impl:all_files",
         "//tensorflow/contrib/py2tf/pyct:all_files",
         "//tensorflow/contrib/py2tf/pyct/static_analysis:all_files",
         "//tensorflow/contrib/quantize:all_files",

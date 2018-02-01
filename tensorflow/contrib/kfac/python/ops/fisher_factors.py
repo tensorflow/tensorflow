@@ -31,6 +31,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -109,6 +110,54 @@ def diagonal_covariance_initializer(shape, dtype, partition_info):  # pylint: di
   if INIT_COVARIANCES_AT_ZERO:
     return array_ops.zeros(shape, dtype)
   return array_ops.ones(shape, dtype)
+
+
+def extract_image_patches(image, ksizes, strides, padding, name=None):
+  """Extracts image patches for an N-dimensional convolution.
+
+  This function is a compatibility wrapper over tf.extract_image_patches(), as
+  ExtractImagePatches isn't yet implemented in XLA.
+
+  Args:
+    image: Tensor of shape [batch, in_x, in_y, ..., in_channels]. Input images.
+      All dimensions except 'batch' must be defined.
+    ksizes: [filter_x, filter_y, ...]. Spatial shape of filter in each
+      dimension.
+    strides: [stride_x, stride_y, ...]. Spatial stride for filter in each
+      dimension.
+    padding: str. "VALID" or "SAME".
+    name: str or None. name of Op.
+
+  Returns:
+    result: [batch, out_x, out_y, ..., filter_x, filter_y, ..., in_channels].
+      Contains image patches to which conv kernel would be applied for each
+      output location. [out_x, out_y, ...] depends on padding.
+  """
+  if not utils.on_tpu():
+    return array_ops.extract_image_patches(
+        image,
+        ksizes=([1] + list(ksizes) + [1]),
+        strides=([1] + list(strides) + [1]),
+        rates=[1, 1, 1, 1],
+        padding=padding,
+        name=name)
+
+  with tf_ops.name_scope(name, "extract_image_patches",
+                         [image, ksizes, strides, padding]):
+    batch = image.shape.as_list()[0]
+    in_channels = image.shape.as_list()[-1]
+
+    # Map each input feature to a location in the output.
+    out_channels = np.prod(ksizes) * in_channels
+    filters = linalg_ops.eye(out_channels),
+    filters = array_ops.reshape(filters, ksizes + [in_channels, out_channels])
+
+    result = nn.convolution(image, filters, padding, strides=strides)
+    out_spatial = result.shape.as_list()[1:-1]
+    result = array_ops.reshape(
+        result, [batch or -1] + out_spatial + ksizes + [in_channels])
+
+    return result
 
 
 def compute_cov(tensor, tensor_right=None, normalizer=None):
@@ -668,11 +717,10 @@ class ConvDiagonalFactor(DiagonalFactor):
 
       # TODO(b/64144716): there is potential here for a big savings in terms
       # of memory use.
-      patches = array_ops.extract_image_patches(
+      patches = extract_image_patches(
           self._inputs,
-          ksizes=[1, filter_height, filter_width, 1],
-          strides=self._strides,
-          rates=[1, 1, 1, 1],
+          ksizes=[filter_height, filter_width],
+          strides=self._strides[1:-1],
           padding=self._padding)
 
       if self._has_bias:
@@ -816,11 +864,10 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
 
       # TODO(b/64144716): there is potential here for a big savings in terms of
       # memory use.
-      patches = array_ops.extract_image_patches(
+      patches = extract_image_patches(
           self._inputs,
-          ksizes=[1, filter_height, filter_width, 1],
-          strides=self._strides,
-          rates=[1, 1, 1, 1],
+          ksizes=[filter_height, filter_width],
+          strides=self._strides[1:-1],
           padding=self._padding)
 
       flatten_size = (filter_height * filter_width * in_channels)

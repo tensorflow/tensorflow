@@ -1893,6 +1893,26 @@ XLA_TEST_F(ArrayElementwiseOpTest, ClampF32ScalarVector) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, ClampS32Vector) {
+  ComputationBuilder builder(client_, TestName());
+  auto min_vector = builder.ConstantR1<int32>({1, -6, 1, 2, 0, -5});
+  auto arg_vector = builder.ConstantR1<int32>({2, 10, -5, 1, 4, 10});
+  auto max_vector = builder.ConstantR1<int32>({3, 0, 25, 5, 123, -1});
+  auto clamp = builder.Clamp(min_vector, arg_vector, max_vector);
+
+  ComputeAndCompareR1<int32>(&builder, {2, 0, 1, 2, 4, -1}, {});
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ClampU32Vector) {
+  ComputationBuilder builder(client_, TestName());
+  auto min_vector = builder.ConstantR1<uint32>({1, 2, 1, 2, 0, ~0u - 4});
+  auto arg_vector = builder.ConstantR1<uint32>({2, 10, 5, 1, 4, 10});
+  auto max_vector = builder.ConstantR1<uint32>({3, 5, 25, 5, 123, ~0u});
+  auto clamp = builder.Clamp(min_vector, arg_vector, max_vector);
+
+  ComputeAndCompareR1<uint32>(&builder, {2, 5, 5, 2, 4, ~0u - 4}, {});
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, AddTwoParametersF32s) {
   ComputationBuilder builder(client_, TestName());
 

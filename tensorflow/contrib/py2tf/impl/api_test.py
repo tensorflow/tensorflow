@@ -18,8 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf import api
-from tensorflow.contrib.py2tf import config
+from tensorflow.contrib.py2tf.impl import api
+from tensorflow.contrib.py2tf.impl import config
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import math_ops
