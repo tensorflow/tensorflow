@@ -294,6 +294,11 @@ class StridedSliceAssignOp : public OpKernel {
       OP_REQUIRES_OK(context,
                      LookupResource(context, HandleFromInput(context, 0), &v));
       old_lhs = *v->tensor();
+      OP_REQUIRES(context, old_lhs.dtype() == DataTypeToEnum<T>::value,
+                  errors::InvalidArgument(
+                      "l-value dtype ", DataTypeString(old_lhs.dtype()),
+                      " does not match r-value dtype ",
+                      DataTypeString(DataTypeToEnum<T>::value)));
     } else {
       context->forward_ref_input_to_ref_output(0, 0);
       old_lhs = context->mutable_input(0, true);
