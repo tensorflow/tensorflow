@@ -136,7 +136,7 @@ class SyntheticTest(test.TestCase):
       self.assertRaises(AssertionError, np.testing.assert_array_equal,
                         spir0.data, spir1.data)
 
-  def test_spirals(self):
+  def test_spirals_synthetic(self):
     synthetic.spirals(3)
 
 

@@ -479,8 +479,8 @@ def map_structure_up_to(shallow_tree, func, *inputs):
   The `inputs`, can be thought of as having the same structure as
   `shallow_tree`, but with leaf nodes that are themselves tree structures.
 
-  This function, therefore, will return something with the same base structure as
-  `shallow_tree`.
+  This function, therefore, will return something with the same base structure
+  as `shallow_tree`.
 
   Examples:
 
