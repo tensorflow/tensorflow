@@ -413,7 +413,7 @@ class Progbar(object):
         sys.stdout.write('\n')
 
     elif self.verbose == 2:
-      if self.target != -1 and current >= self.target:
+      if self.target == -1 or current >= self.target:
         for k in self.unique_values:
           info += ' - %s:' % k
           avg = np.mean(
