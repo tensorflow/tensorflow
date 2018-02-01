@@ -27,8 +27,9 @@ limitations under the License.
 //  ArraySlice<ComputationDataHandle>  <-  sequence of int
 //  Literal                            <-> (nested tuple of) numpy ndarray
 //  std::vector<Literal>               <-  sequence of (nested tuple of) ndarray
-//  Shape                              <-> pair holding (dtype, dimensions)
-//  std::vector<Shape>                 <-  sequence of shape information pairs
+//  Shape                               -> pair holding (dtype, dimensions)
+//                                     <-  object duck-typed as xla_client.Shape
+//  std::vector<Shape>                 <-  sequence of xla_client.Shape objects
 //  PrimitiveType                      <-  int
 //  ArraySlice<pair<int64, in64>>      <-  sequence of int pairs
 //  PaddingConfig proto                <-  corresponding Python proto
@@ -55,7 +56,7 @@ limitations under the License.
 // translates to a tuple-shaped XLA Literal, whose component subshapes
 // are a 2x3 F32-shaped literal followed by two tuple-shaped literals.
 //
-// The Python objects corresponding to C++ Shapes have the type:
+// Shapes output by C++ become Python objects with the type:
 //
 //   T            = (dtype, S)
 //   S            = DIMENSIONS | TUPLE_SHAPES
@@ -353,13 +354,29 @@ tensorflow::ImportNumpy();
 // Shape
 
 %typemap(in) const Shape& (Shape temp) {
-  Status shape_status = numpy::CheckPyShapeInfo($input);
-  if (!shape_status.ok()) {
-    PyErr_SetString(PyExc_RuntimeError, shape_status.ToString().c_str());
+  StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape($input);
+  if (!statusor.ok()) {
+    PyErr_SetString(PyExc_RuntimeError, statusor.status().ToString().c_str());
     return NULL;
   }
-  temp = numpy::XlaShapeFromPyShapeInfo($input);
+  temp = std::move(statusor).ValueOrDie();
   $1 = &temp;
+}
+
+%typemap(in) const tensorflow::gtl::optional<Shape>& (
+    tensorflow::gtl::optional<Shape> temp) {
+  if ($input == Py_None) {
+    temp = tensorflow::gtl::nullopt;
+    $1 = &temp;
+  } else {
+    StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape($input);
+    if (!statusor.ok()) {
+      PyErr_SetString(PyExc_RuntimeError, statusor.status().ToString().c_str());
+      return NULL;
+    }
+    temp = std::move(statusor).ValueOrDie();
+    $1 = &temp;
+  }
 }
 
 %typemap(out) std::unique_ptr<Shape> {
@@ -374,14 +391,37 @@ tensorflow::ImportNumpy();
   const int size = PySequence_Size($input);
   for (int i = 0; i < size; ++i) {
     PyObject* o = PySequence_GetItem($input, i);
-    Status shape_status = numpy::CheckPyShapeInfo(o);
-    if (!shape_status.ok()) {
-      PyErr_SetString(PyExc_RuntimeError, shape_status.ToString().c_str());
-      Py_DECREF(o);
+    StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape(o);
+    Py_DECREF(o);
+    if (!statusor.ok()) {
+      PyErr_SetString(PyExc_RuntimeError, statusor.status().ToString().c_str());
       return NULL;
     }
-    temps.push_back(numpy::XlaShapeFromPyShapeInfo(o));
-    Py_DECREF(o);
+    temps.push_back(statusor.ConsumeValueOrDie());
+  }
+  $1 = &temps;
+}
+
+%typemap(in) const std::vector<tensorflow::gtl::optional<Shape> >& (
+    std::vector<tensorflow::gtl::optional<Shape> > temps) {
+  if (!PySequence_Check($input)) {
+    PyErr_SetString(PyExc_TypeError, "Argument is not a sequence");
+    return NULL;
+  }
+  const int size = PySequence_Size($input);
+  for (int i = 0; i < size; ++i) {
+    PyObject* o = PySequence_GetItem($input, i);
+    if (o == Py_None) {
+      temps.push_back(tensorflow::gtl::nullopt);
+    } else {
+      StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape(o);
+      Py_DECREF(o);
+      if (!statusor.ok()) {
+        PyErr_SetString(PyExc_RuntimeError, statusor.status().ToString().c_str());
+        return NULL;
+      }
+      temps.push_back(statusor.ConsumeValueOrDie());
+    }
   }
   $1 = &temps;
 }
