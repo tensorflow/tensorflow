@@ -1109,6 +1109,52 @@ def div(x, y, name=None):
   return _div_python2(x, y, name)
 
 
+def _safe_div(numerator, denominator, mode="zero", nonnegative=False, name=None):
+  """Computes a safe divide if the denominator contains zero.
+
+  Args:
+    numerator: An arbitrary `Tensor`.
+    denominator: `Tensor` whose dtype is compatible with `numerator`.
+    mode: When the denominator is zero, return 0 if `zero`;
+      or return original numerator if `numerator`.
+    nonnegative: If `True`, negative is treated as zero in denominator.
+    name: An optional name for the returned op.
+
+  Returns:
+    The element-wise value of the numerator divided by the denominator.
+
+  Raises:
+    ValueError: If `mode` argument is invalid.
+  """
+  if nonnegative:
+    comp_with_zero_op = greater
+  else:
+    comp_with_zero_op = not_equal
+
+  if mode == "zero":  # c = 0 if b == 0 else a / b
+    # Created for broadcast in next comp_with_zero_op
+    zeros = array_ops.zeros_like(numerator, dtype=denominator.dtype)
+    condition = comp_with_zero_op(denominator, zeros)
+    t = div(numerator,
+            # Note the additional conditional check is necessary to
+            # avoid NaNs propagation in gradients.
+            # See Github issue 2540.
+            array_ops.where(comp_with_zero_op(denominator, 0),
+                            denominator,
+                            array_ops.ones_like(denominator)))
+    e = cast(zeros, dtype=t.dtype)
+    return array_ops.where(condition, t, e, name=name)
+  elif mode == "numerator":  # c = a if b == 0 else a / b
+    return div(numerator,
+               array_ops.where(comp_with_zero_op(denominator, 0),
+                               denominator,
+                               array_ops.ones_like(denominator)),
+               name=name)
+  else:
+    raise ValueError("mode must be `zero` or `numerator`, "
+                     "while get {}".format(mode))
+
+
 # TODO(aselle): This should be removed
 mod = gen_math_ops._floor_mod
 

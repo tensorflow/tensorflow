@@ -735,6 +735,29 @@ class EmbeddingLookupSparseTest(test.TestCase):
         embedding_ops.embedding_lookup_sparse(
             x, sp_ids, sp_weights, combiner="mean")
 
+  def testMissingInSparseIds(self):
+    # Github issue, 14851
+    with self.test_session():
+      x = array_ops.ones((4, 5))
+      sp_ids = sparse_tensor.SparseTensor(
+          constant_op.constant([[1, 0], [3, 0]], dtypes.int64),
+          constant_op.constant([0, 2], dtypes.int32),
+          constant_op.constant([4, 1], dtypes.int64))
+      sp_weights = sparse_tensor.SparseTensor(
+          constant_op.constant([[1, 0], [3, 0]], dtypes.int64),
+          constant_op.constant([1, 1], dtypes.float32),
+          constant_op.constant([4, 1], dtypes.int64))
+
+      for combiner in ["sum", "mean", "sqrtn"]:
+        embedding_sum = embedding_ops.embedding_lookup_sparse(
+            x, sp_ids, sp_weights, combiner=combiner)
+
+        tf_embedding_sum = embedding_sum.eval()
+        self.assertAllClose(tf_embedding_sum[0], np.zeros(5))
+        self.assertAllClose(tf_embedding_sum[1], np.ones(5))
+        self.assertAllClose(tf_embedding_sum[2], np.zeros(5))
+        self.assertAllClose(tf_embedding_sum[3], np.ones(5))
+
 
 class DynamicStitchOpTest(test.TestCase):
 
