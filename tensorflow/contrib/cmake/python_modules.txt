@@ -6,6 +6,7 @@ tensorflow/core/example
 tensorflow/core/framework
 tensorflow/core/lib
 tensorflow/core/lib/core
+tensorflow/core/profiler
 tensorflow/core/protobuf
 tensorflow/core/util
 tensorflow/examples
