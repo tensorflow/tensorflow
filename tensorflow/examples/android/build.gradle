@@ -147,7 +147,7 @@ task buildNativeBazel(type: Exec) {
 }
 
 task buildNativeMake(type: Exec) {
-    environment "NDK_ROOT", "/usr/local/google/home/andrewharp/JetPack_Android_3.0/android-ndk-r13b"
+    environment "NDK_ROOT", android.ndkDirectory
     // Tip: install ccache and uncomment the following to speed up
     // builds significantly.
     environment "CC_PREFIX", 'ccache'
