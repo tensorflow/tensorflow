@@ -38,7 +38,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
         input_inds,  // {node_id, output_idx}
     const std::vector<std::pair<int, int>>&
         output_inds,  // {node_id, output_idx}
-    size_t max_batch_size, size_t max_workspace_size_bytes_bytes,
+    size_t max_batch_size_bytes, size_t max_workspace_size_bytes,
     const tensorflow::grappler::GraphProperties& graph_prop,
     tensorflow::NodeDef* trt_node);
 
