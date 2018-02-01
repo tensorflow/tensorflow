@@ -47,7 +47,9 @@ public:
   }
 
   bool input_valid(unsigned int param, unsigned int index) {
-    return input_valid_[param][index];
+    return (param < input_valid_.size() &&
+            index < input_valid_[param].size() &&
+            input_valid_[param][index]);
   }
 
 private:

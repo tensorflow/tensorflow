@@ -358,6 +358,13 @@ CreateWideConstant(poplar::Graph &graph,
                    const xla::Shape& output_shape,
                    TensorMap& tensor_map);
 
+port::StatusOr<poplar::program::Program>
+CreateIfOp(poplar::Graph &graph,
+           CompilerResources& res,
+           const HloInstruction *inst,
+           const xla::Shape& output,
+           TensorMap& tensor_map);
+
 /* Optimization tests */
 
 bool

@@ -503,7 +503,16 @@ Status BaseVisitor::HandleWhile(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleConditional(HloInstruction* inst) {
-  return Unimplemented(inst);
+  poplar::program::Program prog;
+  TF_ASSIGN_OR_RETURN(prog,
+                      CreateIfOp(*graph_,
+                                 resources_,
+                                 inst,
+                                 GetOutputShape(inst),
+                                 tensor_map));
+  sequence.add(prog);
+
+  return Status::OK();
 }
 
 Status BaseVisitor::HandlePad(HloInstruction* inst) {

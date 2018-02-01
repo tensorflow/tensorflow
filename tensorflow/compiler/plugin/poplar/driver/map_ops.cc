@@ -326,6 +326,76 @@ CreateWhileOp(poplar::Graph &graph,
   return main_seq;
 }
 
+port::StatusOr<poplar::program::Program>
+CreateIfOp(poplar::Graph &graph,
+           CompilerResources& res,
+           const HloInstruction *inst,
+           const xla::Shape& output,
+           TensorMap& tensor_map) {
+
+  poplar::Tensor pred;
+  TF_ASSIGN_OR_RETURN(pred, FindInstructionInput(tensor_map, inst, 0));
+
+  ArgVectors true_inputs;
+  true_inputs.push_back(FindInstructionInputs(tensor_map, inst, 1));
+
+  ArgVectors false_inputs;
+  false_inputs.push_back(FindInstructionInputs(tensor_map, inst, 2));
+
+  ComputationMap::iterator true_body;
+  TF_ASSIGN_OR_RETURN(true_body,
+                      GetOrCompileSubComputation(graph, res, true_inputs,
+                                                 inst->true_computation()));
+
+  ComputationMap::iterator false_body;
+  TF_ASSIGN_OR_RETURN(false_body,
+                      GetOrCompileSubComputation(graph, res, false_inputs,
+                                                 inst->false_computation()));
+
+  poplar::program::Sequence cond_seq;
+  popstd::allTrue(graph, pred, cond_seq, inst->name());
+
+  if (true_body->second.inputs().size() != 1 ||
+      false_body->second.inputs().size() != 1) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Invalid input count");
+  }
+
+  poplar::program::Sequence true_seq;
+  for (unsigned int i=0; i<true_body->second.inputs()[0].size(); i++) {
+    if (true_body->second.input_valid(0, i)) {
+      true_seq.add(poplar::program::Copy(true_inputs[0][i],
+                                         true_body->second.inputs()[0][i]));
+    }
+  }
+  true_seq.add(true_body->second.sequence);
+
+  poplar::program::Sequence false_seq;
+  for (unsigned int i=0; i<false_body->second.inputs()[0].size(); i++) {
+    if (false_body->second.input_valid(0, i)) {
+      false_seq.add(poplar::program::Copy(false_inputs[0][i],
+                                          false_body->second.inputs()[0][i]));
+    }
+  }
+  false_seq.add(false_body->second.sequence);
+
+  unsigned int output_count = true_body->second.outputs().size();
+  if (output_count != false_body->second.outputs().size()) {
+    return port::Status(port::error::FAILED_PRECONDITION,
+                        "Mismatched output size");
+  }
+
+  for (unsigned int i=0; i<output_count; i++) {
+    poplar::Tensor out = graph.clone(true_body->second.outputs()[i]);
+    TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
+
+    true_seq.add(poplar::program::Copy(true_body->second.outputs()[i], out));
+    false_seq.add(poplar::program::Copy(false_body->second.outputs()[i], out));
+  }
+
+  return poplar::program::If(cond_seq, true_seq, false_seq);
+}
+
 }
 }
 

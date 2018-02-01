@@ -168,8 +168,6 @@ LocalClientExecuteTest.InfeedOutfeedTest POPLAR // Don't support InFeed/OutFeed
 
 ReduceWithLayoutTest POPLAR // Some layout issue
 
-ConditionalOpTest POPLAR // No Cond
-
 ClientTest.ExecuteParallel POPLAR // Don't support parallel execution
 
 SelectAndScatterTest.R4Randomized POPLAR // Timeout
