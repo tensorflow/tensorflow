@@ -80,13 +80,13 @@ CONSOLE_SCRIPTS = [
     # is now declared by the tensorboard pip package. If we remove the
     # TensorBoard command, pip will inappropriately remove it during install,
     # even though the command is not removed, just moved to a different wheel.
-    'tensorboard = tensorboard.main:main',
+    'tensorboard = tensorboard.main:run_main',
 ]
 # pylint: enable=line-too-long
 
 # remove the tensorboard console script if building tf_nightly
 if 'tf_nightly' in project_name:
-  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:main')
+  CONSOLE_SCRIPTS.remove('tensorboard = tensorboard.main:run_main')
 
 TEST_PACKAGES = [
     'scipy >= 0.15.1',

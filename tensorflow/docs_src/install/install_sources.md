@@ -272,8 +272,6 @@ Found possible Python library paths:
 Please input the desired Python library path to use.  Default is [/usr/lib/python2.7/dist-packages]
 
 Using python library path: /usr/local/lib/python2.7/dist-packages
-Do you wish to build TensorFlow with MKL support? [y/N]
-No MKL support will be enabled for TensorFlow
 Please specify optimization flags to use during compilation when bazel option "--config=opt" is specified [Default is -march=native]:
 Do you wish to use jemalloc as the malloc implementation? [Y/n]
 jemalloc enabled

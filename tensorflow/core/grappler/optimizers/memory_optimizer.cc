@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/static_schedule.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
+#include "tensorflow/core/grappler/utils/traversal.h"
 #include "tensorflow/core/protobuf/rewriter_config.pb.h"
 
 namespace tensorflow {
@@ -497,7 +498,7 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     if (!IsAddN(node)) {
       continue;
     }
-    // There is nothing to gain by optimizing nodes with 2 inputs of fewer.
+    // There is nothing to gain by optimizing nodes with 2 or fewer inputs.
     if (view.NumFanins(node, false) <= 2) {
       continue;
     }
@@ -559,6 +560,54 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
       VLOG(1) << "Missing properties for " << node->name();
       continue;
     }
+
+    // Compute a topological ordering for the node fanin.
+    std::unordered_map<NodeDef*, int> topo_order;
+    ReverseDfs(view, {node}, nullptr,
+               [&topo_order](NodeDef* n) {
+                 int topo_index = topo_order.size();
+                 topo_order[n] = topo_index;
+               },
+               nullptr);
+
+    std::vector<int> input_topo_index;
+
+    for (int i = 0; i < node->input_size(); ++i) {
+      const string& input = node->input(i);
+      const string node_name = NodeName(input);
+      NodeDef* node = view.GetNode(node_name);
+      input_topo_index.push_back(topo_order.at(node));
+    }
+    int min_input_topo_index = INT_MAX;
+    int min_input_id = -1;
+    for (int i = 0; i < node->input_size(); ++i) {
+      if (IsControlInput(node->input(i))) {
+        // control inputs are always last.
+        break;
+      }
+      const int current = input_topo_index[i];
+      if (current < min_input_topo_index) {
+        min_input_topo_index = current;
+        min_input_id = i;
+      }
+    }
+    CHECK_LE(0, min_input_id);
+    std::vector<string> pre_ctrl_deps;
+    std::vector<string> post_ctrl_deps;
+    for (int i = node->input_size() - 1; i >= 0; --i) {
+      if (!IsControlInput(node->input(i))) {
+        // control inputs are always last.
+        break;
+      }
+      if (input_topo_index[i] < min_input_topo_index) {
+        // These control dependencies can be executed before the node.
+        pre_ctrl_deps.push_back(node->input(i));
+      } else {
+        // These control dependencies should be executed after the node.
+        post_ctrl_deps.push_back(node->input(i));
+      }
+    }
+
     const TensorShapeProto& shape =
         properties.GetOutputProperties(node->name())[0].shape();
     DataType dtype = node->attr().at("T").type();
@@ -573,13 +622,19 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     *(*tmp_var->mutable_attr())["shape"].mutable_shape() = shape;
     (*tmp_var->mutable_attr())["var_name"].set_s(tmp_var->name());
 
+    for (const string& ctrl_dep : pre_ctrl_deps) {
+      *tmp_var->add_input() = ctrl_dep;
+    }
+    *tmp_var->add_input() =
+        AsControlDependency(NodeName(node->input(min_input_id)));
+
     // Initialize it to zero
     NodeDef* zeros = item->graph.add_node();
     zeros->set_name(strings::StrCat(node->name(), "/tmp_var_zeros"));
     zeros->set_op("ZerosLike");
     zeros->set_device(device);
     (*zeros->mutable_attr())["T"].set_type(dtype);
-    *zeros->add_input() = node->input(0);
+    *zeros->add_input() = node->input(min_input_id);
 
     NodeDef* initialize = item->graph.add_node();
     initialize->set_name(strings::StrCat(node->name(), "/tmp_var_initializer"));
@@ -593,9 +648,7 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     std::vector<NodeDef*> accumulates;
     for (int i = 0; i < node->input_size(); ++i) {
       const string& input = node->input(i);
-      if (IsControlInput(input)) {
-        *zeros->add_input() = input;
-      } else {
+      if (!IsControlInput(input)) {
         NodeDef* accumulate = item->graph.add_node();
         accumulate->set_name(
             strings::StrCat(node->name(), "/tmp_var_accum_", i));
@@ -618,6 +671,10 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     for (const NodeDef* accum : accumulates) {
       *node->add_input() = AsControlDependency(accum->name());
     }
+    for (const string& ctrl_dep : post_ctrl_deps) {
+      *node->add_input() = ctrl_dep;
+    }
+
     updated_graph = true;
   }
 
