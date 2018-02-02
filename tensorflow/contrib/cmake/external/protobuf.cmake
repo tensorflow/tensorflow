@@ -16,7 +16,7 @@ include (ExternalProject)
 
 set(PROTOBUF_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/src)
 set(PROTOBUF_URL https://github.com/google/protobuf.git)
-set(PROTOBUF_TAG 396336eb961b75f03b25824fe86cf6490fb75e3a)
+set(PROTOBUF_TAG b04e5cba356212e4e8c66c61bbe0c3a20537c5b9)
 
 if(WIN32)
   set(protobuf_STATIC_LIBRARIES 
