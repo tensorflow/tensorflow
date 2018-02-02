@@ -374,6 +374,78 @@ class FunctionTest(test.TestCase):
 
     self.assertAllEqual(f(constant_op.constant(1.0)), 2.0)
 
+  def testGradientOfGatherWithDefun(self):
+
+    v = resource_variable_ops.ResourceVariable([0.0, 1.0, 2.0])
+
+    def sum_gather():
+      return math_ops.reduce_sum(array_ops.gather(v, [1, 2]))
+
+    grad_fn = backprop.implicit_grad(sum_gather)
+    gradient = grad_fn()
+    defun_grad_fn = backprop.implicit_grad(function.defun(sum_gather))
+    defun_gradient = defun_grad_fn()
+    self.assertEqual(len(gradient), len(defun_gradient))
+
+    gradient = gradient[0][0]
+    defun_gradient = defun_gradient[0][0]
+    self.assertAllEqual(gradient.values, defun_gradient.values)
+    self.assertAllEqual(gradient.indices, defun_gradient.indices)
+    self.assertAllEqual(gradient.dense_shape, defun_gradient.dense_shape)
+
+  def testReturningIndexedSlicesWithDefun(self):
+
+    def validate(indexed_slice):
+      def f():
+        return indexed_slice
+
+      output = function.defun(f)()
+      self.assertTrue(isinstance(output, ops.IndexedSlices))
+      self.assertAllEqual(indexed_slice.values, output.values)
+      self.assertAllEqual(indexed_slice.indices, output.indices)
+      self.assertAllEqual(indexed_slice.dense_shape, output.dense_shape)
+
+      self.assertEqual(
+          function.make_defun_op(f).output_shapes, indexed_slice.values.shape)
+
+    arg = ops.IndexedSlices(
+        values=constant_op.constant([1, 2]),
+        indices=constant_op.constant([0, 1]),
+        dense_shape=constant_op.constant([2]))
+    validate(arg)
+
+    arg = ops.IndexedSlices(
+        values=constant_op.constant([1, 2]),
+        indices=constant_op.constant([0, 1]),
+        dense_shape=None)
+    validate(arg)
+
+  def testIndexedSliceAsArgumentWithDefun(self):
+
+    @function.defun
+    def f(indexed_slice):
+      return indexed_slice
+
+    def validate(arg):
+      output = f(arg)
+      self.assertTrue(isinstance(output, ops.IndexedSlices))
+      self.assertAllEqual(arg.values, output.values)
+      self.assertAllEqual(arg.indices, output.indices)
+      self.assertAllEqual(arg.dense_shape, output.dense_shape)
+
+    indexed_slice = ops.IndexedSlices(
+        values=constant_op.constant([1]),
+        indices=constant_op.constant([0]),
+        dense_shape=constant_op.constant([1]))
+    validate(indexed_slice)
+
+    # Test that `f` works even when `dense_shape` is None.
+    indexed_slice = ops.IndexedSlices(
+        values=constant_op.constant([1]),
+        indices=constant_op.constant([0]),
+        dense_shape=None)
+    validate(indexed_slice)
+
   def testFunctionOnDevice(self):
     if not context.context().num_gpus():
       self.skipTest('No GPUs found')

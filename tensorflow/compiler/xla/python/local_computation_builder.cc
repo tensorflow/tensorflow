@@ -98,15 +98,25 @@ const std::unique_ptr<ScopedShapedBuffer>& LocalShapedBuffer::shaped_buffer()
   return shaped_buffer_;
 }
 
+static StatusOr<std::unique_ptr<ScopedShapedBuffer>> ToBuffer(
+    LocalClient* client, int device_ordinal, const Literal& arg) {
+  return client->LiteralToShapedBuffer(arg, device_ordinal,
+                                       client->backend().memory_allocator());
+}
+
 /* static */
-LocalShapedBuffer* LocalShapedBuffer::FromLiteral(const Literal& argument) {
+LocalShapedBuffer* LocalShapedBuffer::FromLiteral(
+    const Literal& argument,
+    const tensorflow::gtl::optional<Shape>& shape_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
-  std::unique_ptr<ScopedShapedBuffer> buf =
-      client
-          ->LiteralToShapedBuffer(argument,
-                                  /*device_ordinal=*/0,
-                                  client->backend().memory_allocator())
-          .ConsumeValueOrDie();
+  std::unique_ptr<ScopedShapedBuffer> buf;
+  if (shape_with_layout) {
+    std::unique_ptr<Literal> relaid =
+        argument.Relayout(shape_with_layout.value());
+    buf = ToBuffer(client, /*device_ordinal=*/0, *relaid).ConsumeValueOrDie();
+  } else {
+    buf = ToBuffer(client, /*device_ordinal=*/0, argument).ConsumeValueOrDie();
+  }
   return new LocalShapedBuffer(std::move(buf));
 }
 
@@ -120,7 +130,8 @@ CompiledLocalComputation::CompiledLocalComputation(
     : executable_(std::move(executable)) {}
 
 StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
-    const std::vector<Literal>& arguments) {
+    const std::vector<Literal>& arguments,
+    const std::vector<tensorflow::gtl::optional<Shape>>& shapes_with_layout) {
   LocalClient* client = GetOrCreateLocalClient();
 
   VLOG(1) << "Execution requested with " << GetReplicaCount() << " replicas.";
@@ -133,7 +144,8 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
                                         GetReplicaCount());
 
     for (int replica = 0; replica < GetReplicaCount(); ++replica) {
-      pool.Schedule([this, client, replica, &arguments, &results] {
+      pool.Schedule([this, client, replica, &arguments, &shapes_with_layout,
+                     &results] {
         StatusOr<int> device_ordinal_status =
             client->ReplicaNumberToDeviceOrdinal(replica);
         if (!device_ordinal_status.ok()) {
@@ -144,18 +156,28 @@ StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
         VLOG(3) << "Replica " << replica
                 << " mapped to device ordinal for execution: "
                 << device_ordinal;
+
         // Transfer arguments in
         std::vector<std::unique_ptr<ScopedShapedBuffer>> scoped_buffers;
         scoped_buffers.reserve(arguments.size());
-        for (const Literal& argument : arguments) {
-          StatusOr<std::unique_ptr<ScopedShapedBuffer>> pushed =
-              client->LiteralToShapedBuffer(
-                  argument, device_ordinal,
-                  client->backend().memory_allocator());
+        for (int i = 0; i < arguments.size(); ++i) {
+          const Literal& argument = arguments[i];
+          const tensorflow::gtl::optional<Shape>& shape_with_layout =
+              shapes_with_layout[i];
+
+          StatusOr<std::unique_ptr<ScopedShapedBuffer>> pushed;
+          if (shape_with_layout) {
+            std::unique_ptr<Literal> relaid =
+                argument.Relayout(shape_with_layout.value());
+            pushed = ToBuffer(client, device_ordinal, *relaid);
+          } else {
+            pushed = ToBuffer(client, device_ordinal, argument);
+          }
           if (!pushed.ok()) {
             results[replica] = pushed.status();
             return;
           }
+
           scoped_buffers.push_back(std::move(pushed).ValueOrDie());
         }
 
@@ -380,6 +402,12 @@ ComputationDataHandle LocalComputationBuilder::GetTupleElement(
 ComputationDataHandle LocalComputationBuilder::Dot(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
   return builder_.Dot(lhs, rhs);
+}
+
+ComputationDataHandle LocalComputationBuilder::DotGeneral(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    const DotDimensionNumbers& dimension_numbers) {
+  return builder_.DotGeneral(lhs, rhs, dimension_numbers);
 }
 
 ComputationDataHandle LocalComputationBuilder::ConvGeneralDilated(

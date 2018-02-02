@@ -354,6 +354,19 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "matrix_band_part_test",
+    size = "medium",
+    srcs = ["matrix_band_part_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "momentum_test",
     size = "small",
     srcs = ["momentum_test.py"],
