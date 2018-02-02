@@ -223,15 +223,6 @@ tensorflow::Status SegmentGraph(
     }
   }
 
-  // Cleanup the graph to remove disconnected nodes before outputting
-  if (VLOG_IS_ON(2)) {
-    for (tensorflow::Node* node : graph.nodes()) {
-      if ((node->in_edges().size() == 0) && (node->out_edges().size() == 0)) {
-        graph.RemoveNode(node);
-      }
-    }
-  }
-
   // Convert the segments into the expected return format
   for (const auto& itr : sg_map) {
     const auto& segment_node_names = itr.second;

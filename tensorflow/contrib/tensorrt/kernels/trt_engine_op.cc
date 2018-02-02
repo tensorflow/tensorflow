@@ -19,7 +19,6 @@ limitations under the License.
 #include "cuda/include/cuda_runtime_api.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/platform/logging.h"
-//#include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
 namespace tensorflow {
