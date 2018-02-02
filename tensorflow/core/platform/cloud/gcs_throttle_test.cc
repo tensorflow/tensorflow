@@ -68,7 +68,7 @@ TEST_F(GcsThrottleTest, RejectRequest) {
 TEST_F(GcsThrottleTest, MarkResponses) {
   time_.AdvanceSeconds(1);
   EXPECT_TRUE(throttle_.AdmitRequest());
-  throttle_.RecordResponse(32000000);  // 32 MB response
+  throttle_.RecordResponse(128000000);  // 128 MB response
   EXPECT_EQ(-25100, throttle_.available_tokens());
   EXPECT_FALSE(throttle_.AdmitRequest());
   time_.AdvanceSeconds(1);

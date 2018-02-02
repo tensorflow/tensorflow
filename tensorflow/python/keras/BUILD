@@ -482,6 +482,7 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/layers/normalization_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",

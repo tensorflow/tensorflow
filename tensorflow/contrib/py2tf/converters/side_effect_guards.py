@@ -111,31 +111,20 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
       #   opt.minimize(loss)
       # or:
       #   tf.py_func(...)
-      args_scope = anno.getanno(node.value, 'args_scope')
-      temp_name = self.namer.new_symbol('temp', args_scope.parent.referenced)
-      # TODO(mdan): Unsafe reference modification!
-      args_scope.mark_write(temp_name)
       template = """
-        temp_result = call
-        if temp_result is not None:
-          if not isinstance(temp_result, (list, tuple)):
-            temp_result = (temp_result,)
-          ctx = tf.control_dependencies(temp_result)
-        else:
-          ctx = contextmanager(lambda: (yield))()
-        with ctx:
-          # TODO(mdan): Also insert ops to re-fetch if variables are involved.
+        with py2tf_utils.control_dependency_on_returns(tf, call):
+          # TODO(mdan): Also insert ops to re-fetch if variables are involved?
           pass  # Will be removed below.
       """
       # TODO(mdan): This is brittle. Reorganize the mechanism.
-      statements = templates.replace(
-          template, call=node.value, temp_result=temp_name)
+      statements = templates.replace(template, call=node.value)
       control_deps_guard = statements[-1]
       control_deps_guard.body = []
 
       # First, attempt to gate future evaluation of args. If that's not
       # possible, gate all remaining statements (and that may fail too, see
       # _visit_and_reindent.
+      args_scope = anno.getanno(node.value, 'args_scope')
       guarded_args = tuple(args_scope.used & (args_scope.parent.modified
                                               | args_scope.parent.returned))
       if guarded_args:

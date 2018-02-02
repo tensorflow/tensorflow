@@ -44,6 +44,8 @@ tf_kernel_library(
         "l2loss_op.cc",
         "lrn_ops.cc",
         "matmul_op.cc",
+        "matrix_band_part_op.cc",
+        "matrix_set_diag_op.cc",
         "matrix_triangular_solve_op.cc",
         "mirror_pad_op.cc",
         "no_op.cc",

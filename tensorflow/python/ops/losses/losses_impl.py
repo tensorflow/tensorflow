@@ -151,7 +151,7 @@ def _num_present(losses, weights, per_batch=False):
 def _num_elements(losses):
   """Computes the number of elements in `losses` tensor."""
   with ops.name_scope(None, "num_elements", values=[losses]) as scope:
-    return array_ops.size(losses, name=scope, out_type=losses.dtype)
+    return math_ops.cast(array_ops.size(losses, name=scope), dtype=losses.dtype)
 
 
 @tf_export("losses.compute_weighted_loss")
