@@ -26,6 +26,7 @@ import sys as _sys
 from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import data_flow_grad
 from tensorflow.python.ops import math_grad
+from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import sparse_grad
 from tensorflow.python.ops import spectral_grad
 from tensorflow.python.ops import state_grad
@@ -59,6 +60,7 @@ from tensorflow.python.ops.logging_ops import Print
 from tensorflow.python.ops.logging_ops import get_summary_op
 from tensorflow.python.ops.lookup_ops import initialize_all_tables
 from tensorflow.python.ops.lookup_ops import tables_initializer
+from tensorflow.python.ops.manip_ops import *
 from tensorflow.python.ops.math_ops import *
 from tensorflow.python.ops.numerics import *
 from tensorflow.python.ops.parsing_ops import *
@@ -105,6 +107,7 @@ from tensorflow.python.ops import init_ops as _init_ops
 from tensorflow.python.ops import io_ops as _io_ops
 from tensorflow.python.ops import linalg_ops as _linalg_ops
 from tensorflow.python.ops import logging_ops as _logging_ops
+from tensorflow.python.ops import manip_ops as _manip_ops
 from tensorflow.python.ops import math_ops as _math_ops
 from tensorflow.python.ops import numerics as _numerics
 from tensorflow.python.ops import parsing_ops as _parsing_ops
@@ -280,6 +283,7 @@ remove_undocumented(__name__, _allowed_symbols,
                      _io_ops,
                      _linalg_ops,
                      _logging_ops,
+                     _manip_ops,
                      _math_ops,
                      _numerics,
                      _parsing_ops,

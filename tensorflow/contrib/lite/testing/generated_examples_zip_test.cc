@@ -47,9 +47,7 @@ tensorflow::Env* env = tensorflow::Env::Default();
 // Key is a substring of the test name and value is a bug number.
 // TODO(ahentz): make sure we clean this list up frequently.
 std::map<string, string> kBrokenTests = {
-    // Add doesn't support broadcasting.
-    {R"(^\/adda.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
-    {R"(^\/mula.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
+    // Sub and Div don't support broadcasting.
     {R"(^\/diva.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
     {R"(^\/suba.*input_shape_1=\[1,3,4,3\],input_shape_2=\[3\])", "68500195"},
 
@@ -67,7 +65,11 @@ std::map<string, string> kBrokenTests = {
     // L2Norm only supports tensors with 4D or fewer.
     {R"(^\/l2normdim=.*,epsilon=.*,input_shape=\[.,.,.,.,.*\])", "67963684"},
 
-    // SpaceToBatch only supports 4D tensors.
+    // BatchToSpaceND doesn't support cropping. This catches test cases with
+    // non-const tensors as crops.
+    {R"(^\/batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\])", "70594634"},
+
+    // SpaceToBatchND only supports 4D tensors.
     {R"(^\/space_to_batch_nd.*input_shape=\[1,4,4,4,1,1\])", "70848787"},
 
     // L2Norm only works for dim=-1.
@@ -92,7 +94,7 @@ std::map<string, string> kBrokenTests = {
     {R"(^\/resize_bilinearalign_corners=True,.*,size=\[5,6\])", "72401483"},
 
     // Transpose only supports 1D-4D input tensors.
-    {R"(^\/transposedtype=.*,input_shape=\[.,.,.,.,.\],perm=.*)", "71545879"},
+    {R"(^\/transpose.*input_shape=\[.,.,.,.,.\])", "71545879"},
 };
 
 // Allows test data to be unzipped into a temporary directory and makes
@@ -239,8 +241,7 @@ INSTANTIATE_TESTS(avg_pool)
 INSTANTIATE_TESTS(space_to_batch_nd)
 INSTANTIATE_TESTS(batch_to_space_nd)
 INSTANTIATE_TESTS(concat)
-// TODO(b/71642435) re-enable this test
-// INSTANTIATE_TESTS(constant)
+INSTANTIATE_TESTS(constant)
 INSTANTIATE_TESTS(control_dep)
 INSTANTIATE_TESTS(conv)
 INSTANTIATE_TESTS(depthwiseconv)

@@ -160,6 +160,7 @@ cc_library(
     ],
     deps = [
         # Placeholder for internal file dependency.
+        "@protobuf_archive//:protobuf_headers",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -172,6 +173,7 @@ cc_library(
         "graph_transformations/convert_expanddims_to_reshape.cc",
         "graph_transformations/convert_pure_conv_to_depthwise.cc",
         "graph_transformations/convert_reorder_axes.cc",
+        "graph_transformations/convert_trivial_addn_to_add.cc",
         "graph_transformations/convert_trivial_transpose_to_reshape.cc",
         "graph_transformations/create_im2col_arrays.cc",
         "graph_transformations/dequantize.cc",
@@ -203,6 +205,7 @@ cc_library(
         "graph_transformations/remove_trivial_quantized_activation_func.cc",
         "graph_transformations/remove_trivial_reshape.cc",
         "graph_transformations/remove_unused_op.cc",
+        "graph_transformations/reorder_activation_functions.cc",
         "graph_transformations/resolve_batch_normalization.cc",
         "graph_transformations/resolve_batch_to_space_nd_attributes.cc",
         "graph_transformations/resolve_constant_binary.cc",

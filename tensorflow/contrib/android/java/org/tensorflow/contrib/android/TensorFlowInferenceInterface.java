@@ -194,6 +194,13 @@ public class TensorFlowInferenceInterface {
    * @param outputNames A list of output nodes which should be filled by the inference pass.
    */
   public void run(String[] outputNames, boolean enableStats) {
+    run(outputNames, enableStats, new String[] {});
+  }
+
+  /**
+   * An overloaded version of runInference that allows supplying targetNodeNames as well
+   */
+  public void run(String[] outputNames, boolean enableStats, String[] targetNodeNames) {
     // Release any Tensors from the previous run calls.
     closeFetches();
 
@@ -202,6 +209,11 @@ public class TensorFlowInferenceInterface {
       fetchNames.add(o);
       TensorId tid = TensorId.parse(o);
       runner.fetch(tid.name, tid.outputIndex);
+    }
+
+	// Add targets.
+    for (String t : targetNodeNames) {
+      runner.addTarget(t);
     }
 
     // Run the session.

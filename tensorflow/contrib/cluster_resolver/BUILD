@@ -34,6 +34,7 @@ py_library(
         ":cluster_resolver_py",
         ":gce_cluster_resolver_py",
         ":tpu_cluster_resolver_py",
+        "//tensorflow/python:util",
     ],
 )
 

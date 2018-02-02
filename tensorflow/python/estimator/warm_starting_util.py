@@ -402,10 +402,10 @@ def _warm_start_var_with_vocab(var,
 
 
 def _warm_start(warm_start_settings):
-  """Warmstarts a model using the given settings.
+  """Warm-starts a model using the given settings.
 
-  Currently, this is intended for use only in canned Estimators.  Once made
-  public, it can be used in any model_fn.
+  If you are using a tf.estimator.Estimator, this will automatically be called
+  during training.
 
   Args:
     warm_start_settings: An object of `WarmStartSettings`.
@@ -415,8 +415,8 @@ def _warm_start(warm_start_settings):
       a stronger check for variable configuration than relying on users to
       examine the logs.
   """
-  logging.info("Warm-starting from: ",
-               warm_start_settings.ckpt_to_initialize_from)
+  logging.info("Warm-starting from: %s",
+               (warm_start_settings.ckpt_to_initialize_from,))
   # We have to deal with partitioned variables, since get_collection flattens
   # out the list.
   grouped_variables = {}

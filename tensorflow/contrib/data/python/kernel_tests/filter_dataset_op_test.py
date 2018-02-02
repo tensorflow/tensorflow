@@ -194,6 +194,10 @@ class FilterDatasetSerializationTest(
     return dataset_ops.Dataset.range(10).map(_map_fn).filter(_filter_fn).map(
         lambda x, i: x)
 
+  def testSparseCore(self):
+    num_outputs = 5
+    self.run_core_tests(self._build_sparse_filter, None, num_outputs)
+
 
 if __name__ == "__main__":
   test.main()

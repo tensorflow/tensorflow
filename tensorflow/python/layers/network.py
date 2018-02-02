@@ -575,6 +575,11 @@ class GraphNetwork(base.Layer):
     raise ValueError('No such layer: ' + name)
 
   @property
+  def stateful(self):
+    return any([(hasattr(layer, 'stateful') and layer.stateful)
+                for layer in self.layers])
+
+  @property
   def updates(self):
     """Retrieve the network's updates.
 
@@ -586,6 +591,8 @@ class GraphNetwork(base.Layer):
     Returns:
         A list of update ops.
     """
+    if not self.trainable and not self.stateful:
+      return []
     updates = []
     for layer in self.layers:
       if hasattr(layer, 'updates'):
@@ -614,6 +621,11 @@ class GraphNetwork(base.Layer):
         A list of loss tensors.
     """
     losses = []
+    if context.in_eager_mode():
+      for layer in self.layers:
+        losses += layer.losses
+      return losses
+
     # Retrieve losses for all internal layers.
     for layer in self.layers:
       if hasattr(layer, 'losses'):
@@ -846,7 +858,6 @@ class GraphNetwork(base.Layer):
       for node in nodes:
         # This is always a single layer, never a list.
         layer = node.outbound_layer
-
         reference_input_tensors = node.input_tensors
         reference_output_tensors = node.output_tensors
 
@@ -894,12 +905,13 @@ class GraphNetwork(base.Layer):
               else:
                 output_masks = [None for _ in range(len(output_tensors))]
 
-            # Apply activity regularizer if any:
-            if layer.activity_regularizer is not None:
-              regularization_losses = [
-                  layer.activity_regularizer(x) for x in computed_tensors
-              ]
-              layer.add_loss(regularization_losses, computed_tensors)
+            if context.in_graph_mode():
+              if layer.activity_regularizer is not None:
+                regularization_losses = [
+                    layer.activity_regularizer(x) for x in computed_tensors
+                ]
+                # Apply activity regularizer if any:
+                layer.add_loss(regularization_losses, computed_tensors)
 
           if context.in_graph_mode():
             # Update model updates and losses:

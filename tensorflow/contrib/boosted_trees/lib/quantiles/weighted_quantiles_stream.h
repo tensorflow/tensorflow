@@ -15,9 +15,9 @@
 #ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_QUANTILES_WEIGHTED_QUANTILES_STREAM_H_
 #define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_QUANTILES_WEIGHTED_QUANTILES_STREAM_H_
 
+#include <cmath>
 #include <memory>
 #include <vector>
-#include <cmath>
 
 #include "tensorflow/contrib/boosted_trees/lib/quantiles/weighted_quantiles_buffer.h"
 #include "tensorflow/contrib/boosted_trees/lib/quantiles/weighted_quantiles_summary.h"

@@ -406,6 +406,28 @@ void ProcessSimpleBinaryOperator(Model* model, Operator* op) {
                                   &output_array);
 }
 
+void ProcessAddNOperator(Model* model, Operator* op) {
+  // Yield until all input dims have been resolved.
+  //
+  // TODO(myenik): Since AddN does not support broadcasting, maybe we could
+  // actually use this to improve shape propagation by propagating the shape of
+  // one input to all other inputs once it is resolved instead of just the
+  // output, since all inputs must be the same size and shape for a well-formed
+  // graph.
+  for (const auto& input : op->inputs) {
+    const auto& input_array = model->GetArray(input);
+    if (!input_array.has_shape()) {
+      return;
+    }
+  }
+
+  // AddN does not support broadcasting, all inputs must be the same shape, so
+  // we just take the first input shape and apply it to the output.
+  const auto& input0_array = model->GetArray(op->inputs[0]);
+  auto& output_array = model->GetArray(op->outputs[0]);
+  output_array.copy_shape(input0_array.shape());
+}
+
 bool KeepDims(const Operator& op) {
   switch (op.type) {
     case OperatorType::kTensorFlowMin:
@@ -1098,7 +1120,8 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
       stop += input_array.shape().dims(i);
     }
 
-    int dim_size = (stop - start) / op->strides[i];
+    int dim_size = ceil((stop - start) / static_cast<float>(op->strides[i]));
+    dim_size = dim_size < 0 ? 0 : dim_size;
     if (op->shrink_axis_mask & mask) {
       CHECK_EQ(dim_size, 1) << "Output size for an axis must compute to 1 when "
                                "shrinking that axis";
@@ -1281,6 +1304,9 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowMinimum:
     case OperatorType::kTensorFlowGreaterEqual:
       ProcessSimpleBinaryOperator(model, op);
+      break;
+    case OperatorType::kAddN:
+      ProcessAddNOperator(model, op);
       break;
     case OperatorType::kConv:
       ProcessConvOperator(model, static_cast<ConvOperator*>(op));

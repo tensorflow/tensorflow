@@ -774,15 +774,15 @@ class BinaryOpsTest(XLATestCase):
   def DISABLED_testSparseMatMul(self):
     # Binary wrappers for sparse_matmul with different hints
     def SparseMatmulWrapperTF(a, b):
-      return tf.sparse_matmul(a, b, a_is_sparse=True)
+      return math_ops.sparse_matmul(a, b, a_is_sparse=True)
 
     def SparseMatmulWrapperFT(a, b):
-      return tf.sparse_matmul(a, b, b_is_sparse=True)
+      return math_ops.sparse_matmul(a, b, b_is_sparse=True)
 
     def SparseMatmulWrapperTT(a, b):
-      return tf.sparse_matmul(a, b, a_is_sparse=True, b_is_sparse=True)
+      return math_ops.sparse_matmul(a, b, a_is_sparse=True, b_is_sparse=True)
 
-    self._testMatMul(tf.sparse_matmul)
+    self._testMatMul(math_ops.sparse_matmul)
     self._testMatMul(SparseMatmulWrapperTF)
     self._testMatMul(SparseMatmulWrapperFT)
     self._testMatMul(SparseMatmulWrapperTT)
@@ -1181,6 +1181,50 @@ class BinaryOpsTest(XLATestCase):
                        np.array([4, 5, 6], dtype=np.int32),
                        expected=None)
 
+  def testMatrixSetDiag(self):
+    for dtype in self.numeric_types:
+      # Square
+      self._testBinary(
+          array_ops.matrix_set_diag,
+          np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0], [1.0, 1.0, 1.0]],
+                   dtype=dtype),
+          np.array([1.0, 2.0, 3.0], dtype=dtype),
+          expected=np.array([[1.0, 1.0, 0.0], [1.0, 2.0, 1.0], [1.0, 1.0, 3.0]],
+                            dtype=dtype))
+
+      self._testBinary(
+          array_ops.matrix_set_diag,
+          np.array([[[1.0, 0.0, 3.0], [0.0, 2.0, 0.0], [1.0, 0.0, 3.0]],
+                    [[4.0, 0.0, 4.0], [0.0, 5.0, 0.0], [2.0, 0.0, 6.0]]],
+                   dtype=dtype),
+          np.array([[-1.0, 0.0, -3.0], [-4.0, -5.0, -6.0]], dtype=dtype),
+          expected=np.array(
+              [[[-1.0, 0.0, 3.0], [0.0, 0.0, 0.0], [1.0, 0.0, -3.0]],
+               [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0], [2.0, 0.0, -6.0]]],
+              dtype=dtype))
+
+      # Rectangular
+      self._testBinary(
+          array_ops.matrix_set_diag,
+          np.array([[0.0, 1.0, 0.0], [1.0, 0.0, 1.0]], dtype=dtype),
+          np.array([3.0, 4.0], dtype=dtype),
+          expected=np.array([[3.0, 1.0, 0.0], [1.0, 4.0, 1.0]], dtype=dtype))
+
+      self._testBinary(
+          array_ops.matrix_set_diag,
+          np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 1.0]], dtype=dtype),
+          np.array([3.0, 4.0], dtype=dtype),
+          expected=np.array([[3.0, 1.0], [1.0, 4.0], [1.0, 1.0]], dtype=dtype))
+
+      self._testBinary(
+          array_ops.matrix_set_diag,
+          np.array([[[1.0, 0.0, 3.0], [0.0, 2.0, 0.0]],
+                    [[4.0, 0.0, 4.0], [0.0, 5.0, 0.0]]], dtype=dtype),
+          np.array([[-1.0, -2.0], [-4.0, -5.0]],
+                   dtype=dtype),
+          expected=np.array([[[-1.0, 0.0, 3.0], [0.0, -2.0, 0.0]],
+                             [[-4.0, 0.0, 4.0], [0.0, -5.0, 0.0]]],
+                            dtype=dtype))
 
 if __name__ == "__main__":
   googletest.main()

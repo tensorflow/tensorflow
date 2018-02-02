@@ -52,6 +52,7 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertTrivialAddNToAdd);
   transformations->Add(new ConvertTrivialTransposeToReshape);
   transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
@@ -67,6 +68,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMatMul);
   transformations->Add(new FuseBinaryIntoPrecedingAffine);
   transformations->Add(new FuseBinaryIntoFollowingAffine);
+  transformations->Add(new ReorderActivationFunctions);
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);
@@ -192,6 +194,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   }
 
   SetFinalDataTypeOnInputs(toco_flags, model);
+  UseArraysExtraInfo(model);
 
   // Remove unused ops before performing any other optimizations. This is to
   // stop optimizations from crossing the input/output boundaries. For example
@@ -231,6 +234,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
+
   if (quantize_output) {
     RunGraphTransformations(model, "pre-quantization graph transformations",
                             {new HardcodeMinMax, new DropFakeQuant});

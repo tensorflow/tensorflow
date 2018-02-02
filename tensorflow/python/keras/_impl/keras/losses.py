@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Built-in Keras loss functions.
+# pylint: disable=unused-import
+"""Built-in loss functions.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -34,7 +35,6 @@ def mean_absolute_error(y_true, y_pred):
 
 
 def mean_absolute_percentage_error(y_true, y_pred):
-  # Equivalent to MAE, but sometimes easier to interpret.
   diff = K.abs((y_true - y_pred) / K.clip(K.abs(y_true), K.epsilon(), None))
   return 100. * K.mean(diff, axis=-1)
 
@@ -56,10 +56,24 @@ def hinge(y_true, y_pred):
 def categorical_hinge(y_true, y_pred):
   pos = K.sum(y_true * y_pred, axis=-1)
   neg = K.max((1. - y_true) * y_pred, axis=-1)
-  return K.maximum(neg - pos + 1., 0.)
+  return K.maximum(0., neg - pos + 1.)
 
 
 def logcosh(y_true, y_pred):
+  """Logarithm of the hyperbolic cosine of the prediction error.
+
+  `log(cosh(x))` is approximately equal to `(x ** 2) / 2` for small `x` and
+  to `abs(x) - log(2)` for large `x`. This means that 'logcosh' works mostly
+  like the mean squared error, but will not be so strongly affected by the
+  occasional wildly incorrect prediction.
+
+  Arguments:
+      y_true: tensor of true targets.
+      y_pred: tensor of predicted targets.
+
+  Returns:
+      Tensor with one scalar loss entry per sample.
+  """
 
   def _logcosh(x):
     return x + K.softplus(-2. * x) - K.log(2.)

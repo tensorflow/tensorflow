@@ -26,7 +26,6 @@ class SYCLDeviceFactory : public DeviceFactory {
  public:
   Status CreateDevices(const SessionOptions &options, const string &name_prefix,
                        std::vector<Device *> *devices) override {
-
     auto syclInterface = GSYCLInterface::instance();
 
     size_t n = 1;
@@ -37,13 +36,11 @@ class SYCLDeviceFactory : public DeviceFactory {
 
     for (int i = 0; i < n; i++) {
       string name = strings::StrCat(name_prefix, "/device:SYCL:", i);
-      devices->push_back(
-          new SYCLDevice(options, name, Bytes(256 << 20), DeviceLocality()
-                         , syclInterface->GetShortDeviceDescription(i)
-                         , syclInterface->GetSYCLAllocator(i)
-                         , syclInterface->GetCPUAllocator(i)
-                         , syclInterface->GetSYCLContext(i))
-                       );
+      devices->push_back(new SYCLDevice(
+          options, name, Bytes(256 << 20), DeviceLocality(),
+          syclInterface->GetShortDeviceDescription(i),
+          syclInterface->GetSYCLAllocator(i), syclInterface->GetCPUAllocator(i),
+          syclInterface->GetSYCLContext(i)));
     }
 
     return Status::OK();
@@ -51,6 +48,6 @@ class SYCLDeviceFactory : public DeviceFactory {
 };
 
 REGISTER_LOCAL_DEVICE_FACTORY("SYCL", SYCLDeviceFactory, 200);
-}
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_USE_SYCL

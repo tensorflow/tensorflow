@@ -30,17 +30,13 @@ limitations under the License.
 #include "tensorflow/core/platform/stacktrace.h"
 
 namespace xla {
-namespace {
 
-// Logs the provided status message with a backtrace.
 Status WithLogBacktrace(const Status& status) {
   CHECK(!status.ok());
   VLOG(1) << status.ToString();
   VLOG(1) << tensorflow::CurrentStackTrace();
   return status;
 }
-
-}  // namespace
 
 ScopedLoggingTimer::ScopedLoggingTimer(const string& label, bool enabled)
     : enabled(enabled), label(label) {
@@ -74,13 +70,18 @@ Status AppendStatus(Status prior, tensorflow::StringPiece context) {
 // Implementation note: we can't common these out (without using macros) because
 // they all need to va_start/va_end their varargs in their frame.
 
-Status InvalidArgument(const char* format, ...) {
+Status InvalidArgumentV(const char* format, va_list args) {
   string message;
+  tensorflow::strings::Appendv(&message, format, args);
+  return WithLogBacktrace(tensorflow::errors::InvalidArgument(message));
+}
+
+Status InvalidArgument(const char* format, ...) {
   va_list args;
   va_start(args, format);
-  tensorflow::strings::Appendv(&message, format, args);
+  Status result = InvalidArgumentV(format, args);
   va_end(args);
-  return WithLogBacktrace(tensorflow::errors::InvalidArgument(message));
+  return result;
 }
 
 Status Unimplemented(const char* format, ...) {
@@ -338,7 +339,7 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 
 string SanitizeFileName(string file_name) {
   for (char& c : file_name) {
-    if (c == '/' || c == '\\' || c == '[' || c == ']') {
+    if (c == '/' || c == '\\' || c == '[' || c == ']' || c == ' ') {
       c = '_';
     }
   }

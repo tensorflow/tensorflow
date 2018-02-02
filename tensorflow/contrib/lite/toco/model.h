@@ -15,6 +15,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 #define TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -32,6 +33,7 @@ enum class OperatorType {
   kNone,
   // General-purpose neural network operators.
   kAdd,
+  kAddN,
   kAveragePool,
   kBatchNormalization,
   kConv,
@@ -557,6 +559,16 @@ struct TanhOperator : Operator {
 // TensorFlow equivalent: Add
 struct AddOperator : Operator {
   AddOperator() : Operator(OperatorType::kAdd) {}
+};
+
+// Element-wise addition operator for N inputs.
+//
+// Inputs:
+//   inputs[i]: The i-th array to add together to form the output.
+//
+// TensorFlow equivalent: AddN
+struct AddNOperator : Operator {
+  AddNOperator() : Operator(OperatorType::kAddN) {}
 };
 
 // Concatenation operator: concatenates its inputs

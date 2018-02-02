@@ -99,9 +99,10 @@ class AccumulatorTakeGradientOp
                       ConditionalAccumulatorBase* accumulator,
                       DoneCallback callback) override {
     // Check signature
-    OP_REQUIRES_OK_ASYNC(ctx, ctx->MatchSignature({DT_STRING_REF, DT_INT32},
-                                                  {accumulator->dtype()}),
-                         callback);
+    OP_REQUIRES_OK_ASYNC(
+        ctx,
+        ctx->MatchSignature({DT_STRING_REF, DT_INT32}, {accumulator->dtype()}),
+        callback);
   }
 
  private:
@@ -110,6 +111,5 @@ class AccumulatorTakeGradientOp
 
 REGISTER_KERNEL_BUILDER(Name("AccumulatorTakeGradient").Device(DEVICE_CPU),
                         AccumulatorTakeGradientOp);
-
 
 }  // namespace tensorflow

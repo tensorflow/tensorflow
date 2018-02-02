@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """One-line documentation for rmsprop module.
 
 rmsprop algorithm [tieleman2012rmsprop]
@@ -47,12 +46,15 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.RMSPropOptimizer")
 class RMSPropOptimizer(optimizer.Optimizer):
   """Optimizer that implements the RMSProp algorithm.
 
-  See the [paper](http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
+  See the
+  [paper](http://www.cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf).
   """
 
   def __init__(self,
@@ -113,13 +115,12 @@ class RMSPropOptimizer(optimizer.Optimizer):
       self._zeros_slot(v, "momentum", self._name)
 
   def _prepare(self):
-    self._learning_rate_tensor = ops.convert_to_tensor(self._learning_rate,
-                                                       name="learning_rate")
+    self._learning_rate_tensor = ops.convert_to_tensor(
+        self._learning_rate, name="learning_rate")
     self._decay_tensor = ops.convert_to_tensor(self._decay, name="decay")
-    self._momentum_tensor = ops.convert_to_tensor(self._momentum,
-                                                  name="momentum")
-    self._epsilon_tensor = ops.convert_to_tensor(self._epsilon,
-                                                 name="epsilon")
+    self._momentum_tensor = ops.convert_to_tensor(
+        self._momentum, name="momentum")
+    self._epsilon_tensor = ops.convert_to_tensor(self._epsilon, name="epsilon")
 
   def _apply_dense(self, grad, var):
     rms = self.get_slot(var, "rms")

@@ -30,7 +30,7 @@ namespace test {
 
 ::grpc::Status TestEventListenerImpl::SendEvents(
     ::grpc::ServerContext* context,
-    ::grpc::ServerReaderWriter< ::tensorflow::EventReply, ::tensorflow::Event>*
+    ::grpc::ServerReaderWriter<::tensorflow::EventReply, ::tensorflow::Event>*
         stream) {
   Event event;
 

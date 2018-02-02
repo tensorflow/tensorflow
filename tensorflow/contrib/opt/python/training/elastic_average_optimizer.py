@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Wrapper optimizer for Elastic Average SGD """
 from __future__ import absolute_import
 from __future__ import division
@@ -78,23 +77,24 @@ class ElasticAverageCustomGetter(object):
   def __call__(self, getter, name, trainable, collections, *args, **kwargs):
     if trainable:
       with ops.device(self._worker_device):
-        local_var = getter(name, trainable=True,
-                           collections=[ops.GraphKeys.LOCAL_VARIABLES],
-                           *args, **kwargs)
+        local_var = getter(
+            name,
+            trainable=True,
+            collections=[ops.GraphKeys.LOCAL_VARIABLES],
+            *args,
+            **kwargs)
       global_center_variable = variable_scope.variable(
-        name='%s/%s' %
-             (GLOBAL_VARIABLE_NAME,
-              name),
-        initial_value=local_var.initialized_value(),
-        trainable=False,
-        collections=[ops.GraphKeys.GLOBAL_VARIABLES])
+          name='%s/%s' % (GLOBAL_VARIABLE_NAME, name),
+          initial_value=local_var.initialized_value(),
+          trainable=False,
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES])
 
       with ops.device(self._worker_device):
         local_center_variable = variable_scope.variable(
-          name='%s/%s' % (LOCAL_VARIABLE_NAME, name),
-          initial_value=local_var.initialized_value(),
-          trainable=False,
-          collections=[ops.GraphKeys.LOCAL_VARIABLES])
+            name='%s/%s' % (LOCAL_VARIABLE_NAME, name),
+            initial_value=local_var.initialized_value(),
+            trainable=False,
+            collections=[ops.GraphKeys.LOCAL_VARIABLES])
 
       self._local_map[local_var] = local_center_variable
       self._global_map[local_var] = global_center_variable
@@ -117,16 +117,15 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
   # Default value as paper described
   BETA = 0.9
 
-  def __init__(
-      self,
-      opt,
-      num_worker,
-      ea_custom_getter,
-      communication_period=10,
-      moving_rate=None,
-      rho=None,
-      use_locking=True,
-      name="ElasticAverageOptimizer"):
+  def __init__(self,
+               opt,
+               num_worker,
+               ea_custom_getter,
+               communication_period=10,
+               moving_rate=None,
+               rho=None,
+               use_locking=True,
+               name='ElasticAverageOptimizer'):
     """Construct a new gradient descent optimizer.
 
     Args:
@@ -160,13 +159,15 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       self._rho = rho
 
     self._local_step = variable_scope.get_variable(
-      initializer=0,
-      trainable=False,
-      collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      name="local_step")
+        initializer=0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        name='local_step')
     self._opt._prepare()
 
-  def compute_gradients(self, loss, var_list=None,
+  def compute_gradients(self,
+                        loss,
+                        var_list=None,
                         gate_gradients=optimizer.Optimizer.GATE_OP,
                         aggregation_method=None,
                         colocate_gradients_with_ops=False,
@@ -204,16 +205,18 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     if not var_list:
       var_list = variables.trainable_variables()
 
-    elastic_difference = [math_ops.subtract(v, lv) for v, lv in zip(
-      variables.trainable_variables(),
-      [self._local_map[var] for var in var_list])]
+    elastic_difference = [
+        math_ops.subtract(v, lv)
+        for v, lv in zip(variables.trainable_variables(),
+                         [self._local_map[var] for var in var_list])
+    ]
 
     distance_loss = self._rho * math_ops.add_n(
-                      [gen_nn_ops.l2_loss(ed) for ed in elastic_difference])
+        [gen_nn_ops.l2_loss(ed) for ed in elastic_difference])
 
     total_loss = loss + distance_loss
-    return self._opt.compute_gradients(total_loss, var_list,
-                                       gate_gradients, aggregation_method,
+    return self._opt.compute_gradients(total_loss, var_list, gate_gradients,
+                                       aggregation_method,
                                        colocate_gradients_with_ops, grad_loss)
 
   def apply_gradients(self, grads_and_vars, global_step=None, name=None):
@@ -241,7 +244,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     apply_updates = self._opt.apply_gradients(grads_and_vars)
     with ops.control_dependencies([apply_updates]):
       local_update = state_ops.assign_add(
-        self._local_step, 1, name='local_step_update').op
+          self._local_step, 1, name='local_step_update').op
 
     # update global variables.
     def _Update_global_variables():
@@ -259,12 +262,16 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
             differences.append(math_ops.subtract(v, lv))
         for lvar, diff in zip(local_vars, differences):
           with ops.device(lvar.device):
-            update_ops.append(state_ops.assign_sub(lvar, math_ops.multiply(
-              self._moving_rate, diff)))
+            update_ops.append(
+                state_ops.assign_sub(lvar,
+                                     math_ops.multiply(self._moving_rate,
+                                                       diff)))
         for var, diff in zip(global_center_vars, differences):
           with ops.device(var.device):
-            update_ops.append(state_ops.assign_add(var, math_ops.multiply(
-              self._moving_rate, diff)))
+            update_ops.append(
+                state_ops.assign_add(var,
+                                     math_ops.multiply(self._moving_rate,
+                                                       diff)))
         if global_step:
           with ops.colocate_with(global_step):
             update_ops.append(state_ops.assign_add(global_step, 1))
@@ -272,10 +279,10 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
       return variable_update
 
     with ops.control_dependencies([local_update]):
-      condition = math_ops.equal(math_ops.mod(
-        self._local_step, self._period), 0)
+      condition = math_ops.equal(
+          math_ops.mod(self._local_step, self._period), 0)
       conditional_update = control_flow_ops.cond(
-        condition, _Update_global_variables, control_flow_ops.no_op)
+          condition, _Update_global_variables, control_flow_ops.no_op)
     return conditional_update
 
   def get_init_op(self, task_index):
@@ -285,10 +292,12 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     def _Add_sync_queues_and_barrier(enqueue_after_list):
       """Adds ops to enqueu on all worker queues"""
       sync_queues = [
-        data_flow_ops.FIFOQueue(self._num_worker, [dtypes.bool], shapes=[[]],
-                                shared_name='%s%s' % (
-                                  'variable_init_sync_queue', i)) for i in
-        range(self._num_worker)]
+          data_flow_ops.FIFOQueue(
+              self._num_worker, [dtypes.bool],
+              shapes=[[]],
+              shared_name='%s%s' % ('variable_init_sync_queue', i))
+          for i in range(self._num_worker)
+      ]
       queue_ops = []
       # For each other worker, add an entry in a queue
       token = constant_op.constant(False)
@@ -299,7 +308,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
           else:
             queue_ops.append(q.enqueue(token))
       queue_ops.append(
-        sync_queues[task_index].dequeue_many(len(sync_queues) - 1))
+          sync_queues[task_index].dequeue_many(len(sync_queues) - 1))
       return control_flow_ops.group(*queue_ops)
 
     init_ops = []
@@ -307,11 +316,10 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     global_center_vars = [self._global_map[var] for var in local_vars]
     local_center_vars = [self._local_map[var] for var in local_vars]
     if not (local_vars and global_center_vars and local_center_vars):
-      raise ValueError(
-        'The lists of local_variables, global_center_variables, '
-        'local_center_variables should not be empty  ')
-    for lvar, gc_var, lc_var in zip(
-        local_vars, global_center_vars, local_center_vars):
+      raise ValueError('The lists of local_variables, global_center_variables, '
+                       'local_center_variables should not be empty  ')
+    for lvar, gc_var, lc_var in zip(local_vars, global_center_vars,
+                                    local_center_vars):
       init_ops.append(state_ops.assign(lvar, gc_var))
       init_ops.append(state_ops.assign(lc_var, gc_var))
 
@@ -325,6 +333,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
 
 
 class _ElasticAverageOptimizerHook(session_run_hook.SessionRunHook):
+
   def __init__(self, ea_optimizer, is_chief, task_index):
     """Creates hook to handle ElasticAverageOptimizer initialization ops.
 

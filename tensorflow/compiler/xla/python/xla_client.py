@@ -36,15 +36,22 @@ from tensorflow.compiler.xla.python import pywrap_xla as c_api
 # pylint: disable=invalid-name
 
 
-OpMetadata = collections.namedtuple(
-    'OpMetadata',
-    [
-        'op_type',
-        'op_name',
-        'source_file',
-        'source_line',
-    ],
-)
+_OP_METADATA_FIELDS = [
+    'op_type',
+    'op_name',
+    'source_file',
+    'source_line',
+]
+OpMetadata = collections.namedtuple('OpMetadata', _OP_METADATA_FIELDS)
+
+
+def OpMetadataToProto(pyobj):
+  proto = xla_data_pb2.OpMetadata()
+  for field in _OP_METADATA_FIELDS:
+    attr = getattr(pyobj, field)
+    if attr is not None:
+      setattr(proto, field, attr)
+  return proto
 
 
 def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
@@ -82,6 +89,7 @@ _UNARY_OPS = [
     'Abs',
     'Exp',
     'Floor',
+    'Round',
     'Ceil',
     'Log',
     'Sign',
@@ -148,9 +156,14 @@ class LocalBuffer(object):
     self._delete = c_api.DeleteLocalShapedBuffer
 
   @staticmethod
-  def from_py(npval):
+  def from_py(npval, layout_fn=None):
     npval = require_numpy_array_layout(npval)
-    return LocalBuffer(c_api.LocalShapedBuffer.FromLiteral(npval))
+    if layout_fn:
+      shape = Shape.from_numpy(npval)
+      shape = shape.map_leaves(layout_fn)
+    else:
+      shape = None
+    return LocalBuffer(c_api.LocalShapedBuffer.FromLiteral(npval, shape))
 
   def to_py(self):
     return self.c_local_shaped_buffer.ToLiteral()
@@ -175,13 +188,17 @@ class Shape(object):
   represents an XLA tuple.
   """
 
-  def __init__(self, np_dtype, dimensions):
+  def __init__(self, np_dtype, dimensions, minor_to_major=None):
+    assert isinstance(dimensions, tuple)
     self.np_dtype = np_dtype
     self._dimensions = dimensions
+    self._minor_to_major = minor_to_major
+    self._check_minor_to_major()
 
   def __repr__(self):
-    return 'xla_client.Shape(np_dtype={!r}, dimensions={!r})'.format(
-        self.np_dtype, self._dimensions)
+    return ('xla_client.Shape(np_dtype={!r}, dimensions={!r}, '
+            'minor_to_major={!r})').format(self.np_dtype, self._dimensions,
+                                           self._minor_to_major)
 
   def element_type(self):
     return DTYPE_TO_XLA_ELEMENT_TYPE[str(self.np_dtype)]
@@ -194,10 +211,48 @@ class Shape(object):
       raise ValueError('Tuple shape has no dimensions')
     return self._dimensions
 
+  def minor_to_major(self):
+    return self._minor_to_major
+
   def tuple_shapes(self):
     if not self.is_tuple():
       raise ValueError('Shape is not a tuple shape')
     return self._dimensions
+
+  def rank(self):
+    return len(self.dimensions())
+
+  def map_leaves(self, f):
+    """Map f over each leaf-level array subshape.
+
+    Args:
+      f: The function to apply. Whenever f returns None, the identity is
+        applied instead.
+
+    Returns:
+      A new Shape with the mapped leaves.
+    """
+    if self.is_tuple():
+      children = tuple(child.map_leaves(f) for child in self.tuple_shapes())
+      return Shape(np.dtype('O'), children)
+    else:
+      mapped = f(self)
+      return self if mapped is None else mapped
+
+  def _check_minor_to_major(self):
+    mtm = self._minor_to_major
+    if self.is_tuple():
+      assert mtm is None, self
+    if mtm is not None:
+      assert self.rank() == len(mtm), self
+      assert sorted(mtm) == range(len(mtm)), self
+
+  def update_minor_to_major(self, minor_to_major):
+    if not isinstance(minor_to_major, tuple):
+      raise TypeError('minor_to_major must be a tuple')
+    updated = Shape(self.np_dtype, tuple(self.dimensions()), minor_to_major)
+    updated._check_minor_to_major()  # pylint: disable=protected-access
+    return updated
 
   @staticmethod
   def from_numpy(npval):
@@ -215,21 +270,8 @@ def _wrap_shape(shape_info):
   dtype, dims = shape_info
   element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(dtype)]
   if element_type == xla_data_pb2.TUPLE:
-    dims = [_wrap_shape(subshape_info) for subshape_info in dims]
+    dims = tuple(_wrap_shape(subshape_info) for subshape_info in dims)
   return Shape(dtype, dims)
-
-
-def _unwrap_shape(shape):
-  if shape.is_tuple():
-    components = tuple(
-        _unwrap_shape(subshape) for subshape in shape.tuple_shapes())
-  else:
-    components = shape.dimensions()
-  return (shape.np_dtype, components)
-
-
-def _unwrap_shapes(shapes):
-  return [_unwrap_shape(shape) for shape in shapes]
 
 
 def _wrap_data_handle(handle):
@@ -251,6 +293,17 @@ def require_numpy_array_layout(value):
     return tuple(require_numpy_array_layout(x) for x in value)
   else:
     return np.require(value, requirements=['C', 'A'])
+
+
+class CompileOptions(object):
+  """Python object for XLA compile options.
+
+  These options can be passed to the 'compile' step when using a local XLA
+  client.
+  """
+
+  def __init__(self):
+    self.generate_hlo_graph = None
 
 
 def transfer_to_infeed(value, replica_number=None):
@@ -284,8 +337,7 @@ def transfer_from_outfeed(shape, replica_number=None):
   Returns:
     The literal value that is produced from the outfeed queue.
   """
-  return c_api.TransferFromOutfeedLocalReplica(
-      _unwrap_shape(shape), replica_number or 0)
+  return c_api.TransferFromOutfeedLocalReplica(shape, replica_number or 0)
 
 
 class LocalComputation(object):
@@ -306,22 +358,39 @@ class LocalComputation(object):
     else:
       self._delete = c_api.DeleteLocalComputation
 
-  def Compile(self, argument_shapes=()):
+  def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None):
     if self.is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
+    if layout_fn:
+      argument_shapes = [
+          shape.map_leaves(layout_fn) for shape in argument_shapes
+      ]
     return LocalComputation(
-        self.c_local_computation.Compile(_unwrap_shapes(argument_shapes)),
+        self.c_local_computation.Compile(argument_shapes, compile_options),
         is_compiled=True)
 
-  def CompileWithExampleArguments(self, arguments=()):
+  def CompileWithExampleArguments(self,
+                                  arguments=(),
+                                  compile_options=None,
+                                  layout_fn=None):
     return self.Compile(
-        argument_shapes=[Shape.from_numpy(arg) for arg in arguments])
+        argument_shapes=[Shape.from_numpy(arg) for arg in arguments],
+        compile_options=compile_options,
+        layout_fn=layout_fn)
 
-  def Execute(self, arguments=()):
+  def Execute(self, arguments=(), layout_fn=None):
+    """Execute with Python values as arguments and return value."""
     if not self.is_compiled:
       raise ValueError('Cannot execute an uncompiled local XLA computation.')
+    argument_shapes = [Shape.from_numpy(arg) for arg in arguments]
+    if layout_fn:
+      argument_shapes = [
+          shape.map_leaves(layout_fn) for shape in argument_shapes
+      ]
+    else:
+      argument_shapes = [None for shape in argument_shapes]
     arguments = tuple(map(require_numpy_array_layout, arguments))
-    return self.c_local_computation.Execute(arguments)
+    return self.c_local_computation.Execute(arguments, argument_shapes)
 
   def ExecuteWithLocalBuffers(self, arguments=()):
     """Execute with LocalBuffer arguments and return value."""
@@ -377,7 +446,7 @@ class ComputationBuilder(object):
     Returns:
       A  ComputationDataHandle message.
     """
-    return _wrap_data_handle(self._client.Infeed(_unwrap_shape(shape)))
+    return _wrap_data_handle(self._client.Infeed(shape))
 
   def Outfeed(self, operand):
     """Enqueues an outfeed op onto the computation.
@@ -386,7 +455,7 @@ class ComputationBuilder(object):
     outfeed queue for subsequent dequeue via the client API.
     """
     self._client.Outfeed(
-        _unwrap_data_handle(operand), _unwrap_shape(self.GetShape(operand)),
+        _unwrap_data_handle(operand), self.GetShape(operand),
         ''.encode('utf-8'))
 
   def Constant(self, value):
@@ -477,8 +546,7 @@ class ComputationBuilder(object):
       parameter_num = next(self._parameter_numbering)
 
     return _wrap_data_handle(
-        self._client.Parameter(
-            parameter_num, _unwrap_shape(shape), name.encode('utf8')))
+        self._client.Parameter(parameter_num, shape, name.encode('utf8')))
 
   def ParameterFromNumpy(self, value, name=None, parameter_num=None):
     """Enqueues a Parameter op onto the computation.
@@ -598,6 +666,13 @@ class ComputationBuilder(object):
     """Rev op."""
     return _wrap_data_handle(
         self._client.Rev(_unwrap_data_handle(operand), dimensions))
+
+  def Clamp(self, min, operand, max):  # pylint: disable=redefined-builtin
+    """Clamp op."""
+    return _wrap_data_handle(
+        self._client.Clamp(_unwrap_data_handle(min),
+                           _unwrap_data_handle(operand),
+                           _unwrap_data_handle(max)))
 
   def SelectAndScatter(self, operand, select, window_dimensions, window_strides,
                        padding, source, init_value, scatter):
@@ -818,8 +893,7 @@ class ComputationBuilder(object):
     shape = Shape(self.GetShape(mu).np_dtype, dims)
     return _wrap_data_handle(
         self._client.RngNormal(
-            _unwrap_data_handle(mu), _unwrap_data_handle(sigma),
-            _unwrap_shape(shape)))
+            _unwrap_data_handle(mu), _unwrap_data_handle(sigma), shape))
 
   def RngUniform(self, a, b, dims):
     """Enqueues an RngUniform operation onto the computation.
@@ -839,8 +913,7 @@ class ComputationBuilder(object):
     shape = Shape(self.GetShape(a).np_dtype, dims)
     return _wrap_data_handle(
         self._client.RngUniform(
-            _unwrap_data_handle(a), _unwrap_data_handle(b),
-            _unwrap_shape(shape)))
+            _unwrap_data_handle(a), _unwrap_data_handle(b), shape))
 
   def While(self, cond, body, init):
     """Enqueues a While operation onto the computation.
@@ -858,9 +931,36 @@ class ComputationBuilder(object):
                            _unwrap_data_handle(init)))
 
   def Dot(self, lhs, rhs):
-    """Matrix multiplication between lhs and rhs."""
+    """Enqueues a dot operation onto the computation.
+
+    Args:
+      lhs: ComputationDataHandle for the rank 1 or rank 2 left-hand-side array.
+      rhs: ComputationDataHandle for the rank 1 or rank 2 right-hand-side array.
+
+    Returns: a ComputationDataHandle representing the Dot operation.
+    """
     return _wrap_data_handle(
         self._client.Dot(_unwrap_data_handle(lhs), _unwrap_data_handle(rhs)))
+
+  def DotGeneral(self, lhs, rhs, dimension_numbers):
+    """Enqueues a general dot operation onto the computation.
+
+    Args:
+      lhs: ComputationDataHandle for the left-hand-side array.
+      rhs: ComputationDataHandle for the right-hand-side array.
+      dimension_numbers: either an xla_data_pb2.DotDimensionNumbers or a nested
+        tuple ((lhs_contract, rhs_contract), (lhs_batch, rhs_batch)) of lists of
+        integers representing the dimensions to treat as contracting dimensions
+        and batch dimensions on each input operand.
+
+    Returns: a ComputationDataHandle representing the DotGeneral operation.
+    """
+    if not isinstance(dimension_numbers, xla_data_pb2.DotDimensionNumbers):
+      dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
+    return _wrap_data_handle(
+        self._client.DotGeneral(
+            _unwrap_data_handle(lhs), _unwrap_data_handle(rhs),
+            dimension_numbers))
 
   def Conv(self, lhs, rhs, window_strides, padding):
     """Enqueues a Conv operation onto the computation.
@@ -998,3 +1098,13 @@ def GetPaddingConfigFromTriples(triples):
     dimension.edge_padding_high = hi
     dimension.interior_padding = interior
   return padding_config
+
+
+def GetDotDimensionsFromLists(dimension_numbers):
+  (lhs_contract, rhs_contract), (lhs_batch, rhs_batch) = dimension_numbers
+  dot_dims_proto = xla_data_pb2.DotDimensionNumbers()
+  dot_dims_proto.lhs_contracting_dimensions.extend(lhs_contract)
+  dot_dims_proto.rhs_contracting_dimensions.extend(rhs_contract)
+  dot_dims_proto.lhs_batch_dimensions.extend(lhs_batch)
+  dot_dims_proto.rhs_batch_dimensions.extend(rhs_batch)
+  return dot_dims_proto

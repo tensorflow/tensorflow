@@ -269,10 +269,10 @@ class ReverseV2Op : public OpKernel {
       OP_REQUIRES_OK(context,
                      context->allocate_output(0, input.shape(), &output));
 
-// TODO(cwhipkey): we can do dimension folding to reduce, e.g., a reverse of
-// a single dimension to the dims=3 or dims=2 case, regardless of the number
-// of dimensions in the tensor. This would let some ops use faster
-// lower-dimension code (and use optimized versions).
+      // TODO(cwhipkey): we can do dimension folding to reduce, e.g., a reverse
+      // of a single dimension to the dims=3 or dims=2 case, regardless of the
+      // number of dimensions in the tensor. This would let some ops use faster
+      // lower-dimension code (and use optimized versions).
 
 #define HANDLE_REVERSE(NDIMS)                                           \
   case NDIMS:                                                           \

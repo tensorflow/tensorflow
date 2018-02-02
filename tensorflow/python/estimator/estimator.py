@@ -35,6 +35,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import run_config
 from tensorflow.python.estimator import util
+from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.export.export import build_all_signature_defs
 from tensorflow.python.estimator.export.export import get_temp_export_dir
 from tensorflow.python.estimator.export.export import get_timestamped_export_dir
@@ -97,8 +98,21 @@ class Estimator(object):
   @end_compatibility
   """
 
-  def __init__(self, model_fn, model_dir=None, config=None, params=None):
+  def __init__(self, model_fn, model_dir=None, config=None, params=None,
+               warm_start_from=None):
     """Constructs an `Estimator` instance.
+
+    See @{$estimators} for more information. To warm-start an `Estimator`:
+
+    ```python
+    estimator = tf.estimator.DNNClassifier(
+        feature_columns=[categorical_feature_a_emb, categorical_feature_b_emb],
+        hidden_units=[1024, 512, 256],
+        warm_start_from="/path/to/checkpoint/dir")
+    ```
+
+    For more details on warm-start configuration, see
+    @{tf.estimator.WarmStartSettings$WarmStartSettings}.
 
     Args:
       model_fn: Model function. Follows the signature:
@@ -136,6 +150,12 @@ class Estimator(object):
       config: Configuration object.
       params: `dict` of hyper parameters that will be passed into `model_fn`.
               Keys are names of parameters, values are basic python types.
+      warm_start_from: Optional string filepath to a checkpoint to warm-start
+                       from, or a `tf.estimator.WarmStartSettings` object to
+                       fully configure warm-starting.  If the string filepath is
+                       provided instead of a `WarmStartSettings`, then all
+                       variables are warm-started, and it is assumed that
+                       vocabularies and Tensor names are unchanged.
 
     Raises:
       RuntimeError: If eager execution is enabled.
@@ -192,6 +212,11 @@ class Estimator(object):
     _verify_model_fn_args(model_fn, params)
     self._model_fn = model_fn
     self._params = copy.deepcopy(params or {})
+
+    # pylint: disable=protected-access
+    self._warm_start_settings = (
+        warm_starting_util._get_default_warm_start_settings(warm_start_from))
+    # pylint: enable=protected-access
 
   @property
   def model_dir(self):
@@ -453,13 +478,16 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(
           features, None, model_fn_lib.ModeKeys.PREDICT, self.config)
       predictions = self._extract_keys(estimator_spec.predictions, predict_keys)
+      all_hooks = list(input_hooks)
+      all_hooks.extend(hooks)
+      all_hooks.extend(list(estimator_spec.prediction_hooks or []))
       with training.MonitoredSession(
           session_creator=training.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
               master=self._config.master,
               scaffold=estimator_spec.scaffold,
               config=self._session_config),
-          hooks=input_hooks + hooks) as mon_sess:
+          hooks=all_hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
           if not isinstance(predictions, dict):
@@ -782,6 +810,13 @@ class Estimator(object):
       worker_hooks.extend(input_hooks)
       estimator_spec = self._call_model_fn(
           features, labels, model_fn_lib.ModeKeys.TRAIN, self.config)
+
+      if self._warm_start_settings:
+        logging.info('Warm-starting with WarmStartSettings: %s' %
+                     (self._warm_start_settings,))
+        # pylint: disable=protected-access
+        warm_starting_util._warm_start(self._warm_start_settings)
+        # pylint: enable=protected-access
       # Check if the user created a loss summary, and add one if they didn't.
       # We assume here that the summary is called 'loss'. If it is not, we will
       # make another one with the name 'loss' to ensure it shows up in the right

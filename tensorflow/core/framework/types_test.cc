@@ -70,8 +70,8 @@ TEST(TypesTest, kDataTypeRefOffset) {
       << "Extra reference enum "
       << enum_descriptor->FindValueByNumber(e_ref)->name()
       << " without corresponding base enum with value " << e;
-  ASSERT_LT(DataType_MAX, e_ref) << "Gap in reference types, missing value for "
-                                 << e_ref;
+  ASSERT_LT(DataType_MAX, e_ref)
+      << "Gap in reference types, missing value for " << e_ref;
 
   // Make sure there are no enums defined after the last regular type before
   // the first reference type.

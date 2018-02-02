@@ -36,7 +36,7 @@ typedef Eigen::GpuDevice GPUDevice;
 #endif  // GOOGLE_CUDA
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // --------------------------------------------------------------------------
 template <typename Device, typename T>
@@ -123,7 +123,7 @@ class PackOp : public OpKernel {
         ConcatSYCL<T>(c->eigen_sycl_device(), inputs_flat, &output_flat);
         return;
       }
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
       ConcatCPU<T>(c->device(), inputs_flat, &output_flat);
     }
   }

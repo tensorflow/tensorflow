@@ -53,7 +53,8 @@ class TPUConfig(
     num_shards: The number of TPU shards in the system.
     per_host_input_for_training: If `True`, `input_fn` is invoked Per-Host
       rather than Per-Core. With Per-Host input pipeline deployment, `input_fn`
-      is invoked once on each host. To be precise, with a global batch size
+      is invoked once on each host. With Per-Core input pipeline deployment, it
+      is invoked once for each core. To be precise, with a global batch size
       `train_batch_size` in `TPUEstimator` constructor, the batch size for each
       shard is `train_batch_size` // #hosts. With Per-Core input pipeline
       deployment, the shard batch size is `train_batch_size` // #cores.

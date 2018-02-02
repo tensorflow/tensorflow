@@ -40,7 +40,7 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class OpKernelContext;
 
@@ -251,7 +251,7 @@ REGISTER_SCATTER_ND_MATH_SYCL(int32);
 #undef REGISTER_SCATTER_ND_INDEX_SYCL
 #undef REGISTER_SCATTER_ND_FULL_SYCL
 
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace functor
 

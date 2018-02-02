@@ -65,7 +65,6 @@ BLACKLIST = [
     "//tensorflow/contrib/framework:checkpoint_ops_testdata",
     "//tensorflow/contrib/bayesflow:reinforce_simple_example",
     "//tensorflow/contrib/bayesflow:examples/reinforce_simple/reinforce_simple_example.py",  # pylint:disable=line-too-long
-    "//tensorflow/contrib/py2tf:py2tf_internal",
     "//tensorflow/contrib/timeseries/examples:predict",
     "//tensorflow/contrib/timeseries/examples:multivariate",
     "//tensorflow/contrib/timeseries/examples:known_anomaly",

@@ -349,6 +349,7 @@ def fold_batch_norms(input_graph_def):
     bias_add_op.op = "BiasAdd"
     bias_add_op.name = node.name
     bias_add_op.attr["T"].CopyFrom(conv_op.attr["T"])
+    bias_add_op.attr["data_format"].CopyFrom(conv_op.attr["data_format"])
     bias_add_op.input.extend([new_conv_op.name, offset_op.name])
     new_ops.extend([scaled_weights_op, new_conv_op, offset_op, bias_add_op])
 

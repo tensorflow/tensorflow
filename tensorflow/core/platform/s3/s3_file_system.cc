@@ -24,6 +24,7 @@ limitations under the License.
 #include <aws/core/utils/FileSystemUtils.h>
 #include <aws/core/utils/logging/AWSLogging.h>
 #include <aws/core/utils/logging/LogSystemInterface.h>
+#include <aws/core/utils/StringUtils.h>
 #include <aws/s3/S3Client.h>
 #include <aws/s3/S3Errors.h>
 #include <aws/s3/model/CopyObjectRequest.h>
@@ -305,8 +306,15 @@ std::shared_ptr<Aws::S3::S3Client> S3FileSystem::GetS3Client() {
     };
     Aws::InitAPI(options);
 
-    this->s3_client_ = std::shared_ptr<Aws::S3::S3Client>(
-        new Aws::S3::S3Client(GetDefaultClientConfig()));
+    // The creation of S3Client disables virtual addressing:
+    //   S3Client(clientConfiguration, signPayloads, useVirtualAdressing = true)
+    // The purpose is to address the issue encountered when there is an `.`
+    // in the bucket name. Due to TLS hostname validation or DNS rules,
+    // the bucket may not be resolved. Disabling of virtual addressing
+    // should address the issue. See GitHub issue 16397 for details.
+    this->s3_client_ = std::shared_ptr<Aws::S3::S3Client>(new Aws::S3::S3Client(
+        GetDefaultClientConfig(),
+        Aws::Client::AWSAuthV4Signer::PayloadSigningPolicy::Never, false));
   }
 
   return this->s3_client_;
@@ -607,7 +615,8 @@ Status S3FileSystem::RenameFile(const string& src, const string& target) {
       Aws::String src_key = object.GetKey();
       Aws::String target_key = src_key;
       target_key.replace(0, src_object.length(), target_object.c_str());
-      Aws::String source = Aws::String(src_bucket.c_str()) + "/" + src_key;
+      Aws::String source = Aws::String(src_bucket.c_str()) + "/"
+          + Aws::Utils::StringUtils::URLEncode(src_key.c_str());
 
       copyObjectRequest.SetBucket(target_bucket.c_str());
       copyObjectRequest.SetKey(target_key);

@@ -25,6 +25,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as saver_mod
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _maybe_name(obj):
@@ -44,6 +45,7 @@ def _maybe_name(obj):
     return "<no name for %s>" % type(obj)
 
 
+@tf_export("train.SessionManager")
 class SessionManager(object):
   """Training helper that restores from checkpoint and creates session.
 

@@ -71,9 +71,7 @@ class SplitCollectionOperator {
   }
 
   // Perform any necessary cleanup for any tracked state for the slot.
-  virtual void ClearSlot(int32 node_id) {
-    stats_.erase(node_id);
-  }
+  virtual void ClearSlot(int32 node_id) { stats_.erase(node_id); }
 
   // Return true if slot is fully initialized.
   virtual bool IsInitialized(int32 node_id) const;

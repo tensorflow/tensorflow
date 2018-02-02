@@ -23,7 +23,6 @@ import math
 import six
 
 from tensorflow.python.estimator import estimator
-from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.canned import dnn
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import linear
@@ -385,8 +384,8 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
           loss_reduction=loss_reduction)
 
     def _model_fn(features, labels, mode, config):
-      """Call the _dnn_linear_combined_model_fn and possibly warm-start."""
-      estimator_spec = _dnn_linear_combined_model_fn(
+      """Call the _dnn_linear_combined_model_fn."""
+      return _dnn_linear_combined_model_fn(
           features=features,
           labels=labels,
           mode=mode,
@@ -400,17 +399,10 @@ class DNNLinearCombinedClassifier(estimator.Estimator):
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config)
-      # pylint: disable=protected-access
-      warm_start_settings = warm_starting_util._get_default_warm_start_settings(
-          warm_start_from)
-      if warm_start_settings:
-        warm_starting_util._warm_start(warm_start_settings)
-      # pylint: enable=protected-access
-
-      return estimator_spec
 
     super(DNNLinearCombinedClassifier, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        warm_start_from=warm_start_from)
 
 
 class DNNLinearCombinedRegressor(estimator.Estimator):
@@ -554,8 +546,8 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
                        'must be defined.')
 
     def _model_fn(features, labels, mode, config):
-      """Call the _dnn_linear_combined_model_fn and possibly warm-start."""
-      estimator_spec = _dnn_linear_combined_model_fn(
+      """Call the _dnn_linear_combined_model_fn."""
+      return _dnn_linear_combined_model_fn(
           features=features,
           labels=labels,
           mode=mode,
@@ -572,14 +564,7 @@ class DNNLinearCombinedRegressor(estimator.Estimator):
           dnn_dropout=dnn_dropout,
           input_layer_partitioner=input_layer_partitioner,
           config=config)
-      # pylint: disable=protected-access
-      warm_start_settings = warm_starting_util._get_default_warm_start_settings(
-          warm_start_from)
-      if warm_start_settings:
-        warm_starting_util._warm_start(warm_start_settings)
-      # pylint: enable=protected-access
-
-      return estimator_spec
 
     super(DNNLinearCombinedRegressor, self).__init__(
-        model_fn=_model_fn, model_dir=model_dir, config=config)
+        model_fn=_model_fn, model_dir=model_dir, config=config,
+        warm_start_from=warm_start_from)

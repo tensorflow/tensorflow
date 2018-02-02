@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/graph/node_builder.h"
 
@@ -262,6 +263,10 @@ void BinaryDatasetOpKernel::MakeDataset(OpKernelContext* ctx,
   OP_REQUIRES_OK(ctx,
                  GetDatasetFromVariantTensor(ctx->input(1), &another_input));
   MakeDataset(ctx, input, another_input, output);
+}
+
+Allocator* IteratorContext::allocator(AllocatorAttributes attrs) {
+  return params_.lib->device()->GetAllocator(attrs);
 }
 
 const char GraphDatasetBase::kDatasetGraphKey[] = "_DATASET_GRAPH";
