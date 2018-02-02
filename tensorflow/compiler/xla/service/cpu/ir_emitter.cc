@@ -62,6 +62,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -478,7 +479,7 @@ Status IrEmitter::HandleOutfeed(HloInstruction* outfeed) {
 
 Status IrEmitter::HandleSort(HloInstruction* sort) {
   // TODO(b/26783907): Implement sort on CPU.
-  return Unimplemented("Sort is not supported on CPU (b/26783907).");
+  return Unimplemented("Sort is not implemented on CPU.");
 }
 
 Status IrEmitter::HandleTuple(HloInstruction* tuple) {
@@ -521,7 +522,7 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   // TODO(b/31410564): Implement dilation for reduce-window.
   if (window_util::HasDilation(window)) {
     return Unimplemented(
-        "Dilation for reduce-window not implemented on CPU. See b/31410564.");
+        "Dilation for ReduceWindow is not implemented on CPU.");
   }
 
   // The called computation should have been emitted previously.
@@ -624,8 +625,7 @@ Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
   // TODO(b/31410564): Implement dilation for select-and-scatter.
   if (window_util::HasDilation(window)) {
     return Unimplemented(
-        "Dilation for select-and-scatter not implemented on CPU. "
-        "See b/31410564.");
+        "Dilation for SelectAndScatter is not implemented on CPU. ");
   }
 
   // The select and scatter computations should have been emitted previously.
@@ -1195,8 +1195,7 @@ Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
   }
 
   // TODO(b/33011107): Support cross replica sum on CPU.
-  return Unimplemented(
-      "Cross replica sum is not implemented on CPU. See b/33011107.");
+  return Unimplemented("CrossReplicaSum is not implemented on CPU.");
 }
 
 // Fills up the free variables in 'index_with_free_var' with values from
@@ -1269,6 +1268,52 @@ Status IrEmitter::HandleParameter(HloInstruction* parameter) {
 
   VLOG(2) << "  emitted value: " << llvm_ir::DumpToString(*param_address_typed);
   return Status::OK();
+}
+
+// Returns true if the relative order of the unreduced dimensions stays the same
+// through the reduce operation.
+static bool ReductionPreservesLayout(const HloInstruction& reduce) {
+  DCHECK_EQ(reduce.opcode(), HloOpcode::kReduce);
+
+  // Maps dimensions that were not reduced from their dimension numbers in the
+  // source shape to their dimensions numbers in the destination shape.
+  //
+  // So if we reduce f32[A,B,C,D] on dimensions 1 and 2, this map contains
+  // [0->0, 3->1].
+  gtl::FlatMap<int64, int64> unreduced_dim_map;
+
+  gtl::FlatSet<int64> reduced_dims(reduce.dimensions().begin(),
+                                   reduce.dimensions().end());
+
+  const Shape& operand_shape = reduce.operand(0)->shape();
+  const Shape& result_shape = reduce.shape();
+
+  int64 delta = 0;
+  for (int64 i = 0; i < operand_shape.dimensions_size(); i++) {
+    if (reduced_dims.count(i)) {
+      delta++;
+    } else {
+      InsertOrDie(&unreduced_dim_map, i, i - delta);
+    }
+  }
+
+  // Iterate dimensions minor to major and check that the corresponding
+  // dimensions in the source and target shapes are equivalent.
+  int64 result_dim_idx = 0;
+  for (int64 operand_dim_idx = 0;
+       operand_dim_idx < operand_shape.dimensions_size(); operand_dim_idx++) {
+    int64 operand_dim = operand_shape.layout().minor_to_major(operand_dim_idx);
+    if (!reduced_dims.count(operand_dim)) {
+      if (FindOrDie(unreduced_dim_map, operand_dim) !=
+          result_shape.layout().minor_to_major(result_dim_idx++)) {
+        return false;
+      }
+    }
+  }
+
+  CHECK_EQ(result_dim_idx, result_shape.dimensions_size());
+
+  return true;
 }
 
 IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
@@ -1540,6 +1585,10 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
     HloInstruction* reduce, HloInstruction* arg, HloInstruction* init_value,
     gtl::ArraySlice<int64> dimensions, HloComputation* function,
     string* failure_reason) {
+  if (!ReductionPreservesLayout(*reduce)) {
+    return false;
+  }
+
   ReductionGenerator reduction_generator =
       MatchReductionGenerator(function, failure_reason);
   if (!reduction_generator) {
@@ -1760,12 +1809,12 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
 
 Status IrEmitter::HandleSend(HloInstruction* send) {
   // TODO(b/33942983): Support Send/Recv on CPU.
-  return Unimplemented("Send is not implemented on CPU. See b/33942983.");
+  return Unimplemented("Send is not implemented on CPU.");
 }
 
 Status IrEmitter::HandleSendDone(HloInstruction* send_done) {
   // TODO(b/33942983): Support Send/Recv on CPU.
-  return Unimplemented("Send-done is not implemented on CPU. See b/33942983.");
+  return Unimplemented("Send-done is not implemented on CPU.");
 }
 
 Status IrEmitter::HandleSlice(HloInstruction* slice) {
@@ -1930,12 +1979,12 @@ Status IrEmitter::HandleDynamicUpdateSlice(
 
 Status IrEmitter::HandleRecv(HloInstruction* recv) {
   // TODO(b/33942983): Support Send/Recv on CPU.
-  return Unimplemented("Recv is not implemented on CPU. See b/33942983.");
+  return Unimplemented("Recv is not implemented on CPU.");
 }
 
 Status IrEmitter::HandleRecvDone(HloInstruction* recv_done) {
   // TODO(b/33942983): Support Send/Recv on CPU.
-  return Unimplemented("Recv-done is not implemented on CPU. See b/33942983.");
+  return Unimplemented("Recv-done is not implemented on CPU.");
 }
 
 Status IrEmitter::HandlePad(HloInstruction* pad) {
@@ -1944,10 +1993,10 @@ Status IrEmitter::HandlePad(HloInstruction* pad) {
   for (auto& padding_dimension : pad->padding_config().dimensions()) {
     if (padding_dimension.edge_padding_low() < 0 ||
         padding_dimension.edge_padding_high() < 0) {
-      return Unimplemented(
-          "Negative padding not supported in the CPU backend (b/34628603); "
-          "this should have been eliminated at the HLO level: %s",
-          pad->padding_config().ShortDebugString().c_str());
+      return InternalErrorStrCat(
+          "Encountered negative padding in IrEmitter on CPU. "
+          "This should have been eliminated at the HLO level. ",
+          pad->ToString());
     }
   }
 

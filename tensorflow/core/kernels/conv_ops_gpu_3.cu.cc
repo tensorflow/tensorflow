@@ -25,9 +25,9 @@ limitations under the License.
 #include "cuda/include/cuda.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/core/lib/math/math_util.h"
 
 namespace tensorflow {
 
@@ -252,11 +252,14 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   int x = threadIdx.x;
 
   Dimension<3> output_dims = {
-      input_dims[0], input_dims[2], input_dims[1],
+      input_dims[0],
+      input_dims[2],
+      input_dims[1],
   };
 
   Dimension<3> input_dims_in_tiles = {
-      input_dims[0], (input_dims[1] + TileSizeI - 1) / TileSizeI,
+      input_dims[0],
+      (input_dims[1] + TileSizeI - 1) / TileSizeI,
       (input_dims[2] + TileSizeJ - 1) / TileSizeJ,
   };
 
@@ -264,7 +267,8 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
       FlatToTensorIndex(blockIdx.x, input_dims_in_tiles);
 
   Index<3> input_tile_origin = {
-      input_tile_index[0], input_tile_index[1] * TileSizeI,
+      input_tile_index[0],
+      input_tile_index[1] * TileSizeI,
       input_tile_index[2] * TileSizeJ,
   };
 
@@ -322,11 +326,14 @@ __global__ void SwapDimension1And2InTensor3UsingTiles(
   __syncthreads();
 
   Index<3> output_tile_index = {
-      input_tile_index[0], input_tile_index[2], input_tile_index[1],
+      input_tile_index[0],
+      input_tile_index[2],
+      input_tile_index[1],
   };
 
   Index<3> output_tile_origin = {
-      output_tile_index[0], output_tile_index[1] * TileSizeJ,
+      output_tile_index[0],
+      output_tile_index[1] * TileSizeJ,
       output_tile_index[2] * TileSizeI,
   };
 
@@ -641,8 +648,9 @@ struct BatchNarrowMatrixTransposeDispatcher {
     static_assert(
         (TileLongSide & (TileLongSide - 1)) == 0,
         "The length of the longer side of the tile is always a power of 2.");
-    bool request_satisfied = max(tile_size_i, tile_size_j) <= TileLongSide &&
-                             min(tile_size_i, tile_size_j) <= TileShortSide;
+    bool request_satisfied =
+        std::max(tile_size_i, tile_size_j) <= TileLongSide &&
+        std::min(tile_size_i, tile_size_j) <= TileShortSide;
 
     if (request_satisfied) {
       LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
@@ -655,7 +663,7 @@ struct BatchNarrowMatrixTransposeDispatcher {
     // determine whether it is the long side or the short side that falls short
     // of the request and increase that parameter accordingly.
     const bool long_side_request_not_satisfied =
-        max(tile_size_i, tile_size_j) > TileLongSide;
+        std::max(tile_size_i, tile_size_j) > TileLongSide;
 
     if (long_side_request_not_satisfied) {
       BatchNarrowMatrixTransposeDispatcher<
@@ -683,8 +691,9 @@ struct BatchNarrowMatrixTransposeDispatcher<
     static_assert(
         (TileLongSide & (TileLongSide - 1)) == 0,
         "The length of the longer side of the tile is always a power of 2.");
-    bool request_satisfied = max(tile_size_i, tile_size_j) <= TileLongSide &&
-                             min(tile_size_i, tile_size_j) <= TileShortSide;
+    bool request_satisfied =
+        std::max(tile_size_i, tile_size_j) <= TileLongSide &&
+        std::min(tile_size_i, tile_size_j) <= TileShortSide;
 
     if (request_satisfied) {
       LaunchBatchNarrowMatrixTransposeKernel<T, TileLongSide, TileShortSide>(
@@ -799,7 +808,7 @@ struct TransposeElemType<16> {
 // A helper function to make RunSwapDimension1And2InTensor3 concise. This
 // helper function looks at the data type and input matrix sizes and decides
 // the thread numbers and tile sizes to use.
-template <typename T, bool conjugate = false >
+template <typename T, bool conjugate = false>
 void SwapDimension1And2InTensor3WithNarrowMatrices(
     const GPUDevice& d, const T* input, const Dimension<3>& input_dims,
     T* output, const int kMinDimensionToUseTiles) {
@@ -809,7 +818,7 @@ void SwapDimension1And2InTensor3WithNarrowMatrices(
   int tile_long_side_len = 0;
   int tile_short_side_len = 0;
   float lowest_cost = std::numeric_limits<float>::max();
-  int data_long_side = max(input_dims[1], input_dims[2]);
+  int data_long_side = std::max(input_dims[1], input_dims[2]);
 
   for (auto tile_size_pair : tile_spec) {
     int proposed_tile_long_side_len = tile_size_pair.first;
@@ -854,12 +863,14 @@ void SwapDimension1And2InTensor3WithNarrowMatrices(
   // Truncate the shorter size requested according to the manual limit set in
   // tile_spec to make sure that we do not launch configurations violating
   // hardware limits.
-  requested_tile_size_i = requested_tile_size_i == tile_long_side_len
-                              ? tile_long_side_len
-                              : min(requested_tile_size_i, tile_short_side_len);
-  requested_tile_size_j = requested_tile_size_j == tile_long_side_len
-                              ? tile_long_side_len
-                              : min(requested_tile_size_j, tile_short_side_len);
+  requested_tile_size_i =
+      requested_tile_size_i == tile_long_side_len
+          ? tile_long_side_len
+          : std::min(requested_tile_size_i, tile_short_side_len);
+  requested_tile_size_j =
+      requested_tile_size_j == tile_long_side_len
+          ? tile_long_side_len
+          : std::min(requested_tile_size_j, tile_short_side_len);
 
   Dimension<3> input_dims_in_tiles = {
       input_dims[0],
@@ -902,19 +913,21 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
     constexpr int kNumThreads = 256;
 
     Dimension<3> input_dims_in_tiles = {
-        input_dims[0], MathUtil::CeilOfRatio<int>(input_dims[1], kTileSize),
+        input_dims[0],
+        MathUtil::CeilOfRatio<int>(input_dims[1], kTileSize),
         MathUtil::CeilOfRatio<int>(input_dims[2], kTileSize),
     };
 
     int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
                             input_dims_in_tiles[2];
-    SwapDimension1And2InTensor3UsingTiles<T, kNumThreads, kTileSize, kTileSize, conjugate>
+    SwapDimension1And2InTensor3UsingTiles<T, kNumThreads, kTileSize, kTileSize,
+                                          conjugate>
         <<<total_tiles_count, kNumThreads, 0, d.stream()>>>(input, input_dims,
                                                             output);
 
   } else if (narrow_matrix) {
-    SwapDimension1And2InTensor3WithNarrowMatrices<T, conjugate>(d, input, input_dims, output,
-                                                  kMinDimensionToUseTiles);
+    SwapDimension1And2InTensor3WithNarrowMatrices<T, conjugate>(
+        d, input, input_dims, output, kMinDimensionToUseTiles);
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_element_count, d);

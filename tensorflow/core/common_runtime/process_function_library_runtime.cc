@@ -158,7 +158,7 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
 }
 
 FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
-    const string& device_name) {
+    const string& device_name) const {
   Device* device = nullptr;
   if (device_name != kDefaultFLRDevice) {
     if (!device_mgr_->LookupDevice(device_name, &device).ok()) {

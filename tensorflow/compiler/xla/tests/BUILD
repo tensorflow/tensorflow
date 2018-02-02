@@ -351,6 +351,7 @@ xla_test(
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/service:platform_util",
@@ -577,6 +578,7 @@ xla_test(
 xla_test(
     name = "reduce_precision_test",
     srcs = ["reduce_precision_test.cc"],
+    tags = ["enable_for_xla_interpreter"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",
@@ -848,7 +850,8 @@ xla_test(
     name = "half_test",
     srcs = ["half_test.cc"],
     backends = [
-        "cpu",
+        # TODO(b/72509305): Flaky (fails with SEGV) as of 2018-01-25
+        # "cpu",
         "gpu",
     ],
     deps = [
@@ -1034,6 +1037,10 @@ xla_test(
     name = "select_and_scatter_test",
     timeout = "long",
     srcs = ["select_and_scatter_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+        "optonly",
+    ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",
@@ -1067,6 +1074,19 @@ xla_test(
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "reduce_hlo_test",
+    srcs = ["reduce_hlo_test.cc"],
+    deps = [
+        ":client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
     ],

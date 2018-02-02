@@ -145,6 +145,21 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "matrix_triangular_solve_op_test",
+    size = "small",
+    srcs = ["matrix_triangular_solve_op_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
     name = "clustering_test",
     size = "small",
     srcs = ["clustering_test.py"],
@@ -241,6 +256,18 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "extract_image_patches_op_test",
+    size = "small",
+    srcs = ["extract_image_patches_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "fft_test",
     size = "medium",
     srcs = ["fft_test.py"],
@@ -322,6 +349,19 @@ tf_xla_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops_gen",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
+    name = "matrix_band_part_test",
+    size = "medium",
+    srcs = ["matrix_band_part_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform_test",
     ],
 )
@@ -434,6 +474,18 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+)
+
+tf_xla_py_test(
+    name = "reverse_sequence_op_test",
+    size = "small",
+    srcs = ["reverse_sequence_op_test.py"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
     ],
 )
 

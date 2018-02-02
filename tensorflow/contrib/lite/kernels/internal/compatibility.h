@@ -27,6 +27,10 @@ limitations under the License.
 #define TFLITE_DCHECK_EQ(x, y) ((x) == (y)) ? (void)0 : assert(false)
 #endif
 
+#ifndef TFLITE_DCHECK_NE
+#define TFLITE_DCHECK_NE(x, y) ((x) != (y)) ? (void)0 : assert(false)
+#endif
+
 #ifndef TFLITE_DCHECK_GE
 #define TFLITE_DCHECK_GE(x, y) ((x) >= (y)) ? (void)0 : assert(false)
 #endif
@@ -50,6 +54,10 @@ limitations under the License.
 
 #ifndef TFLITE_CHECK_EQ
 #define TFLITE_CHECK_EQ(x, y) ((x) == (y)) ? (void)0 : abort()
+#endif
+
+#ifndef TFLITE_CHECK_NE
+#define TFLITE_CHECK_NE(x, y) ((x) != (y)) ? (void)0 : abort()
 #endif
 
 #ifndef TFLITE_CHECK_GE

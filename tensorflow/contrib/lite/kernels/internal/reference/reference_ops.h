@@ -889,10 +889,11 @@ inline void Add(int left_shift, const uint8* input1_data,
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
-template <FusedActivationFunctionType Ac>
-void BroadcastAdd(const float* input1_data, const Dims<4>& input1_dims,
-                  const float* input2_data, const Dims<4>& input2_dims,
-                  float* output_data, const Dims<4>& output_dims) {
+template <typename T>
+void BroadcastAdd(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T output_activation_min, T output_activation_max,
+                  T* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("BroadcastAdd");
 
   NdArrayDesc<4> desc1;
@@ -914,13 +915,28 @@ void BroadcastAdd(const float* input1_data, const Dims<4>& input1_dims,
     for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
       for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
         for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] = ActivationFunction<Ac>(
-              input1_data[SubscriptToIndex(desc1, c, x, y, b)] +
-              input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[SubscriptToIndex(desc1, c, x, y, b)] +
+                      input2_data[SubscriptToIndex(desc2, c, x, y, b)],
+                  output_activation_min, output_activation_max);
         }
       }
     }
   }
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac, typename T>
+void BroadcastAdd(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T* output_data, const Dims<4>& output_dims) {
+  T output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+
+  BroadcastAdd(input1_data, input1_dims, input2_data, input2_dims,
+               output_activation_min, output_activation_max, output_data,
+               output_dims);
 }
 
 inline void BroadcastAdd(int left_shift, const uint8* input1_data,
@@ -1053,10 +1069,11 @@ void Mul(const float* input1_data, const Dims<4>& input1_dims,
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
-template <FusedActivationFunctionType Ac>
-void BroadcastMul(const float* input1_data, const Dims<4>& input1_dims,
-                  const float* input2_data, const Dims<4>& input2_dims,
-                  float* output_data, const Dims<4>& output_dims) {
+template <typename T>
+void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T output_activation_min, T output_activation_max,
+                  T* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("BroadcastMul");
 
   NdArrayDesc<4> desc1;
@@ -1078,13 +1095,28 @@ void BroadcastMul(const float* input1_data, const Dims<4>& input1_dims,
     for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
       for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
         for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] = ActivationFunction<Ac>(
-              input1_data[SubscriptToIndex(desc1, c, x, y, b)] *
-              input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[SubscriptToIndex(desc1, c, x, y, b)] *
+                      input2_data[SubscriptToIndex(desc2, c, x, y, b)],
+                  output_activation_min, output_activation_max);
         }
       }
     }
   }
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac, typename T>
+void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T* output_data, const Dims<4>& output_dims) {
+  T output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+
+  BroadcastMul(input1_data, input1_dims, input2_data, input2_dims,
+               output_activation_min, output_activation_max, output_data,
+               output_dims);
 }
 
 inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
@@ -2338,13 +2370,15 @@ inline int StartIndex(int start, int stride, int dim, bool masked) {
   return masked ? (stride > 0 ? 0 : dim - 1) : start;
 }
 
-inline int StopIndex(int stop, int stride, int dim, bool masked) {
-  return masked ? (stride > 0 ? dim : -1) : stop;
+inline int StopIndex(int start, int stop, int stride, int dim, bool masked,
+                     bool shrink_axis_masked) {
+  return shrink_axis_masked ? stride > 0 ? start + 1 : start - 1
+                            : masked ? (stride > 0 ? dim : -1) : stop;
 }
 
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
-                         int begin_mask, int end_mask,
+                         int begin_mask, int end_mask, int shrink_axis_mask,
                          const std::vector<int>& starts,
                          const std::vector<int>& stops,
                          const std::vector<int>& strides, T* output_data,
@@ -2355,19 +2389,23 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
   const int start_b =
       StartIndex(starts[3], strides[3], input_dims.sizes[3], begin_mask & 8);
   const int stop_b =
-      StopIndex(stops[3], strides[3], input_dims.sizes[3], end_mask & 8);
+      StopIndex(start_b, stops[3], strides[3], input_dims.sizes[3],
+                end_mask & 8, shrink_axis_mask & 8);
   const int start_h =
       StartIndex(starts[2], strides[2], input_dims.sizes[2], begin_mask & 4);
   const int stop_h =
-      StopIndex(stops[2], strides[2], input_dims.sizes[2], end_mask & 4);
+      StopIndex(start_h, stops[2], strides[2], input_dims.sizes[2],
+                end_mask & 4, shrink_axis_mask & 4);
   const int start_w =
       StartIndex(starts[1], strides[1], input_dims.sizes[1], begin_mask & 2);
   const int stop_w =
-      StopIndex(stops[1], strides[1], input_dims.sizes[1], end_mask & 2);
+      StopIndex(start_w, stops[1], strides[1], input_dims.sizes[1],
+                end_mask & 2, shrink_axis_mask & 2);
   const int start_d =
       StartIndex(starts[0], strides[0], input_dims.sizes[0], begin_mask & 1);
   const int stop_d =
-      StopIndex(stops[0], strides[0], input_dims.sizes[0], end_mask & 1);
+      StopIndex(start_d, stops[0], strides[0], input_dims.sizes[0],
+                end_mask & 1, shrink_axis_mask & 1);
 
   T* out_ptr = output_data;
   for (int in_b = start_b; LoopCondition(in_b, stop_b, strides[3]);
@@ -2383,6 +2421,18 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+template <typename T>
+inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
+                         int begin_mask, int end_mask,
+                         const std::vector<int>& starts,
+                         const std::vector<int>& stops,
+                         const std::vector<int>& strides, T* output_data,
+                         const Dims<4>& output_dims) {
+  StridedSlice(input_data, input_dims, begin_mask, end_mask,
+               /*shrink_axis_mask=*/0, starts, stops, strides, output_data,
+               output_dims);
 }
 
 template <typename T>

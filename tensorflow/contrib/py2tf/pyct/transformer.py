@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 import gast
+import six
 
 from tensorflow.contrib.py2tf.pyct import pretty_printer
 
@@ -30,23 +33,33 @@ class PyFlowParseError(SyntaxError):
 class Base(gast.NodeTransformer):
   """Base class for specialized transformers."""
 
-  def __init__(self, source, f):
+  def __init__(self, context):
+    """Initialize the transformer. Subclasses should call this.
+
+    Args:
+      context: An EntityContext.
+    """
     self._lineno = 0
     self._col_offset = 0
-    self._source = source
-    self._file = f
+    self.context = context
 
   def visit(self, node):
     try:
-      if self._source and hasattr(node, 'lineno'):
+      source_code = self.context.source_code
+      source_file = self.context.source_file
+      if source_code and hasattr(node, 'lineno'):
         self._lineno = node.lineno
         self._col_offset = node.col_offset
       return super(Base, self).visit(node)
-    except ValueError as e:
-      msg = '%s\nOccurred at node:\n%s' % (str(e), pretty_printer.fmt(node))
-      if self._source:
-        line = self._source.splitlines()[self._lineno - 1]
+    except (ValueError, AttributeError, NotImplementedError) as e:
+      msg = '%s: %s\nOccurred at node:\n%s' % (e.__class__.__name__, str(e),
+                                               pretty_printer.fmt(node))
+      if source_code:
+        line = source_code.splitlines()[self._lineno - 1]
       else:
         line = '<no source available>'
-      raise PyFlowParseError(
-          msg, (self._file, self._lineno, self._col_offset + 1, line))
+      six.reraise(PyFlowParseError,
+                  PyFlowParseError(
+                      msg,
+                      (source_file, self._lineno, self._col_offset + 1, line)),
+                  sys.exc_info()[2])

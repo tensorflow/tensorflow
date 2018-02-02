@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
@@ -272,8 +273,8 @@ Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
 }
 
 Status IrEmitterUnnested::HandleConditional(HloInstruction* conditional) {
-  thunk_sequence_->push_back(BuildKernelThunk(conditional));
-  return IrEmitter::HandleConditional(conditional);
+  thunk_sequence_->emplace_back(BuildConditionalThunk(conditional));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
@@ -1657,8 +1658,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
   // TODO(b/31410564): Implement dilation rate for select-and-scatter.
   if (window_util::HasDilation(window)) {
     return Unimplemented(
-        "Dilation for select-and-scatter not implemented on GPU. "
-        "See b/31410564.");
+        "Dilation for SelectAndScatter not implemented on GPU.");
   }
 
   // kSelectAndScatter is implemented as two kernel launches: the first launch
@@ -2102,6 +2102,24 @@ Status IrEmitterUnnested::EmitInitializer(const HloInstruction* hlo,
 
 namespace {
 
+// Checks that the buffers corresponding to the given two HLOs share the same
+// allocation.
+Status CheckHloBuffersShareAllocation(
+    const HloInstruction* a, const HloInstruction* b, const ShapeIndex& index,
+    const BufferAssignment& buffer_assignment) {
+  const BufferAllocation::Slice slice_a =
+      buffer_assignment.GetUniqueSlice(a, index).ConsumeValueOrDie();
+  const BufferAllocation::Slice slice_b =
+      buffer_assignment.GetUniqueSlice(b, index).ConsumeValueOrDie();
+  if (slice_a != slice_b) {
+    return InternalError(
+        "instruction %s %s does not share allocation with instruction %s %s",
+        a->ToString().c_str(), slice_a.ToString().c_str(),
+        b->ToString().c_str(), slice_b.ToString().c_str());
+  }
+  return Status::OK();
+}
+
 // Checks that all buffers used during while loop iteration share the same
 // buffer allocation. This includes buffers for while result, while init
 // operand, condition parameter, body parameter and body result.
@@ -2111,35 +2129,63 @@ Status CheckWhileBuffersShareAllocation(
     const BufferAssignment& buffer_assignment) {
   return ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
-      [&buffer_assignment, &xla_while](const Shape& /*subshape*/,
-                                       const ShapeIndex& index) -> Status {
-        auto check = [&buffer_assignment](const HloInstruction* a,
-                                          const HloInstruction* b,
-                                          const ShapeIndex& index) -> Status {
-          const BufferAllocation::Slice slice_a =
-              buffer_assignment.GetUniqueSlice(a, index).ConsumeValueOrDie();
-          const BufferAllocation::Slice slice_b =
-              buffer_assignment.GetUniqueSlice(b, index).ConsumeValueOrDie();
-          if (slice_a != slice_b) {
-            return InternalError(
-                "instruction %s %s does not share allocation with "
-                "instruction %s %s",
-                a->ToString().c_str(), slice_a.ToString().c_str(),
-                b->ToString().c_str(), slice_b.ToString().c_str());
-          }
-          return Status::OK();
-        };
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
         const HloInstruction* condition_parameter =
             xla_while->while_condition()->parameter_instruction(0);
         const HloComputation* body = xla_while->while_body();
         const HloInstruction* body_parameter = body->parameter_instruction(0);
         const HloInstruction* body_result = body->root_instruction();
-        TF_RETURN_IF_ERROR(check(xla_while, xla_while->operand(0), index));
-        TF_RETURN_IF_ERROR(check(xla_while, condition_parameter, index));
-        TF_RETURN_IF_ERROR(check(xla_while, body_parameter, index));
-        TF_RETURN_IF_ERROR(check(xla_while, body_result, index));
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            xla_while, xla_while->operand(0), index, buffer_assignment));
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            xla_while, condition_parameter, index, buffer_assignment));
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            xla_while, body_parameter, index, buffer_assignment));
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            xla_while, body_result, index, buffer_assignment));
         return Status::OK();
       });
+}
+
+// Checks that the buffers used in a conditional instruction are shared with the
+// operands and result as follows:
+//   * The result buffer of the conditional should share the allocation with the
+//     result buffers of the true and false computations.
+//   * The buffer of operand 1 should share the allocation with the buffer of
+//     the parameter 0 instruction of the true computation.
+//   * The buffer of operand 2 should share the allocation with the buffer of
+//     the parameter 0 instruction of the false computation.
+Status CheckConditionalBuffersShareAllocation(
+    const HloInstruction* conditional,
+    const BufferAssignment& buffer_assignment) {
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      conditional->shape(),
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            conditional, conditional->true_computation()->root_instruction(),
+            index, buffer_assignment));
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            conditional, conditional->false_computation()->root_instruction(),
+            index, buffer_assignment));
+        return Status::OK();
+      }));
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      conditional->operand(1)->shape(),
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
+        return CheckHloBuffersShareAllocation(
+            conditional->operand(1),
+            conditional->true_computation()->parameter_instruction(0), index,
+            buffer_assignment);
+      }));
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      conditional->operand(2)->shape(),
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
+        return CheckHloBuffersShareAllocation(
+            conditional->operand(2),
+            conditional->false_computation()->parameter_instruction(0), index,
+            buffer_assignment);
+      }));
+  return Status::OK();
 }
 
 }  // namespace
@@ -2182,6 +2228,31 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildForThunk(
 
   return MakeUnique<ForThunk>(loop_limit,
                               ir_emitter_body.ConsumeThunkSequence(), hlo);
+}
+
+std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
+    const HloInstruction* hlo) {
+  // Check that the buffers used in conditional are shared with the operands and
+  // result appropriately.
+  TF_CHECK_OK(CheckConditionalBuffersShareAllocation(
+      hlo, ir_emitter_context_->buffer_assignment()));
+
+  HloComputation* true_computation = hlo->true_computation();
+  IrEmitterUnnested ir_emitter_true(hlo_module_config_, true_computation,
+                                    ir_emitter_context_);
+  TF_CHECK_OK(true_computation->root_instruction()->Accept(&ir_emitter_true));
+
+  HloComputation* false_computation = hlo->false_computation();
+  IrEmitterUnnested ir_emitter_false(hlo_module_config_, false_computation,
+                                     ir_emitter_context_);
+  TF_CHECK_OK(false_computation->root_instruction()->Accept(&ir_emitter_false));
+
+  return MakeUnique<ConditionalThunk>(
+      GetAllocationSlice(*hlo->operand(0)),
+      GetAllocationSlice(*hlo->operand(1)),
+      GetAllocationSlice(*hlo->operand(2)),
+      std::move(*ir_emitter_true.ConsumeThunkSequence()),
+      std::move(*ir_emitter_false.ConsumeThunkSequence()), hlo);
 }
 
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(

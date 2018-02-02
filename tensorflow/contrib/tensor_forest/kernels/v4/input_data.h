@@ -93,9 +93,7 @@ class TensorDataSet {
   // an int32 you can avoid the atoi32.
   virtual float GetExampleValue(int example, int32 feature_id) const;
 
-  int num_features() {
-    return available_features_.size();
-  }
+  int num_features() { return available_features_.size(); }
 
   const Tensor& original_tensor() const { return original_dense_tensor_; }
 

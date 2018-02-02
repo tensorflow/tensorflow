@@ -38,12 +38,16 @@ HloModule::HloModule(const string& name,
     : name_(NameUniquer::GetSanitizedName(name)),
       config_(config),
       has_entry_computation_handle_(true),
-      entry_computation_handle_(entry_computation_handle) {}
+      entry_computation_handle_(entry_computation_handle),
+      unique_id_(next_unique_module_id_++) {}
 
 HloModule::HloModule(const string& name)
-    : name_(NameUniquer::GetSanitizedName(name)) {}
+    : name_(NameUniquer::GetSanitizedName(name)),
+      unique_id_(next_unique_module_id_++) {}
 HloModule::HloModule(const string& name, const HloModuleConfig& config)
-    : name_(NameUniquer::GetSanitizedName(name)), config_(config) {}
+    : name_(NameUniquer::GetSanitizedName(name)),
+      config_(config),
+      unique_id_(next_unique_module_id_++) {}
 
 HloComputation* HloModule::AddComputationInternal(
     std::unique_ptr<HloComputation> computation, bool is_entry,
@@ -523,7 +527,15 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
 
   std::unordered_map<HloComputation*, HloComputation*> clone_map;
   for (auto& computation : computations_) {
-    auto cloned_computation = computation->Clone(suffix);
+    if (computation->IsFusionComputation()) {
+      // Cloning of a fused computation is handled by its fusion instruction.
+      continue;
+    }
+
+    // When cloning a computation, pass in the new module, so that for any
+    // fusion instruction in this computation, the fused computation will be
+    // deep cloned to the new module.
+    auto cloned_computation = computation->Clone(suffix, module.get());
     InsertOrDie(&clone_map, computation.get(), cloned_computation.get());
 
     if (entry_computation_ == computation.get()) {
@@ -537,8 +549,15 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
     for (auto* instruction : cloned_computation->instructions()) {
       // Rewrite instruction's called_computation to point to the cloned
       // computations.
-      instruction->ReplaceCalledComputations(
-          [&](HloComputation* hlo) { return FindOrDie(clone_map, hlo); });
+      instruction->ReplaceCalledComputations([&](HloComputation* hlo) {
+        if (hlo->IsFusionComputation()) {
+          // Cloning of a fused computation has already been handled when its
+          // fusion instruction is cloned. So this hlo computation is already
+          // the cloned one.
+          return hlo;
+        }
+        return FindOrDie(clone_map, hlo);
+      });
     }
   }
   return module;
@@ -548,5 +567,7 @@ uint64 HloModule::RandomNew64() const {
   tensorflow::mutex_lock l(rng_mutex_);
   return rng_();
 }
+
+/* static */ std::atomic<int> HloModule::next_unique_module_id_(0);
 
 }  // namespace xla

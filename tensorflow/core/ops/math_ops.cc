@@ -1172,12 +1172,12 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
   T limit = limit_t->scalar<T>()();
   T delta = delta_t->scalar<T>()();
   if (start > limit && delta > 0) {
-    return errors::InvalidArgument("Requires start <= limit when delta > 0: ",
-                                   start, "/", limit);
+    return errors::InvalidArgument(
+        "Requires start <= limit when delta > 0: ", start, "/", limit);
   }
   if (start < limit && delta < 0) {
-    return errors::InvalidArgument("Requires start >= limit when delta < 0: ",
-                                   start, "/", limit);
+    return errors::InvalidArgument(
+        "Requires start >= limit when delta < 0: ", start, "/", limit);
   }
   if (delta == 0) {
     return errors::InvalidArgument("Requires delta != 0");

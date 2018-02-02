@@ -117,6 +117,7 @@ cc_library(
         ":types",
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/toco:model",
+        "//tensorflow/contrib/lite/toco:tooling_util",
         "@flatbuffers",
     ],
 )

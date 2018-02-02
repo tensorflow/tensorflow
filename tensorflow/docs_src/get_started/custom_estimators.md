@@ -15,7 +15,7 @@ git clone https://github.com/tensorflow/models/
 cd models/samples/core/get_started
 ```
 
-In this document we wil be looking at
+In this document we will be looking at
 [`custom_estimator.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/custom_estimator.py).
 You can run it with the following command:
 

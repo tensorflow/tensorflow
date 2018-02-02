@@ -24,6 +24,7 @@ import time
 
 import numpy as np
 
+from six.moves import xrange
 from tensorflow.contrib import layers
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op

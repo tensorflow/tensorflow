@@ -22,6 +22,7 @@ import gc
 import tempfile
 import time
 
+from six.moves import xrange
 import tensorflow as tf
 
 import tensorflow.contrib.eager as tfe

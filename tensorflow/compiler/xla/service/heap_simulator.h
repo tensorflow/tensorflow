@@ -67,6 +67,23 @@ class HeapSimulator {
     HeapSimulatorTrace debug_trace;
   };
 
+  // The different options to be passed to the Run() APIs.
+  struct Options {
+    Options()
+        : may_reuse_operand_buffers(true),
+          alloc_constants(false),
+          buffers_to_assign(nullptr) {}
+
+    // Whether a buffer about to be Free()-ed, can be recycled for a new born
+    // one, hence collapsing Free()+Alloc() calls (default true).
+    bool may_reuse_operand_buffers;
+    // Whether to issue Alloc() and Free() calls for constants (default false).
+    bool alloc_constants;
+    // If 'buffers_to_assign' is provided, only those buffers are assigned
+    // offsets, otherwise all buffers defined by the instructions are assigned.
+    const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign;
+  };
+
   // Run the heap simulation with the given algorithm, assuming the given
   // module_sequence, which must contain a topologically-consistent total
   // ordering of all instructions within each computation. The result is invalid
@@ -76,15 +93,12 @@ class HeapSimulator {
   // to running on a per-computation basis, since we can re-use buffer space for
   // called sub-computations.
   //
-  // If 'buffers_to_assign' is provided, only those buffers are assigned
-  // offsets, otherwise all buffers defined by the instructions are assigned.
   static StatusOr<Result> Run(
       std::unique_ptr<HeapAlgorithm> algorithm, const HloModule& module,
       const SequentialHloOrdering::HloModuleSequence& module_sequence,
       const TuplePointsToAnalysis& points_to_analysis,
       const LogicalBuffer::SizeFunction& size_fn,
-      const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign =
-          nullptr);
+      const Options& options = Options());
 
   // Same as above, but runs on a single computation. The 'instruction_sequence'
   // must contain a topologically-consistent total ordering of all instructions
@@ -96,8 +110,7 @@ class HeapSimulator {
       const std::vector<const HloInstruction*>& instruction_sequence,
       const TuplePointsToAnalysis& points_to_analysis,
       const LogicalBuffer::SizeFunction& size_fn,
-      const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign =
-          nullptr);
+      const Options& options = Options());
 
  private:
   // If 'module_sequence' is non-null, it is used to find kCall and kWhile
@@ -105,8 +118,7 @@ class HeapSimulator {
   // be run recursively. I.e. the simulation is run over the whole module.
   HeapSimulator(
       std::unique_ptr<HeapAlgorithm> algorithm,
-      const LogicalBuffer::SizeFunction& size_fn,
-      const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign,
+      const LogicalBuffer::SizeFunction& size_fn, const Options& options,
       const SequentialHloOrdering::HloModuleSequence* module_sequence);
   ~HeapSimulator();
 
@@ -130,7 +142,7 @@ class HeapSimulator {
   const std::unique_ptr<HeapAlgorithm> no_fragmentation_stats_;
   const std::unique_ptr<HeapAlgorithm> algorithm_;
   const LogicalBuffer::SizeFunction size_fn_;
-  const tensorflow::gtl::FlatSet<const LogicalBuffer*>* buffers_to_assign_;
+  const Options options_;
   const SequentialHloOrdering::HloModuleSequence* module_sequence_;
 
   // In addition to Alloc and Free, the heap simulator exposes a concept of

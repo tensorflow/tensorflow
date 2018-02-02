@@ -14,10 +14,12 @@ py_library(
         "_impl/keras/__init__.py",
         "_impl/keras/activations.py",
         "_impl/keras/applications/__init__.py",
+        "_impl/keras/applications/densenet.py",
         "_impl/keras/applications/imagenet_utils.py",
         "_impl/keras/applications/inception_resnet_v2.py",
         "_impl/keras/applications/inception_v3.py",
         "_impl/keras/applications/mobilenet.py",
+        "_impl/keras/applications/nasnet.py",
         "_impl/keras/applications/resnet50.py",
         "_impl/keras/applications/vgg16.py",
         "_impl/keras/applications/vgg19.py",
@@ -37,6 +39,7 @@ py_library(
         "_impl/keras/engine/__init__.py",
         "_impl/keras/engine/topology.py",
         "_impl/keras/engine/training.py",
+        "_impl/keras/engine/training_eager.py",
         "_impl/keras/estimator.py",
         "_impl/keras/initializers.py",
         "_impl/keras/layers/__init__.py",
@@ -76,9 +79,11 @@ py_library(
         "_impl/keras/wrappers/scikit_learn.py",
         "activations/__init__.py",
         "applications/__init__.py",
+        "applications/densenet/__init__.py",
         "applications/inception_resnet_v2/__init__.py",
         "applications/inception_v3/__init__.py",
         "applications/mobilenet/__init__.py",
+        "applications/nasnet/__init__.py",
         "applications/resnet50/__init__.py",
         "applications/vgg16/__init__.py",
         "applications/vgg19/__init__.py",
@@ -257,6 +262,18 @@ py_test(
 )
 
 py_test(
+    name = "densenet_test",
+    size = "large",
+    srcs = ["_impl/keras/applications/densenet_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "inception_resnet_v2_test",
     size = "medium",
     srcs = ["_impl/keras/applications/inception_resnet_v2_test.py"],
@@ -284,6 +301,18 @@ py_test(
     name = "mobilenet_test",
     size = "medium",
     srcs = ["_impl/keras/applications/mobilenet_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "nasnet_test",
+    size = "large",
+    srcs = ["_impl/keras/applications/nasnet_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":keras",
@@ -453,6 +482,7 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/layers/normalization_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["notsan"],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
@@ -504,7 +534,7 @@ py_test(
 
 py_test(
     name = "recurrent_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/layers/recurrent_test.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -527,7 +557,7 @@ py_test(
 
 py_test(
     name = "wrappers_test",
-    size = "small",
+    size = "medium",
     srcs = ["_impl/keras/layers/wrappers_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
@@ -682,6 +712,19 @@ py_test(
     name = "training_test",
     size = "medium",
     srcs = ["_impl/keras/engine/training_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "training_eager_test",
+    size = "medium",
+    srcs = ["_impl/keras/engine/training_eager_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [

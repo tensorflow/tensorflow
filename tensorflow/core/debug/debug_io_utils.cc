@@ -574,8 +574,6 @@ Status DebugIO::CloseDebugURL(const string& debug_url) {
   }
 }
 
-static Status CloseDebugURL(const string& debug_url) { return Status::OK(); }
-
 Status DebugFileIO::DumpTensorToDir(const DebugNodeKey& debug_node_key,
                                     const Tensor& tensor,
                                     const uint64 wall_time_us,

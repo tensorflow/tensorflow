@@ -6,6 +6,7 @@ tensorflow/core/example
 tensorflow/core/framework
 tensorflow/core/lib
 tensorflow/core/lib/core
+tensorflow/core/profiler
 tensorflow/core/protobuf
 tensorflow/core/util
 tensorflow/examples
@@ -33,9 +34,11 @@ tensorflow/python/grappler
 tensorflow/python/keras
 tensorflow/python/keras/activations
 tensorflow/python/keras/applications
+tensorflow/python/keras/applications/densenet
 tensorflow/python/keras/applications/inception_resnet_v2
 tensorflow/python/keras/applications/inception_v3
 tensorflow/python/keras/applications/mobilenet
+tensorflow/python/keras/applications/nasnet
 tensorflow/python/keras/applications/resnet50
 tensorflow/python/keras/applications/vgg16
 tensorflow/python/keras/applications/vgg19
@@ -214,6 +217,8 @@ tensorflow/contrib/input_pipeline/python/ops
 tensorflow/contrib/integrate
 tensorflow/contrib/integrate/python
 tensorflow/contrib/integrate/python/ops
+tensorflow/contrib/kafka/python
+tensorflow/contrib/kafka/python/ops
 tensorflow/contrib/keras
 tensorflow/contrib/keras/api
 tensorflow/contrib/keras/api/keras
