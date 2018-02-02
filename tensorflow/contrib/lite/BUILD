@@ -169,6 +169,7 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
 )
