@@ -635,6 +635,9 @@ class ResourceScatterUpdateOp : public OpKernel {
 
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHEMTIC_CPU);
 
+REGISTER_SCATTER_KERNEL(string, CPU, "ResourceScatterUpdate",
+                        scatter_op::UpdateOp::ASSIGN);
+
 // Registers GPU kernels.
 #if GOOGLE_CUDA
 #define REGISTER_SCATTER_ARITHEMTIC_GPU(type) \
