@@ -330,6 +330,9 @@ cc_library(
         ":x86": [
             ":neon_tensor_utils",
         ],
+        ":k8": [
+            ":neon_tensor_utils",
+        ],
         ":darwin": [
             ":neon_tensor_utils",
         ],
