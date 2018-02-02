@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.tpu.python.tpu import tpu_sharding
+from tensorflow.contrib.tpu.python.tpu import tpu_constant
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.platform import test
@@ -32,8 +33,8 @@ class ShardingTest(test.TestCase):
     p1 = tpu_sharding.ShardingPolicy()
     p1.freeze()
     self.assertEqual(p1.number_of_shards,
-                     tpu_sharding._DEFAULT_NUMBER_OF_SHARDS)
-    self.assertEqual(p1.shard_dimension, tpu_sharding._DEFAULT_SHARD_DIMENSION)
+                     tpu_constant._DEFAULT_NUMBER_OF_SHARDS)
+    self.assertEqual(p1.shard_dimension, tpu_constant._DEFAULT_SHARD_DIMENSION)
     p2 = tpu_sharding.ShardingPolicy()
     p2.set_number_of_shards(17)
     p2.set_shard_dimension(23)

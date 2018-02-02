@@ -37,6 +37,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
+from tensorflow.contrib.tpu.python.tpu import tpu_constant
 
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
@@ -63,22 +64,6 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 
-_INITIAL_LOSS = 1e7
-_ZERO_LOSS = 0.
-_TPU_ESTIMATOR = 'tpu_estimator'
-_ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
-_BATCH_SIZE_KEY = 'batch_size'
-_CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
-_RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
-
-
-# TODO(b/65703635): Flip the value and remove all dead code. Currently, this is
-# only used for per-core based deployments. For per-host based pipelines, if a
-# user returns a Dataset instance it will be automatically wrapped in a
-# tf.while_loop (This can be disabled by returning features and labels
-# explicitly).
-_WRAP_INPUT_FN_INTO_WHILE_LOOP = False
-
 
 def _create_global_step(graph):
   graph = graph or ops.get_default_graph()
@@ -98,7 +83,7 @@ def _create_global_step(graph):
 
 def _create_or_get_iterations_per_loop():
   graph = ops.get_default_graph()
-  collection_name = '{}_{}'.format(_TPU_ESTIMATOR, _ITERATIONS_PER_LOOP_VAR)
+  collection_name = '{}_{}'.format(tpu_constant._TPU_ESTIMATOR, tpu_constant._ITERATIONS_PER_LOOP_VAR)
   iter_vars = graph.get_collection(collection_name)
   if len(iter_vars) == 1:
     return iter_vars[0]
@@ -107,9 +92,9 @@ def _create_or_get_iterations_per_loop():
 
   with ops.colocate_with(training_util.get_global_step()):
     with variable_scope.variable_scope(
-        _TPU_ESTIMATOR, reuse=variable_scope.AUTO_REUSE):
+        tpu_constant._TPU_ESTIMATOR, reuse=variable_scope.AUTO_REUSE):
       return variable_scope.get_variable(
-          _ITERATIONS_PER_LOOP_VAR,
+          tpu_constant._ITERATIONS_PER_LOOP_VAR,
           initializer=init_ops.zeros_initializer(),
           shape=[],
           dtype=dtypes.int32,
@@ -144,11 +129,6 @@ def _increase_eval_step_op(iterations_per_loop):
       eval_step,
       math_ops.cast(iterations_per_loop - 1, dtype=eval_step.dtype),
       use_locking=True)
-
-
-_DEFAULT_JOB_NAME = 'tpu_worker'
-_DEFAULT_COORDINATOR_JOB_NAME = 'coordinator'
-_LOCAL_MASTERS = ('', 'local')
 
 
 class _TPUContext(object):
@@ -289,22 +269,22 @@ class _TPUContext(object):
     master = (
         run_config.evaluation_master
         if mode == model_fn_lib.ModeKeys.EVAL else run_config.master)
-    if master in _LOCAL_MASTERS:
+    if master in tpu_constant._LOCAL_MASTERS:
       return None
 
     if (not run_config.session_config or
         not run_config.session_config.cluster_def.job):
-      return _DEFAULT_JOB_NAME
+      return tpu_constant._DEFAULT_JOB_NAME
     cluster_def = run_config.session_config.cluster_def
     job_names = set([job.name for job in cluster_def.job])
-    if _DEFAULT_JOB_NAME in job_names:
+    if tpu_constant._DEFAULT_JOB_NAME in job_names:
       # b/37868888 tracks allowing ClusterSpec propagation to reuse job names.
       raise ValueError('Currently, tpu_worker is not an allowed job name.')
     if len(job_names) == 1:
       return cluster_def.job[0].name
     if len(job_names) == 2:
-      if _DEFAULT_COORDINATOR_JOB_NAME in job_names:
-        job_names.remove(_DEFAULT_COORDINATOR_JOB_NAME)
+      if tpu_constant._DEFAULT_COORDINATOR_JOB_NAME in job_names:
+        job_names.remove(tpu_constant._DEFAULT_COORDINATOR_JOB_NAME)
         return job_names.pop()
       # TODO(b/67716447): Include more sophisticated heuristics.
     raise ValueError(
@@ -1043,7 +1023,7 @@ class _InputPipeline(object):
                 generate_per_core_enqueue_ops_fn_for_host(
                     self._ctx, self._input_fn, self._inputs_structure_recorder))
 
-            if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
+            if tpu_constant._WRAP_INPUT_FN_INTO_WHILE_LOOP:
               run_infeed_loop_on_coordinator = False
               enqueue_ops.append(
                   _wrap_computation_in_while_loop(
@@ -1101,7 +1081,7 @@ class _InputPipeline(object):
                  'converting your input pipeline to use `tf.data` instead (see '
                  'https://www.tensorflow.org/programmers_guide/datasets for '
                  'instructions.')
-      if _WRAP_INPUT_FN_INTO_WHILE_LOOP:
+      if tpu_constant._WRAP_INPUT_FN_INTO_WHILE_LOOP:
         raise RuntimeError(err_msg)
       else:
         logging.warn(err_msg)
@@ -1256,7 +1236,7 @@ class _ModelFnWrapper(object):
 
     batch_size_for_model_fn = self._ctx.batch_size_for_model_fn
     if batch_size_for_model_fn is not None:
-      params[_BATCH_SIZE_KEY] = batch_size_for_model_fn
+      params[tpu_constant._BATCH_SIZE_KEY] = batch_size_for_model_fn
 
     estimator_spec = self._model_fn(features=features, **kwargs)
     if (self._ctx.is_running_on_cpu() and
@@ -1659,9 +1639,9 @@ class TPUEstimator(estimator_lib.Estimator):
       raise ValueError(
           '`config` must be provided with type `tpu_config.RunConfig`')
 
-    if params is not None and any(k in params for k in _RESERVED_PARAMS_KEYS):
+    if params is not None and any(k in params for k in tpu_constant._RESERVED_PARAMS_KEYS):
       raise ValueError('{} are reserved keys but existed in params {}.'.format(
-          _RESERVED_PARAMS_KEYS, params))
+          tpu_constant._RESERVED_PARAMS_KEYS, params))
 
     if use_tpu:
       if train_batch_size is None:
@@ -1802,7 +1782,7 @@ class TPUEstimator(estimator_lib.Estimator):
       # input_fn for use_tpu=True/False.
       batch_size_for_input_fn = ctx.batch_size_for_input_fn
       if batch_size_for_input_fn is not None:
-        kwargs['params'][_BATCH_SIZE_KEY] = batch_size_for_input_fn
+        kwargs['params'][tpu_constant._BATCH_SIZE_KEY] = batch_size_for_input_fn
 
       if ctx.is_running_on_cpu():
         with ops.device('/device:CPU:0'):
@@ -1944,7 +1924,7 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   def multi_tpu_eval_steps_on_single_shard():
     return training_loop.repeat(
         iterations_per_loop_var,
-        single_tpu_eval_step, [_ZERO_LOSS],
+        single_tpu_eval_step, [tpu_constant._ZERO_LOSS],
         name='loop')
 
   (loss,) = tpu.shard(
@@ -1968,7 +1948,7 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   def multi_tpu_train_steps_on_single_shard():
     return training_loop.repeat(
         iterations_per_loop_var,
-        single_tpu_train_step, [_INITIAL_LOSS],
+        single_tpu_train_step, [tpu_constant._INITIAL_LOSS],
         name=b'loop')
 
   (loss,) = tpu.shard(
@@ -2010,7 +1990,7 @@ def _validate_tpu_training_graph():
   # Check if there is atleast one CrossReplicaSum operation in the graph
   # This should be introduced by using the CrossShardOptimizer wrapper
   cross_replica_sum_ops = [
-      o for o in operations if o.type == _CROSS_REPLICA_SUM_OP
+      o for o in operations if o.type == tpu_constant._CROSS_REPLICA_SUM_OP
   ]
   if not cross_replica_sum_ops:
     raise ValueError(
