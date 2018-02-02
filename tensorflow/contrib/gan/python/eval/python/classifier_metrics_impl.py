@@ -206,7 +206,7 @@ def get_graph_def_from_url_tarball(url, filename, tar_filename=None):
       sys.stdout.write('\r>> Downloading %s %.1f%%' % (
           url, float(count * block_size) / float(total_size) * 100.0))
       sys.stdout.flush()
-    tar_filename, _ = urllib.request.urlretrieve(url, filename=tar_filename, reporthook=_progress)
+    tar_filename, _ = urllib.request.urlretrieve(url, tar_filename, _progress)
   with tarfile.open(tar_filename, 'r:gz') as tar:
     proto_str = tar.extractfile(filename).read()
   return graph_pb2.GraphDef.FromString(proto_str)

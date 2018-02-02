@@ -37,6 +37,7 @@ from tensorflow.python.feature_column import feature_column
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as ops_lib
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -432,6 +433,17 @@ class ReplicateModelTest(test_util.TensorFlowTestCase):
       self.assertAllClose({
           'probabilities': np.array([[0.1], [0.02]])
       }, session.run(estimator_spec.predictions))
+
+  def test_batch_size_that_is_not_divisible_by_the_number_of_gpus(self):
+    features = np.array([[1.0], [2.0], [3.0]])
+    labels = np.array([[1.0], [2.0], [3.0]])
+
+    with self.assertRaisesRegexp(
+        ValueError, '.*Batch.+size.+needs.+to.+be.+divisible.+by.+GPUs.+'):
+      replicated_model_fn = replicate_model_fn.replicate_model_fn(
+          self.model_fn, devices=['/gpu:0', '/gpu:1'])
+      _ = replicated_model_fn(
+          features, labels, model_fn_lib.ModeKeys.TRAIN, self.params)
 
   def test_unsupported_loss_reduction(self):
     with self.assertRaisesRegexp(ValueError,
@@ -981,8 +993,13 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
     return list(map(evaluate_items, first_list)), list(
         map(evaluate_items, second_list))
 
+  def assertSparseValuesEqual(self, a, b):
+    self.assertAllEqual(a.indices, b.indices)
+    self.assertAllEqual(a.values, b.values)
+    self.assertAllEqual(a.dense_shape, b.dense_shape)
+
   def test_simple_half_split(self):
-    with self.test_session() as session:  # pylint: disable=unused-variable
+    with self.test_session():
       features = [0.0, 1.0, 2.0, 3.0]
       labels = [10.0, 11.0, 12.0, 13.0]
       feature_shards, label_shards = replicate_model_fn._split_batch(
@@ -995,7 +1012,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[10.0, 11.0], [12.0, 13.0]], label_shards)
 
   def test_to_each_their_own(self):
-    with self.test_session() as session:  # pylint: disable=unused-variable
+    with self.test_session():
       features = [0.0, 1.0, 2.0, 3.0]
       labels = [10.0, 11.0, 12.0, 13.0]
       feature_shards, label_shards = replicate_model_fn._split_batch(
@@ -1008,7 +1025,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[10.0], [11.0], [12.0], [13.0]], label_shards)
 
   def test_one_batch(self):
-    with self.test_session() as session:  # pylint: disable=unused-variable
+    with self.test_session():
       features = [0.0, 1.0, 2.0, 3.0]
       labels = [10.0, 11.0, 12.0, 13.0]
       feature_shards, label_shards = replicate_model_fn._split_batch(
@@ -1021,7 +1038,7 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[10.0, 11.0, 12.0, 13.0]], label_shards)
 
   def test_half_split_in_dictionary(self):
-    with self.test_session() as session:  # pylint: disable=unused-variable
+    with self.test_session():
       features = {'first': [0.0, 1.0, 2.0, 3.0], 'second': [4.0, 5.0, 6.0, 7.0]}
       labels = [10.0, 11.0, 12.0, 13.0]
 
@@ -1034,6 +1051,60 @@ class SplitBatchTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([6.0, 7.0], feature_shards[1]['second'].eval())
       self.assertAllEqual([10.0, 11.0], label_shards[0].eval())
       self.assertAllEqual([12.0, 13.0], label_shards[1].eval())
+
+  def test_sparse_tensor_can_be_split_unevenly(self):
+    with self.test_session():
+      features = {
+          'x':
+              sparse_tensor.SparseTensor(
+                  indices=[[0, 0], [1, 2], [2, 2]],
+                  values=[1.0, 2.0, 3.0],
+                  dense_shape=[3, 4])
+      }
+      labels = np.array([[1.0], [2.0]])
+
+      feature_shards, label_shards = replicate_model_fn._split_batch(
+          features, labels, 2, device='/gpu:0')
+
+      self.assertSparseValuesEqual(
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [1, 2]], values=[1., 2.], dense_shape=[2, 4]),
+          feature_shards[0]['x'].eval())
+      self.assertSparseValuesEqual(
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 2]], values=[3.], dense_shape=[1, 4]),
+          feature_shards[1]['x'].eval())
+      self.assertAllEqual([[1.0]], label_shards[0].eval())
+      self.assertAllEqual([[2.0]], label_shards[1].eval())
+
+  def test_sparse_tensor_can_be_split_unevenly_repeated_row(self):
+    with self.test_session():
+      features = {
+          'x':
+              sparse_tensor.SparseTensor(
+                  indices=[[0, 0], [1, 0], [1, 1]],
+                  values=[1.0, 2.0, 3.0],
+                  dense_shape=[3, 4])
+      }
+      labels = np.array([[1.0], [2.0]])
+
+      feature_shards, label_shards = replicate_model_fn._split_batch(
+          features, labels, 2, device='/gpu:0')
+
+      print(feature_shards[0]['x'].eval())
+      print(feature_shards[1]['x'].eval())
+      self.assertSparseValuesEqual(
+          sparse_tensor.SparseTensorValue(
+              indices=[[0, 0], [1, 0], [1, 1]],
+              values=[1., 2., 3.],
+              dense_shape=[2, 4]), feature_shards[0]['x'].eval())
+
+      second_batch = feature_shards[1]['x'].eval()
+      self.assertFalse(len(second_batch.indices))
+      self.assertFalse(len(second_batch.values))
+      self.assertAllEqual([1, 4], second_batch.dense_shape)
+      self.assertAllEqual([[1.0]], label_shards[0].eval())
+      self.assertAllEqual([[2.0]], label_shards[1].eval())
 
   def test_one_batch_in_dictionary(self):
     with self.test_session() as session:  # pylint: disable=unused-variable

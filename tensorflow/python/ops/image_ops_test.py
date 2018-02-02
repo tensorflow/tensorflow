@@ -3169,6 +3169,46 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
           boxes, scores, max_output_size, iou_threshold).eval()
       self.assertAllClose(selected_indices, [3, 0, 5])
 
+  def testInvalidShape(self):
+    # The boxes should be 2D of shape [num_boxes, 4].
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 2 but is rank 1'):
+      boxes = constant_op.constant([0.0, 0.0, 1.0, 1.0])
+      scores = constant_op.constant([0.9])
+      selected_indices = image_ops.non_max_suppression(
+          boxes, scores, 3, 0.5)
+
+    with self.assertRaisesRegexp(
+        ValueError, 'Dimension must be 4 but is 3'):
+      boxes = constant_op.constant([[0.0, 0.0, 1.0]])
+      scores = constant_op.constant([0.9])
+      selected_indices = image_ops.non_max_suppression(
+          boxes, scores, 3, 0.5)
+
+    # The scores should be 1D of shape [num_boxes].
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 1 but is rank 2'):
+      boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
+      scores = constant_op.constant([[0.9]])
+      selected_indices = image_ops.non_max_suppression(
+          boxes, scores, 3, 0.5)
+
+    # The max_output_size should be a scaler (0-D).
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 1'):
+      boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
+      scores = constant_op.constant([0.9])
+      selected_indices = image_ops.non_max_suppression(
+          boxes, scores, [3], 0.5)
+
+    # The iou_threshold should be a scaler (0-D).
+    with self.assertRaisesRegexp(
+        ValueError, 'Shape must be rank 0 but is rank 2'):
+      boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
+      scores = constant_op.constant([0.9])
+      selected_indices = image_ops.non_max_suppression(
+          boxes, scores, 3, [[0.5]])
+
 
 if __name__ == "__main__":
   googletest.main()

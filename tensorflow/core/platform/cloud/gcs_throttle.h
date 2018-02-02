@@ -126,7 +126,7 @@ class GcsThrottle {
   void UpdateState() EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   inline uint64 request_bytes_to_tokens(size_t num_bytes) {
-    return num_bytes >> 8;
+    return num_bytes >> 10;
   }
 
   mutex mu_;
