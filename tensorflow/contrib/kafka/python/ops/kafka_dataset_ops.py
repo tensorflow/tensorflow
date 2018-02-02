@@ -30,7 +30,8 @@ class KafkaDataset(Dataset):
   """A Kafka Dataset that consumes the message.
   """
 
-  def __init__(self, topics, servers="localhost", group="", eof=False, timeout=1000):
+  def __init__(
+      self, topics, servers="localhost", group="", eof=False, timeout=1000):
     """Create a KafkaReader.
 
     Args:

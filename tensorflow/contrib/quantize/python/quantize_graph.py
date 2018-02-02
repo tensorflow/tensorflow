@@ -52,9 +52,19 @@ def _create_graph(input_graph,
   """
   # TODO(suharshs): Describe the process in more detail in the doc string.
   g = copy_graph.CopyGraph(input_graph)
+  if is_training:
+    # TODO(raghuramank): Need to make freeze_batch_norm_delay
+    # a function of the batch size. For now setting this to 250 epochs
+    # This corresponds to 5 million steps at a batch size of 64.
+    freeze_batch_norm_delay = 5000000
+  else:
+    freeze_batch_norm_delay = None
   with g.as_default():
     with ops.device(device_name_or_function):
-      fold_batch_norms.FoldBatchNorms(g)
+      fold_batch_norms.FoldBatchNorms(
+          g,
+          freeze_batch_norm_delay=freeze_batch_norm_delay,
+          is_training=is_training)
       quantize.Quantize(g, is_training=is_training)
   if elements is None:
     return g

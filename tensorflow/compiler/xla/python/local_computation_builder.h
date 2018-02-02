@@ -59,7 +59,9 @@ StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
 // client.
 class LocalShapedBuffer {
  public:
-  static LocalShapedBuffer* FromLiteral(const Literal& argument);
+  static LocalShapedBuffer* FromLiteral(
+      const Literal& argument,
+      const tensorflow::gtl::optional<Shape>& shape_with_layout);
   LocalShapedBuffer(std::unique_ptr<ScopedShapedBuffer> shaped_buffer);
   const std::unique_ptr<ScopedShapedBuffer>& shaped_buffer() const;
   std::unique_ptr<Literal> ToLiteral() const;
@@ -77,8 +79,15 @@ class LocalShapedBuffer {
 class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
+
+  // Execute the computation with the given argument literals, and
+  // with optionally-specified argument layouts. The literals will be
+  // re-laid out according to the corresponding elements of
+  // shapes_with_layout.
   StatusOr<std::unique_ptr<Literal> > Execute(
-      const std::vector<Literal>& arguments);
+      const std::vector<Literal>& arguments,
+      const std::vector<tensorflow::gtl::optional<Shape> >& shapes_with_layout);
+
   LocalShapedBuffer* ExecuteWithShapedBuffers(
       tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles);
 
@@ -182,6 +191,10 @@ class LocalComputationBuilder {
 
   ComputationDataHandle Dot(const ComputationDataHandle& lhs,
                             const ComputationDataHandle& rhs);
+
+  ComputationDataHandle DotGeneral(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      const DotDimensionNumbers& dimension_numbers);
 
   ComputationDataHandle ConvGeneralDilated(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,

@@ -4,7 +4,7 @@
 
 To use from your BUILD file, add the following line to load the macro:
 
-load("@org_tensorflow//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
+load("//tensorflow/compiler/aot:tfcompile.bzl", "tf_library")
 
 Then call the macro like this:
 
@@ -16,14 +16,15 @@ tf_library(
 )
 """
 
-load("@org_tensorflow//tensorflow:tensorflow.bzl", "if_android", "tf_copts")
+load("//tensorflow:tensorflow.bzl",
+     "if_android", "tf_cc_test", "tf_copts")
 
 def tf_library(name, graph, config,
                freeze_checkpoint=None, freeze_saver=None,
                cpp_class=None, gen_test=True, gen_benchmark=True,
                visibility=None, testonly=None,
                tfcompile_flags=None,
-               tfcompile_tool="@org_tensorflow//tensorflow/compiler/aot:tfcompile",
+               tfcompile_tool="//tensorflow/compiler/aot:tfcompile",
                include_standard_runtime_deps=True, deps=None, tags=None):
   """Runs tfcompile to compile a TensorFlow graph into executable code.
 
@@ -119,9 +120,9 @@ def tf_library(name, graph, config,
             out_nodes_file,
         ] + freeze_saver_srcs,
         outs=[freeze_file],
-        cmd=("$(location @org_tensorflow//tensorflow/python/tools:freeze_graph)" +
+        cmd=("$(location //tensorflow/python/tools:freeze_graph)" +
              freeze_args),
-        tools=["@org_tensorflow//tensorflow/python/tools:freeze_graph"],
+        tools=["//tensorflow/python/tools:freeze_graph"],
         tags=tags,
     )
     tfcompile_graph = freeze_file
@@ -213,22 +214,22 @@ def tf_library(name, graph, config,
           # These deps are required by all tf_library targets even if
           # include_standard_runtime_deps is False.  Without them, the
           # generated code will fail to compile.
-          "@org_tensorflow//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
-          "@org_tensorflow//tensorflow/core:framework_lite",
+          "//tensorflow/compiler/tf2xla:xla_compiled_cpu_function",
+          "//tensorflow/core:framework_lite",
       ] + (need_xla_data_proto and [
           # If we're generating the program shape, we must depend on the proto.
-          "@org_tensorflow//tensorflow/compiler/xla:xla_data_proto",
+          "//tensorflow/compiler/xla:xla_data_proto",
       ] or []) + (include_standard_runtime_deps and [
           # TODO(cwhipkey): only depend on kernel code that the model actually needed.
-          "@org_tensorflow//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_1d",
-          "@org_tensorflow//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_2d",
-          "@org_tensorflow//tensorflow/compiler/xla/service/cpu:cpu_runtime_avx",
-          "@org_tensorflow//tensorflow/compiler/xla/service/cpu:cpu_runtime_neon",
-          "@org_tensorflow//tensorflow/compiler/xla/service/cpu:cpu_runtime_sse4_1",
-          "@org_tensorflow//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
-          "@org_tensorflow//tensorflow/compiler/xla/service/cpu:runtime_matmul",
-          "@org_tensorflow//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
-          "@org_tensorflow//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
+          "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_1d",
+          "//tensorflow/compiler/tf2xla/kernels:index_ops_kernel_argmax_float_2d",
+          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_avx",
+          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_neon",
+          "//tensorflow/compiler/xla/service/cpu:cpu_runtime_sse4_1",
+          "//tensorflow/compiler/xla/service/cpu:runtime_conv2d",
+          "//tensorflow/compiler/xla/service/cpu:runtime_matmul",
+          "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_conv2d",
+          "//tensorflow/compiler/xla/service/cpu:runtime_single_threaded_matmul",
           "//third_party/eigen3",
       ] or []) + (deps or []),
       tags=tags,
@@ -254,28 +255,32 @@ def tf_library(name, graph, config,
         name=("gen_" + test_name),
         testonly=1,
         srcs=[
-            "@org_tensorflow//tensorflow/compiler/aot:test.cc",
+            "//tensorflow/compiler/aot:test.cc",
             header_file,
         ],
         outs=[test_file],
         cmd=("sed " + sed_replace +
-             " $(location @org_tensorflow//tensorflow/compiler/aot:test.cc) " +
+             " $(location //tensorflow/compiler/aot:test.cc) " +
              "> $(OUTS)"),
         tags=tags,
     )
 
-    # The cc_test rule for the generated code.
-    native.cc_test(
+    # The cc_test rule for the generated code.  To ensure that this works
+    # reliably across build configurations, we must use tf_cc_test instead of
+    # native.cc_test.  This is related to how we build
+    # //tensorflow/core:lib -- see the note in tensorflow/core/BUILD
+    # for more details.
+    tf_cc_test(
         name=test_name,
         srcs=[test_file],
         deps=[
             ":" + name,
-            "@org_tensorflow//tensorflow/compiler/aot:runtime",
-            "@org_tensorflow//tensorflow/compiler/aot:tf_library_test_main",
-            "@org_tensorflow//tensorflow/compiler/xla:executable_run_options",
+            "//tensorflow/compiler/aot:runtime",
+            "//tensorflow/compiler/aot:tf_library_test_main",
+            "//tensorflow/compiler/xla:executable_run_options",
             "//third_party/eigen3",
-            "@org_tensorflow//tensorflow/core:lib",
-            "@org_tensorflow//tensorflow/core:test",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:test",
             ],
         tags=tags,
     )
@@ -283,7 +288,7 @@ def tf_library(name, graph, config,
   if gen_benchmark:
     benchmark_name = name + "_benchmark"
     benchmark_file = benchmark_name + ".cc"
-    benchmark_main = ("@org_tensorflow//tensorflow/compiler/aot:" +
+    benchmark_main = ("//tensorflow/compiler/aot:" +
                       "benchmark_main.template")
 
     # Rule to rewrite benchmark.cc to produce the benchmark_file.
@@ -301,7 +306,9 @@ def tf_library(name, graph, config,
         tags=tags,
     )
 
-    # The cc_benchmark rule for the generated code.
+    # The cc_benchmark rule for the generated code.  This does not need the
+    # tf_cc_binary since we (by deliberate design) do not depend on
+    # //tensorflow/core:lib.
     #
     # Note: to get smaller size on android for comparison, compile with:
     #    --copt=-fvisibility=hidden
@@ -315,12 +322,12 @@ def tf_library(name, graph, config,
         linkopts = if_android(["-pie", "-s"]),
         deps=[
             ":" + name,
-            "@org_tensorflow//tensorflow/compiler/aot:benchmark",
-            "@org_tensorflow//tensorflow/compiler/aot:runtime",
-            "@org_tensorflow//tensorflow/compiler/xla:executable_run_options",
+            "//tensorflow/compiler/aot:benchmark",
+            "//tensorflow/compiler/aot:runtime",
+            "//tensorflow/compiler/xla:executable_run_options",
             "//third_party/eigen3",
         ] + if_android([
-            "@org_tensorflow//tensorflow/compiler/aot:benchmark_extra_android",
+            "//tensorflow/compiler/aot:benchmark_extra_android",
         ]),
         tags=tags,
     )
@@ -330,11 +337,11 @@ def target_llvm_triple():
   # TODO(toddw): Add target_triple for other targets.  For details see:
   # http://llvm.org/docs/doxygen/html/Triple_8h_source.html
   return select({
-      "@org_tensorflow//tensorflow:android_armeabi": "armv5-none-android",
-      "@org_tensorflow//tensorflow:android_arm": "armv7-none-android",
-      "@org_tensorflow//tensorflow:android_arm64": "aarch64-none-android",
-      "@org_tensorflow//tensorflow:android_x86": "i686-none-android",
-      "@org_tensorflow//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
-      "@org_tensorflow//tensorflow:darwin": "x86_64-none-darwin",
+      "//tensorflow:android_armeabi": "armv5-none-android",
+      "//tensorflow:android_arm": "armv7-none-android",
+      "//tensorflow:android_arm64": "aarch64-none-android",
+      "//tensorflow:android_x86": "i686-none-android",
+      "//tensorflow:linux_ppc64le": "ppc64le-ibm-linux-gnu",
+      "//tensorflow:darwin": "x86_64-none-darwin",
       "//conditions:default": "x86_64-pc-linux",
   })

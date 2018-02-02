@@ -553,6 +553,7 @@ filegroup(
         "//tensorflow/contrib/py2tf/impl:all_files",
         "//tensorflow/contrib/py2tf/pyct:all_files",
         "//tensorflow/contrib/py2tf/pyct/static_analysis:all_files",
+        "//tensorflow/contrib/py2tf/utils:all_files",
         "//tensorflow/contrib/quantize:all_files",
         "//tensorflow/contrib/receptive_field:all_files",
         "//tensorflow/contrib/reduce_slice_ops:all_files",
