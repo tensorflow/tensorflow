@@ -1303,36 +1303,37 @@ def tf_extension_copts():
 # This function attempts to append init_module_name to list of
 # exported functions in version script
 def _append_init_to_versionscript_impl(ctx):
-    modName=ctx.attr.module_name
-    isVS=ctx.attr.is_version_script
-    if isVS:
-        ctx.actions.expand_template(
-            template=ctx.file.template_file,
-            output=ctx.outputs.versionscript,
-            substitutions={
-                "global:":"global:\n     init_%s;\n     PyInit_*;"%(modName),
-            },
-            is_executable=False,
-        )
-    else:
-        ctx.actions.expand_template(
-            template=ctx.file.template_file,
-            output=ctx.outputs.versionscript,
-            substitutions={
-                "*tensorflow*":"*tensorflow*\ninit_%s\nPyInit_*\n"%(modName),
-            },
-            is_executable=False,
-        )
+  mod_name = ctx.attr.module_name
+  if ctx.attr.is_version_script:
+    ctx.actions.expand_template(
+      template=ctx.file.template_file,
+      output=ctx.outputs.versionscript,
+      substitutions={
+        "global:":"global:\n     init_%s;\n     PyInit_*;"%(mod_name),
+      },
+      is_executable=False,
+    )
+  else:
+    ctx.actions.expand_template(
+      template=ctx.file.template_file,
+      output=ctx.outputs.versionscript,
+      substitutions={
+        "*tensorflow*":"*tensorflow*\ninit_%s\nPyInit_*\n"%(mod_name),
+      },
+      is_executable=False,
+    )
 
 
 _append_init_to_versionscript= rule(
-    implementation=_append_init_to_versionscript_impl,
-    attrs={
-        "module_name":attr.string(mandatory=True),
-        "template_file":attr.label(allow_files=True,single_file=True,mandatory=True),
-        "is_version_script":attr.bool(default=True,doc='whether target is a ld version script or exported symbol list',mandatory=False),
-    },
-    outputs={"versionscript":"%{name}.lds"},
+  implementation=_append_init_to_versionscript_impl,
+  attrs={
+    "module_name":attr.string(mandatory=True),
+    "template_file":attr.label(allow_files=True,single_file=True,mandatory=True),
+    "is_version_script":attr.bool(default=True,
+      doc='whether target is a ld version script or exported symbol list',
+      mandatory=False),
+  },
+  outputs={"versionscript":"%{name}.lds"},
 )
 
 def tf_py_wrap_cc(name,

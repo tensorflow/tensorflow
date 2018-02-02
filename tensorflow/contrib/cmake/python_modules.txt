@@ -405,6 +405,8 @@ tensorflow/contrib/summary
 tensorflow/contrib/tensorboard
 tensorflow/contrib/tensorboard/plugins
 tensorflow/contrib/tensorboard/plugins/projector
+# TODO(sami): Add cmake implementations
+# tensorflow/contrib/tensorrt/python
 tensorflow/contrib/tensor_forest
 tensorflow/contrib/tensor_forest/client
 tensorflow/contrib/tensor_forest/hybrid

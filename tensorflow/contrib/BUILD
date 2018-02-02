@@ -105,8 +105,9 @@ py_library(
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"])
-    + if_tensorrt(["//tensorflow/contrib/tensorrt:init_py"]),
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
+      "//tensorflow/contrib/tensorrt:init_py",
+    ]),
 
 )
 

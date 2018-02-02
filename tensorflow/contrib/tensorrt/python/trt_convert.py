@@ -46,11 +46,11 @@ def CreateInferenceGraph(input_graph_def,
   def py2bytes(inp):
     return inp
   def py3bytes(inp):
-    return inp.encode('utf-8',errors='surrogateescape')
+    return inp.encode('utf-8', errors='surrogateescape')
   if _six.PY2:
-    to_bytes=py2bytes
+    to_bytes = py2bytes
   else:
-    to_bytes=py3bytes
+    to_bytes = py3bytes
 
   out_names = []
   for i in outputs:

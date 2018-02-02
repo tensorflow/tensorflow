@@ -5,8 +5,6 @@ licenses(["notice"])
 
 exports_files(["LICENSE"])
 
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts", "if_cuda")
-
 package(default_visibility = ["//visibility:public"])
 
 cc_library(
