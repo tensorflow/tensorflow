@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
 import os.path
 
 import six  # pylint: disable=unused-import
@@ -31,7 +32,7 @@ from tensorflow.python.platform import test
 class DecodeVideoOpTest(test.TestCase):
 
   def _loadFileAndTest(self, filename, width, height, frames, bmp_filename,
-                       index):
+                       index, stream=None):
     """Loads an video file and validates the output tensor.
 
     Args:
@@ -41,6 +42,9 @@ class DecodeVideoOpTest(test.TestCase):
       frames: The frames of the video.
       bmp_filename: The filename for the bmp file.
       index: Index location inside the video.
+      stream: A string specifying which stream from the content file
+        should be decoded. The default value is '' which leaves the
+        decision to ffmpeg.
     """
     with self.cached_session():
       path = os.path.join(resource_loader.get_data_files_path(), 'testdata',
@@ -56,14 +60,26 @@ class DecodeVideoOpTest(test.TestCase):
       image_op = image_ops.decode_bmp(bmp_contents)
       image = image_op.eval()
       self.assertEqual(image.shape, (height, width, 3))
-      video_op = ffmpeg.decode_video(contents)
+      video_op = ffmpeg.decode_video(contents, stream=stream)
       video = video_op.eval()
       self.assertEqual(video.shape, (frames, height, width, 3))
       self.assertAllEqual(video[index, :, :, :], image)
 
   def testMp4(self):
     self._loadFileAndTest('small.mp4', 560, 320, 166, 'small_100.bmp', 99)
+    self._loadFileAndTest('small.mp4', 560, 320, 166, 'small_100.bmp', 99, "0")
 
+  def testInvalidStream(self):
+    with self.test_session():
+      path = os.path.join(resource_loader.get_data_files_path(), 'testdata',
+                          'small.mp4')
+      with open(path, 'rb') as f:
+        contents = f.read()
+
+      video_op = ffmpeg.decode_video(contents, stream="100")
+      video = video_op.eval()
+      # In case an invalid stream is selected, an empty tensor is returned
+      self.assertAllEqual(video, np.zeros((0, 0, 0, 0)))
 
 if __name__ == '__main__':
   test.main()
