@@ -31,22 +31,22 @@ If you are installing TensorFlow with GPU support using one of the
 mechanisms described in this guide, then the following NVIDIA software
 must be installed on your system:
 
-  * CUDA® Toolkit 8.0. For details, see
+  * CUDA® Toolkit 9.0. For details, see
     [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/#axzz4VZnqTJ2A).
     Ensure that you append the relevant Cuda pathnames to the
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
-  * The NVIDIA drivers associated with CUDA Toolkit 8.0.
-  * cuDNN v6.0. For details, see
+  * The NVIDIA drivers associated with CUDA Toolkit 9.0.
+  * cuDNN v7.0. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn).
     Ensure that you create the `CUDA_HOME` environment variable as
     described in the NVIDIA documentation.
-  * GPU card with CUDA Compute Capability 3.0 or higher.  See
+  * GPU card with CUDA Compute Capability 3.5 or higher.  See
     [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus) for
     a list of supported GPU cards.
   * The libcupti-dev library, which is the NVIDIA CUDA Profile Tools Interface.
     This library provides advanced profiling support. To install this library,
-    issue the following command for CUDA Toolkit >= 8.0:
+    issue the following command for CUDA Toolkit >= 9.0:
 
     <pre>
     $ <b>sudo apt-get install cuda-command-line-tools</b>
