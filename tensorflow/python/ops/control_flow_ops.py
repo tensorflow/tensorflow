@@ -261,10 +261,10 @@ def _Enter(data,
   data = ops.internal_convert_to_tensor_or_indexed_slices(data, as_ref=True)
   if isinstance(data, ops.Tensor):
     if data.dtype._is_ref_dtype and use_ref:  # pylint: disable=protected-access
-      result = ref_enter(
+      result = gen_control_flow_ops._ref_enter(
           data, frame_name, is_constant, parallel_iterations, name=name)
     else:
-      result = enter(
+      result = gen_control_flow_ops._enter(
           data, frame_name, is_constant, parallel_iterations, name=name)
     if use_input_shape:
       result.set_shape(data.get_shape())
@@ -279,7 +279,7 @@ def _Enter(data,
         parallel_iterations=parallel_iterations,
         use_input_shape=use_input_shape,
         name=name)
-    indices = enter(
+    indices = gen_control_flow_ops._enter(
         data.indices,
         frame_name,
         is_constant,
@@ -290,7 +290,7 @@ def _Enter(data,
     if isinstance(data, ops.IndexedSlices):
       dense_shape = data.dense_shape
       if dense_shape is not None:
-        dense_shape = enter(
+        dense_shape = gen_control_flow_ops._enter(
             dense_shape,
             frame_name,
             is_constant,
@@ -300,7 +300,7 @@ def _Enter(data,
           dense_shape.set_shape(data.dense_shape.get_shape())
       return ops.IndexedSlices(values, indices, dense_shape)
     else:
-      dense_shape = enter(
+      dense_shape = gen_control_flow_ops._enter(
           data.dense_shape,
           frame_name,
           is_constant,

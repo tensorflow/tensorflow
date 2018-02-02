@@ -96,6 +96,7 @@ tf_cc_test(
     srcs = ["api_test.cc"],
     data = [
         ":base_api_def",
+        ":python_api_def",
     ],
     deps = [
         ":excluded_ops_lib",

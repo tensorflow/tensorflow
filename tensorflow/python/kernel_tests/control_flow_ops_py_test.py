@@ -44,6 +44,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import gen_logging_ops
 from tensorflow.python.ops import gen_state_ops
@@ -143,7 +144,7 @@ class ControlFlowTest(test.TestCase):
 
       enter_v = control_flow_ops._Enter(v, "foo_1", is_constant=True)
       nine = constant_op.constant(9)
-      enter_nine = control_flow_ops.enter(nine, "foo_1")
+      enter_nine = gen_control_flow_ops._enter(nine, "foo_1")
       op = state_ops.assign(enter_v, enter_nine)
       v2 = control_flow_ops.with_dependencies([op], enter_v)
       v3 = control_flow_ops.exit(v2)
@@ -163,9 +164,9 @@ class ControlFlowTest(test.TestCase):
   def testEnterMulExit(self):
     with self.test_session():
       data = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
-      enter_data = control_flow_ops.enter(data, "foo_1", False)
+      enter_data = gen_control_flow_ops._enter(data, "foo_1", False)
       five = constant_op.constant(5)
-      enter_five = control_flow_ops.enter(five, "foo_1", False)
+      enter_five = gen_control_flow_ops._enter(five, "foo_1", False)
       mul_op = math_ops.multiply(enter_data, enter_five)
       exit_op = control_flow_ops.exit(mul_op)
 
@@ -177,11 +178,12 @@ class ControlFlowTest(test.TestCase):
       v = variables.Variable([0.0, 0.0], dtype=dtypes.float32)
 
       # If is_constant=True, the shape information should be propagated.
-      enter_v_constant = control_flow_ops.enter(v, "frame1", is_constant=True)
+      enter_v_constant = gen_control_flow_ops._enter(
+          v, "frame1", is_constant=True)
       self.assertEqual(enter_v_constant.shape, [2])
 
       # Otherwise, the shape should be unknown.
-      enter_v_non_constant = control_flow_ops.enter(
+      enter_v_non_constant = gen_control_flow_ops._enter(
           v, "frame2", is_constant=False)
       self.assertEqual(enter_v_non_constant.shape, None)
 
@@ -255,8 +257,8 @@ class ControlFlowTest(test.TestCase):
       false = ops.convert_to_tensor(False)
       n = constant_op.constant(10)
 
-      enter_false = control_flow_ops.enter(false, "foo_1", False)
-      enter_n = control_flow_ops.enter(n, "foo_1", False)
+      enter_false = gen_control_flow_ops._enter(false, "foo_1", False)
+      enter_n = gen_control_flow_ops._enter(n, "foo_1", False)
 
       merge_n = control_flow_ops.merge([enter_n, enter_n], name="merge_n")[0]
       switch_n = control_flow_ops.switch(merge_n, enter_false)
@@ -273,9 +275,9 @@ class ControlFlowTest(test.TestCase):
       one = constant_op.constant(1)
       n = constant_op.constant(10)
 
-      enter_i = control_flow_ops.enter(zero, "foo", False)
-      enter_one = control_flow_ops.enter(one, "foo", True)
-      enter_n = control_flow_ops.enter(n, "foo", True)
+      enter_i = gen_control_flow_ops._enter(zero, "foo", False)
+      enter_one = gen_control_flow_ops._enter(one, "foo", True)
+      enter_n = gen_control_flow_ops._enter(n, "foo", True)
 
       with ops.device(test.gpu_device_name()):
         merge_i = control_flow_ops.merge([enter_i, enter_i])[0]
@@ -299,9 +301,9 @@ class ControlFlowTest(test.TestCase):
       one = constant_op.constant(1)
       n = constant_op.constant(10)
 
-      enter_i = control_flow_ops.enter(zero, "foo", False)
-      enter_one = control_flow_ops.enter(one, "foo", True)
-      enter_n = control_flow_ops.enter(n, "foo", True)
+      enter_i = gen_control_flow_ops._enter(zero, "foo", False)
+      enter_one = gen_control_flow_ops._enter(one, "foo", True)
+      enter_n = gen_control_flow_ops._enter(n, "foo", True)
 
       merge_i = control_flow_ops.merge([enter_i, enter_i])[0]
 
@@ -322,8 +324,8 @@ class ControlFlowTest(test.TestCase):
   def testDifferentFrame(self):
     with self.test_session():
       data = array_ops.placeholder(dtypes.float32, shape=[])
-      enter_1 = control_flow_ops.enter(data, "foo_1", False)
-      enter_2 = control_flow_ops.enter(data, "foo_2", False)
+      enter_1 = gen_control_flow_ops._enter(data, "foo_1", False)
+      enter_2 = gen_control_flow_ops._enter(data, "foo_2", False)
       res = math_ops.add(enter_1, enter_2)
       with self.assertRaisesOpError("has inputs from different frames"):
         res.eval(feed_dict={data: 1.0})
