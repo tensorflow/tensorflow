@@ -358,8 +358,8 @@ def find_cuda_define(repository_ctx, header_dir, header_file, define):
   if not h_path.exists:
     auto_configure_fail("Cannot find %s at %s" % (header_file, str(h_path)))
   result = repository_ctx.execute(
-    # Grep one more lines as some #defines are splitted into two lines.
-    ["grep", "--color=never", "-A1", "-E", define, str(h_path)])
+      # Grep one more lines as some #defines are splitted into two lines.
+      ["grep", "--color=never", "-A1", "-E", define, str(h_path)])
   if result.stderr:
     auto_configure_fail("Error reading %s: %s" % (str(h_path), result.stderr))
 
@@ -368,14 +368,14 @@ def find_cuda_define(repository_ctx, header_dir, header_file, define):
     auto_configure_fail("Cannot find line containing '%s' in %s" %
                         (define, h_path))
   #split results to lines
-  lines=result.stdout.split('\n')
-  lenLines=len(lines)
+  lines = result.stdout.split('\n')
+  lenLines = len(lines)
   for l in range(lenLines):
-    line=lines[l]
+    line = lines[l]
     if define in line: # find the line with define
-      version=line
+      version = line
       if l != lenLines-1 and line[-1] == '\\': # add next line, if multiline
-        version=version[:-1]+lines[l+1]
+        version = version[:-1] + lines[l+1]
       break
   #remove any comments
   version = version.split("//")[0]
