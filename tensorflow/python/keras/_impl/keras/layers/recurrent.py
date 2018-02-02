@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numbers
 import numpy as np
 
 from tensorflow.python.framework import tensor_shape
@@ -400,7 +401,7 @@ class RNN(Layer):
   @property
   def states(self):
     if self._states is None:
-      if isinstance(self.cell.state_size, int):
+      if isinstance(self.cell.state_size, numbers.Integral):
         num_states = 1
       else:
         num_states = len(self.cell.state_size)
