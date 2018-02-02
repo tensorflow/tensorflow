@@ -47,6 +47,31 @@ else()
 endif()
 
 
+# Provider options
+set(PROVIDER_DESCRIPTION "Library provider: use 'module' to download package internally,\
+ use 'package' if you want to provide package externally")
+
+set(tensorflow_EIGEN_PROVIDER "module" CACHE STRING ${PROVIDER_DESCRIPTION})
+set_property(CACHE tensorflow_EIGEN_PROVIDER PROPERTY STRINGS "module" "package")
+
+set(tensorflow_GIF_PROVIDER "module" CACHE STRING ${PROVIDER_DESCRIPTION})
+set_property(CACHE tensorflow_GIF_PROVIDER PROPERTY STRINGS "module" "package")
+
+set(tensorflow_GRPC_PROVIDER "module" CACHE STRING ${PROVIDER_DESCRIPTION})
+set_property(CACHE tensorflow_GRPC_PROVIDER PROPERTY STRINGS "module" "package")
+
+set(tensorflow_JPEG_PROVIDER "module" CACHE STRING ${PROVIDER_DESCRIPTION})
+set_property(CACHE tensorflow_JPEG_PROVIDER PROPERTY STRINGS "module" "package")
+
+set(tensorflow_PNG_PROVIDER "module" CACHE STRING ${PROVIDER_DESCRIPTION})
+set_property(CACHE tensorflow_PNG_PROVIDER PROPERTY STRINGS "module" "package")
+
+set(tensorflow_PROTOBUF_PROVIDER "module" CACHE STRING ${PROVIDER_DESCRIPTION})
+set_property(CACHE tensorflow_PROTOBUF_PROVIDER PROPERTY STRINGS "module" "package")
+
+set(tensorflow_ZLIB_PROVIDER "module" CACHE STRING ${PROVIDER_DESCRIPTION})
+set_property(CACHE tensorflow_ZLIB_PROVIDER PROPERTY STRINGS "module" "package")
+
 if (NOT WIN32)
   # Threads: defines CMAKE_THREAD_LIBS_INIT and adds -pthread compile option
   # for targets that link ${CMAKE_THREAD_LIBS_INIT}.
@@ -184,37 +209,35 @@ include(protobuf)
 include(re2)
 include(cub)
 include(sqlite)
+# if need GRPC or using protobuf from external GRPC package
+if(tensorflow_ENABLE_GRPC_SUPPORT OR (tensorflow_GRPC_PROVIDER STREQUAL "package" AND tensorflow_PROTOBUF_PROVIDER STREQUAL "package"))
+  include(grpc)
+endif()
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
 
 set(tensorflow_EXTERNAL_LIBRARIES
-    ${zlib_STATIC_LIBRARIES}
-    ${gif_STATIC_LIBRARIES}
-    ${png_STATIC_LIBRARIES}
-    ${jpeg_STATIC_LIBRARIES}
+    ${ZLIB_LIBRARIES}
+    ${GIF_LIBRARIES}
+    ${PNG_LIBRARIES}
+    ${JPEG_LIBRARIES}
     ${lmdb_STATIC_LIBRARIES}
     ${jsoncpp_STATIC_LIBRARIES}
     ${farmhash_STATIC_LIBRARIES}
     ${fft2d_STATIC_LIBRARIES}
     ${highwayhash_STATIC_LIBRARIES}
     ${nsync_STATIC_LIBRARIES}
-    ${protobuf_STATIC_LIBRARIES}
+    ${PROTOBUF_LIBRARIES}
     ${re2_STATIC_LIBRARIES}
     ${sqlite_STATIC_LIBRARIES}
 )
 set(tensorflow_EXTERNAL_DEPENDENCIES
-    zlib_copy_headers_to_destination
-    gif_copy_headers_to_destination
-    png_copy_headers_to_destination
-    jpeg_copy_headers_to_destination
     lmdb_copy_headers_to_destination
     jsoncpp
     farmhash_copy_headers_to_destination
     highwayhash_copy_headers_to_destination
     nsync_copy_headers_to_destination
-    protobuf
-    eigen
     gemmlowp
     cub
     fft2d
@@ -227,10 +250,10 @@ include_directories(
     ${tensorflow_source_dir}
     ${CMAKE_CURRENT_BINARY_DIR}
     # External dependencies.
-    ${zlib_INCLUDE_DIR}
-    ${gif_INCLUDE_DIR}
-    ${png_INCLUDE_DIR}
-    ${jpeg_INCLUDE_DIR}
+    ${ZLIB_INCLUDE_DIRS}
+    ${GIF_INCLUDE_DIR}
+    ${PNG_INCLUDE_DIRS}
+    ${JPEG_INCLUDE_DIR}
     ${lmdb_INCLUDE_DIR}
     ${eigen_INCLUDE_DIRS}
     ${gemmlowp_INCLUDE_DIR}
@@ -244,6 +267,24 @@ include_directories(
     ${sqlite_INCLUDE_DIR}
 )
 
+if(tensorflow_EIGEN_PROVIDER STREQUAL module)
+    list(APPEND tensorflow_EXTERNAL_DEPENDENCIES eigen)
+endif()
+if(tensorflow_GIF_PROVIDER STREQUAL module)
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES gif gif_copy_headers_to_destination)
+endif()
+if(tensorflow_JPEG_PROVIDER STREQUAL module)
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES jpeg jpeg_copy_headers_to_destination)
+endif()
+if(tensorflow_PNG_PROVIDER STREQUAL module)
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES png png_copy_headers_to_destination)
+endif()
+if(tensorflow_PROTOBUF_PROVIDER STREQUAL module)
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES protobuf)
+endif()
+if(tensorflow_ZLIB_PROVIDER STREQUAL module)
+  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES zlib_copy_headers_to_destination)
+endif()
 if(tensorflow_ENABLE_SSL_SUPPORT)
   include(boringssl)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES ${boringssl_STATIC_LIBRARIES})
@@ -251,9 +292,10 @@ if(tensorflow_ENABLE_SSL_SUPPORT)
   include_directories(${boringssl_INCLUDE_DIR})
 endif()
 if(tensorflow_ENABLE_GRPC_SUPPORT)
-  include(grpc)
-  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${grpc_STATIC_LIBRARIES})
-  list(APPEND tensorflow_EXTERNAL_DEPENDENCIES grpc)
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES ${GRPC_LIBRARIES})
+  if(tensorflow_GRPC_PROVIDER STREQUAL module)
+    list(APPEND tensorflow_EXTERNAL_DEPENDENCIES grpc)
+  endif()
   include_directories(${GRPC_INCLUDE_DIRS})
 endif()
 if(tensorflow_ENABLE_JEMALLOC_SUPPORT)
