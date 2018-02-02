@@ -86,8 +86,17 @@ void CreateConstNode(const Tensor& tensor, const string& name,
   SetNodeTensorAttr<float>("value", tensor, node_def);
 }
 
+string GetMonolithicTensorKey(const string& tensor_slice_name) {
+  std::vector<string> names = Split(tensor_slice_name, "/");
+  if (StringPiece(names[names.size() - 1]).starts_with("part_")) {
+    CHECK_GE(names.size(), 2);
+    names.pop_back();
+  }
+  return Join(names, "/");
+}
+
 Status ObtainTensorSlice(const GraphDef& input_graph_def,
-                         const string& tensor_name,
+                         const string& target_name,
                          string* shape_slice_string) {
   string restore_node_name;
   for (const auto& node : input_graph_def.node()) {
@@ -95,17 +104,41 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
     if (node_name_parts.size() == 2 &&
         StringPiece(node_name_parts[0]).starts_with("save") &&
         StringPiece(node_name_parts[1]).starts_with("Assign") &&
-        node.input(0) == tensor_name) {
+        node.input(0) == target_name) {
       restore_node_name = node.input(1);
       break;
     }
   }
+
+  std::vector<string> restore_node_parts = Split(restore_node_name, ":");
+  CHECK_LE(restore_node_parts.size(), 2);
+  string tensor_names_node;
   string shape_and_slices_node;
   for (const auto& node : input_graph_def.node()) {
-    if ((node.name() == restore_node_name) && (node.op() == "RestoreV2")) {
+    if ((node.name() == restore_node_parts[0]) && (node.op() == "RestoreV2")) {
+      tensor_names_node = node.input(1);
       shape_and_slices_node = node.input(2);
       break;
     }
+  }
+
+  int offset = -1;
+  for (const auto& node : input_graph_def.node()) {
+    if (node.name() == tensor_names_node) {
+      Tensor tensor_names_tensor;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &tensor_names_tensor));
+      const auto& tensor_names_value = tensor_names_tensor.flat<string>();
+      for (int i = 0; i < tensor_names_value.size(); i++) {
+        if (tensor_names_value(i) == GetMonolithicTensorKey(target_name)) {
+          offset = i;
+          break;
+        }
+      }
+    }
+  }
+  if (offset == -1) {
+    return errors::Internal("Unable to find RestoreV2 entry for variable: ",
+                            target_name);
   }
   for (const auto& node : input_graph_def.node()) {
     if (node.name() == shape_and_slices_node) {
@@ -113,21 +146,11 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &shape_and_slices_tensor));
       const auto& shape_and_slices_value =
           shape_and_slices_tensor.flat<string>();
-      *shape_slice_string = shape_and_slices_value(0);
+      *shape_slice_string = shape_and_slices_value(offset);
       return Status::OK();
     }
   }
-  return errors::Internal("Unable to find slice for variable: ", tensor_name);
-}
-
-string GetMonolithicTensorKey(const string& tensor_slice_name) {
-  std::vector<string> names = Split(tensor_slice_name, "/");
-  CHECK_GE(names.size(), 2);
-  CHECK(StringPiece(names[names.size() - 1]).starts_with("part_"));
-
-  // Remove the "part_x" suffix
-  names.pop_back();
-  return Join(names, "/");
+  return errors::Internal("Unable to find slice for variable: ", target_name);
 }
 
 Status ReadTensorFromCheckpoint(
