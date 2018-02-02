@@ -289,6 +289,7 @@ cc_library(
         "//tensorflow/core/grappler/costs:graph_memory",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "//tensorflow/core/grappler/utils:traversal",
     ],
 )
 

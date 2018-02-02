@@ -514,6 +514,133 @@ TEST(BasicInterpreter, TestCustomErrorReporter) {
   ASSERT_EQ(reporter.calls, 1);
 }
 
+// Test fixture that allows playing with execution plans. It creates a two
+// node graph that can be executed in either [0,1] order or [1,0] order.
+// The CopyOp records when it is invoked in the class member run_order_
+// so we can test whether the execution plan was honored.
+class TestExecutionPlan : public ::testing::Test {
+  // Encapsulates the node ids and provides them to a C primitive data type
+  // Allocatable with placement new, but never destructed, so make sure this
+  // doesn't own any heap allocated data. This is then is used as op local
+  // data to allow access to the test fixture data.
+  class CallReporting {
+   public:
+    CallReporting(int node_id, std::vector<int>* run_order)
+        : node_id_(node_id), run_order_(run_order) {}
+
+    void Record() { run_order_->push_back(node_id_); }
+
+   private:
+    // The node id for this particular node
+    int node_id_;
+    // A pointer to the global run-order
+    std::vector<int>* run_order_;
+  };
+
+  // Build a kernel registration for an op that copies its one input
+  // to an output
+  TfLiteRegistration CopyOpRegistration() {
+    TfLiteRegistration reg = {nullptr, nullptr, nullptr, nullptr};
+
+    reg.prepare = [](TfLiteContext* context, TfLiteNode* node) {
+      // Set output size to input size
+      TfLiteTensor* tensor0 = &context->tensors[node->inputs->data[0]];
+      TfLiteTensor* tensor1 = &context->tensors[node->outputs->data[0]];
+      TfLiteIntArray* newSize = TfLiteIntArrayCopy(tensor0->dims);
+      return context->ResizeTensor(context, tensor1, newSize);
+    };
+
+    reg.invoke = [](TfLiteContext* context, TfLiteNode* node) {
+      CallReporting* call_reporting =
+          reinterpret_cast<CallReporting*>(node->builtin_data);
+      // Copy input data to output data.
+      TfLiteTensor* a0 = &context->tensors[node->inputs->data[0]];
+      TfLiteTensor* a1 = &context->tensors[node->outputs->data[0]];
+      int num = a0->dims->data[0];
+      for (int i = 0; i < num; i++) {
+        a1->data.f[i] = a0->data.f[i];
+      }
+      call_reporting->Record();
+      return kTfLiteOk;
+    };
+    return reg;
+  }
+
+  // Adds a copy node going from tensor `input` to output tensor `output`.
+  // Note, input is used as the node_id. Inject run_order as op accessible
+  // data. Note: this is a little strange of a way to do this, but it is
+  // using op functionality to avoid static global variables.
+  void MakeCopyNode(int input, int output) {
+    // Ownership of call_reporting is taken by interpreter (malloc is used due
+    // to nodes being a C99 interface so free() is used).
+    TfLiteRegistration copy_op = CopyOpRegistration();
+    CallReporting* call_reporting_1 =
+        reinterpret_cast<CallReporting*>(malloc(sizeof(CallReporting)));
+    new (call_reporting_1) CallReporting(input, &run_order_);
+    ASSERT_EQ(interpreter_.AddNodeWithParameters(
+                  {0}, {2}, nullptr, 0,
+                  reinterpret_cast<void*>(call_reporting_1), &copy_op),
+              kTfLiteOk);
+    ASSERT_EQ(interpreter_.ResizeInputTensor(input, {3}), kTfLiteOk);
+  }
+
+  void SetUp() final {
+    // Add two inputs and two outputs that don't depend on each other
+    ASSERT_EQ(interpreter_.AddTensors(4), kTfLiteOk);
+    interpreter_.SetInputs({0, 1});
+    interpreter_.SetOutputs({2, 3});
+    TfLiteQuantizationParams quantized;
+    for (int tensor_index = 0; tensor_index < 4; tensor_index++) {
+      ASSERT_EQ(interpreter_.SetTensorParametersReadWrite(
+                    tensor_index, kTfLiteFloat32, "", {3}, quantized),
+                kTfLiteOk);
+    }
+
+    // Define two copy functions that also use the user_data to report that
+    // they were called.
+    // i.e. tensor[2] = copy(tensor[0]); tensor[3] = copy(tensor[1]);
+    // thus we can reorder the two nodes arbitrary and still satisfy dependency
+    // order.
+    MakeCopyNode(0, 2);
+    MakeCopyNode(1, 3);
+
+    ASSERT_EQ(interpreter_.AllocateTensors(), kTfLiteOk);
+  }
+
+ protected:
+  Interpreter interpreter_;
+
+  // list of node_ids that were run
+  std::vector<int> run_order_;
+};
+
+TEST_F(TestExecutionPlan, DefaultExecutionPlan) {
+  // Check default order
+  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+  ASSERT_EQ(run_order_, std::vector<int>({0, 1}));
+}
+
+TEST_F(TestExecutionPlan, ReversedExecutionPlan) {
+  // Check reversed order
+  interpreter_.SetExecutionPlan({1, 0});
+  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+  ASSERT_EQ(run_order_, std::vector<int>({1, 0}));
+}
+
+TEST_F(TestExecutionPlan, SubsetExecutionPlan) {
+  // Check running only node index 1
+  interpreter_.SetExecutionPlan({1});
+  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+  ASSERT_EQ(run_order_, std::vector<int>({1}));
+}
+
+TEST_F(TestExecutionPlan, NullExecutionPlan) {
+  // Check nothing executed.
+  interpreter_.SetExecutionPlan({});
+  ASSERT_EQ(interpreter_.Invoke(), kTfLiteOk);
+  ASSERT_EQ(run_order_, std::vector<int>());
+}
+
 }  // namespace
 }  // namespace tflite
 
