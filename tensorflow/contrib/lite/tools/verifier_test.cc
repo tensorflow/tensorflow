@@ -12,9 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <string>
-#include <vector>
-
+#include "tensorflow/contrib/lite/tools/verifier.h"
 #include "flatbuffers/flatbuffers.h"
 #include "flatbuffers/util.h"
 #include <gtest/gtest.h>
@@ -22,9 +20,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/testing/util.h"
-#include "tensorflow/contrib/lite/tools/verifier.h"
 #include "tensorflow/contrib/lite/version.h"
-#include "tensorflow/core/framework/numeric_types.h"
 
 namespace tflite {
 
@@ -115,7 +111,7 @@ TEST(VerifyModel, TestSimpleModel) {
 }
 
 TEST(VerifyModel, TestCorruptedData) {
-  std::string model = "123";
+  string model = "123";
   ASSERT_FALSE(Verify(model.data(), model.size(), /*error_reporter=*/nullptr));
 }
 
@@ -135,8 +131,8 @@ TEST(VerifyModel, TestRandomModificationIsNotAllowed) {
                            /*subgraphs=*/0, /*description=*/0, /*buffers=*/0);
   ::tflite::FinishModelBuffer(builder, model);
 
-  std::string model_content(reinterpret_cast<char*>(builder.GetBufferPointer()),
-                            builder.GetSize());
+  string model_content(reinterpret_cast<char*>(builder.GetBufferPointer()),
+                       builder.GetSize());
   for (int i = 0; i < model_content.size(); i++) {
     model_content[i] = (model_content[i] + 137) % 255;
     EXPECT_FALSE(Verify(model_content.data(), model_content.size(),

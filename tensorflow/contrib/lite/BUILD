@@ -53,8 +53,6 @@ cc_test(
     srcs = ["arena_planner_test.cc"],
     deps = [
         ":arena_planner",
-        "//tensorflow/contrib/lite/testing:util",
-        "//tensorflow/core:lib",
         "@com_google_googletest//:gtest",
     ],
 )

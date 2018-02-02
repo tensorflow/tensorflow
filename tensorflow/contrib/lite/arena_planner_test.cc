@@ -18,8 +18,6 @@ limitations under the License.
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
-#include "tensorflow/contrib/lite/testing/util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace tflite {
 namespace {
@@ -466,7 +464,9 @@ TEST_F(ArenaPlannerTest, LargerGraphAndStepwiseAllocation) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  ::tflite::LogToStderr();
+  // ::tflite::LogToStderr();
+  FLAGS_logtostderr = true;
+
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
