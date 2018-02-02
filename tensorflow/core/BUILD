@@ -1909,7 +1909,7 @@ cc_library(
 tf_cuda_library(
     name = "cuda_device_functions",
     hdrs = ["util/cuda_device_functions.h"],
-    cuda_deps = ["//third_party/gpus/cuda:cuda_headers"],
+    cuda_deps = ["@local_config_cuda//cuda:cuda_headers"],
     visibility = ["//visibility:public"],
     deps = [":framework_lite"],
 )
