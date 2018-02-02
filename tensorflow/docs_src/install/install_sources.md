@@ -125,25 +125,25 @@ If you are building TensorFlow without GPU support, skip this section.
 
 The following NVIDIA <i>hardware</i> must be installed on your system:
 
-  * GPU card with CUDA Compute Capability 3.0 or higher.  See
+  * GPU card with CUDA Compute Capability 3.5 or higher.  See
     [NVIDIA documentation](https://developer.nvidia.com/cuda-gpus)
     for a list of supported GPU cards.
 
 The following NVIDIA <i>software</i> must be installed on your system:
 
-  * NVIDIA's Cuda Toolkit (>= 7.0). We recommend version 8.0.
+  * NVIDIA's Cuda Toolkit (>= 7.0). We recommend version 9.0.
     For details, see
     [NVIDIA's documentation](http://docs.nvidia.com/cuda/cuda-installation-guide-linux/#axzz4VZnqTJ2A).
     Ensure that you append the relevant Cuda pathnames to the
     `LD_LIBRARY_PATH` environment variable as described in the
     NVIDIA documentation.
   * The NVIDIA drivers associated with NVIDIA's Cuda Toolkit.
-  * cuDNN (>= v3). We recommend version 6.0. For details, see
+  * cuDNN (>= v3). We recommend version 7.0. For details, see
     [NVIDIA's documentation](https://developer.nvidia.com/cudnn),
     particularly the description of appending the appropriate pathname
     to your `LD_LIBRARY_PATH` environment variable.
 
-Finally, you must also install `libcupti` which for Cuda Toolkit >= 8.0 you do via
+Finally, you must also install `libcupti` which for Cuda Toolkit >= 9.0 you do via
 
 <pre> $ <b>sudo apt-get install cuda-command-line-tools</b> </pre>
 
@@ -211,7 +211,7 @@ If you want to compile tensorflow and have XCode 7.3 and CUDA 7.5 installed,
 note that Xcode 7.3 is not yet compatible with CUDA 7.5.  To remedy this
 problem, do either of the following:
 
-  * Upgrade to CUDA 8.0.
+  * Upgrade to CUDA 9.0.
   * Download Xcode 7.2 and select it as your default by issuing the following
     command:
 
@@ -285,8 +285,8 @@ Do you wish to build TensorFlow with CUDA support? [y/N] <b>Y</b>
 CUDA support will be enabled for TensorFlow
 Do you want to use clang as CUDA compiler? [y/N]
 nvcc will be used as CUDA compiler
-Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 8.0]: <b>8.0</b>
-Please specify the location where CUDA 8.0 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
+Please specify the Cuda SDK version you want to use, e.g. 7.0. [Leave empty to default to CUDA 9.0]: <b>9.0</b>
+Please specify the location where CUDA 9.0 toolkit is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
 Please specify which gcc should be used by nvcc as the host compiler. [Default is /usr/bin/gcc]:
 Please specify the cuDNN version you want to use. [Leave empty to default to cuDNN 6.0]: <b>6</b>
 Please specify the location where cuDNN 6 library is installed. Refer to README.md for more details. [Default is /usr/local/cuda]:
@@ -426,7 +426,7 @@ Stack Overflow and specify the `tensorflow` tag.
 
 <tr>
   <td><a href="http://stackoverflow.com/q/42013316">42013316</a></td>
-  <td><pre>ImportError: libcudart.so.8.0: cannot open shared object file:
+  <td><pre>ImportError: libcudart.so.9.0: cannot open shared object file:
   No such file or directory</pre></td>
 </tr>
 
