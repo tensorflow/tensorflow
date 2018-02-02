@@ -158,6 +158,7 @@ py_library(
         "python/tpu/tpu_optimizer.py",
         "python/tpu/tpu_sharding.py",
         "python/tpu/training_loop.py",
+        "python/tpu/tpu_constant.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
