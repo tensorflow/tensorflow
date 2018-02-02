@@ -21,8 +21,7 @@ from __future__ import print_function
 import gast
 import six
 
-from tensorflow.contrib.py2tf import config
-from tensorflow.contrib.py2tf import naming
+from tensorflow.contrib.py2tf.converters import asserts
 from tensorflow.contrib.py2tf.converters import break_canonicalization
 from tensorflow.contrib.py2tf.converters import builtin_functions
 from tensorflow.contrib.py2tf.converters import call_trees
@@ -33,6 +32,8 @@ from tensorflow.contrib.py2tf.converters import for_canonicalization
 from tensorflow.contrib.py2tf.converters import logical_expressions
 from tensorflow.contrib.py2tf.converters import print_functions
 from tensorflow.contrib.py2tf.converters import side_effect_guards
+from tensorflow.contrib.py2tf.impl import config
+from tensorflow.contrib.py2tf.impl import naming
 from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct.static_analysis import access
@@ -171,7 +172,8 @@ def class_to_graph(c, conversion_map):
 def function_to_graph(f, conversion_map, arg_values, arg_types,
                       owner_type=None):
   """Specialization of `entity_to_graph` for callable functions."""
-  node = parser.parse_object(f).body[0]
+  node, source = parser.parse_entity(f)
+  node = node.body[0]
   namespace = six.get_function_globals(f)
 
   # This is needed for non-global functions.
@@ -185,28 +187,29 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
   namer = conversion_map.new_namer(namespace)
   ctx = context.EntityContext(
       namer=namer,
-      source_code=tf_inspect.getsource(f),
-      source_file=tf_inspect.getfile(f),
+      source_code=source,
+      source_file='<fragment>',
       namespace=namespace,
       arg_values=arg_values,
-      arg_types=arg_types)
+      arg_types=arg_types,
+      recursive=conversion_map.recursive)
   node = node_to_graph(node, ctx, conversion_map.nocompile_decorators)
 
-  # Simulate a rename to ensure the top level is in the name map. This is needed
-  # for top level functions, and it also helps the consistency verification made
-  # by update_name_map.
-  if owner_type is not None:
-    new_name = namer.compiled_function_name(f.__name__, f, owner_type)
-  else:
-    new_name = namer.compiled_function_name(f.__name__, f)
+  # TODO(mdan): This somewhat duplicates the call rename logic in call_treest.py
+  new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
+  if not did_rename:
+    new_name = f.__name__
+    if node.name != f.__name__:
+      raise NotImplementedError('Strange corner case. Send us offending code!')
+
   node.name = new_name
   conversion_map.update_name_map(namer)
-  return node, conversion_map.name_map[f]
+  return node, new_name
 
 
 def _static_analysis_pass(node, ctx):
-  node = access.resolve(node)
-  node = live_values.resolve(node, ctx.namespace, config.PYTHON_LITERALS)
+  node = access.resolve(node, ctx)
+  node = live_values.resolve(node, ctx, config.PYTHON_LITERALS)
   node = type_info.resolve(node, ctx)
   return node
 
@@ -243,6 +246,7 @@ def node_to_graph(node, ctx, nocompile_decorators):
   node = _static_analysis_pass(node, ctx)
   node = decorators.transform(node, nocompile_decorators)
   node = break_canonicalization.transform(node, ctx.namer)
+  node = asserts.transform(node, ctx)
 
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
@@ -259,8 +263,7 @@ def node_to_graph(node, ctx, nocompile_decorators):
 
   node = _static_analysis_pass(node, ctx)
   node = print_functions.transform(node)
-  node = call_trees.transform(node, ctx.namer, ctx.namespace,
-                              config.DEFAULT_UNCOMPILED_MODULES,
+  node = call_trees.transform(node, ctx, config.DEFAULT_UNCOMPILED_MODULES,
                               nocompile_decorators)
   node = control_flow.transform(node, ctx.namer)
   node = logical_expressions.transform(node)

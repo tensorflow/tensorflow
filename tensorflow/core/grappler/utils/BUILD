@@ -99,3 +99,29 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+cc_library(
+    name = "traversal",
+    srcs = ["traversal.cc"],
+    hdrs = ["traversal.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:graph_view",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
+
+tf_cc_test(
+    name = "traversal_test",
+    srcs = ["traversal_test.cc"],
+    deps = [
+        ":traversal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)

@@ -31,18 +31,23 @@ class TestCase(test.TestCase):
   def parse_and_analyze(self,
                         test_fn,
                         namespace,
+                        namer=None,
                         arg_types=None,
-                        include_type_analysis=True):
+                        include_type_analysis=True,
+                        recursive=True):
+    node, source = parser.parse_entity(test_fn)
     ctx = context.EntityContext(
-        namer=None,
-        source_code=None,
+        namer=namer,
+        source_code=source,
         source_file=None,
         namespace=namespace,
         arg_values=None,
-        arg_types=arg_types)
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, namespace, {})
+        arg_types=arg_types,
+        recursive=recursive)
+    node = access.resolve(node, ctx)
+    node = live_values.resolve(node, ctx, {})
     if include_type_analysis:
       node = type_info.resolve(node, ctx)
+      node = live_values.resolve(node, ctx, {})
+    self.ctx = ctx
     return node

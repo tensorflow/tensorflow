@@ -23,8 +23,8 @@ from functools import wraps
 import gast
 import six
 
-from tensorflow.contrib.py2tf import config
-from tensorflow.contrib.py2tf import conversion
+from tensorflow.contrib.py2tf.impl import config
+from tensorflow.contrib.py2tf.impl import conversion
 from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.python.util import tf_inspect
@@ -86,8 +86,8 @@ def convert_inline(f, *args, **kwargs):
 def convert(recursive=False, arg_types=None):
   """Decorator that compiles a function to graph mode.
 
-  The decorator is dynamic - invoking compilation whenever the decorated function
-  is called. This means the parameter values are known at compilation.
+  The decorator is dynamic - invoking compilation whenever the decorated
+  function is called. This means the parameter values are known at compilation.
 
   Args:
     recursive: Whether to recusrively convert any functions that the decorator

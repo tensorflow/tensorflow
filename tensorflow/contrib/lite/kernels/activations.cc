@@ -15,8 +15,8 @@ limitations under the License.
 #include <unistd.h>
 #include <cassert>
 #include <cmath>
-#include <cstdlib>
 #include <cstdio>
+#include <cstdlib>
 #include <iostream>
 #include <limits>
 
@@ -134,8 +134,7 @@ TfLiteStatus ReluEval(TfLiteContext* context, TfLiteNode* node) {
       float* out = output->data.f;
       for (; in < in_end; in++, out++) *out = std::max(0.f, *in);
       return kTfLiteOk;
-    }
-    break;
+    } break;
     default:
       context->ReportError(context, "Only float32 supported currently.");
       return kTfLiteError;
@@ -173,8 +172,7 @@ TfLiteStatus Relu6Eval(TfLiteContext* context, TfLiteNode* node) {
       float* out = output->data.f;
       for (; in < in_end; in++, out++) *out = std::min(std::max(0.f, *in), 6.f);
       return kTfLiteOk;
-    }
-    break;
+    } break;
     default:
       context->ReportError(context, "Only float32 supported currently.");
       return kTfLiteError;
@@ -192,8 +190,7 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
       float* out = output->data.f;
       for (; in < in_end; in++, out++) *out = std::tanh(*in);
       return kTfLiteOk;
-    }
-    break;
+    } break;
     default:
       context->ReportError(context, "Only float32 supported currently.");
       return kTfLiteError;

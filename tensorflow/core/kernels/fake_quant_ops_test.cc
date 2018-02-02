@@ -378,9 +378,8 @@ TEST_F(QuantOpsTest, WithArgsGradient_RegularRange) {
   Tensor* output = GetOutput(0);
   auto input_flat = GetInput(0).flat<float>();
   Tensor expected(allocator(), DT_FLOAT, TensorShape({2, 3}));
-  FillValues<float>(&expected,
-                    {0.0f, input_flat(1), input_flat(2),
-                     input_flat(3), input_flat(4), 0.0f});
+  FillValues<float>(&expected, {0.0f, input_flat(1), input_flat(2),
+                                input_flat(3), input_flat(4), 0.0f});
   ExpectClose(expected, *output);
 }
 
@@ -2167,21 +2166,19 @@ TEST_F(QuantOpsTest,
   Tensor* output_bprop_wrt_input = GetOutput(0);
   Tensor expected_bprop_wrt_input(allocator(), DT_FLOAT, TensorShape({2, 3}));
   auto grad_flat = GetInput(0).flat<float>();
-  FillValues<float>(&expected_bprop_wrt_input,
-                    {0.0f, grad_flat(1), grad_flat(2),
-                     grad_flat(3), grad_flat(4), 0.0f});
+  FillValues<float>(
+      &expected_bprop_wrt_input,
+      {0.0f, grad_flat(1), grad_flat(2), grad_flat(3), grad_flat(4), 0.0f});
   ExpectClose(expected_bprop_wrt_input, *output_bprop_wrt_input);
 
   Tensor* output_bprop_wrt_min = GetOutput(1);
   Tensor expected_bprop_wrt_min(allocator(), DT_FLOAT, TensorShape({3}));
-  FillValues<float>(&expected_bprop_wrt_min,
-                    {grad_flat(0), 0.0f, 0.0f});
+  FillValues<float>(&expected_bprop_wrt_min, {grad_flat(0), 0.0f, 0.0f});
   ExpectClose(expected_bprop_wrt_min, *output_bprop_wrt_min);
 
   Tensor* output_bprop_wrt_max = GetOutput(2);
   Tensor expected_bprop_wrt_max(allocator(), DT_FLOAT, TensorShape({3}));
-  FillValues<float>(&expected_bprop_wrt_max,
-                    {0.0f, 0.0f, grad_flat(5)});
+  FillValues<float>(&expected_bprop_wrt_max, {0.0f, 0.0f, grad_flat(5)});
   ExpectClose(expected_bprop_wrt_max, *output_bprop_wrt_max);
 }
 
@@ -2215,21 +2212,19 @@ TEST_F(QuantOpsTest, WithVarsPerChannelDim2GradientNudgedUp_4Bits_NarrowRange) {
   Tensor* output_bprop_wrt_input = GetOutput(0);
   Tensor expected_bprop_wrt_input(allocator(), DT_FLOAT, TensorShape({2, 3}));
   auto grad_flat = GetInput(0).flat<float>();
-  FillValues<float>(&expected_bprop_wrt_input,
-                    {0.0f, grad_flat(1), grad_flat(2),
-                     grad_flat(3), grad_flat(4), 0.0f});
+  FillValues<float>(
+      &expected_bprop_wrt_input,
+      {0.0f, grad_flat(1), grad_flat(2), grad_flat(3), grad_flat(4), 0.0f});
   ExpectClose(expected_bprop_wrt_input, *output_bprop_wrt_input);
 
   Tensor* output_bprop_wrt_min = GetOutput(1);
   Tensor expected_bprop_wrt_min(allocator(), DT_FLOAT, TensorShape({3}));
-  FillValues<float>(&expected_bprop_wrt_min,
-                    {grad_flat(0), 0.0f, 0.0f});
+  FillValues<float>(&expected_bprop_wrt_min, {grad_flat(0), 0.0f, 0.0f});
   ExpectClose(expected_bprop_wrt_min, *output_bprop_wrt_min);
 
   Tensor* output_bprop_wrt_max = GetOutput(2);
   Tensor expected_bprop_wrt_max(allocator(), DT_FLOAT, TensorShape({3}));
-  FillValues<float>(&expected_bprop_wrt_max,
-                    {0.0f, 0.0f, grad_flat(5)});
+  FillValues<float>(&expected_bprop_wrt_max, {0.0f, 0.0f, grad_flat(5)});
   ExpectClose(expected_bprop_wrt_max, *output_bprop_wrt_max);
 }
 
@@ -2270,14 +2265,13 @@ TEST_F(QuantOpsTest,
   Tensor expected_bprop_wrt_input(allocator(), DT_FLOAT,
                                   TensorShape({1, 2, 3, 4}));
   auto grad_flat = GetInput(0).flat<float>();
-  FillValues<float>(
-      &expected_bprop_wrt_input,
-      {0.0f, grad_flat(1), grad_flat(2), 0.0f,
-       0.0f, grad_flat(5), grad_flat(6), 0.0f,
-       0.0f, grad_flat(9), grad_flat(10), 0.0f,
-       0.0f, grad_flat(13), grad_flat(14), 0.0f,
-       0.0f, grad_flat(17), grad_flat(18), 0.0f,
-       0.0f, grad_flat(21), grad_flat(22), 0.0f});
+  FillValues<float>(&expected_bprop_wrt_input,
+                    {0.0f, grad_flat(1),  grad_flat(2),  0.0f,
+                     0.0f, grad_flat(5),  grad_flat(6),  0.0f,
+                     0.0f, grad_flat(9),  grad_flat(10), 0.0f,
+                     0.0f, grad_flat(13), grad_flat(14), 0.0f,
+                     0.0f, grad_flat(17), grad_flat(18), 0.0f,
+                     0.0f, grad_flat(21), grad_flat(22), 0.0f});
   ExpectClose(expected_bprop_wrt_input, *output_bprop_wrt_input);
 
   Tensor* output_bprop_wrt_min = GetOutput(1);

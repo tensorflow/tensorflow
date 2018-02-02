@@ -26,6 +26,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(touts): switch to variables.Variable.
@@ -230,6 +231,7 @@ def _zero_debias(unbiased_var, value, decay):
       return unbiased_ema_delta
 
 
+@tf_export("train.ExponentialMovingAverage")
 class ExponentialMovingAverage(object):
   """Maintains moving averages of variables by employing an exponential decay.
 

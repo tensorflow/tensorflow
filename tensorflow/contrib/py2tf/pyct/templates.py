@@ -23,6 +23,7 @@ from __future__ import print_function
 
 import ast
 import copy
+import textwrap
 
 import gast
 
@@ -119,7 +120,7 @@ def replace(template, **replacements):
   """
   if not isinstance(template, str):
     raise ValueError('Expected string template, got %s' % type(template))
-  tree = parser.parse_str(template)
+  tree = parser.parse_str(textwrap.dedent(template))
   for k in replacements:
     replacements[k] = _strings_to_names(replacements[k])
   return ReplaceTransformer(replacements).visit(tree).body

@@ -688,7 +688,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
-      );
+  );
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();

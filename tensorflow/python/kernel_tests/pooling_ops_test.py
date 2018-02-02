@@ -1811,16 +1811,17 @@ class PoolingTest(test.TestCase):
       if test.is_gpu_available():
         pool_funcs.append(nn_ops.max_pool_with_argmax)
       for pool_func in pool_funcs:
-        # Illegal strides.
-        with self.assertRaisesRegexp(
-            errors_impl.UnimplementedError,
-            "Pooling is not yet supported on the batch"):
-          sess.run(
-              pool_func(
-                  array_ops.placeholder(dtypes.float32),
-                  ksize=[1, 1, 1, 1],
-                  strides=[2, 1, 1, 1],
-                  padding="SAME"))
+        if pool_func != nn_ops.max_pool:
+          # Illegal strides.
+          with self.assertRaisesRegexp(
+              errors_impl.UnimplementedError,
+              "Pooling is not yet supported on the batch"):
+            sess.run(
+                pool_func(
+                    array_ops.placeholder(dtypes.float32),
+                    ksize=[1, 1, 1, 1],
+                    strides=[2, 1, 1, 1],
+                    padding="SAME"))
 
         # Filter too large.
         with self.assertRaisesRegexp(ValueError, "Negative dimension size"):

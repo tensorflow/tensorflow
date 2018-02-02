@@ -29,6 +29,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -36,6 +37,7 @@ __all__ = [
 ]
 
 
+@tf_export("train.load_checkpoint")
 def load_checkpoint(ckpt_dir_or_file):
   """Returns `CheckpointReader` for checkpoint found in `ckpt_dir_or_file`.
 
@@ -60,6 +62,7 @@ def load_checkpoint(ckpt_dir_or_file):
   return pywrap_tensorflow.NewCheckpointReader(filename)
 
 
+@tf_export("train.load_variable")
 def load_variable(ckpt_dir_or_file, name):
   """Returns the tensor value of the given variable in the checkpoint.
 
@@ -77,6 +80,7 @@ def load_variable(ckpt_dir_or_file, name):
   return reader.get_tensor(name)
 
 
+@tf_export("train.list_variables")
 def list_variables(ckpt_dir_or_file):
   """Returns list of all variables in the checkpoint.
 
@@ -95,6 +99,7 @@ def list_variables(ckpt_dir_or_file):
   return result
 
 
+@tf_export("train.init_from_checkpoint")
 def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
   """Initializes current variables with tensors loaded from given checkpoint.
 
@@ -242,6 +247,9 @@ def init_from_checkpoint(ckpt_dir_or_file, assignment_map):
           full_tensor_name = full_tensor_name[1:]
         if tensor_name_in_ckpt != "/":
           full_tensor_name = tensor_name_in_ckpt + full_tensor_name
+        # Remove trailing '/', if any, in the full_tensor_name
+        if full_tensor_name.endswith("/"):
+          full_tensor_name = full_tensor_name[:-1]
         if full_tensor_name not in variable_map:
           raise ValueError(
               "Tensor %s (%s in %s) is not found in %s checkpoint" % (

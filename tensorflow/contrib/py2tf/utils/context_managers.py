@@ -1,4 +1,4 @@
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,27 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Global configuration."""
+"""Various context managers."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-PYTHON_LITERALS = {
-    'None': None,
-    'False': False,
-    'True': True,
-    'float': float,
-}
+import contextlib
 
-DEFAULT_UNCOMPILED_MODULES = set((
-    ('tensorflow',),
-))
 
-NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
+def control_dependency_on_returns(tf, return_value):
+  """Create a TF control dependency on the return values of a function.
 
-# TODO(mdan): Also allow controlling the generated names (for testability).
-COMPILED_IMPORT_STATEMENTS = (
-    'from contextlib import contextmanager',
-    'import tensorflow as tf',
-)
+  If the function had no return value, a no-op context is returned.
+
+  Args:
+    tf: The TensorFlow module.
+    return_value: The return value to set as control dependency.
+
+  Returns:
+    A context manager.
+  """
+  if return_value is None:
+    return contextlib.contextmanager(lambda: (yield))()
+  # TODO(mdan): Filter to tensor objects.
+  if not isinstance(return_value, (list, tuple)):
+    return_value = (return_value,)
+  return tf.control_dependencies(return_value)

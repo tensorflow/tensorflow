@@ -116,7 +116,10 @@ TEST(HashtableLookupOpTest, Test2DInput) {
                                  1.0, 1.1,  // 1-st item
                              })));
   EXPECT_THAT(m.GetHit(), ElementsAreArray({
-                              1, 0, 1, 1,
+                              1,
+                              0,
+                              1,
+                              1,
                           }));
 }
 

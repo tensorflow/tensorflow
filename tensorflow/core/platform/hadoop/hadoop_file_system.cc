@@ -164,8 +164,9 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
   } else {
     hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
   }
-  // KERB_TICKET_CACHE_PATH will be deleted in the future, Because KRB5CCNAME is the build in
-  // environment variable of Kerberos, so KERB_TICKET_CACHE_PATH and related code are unnecessary.
+  // KERB_TICKET_CACHE_PATH will be deleted in the future, Because KRB5CCNAME is
+  // the build in environment variable of Kerberos, so KERB_TICKET_CACHE_PATH
+  // and related code are unnecessary.
   char* ticket_cache_path = getenv("KERB_TICKET_CACHE_PATH");
   if (ticket_cache_path != nullptr) {
     hdfs_->hdfsBuilderSetKerbTicketCachePath(builder, ticket_cache_path);

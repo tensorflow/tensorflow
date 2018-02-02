@@ -2729,25 +2729,9 @@ class SRUCell(rnn_cell_impl._LayerRNNCell):
 
     input_depth = inputs_shape[1].value
 
-    # Here the contributor believes that the following constraints
-    # are implied. The reasoning is explained here with reference to
-    # the paper https://arxiv.org/pdf/1709.02755.pdf upon which this
-    # implementation is based.
-    # In section 2.1 Equation 5, specifically:
-    # h_t = r_t \odot g(c_t) + (1 - r_t) \odot x_t
-    # the pointwise operation between r_t and x_t means they have
-    # the same shape (since we are implementing an RNN cell, braodcasting
-    # does not happen to input of a single timestep); by the same
-    # reasons, x_t has the same shape as h_t, essentially mandating that
-    # input_depth = unit_num.
-    if input_depth != self._num_units:
-      raise ValueError("SRU requires input_depth == num_units, got "
-                       "input_depth = %s, num_units = %s" % (input_depth,
-                                                             self._num_units))
-
     self._kernel = self.add_variable(
         rnn_cell_impl._WEIGHTS_VARIABLE_NAME,
-        shape=[input_depth, 3 * self._num_units])
+        shape=[input_depth, 4 * self._num_units])
 
     self._bias = self.add_variable(
         rnn_cell_impl._BIAS_VARIABLE_NAME,
@@ -2760,8 +2744,8 @@ class SRUCell(rnn_cell_impl._LayerRNNCell):
     """Simple recurrent unit (SRU) with num_units cells."""
 
     U = math_ops.matmul(inputs, self._kernel)
-    x_bar, f_intermediate, r_intermediate = array_ops.split(
-        value=U, num_or_size_splits=3, axis=1)
+    x_bar, f_intermediate, r_intermediate, x_tx = array_ops.split(
+        value=U, num_or_size_splits=4, axis=1)
 
     f_r = math_ops.sigmoid(
         nn_ops.bias_add(
@@ -2769,7 +2753,7 @@ class SRUCell(rnn_cell_impl._LayerRNNCell):
     f, r = array_ops.split(value=f_r, num_or_size_splits=2, axis=1)
 
     c = f * state + (1.0 - f) * x_bar
-    h = r * self._activation(c) + (1.0 - r) * inputs
+    h = r * self._activation(c) + (1.0 - r) * x_tx
 
     return h, c
 
