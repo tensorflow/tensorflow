@@ -498,7 +498,7 @@ For TensorFlow source versions after 1.3.0:
 ```bash
 ./configure
 # Pick the desired options
-bazel build --config=mkl -c opt //tensorflow/tools/pip_package:build_pip_package
+bazel build --config=mkl --config=opt //tensorflow/tools/pip_package:build_pip_package
 
 ```
 

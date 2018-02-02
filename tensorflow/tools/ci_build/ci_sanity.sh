@@ -344,6 +344,18 @@ do_external_licenses_check(){
 
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
 
+  # Blacklist
+  echo ${MISSING_LICENSES_FILE}
+  grep -e "@bazel_tools//third_party/" -e "@com_google_absl//absl" -e "@org_tensorflow//" -v ${MISSING_LICENSES_FILE} > temp.txt
+  mv temp.txt ${MISSING_LICENSES_FILE}
+
+  # Whitelist
+  echo ${EXTRA_LICENSE_FILE}
+  grep -e "@bazel_tools//src/" -e "@bazel_tools//tools/" -e "@com_google_absl//" -e "//external" -e "@local" -v ${EXTRA_LICENSES_FILE} > temp.txt
+  mv temp.txt ${EXTRA_LICENSES_FILE}
+
+
+
   echo
   echo "do_external_licenses_check took $((EXTERNAL_LICENSES_CHECK_END_TIME - EXTERNAL_LICENSES_CHECK_START_TIME)) s"
   echo

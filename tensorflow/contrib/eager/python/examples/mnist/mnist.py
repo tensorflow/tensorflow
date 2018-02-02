@@ -95,8 +95,7 @@ class MNISTModel(tfe.Network):
     x = self.max_pool2d(x)
     x = tf.layers.flatten(x)
     x = self.fc1(x)
-    if training:
-      x = self.dropout(x)
+    x = self.dropout(x, training=training)
     x = self.fc2(x)
     return x
 
