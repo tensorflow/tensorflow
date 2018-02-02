@@ -1450,7 +1450,6 @@ def main():
         'more details.')
   config_info_line('mkl', 'Build with MKL support.')
   config_info_line('monolithic', 'Config for mostly static monolithic build.')
-  config_info_line('tensorrt', 'Build with TensorRT support.')
 
 if __name__ == '__main__':
   main()
