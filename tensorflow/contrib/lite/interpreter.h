@@ -166,6 +166,13 @@ class Interpreter {
   // Return the number of ops in the model.
   int nodes_size() const { return nodes_and_registration_.size(); }
 
+  // WARNING: Experimental interface, subject to change
+  const std::vector<int>& execution_plan() const { return execution_plan_; }
+
+  // WARNING: Experimental interface, subject to change
+  // Overrides execution plan. This bounds checks indices sent in.
+  TfLiteStatus SetExecutionPlan(const std::vector<int>& new_plan);
+
   // Get a tensor data structure.
   // TODO(aselle): Create a safe ArrayHandle interface to avoid exposing this
   // read/write access to structure
@@ -279,7 +286,8 @@ class Interpreter {
   // dynamic tensors is found or all ops have been prepared. Fill
   // 'last_node_prepared' with the id of the op containing dynamic tensors, or
   // the last in the graph.
-  TfLiteStatus PrepareOpsStartingAt(int first_node, int* last_node_prepared);
+  TfLiteStatus PrepareOpsStartingAt(int first_execution_plan_index,
+                                    int* last_execution_plan_index_prepared);
 
   // Tensors needed by the interpreter. Use `AddTensors` to add more blank
   // tensor entries. Note, `tensors_.data()` needs to be synchronized to the
@@ -354,7 +362,14 @@ class Interpreter {
   // node id, and execute the node to generate the output tensor before continue
   // to allocate successors. This process repeats until all nodes are executed.
   // NOTE: this relies on the order of nodes that is in topological order.
-  int next_node_to_prepare_;
+  int next_execution_plan_index_to_prepare_;
+
+  // WARNING: This is an experimental interface that is subject to change.
+  // This is a list of node indices (to index into nodes_and_registration).
+  // This represents a valid topological sort (dependency ordered) execution
+  // plan. In particular, it is valid for this ordering to contain only a
+  // subset of the node indices.
+  std::vector<int> execution_plan_;
 
   // Whether to delegate to NN API
   std::unique_ptr<NNAPIDelegate> nnapi_delegate_;

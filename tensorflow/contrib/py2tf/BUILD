@@ -23,6 +23,7 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/py2tf/impl",
+        "//tensorflow/contrib/py2tf/utils",
         "@gast_archive//:gast",
         "@six_archive//:six",
     ],
