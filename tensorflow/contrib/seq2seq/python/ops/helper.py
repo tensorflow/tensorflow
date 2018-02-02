@@ -73,14 +73,6 @@ class Helper(object):
     raise NotImplementedError("batch_size has not been implemented")
 
   @abc.abstractproperty
-  def input_shape(self):
-    """Shape of each input element in batch.
-
-    Returns a `TensorShape`.
-    """
-    raise NotImplementedError("input_shape has not been implemented")
-
-  @abc.abstractproperty
   def sample_ids_shape(self):
     """Shape of tensor returned by `sample`, excluding the batch dimension.
 
@@ -135,7 +127,6 @@ class CustomHelper(Helper):
     self._sample_fn = sample_fn
     self._next_inputs_fn = next_inputs_fn
     self._batch_size = None
-    self._input_shape = None
     self._sample_ids_shape = tensor_shape.TensorShape(sample_ids_shape or [])
     self._sample_ids_dtype = sample_ids_dtype or dtypes.int32
 
@@ -158,8 +149,6 @@ class CustomHelper(Helper):
       (finished, next_inputs) = self._initialize_fn()
       if self._batch_size is None:
         self._batch_size = array_ops.size(finished)
-      if self._input_shape is None:
-        self._input_shape = next_inputs.shape[1:]
     return (finished, next_inputs)
 
   def sample(self, time, outputs, state, name=None):
@@ -211,23 +200,6 @@ class TrainingHelper(Helper):
           lambda inp: array_ops.zeros_like(inp[0, :]), inputs)
 
       self._batch_size = array_ops.size(sequence_length)
-      self._input_shape = inputs.shape[2:]
-
-  @property
-  def batch_size(self):
-    return self._batch_size
-
-  @property
-  def input_shape(self):
-    return self._input_shape
-
-  @property
-  def sample_ids_shape(self):
-    return tensor_shape.TensorShape([])
-
-  @property
-  def sample_ids_dtype(self):
-    return dtypes.int32
 
   @property
   def inputs(self):
@@ -236,6 +208,18 @@ class TrainingHelper(Helper):
   @property
   def sequence_length(self):
     return self._sequence_length
+
+  @property
+  def batch_size(self):
+    return self._batch_size
+
+  @property
+  def sample_ids_shape(self):
+    return tensor_shape.TensorShape([])
+
+  @property
+  def sample_ids_dtype(self):
+    return dtypes.int32
 
   def initialize(self, name=None):
     with ops.name_scope(name, "TrainingHelperInitialize"):
@@ -541,15 +525,10 @@ class GreedyEmbeddingHelper(Helper):
     if self._end_token.get_shape().ndims != 0:
       raise ValueError("end_token must be a scalar")
     self._start_inputs = self._embedding_fn(self._start_tokens)
-    self._input_shape = self._start_inputs.shape[1:]
 
   @property
   def batch_size(self):
     return self._batch_size
-
-  @property
-  def input_shape(self):
-    return self._input_shape
 
   @property
   def sample_ids_shape(self):
@@ -662,18 +641,12 @@ class InferenceHelper(Helper):
     self._sample_dtype = sample_dtype
     self._next_inputs_fn = next_inputs_fn
     self._batch_size = array_ops.shape(start_inputs)[0]
-    self._input_shape = start_inputs.shape[1:]
-
     self._start_inputs = ops.convert_to_tensor(
         start_inputs, name="start_inputs")
 
   @property
   def batch_size(self):
     return self._batch_size
-
-  @property
-  def input_shape(self):
-    return self._input_shape
 
   @property
   def sample_ids_shape(self):

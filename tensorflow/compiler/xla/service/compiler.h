@@ -72,8 +72,18 @@ class AotCompilationOptions {
   // Returns the ID of the platform to which these options apply.
   virtual perftools::gputools::Platform::Id PlatformId() const = 0;
 
+  // Optional allocator that may be used for allocating temp space on the device
+  // during compilation.
+  DeviceMemoryAllocator* device_allocator() const { return device_allocator_; }
+  void set_device_allocator(DeviceMemoryAllocator* device_allocator) {
+    device_allocator_ = device_allocator;
+  }
+
  protected:
   AotCompilationOptions() = default;
+
+ private:
+  DeviceMemoryAllocator* device_allocator_ = nullptr;
 };
 
 // Abstract compiler interface that is subclassed for compilation on a
@@ -99,9 +109,16 @@ class Compiler {
 
   // Runs Hlo passes to optimize the given Hlo module, returns the optimized
   // module.
+  //
+  // If device_allocator is not null, the compiler may use it to allocate temp
+  // space on the device for use during compilation.  For example, the compiler
+  // may allocate buffers on the device and then run variants of a given
+  // algorithm over those buffers, to see which variant is fastest.  Any space
+  // allocated should be deallocated before this function returns.
   virtual StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
       std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* executor) = 0;
+      perftools::gputools::StreamExecutor* executor,
+      DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles the HLO module for execution on a device given by the executor,
   // and returns an executable object or an error status. No HLO passes are
@@ -112,21 +129,27 @@ class Compiler {
   // The compiler may optionally specialize to the individual device
   // (not just type of device) indicated by the executor.
   //
+  // device_allocator is optional; see RunHloPasses.
+  //
   // Use the overload below to compile computations that run in parallel.
   virtual StatusOr<std::unique_ptr<Executable>> RunBackend(
       std::unique_ptr<HloModule> module,
-      perftools::gputools::StreamExecutor* executor) = 0;
+      perftools::gputools::StreamExecutor* executor,
+      DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially
   // communicating data between the modules, and returns a corresponding
   // sequence of executable objects.
+  //
+  // device_allocator is optional; see RunHloPasses.
   //
   // TODO(b/68666782): Remove this method after adding support for multiple
   // modules to RunHloPasses and RunBackends.
   virtual StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
       std::vector<std::unique_ptr<HloModule>> modules,
       std::vector<std::vector<perftools::gputools::StreamExecutor*>>
-          stream_exec) = 0;
+          stream_exec,
+      DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.

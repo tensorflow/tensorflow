@@ -22,17 +22,21 @@ import copy
 
 import numpy as np
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import ops
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import callbacks as cbks
 from tensorflow.python.keras._impl.keras import losses
 from tensorflow.python.keras._impl.keras import metrics as metrics_module
 from tensorflow.python.keras._impl.keras import optimizers
+from tensorflow.python.keras._impl.keras.engine import training_eager
 from tensorflow.python.keras._impl.keras.engine.topology import Network
 from tensorflow.python.keras._impl.keras.utils.data_utils import GeneratorEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import OrderedEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import Sequence
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import optimizer as tf_optimizer_module
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -82,21 +86,24 @@ def _standardize_input_data(data,
           if data[x].__class__.__name__ == 'DataFrame' else data[x]
           for x in names
       ]
-      data = [np.expand_dims(x, 1) if x.ndim == 1 else x for x in data]
     except KeyError as e:
       raise ValueError('No data provided for "' + e.args[0] + '". Need data '
                        'for each key in: ' + str(names))
   elif isinstance(data, list):
-    data = [
-        x.values if x.__class__.__name__ == 'DataFrame' else x for x in data
-    ]
-    data = [
-        np.expand_dims(x, 1) if x is not None and x.ndim == 1 else x
-        for x in data
-    ]
+    if isinstance(data[0], list):
+      data = [np.asarray(d) for d in data]
+    elif len(names) == 1 and isinstance(data[0], (float, int)):
+      data = [np.asarray(data)]
+    else:
+      data = [
+          x.values if x.__class__.__name__ == 'DataFrame' else x for x in data
+      ]
   else:
     data = data.values if data.__class__.__name__ == 'DataFrame' else data
-    data = [np.expand_dims(data, 1)] if data.ndim == 1 else [data]
+    data = [data]
+  data = [
+      np.expand_dims(x, 1) if x is not None and x.ndim == 1 else x for x in data
+  ]
 
   if len(data) != len(names):
     if data and hasattr(data[0], 'shape'):
@@ -618,9 +625,15 @@ class Model(Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     loss = loss or {}
+    if context.in_eager_mode() and  not isinstance(
+        optimizer, tf_optimizer_module.Optimizer):
+      raise ValueError('Only TF native optimizers are supported in Eager mode.')
+
     self.optimizer = optimizers.get(optimizer)
     self.loss = loss
     self.loss_weights = loss_weights
+    if context.in_eager_mode() and sample_weight_mode is not None:
+      raise ValueError('sample_weight_mode is not supported in Eager mode.')
     self.sample_weight_mode = sample_weight_mode
 
     # Prepare loss functions.
@@ -651,6 +664,7 @@ class Model(Network):
       loss_function = losses.get(loss)
       loss_functions = [loss_function for _ in range(len(self.outputs))]
     self.loss_functions = loss_functions
+
     weighted_losses = [_weighted_masked_objective(fn) for fn in loss_functions]
     skip_target_indices = []
     skip_target_weighing_indices = []
@@ -664,11 +678,12 @@ class Model(Network):
         skip_target_weighing_indices.append(i)
 
     # Prepare output masks.
-    masks = self.compute_mask(self.inputs, mask=None)
-    if masks is None:
-      masks = [None for _ in self.outputs]
-    if not isinstance(masks, list):
-      masks = [masks]
+    if context.in_graph_mode():
+      masks = self.compute_mask(self.inputs, mask=None)
+      if masks is None:
+        masks = [None for _ in self.outputs]
+      if not isinstance(masks, list):
+        masks = [masks]
 
     # Prepare loss weights.
     if loss_weights is None:
@@ -694,6 +709,32 @@ class Model(Network):
     else:
       raise TypeError('Could not interpret loss_weights argument: ' +
                       str(loss_weights) + ' - expected a list of dicts.')
+    self.loss_weights_list = loss_weights_list
+
+    # initialization for Eager mode execution
+    if context.in_eager_mode():
+      if target_tensors is not None:
+        raise ValueError('target_tensors are not currently supported in Eager'
+                         'mode.')
+      self.total_loss = None
+      self.metrics = metrics
+      self.weighted_metrics = weighted_metrics
+      self.metrics_tensors = []
+      self.metrics_names = ['loss']
+      for i in range(len(self.outputs)):
+        if len(self.outputs) > 1:
+          self.metrics_names.append(self.output_names[i] + '_loss')
+      self.nested_metrics = _collect_metrics(metrics, self.output_names)
+      self._feed_sample_weight_modes = []
+      for i in range(len(self.outputs)):
+        self._feed_sample_weight_modes.append(None)
+      self.sample_weights = []
+      self.targets = []
+      self._collected_trainable_weights = self.trainable_weights
+      for i in range(len(self.outputs)):
+        self._feed_output_names.append(self.output_names[i])
+
+      return
 
     # Prepare targets of model.
     self.targets = []
@@ -720,6 +761,7 @@ class Model(Network):
       else:
         raise TypeError('Expected `target_tensors` to be '
                         'a list or dict, but got:', target_tensors)
+
     for i in range(len(self.outputs)):
       if i in skip_target_indices:
         self.targets.append(None)
@@ -769,7 +811,7 @@ class Model(Network):
             weight = K.placeholder(ndim=2, name=name + '_sample_weights')
             sample_weight_modes.append('temporal')
           else:
-            weight = K.placeholder(ndim=1, name=name + '_sample_weights')
+            weight = K.placeholder(ndim=1, name=name + 'sample_weights')
             sample_weight_modes.append(None)
         sample_weights.append(weight)
     elif isinstance(sample_weight_mode, list):
@@ -929,7 +971,7 @@ class Model(Network):
     self._feed_sample_weights = []
     for i in range(len(self.sample_weights)):
       if i not in skip_target_weighing_indices:
-        self._feed_sample_weights.append(sample_weights[i])
+        self._feed_sample_weights.append(self.sample_weights[i])
 
     # Functions for train, test and predict will
     # be compiled lazily when required.
@@ -978,6 +1020,7 @@ class Model(Network):
         with K.name_scope(self.optimizer.__class__.__name__):
           training_updates = self.optimizer.get_updates(
               params=self._collected_trainable_weights, loss=self.total_loss)
+
         updates = self.updates + training_updates
         # Gets loss and metrics. Updates weights at each call.
         self.train_function = K.function(
@@ -1156,6 +1199,7 @@ class Model(Network):
       callback_model = self
 
     callbacks.set_model(callback_model)
+
     callbacks.set_params({
         'batch_size': batch_size,
         'epochs': epochs,
@@ -1216,6 +1260,7 @@ class Model(Network):
           np.random.shuffle(index_array)
 
         batches = _make_batches(num_train_samples, batch_size)
+
         for batch_index, (batch_start, batch_end) in enumerate(batches):
           batch_ids = index_array[batch_start:batch_end]
           try:
@@ -1410,6 +1455,7 @@ class Model(Network):
           ins_batch[i] = ins_batch[i].toarray()
 
         batch_outs = f(ins_batch)
+
         if isinstance(batch_outs, list):
           if batch_index == 0:
             for batch_out in enumerate(batch_outs):
@@ -1420,7 +1466,6 @@ class Model(Network):
           if batch_index == 0:
             outs.append(0.)
           outs[0] += batch_outs * len(batch_ids)
-
         if verbose == 1:
           progbar.update(batch_end)
       for i in range(len(outs)):
@@ -1636,6 +1681,7 @@ class Model(Network):
         batch_size=batch_size)
     # Prepare validation data.
     do_validation = False
+    val_ins = []
     if validation_data:
       do_validation = True
       if len(validation_data) == 2:
@@ -1686,39 +1732,65 @@ class Model(Network):
       ins = x + y + sample_weights + [1.]
     else:
       ins = x + y + sample_weights
-    self._make_train_function()
-    f = self.train_function
 
     # Prepare display labels.
     out_labels = self._get_deduped_metrics_names()
 
-    if do_validation:
-      self._make_test_function()
-      val_f = self.test_function
-      callback_metrics = copy.copy(out_labels) + [
-          'val_' + n for n in out_labels
-      ]
-    else:
-      callback_metrics = copy.copy(out_labels)
-      val_f = None
-      val_ins = []
+    if context.in_eager_mode():
+      if do_validation:
+        callback_metrics = copy.copy(out_labels) + [
+            'val_' + n for n in out_labels
+        ]
+      else:
+        callback_metrics = copy.copy(out_labels)
 
-    # Delegate logic to `_fit_loop`.
-    return self._fit_loop(
-        f,
-        ins,
-        out_labels=out_labels,
-        batch_size=batch_size,
-        epochs=epochs,
-        verbose=verbose,
-        callbacks=callbacks,
-        val_f=val_f,
-        val_ins=val_ins,
-        shuffle=shuffle,
-        callback_metrics=callback_metrics,
-        initial_epoch=initial_epoch,
-        steps_per_epoch=steps_per_epoch,
-        validation_steps=validation_steps)
+      return training_eager.fit_loop(
+          self,
+          ins,
+          out_labels=out_labels,
+          batch_size=batch_size,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          val_ins=val_ins,
+          shuffle=shuffle,
+          callback_metrics=callback_metrics,
+          initial_epoch=initial_epoch,
+          steps_per_epoch=steps_per_epoch,
+          validation_steps=validation_steps)
+    else:
+      self._make_train_function()
+      f = self.train_function
+
+      if do_validation:
+        if context.in_graph_mode():
+          self._make_test_function()
+          val_f = self.test_function
+        else:
+          val_f = None
+        callback_metrics = copy.copy(out_labels) + [
+            'val_' + n for n in out_labels
+        ]
+      else:
+        val_f = None
+        callback_metrics = copy.copy(out_labels)
+
+      # Delegate logic to `_fit_loop`.
+      return self._fit_loop(
+          f,
+          ins,
+          out_labels=out_labels,
+          batch_size=batch_size,
+          epochs=epochs,
+          verbose=verbose,
+          callbacks=callbacks,
+          val_f=val_f,
+          val_ins=val_ins,
+          shuffle=shuffle,
+          callback_metrics=callback_metrics,
+          initial_epoch=initial_epoch,
+          steps_per_epoch=steps_per_epoch,
+          validation_steps=validation_steps)
 
   def evaluate(self,
                x=None,
@@ -1794,10 +1866,15 @@ class Model(Network):
       ins = x + y + sample_weights + [0.]
     else:
       ins = x + y + sample_weights
-    self._make_test_function()
-    f = self.test_function
-    return self._test_loop(
-        f, ins, batch_size=batch_size, verbose=verbose, steps=steps)
+
+    if context.in_eager_mode():
+      return training_eager.test_loop(
+          self, ins, batch_size=batch_size, verbose=verbose, steps=steps)
+    else:
+      self._make_test_function()
+      f = self.test_function
+      return self._test_loop(
+          f, ins, batch_size=batch_size, verbose=verbose, steps=steps)
 
   def predict(self, x, batch_size=None, verbose=0, steps=None):
     """Generates output predictions for the input samples.
@@ -1849,10 +1926,16 @@ class Model(Network):
       ins = x + [0.]
     else:
       ins = x
-    self._make_predict_function()
-    f = self.predict_function
-    return self._predict_loop(
-        f, ins, batch_size=batch_size, verbose=verbose, steps=steps)
+
+    if context.in_eager_mode():
+      return training_eager.predict_loop(
+          self, ins, batch_size=batch_size, verbose=verbose, steps=steps)
+    else:
+      self._make_predict_function()
+      f = self.predict_function
+
+      return self._predict_loop(
+          f, ins, batch_size=batch_size, verbose=verbose, steps=steps)
 
   def train_on_batch(self, x, y, sample_weight=None, class_weight=None):
     """Runs a single gradient update on a single batch of data.
@@ -1888,6 +1971,7 @@ class Model(Network):
         or list of scalars (if the model has multiple outputs
         and/or metrics). The attribute `model.metrics_names` will give you
         the display labels for the scalar outputs.
+
     """
     x, y, sample_weights = self._standardize_user_data(
         x,
@@ -1899,11 +1983,16 @@ class Model(Network):
       ins = x + y + sample_weights + [1.]
     else:
       ins = x + y + sample_weights
-    self._make_train_function()
-    outputs = self.train_function(ins)
-    if len(outputs) == 1:
-      return outputs[0]
-    return outputs
+
+    if context.in_eager_mode():
+      return training_eager.train_on_batch(self, ins)
+
+    if context.in_graph_mode():
+      self._make_train_function()
+      outputs = self.train_function(ins)
+      if len(outputs) == 1:
+        return outputs[0]
+      return outputs
 
   def test_on_batch(self, x, y, sample_weight=None):
     """Test the model on a single batch of samples.
@@ -1942,11 +2031,16 @@ class Model(Network):
       ins = x + y + sample_weights + [0.]
     else:
       ins = x + y + sample_weights
-    self._make_test_function()
-    outputs = self.test_function(ins)
-    if len(outputs) == 1:
-      return outputs[0]
-    return outputs
+
+    if context.in_eager_mode():
+      return training_eager.test_on_batch(self, ins)
+
+    if context.in_graph_mode():
+      self._make_test_function()
+      outputs = self.test_function(ins)
+      if len(outputs) == 1:
+        return outputs[0]
+      return outputs
 
   def predict_on_batch(self, x):
     """Returns predictions for a single batch of samples.
@@ -1956,6 +2050,7 @@ class Model(Network):
 
     Returns:
         Numpy array(s) of predictions.
+
     """
     x = _standardize_input_data(x, self._feed_input_names,
                                 self._feed_input_shapes)
@@ -1963,11 +2058,25 @@ class Model(Network):
       ins = x + [0.]
     else:
       ins = x
-    self._make_predict_function()
-    outputs = self.predict_function(ins)
-    if len(outputs) == 1:
-      return outputs[0]
-    return outputs
+
+    if context.in_eager_mode():
+      ins_batch_converted = []
+      for ib in ins:
+        ins_batch_converted.append(ops.convert_to_tensor(ib, dtype=K.floatx()))
+
+      eager_model_inputs = []
+      for i in range(len(self.inputs)):
+        eager_model_inputs.append(ins_batch_converted[i])
+
+      outs = self(eager_model_inputs)  # pylint: disable=not-callable
+      return outs
+
+    if context.in_graph_mode():
+      self._make_predict_function()
+      outputs = self.predict_function(ins)
+      if len(outputs) == 1:
+        return outputs[0]
+      return outputs
 
   def fit_generator(self,
                     generator,
@@ -2072,7 +2181,6 @@ class Model(Network):
         model.fit_generator(generate_arrays_from_file('/my_file.txt'),
                             steps_per_epoch=10000, epochs=10)
     ```
-
     Raises:
         ValueError: In case the generator yields
             data in an invalid format.

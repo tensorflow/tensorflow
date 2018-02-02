@@ -12,7 +12,6 @@ The source code for TensorFlow is on
 Before contributing to TensorFlow source code, please review the
 [Contribution guidelines](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md).
 
-
 ### Projects developed by the TensorFlow community
 
 The TensorFlow community has created many great projects around TensorFlow, including:
@@ -65,5 +64,6 @@ please read the following list carefully:
     [TensorFlow issues tracker](https://github.com/tensorflow/tensorflow/issues)
     on GitHub.  For example, use the issue tracker to request a
     new operation in TensorFlow.
-
+  * To report vulnerabilities, please follow our
+    [vulnerability disclosure guidelines](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md).
 

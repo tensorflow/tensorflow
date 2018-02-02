@@ -183,11 +183,10 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
       self.assertEqual(num_quantiles + 1, len(buckets))
       self.assertAllEqual([2030, 2040, 2050, 2060], buckets)
 
-  def _testStreamingQuantileBucketsHelper(self, inputs):
+  def _testStreamingQuantileBucketsHelper(
+      self, inputs, num_quantiles=3, expected_buckets=None):
     """Helper to test quantile buckets on different inputs."""
 
-    # Use 3 quantiles, 4 boundaries for simplicity.
-    num_quantiles = 3
     # set generate_quantiles to True since the test will generate fewer
     # boundaries otherwise.
     with self.test_session() as sess:
@@ -213,7 +212,10 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
       buckets, are_ready_flush = (sess.run(
           [buckets, are_ready_flush]))
       self.assertEqual(True, are_ready_flush)
+      # By default, use 3 quantiles, 4 boundaries for simplicity.
       self.assertEqual(num_quantiles + 1, len(buckets))
+      if expected_buckets:
+        self.assertAllEqual(buckets, expected_buckets)
 
   def testStreamingQuantileBucketsRepeatedSingleValue(self):
     inputs = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
@@ -230,6 +232,28 @@ class QuantileBucketsOpTest(test_util.TensorFlowTestCase):
   def testStreamingQuantileBucketsFewerInputstThanBuckets(self):
     inputs = [5]
     self._testStreamingQuantileBucketsHelper(inputs)
+
+  def testStreamingQuantileBucketsEqualDistributionInSequence(self):
+    # Input pattern is of the form [1, 1, 1, 2, 2, 2, 3, 3, 3, ...]
+    ones = 100 * [1]
+    inputs = []
+    for i in range(1, 101):
+      inputs += [i * k for k in ones]
+    # Expect 100 equally spaced buckets.
+    expected_buckets = range(1, 101)
+    self._testStreamingQuantileBucketsHelper(
+        inputs, num_quantiles=99, expected_buckets=expected_buckets)
+
+  def testStreamingQuantileBucketsEqualDistributionInterleaved(self):
+    # Input pattern is of the form [1, 2, 3, 1, 2, 3, 1, 2, 3, ...]
+    sequence = range(1, 101)
+    inputs = []
+    for _ in range(1, 101):
+      inputs += sequence
+    # Expect 100 equally spaced buckets.
+    expected_buckets = range(1, 101)
+    self._testStreamingQuantileBucketsHelper(
+        inputs, num_quantiles=99, expected_buckets=expected_buckets)
 
   def testStreamingQuantileBuckets(self):
     """Sets up the quantile summary op test as follows.

@@ -82,8 +82,9 @@ message DebugOptions {
   // Dump all HLO modules as text into the provided directory path.
   string xla_generate_hlo_text_to = 7;
 
-  // Dump compilation artifacts in binary proto into this directory.
-  string xla_dump_hlo_proto_to = 8;
+  // Dump Hlo after all hlo passes are executed as proto binary into this
+  // directory.
+  string xla_dump_optimized_hlo_proto_to = 8;
 
   // Instrument the computation to collect per-HLO cycle counts.
   bool xla_hlo_profile = 9;
@@ -179,9 +180,13 @@ message DebugOptions {
   // ops.
   bool xla_gpu_use_cudnn_batchnorm = 94;
 
-  // Dump compilation artifacts, before hlo passes are executed, in binary proto
-  // into this directory.
-  string xla_dump_prepass_hlo_proto_to = 95;
+  // Dump HLO before any hlo passes are executed as proto binary into this
+  // directory.
+  string xla_dump_unoptimized_hlo_proto_to = 95;
+
+  // Dump HLO after each pass as an HloProto in binary file format into this
+  // directory.
+  string xla_dump_per_pass_hlo_proto_to = 96;
 
   // Extra options to pass to the compilation backend; specific interpretation
   // of these values is left to the backend.

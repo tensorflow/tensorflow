@@ -192,8 +192,8 @@ def einsum(equation, *inputs, **kwargs):
       input_count = sum(1 for s in input_axis_labels if a in s)
       if input_count > 2 and a not in output_axis_labels:
         logging.warn(
-            'Falling back to exponential-space implementation of einsum() because'
-            ' index "%s" is summed over more than two inputs.', a)
+            'Falling back to exponential-space implementation of einsum()'
+            ' because index "%s" is summed over more than two inputs.', a)
         return _exponential_space_einsum(equation, *inputs)
 
     temp = inputs[0]

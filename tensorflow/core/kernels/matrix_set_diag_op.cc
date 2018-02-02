@@ -69,8 +69,8 @@ class MatrixSetDiagOp : public OpKernel {
                 errors::InvalidArgument(
                     "must have diagonal.shape == input.shape[:-2] + "
                     "min(input.shape[-2:]), but received input shape: ",
-                    input_shape.DebugString(), " and diagonal shape: ",
-                    diag_shape.DebugString()));
+                    input_shape.DebugString(),
+                    " and diagonal shape: ", diag_shape.DebugString()));
 
     if (input.NumElements() == 0) {
       // This is a no-op.

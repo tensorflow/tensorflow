@@ -86,30 +86,6 @@ bool ParseBoolValue(const string& key, PyObject* py_value, TF_Status* status,
   return true;
 }
 
-const char* ParseProtoValue(const string& key, const char* proto_name,
-                            PyObject* py_value, size_t* size,
-                            TF_Status* status) {
-  char* output = nullptr;
-  Py_ssize_t py_size;
-  if (PyBytes_Check(py_value) &&
-      PyBytes_AsStringAndSize(py_value, &output, &py_size) >= 0) {
-    *size = static_cast<size_t>(py_size);
-    return output;
-  }
-#if PY_MAJOR_VERSION >= 3
-  if (PyUnicode_Check(py_value) &&
-      (output = PyUnicode_AsUTF8AndSize(py_value, &py_size)) != nullptr) {
-    *size = static_cast<size_t>(py_size);
-    return output;
-  }
-#endif
-  TF_SetStatus(status, TF_INVALID_ARGUMENT,
-               tensorflow::strings::StrCat("Expecting a string (serialized ",
-                                           proto_name, ") value for attr ", key)
-                   .c_str());
-  return nullptr;
-}
-
 bool SetOpAttrList(TFE_Op* op, const char* key, PyObject* py_list,
                    TF_AttrType type, TF_Status* status) {
   if (!PySequence_Check(py_list)) {
@@ -329,8 +305,9 @@ void SetOpAttrs(TFE_Context* ctx, TFE_Op* op, PyObject* attrs, int start_index,
 tensorflow::mutex exception_class_mutex(tensorflow::LINKER_INITIALIZED);
 PyObject* exception_class GUARDED_BY(exception_class_mutex) = nullptr;
 
-static tensorflow::mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
-static tensorflow::int64 _uid GUARDED_BY(_uid_mutex) = 0;
+tensorflow::mutex _uid_mutex(tensorflow::LINKER_INITIALIZED);
+tensorflow::int64 _uid GUARDED_BY(_uid_mutex) = 0;
+
 }  // namespace
 
 void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
@@ -551,6 +528,34 @@ tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>* GetTapeSet() {
   return tape_set;
 }
 
+// A safe copy of the current tapeset. Does not get affected by other python
+// threads changing the set of active tapes.
+class SafeTapeSet {
+ public:
+  SafeTapeSet() : tape_set_(*GetTapeSet()) {
+    for (auto* tape : tape_set_) {
+      Py_INCREF(tape);
+    }
+  }
+
+  ~SafeTapeSet() {
+    for (auto* tape : tape_set_) {
+      Py_DECREF(tape);
+    }
+  }
+
+  tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>::const_iterator begin() {
+    return tape_set_.begin();
+  }
+
+  tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*>::const_iterator end() {
+    return tape_set_.end();
+  }
+
+ private:
+  tensorflow::gtl::CompactPointerSet<TFE_Py_Tape*> tape_set_;
+};
+
 // xcode 7 doesn't define thread_local, so for compatibility we implement our
 // own. TODO(apassos) remove once we can deprecate xcode 7.
 #ifndef __APPLE__
@@ -741,10 +746,7 @@ void TFE_Py_TapeSetWatchVariable(PyObject* variable) {
   if (*ThreadTapeIsStopped()) {
     return;
   }
-  // Note: making a copy because watching a variable can trigger a change to the
-  // set of tapes by allowing python's garbage collector to run.
-  auto tape_set = *GetTapeSet();
-  for (TFE_Py_Tape* tape : tape_set) {
+  for (TFE_Py_Tape* tape : SafeTapeSet()) {
     tape->tape->WatchVariable(variable);
   }
 }
@@ -800,8 +802,7 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
     return;
   }
 
-  auto set = *GetTapeSet();
-  for (TFE_Py_Tape* tape : set) {
+  for (TFE_Py_Tape* tape : SafeTapeSet()) {
     Py_INCREF(backward_function);
     tape->tape->RecordOperation(
         op_type_str, output_info, input_ids, backward_function,
@@ -810,10 +811,7 @@ void TFE_Py_TapeSetRecordOperation(PyObject* op_type, PyObject* output_tensors,
 }
 
 void TFE_Py_TapeSetDeleteTrace(tensorflow::int64 tensor_id) {
-  // Note: making a copy because deleting the trace can trigger a change to the
-  // set of tapes by allowing python's garbage collector to run.
-  auto tape_set = *GetTapeSet();
-  for (TFE_Py_Tape* tape : tape_set) {
+  for (TFE_Py_Tape* tape : SafeTapeSet()) {
     tape->tape->DeleteTrace(tensor_id);
   }
 }

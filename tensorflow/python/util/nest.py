@@ -532,8 +532,8 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
             (list(_six.iterkeys(input_tree)),
              list(_six.iterkeys(shallow_tree))))
 
-      input_tree = list(_six.iteritems(input_tree))
-      shallow_tree = list(_six.iteritems(shallow_tree))
+      input_tree = list(sorted(_six.iteritems(input_tree)))
+      shallow_tree = list(sorted(_six.iteritems(shallow_tree)))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,

@@ -30,25 +30,6 @@ using xla::source_map_util::InvalidParameterArgument;
 
 namespace xla {
 
-ExecutableBuildOptions& ExecutableBuildOptions::set_device_ordinal(
-    int device_ordinal) {
-  device_ordinal_ = device_ordinal;
-  return *this;
-}
-
-int ExecutableBuildOptions::device_ordinal() const { return device_ordinal_; }
-
-ExecutableBuildOptions& ExecutableBuildOptions::set_result_layout(
-    const Shape& shape_with_layout) {
-  result_layout_set_ = true;
-  result_layout_ = shape_with_layout;
-  return *this;
-}
-
-const Shape* ExecutableBuildOptions::result_layout() const {
-  return result_layout_set_ ? &result_layout_ : nullptr;
-}
-
 namespace {
 StatusOr<Backend::StreamPtr> BorrowStreamForDevice(int device_ordinal,
                                                    Backend* backend) {
@@ -60,16 +41,18 @@ StatusOr<Backend::StreamPtr> BorrowStreamForDevice(int device_ordinal,
 }  // namespace
 
 LocalExecutable::LocalExecutable(std::unique_ptr<Executable> executable,
-                                 Backend* backend, int device_ordinal,
-                                 const ExecutableBuildOptions& build_options)
+                                 Backend* backend,
+                                 ExecutableBuildOptions build_options)
     : executable_(std::move(executable)),
       backend_(backend),
-      build_device_ordinal_(device_ordinal),
-      build_options_(build_options) {}
+      build_options_(std::move(build_options)) {
+  CHECK_GE(build_options_.device_ordinal(), 0)
+      << "Must have a valid device ordinal that the executable was built for.";
+}
 
 tensorflow::Status LocalExecutable::ValidateExecutionOptions(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const ExecutableRunOptions& options, const Backend& backend) {
+    const ExecutableRunOptions& run_options, const Backend& backend) {
   const ComputationLayout& computation_layout =
       executable_->module_config().entry_computation_layout();
 
@@ -93,14 +76,14 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
     }
   }
 
-  if (options.stream() != nullptr) {
-    if (!options.stream()->ok()) {
+  if (run_options.stream() != nullptr) {
+    if (!run_options.stream()->ok()) {
       return InvalidArgument("stream is uninitialized or in an error state");
     }
 
     // Check stream matches service platform.
     const se::Platform* stream_platform =
-        options.stream()->parent()->platform();
+        run_options.stream()->parent()->platform();
     if (stream_platform != backend_->platform()) {
       return InvalidArgument(
           "stream is for platform %s, but service targets platform %s",
@@ -110,7 +93,7 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
 
     // Cannot specify device_ordinal with a stream. The stream determines these
     // values.
-    if (options.device_ordinal() != -1) {
+    if (run_options.device_ordinal() != -1) {
       return InvalidArgument(
           "cannot set both device ordinal and stream options in "
           "ExecutableRunOptions; the stream determines the device ordinal");
@@ -119,34 +102,34 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
 
   // Verify that the device the executable was built for is equivalent to the
   // device it will run on.
-  int run_device_ordinal = options.device_ordinal() == -1
+  int run_device_ordinal = run_options.device_ordinal() == -1
                                ? backend_->default_device_ordinal()
-                               : options.device_ordinal();
-  TF_ASSIGN_OR_RETURN(
-      bool devices_equivalent,
-      backend_->devices_equivalent(run_device_ordinal, build_device_ordinal_));
+                               : run_options.device_ordinal();
+  TF_ASSIGN_OR_RETURN(bool devices_equivalent,
+                      backend_->devices_equivalent(
+                          run_device_ordinal, build_options_.device_ordinal()));
   if (!devices_equivalent) {
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * run_executor,
                         backend_->stream_executor(run_device_ordinal));
     TF_ASSIGN_OR_RETURN(se::StreamExecutor * build_executor,
-                        backend_->stream_executor(build_device_ordinal_));
+                        backend_->stream_executor(build_device_ordinal()));
     return InvalidArgument(
         "executable is built for device %s of type \"%s\"; cannot run it on "
         "device %s of type \"%s\"",
-        backend_->device_name(build_device_ordinal_).c_str(),
+        backend_->device_name(build_device_ordinal()).c_str(),
         build_executor->GetDeviceDescription().name().c_str(),
         backend_->device_name(run_device_ordinal).c_str(),
         run_executor->GetDeviceDescription().name().c_str());
   }
 
-  if (!options.allocator()) {
+  if (!run_options.allocator()) {
     return InvalidArgument("an allocator must be provided to ExecuteLocally");
   }
 
-  if (options.allocator()->platform() != backend.platform()) {
+  if (run_options.allocator()->platform() != backend.platform()) {
     return InvalidArgument(
         "allocator platform (%s) does not match service platform (%s)",
-        options.allocator()->platform()->Name().c_str(),
+        run_options.allocator()->platform()->Name().c_str(),
         backend.platform()->Name().c_str());
   }
 
@@ -155,23 +138,22 @@ tensorflow::Status LocalExecutable::ValidateExecutionOptions(
 
 StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
     const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-    const ExecutableRunOptions& options) {
-  TF_RETURN_IF_ERROR(ValidateExecutionOptions(arguments, options, *backend_));
-
-  ExecutableRunOptions actual_options = options;
+    ExecutableRunOptions run_options) {
+  TF_RETURN_IF_ERROR(
+      ValidateExecutionOptions(arguments, run_options, *backend_));
 
   Backend::StreamPtr stream;
-  if (options.stream() == nullptr) {
+  if (run_options.stream() == nullptr) {
     // NB!  The lifetime of `stream` needs to match the lifetime of
     // `actual_options` (otherwise we will end up using a returned stream in
     // ExecuteOnStreamWrapper), which is why it isn't declared in the inner "if"
     // scope.
     TF_ASSIGN_OR_RETURN(
-        stream, BorrowStreamForDevice(options.device_ordinal(), backend_));
-    actual_options.set_stream(stream.get());
+        stream, BorrowStreamForDevice(run_options.device_ordinal(), backend_));
+    run_options.set_stream(stream.get());
   }
-  if (options.allocator() == nullptr) {
-    actual_options.set_allocator(backend_->memory_allocator());
+  if (run_options.allocator() == nullptr) {
+    run_options.set_allocator(backend_->memory_allocator());
   }
 
   // For local client execution on CPU backends:
@@ -180,7 +162,7 @@ StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
   // *) The thread pool used for XLA CPU ops is from
   //    backend_->eigen_intra_op_thread_pool().
   ServiceExecutableRunOptions service_options(
-      actual_options, backend_->StreamBorrower(),
+      run_options, backend_->StreamBorrower(),
       backend_->eigen_intra_op_thread_pool());
 
   if (executable_->dumping()) {
@@ -189,9 +171,8 @@ StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::Run(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<ShapedBuffer> result,
       executable_->ExecuteOnStreamWrapper(
-          &service_options, options.execution_profile(), arguments));
-  return ScopedShapedBuffer::MakeScoped(result.get(),
-                                        actual_options.allocator());
+          &service_options, run_options.execution_profile(), arguments));
+  return ScopedShapedBuffer::MakeScoped(result.get(), run_options.allocator());
 }
 
 StatusOr<std::unique_ptr<ScopedShapedBuffer>> LocalExecutable::ExecuteAndDump(
@@ -267,16 +248,19 @@ StatusOr<std::unique_ptr<LocalExecutable>> LocalClient::Compile(
     const Computation& computation,
     const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
     const ExecutableBuildOptions& options) {
-  int device_ordinal = options.device_ordinal() == -1
-                           ? default_device_ordinal()
-                           : options.device_ordinal();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                      local_service_->CompileExecutable(
-                          computation.handle(), argument_layouts,
-                          options.result_layout(), device_ordinal));
+  ExecutableBuildOptions updated_options = options;
+  if (options.device_ordinal() == -1) {
+    updated_options.set_device_ordinal(default_device_ordinal());
+    VLOG(3) << "Set device ordinal to default value of: "
+            << updated_options.device_ordinal();
+  }
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<Executable> executable,
+      local_service_->CompileExecutable(computation.handle(), argument_layouts,
+                                        updated_options));
   return WrapUnique(new LocalExecutable(std::move(executable),
                                         local_service_->mutable_backend(),
-                                        device_ordinal, options));
+                                        updated_options));
 }
 
 StatusOr<std::unique_ptr<ScopedShapedBuffer>>

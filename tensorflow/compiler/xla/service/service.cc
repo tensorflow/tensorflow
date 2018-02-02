@@ -337,7 +337,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     std::vector<VersionedComputationHandle> versioned_handles,
     std::vector<std::unique_ptr<HloModuleConfig>> module_configs,
     Backend* backend,
-    std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors) {
+    std::vector<std::vector<perftools::gputools::StreamExecutor*>> executors,
+    DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << Printf("BuildExecutable on service %p", this);
 
   // Dump computation proto state if flag is set.
@@ -383,7 +384,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
 
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
-      backend->compiler()->Compile(std::move(modules), std::move(executors)));
+      backend->compiler()->Compile(std::move(modules), std::move(executors),
+                                   device_allocator));
 
   for (size_t i = 0; i < versioned_handles.size(); ++i) {
     if (!module_configs[i]->debug_options().xla_dump_executions_to().empty()) {
@@ -396,8 +398,8 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
 
 StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
     const VersionedComputationHandle& versioned_handle,
-    std::unique_ptr<HloModuleConfig> module_config,
-    Backend* backend, se::StreamExecutor* executor) {
+    std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+    se::StreamExecutor* executor, DeviceMemoryAllocator* device_allocator) {
   VLOG(1) << Printf("BuildExecutable on service %p with handle %s", this,
                     versioned_handle.ToString().c_str());
 
@@ -430,11 +432,12 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
   TF_RETURN_IF_ERROR(MaybeDumpHloModule(*module));
 
   TF_ASSIGN_OR_RETURN(
-      module, backend->compiler()->RunHloPasses(std::move(module), executor));
+      module, backend->compiler()->RunHloPasses(std::move(module), executor,
+                                                device_allocator));
 
-  TF_ASSIGN_OR_RETURN(
-      std::unique_ptr<Executable> executable,
-      backend->compiler()->RunBackend(std::move(module), executor));
+  TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
+                      backend->compiler()->RunBackend(
+                          std::move(module), executor, device_allocator));
 
   if (!other_directory_path.empty()) {
     executable->set_session_module(std::move(session_module));
@@ -445,9 +448,9 @@ StatusOr<std::unique_ptr<Executable>> Service::BuildExecutable(
 
 StatusOr<std::shared_ptr<Executable>> Service::BuildAndCacheExecutable(
     const VersionedComputationHandle& versioned_handle,
-    std::unique_ptr<HloModuleConfig> module_config,
-    Backend* backend, perftools::gputools::StreamExecutor* executor,
-    ExecutionProfile* profile) {
+    std::unique_ptr<HloModuleConfig> module_config, Backend* backend,
+    perftools::gputools::StreamExecutor* executor, ExecutionProfile* profile,
+    DeviceMemoryAllocator* device_allocator) {
   std::shared_ptr<Executable> executable =
       compilation_cache_.LookUp(versioned_handle, *module_config);
 
@@ -469,7 +472,7 @@ StatusOr<std::shared_ptr<Executable>> Service::BuildAndCacheExecutable(
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable_unique_ptr,
       BuildExecutable(versioned_handle, std::move(module_config), backend,
-                      executor));
+                      executor, device_allocator));
 
   if (profile != nullptr) {
     uint64 end_micros = tensorflow::Env::Default()->NowMicros();
@@ -771,10 +774,14 @@ tensorflow::Status Service::ExecuteParallel(const ExecuteParallelRequest* arg,
 
   // Build the user computations into HloModules and compile to generate the
   // executables.
+  //
+  // TODO(jlebar): There's currently no way to pass a device allocator to
+  // ExecuteParallel, so we have to pass a null device_allocator below.
   TF_ASSIGN_OR_RETURN(
       std::vector<std::unique_ptr<Executable>> executables,
       BuildExecutables(versioned_handles, std::move(module_configs),
-                       execute_backend_.get(), all_executors));
+                       execute_backend_.get(), all_executors,
+                       /*device_allocator=*/nullptr));
   std::vector<Executable*> executable_ptrs;
   executable_ptrs.reserve(executables.size());
   for (const auto& executable : executables) {
@@ -1612,14 +1619,14 @@ StatusOr<std::vector<perftools::gputools::StreamExecutor*>> Service::Replicas(
 }
 
 Status Service::MaybeDumpHloModule(const HloModule& module) const {
-  const string xla_dump_prepass_hlo_proto_to =
-      module.config().debug_options().xla_dump_prepass_hlo_proto_to();
-  if (xla_dump_prepass_hlo_proto_to.empty()) {
+  const string xla_dump_unoptimized_hlo_proto_to =
+      module.config().debug_options().xla_dump_unoptimized_hlo_proto_to();
+  if (xla_dump_unoptimized_hlo_proto_to.empty()) {
     return Status::OK();
   }
   HloProto proto = MakeHloProto(module);
   return protobuf_util::DumpProtoToDirectory(
-      proto, xla_dump_prepass_hlo_proto_to, module.name());
+      proto, xla_dump_unoptimized_hlo_proto_to, module.name());
 }
 
 }  // namespace xla

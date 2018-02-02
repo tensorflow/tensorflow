@@ -397,6 +397,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "manip"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "metrics"
     mtype: "<type \'module\'>"
   }
@@ -2043,6 +2047,10 @@ tf_module {
   member_method {
     name: "unique_with_counts"
     argspec: "args=[\'x\', \'out_idx\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "unravel_index"
+    argspec: "args=[\'indices\', \'dims\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "unsorted_segment_max"

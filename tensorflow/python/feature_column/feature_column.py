@@ -157,6 +157,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _internal_input_layer(features,
@@ -209,6 +210,7 @@ def _internal_input_layer(features,
     return array_ops.concat(output_tensors, 1)
 
 
+@tf_export('feature_column.input_layer')
 def input_layer(features,
                 feature_columns,
                 weight_collections=None,
@@ -329,6 +331,7 @@ class InputLayer(object):
     return self._input_layer_template.weights
 
 
+@tf_export('feature_column.linear_model')
 def linear_model(features,
                  feature_columns,
                  units=1,
@@ -498,6 +501,7 @@ def _transform_features(features, feature_columns):
   return outputs
 
 
+@tf_export('feature_column.make_parse_example_spec')
 def make_parse_example_spec(feature_columns):
   """Creates parsing spec dictionary from input feature_columns.
 
@@ -557,6 +561,7 @@ def make_parse_example_spec(feature_columns):
   return result
 
 
+@tf_export('feature_column.embedding_column')
 def embedding_column(
     categorical_column, dimension, combiner='mean', initializer=None,
     ckpt_to_load_from=None, tensor_name_in_ckpt=None, max_norm=None,
@@ -807,6 +812,7 @@ def shared_embedding_columns(
   return result
 
 
+@tf_export('feature_column.numeric_column')
 def numeric_column(key,
                    shape=(1,),
                    default_value=None,
@@ -881,6 +887,7 @@ def numeric_column(key,
       normalizer_fn=normalizer_fn)
 
 
+@tf_export('feature_column.bucketized_column')
 def bucketized_column(source_column, boundaries):
   """Represents discretized dense input.
 
@@ -970,6 +977,7 @@ def _assert_string_or_int(dtype, prefix):
         '{} dtype must be string or integer. dtype: {}.'.format(prefix, dtype))
 
 
+@tf_export('feature_column.categorical_column_with_hash_bucket')
 def categorical_column_with_hash_bucket(key,
                                         hash_bucket_size,
                                         dtype=dtypes.string):
@@ -1026,6 +1034,7 @@ def categorical_column_with_hash_bucket(key,
   return _HashedCategoricalColumn(key, hash_bucket_size, dtype)
 
 
+@tf_export('feature_column.categorical_column_with_vocabulary_file')
 def categorical_column_with_vocabulary_file(key,
                                             vocabulary_file,
                                             vocabulary_size=None,
@@ -1145,6 +1154,7 @@ def categorical_column_with_vocabulary_file(key,
       dtype=dtype)
 
 
+@tf_export('feature_column.categorical_column_with_vocabulary_list')
 def categorical_column_with_vocabulary_list(
     key, vocabulary_list, dtype=None, default_value=-1, num_oov_buckets=0):
   """A `_CategoricalColumn` with in-memory vocabulary.
@@ -1255,6 +1265,7 @@ def categorical_column_with_vocabulary_list(
       default_value=default_value, num_oov_buckets=num_oov_buckets)
 
 
+@tf_export('feature_column.categorical_column_with_identity')
 def categorical_column_with_identity(key, num_buckets, default_value=None):
   """A `_CategoricalColumn` that returns identity values.
 
@@ -1322,6 +1333,7 @@ def categorical_column_with_identity(key, num_buckets, default_value=None):
       key=key, num_buckets=num_buckets, default_value=default_value)
 
 
+@tf_export('feature_column.indicator_column')
 def indicator_column(categorical_column):
   """Represents multi-hot representation of given categorical column.
 
@@ -1350,6 +1362,7 @@ def indicator_column(categorical_column):
   return _IndicatorColumn(categorical_column)
 
 
+@tf_export('feature_column.weighted_categorical_column')
 def weighted_categorical_column(
     categorical_column, weight_feature_key, dtype=dtypes.float32):
   """Applies weight values to a `_CategoricalColumn`.
@@ -1424,6 +1437,7 @@ def weighted_categorical_column(
       dtype=dtype)
 
 
+@tf_export('feature_column.crossed_column')
 def crossed_column(keys, hash_bucket_size, hash_key=None):
   """Returns a column for performing crosses of categorical features.
 

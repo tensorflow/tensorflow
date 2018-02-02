@@ -57,6 +57,18 @@ class S3FileSystem : public FileSystem {
   Status RenameFile(const string& src, const string& target) override;
  private:
   // Returns the member S3 client, initializing as-needed.
+  // When the client tries to access the object in S3, e.g.,
+  //   s3://bucket-name/path/to/object
+  // the behavior could be controlled by various environmental
+  // variables.
+  // By default S3 access regional endpoint, with region
+  // controlled by `AWS_REGION`. The endpoint could be overridden
+  // explicitly with `S3_ENDPOINT`. S3 uses HTTPS by default.
+  // If S3_USE_HTTPS=0 is specified, HTTP is used. Also,
+  // S3_VERIFY_SSL=0 could disable SSL verification in case
+  // HTTPS is used.
+  // This S3 Client does not support Virtual Hosted–Style Method
+  // for a bucket.
   std::shared_ptr<Aws::S3::S3Client> GetS3Client();
 
   std::shared_ptr<Aws::S3::S3Client> s3_client_;

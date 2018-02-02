@@ -41,7 +41,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -429,14 +429,13 @@ template <typename Scalar>
 struct LaunchBatchMatMul<SYCLDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out) {
-
-  // Number of matrix multiplies i.e. size of the batch.
-  const int64 batch_size = in_x.dim_size(0);
-  ParallelMatMulKernelSYCL<Scalar>::Run(context, in_x, in_y, adj_x, adj_y, out,
-                                        0, batch_size);
+    // Number of matrix multiplies i.e. size of the batch.
+    const int64 batch_size = in_x.dim_size(0);
+    ParallelMatMulKernelSYCL<Scalar>::Run(context, in_x, in_y, adj_x, adj_y,
+                                          out, 0, batch_size);
   }
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename Scalar>
 class BatchMatMul : public OpKernel {
@@ -462,10 +461,10 @@ class BatchMatMul : public OpKernel {
     TensorShape out_shape;
     for (int i = 0; i < ndims - 2; ++i) {
       OP_REQUIRES(ctx, in0.dim_size(i) == in1.dim_size(i),
-                  errors::InvalidArgument("In[0].dim(", i, ") and In[1].dim(",
-                                          i, ") must be the same: ",
-                                          in0.shape().DebugString(), " vs ",
-                                          in1.shape().DebugString()));
+                  errors::InvalidArgument(
+                      "In[0].dim(", i, ") and In[1].dim(", i,
+                      ") must be the same: ", in0.shape().DebugString(), " vs ",
+                      in1.shape().DebugString()));
       out_shape.AddDim(in0.dim_size(i));
     }
     auto n = (ndims == 2) ? 1 : out_shape.num_elements();
@@ -507,12 +506,12 @@ class BatchMatMul : public OpKernel {
   bool adj_y_;
 };
 
-#define REGISTER_BATCH_MATMUL_CPU(TYPE)                                              \
+#define REGISTER_BATCH_MATMUL_CPU(TYPE)                                 \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
       BatchMatMul<CPUDevice, TYPE>)
 
-#define REGISTER_BATCH_MATMUL_GPU(TYPE)                                              \
+#define REGISTER_BATCH_MATMUL_GPU(TYPE)                                 \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("BatchMatMul").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
       BatchMatMul<GPUDevice, TYPE>)
@@ -522,5 +521,5 @@ class BatchMatMul : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                               \
       Name("BatchMatMul").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
       BatchMatMul<SYCLDevice, TYPE>)
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // end namespace tensorflow

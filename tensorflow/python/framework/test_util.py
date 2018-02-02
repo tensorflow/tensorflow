@@ -123,11 +123,11 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
     TypeError: If either argument is not a `GraphDef`.
   """
   if not isinstance(actual, graph_pb2.GraphDef):
-    raise TypeError("Expected tf.GraphDef for actual, got %s" %
-                    type(actual).__name__)
+    raise TypeError(
+        "Expected tf.GraphDef for actual, got %s" % type(actual).__name__)
   if not isinstance(expected, graph_pb2.GraphDef):
-    raise TypeError("Expected tf.GraphDef for expected, got %s" %
-                    type(expected).__name__)
+    raise TypeError(
+        "Expected tf.GraphDef for expected, got %s" % type(expected).__name__)
 
   if checkpoint_v2:
     _strip_checkpoint_v2_randomized(actual)
@@ -152,11 +152,10 @@ def assert_meta_graph_protos_equal(tester, a, b):
       a_proto = proto_type()
       b_proto = proto_type()
       # Number of entries in the collections is the same
-      tester.assertEqual(len(a_value.bytes_list.value),
-                         len(b_value.bytes_list.value))
-      for (a_value_item, b_value_item) in zip(
-          a_value.bytes_list.value,
-          b_value.bytes_list.value):
+      tester.assertEqual(
+          len(a_value.bytes_list.value), len(b_value.bytes_list.value))
+      for (a_value_item, b_value_item) in zip(a_value.bytes_list.value,
+                                              b_value.bytes_list.value):
         a_proto.ParseFromString(a_value_item)
         b_proto.ParseFromString(b_value_item)
         tester.assertProtoEquals(a_proto, b_proto)
@@ -220,10 +219,7 @@ def NHWCToNCHW(input_tensor):
     converted tensor or shape array
   """
   # tensor dim -> new axis order
-  new_axes = {
-      4: [0, 3, 1, 2],
-      5: [0, 4, 1, 2, 3]
-  }
+  new_axes = {4: [0, 3, 1, 2], 5: [0, 4, 1, 2, 3]}
   if isinstance(input_tensor, ops.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])
@@ -250,8 +246,9 @@ def NHWCToNCHW_VECT_C(input_shape_or_tensor):
   """
   permutations = {5: [0, 3, 1, 2, 4], 6: [0, 4, 1, 2, 3, 5]}
   is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
-  temp_shape = (input_shape_or_tensor.shape.as_list()
-                if is_tensor else input_shape_or_tensor)
+  temp_shape = (
+      input_shape_or_tensor.shape.as_list()
+      if is_tensor else input_shape_or_tensor)
   if temp_shape[-1] % 4 != 0:
     raise ValueError(
         "Last dimension of input must be evenly divisible by 4 to convert to "
@@ -283,8 +280,9 @@ def NCHW_VECT_CToNHWC(input_shape_or_tensor):
   """
   permutations = {5: [0, 2, 3, 1, 4], 6: [0, 2, 3, 4, 1, 5]}
   is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
-  input_shape = (input_shape_or_tensor.shape.as_list()
-                 if is_tensor else input_shape_or_tensor)
+  input_shape = (
+      input_shape_or_tensor.shape.as_list()
+      if is_tensor else input_shape_or_tensor)
   if input_shape[-1] != 4:
     raise ValueError("Last dimension of NCHW_VECT_C must be 4.")
   permutation = permutations[len(input_shape)]
@@ -307,10 +305,7 @@ def NCHWToNHWC(input_tensor):
     converted tensor or shape array
   """
   # tensor dim -> new axis order
-  new_axes = {
-      4: [0, 2, 3, 1],
-      5: [0, 2, 3, 4, 1]
-  }
+  new_axes = {4: [0, 2, 3, 1], 5: [0, 2, 3, 4, 1]}
   if isinstance(input_tensor, ops.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])
@@ -325,10 +320,17 @@ def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
   prev_value = ops._USE_C_API
   ops._USE_C_API = use_c_api
   try:
-    with ops.Graph().as_default():
-      fn(*args, **kwargs)
+    # Reset the default graph so it has the C API enabled. We call
+    # reset_default_graph() instead of creating a new default Graph context to
+    # make this robust to tests that call reset_default_graph(), which requires
+    # that the current default graph isn't nested.
+    ops.reset_default_graph()
+    fn(*args, **kwargs)
   finally:
     ops._USE_C_API = prev_value
+    # Make sure default graph reflects prev_value in case next test doesn't call
+    # reset_default_graph().
+    ops.reset_default_graph()
 # pylint: disable=protected-access
 
 
@@ -345,7 +347,9 @@ def skip_if(condition):
   Returns:
     The wrapped function
   """
+
   def real_skip_if(fn):
+
     def wrapper(*args, **kwargs):
       if callable(condition):
         skip = condition()
@@ -353,7 +357,9 @@ def skip_if(condition):
         skip = condition
       if not skip:
         fn(*args, **kwargs)
+
     return wrapper
+
   return real_skip_if
 
 
@@ -370,8 +376,10 @@ def disable_c_api(fn):
   Returns:
     The wrapped function
   """
+
   def wrapper(*args, **kwargs):
     _use_c_api_wrapper(fn, False, *args, **kwargs)
+
   return wrapper
 
 
@@ -388,8 +396,10 @@ def enable_c_api(fn):
   Returns:
     The wrapped function
   """
+
   def wrapper(*args, **kwargs):
     _use_c_api_wrapper(fn, True, *args, **kwargs)
+
   return wrapper
 
 
@@ -561,13 +571,17 @@ def assert_no_garbage_created(f):
     # not hold on to every object in other tests.
     gc.set_debug(previous_debug_flags)
     gc.enable()
+
   return decorator
 
 
-def run_in_graph_and_eager_modes(
-    __unused__=None, graph=None, config=None,
-    use_gpu=False, force_gpu=False,
-    reset_test=True, assert_no_eager_garbage=False):
+def run_in_graph_and_eager_modes(__unused__=None,
+                                 graph=None,
+                                 config=None,
+                                 use_gpu=False,
+                                 force_gpu=False,
+                                 reset_test=True,
+                                 assert_no_eager_garbage=False):
   """Runs the test in both graph and eager modes.
 
   Args:
@@ -596,6 +610,7 @@ def run_in_graph_and_eager_modes(
 
   def decorator(f):
     """Test method decorator."""
+
     def decorated(self, **kwargs):
       """Decorated the test method."""
       with context.graph_mode():
@@ -631,6 +646,7 @@ def run_in_graph_and_eager_modes(
           run_eager_mode(self, **kwargs)
 
     return decorated
+
   return decorator
 
 
@@ -767,8 +783,10 @@ class TensorFlowTestCase(googletest.TestCase):
       self._AssertProtoEquals(expected_message, message)
     elif isinstance(expected_message_maybe_ascii, str):
       expected_message = type(message)()
-      text_format.Merge(expected_message_maybe_ascii, expected_message,
-                        descriptor_pool=descriptor_pool.Default())
+      text_format.Merge(
+          expected_message_maybe_ascii,
+          expected_message,
+          descriptor_pool=descriptor_pool.Default())
       self._AssertProtoEquals(expected_message, message)
     else:
       assert False, ("Can't compare protos of type %s and %s" %
@@ -852,7 +870,8 @@ class TensorFlowTestCase(googletest.TestCase):
     trigger the creation of a new session.
 
     Use the `use_gpu` and `force_gpu` options to control where ops are run. If
-    `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if `use_gpu`
+    `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if
+    `use_gpu`
     is True, TensorFlow tries to run as many ops on the GPU as possible. If both
     `force_gpu and `use_gpu` are False, all ops are pinned to the CPU.
 
@@ -1051,6 +1070,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self._threads.append(ret)
     return ret
 
+
 # pylint: enable=invalid-name
 
   def assertNear(self, f1, f2, err, msg=None):
@@ -1118,7 +1138,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # the absolute difference between a and b.  Here, we want to
       # print out which elements violate such conditions.
       cond = np.logical_or(
-          np.abs(a - b) > atol + rtol * np.abs(b), np.isnan(a) != np.isnan(b))
+          np.abs(a - b) > atol + rtol * np.abs(b),
+          np.isnan(a) != np.isnan(b))
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
@@ -1380,8 +1401,11 @@ class TensorFlowTestCase(googletest.TestCase):
 
 
 @tf_export("test.create_local_cluster")
-def create_local_cluster(num_workers, num_ps, protocol="grpc",
-                         worker_config=None, ps_config=None):
+def create_local_cluster(num_workers,
+                         num_ps,
+                         protocol="grpc",
+                         worker_config=None,
+                         ps_config=None):
   """Create and start local servers and return the associated `Server` objects.
 
   Example:
@@ -1431,15 +1455,21 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc",
 
   workers = [
       server_lib.Server(
-          cs, job_name="worker", protocol=protocol, task_index=ix,
-          config=worker_config, start=True)
-      for ix in range(num_workers)
+          cs,
+          job_name="worker",
+          protocol=protocol,
+          task_index=ix,
+          config=worker_config,
+          start=True) for ix in range(num_workers)
   ]
   ps_servers = [
       server_lib.Server(
-          cs, job_name="ps", protocol=protocol, task_index=ix,
-          config=ps_config, start=True)
-      for ix in range(num_ps)
+          cs,
+          job_name="ps",
+          protocol=protocol,
+          task_index=ix,
+          config=ps_config,
+          start=True) for ix in range(num_ps)
   ]
 
   return workers, ps_servers
