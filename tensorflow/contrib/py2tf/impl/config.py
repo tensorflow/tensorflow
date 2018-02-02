@@ -36,4 +36,5 @@ NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
 # TODO(mdan): Make sure copybara renames the reference below.
 COMPILED_IMPORT_STATEMENTS = (
     'import tensorflow as tf',
-)
+    'from tensorflow.contrib.py2tf import utils as '
+    'py2tf_utils')

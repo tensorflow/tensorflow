@@ -2452,9 +2452,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     // NOTE: names are alphabetically sorted.
     rinfo_.push_back({csinfo_.addn, mkl_op_registry::GetMklOpName(csinfo_.addn),
                       CopyAttrsAddN, AddNRewrite});
-    /* rinfo_.push_back({csinfo_.add,
+    rinfo_.push_back({csinfo_.add,
                       mkl_op_registry::GetMklOpName(csinfo_.add),
-                      CopyAttrsDataType, AlwaysRewrite}); */
+                      CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.avg_pool,
                       mkl_op_registry::GetMklOpName(csinfo_.avg_pool),
                       CopyAttrsPooling, AlwaysRewrite});
@@ -2502,15 +2502,15 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.max_pool_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.max_pool_grad),
                       CopyAttrsPooling, AlwaysRewrite});
-    /*
+
     rinfo_.push_back({csinfo_.maximum,
                       mkl_op_registry::GetMklOpName(csinfo_.maximum),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.mul,
                       mkl_op_registry::GetMklOpName(csinfo_.mul),
                       CopyAttrsDataType, AlwaysRewrite});
-    */
-    rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
+    rinfo_.push_back({csinfo_.relu,
+                      mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.relu_grad,
                       mkl_op_registry::GetMklOpName(csinfo_.relu_grad),
@@ -2529,14 +2529,14 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     rinfo_.push_back({csinfo_.softmax,
                       mkl_op_registry::GetMklOpName(csinfo_.softmax),
                       CopyAttrsDataType, AlwaysRewrite});
-    /*
+
     rinfo_.push_back({csinfo_.squared_difference,
                       mkl_op_registry::GetMklOpName(csinfo_.squared_difference),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.sub,
                       mkl_op_registry::GetMklOpName(csinfo_.sub),
                       CopyAttrsDataType, AlwaysRewrite});
-    */
+
 
     // Add info about which ops to add workspace edge to and the slots.
     wsinfo_.push_back({csinfo_.lrn, csinfo_.lrn_grad, 0, 2, 1, 3});

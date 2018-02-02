@@ -46,6 +46,7 @@ py_library(
     deps = [
         ":converters",
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
+        "//tensorflow/contrib/py2tf/utils",
         "@gast_archive//:gast",
     ],
 )
