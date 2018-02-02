@@ -68,3 +68,4 @@ if "__main__" in __name__:
   o1 = runGraph(gdef, dummy_input)
   o2 = runGraph(trt_graph, dummy_input)
   assert (np.array_equal(o1, o2))
+  print("Pass")
