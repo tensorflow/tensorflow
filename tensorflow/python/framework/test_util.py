@@ -425,66 +425,6 @@ def with_c_api(cls):
   return cls
 
 
-class IsolateTest(object):
-  """A context manager which isolates resources in its block.
-
-  Provides an Eager-agnostic abstraction for preventing the sharing of
-  variables and other resources.
-
-  In graph mode, resource handle ops are only executed in a particular Session,
-  isolating them from resources with the same name in other Graphs. In Eager,
-  separate Sessions do not exist, so resources (particularly ResourceVariables)
-  would be shared implicitly if a resource of the same name were created
-  anywhere in a Python process. Multiple handles to the same resource would
-  cause several issues, and so this type of sharing will raise an exception.
-
-  Using resources with the same name in a single Python process may be useful
-  (especially for unit tests), so this context manager provides an abstraction
-  for isolating resources. Using a resource created in one Isolation environment
-  in another is an error.
-
-  Example usage in Eager mode:
-
-  ```python
-  import tensorflow as tf
-  # Import subject to change
-  from tensorflow.contrib.eager.python import tfe
-
-  tfe.enable_eager_execution()
-
-  for hyperparameter in [1, 2, 3]:
-    with tfe.IsolateTest():
-      v = tfe.Variable(name="v", initial_value=hyperparameter)
-      # train model, test results ...
-  ```
-
-  IsolateTest is currently exposed through contrib.eager, but it creates a new
-  default Graph and provides equivalent safety in graph mode.
-  """
-
-  def __init__(self):
-    if context.in_eager_mode() and tape.could_possibly_record():
-      raise ValueError("Cannot isolate Eager execution with an active tape.")
-    # In Eager, Graphs set a container which isolates resources, and maintain a
-    # VariableStore which caches ResourceVariable objects created through
-    # get_variable. So setting the default Graph has the side effect of
-    # isolating Eager resources.
-    with context.eager_mode():
-      # Create the graph in Eager mode, as this provides stricter semantics
-      # (i.e. has a unique container prefix). This prevents implicit sharing
-      # when a Graph-mode graph is created and then Eager mode is enabled (an
-      # error through enable_eager_execution, but common with context managers
-      # in unit tests).
-      self._graph_as_default_context_manager = ops.Graph().as_default()
-
-  def __enter__(self):
-    self._graph_as_default_context_manager.__enter__()
-
-  def __exit__(self, type_arg, value_arg, traceback_arg):
-    return self._graph_as_default_context_manager.__exit__(
-        type_arg, value_arg, traceback_arg)
-
-
 def assert_no_new_tensors(f):
   """Decorator for asserting that no new Tensors persist after a test.
 
@@ -515,12 +455,11 @@ def assert_no_new_tensors(f):
         return False
 
     tensors_before = set(id(obj) for obj in gc.get_objects() if _is_tensor(obj))
-    outside_container_prefix = ops.get_default_graph()._container_prefix
-    with IsolateTest():
+    outside_graph_key = ops.get_default_graph()._graph_key
+    with ops.Graph().as_default():
       # Run the test in a new graph so that collections get cleared when it's
-      # done, but inherit the container prefix so that we can print the values
-      # of variables which get leaked when executing eagerly.
-      ops.get_default_graph()._container_prefix = outside_container_prefix
+      # done, but inherit the graph key so optimizers behave.
+      ops.get_default_graph()._graph_key = outside_graph_key
       f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
@@ -642,7 +581,7 @@ def run_in_graph_and_eager_modes(__unused__=None,
             assert_no_garbage_created(run_eager_mode))
 
       with context.eager_mode():
-        with IsolateTest():
+        with ops.Graph().as_default():
           run_eager_mode(self, **kwargs)
 
     return decorated

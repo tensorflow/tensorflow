@@ -660,8 +660,7 @@ void Tensor::FillDimsAndValidateCompatibleShape(
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::Tensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) {
-  CheckType(DataTypeToEnum<T>::v());
-  CHECK(IsAligned());
+  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(new_sizes, &dims);
   return typename TTypes<T, NDIMS>::Tensor(base<T>(), dims);
@@ -688,8 +687,7 @@ typename TTypes<T, NDIMS>::UnalignedTensor Tensor::unaligned_shaped(
 template <typename T, size_t NDIMS>
 typename TTypes<T, NDIMS>::ConstTensor Tensor::shaped(
     gtl::ArraySlice<int64> new_sizes) const {
-  CheckType(DataTypeToEnum<T>::v());
-  CHECK(IsAligned());
+  CheckTypeAndIsAligned(DataTypeToEnum<T>::v());
   Eigen::array<Eigen::DenseIndex, NDIMS> dims;
   FillDimsAndValidateCompatibleShape(new_sizes, &dims);
   return typename TTypes<T, NDIMS>::ConstTensor(base<T>(), dims);

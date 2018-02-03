@@ -21,6 +21,7 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+using ::int32;
 using ::testing::ElementsAreArray;
 
 class StridedSliceOpModel : public SingleOpModel {
