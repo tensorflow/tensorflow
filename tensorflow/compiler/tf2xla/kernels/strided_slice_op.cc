@@ -231,6 +231,7 @@ class StridedSliceAssignOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("new_axis_mask", &new_axis_mask_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shrink_axis_mask", &shrink_axis_mask_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Index", &index_type_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("T", &dtype_));
   }
 
   void Compile(XlaOpKernelContext* ctx) override {
@@ -252,9 +253,9 @@ class StridedSliceAssignOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, LiteralToHostTensor(strides_literal, index_type_,
                                             &strides_tensor));
 
-    DataType lhs_type;
     TensorShape lhs_shape;
-    OP_REQUIRES_OK(ctx, ctx->GetVariableTypeAndShape(0, &lhs_type, &lhs_shape));
+    xla::ComputationDataHandle lhs;
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, dtype_, &lhs_shape, &lhs));
 
     const TensorShape rhs_shape = ctx->InputShape(4);
 
@@ -281,9 +282,6 @@ class StridedSliceAssignOp : public XlaOpKernel {
                     "sliced l-value shape ", final_shape.DebugString(),
                     " does not match r-value shape ", rhs_shape.DebugString(),
                     ". Automatic broadcasting not yet implemented."));
-
-    xla::ComputationDataHandle lhs;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &lhs));
 
     xla::ComputationDataHandle rhs = ctx->Input(4);
 
@@ -320,13 +318,14 @@ class StridedSliceAssignOp : public XlaOpKernel {
           lhs, rhs, ctx->builder()->ConstantR1<int64>(slice_begin));
     }
 
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, lhs_type, lhs));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, lhs));
   }
 
  private:
   int32 begin_mask_, end_mask_;
   int32 ellipsis_mask_, new_axis_mask_, shrink_axis_mask_;
   DataType index_type_;
+  DataType dtype_;
 };
 
 REGISTER_XLA_OP(Name("ResourceStridedSliceAssign")

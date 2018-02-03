@@ -104,9 +104,17 @@ class XlaCompiler {
     // is the type of the variable's value, not DT_RESOURCE.
     DataType type;
 
-    // The shape of the argument. If the argument is a resource, this is the
-    // shape of the resource's value.
-    xla::Shape shape;
+    // The shape of the argument. For:
+    // * a parameter: the shape of the parameter.
+    // * a constant: ignored; the shape given by constant_value is used
+    //     instead.
+    // * an uninitialized resource: ignored. We don't yet know the shape of an
+    //     uninitialized resource (otherwise we would have initialized it!)
+    // * an initialized variable: the shape of the variable's value.
+    // * an initialized TensorArray or Stack resource: the shape of an entry in
+    //   the TensorArray/Stack. Note this is the size of a single entry, not the
+    //   XLA data structure that represents the complete stack/array.
+    TensorShape shape;
 
     // The value of the argument, if it is a compile-time constant. Must be a
     // host-memory tensor.
@@ -175,8 +183,9 @@ class XlaCompiler {
     int input_index;
 
     // Type and shape of the tensor to be written back.
+    // The `shape` field has the same meaning as the Argument::shape field.
     DataType type;
-    xla::Shape shape;
+    TensorShape shape;
 
     // Was the value of the variable modified by the computation?
     // (Always true, unless `return_updated_values_for_all_resources` is true.)
@@ -266,11 +275,10 @@ class XlaCompiler {
                       const std::vector<Argument>& args,
                       CompilationResult* result);
 
-  Status PrepareArguments(xla::ComputationBuilder* builder, NameAttrList func,
-                          const std::vector<DataType>& types,
-                          const std::vector<TensorShape>& shapes,
-                          const std::vector<const XlaExpression*>& expressions,
-                          std::vector<Argument>* args);
+  // Returns the shape of the XLA parameter for an argument 'arg'.
+  // See the class comment for more details about the argument passing
+  // convention.
+  static Status XLAShapeForArgument(const Argument& arg, xla::Shape* xla_shape);
 
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.

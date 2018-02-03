@@ -65,8 +65,8 @@ def logdet(matrix, name=None):
   ```
 
   Args:
-    matrix:  A `Tensor`. Must be `float32`, `float64`, `complex64`, or
-      `complex128` with shape `[..., M, M]`.
+    matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
+      or `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op`.  Defaults to `logdet`.
 
   Returns:
@@ -99,8 +99,8 @@ def adjoint(matrix, name=None):
                         #  [3 - 3j, 6 - 6j]]
 
   Args:
-    matrix:  A `Tensor`. Must be `float32`, `float64`, `complex64`, or
-      `complex128` with shape `[..., M, M]`.
+    matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
+      or `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op` (optional).
 
   Returns:
