@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
 
 #include <numeric>
 #include <vector>
@@ -33,14 +33,32 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
+bool CanImplementAsCudnnForwardConv(HloInstruction* conv) {
+  const ConvolutionDimensionNumbers& dnums =
+      conv->convolution_dimension_numbers();
+  if (dnums.input_spatial_dimensions_size() > 3) {
+    return false;
+  }
+
+  // CuDNN does not accept zero-element arguments
+  if (ShapeUtil::HasZeroElements(conv->operand(0)->shape()) ||
+      ShapeUtil::HasZeroElements(conv->operand(1)->shape())) {
+    return false;
+  }
+
+  if (window_util::HasWindowReversal(conv->window())) {
+    return false;
+  }
+  return true;
+}
+
 // Try to match a backward filter pattern that contains "conv".
 // Precondition: "conv" is a kConvolution.
-std::tuple<bool, std::vector<HloInstruction*>, Window,
-           ConvolutionDimensionNumbers>
-MatchBackwardFilter(HloInstruction* conv) {
+std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
+    HloInstruction* conv) {
   const auto no_match_result =
-      std::make_tuple(false, std::vector<HloInstruction*>(), Window(),
-                      ConvolutionDimensionNumbers());
+      std::make_tuple(false, Window(), ConvolutionDimensionNumbers());
   // Step 1: match the instruction pattern without considering the paddings and
   // dimension numbers just yet. We may need some generic pattern matcher
   // similar to third_party/llvm/llvm/include/llvm/IR/PatternMatch.h
@@ -190,18 +208,15 @@ MatchBackwardFilter(HloInstruction* conv) {
     backward_conv_dnums.add_kernel_spatial_dimensions(output_spatial_dims[i]);
   }
 
-  return std::make_tuple(true, std::vector<HloInstruction*>({conv}),
-                         backward_conv_window, backward_conv_dnums);
+  return std::make_tuple(true, backward_conv_window, backward_conv_dnums);
 }
 
 // Try to match a backward input pattern that contains "conv".
 // Precondition: "conv" is a kConvolution.
-std::tuple<bool, std::vector<HloInstruction*>, Window,
-           ConvolutionDimensionNumbers>
-MatchBackwardInput(HloInstruction* conv) {
+std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardInput(
+    HloInstruction* conv) {
   const auto no_match_result =
-      std::make_tuple(false, std::vector<HloInstruction*>(), Window(),
-                      ConvolutionDimensionNumbers());
+      std::make_tuple(false, Window(), ConvolutionDimensionNumbers());
 
   // Match instruction pattern.
   CHECK_EQ(HloOpcode::kConvolution, conv->opcode());
@@ -374,16 +389,63 @@ MatchBackwardInput(HloInstruction* conv) {
   dnums.set_kernel_output_feature_dimension(
       conv->convolution_dimension_numbers().kernel_input_feature_dimension());
 
-  return std::make_tuple(true,
-                         std::vector<HloInstruction*>({conv, reverse_filter}),
-                         new_window, dnums);
+  return std::make_tuple(true, new_window, dnums);
 }
-}  // namespace
 
-StatusOr<bool> ConvolutionFolding::Run(HloModule* module) {
-  HloComputation* entry_computation = module->entry_computation();
+// Tries to rewrite a single convolution into a call to cudnn.
+StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
+  CHECK_EQ(conv->opcode(), HloOpcode::kConvolution);
+
+  HloInstruction* custom_call = [&]() -> HloInstruction* {
+    bool match;
+    Window window;
+    ConvolutionDimensionNumbers dnums;
+
+    std::tie(match, window, dnums) = MatchBackwardFilter(conv);
+    if (match) {
+      return CreateCudnnConvBackwardFilter(
+          conv->shape(), conv->mutable_operand(0), conv->mutable_operand(1),
+          window, dnums);
+    }
+
+    std::tie(match, window, dnums) = MatchBackwardInput(conv);
+    if (match) {
+      // Backward input conv subsumes the conv plus the reverse in operand 1.
+      HloInstruction* reverse = conv->mutable_operand(1);
+      CHECK_EQ(reverse->opcode(), HloOpcode::kReverse);
+      HloInstruction* rhs = reverse->mutable_operand(0);
+
+      return CreateCudnnConvBackwardInput(
+          conv->shape(), conv->mutable_operand(0), rhs, window, dnums);
+    }
+
+    // If all else fails, try a forward convolution.
+    if (CanImplementAsCudnnForwardConv(conv)) {
+      return CreateCudnnConvForward(conv->shape(), conv->mutable_operand(0),
+                                    conv->mutable_operand(1), conv->window(),
+                                    conv->convolution_dimension_numbers());
+    }
+
+    return nullptr;
+  }();
+
+  if (custom_call == nullptr) {
+    return false;
+  }
+
+  // The CustomCall returns a tuple (conv_result, scratch_memory).  Extract out
+  // the conv result and replace `conv` with it.
+  TF_RETURN_IF_ERROR(conv->parent()->ReplaceWithNewInstruction(
+      conv,
+      HloInstruction::CreateGetTupleElement(conv->shape(), custom_call, 0)));
+  return true;
+}
+
+// Rewrites the convolutions in the given computation into calls to cudnn.
+// Returns true if it made any changes.
+StatusOr<bool> RunOnComputation(HloComputation* computation) {
   std::vector<HloInstruction*> convs;
-  for (auto* hlo : entry_computation->instructions()) {
+  for (auto* hlo : computation->instructions()) {
     if (hlo->opcode() == HloOpcode::kConvolution) {
       convs.push_back(hlo);
     }
@@ -391,41 +453,18 @@ StatusOr<bool> ConvolutionFolding::Run(HloModule* module) {
 
   bool changed = false;
   for (HloInstruction* conv : convs) {
-    bool match;
-    std::vector<HloInstruction*> hlos_to_fuse;
-    Window window;
-    ConvolutionDimensionNumbers dnums;
-    std::tie(match, hlos_to_fuse, window, dnums) = MatchBackwardFilter(conv);
-    if (match) {
-      VLOG(2) << "Fuse instructions";
-      for (HloInstruction* hlo_to_fuse : hlos_to_fuse) {
-        VLOG(2) << "  " << hlo_to_fuse->ToString();
-      }
-      HloInstruction* backward_convolution =
-          entry_computation->CreateFusionInstructionForBackwardConvolution(
-              hlos_to_fuse, HloInstruction::FusionKind::kConvBackwardFilter,
-              window, dnums);
-      VLOG(2) << "to backward filter convolution";
-      VLOG(2) << "  " << backward_convolution->ToString();
-      changed = true;
-      continue;
-    }
+    TF_ASSIGN_OR_RETURN(bool result, RunOnInstruction(conv));
+    changed |= result;
+  }
+  return changed;
+}
+}  // namespace
 
-    std::tie(match, hlos_to_fuse, window, dnums) = MatchBackwardInput(conv);
-    if (match) {
-      VLOG(2) << "Fuse instructions";
-      for (HloInstruction* hlo_to_fuse : hlos_to_fuse) {
-        VLOG(2) << "  " << hlo_to_fuse->ToString();
-      }
-      HloInstruction* backward_convolution =
-          entry_computation->CreateFusionInstructionForBackwardConvolution(
-              hlos_to_fuse, HloInstruction::FusionKind::kConvBackwardInput,
-              window, dnums);
-      VLOG(2) << "to backward input convolution";
-      VLOG(2) << "  " << backward_convolution->ToString();
-      changed = true;
-      continue;
-    }
+StatusOr<bool> CudnnConvolutionRewriter::Run(HloModule* module) {
+  bool changed = false;
+  for (HloComputation* computation : module->MakeNonfusionComputations()) {
+    TF_ASSIGN_OR_RETURN(bool result, RunOnComputation(computation));
+    changed |= result;
   }
   return changed;
 }

@@ -191,10 +191,10 @@ TEST_F(XlaCompilerTest, Simple) {
   std::vector<XlaCompiler::Argument> args(2);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[0].shape = TensorShape({2});
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
-  args[1].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[1].shape = TensorShape({2});
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
@@ -242,10 +242,10 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
   std::vector<XlaCompiler::Argument> args(2);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[0].shape = TensorShape({2});
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
-  args[1].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[1].shape = TensorShape({2});
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
@@ -281,7 +281,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
   std::vector<XlaCompiler::Argument> args(1);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[0].shape = TensorShape({2});
 
   XlaCompiler::Options options = DefaultOptions();
   XlaCompiler compiler(options);
@@ -373,7 +373,7 @@ TEST_F(XlaCompilerTest, ResourceManager) {
   std::vector<XlaCompiler::Argument> args(1);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[0].shape = TensorShape({2});
 
   DummyResourceForTest* resource = new DummyResourceForTest();
 
@@ -420,7 +420,7 @@ TEST_F(XlaCompilerTest, DeterministicCompilation) {
     std::vector<XlaCompiler::Argument> args(1);
     args[0].kind = XlaCompiler::Argument::kParameter;
     args[0].type = DT_INT32;
-    args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+    args[0].shape = TensorShape({2});
 
     // Compiles the graph.
     auto options = DefaultOptions();
@@ -472,9 +472,7 @@ TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
   args[0].resource_kind = XlaResource::kTensorArray;
   args[0].initialized = true;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::S32, {2}),
-       xla::ShapeUtil::MakeShape(xla::S32, {2})});
+  args[0].shape = TensorShape({});
   args[0].tensor_array_size = 2;
   args[0].tensor_array_gradients = {"grad2"};
 
@@ -540,9 +538,7 @@ TEST_F(XlaCompilerTest, UnwrittenTensorArrayGradientsAreNotComputationOutputs) {
   args[0].resource_kind = XlaResource::kTensorArray;
   args[0].initialized = true;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::S32, {2}),
-       xla::ShapeUtil::MakeShape(xla::S32, {2})});
+  args[0].shape = TensorShape({});
   args[0].tensor_array_size = 2;
   args[0].tensor_array_gradients = {"grad1"};
 
@@ -574,9 +570,7 @@ TEST_F(XlaCompilerTest, NewTensorArrayGradientsAreComputationOutputs) {
   args[0].resource_kind = XlaResource::kTensorArray;
   args[0].initialized = true;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::S32, {2}),
-       xla::ShapeUtil::MakeShape(xla::S32, {2})});
+  args[0].shape = TensorShape({});
   args[0].tensor_array_size = 2;
   args[0].tensor_array_gradients = {"grad1"};
 

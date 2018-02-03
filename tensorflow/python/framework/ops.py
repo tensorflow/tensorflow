@@ -2760,15 +2760,12 @@ class Graph(object):
     self._handle_movers = {}
     # A map from tensor handle to its delete op.
     self._handle_deleters = {}
-    # Resource container.
-    if context.in_graph_mode():
-      self._container_prefix = ""
-    else:
-      # In Eager mode, isolate resources (particularly ResourceVariables) in
-      # Graphs by default. This prevents unintended variable sharing. Graph mode
-      # gets this kind of isolation from Sessions.
-      self._container_prefix = "eager-execution-%d/" % (uid(),)
-    self._container = self._container_prefix
+    # Allow optimizers and other objects to pseudo-uniquely key graphs (this key
+    # will be shared when defining function graphs, for example, so optimizers
+    # being called inside function definitions behave as if they were seeing the
+    # actual outside graph).
+    self._graph_key = "grap-key-%d/" % (uid(),)
+    self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
 
     # TODO(skyewm): fold as much of the above as possible into the C
@@ -4229,7 +4226,7 @@ class Graph(object):
     """
     original_container = self._container
     try:
-      self._container = self._container_prefix + container_name
+      self._container = container_name
       yield self._container
     finally:
       self._container = original_container

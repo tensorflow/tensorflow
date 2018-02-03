@@ -148,8 +148,7 @@ Status BuildArguments(int num_constant_args,
     XlaCompiler::Argument& arg = (*args)[input_num];
     arg.kind = XlaCompiler::Argument::kConstant;
     arg.type = input.dtype();
-    TF_RETURN_IF_ERROR(
-        TensorShapeToXLAShape(input.dtype(), input.shape(), &arg.shape));
+    arg.shape = input.shape();
     arg.constant_value = input;
     ++input_num;
   }
@@ -170,8 +169,7 @@ Status BuildArguments(int num_constant_args,
       arg.constant_value = input;
     }
     arg.type = input.dtype();
-    TF_RETURN_IF_ERROR(
-        TensorShapeToXLAShape(input.dtype(), input.shape(), &arg.shape));
+    arg.shape = input.shape();
     ++input_num;
   }
 
@@ -189,8 +187,7 @@ Status BuildArguments(int num_constant_args,
     if (variable_args[variable_id].present) {
       const Tensor& value = variable_args[variable_id].value;
       arg.type = value.dtype();
-      TF_RETURN_IF_ERROR(
-          TensorShapeToXLAShape(value.dtype(), value.shape(), &arg.shape));
+      arg.shape = value.shape();
       arg.initialized = true;
     } else {
       // The values of uninitialized variables are not passed as inputs, since
@@ -199,7 +196,7 @@ Status BuildArguments(int num_constant_args,
       // uninitialized variables.
       arg.initialized = false;
       arg.type = DT_INVALID;
-      arg.shape = xla::Shape();
+      arg.shape = TensorShape();
     }
     ++input_num;
   }

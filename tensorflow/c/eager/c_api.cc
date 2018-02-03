@@ -290,7 +290,7 @@ TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
     return TF_ATTR_INT;  // The compiler requires that we return something.
   }
   status->status =
-      tensorflow::AttrTypeByName(op->attr_types, attr_name, &ret, is_list);
+      tensorflow::AttrTypeByName(*op->attr_types, attr_name, &ret, is_list);
   return ret;
 }
 

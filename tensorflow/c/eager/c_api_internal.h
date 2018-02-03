@@ -107,6 +107,8 @@ struct TFE_TensorHandle {
 };
 
 struct TFE_Op {
+  // t is NULL iff the TFE_Op corresponds to a TensorFlow function instead of a
+  // primitive operation.
   TFE_Op(TFE_Context* ctx, const char* op, const tensorflow::AttrTypeMap* t)
       : ctx(ctx), name(op), attrs(op), attr_types(t), device(nullptr) {}
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_FRAMEWORK_DATASET_H_
-#define TENSORFLOW_FRAMEWORK_DATASET_H_
+#ifndef TENSORFLOW_CORE_FRAMEWORK_DATASET_STATEFUL_OP_WHITELIST_H_
+#define TENSORFLOW_CORE_FRAMEWORK_DATASET_STATEFUL_OP_WHITELIST_H_
 
 #include "tensorflow/core/lib/core/status.h"
 
@@ -74,4 +74,4 @@ class WhitelistedStatefulOpRegistry {
 
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_FRAMEWORK_DATASET_H_
+#endif  // TENSORFLOW_CORE_FRAMEWORK_DATASET_STATEFUL_OP_WHITELIST_H_
