@@ -182,8 +182,9 @@ sh_binary(
             "//tensorflow/python:test_ops",
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
-    }) + if_mkl(["//third_party/mkl:intel_binary_blob"])
-    + if_tensorrt(["//tensorflow/contrib/tensorrt:init_py"]),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]) + if_tensorrt([
+      "//tensorflow/contrib/tensorrt:init_py",
+    ]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows
