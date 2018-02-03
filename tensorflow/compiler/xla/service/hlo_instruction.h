@@ -874,8 +874,8 @@ class HloInstruction {
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.
   const bool IsMultiOutputFusion() const {
-    return (opcode() == HloOpcode::kFusion &&
-            fused_expression_root()->opcode() == HloOpcode::kTuple);
+    return opcode() == HloOpcode::kFusion &&
+           fused_expression_root()->opcode() == HloOpcode::kTuple;
   }
 
   FusionKind fusion_kind() const {

@@ -1453,9 +1453,9 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
       handle_status = computation->AddInfeedInstruction(arg->infeed_request());
       break;
     case OpRequest::kOutfeedRequest:
-      TF_RETURN_IF_ERROR(
-          computation->AddOutfeedInstruction(arg->outfeed_request()));
-      return tensorflow::Status::OK();
+      handle_status =
+          computation->AddOutfeedInstruction(arg->outfeed_request());
+      break;
     case OpRequest::kMapRequest: {
       TF_ASSIGN_OR_RETURN(
           UserComputation * to_apply,
