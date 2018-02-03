@@ -29,7 +29,6 @@ limitations under the License.
 #include <algorithm>
 #include <complex>
 #include "cuda/include/cuda.h"
-#include "cuda/include/device_functions.h"
 #include "tensorflow/core/platform/types.h"
 
 #if CUDA_VERSION >= 7050
