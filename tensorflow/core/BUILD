@@ -432,6 +432,7 @@ tf_cuda_library(
         "framework/cancellation.h",
         "framework/common_shape_fns.h",
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
+        "framework/dataset.h",
         "framework/dataset_stateful_op_whitelist.h",
         "framework/device_base.h",
         "framework/function.h",
