@@ -78,10 +78,15 @@ REGISTER_XLA_OP(Name("ArgMax")
                   .CompileTimeConstInput("dimension"), XlaArgMaxOp);
 
 REGISTER_XLA_OP(Name("Enter").Device(DEVICE_IPU_XLA_JIT), NoOp);
+REGISTER_XLA_OP(Name("RefEnter").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_XLA_OP(Name("Exit").Device(DEVICE_IPU_XLA_JIT), NoOp);
+REGISTER_XLA_OP(Name("RefExit").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_XLA_OP(Name("LoopCond").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_XLA_OP(Name("Merge").Device(DEVICE_IPU_XLA_JIT), NoOp);
+REGISTER_XLA_OP(Name("RefMerge").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_XLA_OP(Name("NextIteration").Device(DEVICE_IPU_XLA_JIT), NoOp);
+REGISTER_XLA_OP(Name("RefNextIteration").Device(DEVICE_IPU_XLA_JIT), NoOp);
 REGISTER_XLA_OP(Name("Switch").Device(DEVICE_IPU_XLA_JIT), NoOp);
+REGISTER_XLA_OP(Name("RefSwitch").Device(DEVICE_IPU_XLA_JIT), NoOp);
 
 }  // namespace tensorflow
