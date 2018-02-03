@@ -165,7 +165,6 @@ def separable_lstm(images, num_filters_out,
       transposed = array_ops.transpose(hidden, [0, 2, 1, 3])
       output_transposed = horizontal_lstm(transposed, num_filters_out)
     output = array_ops.transpose(output_transposed, [0, 2, 1, 3])
-    print(output.shape)
     return output
 
 
