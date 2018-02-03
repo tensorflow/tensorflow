@@ -602,7 +602,7 @@ class Optimizer(object):
       if executing_eagerly:
         # No variable.op in eager mode. We don't expect lots of eager graphs,
         # but behavior should be consistent with graph mode.
-        return variable._container_prefix == current_graph._container_prefix  # pylint: disable=protected-access
+        return variable._graph_key == current_graph._graph_key  # pylint: disable=protected-access
       else:
         return variable.op.graph is current_graph
 

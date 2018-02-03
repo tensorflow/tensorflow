@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
+#include "tensorflow/contrib/lite/kernels/internal/optimized/cblas_conv.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/multithreaded_conv.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
@@ -38,11 +39,16 @@ namespace ops {
 namespace builtin {
 namespace conv {
 
-// This file has three implementation of Conv.
+// This file has 4 implementation of Conv.
 enum KernelType {
   kReference,
   kGenericOptimized,  // Neon-free
   kMultithreadOptimized,
+  // The kernel uses use CBLAS interface for matrix multiplication.
+  // It's fast when an optimized CBLAS implementation is available (e.g. Apple
+  // Accelerate Framework), and it's slow when falling back to naive
+  // implementation.
+  kCblasOptimized,
 };
 
 struct OpData {
@@ -305,6 +311,7 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       break;
     case kGenericOptimized:
     case kMultithreadOptimized:
+    case kCblasOptimized:
       // There is only one optimized implementation for Quantized Conv.
       optimized_ops::Conv(
           GetTensorData<uint8_t>(input), GetTensorDims(input), input_offset,
@@ -367,6 +374,17 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
           output_activation_min, output_activation_max,
           GetTensorData<float>(output), GetTensorDims(output),
           GetTensorData<float>(im2col), GetTensorDims(im2col));
+      break;
+    }
+    case kCblasOptimized: {
+      cblas_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
+                      GetTensorData<float>(filter), GetTensorDims(filter),
+                      GetTensorData<float>(bias), GetTensorDims(bias),
+                      params->stride_width, params->stride_height,
+                      data->padding.width, data->padding.height,
+                      output_activation_min, output_activation_max,
+                      GetTensorData<float>(output), GetTensorDims(output),
+                      GetTensorData<float>(im2col), GetTensorDims(im2col));
       break;
     }
   }
@@ -435,8 +453,20 @@ TfLiteRegistration* Register_CONVOLUTION_MULTITHREADED_OPT() {
   return &r;
 }
 
+TfLiteRegistration* Register_CONVOLUTION_CBLAS_OPT() {
+  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
+                                 conv::Eval<conv::kCblasOptimized>};
+  return &r;
+}
+
 TfLiteRegistration* Register_CONV_2D() {
+// TODO(ycling): Define a compilation flag and use CBLAS kernel when a
+// fast CBLAS implementatino is available.
+#ifdef TFLITE_USE_CBLAS_CONVOLUTION_KERNEL
+  return Register_CONVOLUTION_CBLAS_OPT();
+#else
   return Register_CONVOLUTION_MULTITHREADED_OPT();
+#endif
 }
 
 }  // namespace builtin

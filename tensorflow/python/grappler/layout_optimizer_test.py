@@ -157,6 +157,7 @@ def _get_config(layout_optimizer=True):
   graph_options = config_pb2.GraphOptions(
       rewrite_options=rewrite_options, build_cost_model=1)
   config = config_pb2.ConfigProto(graph_options=graph_options)
+  config.graph_options.optimizer_options.opt_level = -1
   return config
 
 
@@ -1171,7 +1172,7 @@ class LayoutOptimizerTest(test.TestCase):
           num_transposes += 1
         nodes.append(node.name)
 
-      expected_num_transposes = 2
+      expected_num_transposes = 3
       self.assertEqual(expected_num_transposes, num_transposes)
       self._assert_trans_nhwc_to_nchw('map/while/Conv2D-0', nodes)
       self._assert_trans_nchw_to_nhwc('map/while/Add-0-2', nodes)

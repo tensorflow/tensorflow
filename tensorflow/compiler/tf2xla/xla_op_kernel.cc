@@ -286,7 +286,8 @@ Status XlaOpKernelContext::ConstantInputList(
 }
 
 Status XlaOpKernelContext::ReadVariableInput(
-    int index, xla::ComputationDataHandle* value) {
+    int index, DataType type, TensorShape* shape,
+    xla::ComputationDataHandle* value) {
   const Tensor& tensor = context_->input(index);
   const XlaExpression* expression = CastExpressionFromTensor(tensor);
   XlaResource* variable = expression->resource();
@@ -296,7 +297,15 @@ Status XlaOpKernelContext::ReadVariableInput(
     return errors::InvalidArgument("Read of uninitialized variable ",
                                    variable->name());
   }
+  if (variable->type() != type) {
+    return errors::InvalidArgument(
+        "Type mismatch for read of variable ", variable->name(), ". Expected ",
+        DataTypeString(type), "; got ", DataTypeString(variable->type()));
+  }
   *value = variable->value();
+  if (shape) {
+    *shape = variable->shape();
+  }
   return Status::OK();
 }
 
@@ -312,12 +321,7 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
                                    variable->name());
   }
   *type = variable->type();
-  auto shape_or_status = builder()->GetShape(variable->value());
-  if (!shape_or_status.ok()) {
-    return shape_or_status.status();
-  }
-  TF_RETURN_IF_ERROR(
-      XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), shape));
+  *shape = variable->shape();
   return Status::OK();
 }
 
@@ -405,7 +409,17 @@ Status XlaOpKernelContext::AssignVariable(
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
   TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
-  return variable->SetValue(type, handle);
+
+  auto shape_or_status = builder()->GetShape(handle);
+  if (!shape_or_status.ok()) {
+    return shape_or_status.status();
+  }
+  TensorShape shape;
+  TF_RETURN_IF_ERROR(
+      XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), &shape));
+
+  TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
+  return variable->SetValue(handle);
 }
 
 XlaCompiler* XlaOpKernelContext::compiler() const {

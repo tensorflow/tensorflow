@@ -118,6 +118,7 @@ cc_test(
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/testing:util",
+        "//tensorflow/core:framework_lite",
         "@com_google_googletest//:gtest",
         "@flatbuffers",
     ],

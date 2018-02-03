@@ -193,7 +193,7 @@ REGISTER_OP("ResourceScatterUpdate")
     .Input("resource: resource")
     .Input("indices: Tindices")
     .Input("updates: dtype")
-    .Attr("dtype: numbertype")
+    .Attr("dtype: type")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeAndType handle_shape_and_type;
