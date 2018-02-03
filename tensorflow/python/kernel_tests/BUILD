@@ -96,7 +96,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     grpc_enabled = True,
-    tags = ["no_oss_gpu_py3"],
 )
 
 cuda_py_test(
