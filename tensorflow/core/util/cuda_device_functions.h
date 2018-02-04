@@ -31,10 +31,6 @@ limitations under the License.
 #include "cuda/include/cuda.h"
 #include "tensorflow/core/platform/types.h"
 
-#if CUDA_VERSION >= 7050
-#include "cuda/include/cuda_fp16.h"
-#endif  // CUDA_VERSION >= 7050
-
 namespace tensorflow {
 
 namespace detail {
