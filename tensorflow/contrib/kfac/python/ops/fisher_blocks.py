@@ -457,7 +457,9 @@ class ConvDiagonalFB(FisherBlock):
     self._num_locations = (
         inputs_shape[1] * inputs_shape[2] //
         (self._strides[1] * self._strides[2]))
-    self._damping = normalize_damping(damping, self._num_locations)
+
+    self._damping = (self._num_locations
+                     * normalize_damping(damping, self._num_locations))
 
     self._factor = self._layer_collection.make_or_get_factor(
         fisher_factors.ConvDiagonalFactor,

@@ -307,7 +307,7 @@ function(GENERATE_PYTHON_OP_LIB tf_python_op_lib_name)
     # containing the wrappers.
     add_custom_command(
       OUTPUT ${GENERATE_PYTHON_OP_LIB_DESTINATION}
-      COMMAND ${tf_python_op_lib_name}_gen_python ${tensorflow_source_dir}/tensorflow/core/api_def/base_api,${tensorflow_source_dir}/tensorflow/core/api_def/python_api @${tensorflow_source_dir}/tensorflow/python/ops/hidden_ops.txt ${require_shape_fn} > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
+      COMMAND ${tf_python_op_lib_name}_gen_python ${tensorflow_source_dir}/tensorflow/core/api_def/base_api,${tensorflow_source_dir}/tensorflow/core/api_def/python_api ${require_shape_fn} > ${GENERATE_PYTHON_OP_LIB_DESTINATION}
       DEPENDS ${tf_python_op_lib_name}_gen_python
     )
 
@@ -335,6 +335,7 @@ GENERATE_PYTHON_OP_LIB("list_ops")
 GENERATE_PYTHON_OP_LIB("logging_ops")
 GENERATE_PYTHON_OP_LIB("lookup_ops")
 GENERATE_PYTHON_OP_LIB("nn_ops")
+GENERATE_PYTHON_OP_LIB("manip_ops")
 GENERATE_PYTHON_OP_LIB("parsing_ops")
 GENERATE_PYTHON_OP_LIB("random_ops")
 GENERATE_PYTHON_OP_LIB("remote_fused_graph_ops"

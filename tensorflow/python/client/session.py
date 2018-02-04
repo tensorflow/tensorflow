@@ -35,6 +35,7 @@ from tensorflow.python.ops import session_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 class SessionInterface(object):
@@ -1441,6 +1442,7 @@ class BaseSession(SessionInterface):
       return handles
 
 
+@tf_export('Session')
 class Session(BaseSession):
   """A class for running TensorFlow operations.
 
@@ -1581,6 +1583,7 @@ class Session(BaseSession):
     tf_session.TF_Reset(target, containers, config)
 
 
+@tf_export('InteractiveSession')
 class InteractiveSession(BaseSession):
   """A TensorFlow `Session` for use in interactive contexts, such as a shell.
 

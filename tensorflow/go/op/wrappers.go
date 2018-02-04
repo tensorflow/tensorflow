@@ -8729,31 +8729,6 @@ func IRFFT2D(scope *Scope, input tf.Output, fft_length tf.Output) (output tf.Out
 	return op.Output(0)
 }
 
-// Compute the pairwise cross product.
-//
-// `a` and `b` must be the same shape; they can either be simple 3-element vectors,
-// or any shape where the innermost dimension is 3. In the latter case, each pair
-// of corresponding 3-element vectors is cross-multiplied independently.
-//
-// Arguments:
-//	a: A tensor containing 3-element vectors.
-//	b: Another tensor, of same type and shape as `a`.
-//
-// Returns Pairwise cross product of the vectors in `a` and `b`.
-func Cross(scope *Scope, a tf.Output, b tf.Output) (product tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Cross",
-		Input: []tf.Input{
-			a, b,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Transforms a vector of brain.Example protos (as strings) into typed tensors.
 //
 // Arguments:
@@ -21284,6 +21259,31 @@ func StatsAggregatorSummary(scope *Scope, iterator tf.Output) (summary tf.Output
 		Type: "StatsAggregatorSummary",
 		Input: []tf.Input{
 			iterator,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Compute the pairwise cross product.
+//
+// `a` and `b` must be the same shape; they can either be simple 3-element vectors,
+// or any shape where the innermost dimension is 3. In the latter case, each pair
+// of corresponding 3-element vectors is cross-multiplied independently.
+//
+// Arguments:
+//	a: A tensor containing 3-element vectors.
+//	b: Another tensor, of same type and shape as `a`.
+//
+// Returns Pairwise cross product of the vectors in `a` and `b`.
+func Cross(scope *Scope, a tf.Output, b tf.Output) (product tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Cross",
+		Input: []tf.Input{
+			a, b,
 		},
 	}
 	op := scope.AddOperation(opspec)

@@ -924,8 +924,7 @@ class LuongMonotonicAttention(_BaseMonotonicAttentionMechanism):
         _monotonic_probability_fn, sigmoid_noise=sigmoid_noise, mode=mode,
         seed=sigmoid_noise_seed)
     super(LuongMonotonicAttention, self).__init__(
-        query_layer=layers_core.Dense(
-            num_units, name="query_layer", use_bias=False, dtype=dtype),
+        query_layer=None,
         memory_layer=layers_core.Dense(
             num_units, name="memory_layer", use_bias=False, dtype=dtype),
         memory=memory,

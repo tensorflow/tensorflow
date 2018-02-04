@@ -24,6 +24,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import op_def_registry
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
@@ -169,6 +170,7 @@ class JITTest(test.TestCase):
       self.assertEqual(b"jit_scope_0", func_attrs["_XlaScope"].s)
 
 
+@test_util.with_c_api
 class CompilationEnabledInGradientTest(test.TestCase):
 
   def testCompilationInGradient(self):
@@ -188,7 +190,7 @@ class CompilationEnabledInGradientTest(test.TestCase):
       for cg in c_grad_ops:
         self.assertTrue(cg.get_attr("_XlaCompile"))
       for ncg in nc_grad_ops:
-        with self.assertRaisesRegexp(ValueError, "No attr named"):
+        with self.assertRaisesRegexp(ValueError, "[Nn]o attr named"):
           ncg.get_attr("_XlaCompile")
 
       # d/dx (x ** 4) = 4 * (x ** 3)

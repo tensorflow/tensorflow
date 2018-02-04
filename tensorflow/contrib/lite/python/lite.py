@@ -18,16 +18,21 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 @@toco_convert
 @@toco_convert_protos
+@@OpHint
+@@convert_op_hints_to_stubs
 
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 import os
 import subprocess
 import tempfile
 
+# pylint: disable=unused-import
+from tensorflow.contrib.lite.python.op_hint import convert_op_hints_to_stubs
+from tensorflow.contrib.lite.python.op_hint import OpHint
+# pylint: enable=unused-import
 from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.contrib.lite.toco import types_pb2 as _types_pb2

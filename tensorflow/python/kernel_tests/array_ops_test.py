@@ -952,6 +952,32 @@ class SliceAssignTest(test_util.TensorFlowTestCase):
         v = variables.Variable([1, 2])
         sess.run(v[:].assign([1, 2]))
 
+  def testTypeError(self):
+    init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
+    too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
+    too_large_val = constant_op.constant([3, 4], dtype=dtypes.int64)
+    v = variables.Variable(init_val)
+    with self.assertRaises(TypeError):
+      v[:].assign(too_small_val)
+    with self.assertRaises(TypeError):
+      v[:].assign(too_large_val)
+
+  def testTypeErrorResource(self):
+    init_val = constant_op.constant([1, 2], dtype=dtypes.int32)
+    too_small_val = constant_op.constant([3, 4], dtype=dtypes.int8)
+    too_large_val = constant_op.constant([3, 4], dtype=dtypes.int64)
+    v = resource_variable_ops.ResourceVariable(init_val)
+    with self.test_session() as sess:
+      sess.run(v.initializer)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "l-value dtype int32 does not match r-value dtype int64"):
+        sess.run(v[:].assign(too_large_val))
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          "l-value dtype int32 does not match r-value dtype int8"):
+        sess.run(v[:].assign(too_small_val))
+
 
 class ShapeSizeRankTest(test_util.TensorFlowTestCase):
 
@@ -1113,6 +1139,26 @@ class InvertPermutationTest(test_util.TensorFlowTestCase):
         y = array_ops.invert_permutation(x)
         self.assertAllEqual(y.get_shape(), [5])
         self.assertAllEqual(y.eval(), [2, 4, 3, 0, 1])
+
+class UnravelIndexTest(test_util.TensorFlowTestCase):
+
+  def testUnravelIndex(self):
+    with self.test_session():
+      for dtype in [dtypes.int32, dtypes.int64]:
+        indices_1 = constant_op.constant(1621, dtype=dtype)
+        dims_1 = constant_op.constant([6, 7, 8, 9], dtype=dtype)
+        out_1 = array_ops.unravel_index(indices_1, dims_1)
+        self.assertAllEqual(out_1.eval(), [3, 1, 4, 1])
+
+        indices_2 = constant_op.constant([1621], dtype=dtype)
+        dims_2 = constant_op.constant([6, 7, 8, 9], dtype=dtype)
+        out_2 = array_ops.unravel_index(indices_2, dims_2)
+        self.assertAllEqual(out_2.eval(), [[3], [1], [4], [1]])
+
+        indices_3 = constant_op.constant([22, 41, 37], dtype=dtype)
+        dims_3 = constant_op.constant([7, 6], dtype=dtype)
+        out_3 = array_ops.unravel_index(indices_3, dims_3)
+        self.assertAllEqual(out_3.eval(), [[3, 6, 6], [4, 5, 1]])
 
 
 class GuaranteeConstOpTest(test_util.TensorFlowTestCase):

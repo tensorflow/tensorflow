@@ -60,9 +60,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
   for (int i = 0; i < args->size(); ++i) {
     XlaCompiler::Argument& arg = (*args)[i];
     arg.type = ctx->input_type(i);
-
-    TF_RETURN_IF_ERROR(
-        TensorShapeToXLAShape(arg.type, ctx->InputShape(i), &arg.shape));
+    arg.shape = ctx->InputShape(i);
 
     if (arg.type == DT_RESOURCE) {
       return errors::InvalidArgument(

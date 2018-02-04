@@ -34,6 +34,7 @@ See the @{$python/array_ops} guide.
 @@reshape
 @@squeeze
 @@expand_dims
+@@unravel_index
 @@meshgrid
 @@slice
 @@strided_slice

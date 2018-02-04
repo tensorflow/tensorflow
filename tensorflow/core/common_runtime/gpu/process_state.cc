@@ -88,8 +88,8 @@ ProcessState::~ProcessState() {
 }
 
 string ProcessState::MemDesc::DebugString() {
-  return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index, ", dma: ",
-                         gpu_registered, ", nic: ", nic_registered);
+  return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
+                         ", dma: ", gpu_registered, ", nic: ", nic_registered);
 }
 
 ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {

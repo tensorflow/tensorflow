@@ -56,8 +56,8 @@ class HloParameterMatcher : public HloMatcher {
 // index to match.
 class HloGetTupleElementMatcher : public HloMatcher {
  public:
-  explicit HloGetTupleElementMatcher(
-      ::testing::Matcher<const HloInstruction*> operand, int64 tuple_index)
+  HloGetTupleElementMatcher(::testing::Matcher<const HloInstruction*> operand,
+                            int64 tuple_index)
       : HloMatcher(HloOpcode::kGetTupleElement, /*operands=*/{operand}),
         tuple_index_(tuple_index) {}
 
@@ -66,6 +66,24 @@ class HloGetTupleElementMatcher : public HloMatcher {
 
  private:
   int64 tuple_index_;
+};
+
+// Custom matcher for custom-call instructions, which accepts a matcher for its
+// call target.
+class HloCustomCallMatcher : public HloMatcher {
+ public:
+  HloCustomCallMatcher(
+      ::testing::Matcher<string> call_target_matcher,
+      std::vector<::testing::Matcher<const HloInstruction*>> operands)
+      : HloMatcher(HloOpcode::kCustomCall, operands),
+        call_target_matcher_(call_target_matcher) {}
+
+  bool MatchAndExplain(const HloInstruction* instruction,
+                       ::testing::MatchResultListener* listener) const override;
+  void DescribeTo(std::ostream* os) const override;
+
+ private:
+  ::testing::Matcher<string> call_target_matcher_;
 };
 
 // HloInstruction* matchers for opcode and operands. Example:
@@ -94,7 +112,6 @@ HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
 HLO_MATCHER(CrossReplicaSum);
-HLO_MATCHER(CustomCall);
 HLO_MATCHER(Divide);
 HLO_MATCHER(Dot);
 HLO_MATCHER(DynamicSlice);
@@ -182,6 +199,36 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement(
 inline ::testing::Matcher<const ::xla::HloInstruction*> GetTupleElement() {
   return ::testing::MakeMatcher(
       new ::xla::testing::HloMatcher(HloOpcode::kGetTupleElement, {}));
+}
+
+// - CustomCall(T, operand1, ..., operandN) matches a CustomCall with call
+//   target T and the given operands.
+//
+// - CustomCall(operand1, ..., operandN) matches any CustomCall HLO with the
+//   given operands.
+//
+// - CustomCall() matches any CustomCall HLO at all.
+template <typename... M>
+inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall(
+    ::testing::Matcher<string> call_target_matcher, M... operands) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloCustomCallMatcher(
+      call_target_matcher, {operands...}));
+}
+// This overload of CustomCall(A, B, C, ...) exists iff A is not convertible to
+// ::testing::Matcher<string>.  In that case, we want to prefer the overload
+// above.
+template <typename FirstM, typename... M,
+          typename Dummy = typename std::enable_if<
+              !std::is_convertible<FirstM, ::testing::Matcher<string>>::value,
+              void>::type*>
+inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall(
+    FirstM operands_first, M... operands_rest) {
+  return ::testing::MakeMatcher(new ::xla::testing::HloMatcher(
+      HloOpcode::kCustomCall, {operands_first, operands_rest...}));
+}
+inline ::testing::Matcher<const ::xla::HloInstruction*> CustomCall() {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloMatcher(HloOpcode::kCustomCall, {}));
 }
 
 #undef HLO_MATCHER

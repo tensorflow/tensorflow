@@ -36,10 +36,7 @@ namespace grappler {
 static std::atomic<bool> already_provisioned(false);
 
 SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
-    : Cluster(timeout_s),
-      num_gpus_(num_gpus),
-      expected_init_time_s_(0),
-      closing_(false) {
+    : Cluster(timeout_s), expected_init_time_s_(0), closing_(false) {
   VLOG(1) << "Number of CPU cores: " << num_cpu_cores
           << " Number of GPUs: " << num_gpus;
   thread_pool_.reset(new thread::ThreadPool(

@@ -19,8 +19,8 @@
 
 namespace tensorflow {
 namespace boosted_trees {
-using shape_inference::InferenceContext;
 using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 REGISTER_RESOURCE_HANDLE_OP(QuantileStreamResource);

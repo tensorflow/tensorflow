@@ -31,6 +31,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import utils as layers_util
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
@@ -138,9 +139,6 @@ class Layer(object):
     self._outbound_nodes = []
 
     self._init_set_name(name)
-
-    # Holds functions for creating regularizer ops.
-    self._regularizer_factories = []
 
     # Determine variable scope.
     scope = kwargs.get('_scope')
@@ -306,22 +304,6 @@ class Layer(object):
       inputs_hash = None
     return self._per_input_updates.get(inputs_hash, [])
 
-  def _get_regularizer_factories(self):
-    try:
-      # Some subclasses of Layer do not use its constructor.
-      return self._regularizer_factories
-    except AttributeError:
-      self._regularizer_factories = []
-      return self._regularizer_factories
-
-  def _maybe_create_variable_regularizers(self):
-    """Creates added but uninstantiated regularizers."""
-    factories = self._get_regularizer_factories()
-    if factories:
-      for factory in factories:
-        factory()
-      factories[:] = []
-
   @property
   def losses(self):
     """Losses which are associated with this `Layer`.
@@ -333,7 +315,6 @@ class Layer(object):
     Returns:
       A list of tensors.
     """
-    self._maybe_create_variable_regularizers()
     if context.in_eager_mode():
       # _losses may only contain variable regularization losses when executing
       # eagerly, and they have been saved as lambdas to be executed when
@@ -417,7 +398,6 @@ class Layer(object):
       inputs_hash = layers_util.object_list_uid(inputs)
     else:
       inputs_hash = None
-    self._maybe_create_variable_regularizers()
     return self._per_input_losses.get(inputs_hash, [])
 
   def build(self, _):
@@ -670,6 +650,7 @@ class Layer(object):
     else:
       scope_context_manager = vs.variable_scope(
           self._scope, reuse=self._reuse, auxiliary_name_scope=False)
+    input_shapes = None
     with scope_context_manager as scope:
       with ops.name_scope(self._name_scope_name(scope)):
         if not self.built:
@@ -719,6 +700,9 @@ class Layer(object):
         else:
           # Deferred mode behavior: use `compute_output_shape` to
           # infer the number of outputs of the layer and their shapes.
+          if input_shapes is None:
+            input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
+
           output_shapes = self.compute_output_shape(input_shapes)
           output_shapes = nest.flatten(output_shapes)
           outputs = [
@@ -1414,7 +1398,10 @@ class _DeferredTensor(object):
 
   def __init__(self, shape, dtype, name=None):
     self.shape = tensor_shape.TensorShape(shape)
-    self.dtype = dtypes.as_dtype(dtype)
+    if dtype is None:
+      self.dtype = dtypes.as_dtype(np.float32)
+    else:
+      self.dtype = dtypes.as_dtype(dtype)
     self.name = name
 
   def get_shape(self):

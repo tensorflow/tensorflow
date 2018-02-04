@@ -73,16 +73,6 @@ class SaverTest(test.TestCase):
       with self.assertRaisesRegexp(ValueError, 'v1'):
         saver.save(ckpt_prefix)
 
-  def testDifferentGraphError(self):
-    with ops.device(self._dev()):
-      with ops.Graph().as_default():
-        v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
-      with ops.Graph().as_default():
-        saver = _saver.Saver([v1])
-        ckpt_prefix = os.path.join(test.get_temp_dir(), 'ckpt')
-        with self.assertRaisesRegexp(ValueError, 'Graph'):
-          saver.save(ckpt_prefix)
-
   def testSameObjectOK(self):
     with ops.device(self._dev()):
       v1 = resource_variable_ops.ResourceVariable(1.0, name='v1')
