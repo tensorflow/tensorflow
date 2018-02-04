@@ -88,7 +88,7 @@ class XentTest(test.TestCase):
                                                     4.]]]).astype(dtype)
       np_labels = np.array([[[0., 0., 0., 1.]], [[0., .5, .5,
                                                   0.]]]).astype(dtype)
-      self.assertRaisesRegexp(ValueError, "must be rank 2",
+      self.assertRaisesRegexp(ValueError, "rank 2, but is rank 3",
                               gen_nn_ops.softmax_cross_entropy_with_logits,
                               np_features, np_labels)
 
@@ -127,6 +127,24 @@ class XentTest(test.TestCase):
         atol=1.e-3)
     self.assertAllClose(
         np.array([1.3862, 1.9401]), np_loss, rtol=1.e-3, atol=1.e-3)
+
+  def testShapeBroadcast(self):
+    np_f = np.array([[1., 2., 3., 4.],
+                     [1., 2., 3., 4.]]).astype(np.float32)
+    np_l = np.array([[0., 0., 0., 1.],
+                     [0., .5, .5, 0.]]).astype(np.float32)
+    np_loss, np_backprop = self._npXent(np_f, np_l)
+    tf_f = constant_op.constant(
+        np.array([[1., 2., 3., 4.]]).astype(np.float32))
+    tf_l = constant_op.constant(
+        np.array([[0., 0., 0., 1.], [0., .5, .5, 0.]]).astype(np.float32))
+    for use_gpu in [False, True]:
+      with self.test_session(use_gpu=use_gpu) as sess:
+        loss, backprop = gen_nn_ops._softmax_cross_entropy_with_logits(
+            tf_f, tf_l)
+        tf_loss, tf_backprop = sess.run([loss, backprop])
+      self.assertAllCloseAccordingToType(np_loss, tf_loss)
+      self.assertAllCloseAccordingToType(np_backprop, tf_backprop)
 
   def testShapeMismatch(self):
     with self.test_session():
