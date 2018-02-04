@@ -35,11 +35,11 @@ bindings.
 
 * [SWIG](http://www.swig.org/download.html)
 
-* [Perl](https://www.perl.org/get.html) (optional, for full grpc build)
+* [Perl](https://www.perl.org/get.html) (optional, for SSL support build)
 
-* [Go](https://golang.org/) (optional, for full grpc build)
+* [Go](https://golang.org/) (optional, for SSL support build)
 
-* [NASM](http://www.nasm.us/)/[YASM](http://yasm.tortall.net/) (optional, for full grpc build)
+* [NASM](http://www.nasm.us/)/[YASM](http://yasm.tortall.net/) (optional, for SSL support build)
 
 * Additional pre-requisites for Microsoft Windows:
   - Visual Studio 2015 (latest version of MSVC 2017 is not supported by CUDA yet, try it on your own risk)
@@ -117,8 +117,8 @@ Install from CMake GUI would be a convenient way to generate C++ build projects.
     * CUDNN (GPU build)
     * NCCL (GPU build on Linux)
     * SWIG (python binding) 
-    * Perl (required by grpc for ssl support, optional)
-    * Go (required by grpc for ssl support, optional)
+    * Perl (required if you need ssl support, optional)
+    * Go (required if you need ssl support, optional)
     * NASM/YASM (required by grpc for ssl support, optional)
 1. Start CMake GUI
 2. Click on `Browse Source` and direct to the the folder `<tensorflow-source>/tensorflow/contrib/cmake`
