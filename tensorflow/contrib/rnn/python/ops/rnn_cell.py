@@ -3093,19 +3093,19 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
     for i in range(self.depth):
       if i == 0:
         self._kernels.append(
-          self.add_variable(
-            "kernel_{}".format(i),
-            shape=[input_depth + h_depth, 4 * self._num_units]))
+            self.add_variable(
+                "kernel_{}".format(i),
+                shape=[input_depth + h_depth, 4 * self._num_units]))
       else:
         self._kernels.append(
-          self.add_variable(
-            "kernel_{}".format(i),
-            shape=[2 * h_depth, 4 * self._num_units]))
+            self.add_variable(
+                "kernel_{}".format(i),
+                shape=[2 * h_depth, 4 * self._num_units]))
       self._biases.append(
-        self.add_variable(
-          "bias_{}".format(i),
-          shape=[4 * self._num_units],
-          initializer=init_ops.zeros_initializer(dtype=self.dtype)))
+          self.add_variable(
+              "bias_{}".format(i),
+              shape=[4 * self._num_units],
+              initializer=init_ops.zeros_initializer(dtype=self.dtype)))
 
     self.built = True
 
@@ -3152,10 +3152,10 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
       new_cs = [new_c]
     else:
       new_c, new_cs = self._recurrence(
-        inputs=inner_input,
-        hidden_state=inner_hidden,
-        cell_states=cell_states,
-        depth=depth + 1)
+          inputs=inner_input,
+          hidden_state=inner_hidden,
+          cell_states=cell_states,
+          depth=depth + 1)
     new_h = multiply(self._activation(new_c), sigmoid(o))
     new_cs = [new_h] + new_cs
     return new_h, new_cs
