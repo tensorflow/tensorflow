@@ -1643,12 +1643,12 @@ class WeightNormLSTMCellTest(test.TestCase):
 
 class TestNLSTM(test.TestCase):
 
-  def test_nlstm_tuple(self):
+  def testNLSTMTuple(self):
     batch_size = 2
     cell = contrib_rnn_cell.NLSTMCell(num_units=3, depth=4)
     init_state = cell.zero_state(batch_size, dtype=dtypes.float32)
     output, new_state = cell(
-      inputs=random_ops.random_normal([batch_size, 5]), state=init_state)
+        inputs=random_ops.random_normal([batch_size, 5]), state=init_state)
 
     with self.test_session() as sess:
       variables.global_variables_initializer().run()
@@ -1660,13 +1660,13 @@ class TestNLSTM(test.TestCase):
       self.assertAllEqual(val.shape, [2, 3])
     self.assertEqual(len(vals[1]), 5)
 
-  def test_nlstm_non_tuple(self):
+  def testNLSTMNonTuple(self):
     batch_size = 2
     cell = contrib_rnn_cell.NLSTMCell(
-      num_units=3, depth=2, state_is_tuple=False)
+        num_units=3, depth=2, state_is_tuple=False)
     init_state = cell.zero_state(batch_size, dtype=dtypes.float32)
     output, new_state = cell(
-      inputs=random_ops.random_normal([batch_size, 5]), state=init_state)
+        inputs=random_ops.random_normal([batch_size, 5]), state=init_state)
 
     with self.test_session() as sess:
       variables.global_variables_initializer().run()

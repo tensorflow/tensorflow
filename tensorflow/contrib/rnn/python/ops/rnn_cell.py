@@ -3035,18 +3035,18 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
     """Initialize the basic NLSTM cell.
 
     Args:
-      num_units: int, The number of hidden units of each cell state
+      num_units: `int`, The number of hidden units of each cell state
         and hidden state.
-      depth: int, The number of layers in the nest
-      forget_bias: float, The bias added to forget gates.
-      state_is_tuple: If True, accepted and returned states are tuples of
-        the `h_state` and `c_state`s.  If False, they are concatenated
+      depth: `int`, The number of layers in the nest
+      forget_bias: `float`, The bias added to forget gates.
+      state_is_tuple: If `True`, accepted and returned states are tuples of
+        the `h_state` and `c_state`s.  If `False`, they are concatenated
         along the column axis.  The latter behavior will soon be deprecated.
       activation: Activation function of the inner states.  Default: `tanh`.
-      reuse: (optional) Python boolean describing whether to reuse variables
+      reuse: `bool`(optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
-      name: String, the name of the layer. Layers with the same name will
+      name: `str`, the name of the layer. Layers with the same name will
         share weights, but to avoid mistakes we require reuse=True in such
         cases.
     """
@@ -3109,7 +3109,7 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
 
     self.built = True
 
-  def recurrence(self, inputs, hidden_state, cell_states, depth):
+  def _recurrence(self, inputs, hidden_state, cell_states, depth):
     """use recurrence to traverse the nested structure
 
     Args:
@@ -3119,7 +3119,7 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
       depth: `int`
         the current depth in the nested structure, begins at 0.
 
-    Return:
+    Returns:
       new_h: a 2D `Tensor` of [batch_size x num_units] shape
         the latest hidden state for current step
       new_cs: a `list` of 2D `Tensor` of [batch_size x num_units] shape
@@ -3151,7 +3151,7 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
       new_c = add(inner_hidden, inner_input)
       new_cs = [new_c]
     else:
-      new_c, new_cs = self.recurrence(
+      new_c, new_cs = self._recurrence(
         inputs=inner_input,
         hidden_state=inner_hidden,
         cell_states=cell_states,
@@ -3165,12 +3165,12 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
 
     Args:
       inputs: a 2D `Tensor` of [batch_size x input_size] shape
-      state: a tuple of 2D `Tensor` of [batch_size x num_units] shape
+      state: a `tuple` of 2D `Tensor` of [batch_size x num_units] shape
         or a `Tensor` of [batch_size x (num_units * (self.depth + 1))] shape
 
-    Return:
+    Returns:
       outputs: a 2D `Tensor` of [batch_size x num_units] shape
-      next_state: a tuple of 2D `Tensor` of [batch_size x num_units] shape
+      next_state: a `tuple` of 2D `Tensor` of [batch_size x num_units] shape
         or a `Tensor` of [batch_size x (num_units * (self.depth + 1))] shape
     """
     if not self._state_is_tuple:
@@ -3179,7 +3179,7 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
       states = state
     hidden_state = states[0]
     cell_states = states[1:]
-    outputs, next_state = self.recurrence(inputs, hidden_state, cell_states, 0)
+    outputs, next_state = self._recurrence(inputs, hidden_state, cell_states, 0)
     if self._state_is_tuple:
       next_state = tuple(next_state)
     else:
