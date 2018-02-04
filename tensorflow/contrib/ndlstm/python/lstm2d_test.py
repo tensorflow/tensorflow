@@ -41,11 +41,11 @@ class Lstm2DTest(test_util.TensorFlowTestCase):
       outputs = lstm2d.images_to_sequence(inputs)
       variables.global_variables_initializer().run()
       result = outputs.eval()
-      self.assertEqual(tuple(result.shape), (77, 2, 5))
+      self.assertEqual(tuple(result.shape), (11, 14, 5))
 
   def testSequenceToImagesDims(self):
     with self.test_session():
-      inputs = constant_op.constant(_rand(77, 2, 5))
+      inputs = constant_op.constant(_rand(11, 14, 5))
       outputs = lstm2d.sequence_to_images(inputs, 2)
       variables.global_variables_initializer().run()
       result = outputs.eval()
