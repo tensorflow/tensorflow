@@ -38,32 +38,33 @@ def images_to_sequence(tensor):
     tensor: a (num_images, height, width, depth) tensor
 
   Returns:
-    (width * height, num_images, depth) sequence tensor
+    (width, num_images*height, depth) sequence tensor
   """
 
-  num_image_batches, height, width, depth = _shape(tensor)
-  if num_image_batches is None:
-    num_image_batches = -1
+  _, _, width, depth = _shape(tensor)
+  s = array_ops.shape(tensor)
+  batch_size, height = s[0], s[1]
   transposed = array_ops.transpose(tensor, [2, 0, 1, 3])
   return array_ops.reshape(transposed,
-                           [width * height, num_image_batches, depth])
+                           [width, batch_size * height, depth])
 
 
-def sequence_to_images(tensor, width):
+def sequence_to_images(tensor, height):
   """Convert a batch of sequences into a batch of images.
 
   Args:
     tensor: (num_steps, num_batches, depth) sequence tensor
-    width: the width of images
+    height: the height of the images
 
   Returns:
     (num_images, height, width, depth) tensor
   """
 
-  num_steps, num_batches, depth = _shape(tensor)
+  width, num_batches, depth = _shape(tensor)
   if num_batches is None:
     num_batches = -1
-  height = num_steps // width
+  else:
+    num_batches = num_batches // height
   reshaped = array_ops.reshape(tensor,
                                [width, num_batches, height, depth])
   return array_ops.transpose(reshaped, [1, 2, 0, 3])
@@ -82,7 +83,7 @@ def horizontal_lstm(images, num_filters_out, scope=None):
     num_steps is width and new num_batches is num_image_batches * height
   """
   with variable_scope.variable_scope(scope, "HorizontalLstm", [images]):
-    _, _, width, _ = _shape(images)
+    _, height, _, _ = _shape(images)
     sequence = images_to_sequence(images)
     with variable_scope.variable_scope("lr"):
       hidden_sequence_lr = lstm1d.ndlstm_base(sequence, num_filters_out // 2)
@@ -91,7 +92,7 @@ def horizontal_lstm(images, num_filters_out, scope=None):
           sequence, num_filters_out - num_filters_out // 2, reverse=1))
     output_sequence = array_ops.concat([hidden_sequence_lr, hidden_sequence_rl],
                                        2)
-    output = sequence_to_images(output_sequence, width)
+    output = sequence_to_images(output_sequence, height)
     return output
 
 
@@ -165,7 +166,6 @@ def separable_lstm(images, num_filters_out,
       transposed = array_ops.transpose(hidden, [0, 2, 1, 3])
       output_transposed = horizontal_lstm(transposed, num_filters_out)
     output = array_ops.transpose(output_transposed, [0, 2, 1, 3])
-    print(output.shape)
     return output
 
 
