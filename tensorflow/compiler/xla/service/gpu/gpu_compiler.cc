@@ -35,8 +35,9 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/call_inliner.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/flatten_call_graph.h"
-#include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_rewriter.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_algorithm_picker.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
 #include "tensorflow/compiler/xla/service/gpu/fusion_merger.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_copy_insertion.h"
@@ -127,7 +128,9 @@ string GetLibdeviceDir(const string& config_cuda_data_dir) {
 }
 
 // Runs optimization passes on the given HLO module.
-tensorflow::Status OptimizeHloModule(HloModule* hlo_module) {
+tensorflow::Status OptimizeHloModule(HloModule* hlo_module,
+                                     se::StreamExecutor* stream_exec,
+                                     DeviceMemoryAllocator* device_allocator) {
   {
     HloPassPipeline pipeline("optimization");
     pipeline.AddInvariantChecker<HloVerifier>();
@@ -143,6 +146,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module) {
     // most ops.
     pipeline.AddPass<HloElementTypeConverter>(BF16, F32);
     pipeline.AddPass<DotDecomposer>();
+
     {
       auto& pass =
           pipeline.AddPass<HloPassFix<HloPassPipeline>>("simplification");
@@ -173,7 +177,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module) {
       pass.AddPass<ReshapeMover>();
       pass.AddPass<HloConstantFolding>();
     }
-    pipeline.AddPass<ConvolutionFolding>();
+
     pipeline.AddPass<TransposeFolding>(
         [](const HloInstruction& dot,
            const TransposeFolding::OperandIndices& candidate_operands) {
@@ -185,6 +189,58 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module) {
     pipeline.AddPass<HloDCE>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
+
+  {
+    // Convert convolutions into CustomCalls to cudnn, then canonicalize them
+    // (PadInsertion).
+    HloPassPipeline pipeline("conv_canonicalization");
+    pipeline.AddInvariantChecker<HloVerifier>();
+    pipeline.AddPass<CudnnConvolutionRewriter>();
+    pipeline.AddPass<PadInsertion>();
+
+    // Choose the fastest algorithm for each conv.
+    //
+    // In theory doing this here is way too early: It needs to happen after
+    // layout assignment, because the layout of the inputs/outputs affects the
+    // speed of the conv.  But currently we only allow only one input/output
+    // layout when calling cudnn, so there's no ambiguity.
+    //
+    // We pick the algorithm at this early stage so we can generate better HLO.
+    // After CudnnConvolutionRewriter, our convolutions are CustomCalls which
+    // return a tuple (conv_result, scratch_memory), and the each conv uses 0
+    // bytes of scratch:
+    //
+    //   customcall = (f32[...], f32[0])
+    //   return gte(customcall, 0)
+    //
+    // The algorithm picker then chooses the best algorithm, and potentially
+    // increases the scratch space.  It replaces customcall with new_tuple,
+    // giving us the following:
+    //
+    //   new_customcall = (f32[...], f32[N])
+    //   new_tuple = tuple(gte(new_customcall, 0), constant f32[0])
+    //   return gte(new_tuple, 0)
+    //
+    // The new tuple and gte instructions then be simplified away, because
+    // nobody is expected to use the scratch value.
+    //
+    // However, if we were to run CudnnConvolutionAlgorithmPicker after layout
+    // assignment, fusion would already have run, and the gte(customcall, 0)
+    // would probably already be into a fusion node.  We can't simplify across
+    // HloComputation boundaries, so in this case we wouldn't be able to
+    // simplify away the new_tuple bits.
+    //
+    // We'll need to revisit this if we ever allow multiple layouts for the
+    // inputs/outputs of a cudnn convolution.
+    pipeline.AddPass<CudnnConvolutionAlgorithmPicker>(stream_exec,
+                                                      device_allocator);
+    // Clean up new_tuple described above.
+    pipeline.AddPass<TupleSimplifier>();
+    pipeline.AddPass<HloDCE>();
+
+    TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
+  }
+
   {
     HloPassFix<HloPassPipeline> fusion("fusion");
     fusion.AddInvariantChecker<HloVerifier>();
@@ -212,9 +268,7 @@ tensorflow::Status OptimizeHloModule(HloModule* hlo_module) {
 
 // Modifies the given HLO module so that it will be accepted by IrEmitter.
 // Unlike optimization passes, the passes are necessary for correctness.
-tensorflow::Status PrepareHloModuleForIrEmitting(
-    HloModule* hlo_module, se::StreamExecutor* stream_exec,
-    DeviceMemoryAllocator* /*device_allocator*/) {
+tensorflow::Status PrepareHloModuleForIrEmitting(HloModule* hlo_module) {
   // In some cases, we have to place the result of an instruction in a temporary
   // buffer. For instance, the buffer that holds an external parameter is
   // assumed immutable at this point, and should not be reused for output
@@ -222,9 +276,10 @@ tensorflow::Status PrepareHloModuleForIrEmitting(
   // the parameter.
   HloPassPipeline pipeline("GPU-ir-emit-prepare");
   pipeline.AddInvariantChecker<HloVerifier>();
-  pipeline.AddPass<PadInsertion>();
+
   pipeline.AddPass<GpuLayoutAssignment>(
       hlo_module->mutable_entry_computation_layout());
+
   // The LayoutAssignment pass may leave behind kCopy instructions which are
   // duplicate or NOPs, so remove them with algebraic simplification and CSE.
   pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
@@ -417,7 +472,8 @@ StatusOr<std::unique_ptr<HloModule>> GpuCompiler::RunHloPasses(
   XLA_SCOPED_LOGGING_TIMER("GpuCompiler::RunHloPasses");
   Tracing::TraceMe annotation("HLO Transforms", module->name(),
                               /*is_expensive=*/true);
-  TF_RETURN_IF_ERROR(OptimizeHloModule(module.get()));
+  TF_RETURN_IF_ERROR(
+      OptimizeHloModule(module.get(), stream_exec, device_allocator));
   return std::move(module);
 }
 
@@ -428,8 +484,7 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
 
   TF_RET_CHECK(stream_exec != nullptr);
 
-  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get(), stream_exec,
-                                                   device_allocator));
+  TF_RETURN_IF_ERROR(PrepareHloModuleForIrEmitting(module.get()));
 
   llvm::LLVMContext llvm_context;
   std::string buffer;
@@ -464,8 +519,9 @@ StatusOr<std::unique_ptr<Executable>> GpuCompiler::RunBackend(
                           /*color_alignment=*/[](LogicalBuffer::Color) {
                             return kCudaMallocAlignBytes;
                           }));
-  // BufferAssignment::ToString() includes a header, so no need for us to
-  // print one ourselves.
+  // BufferAssignment::Stats::ToString() and BufferAssignment::ToString()
+  // include headers, so no need for us to print them ourselves.
+  XLA_VLOG_LINES(1, buffer_assignment->GetStats().ToString());
   XLA_VLOG_LINES(2, buffer_assignment->ToString());
   XLA_VLOG_LINES(2, module->ToString());
   const string xla_dump_optimized_hlo_proto_to =

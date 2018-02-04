@@ -131,6 +131,7 @@ cc_library(
         "ir_emitter_context.h",
     ],
     deps = [
+        ":cudnn_convolution_runner",
         ":elemental_ir_emitter",
         ":gpu_constants",
         ":gpu_executable",
@@ -262,6 +263,7 @@ cc_library(
     ],
     deps = [
         ":buffer_allocations",
+        ":cudnn_convolution_runner",
         ":infeed_manager",
         ":ir_emission_utils",
         ":partition_assignment",
@@ -309,9 +311,41 @@ cc_library(
 )
 
 cc_library(
-    name = "convolution_folding",
-    srcs = ["convolution_folding.cc"],
-    hdrs = ["convolution_folding.h"],
+    name = "cudnn_convolution_algorithm_picker",
+    srcs = ["cudnn_convolution_algorithm_picker.cc"],
+    hdrs = ["cudnn_convolution_algorithm_picker.h"],
+    deps = [
+        ":cudnn_convolution_runner",
+        ":gpu_executable",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla/service:device_memory_allocator",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_pass",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
+    name = "cudnn_convolution_runner",
+    srcs = ["cudnn_convolution_runner.cc"],
+    hdrs = ["cudnn_convolution_runner.h"],
+    deps = [
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+cc_library(
+    name = "cudnn_convolution_rewriter",
+    srcs = ["cudnn_convolution_rewriter.cc"],
+    hdrs = ["cudnn_convolution_rewriter.h"],
     deps = [
         ":ir_emission_utils",
         "//tensorflow/compiler/xla:literal_util",
@@ -325,15 +359,18 @@ cc_library(
 )
 
 tf_cc_test(
-    name = "convolution_folding_test",
-    srcs = ["convolution_folding_test.cc"],
+    name = "cudnn_convolution_rewriter_test",
+    srcs = ["cudnn_convolution_rewriter_test.cc"],
     deps = [
-        ":convolution_folding",
+        ":cudnn_convolution_rewriter",
+        ":ir_emission_utils",
+        "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:test_helpers",
         "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
         "//tensorflow/compiler/xla/service:shape_inference",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/core:test",
     ],
 )
@@ -446,7 +483,8 @@ cc_library(
     srcs = ["gpu_compiler.cc"],
     hdrs = ["gpu_compiler.h"],
     deps = [
-        ":convolution_folding",
+        ":cudnn_convolution_algorithm_picker",
+        ":cudnn_convolution_rewriter",
         ":fusion_merger",
         ":gpu_constants",
         ":gpu_copy_insertion",

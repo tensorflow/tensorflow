@@ -292,6 +292,22 @@ def _map_sequence_obj_to_idx(sequence):
   return {id(x): i for i, x in enumerate(sequence)}
 
 
+def _flatten(sequence):
+  """A wrapper around `nest.flatten` that also unpacks `IndexedSlices`."""
+  # TODO(akshayka): Support `SparseTensor` in a similar fashion.
+  flat_sequence = nest.flatten(sequence)
+  outputs = []
+  for item in flat_sequence:
+    if isinstance(item, ops.IndexedSlices):
+      if item.dense_shape is not None:
+        outputs.extend([item.values, item.indices, item.dense_shape])
+      else:
+        outputs.extend([item.values, item.indices])
+    else:
+      outputs.append(item)
+  return outputs
+
+
 class GraphModeFunction(object):
   """Callable object representing a graph-mode function.
 
@@ -333,14 +349,14 @@ class GraphModeFunction(object):
     self._input_placeholders = input_placeholders
     self._extra_inputs = list(extra_inputs)
     self._graph = graph
-    self._has_backprop = False
+    self._backward_function = None
     self._func_name = name
     self._function_def = defined_function
     self._num_outputs = len(defined_function.signature.output_arg)
     self._ops = operations
     self._func_outputs = func_outputs
     self._returns = [func_outputs] if isinstance(
-        func_outputs, (ops.Tensor, type(None))) else list(func_outputs)
+        func_outputs, (ops.Tensor, type(None))) else _flatten(func_outputs)
     self._output_shapes = output_shapes
     self._variables = variables if variables is not None else []
 
@@ -348,9 +364,8 @@ class GraphModeFunction(object):
   def variables(self):
     return self._variables
 
-  def _compute_backprop(self):
-    """Computes the backprop function object for this function."""
-    self._has_backprop = True
+  def _construct_backprop_function(self):
+    """Constructs the backprop function object for this function."""
     with self._graph.as_default(), context.graph_mode():
       c = _CapturingContext()
       with c:
@@ -361,13 +376,16 @@ class GraphModeFunction(object):
             filtered_outputs,
             self._input_placeholders,
             grad_ys=self._out_grad_placeholders)
-        shapes = tuple(x.shape for x in in_gradients if x is not None)
+
+    backward_outputs = tuple(
+        grad for grad in _flatten(in_gradients) if grad is not None)
+    output_shapes = tuple(grad.shape for grad in backward_outputs)
+
     captures = list(sorted(c.captured_tensors, key=lambda x: x.name))
     forward_name = _forward_name(self._func_name)
     self._forward_fdef = _EagerDefinedFunction(
         forward_name, self._graph, self._ops, self._input_placeholders,
         filtered_outputs + captures)
-    backward_outputs = tuple(x for x in in_gradients if x is not None)
     all_inputs = self._out_grad_placeholders + captures
     # Excluding input ops from the body as we do not intend to execute these
     # operations when the function is executed.
@@ -381,7 +399,7 @@ class GraphModeFunction(object):
     bname = _backward_name(self._func_name)
     self._backward_function = GraphModeFunction(
         bname, all_inputs, [], self._graph, function_def_ops,
-        backward_outputs, in_gradients, shapes)
+        backward_outputs, in_gradients, output_shapes)
 
   def _backprop_call(self, args):
     """Calls the wrapped function and records the result on a tape."""
@@ -426,9 +444,24 @@ class GraphModeFunction(object):
 
   @property
   def output_shapes(self):
+    """The function's output shapes."""
     # TODO(ebrevdo): Should we only keep the output shapes associated
     # with len(self._returns) outputs?
-    return nest.pack_sequence_as(self._func_outputs, self._output_shapes)
+    outputs_list = nest.flatten(self._func_outputs)
+    j = 0
+    for i, o in enumerate(outputs_list):
+      if o is not None:
+        if isinstance(o, ops.IndexedSlices):
+          # Extract the shape of the `IndexedSlices` object's `values` field.
+          outputs_list[i] = self._output_shapes[j]  # the `values` shape
+          if o.dense_shape is not None:
+            j += 3  # skip over shapes for `values`, `indices`, `dense_shape`
+          else:
+            j += 2  # skip over shapes for `values`, `indices`
+        else:
+          outputs_list[i] = self._output_shapes[j]
+          j += 1
+    return nest.pack_sequence_as(self._func_outputs, outputs_list)
 
   @property
   def output_dtypes(self):
@@ -457,12 +490,11 @@ class GraphModeFunction(object):
       if v._trainable:  # pylint: disable=protected-access
         tape.watch_variable(v)
 
-    tensor_inputs = [x for x in nest.flatten(args)
-                     if isinstance(x, ops.Tensor)]
+    tensor_inputs = [x for x in nest.flatten(args) if isinstance(x, ops.Tensor)]
     if tape.should_record(tensor_inputs) or tape.should_record(
         self._extra_inputs):
-      if not self._has_backprop:
-        self._compute_backprop()
+      if self._backward_function is None:
+        self._construct_backprop_function()
       return self._backprop_call(tensor_inputs)
 
     ctx = context.context()
@@ -503,13 +535,30 @@ class GraphModeFunction(object):
     """
     if self._func_outputs is None:
       return None
+    # Use `nest.flatten` instead of `_flatten` in order to preserve any
+    # IndexedSlices in `self._func_outputs`.
     outputs_list = nest.flatten(self._func_outputs)
     j = 0
     for i, o in enumerate(outputs_list):
       if o is not None:
-        outputs_list[i] = result[j]
-        j += 1
-    return nest.pack_sequence_as(self._func_outputs, outputs_list)
+        if isinstance(o, ops.IndexedSlices):
+          # Repack Tensors for IndexedSlices.
+          if o.dense_shape is not None:
+            outputs_list[i] = ops.IndexedSlices(
+                values=result[j],
+                indices=result[j + 1],
+                dense_shape=result[j + 2])
+            j += 3
+          else:
+            outputs_list[i] = ops.IndexedSlices(
+                values=result[j],
+                indices=result[j + 1])
+            j += 2
+        else:
+          outputs_list[i] = result[j]
+          j += 1
+    ret = nest.pack_sequence_as(self._func_outputs, outputs_list)
+    return ret
 
 
 def _get_defun_inputs(args):
@@ -526,15 +575,13 @@ def _get_defun_inputs(args):
 
 def _defun_internal(name, func, args, kwds):
   """Defines and returns graph-mode version of func."""
-  container_prefix = ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
+  graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
   with context.graph_mode():
     captures = {}
     tmp_graph = CapturingGraph(captures)
-    # Inherit the container prefix, since this is used for error checking when
-    # isolating eager execution (the container prefix at creation must match the
-    # container prefix when used, and variables accessed in the defun will be
-    # used in the outside context).
-    tmp_graph._container_prefix = container_prefix  # pylint: disable=protected-access
+    # Inherit the graph key, since this is used for matching variables in
+    # optimizers.
+    tmp_graph._graph_key = graph_key  # pylint: disable=protected-access
     # Copy the graph collections to ensure summaries and other things work. This
     # lets the function access (but not mutate) collections of the containing
     # graph, such as the global step and the summary writer collections.
@@ -555,7 +602,7 @@ def _defun_internal(name, func, args, kwds):
 
         # Returning a closed-over tensor as an output does not trigger a
         # call to convert_to_tensor, so we manually capture all such tensors.
-        outputs_list = nest.flatten(func_outputs)
+        outputs_list = _flatten(func_outputs)
         func_def_outputs = [
             _convert_to_graph_tensor(x) for x in outputs_list if x is not None
         ]
@@ -600,6 +647,18 @@ def _cache_key(x):
   """Cache key for tfe functions."""
   if isinstance(x, ops.Tensor):
     return _TensorDtype(x.dtype, x._shape_tuple())  # pylint: disable=protected-access
+  if isinstance(x, ops.IndexedSlices):
+    if x.dense_shape is not None:
+      return tuple([
+          _TensorDtype(x.values.dtype, x.values._shape_tuple()),  # pylint: disable=protected-access
+          _TensorDtype(x.indices.dtype, x.indices._shape_tuple()),  # pylint: disable=protected-access
+          _TensorDtype(x.dense_shape.dtype, x.dense_shape._shape_tuple())  # pylint: disable=protected-access
+      ])
+    else:
+      return tuple([
+          _TensorDtype(x.values.dtype, x.values._shape_tuple()),  # pylint: disable=protected-access
+          _TensorDtype(x.indices.dtype, x.indices._shape_tuple())  # pylint: disable=protected-access
+      ])
   if isinstance(x, np.ndarray):
     return ("array", x.shape, tuple(x.reshape(-1)))
   if isinstance(x, (list, tuple)):

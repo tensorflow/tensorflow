@@ -77,9 +77,13 @@ py_library(
         "//tensorflow/contrib/graph_editor:graph_editor_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:variables",
     ],
 )
 

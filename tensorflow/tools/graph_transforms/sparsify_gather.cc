@@ -86,8 +86,17 @@ void CreateConstNode(const Tensor& tensor, const string& name,
   SetNodeTensorAttr<float>("value", tensor, node_def);
 }
 
+string GetMonolithicTensorKey(const string& tensor_slice_name) {
+  std::vector<string> names = Split(tensor_slice_name, "/");
+  if (StringPiece(names[names.size() - 1]).starts_with("part_")) {
+    CHECK_GE(names.size(), 2);
+    names.pop_back();
+  }
+  return Join(names, "/");
+}
+
 Status ObtainTensorSlice(const GraphDef& input_graph_def,
-                         const string& tensor_name,
+                         const string& target_name,
                          string* shape_slice_string) {
   string restore_node_name;
   for (const auto& node : input_graph_def.node()) {
@@ -95,17 +104,41 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
     if (node_name_parts.size() == 2 &&
         StringPiece(node_name_parts[0]).starts_with("save") &&
         StringPiece(node_name_parts[1]).starts_with("Assign") &&
-        node.input(0) == tensor_name) {
+        node.input(0) == target_name) {
       restore_node_name = node.input(1);
       break;
     }
   }
+
+  std::vector<string> restore_node_parts = Split(restore_node_name, ":");
+  CHECK_LE(restore_node_parts.size(), 2);
+  string tensor_names_node;
   string shape_and_slices_node;
   for (const auto& node : input_graph_def.node()) {
-    if ((node.name() == restore_node_name) && (node.op() == "RestoreV2")) {
+    if ((node.name() == restore_node_parts[0]) && (node.op() == "RestoreV2")) {
+      tensor_names_node = node.input(1);
       shape_and_slices_node = node.input(2);
       break;
     }
+  }
+
+  int offset = -1;
+  for (const auto& node : input_graph_def.node()) {
+    if (node.name() == tensor_names_node) {
+      Tensor tensor_names_tensor;
+      TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &tensor_names_tensor));
+      const auto& tensor_names_value = tensor_names_tensor.flat<string>();
+      for (int i = 0; i < tensor_names_value.size(); i++) {
+        if (tensor_names_value(i) == GetMonolithicTensorKey(target_name)) {
+          offset = i;
+          break;
+        }
+      }
+    }
+  }
+  if (offset == -1) {
+    return errors::Internal("Unable to find RestoreV2 entry for variable: ",
+                            target_name);
   }
   for (const auto& node : input_graph_def.node()) {
     if (node.name() == shape_and_slices_node) {
@@ -113,21 +146,11 @@ Status ObtainTensorSlice(const GraphDef& input_graph_def,
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "value", &shape_and_slices_tensor));
       const auto& shape_and_slices_value =
           shape_and_slices_tensor.flat<string>();
-      *shape_slice_string = shape_and_slices_value(0);
+      *shape_slice_string = shape_and_slices_value(offset);
       return Status::OK();
     }
   }
-  return errors::Internal("Unable to find slice for variable: ", tensor_name);
-}
-
-string GetMonolithicTensorKey(const string& tensor_slice_name) {
-  std::vector<string> names = Split(tensor_slice_name, "/");
-  CHECK_GE(names.size(), 2);
-  CHECK(StringPiece(names[names.size() - 1]).starts_with("part_"));
-
-  // Remove the "part_x" suffix
-  names.pop_back();
-  return Join(names, "/");
+  return errors::Internal("Unable to find slice for variable: ", target_name);
 }
 
 Status ReadTensorFromCheckpoint(
@@ -178,6 +201,14 @@ Status ObtainVariableInfo(
       (**shapes_and_slices)[node.name()] = s;
     }
   }
+  return Status::OK();
+}
+
+Status RemoveInputAtIndex(NodeDef* n, int index) {
+  for (int i = index; i < n->input_size() - 1; i++) {
+    n->mutable_input()->SwapElements(i, i + 1);
+  }
+  n->mutable_input()->RemoveLast();
   return Status::OK();
 }
 
@@ -301,13 +332,13 @@ Status SparsifyGatherInternal(
             TF_RETURN_IF_ERROR(ReadTensorFromCheckpoint(
                 weights_node.name(), ckpt_reader,
                 (*shapes_and_slices)[weights_node.name()], &weight));
-            // Add both both weight and identity node names.
-            removed_node_names.push_back(weights_node.name());
-            removed_node_names.push_back(match.inputs[0].node.name());
-            for (auto input_node : match.inputs[0].node.input()) {
-              auto parsed_input = StringReplace(input_node, "^", "", true);
-              refs[parsed_input]--;
-            }
+          }
+          // Add both both weight and identity node names.
+          removed_node_names.push_back(weights_node.name());
+          removed_node_names.push_back(match.inputs[0].node.name());
+          for (auto input_node : match.inputs[0].node.input()) {
+            auto parsed_input = StringReplace(input_node, "^", "", true);
+            refs[parsed_input]--;
           }
           Tensor indices_tensor;
           Tensor values_tensor;
@@ -468,26 +499,49 @@ Status SparsifyGatherInternal(
           continue;
         }
         int j = 0;
+        bool deleted_inputs = false;
         while (j < replaced_graph_def.node(i).input_size()) {
           if (replaced_graph_def.node(i).input(j) == name ||
               replaced_graph_def.node(i).input(j) == ("^" + name)) {
-            replaced_graph_def.mutable_node(i)->mutable_input()->SwapElements(
-                j, replaced_graph_def.node(i).input_size() - 1);
-            replaced_graph_def.mutable_node(i)->mutable_input()->RemoveLast();
+            TF_RETURN_IF_ERROR(
+                RemoveInputAtIndex(replaced_graph_def.mutable_node(i), j));
+            deleted_inputs = true;
             continue;
           }
           j++;
         }
-        if (!replaced_graph_def.node(i).input_size()) {
-          if ((refs.find(replaced_graph_def.node(i).name()) != refs.end()) &&
-              (refs[replaced_graph_def.node(i).name()] == 0)) {
+        if (deleted_inputs) {
+          if (replaced_graph_def.node(i).op() == "ConcatV2") {
+            if (replaced_graph_def.node(i).input_size() > 2) {
+              SetNodeAttr("N", replaced_graph_def.node(i).input_size() - 1,
+                          replaced_graph_def.mutable_node(i));
+            } else if (replaced_graph_def.node(i).input_size() == 2) {
+              if (refs[replaced_graph_def.node(i).input(1)] != 1) {
+                return errors::Internal(
+                    "Expect axis tensor of ConcatV2 node to only be referenced "
+                    "once.");
+              }
+              refs[replaced_graph_def.node(i).input(1)] -= 1;
+              removed_node_names.push_back(replaced_graph_def.node(i).input(1));
+              replaced_graph_def.mutable_node(i)->mutable_input()->RemoveLast();
+              replaced_graph_def.mutable_node(i)->mutable_attr()->erase("N");
+              replaced_graph_def.mutable_node(i)->set_op("Identity");
+            } else {
+              return errors::Internal(
+                  "ConcatV2 should have at least two elements");
+            }
+          }
+          if ((replaced_graph_def.node(i).op() == "Assign" ||
+               replaced_graph_def.node(i).op() == "Reshape" ||
+               replaced_graph_def.node(i).op() == "Equal" ||
+               replaced_graph_def.node(i).op() == "Mean" ||
+               replaced_graph_def.node(i).op() == "ScalarSummary") &&
+              replaced_graph_def.node(i).input_size() == 1) {
             removed_node_names.push_back(replaced_graph_def.node(i).name());
           }
-        }
-
-        if (replaced_graph_def.node(i).op() == "Assign" &&
-            replaced_graph_def.node(i).input_size() == 1) {
-          removed_node_names.push_back(replaced_graph_def.node(i).name());
+          if (!replaced_graph_def.node(i).input_size()) {
+            removed_node_names.push_back(replaced_graph_def.node(i).name());
+          }
         }
         i++;
       }
@@ -528,17 +582,22 @@ Status SparsifyGather(const GraphDef& input_graph_def,
     };
   // clang-format on
 
+  GraphDef cleaned_input_graph_def;
+  RemoveAttributes(input_graph_def, {"_output_shapes"},
+                   &cleaned_input_graph_def);
+
   GraphDef temp_output;
 
   std::unique_ptr<BundleReader> ckpt_reader;
   TF_RETURN_IF_ERROR(InitializeCheckpointReader(context, &ckpt_reader));
 
   std::unique_ptr<std::unordered_map<string, string> > shapes_and_slices;
-  TF_RETURN_IF_ERROR(ObtainVariableInfo(input_graph_def, &shapes_and_slices));
+  TF_RETURN_IF_ERROR(
+      ObtainVariableInfo(cleaned_input_graph_def, &shapes_and_slices));
 
-  TF_RETURN_IF_ERROR(SparsifyGatherInternal(input_graph_def, shapes_and_slices,
-                                            context, gather_pattern,
-                                            ckpt_reader, &temp_output));
+  TF_RETURN_IF_ERROR(SparsifyGatherInternal(
+      cleaned_input_graph_def, shapes_and_slices, context, gather_pattern,
+      ckpt_reader, &temp_output));
 
   TF_RETURN_IF_ERROR(SparsifyGatherInternal(temp_output, shapes_and_slices,
                                             context, gather_v2_pattern,

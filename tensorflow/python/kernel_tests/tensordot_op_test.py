@@ -105,7 +105,7 @@ class TensordotTest(test_lib.TestCase):
         self.assertAllEqual(tf_ans, np_ans)
 
   def test_partial_shape_inference(self):
-    for axes in ([1],[0]), 1:
+    for axes in ([1], [0]), 1:
       a = array_ops.placeholder(dtypes.float32)
       b = array_ops.placeholder(dtypes.float32)
       output = math_ops.tensordot(a, b, axes)

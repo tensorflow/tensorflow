@@ -34,6 +34,12 @@ namespace xla {
 
 // Unlike IrEmitter, this creates host functions which emit IR to generate the
 // output element at the given index. It is used to generate fused operations.
+//
+// This class handles both vanilla fusion and multi-output fusion.  In the MOF
+// case, the fusion node ends with a kTuple instruction, and the root generator
+// returned by this emitter returns an LLVM struct with N elements, one for each
+// element of the arrays in the tuple.  It follows that the arrays in the tuple
+// must have the same length.
 class FusedIrEmitter : public DfsHloVisitorWithDefault {
  public:
   using Generator = llvm_ir::ElementGenerator;

@@ -97,12 +97,11 @@ static Node* AddNoOp(Graph* g) {
 
 static Node* AddIdentity(Graph* g, Endpoint input) {
   DCHECK_LT(0, input.dtype());
-  DCHECK_LT(input.dtype(), DT_FLOAT_REF);
   NodeDef ndef;
   ndef.set_name(g->NewName(kNodeLabel));
   ndef.set_op("Identity");
   ndef.add_input(input.name());
-  AddNodeAttr("T", input.dtype(), &ndef);
+  AddNodeAttr("T", BaseType(input.dtype()), &ndef);
   Status s;
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);

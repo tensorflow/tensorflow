@@ -41,17 +41,17 @@ class ControlFlowUtilTest(test.TestCase):
     self.assertFalse(control_flow_util.IsSwitch(test_ops.int_output().op))
 
   def testIsLoopEnter(self):
-    enter = gen_control_flow_ops.enter(1, frame_name="name").op
+    enter = gen_control_flow_ops._enter(1, frame_name="name").op
     self.assertTrue(control_flow_util.IsLoopEnter(enter))
     self.assertFalse(control_flow_util.IsLoopConstantEnter(enter))
 
-    ref_enter = gen_control_flow_ops.ref_enter(test_ops.ref_output(),
-                                               frame_name="name").op
+    ref_enter = gen_control_flow_ops._ref_enter(test_ops.ref_output(),
+                                                frame_name="name").op
     self.assertTrue(control_flow_util.IsLoopEnter(ref_enter))
     self.assertFalse(control_flow_util.IsLoopConstantEnter(ref_enter))
 
-    const_enter = gen_control_flow_ops.enter(1, frame_name="name",
-                                             is_constant=True).op
+    const_enter = gen_control_flow_ops._enter(1, frame_name="name",
+                                              is_constant=True).op
     self.assertTrue(control_flow_util.IsLoopEnter(const_enter))
     self.assertTrue(control_flow_util.IsLoopConstantEnter(const_enter))
 

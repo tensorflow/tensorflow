@@ -1691,7 +1691,8 @@ def rgb_to_yiq(images):
     images: tensor with the same shape as `images`.
   """
   images = ops.convert_to_tensor(images, name='images')
-  kernel = ops.convert_to_tensor(_rgb_to_yiq_kernel, dtype=images.dtype, name='kernel')
+  kernel = ops.convert_to_tensor(
+      _rgb_to_yiq_kernel, dtype=images.dtype, name='kernel')
   ndims = images.get_shape().ndims
   return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
 
@@ -1717,7 +1718,8 @@ def yiq_to_rgb(images):
     images: tensor with the same shape as `images`.
   """
   images = ops.convert_to_tensor(images, name='images')
-  kernel = ops.convert_to_tensor(_yiq_to_rgb_kernel, dtype=images.dtype, name='kernel')
+  kernel = ops.convert_to_tensor(
+      _yiq_to_rgb_kernel, dtype=images.dtype, name='kernel')
   ndims = images.get_shape().ndims
   return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
 
@@ -1742,7 +1744,8 @@ def rgb_to_yuv(images):
     images: tensor with the same shape as `images`.
   """
   images = ops.convert_to_tensor(images, name='images')
-  kernel = ops.convert_to_tensor(_rgb_to_yuv_kernel, dtype=images.dtype, name='kernel')
+  kernel = ops.convert_to_tensor(
+      _rgb_to_yuv_kernel, dtype=images.dtype, name='kernel')
   ndims = images.get_shape().ndims
   return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
 
@@ -1768,7 +1771,8 @@ def yuv_to_rgb(images):
     images: tensor with the same shape as `images`.
   """
   images = ops.convert_to_tensor(images, name='images')
-  kernel = ops.convert_to_tensor(_yuv_to_rgb_kernel, dtype=images.dtype, name='kernel')
+  kernel = ops.convert_to_tensor(
+      _yuv_to_rgb_kernel, dtype=images.dtype, name='kernel')
   ndims = images.get_shape().ndims
   return math_ops.tensordot(images, kernel, axes=[[ndims-1], [0]])
 

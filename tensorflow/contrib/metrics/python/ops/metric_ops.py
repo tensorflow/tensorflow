@@ -739,7 +739,7 @@ def _streaming_confusion_matrix_at_thresholds(predictions,
   else:
     for include in includes:
       if include not in all_includes:
-        raise ValueError('Invaild key: %s.' % include)
+        raise ValueError('Invalid key: %s.' % include)
 
   predictions, labels, weights = metrics_impl._remove_squeezable_dimensions(  # pylint: disable=protected-access
       predictions, labels, weights)
