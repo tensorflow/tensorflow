@@ -1061,13 +1061,19 @@ REGISTER_OP("SoftmaxCrossEntropyWithLogits")
     .Output("backprop: T")
     .Attr("T: {half, bfloat16, float, double}")
     .SetShapeFn([](InferenceContext* c) {
-      ShapeHandle input;
-      TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &input));
-      TF_RETURN_IF_ERROR(c->Merge(input, c->input(1), &input));
-
-      DimensionHandle batch_size = c->Dim(input, 0);
+      Status s = BroadcastBinaryOpOutputShapeFn(c, 1);
+      if (!s.ok()) {
+        return s;
+      }
+      if (c->RankKnown(c->output(1))) {
+        if (c->Rank(c->output(1)) != 2) {
+          return errors::InvalidArgument(
+              "Shape must be broadcasted with rank 2, but is rank ",
+              c->Rank(c->output(1)));
+        }
+      }
+      DimensionHandle batch_size = c->Dim(c->output(1), 0);
       c->set_output(0, c->Vector(batch_size));
-      c->set_output(1, input);
       return Status::OK();
     });
 
