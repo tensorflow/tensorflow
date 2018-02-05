@@ -3459,7 +3459,7 @@ inline void ResizeBilinearGeneric(const float* input_data,
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
-                           const Dims<4>& output_dims) {
+                           const Dims<4>& output_dims, bool align_corners) {
   gemmlowp::ScopedProfilingLabel label("ResizeBilinear");
   int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   int32 input_height = ArraySize(input_dims, 2);
@@ -3474,19 +3474,35 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
   int32 output_width = output_size_data[Offset(output_size_dims, 1, 0, 0, 0)];
 
   // Specialize for 2x2 upsample.
-  if (output_height == 2 * input_height && output_width == 2 * input_width) {
+  if (!align_corners && output_height == 2 * input_height &&
+      output_width == 2 * input_width) {
     ResizeBilinear2x2(input_data, input_dims, output_data, output_dims, batches,
                       input_height, input_width, depth, output_height,
                       output_width);
   } else {
     float height_scale = static_cast<float>(input_height) / output_height;
     float width_scale = static_cast<float>(input_width) / output_width;
+    if (align_corners && output_height > 1) {
+      height_scale = static_cast<float>(input_height - 1) / (output_height - 1);
+    }
+    if (align_corners && output_width > 1) {
+      width_scale = static_cast<float>(input_width - 1) / (output_width - 1);
+    }
 
     ResizeBilinearGeneric(input_data, input_dims, output_data, output_dims,
                           batches, input_height, input_width, depth,
                           output_height, output_width, height_scale,
                           width_scale);
   }
+}
+
+// legacy, for compatibility with old checked-in code
+inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, float* output_data,
+                           const Dims<4>& output_dims) {
+  ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
+                 output_data, output_dims, /*align_corners=*/false);
 }
 
 template <typename T>
