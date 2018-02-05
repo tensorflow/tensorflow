@@ -131,6 +131,8 @@ py_test(
 py_test(
     name = "for_canonicalization_test",
     srcs = ["for_canonicalization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["nomac"],
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",

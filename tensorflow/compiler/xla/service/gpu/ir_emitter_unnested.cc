@@ -1657,24 +1657,24 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
 }
 
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(tuple->operands());
-  bool all_tuple_elements_have_buffer = std::all_of(
-      operands.begin(), operands.end(), [this](HloInstruction* tuple_element) {
+  bool all_tuple_elements_have_buffer =
+      c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
         return ir_emitter_context_->buffer_assignment().HasTopLevelAllocation(
             tuple_element);
       });
-  // Tuples (especially output tuples) can take too many tuple elements,
-  // causing the kernel emitted exceeds the parameter space limit
-  // (b/31336476). As an optimization, if all tuple elements have a buffer, we
-  // collect their buffer addresses in a host array, and then copy that array
-  // to the tuple's buffer.
+  // Tuples (especially tuples that are the final result of a computation) can
+  // be so huge that if we were to emit a kernel that took each tuple element as
+  // a parameter, we would exceed the max allowable number of parameters to a
+  // GPU kernel, b/31336476. As an optimization, if all tuple elements have a
+  // buffer, we collect their buffer addresses in a host array, and then copy
+  // that array to the tuple's buffer.
   //
   // Some tuple elements (e.g. const or bitcast of const) might not have a
-  // buffer -- their contents are stored in code. In that case, we fall back
-  // to emitting kernels which have access to their buffer addresses in code.
+  // buffer -- their contents are stored in code. In that case, we fall back to
+  // emitting kernels which have access to their buffer addresses in code.
   if (all_tuple_elements_have_buffer) {
     std::vector<BufferAllocation::Slice> tuple_element_buffers;
-    for (const HloInstruction* tuple_element : operands) {
+    for (const HloInstruction* tuple_element : tuple->operands()) {
       tuple_element_buffers.push_back(GetAllocationSlice(*tuple_element));
     }
     thunk_sequence_->emplace_back(MakeUnique<TupleThunk>(
