@@ -9,7 +9,7 @@
 
 namespace tensorflow {
 namespace trt {
-
+// set the batch size before constructing the thread to execute engine
 int TRTInt8Calibrator::getBatchSize() const { return batch_size_; }
 
 bool TRTInt8Calibrator::setBatch(

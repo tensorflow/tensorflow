@@ -30,7 +30,7 @@ from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 
 
-def CreateInferenceGraph(input_graph_def, outputs,max_batch_size=1,max_workspace_size=2<<20):
+def CreateInferenceGraph(input_graph_def, outputs,max_batch_size=1,max_workspace_size=2<<20, int8=False):
   """Python wrapper for the TRT transormation.
 
 
@@ -76,7 +76,7 @@ def CreateInferenceGraph(input_graph_def, outputs,max_batch_size=1,max_workspace
   # transformed graphs protobuf string.
   out = trt_convert(
       optimized_graph_def_str ,outputs,
-      max_batch_size,max_workspace_size)
+      max_batch_size,max_workspace_size,int8)
   status = out[0]
   output_graph_def_string = out[1]
   del optimized_graph_def_str #save some memory
