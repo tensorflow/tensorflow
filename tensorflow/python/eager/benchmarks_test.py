@@ -42,9 +42,23 @@ from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 
-
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
+
+
+def record_gradient_callback(inputs, attrs, results):
+  return backprop._record_gradient("MatMul", inputs, attrs, results, None)
+
+
+def c_tfe_py_fastpath_execute(a, b, transpose_a=False, transpose_b=False):
+  ctx = context.context()
+  assert not ctx.in_graph_mode(
+  ), "The prototype doesn't contain C code for graph construction"
+  ctx_handle = ctx._handle  # pylint: disable=protected-access
+
+  return pywrap_tensorflow.TFE_Py_FastPathExecute(
+      ctx_handle, None, "MatMul", record_gradient_callback, a, b,
+      "transpose_a", transpose_a, "transpose_b", transpose_b)[0]
 
 
 class MicroBenchmarks(test.Benchmark):
@@ -222,6 +236,14 @@ class MicroBenchmarks(test.Benchmark):
       gen_math_ops._mat_mul(m, m, transpose_b=transpose_b)
     self._run(func, num_iters)
 
+  def _benchmark_tfe_py_fastpath_execute_matmul(self, m, transpose_b,
+                                                num_iters):
+
+    def func():
+      c_tfe_py_fastpath_execute(m, m, transpose_b=transpose_b)
+
+    self._run(func, num_iters)
+
   def _benchmark_tfe_py_execute_matmul(self, m, transpose_b, num_iters):
     inputs = [m, m]
     # pylint: disable=protected-access
@@ -255,6 +277,12 @@ class MicroBenchmarks(test.Benchmark):
     with context.device(CPU):
       m = self._m_2_by_2.cpu()
       self._benchmark_gen_math_ops_matmul(
+          m, transpose_b=False, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_tfe_py_fastpath_execute_matmul_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = self._m_2_by_2.cpu()
+      self._benchmark_tfe_py_fastpath_execute_matmul(
           m, transpose_b=False, num_iters=self._num_iters_2_by_2)
 
   def benchmark_tfe_py_execute_matmul_2_by_2_CPU(self):
@@ -318,6 +346,12 @@ class MicroBenchmarks(test.Benchmark):
     with context.device(CPU):
       m = self._m_100_by_784.cpu()
       self._benchmark_gen_math_ops_matmul(
+          m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_tfe_py_fastpath_execute_matmul_100_by_784_CPU(self):
+    with context.device(CPU):
+      m = self._m_100_by_784.cpu()
+      self._benchmark_tfe_py_fastpath_execute_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
 
   def benchmark_tfe_py_execute_matmul_100_by_784_CPU(self):

@@ -191,19 +191,32 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
   Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
                      test::function::Attrs attrs,
                      FunctionLibraryRuntime::Handle* handle) {
-    Status status = flr->Instantiate(name, attrs, handle);
-    if (!status.ok()) {
-      return status;
-    }
-    return Status::OK();
+    return flr->Instantiate(name, attrs, handle);
+  }
+
+  Status Instantiate(FunctionLibraryRuntime* flr, const string& name,
+                     test::function::Attrs attrs,
+                     const FunctionLibraryRuntime::InstantiateOptions& options,
+                     FunctionLibraryRuntime::Handle* handle) {
+    return flr->Instantiate(name, attrs, options, handle);
   }
 
   Status InstantiateAndRun(FunctionLibraryRuntime* flr, const string& name,
                            test::function::Attrs attrs,
                            const std::vector<Tensor>& args,
                            std::vector<Tensor*> rets) {
+    return InstantiateAndRun(flr, name, attrs,
+                             FunctionLibraryRuntime::InstantiateOptions(), args,
+                             std::move(rets));
+  }
+
+  Status InstantiateAndRun(
+      FunctionLibraryRuntime* flr, const string& name,
+      test::function::Attrs attrs,
+      const FunctionLibraryRuntime::InstantiateOptions& options,
+      const std::vector<Tensor>& args, std::vector<Tensor*> rets) {
     FunctionLibraryRuntime::Handle handle;
-    Status status = flr->Instantiate(name, attrs, &handle);
+    Status status = flr->Instantiate(name, attrs, options, &handle);
     if (!status.ok()) {
       return status;
     }
@@ -364,6 +377,142 @@ TEST_F(FunctionLibraryRuntimeTest, XTimesN) {
   TF_CHECK_OK(
       InstantiateAndRun(flr0_, "XTimes16", {{"T", DT_FLOAT}}, {x}, {&y}));
   test::ExpectTensorEqual<float>(y, test::AsTensor<float>({16, 32, 48, 64}));
+}
+
+TEST_F(FunctionLibraryRuntimeTest, XTimesNInOverlayLib) {
+  Init({});
+  FunctionDefLibrary proto;
+  *proto.add_function() = test::function::XTimesTwo();
+  *proto.add_function() = test::function::XTimesFour();
+  *proto.add_function() = test::function::XTimes16();
+  std::unique_ptr<FunctionLibraryDefinition> overlay_lib(
+      new FunctionLibraryDefinition(OpRegistry::Global(), proto));
+
+  FunctionLibraryRuntime::InstantiateOptions options;
+  options.overlay_lib = overlay_lib.get();
+
+  auto x = test::AsTensor<float>({1, 2, 3, 4});
+  Tensor y;
+
+  // Ensure that the function is not installed in the base library.
+  HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
+                             {} /* options */, {x}, {&y}),
+           "Not found: Function XTimesTwo is not defined.");
+
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}}, options,
+                                {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({2, 4, 6, 8}));
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimesFour", {{"T", DT_FLOAT}}, options,
+                                {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({4, 8, 12, 16}));
+  TF_CHECK_OK(InstantiateAndRun(flr0_, "XTimes16", {{"T", DT_FLOAT}}, options,
+                                {x}, {&y}));
+  test::ExpectTensorEqual<float>(y, test::AsTensor<float>({16, 32, 48, 64}));
+
+  // Ensure that the use of the overlay has not leaked into the base library.
+  HasError(InstantiateAndRun(flr0_, "XTimesTwo", {{"T", DT_FLOAT}},
+                             {} /* options */, {x}, {&y}),
+           "Not found: Function XTimesTwo is not defined.");
+}
+
+TEST_F(FunctionLibraryRuntimeTest, StateHandle) {
+  auto T = DT_INT32;
+
+  // The expected sequence of outputs from this function is [6, 4, 0, 1, ...].
+  FunctionDef stateful_func = FDH::Define(
+      // Name
+      "RandomUniformWrapper",
+      // Args
+      {},
+      // Return values
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {FDH::Const<int32>("shape", gtl::ArraySlice<int32>({1})),
+       FDH::Const<int32>("minval", 0),
+       FDH::Const<int32>("maxval", 10),
+       // A stateful node.
+       {{"y"},
+        "RandomUniformInt",
+        {"shape", "minval", "maxval"},
+        {{"seed", 37}, {"seed2", 48}, {"Tout", T}, {"T", T}}}});
+  Init({stateful_func});
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, &handle));
+
+  FunctionLibraryRuntime::Options opts;
+  Tensor y;
+  {
+    // Simple case: instantiating with no state_handle.
+    for (int32 expected : {6, 4}) {
+      TF_CHECK_OK(Run(flr0_, handle, opts, {}, {&y}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
+  }
+
+  {
+    // Instantiating again with no state_handle should yield the same handle and
+    // the continuation of the same sequence.
+    FunctionLibraryRuntime::Handle handle_non_isolated;
+    TF_CHECK_OK(
+        Instantiate(flr0_, "RandomUniformWrapper", {}, &handle_non_isolated));
+    EXPECT_EQ(handle, handle_non_isolated);
+    for (int32 expected : {0, 1}) {
+      TF_CHECK_OK(Run(flr0_, handle_non_isolated, opts, {}, {&y}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
+  }
+
+  {
+    // Instantiating with a given state handle will create new state and yield
+    // the original sequence.
+    FunctionLibraryRuntime::InstantiateOptions options;
+    FunctionLibraryRuntime::Handle handle_isolated;
+    options.state_handle = "handle_1";
+    TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
+                            &handle_isolated));
+    EXPECT_NE(handle, handle_isolated);
+    for (int32 expected : {6, 4, 0, 1}) {
+      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
+  }
+
+  {
+    // Instantiating with a different given state handle will create new state
+    // and yield the original sequence.
+    FunctionLibraryRuntime::InstantiateOptions options;
+    FunctionLibraryRuntime::Handle handle_isolated;
+    options.state_handle = "handle_2";
+    TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
+                            &handle_isolated));
+    EXPECT_NE(handle, handle_isolated);
+    for (int32 expected : {6, 4, 0, 1}) {
+      TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
+      test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+    }
+  }
+
+  {
+    // Reinstantiating after releasing a handle will yield the original sequence
+    // multiple times.
+    FunctionLibraryRuntime::InstantiateOptions options;
+    FunctionLibraryRuntime::Handle handle_isolated;
+    options.state_handle = "handle_3";
+
+    for (int i = 0; i < 2; ++i) {
+      TF_CHECK_OK(Instantiate(flr0_, "RandomUniformWrapper", {}, options,
+                              &handle_isolated));
+      EXPECT_NE(handle, handle_isolated);
+      for (int32 expected : {6, 4, 0, 1}) {
+        TF_CHECK_OK(Run(flr0_, handle_isolated, opts, {}, {&y}));
+        test::ExpectTensorEqual<int>(y, test::AsTensor<int32>({expected}));
+      }
+      TF_CHECK_OK(flr0_->ReleaseHandle(handle_isolated));
+    }
+  }
 }
 
 TEST_F(FunctionLibraryRuntimeTest, ExpandInlineFunctions) {
@@ -609,6 +758,7 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
   FunctionLibraryRuntime::Options opts;
   opts.stats_collector = &stats_collector;
   TF_CHECK_OK(Run(flr0_, handle, opts, {x}, {&y}));
+  TF_CHECK_OK(flr0_->ReleaseHandle(handle));
 
   TF_CHECK_OK(InstantiateAndRun(flr0_, "SquareAndAddOneWithStatefulNodes", {},
                                 {x}, {&y}));
@@ -637,7 +787,7 @@ TEST_F(FunctionLibraryRuntimeTest, OptimizeGraph) {
     Scope s = Scope::NewRootScope();
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto x4_x2_scale = ops::Const<float>(
-        s.WithOpName("x4/x2/scale/_12__cf__4")
+        s.WithOpName("x4/x2/scale/_15__cf__9")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto x4_x2_y = ops::Mul(s.WithOpName("x4/x2/y"), x, x4_x2_scale);
@@ -783,6 +933,16 @@ TEST_F(FunctionLibraryRuntimeTest, Error_InstantiaionError) {
            "type attr not found");
 }
 
+TEST_F(FunctionLibraryRuntimeTest, Error_BadControlFlow) {
+  Init({test::function::InvalidControlFlow()});
+  auto x = test::AsTensor<int32>({0});
+  DCHECK_EQ(x.dtype(), DT_INT32);
+  Tensor y;
+  HasError(InstantiateAndRun(flr0_, "InvalidControlFlow", {}, {x}, {&y}),
+           "The node 'add' has inputs from different frames. The input 'enter' "
+           "is in frame 'while'. The input 'i' is in frame ''.");
+}
+
 TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
   Init({test::function::XTimesTwo(), test::function::XTimesFour(),
         test::function::XTimes16()});
@@ -833,13 +993,13 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_XTimesTwo) {
     auto x = ops::_Arg(s.WithOpName("x"), DT_FLOAT, 0);
     auto func0 = ops::_Arg(s.WithOpName("Func/_0"), DT_FLOAT, 1);
     auto scale = ops::Const(
-        s.WithOpName("scale/_5__cf__8")
+        s.WithOpName("scale/_5__cf__10")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         2.0f);
     auto func1_gx = ops::Mul(s.WithOpName("Func/_1/gx"), func0, scale);
     auto func1_sx = ops::Shape(s.WithOpName("Func/_1/sx"), x);
     auto const0 = ops::Const(
-        s.WithOpName("Func/_1/sy/_6__cf__9")
+        s.WithOpName("Func/_1/sy/_6__cf__11")
             .WithDevice("/job:localhost/replica:0/task:0/device:CPU:0"),
         0, {0});
     auto func1_rx = ops::internal::BroadcastGradientArgs(
@@ -1077,9 +1237,10 @@ TEST_F(FunctionLibraryRuntimeTest, Gradient_AddSum) {
 
 TEST_F(FunctionLibraryRuntimeTest, CrossDevice) {
   Init({test::function::FindDevice()});
+  FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+  instantiate_opts.target = "/device:CPU:1";
   FunctionLibraryRuntime::Handle handle;
-  TF_CHECK_OK(Instantiate(flr0_, "FindDevice", {{"_target", "/device:CPU:1"}},
-                          &handle));
+  TF_CHECK_OK(Instantiate(flr0_, "FindDevice", {}, instantiate_opts, &handle));
 
   Tensor y;
   FunctionLibraryRuntime::Options opts;

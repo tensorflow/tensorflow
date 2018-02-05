@@ -68,9 +68,12 @@ class Env {
   /// \brief Returns the file system schemes registered for this Env.
   virtual Status GetRegisteredFileSystemSchemes(std::vector<string>* schemes);
 
-  // \brief Register a file system for a scheme.
+  /// \brief Register a file system for a scheme.
   virtual Status RegisterFileSystem(const string& scheme,
                                     FileSystemRegistry::Factory factory);
+
+  /// \brief Flush filesystem caches for all registered filesystems.
+  Status FlushFileSystemCaches();
 
   /// \brief Creates a brand new random access read-only file with the
   /// specified name.
@@ -283,7 +286,7 @@ class Env {
   // "version" should be the version of the library or NULL
   // returns the name that LoadLibrary() can use
   virtual string FormatLibraryFileName(const string& name,
-      const string& version) = 0;
+                                       const string& version) = 0;
 
  private:
   // Returns a possible list of local temporary directories.
@@ -350,6 +353,7 @@ class EnvWrapper : public Env {
                                const string& version) override {
     return target_->FormatLibraryFileName(name, version);
   }
+
  private:
   Env* target_;
 };

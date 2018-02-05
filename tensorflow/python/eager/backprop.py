@@ -344,7 +344,7 @@ def implicit_val_and_grad(f):
 
   def grad_fn(*args):
     """Computes the gradient of the wrapped function."""
-    tape.push_new_tape()
+    this_tape = tape.push_new_tape()
     try:
       end_node = f(*args)
       if end_node is None:
@@ -352,10 +352,10 @@ def implicit_val_and_grad(f):
                          "did you forget to return a value from {}?".format(
                              f.__name__))
     finally:
-      popped_tape = tape.pop_tape()
+      tape.pop_tape(this_tape)
     # Sorting variables by id, which is monotonically increasing in construction
     # order. This ensures unique order across executions.
-    variables = list(sorted(popped_tape.watched_variables(),
+    variables = list(sorted(this_tape.watched_variables(),
                             key=lambda v: v.handle._id))  # pylint: disable=protected-access
     sources = [x.handle for x in variables]
 
@@ -363,7 +363,7 @@ def implicit_val_and_grad(f):
       raise ValueError("No trainable variables were accessed while the "
                        "function was being computed.")
     grad = imperative_grad.imperative_grad(_default_vspace,
-                                           popped_tape,
+                                           this_tape,
                                            nest.flatten(end_node),
                                            sources)
     return end_node, list(zip(grad, variables))
@@ -550,7 +550,7 @@ def _ensure_unique_tensor_objects(parameter_positions, args):
 
 
 def val_and_grad_function(f, params=None):
-  """Returns a function that computes f and is derivative w.r.t. params.
+  """Returns a function that computes f and its derivative w.r.t. params.
 
   Example:
   ```python
@@ -652,7 +652,7 @@ def make_vjp(f, params=None):
     """Computes the value and gradient of the decorated function."""
     parameter_positions = _get_arg_spec(f, params, args)
     assert not kwds, "The gradient function can't take keyword arguments."
-    tape.push_new_tape()
+    this_tape = tape.push_new_tape()
     try:
       sources = []
       args = [
@@ -673,12 +673,12 @@ def make_vjp(f, params=None):
       flat_result = [gen_array_ops.identity(x) for x in flat_result]
       result = nest.pack_sequence_as(result, flat_result)
     finally:
-      t = tape.pop_tape()
+      tape.pop_tape(this_tape)
     def vjp(dy=None):
       if dy is not None:
         dy = [ops.convert_to_tensor(x) for x in nest.flatten(dy)]
       return imperative_grad.imperative_grad(
-          _default_vspace, t, nest.flatten(result), sources,
+          _default_vspace, this_tape, nest.flatten(result), sources,
           output_gradients=dy)
     return result, vjp
 
@@ -710,7 +710,7 @@ def _aggregate_grads(gradients):
       if isinstance(grad, ops.Tensor):
         indexed_slices = ops.IndexedSlices(
             grad,
-            constant_op.constant(range(grad.shape[0])),
+            math_ops.range(grad.shape[0]),
             constant_op.constant(grad.shape.as_list()))
         indexed_slices_list.append(indexed_slices)
       else:
@@ -734,7 +734,7 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
-_last_shape_dtype = [None, None]
+_last_zero_shape_dtype = [None, None]
 _last_zero = [None]
 
 
@@ -744,13 +744,19 @@ def _fast_fill(value, shape, dtype):
 
 def _zeros(shape, dtype):
   """Wraps array_ops.zeros to cache last zero for a given shape and dtype."""
-  if [shape, dtype] != _last_shape_dtype:
-    _last_shape_dtype[:] = [shape, dtype]
+  if dtype == dtypes.variant:
+    # TODO(apassos): need to save enough information about variant tensors to do
+    # a zeros
+    return None
+  if [shape, dtype] != _last_zero_shape_dtype:
+    _last_zero_shape_dtype[:] = [shape, dtype]
     _last_zero[0] = _fast_fill(0, shape, dtype)
   return _last_zero[0]
 
 
 def _ones(shape, dtype):
+  if shape == ():  # pylint: disable=g-explicit-bool-comparison
+    return constant_op.constant(1, dtype=dtype)
   return _fast_fill(1, shape, dtype)
 
 
@@ -835,11 +841,11 @@ class GradientTape(object):
     self._persistent = persistent
 
   def __enter__(self):
-    tape.push_new_tape(persistent=self._persistent)
+    self._tape = tape.push_new_tape(persistent=self._persistent)
     return self
 
   def __exit__(self, typ, value, traceback):
-    self._tape = tape.pop_tape()
+    tape.pop_tape(self._tape)
 
   def watch(self, tensor):
     """Ensures that `tensor` is being traced by this tape.

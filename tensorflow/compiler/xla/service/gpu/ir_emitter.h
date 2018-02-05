@@ -79,6 +79,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
+  Status HandleFft(HloInstruction* fft) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
@@ -95,7 +96,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleCall(HloInstruction* call) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleRng(HloInstruction* random) override;
-  Status HandleConditional(HloInstruction* conditional) override;
   Status HandleBatchNormInference(HloInstruction* batch_norm) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
@@ -242,6 +242,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleDot(HloInstruction* dot) override;
+  Status HandleFft(HloInstruction* fft) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
   Status HandleReduce(HloInstruction* reduce) override;
@@ -305,6 +306,12 @@ class IrEmitterUnnested : public IrEmitter {
                           const llvm_ir::ElementGenerator& init_value_gen,
                           HloComputation* reducer);
 
+  // Emits code that reduces a tensor of arbitrary rank to a scalar.
+  Status EmitReductionToScalar(HloInstruction* reduce, const Shape& input_shape,
+                               const llvm_ir::ElementGenerator& input_gen,
+                               const llvm_ir::ElementGenerator& init_value_gen,
+                               HloComputation* reducer);
+
   // Figures out whether `reduce` is a row or column reduction, and which
   // dimensions to reduce, and calls either `EmitRowReduction` or
   // `EmitColumnReduction` as appropriate. `input_shape` is the shape of the
@@ -329,8 +336,8 @@ class IrEmitterUnnested : public IrEmitter {
   // Thunk object.
   std::unique_ptr<Thunk> BuildKernelThunk(const HloInstruction* inst);
 
-  // Returns a ConvolutionThunk that calls DNN to implement `inst`.
-  std::unique_ptr<Thunk> BuildConvolutionThunk(const HloInstruction* inst);
+  // Returns a FftThunk that calls cuFFT to implement `inst`.
+  std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
 
   // Returns a GemmThunk that calls gemm to implement `inst`. The caller needs
   // to make sure `inst` outlives the lifetime of the returned Thunk object.
@@ -355,6 +362,11 @@ class IrEmitterUnnested : public IrEmitter {
   // sequence from the 'body' sub-computation of the while instruction 'hlo'.
   std::unique_ptr<Thunk> BuildForThunk(const HloInstruction* hlo,
                                        const int64 loop_limit);
+
+  // Returns a ConditionalThunk that executes the thunk sequence for
+  // 'true_computation' or 'false_computation' depending on the value of the
+  // predicate in the given conditional instruction.
+  std::unique_ptr<Thunk> BuildConditionalThunk(const HloInstruction* hlo);
 
   Status Postprocess(HloInstruction* hlo) override;
 

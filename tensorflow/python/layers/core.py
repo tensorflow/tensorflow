@@ -49,9 +49,6 @@ class Dense(base.Layer):
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
 
-  Note: if the input to the layer has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `kernel`.
-
   Arguments:
     units: Integer or Long, dimensionality of the output space.
     activation: Activation function (callable). Set it to None to maintain a
@@ -166,7 +163,7 @@ class Dense(base.Layer):
       return self.activation(outputs)  # pylint: disable=not-callable
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     input_shape = input_shape.with_rank_at_least(2)
     if input_shape[-1].value is None:
@@ -199,9 +196,6 @@ def dense(
   and `bias` is a bias vector created by the layer
   (only if `use_bias` is `True`).
 
-  Note: if the `inputs` tensor has a rank greater than 2, then it is
-  flattened prior to the initial matrix multiply by `kernel`.
-
   Arguments:
     inputs: Tensor input.
     units: Integer or Long, dimensionality of the output space.
@@ -230,7 +224,8 @@ def dense(
       by the same name.
 
   Returns:
-    Output tensor.
+    Output tensor the same shape as `inputs` except the last dimension is of
+    size `units`.
 
   Raises:
     ValueError: if eager execution is enabled.
@@ -310,6 +305,9 @@ class Dropout(base.Layer):
                             dropped_inputs,
                             lambda: array_ops.identity(inputs))
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
 
 def dropout(inputs,
             rate=0.5,
@@ -375,10 +373,10 @@ class Flatten(base.Layer):
   def call(self, inputs):
     outputs = array_ops.reshape(inputs, (array_ops.shape(inputs)[0], -1))
     if context.in_graph_mode():
-      outputs.set_shape(self._compute_output_shape(inputs.get_shape()))
+      outputs.set_shape(self.compute_output_shape(inputs.get_shape()))
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     output_shape = [input_shape[0]]
     if all(input_shape[1:]):

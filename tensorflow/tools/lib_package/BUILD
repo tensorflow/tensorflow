@@ -55,7 +55,10 @@ pkg_tar(
 
 pkg_tar(
     name = "cheaders",
-    files = ["//tensorflow/c:headers"],
+    files = [
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+    ],
     package_dir = "include/tensorflow/c",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
@@ -96,6 +99,7 @@ genrule(
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
+        "@aws//:LICENSE",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@cub_archive//:LICENSE.TXT",
@@ -111,6 +115,7 @@ genrule(
         "@libxsmm_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@png_archive//:LICENSE",
         "@protobuf_archive//:LICENSE",
@@ -131,6 +136,7 @@ genrule(
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
+        "@aws//:LICENSE",
         "@boringssl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@cub_archive//:LICENSE.TXT",
@@ -146,6 +152,7 @@ genrule(
         "@libxsmm_archive//:LICENSE",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
+        "@nasm//:LICENSE",
         "@nsync//:LICENSE",
         "@png_archive//:LICENSE",
         "@protobuf_archive//:LICENSE",

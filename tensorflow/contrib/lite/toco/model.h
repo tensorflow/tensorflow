@@ -12,9 +12,10 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
 
+#include <functional>
 #include <initializer_list>
 #include <memory>
 #include <string>
@@ -32,6 +33,7 @@ enum class OperatorType {
   kNone,
   // General-purpose neural network operators.
   kAdd,
+  kAddN,
   kAveragePool,
   kBatchNormalization,
   kConv,
@@ -559,6 +561,16 @@ struct AddOperator : Operator {
   AddOperator() : Operator(OperatorType::kAdd) {}
 };
 
+// Element-wise addition operator for N inputs.
+//
+// Inputs:
+//   inputs[i]: The i-th array to add together to form the output.
+//
+// TensorFlow equivalent: AddN
+struct AddNOperator : Operator {
+  AddNOperator() : Operator(OperatorType::kAddN) {}
+};
+
 // Concatenation operator: concatenates its inputs
 // along the axis.
 //
@@ -738,6 +750,9 @@ struct PadOperator : Operator {
 //
 // Inputs:
 //   inputs[0]: required: the input array
+//   inputs[1]: required: the begin array
+//   inputs[2]: required: the end array
+//   inputs[3]: optional: the strides array
 //
 // TensorFlow equivalent: StridedSlice
 struct StridedSliceOperator : Operator {
@@ -957,6 +972,7 @@ struct TensorFlowSquareOperator : Operator {
 // TensorFlow equivalent: Transpose
 struct TransposeOperator : Operator {
   TransposeOperator() : Operator(OperatorType::kTranspose) {}
+  std::vector<int> perm;
 };
 
 // Element-wise subtraction operator.
@@ -1271,6 +1287,10 @@ struct ResizeBilinearOperator : Operator {
 // TensorFlow equivalent: SpaceToBatchND
 struct SpaceToBatchNDOperator : Operator {
   SpaceToBatchNDOperator() : Operator(OperatorType::kSpaceToBatchND) {}
+
+  std::vector<int> block_shape;
+  std::vector<int> before_paddings;
+  std::vector<int> after_paddings;
 };
 
 // BatchToSpaceND operator. Rearranges data from batch into blocks of
@@ -1516,29 +1536,54 @@ struct Array {
 
 // Our Model struct, represents an entire model (our "top-level" struct).
 // Owns everything.
-struct Model {
+class Model {
+ public:
+  using ArrayMap = std::unordered_map<string, std::unique_ptr<Array>>;
+
+  bool HasArray(const string& name) const { return arrays.count(name) > 0; }
   Array& GetArray(const string& name) const {
-    DCHECK(arrays.count(name));
+    DCHECK(HasArray(name));
     return *arrays.at(name);
   }
   Array& GetOrCreateArray(const string& name) {
-    if (!arrays.count(name)) {
+    // Make sure name is not used by an optional array
+    DCHECK(!optional_arrays.count(name));
+    if (!HasArray(name)) {
       Array* ptr = new Array;
       arrays[name] = std::unique_ptr<Array>(ptr);
     }
     Array& result = GetArray(name);
     return result;
   }
+  void CreateOptionalArray(const string& name) {
+    DCHECK(!arrays.count(name) && !optional_arrays.count(name));
+    optional_arrays.insert(name);
+  }
+  bool IsOptionalArray(const string& name) const {
+    return optional_arrays.count(name);
+  }
+
+  // Note that this invalidates all array iterators.
+  void EraseArray(const string& name) { arrays.erase(name); }
+  void EraseArrays(std::function<bool(const string&)> discardable) {
+    for (auto it = arrays.begin(); it != arrays.end();) {
+      if (discardable(it->first)) {
+        it = arrays.erase(it);
+      } else {
+        ++it;
+      }
+    }
+  }
+  const ArrayMap& GetArrayMap() const { return arrays; }
+
+  // Optional arrays are used for optional tensors,
+  // these tensors do not have data, but with reserved names as op inputs.
+  std::set<string> optional_arrays;
 
   // The list of operators. Notice how it's a list of unique_ptr's, implying
   // that the Model is what owns Operator's and keeps them alive.
   std::vector<std::unique_ptr<Operator>> operators;
-  // The associative array mapping names to Array's.
-  // Notice how it's a container of unique_ptr's, implying
-  // that the Model is what owns Array's and keeps them alive.
-  // The Operator's refer to these Array's by their name strings, not by their
-  // addresses. See Operator::inputs, Operator::outputs.
-  std::unordered_map<string, std::unique_ptr<Array>> arrays;
+
   // Generic flags, a place where we combine information passed to us via
   // command-line parameters (e.g. --input_width=N) with information that
   // we may or may not find in the input model file.
@@ -1547,7 +1592,15 @@ struct Model {
   std::size_t transient_data_size = 0;
   // For code-generation only: required alignment of the transient_data buffer
   std::size_t transient_data_alignment = 0;
+
+ private:
+  // The associative array mapping names to Array's.
+  // Notice how it's a container of unique_ptr's, implying
+  // that the Model is what owns Array's and keeps them alive.
+  // The Operator's refer to these Array's by their name strings, not by their
+  // addresses. See Operator::inputs, Operator::outputs.
+  std::unordered_map<string, std::unique_ptr<Array>> arrays;
 };
 }  // namespace toco
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_MODEL_H_

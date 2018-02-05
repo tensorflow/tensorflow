@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/algorithm.h"
+#include "tensorflow/core/graph/control_flow.h"
 #include "tensorflow/core/graph/gradients.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/optimizer_cse.h"
@@ -96,12 +97,11 @@ static Node* AddNoOp(Graph* g) {
 
 static Node* AddIdentity(Graph* g, Endpoint input) {
   DCHECK_LT(0, input.dtype());
-  DCHECK_LT(input.dtype(), DT_FLOAT_REF);
   NodeDef ndef;
   ndef.set_name(g->NewName(kNodeLabel));
   ndef.set_op("Identity");
   ndef.add_input(input.name());
-  AddNodeAttr("T", input.dtype(), &ndef);
+  AddNodeAttr("T", BaseType(input.dtype()), &ndef);
   Status s;
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);
@@ -151,6 +151,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   ~FunctionLibraryRuntimeImpl() override;
 
   Status Instantiate(const string& function_name, AttrSlice attrs,
+                     const InstantiateOptions& options,
                      Handle* handle) override;
 
   Status ReleaseHandle(Handle handle) override;
@@ -172,7 +173,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   const FunctionLibraryDefinition* GetFunctionLibraryDefinition()
       const override {
-    return lib_def_;
+    return base_lib_def_;
   }
 
   Device* device() override { return device_; }
@@ -188,7 +189,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   Device* const device_;
   Env* const env_;
   const int graph_def_version_;
-  const FunctionLibraryDefinition* const lib_def_;
+  const FunctionLibraryDefinition* const base_lib_def_;
   GraphOptimizer optimizer_;
   const CustomKernelCreator custom_kernel_creator_;
   const string device_name_;
@@ -203,7 +204,8 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
   struct Item : public core::RefCounted {
-    const Graph* graph = nullptr;  // Owned by exec.
+    const Graph* graph = nullptr;                            // Owned by exec.
+    const FunctionLibraryDefinition* overlay_lib = nullptr;  // Not owned.
     FunctionBody* func_graph = nullptr;
     Executor* exec = nullptr;
 
@@ -216,13 +218,18 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   ProcessFunctionLibraryRuntime* parent_ = nullptr;  // not owned.
 
+  Status CreateKernel(const NodeDef& ndef,
+                      const FunctionLibraryDefinition* lib_def,
+                      OpKernel** kernel);
   Status FunctionDefToBody(const FunctionDef& fdef, AttrSlice attrs,
+                           const FunctionLibraryDefinition* lib_def,
                            FunctionBody** fbody);
   Status CreateItem(Handle handle, Item** item);
   Status GetOrCreateItem(Handle handle, Item** item);
   Status InstantiateSymbolicGradient(const NameAttrList& func,
+                                     const FunctionLibraryDefinition* lib_def,
                                      FunctionBody** g_body);
-  bool IsLocalTarget(const AttrSlice& attrs);
+  bool IsLocalTarget(const InstantiateOptions& options);
   AttrValueMap FixAttrs(const AttrSlice& attrs);
   void RunRemote(const Options& opts, Handle handle,
                  gtl::ArraySlice<Tensor> args, std::vector<Tensor>* rets,
@@ -241,7 +248,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
       device_(device),
       env_(env),
       graph_def_version_(graph_def_version),
-      lib_def_(lib_def),
+      base_lib_def_(lib_def),
       optimizer_(optimizer_options),
       custom_kernel_creator_(std::move(custom_kernel_creator)),
       device_name_(device_ == nullptr
@@ -250,7 +257,7 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
       next_handle_(0),
       parent_(parent) {
   get_func_sig_ = [this](const string& op, const OpDef** sig) {
-    return lib_def_->LookUpOpDef(op, sig);
+    return base_lib_def_->LookUpOpDef(op, sig);
   };
   create_kernel_ = [this](const NodeDef& ndef, OpKernel** kernel) {
     return CreateKernel(ndef, kernel);
@@ -258,8 +265,14 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
 }
 
 FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {
+  // The most common patterns of FLR usage don't require the caller to
+  // explicitly release handles. As a result, we try to unref each item until
+  // it's erased.
   for (auto item : items_) {
-    if (item.second) item.second->Unref();
+    if (item.second) {
+      while (!item.second->Unref()) {
+      }
+    }
   }
 }
 
@@ -327,6 +340,12 @@ const FunctionBody* FunctionLibraryRuntimeImpl::GetFunctionBody(Handle h) {
 
 Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
                                                 OpKernel** kernel) {
+  return CreateKernel(ndef, base_lib_def_, kernel);
+}
+
+Status FunctionLibraryRuntimeImpl::CreateKernel(
+    const NodeDef& ndef, const FunctionLibraryDefinition* lib_def,
+    OpKernel** kernel) {
   // If a custom kernel creator is given, try that.
   Status s;
   if (custom_kernel_creator_) {
@@ -342,7 +361,7 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
     }
   }
 
-  if (lib_def_->Find(ndef.op()) == nullptr) {
+  if (lib_def->Find(ndef.op()) == nullptr) {
     // A primitive operation. Creates the registered kernel.
     return CreateNonCachedKernel(device_, this, ndef, graph_def_version_,
                                  kernel);
@@ -350,8 +369,13 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
 
   // Try to instantiate this function for the func/attr. Maybe it's
   // cached already.
+  InstantiateOptions options;
+  if (lib_def != base_lib_def_) {
+    options.overlay_lib = lib_def;
+  }
   Handle handle;
-  TF_RETURN_IF_ERROR(Instantiate(ndef.op(), AttrSlice(&ndef.attr()), &handle));
+  TF_RETURN_IF_ERROR(
+      Instantiate(ndef.op(), AttrSlice(&ndef.attr()), options, &handle));
 
   const FunctionBody* fbody = GetFunctionBody(handle);
   CHECK_NOTNULL(fbody);
@@ -383,15 +407,23 @@ Status FunctionLibraryRuntimeImpl::CreateKernel(const NodeDef& ndef,
   return s;
 }
 
-Status FunctionLibraryRuntimeImpl::FunctionDefToBody(const FunctionDef& fdef,
-                                                     AttrSlice attrs,
-                                                     FunctionBody** fbody) {
-  return FunctionDefToBodyHelper(fdef, attrs, lib_def_, get_func_sig_, fbody);
+Status FunctionLibraryRuntimeImpl::FunctionDefToBody(
+    const FunctionDef& fdef, AttrSlice attrs,
+    const FunctionLibraryDefinition* lib_def, FunctionBody** fbody) {
+  if (lib_def == base_lib_def_) {
+    return FunctionDefToBodyHelper(fdef, attrs, lib_def, get_func_sig_, fbody);
+  } else {
+    auto get_func_sig = [lib_def](const string& op, const OpDef** sig) {
+      return lib_def->LookUpOpDef(op, sig);
+    };
+    return FunctionDefToBodyHelper(fdef, attrs, lib_def, get_func_sig, fbody);
+  }
 }
 
 Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
-    const NameAttrList& func, FunctionBody** g_body) {
-  const FunctionDef* fdef = lib_def_->Find(func.name());
+    const NameAttrList& func, const FunctionLibraryDefinition* lib_def,
+    FunctionBody** g_body) {
+  const FunctionDef* fdef = lib_def->Find(func.name());
   if (fdef == nullptr) {
     // f is a primitive op.
     gradient::Creator creator;
@@ -405,12 +437,16 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
     // by the gradient function.
     TF_RETURN_IF_ERROR(creator(AttrSlice(&func.attr()), &grad_fdef));
     TF_RETURN_IF_ERROR(
-        FunctionDefToBody(grad_fdef, AttrSlice(&func.attr()), g_body));
+        FunctionDefToBody(grad_fdef, AttrSlice(&func.attr()), lib_def, g_body));
   } else {
     // f is a user-defined function.
+    InstantiateOptions options;
+    if (lib_def != base_lib_def_) {
+      options.overlay_lib = lib_def;
+    }
     Handle f_handle;
     TF_RETURN_IF_ERROR(
-        Instantiate(func.name(), AttrSlice(&func.attr()), &f_handle));
+        Instantiate(func.name(), AttrSlice(&func.attr()), options, &f_handle));
     const FunctionBody* f_body = GetFunctionBody(f_handle);
     CHECK_NOTNULL(f_body);
     *g_body = SymbolicGradient(*f_body);
@@ -418,51 +454,42 @@ Status FunctionLibraryRuntimeImpl::InstantiateSymbolicGradient(
   return Status::OK();
 }
 
-bool FunctionLibraryRuntimeImpl::IsLocalTarget(const AttrSlice& attrs) {
+bool FunctionLibraryRuntimeImpl::IsLocalTarget(
+    const InstantiateOptions& options) {
   if (device_ == nullptr) return true;
-  string target = ProcessFunctionLibraryRuntime::ObtainFunctionTarget(attrs);
-  if (target.empty()) return true;
+  if (options.target.empty()) return true;
   Device* target_device;
-  if (!device_mgr_->LookupDevice(target, &target_device).ok()) {
+  if (!device_mgr_->LookupDevice(options.target, &target_device).ok()) {
     return false;
   }
   return target_device == device_;
 }
 
-AttrValueMap FunctionLibraryRuntimeImpl::FixAttrs(const AttrSlice& attrs) {
-  AttrValueMap value_map;
-  for (auto it : attrs) {
-    value_map[it.first] = it.second;
-  }
-  if (attrs.Find("_target") != nullptr) {
-    return value_map;
-  }
-  AttrValue v;
-  v.set_s(device_name_);
-  AddAttr("_target", v, &value_map);
-  return value_map;
-}
-
-Status FunctionLibraryRuntimeImpl::Instantiate(const string& function_name,
-                                               AttrSlice attrs,
-                                               Handle* handle) {
-  AttrValueMap value_map = FixAttrs(attrs);
-  AttrSlice new_attrs(&value_map);
-
-  if (!IsLocalTarget(new_attrs)) {
-    return parent_->Instantiate(function_name, new_attrs, handle);
+Status FunctionLibraryRuntimeImpl::Instantiate(
+    const string& function_name, AttrSlice attrs,
+    const InstantiateOptions& options, Handle* handle) {
+  if (!IsLocalTarget(options)) {
+    return parent_->Instantiate(function_name, attrs, options, handle);
   }
 
-  const string key = Canonicalize(function_name, new_attrs);
+  // Since this is a local target, ensure that the local `device_name_` appears
+  // in the canonical key.
+  InstantiateOptions options_copy(options);
+  options_copy.target = device_name_;
+  const string key = Canonicalize(function_name, attrs, options_copy);
   *handle = parent_->GetHandle(key);
   if (*handle != kInvalidHandle) {
+    mutex_lock l(mu_);
+    items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
     return Status::OK();
   }
 
   Status s;
+  const FunctionLibraryDefinition* lib_def =
+      options.overlay_lib ? options.overlay_lib : base_lib_def_;
   FunctionBody* fbody = nullptr;
   if (function_name == kGradientOp) {
-    const AttrValue* f = new_attrs.Find(kFuncAttr);
+    const AttrValue* f = attrs.Find(kFuncAttr);
     if (f == nullptr) {
       return errors::InvalidArgument("SymbolicGradient is missing attr: f");
     }
@@ -470,17 +497,17 @@ Status FunctionLibraryRuntimeImpl::Instantiate(const string& function_name,
     if (func.name() == kGradientOp) {
       return errors::InvalidArgument("Can't take gradient of SymbolicGradient");
     }
-    const string grad = lib_def_->FindGradient(func.name());
+    const string grad = lib_def->FindGradient(func.name());
     if (!grad.empty()) {
-      return Instantiate(grad, AttrSlice(&func.attr()), handle);
+      return Instantiate(grad, AttrSlice(&func.attr()), options, handle);
     }
-    TF_RETURN_IF_ERROR(InstantiateSymbolicGradient(func, &fbody));
+    TF_RETURN_IF_ERROR(InstantiateSymbolicGradient(func, lib_def, &fbody));
   } else {
-    const FunctionDef* fdef = lib_def_->Find(function_name);
+    const FunctionDef* fdef = lib_def->Find(function_name);
     if (fdef == nullptr) {
       return errors::NotFound("Function ", function_name, " is not defined.");
     }
-    TF_RETURN_IF_ERROR(FunctionDefToBody(*fdef, new_attrs, &fbody));
+    TF_RETURN_IF_ERROR(FunctionDefToBody(*fdef, attrs, lib_def, &fbody));
   }
 
   {
@@ -488,10 +515,12 @@ Status FunctionLibraryRuntimeImpl::Instantiate(const string& function_name,
     *handle = parent_->GetHandle(key);
     if (*handle != kInvalidHandle) {
       delete fbody;
+      items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
     } else {
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;
       item->func_graph = fbody;
+      item->overlay_lib = options.overlay_lib;
       items_.insert({next_handle_, item});
       next_handle_++;
     }
@@ -562,9 +591,17 @@ void PruneFunctionBody(Graph* g) {
 }  // namespace
 
 Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
-  const FunctionBody* fbody = GetFunctionBody(handle);
-  CHECK_NOTNULL(fbody);
-  std::unique_ptr<Graph> g(new Graph(lib_def_));
+  const FunctionBody* fbody;
+  const FunctionLibraryDefinition* lib_def;
+  {
+    mutex_lock l(mu_);
+    fbody = (*item)->func_graph;
+    lib_def = (*item)->overlay_lib;
+  }
+  if (!lib_def) {
+    lib_def = base_lib_def_;
+  }
+  std::unique_ptr<Graph> g(new Graph(lib_def));
   CopyGraph(*fbody->graph, g.get());
 
   PruneFunctionBody(g.get());
@@ -577,7 +614,14 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   LocalExecutorParams params;
   params.device = device_;
   params.function_library = this;
-  params.create_kernel = create_kernel_;
+  if (lib_def == base_lib_def_) {
+    params.create_kernel = create_kernel_;
+  } else {
+    params.create_kernel = [this, lib_def](const NodeDef& ndef,
+                                           OpKernel** kernel) {
+      return CreateKernel(ndef, lib_def, kernel);
+    };
+  }
   params.delete_kernel = [](OpKernel* kernel) {
     DeleteNonCachedKernel(kernel);
   };
@@ -836,7 +880,7 @@ void FunctionLibraryRuntimeImpl::Run(const Options& opts, Handle handle,
 
 bool FunctionLibraryRuntimeImpl::IsStateful(const string& func) {
   const OpDef* op_def;
-  const Status s = lib_def_->LookUpOpDef(func, &op_def);
+  const Status s = base_lib_def_->LookUpOpDef(func, &op_def);
   return s.ok() && op_def->is_stateful();
 }
 
@@ -1509,17 +1553,23 @@ Status FunctionDefToBodyHelper(
   InstantiationResult result;
   TF_RETURN_IF_ERROR(InstantiateFunction(fdef, attrs, get_func_sig, &result));
 
-  Graph* graph = new Graph(lib_def);
+  std::unique_ptr<Graph> graph(new Graph(lib_def));
   GraphConstructorOptions opts;
   opts.allow_internal_ops = true;
   opts.expect_device_spec = false;
-  Status s = ConvertNodeDefsToGraph(opts, result.nodes, graph);
-  if (!s.ok()) {
-    delete graph;
-  } else {
-    *fbody = new FunctionBody(fdef, result.arg_types, result.ret_types, graph);
-  }
-  return s;
+  TF_RETURN_IF_ERROR(ConvertNodeDefsToGraph(opts, result.nodes, graph.get()));
+
+  // Call BuildControlFlowInfo to validate that this function body has
+  // well-formed control flow.
+  // NOTE(skyewm): this is usually done in Partition(), but we don't partition
+  // function bodies. This should be removed if function bodies ever go through
+  // the Partition() path.
+  std::vector<ControlFlowInfo> dummy;
+  TF_RETURN_IF_ERROR(BuildControlFlowInfo(graph.get(), &dummy));
+
+  *fbody = new FunctionBody(fdef, result.arg_types, result.ret_types,
+                            graph.release());
+  return Status::OK();
 }
 
 }  // end namespace tensorflow

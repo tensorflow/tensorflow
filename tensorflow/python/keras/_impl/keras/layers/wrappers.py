@@ -25,6 +25,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
+from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.layers import utils as tf_layers_util
 
@@ -181,11 +182,11 @@ class TimeDistributed(Wrapper):
     super(TimeDistributed, self).build()
     self.built = True
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     child_input_shape = tensor_shape.TensorShape([input_shape[0]] +
                                                  input_shape[2:])
-    child_output_shape = self.layer._compute_output_shape(  # pylint: disable=protected-access
+    child_output_shape = self.layer.compute_output_shape(
         child_input_shape).as_list()
     timesteps = input_shape[1]
     return tensor_shape.TensorShape([child_output_shape[0], timesteps] +
@@ -231,7 +232,7 @@ class TimeDistributed(Wrapper):
       if hasattr(y, '_uses_learning_phase'):
         uses_learning_phase = y._uses_learning_phase
       # Shape: (num_samples, timesteps, ...)
-      output_shape = self._compute_output_shape(input_shape).as_list()
+      output_shape = self.compute_output_shape(input_shape).as_list()
       y = K.reshape(y, (-1, input_length) + tuple(output_shape[2:]))
 
     # Apply activity regularizer if any:
@@ -291,6 +292,7 @@ class Bidirectional(Wrapper):
       self.backward_layer.initial_weights = weights[nw // 2:]
     self.stateful = layer.stateful
     self.return_sequences = layer.return_sequences
+    self.return_state = layer.return_state
     self.supports_masking = True
 
   def get_weights(self):
@@ -301,27 +303,54 @@ class Bidirectional(Wrapper):
     self.forward_layer.set_weights(weights[:nw // 2])
     self.backward_layer.set_weights(weights[nw // 2:])
 
-  def _compute_output_shape(self, input_shape):
-    input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
-    if self.merge_mode in ['sum', 'ave', 'mul']:
-      return self.forward_layer._compute_output_shape(input_shape)  # pylint: disable=protected-access
-    elif self.merge_mode == 'concat':
-      shape = self.forward_layer._compute_output_shape(input_shape).as_list()  # pylint: disable=protected-access
-      shape[-1] *= 2
-      return tensor_shape.TensorShape(shape)
-    elif self.merge_mode is None:
-      shape = self.forward_layer._compute_output_shape(input_shape)  # pylint: disable=protected-access
-      return [shape, copy.copy(shape)]
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
+    output_shape = tuple(self.forward_layer.compute_output_shape(
+        input_shape).as_list())
+    if self.return_state:
+      state_shape = output_shape[1:]
+      output_shape = output_shape[0]
 
-  def call(self, inputs, training=None, mask=None):
+    if self.merge_mode == 'concat':
+      output_shape = list(output_shape)
+      output_shape[-1] *= 2
+      output_shape = tuple(output_shape)
+    elif self.merge_mode is None:
+      output_shape = [output_shape, copy.copy(output_shape)]
+
+    if self.return_state:
+      if self.merge_mode is None:
+        return output_shape + state_shape + copy.copy(state_shape)
+      return [output_shape] + state_shape + copy.copy(state_shape)
+    return output_shape
+
+  def call(self, inputs, training=None, mask=None, initial_state=None):
     kwargs = {}
     if has_arg(self.layer.call, 'training'):
       kwargs['training'] = training
     if has_arg(self.layer.call, 'mask'):
       kwargs['mask'] = mask
 
-    y = self.forward_layer.call(inputs, **kwargs)
-    y_rev = self.backward_layer.call(inputs, **kwargs)
+    if initial_state is not None and has_arg(self.layer.call, 'initial_state'):
+      if not isinstance(initial_state, list):
+        raise ValueError(
+            'When passing `initial_state` to a Bidirectional RNN, the state '
+            'should be a list containing the states of the underlying RNNs. '
+            'Found: ' + str(initial_state))
+      forward_state = initial_state[:len(initial_state) // 2]
+      backward_state = initial_state[len(initial_state) // 2:]
+      y = self.forward_layer.call(inputs, initial_state=forward_state, **kwargs)
+      y_rev = self.backward_layer.call(
+          inputs, initial_state=backward_state, **kwargs)
+    else:
+      y = self.forward_layer.call(inputs, **kwargs)
+      y_rev = self.backward_layer.call(inputs, **kwargs)
+
+    if self.return_state:
+      states = y[1:] + y_rev[1:]
+      y = y[0]
+      y_rev = y_rev[0]
+
     if self.return_sequences:
       y_rev = K.reverse(y_rev, 1)
     if self.merge_mode == 'concat':
@@ -343,6 +372,11 @@ class Bidirectional(Wrapper):
           out._uses_learning_phase = True
       else:
         output._uses_learning_phase = True
+
+    if self.return_state:
+      if self.merge_mode is None:
+        return output + states
+      return [output] + states
     return output
 
   def reset_states(self):

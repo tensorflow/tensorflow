@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
+#ifndef TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
+#define TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
 
 #include <unordered_set>
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
@@ -43,6 +43,9 @@ class DependencyOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  // Returns true if node is not an Identity node or if it is an Identity
+  // that is safe to remove.
+  bool SafeToRemoveIdentity(const NodeDef& node);
   // Returns true if it is safe to convert node to NoOp.
   bool SafeToConvertToNoOp(const NodeDef& node);
   // Removes all duplicate control dependencies.
@@ -73,4 +76,4 @@ class DependencyOptimizer : public GraphOptimizer {
 }  // end namespace grappler
 }  // end namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_
+#endif  // TENSORFLOW_CORE_GRAPPLER_OPTIMIZERS_DEPENDENCY_OPTIMIZER_H_

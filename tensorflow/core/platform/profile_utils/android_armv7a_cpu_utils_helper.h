@@ -58,8 +58,8 @@ class AndroidArmV7ACpuUtilsHelper : public ICpuUtilsHelper {
   TF_DISALLOW_COPY_AND_ASSIGN(AndroidArmV7ACpuUtilsHelper);
 };
 
-}  // profile_utils
-}  // tensorflow
+}  // namespace profile_utils
+}  // namespace tensorflow
 
 #endif  // defined(__ANDROID__) && (__ANDROID_API__ >= 21) &&
         // (defined(__ARM_ARCH_7A__) || defined(__aarch64__))

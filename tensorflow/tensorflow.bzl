@@ -11,6 +11,10 @@ load(
     "if_static",
 )
 load(
+    "@local_config_tensorrt//:build_defs.bzl",
+    "if_tensorrt",
+)
+load(
     "@local_config_cuda//cuda:build_defs.bzl",
     "if_cuda",
     "cuda_default_copts",
@@ -150,6 +154,12 @@ def if_darwin(a):
       "//conditions:default": [],
   })
 
+def if_override_eigen_strong_inline(a):
+  return select({
+      clean_dep("//tensorflow:override_eigen_strong_inline"): a,
+      "//conditions:default": [],
+  })
+
 def get_win_copts(is_external=False):
     WINDOWS_COPTS = [
         "/D__VERSION__=\\\"MSVC\\\"",
@@ -191,12 +201,13 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
           "-fno-exceptions",
           "-ftemplate-depth=900"])
       + if_cuda(["-DGOOGLE_CUDA=1"])
+      + if_tensorrt(["-DGOOGLE_TENSORRT=1"])
       + if_mkl(["-DINTEL_MKL=1", "-DEIGEN_USE_VML", "-fopenmp",])
       + if_android_arm(["-mfpu=neon"])
       + if_linux_x86_64(["-msse3"])
       + if_ios_x86_64(["-msse4.1"])
       + select({
-            "//tensorflow:framework_shared_object": [],
+            clean_dep("//tensorflow:framework_shared_object"): [],
             "//conditions:default": ["-DTENSORFLOW_MONOLITHIC_BUILD"],
       })
       + select({
@@ -252,6 +263,8 @@ def _rpath_linkopts(name):
       clean_dep("//tensorflow:darwin"): [
           "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
       ],
+      clean_dep("//tensorflow:windows"): [],
+      clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,%s" % (_make_search_paths("$$ORIGIN", levels_to_root),),
       ],
@@ -283,6 +296,7 @@ def tf_cc_shared_object(
               "-Wl,-install_name,@rpath/" + name.split("/")[-1],
           ],
           "//conditions:default": [
+              "-Wl,-soname," + name.split("/")[-1],
           ],
       }),
       **kwargs)
@@ -324,7 +338,6 @@ def tf_gen_op_wrapper_cc(name,
                          pkg="",
                          op_gen=clean_dep("//tensorflow/cc:cc_op_gen_main"),
                          deps=None,
-                         override_file=None,
                          include_internal_ops=0,
                          # ApiDefs will be loaded in the order specified in this list.
                          api_def_srcs=[]):
@@ -340,12 +353,6 @@ def tf_gen_op_wrapper_cc(name,
       deps=[op_gen] + deps)
 
   srcs = api_def_srcs[:]
-
-  if override_file == None:
-    override_arg = ","
-  else:
-    srcs += [override_file]
-    override_arg = "$(location " + override_file + ")"
 
   if not api_def_srcs:
     api_def_args_str = ","
@@ -369,7 +376,7 @@ def tf_gen_op_wrapper_cc(name,
       srcs=srcs,
       tools=[":" + tool] + tf_binary_additional_srcs(),
       cmd=("$(location :" + tool + ") $(location :" + out_ops_file + ".h) " +
-           "$(location :" + out_ops_file + ".cc) " + override_arg + " " +
+           "$(location :" + out_ops_file + ".cc) " +
            str(include_internal_ops) + " " + api_def_args_str))
 
 # Given a list of "op_lib_names" (a list of files in the ops directory
@@ -410,7 +417,6 @@ def tf_gen_op_wrappers_cc(name,
                               clean_dep("//tensorflow/cc:const_op"),
                           ],
                           op_gen=clean_dep("//tensorflow/cc:cc_op_gen_main"),
-                          override_file=None,
                           include_internal_ops=0,
                           visibility=None,
                           # ApiDefs will be loaded in the order apecified in this list.
@@ -425,7 +431,6 @@ def tf_gen_op_wrappers_cc(name,
         "ops/" + n,
         pkg=pkg,
         op_gen=op_gen,
-        override_file=override_file,
         include_internal_ops=include_internal_ops,
         api_def_srcs=api_def_srcs)
     subsrcs += ["ops/" + n + ".cc"]
@@ -603,6 +608,8 @@ def tf_cc_test(name,
         "//tensorflow:android": [
             "-pie",
           ],
+        clean_dep("//tensorflow:windows"): [],
+        clean_dep("//tensorflow:windows_msvc"): [],
         "//conditions:default": [
             "-lpthread",
             "-lm"
@@ -864,9 +871,11 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
 
   When the library is built with --config=cuda:
 
-  - both deps and cuda_deps are used as dependencies
-  - the cuda runtime is added as a dependency (if necessary)
-  - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts
+  - Both deps and cuda_deps are used as dependencies.
+  - The cuda runtime is added as a dependency (if necessary).
+  - The library additionally passes -DGOOGLE_CUDA=1 to the list of copts.
+  - In addition, when the library is also built with TensorRT enabled, it
+      additionally passes -DGOOGLE_TENSORRT=1 to the list of copts.
 
   Args:
   - cuda_deps: BUILD dependencies which will be linked if and only if:
@@ -885,7 +894,8 @@ def tf_cuda_library(deps=None, cuda_deps=None, copts=tf_copts(), **kwargs):
           clean_dep("//tensorflow/core:cuda"),
           "@local_config_cuda//cuda:cuda_headers"
       ]),
-      copts=copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]),
+      copts=(copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]) +
+             if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
       **kwargs)
 
 register_extension_info(
@@ -931,7 +941,8 @@ def tf_kernel_library(name,
   if not deps:
     deps = []
   if not copts:
-    copts = tf_copts(is_external=is_external)
+    copts = []
+  copts = copts + tf_copts(is_external=is_external)
   if prefix:
     if native.glob([prefix + "*.cu.cc"], exclude=["*test*"]):
       if not gpu_srcs:
@@ -1248,6 +1259,8 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[], linkopts=[]):
           "//conditions:default": [
               "-lm",
           ],
+          clean_dep("//tensorflow:windows"): [],
+          clean_dep("//tensorflow:windows_msvc"): [],
           clean_dep("//tensorflow:darwin"): [],
       }),)
 
@@ -1565,9 +1578,9 @@ def tf_version_info_genrule():
   native.genrule(
       name="version_info_gen",
       srcs=[
-          clean_dep("//tensorflow/tools/git:gen/spec.json"),
-          clean_dep("//tensorflow/tools/git:gen/head"),
-          clean_dep("//tensorflow/tools/git:gen/branch_ref"),
+          clean_dep("@local_config_git//:gen/spec.json"),
+          clean_dep("@local_config_git//:gen/head"),
+          clean_dep("@local_config_git//:gen/branch_ref"),
       ],
       outs=["util/version_info.cc"],
       cmd=

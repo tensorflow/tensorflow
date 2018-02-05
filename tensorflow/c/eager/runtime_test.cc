@@ -63,17 +63,17 @@ TEST(AttrTypeMap, Lookup) {
 
   TF_AttrType t;
   unsigned char is_list = 1;
-  s = AttrTypeByName(m, "ThisAttribyteCannotPossiblyExist", &t, &is_list);
+  s = AttrTypeByName(*m, "ThisAttribyteCannotPossiblyExist", &t, &is_list);
   EXPECT_FALSE(s.ok());
   EXPECT_NE(is_list, 0);
-  s = AttrTypeByName(m, "transpose_a", &t, &is_list);
+  s = AttrTypeByName(*m, "transpose_a", &t, &is_list);
   ASSERT_TRUE(s.ok()) << s;
   EXPECT_EQ(TF_ATTR_BOOL, t);
   EXPECT_EQ(is_list, 0);
 
   s = AttrTypeMapForOp("Squeeze", &m);
   ASSERT_TRUE(s.ok()) << s;
-  s = AttrTypeByName(m, "squeeze_dims", &t, &is_list);
+  s = AttrTypeByName(*m, "squeeze_dims", &t, &is_list);
   ASSERT_TRUE(s.ok()) << s;
   EXPECT_EQ(TF_ATTR_INT, t);
   EXPECT_NE(is_list, 0);
@@ -96,7 +96,7 @@ TEST(KernelAndDevice, Run) {
       KernelAndDevice::Init(ndef, env.function_library_runtime(), &kernel);
   ASSERT_TRUE(s.ok()) << s;
   std::vector<Tensor> outputs;
-  s = kernel.Run(&inputs, &outputs);
+  s = kernel.Run(&inputs, &outputs, nullptr);
   ASSERT_TRUE(s.ok()) << s;
   ASSERT_EQ(1, outputs.size());
   const Tensor& out = outputs[0];
@@ -183,7 +183,7 @@ void BM_KernelAndDeviceRun(int iters) {
       KernelAndDevice::Init(ndef, env.function_library_runtime(), &kernel));
   tensorflow::testing::StartTiming();
   for (int i = 0; i < iters; ++i) {
-    TF_CHECK_OK(kernel.Run(&inputs, &outputs));
+    TF_CHECK_OK(kernel.Run(&inputs, &outputs, nullptr));
   }
 }
 BENCHMARK(BM_KernelAndDeviceRun);

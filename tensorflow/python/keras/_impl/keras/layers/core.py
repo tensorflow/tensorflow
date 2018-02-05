@@ -23,6 +23,7 @@ import types as python_types
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import activations
 from tensorflow.python.keras._impl.keras import backend as K
@@ -79,6 +80,9 @@ class Masking(Layer):
         K.not_equal(inputs, self.mask_value), axis=-1, keepdims=True)
     return inputs * K.cast(boolean_mask, inputs.dtype)
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
   def get_config(self):
     config = {'mask_value': self.mask_value}
     base_config = super(Masking, self).get_config()
@@ -116,7 +120,8 @@ class Dropout(tf_core_layers.Dropout, Layer):
     if training is None:
       training = K.learning_phase()
     output = super(Dropout, self).call(inputs, training=training)
-    if training is K.learning_phase():
+    # EagerTensor object has no attribute _uses_learning_phase
+    if not context.in_eager_mode() and training is K.learning_phase():
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
 
@@ -295,6 +300,9 @@ class Activation(Layer):
   def call(self, inputs):
     return self.activation(inputs)
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
   def get_config(self):
     config = {'activation': activations.serialize(self.activation)}
     base_config = super(Activation, self).get_config()
@@ -385,7 +393,7 @@ class Reshape(Layer):
       raise ValueError(msg)
     return output_shape
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if None in input_shape[1:]:
       output_shape = [input_shape[0]]
@@ -441,7 +449,7 @@ class Permute(Layer):
     self.dims = tuple(dims)
     self.input_spec = InputSpec(ndim=len(self.dims) + 1)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     output_shape = copy.copy(input_shape)
     for i, dim in enumerate(self.dims):
@@ -507,7 +515,7 @@ class RepeatVector(Layer):
     self.n = n
     self.input_spec = InputSpec(ndim=2)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     return tensor_shape.TensorShape([input_shape[0], self.n, input_shape[1]])
 
@@ -827,6 +835,9 @@ class ActivityRegularization(Layer):
     self.supports_masking = True
     self.l1 = l1
     self.l2 = l2
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
   def get_config(self):
     config = {'l1': self.l1, 'l2': self.l2}

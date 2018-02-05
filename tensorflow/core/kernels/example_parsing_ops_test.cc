@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <mutex>
 #include <unordered_map>
 
 #include "tensorflow/core/common_runtime/kernel_benchmark_testlib.h"
@@ -80,6 +81,26 @@ class FloatFiller {
 
 template <typename T>
 struct ExampleStore {
+ private:
+  static ExampleTensorMap serialized_example;
+  static std::once_flag flags_init;
+
+ public:
+  static ExampleTensorMap& GetSerializedExample() {
+    std::call_once(flags_init, [] {
+      AddExample(&serialized_example, 10, 1, 1);
+      AddExample(&serialized_example, 100, 1, 1);
+      AddExample(&serialized_example, 1000, 1, 1);
+      AddExample(&serialized_example, 10, 128, 1);
+      AddExample(&serialized_example, 100, 128, 1);
+      AddExample(&serialized_example, 1000, 128, 1);
+      AddExample(&serialized_example, 10, 512, 1);
+      AddExample(&serialized_example, 100, 512, 1);
+      AddExample(&serialized_example, 1000, 512, 1);
+      AddExample(&serialized_example, 1, 1, 1000000);
+    });
+    return serialized_example;
+  }
   typedef T Filler;
   static void AddExample(ExampleTensorMap* examples, int num_keys,
                          int batch_size, int feature_size) {
@@ -101,34 +122,15 @@ struct ExampleStore {
     (*examples)[std::make_tuple(batch_size, num_keys, feature_size)] =
         record_string;
   }
-  static ExampleTensorMap GetSerializedExamples() {
-    ExampleTensorMap examples;
-    AddExample(&examples, 10, 1, 1);
-    AddExample(&examples, 100, 1, 1);
-    AddExample(&examples, 1000, 1, 1);
-    AddExample(&examples, 10, 128, 1);
-    AddExample(&examples, 100, 128, 1);
-    AddExample(&examples, 1000, 128, 1);
-    AddExample(&examples, 10, 512, 1);
-    AddExample(&examples, 100, 512, 1);
-    AddExample(&examples, 1000, 512, 1);
-    AddExample(&examples, 1, 1, 1000000);
-    return examples;
-  }
-  static ExampleTensorMap serialized_example;
 };
+template <typename T>
+ExampleTensorMap ExampleStore<T>::serialized_example;
+template <typename T>
+std::once_flag ExampleStore<T>::flags_init;
 
-template <>
-ExampleTensorMap ExampleStore<BytesFiller>::serialized_example =
-    ExampleStore<BytesFiller>::GetSerializedExamples();
-
-template <>
-ExampleTensorMap ExampleStore<Int64Filler>::serialized_example =
-    ExampleStore<Int64Filler>::GetSerializedExamples();
-
-template <>
-ExampleTensorMap ExampleStore<FloatFiller>::serialized_example =
-    ExampleStore<FloatFiller>::GetSerializedExamples();
+template class ExampleStore<BytesFiller>;
+template class ExampleStore<Int64Filler>;
+template class ExampleStore<FloatFiller>;
 
 enum BenchmarkType { kDense, kSparse, kVarLenDense };
 
@@ -142,7 +144,7 @@ struct BenchmarkOptions {
 template <typename Options>
 static Graph* ParseExample(int batch_size, int num_keys, int feature_size) {
   Graph* g = new Graph(OpRegistry::Global());
-  Tensor& serialized = Options::Store::serialized_example[std::make_tuple(
+  Tensor& serialized = Options::Store::GetSerializedExample()[std::make_tuple(
       batch_size, num_keys, feature_size)];
   Tensor names(DT_STRING, TensorShape({batch_size}));
 
@@ -193,8 +195,8 @@ template <typename Options>
 static Graph* ParseSingleExample(int num_keys, int feature_size) {
   Graph* g = new Graph(OpRegistry::Global());
   Tensor& serialized_batch_1 =
-      Options::Store::serialized_example[std::make_tuple(1, num_keys,
-                                                         feature_size)];
+      Options::Store::GetSerializedExample()[std::make_tuple(1, num_keys,
+                                                             feature_size)];
   Tensor serialized(DT_STRING, TensorShape());
   serialized.scalar<string>()() = serialized_batch_1.vec<string>()(0);
 

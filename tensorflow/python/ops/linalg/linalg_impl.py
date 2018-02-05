@@ -41,6 +41,7 @@ einsum = special_math_ops.einsum
 expm = gen_linalg_ops._matrix_exponential
 eye = linalg_ops.eye
 inv = linalg_ops.matrix_inverse
+logm = gen_linalg_ops._matrix_logarithm
 lstsq = linalg_ops.matrix_solve_ls
 norm = linalg_ops.norm
 qr = linalg_ops.qr
@@ -64,8 +65,8 @@ def logdet(matrix, name=None):
   ```
 
   Args:
-    matrix:  A `Tensor`. Must be `float32`, `float64`, `complex64`, or
-      `complex128` with shape `[..., M, M]`.
+    matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
+      or `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op`.  Defaults to `logdet`.
 
   Returns:
@@ -98,8 +99,8 @@ def adjoint(matrix, name=None):
                         #  [3 - 3j, 6 - 6j]]
 
   Args:
-    matrix:  A `Tensor`. Must be `float32`, `float64`, `complex64`, or
-      `complex128` with shape `[..., M, M]`.
+    matrix:  A `Tensor`. Must be `float16`, `float32`, `float64`, `complex64`,
+      or `complex128` with shape `[..., M, M]`.
     name:  A name to give this `Op` (optional).
 
   Returns:

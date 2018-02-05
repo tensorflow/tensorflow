@@ -40,6 +40,13 @@ limitations under the License.
 
 namespace xla {
 
+// Logs the provided status message with a backtrace.
+//
+// For use by Status-factories, logs a backtrace at the point where the status
+// is created, such that we can use --vmodule=util=1 to see all status
+// creation backtraces.
+Status WithLogBacktrace(const Status& status);
+
 // Ranks greater than 8 are very rare, so use InlinedVector<int64, 8> to store
 // the bounds and indices. And for the rare cases of ranks greater than 8,
 // the InlinedVector will just behave like an std::vector<> and allocate the
@@ -207,6 +214,27 @@ Status ResourceExhausted(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status NotFound(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 
+// Passed-varargs variant of the InvalidArgument factory above.
+Status InvalidArgumentV(const char* format, va_list args);
+
+template <typename... Args>
+Status UnimplementedStrCat(Args&&... concat) {
+  return Unimplemented(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
+Status InternalErrorStrCat(Args&&... concat) {
+  return InternalError(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
+Status ResourceExhaustedStrCat(Args&&... concat) {
+  return ResourceExhausted(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
 // side effect, any additional trailing whitespace is removed.
@@ -332,7 +360,7 @@ T CeilOfRatio(T dividend, T divisor) {
 }
 
 // Rounds the value up to a multiple of the divisor by first calling CeilOfRatio
-// then multiplying by the divisor. For example: RoundUpToMultiple(13, 8) => 16
+// then multiplying by the divisor. For example: RoundUpToNearest(13, 8) => 16
 template <typename T>
 T RoundUpToNearest(T value, T divisor) {
   return CeilOfRatio(value, divisor) * divisor;
@@ -340,7 +368,7 @@ T RoundUpToNearest(T value, T divisor) {
 
 // Rounds the value down to a multiple of the divisor by first calling
 // FloorOfRatio then multiplying by the divisor. For example:
-// RoundUpToMultiple(13, 8) => 8
+// RoundDownToNearest(13, 8) => 8
 template <typename T>
 T RoundDownToNearest(T value, T divisor) {
   return FloorOfRatio(value, divisor) * divisor;
@@ -397,6 +425,33 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 
 // Removes illegal characters from filenames.
 string SanitizeFileName(string file_name);
+
+template <typename Container, typename Predicate>
+bool c_all_of(Container container, Predicate predicate) {
+  return std::all_of(std::begin(container), std::end(container), predicate);
+}
+
+template <typename InputContainer, typename OutputIterator,
+          typename UnaryOperation>
+OutputIterator c_transform(InputContainer input_container,
+                           OutputIterator output_iterator,
+                           UnaryOperation unary_op) {
+  return std::transform(std::begin(input_container), std::end(input_container),
+                        output_iterator, unary_op);
+}
+
+template <class InputContainer, class OutputIterator, class UnaryPredicate>
+OutputIterator c_copy_if(InputContainer input_container,
+                         OutputIterator output_iterator,
+                         UnaryPredicate predicate) {
+  return std::copy_if(std::begin(input_container), std::end(input_container),
+                      output_iterator, predicate);
+}
+
+template <class InputContainer, class Comparator>
+void c_sort(InputContainer& input_container, Comparator comparator) {
+  std::sort(input_container.begin(), input_container.end(), comparator);
+}
 
 }  // namespace xla
 

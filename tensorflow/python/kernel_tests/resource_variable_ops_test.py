@@ -36,8 +36,10 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
+@test_util.with_c_api
 class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
@@ -168,6 +170,17 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)))
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[3]])
+
+  def testScatterUpdateString(self):
+    handle = resource_variable_ops.var_handle_op(
+        dtype=dtypes.string, shape=[1, 1])
+    self.evaluate(resource_variable_ops.assign_variable_op(
+        handle, constant_op.constant([["a"]], dtype=dtypes.string)))
+    self.evaluate(resource_variable_ops.resource_scatter_update(
+        handle, [0], constant_op.constant([["b"]], dtype=dtypes.string)))
+    read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.string)
+    self.assertEqual(compat.as_bytes(self.evaluate(read)[0][0]),
+                     compat.as_bytes("b"))
 
   # TODO(alive): get this to work in Eager mode.
   def testGPU(self):
@@ -302,7 +315,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertEqual(3.0, self.evaluate(v.value()))
     self.evaluate(resource_variable_ops.destroy_resource_op(v.handle))
-    with self.assertRaises(errors.NotFoundError):
+    with self.assertRaises(errors.FailedPreconditionError):
       self.evaluate(v.value())
     # Handle to a resource not actually created.
     handle = resource_variable_ops.var_handle_op(dtype=dtypes.int32, shape=[])
@@ -342,14 +355,14 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       v = resource_variable_ops.ResourceVariable(
           2.0, caching_device="/job:localhost")
       self.assertEqual("/job:localhost", v.value().device)
-      with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
+      with self.assertRaises(ValueError):
         _ = v.value().op.get_attr("_class")
 
     with ops.colocate_with(v.op):
       w = resource_variable_ops.ResourceVariable(
           2.0, caching_device="/job:localhost")
       self.assertEqual("/job:localhost", w.value().device)
-      with self.assertRaisesRegexp(ValueError, "No attr named '_class'"):
+      with self.assertRaises(ValueError):
         _ = w.value().op.get_attr("_class")
 
   def testSharedName(self):

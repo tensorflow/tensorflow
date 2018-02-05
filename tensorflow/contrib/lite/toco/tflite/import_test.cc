@@ -114,7 +114,7 @@ TEST_F(ImportTest, Tensors) {
 
   auto model = Import(ModelFlags(), InputModelAsString());
 
-  ASSERT_GT(model->arrays.count("tensor_one"), 0);
+  ASSERT_GT(model->HasArray("tensor_one"), 0);
   Array& a1 = model->GetArray("tensor_one");
   EXPECT_EQ(ArrayDataType::kFloat, a1.data_type);
   EXPECT_THAT(a1.GetBuffer<ArrayDataType::kFloat>().data,

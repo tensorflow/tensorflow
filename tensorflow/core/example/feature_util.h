@@ -33,7 +33,7 @@ limitations under the License.
 //   GetFeatureValues<int64>("tag", &example)->Add(id);
 //
 // Modification of bytes features is slightly different:
-//   auto tag = GetFeatureValues<string>("tag", example);
+//   auto tag = GetFeatureValues<string>("tag", &example);
 //   *tag->Add() = "lorem ipsum";
 //
 // To copy multiple values into a feature:

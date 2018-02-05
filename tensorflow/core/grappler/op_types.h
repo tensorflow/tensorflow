@@ -24,7 +24,9 @@ namespace grappler {
 
 bool IsAdd(const NodeDef& node);
 bool IsAddN(const NodeDef& node);
+bool IsAll(const NodeDef& node);
 bool IsAngle(const NodeDef& node);
+bool IsAny(const NodeDef& node);
 bool IsAnyDiv(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
@@ -34,6 +36,7 @@ bool IsBetainc(const NodeDef& node);
 bool IsBiasAdd(const NodeDef& node);
 bool IsBiasAddGrad(const NodeDef& node);
 bool IsBitcast(const NodeDef& node);
+bool IsCast(const NodeDef& node);
 bool IsComplex(const NodeDef& node);
 bool IsComplexAbs(const NodeDef& node);
 bool IsConj(const NodeDef& node);
@@ -57,6 +60,7 @@ bool IsFloorMod(const NodeDef& node);
 bool IsFusedBatchNormGrad(const NodeDef& node);
 bool IsGreater(const NodeDef& node);
 bool IsGreaterEqual(const NodeDef& node);
+bool IsHistogramSummary(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
 bool IsIdentityN(const NodeDef& node);
 bool IsIgamma(const NodeDef& node);
@@ -68,9 +72,14 @@ bool IsLessEqual(const NodeDef& node);
 bool IsLogicalAnd(const NodeDef& node);
 bool IsLogicalNot(const NodeDef& node);
 bool IsLogicalOr(const NodeDef& node);
+bool IsMax(const NodeDef& node);
 bool IsMaximum(const NodeDef& node);
+bool IsMean(const NodeDef& node);
 bool IsMerge(const NodeDef& node);
+bool IsMin(const NodeDef& node);
 bool IsMinimum(const NodeDef& node);
+bool IsMirrorPad(const NodeDef& node);
+bool IsMirrorPadGrad(const NodeDef& node);
 bool IsMod(const NodeDef& node);
 bool IsMul(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
@@ -80,6 +89,7 @@ bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);
 bool IsPlaceholder(const NodeDef& node);
 bool IsPolygamma(const NodeDef& node);
+bool IsProd(const NodeDef& node);
 bool IsPow(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
@@ -107,10 +117,13 @@ bool IsSqrtGrad(const NodeDef& node);
 bool IsSquaredDifference(const NodeDef& node);
 bool IsSqueeze(const NodeDef& node);
 bool IsStopGradient(const NodeDef& node);
+bool IsStridedSlice(const NodeDef& node);
+bool IsStridedSliceGrad(const NodeDef& node);
 bool IsSub(const NodeDef& node);
 bool IsSum(const NodeDef& node);
 bool IsSwitch(const NodeDef& node);
 bool IsTanhGrad(const NodeDef& node);
+bool IsTile(const NodeDef& node);
 bool IsTranspose(const NodeDef& node);
 bool IsTruncateDiv(const NodeDef& node);
 bool IsTruncateMod(const NodeDef& node);
@@ -124,6 +137,10 @@ bool IsAggregate(const NodeDef& node);
 // Return true if the op is commutative (e.g. Mul, Add).
 // Returns false if it could not be determined to be so.
 bool IsCommutative(const NodeDef& node);
+
+// Returns true if the node is known to use persistent memory to store its
+// value.
+bool IsPersistent(const NodeDef& node);
 
 bool IsFreeOfSideEffect(const NodeDef& node);
 bool ModifiesFrameInfo(const NodeDef& node);

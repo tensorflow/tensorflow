@@ -92,8 +92,12 @@ Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   io::ParseURI(fname, &scheme, &host, &path);
   FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
-    return errors::Unimplemented("File system scheme ", scheme,
-                                 " not implemented");
+    if (scheme.empty()) {
+      scheme = "[local]";
+    }
+
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not implemented (file: '", fname, "')");
   }
   *result = file_system;
   return Status::OK();
@@ -106,6 +110,18 @@ Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
 Status Env::RegisterFileSystem(const string& scheme,
                                FileSystemRegistry::Factory factory) {
   return file_system_registry_->Register(scheme, std::move(factory));
+}
+
+Status Env::FlushFileSystemCaches() {
+  std::vector<string> schemes;
+  TF_RETURN_IF_ERROR(GetRegisteredFileSystemSchemes(&schemes));
+  for (const string& scheme : schemes) {
+    FileSystem* fs = nullptr;
+    TF_RETURN_IF_ERROR(
+        GetFileSystemForFile(io::CreateURI(scheme, "", ""), &fs));
+    fs->FlushCaches();
+  }
+  return Status::OK();
 }
 
 Status Env::NewRandomAccessFile(const string& fname,
@@ -161,8 +177,8 @@ bool Env::FilesExist(const std::vector<string>& files,
     if (!file_system) {
       fs_result = false;
       if (fs_status) {
-        Status s = errors::Unimplemented("File system scheme ", itr.first,
-                                         " not implemented");
+        Status s = errors::Unimplemented("File system scheme '", itr.first,
+                                         "' not implemented");
         local_status.resize(itr.second.size(), s);
       }
     } else {

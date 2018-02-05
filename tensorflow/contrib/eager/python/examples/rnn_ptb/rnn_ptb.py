@@ -22,6 +22,11 @@ Usage: python ./rnn_ptb.py --data-path=<path_to_dataset>
 Penn Treebank (PTB) dataset from:
 http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz
 """
+
+from __future__ import absolute_import
+from __future__ import division
+from __future__ import print_function
+
 import argparse
 import os
 import sys
@@ -83,7 +88,7 @@ class Embedding(tf.layers.Layer):
 
 
 class PTBModel(tfe.Network):
-  """LSTM for word language modelling.
+  """LSTM for word language modeling.
 
   Model described in:
   (Zaremba, et. al.) Recurrent Neural Network Regularization
@@ -209,7 +214,7 @@ class Datasets(object):
     """Load the Penn Treebank dataset.
 
     Args:
-      path: Path to the data/ directory of the dataset from from Tomas Mikolov's
+      path: Path to the data/ directory of the dataset from Tomas Mikolov's
         webpage - http://www.fit.vutbr.cz/~imikolov/rnnlm/simple-examples.tgz
     """
 
@@ -335,7 +340,7 @@ if __name__ == "__main__":
   parser.add_argument(
       "--logdir", type=str, default="", help="Directory for checkpoint.")
   parser.add_argument(
-      "--epoch", type=int, default=20, help="Number of epoches.")
+      "--epoch", type=int, default=20, help="Number of epochs.")
   parser.add_argument("--batch-size", type=int, default=20, help="Batch size.")
   parser.add_argument(
       "--seq-len", type=int, default=35, help="Sequence length.")

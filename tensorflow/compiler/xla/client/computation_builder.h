@@ -67,7 +67,7 @@ class ComputationBuilder {
   // OpMetadata is often applied to a series of XLA HLO instructions. As a
   // result, OpMetadata is set on the Computation Builder. All subsequent
   // instructions generated via this Computation Builder will have the same
-  // OpMetadata attached until a call to ClearOpMetdata.
+  // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(const OpMetadata& metadata) { metadata_ = metadata; }
 
   // Clears the HloMetadata state.
@@ -410,14 +410,24 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<int64> rhs_dilation,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
+  // Enqueues an FFT instruction onto the computation, of the given type and
+  // with the given FFT length.
+  ComputationDataHandle Fft(const ComputationDataHandle& operand,
+                            FftType fft_type,
+                            tensorflow::gtl::ArraySlice<int64> fft_length);
+
   // Enqueues an infeed instruction onto the computation, which writes data of
   // the given shape to the infeed buffer of the device.
   ComputationDataHandle Infeed(const Shape& shape, const string& config = "");
 
   // Enqueues an outfeed instruction onto the computation. This instruction
   // generates outgoing data transfers for the given data.
-  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
-               const string& outfeed_config);
+  //
+  // shape_with_layout communicates the laid out shape that we want to outfeed
+  // -- if !ShapeUtil::Compatible(GetShape(operand), shape_with_layout) an error
+  // will occur.
+  void Outfeed(const ComputationDataHandle& operand,
+               const Shape& shape_with_layout, const string& outfeed_config);
 
   // Enqueues a call instruction onto the computation.
   ComputationDataHandle Call(
@@ -678,11 +688,6 @@ class ComputationBuilder {
                                    const ComputationDataHandle& b,
                                    const Shape& shape);
 
-  // Enqueues a B(1, p) random number generation instruction onto the
-  // computation.
-  ComputationDataHandle RngBernoulli(const ComputationDataHandle& mean,
-                                     const Shape& shape);
-
   // Enqueues a while node onto the computation.
   ComputationDataHandle While(const Computation& condition,
                               const Computation& body,
@@ -710,7 +715,7 @@ class ComputationBuilder {
   ComputationDataHandle Recv(const Shape& shape, const ChannelHandle& handle);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
-  // constant does not depend on parameters with higher index then
+  // constant does not depend on parameters with index greater than or equal to
   // `num_parameters`, or on stateful operators such as `RngNormal` or `Infeed`.
   // Unlike `ComputeConstant`, `IsConstant` tests whether a computation is a
   // compile-time constant without evaluating the computation.
@@ -829,8 +834,6 @@ class ComputationBuilder {
   Status first_error() const { return first_error_; }
 
  private:
-  using PopulateLiteral = std::function<void(Literal*)>;
-
   // Limited checking of convolution parameters. Returns false on
   // error.
   bool VerifyConvolution(const Shape& lhs_shape, const Shape& rhs_shape,
@@ -848,11 +851,6 @@ class ComputationBuilder {
                   tensorflow::gtl::ArraySlice<int64> lhs_dilation,
                   tensorflow::gtl::ArraySlice<int64> rhs_dilation,
                   Window* window);
-
-  // Internal helper method that makes a request for a constant operation -- the
-  // provided function is used to populate the literal before sending the
-  // request.
-  ComputationDataHandle ConstantOp(const PopulateLiteral& populate);
 
   // Internal helper method that does the building for an arbitrary unary op.
   ComputationDataHandle UnaryOp(UnaryOperation binop,
@@ -883,19 +881,28 @@ class ComputationBuilder {
   // This is used before any given operation is enqueued.
   Status PrepareComputation();
 
-  // Helper function for parsing a method response and either returning the
-  // output computation data handle (on success) or a vacuous computation data
-  // handle (on failure).
-  ComputationDataHandle ParseOpResponse(const Status& status,
-                                        OpResponse* response);
-
   // Notes that the error occurred by:
   // * storing it internally and capturing a backtrace if it's the first error
   //   (this deferred value will be produced on the call to Build())
   // * dying if die_immediately_on_error_ is true
   void NoteError(const Status& error);
 
-  void AddCommonFieldsToOpRequest(OpRequest* request) const;
+  // Helper function that runs the given op_request, filling in op_response.
+  // Before the op is run, PrepareComputation is called, and common fields in
+  // the op_request are filled in.
+  Status RunOp(OpRequest* op_request, OpResponse* op_response);
+
+  // Helper function that calls RunOp and calls NoteError on failures.
+  void RunOpAndNoteError(OpRequest* op_request);
+
+  // Helper function that calls RunOp and either returns the output computation
+  // data handle (on success) or a vacuous computation data handle (on failure).
+  ComputationDataHandle RunOpAndParseResponse(OpRequest* op_request);
+
+  // Helper function that implements GetShape without noting errors. This makes
+  // it easier to ensure the real GetShape will note errors on every error path.
+  StatusOr<std::unique_ptr<Shape>> GetShapeWithoutNoteError(
+      const ComputationDataHandle& operand);
 
   string name_;  // Name to use for the built computation.
 
@@ -929,68 +936,66 @@ class ComputationBuilder {
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR0(NativeT value) {
-  return ConstantOp([value](Literal* literal) { literal->PopulateR0(value); });
+  return ConstantLiteral(*Literal::CreateR0<NativeT>(value));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR1(
     tensorflow::gtl::ArraySlice<NativeT> values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR1(values); });
+  return ConstantLiteral(*Literal::CreateR1<NativeT>(values));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR1(int64 length,
                                                      NativeT value) {
-  return ConstantOp([length, value](Literal* literal) {
-    literal->PopulateWithValue(value, {length});
-  });
+  Literal literal(ShapeUtil::MakeShape(
+      primitive_util::NativeToPrimitiveType<NativeT>(), {length}));
+  literal.PopulateWithValue(value);
+  return ConstantLiteral(literal);
 }
 
 inline ComputationDataHandle ComputationBuilder::ConstantR1(
     const tensorflow::core::Bitmap& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR1(values); });
+  return ConstantLiteral(*Literal::CreateR1(values));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateR2(values); });
+  return ConstantLiteral(*Literal::CreateR2<NativeT>(values));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantFromArrayWithLayout(
     const Array<NativeT>& values, const Layout& layout) {
-  return ConstantOp([&values, &layout](Literal* literal) {
-    literal->PopulateFromArrayWithLayout(values, layout);
-  });
+  return ConstantLiteral(
+      *Literal::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantFromArray(
     const Array<NativeT>& values) {
-  return ConstantOp(
-      [&values](Literal* literal) { literal->PopulateFromArray(values); });
+  return ConstantLiteral(*Literal::CreateFromArray<NativeT>(values));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2DWithLayout(
     const Array2D<NativeT>& values, const Layout& layout) {
-  return ConstantFromArrayWithLayout(values, layout);
+  return ConstantLiteral(
+      *Literal::CreateFromArrayWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR2FromArray2D(
     const Array2D<NativeT>& values) {
-  return ConstantFromArray(values);
+  return ConstantLiteral(*Literal::CreateR2FromArray2D<NativeT>(values));
 }
 
 template <typename NativeT>
 ComputationDataHandle ComputationBuilder::ConstantR3FromArray3DWithLayout(
     const Array3D<NativeT>& values, const Layout& layout) {
-  return ConstantFromArrayWithLayout(values, layout);
+  return ConstantLiteral(
+      *Literal::CreateR3FromArray3DWithLayout<NativeT>(values, layout));
 }
 
 template <typename NativeT>

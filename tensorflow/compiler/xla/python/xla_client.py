@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import enum  # pylint: disable=g-bad-import-order
+import inspect
 import itertools
+import os
 
 import numpy as np
 
@@ -27,9 +30,58 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
 
 
+# Most functions are snake_case for consistency with other modules,
+# whereas method names of ComputationBuilder and LocalComputation are
+# CamelCase for consistency with XLA.
+# pylint: disable=invalid-name
+
+
+_OP_METADATA_FIELDS = [
+    'op_type',
+    'op_name',
+    'source_file',
+    'source_line',
+]
+OpMetadata = collections.namedtuple('OpMetadata', _OP_METADATA_FIELDS)
+
+
+def OpMetadataToProto(pyobj):
+  proto = xla_data_pb2.OpMetadata()
+  for field in _OP_METADATA_FIELDS:
+    attr = getattr(pyobj, field)
+    if attr is not None:
+      setattr(proto, field, attr)
+  return proto
+
+
+def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
+  """Helper for use in source mapping that returns an OpMetadata object."""
+  full_filename, lineno = inspect.stack()[skip_frames][1:3]
+  filename = os.path.basename(full_filename)
+  return OpMetadata(
+      op_type=op_type,
+      op_name=op_name,
+      source_file=filename,
+      source_line=lineno)
+
+
 class PaddingType(enum.Enum):
   VALID = 1
   SAME = 2
+
+
+def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
+                                        window_strides):
+  """Maps PaddingType (VALID or SAME) to pad values (list of pairs of ints)."""
+  if padding_type == PaddingType.VALID:
+    return [(0, 0)] * len(window_strides)
+
+  out_shape = np.ceil(np.true_divide(lhs_dims, window_strides)).astype(int)
+  pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
+               for out_size, stride, filter_size, in_size
+               in zip(out_shape, window_strides, rhs_dims, lhs_dims)]
+  return [(pad_size // 2, pad_size - pad_size // 2)
+          for pad_size in pad_sizes]
 
 
 _UNARY_OPS = [
@@ -37,6 +89,7 @@ _UNARY_OPS = [
     'Abs',
     'Exp',
     'Floor',
+    'Round',
     'Ceil',
     'Log',
     'Sign',
@@ -70,24 +123,61 @@ _BINARY_OPS = [
     'Pow',
 ]
 
-# Most functions are snake_case for consistency with other modules,
-# whereas method names of ComputationBuilder and LocalComputation are
-# CamelCase for consistency with XLA.
-# pylint: disable=invalid-name
-
 XLA_ELEMENT_TYPE_TO_DTYPE = {
     xla_data_pb2.F32: np.dtype(np.float32),
     xla_data_pb2.F64: np.dtype(np.float64),
     xla_data_pb2.S32: np.dtype(np.int32),
     xla_data_pb2.S64: np.dtype(np.int64),
+    xla_data_pb2.U32: np.dtype(np.uint32),
+    xla_data_pb2.U64: np.dtype(np.uint64),
     xla_data_pb2.PRED: np.dtype(np.bool),
     xla_data_pb2.TUPLE: np.dtype(np.object),
 }
 
+# Note the conversion on the key. Numpy has a known issue wherein dtype hashing
+# doesn't work as expected (https://github.com/numpy/numpy/issues/7242). Thus,
+# when keying by dtype in this dict, we use the string form of dtypes.
 DTYPE_TO_XLA_ELEMENT_TYPE = {
     str(v): k
     for k, v in XLA_ELEMENT_TYPE_TO_DTYPE.items()
 }
+
+
+class LocalBuffer(object):
+  """Represents a handle to data owned by XLA.
+
+  The referent is ready for use in executing a local, compiled
+  Computation. On XLA platforms involving a device (e.g. GPU), this
+  means the referent is in device memory.
+  """
+
+  def __init__(self, c_local_shaped_buffer):
+    self.c_local_shaped_buffer = c_local_shaped_buffer
+    self._delete = c_api.DeleteLocalShapedBuffer
+
+  @staticmethod
+  def from_py(npval, layout_fn=None):
+    npval = require_numpy_array_layout(npval)
+    if layout_fn:
+      shape = Shape.from_numpy(npval)
+      shape = shape.map_leaves(layout_fn)
+    else:
+      shape = None
+    return LocalBuffer(c_api.LocalShapedBuffer.FromLiteral(npval, shape))
+
+  def to_py(self):
+    return self.c_local_shaped_buffer.ToLiteral()
+
+  def delete(self):
+    if self.c_local_shaped_buffer is not None:
+      self._delete(self.c_local_shaped_buffer)
+      self.c_local_shaped_buffer = None
+
+  def is_deleted(self):
+    return self.c_local_shaped_buffer is None
+
+  def __del__(self):
+    self.delete()
 
 
 class Shape(object):
@@ -98,9 +188,17 @@ class Shape(object):
   represents an XLA tuple.
   """
 
-  def __init__(self, np_dtype, dimensions):
+  def __init__(self, np_dtype, dimensions, minor_to_major=None):
+    assert isinstance(dimensions, tuple)
     self.np_dtype = np_dtype
     self._dimensions = dimensions
+    self._minor_to_major = minor_to_major
+    self._check_minor_to_major()
+
+  def __repr__(self):
+    return ('xla_client.Shape(np_dtype={!r}, dimensions={!r}, '
+            'minor_to_major={!r})').format(self.np_dtype, self._dimensions,
+                                           self._minor_to_major)
 
   def element_type(self):
     return DTYPE_TO_XLA_ELEMENT_TYPE[str(self.np_dtype)]
@@ -113,10 +211,48 @@ class Shape(object):
       raise ValueError('Tuple shape has no dimensions')
     return self._dimensions
 
+  def minor_to_major(self):
+    return self._minor_to_major
+
   def tuple_shapes(self):
     if not self.is_tuple():
       raise ValueError('Shape is not a tuple shape')
     return self._dimensions
+
+  def rank(self):
+    return len(self.dimensions())
+
+  def map_leaves(self, f):
+    """Map f over each leaf-level array subshape.
+
+    Args:
+      f: The function to apply. Whenever f returns None, the identity is
+        applied instead.
+
+    Returns:
+      A new Shape with the mapped leaves.
+    """
+    if self.is_tuple():
+      children = tuple(child.map_leaves(f) for child in self.tuple_shapes())
+      return Shape(np.dtype('O'), children)
+    else:
+      mapped = f(self)
+      return self if mapped is None else mapped
+
+  def _check_minor_to_major(self):
+    mtm = self._minor_to_major
+    if self.is_tuple():
+      assert mtm is None, self
+    if mtm is not None:
+      assert self.rank() == len(mtm), self
+      assert sorted(mtm) == range(len(mtm)), self
+
+  def update_minor_to_major(self, minor_to_major):
+    if not isinstance(minor_to_major, tuple):
+      raise TypeError('minor_to_major must be a tuple')
+    updated = Shape(self.np_dtype, tuple(self.dimensions()), minor_to_major)
+    updated._check_minor_to_major()  # pylint: disable=protected-access
+    return updated
 
   @staticmethod
   def from_numpy(npval):
@@ -134,21 +270,8 @@ def _wrap_shape(shape_info):
   dtype, dims = shape_info
   element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(dtype)]
   if element_type == xla_data_pb2.TUPLE:
-    dims = [_wrap_shape(subshape_info) for subshape_info in dims]
+    dims = tuple(_wrap_shape(subshape_info) for subshape_info in dims)
   return Shape(dtype, dims)
-
-
-def _unwrap_shape(shape):
-  if shape.is_tuple():
-    components = tuple(
-        _unwrap_shape(subshape) for subshape in shape.tuple_shapes())
-  else:
-    components = shape.dimensions()
-  return (shape.np_dtype, components)
-
-
-def _unwrap_shapes(shapes):
-  return [_unwrap_shape(shape) for shape in shapes]
 
 
 def _wrap_data_handle(handle):
@@ -172,6 +295,51 @@ def require_numpy_array_layout(value):
     return np.require(value, requirements=['C', 'A'])
 
 
+class CompileOptions(object):
+  """Python object for XLA compile options.
+
+  These options can be passed to the 'compile' step when using a local XLA
+  client.
+  """
+
+  def __init__(self):
+    self.generate_hlo_graph = None
+
+
+def transfer_to_infeed(value, replica_number=None):
+  """Transfers the given value into the XLA infeed queue.
+
+  XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
+  a totally ordered stream of values. This is dequeued from XLA computations via
+  the Infeed() operation.
+
+  Args:
+    value: the value that the caller would like to enqueue into the XLA infeed
+      queue
+    replica_number: the replica number to infeed the value to -- if not
+      provided, then the default replica (trivially replica 0) is used.
+  """
+  if replica_number is None:
+    c_api.TransferToInfeedLocal(require_numpy_array_layout(value))
+  else:
+    c_api.TransferToInfeedLocalReplica(
+        require_numpy_array_layout(value), replica_number)
+
+
+def transfer_from_outfeed(shape, replica_number=None):
+  """Transfers a literal of the given shape from replica_number's outfeed.
+
+  Args:
+    shape: The shape of the value to transfer from outfeed.
+    replica_number: The replica number ordinal to transfer the outfeed value
+      from. (Each replica has a distinct outfeed queue.)
+
+  Returns:
+    The literal value that is produced from the outfeed queue.
+  """
+  return c_api.TransferFromOutfeedLocalReplica(shape, replica_number or 0)
+
+
 class LocalComputation(object):
   """Python wrapper for a local XLA Computation.
 
@@ -190,22 +358,50 @@ class LocalComputation(object):
     else:
       self._delete = c_api.DeleteLocalComputation
 
-  def Compile(self, argument_shapes=()):
+  def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None):
     if self.is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
+    if layout_fn:
+      argument_shapes = [
+          shape.map_leaves(layout_fn) for shape in argument_shapes
+      ]
     return LocalComputation(
-        self.c_local_computation.Compile(_unwrap_shapes(argument_shapes)),
+        self.c_local_computation.Compile(argument_shapes, compile_options),
         is_compiled=True)
 
-  def CompileWithExampleArguments(self, arguments=()):
+  def CompileWithExampleArguments(self,
+                                  arguments=(),
+                                  compile_options=None,
+                                  layout_fn=None):
     return self.Compile(
-        argument_shapes=[Shape.from_numpy(arg) for arg in arguments])
+        argument_shapes=[Shape.from_numpy(arg) for arg in arguments],
+        compile_options=compile_options,
+        layout_fn=layout_fn)
 
-  def Execute(self, arguments=()):
+  def Execute(self, arguments=(), layout_fn=None):
+    """Execute with Python values as arguments and return value."""
     if not self.is_compiled:
       raise ValueError('Cannot execute an uncompiled local XLA computation.')
+    argument_shapes = [Shape.from_numpy(arg) for arg in arguments]
+    if layout_fn:
+      argument_shapes = [
+          shape.map_leaves(layout_fn) for shape in argument_shapes
+      ]
+    else:
+      argument_shapes = [None for shape in argument_shapes]
     arguments = tuple(map(require_numpy_array_layout, arguments))
-    return self.c_local_computation.Execute(arguments)
+    return self.c_local_computation.Execute(arguments, argument_shapes)
+
+  def ExecuteWithLocalBuffers(self, arguments=()):
+    """Execute with LocalBuffer arguments and return value."""
+    if not self.is_compiled:
+      raise ValueError('Cannot execute an uncompiled local XLA computation.')
+    arguments = tuple(arguments)
+    if any(arg.is_deleted() for arg in arguments):
+      raise ValueError('Executing with deleted local buffer argument')
+    return LocalBuffer(
+        self.c_local_computation.ExecuteWithShapedBuffers(
+            [arg.c_local_shaped_buffer for arg in arguments]))
 
   def __del__(self):
     self._delete(self.c_local_computation)
@@ -232,6 +428,35 @@ class ComputationBuilder(object):
 
   def Build(self):
     return LocalComputation(self._client.Build(), is_compiled=False)
+
+  def SetOpMetadata(self, op_metadata):
+    """Set metadata for operations that are about to be enqueued."""
+    self._client.SetOpMetadata(op_metadata)
+
+  def ClearOpMetadata(self):
+    """Clear metadata for operations that are about to be enqueued."""
+    self._client.ClearOpMetadata()
+
+  def Infeed(self, shape):
+    """Enqueues an infeed op onto the computation.
+
+    Infeed operations dequeue data of the given shape from the device's infeed
+    queue for subsequent use in the computation.
+
+    Returns:
+      A  ComputationDataHandle message.
+    """
+    return _wrap_data_handle(self._client.Infeed(shape))
+
+  def Outfeed(self, operand):
+    """Enqueues an outfeed op onto the computation.
+
+    Outfeed operations enqueue data, using the given operand, onto the XLA
+    outfeed queue for subsequent dequeue via the client API.
+    """
+    self._client.Outfeed(
+        _unwrap_data_handle(operand), self.GetShape(operand),
+        ''.encode('utf-8'))
 
   def Constant(self, value):
     """Enqueues a constant op onto the computation.
@@ -321,8 +546,7 @@ class ComputationBuilder(object):
       parameter_num = next(self._parameter_numbering)
 
     return _wrap_data_handle(
-        self._client.Parameter(
-            parameter_num, _unwrap_shape(shape), name.encode('utf8')))
+        self._client.Parameter(parameter_num, shape, name.encode('utf8')))
 
   def ParameterFromNumpy(self, value, name=None, parameter_num=None):
     """Enqueues a Parameter op onto the computation.
@@ -385,6 +609,26 @@ class ComputationBuilder(object):
   def GetComputationStats(self):
     raise NotImplementedError()
 
+  def Pad(self, operand, padding_value, padding_config):
+    """Enqueues a Pad operation onto the computation.
+
+    Args:
+      operand: ComputationDataHandle representing the array to pad.
+      padding_value: ComputationDataHandle representing the scalar pad value.
+      padding_config: either an xla_data_pb2.PaddingConfig or a list of integer
+        triples (edge_padding_low, edge_padding_high, interior_padding)
+        representing the configuration of the padding operation.
+
+    Returns:
+      A ComputationDataHandle representing the added pad op.
+    """
+    if not isinstance(padding_config, xla_data_pb2.PaddingConfig):
+      padding_config = GetPaddingConfigFromTriples(padding_config)
+    return _wrap_data_handle(
+        self._client.Pad(_unwrap_data_handle(operand),
+                         _unwrap_data_handle(padding_value),
+                         padding_config))
+
   def Reshape(self, operand, dimensions, new_sizes):
     """Reshape op."""
     return _wrap_data_handle(
@@ -422,6 +666,43 @@ class ComputationBuilder(object):
     """Rev op."""
     return _wrap_data_handle(
         self._client.Rev(_unwrap_data_handle(operand), dimensions))
+
+  def Clamp(self, min, operand, max):  # pylint: disable=redefined-builtin
+    """Clamp op."""
+    return _wrap_data_handle(
+        self._client.Clamp(_unwrap_data_handle(min),
+                           _unwrap_data_handle(operand),
+                           _unwrap_data_handle(max)))
+
+  def SelectAndScatter(self, operand, select, window_dimensions, window_strides,
+                       padding, source, init_value, scatter):
+    """Select and scatter op, used by the gradient of ReduceWindow.
+
+    Args:
+      operand: ComputationDataHandle for array of dimension N and type T over
+        which the windows slide.
+      select: Computation of type (T, T) -> Pred to apply to the elements of
+        each window to indicate which element is selected.
+      window_dimensions: sequence of N integers for dimensions of the window.
+      window_strides: sequence of N integers for the strides of the window.
+      padding: PaddingType representing either 'SAME' or 'VALID ' padding.
+      source: ComputationDataHandle for array of type T with values to scatter.
+      init_value: ComputationDataHandle of scalar type T for initial out value.
+      scatter: Computation of type (T, T) -> T to apply to each scatter source
+        element with its destination element.
+
+    Returns:
+      A ComputationDataHandle representing the added SelectAndScatter op.
+    """
+    pads = _convert_padding_type_to_pad_values(
+        padding, self.GetShape(operand).dimensions(),
+        window_dimensions, window_strides)
+    return _wrap_data_handle(
+        self._client.SelectAndScatterWithGeneralPadding(
+            _unwrap_data_handle(operand), select.c_local_computation,
+            window_dimensions, window_strides, pads,
+            _unwrap_data_handle(source), _unwrap_data_handle(init_value),
+            scatter.c_local_computation))
 
   def Select(self, pred, on_true, on_false):
     """Element-wise selection op.
@@ -573,6 +854,67 @@ class ComputationBuilder(object):
             computation_to_apply.c_local_computation,
             dimensions))
 
+  def ReduceWindow(self, operand, init_value, computation_to_apply,
+                   window_dimensions, window_strides, padding):
+    """Enqueues a windowed reduction operation onto the computation.
+
+    Args:
+      operand: reduction operand (ComputationDataHandle).
+      init_value: reduction initial value (ComputationDataHandle).
+      computation_to_apply: a binary reduction function (Computation).
+      window_dimensions: dimensions of window (sequence of integers).
+      window_strides: strides for window (sequence of integers).
+      padding: PaddingType representing either 'SAME' or 'VALID' padding.
+
+    Returns:
+      A ComputationDataHandle representing the added ReduceWindow op.
+    """
+    pads = _convert_padding_type_to_pad_values(
+        padding, self.GetShape(operand).dimensions(), window_dimensions,
+        window_strides)
+    return _wrap_data_handle(
+        self._client.ReduceWindowWithGeneralPadding(
+            _unwrap_data_handle(operand),
+            _unwrap_data_handle(init_value),
+            computation_to_apply.c_local_computation,
+            window_dimensions, window_strides, pads))
+
+  def RngNormal(self, mu, sigma, dims):
+    """Enqueues an RngNormal operation onto the computation.
+
+    Args:
+      mu: A ComputationDataHandle to an F32 scalar specifying the mean.
+      sigma: A ComputationDataHandle to an F32 scalar specifying the standard
+        deviation.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of F32 values.
+    """
+    shape = Shape(self.GetShape(mu).np_dtype, dims)
+    return _wrap_data_handle(
+        self._client.RngNormal(
+            _unwrap_data_handle(mu), _unwrap_data_handle(sigma), shape))
+
+  def RngUniform(self, a, b, dims):
+    """Enqueues an RngUniform operation onto the computation.
+
+    Args:
+      a: a ComputationDataHandle to an F32, S32, or U32 scalar (consistent with
+        the type of b) specifying the low end of the interval [a, b) over which
+        values are generated.
+      b: a ComputationDataHandle to an F32, S32, or U32 scalar (consistent with
+        the type of a) specifying the high end of the interval [a, b) over which
+        values are generated.
+      dims: A 1D array-like of nonnegative integers specifying the dimensions.
+
+    Returns: a ComputationDataHandle to the generated array of values with the
+      same numeric type (F32, S32, or U32) as the arguments a and b.
+    """
+    shape = Shape(self.GetShape(a).np_dtype, dims)
+    return _wrap_data_handle(
+        self._client.RngUniform(
+            _unwrap_data_handle(a), _unwrap_data_handle(b), shape))
+
   def While(self, cond, body, init):
     """Enqueues a While operation onto the computation.
 
@@ -589,9 +931,36 @@ class ComputationBuilder(object):
                            _unwrap_data_handle(init)))
 
   def Dot(self, lhs, rhs):
-    """Matrix multiplication between lhs and rhs."""
+    """Enqueues a dot operation onto the computation.
+
+    Args:
+      lhs: ComputationDataHandle for the rank 1 or rank 2 left-hand-side array.
+      rhs: ComputationDataHandle for the rank 1 or rank 2 right-hand-side array.
+
+    Returns: a ComputationDataHandle representing the Dot operation.
+    """
     return _wrap_data_handle(
         self._client.Dot(_unwrap_data_handle(lhs), _unwrap_data_handle(rhs)))
+
+  def DotGeneral(self, lhs, rhs, dimension_numbers):
+    """Enqueues a general dot operation onto the computation.
+
+    Args:
+      lhs: ComputationDataHandle for the left-hand-side array.
+      rhs: ComputationDataHandle for the right-hand-side array.
+      dimension_numbers: either an xla_data_pb2.DotDimensionNumbers or a nested
+        tuple ((lhs_contract, rhs_contract), (lhs_batch, rhs_batch)) of lists of
+        integers representing the dimensions to treat as contracting dimensions
+        and batch dimensions on each input operand.
+
+    Returns: a ComputationDataHandle representing the DotGeneral operation.
+    """
+    if not isinstance(dimension_numbers, xla_data_pb2.DotDimensionNumbers):
+      dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
+    return _wrap_data_handle(
+        self._client.DotGeneral(
+            _unwrap_data_handle(lhs), _unwrap_data_handle(rhs),
+            dimension_numbers))
 
   def Conv(self, lhs, rhs, window_strides, padding):
     """Enqueues a Conv operation onto the computation.
@@ -604,18 +973,9 @@ class ComputationBuilder(object):
 
     Returns: a ComputationDataHandle representing the Conv operation.
     """
-    if padding == PaddingType.SAME:
-      lhs_dims = self.GetShape(lhs).dimensions()
-      rhs_dims = self.GetShape(rhs).dimensions()
-      in_shape, filter_shape = lhs_dims[2:], rhs_dims[2:]
-      out_shape = np.ceil(np.true_divide(in_shape, window_strides)).astype(int)
-      pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
-                   for out_size, stride, filter_size, in_size
-                   in zip(out_shape, window_strides, filter_shape, in_shape)]
-      pads = [(pad_size // 2, pad_size - pad_size // 2)
-              for pad_size in pad_sizes]
-    else:
-      pads = [(0, 0)] * len(window_strides)
+    pads = _convert_padding_type_to_pad_values(
+        padding, self.GetShape(lhs).dimensions()[2:],
+        self.GetShape(rhs).dimensions()[2:], window_strides)
     dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
     return _wrap_data_handle(
         self._client.ConvGeneralDilated(_unwrap_data_handle(lhs),
@@ -705,3 +1065,46 @@ def _forward_methods_to_local_builder():
 
 
 _forward_methods_to_local_builder()
+
+
+def initialize_replica_count(replica_count):
+  """Initializes the desired replica count to use on XLA service init.
+
+  Args:
+    replica_count: number of replicas that are desired for set up during XLA
+      initialization.
+
+  Raises:
+    A runtime exception if the XLA service has already been initialized.
+  """
+  c_api.InitializeReplicaCount(replica_count)
+
+
+def get_replica_count():
+  """Returns the current replica count used for the XLA service.
+
+  Note: this will return a value whether the XLA service has been initialized
+  yet or not.
+  """
+  return c_api.GetReplicaCount()
+
+
+def GetPaddingConfigFromTriples(triples):
+  """Create PaddingConfig proto from list of triples of integers."""
+  padding_config = xla_data_pb2.PaddingConfig()
+  for lo, hi, interior in triples:
+    dimension = padding_config.dimensions.add()
+    dimension.edge_padding_low = lo
+    dimension.edge_padding_high = hi
+    dimension.interior_padding = interior
+  return padding_config
+
+
+def GetDotDimensionsFromLists(dimension_numbers):
+  (lhs_contract, rhs_contract), (lhs_batch, rhs_batch) = dimension_numbers
+  dot_dims_proto = xla_data_pb2.DotDimensionNumbers()
+  dot_dims_proto.lhs_contracting_dimensions.extend(lhs_contract)
+  dot_dims_proto.rhs_contracting_dimensions.extend(rhs_contract)
+  dot_dims_proto.lhs_batch_dimensions.extend(lhs_batch)
+  dot_dims_proto.rhs_batch_dimensions.extend(rhs_batch)
+  return dot_dims_proto

@@ -332,9 +332,9 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d.inputs[1], b.outputs[0])
 
       self.assertEqual(a.outputs[0].dtype, dtypes.int32_ref)
-      self.assertEqual(c._input_dtypes, [dtypes.int32, dtypes.int32])
+      self.assertEqual(c._input_types, [dtypes.int32, dtypes.int32])
       self.assertEqual(c.outputs, [])
-      self.assertEqual(d._input_dtypes, [dtypes.int32_ref, dtypes.int32])
+      self.assertEqual(d._input_types, [dtypes.int32_ref, dtypes.int32])
       self.assertEqual(d.outputs, [])
 
   def testWhileLoop(self):
@@ -342,6 +342,8 @@ class ImportGraphDefTest(test.TestCase):
     graph = ops.Graph()
     with graph.as_default():
       r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+      # Add an op that consumes the while loop output.
+      math_ops.add(r, 1)
     graph_def = graph.as_graph_def()
 
     # Import the GraphDef and make sure it runs.

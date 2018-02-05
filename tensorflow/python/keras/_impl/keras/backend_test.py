@@ -22,6 +22,7 @@ import scipy.sparse
 
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.keras._impl import keras
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
@@ -114,11 +115,18 @@ class BackendUtilsTest(test.TestCase):
     self.assertEqual(keras.backend.get_uid('foo'), 1)
 
   def test_learning_phase(self):
-    with self.test_session():
+    with self.test_session() as sess:
       keras.backend.set_learning_phase(1)
       self.assertEqual(keras.backend.learning_phase(), 1)
       with self.assertRaises(ValueError):
         keras.backend.set_learning_phase(2)
+
+      # Test running with a learning-phase-consuming layer
+      keras.backend.set_learning_phase(0)
+      x = keras.Input((3,))
+      y = keras.layers.BatchNormalization()(x)
+      sess.run(variables.global_variables_initializer())
+      sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
   def test_int_shape(self):
     x = keras.backend.placeholder(shape=(3, 4))
@@ -946,20 +954,8 @@ class BackendNNOpsTest(test.TestCase):
     x = keras.backend.variable(val)
     reduction_axes = (0, 2, 3)
 
-    # case: need broadcasting
     g_val = np.random.random((3,))
     b_val = np.random.random((3,))
-    gamma = keras.backend.variable(g_val)
-    beta = keras.backend.variable(b_val)
-    normed, mean, var = keras.backend.normalize_batch_in_training(
-        x, gamma, beta, reduction_axes, epsilon=1e-3)
-    self.assertEqual(normed.get_shape().as_list(), [10, 3, 10, 10])
-    self.assertEqual(mean.get_shape().as_list(), [3,])
-    self.assertEqual(var.get_shape().as_list(), [3,])
-
-    # case: doesn't need broadcasting
-    g_val = np.random.random((1, 3, 1, 1))
-    b_val = np.random.random((1, 3, 1, 1))
     gamma = keras.backend.variable(g_val)
     beta = keras.backend.variable(b_val)
     normed, mean, var = keras.backend.normalize_batch_in_training(

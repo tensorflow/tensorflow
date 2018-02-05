@@ -1,7 +1,7 @@
 path: "tensorflow.layers.SeparableConv2D"
 tf_class {
   is_instance: "<class \'tensorflow.python.layers.convolutional.SeparableConv2D\'>"
-  is_instance: "<class \'tensorflow.python.layers.convolutional.Conv2D\'>"
+  is_instance: "<class \'tensorflow.python.layers.convolutional._SeparableConv\'>"
   is_instance: "<class \'tensorflow.python.layers.convolutional._Conv\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<type \'object\'>"
@@ -108,6 +108,10 @@ tf_class {
   member_method {
     name: "call"
     argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"

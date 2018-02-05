@@ -70,12 +70,11 @@ class Buffer : public ResourceBase {
     return bytes + current_bytes_ > memory_limit_;
   }
 
-  std::size_t GetTupleBytes(const Tuple & tuple)
-  {
+  std::size_t GetTupleBytes(const Tuple& tuple) {
     return std::accumulate(tuple.begin(), tuple.end(), 0,
-      [](const std::size_t & lhs, const Tensor & rhs) {
-        return lhs + rhs.TotalBytes();
-    });
+                           [](const std::size_t& lhs, const Tensor& rhs) {
+                             return lhs + rhs.TotalBytes();
+                           });
   }
 
  public:
@@ -90,19 +89,22 @@ class Buffer : public ResourceBase {
     std::size_t tuple_bytes = GetTupleBytes(*tuple);
 
     // Sanity check so that we don't block for ever below
-    if(memory_limit_ > 0 && tuple_bytes > memory_limit_) {
-      return Status(errors::ResourceExhausted("Attempted to insert "
-        "tensors with combined size of '", tuple_bytes, "' bytes into "
-        "Staging Area with a memory limit of '", memory_limit_, "'."));
+    if (memory_limit_ > 0 && tuple_bytes > memory_limit_) {
+      return Status(
+          errors::ResourceExhausted("Attempted to insert "
+                                    "tensors with combined size of '",
+                                    tuple_bytes,
+                                    "' bytes into "
+                                    "Staging Area with a memory limit of '",
+                                    memory_limit_, "'."));
     }
 
-
     // If buffer capacity is bounded wait until elements have been removed
-    if(IsBounded()) {
+    if (IsBounded()) {
       full_cond_var_.wait(lock, [tuple_bytes, this]() {
         // If there's a memory limit, check if there's space for insertion
-        bool memory_limit_valid = memory_limit_ > 0 ?
-            !WouldExceedMemoryLimit(tuple_bytes) : true;
+        bool memory_limit_valid =
+            memory_limit_ > 0 ? !WouldExceedMemoryLimit(tuple_bytes) : true;
         // If we're configured for capacity check if there's space for insertion
         bool capacity_valid = capacity_ > 0 ? !IsCapacityFull() : true;
 
@@ -186,8 +188,7 @@ Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {
   ContainerInfo cinfo;
 
   // Lambda for creating the Staging Area
-  auto create_fn = [&ndef](Buffer** ret) -> Status
-  {
+  auto create_fn = [&ndef](Buffer** ret) -> Status {
     int64 capacity;
     int64 memory_limit;
     TF_RETURN_IF_ERROR(GetNodeAttr(ndef, "capacity", &capacity));
@@ -195,7 +196,6 @@ Status GetBuffer(OpKernelContext* ctx, const NodeDef& ndef, Buffer** buf) {
     *ret = new Buffer(capacity, memory_limit);
     return Status::OK();
   };
-
 
   TF_RETURN_IF_ERROR(cinfo.Init(rm, ndef, true /* use name() */));
   TF_RETURN_IF_ERROR(rm->LookupOrCreate<Buffer>(cinfo.container(), cinfo.name(),
@@ -228,7 +228,7 @@ REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_GPU), StageOp);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Stage").Device(DEVICE_SYCL), StageOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class UnstageOp : public OpKernel {
  public:
@@ -244,7 +244,8 @@ class UnstageOp : public OpKernel {
 
     buf->Get(&tuple);
 
-    OP_REQUIRES(ctx, tuple.size() == (size_t)ctx->num_outputs(),
+    OP_REQUIRES(
+        ctx, tuple.size() == (size_t)ctx->num_outputs(),
         errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
                                 " vs. ", ctx->num_outputs()));
 
@@ -260,7 +261,7 @@ REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_GPU), UnstageOp);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("Unstage").Device(DEVICE_SYCL), UnstageOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 class StagePeekOp : public OpKernel {
  public:
@@ -278,7 +279,8 @@ class StagePeekOp : public OpKernel {
 
     OP_REQUIRES_OK(ctx, buf->Peek(index, &tuple));
 
-    OP_REQUIRES(ctx, tuple.size() == (size_t)ctx->num_outputs(),
+    OP_REQUIRES(
+        ctx, tuple.size() == (size_t)ctx->num_outputs(),
         errors::InvalidArgument("Mismatch stage/unstage: ", tuple.size(),
                                 " vs. ", ctx->num_outputs()));
 
@@ -288,17 +290,15 @@ class StagePeekOp : public OpKernel {
   }
 };
 
-REGISTER_KERNEL_BUILDER(Name("StagePeek").Device(DEVICE_CPU),
-                                              StagePeekOp);
+REGISTER_KERNEL_BUILDER(Name("StagePeek").Device(DEVICE_CPU), StagePeekOp);
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("StagePeek").HostMemory("index").
-                            Device(DEVICE_GPU), StagePeekOp);
+REGISTER_KERNEL_BUILDER(
+    Name("StagePeek").HostMemory("index").Device(DEVICE_GPU), StagePeekOp);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("StagePeek").HostMemory("index")
-                          .Device(DEVICE_SYCL), StagePeekOp);
-#endif // TENSORFLOW_USE_SYCL
-
+REGISTER_KERNEL_BUILDER(
+    Name("StagePeek").HostMemory("index").Device(DEVICE_SYCL), StagePeekOp);
+#endif  // TENSORFLOW_USE_SYCL
 
 class StageSizeOp : public OpKernel {
  public:
@@ -312,9 +312,8 @@ class StageSizeOp : public OpKernel {
     core::ScopedUnref scope(buf);
 
     // Allocate size output tensor
-    Tensor * size = nullptr;
-    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}),
-                                                     &size));
+    Tensor* size = nullptr;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &size));
 
     // Set it to the actual size
     size->scalar<int32>().setConstant(buf->Size());
@@ -323,13 +322,13 @@ class StageSizeOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("StageSize").Device(DEVICE_CPU), StageSizeOp);
 #if GOOGLE_CUDA
-REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size")
-                        .Device(DEVICE_GPU), StageSizeOp);
+REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size").Device(DEVICE_GPU),
+                        StageSizeOp);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
-REGISTER_KERNEL_BUILDER(Name("StageSize").HostMemory("size")
-                        .Device(DEVICE_SYCL), StageSizeOp);
-#endif // TENSORFLOW_USE_SYCL
+REGISTER_KERNEL_BUILDER(
+    Name("StageSize").HostMemory("size").Device(DEVICE_SYCL), StageSizeOp);
+#endif  // TENSORFLOW_USE_SYCL
 
 class StageClearOp : public OpKernel {
  public:
@@ -352,7 +351,6 @@ REGISTER_KERNEL_BUILDER(Name("StageClear").Device(DEVICE_GPU), StageClearOp);
 #endif
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(Name("StageClear").Device(DEVICE_SYCL), StageClearOp);
-#endif // TENSORFLOW_USE_SYCL
-
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // namespace tensorflow

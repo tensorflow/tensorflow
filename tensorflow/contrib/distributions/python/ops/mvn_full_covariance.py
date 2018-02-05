@@ -18,15 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-
 from tensorflow.contrib.distributions.python.ops import mvn_tril
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
-from tensorflow.python.ops import math_ops
 
 
 __all__ = [
@@ -170,15 +167,11 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
           covariance_matrix = ops.convert_to_tensor(
               covariance_matrix, name="covariance_matrix")
           if validate_args:
-            tol = np.finfo(covariance_matrix.dtype.as_numpy_dtype).eps * 10
-            diff = math_ops.abs(
-                covariance_matrix
-                - array_ops.matrix_transpose(covariance_matrix))
-            assert_symmetric = check_ops.assert_less(
-                diff, tol + tol * math_ops.abs(covariance_matrix),
-                message="Matrix was not symmetric.")
-            covariance_matrix = control_flow_ops.with_dependencies(
-                [assert_symmetric], covariance_matrix)
+            covariance_matrix = control_flow_ops.with_dependencies([
+                check_ops.assert_near(
+                    covariance_matrix,
+                    array_ops.matrix_transpose(covariance_matrix),
+                    message="Matrix was not symmetric")], covariance_matrix)
           # No need to validate that covariance_matrix is non-singular.
           # LinearOperatorLowerTriangular has an assert_non_singular method that
           # is called by the Bijector.

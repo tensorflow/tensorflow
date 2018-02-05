@@ -23,9 +23,30 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
 namespace {
+
+using ops::Abs;
+using ops::Add;
+using ops::AddN;
+using ops::BatchMatMul;
+using ops::Const;
+using ops::Div;
+using ops::Greater;
+using ops::MatMul;
+using ops::Max;
+using ops::Maximum;
+using ops::Mean;
+using ops::Min;
+using ops::Minimum;
+using ops::Mul;
+using ops::Placeholder;
+using ops::Pow;
+using ops::Prod;
+using ops::RealDiv;
+using ops::SquaredDifference;
+using ops::Sub;
+using ops::Sum;
+using ops::Where3;
 
 // TODO(andydavis) Test gradient function against numeric gradients output.
 // TODO(andydavis) As more gradients are added move common test functions
@@ -83,6 +104,7 @@ class CWiseUnaryGradTest : public ::testing::Test {
 
     Output y;
     switch (op_type) {
+      using namespace ops;  // NOLINT(build/namespaces)
       case ABS:
         y = Abs(scope_, x);
         break;
@@ -843,6 +865,14 @@ TEST_F(NaryGradTest, SquaredDifference) {
   RunTest({x1, x2}, {x1_shape, x2_shape}, {y}, {x1_shape});
 }
 
+TEST_F(NaryGradTest, Pow) {
+  TensorShape shape({3});
+  auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
+  // fix exponent to avoid overflow
+  auto y = Pow(scope_, x, Const(scope_, {1.f, 2.f, 3.f}));
+  RunTest({x}, {shape}, {y}, {shape});
+}
+
 TEST_F(NaryGradTest, Maximum) {
   TensorShape shape({3, 2});
   auto x = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
@@ -872,14 +902,6 @@ TEST_F(NaryGradTest, Prod) {
   // y's shape is the result of reducing x along axes 1
   TensorShape y_shape({2, 1, 2});
   RunTest({x}, {x_shape}, {y}, {y_shape});
-}
-
-TEST_F(NaryGradTest, Select) {
-  TensorShape shape({3, 4});
-  auto x1 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto x2 = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(shape));
-  auto y = Where3(scope_, Greater(scope_, x1, x2), x1, x2);
-  RunTest({x1, x2}, {shape, shape}, {y}, {shape});
 }
 
 }  // namespace

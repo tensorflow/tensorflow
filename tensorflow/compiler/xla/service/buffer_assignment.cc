@@ -73,9 +73,10 @@ void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
   CHECK_LE(offset, size_) << "LogicalBuffer " << buffer
                           << " offset out of range";
   CHECK_LE(offset + size, size_)
-      << "LogicalBuffer " << buffer << " size out of range";
+      << "LogicalBuffer " << buffer
+      << " size out of range at offset: " << offset << " with size: " << size;
   CHECK_EQ(buffer.color(), color())
-      << "Buffer color " << buffer.color()
+      << "Buffer color " << buffer.color() << " for buffer " << buffer
       << " does not match allocation color " << color() << ".";
   OffsetSize offset_size;
   offset_size.offset = offset;
@@ -845,14 +846,13 @@ Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
-    if (is_thread_local || instruction->opcode() == HloOpcode::kCustomCall) {
-      // Custom call operations never have reusable buffers. Also we do not
-      // reuse thread-local buffers for now, because they are dynamically
-      // allocated and their lifetimes are hard to compute.
+    if (is_thread_local) {
+      // We do not reuse thread-local buffers for now, because they are
+      // dynamically allocated and their lifetimes are hard to compute.
       BufferAllocation* allocation = assignment->NewAllocation(
           *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
       VLOG(3) << "New allocation #" << allocation->index()
-              << " for thread-local/CustomCall: " << *buffer;
+              << " for thread-local: " << *buffer;
       continue;
     }
 
@@ -997,14 +997,15 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       auto color = single_colored_set.first;
       VLOG(2) << "Simulating heap for color " << color;
       int64 alignment = assignment->color_alignment_(color);
+      HeapSimulator::Options options;
+      options.buffers_to_assign = &single_colored_set.second;
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
           HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
                                  MakeUnique<LazyBestFitHeap>(alignment)),
                              assignment->module(), module_sequence,
                              assignment->points_to_analysis(),
-                             assignment->buffer_size_,
-                             &single_colored_set.second));
+                             assignment->buffer_size_, options));
       AssignBuffersFromHeapSimulator(result, assignment,
                                      single_colored_set.first);
     }
@@ -1024,14 +1025,15 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         auto color = single_colored_set.first;
         VLOG(2) << "Simulating heap for color " << color;
         int64 alignment = assignment->color_alignment_(color);
+        HeapSimulator::Options options;
+        options.buffers_to_assign = &single_colored_set.second;
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
             HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
                                    MakeUnique<LazyBestFitHeap>(alignment)),
                                *computation, *instruction_sequence,
                                assignment->points_to_analysis(),
-                               assignment->buffer_size_,
-                               &single_colored_set.second));
+                               assignment->buffer_size_, options));
         AssignBuffersFromHeapSimulator(result, assignment,
                                        single_colored_set.first);
       }
@@ -1358,6 +1360,43 @@ void BufferAssigner::BuildColocatedBufferSets(
                   index, points_to_analysis, &colocated_set);
               AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
             });
+
+        // Add true_operand and conditional.true_computation.parameter(0) as a
+        // colocated buffer set. Note that this has to be done for each subshape
+        // in the true_operand of the conditional.
+        ShapeUtil::ForEachSubshape(
+            conditional_hlo->operand(1)->shape(),
+            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
+                const Shape& /*subshape*/, const ShapeIndex& index) {
+              std::vector<const LogicalBuffer*> true_set;
+              // Add conditional.true_operand.
+              AddBufferToColocatedSet(conditional_hlo->operand(1), index,
+                                      points_to_analysis, &true_set);
+              // Add conditional.true_computation.parameter_instruction(0).
+              AddBufferToColocatedSet(
+                  conditional_hlo->true_computation()->parameter_instruction(0),
+                  index, points_to_analysis, &true_set);
+              AddSetToColocatedBufferSets(true_set, colocated_buffer_sets);
+            });
+
+        // Add false_operand and conditional.false_computation.parameter(0) as a
+        // colocated buffer set. Note that this has to be done for each subshape
+        // in the false_operand of the conditional.
+        ShapeUtil::ForEachSubshape(
+            conditional_hlo->operand(2)->shape(),
+            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
+                const Shape& /*subshape*/, const ShapeIndex& index) {
+              std::vector<const LogicalBuffer*> false_set;
+              // Add conditional.false_operand.
+              AddBufferToColocatedSet(conditional_hlo->operand(2), index,
+                                      points_to_analysis, &false_set);
+              // Add conditional.false_computation.parameter_instruction(0).
+              AddBufferToColocatedSet(
+                  conditional_hlo->false_computation()->parameter_instruction(
+                      0),
+                  index, points_to_analysis, &false_set);
+              AddSetToColocatedBufferSets(false_set, colocated_buffer_sets);
+            });
       }
     }
   }
@@ -1385,14 +1424,15 @@ void BufferAssigner::AssignColocatedBufferSets(
     }
 
     for (const LogicalBuffer* buffer : colocated_buffer_set) {
+      const int64 buffer_size = assignment->buffer_size_(*buffer);
       if (allocation == nullptr) {
         // TODO(b/32491382) Avoid current trivial solution of using new
         // allocations for each colocated buffer set. When liveness has
         // module-level scope, we can allow buffers to be shared across
         // computations (in some cases).
-        allocation = assignment->NewAllocation(
-            *buffer, assignment->buffer_size_(*buffer),
-            /*is_thread_local=*/false, /*is_reusable=*/true);
+        allocation = assignment->NewAllocation(*buffer, buffer_size,
+                                               /*is_thread_local=*/false,
+                                               /*is_reusable=*/true);
         if (entry_parameter_number >= 0) {
           // This colocated buffer set contains an entry parameter and other
           // logical buffers which use the parameter as read-only in a while
@@ -1403,8 +1443,11 @@ void BufferAssigner::AssignColocatedBufferSets(
         }
         colocated_allocations->insert(allocation->index());
       } else {
+        CHECK_EQ(buffer_size, allocation->size())
+            << "Buffer: " << *buffer << " size mismatch in colocated buffer "
+            << "allocation: " << *allocation;
         assignment->AddAssignment(allocation, *buffer, /*offset=*/0,
-                                  assignment->buffer_size_(*buffer));
+                                  buffer_size);
       }
       colocated_buffers->insert(buffer);
     }

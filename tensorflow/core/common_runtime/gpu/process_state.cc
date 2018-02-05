@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/process_state.h"
 
+#include <cstring>
 #include <vector>
 
 #include "tensorflow/core/common_runtime/gpu/gpu_bfc_allocator.h"
@@ -47,27 +48,19 @@ const bool FLAGS_brain_mem_reg_cuda_dma = true;
 // performance issues.
 const bool FLAGS_brain_gpu_record_mem_types = false;
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
-
 namespace {
+
 bool useCudaMallocAllocator() {
   const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
-  if (debug_allocator_str != nullptr &&
-      strcmp(debug_allocator_str, "cuda_malloc") == 0)
-    return true;
-  else
-    return false;
+  return debug_allocator_str != nullptr &&
+         std::strcmp(debug_allocator_str, "cuda_malloc") == 0;
 }
 
 bool useCudaMemoryGuardAllocator() {
   const char* debug_allocator_str = std::getenv("TF_GPU_ALLOCATOR");
-  if (debug_allocator_str != nullptr &&
-      strcmp(debug_allocator_str, "memory_guard") == 0)
-    return true;
-  else
-    return false;
+  return debug_allocator_str != nullptr &&
+         std::strcmp(debug_allocator_str, "memory_guard") == 0;
 }
 
 }  // namespace
@@ -95,8 +88,8 @@ ProcessState::~ProcessState() {
 }
 
 string ProcessState::MemDesc::DebugString() {
-  return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index, ", dma: ",
-                         gpu_registered, ", nic: ", nic_registered);
+  return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
+                         ", dma: ", gpu_registered, ", nic: ", nic_registered);
 }
 
 ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
@@ -237,8 +230,24 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   // TODO(tucker): actually maintain separate CPUAllocators for
   // different numa_nodes.  For now, just one.
   numa_node = 0;
-  mutex_lock lock(mu_);
 
+  {
+    // Here we optimize the most common use case where cuda_host_allocators_
+    // and cuda_al_ have already been populated and since we're only reading
+    // these vectors, we can get by with a shared lock. In the slower case,
+    // we take a unique lock and populate these vectors.
+    tf_shared_lock lock(mu_);
+
+    if (FLAGS_brain_gpu_record_mem_types &&
+        static_cast<int>(cuda_al_.size()) > 0) {
+      return cuda_al_[0];
+    }
+    if (static_cast<int>(cuda_host_allocators_.size()) > numa_node) {
+      return cuda_host_allocators_[0];
+    }
+  }
+
+  mutex_lock lock(mu_);
   // Find the first valid StreamExecutor to request CUDA host memory
   // through, since any will work.
   //

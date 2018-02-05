@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -889,10 +889,11 @@ inline void Add(int left_shift, const uint8* input1_data,
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
-template <FusedActivationFunctionType Ac>
-void BroadcastAdd(const float* input1_data, const Dims<4>& input1_dims,
-                  const float* input2_data, const Dims<4>& input2_dims,
-                  float* output_data, const Dims<4>& output_dims) {
+template <typename T>
+void BroadcastAdd(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T output_activation_min, T output_activation_max,
+                  T* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("BroadcastAdd");
 
   NdArrayDesc<4> desc1;
@@ -914,13 +915,28 @@ void BroadcastAdd(const float* input1_data, const Dims<4>& input1_dims,
     for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
       for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
         for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] = ActivationFunction<Ac>(
-              input1_data[SubscriptToIndex(desc1, c, x, y, b)] +
-              input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[SubscriptToIndex(desc1, c, x, y, b)] +
+                      input2_data[SubscriptToIndex(desc2, c, x, y, b)],
+                  output_activation_min, output_activation_max);
         }
       }
     }
   }
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac, typename T>
+void BroadcastAdd(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T* output_data, const Dims<4>& output_dims) {
+  T output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+
+  BroadcastAdd(input1_data, input1_dims, input2_data, input2_dims,
+               output_activation_min, output_activation_max, output_data,
+               output_dims);
 }
 
 inline void BroadcastAdd(int left_shift, const uint8* input1_data,
@@ -1053,10 +1069,11 @@ void Mul(const float* input1_data, const Dims<4>& input1_dims,
 // dimensionality if the runtime code does a single loop over one dimension
 // that handles broadcasting as the base case. The code generator would then
 // generate max(D1, D2) nested for loops.
-template <FusedActivationFunctionType Ac>
-void BroadcastMul(const float* input1_data, const Dims<4>& input1_dims,
-                  const float* input2_data, const Dims<4>& input2_dims,
-                  float* output_data, const Dims<4>& output_dims) {
+template <typename T>
+void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T output_activation_min, T output_activation_max,
+                  T* output_data, const Dims<4>& output_dims) {
   gemmlowp::ScopedProfilingLabel label("BroadcastMul");
 
   NdArrayDesc<4> desc1;
@@ -1078,13 +1095,28 @@ void BroadcastMul(const float* input1_data, const Dims<4>& input1_dims,
     for (int y = 0; y < ArraySize(output_dims, 2); ++y) {
       for (int x = 0; x < ArraySize(output_dims, 1); ++x) {
         for (int c = 0; c < ArraySize(output_dims, 0); ++c) {
-          output_data[Offset(output_dims, c, x, y, b)] = ActivationFunction<Ac>(
-              input1_data[SubscriptToIndex(desc1, c, x, y, b)] *
-              input2_data[SubscriptToIndex(desc2, c, x, y, b)]);
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[SubscriptToIndex(desc1, c, x, y, b)] *
+                      input2_data[SubscriptToIndex(desc2, c, x, y, b)],
+                  output_activation_min, output_activation_max);
         }
       }
     }
   }
+}
+
+// legacy, for compatibility with old checked-in code
+template <FusedActivationFunctionType Ac, typename T>
+void BroadcastMul(const T* input1_data, const Dims<4>& input1_dims,
+                  const T* input2_data, const Dims<4>& input2_dims,
+                  T* output_data, const Dims<4>& output_dims) {
+  T output_activation_min, output_activation_max;
+  GetActivationMinMax(Ac, &output_activation_min, &output_activation_max);
+
+  BroadcastMul(input1_data, input1_dims, input2_data, input2_dims,
+               output_activation_min, output_activation_max, output_data,
+               output_dims);
 }
 
 inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
@@ -1147,6 +1179,60 @@ inline void BroadcastMul(const uint8* input1_data, const Dims<4>& input1_dims,
                input2_dims, input2_offset, output_offset, output_multiplier,
                output_shift, output_activation_min, output_activation_max,
                output_data, output_dims);
+}
+
+inline void Div(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[Offset(input1_dims, c, x, y, b)] /
+                      input2_data[Offset(input2_dims, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
+}
+
+inline void Sub(const float* input1_data, const Dims<4>& input1_dims,
+                const float* input2_data, const Dims<4>& input2_dims,
+                float output_activation_min, float output_activation_max,
+                float* output_data, const Dims<4>& output_dims) {
+  const int batches =
+      MatchingArraySize(input1_dims, 3, input2_dims, 3, output_dims, 3);
+  const int height =
+      MatchingArraySize(input1_dims, 2, input2_dims, 2, output_dims, 2);
+  const int width =
+      MatchingArraySize(input1_dims, 1, input2_dims, 1, output_dims, 1);
+  const int depth =
+      MatchingArraySize(input1_dims, 0, input2_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          output_data[Offset(output_dims, c, x, y, b)] =
+              ActivationFunctionWithMinMax(
+                  input1_data[Offset(input1_dims, c, x, y, b)] -
+                      input2_data[Offset(input2_dims, c, x, y, b)],
+                  output_activation_min, output_activation_max);
+        }
+      }
+    }
+  }
 }
 
 template <FusedActivationFunctionType Ac, typename Scalar>
@@ -2183,10 +2269,11 @@ inline void SpaceToBatchND(const T* input_data, const Dims<4>& input_dims,
     for (int out_h = 0; out_h < output_height; ++out_h) {
       for (int out_w = 0; out_w < output_width; ++out_w) {
         T* out = output_data + Offset(output_dims, 0, out_w, out_h, out_b);
-        if (out_h * block_shape_height < padding_top ||
-            out_h * block_shape_height >= padding_top + input_height ||
-            out_w * block_shape_width < padding_left ||
-            out_w * block_shape_width >= padding_left + input_width) {
+        if (out_h * block_shape_height + shift_h < padding_top ||
+            out_h * block_shape_height + shift_h >=
+                padding_top + input_height ||
+            out_w * block_shape_width + shift_w < padding_left ||
+            out_w * block_shape_width + shift_w >= padding_left + input_width) {
           memset(out, 0, depth * sizeof(T));
         } else {
           const T* in =
@@ -2275,6 +2362,67 @@ inline void Pad(const T* input_data, const Dims<4>& input_dims,
   }
 }
 
+inline bool LoopCondition(int index, int stop, int stride) {
+  return stride > 0 ? index < stop : index > stop;
+}
+
+inline int StartIndex(int start, int stride, int dim, bool masked) {
+  return masked ? (stride > 0 ? 0 : dim - 1) : start;
+}
+
+inline int StopIndex(int start, int stop, int stride, int dim, bool masked,
+                     bool shrink_axis_masked) {
+  return shrink_axis_masked ? stride > 0 ? start + 1 : start - 1
+                            : masked ? (stride > 0 ? dim : -1) : stop;
+}
+
+template <typename T>
+inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
+                         int begin_mask, int end_mask, int shrink_axis_mask,
+                         const std::vector<int>& starts,
+                         const std::vector<int>& stops,
+                         const std::vector<int>& strides, T* output_data,
+                         const Dims<4>& output_dims) {
+  TFLITE_DCHECK_EQ(starts.size(), 4);
+  TFLITE_DCHECK_EQ(stops.size(), 4);
+  TFLITE_DCHECK_EQ(strides.size(), 4);
+  const int start_b =
+      StartIndex(starts[3], strides[3], input_dims.sizes[3], begin_mask & 8);
+  const int stop_b =
+      StopIndex(start_b, stops[3], strides[3], input_dims.sizes[3],
+                end_mask & 8, shrink_axis_mask & 8);
+  const int start_h =
+      StartIndex(starts[2], strides[2], input_dims.sizes[2], begin_mask & 4);
+  const int stop_h =
+      StopIndex(start_h, stops[2], strides[2], input_dims.sizes[2],
+                end_mask & 4, shrink_axis_mask & 4);
+  const int start_w =
+      StartIndex(starts[1], strides[1], input_dims.sizes[1], begin_mask & 2);
+  const int stop_w =
+      StopIndex(start_w, stops[1], strides[1], input_dims.sizes[1],
+                end_mask & 2, shrink_axis_mask & 2);
+  const int start_d =
+      StartIndex(starts[0], strides[0], input_dims.sizes[0], begin_mask & 1);
+  const int stop_d =
+      StopIndex(start_d, stops[0], strides[0], input_dims.sizes[0],
+                end_mask & 1, shrink_axis_mask & 1);
+
+  T* out_ptr = output_data;
+  for (int in_b = start_b; LoopCondition(in_b, stop_b, strides[3]);
+       in_b += strides[3]) {
+    for (int in_h = start_h; LoopCondition(in_h, stop_h, strides[2]);
+         in_h += strides[2]) {
+      for (int in_w = start_w; LoopCondition(in_w, stop_w, strides[1]);
+           in_w += strides[1]) {
+        for (int in_d = start_d; LoopCondition(in_d, stop_d, strides[0]);
+             in_d += strides[0]) {
+          *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
+        }
+      }
+    }
+  }
+}
+
 template <typename T>
 inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          int begin_mask, int end_mask,
@@ -2282,25 +2430,9 @@ inline void StridedSlice(const T* input_data, const Dims<4>& input_dims,
                          const std::vector<int>& stops,
                          const std::vector<int>& strides, T* output_data,
                          const Dims<4>& output_dims) {
-  const int start_b = (begin_mask & 8) ? 0 : starts[3];
-  const int stop_b = (end_mask & 8) ? input_dims.sizes[3] : stops[3];
-  const int start_h = (begin_mask & 4) ? 0 : starts[2];
-  const int stop_h = (end_mask & 4) ? input_dims.sizes[2] : stops[2];
-  const int start_w = (begin_mask & 2) ? 0 : starts[1];
-  const int stop_w = (end_mask & 2) ? input_dims.sizes[1] : stops[1];
-  const int start_d = (begin_mask & 1) ? 0 : starts[0];
-  const int stop_d = (end_mask & 1) ? input_dims.sizes[0] : stops[0];
-
-  T* out_ptr = output_data;
-  for (int in_b = start_b; in_b < stop_b; in_b += strides[3]) {
-    for (int in_h = start_h; in_h < stop_h; in_h += strides[2]) {
-      for (int in_w = start_w; in_w < stop_w; in_w += strides[1]) {
-        for (int in_d = start_d; in_d < stop_d; in_d += strides[0]) {
-          *out_ptr++ = input_data[Offset(input_dims, in_d, in_w, in_h, in_b)];
-        }
-      }
-    }
-  }
+  StridedSlice(input_data, input_dims, begin_mask, end_mask,
+               /*shrink_axis_mask=*/0, starts, stops, strides, output_data,
+               output_dims);
 }
 
 template <typename T>
@@ -2332,6 +2464,64 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
         }
       }
     }
+  }
+}
+
+template <typename T>
+inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
+                 T* output_data, const int* output_dims,
+                 const int output_num_dims, const int* axis,
+                 const int num_axis_dimensions, bool keep_dims, int* temp_index,
+                 int* resolved_axis) {
+  // resets output data.
+  size_t num_outputs = 1;
+  for (int idx = 0; idx < output_num_dims; ++idx) {
+    num_outputs *= static_cast<size_t>(output_dims[idx]);
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = 0;
+  }
+  // resets temp index.
+  for (int idx = 0; idx < input_num_dims; ++idx) {
+    temp_index[idx] = 0;
+  }
+  // resolves axis.
+  int num_resolved_axis = 0;
+  for (int idx = 0; idx < num_axis_dimensions; ++idx) {
+    int current = axis[idx];
+    TFLITE_DCHECK(current < input_num_dims && current + input_num_dims >= 0);
+    if (current < 0) {
+      current += input_num_dims;
+    }
+    bool is_dup = false;
+    for (int j = 0; j < num_resolved_axis; ++j) {
+      if (resolved_axis[j] == current) {
+        is_dup = true;
+        break;
+      }
+    }
+    if (!is_dup) {
+      resolved_axis[num_resolved_axis++] = current;
+    }
+  }
+  // iterates through input_data.
+  for (bool has_next = true; has_next;
+       has_next = NextIndex(input_num_dims, input_dims, temp_index)) {
+    size_t input_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, temp_index, 0, nullptr);
+    size_t output_offset =
+        ReducedOutputOffset(input_num_dims, input_dims, temp_index,
+                            num_resolved_axis, resolved_axis);
+    output_data[output_offset] += input_data[input_offset];
+  }
+  // takes average by num of elements added to get mean.
+  size_t num_elements_in_axis = 1;
+  for (int idx = 0; idx < num_resolved_axis; ++idx) {
+    num_elements_in_axis *= static_cast<size_t>(input_dims[resolved_axis[idx]]);
+  }
+  for (size_t idx = 0; idx < num_outputs; ++idx) {
+    output_data[idx] = static_cast<T>(static_cast<float>(output_data[idx]) /
+                                      num_elements_in_axis);
   }
 }
 
@@ -2483,7 +2673,36 @@ void ArgMax(const T3* axis, const T1* input_data, const Dims<4>& input_dims,
   }
 }
 
+template <typename T>
+void Transpose(const T* input, const Dims<4>& input_dims, T* output,
+               const Dims<4>& output_dims, int* permuted_axes) {
+  int out_sizes[4];
+  // Compute the inverse permutation array so we can do an output centered
+  // transpose. Also, check to make sure output_dims is matching input_dims.
+  for (int k = 0; k < 4; k++) {
+    out_sizes[k] =
+        MatchingArraySize(input_dims, permuted_axes[k], output_dims, k);
+  }
+
+  // Naive transpose loop (iterate on output index and compute input index).
+  int o[4];  // loop index (on output).
+  int i[4];
+  for (o[3] = 0; o[3] < out_sizes[3]; o[3]++) {
+    i[permuted_axes[3]] = o[3];
+    for (o[2] = 0; o[2] < out_sizes[2]; o[2]++) {
+      i[permuted_axes[2]] = o[2];
+      for (o[1] = 0; o[1] < out_sizes[1]; o[1]++) {
+        i[permuted_axes[1]] = o[1];
+        for (o[0] = 0; o[0] < out_sizes[0]; o[0]++) {
+          i[permuted_axes[0]] = o[0];
+          output[Offset(output_dims, o)] = input[Offset(input_dims, i)];
+        }
+      }
+    }
+  }
+}
+
 }  // namespace reference_ops
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_REFERENCE_REFERENCE_OPS_H_

@@ -150,6 +150,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       // addition to an addition on this type (int16) - this is just the type
       // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
+    case F16:
+      return llvm::Type::getHalfTy(module->getContext());
     case S32:
     case U32:
       return llvm::Type::getInt32Ty(module->getContext());
@@ -291,6 +293,11 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
         value = llvm::ConstantInt::get(
             ir_element_type,
             tensorflow::bit_cast<uint16>(literal.Get<bfloat16>(*multi_index)));
+        break;
+      case F16:
+        value = llvm::ConstantFP::get(
+            ir_element_type,
+            static_cast<float>(literal.Get<half>(*multi_index)));
         break;
       case F64:
         value = llvm::ConstantFP::get(ir_element_type,
@@ -713,6 +720,32 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
   }
 
   return function;
+}
+
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
+  auto options = config.debug_options().xla_backend_extra_options();
+  if (!options.empty()) {
+    std::vector<string> fake_argv_storage;
+    fake_argv_storage.push_back("");
+    for (const auto& it : options) {
+      // Skip options the XLA backend itself consumes.
+      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
+        if (it.second.empty()) {
+          fake_argv_storage.push_back(it.first);
+        } else {
+          fake_argv_storage.push_back(it.first + "=" + it.second);
+        }
+      }
+    }
+
+    VLOG(2) << "Passing argv to LLVM:";
+    std::vector<const char*> fake_argv;
+    for (const auto& s : fake_argv_storage) {
+      fake_argv.push_back(s.c_str());
+      VLOG(2) << s;
+    }
+    llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
+  }
 }
 
 }  // namespace llvm_ir

@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.training import training_util
 
@@ -137,7 +138,7 @@ class MetricsTest(test.TestCase):
     self.assertEqual(m1.name, "has space")
     self.assertEqual(m1.numer.name, "has_space/numer:0")
 
-  def testGraph(self):
+  def testGraphWithPlaceholder(self):
     with context.graph_mode(), self.test_session() as sess:
       m = metrics.Mean()
       p = array_ops.placeholder(dtypes.float32)
@@ -153,6 +154,22 @@ class MetricsTest(test.TestCase):
       sess.run(accumulate, feed_dict={p: 7})
       self.assertAllEqual(m.result().eval(), 7)
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testGraphAndEagerTensor(self):
+    m = metrics.Mean()
+    inputs = ops.convert_to_tensor([1.0, 2.0])
+    accumulate = m(inputs)
+    result = m.result()
+    self.evaluate(m.init_variables())
+    self.evaluate(accumulate)
+    self.assertEqual(self.evaluate(result), 1.5)
+    # Second init resets all the variables.
+    self.evaluate(m.init_variables())
+    inputs = ops.convert_to_tensor([2.0, 3.0])
+    self.evaluate(m(inputs))
+    value = m.value()
+    self.assertEqual(self.evaluate(value), 2.5)
+
   def testTwoMeansGraph(self):
     # Verify two metrics with the same class and name don't
     # accidentally share state.
@@ -162,6 +179,19 @@ class MetricsTest(test.TestCase):
       with self.assertRaises(ValueError):
         m2 = metrics.Mean()
         m2(2)
+
+  def testMetricsChain(self):
+    with context.graph_mode(), self.test_session():
+      m1 = metrics.Mean()
+      m2 = metrics.Mean(name="m2")
+      update_m2 = m2(3.0)
+      update_m2_2 = m2(m1(1.0))
+      m1.init_variables().run()
+      m2.init_variables().run()
+      update_m2.eval()
+      update_m2_2.eval()
+      self.assertAllEqual(m2.result().eval(), 2.0)
+      self.assertAllEqual(m1.result().eval(), 1.0)
 
 
 if __name__ == "__main__":

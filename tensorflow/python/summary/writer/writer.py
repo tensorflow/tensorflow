@@ -32,6 +32,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary.writer.event_file_writer import EventFileWriter
+from tensorflow.python.util.tf_export import tf_export
 
 _PLUGINS_DIR = "plugins"
 
@@ -276,6 +277,7 @@ class SummaryToEventTransformer(object):
     self.event_writer.add_event(event)
 
 
+@tf_export("summary.FileWriter")
 class FileWriter(SummaryToEventTransformer):
   """Writes `Summary` protocol buffers to event files.
 

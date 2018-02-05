@@ -311,6 +311,72 @@ class Conv3DTransposeTest(test.TestCase):
       self.assertEqual(layer.bias.constraint, b_constraint)
 
 
+class SeparableConv1DTest(test.TestCase):
+
+  def test_separable_conv_1d(self):
+    num_samples = 2
+    filters = 6
+    stack_size = 3
+    length = 7
+    strides = 1
+
+    for padding in ['valid', 'same']:
+      for multiplier in [1, 2]:
+        if padding == 'same' and strides != 1:
+          continue
+
+        with self.test_session(use_gpu=True):
+          testing_utils.layer_test(
+              keras.layers.SeparableConv1D,
+              kwargs={
+                  'filters': filters,
+                  'kernel_size': 3,
+                  'padding': padding,
+                  'strides': strides,
+                  'depth_multiplier': multiplier
+              },
+              input_shape=(num_samples, length, stack_size))
+
+  def test_separable_conv1d_regularizers(self):
+    kwargs = {
+        'filters': 3,
+        'kernel_size': 3,
+        'padding': 'valid',
+        'depthwise_regularizer': 'l2',
+        'pointwise_regularizer': 'l2',
+        'bias_regularizer': 'l2',
+        'activity_regularizer': 'l2',
+        'strides': 1
+    }
+    with self.test_session(use_gpu=True):
+      layer = keras.layers.SeparableConv1D(**kwargs)
+      layer.build((None, 5, 2))
+      self.assertEqual(len(layer.losses), 3)
+      layer(keras.backend.variable(np.ones((1, 5, 2))))
+      self.assertEqual(len(layer.losses), 4)
+
+  def test_separable_conv1d_constraints(self):
+    d_constraint = lambda x: x
+    p_constraint = lambda x: x
+    b_constraint = lambda x: x
+
+    kwargs = {
+        'filters': 3,
+        'kernel_size': 3,
+        'padding': 'valid',
+        'pointwise_constraint': p_constraint,
+        'depthwise_constraint': d_constraint,
+        'bias_constraint': b_constraint,
+        'strides': 1
+    }
+    with self.test_session(use_gpu=True):
+      layer = keras.layers.SeparableConv1D(**kwargs)
+      layer.build((None, 5, 2))
+      self.assertEqual(layer.depthwise_kernel.constraint, d_constraint)
+      self.assertEqual(layer.pointwise_kernel.constraint, p_constraint)
+      self.assertEqual(layer.bias.constraint, b_constraint)
+
+
 class SeparableConv2DTest(test.TestCase):
 
   def test_separable_conv_2d(self):

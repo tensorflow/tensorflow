@@ -79,6 +79,7 @@ from tensorflow.python.ops import gen_io_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_io_ops import *
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 
@@ -140,6 +141,7 @@ def _restore_slice(file_pattern, tensor_name, shape_and_slice, tensor_type,
       preferred_shard, name=name)
 
 
+@tf_export("ReaderBase")
 class ReaderBase(object):
   """Base class for different Reader types, that produce a record every step.
 
@@ -354,6 +356,7 @@ ops.NotDifferentiable("ReaderRestoreState")
 ops.NotDifferentiable("ReaderReset")
 
 
+@tf_export("WholeFileReader")
 class WholeFileReader(ReaderBase):
   """A Reader that outputs the entire contents of a file as a value.
 
@@ -381,6 +384,7 @@ class WholeFileReader(ReaderBase):
 ops.NotDifferentiable("WholeFileReader")
 
 
+@tf_export("TextLineReader")
 class TextLineReader(ReaderBase):
   """A Reader that outputs the lines of a file delimited by newlines.
 
@@ -410,6 +414,7 @@ class TextLineReader(ReaderBase):
 ops.NotDifferentiable("TextLineReader")
 
 
+@tf_export("FixedLengthRecordReader")
 class FixedLengthRecordReader(ReaderBase):
   """A Reader that outputs fixed-length records from a file.
 
@@ -452,6 +457,7 @@ class FixedLengthRecordReader(ReaderBase):
 ops.NotDifferentiable("FixedLengthRecordReader")
 
 
+@tf_export("TFRecordReader")
 class TFRecordReader(ReaderBase):
   """A Reader that outputs the records from a TFRecords file.
 
@@ -482,6 +488,7 @@ class TFRecordReader(ReaderBase):
 ops.NotDifferentiable("TFRecordReader")
 
 
+@tf_export("LMDBReader")
 class LMDBReader(ReaderBase):
   """A Reader that outputs the records from a LMDB file.
 
@@ -506,6 +513,7 @@ class LMDBReader(ReaderBase):
 ops.NotDifferentiable("LMDBReader")
 
 
+@tf_export("IdentityReader")
 class IdentityReader(ReaderBase):
   """A Reader that outputs the queued work as both the key and value.
 

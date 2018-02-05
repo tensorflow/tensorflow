@@ -285,14 +285,10 @@ OpPerformanceList CostGraphToOpPerformanceData(const CostGraphDef& cost_graph,
       perf->mutable_op_memory()->add_output_memory(output_info.size());
     }
 
-    perf->mutable_op_memory()->set_host_temp_memory(
-        cost_node->host_temp_memory_size());
-    perf->mutable_op_memory()->set_device_temp_memory(
-        cost_node->device_temp_memory_size());
-    perf->mutable_op_memory()->set_host_persistent_memory(
-        cost_node->host_persistent_memory_size());
-    perf->mutable_op_memory()->set_device_persistent_memory(
-        cost_node->device_persistent_memory_size());
+    perf->mutable_op_memory()->set_temp_memory(
+        cost_node->temporary_memory_size());
+    perf->mutable_op_memory()->set_persistent_memory(
+        cost_node->persistent_memory_size());
   }
   return ret;
 }

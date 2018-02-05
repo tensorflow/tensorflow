@@ -87,11 +87,11 @@ XLA_TEST_F(BroadcastTest, BroadcastVectorTo2D) {
 
   LiteralTestUtil::ExpectNear(
       *Literal::CreateR2<float>({{1.0, 1.0}, {2.0, 2.0}, {3.0, 3.0}}),
-      result->tuple_literals(0), error_spec_);
+      LiteralView::Create(*result, {0}), error_spec_);
 
   LiteralTestUtil::ExpectNear(
       *Literal::CreateR2<float>({{1.0, 2.0, 3.0}, {1.0, 2.0, 3.0}}),
-      result->tuple_literals(1), error_spec_);
+      LiteralView::Create(*result, {1}), error_spec_);
 }
 
 XLA_TEST_F(BroadcastTest, Broadcast2DTo2D) {

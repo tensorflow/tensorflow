@@ -30,9 +30,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace gpu = ::perftools::gputools;
-
 namespace tensorflow {
+namespace {
 
 TEST(GPUDebugAllocatorTest, OverwriteDetection_None) {
   const CudaGpuId cuda_gpu_id(0);
@@ -223,6 +222,7 @@ TEST(GPUDebugAllocatorTest, AllocatedVsRequested) {
   a.DeallocateRaw(t1);
 }
 
+}  // namespace
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

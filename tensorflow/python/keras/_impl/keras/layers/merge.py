@@ -14,15 +14,15 @@
 # ==============================================================================
 # pylint: disable=not-callable
 # pylint: disable=redefined-builtin
-"""Layers can merge several input tensors into a single output tensor.
+"""Layers that can merge several inputs into one.
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine.topology import Layer
+from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 
 
 class _Merge(Layer):
@@ -73,12 +73,13 @@ class _Merge(Layer):
         output_shape.append(i)
       else:
         if i != j:
-          raise ValueError('Operands could not be broadcast '
-                           'together with shapes ' + str(shape1) + ' ' +
-                           str(shape2))
+          raise ValueError(
+              'Operands could not be broadcast '
+              'together with shapes ' + str(shape1) + ' ' + str(shape2))
         output_shape.append(i)
     return tuple(output_shape)
 
+  @shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
     if not isinstance(input_shape, list):
@@ -87,14 +88,13 @@ class _Merge(Layer):
       raise ValueError('A merge layer should be called '
                        'on a list of at least 2 inputs. '
                        'Got ' + str(len(input_shape)) + ' inputs.')
-    input_shape = [tensor_shape.TensorShape(s).as_list() for s in input_shape]
     batch_sizes = [s[0] for s in input_shape if s is not None]
     batch_sizes = set(batch_sizes)
     batch_sizes -= set([None])
     if len(batch_sizes) > 1:
-      raise ValueError('Can not merge tensors with different '
-                       'batch sizes. Got tensors with shapes : ' +
-                       str(input_shape))
+      raise ValueError(
+          'Can not merge tensors with different '
+          'batch sizes. Got tensors with shapes : ' + str(input_shape))
     if input_shape[0] is None:
       output_shape = None
     else:
@@ -111,9 +111,10 @@ class _Merge(Layer):
       self._reshape_required = False
     else:
       self._reshape_required = True
-    self.built = True
 
   def call(self, inputs):
+    if not isinstance(inputs, list):
+      raise ValueError('A merge layer should be called ' 'on a list of inputs.')
     if self._reshape_required:
       reshaped_inputs = []
       input_ndims = list(map(K.ndim, inputs))
@@ -172,7 +173,8 @@ class _Merge(Layer):
     else:
       return self._merge_function(inputs)
 
-  def _compute_output_shape(self, input_shape):
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
     if input_shape[0] is None:
       output_shape = None
     else:
@@ -214,6 +216,22 @@ class Add(_Merge):
   It takes as input a list of tensors,
   all of the same shape, and returns
   a single tensor (also of the same shape).
+
+  Examples:
+
+  ```python
+      import keras
+
+      input1 = keras.layers.Input(shape=(16,))
+      x1 = keras.layers.Dense(8, activation='relu')(input1)
+      input2 = keras.layers.Input(shape=(32,))
+      x2 = keras.layers.Dense(8, activation='relu')(input2)
+      added = keras.layers.Add()([x1, x2])  # equivalent to added =
+      keras.layers.add([x1, x2])
+
+      out = keras.layers.Dense(4)(added)
+      model = keras.models.Model(inputs=[input1, input2], outputs=out)
+  ```
   """
 
   def _merge_function(self, inputs):
@@ -247,10 +265,17 @@ class Subtract(_Merge):
   ```
   """
 
+  @shape_type_conversion
+  def build(self, input_shape):
+    super(Subtract, self).build(input_shape)
+    if len(input_shape) != 2:
+      raise ValueError('A `Subtract` layer should be called '
+                       'on exactly 2 inputs')
+
   def _merge_function(self, inputs):
     if len(inputs) != 2:
-      raise ValueError('`Subtract` layer should be called '
-                       'on exactly 2 inputs. Received: %s' % inputs)
+      raise ValueError('A `Subtract` layer should be called '
+                       'on exactly 2 inputs')
     return inputs[0] - inputs[1]
 
 
@@ -330,47 +355,43 @@ class Concatenate(_Merge):
     super(Concatenate, self).__init__(**kwargs)
     self.axis = axis
     self.supports_masking = True
+    self._reshape_required = False
 
+  @shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
-    if not (isinstance(input_shape, list) and len(input_shape) > 1):
-      raise ValueError('`Concatenate` layer should be called '
-                       'on a list containing at least two inputs')
+    if not isinstance(input_shape, list) or len(input_shape) < 2:
+      raise ValueError('A `Concatenate` layer should be called '
+                       'on a list of at least 2 inputs')
     if all([shape is None for shape in input_shape]):
       return
-    reduced_inputs_shapes = [
-        tensor_shape.TensorShape(shape).as_list() for shape in input_shape
-    ]
+    reduced_inputs_shapes = [list(shape) for shape in input_shape]
     shape_set = set()
     for i in range(len(reduced_inputs_shapes)):
       del reduced_inputs_shapes[i][self.axis]
       shape_set.add(tuple(reduced_inputs_shapes[i]))
     if len(shape_set) > 1:
-      raise ValueError('`Concatenate` layer requires '
+      raise ValueError('A `Concatenate` layer requires '
                        'inputs with matching shapes '
                        'except for the concat axis. '
                        'Got inputs shapes: %s' % (input_shape))
-    self.built = True
 
-  def call(self, inputs):
-    if not isinstance(inputs, list):
-      raise ValueError('A `Concatenate` layer should be called '
-                       'on a list of inputs.')
+  def _merge_function(self, inputs):
     return K.concatenate(inputs, axis=self.axis)
 
-  def _compute_output_shape(self, input_shape):
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
     if not isinstance(input_shape, list):
       raise ValueError('A `Concatenate` layer should be called '
                        'on a list of inputs.')
     input_shapes = input_shape
-    output_shape = tensor_shape.TensorShape(input_shapes[0]).as_list()
+    output_shape = list(input_shapes[0])
     for shape in input_shapes[1:]:
-      shape = tensor_shape.TensorShape(shape).as_list()
       if output_shape[self.axis] is None or shape[self.axis] is None:
         output_shape[self.axis] = None
         break
       output_shape[self.axis] += shape[self.axis]
-    return tensor_shape.TensorShape(output_shape)
+    return tuple(output_shape)
 
   def compute_mask(self, inputs, mask=None):
     if mask is None:
@@ -390,7 +411,7 @@ class Concatenate(_Merge):
     masks = []
     for input_i, mask_i in zip(inputs, mask):
       if mask_i is None:
-        # Input is unmasked. Append all 1s to masks
+        # Input is unmasked. Append all 1s to masks,
         masks.append(K.ones_like(input_i, dtype='bool'))
       elif K.ndim(mask_i) < K.ndim(input_i):
         # Mask is smaller than the input, expand it
@@ -441,14 +462,16 @@ class Dot(_Merge):
     self.axes = axes
     self.normalize = normalize
     self.supports_masking = True
+    self._reshape_required = False
 
+  @shape_type_conversion
   def build(self, input_shape):
     # Used purely for shape validation.
     if not isinstance(input_shape, list) or len(input_shape) != 2:
       raise ValueError('A `Dot` layer should be called '
                        'on a list of 2 inputs.')
-    shape1 = tensor_shape.TensorShape(input_shape[0]).as_list()
-    shape2 = tensor_shape.TensorShape(input_shape[1]).as_list()
+    shape1 = input_shape[0]
+    shape2 = input_shape[1]
     if shape1 is None or shape2 is None:
       return
     if isinstance(self.axes, int):
@@ -462,9 +485,10 @@ class Dot(_Merge):
       raise ValueError('Dimension incompatibility '
                        '%s != %s. ' % (shape1[axes[0]], shape2[axes[1]]) +
                        'Layer shapes: %s, %s' % (shape1, shape2))
-    self.built = True
 
-  def call(self, inputs):
+  def _merge_function(self, inputs):
+    if len(inputs) != 2:
+      raise ValueError('A `Dot` layer should be called ' 'on exactly 2 inputs')
     x1 = inputs[0]
     x2 = inputs[1]
     if isinstance(self.axes, int):
@@ -485,12 +509,13 @@ class Dot(_Merge):
     output = K.batch_dot(x1, x2, axes)
     return output
 
-  def _compute_output_shape(self, input_shape):
+  @shape_type_conversion
+  def compute_output_shape(self, input_shape):
     if not isinstance(input_shape, list) or len(input_shape) != 2:
       raise ValueError('A `Dot` layer should be called '
                        'on a list of 2 inputs.')
-    shape1 = tensor_shape.TensorShape(input_shape[0]).as_list()
-    shape2 = tensor_shape.TensorShape(input_shape[1]).as_list()
+    shape1 = list(input_shape[0])
+    shape2 = list(input_shape[1])
     if isinstance(self.axes, int):
       if self.axes < 0:
         axes = [self.axes % len(shape1), self.axes % len(shape2)]
@@ -504,7 +529,7 @@ class Dot(_Merge):
     output_shape = shape1 + shape2
     if len(output_shape) == 1:
       output_shape += [1]
-    return tensor_shape.TensorShape(output_shape)
+    return tuple(output_shape)
 
   def compute_mask(self, inputs, mask=None):
     return None
@@ -527,6 +552,21 @@ def add(inputs, **kwargs):
 
   Returns:
       A tensor, the sum of the inputs.
+
+  Examples:
+
+  ```python
+      import keras
+
+      input1 = keras.layers.Input(shape=(16,))
+      x1 = keras.layers.Dense(8, activation='relu')(input1)
+      input2 = keras.layers.Input(shape=(32,))
+      x2 = keras.layers.Dense(8, activation='relu')(input2)
+      added = keras.layers.add([x1, x2])
+
+      out = keras.layers.Dense(4)(added)
+      model = keras.models.Model(inputs=[input1, input2], outputs=out)
+  ```
   """
   return Add(**kwargs)(inputs)
 

@@ -52,7 +52,8 @@ class ReverseOp : public XlaOpKernel {
     xla::Literal lax;
     OP_REQUIRES_OK(ctx, ctx->ConstantInputReshaped(1, {x_shape.dims()}, &lax));
     std::vector<bool> revdims(x_shape.dims());
-    std::copy(lax.preds().begin(), lax.preds().end(), revdims.begin());
+    std::copy(lax.data<bool>().begin(), lax.data<bool>().end(),
+              revdims.begin());
     std::vector<int64> dimensions;
 
     for (int d = 0; d < x_shape.dims(); ++d) {
@@ -65,7 +66,7 @@ class ReverseOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Reverse"), ReverseOp);
+REGISTER_XLA_OP(Name("Reverse").CompileTimeConstInput("dims"), ReverseOp);
 
 class ReverseV2Op : public XlaOpKernel {
  public:
@@ -103,7 +104,7 @@ class ReverseV2Op : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("ReverseV2"), ReverseV2Op);
+REGISTER_XLA_OP(Name("ReverseV2").CompileTimeConstInput("axis"), ReverseV2Op);
 
 }  // namespace
 }  // namespace tensorflow

@@ -312,7 +312,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     TF_RETURN_IF_ERROR(
         NameRangesForNode(*node, node->op_def(), nullptr, &output_ranges));
     for (const auto& output : output_ranges) {
-      const string& output_name = output.first;
+      const StringPiece& output_name = output.first;
       int index_start = output.second.first;
       int index_end = output.second.second;
       for (int i = index_start; i < index_end; ++i) {
@@ -546,6 +546,28 @@ void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
 
   tensorflow::mutex_lock l(g->mu);
   status->status = g->graph.AddFunctionLibrary(fdef_lib);
+}
+
+int TF_GraphNumFunctions(TF_Graph* g) {
+  tensorflow::mutex_lock l(g->mu);
+  return g->graph.flib_def().num_functions();
+}
+
+int TF_GraphGetFunctions(TF_Graph* g, TF_Function** funcs, int max_func,
+                         TF_Status* status) {
+  tensorflow::FunctionDefLibrary lib;
+  {
+    tensorflow::mutex_lock l(g->mu);
+    lib = g->graph.flib_def().ToProto();
+  }
+  const auto len = std::min(max_func, static_cast<int>(lib.function_size()));
+  for (int i = 0; i < len; ++i) {
+    TF_Function* func = new TF_Function();
+    func->fdef = lib.function(i);
+    funcs[i] = func;
+  }
+  status->status = tensorflow::Status::OK();
+  return len;
 }
 
 void TF_FunctionToFunctionDef(TF_Function* func, TF_Buffer* output_func_def,

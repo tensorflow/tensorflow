@@ -52,6 +52,9 @@ void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
   transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertTrivialAddNToAdd);
+  transformations->Add(new ConvertTrivialTransposeToReshape);
+  transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
@@ -65,12 +68,16 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowMatMul);
   transformations->Add(new FuseBinaryIntoPrecedingAffine);
   transformations->Add(new FuseBinaryIntoFollowingAffine);
+  transformations->Add(new ReorderActivationFunctions);
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
   transformations->Add(new ResolveConstantFill);
+  transformations->Add(new ResolveConstantRange);
+  transformations->Add(new ResolveConstantStack);
+  transformations->Add(new ResolveConstantStridedSlice);
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
-  transformations->Add(new ResolveTensorFlowSqueeze);
+  transformations->Add(new ResolveSqueezeAttributes);
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
@@ -79,18 +86,19 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new IdentifyRelu1);
   transformations->Add(new RemoveTrivialBinaryOperator);
   transformations->Add(new ReadFakeQuantMinMax);
+  transformations->Add(new ResolveSpaceToBatchNDAttributes);
   transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
   transformations->Add(new ResolveMeanAttributes);
-  transformations->Add(new ResolveConstantTensorFlowShape);
+  transformations->Add(new ResolveTransposeAttributes);
+  transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
 }
 
 bool SupportsQuantization(FileFormat format) {
   return (format == GRAPHVIZ_DOT || format == TFLITE);
-  ;
 }
 
 bool SupportsFusedActivationFunction(FileFormat format) {
@@ -127,7 +135,7 @@ void SetFinalDataTypeOnInputs(const TocoFlags& toco_flags, Model* model) {
 
   for (int i = 0; i < model->flags.input_arrays_size(); i++) {
     string const& array_name = model->flags.input_arrays(i).name();
-    auto* array = model->arrays[array_name].get();
+    auto* array = &model->GetArray(array_name);
     // Note that the notion of changing data types only applies to real-numbers
     // arrays (see the documentation for inference_input_type).
     // TODO(benoitjacob) this is assuming that uint8 arrays are quantized,
@@ -186,6 +194,14 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   }
 
   SetFinalDataTypeOnInputs(toco_flags, model);
+  UseArraysExtraInfo(model);
+
+  // Remove unused ops before performing any other optimizations. This is to
+  // stop optimizations from crossing the input/output boundaries. For example
+  // this will stop BatchNorm fusing if the output node is in between a conv
+  // and BatchNorm layers.
+  RunGraphTransformations(model, "Removing unused ops",
+                          {new toco::RemoveUnusedOp});
 
   GraphTransformationsSet transformations;
   MakeGeneralGraphTransformationsSet(&transformations);
@@ -218,6 +234,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
+
   if (quantize_output) {
     RunGraphTransformations(model, "pre-quantization graph transformations",
                             {new HardcodeMinMax, new DropFakeQuant});
