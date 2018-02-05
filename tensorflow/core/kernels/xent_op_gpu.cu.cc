@@ -31,7 +31,7 @@ typedef Eigen::GpuDevice GPUDevice;
 namespace functor {
 template <typename T>
 struct XentFunctor<GPUDevice, T> {
-  void operator()(const GPUDevice& d,
+  void operator()(const GPUDevice &d,
                   const Eigen::DSizes<Eigen::DenseIndex, 2> &shape,
                   const Eigen::array<Eigen::DenseIndex, 2> &logits_bcast,
                   const Eigen::array<Eigen::DenseIndex, 2> &labels_bcast,
@@ -40,7 +40,8 @@ struct XentFunctor<GPUDevice, T> {
                   typename TTypes<T>::Matrix scratch,
                   typename TTypes<T>::Vec loss,
                   typename TTypes<T>::Matrix backprop) {
-    XentEigenImpl<GPUDevice, T>::Compute(d, shape, logits_bcast, labels_bcast, logits, labels, scratch, loss,
+    XentEigenImpl<GPUDevice, T>::Compute(d, shape, logits_bcast, labels_bcast,
+                                         logits, labels, scratch, loss,
                                          backprop);
   }
 };
