@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# Tests for this file live in python/kernel_tests/array_ops_test.py
 """Support for manipulating tensors.
 
 See the @{$python/array_ops} guide.
@@ -2450,8 +2451,8 @@ def _all_dimensions(x):
     r = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
     return constant_op.constant(np.arange(r), dtype=dtypes.int32)
 
-  # Otherwise, we rely on Range and Rank to do the right thing at run-time.
-  return range(0, rank(x))
+  # Otherwise, we rely on `range` and `rank` to do the right thing at runtime.
+  return gen_math_ops._range(0, rank(x), 1)
 
 
 @tf_export("sequence_mask")
@@ -2496,7 +2497,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
       maxlen = gen_math_ops._max(lengths, _all_dimensions(lengths))
     else:
       maxlen = ops.convert_to_tensor(maxlen)
-    if maxlen.get_shape().ndims != 0:
+    if maxlen.get_shape().ndims is not None and maxlen.get_shape().ndims != 0:
       raise ValueError("maxlen must be scalar for sequence_mask")
 
     # The basic idea is to compare a range row vector of size maxlen:
