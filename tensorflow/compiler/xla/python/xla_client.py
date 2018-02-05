@@ -921,7 +921,7 @@ class ComputationBuilder(object):
     Args:
       cond: a Computation for the loop condition, which has type T -> PRED
       body: a Computation for the loop body, which has type T -> T
-      init: an ComputationDataHandle for the initial parameter, which has type T
+      init: a ComputationDataHandle for the initial parameter, which has type T
 
     Returns: a ComputationDataHandle representing the While operation.
     """
@@ -929,6 +929,26 @@ class ComputationBuilder(object):
         self._client.While(cond.c_local_computation,
                            body.c_local_computation,
                            _unwrap_data_handle(init)))
+
+  def Conditional(self, pred, true_operand, true_computation, false_operand,
+                  false_computation):
+    """Enqueues a Conditional operation onto the computation.
+
+    Args:
+      predicate: a ComputationDataHandle to test, which has scalar type PRED
+      true_operand: a ComputationDataHandle of type T_0
+      true_computation: a Computation to apply to true_operand, type T_0 -> S
+      false_operand: a ComputationDatahandle of type T_1
+      false_computation: a Computation to apply to false_operand, type T_1 -> S
+
+    Returns: a ComputationDataHandle representing the Conditional operation.
+    """
+    return _wrap_data_handle(
+        self._client.Conditional(
+            _unwrap_data_handle(pred), _unwrap_data_handle(true_operand),
+            true_computation.c_local_computation,
+            _unwrap_data_handle(false_operand),
+            false_computation.c_local_computation))
 
   def Dot(self, lhs, rhs):
     """Enqueues a dot operation onto the computation.
