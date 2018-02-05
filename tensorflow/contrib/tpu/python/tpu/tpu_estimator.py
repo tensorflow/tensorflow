@@ -66,6 +66,8 @@ from tensorflow.python.training import training
 from tensorflow.python.training import training_util
 from tensorflow.python.util import tf_inspect
 
+_BATCH_SIZE_KEY = 'batch_size'
+_RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
 def _create_global_step(graph):
   graph = graph or ops.get_default_graph()
@@ -1161,7 +1163,7 @@ class _InputPipeline(object):
                 generate_per_core_enqueue_ops_fn_for_host(
                     self._ctx, self._input_fn, self._inputs_structure_recorder))
 
-            if tpu_constant._WRAP_INPUT_FN_INTO_WHILE_LOOP:
+            if tpu_constant._WRAP_INPUT_FN_WHILE_LOOP:
               run_infeed_loop_on_coordinator = False
               enqueue_ops.append(
                   _wrap_computation_in_while_loop(
@@ -1214,7 +1216,7 @@ class _InputPipeline(object):
   def _validate_input_pipeline(self):
     # Perform some sanity checks to log user friendly information. We should
     # error out to give users better error message. But, if
-    # _WRAP_INPUT_FN_INTO_WHILE_LOOP is False (legacy behavior), we cannot break
+    # _WRAP_INPUT_FN_WHILE_LOOP is False (legacy behavior), we cannot break
     # user code, so, log a warning.
     if ops.get_default_graph().get_collection(ops.GraphKeys.QUEUE_RUNNERS):
       err_msg = ('Input pipeline contains one or more QueueRunners. '
@@ -1222,7 +1224,7 @@ class _InputPipeline(object):
                  'converting your input pipeline to use `tf.data` instead (see '
                  'https://www.tensorflow.org/programmers_guide/datasets for '
                  'instructions.')
-      if tpu_constant._WRAP_INPUT_FN_INTO_WHILE_LOOP:
+      if tpu_constant._WRAP_INPUT_FN_WHILE_LOOP:
         raise RuntimeError(err_msg)
       else:
         logging.warn(err_msg)
@@ -1430,7 +1432,7 @@ class _ModelFnWrapper(object):
 
     batch_size_for_model_fn = self._ctx.batch_size_for_model_fn
     if batch_size_for_model_fn is not None:
-      params[tpu_constant._BATCH_SIZE_KEY] = batch_size_for_model_fn
+      params[_BATCH_SIZE_KEY] = batch_size_for_model_fn
 
     estimator_spec = self._model_fn(features=features, **kwargs)
     if (self._ctx.is_running_on_cpu(is_export_mode) and
@@ -1871,9 +1873,9 @@ class TPUEstimator(estimator_lib.Estimator):
       raise ValueError(
           '`config` must be provided with type `tpu_config.RunConfig`')
 
-    if params is not None and any(k in params for k in tpu_constant._RESERVED_PARAMS_KEYS):
+    if params is not None and any(k in params for k in _RESERVED_PARAMS_KEYS):
       raise ValueError('{} are reserved keys but existed in params {}.'.format(
-          tpu_constant._RESERVED_PARAMS_KEYS, params))
+          _RESERVED_PARAMS_KEYS, params))
 
     if use_tpu:
       if train_batch_size is None:
@@ -2024,7 +2026,7 @@ class TPUEstimator(estimator_lib.Estimator):
       # input_fn for use_tpu=True/False.
       batch_size_for_input_fn = ctx.batch_size_for_input_fn
       if batch_size_for_input_fn is not None:
-        kwargs['params'][tpu_constant._BATCH_SIZE_KEY] = batch_size_for_input_fn
+        kwargs['params'][_BATCH_SIZE_KEY] = batch_size_for_input_fn
 
       # For export_savedmodel, input_fn is never passed to Estimator. So,
       # `is_export_mode` must be False.
@@ -2417,7 +2419,7 @@ class _CapturingContext(control_flow_ops.ControlFlowContext):
 
   def AddOp(self, op):  # pylint: disable=invalid-name
     for c in op.inputs:
-      if tpu._TPU_REPLICATE_ATTR in c.op.node_def.attr:  # pylint: disable=protected-access
+      if tpu_constant._TPU_REPLICATE_ATTR in c.op.node_def.attr:  # pylint: disable=protected-access
         raise ValueError('{}: Op {} depends on TPU computation {}, '
                          'which is not allowed.'.format(self._message, op, c))
 
