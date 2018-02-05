@@ -879,7 +879,7 @@ class GraphDump(BaseMonitor):
     this_output = self.data[step] if step in self.data else {}
     other_output = other_dump.data[step] if step in other_dump.data else {}
     for key in this_output:
-      if not isinstance(key, str) and not isinstance(key, unicode):
+      if not isinstance(key, six.string_types):
         continue
       if key not in other_output:
         raise ValueError("%s missing at step %s.", (key, step))

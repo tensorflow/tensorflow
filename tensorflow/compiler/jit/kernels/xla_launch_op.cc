@@ -376,8 +376,6 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     OP_REQUIRES(ctx,
                 write.input_index >= 0 && write.input_index < ctx->num_inputs(),
                 errors::Internal("Invalid input index for variable write."));
-    TensorShape write_shape;
-    OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(write.shape, &write_shape));
 
     gpu::DeviceMemoryBase buffer = output->buffer({output_num});
 
@@ -399,7 +397,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
     // Looks up the owning Tensor by buffer address.
     OP_REQUIRES_OK(
-        ctx, xla_allocator.MakeTensorFromBuffer(buffer, write.type, write_shape,
+        ctx, xla_allocator.MakeTensorFromBuffer(buffer, write.type, write.shape,
                                                 variable->tensor()));
     ++output_num;
   }

@@ -44,7 +44,7 @@ typedef Eigen::QUInt16 quint16;
 }  // namespace tensorflow
 
 namespace Eigen {
-// TOOD(xpan): We probably need to overwrite more methods to have correct eigen
+// TODO(xpan): We probably need to overwrite more methods to have correct eigen
 // behavior. E.g. loest(), is_integer, etc. See NumTraits.h in eigen.
 template <>
 struct NumTraits<tensorflow::bfloat16>

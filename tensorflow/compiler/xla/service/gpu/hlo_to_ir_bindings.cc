@@ -191,7 +191,11 @@ static bool BuffersInvariantWithinConsumer(
 llvm_ir::IrArray HloToIrBindings::GetIrArray(const HloInstruction& hlo,
                                              const HloInstruction& consumer,
                                              const ShapeIndex& shape_index) {
-  llvm_ir::IrArray ir_array(GetBasePointer(hlo, shape_index),
+  llvm::Value* base_ptr = GetBasePointer(hlo, shape_index);
+  CHECK_NE(base_ptr, nullptr)
+      << "Buffer not assigned for shape_index " << shape_index.ToString()
+      << " of " << hlo.ToString();
+  llvm_ir::IrArray ir_array(base_ptr,
                             ShapeUtil::GetSubshape(hlo.shape(), shape_index));
   alias_analysis_.AddAliasingInformationToIrArray(hlo, &ir_array);
 

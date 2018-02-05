@@ -17,6 +17,7 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/string_util.h"
+#include "tensorflow/contrib/lite/testing/util.h"
 
 namespace tflite {
 namespace {
@@ -280,6 +281,51 @@ TEST(BasicInterpreter, NoOpInterpreter) {
             kTfLiteOk);
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
   ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+}
+
+TEST(BasicInterpreter, ResizingTensors) {
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(1), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
+  ASSERT_EQ(interpreter.SetOutputs({0}), kTfLiteOk);
+
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(
+                0, kTfLiteFloat32, "", {3}, TfLiteQuantizationParams()),
+            kTfLiteOk);
+
+  int t = interpreter.inputs()[0];
+  TfLiteTensor* tensor = interpreter.tensor(t);
+
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 3}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 6 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  tensor->data.f[5] = 0.123f;
+
+  // Changing from kTfLiteArenaRw to kTfLiteDynamic is quite complicate: we need
+  // to unset data.raw, otherwise Realloc will try to free that memory.
+  tensor->data.raw = nullptr;
+  tensor->allocation_type = kTfLiteDynamic;
+
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {1, 2, 4}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 8 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // TODO(ahentz): We shouldn't have to force reallocation, but
+  // ResizeInputTensor doesn't realloc dynamic tensors. Also note that
+  // TfLiteTensorRealloc(tensor->bytes, tensor) is a no-op.
+  TfLiteTensorRealloc(9 * sizeof(float), tensor);
+  tensor->data.f[7] = 0.123f;
+
+  ASSERT_EQ(interpreter.ResizeInputTensor(t, {2, 2, 4}), kTfLiteOk);
+  EXPECT_EQ(tensor->bytes, 16 * sizeof(float));
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // TODO(ahentz): We shouldn't have to force reallocation, but
+  // ResizeInputTensor doesn't realloc dynamic tensors. Also note that
+  // TfLiteTensorRealloc(tensor->bytes, tensor) is a no-op.
+  TfLiteTensorRealloc(17 * sizeof(float), tensor);
+  tensor->data.f[15] = 0.123f;
 }
 
 TEST(BasicInterpreter, OneOpInterpreter) {
@@ -645,9 +691,7 @@ TEST_F(TestExecutionPlan, NullExecutionPlan) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-#ifdef OS_LINUX
-  FLAGS_logtostderr = true;
-#endif
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

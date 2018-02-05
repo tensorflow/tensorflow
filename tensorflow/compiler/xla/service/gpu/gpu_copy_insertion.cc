@@ -78,6 +78,12 @@ StatusOr<bool> GpuCopyInsertion::Run(HloModule* module) {
       for (int64 i = 0; i < hlo->operand_count() - 2; ++i) {
         TF_RETURN_IF_ERROR(copy_operand_if_constant(i));
       }
+    } else if (IsCustomCallToDnnConvolution(*hlo)) {
+      // The last argument to a CUDNN convolution is its algorithm, which must
+      // be an HLO constant -- it shouldn't be copied.
+      for (int64 i = 0; i < hlo->operand_count() - 1; ++i) {
+        TF_RETURN_IF_ERROR(copy_operand_if_constant(i));
+      }
     } else if (ImplementedAsLibraryCall(*hlo)) {
       // For all other library calls, materialize all the operands into memory.
       for (int64 i = 0; i < hlo->operand_count(); ++i) {
