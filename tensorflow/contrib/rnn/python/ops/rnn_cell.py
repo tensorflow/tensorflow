@@ -3031,18 +3031,20 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
   """
 
   def __init__(self, num_units, depth, forget_bias=1.0,
-               state_is_tuple=True, activation=None, gate_activation=None,
+               state_is_tuple=True, use_peepholes=False,
+               activation=None, gate_activation=None,
                use_bias=True, reuse=None, name=None):
     """Initialize the basic NLSTM cell.
 
     Args:
       num_units: `int`, The number of hidden units of each cell state
         and hidden state.
-      depth: `int`, The number of layers in the nest
+      depth: `int`, The number of layers in the nest.
       forget_bias: `float`, The bias added to forget gates.
       state_is_tuple: If `True`, accepted and returned states are tuples of
         the `h_state` and `c_state`s.  If `False`, they are concatenated
         along the column axis.  The latter behavior will soon be deprecated.
+      use_peepholes: `bool`(optional).
       activation: Activation function of the update values,
         including new inputs and new cell states.  Default: `sigmoid`.
       gate_activation: Activation function of the gates,
@@ -3065,6 +3067,7 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
     self._num_units = num_units
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
+    self._use_peepholes = use_peepholes
     self._depth = depth
     self._activation = activation or math_ops.sigmoid
     self._gate_activation = gate_activation or math_ops.sigmoid
@@ -3092,11 +3095,15 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
     if inputs_shape[1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
+
     input_depth = inputs_shape[1].value
     h_depth = self._num_units
     self._kernels = []
     if self._use_bias:
       self._biases = []
+
+    if self._use_peepholes:
+      self._peep_kernels = []
     for i in range(self.depth):
       if i == 0:
         self._kernels.append(
@@ -3114,23 +3121,29 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
                 "bias_{}".format(i),
                 shape=[4 * self._num_units],
                 initializer=init_ops.zeros_initializer(dtype=self.dtype)))
+      if self._use_peepholes:
+        self._peep_kernels.append(
+            self.add_variable(
+                "peep_kernel_{}".format(i),
+                shape=[h_depth, 3 * self._num_units]))
+
     self.built = True
 
   def _recurrence(self, inputs, hidden_state, cell_states, depth):
     """use recurrence to traverse the nested structure
 
     Args:
-      inputs: a 2D `Tensor` of [batch_size x input_size] shape
-      hidden_state: a 2D `Tensor` of [batch_size x num_units] shape
-      cell_states: a `list` of 2D `Tensor` of [batch_size x num_units] shape
+      inputs: A 2D `Tensor` of [batch_size x input_size] shape.
+      hidden_state: A 2D `Tensor` of [batch_size x num_units] shape.
+      cell_states: A `list` of 2D `Tensor` of [batch_size x num_units] shape.
       depth: `int`
         the current depth in the nested structure, begins at 0.
 
     Returns:
-      new_h: a 2D `Tensor` of [batch_size x num_units] shape
-        the latest hidden state for current step
-      new_cs: a `list` of 2D `Tensor` of [batch_size x num_units] shape
-        the accumulated cell states for current step
+      new_h: A 2D `Tensor` of [batch_size x num_units] shape.
+        the latest hidden state for current step.
+      new_cs: A `list` of 2D `Tensor` of [batch_size x num_units] shape.
+        The accumulated cell states for current step.
     """
     sigmoid = math_ops.sigmoid
     one = constant_op.constant(1, dtype=dtypes.int32)
@@ -3142,10 +3155,18 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
         array_ops.concat([inputs, h], 1), self._kernels[depth])
     if self._use_bias:
       gate_inputs = nn_ops.bias_add(gate_inputs, self._biases[depth])
+    if self._use_peepholes:
+      peep_gate_inputs = math_ops.matmul(c, self._peep_kernels[depth])
+      i_peep, f_peep, o_peep = array_ops.split(
+          value=peep_gate_inputs, num_or_size_splits=3, axis=one)
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
     i, j, f, o = array_ops.split(
         value=gate_inputs, num_or_size_splits=4, axis=one)
+    if self._use_peepholes:
+      i += i_peep
+      f += f_peep
+      o += o_peep 
 
     # Note that using `add` and `multiply` instead of `+` and `*` gives a
     # performance improvement. So using those at the cost of readability.
