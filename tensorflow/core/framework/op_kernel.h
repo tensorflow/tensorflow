@@ -909,9 +909,13 @@ class OpKernelContext {
   }
 
   AllocatorAttributes input_alloc_attr(int index) const {
-    DCHECK_GE(index, 0);
-    DCHECK_LT(index, params_->input_alloc_attrs->size());
-    return (*params_->input_alloc_attrs)[index];
+    if (params_->input_alloc_attrs == nullptr) {
+      return AllocatorAttributes();
+    } else {
+      DCHECK_GE(index, 0);
+      DCHECK_LT(index, params_->input_alloc_attrs->size());
+      return (*params_->input_alloc_attrs)[index];
+    }
   }
 
   AllocatorAttributes output_alloc_attr(int index) const {
