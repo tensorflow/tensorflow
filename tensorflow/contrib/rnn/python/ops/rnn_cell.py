@@ -3031,7 +3031,8 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
   """
 
   def __init__(self, num_units, depth, forget_bias=1.0,
-               state_is_tuple=True, activation=None, reuse=None, name=None):
+               state_is_tuple=True, activation=None, gate_activation=None,
+               use_bias=True, reuse=None, name=None):
     """Initialize the basic NLSTM cell.
 
     Args:
@@ -3042,7 +3043,11 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
       state_is_tuple: If `True`, accepted and returned states are tuples of
         the `h_state` and `c_state`s.  If `False`, they are concatenated
         along the column axis.  The latter behavior will soon be deprecated.
-      activation: Activation function of the inner states.  Default: `tanh`.
+      activation: Activation function of the update values,
+        including new inputs and new cell states.  Default: `sigmoid`.
+      gate_activation: Activation function of the gates,
+        including the input, ouput, and forget gate. Default: `sigmoid`.
+      use_bias: `bool`. Default: `True`.
       reuse: `bool`(optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
         the given variables, an error is raised.
@@ -3061,7 +3066,9 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
     self._forget_bias = forget_bias
     self._state_is_tuple = state_is_tuple
     self._depth = depth
-    self._activation = activation or math_ops.tanh
+    self._activation = activation or math_ops.sigmoid
+    self._gate_activation = gate_activation or math_ops.sigmoid
+    self._use_bias = use_bias
     self._kernels = None
     self._biases = None
     self.built = False
@@ -3085,11 +3092,11 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
     if inputs_shape[1].value is None:
       raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
                        % inputs_shape)
-
     input_depth = inputs_shape[1].value
     h_depth = self._num_units
     self._kernels = []
-    self._biases = []
+    if self._use_bias:
+      self._biases = []
     for i in range(self.depth):
       if i == 0:
         self._kernels.append(
@@ -3101,12 +3108,12 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
             self.add_variable(
                 "kernel_{}".format(i),
                 shape=[2 * h_depth, 4 * self._num_units]))
-      self._biases.append(
-          self.add_variable(
-              "bias_{}".format(i),
-              shape=[4 * self._num_units],
-              initializer=init_ops.zeros_initializer(dtype=self.dtype)))
-
+      if self._use_bias:
+        self._biases.append(
+            self.add_variable(
+                "bias_{}".format(i),
+                shape=[4 * self._num_units],
+                initializer=init_ops.zeros_initializer(dtype=self.dtype)))
     self.built = True
 
   def _recurrence(self, inputs, hidden_state, cell_states, depth):
@@ -3133,20 +3140,24 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
 
     gate_inputs = math_ops.matmul(
         array_ops.concat([inputs, h], 1), self._kernels[depth])
-    gate_inputs = nn_ops.bias_add(gate_inputs, self._biases[depth])
+    if self._use_bias:
+      gate_inputs = nn_ops.bias_add(gate_inputs, self._biases[depth])
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
     i, j, f, o = array_ops.split(
         value=gate_inputs, num_or_size_splits=4, axis=one)
 
-    forget_bias_tensor = constant_op.constant(self._forget_bias, dtype=f.dtype)
     # Note that using `add` and `multiply` instead of `+` and `*` gives a
     # performance improvement. So using those at the cost of readability.
     add = math_ops.add
     multiply = math_ops.multiply
 
-    inner_hidden = multiply(c, sigmoid(add(f, forget_bias_tensor)))
-    inner_input = multiply(sigmoid(i), self._activation(j))
+    if self._use_bias:
+      forget_bias_tensor = constant_op.constant(self._forget_bias, dtype=f.dtype)
+      f = add(f, forget_bias_tensor)
+
+    inner_hidden = multiply(c, self._gate_activation(f))
+    inner_input = multiply(self._gate_activation(i), self._activation(j))
     if depth == (self.depth - 1):
       new_c = add(inner_hidden, inner_input)
       new_cs = [new_c]
@@ -3156,7 +3167,7 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
           hidden_state=inner_hidden,
           cell_states=cell_states,
           depth=depth + 1)
-    new_h = multiply(self._activation(new_c), sigmoid(o))
+    new_h = multiply(self._activation(new_c), self._gate_activation(o))
     new_cs = [new_h] + new_cs
     return new_h, new_cs
 
