@@ -145,6 +145,12 @@ class ProcessFunctionLibraryRuntime {
   // Removes handle from the state owned by this object.
   Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
 
+  Status Clone(Env* env, int graph_def_version,
+               const OptimizerOptions& optimizer_options,
+               CustomKernelCreator custom_kernel_creator,
+               std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr);
+
   friend class FunctionLibraryRuntimeImpl;
 
   mutable mutex mu_;
