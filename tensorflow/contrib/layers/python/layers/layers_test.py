@@ -3626,8 +3626,8 @@ class SpatialSoftmaxTests(test.TestCase):
     features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
     spatial_softmax = _layers.spatial_softmax(features, data_format='NCHW')
     np_features = np.zeros(batch_shape, dtype=np.float32)
-    x_loc = [15, 2]
-    y_loc = [10, 28]
+    x_loc = [15]
+    y_loc = [10]
     for c in range(nchannels):
       np_features[:, c, x_loc[c], y_loc[c]] = 100.
 
