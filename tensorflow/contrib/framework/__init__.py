@@ -86,6 +86,9 @@ See the @{$python/contrib.framework} guide.
 @@sort
 
 @@CriticalSection
+
+@@BoundedTensorSpec
+@@TensorSpec
 """
 
 from __future__ import absolute_import
@@ -99,6 +102,9 @@ from tensorflow.contrib.framework.python.ops import *
 
 from tensorflow.python.framework.ops import prepend_name_scope
 from tensorflow.python.framework.ops import strip_name_scope
+
+from tensorflow.python.framework.tensor_spec import BoundedTensorSpec
+from tensorflow.python.framework.tensor_spec import TensorSpec
 
 from tensorflow.python.util.all_util import remove_undocumented
 
