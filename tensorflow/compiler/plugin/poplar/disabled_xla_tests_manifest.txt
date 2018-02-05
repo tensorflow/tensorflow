@@ -177,5 +177,3 @@ ClientTest.ExecuteParallel POPLAR // Don't support parallel execution
 SelectAndScatterTest.R4Randomized POPLAR // Timeout
 
 HloProfileTest POPLAR // Don't support profiling
-
-ConvolutionVariantsTest.NegativePaddingAndDilation POPLAR // Currently hanging

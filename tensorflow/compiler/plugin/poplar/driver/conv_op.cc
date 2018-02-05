@@ -60,16 +60,22 @@ GetConvolutionParameters(const HloInstruction* inst) {
     w_s.push_back(window.dimensions(i).stride());
     if (window.dimensions(i).padding_low() < 0) {
       unsigned int p = -window.dimensions(i).padding_low();
-      t_l.push_back(p);
-      p_l.push_back(0);
+      unsigned int d = window.dimensions(i).base_dilation();
+      unsigned int trunc = (p + d-1) / d;
+      unsigned int pad = p % d;
+      t_l.push_back(trunc);
+      p_l.push_back(pad);
     } else {
       p_l.push_back(window.dimensions(i).padding_low());
       t_l.push_back(0);
     }
     if (window.dimensions(i).padding_high() < 0) {
       unsigned int p = -window.dimensions(i).padding_high();
-      t_u.push_back(p);
-      p_u.push_back(0);
+      unsigned int d = window.dimensions(i).base_dilation();
+      unsigned int trunc = (p + d-1) / d;
+      unsigned int pad = p % d;
+      t_u.push_back(trunc);
+      p_u.push_back(pad);
     } else {
       p_u.push_back(window.dimensions(i).padding_high());
       t_u.push_back(0);
@@ -124,15 +130,23 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
     f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
     w_s.push_back(window.dimensions(i).stride());
     if (window.dimensions(i).padding_low() < 0) {
-      t_l.push_back(-window.dimensions(i).padding_low());
-      p_l.push_back(0);
+      unsigned int p = -window.dimensions(i).padding_low();
+      unsigned int d = window.dimensions(i).base_dilation();
+      unsigned int trunc = (p + d-1) / d;
+      unsigned int pad = p % d;
+      t_l.push_back(trunc);
+      p_l.push_back(pad);
     } else {
       p_l.push_back(window.dimensions(i).padding_low());
       t_l.push_back(0);
     }
     if (window.dimensions(i).padding_high() < 0) {
-      t_u.push_back(-window.dimensions(i).padding_high());
-      p_u.push_back(0);
+      unsigned int p = -window.dimensions(i).padding_high();
+      unsigned int d = window.dimensions(i).base_dilation();
+      unsigned int trunc = (p + d-1) / d;
+      unsigned int pad = p % d;
+      t_u.push_back(trunc);
+      p_u.push_back(pad);
     } else {
       p_u.push_back(window.dimensions(i).padding_high());
       t_u.push_back(0);
