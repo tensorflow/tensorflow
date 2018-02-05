@@ -1301,7 +1301,7 @@ class HighwayWrapper(rnn_cell_impl.RNNCell):
     return (res_outputs, new_state)
 
 
-class LayerNormBasicGRUCell(rnn_cell_impl.RNNCell):
+class LayerNormBasicGRUCell(rnn_cell_impl._LayerRNNCell):
   """GRU unit with layer normalization.
 
     This class adds layer normalization to a
@@ -1350,45 +1350,90 @@ class LayerNormBasicGRUCell(rnn_cell_impl.RNNCell):
   def output_size(self):
     return self._num_units
 
-  def _linear(self, args, scope):
-    out_size = self._num_units
-    proj_size = args.get_shape()[-1]
-    with vs.variable_scope(scope):
-      weights = vs.get_variable("kernel", [proj_size, out_size])
-      out = math_ops.matmul(args, weights)
-      if not self._layer_norm:
-        bias = vs.get_variable("bias", [out_size])
-        out = nn_ops.bias_add(out, bias)
+  def _linear(self, args, kernel, bias):
+    out = math_ops.matmul(args, kernel)
+    if not self._layer_norm:
+      out = nn_ops.bias_add(out, bias)
     return out
 
   def _norm(self, inp, scope):
-    shape = inp.get_shape()[-1:]
-    gamma_init = init_ops.constant_initializer(self._g)
-    beta_init = init_ops.constant_initializer(self._b)
-    with vs.variable_scope(scope):
-      # Initialize beta and gamma for use by layer_norm.
-      vs.get_variable("gamma", shape=shape, initializer=gamma_init)
-      vs.get_variable("beta", shape=shape, initializer=beta_init)
-    normalized = layers.layer_norm(inp, reuse=True, scope=scope)
-    return normalized
+    return layers.layer_norm(inp, reuse=True, scope=scope)
+
+  def build(self, inputs_shape):
+    if inputs_shape[1].value is None:
+
+      raise ValueError("Expected inputs.shape[-1] to be known, saw shape: %s"
+                       % inputs_shape)
+
+    input_depth = inputs_shape[1].value
+
+    # Initialize beta and gamma for use by layer_norm.
+    if self._layer_norm:
+      scopes = ["update_gate",
+                "reset_gate",
+                "candidate_linear_x",
+                "candidate_linear_h"]
+      for scope in scopes:
+        self.add_variable(scope+"/gamma",
+                          shape=[self._num_units],
+                          initializer=init_ops.constant_initializer(self._g))
+        self.add_variable(scope+"/beta",
+                          shape=[self._num_units],
+                          initializer=init_ops.constant_initializer(self._b))
+
+    self.update_gate_kernel = self.add_variable(
+      "update_gate/kernel",
+      shape=[input_depth + self._num_units, self._num_units])
+    self.reset_gate_kernel = self.add_variable(
+      "reset_gate/kernel",
+      shape=[input_depth + self._num_units, self._num_units])
+    self.candidate_linear_x_kernel = self.add_variable(
+      "candidate_linear_x/kernel",
+      shape=[input_depth, self._num_units])
+    self.candidate_linear_h_kernel = self.add_variable(
+      "candidate_linear_h/kernel",
+      shape=[self._num_units, self._num_units])
+
+    self.update_gate_bias = self.add_variable(
+      "update_gate/bias",
+      shape=[self._num_units]) if not self._layer_norm else None
+    self.reset_gate_bias = self.add_variable(
+      "reset_gate/bias",
+      shape=[self._num_units]) if not self._layer_norm else None
+    self.candidate_linear_x_bias = self.add_variable(
+      "candidate_linear_x/bias",
+      shape=[self._num_units]) if not self._layer_norm else None
+    self.candidate_linear_h_bias = self.add_variable(
+      "candidate_linear_h/bias",
+      shape=[self._num_units]) if not self._layer_norm else None
+
+    self.built = True
 
   def call(self, inputs, state):
     """GRU cell with layer normalization."""
 
     args = array_ops.concat([inputs, state], 1)
 
-    z = self._linear(args, scope="update")
-    r = self._linear(args, scope="reset")
+    z = self._linear(args,
+                     kernel=self.update_gate_kernel,
+                     bias=self.update_gate_bias)
+    r = self._linear(args,
+                     kernel=self.reset_gate_kernel,
+                     bias=self.reset_gate_bias)
 
     if self._layer_norm:
-      z = self._norm(z, "update")
-      r = self._norm(r, "reset")
+      z = self._norm(z, "update_gate")
+      r = self._norm(r, "reset_gate")
 
     z = math_ops.sigmoid(z)
     r = math_ops.sigmoid(r)
 
-    _x = self._linear(inputs, scope="candidate_linear_x")
-    _h = self._linear(state, scope="candidate_linear_h")
+    _x = self._linear(inputs,
+                      kernel=self.candidate_linear_x_kernel,
+                      bias=self.candidate_linear_x_bias)
+    _h = self._linear(state,
+                      kernel=self.candidate_linear_h_kernel,
+                      bias=self.candidate_linear_h_bias)
 
     if self._layer_norm:
       _x = self._norm(_x, scope="candidate_linear_x")
