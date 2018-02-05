@@ -154,6 +154,9 @@ TF_CAPI_EXPORT extern void TFE_DeleteOp(TFE_Op* op);
 
 TF_CAPI_EXPORT extern void TFE_OpSetDevice(TFE_Op* op, const char* device_name,
                                            TF_Status* status);
+// The returned string remains valid throughout the lifetime of 'op'.
+TF_CAPI_EXPORT extern const char* TFE_OpGetDevice(TFE_Op* op,
+                                                  TF_Status* status);
 
 TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status);
 
