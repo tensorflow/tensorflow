@@ -120,11 +120,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "eigen_archive",
       urls = [
-          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/14e1418fcf12.tar.gz",
-          "https://bitbucket.org/eigen/eigen/get/14e1418fcf12.tar.gz",
+          "https://mirror.bazel.build/bitbucket.org/eigen/eigen/get/2355b229ea4c.tar.gz",
+          "https://bitbucket.org/eigen/eigen/get/2355b229ea4c.tar.gz",
       ],
-      sha256 = "2b526c6888639025323fd4f2600533c0f982d304ea48e4f1663e8066bd9f6368",
-      strip_prefix = "eigen-eigen-14e1418fcf12",
+      sha256 = "0cadb31a35b514bf2dfd6b5d38205da94ef326ec6908fc3fd7c269948467214f",
+      strip_prefix = "eigen-eigen-2355b229ea4c",
       build_file = str(Label("//third_party:eigen.BUILD")),
   )
 
@@ -473,11 +473,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/f135378ec6365e852f7d5a3cfcdce342f08cb5f3.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/f135378ec6365e852f7d5a3cfcdce342f08cb5f3.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/299f8c346e1ab483463da5f02536ffd00b7ad9c6.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/299f8c346e1ab483463da5f02536ffd00b7ad9c6.tar.gz",
       ],
-      sha256 = "296ab832167e6c46eb65ef1f9a2b5fc31c77fcd2248799b306aa2d5d2e4edbfe",
-      strip_prefix = "llvm-f135378ec6365e852f7d5a3cfcdce342f08cb5f3",
+      sha256 = "0556bc6a85000c573d92fe00946b6418cbcd3844912696a81055e4768299dda4",
+      strip_prefix = "llvm-299f8c346e1ab483463da5f02536ffd00b7ad9c6",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 

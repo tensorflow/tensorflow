@@ -252,9 +252,12 @@ void CostModel::RecordMaxMemorySize(const Node* node, int output_slot,
                                     const DataType& dtype) {
   const int id = Id(node);
   if (id < 0) return;
-  CHECK_LT(output_slot, node->num_outputs())
-      << "Unexpected output slot for node " << node->DebugString() << ". Got "
-      << output_slot << " but its num_outputs is " << node->num_outputs();
+  if (output_slot >= node->num_outputs()) {
+    LOG(ERROR) << "Unexpected output slot for node " << node->DebugString()
+               << ". Got " << output_slot << " but its num_outputs is "
+               << node->num_outputs();
+    return;
+  }
   Ensure(id, node->num_outputs());
   auto& current_max = max_mem_usage_[id].output_port_mem[output_slot];
   // If the memory allocator doesn't track memory usage, let's infer a lower

@@ -161,7 +161,7 @@ classifier = tf.estimator.Estimator(
 
 To implement a typical model function, you must do the following:
 
-* (Define the model)[#define_the_model].
+* [Define the model](#define_the_model).
 * Specify additional calculations for each of
   the [three different modes](#modes):
   * [Predict](#predict)
