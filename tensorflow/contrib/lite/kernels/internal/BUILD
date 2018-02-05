@@ -125,6 +125,13 @@ config_setting(
 )
 
 config_setting(
+    name = "darwin_x86_64",
+    values = {
+        "cpu": "darwin_x86_64",
+    },
+)
+
+config_setting(
     name = "freebsd",
     values = {
         "cpu": "freebsd",
@@ -154,6 +161,7 @@ cc_library(
         ":x86": tflite_deps_intel,
         ":x86_64": tflite_deps_intel,
         ":darwin": tflite_deps_intel,
+        ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
         "//conditions:default": [],
     }),
@@ -162,6 +170,8 @@ cc_library(
 cc_library(
     name = "optimized",
     hdrs = [
+        "optimized/cblas_conv.h",
+        "optimized/cblas_reference.h",
         "optimized/eigen_spatial_convolutions.h",
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
@@ -232,6 +242,7 @@ cc_library(
         ":x86": tflite_deps_intel,
         ":x86_64": tflite_deps_intel,
         ":darwin": tflite_deps_intel,
+        ":darwin_x86_64": tflite_deps_intel,
         ":freebsd": tflite_deps_intel,
         "//conditions:default": [],
     }),
@@ -281,6 +292,16 @@ cc_library(
         "//tensorflow/contrib/lite/kernels:activation_functor",
         "@arm_neon_2_x86_sse",
         "@gemmlowp//:gemmlowp",
+    ],
+)
+
+cc_library(
+    name = "kernel_utils",
+    srcs = ["kernel_utils.cc"],
+    hdrs = ["kernel_utils.h"],
+    deps = [
+        ":tensor_utils",
+        "//tensorflow/contrib/lite:builtin_op_data",
     ],
 )
 

@@ -427,16 +427,36 @@ Status FunctionalizeLoop(Graph* graph, Frame* frame,
       //   identity nodes are values used by the loop body or condition.
       //   The Identity node may have the wrong device so copy the device from
       //   one of its outputs instead.
+      std::deque<const Edge*> possible_exit;
       for (const Edge* edge : arg.switch_node->out_edges()) {
-        if (edge->src_output() == 0 && IsExit(edge->dst())) {
+        if (edge->src_output() == 0) {
+          possible_exit.push_back(edge);
+        }
+        if (IsIdentity(edge->dst())) {
+          TF_RETURN_IF_ERROR(
+              SetNodeShardingFromNeighbors(edge->dst(), /*out_edges=*/true));
+        }
+      }
+      // TODO(b/67425339): Allow general graph between switch and exit.
+      while (!possible_exit.empty()) {
+        const Edge* edge = possible_exit.front();
+        possible_exit.pop_front();
+        if (IsExit(edge->dst())) {
           if (arg.exit != nullptr) {
             return errors::InvalidArgument("Duplicate Exit successors to ",
                                            arg.switch_node->name());
           }
           arg.exit = edge->dst();
-        } else if (StringPiece(edge->dst()->type_string()) == "Identity") {
-          TF_RETURN_IF_ERROR(
-              SetNodeShardingFromNeighbors(edge->dst(), /*out_edges=*/true));
+        } else {
+          if (!IsIdentity(edge->dst())) {
+            return errors::Unimplemented("General graph between switch (",
+                                         arg.switch_node->name(),
+                                         ") and exit node of frame ",
+                                         frame->name, " not supported yet.");
+          }
+          for (const Edge* out : edge->dst()->out_edges()) {
+            possible_exit.push_back(out);
+          }
         }
       }
     }

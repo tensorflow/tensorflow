@@ -476,9 +476,6 @@ GenPythonOp::GenPythonOp(const OpDef& op_def, const ApiDef& api_def,
 GenPythonOp::~GenPythonOp() {}
 
 string GenPythonOp::Code() {
-  if (api_def_.visibility() == ApiDef::SKIP) {
-    return "";
-  }
   // This has all the input args followed by those attrs that don't have
   // defaults.
   std::vector<ParamNames> params_no_default;
@@ -805,11 +802,21 @@ from tensorflow.python.util.tf_export import tf_export
   auto out = cleaned_ops.mutable_op();
   out->Reserve(ops.op_size());
   for (const auto& op_def : ops.op()) {
-    bool is_hidden = false;
-    for (const string& hidden : hidden_ops) {
-      if (op_def.name() == hidden) {
-        is_hidden = true;
-        break;
+    const auto* api_def = api_defs.GetApiDef(op_def.name());
+
+    if (api_def->visibility() == ApiDef::SKIP) {
+      continue;
+    }
+
+    // An op is hidden if either its ApiDef visibility is HIDDEN
+    // or it is in the hidden_ops list.
+    bool is_hidden = api_def->visibility() == ApiDef::HIDDEN;
+    if (!is_hidden) {
+      for (const string& hidden : hidden_ops) {
+        if (op_def.name() == hidden) {
+          is_hidden = true;
+          break;
+        }
       }
     }
 
@@ -826,7 +833,6 @@ from tensorflow.python.util.tf_export import tf_export
       continue;
     }
 
-    const auto* api_def = api_defs.GetApiDef(op_def.name());
     strings::StrAppend(&result, GetPythonOp(op_def, *api_def, function_name));
 
     if (!require_shapes) {

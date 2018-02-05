@@ -97,7 +97,12 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) {
       // TODO(rmlarsen): Try to remove this artificial contraint.
       return false;
     }
-    for (auto consumer : node_map_->GetOutputs(node.name())) {
+  }
+  for (auto consumer : node_map_->GetOutputs(node.name())) {
+    if (node.input_size() > 1 && IsMerge(*consumer)) {
+      return false;
+    }
+    if (IsSwitch(*input)) {
       for (const string& consumer_input : consumer->input()) {
         if (consumer_input == AsControlDependency(node.name())) {
           return false;

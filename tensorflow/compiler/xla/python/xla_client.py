@@ -1072,7 +1072,7 @@ def initialize_replica_count(replica_count):
 
   Args:
     replica_count: number of replicas that are desired for set up during XLA
-      initalization.
+      initialization.
 
   Raises:
     A runtime exception if the XLA service has already been initialized.

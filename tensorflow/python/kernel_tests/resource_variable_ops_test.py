@@ -36,6 +36,7 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.util import compat
 
 
 @test_util.with_c_api
@@ -169,6 +170,17 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
         handle, [0], constant_op.constant([[2]], dtype=dtypes.int32)))
     read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.int32)
     self.assertEqual(self.evaluate(read), [[3]])
+
+  def testScatterUpdateString(self):
+    handle = resource_variable_ops.var_handle_op(
+        dtype=dtypes.string, shape=[1, 1])
+    self.evaluate(resource_variable_ops.assign_variable_op(
+        handle, constant_op.constant([["a"]], dtype=dtypes.string)))
+    self.evaluate(resource_variable_ops.resource_scatter_update(
+        handle, [0], constant_op.constant([["b"]], dtype=dtypes.string)))
+    read = resource_variable_ops.read_variable_op(handle, dtype=dtypes.string)
+    self.assertEqual(compat.as_bytes(self.evaluate(read)[0][0]),
+                     compat.as_bytes("b"))
 
   # TODO(alive): get this to work in Eager mode.
   def testGPU(self):
