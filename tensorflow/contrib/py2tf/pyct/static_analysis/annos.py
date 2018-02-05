@@ -12,10 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Handling annotations on AST nodes.
-
-Adapted from Tangent.
-"""
+"""Annotations used by the static analizer."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -30,30 +27,24 @@ class NoValue(Enum):
     return self.name
 
 
-class Basic(NoValue):
-  """Container for annotation keys.
+class NodeAnno(NoValue):
+  """Additionnal annotations used by the static analyzer.
 
-  The enum values are used strictly for documentation purposes.
+  These are in addition to the basic annotations declared in anno.py.
   """
 
-  QN = 'Qualified name, as it appeared in the code.'
-  SKIP_PROCESSING = (
-      'This node should be preserved as is and not processed any further.')
+  # Symbols
 
+  IS_LOCAL = 'Symbol is local to the function scope being analized.'
+  IS_PARAM = 'Symbol is a parameter to the function being analized.'
+  IS_MODIFIED_SINCE_ENTRY = (
+      'Symbol has been explicitly replaced in the current function scope.')
 
-def getanno(node, key, field_name='___pyct_anno'):
-  return getattr(node, field_name)[key]
-
-
-def hasanno(node, key, field_name='___pyct_anno'):
-  return hasattr(node, field_name) and key in getattr(node, field_name)
-
-
-def setanno(node, key, value, field_name='___pyct_anno'):
-  annotations = getattr(node, field_name, {})
-  setattr(node, field_name, annotations)
-  annotations[key] = value
-
-  # So that the annotations survive gast_to_ast() and ast_to_gast()
-  if field_name not in node._fields:
-    node._fields += (field_name,)
+  # Scopes
+  ARGS_SCOPE = 'The scope for the argument list of a function call.'
+  BODY_SCOPE = (
+      'The scope for the main body of a statement (True branch for if '
+      'statements, main body for loops).')
+  ORELSE_SCOPE = (
+      'The scope for the orelse body of a statement (False branch for if '
+      'statements, orelse body for loops).')

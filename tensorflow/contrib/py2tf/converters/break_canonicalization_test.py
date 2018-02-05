@@ -44,8 +44,8 @@ class BreakCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v
 
-    node = self.parse_and_analyze(test_fn, {}, include_type_analysis=False)
-    node = break_canonicalization.transform(node, TestNamer())
+    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = break_canonicalization.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
 
     self.assertEqual(test_fn(0), result.test_fn(0))
@@ -76,8 +76,8 @@ class BreakCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v
 
-    node = self.parse_and_analyze(test_fn, {}, include_type_analysis=False)
-    node = break_canonicalization.transform(node, TestNamer())
+    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = break_canonicalization.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
 
     # The break is incompletely canonicalized. Everything is in place, but
@@ -104,8 +104,8 @@ class BreakCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v, u, w
 
-    node = self.parse_and_analyze(test_fn, {}, include_type_analysis=False)
-    node = break_canonicalization.transform(node, TestNamer())
+    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = break_canonicalization.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
 
     self.assertEqual(test_fn(0), result.test_fn(0))
