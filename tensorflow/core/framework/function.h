@@ -35,6 +35,7 @@ namespace tensorflow {
 class CancellationManager;
 class GraphDef;
 class OpKernel;
+class ProcessFunctionLibraryRuntime;
 class ResourceMgr;
 class Rendezvous;
 class ScopedStepContainer;
@@ -535,6 +536,10 @@ class FunctionLibraryRuntime {
   virtual int graph_def_version() = 0;
 
   typedef uint64 LocalHandle;
+
+  virtual Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+                       std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+                       FunctionLibraryRuntime** out_flr) = 0;
 };
 
 // Returns a canonicalized string for the instantiation of the
