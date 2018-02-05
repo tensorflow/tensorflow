@@ -40,7 +40,7 @@ ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
 
 
 def rotate(images, angles, interpolation="NEAREST", name=None):
-  """Rotate image(s) by the passed angle(s) in radians.
+  """Rotate image(s) counterclockwise by the passed angle(s) in radians.
 
   Args:
     images: A tensor of shape (num_images, num_rows, num_columns, num_channels)
