@@ -431,6 +431,47 @@ __device__ double CudaAtomicCasHelper(double* ptr, F accumulate) {
       }));
 }
 
+// Overload of above function for half. Note that we don't have
+// atomicCAS() for anything less than 32 bits, so we need to include the
+// other 16 bits in the operation.
+//
+// This version is going to be very slow
+// under high concurrency, since most threads will be spinning on failing
+// their compare-and-swap tests. (The fact that we get false sharing on the
+// neighboring fp16 makes this even worse.) If you are doing a large reduction,
+// you are much better off with doing the intermediate steps in fp32 and then
+// switching to fp16 as late as you can in the calculations.
+//
+// Note: Assumes little endian.
+template <typename F>
+__device__ Eigen::half CudaAtomicCasHelper(Eigen::half* ptr, F accumulate) {
+#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
+  static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "Not little endian");
+#endif
+  namespace half_impl = Eigen::half_impl;
+  intptr_t intptr = reinterpret_cast<intptr_t>(ptr);
+  assert(!(intptr & 0x1));  // should be 2-aligned.
+  if (intptr & 0x2) {
+    // The half is in the second part of the uint32 (upper 16 bits).
+    uint32* address = reinterpret_cast<uint32*>(intptr - 2);
+    uint32 result = CudaAtomicCasHelper(address, [accumulate](uint32 arg) {
+      unsigned short high = static_cast<unsigned short>(arg >> 16);
+      Eigen::half acc = accumulate(half_impl::raw_uint16_to_half(high));
+      return (static_cast<uint32>(acc.x) << 16) | (arg & 0xffff);
+    });
+    return half_impl::raw_uint16_to_half(static_cast<uint16>(result >> 16));
+  } else {
+    // The half is in the first part of the uint32 (lower 16 bits).
+    uint32* address = reinterpret_cast<uint32*>(intptr);
+    uint32 result = CudaAtomicCasHelper(address, [accumulate](uint32 arg) {
+      unsigned short low = static_cast<unsigned short>(arg & 0xffff);
+      Eigen::half acc = accumulate(half_impl::raw_uint16_to_half(low));
+      return (arg & 0xffff0000) | static_cast<uint32>(acc.x);
+    });
+    return half_impl::raw_uint16_to_half(static_cast<uint16>(result & 0xffff));
+  }
+}
+
 template <typename From, typename To>
 using ToTypeIfConvertible =
     typename std::enable_if<std::is_convertible<From, To>::value, To>::type;
@@ -444,6 +485,13 @@ template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicAdd(T* ptr, U value) {
   return atomicAdd(ptr, value);
 }
+
+__device__ inline Eigen::half CudaAtomicAdd(Eigen::half* ptr,
+                                            Eigen::half value) {
+  return detail::CudaAtomicCasHelper(
+      ptr, [value](Eigen::half a) { return a + value; });
+}
+
 
 #if __CUDA_ARCH__ < 600
 __device__ inline double CudaAtomicAdd(double* ptr, double value) {
@@ -462,13 +510,12 @@ __device__ inline double CudaAtomicAdd(double* ptr, double value) {
   return result;
 }
 #endif
-
+// CudaAtomicAdd
 // Specializations of CudaAtomicAdd for complex types, which CudaAtomicAdd does
 // not support. We treat a std::complex<T>* as a T* (the C++ standard section
 // 26.4.4 allows this explicitly) and atomic add the real and imaginary
 // components individually. The operation as a whole is not atomic, but we can
 // safely treat the components independently for the purpose of accumulating.
-template <>
 __device__ inline std::complex<float> CudaAtomicAdd(std::complex<float>* ptr,
                                                     std::complex<float> value) {
   auto ptr_scalar = reinterpret_cast<float*>(ptr);
@@ -476,7 +523,6 @@ __device__ inline std::complex<float> CudaAtomicAdd(std::complex<float>* ptr,
                              CudaAtomicAdd(ptr_scalar + 1, value.imag()));
 }
 
-template <>
 __device__ inline std::complex<double> CudaAtomicAdd(
     std::complex<double>* ptr, std::complex<double> value) {
   auto ptr_scalar = reinterpret_cast<double*>(ptr);
@@ -484,34 +530,54 @@ __device__ inline std::complex<double> CudaAtomicAdd(
                               CudaAtomicAdd(ptr_scalar + 1, value.imag()));
 }
 
+// CudaAtomicSub
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicSub(T* ptr, U value) {
   return atomicSub(ptr, value);
 }
+
 // Specializations of substraction which add the negative value.
 __device__ inline float CudaAtomicSub(float* ptr, float value) {
   return CudaAtomicAdd(ptr, -value);
 }
+
 __device__ inline double CudaAtomicSub(double* ptr, double value) {
   return CudaAtomicAdd(ptr, -value);
 }
+
 __device__ inline tensorflow::uint64 CudaAtomicSub(tensorflow::uint64* ptr,
                                                    tensorflow::uint64 value) {
   return CudaAtomicAdd(ptr, -value);
 }
 
+__device__ inline Eigen::half CudaAtomicSub(Eigen::half* ptr,
+                                            Eigen::half value) {
+  return detail::CudaAtomicCasHelper(
+      ptr, [value](Eigen::half a) { return a - value; });
+}
+
+// CudaAtomicMax
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicMax(T* ptr, U value) {
   return atomicMax(ptr, value);
 }
+
 __device__ inline float CudaAtomicMax(float* ptr, float value) {
   return detail::CudaAtomicCasHelper(
       ptr, [value](float a) { return max(a, value); });
 }
+
 __device__ inline double CudaAtomicMax(double* ptr, double value) {
   return detail::CudaAtomicCasHelper(
       ptr, [value](double a) { return max(a, value); });
 }
+
+__device__ inline Eigen::half CudaAtomicMax(Eigen::half* ptr,
+                                            Eigen::half value) {
+  return detail::CudaAtomicCasHelper(
+      ptr, [value](Eigen::half a) { return max(a, value); });
+}
+
 #if __CUDA_ARCH__ < 320
 __device__ inline tensorflow::uint64 CudaAtomicMax(tensorflow::uint64* ptr,
                                                    tensorflow::uint64 value) {
@@ -520,18 +586,28 @@ __device__ inline tensorflow::uint64 CudaAtomicMax(tensorflow::uint64* ptr,
 }
 #endif
 
+// CudaAtomicMin
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicMin(T* ptr, U value) {
   return atomicMin(ptr, value);
 }
+
 __device__ inline float CudaAtomicMin(float* ptr, float value) {
   return detail::CudaAtomicCasHelper(
       ptr, [value](float a) { return min(a, value); });
 }
+
 __device__ inline double CudaAtomicMin(double* ptr, double value) {
   return detail::CudaAtomicCasHelper(
       ptr, [value](double a) { return min(a, value); });
 }
+
+__device__ inline Eigen::half CudaAtomicMin(Eigen::half* ptr,
+                                            Eigen::half value) {
+  return detail::CudaAtomicCasHelper(
+      ptr, [value](Eigen::half a) { return min(a, value); });
+}
+
 #if __CUDA_ARCH__ < 320
 __device__ inline tensorflow::uint64 CudaAtomicMin(tensorflow::uint64* ptr,
                                                    tensorflow::uint64 value) {
@@ -540,10 +616,13 @@ __device__ inline tensorflow::uint64 CudaAtomicMin(tensorflow::uint64* ptr,
 }
 #endif
 
+// CudaAtomicMul
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicMul(T* ptr, U value) {
   return detail::CudaAtomicCasHelper(ptr, [value](T a) { return a * value; });
 }
+
+// CudaAtomicDiv
 template <typename T, typename U>
 __device__ detail::ToTypeIfConvertible<U, T> CudaAtomicDiv(T* ptr, U value) {
   return detail::CudaAtomicCasHelper(ptr, [value](T a) { return a / value; });

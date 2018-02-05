@@ -20,6 +20,8 @@ limitations under the License.
 #define EIGEN_USE_GPU
 #endif  // GOOGLE_CUDA
 
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
 #include <vector>
 #include "tensorflow/core/framework/numeric_op.h"
@@ -32,8 +34,6 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
-#include "third_party/eigen3/Eigen/Core"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -589,8 +589,11 @@ REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL(complex128);
   REGISTER_SUM_GPU_UNSORTED_KERNELS(type, int32);   \
   REGISTER_SUM_GPU_UNSORTED_KERNELS(type, int64);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
+
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
+TF_CALL_int32(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
+TF_CALL_int32(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_complex64(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_complex128(REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL);
 

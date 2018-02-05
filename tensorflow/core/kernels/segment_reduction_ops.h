@@ -16,11 +16,10 @@ limitations under the License.
 #ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 #define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_SEGMENT_REDUCTION_OPS_H_
 
-#include <limits>
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 namespace tensorflow {
 
@@ -64,28 +63,32 @@ struct UnsortedSegmentFunctor {
 // reduction functors for the gpu
 template <typename T>
 struct SumOpGpu {
-  __device__ __forceinline__ void operator()(T* dest, const T& value) {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
     CudaAtomicAdd(dest, value);
   }
 };
 
 template <typename T>
 struct ProdOpGpu {
-  __device__ __forceinline__ void operator()(T* dest, const T& value) {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
     CudaAtomicMul(dest, value);
   }
 };
 
 template <typename T>
 struct MaxOpGpu {
-  __device__ __forceinline__ void operator()(T* dest, const T& value) {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
     CudaAtomicMax(dest, value);
   }
 };
 
 template <typename T>
 struct MinOpGpu {
-  __device__ __forceinline__ void operator()(T* dest, const T& value) {
+  EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE void operator()(T* dest,
+                                                        const T& value) {
     CudaAtomicMin(dest, value);
   }
 };
@@ -95,22 +98,26 @@ struct MinOpGpu {
 // initial value functors
 template <typename T>
 struct Zero {
-  inline T operator()() const { return T(0); }
+  EIGEN_STRONG_INLINE T operator()() const { return T(0); }
 };
 
 template <typename T>
 struct One {
-  inline T operator()() const { return T(1); }
+  EIGEN_STRONG_INLINE T operator()() const { return T(1); }
 };
 
 template <typename T>
 struct Lowest {
-  inline T operator()() const { return std::numeric_limits<T>::lowest(); }
+  EIGEN_STRONG_INLINE T operator()() const {
+    return Eigen::NumTraits<T>::lowest();
+  }
 };
 
 template <typename T>
 struct Highest {
-  inline T operator()() const { return std::numeric_limits<T>::max(); }
+  EIGEN_STRONG_INLINE T operator()() const {
+    return Eigen::NumTraits<T>::highest();
+  }
 };
 
 }  // namespace functor

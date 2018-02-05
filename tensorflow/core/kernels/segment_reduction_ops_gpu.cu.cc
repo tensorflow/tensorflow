@@ -18,7 +18,6 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "tensorflow/core/kernels/segment_reduction_ops.h"
-
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/cuda_device_functions.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
@@ -231,8 +230,10 @@ TF_CALL_GPU_NUMBER_TYPES(DEFINE_SORTED_GPU_SPECS);
   DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, int32); \
   DEFINE_SUM_UNSORTED_GPU_SPECS_INDEX(T, int64);
 
-TF_CALL_GPU_NUMBER_TYPES_NO_HALF(DEFINE_REAL_GPU_SPECS);
+TF_CALL_GPU_NUMBER_TYPES(DEFINE_REAL_GPU_SPECS);
+TF_CALL_int32(DEFINE_REAL_GPU_SPECS);
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_SUM_GPU_SPECS);
+TF_CALL_int32(DEFINE_SUM_GPU_SPECS);
 TF_CALL_complex64(DEFINE_SUM_GPU_SPECS);
 TF_CALL_complex128(DEFINE_SUM_GPU_SPECS);
 
