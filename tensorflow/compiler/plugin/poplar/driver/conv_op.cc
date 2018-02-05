@@ -45,30 +45,47 @@ GetConvolutionParameters(const HloInstruction* inst) {
   std::vector<std::size_t> n_s;
   std::vector<std::size_t> f_s;
   std::vector<unsigned int> w_s;
-  std::vector<int> p_l;
-  std::vector<int> p_u;
-  std::vector<int> k_l;
-  std::vector<int> k_h;
+  std::vector<unsigned int> p_l;
+  std::vector<unsigned int> p_u;
+  std::vector<unsigned int> t_l;
+  std::vector<unsigned int> t_u;
   std::vector<unsigned int> d_i;
   std::vector<unsigned int> d_w;
-  std::vector<bool> f_i;
-  std::vector<bool> f_k;
+  std::vector<unsigned int> zeros;
+  std::vector<bool> falses;
+
   for (int64 i=0; i < window.dimensions().size(); i++) {
     n_s.push_back(input_dims[dims.input_spatial_dimensions(i)]);
     f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
     w_s.push_back(window.dimensions(i).stride());
-    p_l.push_back(window.dimensions(i).padding_low());
-    p_u.push_back(window.dimensions(i).padding_high());
-    k_l.push_back(0);
-    k_h.push_back(0);
+    if (window.dimensions(i).padding_low() < 0) {
+      unsigned int p = -window.dimensions(i).padding_low();
+      LOG(INFO) << "PADDING LOW " << p;
+      t_l.push_back(p);
+      p_l.push_back(0);
+    } else {
+      p_l.push_back(window.dimensions(i).padding_low());
+      t_l.push_back(0);
+    }
+    if (window.dimensions(i).padding_high() < 0) {
+      unsigned int p = -window.dimensions(i).padding_high();
+      LOG(INFO) << "PADDING HIGH " << p;
+      t_u.push_back(p);
+      p_u.push_back(0);
+    } else {
+      p_u.push_back(window.dimensions(i).padding_high());
+      t_u.push_back(0);
+    }
     d_i.push_back(window.dimensions(i).base_dilation());
     d_w.push_back(window.dimensions(i).window_dilation());
-    f_i.push_back(false);
-    f_k.push_back(false);
+    falses.push_back(false);
+    zeros.push_back(0);
   }
 
-  popconv::ConvParams params(dtype, n_b, n_s, f_s, n_i, n_o, w_s, p_l, p_u, d_i,
-                             f_i, k_l, k_h, d_w, f_k, 1);
+  popconv::ConvParams params(dtype, n_b, n_s, f_s, n_i, n_o, 1,
+                             t_l, t_u, d_i, p_l, p_u, falses,
+                             zeros, zeros, d_w, zeros, zeros, falses,
+                             zeros, zeros, w_s, zeros, zeros);
 
   return params;
 }
@@ -95,32 +112,45 @@ GetDepthConvolutionParameters(const HloInstruction* inst) {
   std::vector<std::size_t> n_s;
   std::vector<std::size_t> f_s;
   std::vector<unsigned int> w_s;
-  std::vector<int> p_l;
-  std::vector<int> p_u;
-  std::vector<int> k_l;
-  std::vector<int> k_h;
+  std::vector<unsigned int> p_l;
+  std::vector<unsigned int> p_u;
+  std::vector<unsigned int> t_l;
+  std::vector<unsigned int> t_u;
   std::vector<unsigned int> d_i;
   std::vector<unsigned int> d_w;
-  std::vector<bool> f_i;
-  std::vector<bool> f_k;
+  std::vector<unsigned int> zeros;
+  std::vector<bool> falses;
+
   for (int64 i=0; i < window.dimensions().size(); i++) {
     n_s.push_back(input_dims[dims.input_spatial_dimensions(i)]);
     f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
     w_s.push_back(window.dimensions(i).stride());
-    p_l.push_back(window.dimensions(i).padding_low());
-    p_u.push_back(window.dimensions(i).padding_high());
-    k_l.push_back(0);
-    k_h.push_back(0);
+    if (window.dimensions(i).padding_low() < 0) {
+      t_l.push_back(-window.dimensions(i).padding_low());
+      p_l.push_back(0);
+    } else {
+      p_l.push_back(window.dimensions(i).padding_low());
+      t_l.push_back(0);
+    }
+    if (window.dimensions(i).padding_high() < 0) {
+      t_u.push_back(-window.dimensions(i).padding_high());
+      p_u.push_back(0);
+    } else {
+      p_u.push_back(window.dimensions(i).padding_high());
+      t_u.push_back(0);
+    }
     d_i.push_back(window.dimensions(i).base_dilation());
     d_w.push_back(window.dimensions(i).window_dilation());
-    f_i.push_back(false);
-    f_k.push_back(false);
+    falses.push_back(false);
+    zeros.push_back(0);
   }
 
   n_o = n_o / n_i;
 
-  popconv::ConvParams params(dtype, n_b, n_s, f_s, 1, n_o, w_s, p_l, p_u, d_i,
-                             f_i, k_l, k_h, d_w, f_k, n_i);
+  popconv::ConvParams params(dtype, n_b, n_s, f_s, 1, n_o, n_i,
+                             t_l, t_u, d_i, p_l, p_u, falses,
+                             zeros, zeros, d_w, zeros, zeros, falses,
+                             zeros, zeros, w_s, zeros, zeros);
 
   return params;
 }
