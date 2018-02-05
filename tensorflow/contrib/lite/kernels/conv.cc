@@ -271,10 +271,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       free(hwcn_weights->data.raw);
       hwcn_weights->data.raw = nullptr;
     }
+
+    // Note that hwcn_weights_status is a kTfLiteDynamic tensor, and
+    // ResizeTensor will actually allocate space for it. The would be more
+    // efficient if we placed hwcn_weights_status in the persistent arena.
     auto hwcn_weights_status =
         context->ResizeTensor(context, hwcn_weights, hwcn_weights_size);
     if (hwcn_weights_status != kTfLiteOk) return hwcn_weights_status;
-    hwcn_weights->data.raw = static_cast<char*>(malloc(hwcn_weights->bytes));
 
     // TODO(petewarden): If Resize() is called when the size hasn't actually
     // changed, this will do extra redundant work.
