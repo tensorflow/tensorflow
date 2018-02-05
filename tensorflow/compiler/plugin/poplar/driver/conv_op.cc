@@ -60,7 +60,6 @@ GetConvolutionParameters(const HloInstruction* inst) {
     w_s.push_back(window.dimensions(i).stride());
     if (window.dimensions(i).padding_low() < 0) {
       unsigned int p = -window.dimensions(i).padding_low();
-      LOG(INFO) << "PADDING LOW " << p;
       t_l.push_back(p);
       p_l.push_back(0);
     } else {
@@ -69,7 +68,6 @@ GetConvolutionParameters(const HloInstruction* inst) {
     }
     if (window.dimensions(i).padding_high() < 0) {
       unsigned int p = -window.dimensions(i).padding_high();
-      LOG(INFO) << "PADDING HIGH " << p;
       t_u.push_back(p);
       p_u.push_back(0);
     } else {
