@@ -60,9 +60,11 @@ tf_kernel_library(
     name = "trt_engine_op_kernel",
     srcs = [
         "kernels/trt_engine_op.cc",
+        "kernels/trt_calib_op.cc",
     ],
     hdrs=[
         "kernels/trt_engine_op.h",
+        "kernels/trt_calib_op.h",
     ],
     gpu_srcs = [
     ],
@@ -82,6 +84,7 @@ tf_kernel_library(
 tf_gen_op_libs(
    op_lib_names = [
 	"trt_engine_op",
+    "trt_calib_op",
    ],
     deps=[
         "@local_config_tensorrt//:tensorrt",
@@ -108,6 +111,7 @@ tf_gen_op_wrapper_py(
     name = "trt_engine_op",
     deps = [
         ":trt_engine_op_op_lib",
+        ":trt_calib_op_op_lib",
         ":trt_shape_function",
     ],
 )

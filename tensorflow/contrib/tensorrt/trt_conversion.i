@@ -28,7 +28,8 @@
   std::pair<string,string> trt_convert(string graph_def_string,//const tensorflow::GraphDef&
 		   std::vector<string> output_names,
 		   size_t max_batch_size,
-		   size_t max_workspace_size
+		   size_t max_workspace_size_bytes,
+      bool int8
 		   // unfortunately we can't use TF_Status here since it
 		   // is in c/c_api and brings in a lot of other libraries
 		   // which in turn declare ops. These ops are included
@@ -57,8 +58,8 @@
       tensorrt::convert::ConvertGraphDefToTensorRT(graph_def,
 						   output_names,
 						   max_batch_size,
-						   max_workspace_size,
-						   &outGraph);
+						   max_workspace_size_bytes,
+						   &outGraph,int8);
     if (!conversion_status.ok()) {
       auto retCode=(int)conversion_status.code();
       char buff[2000];
@@ -79,6 +80,6 @@
 std::pair<string,string> trt_convert(string graph_def_string,
 				     std::vector<string> output_names,
 				     size_t max_batch_size,
-				     size_t max_workspace_size);
+				     size_t max_workspace_size,bool int8);
 
 %unignoreall

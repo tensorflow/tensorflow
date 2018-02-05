@@ -24,8 +24,8 @@ limitations under the License.
 namespace tensorflow {
 static ::tensorflow::tensorrt::Logger gLogger;
 
-using namespace nvinfer1;
-
+using IRuntime=nvinfer1::IRuntime;
+using Dims=nvinfer1::Dims;
 namespace tensorrt {
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
@@ -44,7 +44,7 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   // TODO(samikama) runtime should be taken from a resourcemanager as well.
   //  Only engine should be in the op and context and runtime should be taken
   //  from resourcemanager
-  IRuntime* infer = createInferRuntime(gLogger);
+  IRuntime* infer = nvinfer1::createInferRuntime(gLogger);
   trt_engine_ptr_.reset(infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(), nullptr));
 

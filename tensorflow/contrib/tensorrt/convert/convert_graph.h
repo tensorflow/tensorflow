@@ -27,7 +27,8 @@ namespace convert {
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<std::string>& output_names, size_t max_batch_size,
-    size_t max_workspace_size, tensorflow::GraphDef* new_graph_def);
+    size_t max_workspace_size,
+    tensorflow::GraphDef* new_graph_def,bool int8);
 }
 }  // namespace tensorrt
 
