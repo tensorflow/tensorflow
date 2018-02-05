@@ -447,7 +447,7 @@ def frechet_classifier_distance(real_images,
 
   This technique is described in detail in https://arxiv.org/abs/1706.08500.
   Given two Gaussian distribution with means m and m_w and covariance matrices
-  C and C_w, this function calcuates
+  C and C_w, this function calculates
 
   |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
 
@@ -520,7 +520,7 @@ def frechet_classifier_distance_from_activations(
 
   This technique is described in detail in https://arxiv.org/abs/1706.08500.
   Given two Gaussian distribution with means m and m_w and covariance matrices
-  C and C_w, this function calcuates
+  C and C_w, this function calculates
 
   |m - m_w|^2 + Tr(C + C_w - 2(C * C_w)^(1/2))
 

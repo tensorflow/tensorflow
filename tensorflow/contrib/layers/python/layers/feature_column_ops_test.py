@@ -872,7 +872,7 @@ class CreateInputLayersForDNNsTest(test.TestCase):
         features, [embedded_sparse], weight_collections=["my_collection"])
     weights = ops.get_collection("my_collection")
     grad = gradients_impl.gradients(output, weights)
-    # Calcuates the tensors calculated by FC core libs. Later, the values will
+    # Calculates the tensors calculated by FC core libs. Later, the values will
     # be compared with the contrib version.
     output_core = fc_core.input_layer(
         features, [embedded_sparse], weight_collections=["my_collection_core"])

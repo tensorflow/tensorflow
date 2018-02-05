@@ -817,7 +817,7 @@ Status GraphProperties::PropagateShapes(
     const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
     int num_loops) const {
   // Limit the number of iterations to prevent infinite loops in the presence of
-  // incorrect shape functions. The algoritm should converge in at most
+  // incorrect shape functions. The algorithm should converge in at most
   // num_nested_loops^2 * max_rank. We approximate max_rank with the constant 4.
   // The same applies to resources.
   VLOG(1) << "Propagating (relax=" << relax << ") " << new_shapes->size()

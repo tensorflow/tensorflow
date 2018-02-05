@@ -63,7 +63,7 @@ class SegmentReductionHelper(test.TestCase):
         output[index] = op1(output[index], x_flat[i])
       else:
         output[index] = x_flat[i]
-    # zero initialize values that are still uncalcuated.
+    # zero initialize values that are still uncalculated.
     # output = [o if o is not None else np.zeros(slice_shape) for o in output]
     if not op1 == np.max:
       output = [o if o is not None else np.zeros(slice_shape) for o in output]

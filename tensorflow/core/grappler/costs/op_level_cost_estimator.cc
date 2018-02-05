@@ -367,7 +367,7 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
   // in case that the shape is unknown or partially known for other input.
   int64 op_count =
       CalculateLargestInputCount(op_features, &found_unknown_shapes);
-  // If output shape is available, try use the element count calcuated from
+  // If output shape is available, try use the element count calculated from
   // that.
   if (op_features.outputs_size() > 0) {
     op_count =

@@ -1096,7 +1096,7 @@ bool SwappingPass(RewriterConfig::MemOptType optimization_level,
     // Use heuristics to figure out what needs to be swapped;
     IdentifySwappingCandidates(cluster, item, skip_list, &nodes_to_swap);
   }
-  // Look for manual annotatations in the graph.
+  // Look for manual annotations in the graph.
   for (auto& node : *item->graph.mutable_node()) {
     if (node.attr().count("_swap_to_host") != 0) {
       SwapInfo& swap_info = nodes_to_swap[&node];

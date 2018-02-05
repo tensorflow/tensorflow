@@ -59,7 +59,7 @@ double CalculateBytesReadByFusionParameter(HloInstruction* param) {
 
   // Iterate through 'instructions' accumulating byte sizes of each instruction
   // shape. For each 'instruction' in 'instructions', if all users of
-  // 'instruction' are Slice instructions, accumuates the byte sizes of each
+  // 'instruction' are Slice instructions, accumulates the byte sizes of each
   // Slice for a more accurate estimate of bytes read.
   double bytes = 0.0;
   for (auto& instruction : instructions) {
