@@ -57,6 +57,7 @@ import functools
 import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.protobuf import control_flow_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -79,6 +80,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops.gen_control_flow_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_should_use
@@ -2241,6 +2243,17 @@ class WhileContext(ControlFlowContext):
     ]
     super(WhileContext, self).__init__(
         values_def=context_def.values_def, import_scope=import_scope)
+
+    # import_scope causes self.name to be different from the original serialized
+    # context's name. Rewrite "frame_name" attrs with the new name.
+    if import_scope:
+      for tensor_name in self._values:
+        op = g.as_graph_element(tensor_name).op
+        if util.IsLoopEnter(op):
+          # pylint: disable=protected-access
+          op._set_attr("frame_name",
+                       attr_value_pb2.AttrValue(s=compat.as_bytes(self.name)))
+          # pylint: enable=protected-access
 
   @property
   def maximum_iterations(self):
