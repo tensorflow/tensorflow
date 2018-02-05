@@ -44,12 +44,10 @@ class LuOpTest(test.TestCase):
         a = x.real().astype(np_type)
       else:
         a = x.astype(np_type)
-      l, u, p, q = linalg_ops.lu(a)
+      l, u, p = linalg_ops.lu(a)
       pinv = linalg_ops.matrix_inverse(p)
-      qinv = linalg_ops.matrix_inverse(q)
       pl = math_ops.matmul(pinv, l)
       plu = math_ops.matmul(pl, u)
-      pluq = math_ops.matmul(plu, qinv)
       with self.test_session() as sess:
         out = pluq.eval()
       self.assertEqual(a.shape, out.shape)

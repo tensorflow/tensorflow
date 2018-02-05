@@ -40,9 +40,11 @@ class LuOp : public LinearAlgebraOp<Scalar> {
 
   TensorShapes GetOutputMatrixShapes(
       const TensorShapes& input_matrix_shapes) const final {
-    int64 m = input_matrix_shapes[0].dim_size(0);  // input square matrix
-    return TensorShapes({TensorShape({m, m}), TensorShape({m, m}),
-                         TensorShape({m, m}), TensorShape({m, m})});
+    int64 m = input_matrix_shapes[0].dim_size(0);  
+    // only square matrix is supported for now.
+    return TensorShapes({TensorShape({m, m}), 
+                         TensorShape({m, m}),
+                         TensorShape({m, m})});
   }
 
   void ComputeMatrix(OpKernelContext* context, const ConstMatrixMaps& inputs,
@@ -53,7 +55,7 @@ class LuOp : public LinearAlgebraOp<Scalar> {
     }
 
     // Perform the actual LU decomposition.
-    Eigen::FullPivLU<
+    Eigen::PartialPivLU<
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
         lu_decomposition(input);
 
@@ -65,7 +67,6 @@ class LuOp : public LinearAlgebraOp<Scalar> {
     outputs->at(1) =
         lu_decomposition.matrixLU().template triangularView<Eigen::Upper>();
     outputs->at(2) = lu_decomposition.permutationP();
-    outputs->at(3) = lu_decomposition.permutationQ();
   }
 };
 

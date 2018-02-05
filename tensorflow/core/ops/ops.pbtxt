@@ -11856,7 +11856,6 @@ op {
   name: "Lu"
   input_arg {
     name: "input"
-    description: "A tensor of shape `[..., M, N]` whose inner-most 2 dimensions\nform matrices of size `[M, N]`. Let `P` be the minimum of `M` and `N`."
     type_attr: "T"
   }
   output_arg {
@@ -11874,11 +11873,6 @@ op {
     description: "The permutation matrix P."
     type_attr: "T"
   }
-  output_arg {
-    name: "q"
-    description: "The permutation matrix Q."
-    type_attr: "T"
-  }
   attr {
     name: "T"
     type: "type"
@@ -11891,8 +11885,6 @@ op {
       }
     }
   }
-  summary: "Computes the LU decompositions of one or more matrices."
-  description: "Computes the LU decomposition of each inner matrix in `tensor` such that\n`tensor[..., :, :] = l[..., :, :] * u[..., :,:])`\n\n```python\n# a is a tensor.\n# l is a tensor of orthonormal matrices.\n# u is a tensor of upper triangular matrices.\nl, u = qr(a)\n```"
 }
 op {
   name: "MakeIterator"
