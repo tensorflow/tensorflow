@@ -135,7 +135,7 @@ string AsControlDependency(const string& node);
 
 // Returns the number of outputs of a node according to its OpDef. Note that
 // some of the outputs may be unconnected.
-int NumOutputs(const NodeDef& node);
+int NumOutputs(const NodeDef& node, GraphDef* graph);
 
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
