@@ -51,7 +51,7 @@ class TPUConfig(
   r"""TPU related configuration required by `TPUEstimator`.
 
   Args:
-    iterations_per_loop: This is the number of train steps runnining in TPU
+    iterations_per_loop: This is the number of train steps running in TPU
       system before returning to CPU host for each `Session.run`. This means
       global step is increased `iterations_per_loop` times in one `Session.run`.
       It is recommended to be set as number of global steps for next checkpoint.
