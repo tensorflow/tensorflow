@@ -250,6 +250,12 @@ class LocalComputationBuilder {
                               const LocalComputation& body,
                               const ComputationDataHandle& init);
 
+  ComputationDataHandle Conditional(const ComputationDataHandle& predicate,
+                                    const ComputationDataHandle& true_operand,
+                                    const LocalComputation& true_computation,
+                                    const ComputationDataHandle& false_operand,
+                                    const LocalComputation& false_computation);
+
 #define _FORWARD(method_name, return_sig, args_sig) \
   return_sig method_name args_sig;
 

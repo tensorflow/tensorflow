@@ -577,6 +577,7 @@ py_library(
         ":pywrap_tensorflow",
         ":random_seed",
         ":sparse_tensor",
+        ":tensor_spec",
         ":tensor_util",
         ":util",
         "//tensorflow/python/eager:context",
@@ -778,6 +779,18 @@ py_library(
     deps = [
         ":util",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "tensor_spec",
+    srcs = ["framework/tensor_spec.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":common_shapes",
+        ":dtypes",
+        ":tensor_shape",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1146,6 +1159,21 @@ py_test(
         ":framework_test_lib",
         ":platform_test",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_test(
+    name = "framework_tensor_spec_test",
+    size = "small",
+    srcs = ["framework/tensor_spec_test.py"],
+    main = "framework/tensor_spec_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":platform_test",
+        ":tensor_spec",
+        "//third_party/py/numpy",
     ],
 )
 

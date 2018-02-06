@@ -22,12 +22,13 @@ from __future__ import division
 from __future__ import print_function
 
 import ast
-import copy
 import textwrap
 
 import gast
 
+from tensorflow.contrib.py2tf.pyct import copier
 from tensorflow.contrib.py2tf.pyct import parser
+from tensorflow.contrib.py2tf.pyct import qual_names
 
 
 class ReplaceTransformer(gast.NodeTransformer):
@@ -41,6 +42,7 @@ class ReplaceTransformer(gast.NodeTransformer):
           that these placeholders will be replaced by.
     """
     self.replacements = replacements
+    self.in_replacements = False
 
   # TODO(mdan): Make a more detailed pass and clean up if needed.
 
@@ -62,34 +64,53 @@ class ReplaceTransformer(gast.NodeTransformer):
       node.name = repl.id
     return node
 
-  def visit_Name(self, node):
-    if node.id in self.replacements:
-      # TODO(mdan): Sanitize the nodes by erasing scope-dependent annotations.
-      new_nodes = copy.copy(self.replacements[node.id])
-      if isinstance(new_nodes, gast.AST):
-        new_nodes = [new_nodes]
-      # Preserve the target context.
-      for n in new_nodes:
-        if isinstance(n, gast.Tuple):
-          for e in n.elts:
-            e.ctx = node.ctx
-        n.ctx = node.ctx
-      if len(new_nodes) == 1:
-        new_nodes, = new_nodes
-      return new_nodes
+  def _set_inner_child_context(self, node, ctx):
+    if isinstance(node, gast.Attribute):
+      self._set_inner_child_context(node.value, ctx)
+      node.ctx = gast.Load()
+    elif isinstance(node, gast.Name):
+      node.ctx = ctx
     else:
+      raise ValueError('unexpected node type "%s"' % node)
+
+  def visit_Name(self, node):
+    if node.id not in self.replacements:
       return node
 
+    new_nodes = copier.copy_clean(self.replacements[node.id])
+    if isinstance(new_nodes, gast.AST):
+      new_nodes = [new_nodes]
 
-def _strings_to_names(n):
+    # Preserve the target context.
+    for n in new_nodes:
+      if isinstance(n, gast.Tuple):
+        for e in n.elts:
+          self._set_inner_child_context(e, node.ctx)
+      if isinstance(n, gast.Attribute):
+        # For attributes, the inner Name node receives the context, while the
+        # outer ones have it set to Load.
+        self._set_inner_child_context(n, node.ctx)
+      else:
+        n.ctx = node.ctx
+
+    if len(new_nodes) == 1:
+      new_nodes, = new_nodes
+
+    return new_nodes
+
+
+def _convert_to_ast(n):
+  """Convert from a known data type to AST."""
   if isinstance(n, str):
     # Note: the node will receive the ctx value from the template, see
     # ReplaceTransformer.visit_Name.
     return gast.Name(id=n, ctx=None, annotation=None)
+  if isinstance(n, qual_names.QN):
+    return n.ast()
   if isinstance(n, list):
-    return [_strings_to_names(e) for e in n]
+    return [_convert_to_ast(e) for e in n]
   if isinstance(n, tuple):
-    return tuple(_strings_to_names(e) for e in n)
+    return tuple(_convert_to_ast(e) for e in n)
   return n
 
 
@@ -122,5 +143,8 @@ def replace(template, **replacements):
     raise ValueError('Expected string template, got %s' % type(template))
   tree = parser.parse_str(textwrap.dedent(template))
   for k in replacements:
-    replacements[k] = _strings_to_names(replacements[k])
-  return ReplaceTransformer(replacements).visit(tree).body
+    replacements[k] = _convert_to_ast(replacements[k])
+  results = ReplaceTransformer(replacements).visit(tree).body
+  if isinstance(results, list):
+    return [qual_names.resolve(r) for r in results]
+  return qual_names.resolve(results)

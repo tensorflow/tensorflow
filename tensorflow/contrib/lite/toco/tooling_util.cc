@@ -1760,4 +1760,22 @@ void UseArraysExtraInfo(Model* model) {
   }
 }
 
+bool IsRnnSourceArray(const toco::Model& model, const string& array_name) {
+  for (const auto& rnn_state : model.flags.rnn_states()) {
+    if (array_name == rnn_state.back_edge_source_array()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsRnnStateArray(const toco::Model& model, const string& array_name) {
+  for (const auto& rnn_state : model.flags.rnn_states()) {
+    if (array_name == rnn_state.state_array()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 }  // namespace toco

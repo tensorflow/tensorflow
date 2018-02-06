@@ -195,7 +195,7 @@ def _replicate_model_fn_with_mode(
   if not devices:
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
-  is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0]
+  is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0].upper()
   consolidation_device = devices[0] if is_a_single_gpu_case else '/CPU:0'
 
   ps_devices = [consolidation_device]
