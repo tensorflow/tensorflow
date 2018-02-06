@@ -32,11 +32,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperator"]
 
 
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
+@tf_export("linalg.LinearOperator")
 class LinearOperator(object):
   """Base class defining a [batch of] linear operator[s].
 

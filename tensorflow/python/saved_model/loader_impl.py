@@ -32,6 +32,7 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _parse_saved_model(export_dir):
@@ -156,6 +157,7 @@ def _get_legacy_init_op_tensor(meta_graph_def_to_load):
   return legacy_init_op_tensor
 
 
+@tf_export("saved_model.loader.maybe_saved_model_directory")
 def maybe_saved_model_directory(export_dir):
   """Checks whether the provided export directory could contain a SavedModel.
 
@@ -176,6 +178,7 @@ def maybe_saved_model_directory(export_dir):
   return file_io.file_exists(txt_path) or file_io.file_exists(pb_path)
 
 
+@tf_export("saved_model.loader.load")
 def load(sess, tags, export_dir, **saver_kwargs):
   """Loads the model from a SavedModel as specified by tags.
 
