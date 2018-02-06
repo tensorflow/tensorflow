@@ -28,11 +28,14 @@ from __future__ import print_function
 import time
 
 import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
+from tensorflow.python.eager import core
+from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
@@ -46,19 +49,25 @@ CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
 
 
-def record_gradient_callback(inputs, attrs, results):
-  return backprop._record_gradient("MatMul", inputs, attrs, results, None)
-
-
-def c_tfe_py_fastpath_execute(a, b, transpose_a=False, transpose_b=False):
+def c_tfe_py_fastpath_execute(a,
+                              b,
+                              transpose_a=False,
+                              transpose_b=False,
+                              name=None):
   ctx = context.context()
   assert not ctx.in_graph_mode(
   ), "The prototype doesn't contain C code for graph construction"
-  ctx_handle = ctx._handle  # pylint: disable=protected-access
-
-  return pywrap_tensorflow.TFE_Py_FastPathExecute(
-      ctx_handle, None, "MatMul", record_gradient_callback, a, b,
-      "transpose_a", transpose_a, "transpose_b", transpose_b)[0]
+  try:
+    return pywrap_tensorflow.TFE_Py_FastPathExecute(
+        ctx._handle, ctx.device_name, "MatMul", execute.record_gradient, name,
+        ctx._post_execution_callbacks, a, b, "transpose_a", transpose_a,
+        "transpose_b", transpose_b)
+  except core._NotOkStatusException as e:
+    if name is not None:
+      message = e.message + " name: " + name
+    else:
+      message = e.message
+    six.raise_from(core._status_to_exception(e.code, message), None)
 
 
 class MicroBenchmarks(test.Benchmark):
