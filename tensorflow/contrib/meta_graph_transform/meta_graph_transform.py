@@ -171,7 +171,14 @@ def _clean_save_and_restore(graph_def, op, removed_op_names):
   shape_op_value_tensor.tensor_shape.dim[0].size = len(shapes)
   op.attr['dtypes'].list.type[:] = dtypes
 
+  if not name_op.attr['_output_shapes'].list.shape:
+    name_op.attr['_output_shapes'].list.shape.add()
+    name_op.attr['_output_shapes'].list.shape[0].dim.add()
   name_op.attr['_output_shapes'].list.shape[0].dim[0].size = len(names)
+
+  if not shape_op.attr['_output_shapes'].list.shape:
+    shape_op.attr['_output_shapes'].list.shape.add()
+    shape_op.attr['_output_shapes'].list.shape[0].dim.add()
   shape_op.attr['_output_shapes'].list.shape[0].dim[0].size = len(shapes)
 
 

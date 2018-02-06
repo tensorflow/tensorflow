@@ -46,6 +46,7 @@ class GraphView {
   };
 
   explicit GraphView(GraphDef* graph);
+  GraphDef* GetGraph() const { return graph_; }
   NodeDef* GetNode(const string& node_name) const;
   // Get the specified input port. Note that the special '-1' port_id can be
   // used to access the controlling nodes (i.e. the nodes connected to node_name

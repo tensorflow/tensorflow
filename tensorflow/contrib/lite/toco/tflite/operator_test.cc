@@ -119,40 +119,12 @@ TEST_F(OperatorTest, BuiltinAdd) {
             output_toco_op->fused_activation_function);
 }
 
-TEST_F(OperatorTest, BuiltinSpaceToBatchND) {
-  SpaceToBatchNDOperator op;
-  op.block_shape = {2, 2};
-  op.before_paddings = {1, 2};
-  op.after_paddings = {3, 4};
-
-  auto output_toco_op = SerializeAndDeserialize(
-      GetOperator("SPACE_TO_BATCH_ND", OperatorType::kSpaceToBatchND), op);
-  EXPECT_EQ(op.block_shape, output_toco_op->block_shape);
-  EXPECT_EQ(op.before_paddings, output_toco_op->before_paddings);
-  EXPECT_EQ(op.after_paddings, output_toco_op->after_paddings);
-}
-
-TEST_F(OperatorTest, BuiltinBatchToSpaceND) {
-  BatchToSpaceNDOperator op;
-  op.block_shape = {2, 2};
-  op.before_crops = {1, 2};
-  op.after_crops = {3, 4};
-
-  auto output_toco_op = SerializeAndDeserialize(
-      GetOperator("BATCH_TO_SPACE_ND", OperatorType::kBatchToSpaceND), op);
-  EXPECT_EQ(op.block_shape, output_toco_op->block_shape);
-  EXPECT_EQ(op.before_crops, output_toco_op->before_crops);
-  EXPECT_EQ(op.after_crops, output_toco_op->after_crops);
-}
-
 TEST_F(OperatorTest, BuiltinMean) {
   MeanOperator op;
-  op.axis = {1, 2};
   op.keep_dims = false;
 
   auto output_toco_op =
       SerializeAndDeserialize(GetOperator("MEAN", OperatorType::kMean), op);
-  EXPECT_EQ(op.axis, output_toco_op->axis);
   EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
 }
 
@@ -368,15 +340,6 @@ TEST_F(OperatorTest, Svdf) {
   EXPECT_EQ(op.fused_activation_function,
             output_toco_op->fused_activation_function);
   EXPECT_EQ(op.rank, output_toco_op->rank);
-}
-
-TEST_F(OperatorTest, Transpose) {
-  TransposeOperator op;
-  op.perm = {0, 1, 2, 3};
-
-  auto output_toco_op = SerializeAndDeserialize(
-      GetOperator("TRANSPOSE", OperatorType::kTranspose), op);
-  EXPECT_EQ(op.perm, output_toco_op->perm);
 }
 
 TEST_F(OperatorTest, Squeeze) {

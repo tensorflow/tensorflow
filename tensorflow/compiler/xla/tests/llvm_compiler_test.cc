@@ -74,7 +74,8 @@ class LLVMCompilerTest : public ::testing::Test {
 
     ASSERT_TRUE(compiler
                     ->RunBackend(std::move(hlo_module),
-                                 backend_->default_stream_executor())
+                                 backend_->default_stream_executor(),
+                                 /*device_allocator=*/nullptr)
                     .ok());
 
     // Test that hooks were called.
@@ -98,7 +99,8 @@ class LLVMCompilerTest : public ::testing::Test {
     executors.push_back({backend_->default_stream_executor()});
     executors.push_back({backend_->default_stream_executor()});
 
-    EXPECT_IS_OK(compiler->Compile(std::move(modules), std::move(executors)));
+    EXPECT_IS_OK(compiler->Compile(std::move(modules), std::move(executors),
+                                   /*device_allocator=*/nullptr));
   }
 
  private:

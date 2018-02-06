@@ -29,8 +29,8 @@ namespace {
 
 // Tests of all the error paths in log_reader.cc follow:
 static void ExpectHasSubstr(StringPiece s, StringPiece expected) {
-  EXPECT_TRUE(StringPiece(s).contains(expected)) << s << " does not contain "
-                                                 << expected;
+  EXPECT_TRUE(StringPiece(s).contains(expected))
+      << s << " does not contain " << expected;
 }
 
 TEST(TestReporter, NoLogging) {

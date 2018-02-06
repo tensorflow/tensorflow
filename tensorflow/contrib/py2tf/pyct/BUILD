@@ -31,6 +31,7 @@ py_library(
     deps = [
         "@astor_archive//:astor",
         "@gast_archive//:gast",
+        "@six_archive//:six",
         "@termcolor_archive//:termcolor",
     ],
 )
@@ -38,6 +39,7 @@ py_library(
 py_test(
     name = "anno_test",
     srcs = ["anno_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -47,6 +49,7 @@ py_test(
 py_test(
     name = "compiler_test",
     srcs = ["compiler_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -57,6 +60,7 @@ py_test(
 py_test(
     name = "parser_test",
     srcs = ["parser_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -66,6 +70,7 @@ py_test(
 py_test(
     name = "pretty_printer_test",
     srcs = ["pretty_printer_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",
@@ -75,6 +80,7 @@ py_test(
 py_test(
     name = "templates_test",
     srcs = ["templates_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":pyct",
         "//tensorflow/python:client_testlib",

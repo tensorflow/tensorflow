@@ -336,9 +336,6 @@ class IrEmitterUnnested : public IrEmitter {
   // Thunk object.
   std::unique_ptr<Thunk> BuildKernelThunk(const HloInstruction* inst);
 
-  // Returns a ConvolutionThunk that calls DNN to implement `inst`.
-  std::unique_ptr<Thunk> BuildConvolutionThunk(const HloInstruction* inst);
-
   // Returns a FftThunk that calls cuFFT to implement `inst`.
   std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
 

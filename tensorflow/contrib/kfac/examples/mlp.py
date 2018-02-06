@@ -317,7 +317,10 @@ def train_mnist_estimator(data_dir, num_epochs, use_fake_data=False):
     return tf.estimator.EstimatorSpec(
         mode=mode, loss=loss, train_op=train_op, training_hooks=hooks)
 
+  run_config = tf.estimator.RunConfig(
+      model_dir="/tmp/mnist", save_checkpoints_steps=1, keep_checkpoint_max=100)
+
   # Train until input_fn() is empty with Estimator. This is a prerequisite for
   # TPU compatibility.
-  estimator = tf.estimator.Estimator(model_fn=model_fn)
+  estimator = tf.estimator.Estimator(model_fn=model_fn, config=run_config)
   estimator.train(input_fn=input_fn)

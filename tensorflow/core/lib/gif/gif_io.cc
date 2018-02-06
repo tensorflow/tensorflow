@@ -44,6 +44,14 @@ int input_callback(GifFileType* gif_file, GifByteType* buf, int size) {
   return 0;
 }
 
+static const char* GifErrorStringNonNull(int error_code) {
+  const char* error_string = GifErrorString(error_code);
+  if (error_string == nullptr) {
+    return "Unknown error";
+  }
+  return error_string;
+}
+
 uint8* Decode(const void* srcdata, int datasize,
               const std::function<uint8*(int, int, int, int)>& allocate_output,
               string* error_string) {
@@ -55,17 +63,17 @@ uint8* Decode(const void* srcdata, int datasize,
     int error_code = D_GIF_SUCCEEDED;
     if (gif_file && DGifCloseFile(gif_file, &error_code) != GIF_OK) {
       LOG(WARNING) << "Fail to close gif file, reason: "
-                   << GifErrorString(error_code);
+                   << GifErrorStringNonNull(error_code);
     }
   });
   if (error_code != D_GIF_SUCCEEDED) {
     *error_string = strings::StrCat("failed to open gif file: ",
-                                    GifErrorString(error_code));
+                                    GifErrorStringNonNull(error_code));
     return nullptr;
   }
   if (DGifSlurp(gif_file) != GIF_OK) {
     *error_string = strings::StrCat("failed to slurp gif file: ",
-                                    GifErrorString(gif_file->Error));
+                                    GifErrorStringNonNull(gif_file->Error));
     return nullptr;
   }
   if (gif_file->ImageCount <= 0) {

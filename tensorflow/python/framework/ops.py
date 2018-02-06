@@ -2103,6 +2103,10 @@ class Operation(object):
     logging.warning("Operation._control_inputs is private, use "
                     "Operation.control_inputs instead. "
                     "Operation._control_inputs will eventually be removed.")
+    # Copy value because it may be self._control_inputs_val (in particular if
+    # this is called from self._control_inputs += ...), and we don't want to
+    # clear value below.
+    value = copy.copy(value)
     self._remove_all_control_inputs()
     self._add_control_inputs(value)
 
@@ -2756,15 +2760,12 @@ class Graph(object):
     self._handle_movers = {}
     # A map from tensor handle to its delete op.
     self._handle_deleters = {}
-    # Resource container.
-    if context.in_graph_mode():
-      self._container_prefix = ""
-    else:
-      # In Eager mode, isolate resources (particularly ResourceVariables) in
-      # Graphs by default. This prevents unintended variable sharing. Graph mode
-      # gets this kind of isolation from Sessions.
-      self._container_prefix = "eager-execution-%d/" % (uid(),)
-    self._container = self._container_prefix
+    # Allow optimizers and other objects to pseudo-uniquely key graphs (this key
+    # will be shared when defining function graphs, for example, so optimizers
+    # being called inside function definitions behave as if they were seeing the
+    # actual outside graph).
+    self._graph_key = "grap-key-%d/" % (uid(),)
+    self._container = ""
     self._registered_ops = op_def_registry.get_registered_ops()
 
     # TODO(skyewm): fold as much of the above as possible into the C
@@ -4225,7 +4226,7 @@ class Graph(object):
     """
     original_container = self._container
     try:
-      self._container = self._container_prefix + container_name
+      self._container = container_name
       yield self._container
     finally:
       self._container = original_container
@@ -5004,9 +5005,22 @@ def init_scope():
   """
   # pylint: enable=g-doc-return-or-yield,line-too-long
 
+  in_graph_mode = context.in_graph_mode()
+  # Retrieve the active name scope: entering an `init_scope` preserves
+  # the name scope of the current context.
+  if in_graph_mode:
+    default_graph = get_default_graph()
+    scope = default_graph.get_name_scope()
+  else:
+    scope = context.context().scope_name
+  if scope and scope[-1] != '/':
+    # Names that end with trailing slashes are treated by `name_scope` as
+    # absolute.
+    scope = scope + '/'
+
   outer_context = None
-  if context.in_graph_mode() and not _default_graph_stack.stack:
-    outer_context = get_default_graph().as_default
+  if in_graph_mode and not _default_graph_stack.stack:
+    outer_context = default_graph.as_default
   else:
     for stack_entry in reversed(context.context_stack.stack):
       if not stack_entry.is_building_function:
@@ -5018,7 +5032,8 @@ def init_scope():
                          "eager context was previously active.")
 
   try:
-    with outer_context(), control_dependencies(None), tape.stop_recording():
+    with outer_context(), name_scope(scope), control_dependencies(
+        None), tape.stop_recording():
       yield
   finally:
     pass

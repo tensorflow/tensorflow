@@ -6,6 +6,7 @@ tensorflow/core/example
 tensorflow/core/framework
 tensorflow/core/lib
 tensorflow/core/lib/core
+tensorflow/core/profiler
 tensorflow/core/protobuf
 tensorflow/core/util
 tensorflow/examples
@@ -216,6 +217,8 @@ tensorflow/contrib/input_pipeline/python/ops
 tensorflow/contrib/integrate
 tensorflow/contrib/integrate/python
 tensorflow/contrib/integrate/python/ops
+tensorflow/contrib/kafka/python
+tensorflow/contrib/kafka/python/ops
 tensorflow/contrib/keras
 tensorflow/contrib/keras/api
 tensorflow/contrib/keras/api/keras

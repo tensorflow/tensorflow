@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/computation.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -33,39 +34,13 @@ limitations under the License.
 
 namespace xla {
 
-// Class containing options for building an LocalExecutable with
-// LocalClient::Compile.
-class ExecutableBuildOptions {
- public:
-  // If set, this is the device to build the computation for. Valid
-  // device_ordinal values are: 0 to # of devices - 1. These values are
-  // identical to the device ordinal values used by StreamExecutor. The built
-  // executable will be executable on any device equivalent to the specified
-  // device as determined by Backend::devices_equivalent(). A value of -1
-  // indicates this option has not been set.
-  ExecutableBuildOptions& set_device_ordinal(int device_ordinal);
-  int device_ordinal() const;
-
-  // If set, this specifies the layout of the result of the computation. If not
-  // set, the service will chose the layout of the result. A Shape is used to
-  // store the layout to accommodate tuple result shapes. A value of nullptr
-  // indicates the option has not been set.
-  ExecutableBuildOptions& set_result_layout(const Shape& shape_with_layout);
-  const Shape* result_layout() const;
-
- private:
-  int device_ordinal_ = -1;
-  Shape result_layout_;
-  bool result_layout_set_ = false;
-};
-
 class LocalExecutable {
  public:
   // Run the compiled computation with the given arguments and options and
   // return the result.
   StatusOr<std::unique_ptr<ScopedShapedBuffer>> Run(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutableRunOptions& options);
+      ExecutableRunOptions run_options);
 
   // Return the layout (contained in a shape) of the result produced by the
   // computation.
@@ -88,8 +63,7 @@ class LocalExecutable {
 
   // Constructor invoked by LocalClient.
   LocalExecutable(std::unique_ptr<Executable> executable, Backend* backend,
-                  int device_ordinal,
-                  const ExecutableBuildOptions& build_options);
+                  ExecutableBuildOptions build_options);
 
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
@@ -117,19 +91,19 @@ class LocalExecutable {
   StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(
       const ShapedBuffer& shaped_buffer);
 
+  // The ordinal of the device which this executable was compiled for. The
+  // executable can run on all equivalent devices (as determined by
+  // Backend::devices_equivalent).
+  int build_device_ordinal() const { return build_options_.device_ordinal(); }
+
   // Compiled computation.
   std::unique_ptr<Executable> executable_;
 
   // Execution backend.
-  Backend* backend_;
-
-  // The ordinal of the device which this executable was compiled for. The
-  // executable can run on all equivalent devices (as determined by
-  // Backend::devices_equivalent).
-  int build_device_ordinal_;
+  Backend* backend_ = nullptr;
 
   // Options used to build the executable.
-  const ExecutableBuildOptions& build_options_;
+  const ExecutableBuildOptions build_options_;
 };
 
 // An XLA Client specialization for use when the client and service run in

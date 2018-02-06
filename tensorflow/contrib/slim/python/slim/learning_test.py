@@ -197,9 +197,7 @@ class MultiplyGradientsTest(test.TestCase):
     gradient = constant_op.constant(self._grad_vec, dtype=dtypes.float32)
     variable = variables_lib.Variable(array_ops.zeros_like(gradient))
     multiplier_flag = variables_lib.Variable(True)
-    tensor_multiplier = array_ops.where(multiplier_flag,
-                                        self._multiplier,
-                                        1.0)
+    tensor_multiplier = array_ops.where(multiplier_flag, self._multiplier, 1.0)
     grad_to_var = (gradient, variable)
     gradient_multipliers = {variable: tensor_multiplier}
 
@@ -212,11 +210,8 @@ class MultiplyGradientsTest(test.TestCase):
       sess.run(multiplier_flag.assign(False))
       gradient_false_flag = sess.run(grad_to_var[0])
     np_testing.assert_almost_equal(gradient_true_flag,
-                                   self._multiplied_grad_vec,
-                                   5)
-    np_testing.assert_almost_equal(gradient_false_flag,
-                                   self._grad_vec,
-                                   5)
+                                   self._multiplied_grad_vec, 5)
+    np_testing.assert_almost_equal(gradient_false_flag, self._grad_vec, 5)
 
 
 def LogisticClassifier(inputs):
@@ -502,6 +497,7 @@ class TrainTest(test.TestCase):
     purpose.
     """
     dump_root = tempfile.mkdtemp()
+
     def dumping_wrapper(sess):  # pylint: disable=invalid-name
       return dumping_wrapper_lib.DumpingDebugWrapperSession(sess, dump_root)
 
@@ -519,16 +515,13 @@ class TrainTest(test.TestCase):
       train_op = learning.create_train_op(total_loss, optimizer)
 
       loss = learning.train(
-          train_op,
-          None,
-          number_of_steps=1,
-          session_wrapper=dumping_wrapper)
+          train_op, None, number_of_steps=1, session_wrapper=dumping_wrapper)
     self.assertIsNotNone(loss)
 
     run_root = glob.glob(os.path.join(dump_root, 'run_*'))[-1]
     dump = debug_data.DebugDumpDir(run_root)
-    self.assertAllEqual(
-        0, dump.get_tensors('global_step', 0, 'DebugIdentity')[0])
+    self.assertAllEqual(0,
+                        dump.get_tensors('global_step', 0, 'DebugIdentity')[0])
 
   def testTrainWithTrace(self):
     logdir = os.path.join(
@@ -961,8 +954,8 @@ class TrainTest(test.TestCase):
     self.assertGreater(losses[0], losses[1])
 
   def testTrainWithEpochLimit(self):
-    logdir = os.path.join(tempfile.mkdtemp(prefix=self.get_temp_dir()),
-                          'tmp_logs')
+    logdir = os.path.join(
+        tempfile.mkdtemp(prefix=self.get_temp_dir()), 'tmp_logs')
     with ops.Graph().as_default():
       random_seed.set_random_seed(0)
       tf_inputs = constant_op.constant(self._inputs, dtype=dtypes.float32)
@@ -982,7 +975,8 @@ class TrainTest(test.TestCase):
     self.assertIsNotNone(loss)
     self.assertLess(loss, .015)
     self.assertTrue(os.path.isfile('{}/model.ckpt-300.index'.format(logdir)))
-    self.assertTrue(os.path.isfile('{}/model.ckpt-300.data-00000-of-00001'.format(logdir)))
+    self.assertTrue(
+        os.path.isfile('{}/model.ckpt-300.data-00000-of-00001'.format(logdir)))
 
 
 if __name__ == '__main__':

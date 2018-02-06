@@ -149,7 +149,8 @@ class Example {
   // 1.0f.
   struct SparseFeatures {
     std::unique_ptr<TTypes<const int64>::UnalignedConstVec> indices;
-    std::unique_ptr<TTypes<const float>::UnalignedConstVec> values;  // nullptr encodes optional.
+    std::unique_ptr<TTypes<const float>::UnalignedConstVec>
+        values;  // nullptr encodes optional.
   };
 
   // A dense vector which is a row-slice of the underlying matrix.

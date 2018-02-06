@@ -48,10 +48,11 @@ struct MemCpyCopier<ResourceHandle> {
 }  // namespace
 
 template <typename T>
-void ConcatCPU(DeviceBase* d,
-               const std::vector<
-                   std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
-               typename TTypes<T, 2>::Matrix* output) {
+void ConcatCPU(
+    DeviceBase* d,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs,
+    typename TTypes<T, 2>::Matrix* output) {
   if (std::is_same<T, string>::value) {
     // use a large cost here to force strings to be handled by separate threads
     ConcatCPUImpl<T>(d, inputs, 100000, MemCpyCopier<T>(), output);
@@ -72,7 +73,6 @@ REGISTER(qint8)
 REGISTER(quint16)
 REGISTER(qint16)
 REGISTER(qint32)
-TF_CALL_variant(REGISTER)
 
 #if defined(IS_MOBILE_PLATFORM) && !defined(SUPPORT_SELECTIVE_REGISTRATION) && \
     !defined(__ANDROID_TYPES_FULL__)
@@ -86,21 +86,22 @@ TF_CALL_variant(REGISTER)
 
 #ifdef TENSORFLOW_USE_SYCL
 template <typename T>
-void ConcatSYCL(const Eigen::SyclDevice& d,
-               const std::vector<
-                   std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>& inputs,
-               typename TTypes<T, 2>::Matrix* output) {
+void ConcatSYCL(
+    const Eigen::SyclDevice& d,
+    const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&
+        inputs,
+    typename TTypes<T, 2>::Matrix* output) {
   ConcatSYCLImpl<T>(d, inputs, sizeof(T) /* cost_per_unit */, MemCpyCopier<T>(),
-                   output);
+                    output);
 }
-#define REGISTER_SYCL(T)                                                      \
- template void ConcatSYCL<T>(                                                 \
-     const Eigen::SyclDevice&,                                                \
-     const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
-     typename TTypes<T, 2>::Matrix* output);
+#define REGISTER_SYCL(T)                                                       \
+  template void ConcatSYCL<T>(                                                 \
+      const Eigen::SyclDevice&,                                                \
+      const std::vector<std::unique_ptr<typename TTypes<T, 2>::ConstMatrix>>&, \
+      typename TTypes<T, 2>::Matrix* output);
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL)
 
 #undef REGISTER_SYCL
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

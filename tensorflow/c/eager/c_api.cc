@@ -85,15 +85,7 @@ TFE_Context* TFE_NewContext(const TFE_ContextOptions* opts, TF_Status* status) {
     return nullptr;
   }
 
-  TFE_Context* ret = new TFE_Context(session);
-  ret->policy = opts->policy;
-  ret->pflr.reset(new tensorflow::ProcessFunctionLibraryRuntime(
-      ret->session->device_mgr, opts->session_options.options.env,
-      TF_GRAPH_DEF_VERSION, &ret->func_lib_def, {}));
-  ret->rendezvous =
-      new tensorflow::IntraProcessRendezvous(ret->session->device_mgr);
-
-  return ret;
+  return new TFE_Context(*opts, session);
 }
 
 void TFE_DeleteContext(TFE_Context* ctx, TF_Status* status) {
@@ -261,15 +253,6 @@ TFE_Op* TFE_NewOp(TFE_Context* ctx, const char* op_or_function_name,
 
 void TFE_DeleteOp(TFE_Op* op) { delete op; }
 
-static void TFE_OpSetDeviceHelper(TFE_Op* op, tensorflow::Device* device,
-                                  TF_Status* status) {
-  // Questionable heuristic: Place the op on the same device as the first input
-  // placed outside of host memory?
-  if (IsCPU(op->device) && !IsCPU(device)) {
-    op->device = device;
-  }
-}
-
 void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
   tensorflow::Device* d = nullptr;
   if (device_name != nullptr && strlen(device_name) > 0) {
@@ -277,11 +260,24 @@ void TFE_OpSetDevice(TFE_Op* op, const char* device_name, TF_Status* status) {
         op->ctx->session->device_mgr->LookupDevice(device_name, &d);
     if (!status->status.ok()) return;
   }
-  TFE_OpSetDeviceHelper(op, d, status);
+  op->device = d;
+}
+
+const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
+  tensorflow::Device* device =
+      (op->device == nullptr) ? op->ctx->devices()[0] : op->device;
+  return device->name().c_str();
 }
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
-  TFE_OpSetDeviceHelper(op, h->d, status);
+  // Questionable heuristic ...
+  //
+  // Motivation: After an 'op' is placed on GPU because some of its earlier
+  // inputs are on GPU, we want to keep the 'op' there, even if some later
+  // inputs of it are not on GPU.
+  if (IsCPU(op->device) && !IsCPU(h->d)) {
+    op->device = h->d;
+  }
   if (!status->status.ok()) return;
   op->inputs.push_back(h->t);
   op->input_devices.push_back(h->d);
@@ -298,7 +294,7 @@ TF_AttrType TFE_OpGetAttrType(TFE_Op* op, const char* attr_name,
     return TF_ATTR_INT;  // The compiler requires that we return something.
   }
   status->status =
-      tensorflow::AttrTypeByName(op->attr_types, attr_name, &ret, is_list);
+      tensorflow::AttrTypeByName(*op->attr_types, attr_name, &ret, is_list);
   return ret;
 }
 

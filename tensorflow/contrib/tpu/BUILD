@@ -43,6 +43,7 @@ py_library(
     deps = [
         ":tpu_lib",
         ":tpu_py",
+        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",

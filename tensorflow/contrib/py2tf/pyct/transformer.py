@@ -18,7 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import sys
+
 import gast
+import six
 
 from tensorflow.contrib.py2tf.pyct import pretty_printer
 
@@ -48,11 +51,15 @@ class Base(gast.NodeTransformer):
         self._lineno = node.lineno
         self._col_offset = node.col_offset
       return super(Base, self).visit(node)
-    except ValueError as e:
-      msg = '%s\nOccurred at node:\n%s' % (str(e), pretty_printer.fmt(node))
+    except (ValueError, AttributeError, NotImplementedError) as e:
+      msg = '%s: %s\nOccurred at node:\n%s' % (e.__class__.__name__, str(e),
+                                               pretty_printer.fmt(node))
       if source_code:
-        line = self._source.splitlines()[self._lineno - 1]
+        line = source_code.splitlines()[self._lineno - 1]
       else:
         line = '<no source available>'
-      raise PyFlowParseError(
-          msg, (source_file, self._lineno, self._col_offset + 1, line))
+      six.reraise(PyFlowParseError,
+                  PyFlowParseError(
+                      msg,
+                      (source_file, self._lineno, self._col_offset + 1, line)),
+                  sys.exc_info()[2])

@@ -28,122 +28,114 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// cuDNN convolutions are called with specific layouts on the input, output,
+// and filter:
+//
+//   input: DataLayout::kBatchDepthYX
+//   output: DataLayout::kBatchDepthYX
+//   filter: FilterLayout::kOutputInputYX
+//
+// The order dimensions in the constant name is major-to-minor (eg, the
+// most-major dimension of the input is batch, most-minor is X). The
+// specific dimension numbers these named dimensions correspond to is
+// determined by the ConvolutionDimensionNumbers argument. Y is spatial
+// dimension 0, and X is spatial dimension 1.
+//
+// TODO(b/29399649): Be more flexible about handling layouts of cuDNN calls.
+static Status AddBackendConstraintsToDnnConvCustomCall(
+    HloInstruction* instr, LayoutConstraints* constraints) {
+  CHECK(IsCustomCallToDnnConvolution(*instr)) << instr->ToString();
+  Shape input_shape;
+  Shape filter_shape;
+  Shape output_shape;
+  const auto& target = instr->custom_call_target();
+  if (target == kCudnnConvForwardCallTarget) {
+    input_shape = instr->operand(0)->shape();
+    filter_shape = instr->operand(1)->shape();
+    output_shape = instr->shape().tuple_shapes(0);
+  } else if (target == kCudnnConvBackwardInputCallTarget) {
+    input_shape = instr->shape().tuple_shapes(0);
+    filter_shape = instr->operand(1)->shape();
+    output_shape = instr->operand(0)->shape();
+  } else if (target == kCudnnConvBackwardFilterCallTarget) {
+    input_shape = instr->operand(0)->shape();
+    filter_shape = instr->shape().tuple_shapes(0);
+    output_shape = instr->operand(1)->shape();
+  } else {
+    LOG(FATAL) << "Unexpected custom call target: "
+               << instr->custom_call_target();
+  }
+
+  // Construct minor-to-major dimension orders for operands and result.
+  // cuDNN's convolution APIs support the BDYX layout for activations/output
+  // and the OIYX layout for weights.
+  // TODO(b/29399649): Be more flexible about handling layouts of cuDNN
+  // calls after we switch to cuDNN v5.
+  const ConvolutionDimensionNumbers& dimension_numbers =
+      instr->convolution_dimension_numbers();
+  std::vector<int64> input_layout;
+  for (int i = dimension_numbers.input_spatial_dimensions_size() - 1; i >= 0;
+       --i) {
+    input_layout.push_back(dimension_numbers.input_spatial_dimensions(i));
+  }
+  input_layout.push_back(dimension_numbers.input_feature_dimension());
+  input_layout.push_back(dimension_numbers.input_batch_dimension());
+  *input_shape.mutable_layout() = LayoutUtil::MakeLayout(input_layout);
+
+  std::vector<int64> filter_layout;
+  for (int i = dimension_numbers.kernel_spatial_dimensions_size() - 1; i >= 0;
+       --i) {
+    filter_layout.push_back(dimension_numbers.kernel_spatial_dimensions(i));
+  }
+  filter_layout.push_back(dimension_numbers.kernel_input_feature_dimension());
+  filter_layout.push_back(dimension_numbers.kernel_output_feature_dimension());
+  *filter_shape.mutable_layout() = LayoutUtil::MakeLayout(filter_layout);
+
+  std::vector<int64> output_layout;
+  for (int i = dimension_numbers.output_spatial_dimensions_size() - 1; i >= 0;
+       --i) {
+    output_layout.push_back(dimension_numbers.output_spatial_dimensions(i));
+  }
+  output_layout.push_back(dimension_numbers.output_feature_dimension());
+  output_layout.push_back(dimension_numbers.output_batch_dimension());
+  *output_shape.mutable_layout() = LayoutUtil::MakeLayout(output_layout);
+
+  // The custom call returns a tuple of (actual_result, scratch_buffer);
+  // call_result_buf is the logical buffer for actual_result, the thing that
+  // contains the result of the conv call.
+  TF_ASSIGN_OR_RETURN(const LogicalBuffer* call_result_buf,
+                      constraints->points_to_analysis().GetBufferDefinedAt(
+                          instr, /*index=*/{0}));
+
+  // Set layouts of the instructions' shapes.
+  if (target == kCudnnConvForwardCallTarget) {
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(input_shape, instr, 0));
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(filter_shape, instr, 1));
+    TF_RETURN_IF_ERROR(
+        constraints->SetBufferLayout(output_shape.layout(), *call_result_buf));
+  } else if (target == kCudnnConvBackwardInputCallTarget) {
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(output_shape, instr, 0));
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(filter_shape, instr, 1));
+    TF_RETURN_IF_ERROR(
+        constraints->SetBufferLayout(input_shape.layout(), *call_result_buf));
+  } else if (target == kCudnnConvBackwardFilterCallTarget) {
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(input_shape, instr, 0));
+    TF_RETURN_IF_ERROR(constraints->SetOperandLayout(output_shape, instr, 1));
+    TF_RETURN_IF_ERROR(
+        constraints->SetBufferLayout(filter_shape.layout(), *call_result_buf));
+  } else {
+    LOG(FATAL) << "Unexpected custom call target: "
+               << instr->custom_call_target();
+  }
+  return Status::OK();
+}
+
 Status GpuLayoutAssignment::AddBackendConstraints(
     LayoutConstraints* constraints) {
   for (auto* instruction : constraints->computation()->instructions()) {
-    // cuDNN is called with specific layouts on the input, output, and filter:
-    //
-    //   input: DataLayout::kBatchDepthYX
-    //   output: DataLayout::kBatchDepthYX
-    //   filter: FilterLayout::kOutputInputYX
-    //
-    // The order dimensions in the constant name is major-to-minor (eg, the
-    // most-major dimension of the input is batch, most-minor is X). The
-    // specific dimension numbers these named dimensions correspond to is
-    // determined by the ConvolutionDimensionNumbers argument. Y is spatial
-    // dimension 0, and X is spatial dimension 1.
-    //
-    // TODO(b/29399649): Be more flexible about handling layouts of cuDNN calls.
-    if (ImplementedAsDnnConvolution(*instruction)) {
-      HloInstruction* input = nullptr;
-      HloInstruction* filter = nullptr;
-      HloInstruction* output = nullptr;
-      if (instruction->opcode() == HloOpcode::kConvolution) {
-        input = instruction->mutable_operand(0);
-        filter = instruction->mutable_operand(1);
-        output = instruction;
-      } else {
-        CHECK_EQ(HloOpcode::kFusion, instruction->opcode());
-        switch (instruction->fusion_kind()) {
-          case HloInstruction::FusionKind::kConvBackwardFilter:
-            // filter = BackwardFilterConvolve(input, output)
-            input = instruction->mutable_operand(0);
-            filter = instruction;
-            output = instruction->mutable_operand(1);
-            break;
-          case HloInstruction::FusionKind::kConvBackwardInput:
-            // input = BackwardInputConvolve(output, filter)
-            input = instruction;
-            filter = instruction->mutable_operand(1);
-            output = instruction->mutable_operand(0);
-            break;
-          default:
-            LOG(FATAL) << "Not a convolution-fusion";
-        }
-      }
-
-      // Construct minor-to-major dimension orders for operands and result.
-      // cuDNN's convolution APIs support the BDYX layout for activations/output
-      // and the OIYX layout for weights.
-      // TODO(b/29399649): Be more flexible about handling layouts of cuDNN
-      // calls after we switch to cuDNN v5.
-      const ConvolutionDimensionNumbers& dimension_numbers =
-          instruction->convolution_dimension_numbers();
-      std::vector<int64> input_layout;
-      for (int i = dimension_numbers.input_spatial_dimensions_size() - 1;
-           i >= 0; --i) {
-        input_layout.push_back(dimension_numbers.input_spatial_dimensions(i));
-      }
-      input_layout.push_back(dimension_numbers.input_feature_dimension());
-      input_layout.push_back(dimension_numbers.input_batch_dimension());
-      Shape input_shape(input->shape());
-      *input_shape.mutable_layout() = LayoutUtil::MakeLayout(input_layout);
-
-      std::vector<int64> filter_layout;
-      for (int i = dimension_numbers.kernel_spatial_dimensions_size() - 1;
-           i >= 0; --i) {
-        filter_layout.push_back(dimension_numbers.kernel_spatial_dimensions(i));
-      }
-      filter_layout.push_back(
-          dimension_numbers.kernel_input_feature_dimension());
-      filter_layout.push_back(
-          dimension_numbers.kernel_output_feature_dimension());
-      Shape filter_shape(filter->shape());
-      *filter_shape.mutable_layout() = LayoutUtil::MakeLayout(filter_layout);
-
-      std::vector<int64> output_layout;
-      for (int i = dimension_numbers.output_spatial_dimensions_size() - 1;
-           i >= 0; --i) {
-        output_layout.push_back(dimension_numbers.output_spatial_dimensions(i));
-      }
-      output_layout.push_back(dimension_numbers.output_feature_dimension());
-      output_layout.push_back(dimension_numbers.output_batch_dimension());
-      Shape output_shape(output->shape());
-      *output_shape.mutable_layout() = LayoutUtil::MakeLayout(output_layout);
-
-      // Set layouts of the instructions' shapes.
-      if (instruction->opcode() == HloOpcode::kConvolution) {
-        TF_RETURN_IF_ERROR(
-            constraints->SetOperandLayout(input_shape, output, 0));
-        TF_RETURN_IF_ERROR(
-            constraints->SetOperandLayout(filter_shape, output, 1));
-        TF_RETURN_IF_ERROR(
-            constraints->SetInstructionLayout(output_shape, output));
-      } else {
-        CHECK_EQ(HloOpcode::kFusion, instruction->opcode());
-        switch (instruction->fusion_kind()) {
-          case HloInstruction::FusionKind::kConvBackwardFilter:
-            // filter = BackwardFilterConvolve(input, output)
-            TF_RETURN_IF_ERROR(
-                constraints->SetOperandLayout(input_shape, filter, 0));
-            TF_RETURN_IF_ERROR(
-                constraints->SetInstructionLayout(filter_shape, filter));
-            TF_RETURN_IF_ERROR(
-                constraints->SetOperandLayout(output_shape, filter, 1));
-            break;
-          case HloInstruction::FusionKind::kConvBackwardInput:
-            // input = BackwardInputConvolve(output, filter)
-            TF_RETURN_IF_ERROR(
-                constraints->SetInstructionLayout(input_shape, input));
-            TF_RETURN_IF_ERROR(
-                constraints->SetOperandLayout(output_shape, input, 0));
-            TF_RETURN_IF_ERROR(
-                constraints->SetOperandLayout(filter_shape, input, 1));
-            break;
-          default:
-            LOG(FATAL) << "Not a convolution-fusion";
-        }
-      }
+    if (IsCustomCallToDnnConvolution(*instruction)) {
+      TF_RETURN_IF_ERROR(
+          AddBackendConstraintsToDnnConvCustomCall(instruction, constraints));
     }
   }
   return Status::OK();
@@ -151,9 +143,12 @@ Status GpuLayoutAssignment::AddBackendConstraints(
 
 bool GpuLayoutAssignment::CustomCallRequiresMajorFirstLayout(
     const HloInstruction* instruction) {
-  // Inputs to cudnn batchnorm custom calls don't need the major-first layout
-  // (i.e. {n, n-1, ...0}) -- we can handle any layout.
-  return !IsCustomCallToDnnBatchNorm(*instruction);
+  // - Inputs to cudnn batchnorm custom calls don't need the major-first layout
+  //   (i.e. {n, n-1, ...0}) -- we can handle any layout.
+  // - Inputs to cudnn convolution require custom layouts handled in
+  //   AddBackendConstraints.
+  return !IsCustomCallToDnnBatchNorm(*instruction) &&
+         !IsCustomCallToDnnConvolution(*instruction);
 }
 
 Status GpuLayoutAssignment::PropagateOperandConstraint(

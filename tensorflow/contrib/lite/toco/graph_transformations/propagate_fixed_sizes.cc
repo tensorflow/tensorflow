@@ -1120,7 +1120,8 @@ void ProcessStridedSliceOperator(Model* model, StridedSliceOperator* op) {
       stop += input_array.shape().dims(i);
     }
 
-    int dim_size = (stop - start) / op->strides[i];
+    int dim_size = ceil((stop - start) / static_cast<float>(op->strides[i]));
+    dim_size = dim_size < 0 ? 0 : dim_size;
     if (op->shrink_axis_mask & mask) {
       CHECK_EQ(dim_size, 1) << "Output size for an axis must compute to 1 when "
                                "shrinking that axis";
