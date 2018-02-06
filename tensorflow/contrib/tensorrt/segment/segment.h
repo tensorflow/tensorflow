@@ -17,22 +17,22 @@ limitations under the License.
 #define TENSORFLOW_CONTRIB_TENSORRT_SEGMENT_SEGMENT_H_
 
 #include <set>
-#include <string>
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 
-using SegmentNodesVector = std::vector<std::set<std::string>>;
+using SegmentNodesVector = std::vector<std::set<string>>;
 
 struct SegmentOptions {
   // Segment must contain at least this many nodes.
   int minimum_segment_size = 2;
-  std::set<std::string> exclude_node_list;
+  std::set<string> exclude_node_list;
 };
 
 // Get the subgraphs of a graph that can be handled by TensorRT.

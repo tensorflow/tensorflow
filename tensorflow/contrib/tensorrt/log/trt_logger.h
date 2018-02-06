@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
 #define TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
 
-#include <string>
+#include "tensorflow/core/platform/types.h"
 
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
@@ -30,7 +30,7 @@ class Logger : public nvinfer1::ILogger {
  private:
   void log(nvinfer1::ILogger::Severity severity, const char* msg) override;
 
-  std::string name_;
+  string name_;
 };
 
 }  // namespace tensorrt

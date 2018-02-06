@@ -13,15 +13,13 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-/* wrap trt_conversion */
+/* Wrap trt_conversion */
 %{
 #define SWIG_FILE_WITH_INIT
 %}
-%include "std_string.i"
 %include "std_pair.i"
-%include "tensorflow/python/lib/core/strings.i"
 %include "tensorflow/python/platform/base.i"
-%template(StringPair) std::pair<string,string>;
+%template(StringPair) std::pair<string, string>;
 %template() std::pair<swig::SwigPtr_PyObject, swig::SwigPtr_PyObject>;
 
 %{

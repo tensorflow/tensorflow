@@ -13,13 +13,14 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/contrib/tensorrt/segment/segment.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -35,7 +36,7 @@ class SegmentTest : public ::testing::Test {
                     TF_Status* s, const char* name);
 
   std::function<bool(const NodeDef&)> MakeCandidateFn(
-      const std::set<std::string>& node_names);
+      const std::set<string>& node_names);
 
  protected:
   void PlaceholderHelper(TF_Graph* graph, TF_Status* s, const char* name,
@@ -60,7 +61,7 @@ bool SegmentTest::GetGraphDef(TF_Graph* graph,
 }
 
 std::function<bool(const NodeDef&)> SegmentTest::MakeCandidateFn(
-    const std::set<std::string>& node_names) {
+    const std::set<string>& node_names) {
   return [node_names](const NodeDef& node) -> bool {
     return node_names.find(node.name()) != node_names.end();
   };
@@ -103,7 +104,6 @@ TF_Operation* SegmentTest::Add(TF_Operation* l, TF_Operation* r,
   return op;
 }
 
-//------------------------------------------------------------------------------
 TEST_F(SegmentTest, Empty) {
   TF_Graph* graph = TF_NewGraph();
 
@@ -119,7 +119,6 @@ TEST_F(SegmentTest, Empty) {
   EXPECT_TRUE(segments.empty());
 }
 
-//------------------------------------------------------------------------------
 TEST_F(SegmentTest, Simple) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -163,14 +162,13 @@ TEST_F(SegmentTest, Simple) {
 
   // Expect all Add operations to be collapsed into a single segment
   ASSERT_EQ(segments.size(), 1);
-  std::vector<std::string> expected{"add0", "add1", "add2", "add3", "add4"};
+  std::vector<string> expected{"add0", "add1", "add2", "add3", "add4"};
   for (const auto& ex : expected) {
     EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
         << "Missing expected node " << ex;
   }
 }
 
-//------------------------------------------------------------------------------
 TEST_F(SegmentTest, AvoidCycle) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -218,7 +216,6 @@ TEST_F(SegmentTest, AvoidCycle) {
   EXPECT_EQ(segments.size(), 0);
 }
 
-//------------------------------------------------------------------------------
 TEST_F(SegmentTest, Multiple) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -274,20 +271,19 @@ TEST_F(SegmentTest, Multiple) {
   // Expect two subgraphs
   EXPECT_EQ(segments.size(), 2);
 
-  std::vector<std::string> expected0{"add0", "add1", "add2", "add3"};
+  std::vector<string> expected0{"add0", "add1", "add2", "add3"};
   for (const auto& ex : expected0) {
     EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
         << "Missing expected node " << ex;
   }
 
-  std::vector<std::string> expected1{"add6", "add8"};
+  std::vector<string> expected1{"add6", "add8"};
   for (const auto& ex : expected1) {
     EXPECT_TRUE(segments[1].find(ex) != segments[1].end())
         << "Missing expected node " << ex;
   }
 }
 
-//------------------------------------------------------------------------------
 TEST_F(SegmentTest, BigIfElse) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -343,13 +339,13 @@ TEST_F(SegmentTest, BigIfElse) {
   // Expect 2 subgraphs
   EXPECT_EQ(segments.size(), 2);
 
-  std::vector<std::string> expected0{"add3", "add4", "add5", "add6", "add7"};
+  std::vector<string> expected0{"add3", "add4", "add5", "add6", "add7"};
   for (const auto& ex : expected0) {
     EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
         << "Missing expected node " << ex;
   }
 
-  std::vector<std::string> expected1{"add0", "add1"};
+  std::vector<string> expected1{"add0", "add1"};
   for (const auto& ex : expected1) {
     EXPECT_TRUE(segments[1].find(ex) != segments[1].end())
         << "Missing expected node " << ex;
