@@ -614,7 +614,7 @@ TEST_F(BufferAssignmentTest, TrivialMap) {
   BufferAllocation map_buffer = GetAssignedOutputAllocation(*buffers, map);
   EXPECT_NE(param0_buffer.index(), map_buffer.index());
 
-  // The final computation node of the map is an add of an f32 parm and a
+  // The final computation node of the map is an add of an f32 param and a
   // constant.
   EXPECT_EQ(HloOpcode::kAdd, inner_last->opcode());
   const BufferAllocation& inner_add_buffer =
