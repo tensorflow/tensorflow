@@ -75,6 +75,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
 template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
+  auto* params =
+      reinterpret_cast<TfLiteResizeBilinearParams*>(node->builtin_data);
+
   TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TfLiteTensor* output = GetOutput(context, node, kOutputTensor);
   TfLiteTensor* size = GetInput(context, node, kSizeTensor);
@@ -86,10 +89,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   }
 
   if (output->type == kTfLiteFloat32) {
-#define TF_LITE_RESIZE_BILINEAR(type)                                     \
-  type::ResizeBilinear(GetTensorData<float>(input), GetTensorDims(input), \
-                       GetTensorData<int32>(size), GetTensorDims(size),   \
-                       GetTensorData<float>(output), GetTensorDims(output))
+#define TF_LITE_RESIZE_BILINEAR(type)                                       \
+  type::ResizeBilinear(GetTensorData<float>(input), GetTensorDims(input),   \
+                       GetTensorData<int32>(size), GetTensorDims(size),     \
+                       GetTensorData<float>(output), GetTensorDims(output), \
+                       params->align_corners)
 
     if (kernel_type == kReference) {
       TF_LITE_RESIZE_BILINEAR(reference_ops);

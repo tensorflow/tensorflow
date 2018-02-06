@@ -29,29 +29,19 @@ class ProcessFunctionLibraryRuntime {
   // Creates FunctionLibraryRuntime objects for each device in the provided
   // DeviceMgr. Caller needs to make sure that device_mgr, lib_def and parent
   // (if provided) outlive this object.
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options,
-                                DistributedFunctionLibraryRuntime* parent);
+  ProcessFunctionLibraryRuntime(
+      const DeviceMgr* device_mgr, Env* env, int graph_def_version,
+      const FunctionLibraryDefinition* lib_def,
+      const OptimizerOptions& optimizer_options,
+      DistributedFunctionLibraryRuntime* parent = nullptr);
 
+  // With `custom_kernel_creator`.
   ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
                                 int graph_def_version,
                                 const FunctionLibraryDefinition* lib_def,
                                 const OptimizerOptions& optimizer_options,
                                 CustomKernelCreator custom_kernel_creator,
                                 DistributedFunctionLibraryRuntime* parent);
-
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options);
-
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options,
-                                CustomKernelCreator custom_kernel_creator);
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
   // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
@@ -144,6 +134,12 @@ class ProcessFunctionLibraryRuntime {
 
   // Removes handle from the state owned by this object.
   Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
+
+  Status Clone(Env* env, int graph_def_version,
+               const OptimizerOptions& optimizer_options,
+               CustomKernelCreator custom_kernel_creator,
+               std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr);
 
   friend class FunctionLibraryRuntimeImpl;
 

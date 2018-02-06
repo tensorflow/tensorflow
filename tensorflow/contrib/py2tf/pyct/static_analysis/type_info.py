@@ -116,28 +116,30 @@ class TypeInfoResolver(transformer.Base):
     return node
 
   def _process_function_arg(self, arg_name):
-    if self.function_level == 1 and arg_name in self.context.arg_types:
+    str_name = str(arg_name)
+    if self.function_level == 1 and str_name in self.context.arg_types:
       # Forge a node to hold the type information, so that method calls on
       # it can resolve the type.
-      type_holder = gast.Name(arg_name, gast.Load(), None)
-      type_string, type_obj = self.context.arg_types[arg_name]
+      type_holder = arg_name.ast()
+      type_string, type_obj = self.context.arg_types[str_name]
       anno.setanno(type_holder, 'type', type_obj)
       anno.setanno(type_holder, 'type_fqn', tuple(type_string.split('.')))
       self.scope.setval(arg_name, type_holder)
 
   def visit_arg(self, node):
-    self._process_function_arg(node.arg)
+    self._process_function_arg(anno.getanno(node.arg, anno.Basic.QN))
     return node
 
   def visit_Name(self, node):
     self.generic_visit(node)
+    qn = anno.getanno(node, anno.Basic.QN)
     if isinstance(node.ctx, gast.Param):
-      self._process_function_arg(node.id)
-    elif isinstance(node.ctx, gast.Load) and self.scope.hasval(node.id):
+      self._process_function_arg(qn)
+    elif isinstance(node.ctx, gast.Load) and self.scope.hasval(qn):
       # E.g. if we had
       # a = b
       # then for future references to `a` we should have traced_source = `b`
-      traced_source = self.scope.getval(node.id)
+      traced_source = self.scope.getval(qn)
       if anno.hasanno(traced_source, 'type'):
         anno.setanno(node, 'type', anno.getanno(traced_source, 'type'))
         anno.setanno(node, 'type_fqn', anno.getanno(traced_source, 'type_fqn'))
@@ -159,16 +161,11 @@ class TypeInfoResolver(transformer.Base):
     for t in targets:
       if isinstance(t, gast.Tuple):
         for i, e in enumerate(t.elts):
-          self.scope.setval(e.id,
-                            gast.Subscript(
-                                source, gast.Index(i), ctx=gast.Store()))
-      elif isinstance(t, gast.Name):
-        self.scope.setval(t.id, source)
-      elif isinstance(t, gast.Attribute):
-        if not (isinstance(t.value, gast.Name) and t.value.id == 'self'):
-          raise ValueError(
-              'Dont know how to handle assignment to attributes of objects'
-              ' other than "self": [%s].%s' % (t.value, t.attr))
+          self.scope.setval(
+              anno.getanno(e, anno.Basic.QN),
+              gast.Subscript(source, gast.Index(i), ctx=gast.Store()))
+      elif isinstance(t, (gast.Name, gast.Attribute)):
+        self.scope.setval(anno.getanno(t, anno.Basic.QN), source)
       else:
         raise ValueError('Dont know how to handle assignment to %s' % t)
 

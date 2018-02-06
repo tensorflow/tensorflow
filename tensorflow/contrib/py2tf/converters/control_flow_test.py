@@ -49,8 +49,8 @@ class ControlFlowTest(converter_test_base.TestCase):
         i += 1
       return s, i, n
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = control_flow.transform(node, TestNamer())
+    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = control_flow.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
 
@@ -65,8 +65,8 @@ class ControlFlowTest(converter_test_base.TestCase):
         n -= 1
       return n
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = control_flow.transform(node, TestNamer())
+    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = control_flow.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
 
@@ -84,8 +84,8 @@ class ControlFlowTest(converter_test_base.TestCase):
         b = 2 * n
       return a, b
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = control_flow.transform(node, TestNamer())
+    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = control_flow.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
 
@@ -102,8 +102,8 @@ class ControlFlowTest(converter_test_base.TestCase):
         n = -n
       return n
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = control_flow.transform(node, TestNamer())
+    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = control_flow.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
 

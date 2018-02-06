@@ -19,36 +19,29 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+from scipy import special
 from scipy import stats
 
 from tensorflow.contrib.bayesflow.python.ops import hmc
-from tensorflow.contrib.bayesflow.python.ops.hmc_impl import _compute_energy_change
-from tensorflow.contrib.bayesflow.python.ops.hmc_impl import _leapfrog_integrator
 
-from tensorflow.contrib.distributions.python.ops import independent as independent_lib
-from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import gradients_impl as gradients_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-from tensorflow.python.ops.distributions import gamma as gamma_lib
-from tensorflow.python.ops.distributions import normal as normal_lib
 from tensorflow.python.platform import test
-from tensorflow.python.platform import tf_logging as logging_ops
+from tensorflow.python.platform import tf_logging as logging
 
 
-def _reduce_variance(x, axis=None, keepdims=False):
-  sample_mean = math_ops.reduce_mean(x, axis, keepdims=True)
-  return math_ops.reduce_mean(
-      math_ops.squared_difference(x, sample_mean), axis, keepdims)
-
-
+# TODO(b/66964210): Test float16.
 class HMCTest(test.TestCase):
 
   def setUp(self):
     self._shape_param = 5.
     self._rate_param = 10.
+    self._expected_x = (special.digamma(self._shape_param)
+                        - np.log(self._rate_param))
+    self._expected_exp_x = self._shape_param / self._rate_param
 
     random_seed.set_random_seed(10003)
     np.random.seed(10003)
@@ -70,46 +63,63 @@ class HMCTest(test.TestCase):
                                self._rate_param * math_ops.exp(x),
                                event_dims)
 
-  def _integrator_conserves_energy(self, x, independent_chain_ndims, sess,
+  def _log_gamma_log_prob_grad(self, x, event_dims=()):
+    """Computes log-pdf and gradient of a log-gamma random variable.
+
+    Args:
+      x: Value of the random variable.
+      event_dims: Dimensions not to treat as independent. Default is (),
+        i.e., all dimensions are independent.
+
+    Returns:
+      log_prob: The log-pdf up to a normalizing constant.
+      grad: The gradient of the log-pdf with respect to x.
+    """
+    return (math_ops.reduce_sum(self._shape_param * x -
+                                self._rate_param * math_ops.exp(x),
+                                event_dims),
+            self._shape_param - self._rate_param * math_ops.exp(x))
+
+  def _n_event_dims(self, x_shape, event_dims):
+    return np.prod([int(x_shape[i]) for i in event_dims])
+
+  def _integrator_conserves_energy(self, x, event_dims, sess,
                                    feed_dict=None):
-    step_size = array_ops.placeholder(np.float32, [], name="step_size")
-    hmc_lf_steps = array_ops.placeholder(np.int32, [], name="hmc_lf_steps")
+    def potential_and_grad(x):
+      log_prob, grad = self._log_gamma_log_prob_grad(x, event_dims)
+      return -log_prob, -grad
+
+    step_size = array_ops.placeholder(np.float32, [], name='step_size')
+    hmc_lf_steps = array_ops.placeholder(np.int32, [], name='hmc_lf_steps')
 
     if feed_dict is None:
       feed_dict = {}
     feed_dict[hmc_lf_steps] = 1000
 
-    event_dims = math_ops.range(independent_chain_ndims,
-                                array_ops.rank(x))
-
     m = random_ops.random_normal(array_ops.shape(x))
-    log_prob_0 = self._log_gamma_log_prob(x, event_dims)
-    grad_0 = gradients_ops.gradients(log_prob_0, x)
-    old_energy = -log_prob_0 + 0.5 * math_ops.reduce_sum(m**2., event_dims)
+    potential_0, grad_0 = potential_and_grad(x)
+    old_energy = potential_0 + 0.5 * math_ops.reduce_sum(m * m,
+                                                         event_dims)
 
-    new_m, _, log_prob_1, _ = _leapfrog_integrator(
-        current_momentums=[m],
-        target_log_prob_fn=lambda x: self._log_gamma_log_prob(x, event_dims),
-        current_state_parts=[x],
-        step_sizes=[step_size],
-        num_leapfrog_steps=hmc_lf_steps,
-        current_target_log_prob=log_prob_0,
-        current_grads_target_log_prob=grad_0)
-    new_m = new_m[0]
+    _, new_m, potential_1, _ = (
+        hmc.leapfrog_integrator(step_size, hmc_lf_steps, x,
+                                m, potential_and_grad, grad_0))
 
-    new_energy = -log_prob_1 + 0.5 * math_ops.reduce_sum(new_m * new_m,
+    new_energy = potential_1 + 0.5 * math_ops.reduce_sum(new_m * new_m,
                                                          event_dims)
 
     x_shape = sess.run(x, feed_dict).shape
-    event_size = np.prod(x_shape[independent_chain_ndims:])
-    feed_dict[step_size] = 0.1 / event_size
-    old_energy_, new_energy_ = sess.run([old_energy, new_energy],
-                                        feed_dict)
-    logging_ops.vlog(1, "average energy relative change: {}".format(
-        (1. - new_energy_ / old_energy_).mean()))
-    self.assertAllClose(old_energy_, new_energy_, atol=0., rtol=0.02)
+    n_event_dims = self._n_event_dims(x_shape, event_dims)
+    feed_dict[step_size] = 0.1 / n_event_dims
+    old_energy_val, new_energy_val = sess.run([old_energy, new_energy],
+                                              feed_dict)
+    logging.vlog(1, 'average energy change: {}'.format(
+        abs(old_energy_val - new_energy_val).mean()))
 
-  def _integrator_conserves_energy_wrapper(self, independent_chain_ndims):
+    self.assertAllEqual(np.ones_like(new_energy_val, dtype=np.bool),
+                        abs(old_energy_val - new_energy_val) < 1.)
+
+  def _integrator_conserves_energy_wrapper(self, event_dims):
     """Tests the long-term energy conservation of the leapfrog integrator.
 
     The leapfrog integrator is symplectic, so for sufficiently small step
@@ -117,167 +127,135 @@ class HMCTest(test.TestCase):
     the energy of the system blowing up or collapsing.
 
     Args:
-      independent_chain_ndims: Python `int` scalar representing the number of
-        dims associated with independent chains.
+      event_dims: A tuple of dimensions that should not be treated as
+        independent. This allows for multiple chains to be run independently
+        in parallel. Default is (), i.e., all dimensions are independent.
     """
     with self.test_session() as sess:
-      x_ph = array_ops.placeholder(np.float32, name="x_ph")
-      feed_dict = {x_ph: np.random.rand(50, 10, 2)}
-      self._integrator_conserves_energy(x_ph, independent_chain_ndims,
-                                        sess, feed_dict)
+      x_ph = array_ops.placeholder(np.float32, name='x_ph')
+
+      feed_dict = {x_ph: np.zeros([50, 10, 2])}
+      self._integrator_conserves_energy(x_ph, event_dims, sess, feed_dict)
 
   def testIntegratorEnergyConservationNullShape(self):
-    self._integrator_conserves_energy_wrapper(0)
+    self._integrator_conserves_energy_wrapper([])
 
   def testIntegratorEnergyConservation1(self):
-    self._integrator_conserves_energy_wrapper(1)
+    self._integrator_conserves_energy_wrapper([1])
 
   def testIntegratorEnergyConservation2(self):
-    self._integrator_conserves_energy_wrapper(2)
+    self._integrator_conserves_energy_wrapper([2])
 
-  def testIntegratorEnergyConservation3(self):
-    self._integrator_conserves_energy_wrapper(3)
+  def testIntegratorEnergyConservation12(self):
+    self._integrator_conserves_energy_wrapper([1, 2])
 
-  def _chain_gets_correct_expectations(self, x, independent_chain_ndims,
-                                       sess, feed_dict=None):
+  def testIntegratorEnergyConservation012(self):
+    self._integrator_conserves_energy_wrapper([0, 1, 2])
+
+  def _chain_gets_correct_expectations(self, x, event_dims, sess,
+                                       feed_dict=None):
     def log_gamma_log_prob(x):
-      event_dims = math_ops.range(independent_chain_ndims,
-                                  array_ops.rank(x))
       return self._log_gamma_log_prob(x, event_dims)
 
-    num_results = array_ops.placeholder(
-        np.int32, [], name="num_results")
-    step_size = array_ops.placeholder(
-        np.float32, [], name="step_size")
-    num_leapfrog_steps = array_ops.placeholder(
-        np.int32, [], name="num_leapfrog_steps")
+    step_size = array_ops.placeholder(np.float32, [], name='step_size')
+    hmc_lf_steps = array_ops.placeholder(np.int32, [], name='hmc_lf_steps')
+    hmc_n_steps = array_ops.placeholder(np.int32, [], name='hmc_n_steps')
 
     if feed_dict is None:
       feed_dict = {}
-    feed_dict.update({num_results: 150,
-                      step_size: 0.1,
-                      num_leapfrog_steps: 2})
+    feed_dict.update({step_size: 0.1,
+                      hmc_lf_steps: 2,
+                      hmc_n_steps: 300})
 
-    samples, kernel_results = hmc.sample_chain(
-        num_results=num_results,
-        target_log_prob_fn=log_gamma_log_prob,
-        current_state=x,
-        step_size=step_size,
-        num_leapfrog_steps=num_leapfrog_steps,
-        num_burnin_steps=150,
-        seed=42)
+    sample_chain, acceptance_prob_chain = hmc.chain([hmc_n_steps],
+                                                    step_size,
+                                                    hmc_lf_steps,
+                                                    x, log_gamma_log_prob,
+                                                    event_dims)
 
-    expected_x = (math_ops.digamma(self._shape_param)
-                  - np.log(self._rate_param))
+    acceptance_probs, samples = sess.run([acceptance_prob_chain, sample_chain],
+                                         feed_dict)
+    samples = samples[feed_dict[hmc_n_steps] // 2:]
+    expected_x_est = samples.mean()
+    expected_exp_x_est = np.exp(samples).mean()
 
-    expected_exp_x = self._shape_param / self._rate_param
+    logging.vlog(1, 'True      E[x, exp(x)]: {}\t{}'.format(
+        self._expected_x, self._expected_exp_x))
+    logging.vlog(1, 'Estimated E[x, exp(x)]: {}\t{}'.format(
+        expected_x_est, expected_exp_x_est))
+    self.assertNear(expected_x_est, self._expected_x, 2e-2)
+    self.assertNear(expected_exp_x_est, self._expected_exp_x, 2e-2)
+    self.assertTrue((acceptance_probs > 0.5).all())
+    self.assertTrue((acceptance_probs <= 1.0).all())
 
-    acceptance_probs_, samples_, expected_x_ = sess.run(
-        [kernel_results.acceptance_probs, samples, expected_x],
-        feed_dict)
-
-    actual_x = samples_.mean()
-    actual_exp_x = np.exp(samples_).mean()
-
-    logging_ops.vlog(1, "True      E[x, exp(x)]: {}\t{}".format(
-        expected_x_, expected_exp_x))
-    logging_ops.vlog(1, "Estimated E[x, exp(x)]: {}\t{}".format(
-        actual_x, actual_exp_x))
-    self.assertNear(actual_x, expected_x_, 2e-2)
-    self.assertNear(actual_exp_x, expected_exp_x, 2e-2)
-    self.assertTrue((acceptance_probs_ > 0.5).all())
-    self.assertTrue((acceptance_probs_ <= 1.0).all())
-
-  def _chain_gets_correct_expectations_wrapper(self, independent_chain_ndims):
+  def _chain_gets_correct_expectations_wrapper(self, event_dims):
     with self.test_session() as sess:
-      x_ph = array_ops.placeholder(np.float32, name="x_ph")
-      feed_dict = {x_ph: np.random.rand(50, 10, 2)}
-      self._chain_gets_correct_expectations(x_ph, independent_chain_ndims,
-                                            sess, feed_dict)
+      x_ph = array_ops.placeholder(np.float32, name='x_ph')
+
+      feed_dict = {x_ph: np.zeros([50, 10, 2])}
+      self._chain_gets_correct_expectations(x_ph, event_dims, sess,
+                                            feed_dict)
 
   def testHMCChainExpectationsNullShape(self):
-    self._chain_gets_correct_expectations_wrapper(0)
+    self._chain_gets_correct_expectations_wrapper([])
 
   def testHMCChainExpectations1(self):
-    self._chain_gets_correct_expectations_wrapper(1)
+    self._chain_gets_correct_expectations_wrapper([1])
 
   def testHMCChainExpectations2(self):
-    self._chain_gets_correct_expectations_wrapper(2)
+    self._chain_gets_correct_expectations_wrapper([2])
 
-  def _kernel_leaves_target_invariant(self, initial_draws,
-                                      independent_chain_ndims,
+  def testHMCChainExpectations12(self):
+    self._chain_gets_correct_expectations_wrapper([1, 2])
+
+  def _kernel_leaves_target_invariant(self, initial_draws, event_dims,
                                       sess, feed_dict=None):
     def log_gamma_log_prob(x):
-      event_dims = math_ops.range(independent_chain_ndims, array_ops.rank(x))
       return self._log_gamma_log_prob(x, event_dims)
 
     def fake_log_prob(x):
       """Cooled version of the target distribution."""
       return 1.1 * log_gamma_log_prob(x)
 
-    step_size = array_ops.placeholder(np.float32, [], name="step_size")
+    step_size = array_ops.placeholder(np.float32, [], name='step_size')
 
     if feed_dict is None:
       feed_dict = {}
 
     feed_dict[step_size] = 0.4
 
-    sample, kernel_results = hmc.kernel(
-        target_log_prob_fn=log_gamma_log_prob,
-        current_state=initial_draws,
-        step_size=step_size,
-        num_leapfrog_steps=5,
-        seed=43)
-
-    bad_sample, bad_kernel_results = hmc.kernel(
-        target_log_prob_fn=fake_log_prob,
-        current_state=initial_draws,
-        step_size=step_size,
-        num_leapfrog_steps=5,
-        seed=44)
-
-    [
-        acceptance_probs_,
-        bad_acceptance_probs_,
-        initial_draws_,
-        updated_draws_,
-        fake_draws_,
-    ] = sess.run([
-        kernel_results.acceptance_probs,
-        bad_kernel_results.acceptance_probs,
-        initial_draws,
-        sample,
-        bad_sample,
-    ], feed_dict)
-
+    sample, acceptance_probs, _, _ = hmc.kernel(step_size, 5, initial_draws,
+                                                log_gamma_log_prob, event_dims)
+    bad_sample, bad_acceptance_probs, _, _ = hmc.kernel(
+        step_size, 5, initial_draws, fake_log_prob, event_dims)
+    (acceptance_probs_val, bad_acceptance_probs_val, initial_draws_val,
+     updated_draws_val, fake_draws_val) = sess.run([acceptance_probs,
+                                                    bad_acceptance_probs,
+                                                    initial_draws, sample,
+                                                    bad_sample], feed_dict)
     # Confirm step size is small enough that we usually accept.
-    self.assertGreater(acceptance_probs_.mean(), 0.5)
-    self.assertGreater(bad_acceptance_probs_.mean(), 0.5)
-
+    self.assertGreater(acceptance_probs_val.mean(), 0.5)
+    self.assertGreater(bad_acceptance_probs_val.mean(), 0.5)
     # Confirm step size is large enough that we sometimes reject.
-    self.assertLess(acceptance_probs_.mean(), 0.99)
-    self.assertLess(bad_acceptance_probs_.mean(), 0.99)
-
-    _, ks_p_value_true = stats.ks_2samp(initial_draws_.flatten(),
-                                        updated_draws_.flatten())
-    _, ks_p_value_fake = stats.ks_2samp(initial_draws_.flatten(),
-                                        fake_draws_.flatten())
-
-    logging_ops.vlog(1, "acceptance rate for true target: {}".format(
-        acceptance_probs_.mean()))
-    logging_ops.vlog(1, "acceptance rate for fake target: {}".format(
-        bad_acceptance_probs_.mean()))
-    logging_ops.vlog(1, "K-S p-value for true target: {}".format(
-        ks_p_value_true))
-    logging_ops.vlog(1, "K-S p-value for fake target: {}".format(
-        ks_p_value_fake))
+    self.assertLess(acceptance_probs_val.mean(), 0.99)
+    self.assertLess(bad_acceptance_probs_val.mean(), 0.99)
+    _, ks_p_value_true = stats.ks_2samp(initial_draws_val.flatten(),
+                                        updated_draws_val.flatten())
+    _, ks_p_value_fake = stats.ks_2samp(initial_draws_val.flatten(),
+                                        fake_draws_val.flatten())
+    logging.vlog(1, 'acceptance rate for true target: {}'.format(
+        acceptance_probs_val.mean()))
+    logging.vlog(1, 'acceptance rate for fake target: {}'.format(
+        bad_acceptance_probs_val.mean()))
+    logging.vlog(1, 'K-S p-value for true target: {}'.format(ks_p_value_true))
+    logging.vlog(1, 'K-S p-value for fake target: {}'.format(ks_p_value_fake))
     # Make sure that the MCMC update hasn't changed the empirical CDF much.
     self.assertGreater(ks_p_value_true, 1e-3)
     # Confirm that targeting the wrong distribution does
     # significantly change the empirical CDF.
     self.assertLess(ks_p_value_fake, 1e-6)
 
-  def _kernel_leaves_target_invariant_wrapper(self, independent_chain_ndims):
+  def _kernel_leaves_target_invariant_wrapper(self, event_dims):
     """Tests that the kernel leaves the target distribution invariant.
 
     Draws some independent samples from the target distribution,
@@ -289,116 +267,86 @@ class HMCTest(test.TestCase):
     does change the target distribution. (And that we can detect that.)
 
     Args:
-      independent_chain_ndims: Python `int` scalar representing the number of
-        dims associated with independent chains.
+      event_dims: A tuple of dimensions that should not be treated as
+        independent. This allows for multiple chains to be run independently
+        in parallel. Default is (), i.e., all dimensions are independent.
     """
     with self.test_session() as sess:
       initial_draws = np.log(np.random.gamma(self._shape_param,
                                              size=[50000, 2, 2]))
       initial_draws -= np.log(self._rate_param)
-      x_ph = array_ops.placeholder(np.float32, name="x_ph")
+      x_ph = array_ops.placeholder(np.float32, name='x_ph')
 
       feed_dict = {x_ph: initial_draws}
 
-      self._kernel_leaves_target_invariant(x_ph, independent_chain_ndims,
-                                           sess, feed_dict)
+      self._kernel_leaves_target_invariant(x_ph, event_dims, sess,
+                                           feed_dict)
+
+  def testKernelLeavesTargetInvariantNullShape(self):
+    self._kernel_leaves_target_invariant_wrapper([])
 
   def testKernelLeavesTargetInvariant1(self):
-    self._kernel_leaves_target_invariant_wrapper(1)
+    self._kernel_leaves_target_invariant_wrapper([1])
 
   def testKernelLeavesTargetInvariant2(self):
-    self._kernel_leaves_target_invariant_wrapper(2)
+    self._kernel_leaves_target_invariant_wrapper([2])
 
-  def testKernelLeavesTargetInvariant3(self):
-    self._kernel_leaves_target_invariant_wrapper(3)
+  def testKernelLeavesTargetInvariant12(self):
+    self._kernel_leaves_target_invariant_wrapper([1, 2])
 
-  def _ais_gets_correct_log_normalizer(self, init, independent_chain_ndims,
-                                       sess, feed_dict=None):
+  def _ais_gets_correct_log_normalizer(self, init, event_dims, sess,
+                                       feed_dict=None):
     def proposal_log_prob(x):
-      event_dims = math_ops.range(independent_chain_ndims, array_ops.rank(x))
-      return -0.5 * math_ops.reduce_sum(x**2. + np.log(2 * np.pi),
-                                        axis=event_dims)
+      return math_ops.reduce_sum(-0.5 * x * x - 0.5 * np.log(2*np.pi),
+                                 event_dims)
 
     def target_log_prob(x):
-      event_dims = math_ops.range(independent_chain_ndims, array_ops.rank(x))
       return self._log_gamma_log_prob(x, event_dims)
 
     if feed_dict is None:
       feed_dict = {}
 
-    num_steps = 200
+    w, _, _ = hmc.ais_chain(200, 0.5, 2, init, target_log_prob,
+                            proposal_log_prob, event_dims)
 
-    _, ais_weights, _ = hmc.sample_annealed_importance_chain(
-        proposal_log_prob_fn=proposal_log_prob,
-        num_steps=num_steps,
-        target_log_prob_fn=target_log_prob,
-        step_size=0.5,
-        current_state=init,
-        num_leapfrog_steps=2,
-        seed=45)
+    w_val = sess.run(w, feed_dict)
+    init_shape = sess.run(init, feed_dict).shape
+    normalizer_multiplier = np.prod([init_shape[i] for i in event_dims])
 
-    event_shape = array_ops.shape(init)[independent_chain_ndims:]
-    event_size = math_ops.reduce_prod(event_shape)
+    true_normalizer = -self._shape_param * np.log(self._rate_param)
+    true_normalizer += special.gammaln(self._shape_param)
+    true_normalizer *= normalizer_multiplier
 
-    log_true_normalizer = (
-        -self._shape_param * math_ops.log(self._rate_param)
-        + math_ops.lgamma(self._shape_param))
-    log_true_normalizer *= math_ops.cast(event_size, log_true_normalizer.dtype)
+    n_weights = np.prod(w_val.shape)
+    normalized_w = np.exp(w_val - true_normalizer)
+    standard_error = np.std(normalized_w) / np.sqrt(n_weights)
+    logging.vlog(1, 'True normalizer {}, estimated {}, n_weights {}'.format(
+        true_normalizer, np.log(normalized_w.mean()) + true_normalizer,
+        n_weights))
+    self.assertNear(normalized_w.mean(), 1.0, 4.0 * standard_error)
 
-    log_estimated_normalizer = (math_ops.reduce_logsumexp(ais_weights)
-                                - np.log(num_steps))
-
-    ratio_estimate_true = math_ops.exp(ais_weights - log_true_normalizer)
-    ais_weights_size = array_ops.size(ais_weights)
-    standard_error = math_ops.sqrt(
-        _reduce_variance(ratio_estimate_true)
-        / math_ops.cast(ais_weights_size, ratio_estimate_true.dtype))
-
-    [
-        ratio_estimate_true_,
-        log_true_normalizer_,
-        log_estimated_normalizer_,
-        standard_error_,
-        ais_weights_size_,
-        event_size_,
-    ] = sess.run([
-        ratio_estimate_true,
-        log_true_normalizer,
-        log_estimated_normalizer,
-        standard_error,
-        ais_weights_size,
-        event_size,
-    ], feed_dict)
-
-    logging_ops.vlog(1, "        log_true_normalizer: {}\n"
-                        "   log_estimated_normalizer: {}\n"
-                        "           ais_weights_size: {}\n"
-                        "                 event_size: {}\n".format(
-                            log_true_normalizer_,
-                            log_estimated_normalizer_,
-                            ais_weights_size_,
-                            event_size_))
-    self.assertNear(ratio_estimate_true_.mean(), 1., 4. * standard_error_)
-
-  def _ais_gets_correct_log_normalizer_wrapper(self, independent_chain_ndims):
+  def _ais_gets_correct_log_normalizer_wrapper(self, event_dims):
     """Tests that AIS yields reasonable estimates of normalizers."""
     with self.test_session() as sess:
-      x_ph = array_ops.placeholder(np.float32, name="x_ph")
+      x_ph = array_ops.placeholder(np.float32, name='x_ph')
+
       initial_draws = np.random.normal(size=[30, 2, 1])
-      self._ais_gets_correct_log_normalizer(
-          x_ph,
-          independent_chain_ndims,
-          sess,
-          feed_dict={x_ph: initial_draws})
+      feed_dict = {x_ph: initial_draws}
+
+      self._ais_gets_correct_log_normalizer(x_ph, event_dims, sess,
+                                            feed_dict)
+
+  def testAISNullShape(self):
+    self._ais_gets_correct_log_normalizer_wrapper([])
 
   def testAIS1(self):
-    self._ais_gets_correct_log_normalizer_wrapper(1)
+    self._ais_gets_correct_log_normalizer_wrapper([1])
 
   def testAIS2(self):
-    self._ais_gets_correct_log_normalizer_wrapper(2)
+    self._ais_gets_correct_log_normalizer_wrapper([2])
 
-  def testAIS3(self):
-    self._ais_gets_correct_log_normalizer_wrapper(3)
+  def testAIS12(self):
+    self._ais_gets_correct_log_normalizer_wrapper([1, 2])
 
   def testNanRejection(self):
     """Tests that an update that yields NaN potentials gets rejected.
@@ -411,29 +359,24 @@ class HMCTest(test.TestCase):
     """
     def _unbounded_exponential_log_prob(x):
       """An exponential distribution with log-likelihood NaN for x < 0."""
-      per_element_potentials = array_ops.where(
-          x < 0.,
-          array_ops.fill(array_ops.shape(x), x.dtype.as_numpy_dtype(np.nan)),
-          -x)
+      per_element_potentials = array_ops.where(x < 0,
+                                               np.nan * array_ops.ones_like(x),
+                                               -x)
       return math_ops.reduce_sum(per_element_potentials)
 
     with self.test_session() as sess:
       initial_x = math_ops.linspace(0.01, 5, 10)
-      updated_x, kernel_results = hmc.kernel(
-          target_log_prob_fn=_unbounded_exponential_log_prob,
-          current_state=initial_x,
-          step_size=2.,
-          num_leapfrog_steps=5,
-          seed=46)
-      initial_x_, updated_x_, acceptance_probs_ = sess.run(
-          [initial_x, updated_x, kernel_results.acceptance_probs])
+      updated_x, acceptance_probs, _, _ = hmc.kernel(
+          2., 5, initial_x, _unbounded_exponential_log_prob, [0])
+      initial_x_val, updated_x_val, acceptance_probs_val = sess.run(
+          [initial_x, updated_x, acceptance_probs])
 
-      logging_ops.vlog(1, "initial_x = {}".format(initial_x_))
-      logging_ops.vlog(1, "updated_x = {}".format(updated_x_))
-      logging_ops.vlog(1, "acceptance_probs = {}".format(acceptance_probs_))
+      logging.vlog(1, 'initial_x = {}'.format(initial_x_val))
+      logging.vlog(1, 'updated_x = {}'.format(updated_x_val))
+      logging.vlog(1, 'acceptance_probs = {}'.format(acceptance_probs_val))
 
-      self.assertAllEqual(initial_x_, updated_x_)
-      self.assertEqual(acceptance_probs_, 0.)
+      self.assertAllEqual(initial_x_val, updated_x_val)
+      self.assertEqual(acceptance_probs_val, 0.)
 
   def testNanFromGradsDontPropagate(self):
     """Test that update with NaN gradients does not cause NaN in results."""
@@ -442,195 +385,60 @@ class HMCTest(test.TestCase):
 
     with self.test_session() as sess:
       initial_x = math_ops.linspace(0.01, 5, 10)
-      updated_x, kernel_results = hmc.kernel(
-          target_log_prob_fn=_nan_log_prob_with_nan_gradient,
-          current_state=initial_x,
-          step_size=2.,
-          num_leapfrog_steps=5,
-          seed=47)
-      initial_x_, updated_x_, acceptance_probs_ = sess.run(
-          [initial_x, updated_x, kernel_results.acceptance_probs])
+      updated_x, acceptance_probs, new_log_prob, new_grad = hmc.kernel(
+          2., 5, initial_x, _nan_log_prob_with_nan_gradient, [0])
+      initial_x_val, updated_x_val, acceptance_probs_val = sess.run(
+          [initial_x, updated_x, acceptance_probs])
 
-      logging_ops.vlog(1, "initial_x = {}".format(initial_x_))
-      logging_ops.vlog(1, "updated_x = {}".format(updated_x_))
-      logging_ops.vlog(1, "acceptance_probs = {}".format(acceptance_probs_))
+      logging.vlog(1, 'initial_x = {}'.format(initial_x_val))
+      logging.vlog(1, 'updated_x = {}'.format(updated_x_val))
+      logging.vlog(1, 'acceptance_probs = {}'.format(acceptance_probs_val))
 
-      self.assertAllEqual(initial_x_, updated_x_)
-      self.assertEqual(acceptance_probs_, 0.)
+      self.assertAllEqual(initial_x_val, updated_x_val)
+      self.assertEqual(acceptance_probs_val, 0.)
 
       self.assertAllFinite(
-          gradients_ops.gradients(updated_x, initial_x)[0].eval())
-      self.assertAllEqual([True], [g is None for g in gradients_ops.gradients(
-          kernel_results.proposed_grads_target_log_prob, initial_x)])
-      self.assertAllEqual([False], [g is None for g in gradients_ops.gradients(
-          kernel_results.proposed_grads_target_log_prob,
-          kernel_results.proposed_state)])
+          gradients_impl.gradients(updated_x, initial_x)[0].eval())
+      self.assertTrue(
+          gradients_impl.gradients(new_grad, initial_x)[0] is None)
 
       # Gradients of the acceptance probs and new log prob are not finite.
+      _ = new_log_prob  # Prevent unused arg error.
       # self.assertAllFinite(
-      #     gradients_ops.gradients(acceptance_probs, initial_x)[0].eval())
+      #     gradients_impl.gradients(acceptance_probs, initial_x)[0].eval())
       # self.assertAllFinite(
-      #     gradients_ops.gradients(new_log_prob, initial_x)[0].eval())
-
-  def _testChainWorksDtype(self, dtype):
-    states, kernel_results = hmc.sample_chain(
-        num_results=10,
-        target_log_prob_fn=lambda x: -math_ops.reduce_sum(x**2., axis=-1),
-        current_state=np.zeros(5).astype(dtype),
-        step_size=0.01,
-        num_leapfrog_steps=10,
-        seed=48)
-    with self.test_session() as sess:
-      states_, acceptance_probs_ = sess.run(
-          [states, kernel_results.acceptance_probs])
-    self.assertEqual(dtype, states_.dtype)
-    self.assertEqual(dtype, acceptance_probs_.dtype)
+      #     gradients_impl.gradients(new_log_prob, initial_x)[0].eval())
 
   def testChainWorksIn64Bit(self):
-    self._testChainWorksDtype(np.float64)
+    def log_prob(x):
+      return - math_ops.reduce_sum(x * x, axis=-1)
+    states, acceptance_probs = hmc.chain(
+        n_iterations=10,
+        step_size=np.float64(0.01),
+        n_leapfrog_steps=10,
+        initial_x=np.zeros(5).astype(np.float64),
+        target_log_prob_fn=log_prob,
+        event_dims=[-1])
+    with self.test_session() as sess:
+      states_, acceptance_probs_ = sess.run([states, acceptance_probs])
+    self.assertEqual(np.float64, states_.dtype)
+    self.assertEqual(np.float64, acceptance_probs_.dtype)
 
   def testChainWorksIn16Bit(self):
-    self._testChainWorksDtype(np.float16)
-
-
-class _EnergyComputationTest(object):
-
-  def testHandlesNanFromPotential(self):
+    def log_prob(x):
+      return - math_ops.reduce_sum(x * x, axis=-1)
+    states, acceptance_probs = hmc.chain(
+        n_iterations=10,
+        step_size=np.float16(0.01),
+        n_leapfrog_steps=10,
+        initial_x=np.zeros(5).astype(np.float16),
+        target_log_prob_fn=log_prob,
+        event_dims=[-1])
     with self.test_session() as sess:
-      x = [1, np.inf, -np.inf, np.nan]
-      target_log_prob, proposed_target_log_prob = [
-          self.dtype(x.flatten()) for x in np.meshgrid(x, x)]
-      num_chains = len(target_log_prob)
-      dummy_momentums = [-1, 1]
-      momentums = [self.dtype([dummy_momentums] * num_chains)]
-      proposed_momentums = [self.dtype([dummy_momentums] * num_chains)]
-
-      target_log_prob = ops.convert_to_tensor(target_log_prob)
-      momentums = [ops.convert_to_tensor(momentums[0])]
-      proposed_target_log_prob = ops.convert_to_tensor(proposed_target_log_prob)
-      proposed_momentums = [ops.convert_to_tensor(proposed_momentums[0])]
-
-      energy = _compute_energy_change(
-          target_log_prob,
-          momentums,
-          proposed_target_log_prob,
-          proposed_momentums,
-          independent_chain_ndims=1)
-      grads = gradients_ops.gradients(energy, momentums)
-
-      [actual_energy, grads_] = sess.run([energy, grads])
-
-      # Ensure energy is `inf` (note: that's positive inf) in weird cases and
-      # finite otherwise.
-      expected_energy = self.dtype([0] + [np.inf]*(num_chains - 1))
-      self.assertAllEqual(expected_energy, actual_energy)
-
-      # Ensure gradient is finite.
-      self.assertAllEqual(np.ones_like(grads_).astype(np.bool),
-                          np.isfinite(grads_))
-
-  def testHandlesNanFromKinetic(self):
-    with self.test_session() as sess:
-      x = [1, np.inf, -np.inf, np.nan]
-      momentums, proposed_momentums = [
-          [np.reshape(self.dtype(x), [-1, 1])]
-          for x in np.meshgrid(x, x)]
-      num_chains = len(momentums[0])
-      target_log_prob = np.ones(num_chains, self.dtype)
-      proposed_target_log_prob = np.ones(num_chains, self.dtype)
-
-      target_log_prob = ops.convert_to_tensor(target_log_prob)
-      momentums = [ops.convert_to_tensor(momentums[0])]
-      proposed_target_log_prob = ops.convert_to_tensor(proposed_target_log_prob)
-      proposed_momentums = [ops.convert_to_tensor(proposed_momentums[0])]
-
-      energy = _compute_energy_change(
-          target_log_prob,
-          momentums,
-          proposed_target_log_prob,
-          proposed_momentums,
-          independent_chain_ndims=1)
-      grads = gradients_ops.gradients(energy, momentums)
-
-      [actual_energy, grads_] = sess.run([energy, grads])
-
-      # Ensure energy is `inf` (note: that's positive inf) in weird cases and
-      # finite otherwise.
-      expected_energy = self.dtype([0] + [np.inf]*(num_chains - 1))
-      self.assertAllEqual(expected_energy, actual_energy)
-
-      # Ensure gradient is finite.
-      g = grads_[0].reshape([len(x), len(x)])[:, 0]
-      self.assertAllEqual(np.ones_like(g).astype(np.bool), np.isfinite(g))
-
-      # The remaining gradients are nan because the momentum was itself nan or
-      # inf.
-      g = grads_[0].reshape([len(x), len(x)])[:, 1:]
-      self.assertAllEqual(np.ones_like(g).astype(np.bool), np.isnan(g))
+      states_, acceptance_probs_ = sess.run([states, acceptance_probs])
+    self.assertEqual(np.float16, states_.dtype)
+    self.assertEqual(np.float16, acceptance_probs_.dtype)
 
 
-class EnergyComputationTest16(test.TestCase, _EnergyComputationTest):
-  dtype = np.float16
-
-
-class EnergyComputationTest32(test.TestCase, _EnergyComputationTest):
-  dtype = np.float32
-
-
-class EnergyComputationTest64(test.TestCase, _EnergyComputationTest):
-  dtype = np.float64
-
-
-class _HMCHandlesLists(object):
-
-  def testStateParts(self):
-    with self.test_session() as sess:
-      dist_x = normal_lib.Normal(loc=self.dtype(0), scale=self.dtype(1))
-      dist_y = independent_lib.Independent(
-          gamma_lib.Gamma(concentration=self.dtype([1, 2]),
-                          rate=self.dtype([0.5, 0.75])),
-          reinterpreted_batch_ndims=1)
-      def target_log_prob(x, y):
-        return dist_x.log_prob(x) + dist_y.log_prob(y)
-      x0 = [dist_x.sample(seed=1), dist_y.sample(seed=2)]
-      samples, _ = hmc.sample_chain(
-          num_results=int(2e3),
-          target_log_prob_fn=target_log_prob,
-          current_state=x0,
-          step_size=0.85,
-          num_leapfrog_steps=3,
-          num_burnin_steps=int(250),
-          seed=49)
-      actual_means = [math_ops.reduce_mean(s, axis=0) for s in samples]
-      actual_vars = [_reduce_variance(s, axis=0) for s in samples]
-      expected_means = [dist_x.mean(), dist_y.mean()]
-      expected_vars = [dist_x.variance(), dist_y.variance()]
-      [
-          actual_means_,
-          actual_vars_,
-          expected_means_,
-          expected_vars_,
-      ] = sess.run([
-          actual_means,
-          actual_vars,
-          expected_means,
-          expected_vars,
-      ])
-      self.assertAllClose(expected_means_, actual_means_, atol=0.05, rtol=0.16)
-      self.assertAllClose(expected_vars_, actual_vars_, atol=0., rtol=0.40)
-
-
-class HMCHandlesLists16(_HMCHandlesLists, test.TestCase):
-  dtype = np.float16
-
-
-class HMCHandlesLists32(_HMCHandlesLists, test.TestCase):
-  dtype = np.float32
-
-
-class HMCHandlesLists64(_HMCHandlesLists, test.TestCase):
-  dtype = np.float64
-
-
-if __name__ == "__main__":
+if __name__ == '__main__':
   test.main()

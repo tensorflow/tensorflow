@@ -30,13 +30,13 @@ from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import decorators
 from tensorflow.contrib.py2tf.converters import for_canonicalization
 from tensorflow.contrib.py2tf.converters import logical_expressions
-from tensorflow.contrib.py2tf.converters import print_functions
 from tensorflow.contrib.py2tf.converters import side_effect_guards
 from tensorflow.contrib.py2tf.impl import config
 from tensorflow.contrib.py2tf.impl import naming
 from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
+from tensorflow.contrib.py2tf.pyct import qual_names
+from tensorflow.contrib.py2tf.pyct.static_analysis import activity
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.util import tf_inspect
@@ -208,7 +208,8 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
 
 
 def _static_analysis_pass(node, ctx):
-  node = access.resolve(node, ctx)
+  node = qual_names.resolve(node)
+  node = activity.resolve(node, ctx, None)
   node = live_values.resolve(node, ctx, config.PYTHON_LITERALS)
   node = type_info.resolve(node, ctx)
   return node
@@ -233,10 +234,7 @@ def node_to_graph(node, ctx, nocompile_decorators):
 
   # TODO(mdan): Factor out common elements.
   # These include:
-  #   * keeping track of symbols that have been created
-  #   * marking nodes (e.g. py_func wrappers) to suppress further processing
   #   * code move between blocks
-  #   * insertion of new global references
   #   * visiting blocks in transformers
 
   # Certain steps, especially canonicalization, insert new symbols into the
@@ -244,29 +242,35 @@ def node_to_graph(node, ctx, nocompile_decorators):
   # to re-run the analysis.
 
   node = _static_analysis_pass(node, ctx)
+  # Past this point, line numbers are no longer accurate so we ignore the
+  # source.
+  # TODO(mdan): Is it feasible to reconstruct intermediate source code?
+  ctx.source_code = None
   node = decorators.transform(node, nocompile_decorators)
-  node = break_canonicalization.transform(node, ctx.namer)
+  node = break_canonicalization.transform(node, ctx)
   node = asserts.transform(node, ctx)
 
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
-  node = continue_canonicalization.transform(node, ctx.namer)
+  node = continue_canonicalization.transform(node, ctx)
   ctx.namespace['len'] = len
 
   node = _static_analysis_pass(node, ctx)
-  node = for_canonicalization.transform(node, ctx.namer)
+  node = for_canonicalization.transform(node, ctx)
   # for_canonicalization may insert new global references.
-  node = builtin_functions.transform(node)
+  node = builtin_functions.transform(node, ctx)
   # builtin_functions may insert new global references.
   ctx.namespace['print'] = print
 
   node = _static_analysis_pass(node, ctx)
-  node = print_functions.transform(node)
   node = call_trees.transform(node, ctx, config.DEFAULT_UNCOMPILED_MODULES,
                               nocompile_decorators)
-  node = control_flow.transform(node, ctx.namer)
+  node = control_flow.transform(node, ctx)
+
+  # control_flow may create new symbols and change scopes.
+  node = _static_analysis_pass(node, ctx)
   node = logical_expressions.transform(node)
-  node = side_effect_guards.transform(node, ctx.namer)
+  node = side_effect_guards.transform(node, ctx)
 
   return node

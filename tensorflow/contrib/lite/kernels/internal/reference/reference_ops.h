@@ -2043,6 +2043,55 @@ inline void Tanh(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
+                 int32 input_zero_point, int32 input_range_radius,
+                 int32 input_multiplier, int input_left_shift,
+                 uint8* output_data, const Dims<4>& output_dims) {
+  const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
+  const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
+  const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
+  const int depth = MatchingArraySize(input_dims, 0, output_dims, 0);
+  for (int b = 0; b < batches; ++b) {
+    for (int y = 0; y < height; ++y) {
+      for (int x = 0; x < width; ++x) {
+        for (int c = 0; c < depth; ++c) {
+          const uint8 input_val_u8 = input_data[Offset(input_dims, c, x, y, b)];
+          const int32 input_val_centered =
+              static_cast<int32>(input_val_u8) - input_zero_point;
+          uint8 output_val;
+          if (input_val_centered <= -input_range_radius) {
+            output_val = 0;
+          } else if (input_val_centered >= input_range_radius) {
+            output_val = 255;
+          } else {
+            const int32 input_val_rescaled =
+                MultiplyByQuantizedMultiplierGreaterThanOne(
+                    input_val_centered, input_multiplier, input_left_shift);
+            using FixedPoint4 = gemmlowp::FixedPoint<int32, 4>;
+            using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
+            const FixedPoint4 input_val_f4 =
+                FixedPoint4::FromRaw(input_val_rescaled);
+            const FixedPoint0 output_val_f0 = gemmlowp::tanh(input_val_f4);
+
+            using gemmlowp::RoundingDivideByPOT;
+            int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
+            // TODO(mjmatthews): properly wire through this zero offset
+            output_val_s32 += 127;
+            if (output_val_s32 == -1) {
+              // May underflow since we cannot properly represent -1.0f
+              output_val_s32 = 0;
+            }
+            TFLITE_DCHECK_GE(output_val_s32, 0);
+            TFLITE_DCHECK_LE(output_val_s32, 255);
+            output_val = static_cast<uint8>(output_val_s32);
+          }
+          output_data[Offset(output_dims, c, x, y, b)] = output_val;
+        }
+      }
+    }
+  }
+}
+
 inline void Dequantize(const uint8* input_data, const Dims<4>& input_dims,
                        int32 zero_point, double scale, float* output_data,
                        const Dims<4>& output_dims) {
@@ -2202,7 +2251,7 @@ inline void Gather(const T* input_data, const Dims<4>& input_dims,
 inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
                            const int32* output_size_data,
                            const Dims<4>& output_size_dims, float* output_data,
-                           const Dims<4>& output_dims) {
+                           const Dims<4>& output_dims, bool align_corners) {
   int32 batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   int32 input_height = ArraySize(input_dims, 2);
   int32 input_width = ArraySize(input_dims, 1);
@@ -2216,6 +2265,12 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
   int32 output_width = output_size_data[Offset(output_size_dims, 1, 0, 0, 0)];
   float height_scale = static_cast<float>(input_height) / output_height;
   float width_scale = static_cast<float>(input_width) / output_width;
+  if (align_corners && output_height > 1) {
+    height_scale = static_cast<float>(input_height - 1) / (output_height - 1);
+  }
+  if (align_corners && output_width > 1) {
+    width_scale = static_cast<float>(input_width - 1) / (output_width - 1);
+  }
 
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
@@ -2241,6 +2296,15 @@ inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
       }
     }
   }
+}
+
+// legacy, for compatibility with old checked-in code
+inline void ResizeBilinear(const float* input_data, const Dims<4>& input_dims,
+                           const int32* output_size_data,
+                           const Dims<4>& output_size_dims, float* output_data,
+                           const Dims<4>& output_dims) {
+  ResizeBilinear(input_data, input_dims, output_size_data, output_size_dims,
+                 output_data, output_dims, /*align_corners=*/false);
 }
 
 template <typename T>

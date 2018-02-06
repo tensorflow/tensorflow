@@ -619,7 +619,7 @@ def make_constant_tests(zip_path):
 
   def build_graph(parameters):
     # Since Toco & Tflite can't have a single constant op in the entire graph,
-    # this test adds a zero tesnor with a constant op tensor.
+    # this test adds a zero tensor with a constant op tensor.
     input1 = tf.placeholder(dtype=parameters["dtype"], name="input1",
                             shape=parameters["input_shape"])
     out = tf.ones(parameters["input_shape"], dtype=parameters["dtype"]) + input1
@@ -1001,13 +1001,15 @@ def make_concatenation_tests(zip_path):
   test_parameters = [{
       "base_shape": [[1, 3, 4, 3], [3, 4]],
       "num_tensors": [1, 2, 3, 4, 5, 6],
-      "axis": [0, 1, 2, 3],
+      "axis": [0, 1, 2, 3, -3, -2, -1],
   }]
 
   def get_shape(parameters, delta):
     """Return a tweaked version of 'base_shape'."""
     axis = parameters["axis"]
     shape = parameters["base_shape"][:]
+    if axis < 0:
+      axis += len(shape)
     if axis < len(shape):
       shape[axis] += delta
     return shape

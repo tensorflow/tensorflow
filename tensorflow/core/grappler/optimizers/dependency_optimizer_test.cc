@@ -176,7 +176,7 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_SwitchIdentity) {
   item.fetch.push_back("neg1");
   item.fetch.push_back("neg2");
 
-  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  DependencyOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -360,7 +360,7 @@ TEST_F(DependencyOptimizerTest, RemoveIdentity) {
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   item.fetch = {"a_a", "a_b", "a_c", "a_d", "b_a", "c_a", "c_b"};
 
-  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  DependencyOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -420,7 +420,7 @@ TEST_F(DependencyOptimizerTest, RemoveIdentity_RepeatedInputs) {
   item.fetch.push_back("or0");
   item.fetch.push_back("or1");
   item.fetch.push_back("or2");
-  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  DependencyOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -459,7 +459,7 @@ TEST_F(DependencyOptimizerTest, Transitive_Reduction_Simple) {
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
   item.fetch.push_back("neg2");
-  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  DependencyOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -495,7 +495,7 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_Identity) {
   item.fetch.push_back("id2");
   item.fetch.push_back("fetch");
 
-  DependencyOptimizer optimizer(RewriterConfig::AGGRESSIVE);
+  DependencyOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
