@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Hamiltonian Monte Carlo, a gradient-based MCMC algorithm."""
+"""Hamiltonian Monte Carlo, a gradient-based MCMC algorithm.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,9 +24,11 @@ from tensorflow.contrib.bayesflow.python.ops.hmc_impl import *  # pylint: disabl
 from tensorflow.python.util import all_util
 
 _allowed_symbols = [
-    "sample_chain",
-    "sample_annealed_importance_chain",
-    "kernel",
+    'chain',
+    'kernel',
+    'leapfrog_integrator',
+    'leapfrog_step',
+    'ais_chain'
 ]
 
 all_util.remove_undocumented(__name__, _allowed_symbols)

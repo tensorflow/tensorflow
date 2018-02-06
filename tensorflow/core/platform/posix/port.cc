@@ -29,6 +29,7 @@ limitations under the License.
 
 #if defined(__linux__) && !defined(__ANDROID__)
 #include <sched.h>
+#include <sys/sysinfo.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
@@ -169,6 +170,17 @@ double NominalCPUFrequency() {
 #else
   return 1.0;
 #endif
+}
+
+int64 AvailableRam() {
+#if defined(__linux__) && !defined(__ANDROID__)
+  struct sysinfo info;
+  int err = sysinfo(&info);
+  if (err == 0) {
+    return info.freeram / 1024;
+  }
+#endif
+  return INT64_MAX;
 }
 
 }  // namespace port

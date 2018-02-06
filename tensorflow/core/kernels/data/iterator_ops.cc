@@ -459,7 +459,7 @@ class IteratorHandleOp : public OpKernel {
     {
       mutex_lock l(mu_);
       if (resource_ == nullptr) {
-        FunctionLibraryRuntime* lib = context->function_library();
+        FunctionLibraryRuntime* lib;
         std::unique_ptr<DeviceMgr> device_mgr(nullptr);
         std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
@@ -469,6 +469,9 @@ class IteratorHandleOp : public OpKernel {
         // is sufficient demand, but it will require a significant refactoring.
         if (!name_.empty()) {
           lib = CreatePrivateFLR(context, &device_mgr, &flib_def, &pflr);
+        } else {
+          OP_REQUIRES_OK(context, context->function_library()->Clone(
+                                      &flib_def, &pflr, &lib));
         }
 
         ResourceMgr* mgr = context->resource_manager();
@@ -538,7 +541,7 @@ class IteratorHandleOp : public OpKernel {
     // Wrap the existing device in order to see any captured resources
     // in its resource manager. The existing device will outlive the
     // IteratorResource, because we are storing the IteratorResource
-    // in that device's resourc manager.
+    // in that device's resource manager.
     Device* wrapped_device = RenamedDevice::NewRenamedDevice(
         ctx->device()->name(), down_cast<Device*>(ctx->device()),
         false /* owns_underlying */, false /* isolate_session_state */);

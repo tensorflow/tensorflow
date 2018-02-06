@@ -655,6 +655,7 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
         accumulate->set_op("AssignAdd");
         accumulate->set_device(device);
         (*accumulate->mutable_attr())["T"].set_type(dtype);
+        (*accumulate->mutable_attr())["use_locking"].set_b(true);
         *accumulate->add_input() = initialize->name();
         *accumulate->add_input() = input;
         accumulates.push_back(accumulate);

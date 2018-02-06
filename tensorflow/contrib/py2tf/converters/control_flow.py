@@ -22,6 +22,8 @@ import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import templates
+from tensorflow.contrib.py2tf.pyct import transformer
+from tensorflow.contrib.py2tf.pyct.static_analysis.annos import NodeAnno
 
 
 class SymbolNamer(object):
@@ -41,21 +43,29 @@ class SymbolNamer(object):
 
 
 class SymbolRenamer(gast.NodeTransformer):
+  """Transformer that can rename symbols to a simple names."""
 
   def __init__(self, name_map):
     self.name_map = name_map
 
-  def visit_Name(self, node):
-    if node.id in self.name_map:
-      node.id = self.name_map[node.id]
+  def _process(self, node):
+    qn = anno.getanno(node, anno.Basic.QN)
+    if qn in self.name_map:
+      return gast.Name(self.name_map[qn], node.ctx, None)
     return node
 
+  def visit_Name(self, node):
+    return self._process(node)
 
-class ControlFlowTransformer(gast.NodeTransformer):
+  def visit_Attribute(self, node):
+    return self._process(node)
+
+
+class ControlFlowTransformer(transformer.Base):
   """Transforms control flow structures like loops an conditionals."""
 
-  def __init__(self, namer):
-    self.namer = namer
+  def __init__(self, context):
+    super(ControlFlowTransformer, self).__init__(context)
 
   # pylint:disable=invalid-name
 
@@ -65,8 +75,8 @@ class ControlFlowTransformer(gast.NodeTransformer):
   def visit_If(self, node):
     self.generic_visit(node)
 
-    body_scope = anno.getanno(node, 'body_scope')
-    orelse_scope = anno.getanno(node, 'orelse_scope')
+    body_scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
+    orelse_scope = anno.getanno(node, NodeAnno.ORELSE_SCOPE)
 
     if body_scope.created - orelse_scope.created:
       raise ValueError(
@@ -86,7 +96,8 @@ class ControlFlowTransformer(gast.NodeTransformer):
         (body_scope.created | orelse_scope.created))
     aliased_orig_names = tuple(need_alias)
     aliased_new_names = tuple(
-        self.namer.new_symbol(s, all_referenced) for s in aliased_orig_names)
+        self.context.namer.new_symbol(s.ssf(), all_referenced)
+        for s in aliased_orig_names)
     alias_map = dict(zip(aliased_orig_names, aliased_new_names))
     node_body = node.body
     node_body = [SymbolRenamer(alias_map).visit(n) for n in node_body]
@@ -94,72 +105,112 @@ class ControlFlowTransformer(gast.NodeTransformer):
     node_orelse = [SymbolRenamer(alias_map).visit(n) for n in node_orelse]
 
     if len(all_modified) == 1:
-      results = gast.Name(all_modified[0], None, None)
+      results = all_modified[0]
     else:
-      results = gast.Tuple(
-          tuple(gast.Name(s, None, None) for s in all_modified), None)
+      results = gast.Tuple([s.ast() for s in all_modified], None)
 
-    template = """
-      def body_name():
-        aliased_new_names, = aliased_orig_names,
-        body
-        return (all_results,)
-      def orelse_name():
-        aliased_new_names, = aliased_orig_names,
-        orelse
-        return (all_results,)
-      results = tf.cond(test, body_name, orelse_name)
-    """
-    body_name = self.namer.new_symbol('if_true', all_referenced)
-    return templates.replace(
-        template,
-        test=node.test,
-        body_name=body_name,
-        body=node_body,
-        orelse_name=self.namer.new_symbol('if_false', all_referenced),
-        orelse=node_orelse,
-        aliased_orig_names=tuple(aliased_orig_names),
-        aliased_new_names=tuple(aliased_new_names),
-        all_results=tuple(alias_map[s] if s in aliased_orig_names else s
-                          for s in all_modified),
-        results=results)
+    if aliased_orig_names:
+      template = """
+        def body_name():
+          aliased_new_names, = aliased_orig_names,
+          body
+          return (all_results,)
+        def orelse_name():
+          aliased_new_names, = aliased_orig_names,
+          orelse
+          return (all_results,)
+        results = tf.cond(test, body_name, orelse_name)
+      """
+      body_name = self.context.namer.new_symbol('if_true', all_referenced)
+      return templates.replace(
+          template,
+          test=node.test,
+          body_name=body_name,
+          body=node_body,
+          orelse_name=self.context.namer.new_symbol('if_false', all_referenced),
+          orelse=node_orelse,
+          aliased_orig_names=tuple(aliased_orig_names),
+          aliased_new_names=tuple(aliased_new_names),
+          all_results=tuple(alias_map[s] if s in aliased_orig_names else s
+                            for s in all_modified),
+          results=results)
+    else:
+      template = """
+        def body_name():
+          body
+          return (all_results,)
+        def orelse_name():
+          orelse
+          return (all_results,)
+        results = tf.cond(test, body_name, orelse_name)
+      """
+      body_name = self.context.namer.new_symbol('if_true', all_referenced)
+      return templates.replace(
+          template,
+          test=node.test,
+          body_name=body_name,
+          body=node_body,
+          orelse_name=self.context.namer.new_symbol('if_false', all_referenced),
+          orelse=node_orelse,
+          all_results=tuple(s for s in all_modified),
+          results=results)
 
   def visit_While(self, node):
     self.generic_visit(node)
 
-    body_scope = anno.getanno(node, 'body_scope')
-    body_closure = tuple(body_scope.modified - body_scope.created)
+    body_scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
+    body_closure = body_scope.modified - body_scope.created
+    all_referenced = body_scope.referenced
 
-    if len(body_closure) == 1:
-      state = body_closure[0]
+    state = list(body_closure)
+    state_ssf = [
+        self.context.namer.new_symbol(s.ssf(), all_referenced) for s in state
+    ]
+    ssf_map = {
+        name: ssf
+        for name, ssf in zip(state, state_ssf)
+        if str(name) != ssf
+    }
+
+    if len(state) == 1:
+      state = state[0]
+      state_ssf = state_ssf[0]
       state_ast_tuple = state
     else:
-      state = tuple(body_closure)
-      state_ast_tuple = gast.Tuple(
-          tuple(gast.Name(n, None, None) for n in state), None)
+      state_ast_tuple = gast.Tuple([n.ast() for n in state], None)
+
+    node_body = node.body
+    node_body = [SymbolRenamer(ssf_map).visit(n) for n in node_body]
+
+    test = node.test
+    test = SymbolRenamer(ssf_map).visit(test)
+
     template = """
-      def test_name(state):
+      def test_name(state_ssf):
         return test
-      def body_name(state):
+      def body_name(state_ssf):
         body
-        return state,
+        return state_ssf,
       state_ast_tuple = tf.while_loop(test_name, body_name, [state])
     """
     node = templates.replace(
         template,
         state=state,
+        state_ssf=state_ssf,
         state_ast_tuple=state_ast_tuple,
-        test_name=self.namer.new_symbol('loop_test', body_scope.referenced),
-        test=node.test,
-        body_name=self.namer.new_symbol('loop_body', body_scope.referenced),
-        body=node.body)
+        test_name=self.context.namer.new_symbol('loop_test',
+                                                body_scope.referenced),
+        test=test,
+        body_name=self.context.namer.new_symbol('loop_body',
+                                                body_scope.referenced),
+        body=node_body)
 
     return node
 
   # pylint:enable=invalid-name
 
 
-def transform(node, namer):
-  transformer = ControlFlowTransformer(namer)
-  node = transformer.visit(node)
+def transform(node, context):
+  t = ControlFlowTransformer(context)
+  node = t.visit(node)
   return node

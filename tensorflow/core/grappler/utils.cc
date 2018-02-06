@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -207,7 +208,7 @@ string AsControlDependency(const string& node_name) {
              : strings::StrCat("^", node_name);
 }
 
-int NumOutputs(const NodeDef& node) {
+int NumOutputs(const NodeDef& node, GraphDef* graph) {
   int num_outputs = 0;
   const OpDef* op_def = nullptr;
   auto status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
@@ -221,6 +222,12 @@ int NumOutputs(const NodeDef& node) {
       } else {
         num_outputs++;
       }
+    }
+  } else {
+    FunctionLibraryDefinition fdef(OpRegistry::Global(), graph->library());
+    auto status = fdef.LookUpOpDef(node.op(), &op_def);
+    if (status.ok()) {
+      num_outputs = op_def->output_arg_size();
     }
   }
   return num_outputs;

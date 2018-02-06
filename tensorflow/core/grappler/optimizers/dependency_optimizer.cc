@@ -156,7 +156,6 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) {
 void DependencyOptimizer::OptimizeNode(int node_idx,
                                        SetVector<int>* nodes_to_simplify,
                                        std::set<int>* nodes_to_delete) {
-  const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
   NodeDef* node = optimized_graph_->mutable_node(node_idx);
   const bool is_noop = IsNoOp(*node);
   const bool is_identity = IsIdentity(*node);
@@ -280,7 +279,7 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
   //    y --^> |          | --^> b       /\    +---+
   //           +----------+             y --^> b
 
-  if (is_noop || (is_identity && is_aggressive)) {
+  if (is_noop || is_identity) {
     const auto& output_node_set = node_map_->GetOutputs(node_name);
     const std::vector<NodeDef*> output_nodes(output_node_set.begin(),
                                              output_node_set.end());

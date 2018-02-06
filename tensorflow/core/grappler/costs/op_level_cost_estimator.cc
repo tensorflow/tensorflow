@@ -411,6 +411,11 @@ Costs OpLevelCostEstimator::PredictCostOfAnUnknownOp(
 Costs OpLevelCostEstimator::PredictOpCountBasedCost(
     double operations, const OpInfo& op_features) const {
   DeviceInfo device_perf = GetDeviceInfo(op_features.device());
+  if (device_perf.gigaops <= 0 || device_perf.gb_per_sec <= 0) {
+    VLOG(1) << "BAD DEVICE. Op:" << op_features.op()
+            << " device type:" << op_features.device().type()
+            << " device model:" << op_features.device().model();
+  }
 
   Costs::NanoSeconds compute_cost(std::ceil(operations / device_perf.gigaops));
   VLOG(1) << "Op:" << op_features.op() << " GOps:" << operations / 1e9
