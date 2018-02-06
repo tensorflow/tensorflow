@@ -468,7 +468,7 @@ std::unique_ptr<Tensor> OpKernelContext::forward_input(
     return nullptr;
   }
   // Check that input and output memory types match, i.e.
-  // that they either both live in host or both live in device memmory.
+  // that they either both live in host or both live in device memory.
   if (input_memory_type(input_index) != output_memory_type) {
     return nullptr;
   }
