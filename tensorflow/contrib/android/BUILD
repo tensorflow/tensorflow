@@ -78,6 +78,8 @@ cc_binary(
     ],
     linkopts = if_android([
         "-landroid",
+        "-latomic",
+        "-ldl",
         "-llog",
         "-lm",
         "-z defs",

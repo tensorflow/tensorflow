@@ -13,6 +13,10 @@ py_library(
     name = "stat_summarizer_py",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
+    ],
 )
 
 tf_py_test(

@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 
-#include "external/llvm/include/llvm/IR/Constants.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
+#include "llvm/IR/Constants.h"
+#include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -39,13 +39,27 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
       << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
       << " should have a layout.";
   int64 divisor = 1;
-  for (int64 dimension : layout_.minor_to_major()) {
+  for (int64 i = 0; i < layout_.minor_to_major_size(); ++i) {
+    int64 dimension = layout_.minor_to_major(i);
     int64 size_of_current_dimension = shape.dimensions(dimension);
-    // Emit IR instructions that compute
-    //   (linear_index / divisor) % current_dimension
-    multidim_[dimension] = ir_builder->CreateURem(
-        ir_builder->CreateUDiv(linear, ir_builder->getInt64(divisor)),
-        ir_builder->getInt64(size_of_current_dimension));
+
+    // If i is not the last dimension, compute
+    //   (linear_index / divisor) % current_dimension.
+    // If i is the last dimension, we can skip the mod, because we assume that
+    // linear is in bounds.
+    //
+    // TODO(jlebar): We could add bounds checks here and elsewhere in this file,
+    // guarded under some sort of xla-memcheck flag.  This might be particularly
+    // useful because cuda-memcheck can't help us much in XLA: Most of our
+    // memory lives in one big allocation, so cuda-memcheck can't detect
+    // out-of-bounds accesses.
+    auto* quot = ir_builder->CreateUDiv(linear, ir_builder->getInt64(divisor));
+    if (i < layout_.minor_to_major_size() - 1) {
+      multidim_[dimension] = ir_builder->CreateURem(
+          quot, ir_builder->getInt64(size_of_current_dimension));
+    } else {
+      multidim_[dimension] = quot;
+    }
     divisor *= size_of_current_dimension;
   }
 }
@@ -85,7 +99,7 @@ IrArray::IrArray(llvm::Value* base_ptr, const Shape& shape)
     ++depth;
   }
 
-  if (ShapeUtil::Rank(*shape_) == 0) {
+  if (!ShapeUtil::IsArray(*shape_) || ShapeUtil::IsScalar(*shape_)) {
     DCHECK(depth == 1 || depth == 0) << depth;
   } else {
     DCHECK_EQ(depth, ShapeUtil::Rank(*shape_)) << shape.ShortDebugString();
@@ -153,6 +167,28 @@ IrArray::Index IrArray::Index::SourceIndexOfReshape(
   return Index(source_multidim_index);
 }
 
+IrArray::Index IrArray::Index::SourceIndexOfSlice(
+    const Shape& shape, tensorflow::gtl::ArraySlice<int64> starts,
+    tensorflow::gtl::ArraySlice<int64> strides,
+    llvm::IRBuilder<>* builder) const {
+  Index source_index(multidim_.size());
+  for (int i = 0; i < multidim_.size(); ++i) {
+    int64 stride = strides[i];
+    auto type = multidim_[i]->getType();
+
+    if (stride != 1) {
+      source_index[i] = builder->CreateAdd(
+          builder->CreateMul(multidim_[i],
+                             llvm::ConstantInt::get(type, stride)),
+          llvm::ConstantInt::get(type, starts[i]));
+    } else {
+      source_index[i] = builder->CreateAdd(
+          multidim_[i], llvm::ConstantInt::get(type, starts[i]));
+    }
+  }
+  return source_index;
+}
+
 IrArray::Index IrArray::Index::SourceIndexOfTranspose(
     const Shape& shape, const Shape& operand_shape,
     tensorflow::gtl::ArraySlice<int64> dimension_mapping,
@@ -207,9 +243,11 @@ llvm::Value* IrArray::EmitArrayElementAddress(
   }
 
   if (!is_implicit_broadcast && index.LinearValidOnShape(*shape_)) {
+    llvm::Module* module =
+        ir_builder->GetInsertBlock()->getParent()->getParent();
     return ir_builder->CreateInBoundsGEP(
         ir_builder->CreateBitCast(
-            base_ptr_, PrimitiveTypeToIrType(shape_->element_type(), ir_builder)
+            base_ptr_, PrimitiveTypeToIrType(shape_->element_type(), module)
                            ->getPointerTo()),
         {index.linear()}, llvm_ir::AsStringRef(name));
   }
@@ -220,12 +258,24 @@ llvm::Value* IrArray::EmitArrayElementAddress(
   //
   //   getelementptr base_ptr_, 0, most major index, ..., most minor index
   std::vector<llvm::Value*> gep_indices(1, ir_builder->getInt64(0));
-  for (int64 i = shape_->layout().minor_to_major_size() - 1; i >= 0; --i) {
-    int64 dimension = shape_->layout().minor_to_major(i);
+  for (int64 i = 0; i < LayoutUtil::MinorToMajor(*shape_).size(); ++i) {
+    int64 dimension = LayoutUtil::Major(shape_->layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
   return ir_builder->CreateInBoundsGEP(base_ptr_, gep_indices,
                                        llvm_ir::AsStringRef(name));
+}
+
+void IrArray::AnnotateLoadStoreInstructionWithMetadata(
+    llvm::Instruction* instruction) const {
+  CHECK(llvm::isa<llvm::LoadInst>(instruction) ||
+        llvm::isa<llvm::StoreInst>(instruction));
+  CHECK(!llvm::isa<llvm::StoreInst>(instruction) || !is_invariant_)
+      << "Trying to create a store to an invariant IRArray.";
+
+  for (const auto& kind_md_pair : metadata_) {
+    instruction->setMetadata(kind_md_pair.first, kind_md_pair.second);
+  }
 }
 
 llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
@@ -234,11 +284,7 @@ llvm::Value* IrArray::EmitReadArrayElement(const Index& index,
   llvm::Value* element_address =
       EmitArrayElementAddress(index, ir_builder, name);
   llvm::LoadInst* load = ir_builder->CreateLoad(element_address);
-  llvm_ir::SetTbaaForInstruction(load, GetShape(),
-                                 /*is_pointer_to=*/false);
-  for (const auto& kind_md_pair : metadata_) {
-    load->setMetadata(kind_md_pair.first, kind_md_pair.second);
-  }
+  AnnotateLoadStoreInstructionWithMetadata(load);
   return load;
 }
 
@@ -246,17 +292,13 @@ void IrArray::EmitWriteArrayElement(const Index& index, llvm::Value* value,
                                     llvm::IRBuilder<>* ir_builder) const {
   llvm::Value* element_address = EmitArrayElementAddress(index, ir_builder);
   llvm::StoreInst* store = ir_builder->CreateStore(value, element_address);
-  llvm_ir::SetTbaaForInstruction(store, GetShape(),
-                                 /*is_pointer_to=*/false);
-  for (const auto& kind_md_pair : metadata_) {
-    CHECK_NE(kind_md_pair.first, llvm::LLVMContext::MD_invariant_load);
-    store->setMetadata(kind_md_pair.first, kind_md_pair.second);
-  }
+  AnnotateLoadStoreInstructionWithMetadata(store);
 }
 
 IrArray IrArray::CastToShape(const Shape& new_shape,
                              llvm::IRBuilder<>* ir_builder) const {
-  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, ir_builder);
+  llvm::Module* module = ir_builder->GetInsertBlock()->getParent()->getParent();
+  llvm::Type* new_ir_type = llvm_ir::ShapeToIrType(new_shape, module);
   return IrArray(
       ir_builder->CreatePointerCast(base_ptr_, new_ir_type->getPointerTo()),
       new_shape);

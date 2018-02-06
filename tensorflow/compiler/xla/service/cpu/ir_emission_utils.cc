@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/cpu/ir_emission_utils.h"
 
 #include "tensorflow/compiler/xla/layout_util.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
+#include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/window_util.h"
 
@@ -26,101 +26,59 @@ namespace cpu {
 
 bool PotentiallyImplementedAsEigenConvolution(
     const HloInstruction& convolution) {
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  if (!flags->xla_cpu_use_eigen) {
-    return false;
-  }
-
   // The following conditions are necessary (but not sufficient) for
   // implementing `convolution` with Eigen convolution:
   // - the input and kernel have a non-zero number of elements.
-  // - the input is in NHWC or NWHC order.
-  // - the kernel is in HWIO or WHIO order.
-  // - the spatial dimensions are in the same relative order in the input,
-  //   kernel and output.
+  // - the input is in NHWC order.
+  // - the kernel is in HWIO order.
   //
   // To be sufficient, certain layout constraints need to be satisfied as well.
-  if (ShapeUtil::HasZeroElements(convolution.operand(0)->shape()) ||
-      ShapeUtil::HasZeroElements(convolution.operand(1)->shape())) {
+  const Shape& input_shape = convolution.operand(0)->shape();
+  const Shape& kernel_shape = convolution.operand(0)->shape();
+  if (ShapeUtil::HasZeroElements(input_shape) ||
+      ShapeUtil::HasZeroElements(kernel_shape)) {
     return false;
   }
+  // TODO(b/65408531): Explore using Eigen dot for complex64 type.
+  if (ShapeUtil::ElementIsComplex(input_shape) ||
+      ShapeUtil::ElementIsComplex(kernel_shape)) {
+    return false;
+  }
+  if (window_util::HasWindowReversal(convolution.window())) {
+    return false;
+  }
+
   const ConvolutionDimensionNumbers& dnums =
       convolution.convolution_dimension_numbers();
-  // Only 2D convolutions are supported at the moment.
+  // Only 1D and 2D convolutions are supported at the moment.
   // TODO(b/32897908): add an optimized implementation for 3D convolution.
-  if (dnums.spatial_dimensions_size() != 2) {
-    return false;
-  }
-  bool input_spatial_dims_ascending =
-      dnums.spatial_dimensions(0) < dnums.spatial_dimensions(1);
-  bool kernel_spatial_dims_ascending =
-      dnums.kernel_spatial_dimensions(0) < dnums.kernel_spatial_dimensions(1);
-  return dnums.batch_dimension() == 0 && dnums.feature_dimension() == 3 &&
-         input_spatial_dims_ascending == kernel_spatial_dims_ascending &&
-         dnums.kernel_input_feature_dimension() == 2 &&
-         dnums.kernel_output_feature_dimension() == 3;
-}
-
-namespace {
-
-// Return whether the given shape is a matrix with no padding.
-bool IsRank2WithNoPadding(const Shape& shape) {
-  return ShapeUtil::Rank(shape) == 2 && !LayoutUtil::IsPadded(shape);
-}
-
-// In a gemm operation where output = lhs * rhs, check whether the given shapes
-// are valid for the operation.
-bool AreValidGemmShapes(const Shape& lhs_shape, const Shape& rhs_shape,
-                        const Shape& output_shape) {
-  // The inputs and the output must
-  // 1) be matrices with no padding, and
-  // 2) have an allowed element type.
-  return output_shape.element_type() == F32 &&
-         IsRank2WithNoPadding(lhs_shape) && IsRank2WithNoPadding(rhs_shape) &&
-         IsRank2WithNoPadding(output_shape);
-}
-}  // namespace
-
-bool PotentiallyImplementedAsEigenDot(const HloInstruction& hlo) {
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  if (!flags->xla_cpu_use_eigen) {
+  const int64 num_spatial_dims = dnums.output_spatial_dimensions_size();
+  if (num_spatial_dims > 2) {
     return false;
   }
 
-  // For certain types of Dot, we can call Eigen
-  if (hlo.opcode() == HloOpcode::kDot) {
-    const Shape& lhs_shape = hlo.operand(0)->shape();
-    const Shape& rhs_shape = hlo.operand(1)->shape();
-
-    if (ShapeUtil::HasZeroElements(lhs_shape) ||
-        ShapeUtil::HasZeroElements(rhs_shape)) {
+  for (int64 i = 0; i < num_spatial_dims; ++i) {
+    if (dnums.input_spatial_dimensions(i) != i + 1) {
       return false;
     }
-
-    // If gemm can accept the operand shapes, use it rather than a custom
-    // kernel.
-    if (AreValidGemmShapes(lhs_shape, rhs_shape, hlo.shape())) {
-      // The size of the reduction dimension should match. The shape inference
-      // guarantees this invariant, so the check here is for programming
-      // errors.
-      CHECK_EQ(lhs_shape.dimensions(1), rhs_shape.dimensions(0));
-      return true;
+    if (dnums.kernel_spatial_dimensions(i) != i) {
+      return false;
+    }
+    if (dnums.output_spatial_dimensions(i) != i + 1) {
+      return false;
     }
   }
 
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kTransposeDot &&
-      hlo.fused_expression_root()->opcode() == HloOpcode::kDot) {
-    const Shape& lhs_shape = hlo.operand(0)->shape();
-    const Shape& rhs_shape = hlo.operand(1)->shape();
-    if (ShapeUtil::HasZeroElements(lhs_shape) ||
-        ShapeUtil::HasZeroElements(rhs_shape)) {
-      return false;
-    }
-    return true;
-  }
-
-  return false;
+  const Shape& output_shape = convolution.shape();
+  return dnums.input_batch_dimension() == 0 &&
+         dnums.input_feature_dimension() == input_shape.dimensions_size() - 1 &&
+         dnums.output_batch_dimension() == 0 &&
+         dnums.output_feature_dimension() ==
+             output_shape.dimensions_size() - 1 &&
+         dnums.kernel_input_feature_dimension() ==
+             kernel_shape.dimensions_size() - 2 &&
+         dnums.kernel_output_feature_dimension() ==
+             kernel_shape.dimensions_size() - 1;
 }
 
 }  // namespace cpu

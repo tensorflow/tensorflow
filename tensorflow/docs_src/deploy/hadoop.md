@@ -32,8 +32,8 @@ be set:
     source ${HADOOP_HOME}/libexec/hadoop-config.sh
     ```
 
-*   **LD_LIBRARY_PATH**: To include the path to libjvm.so, and optionally the path 
-    to libhdfs.so if your Hadoop distribution does not install libhdfs.so in 
+*   **LD_LIBRARY_PATH**: To include the path to libjvm.so, and optionally the path
+    to libhdfs.so if your Hadoop distribution does not install libhdfs.so in
     `$HADOOP_HDFS_HOME/lib/native`. On Linux:
 
     ```shell
@@ -55,10 +55,10 @@ be set:
 If the Hadoop cluster is in secure mode, the following environment variable must
 be set:
 
-*   **KERB_TICKET_CACHE_PATH**: The path of Kerberos ticket cache file. For example:
+*   **KRB5CCNAME**: The path of Kerberos ticket cache file. For example:
 
     ```shell
-    export KERB_TICKET_CACHE_PATH=/tmp/krb5cc_10002
+    export KRB5CCNAME=/tmp/krb5cc_10002
     ```
 
 If you are running @{$distributed$Distributed TensorFlow}, then all

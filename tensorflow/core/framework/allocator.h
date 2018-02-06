@@ -21,8 +21,9 @@ limitations under the License.
 #include <limits>
 
 #include "tensorflow/core/framework/numeric_types.h"
-#include "tensorflow/core/framework/resource_handle.pb.h"
+#include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/type_traits.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -197,6 +198,9 @@ class Allocator {
   // Fills in 'stats' with statistics collected by this allocator.
   virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
 
+  // Clears the internal stats except for the `in_use` field.
+  virtual void ClearStats() {}
+
  private:
   // No constructors or destructors are run for simple types
   template <typename T>
@@ -229,6 +233,14 @@ class Allocator {
     for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
   }
 
+  virtual void RunVariantCtor(Variant* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) new (p) Variant();
+  }
+
+  virtual void RunVariantDtor(Variant* p, size_t n) {
+    for (size_t i = 0; i < n; ++p, ++i) p->~Variant();
+  }
+
   // TODO(jeff): Maybe provide some interface to give info about
   // current allocation state (total number of bytes available for
   // allocation, number of bytes free on device, etc.)
@@ -254,6 +266,16 @@ inline void Allocator::RunCtor(ResourceHandle* p, size_t n) {
 template <>
 inline void Allocator::RunDtor(ResourceHandle* p, size_t n) {
   RunResourceDtor(p, n);
+}
+
+template <>
+inline void Allocator::RunCtor(Variant* p, size_t n) {
+  RunVariantCtor(p, n);
+}
+
+template <>
+inline void Allocator::RunDtor(Variant* p, size_t n) {
+  RunVariantDtor(p, n);
 }
 
 // An implementation of Allocator that delegates all calls to another Allocator.
@@ -335,8 +357,6 @@ struct AllocatorAttributes {
   bool nic_compatible() const { return value & (0x1 << 1); }
   void set_gpu_compatible(bool v) { value |= (static_cast<int>(v) << 2); }
   bool gpu_compatible() const { return value & (0x1 << 2); }
-  void set_track_sizes(bool v) { value |= (static_cast<int>(v) << 3); }
-  bool track_sizes() const { return value & (0x1 << 3); }
   void Merge(AllocatorAttributes other) { value |= other.value; }
   // Returns true if the fields set in *this is a subset of or equal to
   // those set in other.

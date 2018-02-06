@@ -66,7 +66,7 @@ class SubstrOp : public OpKernel {
         for (size_t i = 0; i < input_tensor.NumElements(); ++i) {
           string in = input(i);
           OP_REQUIRES(
-              context, FastBoundsCheck(pos, in.size()),
+              context, FastBoundsCheck(pos, in.size() + 1),
               errors::InvalidArgument("pos ", pos, " out of range for string",
                                       "b'", in, "' at index ", i));
           output(i) = in.substr(pos, len);
@@ -80,7 +80,7 @@ class SubstrOp : public OpKernel {
           const T pos = tensorflow::internal::SubtleMustCopy(pos_flat(i));
           const T len = tensorflow::internal::SubtleMustCopy(len_flat(i));
           OP_REQUIRES(
-              context, FastBoundsCheck(pos, in.size()),
+              context, FastBoundsCheck(pos, in.size() + 1),
               errors::InvalidArgument("pos ", pos, " out of range for string",
                                       "b'", in, "' at index ", i));
           output(i) = in.substr(pos, len);
@@ -95,9 +95,9 @@ class SubstrOp : public OpKernel {
       // Create BCast helper with shape of input and pos/len
       BCast bcast(BCast::FromShape(input_shape), BCast::FromShape(pos_shape));
       OP_REQUIRES(context, bcast.IsValid(),
-                  errors::InvalidArgument("Incompatible shapes: ",
-                                          input_shape.DebugString(), " vs. ",
-                                          pos_shape.DebugString()));
+                  errors::InvalidArgument(
+                      "Incompatible shapes: ", input_shape.DebugString(),
+                      " vs. ", pos_shape.DebugString()));
       TensorShape output_shape = BCast::ToShape(bcast.result_shape());
       int ndims = output_shape.dims();
       Tensor* output_tensor = nullptr;
@@ -146,7 +146,7 @@ class SubstrOp : public OpKernel {
             const T pos = tensorflow::internal::SubtleMustCopy(pos_bcast(i));
             const T len = tensorflow::internal::SubtleMustCopy(len_bcast(i));
             OP_REQUIRES(
-                context, FastBoundsCheck(pos, input_bcast(i).size()),
+                context, FastBoundsCheck(pos, input_bcast(i).size() + 1),
                 errors::InvalidArgument("pos ", pos, " out of range for string",
                                         "b'", in, "' at index ", i));
             output(i) = in.substr(pos, len);
@@ -197,7 +197,7 @@ class SubstrOp : public OpKernel {
                   tensorflow::internal::SubtleMustCopy(pos_bcast(i, j));
               const T len =
                   tensorflow::internal::SubtleMustCopy(len_bcast(i, j));
-              OP_REQUIRES(context, FastBoundsCheck(pos, in.size()),
+              OP_REQUIRES(context, FastBoundsCheck(pos, in.size() + 1),
                           errors::InvalidArgument(
                               "pos ", pos, " out of range for ", "string b'",
                               in, "' at index (", i, ", ", j, ")"));

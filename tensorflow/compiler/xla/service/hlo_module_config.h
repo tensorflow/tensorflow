@@ -67,11 +67,6 @@ class HloModuleConfig {
   bool hlo_profiling_enabled() const { return hlo_profiling_enabled_; }
   void enable_hlo_profiling(bool enabled) { hlo_profiling_enabled_ = enabled; }
 
-  bool has_hybrid_result() const { return has_hybrid_result_; }
-  void set_has_hybrid_result(bool has_hybrid_result) {
-    has_hybrid_result_ = has_hybrid_result;
-  }
-
   // Sets/returns the module seed set during execution.
   void set_seed(uint64 seed) { seed_ = seed; }
   uint64 seed() const { return seed_; }
@@ -92,6 +87,15 @@ class HloModuleConfig {
     debug_options_ = debug_options;
   }
 
+  // Sets/returns the number of intra op threads for this module.
+  void set_intra_op_parallelism_threads(
+      const int intra_op_parallelism_threads) {
+    intra_op_parallelism_threads_ = intra_op_parallelism_threads;
+  }
+  int64 intra_op_parallelism_threads() const {
+    return intra_op_parallelism_threads_;
+  }
+
  private:
   // If you add new members, be sure to update compilation_cache_key.
 
@@ -100,21 +104,15 @@ class HloModuleConfig {
   // Whether to enable HLO-level profiling.
   bool hlo_profiling_enabled_ = false;
 
-  // If this flag is true, the generated executable will return a ShapedBuffer
-  // holding the result of the computation. In a ShapedBuffer, tuples have their
-  // structure held in host memory and the element arrays (leaves of the tuple
-  // structure) stored in device memory. The ShapedBuffer is considered "hybrid"
-  // because its leaves are on device but its structure is stored on
-  // host. Otherwise, if this flag is false, the generated executable will
-  // return a DeviceMemoryBase where the result is held entirely in device
-  // memory.
-  bool has_hybrid_result_ = false;
-
   // Module/graph-level seed handle.
   uint64 seed_ = 0;
 
   // The number of replicas to compile this binary for.
   int64 replica_count_ = 1;
+
+  // The target maximum parallelism at which to partition HLOs for parallel
+  // execution on the CPU backend.
+  int64 intra_op_parallelism_threads_ = -1;
 
   DebugOptions debug_options_;
 };

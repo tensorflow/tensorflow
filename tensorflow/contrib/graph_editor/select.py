@@ -620,7 +620,7 @@ def select_ops(*args, **kwargs):
   """Helper to select operations.
 
   Args:
-    *args: list of 1) regular expressions (compiled or not) or  2) (array of)
+    *args: list of 1) regular expressions (compiled or not) or 2) (array of)
       `tf.Operation`. `tf.Tensor` instances are silently ignored.
     **kwargs: 'graph': `tf.Graph` in which to perform the regex query.This is
       required when using regex.
@@ -686,7 +686,7 @@ def select_ts(*args, **kwargs):
   """Helper to select tensors.
 
   Args:
-    *args: list of 1) regular expressions (compiled or not) or  2) (array of)
+    *args: list of 1) regular expressions (compiled or not) or 2) (array of)
       `tf.Tensor`. `tf.Operation` instances are silently ignored.
     **kwargs: 'graph': `tf.Graph` in which to perform the regex query.This is
       required when using regex.
@@ -752,7 +752,7 @@ def select_ops_and_ts(*args, **kwargs):
   """Helper to select operations and tensors.
 
   Args:
-    *args: list of 1) regular expressions (compiled or not) or  2) (array of)
+    *args: list of 1) regular expressions (compiled or not) or 2) (array of)
       `tf.Operation` 3) (array of) tf.Tensor. Regular expressions matching
       tensors must start with the comment `"(?#ts)"`, for instance:
       `"(?#ts)^foo/.*"`.

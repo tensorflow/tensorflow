@@ -11,9 +11,10 @@ exports_files([
     "API_UPDATE_WARNING.txt",
 ])
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
+
 py_test(
     name = "api_compatibility_test",
-    size = "small",
     srcs = ["api_compatibility_test.py"],
     data = [
         "//tensorflow/tools/api/golden:api_golden",
@@ -23,11 +24,21 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow:tensorflow_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
-        "@protobuf//:protobuf_python",
+    ],
+)
+
+tf_cc_binary(
+    name = "convert_from_multiline",
+    srcs = ["convert_from_multiline.cc"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:op_gen_lib",
     ],
 )
 

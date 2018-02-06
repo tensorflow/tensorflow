@@ -93,7 +93,7 @@ with an asset of the same name, only the first version is retained.
 Each meta graph added to the SavedModel must be annotated with user specified
 tags. The tags provide a means to identify the specific meta graph to load and
 restore, along with the shared set of variables and assets. These tags
-typically annotate a MetaGraph with it's functionality (e.g. serving or
+typically annotate a MetaGraph with its functionality (e.g. serving or
 training), and possibly hardware specific aspects such as GPU.
 
 #### Usage
@@ -106,7 +106,7 @@ builder = tf.saved_model.builder.SavedModelBuilder(export_dir)
 with tf.Session(graph=tf.Graph()) as sess:
   ...
   builder.add_meta_graph_and_variables(sess,
-                                       [tag_constants.TRAINING],
+                                       [tf.saved_model.tag_constants.TRAINING],
                                        signature_def_map=foo_signatures,
                                        assets_collection=foo_assets)
 ...
@@ -116,6 +116,35 @@ with tf.Session(graph=tf.Graph()) as sess:
 ...
 builder.save()
 ~~~
+
+#### Stripping Default valued attributes
+The SavedModelBuilder class allows users to control whether default-valued
+attributes must be stripped from the NodeDefs while adding a meta graph to the
+SavedModel bundle. Both `SavedModelBuilder.add_meta_graph_and_variables` and
+`SavedModelBuilder.add_meta_graph` methods accept a Boolean flag
+`strip_default_attrs` that controls this behavior.
+
+If `strip_default_attrs` is `False`, the exported MetaGraphDef will have the
+default valued attributes in all it's NodeDef instances. This can break forward
+compatibility with a sequence of events such as the following:
+
+* An existing Op (`Foo`) is updated to include a new attribute (`T`) with a
+  default (`bool`) at version 101.
+* A model producer (such as a Trainer) binary picks up this change
+  (version 101) to the OpDef and re-exports an existing model that uses Op `Foo`.
+* A model consumer (such as Tensorflow Serving) running an older binary
+  (version 100) doesn't have attribute `T` for Op `Foo`, but tries to import
+  this model. The model consumer doesn't recognize attribute `T` in a NodeDef
+  that uses Op `Foo` and therefore fails to load the model.
+
+By setting `strip_default_attrs` to `True`, the model producers can strip away
+any default valued attributes in the NodeDefs. This helps ensure that newly
+added attributes with defaults don't cause older model consumers to fail loading
+models regenerated with newer training binaries.
+
+TIP: If you care about forward compatibility, then set `strip_default_attrs`
+to `True` while using `SavedModelBuilder.add_meta_graph_and_variables` and
+`SavedModelBuilder.add_meta_graph`.
 
 ### Loader
 The SavedModel loader is implemented in C++ and Python.

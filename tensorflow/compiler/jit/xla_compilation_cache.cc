@@ -37,7 +37,7 @@ limitations under the License.
 
 namespace tensorflow {
 
-XlaCompilationCache::XlaCompilationCache(xla::Client* client,
+XlaCompilationCache::XlaCompilationCache(xla::LocalClient* client,
                                          DeviceType device_type)
     : client_(client), device_type_(std::move(device_type)) {}
 XlaCompilationCache::~XlaCompilationCache() = default;
@@ -182,17 +182,19 @@ Status BuildArguments(int num_constant_args,
     XlaCompiler::Argument& arg = (*args)[input_num];
 
     arg.name = variable_args[variable_id].name;
+    arg.kind = XlaCompiler::Argument::kResource;
+    arg.resource_kind = XlaResource::kVariable;
     if (variable_args[variable_id].present) {
       const Tensor& value = variable_args[variable_id].value;
-      arg.kind = XlaCompiler::Argument::kVariable;
       arg.type = value.dtype();
       arg.shape = value.shape();
+      arg.initialized = true;
     } else {
       // The values of uninitialized variables are not passed as inputs, since
       // they are meaningless. However, it is legal to assign to a resource
       // variable for the first time inside the XLA computation, so we do permit
       // uninitialized variables.
-      arg.kind = XlaCompiler::Argument::kUninitializedVariable;
+      arg.initialized = false;
       arg.type = DT_INVALID;
       arg.shape = TensorShape();
     }
@@ -204,12 +206,38 @@ Status BuildArguments(int num_constant_args,
 
 }  // namespace
 
+Status XlaCompilationCache::BuildExecutable(
+    const XlaCompiler::Options& options,
+    const XlaCompiler::CompilationResult& result,
+    std::unique_ptr<xla::LocalExecutable>* executable) {
+  VLOG(2) << "Compiling to local executable";
+
+  std::vector<const xla::Shape*> argument_layouts(
+      result.xla_input_shapes.size());
+  for (int i = 0; i < result.xla_input_shapes.size(); ++i) {
+    argument_layouts[i] = &result.xla_input_shapes[i];
+  }
+  xla::ExecutableBuildOptions build_options;
+  build_options.set_device_ordinal(client_->default_device_ordinal());
+  build_options.set_result_layout(result.xla_output_shape);
+  build_options.set_device_allocator(options.device_allocator);
+
+  auto compile_result =
+      client_->Compile(*result.computation, argument_layouts, build_options);
+  if (!compile_result.ok()) {
+    return compile_result.status();
+  }
+  *executable = std::move(compile_result.ValueOrDie());
+  return Status::OK();
+}
+
 Status XlaCompilationCache::Compile(
     const XlaCompiler::Options& options, const NameAttrList& function,
     int num_constant_args, const std::vector<OptionalTensor>& variable_args,
     OpKernelContext* ctx,
     const XlaCompiler::CompilationResult** compilation_result,
-    xla::LocalExecutable** executable) {
+    xla::LocalExecutable** executable,
+    const XlaCompiler::CompileOptions* compile_options) {
   VLOG(1) << "XlaCompilationCache::Compile " << DebugString();
 
   if (VLOG_IS_ON(2)) {
@@ -258,6 +286,8 @@ Status XlaCompilationCache::Compile(
   // cache eviction.
   mutex_lock entry_lock(entry->mu);
   if (!entry->compiled) {
+    VLOG(1) << "Compilation cache miss for signature: "
+            << SignatureDebugString(signature);
     // Do the actual JIT compilation without holding the lock (it can take
     // a long time.)
     std::vector<XlaCompiler::Argument> args;
@@ -266,17 +296,15 @@ Status XlaCompilationCache::Compile(
 
     XlaCompiler compiler(options);
     entry->compiled = true;
-    entry->compilation_status =
-        compiler.CompileFunction(XlaCompiler::CompileOptions(), function, args,
-                                 &entry->compilation_result);
+    entry->compilation_status = compiler.CompileFunction(
+        compile_options ? *compile_options : XlaCompiler::CompileOptions(),
+        function, args, &entry->compilation_result);
   }
   *compilation_result = &entry->compilation_result;
   if (entry->compilation_status.ok() && executable) {
-    if (entry->executable == nullptr &&
-        !entry->compilation_result.computation->IsNull()) {
-      XlaCompiler compiler(options);
-      entry->compilation_status = compiler.BuildExecutable(
-          entry->compilation_result, &entry->executable);
+    if (entry->executable == nullptr) {
+      entry->compilation_status = BuildExecutable(
+          options, entry->compilation_result, &entry->executable);
     }
     *executable = entry->executable.get();
   }

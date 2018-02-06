@@ -7,6 +7,10 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "constraint"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "custom_getter"
     mtype: "<type \'property\'>"
   }
@@ -44,7 +48,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'reuse\', \'name\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'name_scope\', \'dtype\', \'use_resource\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\', \'None\', \'None\', \'None\', \'\', \"<dtype: \'float32\'>\", \'None\'], "
+    argspec: "args=[\'self\', \'reuse\', \'name\', \'initializer\', \'regularizer\', \'caching_device\', \'partitioner\', \'custom_getter\', \'name_scope\', \'dtype\', \'use_resource\', \'constraint\'], varargs=None, keywords=None, defaults=[\'\', \'None\', \'None\', \'None\', \'None\', \'None\', \'\', \"<dtype: \'float32\'>\", \'None\', \'None\'], "
   }
   member_method {
     name: "get_collection"
@@ -52,10 +56,14 @@ tf_class {
   }
   member_method {
     name: "get_variable"
-    argspec: "args=[\'self\', \'var_store\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'reuse\', \'trainable\', \'collections\', \'caching_device\', \'partitioner\', \'validate_shape\', \'use_resource\', \'custom_getter\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
+    argspec: "args=[\'self\', \'var_store\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'reuse\', \'trainable\', \'collections\', \'caching_device\', \'partitioner\', \'validate_shape\', \'use_resource\', \'custom_getter\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\', \'True\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "global_variables"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "local_variables"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

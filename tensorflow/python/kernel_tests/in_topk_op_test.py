@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
@@ -69,6 +70,16 @@ class InTopKTest(test.TestCase):
                                    "target.*out of range"):
         nn_ops.in_top_k(predictions, target, 2).eval()
 
+  def testTensorK(self):
+    predictions = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.2, 0.3, 0.4]]
+    target = [0, 2]
+    k = constant_op.constant(3)
+    np_ans = np.array([False, True])
+    with self.test_session():
+      precision = nn_ops.in_top_k(predictions, target, k)
+      out = precision.eval()
+      self.assertAllClose(np_ans, out)
+      self.assertShapeEqual(np_ans, precision)
 
 if __name__ == "__main__":
   test.main()

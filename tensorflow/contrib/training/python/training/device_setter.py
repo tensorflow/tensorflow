@@ -19,9 +19,38 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import hashlib
 import numpy as np
 
 from tensorflow.python.framework import tensor_shape
+
+
+class RandomStrategy(object):
+  """Returns a random PS task for op placement.
+
+  This may perform better than the default round-robin placement if you
+  have a large number of variables. Depending on your architecture and
+  number of parameter servers, round-robin can lead to situations where
+  all of one type of variable is placed on a single PS task, which may
+  lead to contention issues.
+
+  This strategy uses a hash function on the name of each op for deterministic
+  placement.
+  """
+
+  def __init__(self, num_ps_tasks, seed=0):
+    """Creates a new `RandomStrategy`."""
+    self._num_tasks = num_ps_tasks
+    self._seed = seed
+
+  def __call__(self, op):
+    """Chooses a ps task index for the given `Operation`."""
+    key = "%s_%d" % (op.name, self._seed)
+    key = key.encode("utf-8")
+    # Use MD5 instead of Python's built-in hash() to get consistent outputs
+    # between runs.
+    n = int(hashlib.md5(key).hexdigest(), 16)
+    return int(n % self._num_tasks)
 
 
 class GreedyLoadBalancingStrategy(object):

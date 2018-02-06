@@ -14,15 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/platform/cloud/google_auth_provider.h"
+#ifndef _WIN32
 #include <pwd.h>
-#include <sys/types.h>
 #include <unistd.h>
+#else
+#include <sys/types.h>
+#endif
 #include <fstream>
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/base64.h"
-#include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/curl_http_request.h"
 #include "tensorflow/core/platform/cloud/retrying_utils.h"
 #include "tensorflow/core/platform/env.h"
 
@@ -121,7 +124,7 @@ Status GetWellKnownFileName(string* filename) {
 GoogleAuthProvider::GoogleAuthProvider()
     : GoogleAuthProvider(
           std::unique_ptr<OAuthClient>(new OAuthClient()),
-          std::unique_ptr<HttpRequest::Factory>(new HttpRequest::Factory()),
+          std::unique_ptr<HttpRequest::Factory>(new CurlHttpRequest::Factory()),
           Env::Default(), kInitialRetryDelayUsec) {}
 
 GoogleAuthProvider::GoogleAuthProvider(
@@ -208,10 +211,9 @@ Status GoogleAuthProvider::GetTokenFromGce() {
     std::unique_ptr<HttpRequest> request(http_request_factory_->Create());
     std::vector<char> response_buffer;
     const uint64 request_timestamp_sec = env_->NowSeconds();
-    TF_RETURN_IF_ERROR(request->Init());
-    TF_RETURN_IF_ERROR(request->SetUri(kGceTokenUrl));
-    TF_RETURN_IF_ERROR(request->AddHeader("Metadata-Flavor", "Google"));
-    TF_RETURN_IF_ERROR(request->SetResultBuffer(&response_buffer));
+    request->SetUri(kGceTokenUrl);
+    request->AddHeader("Metadata-Flavor", "Google");
+    request->SetResultBuffer(&response_buffer);
     TF_RETURN_IF_ERROR(request->Send());
     StringPiece response =
         StringPiece(&response_buffer[0], response_buffer.size());

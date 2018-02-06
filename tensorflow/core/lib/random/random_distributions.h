@@ -17,8 +17,8 @@ limitations under the License.
 #define TENSORFLOW_LIB_RANDOM_RANDOM_DISTRIBUTIONS_H_
 
 #define _USE_MATH_DEFINES
-#include <cmath>
 #include <math.h>
+#include <cmath>
 #undef _USE_MATH_DEFINES
 
 #include <string.h>
@@ -26,7 +26,6 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/lib/random/philox_random.h"
-
 
 namespace tensorflow {
 namespace random {
@@ -219,7 +218,37 @@ class SingleSampleAdapter {
     return unused_results_[used_result_index_++];
   }
 
+  PHILOX_DEVICE_INLINE
+  void Skip(uint64 num_skips) {
+    if (!num_skips) {
+      return;
+    }
+    int num_unused_results = kNativeElementCount - used_result_index_;
+    if (num_skips <= num_unused_results) {
+      used_result_index_ += num_skips;
+      return;
+    }
+    num_skips -= num_unused_results;
+    used_result_index_ = kNativeElementCount;
+    SkipFromGenerator(num_skips / kNativeElementCount);
+    num_skips = num_skips % kNativeElementCount;
+    if (num_skips) {
+      unused_results_ = (*generator_)();
+      used_result_index_ = num_skips;
+    }
+  }
+
  private:
+  // This implementation iteratively skips over `num_skips` samples
+  // from `generator_`. There is an O(1) implementation for PhiloxRandom
+  // in random_distributions.cc.
+  PHILOX_DEVICE_INLINE
+  void SkipFromGenerator(uint64 num_skips) {
+    while (num_skips--) {
+      (*generator_)();
+    }
+  }
+
   Generator* generator_;
   typename Generator::ResultType unused_results_;
   int used_result_index_;

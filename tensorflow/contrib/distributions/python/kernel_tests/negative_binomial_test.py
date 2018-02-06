@@ -241,6 +241,28 @@ class NegativeBinomialTest(test.TestCase):
                             atol=0.,
                             rtol=.02)
 
+  def testLogProbOverflow(self):
+    with self.test_session() as sess:
+      logits = np.float32([20., 30., 40.])
+      total_count = np.float32(1.)
+      x = np.float32(0.)
+      nb = negative_binomial.NegativeBinomial(
+          total_count=total_count, logits=logits)
+      log_prob_ = sess.run(nb.log_prob(x))
+      self.assertAllEqual(np.ones_like(log_prob_, dtype=np.bool),
+                          np.isfinite(log_prob_))
+
+  def testLogProbUnderflow(self):
+    with self.test_session() as sess:
+      logits = np.float32([-90, -100, -110])
+      total_count = np.float32(1.)
+      x = np.float32(0.)
+      nb = negative_binomial.NegativeBinomial(
+          total_count=total_count, logits=logits)
+      log_prob_ = sess.run(nb.log_prob(x))
+      self.assertAllEqual(np.ones_like(log_prob_, dtype=np.bool),
+                          np.isfinite(log_prob_))
+
 
 if __name__ == "__main__":
   test.main()

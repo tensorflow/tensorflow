@@ -19,8 +19,10 @@ from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("Dimension")
 class Dimension(object):
   """Represents the value of one dimension in a TensorShape."""
 
@@ -116,11 +118,11 @@ class Dimension(object):
     Dimensions are combined as follows:
 
     ```python
-        Dimension(n)   .merge_with(Dimension(n))    == Dimension(n)
-        Dimension(n)   .merge_with(Dimension(None)) == Dimension(n)
-        Dimension(None).merge_with(Dimension(n))    == Dimension(n)
-        Dimension(None).merge_with(Dimension(None)) == Dimension(None)
-        Dimension(n)   .merge_with(Dimension(m)) raises ValueError for n != m
+    tf.Dimension(n)   .merge_with(tf.Dimension(n))    == tf.Dimension(n)
+    tf.Dimension(n)   .merge_with(tf.Dimension(None)) == tf.Dimension(n)
+    tf.Dimension(None).merge_with(tf.Dimension(n))    == tf.Dimension(n)
+    tf.Dimension(None).merge_with(tf.Dimension(None)) == tf.Dimension(None)
+    tf.Dimension(n)   .merge_with(tf.Dimension(m))  # raises ValueError for n != m
     ```
 
     Args:
@@ -146,10 +148,12 @@ class Dimension(object):
 
     Dimensions are summed as follows:
 
-      Dimension(m)    + Dimension(n)    == Dimension(m + n)
-      Dimension(m)    + Dimension(None) == Dimension(None)
-      Dimension(None) + Dimension(n)    == Dimension(None)
-      Dimension(None) + Dimension(None) == Dimension(None)
+    ```python
+    tf.Dimension(m)    + tf.Dimension(n)    == tf.Dimension(m + n)
+    tf.Dimension(m)    + tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(None) + tf.Dimension(n)    == tf.Dimension(None)
+    tf.Dimension(None) + tf.Dimension(None) == tf.Dimension(None)
+    ```
 
     Args:
       other: Another Dimension.
@@ -168,10 +172,12 @@ class Dimension(object):
 
     Dimensions are subtracted as follows:
 
-      Dimension(m)    - Dimension(n)    == Dimension(m - n)
-      Dimension(m)    - Dimension(None) == Dimension(None)
-      Dimension(None) - Dimension(n)    == Dimension(None)
-      Dimension(None) - Dimension(None) == Dimension(None)
+    ```python
+    tf.Dimension(m)    - tf.Dimension(n)    == tf.Dimension(m - n)
+    tf.Dimension(m)    - tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(None) - tf.Dimension(n)    == tf.Dimension(None)
+    tf.Dimension(None) - tf.Dimension(None) == tf.Dimension(None)
+    ```
 
     Args:
       other: Another Dimension.
@@ -190,11 +196,11 @@ class Dimension(object):
 
     Dimensions are summed as follows:
 
-    ```
-      Dimension(m)    * Dimension(n)    == Dimension(m * n)
-      Dimension(m)    * Dimension(None) == Dimension(None)
-      Dimension(None) * Dimension(n)    == Dimension(None)
-      Dimension(None) * Dimension(None) == Dimension(None)
+    ```python
+    tf.Dimension(m)    * tf.Dimension(n)    == tf.Dimension(m * n)
+    tf.Dimension(m)    * tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(None) * tf.Dimension(n)    == tf.Dimension(None)
+    tf.Dimension(None) * tf.Dimension(None) == tf.Dimension(None)
     ```
 
     Args:
@@ -214,10 +220,12 @@ class Dimension(object):
 
     Dimensions are divided as follows:
 
-      Dimension(m)    // Dimension(n)    == Dimension(m // n)
-      Dimension(m)    // Dimension(None) == Dimension(None)
-      Dimension(None) // Dimension(n)    == Dimension(None)
-      Dimension(None) // Dimension(None) == Dimension(None)
+    ```python
+    tf.Dimension(m)    // tf.Dimension(n)    == tf.Dimension(m // n)
+    tf.Dimension(m)    // tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(None) // tf.Dimension(n)    == tf.Dimension(None)
+    tf.Dimension(None) // tf.Dimension(None) == tf.Dimension(None)
+    ```
 
     Args:
       other: Another `Dimension`.
@@ -250,12 +258,14 @@ class Dimension(object):
   def __mod__(self, other):
     """Returns `self` modulo `other.
 
-    Dimension moduli are computed  as follows:
+    Dimension moduli are computed as follows:
 
-      Dimension(m)    % Dimension(n)     == Dimension(m % n)
-      Dimension(m)    % Dimension(None)  == Dimension(None)
-      Dimension(None) % Dimension(n)     == Dimension(None)
-      Dimension(None) %  Dimension(None) == Dimension(None)
+    ```python
+    tf.Dimension(m)    % tf.Dimension(n)    == tf.Dimension(m % n)
+    tf.Dimension(m)    % tf.Dimension(None) == tf.Dimension(None)
+    tf.Dimension(None) % tf.Dimension(n)    == tf.Dimension(None)
+    tf.Dimension(None) % tf.Dimension(None) == tf.Dimension(None)
+    ```
 
     Args:
       other: Another Dimension.
@@ -274,10 +284,12 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-      Dimension(m)    < Dimension(n)    == m < n
-      Dimension(m)    < Dimension(None) == None
-      Dimension(None) < Dimension(n)    == None
-      Dimension(None) < Dimension(None) == None
+    ```python
+    (tf.Dimension(m)    < tf.Dimension(n))    == (m < n)
+    (tf.Dimension(m)    < tf.Dimension(None)) == None
+    (tf.Dimension(None) < tf.Dimension(n))    == None
+    (tf.Dimension(None) < tf.Dimension(None)) == None
+    ```
 
     Args:
       other: Another Dimension.
@@ -297,10 +309,12 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-      Dimension(m)    <= Dimension(n)    == m <= n
-      Dimension(m)    <= Dimension(None) == None
-      Dimension(None) <= Dimension(n)    == None
-      Dimension(None) <= Dimension(None) == None
+    ```python
+    (tf.Dimension(m)    <= tf.Dimension(n))    == (m <= n)
+    (tf.Dimension(m)    <= tf.Dimension(None)) == None
+    (tf.Dimension(None) <= tf.Dimension(n))    == None
+    (tf.Dimension(None) <= tf.Dimension(None)) == None
+    ```
 
     Args:
       other: Another Dimension.
@@ -320,10 +334,12 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-      Dimension(m)    > Dimension(n)    == m > n
-      Dimension(m)    > Dimension(None) == None
-      Dimension(None) > Dimension(n)    == None
-      Dimension(None) > Dimension(None) == None
+    ```python
+    (tf.Dimension(m)    > tf.Dimension(n))    == (m > n)
+    (tf.Dimension(m)    > tf.Dimension(None)) == None
+    (tf.Dimension(None) > tf.Dimension(n))    == None
+    (tf.Dimension(None) > tf.Dimension(None)) == None
+    ```
 
     Args:
       other: Another Dimension.
@@ -343,10 +359,12 @@ class Dimension(object):
 
     Dimensions are compared as follows:
 
-      Dimension(m)    >= Dimension(n)    == m >= n
-      Dimension(m)    >= Dimension(None) == None
-      Dimension(None) >= Dimension(n)    == None
-      Dimension(None) >= Dimension(None) == None
+    ```python
+    (tf.Dimension(m)    >= tf.Dimension(n))    == (m >= n)
+    (tf.Dimension(m)    >= tf.Dimension(None)) == None
+    (tf.Dimension(None) >= tf.Dimension(n))    == None
+    (tf.Dimension(None) >= tf.Dimension(None)) == None
+    ```
 
     Args:
       other: Another Dimension.
@@ -365,7 +383,7 @@ class Dimension(object):
 def as_dimension(value):
   """Converts the given value to a Dimension.
 
-  A Dimenson input will be returned unmodified.
+  A Dimension input will be returned unmodified.
   An input of `None` will be converted to an unknown Dimension.
   An integer input will be converted to a Dimension with that value.
 
@@ -381,6 +399,7 @@ def as_dimension(value):
     return Dimension(value)
 
 
+@tf_export("TensorShape")
 class TensorShape(object):
   """Represents the shape of a `Tensor`.
 
@@ -735,6 +754,36 @@ class TensorShape(object):
     """
     if not self.is_compatible_with(other):
       raise ValueError("Shapes %s and %s are incompatible" % (self, other))
+
+  def most_specific_compatible_shape(self, other):
+    """Returns the most specific TensorShape compatible with `self` and `other`.
+
+    * TensorShape([None, 1]) is the most specific TensorShape compatible with
+      both TensorShape([2, 1]) and TensorShape([5, 1]). Note that
+      TensorShape(None) is also compatible with above mentioned TensorShapes.
+
+    * TensorShape([1, 2, 3]) is the most specific TensorShape compatible with
+      both TensorShape([1, 2, 3]) and TensorShape([1, 2, 3]). There are more
+      less specific TensorShapes compatible with above mentioned TensorShapes,
+      e.g. TensorShape([1, 2, None]), TensorShape(None).
+
+    Args:
+      other: Another `TensorShape`.
+
+    Returns:
+      A `TensorShape` which is the most specific compatible shape of `self`
+      and `other`.
+    """
+
+    other = as_shape(other)
+    if self._dims is None or other.dims is None or self.ndims != other.ndims:
+      return unknown_shape()
+
+    dims = [(Dimension(None))] * self.ndims
+    for i, (d1, d2) in enumerate(zip(self._dims, other.dims)):
+      if d1 is not None and d2 is not None and d1 == d2:
+        dims[i] = d1
+    return TensorShape(dims)
 
   def is_fully_defined(self):
     """Returns True iff `self` is fully defined in every dimension."""

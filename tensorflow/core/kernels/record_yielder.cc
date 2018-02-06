@@ -46,7 +46,7 @@ RecordYielder::~RecordYielder() {
 
 Status RecordYielder::YieldOne(string* value) {
   mutex_lock l(mu_);
-  while (!BufEnough()) {
+  while (!BufEnough() && status_.ok()) {
     buf_enough_.wait(l);
   }
   if (status_.ok()) {
@@ -98,16 +98,21 @@ void RecordYielder::MainLoop() {
   while (true) {
     ++epoch_;
     num_records_yielded_in_epoch_ = 0;
+    num_records_added_in_epoch_ = 0;
 
     // Finds all files.
     std::vector<string> filenames;
     Status s = MatchFiles(opts_.file_pattern, &filenames);
-    if (ShouldFinish(s)) break;
 
     if (filenames.empty()) {
       s = errors::NotFound("Found no files at ", opts_.file_pattern);
-      if (ShouldFinish(s)) break;
+      if (ShouldFinish(s)) {
+        buf_enough_.notify_all();
+        break;
+      }
     }
+
+    if (ShouldFinish(s)) break;
 
     // Shuffles these files according to the epoch # and random seed.
     std::mt19937_64 shuffle_rnd(
@@ -139,7 +144,16 @@ void RecordYielder::MainLoop() {
       shards[i].done.WaitForNotification();
       s.Update(shards[i].status);
     }
-    if (ShouldFinish(s)) break;
+
+    if (num_records_added_in_epoch_ < opts_.bufsize) {
+      mutex_lock l(mu_);
+      opts_.bufsize = num_records_added_in_epoch_;
+    }
+
+    if (ShouldFinish(s)) {
+      buf_enough_.notify_all();
+      break;
+    }
 
     // Starts the next epoch once all buffered records are consumed.
     {
@@ -173,6 +187,7 @@ bool RecordYielder::Add(std::vector<string>* values) {
       buf_[index] = std::move(values->back());
     }
     values->pop_back();
+    num_records_added_in_epoch_++;
   }
   if (BufEnough()) {
     buf_enough_.notify_all();
@@ -191,7 +206,10 @@ void RecordYielder::ShardLoop(Shard* shard) {
       shard->status = errors::InvalidArgument("Can't open ", filename);
       break;
     }
-    io::RecordReader rdr(file.get());
+    io::RecordReaderOptions options =
+        io::RecordReaderOptions::CreateRecordReaderOptions(
+            opts_.compression_type);
+    io::RecordReader rdr(file.get(), options);
     uint64 offset = 0;
     string record;
     while (true) {

@@ -54,6 +54,7 @@ std::ostream& operator<<(std::ostream& out, const CallContext& context) {
 CallContext GetInstructionCallContext(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kCall:
+    case HloOpcode::kConditional:
     case HloOpcode::kWhile:
       return CallContext::kSequential;
     case HloOpcode::kMap:
@@ -133,6 +134,37 @@ CallGraphNode& CallGraph::GetNode(const HloComputation* computation) {
   return nodes_[it->second];
 }
 
+bool CallGraph::DominatesHelper(
+    const HloComputation* a, const HloComputation* b,
+    tensorflow::gtl::FlatSet<const HloComputation*>* visited) const {
+  if (a == b || ContainsKey(*visited, b)) {
+    // The call graph is guaranteed to be acyclic so any previously visited node
+    // we encounter was already determined to be dominated.
+    return true;
+  }
+
+  const CallGraphNode& b_node = GetNode(b);
+  if (b_node.callers().empty()) {
+    // We reached a root node without hitting 'a'. 'a' does not dominate 'b'.
+    return false;
+  }
+
+  // Walk up the callers of 'b' until we hit 'a' or a root node (no callers).
+  visited->insert(b);
+  for (const HloComputation* b_caller : b_node.callers()) {
+    if (!DominatesHelper(a, b_caller, visited)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool CallGraph::Dominates(const HloComputation* a,
+                          const HloComputation* b) const {
+  tensorflow::gtl::FlatSet<const HloComputation*> visited;
+  return DominatesHelper(a, b, &visited);
+}
+
 namespace {
 
 // Returns the call context of a computation which is called from contexts 'a'
@@ -158,9 +190,8 @@ void CallGraph::SetCallContexts() {
 
   // Initialize worklist with all roots of the call graph (computations without
   // callers).
-  for (const std::unique_ptr<HloComputation>& computation :
-       module_->computations()) {
-    CallGraphNode& node = GetNode(computation.get());
+  for (const HloComputation* computation : module_->computations()) {
+    CallGraphNode& node = GetNode(computation);
     if (node.callers().empty()) {
       node.set_context(CallContext::kSequential);
       worklist.push(&node);
@@ -197,9 +228,8 @@ void CallGraph::SetCallContexts() {
   }
 
   // No node should have a kNone calling context.
-  for (const std::unique_ptr<HloComputation>& computation :
-       module_->computations()) {
-    CHECK_NE(GetNode(computation.get()).context(), CallContext::kNone);
+  for (const HloComputation* computation : module_->computations()) {
+    CHECK_NE(GetNode(computation).context(), CallContext::kNone);
   }
 }
 
@@ -212,27 +242,24 @@ std::unique_ptr<CallGraph> CallGraph::Build(const HloModule* module) {
   XLA_VLOG_LINES(2, module->ToString());
 
   // Construct nodes of the call graph and populate the callsites.
-  for (const std::unique_ptr<HloComputation>& computation :
-       module->computations()) {
+  for (HloComputation* computation : module->computations()) {
     auto it_added = call_graph->node_indices_.insert(
-        {computation.get(), call_graph->nodes_.size()});
+        {computation, call_graph->nodes_.size()});
     // All computations should be unique, so the computation should not already
     // exist in the map.
     CHECK(it_added.second);
-    call_graph->nodes_.emplace_back(computation.get());
+    call_graph->nodes_.emplace_back(computation);
 
     // Add all callsites in this computation.
-    for (const std::unique_ptr<HloInstruction>& instruction :
-         computation->instructions()) {
-      call_graph->nodes_.back().AddCallSiteForInstruction(instruction.get());
+    for (HloInstruction* instruction : computation->instructions()) {
+      call_graph->nodes_.back().AddCallSiteForInstruction(instruction);
     }
   }
 
   // Add caller callsites to each node.
-  for (const std::unique_ptr<HloComputation>& computation :
-       module->computations()) {
+  for (const HloComputation* computation : module->computations()) {
     for (const CallSite& callsite :
-         call_graph->GetNode(computation.get()).callsites()) {
+         call_graph->GetNode(computation).callsites()) {
       for (auto* callee : callsite.called_computations()) {
         // Add caller callsites.
         call_graph->GetNode(callee).AddCallerCallSite(callsite);
@@ -280,6 +307,49 @@ Status CallGraph::VisitNodes(const VisitorFunction& visitor_func,
   }
 
   return Status::OK();
+}
+
+bool CallGraph::IsFlattened() const {
+  for (const CallGraphNode& node : nodes_) {
+    if (node.context() == CallContext::kBoth) {
+      return false;
+    }
+    if (node.context() == CallContext::kSequential &&
+        node.caller_callsites().size() > 1) {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::pair<HloInstruction*, HloInstruction*>
+CallGraph::NearestAncestorsInSameComputation(HloInstruction* a,
+                                             HloInstruction* b) const {
+  // Lambda which returns the next instruction in the callee->caller chain in
+  // the call graph. This is the unique instruction which calls the computation
+  // containing 'instruction'. If more than one instruction calls the
+  // computation containing 'instruction' or no instructions call the
+  // computation then nullptr is returned.
+  auto next_caller = [this](HloInstruction* instruction) -> HloInstruction* {
+    const CallGraphNode& node = GetNode(instruction->parent());
+    if (node.caller_callsites().size() != 1) {
+      return nullptr;
+    }
+    return node.caller_callsites()[0].instruction();
+  };
+
+  // Iterate through the callee->caller chains and find the earliest common
+  // element.
+  for (HloInstruction* a_ancestor = a; a_ancestor != nullptr;
+       a_ancestor = next_caller(a_ancestor)) {
+    for (HloInstruction* b_ancestor = b; b_ancestor != nullptr;
+         b_ancestor = next_caller(b_ancestor)) {
+      if (a_ancestor->parent() == b_ancestor->parent()) {
+        return {a_ancestor, b_ancestor};
+      }
+    }
+  }
+  return {nullptr, nullptr};
 }
 
 string CallGraph::ToString() const {

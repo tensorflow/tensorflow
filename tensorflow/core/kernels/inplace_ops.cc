@@ -27,14 +27,14 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SyclDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace functor {
 
 template <typename Device, typename T>
-Status DoParallelConcatUpdate(const Device& d, const Tensor& value,
-                              int32 loc, Tensor* output) {
-  auto Tvalue = value.flat_outer_dims<T>();
+Status DoParallelConcatUpdate(const Device& d, const Tensor& value, int32 loc,
+                              Tensor* output) {
+  auto Tvalue = value.shaped<T, 2>({1, value.NumElements()});
   auto Toutput = output->flat_outer_dims<T>();
   auto nrows = Toutput.dimension(0);
   auto r = (loc % nrows + nrows) % nrows;  // Guard index range.
@@ -52,6 +52,7 @@ Status DoParallelConcat(const CPUDevice& d, const Tensor& value, int32 loc,
     return DoParallelConcatUpdate<CPUDevice, type>(d, value, loc, output);
     TF_CALL_NUMBER_TYPES(CASE);
     TF_CALL_string(CASE);
+    TF_CALL_variant(CASE);
 #undef CASE
     default:
       return errors::InvalidArgument("Unsupported data type: ", value.dtype());
@@ -73,7 +74,7 @@ Status DoParallelConcat(const SyclDevice& d, const Tensor& value, int32 loc,
       return errors::InvalidArgument("Unsupported data type: ", value.dtype());
   }
 }
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 }  // end namespace functor
 
@@ -206,7 +207,7 @@ REGISTER_KERNEL_BUILDER(Name("_ParallelConcatUpdate")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         ParallelConcatUpdate<CPUDevice>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #if GOOGLE_CUDA
 

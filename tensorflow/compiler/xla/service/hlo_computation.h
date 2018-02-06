@@ -24,16 +24,18 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/iterator_util.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo.pb.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_reachability.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/bitmap.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
@@ -55,10 +57,11 @@ class HloComputation {
   // Builder class for HloComputation.
   class Builder {
    public:
-    explicit Builder(const string& name, bool is_fusion_computation = false)
+    explicit Builder(const string& name,
+                     HloInstruction* fusion_instruction = nullptr)
         : name_(name),
           last_added_instruction_(nullptr),
-          is_fusion_computation_(is_fusion_computation) {}
+          fusion_instruction_(fusion_instruction) {}
 
     // Build and return an HloComputation. The parameter root_instruction
     // specifies the already-added instruction to use as the root. If
@@ -77,7 +80,7 @@ class HloComputation {
    private:
     const string name_;
     HloInstruction* last_added_instruction_;
-    bool is_fusion_computation_;
+    HloInstruction* fusion_instruction_;
     std::vector<std::unique_ptr<HloInstruction>> instructions_;
   };
 
@@ -104,16 +107,10 @@ class HloComputation {
   // must have no users. Instruction is deallocated with this call.
   Status RemoveInstructionAndUnusedOperands(HloInstruction* instruction);
 
-  // Replace all uses of "instruction_to_replace" with "instruction". Also, if
-  // instruction_to_replace is the root of this computation then the root is set
-  // to "instruction". Does not remove "instruction_to_replace".
-  Status ReplaceUsesOfInstruction(HloInstruction* instruction_to_replace,
-                                  HloInstruction* instruction);
-
   // Set the root of the computation to the given instruction. The instruction
   // must have already been added to the computation and have the same shape as
-  // the result of the computation.
-  void set_root_instruction(HloInstruction* instruction);
+  // the result of the computation for non fusion computations.
+  void set_root_instruction(HloInstruction* new_root_instruction);
 
   // Return the root instruction of the computation. The root instruction is the
   // instruction which produces the output of the computation.
@@ -125,7 +122,8 @@ class HloComputation {
   // Returns the parameter instruction for the given parameter number.
   HloInstruction* parameter_instruction(int64 param_no) const {
     CHECK_GE(param_no, 0);
-    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()));
+    CHECK_LT(param_no, static_cast<int64>(param_instructions_.size()))
+        << "Computation " << name() << " has no parameter number " << param_no;
     return param_instructions_[param_no];
   }
 
@@ -140,22 +138,71 @@ class HloComputation {
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Return a string representation of the computation.
-  string ToString(int nested_level = 0) const;
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  string ToString() const { return ToString(HloPrintOptions()); }
+  string ToString(const HloPrintOptions& options) const;
 
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
 
-  const std::list<std::unique_ptr<HloInstruction>>& instructions() const {
-    return instructions_;
+  // Creates a computation from the given proto. Arguments:
+  //
+  //   module: the module which will contain the computation. The newly created
+  //     computation is *not* added to the module, however.
+  //   proto: the proto to convert from.
+  //   computation_map: a map from computation name to HloComputation*. This map
+  //     must contain all computations which the newly constructed computation
+  //     calls.
+  //   add_fused_computation: A function to call to add a fused
+  //     computation. Used only when the instruction is a fusion instruction.
+  //   fusion_instruction: if non-null then the newly created computation will
+  //     be constructed as a fused computation with this instruction as its
+  //     fusion parent.
+  static StatusOr<std::unique_ptr<HloComputation>> CreateFromProto(
+      HloModule* module, const HloComputationProto& proto,
+      const tensorflow::gtl::FlatMap<string, HloComputation*>& computation_map,
+      const std::function<void(std::unique_ptr<HloComputation>)>&
+          add_fused_computation,
+      HloInstruction* fusion_instruction = nullptr);
+
+  // Gets the instructions in this computation.
+  //
+  // The returned type is a range of HloInstruction*s, so you can iterate over
+  // it using a range-based for loop in the natural way:
+  //
+  //   for (HloInstruction* instr : computation->instructions()) { ... }
+  //
+  tensorflow::gtl::iterator_range<UnwrappingIterator<
+      std::list<std::unique_ptr<HloInstruction>>::const_iterator>>
+  instructions() const {
+    return {MakeUnwrappingIterator(instructions_.begin()),
+            MakeUnwrappingIterator(instructions_.end())};
+  }
+  tensorflow::gtl::iterator_range<
+      UnwrappingIterator<std::list<std::unique_ptr<HloInstruction>>::iterator>>
+  instructions() {
+    return {MakeUnwrappingIterator(instructions_.begin()),
+            MakeUnwrappingIterator(instructions_.end())};
   }
 
   // Compute and return a post-order of the instructions in the computation. In
   // this order, definitions of values always appear before their uses.
   std::list<HloInstruction*> MakeInstructionPostOrder() const;
 
-  // Computes and returns the mapping from HLO to its transitive operands.
-  class ReachabilityMap;
-  std::unique_ptr<ReachabilityMap> ComputeTransitiveOperands() const;
+  // Computes and returns the reachability between HLO instructions in the
+  // computation. The returned HloReachabilityMap is constructed such that
+  // HloReachabilityMap::IsReachable(a, b) returns true iff there exists a
+  // directed path (from producer to consumer) from 'a' to 'b'. Both data
+  // dependencies (operands) and control dependencies are considered for
+  // reachability. Trivially an instruction is reachable from itself.
+  std::unique_ptr<HloReachabilityMap> ComputeReachability() const;
+
+  // Updates the given reachability map after the immediate predecessor set
+  // (operands and control predecessors) of 'instruction' has changed.
+  void UpdateReachabilityThroughInstruction(
+      const HloInstruction* instruction, HloReachabilityMap* reachability_map);
 
   int64 instruction_count() const { return instructions_.size(); }
 
@@ -177,21 +224,20 @@ class HloComputation {
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
 
-  // Creates a fusion instruction that represents a backward convolution. This
-  // is similar to CreateFusionInstruction but takes window and conv_dnums which
-  // indicate the window and convolution dimension numbers of the backward
-  // convolution.
-  HloInstruction* CreateFusionInstructionForBackwardConvolution(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
-      HloInstruction::FusionKind fusion_kind, const Window& window,
-      const ConvolutionDimensionNumbers& conv_dnums);
-
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added
   // to the computation. For array-shaped values, this method trivially returns
   // a kCopy instruction. For tuple-shaped instructions, the copy is performed
-  // with a series of kGetTupleElement and kTuple instructions.
-  StatusOr<HloInstruction*> DeepCopyInstruction(HloInstruction* instruction);
+  // with a series of kGetTupleElement and kTuple instructions. If
+  // indices_to_copy is non-null then this ShapeTree indicates which elements
+  // (arrays) of the shape to copy. Non-copied elements are passed through
+  // transparently. If copies_added is non-null, then the added kCopy
+  // instructions will be inserted in the respective index in the given
+  // ShapeTree.
+  StatusOr<HloInstruction*> DeepCopyInstruction(
+      HloInstruction* instruction,
+      const ShapeTree<bool>* indices_to_copy = nullptr,
+      ShapeTree<HloInstruction*>* copies_added = nullptr);
 
   // Computes and returns the ProgramShape of this computation (shape of
   // parameters and result without layout).
@@ -223,7 +269,8 @@ class HloComputation {
   // via the root. The root instruction of the computation is visited last, and
   // the visitor's FinishVisit method is called once upon completion (with the
   // root instruction as the argument).
-  Status Accept(DfsHloVisitor* visitor) const;
+  template <typename HloInstructionPtr>
+  Status Accept(DfsHloVisitorBase<HloInstructionPtr>* visitor) const;
 
   // Same as Accept() above, but the order of operand and control predecessor
   // visitation is determined by the given operand order; if compare(A, B) ==
@@ -234,30 +281,64 @@ class HloComputation {
 
   // Visit every node in the computation in the given order. 'order' must
   // be a topological sort of all instructions in the computation.
-  Status AcceptOrdered(DfsHloVisitor* visitor,
+  template <typename HloInstructionPtr>
+  Status AcceptOrdered(DfsHloVisitorBase<HloInstructionPtr>* visitor,
                        const std::vector<const HloInstruction*>& order) const;
 
   // Same as Accept() above, but the visitor is given as a function.
-  Status Accept(const FunctionVisitor::VisitorFunction& visitor_func) const;
+  Status Accept(const std::function<Status(HloInstruction*)>& visitor_func);
+  Status Accept(
+      const std::function<Status(const HloInstruction*)>& visitor_func) const;
 
   // Returns a deep copy of this computation including all instructions.
-  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone");
+  // If the module pointer is not nullptr, it will be the module where
+  // the cloned computations will be added to (in order to support deep
+  // cloning).
+  std::unique_ptr<HloComputation> Clone(const string& suffix = "clone",
+                                        HloModule* module = nullptr);
 
-  // Returns true if the given instruction can be removed from the
-  // computation. Instructions such as parameters and send/receive instructions
-  // cannot be removed without violating invariants of the HLO computation or
-  // module with the exception of fusion computation.  A parameter instruction
-  // is removable for a fusion computation.
+  // Like Clone(), but if an instruction is present in replacement_map, we use
+  // the map's value to replace that instruction in the cloned computation.
+  //
+  // If replacements maps a key to nullptr, we remove that instruction from the
+  // new computation.
+  std::unique_ptr<HloComputation> CloneWithReplacements(
+      std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+          replacements,
+      HloModule* module = nullptr, const string& suffix = "clone");
+
+  // Returns true if the given instruction can be removed from the computation.
+  // Parameter instructions cannot be removed without violating invariants of
+  // the HLO computation with the exception of fusion computation. A parameter
+  // instruction is removable for a fusion computation.
+  //
+  // Note that IsRemovable() is a necessariy condition to remove an instruction
+  // rather than a sufficient condition. For example, instructions with
+  // side-effect (e.g., Send, Infeed) may be removed from a computation, but the
+  // transformation must guarantee the invariants relevant to the instructions
+  // still hold (e.g., Send and Recv must be removed together to make each
+  // channel complete).
   bool IsRemovable(const HloInstruction* instruction);
 
+  // Returns true if this computation has a side effect. A computation has a
+  // side effect if it contains one or more instructions with a side effect.
+  bool HasSideEffect() const;
+
   // Returns if this computation is a fusion computation.
-  bool IsFusionComputation() const { return is_fusion_computation_; }
+  bool IsFusionComputation() const { return fusion_instruction_ != nullptr; }
+
+  // Returns the owning fusion instruction, or nullptr if this is not a fusion
+  // computation.
+  HloInstruction* FusionInstruction() const { return fusion_instruction_; }
+  void SetFusionInstruction(HloInstruction* fusion_instruction) {
+    fusion_instruction_ = fusion_instruction;
+  }
 
  private:
   explicit HloComputation(
       const string& name, int parameter_count,
       std::vector<std::unique_ptr<HloInstruction>>* instructions,
-      HloInstruction* root_instruction, bool is_fusion_computation = false);
+      HloInstruction* root_instruction, HloInstruction* fusion_instruction);
 
   // Internal helper for adding instructions.
   HloInstruction* AddInstructionInternal(
@@ -274,9 +355,11 @@ class HloComputation {
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
       HloInstruction* fusion_instruction);
 
-  // Internal helper for copying a tuple value. Creates and returns a deep copy
-  // of the given instruction. The given instruction must be tuple-shaped.
-  StatusOr<HloInstruction*> DeepCopyTuple(HloInstruction* instruction);
+  // Internal helper for recursive copying of an instruction. Creates and
+  // returns a deep copy of the given instruction.
+  StatusOr<HloInstruction*> DeepCopyHelper(
+      HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
+      ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index);
 
   // Internal helper to collect unreachable roots.
   std::vector<HloInstruction*> CollectUnreachableRoots() const;
@@ -284,8 +367,9 @@ class HloComputation {
   string name_;
   HloInstruction* root_instruction_;
 
-  // A tag shows if this is a fusion computation.
-  bool is_fusion_computation_;
+  // If this computation is a fusion computation, this field points to the
+  // corresponding fusion instruction.  Otherwise, this is null.
+  HloInstruction* fusion_instruction_;
 
   // Module containing this computation.
   HloModule* parent_ = nullptr;
@@ -300,40 +384,7 @@ class HloComputation {
 
   std::vector<HloInstruction*> param_instructions_;
 
-  // Unique name generator for instruction identifiers. Instruction names should
-  // be unique per computation and this is enforced when instructions are added
-  // to the computation.
-  NameUniquer instruction_name_uniquer_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(HloComputation);
-};
-
-class HloComputation::ReachabilityMap {
- public:
-  // Sets up an empty reachable matrix for the full set of
-  // instructions specified in "all_instructions"
-  explicit ReachabilityMap(const std::list<HloInstruction*>& all_instructions);
-  // Sets entry so that IsReachable(a, b) will return true
-  void SetReachable(const HloInstruction* a, const HloInstruction* b);
-
-  // Sets IsReachable(a_inst, b_inst) as well as IsReachable(a_inst, trans)
-  // for all "trans" s.t. "IsReachable(b_inst, trans)" is true
-  void SetReachableAndTransitiveClosure(const HloInstruction* a_inst,
-                                        const HloInstruction* b_inst);
-
-  // Returns true if "b" is reachable from "a"
-  bool IsReachable(const HloInstruction* a, const HloInstruction* b) const;
-
-  // Returns true if "b" is reachable from "a" or "a" is reachable from "b"
-  bool IsConnected(const HloInstruction* a, const HloInstruction* b) const;
-
- private:
-  friend class HloComputation;
-
-  // dense id assignment from HloInstruction* to number
-  tensorflow::gtl::FlatMap<const HloInstruction*, int> ids_;
-  // matrix_(a,b) is true iff b is reachable from a
-  tensorflow::core::Bitmap matrix_;
 };
 
 }  // namespace xla

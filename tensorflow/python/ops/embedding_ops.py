@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Operations for embeddings."""
 from __future__ import absolute_import
 from __future__ import division
@@ -33,18 +32,240 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
-def _do_gather(params, ids, name=None):
-  """Deals with doing gather differently for resource variables."""
+def _gather(params, ids, name=None):
+  """Helper function for _embedding_lookup_and_transform.
+
+  This function gathers embeddings from a single tensor. The gather deals with
+  resource variables specially.
+
+  Args:
+    params: A `Tensor` of embeddings.
+    ids: A `Tensor` indexing the embeddings to be retrieved from `params`.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` with the same type as `params`.
+  """
   if isinstance(params, resource_variable_ops.ResourceVariable):
     return params.sparse_read(ids, name=name)
-  return array_ops.gather(params, ids, name=name)
+  else:
+    return array_ops.gather(params, ids, name=name)
 
 
-def embedding_lookup(params, ids, partition_strategy="mod", name=None,
-                     validate_indices=True,  # pylint: disable=unused-argument
-                     max_norm=None):
+def _clip(params, ids, max_norm):
+  """Helper function for _embedding_lookup_and_transform.
+
+  This function optionally clips embeddings to an l2-norm of max_norm.
+
+  Args:
+    params: A `Tensor` of embeddings retrieved by `_gather`.
+    ids: The `ids` argument that was passed to `_gather`.
+    max_norm: If provided, the embeddings are l2-normalized to the value of
+      max_norm.
+
+  Returns:
+    A `Tensor` with the same type as `params`.
+  """
+
+  def _rank(x):
+    """Helper function to retrieve the rank of a tensor.
+
+    Args:
+      x: Something convertible to `Tensor`.
+
+    Returns:
+      Either a pair `(rank, True)` where `rank` is an integer or a pair
+      `(rank, False)` where `rank` is an integer `Tensor`. In either case,
+      `rank` is the rank of `x`.
+    """
+    rank = ops.convert_to_tensor(x).get_shape().ndims
+    if rank:
+      return rank, True
+    else:
+      return array_ops.rank(x), False
+
+  if max_norm is None:
+    return params
+  ids_rank, ids_static = _rank(ids)
+  params_rank, params_static = _rank(params)
+  return clip_ops.clip_by_norm(
+      params,
+      max_norm,
+      axes=(list(range(ids_rank, params_rank))
+            if ids_static and params_static
+            else math_ops.range(ids_rank, params_rank)))
+
+
+def _embedding_lookup_and_transform(params,
+                                    ids,
+                                    partition_strategy="mod",
+                                    name=None,
+                                    max_norm=None,
+                                    transform_fn=None):
+  """Helper function for embedding_lookup and _compute_sampled_logits.
+
+  This function is a generalization of embedding_lookup that optionally
+  applies a caller-specified transformation to each embedding. This is
+  done through the `transform_fn` argument. If provided, the function is
+  applied to each partitioned tensor of retrieved embeddings, colocated
+  with the embeddings. This function will be called with a single `Tensor`
+  argument of the same type as the `params` tensor and should return a
+  `Tensor`. The shape of the argument will be the same as `params` except
+  for the size of the first dimension. The first dimension of the result's
+  shape must be the same size as the argument's.
+
+  Args:
+    params: See embedding_lookup.
+    ids: See embedding_lookup.
+    partition_strategy: See embedding_lookup.
+    name: See embedding_lookup.
+    max_norm: See embedding_lookup.
+    transform_fn: An optional function to apply to each retrieved embedding.
+      If max_norm is provided, transform_fn is applied to the norm-limited
+      embeddings.
+
+  Returns:
+    See embedding_lookup for details.
+  Raises:
+    ValueError: If `params` is empty.
+  """
+  if params is None or params in ((), []):
+    raise ValueError("Need at least one param")
+  if isinstance(params, variables.PartitionedVariable):
+    params = list(params)  # Iterate to get the underlying Variables.
+  if not isinstance(params, list):
+    params = [params]
+
+  with ops.name_scope(name, "embedding_lookup", params + [ids]) as name:
+    np = len(params)  # Number of partitions
+    # Preserve the resource variable status to avoid accidental dense reads.
+    if not any(
+        isinstance(p, resource_variable_ops.ResourceVariable) for p in params):
+      params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
+    ids = ops.convert_to_tensor(ids, name="ids")
+    if np == 1 and (not transform_fn or ids.get_shape().ndims == 1):
+      with ops.colocate_with(params[0]):
+        result = _clip(_gather(params[0], ids, name=name), ids, max_norm)
+        if transform_fn:
+          result = transform_fn(result)
+        return result
+    else:
+      # Flatten the ids. There are two cases where we need to do this.
+      # - There is more than one params tensor.
+      # - There is a transform_fn and ids is not statically known to be 1-D.
+      #   We must flatten in this case because transform_fn expects a flat
+      #   tensor of embeddings.
+      flat_ids = array_ops.reshape(ids, [-1])
+      original_indices = math_ops.range(array_ops.size(flat_ids))
+
+      # Create p_assignments and set new_ids depending on the strategy.
+      if partition_strategy == "mod":
+        p_assignments = flat_ids % np
+        new_ids = flat_ids // np
+      elif partition_strategy == "div":
+        # Compute num_total_ids as the sum of dim-0 of params, then assign to
+        # partitions based on a constant number of ids per partition. Optimize
+        # if we already know the full shape statically.
+        dim_0_size = params[0].get_shape()[0]
+        for p in xrange(1, np):
+          dim_0_size += params[p].get_shape()[0]
+        if dim_0_size.value:
+          num_total_ids = constant_op.constant(dim_0_size.value, flat_ids.dtype)
+        else:
+          dim_0_sizes = []
+          for p in xrange(np):
+            if params[p].get_shape()[0].value is not None:
+              dim_0_sizes.append(params[p].get_shape()[0].value)
+            else:
+              with ops.colocate_with(params[p]):
+                dim_0_sizes.append(array_ops.shape(params[p])[0])
+          num_total_ids = math_ops.reduce_sum(
+              math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
+        ids_per_partition = num_total_ids // np
+        extras = num_total_ids % np
+
+        p_assignments = math_ops.maximum(
+            flat_ids // (ids_per_partition + 1),
+            (flat_ids - extras) // ids_per_partition)
+
+        # Emulate a conditional using a boolean indicator tensor
+        new_ids = array_ops.where(p_assignments < extras,
+                                  flat_ids % (ids_per_partition + 1),
+                                  (flat_ids - extras) % ids_per_partition)
+      else:
+        raise ValueError("Unrecognized partition strategy: " +
+                         partition_strategy)
+
+      # Cast partition assignments to int32 for use in dynamic_partition.
+      # There really should not be more than 2^32 partitions.
+      p_assignments = math_ops.cast(p_assignments, dtypes.int32)
+      # Partition list of ids based on assignments into np separate lists
+      gather_ids = data_flow_ops.dynamic_partition(new_ids, p_assignments, np)
+      # Similarly, partition the original indices.
+      pindices = data_flow_ops.dynamic_partition(original_indices,
+                                                 p_assignments, np)
+      # Do np separate lookups, finding embeddings for plist[p] in params[p]
+      partitioned_result = []
+      for p in xrange(np):
+        pids = gather_ids[p]
+        with ops.colocate_with(params[p]):
+          result = _gather(params[p], pids)
+          if transform_fn:
+            # If transform_fn is provided, the clip_by_norm precedes
+            # the transform and hence must be co-located. See below
+            # for the counterpart if transform_fn is not proveded.
+            result = transform_fn(_clip(result, pids, max_norm))
+        partitioned_result.append(result)
+      # Stitch these back together
+      ret = data_flow_ops.parallel_dynamic_stitch(
+          pindices, partitioned_result, name=name)
+
+      # Determine the static element shape.
+      if transform_fn is None:
+        element_shape_s = params[0].get_shape()[1:]
+        for p in params[1:]:
+          element_shape_s = element_shape_s.merge_with(p.get_shape()[1:])
+      else:
+        element_shape_s = ret.get_shape()[1:]
+
+      # Compute the dynamic element shape.
+      if element_shape_s.is_fully_defined():
+        element_shape_d = element_shape_s
+      elif transform_fn is None:
+        # It's important that we compute params[0].shape on the right device
+        # to avoid data motion.
+        with ops.colocate_with(params[0]):
+          params_shape = array_ops.shape(params[0])
+        element_shape_d = params_shape[1:]
+      else:
+        element_shape_d = array_ops.shape(ret)[1:]
+
+      # Reshape to reverse the flattening of ids.
+      ret = array_ops.reshape(ret,
+                              array_ops.concat(
+                                  [array_ops.shape(ids), element_shape_d], 0))
+
+      # Normally the reshape is sufficient, but setting shape explicitly
+      # teaches shape inference that params[1:].get_shape() matters
+      # (in the case that transform_fn is None).
+      ret.set_shape(ids.get_shape().concatenate(element_shape_s))
+      if not transform_fn:
+        # If transform_fn was provided, the clip_by_norm was done above.
+        ret = _clip(ret, ids, max_norm)
+      return ret
+
+
+@tf_export("nn.embedding_lookup")
+def embedding_lookup(
+    params,
+    ids,
+    partition_strategy="mod",
+    name=None,
+    validate_indices=True,  # pylint: disable=unused-argument
+    max_norm=None):
   """Looks up `ids` in a list of embedding tensors.
 
   This function is used to perform parallel lookups on the list of
@@ -88,8 +309,8 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
       in `indices` are always validated to be within range.  If assigned to GPU,
       out-of-bound indices result in safe but unspecified behavior, which may
       include raising an error.
-    max_norm: If not None, embedding values are l2-normalized to the value of
-     max_norm.
+    max_norm: If provided, embedding values are l2-normalized to the value of
+      max_norm.
 
   Returns:
     A `Tensor` with the same type as the tensors in `params`.
@@ -97,129 +318,19 @@ def embedding_lookup(params, ids, partition_strategy="mod", name=None,
   Raises:
     ValueError: If `params` is empty.
   """
-  if params is None or params in ((), []):
-    raise ValueError("Need at least one param")
-  if isinstance(params, variables.PartitionedVariable):
-    params = list(params)  # Iterate to get the underlying Variables.
-  if not isinstance(params, list):
-    params = [params]
-
-  def maybe_normalize(x):
-    """Normalizes the embeddings in x if max_norm is not None."""
-    if max_norm is None:
-      return x
-    static = True
-    ids_rank = ops.convert_to_tensor(ids).get_shape().ndims
-    if ids_rank is None:
-      ids_rank = array_ops.rank(ids)
-      static = False
-    x_rank = x.get_shape().ndims
-    if x_rank is None:
-      x_rank = array_ops.rank(x)
-      static = False
-    return clip_ops.clip_by_norm(
-        x, max_norm,
-        axes=list(range(ids_rank, x_rank)) if static
-        else math_ops.range(ids_rank, x_rank))
-
-  with ops.name_scope(name, "embedding_lookup", params + [ids]) as name:
-    np = len(params)  # Number of partitions
-    # Preserve the resource variable status to avoid accidental dense reads.
-    if not any(isinstance(p, resource_variable_ops.ResourceVariable)
-               for p in params):
-      params = ops.convert_n_to_tensor_or_indexed_slices(params, name="params")
-    if np == 1:
-      with ops.colocate_with(params[0]):
-        return maybe_normalize(_do_gather(params[0], ids, name=name))
-    else:
-      ids = ops.convert_to_tensor(ids, name="ids")
-      flat_ids = array_ops.reshape(ids, [-1])
-      original_indices = math_ops.range(array_ops.size(flat_ids))
-
-      # Create p_assignments and set new_ids depending on the strategy.
-      if partition_strategy == "mod":
-        p_assignments = flat_ids % np
-        new_ids = flat_ids // np
-      elif partition_strategy == "div":
-        # Compute num_total_ids as the sum of dim-0 of params, then assign to
-        # partitions based on a constant number of ids per partition. Optimize
-        # if we already know the full shape statically.
-        dim_0_size = params[0].get_shape()[0]
-        for p in xrange(1, np):
-          dim_0_size += params[p].get_shape()[0]
-        if dim_0_size.value:
-          num_total_ids = constant_op.constant(dim_0_size.value, flat_ids.dtype)
-        else:
-          dim_0_sizes = []
-          for p in xrange(np):
-            if params[p].get_shape()[0].value is not None:
-              dim_0_sizes.append(params[p].get_shape()[0].value)
-            else:
-              with ops.colocate_with(params[p]):
-                dim_0_sizes.append(array_ops.shape(params[p])[0])
-          num_total_ids = math_ops.reduce_sum(
-              math_ops.cast(array_ops.stack(dim_0_sizes), flat_ids.dtype))
-        ids_per_partition = num_total_ids // np
-        extras = num_total_ids % np
-
-        p_assignments = math_ops.maximum(
-            flat_ids // (ids_per_partition + 1),
-            (flat_ids - extras) // ids_per_partition)
-
-        # Emulate a conditional using a boolean indicator tensor
-        is_in_first_extras_partitions = math_ops.cast(
-            p_assignments < extras, flat_ids.dtype)
-        new_ids = (
-            is_in_first_extras_partitions * (
-                flat_ids % (ids_per_partition + 1)) +
-            (1 - is_in_first_extras_partitions) * (
-                (flat_ids - extras) % ids_per_partition))
-      else:
-        raise ValueError("Unrecognized partition strategy: " +
-                         partition_strategy)
-
-      # Cast partition assignments to int32 for use in dynamic_partition.
-      # There really should not be more than 2^32 partitions.
-      p_assignments = math_ops.cast(p_assignments, dtypes.int32)
-      # Partition list of ids based on assignments into np separate lists
-      gather_ids = data_flow_ops.dynamic_partition(new_ids, p_assignments, np)
-      # Similarly, partition the original indices.
-      pindices = data_flow_ops.dynamic_partition(original_indices,
-                                                 p_assignments, np)
-      # Do np separate lookups, finding embeddings for plist[p] in params[p]
-      partitioned_result = []
-      for p in xrange(np):
-        with ops.colocate_with(params[p]):
-          partitioned_result.append(_do_gather(params[p], gather_ids[p]))
-      # Stitch these back together
-      ret = data_flow_ops.dynamic_stitch(pindices, partitioned_result,
-                                         name=name)
-      # Reshape to reverse the flattening of ids.
-      element_shape = params[0].get_shape()[1:]
-      for p in params[1:]:
-        element_shape = element_shape.merge_with(p.get_shape()[1:])
-      if element_shape.is_fully_defined():
-        ret = array_ops.reshape(ret,
-                                array_ops.concat(
-                                    [array_ops.shape(ids), element_shape], 0))
-      else:
-        # It's important that we compute params[0].shape on the right device
-        # to avoid data motion.
-        with ops.colocate_with(params[0]):
-          params_shape = array_ops.shape(params[0])
-        ret = array_ops.reshape(ret,
-                                array_ops.concat([
-                                    array_ops.shape(ids),
-                                    array_ops.slice(params_shape, [1], [-1])
-                                ], 0))
-      # output shape = ids.shape + params[*].shape[1:]
-      # Normally the reshape is sufficient, but setting shape explicitly
-      # teaches shape inference that params[1:].get_shape() matters.
-      ret.set_shape(ids.get_shape().concatenate(element_shape))
-      return maybe_normalize(ret)
+  return _embedding_lookup_and_transform(
+      params=params,
+      ids=ids,
+      partition_strategy=partition_strategy,
+      name=name,
+      max_norm=max_norm,
+      transform_fn=None)
 
 
-def embedding_lookup_sparse(params, sp_ids, sp_weights,
+@tf_export("nn.embedding_lookup_sparse")
+def embedding_lookup_sparse(params,
+                            sp_ids,
+                            sp_weights,
                             partition_strategy="mod",
                             name=None,
                             combiner=None,
@@ -254,7 +365,7 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       "mean" is the weighted sum divided by the total weight.
       "sqrtn" is the weighted sum divided by the square root of the sum of the
       squares of the weights.
-    max_norm: If not None, each embedding is normalized to have l2 norm equal
+    max_norm: If provided, each embedding is normalized to have l2 norm equal
       to max_norm before combining.
 
   Returns:
@@ -349,8 +460,9 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
       # Set the weight shape, since after reshaping to bcast_weights_shape,
       # the shape becomes None.
       if embeddings.get_shape().ndims is not None:
-        weights.set_shape(orig_weights_shape.concatenate(
-            [1 for _ in range(embeddings.get_shape().ndims - 1)]))
+        weights.set_shape(
+            orig_weights_shape.concatenate(
+                [1 for _ in range(embeddings.get_shape().ndims - 1)]))
 
       embeddings *= weights
 
@@ -371,14 +483,14 @@ def embedding_lookup_sparse(params, sp_ids, sp_weights,
     else:
       assert idx is not None
       if combiner == "sum":
-        embeddings = math_ops.sparse_segment_sum(embeddings, idx, segment_ids,
-                                                 name=name)
+        embeddings = math_ops.sparse_segment_sum(
+            embeddings, idx, segment_ids, name=name)
       elif combiner == "mean":
-        embeddings = math_ops.sparse_segment_mean(embeddings, idx, segment_ids,
-                                                  name=name)
+        embeddings = math_ops.sparse_segment_mean(
+            embeddings, idx, segment_ids, name=name)
       elif combiner == "sqrtn":
-        embeddings = math_ops.sparse_segment_sqrt_n(embeddings, idx,
-                                                    segment_ids, name=name)
+        embeddings = math_ops.sparse_segment_sqrt_n(
+            embeddings, idx, segment_ids, name=name)
       else:
         assert False, "Unrecognized combiner"
 

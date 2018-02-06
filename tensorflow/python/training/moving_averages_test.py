@@ -27,6 +27,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import moving_averages
+from tensorflow.python.training import saver as saver_lib
 
 
 class MovingAveragesTest(test.TestCase):
@@ -57,6 +58,30 @@ class MovingAveragesTest(test.TestCase):
       self.assertAllClose([
           1.0 * (1.0 - 0.25) / (1 - 0.25), 2.0 * (1.0 - 0.25) / (1 - 0.25)
       ], var.eval())
+
+  def testAssignMovingAverageNewNamingMultipleCalls(self):
+    with variable_scope.variable_scope("scope1") as vs1:
+      with variable_scope.variable_scope("scope2"):
+        var = variables.Variable(1.0, name="Var")
+        moving_averages.assign_moving_average(var, 0.0, 0.99)
+        moving_averages.assign_moving_average(var, 0.0, 0.99)
+    expected_names = ["scope1/scope2/Var:0",
+                      "scope1/scope2/scope1/scope2/Var/biased:0",
+                      "scope1/scope2/scope1/scope2/Var/local_step:0",
+                      "scope1/scope2/scope1/scope2/Var/biased_1:0",
+                      "scope1/scope2/scope1/scope2/Var/local_step_1:0"]
+    actual_names = [v.name for v in vs1.global_variables()]
+    self.assertSetEqual(set(expected_names), set(actual_names))
+
+  def testAssignMovingAverageNewNamingMultipleCallsWithReuse(self):
+    with variable_scope.variable_scope("scope1") as vs1:
+      var = variable_scope.get_variable("Var", shape=[])
+      moving_averages.assign_moving_average(var, 0.0, 0.99)
+      moving_averages.assign_moving_average(var, 0.0, 0.99)
+    with variable_scope.variable_scope(vs1, reuse=True):
+      var = variable_scope.get_variable("Var", shape=[])
+      moving_averages.assign_moving_average(var, 0.0, 0.99)
+      moving_averages.assign_moving_average(var, 0.0, 0.99)
 
   def testWeightedMovingAverage(self):
     with self.test_session() as sess:
@@ -260,10 +285,10 @@ class ExponentialMovingAverageTest(test.TestCase):
             ema.average_name(tensor2) + "/biased",
             ema.average_name(tensor2) + "/local_step"
         ]
-      self.assertEqual(sorted(vars_to_restore.keys()), sorted(expected_names))
-      self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
-      self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
-      self.assertEqual(ema.average_name(tensor2), ema.average(tensor2).op.name)
+      self.assertEqual(sorted(expected_names), sorted(vars_to_restore.keys()))
+      self.assertEqual(ema.average(v0).op.name, ema.average_name(v0))
+      self.assertEqual(ema.average(v1).op.name, ema.average_name(v1))
+      self.assertEqual(ema.average(tensor2).op.name, ema.average_name(tensor2))
 
   def testAverageVariablesNames(self):
     self.averageVariablesNamesHelper(zero_debias=True)
@@ -288,7 +313,7 @@ class ExponentialMovingAverageTest(test.TestCase):
         self.assertEqual("scope2/scope1/add/foo", ema.average_name(tensor2))
         ema.apply([v0, v1, tensor2])
         vars_to_restore = ema.variables_to_restore()
-        # vars_to_restore should contain the following:
+        # `vars_to_restore` should contain the following:
         # {scope2/scope1/v0/foo : v0,
         #  scope2/scope1/v1/foo : v1,
         #  scope2/scope1/add/foo : add/foo,
@@ -298,7 +323,7 @@ class ExponentialMovingAverageTest(test.TestCase):
             ema.average_name(tensor2), v2.op.name
         ]
         if zero_debias:
-          # vars_to_restore should also contain the following:
+          # `vars_to_restore` should also contain the following:
           # {scope2/scope2/scope1/add/foo/biased: add/foo/biased,
           #  scope2/scope2/scope1/add/foo/local_step: add/foo/local_step}
           sc = "scope2/"
@@ -307,11 +332,11 @@ class ExponentialMovingAverageTest(test.TestCase):
               sc + ema.average_name(tensor2) + "/local_step"
           ]
 
-        self.assertEqual(sorted(vars_to_restore.keys()), sorted(expected_names))
-        self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
-        self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
+        self.assertEqual(sorted(expected_names), sorted(vars_to_restore.keys()))
+        self.assertEqual(ema.average(v0).op.name, ema.average_name(v0))
+        self.assertEqual(ema.average(v1).op.name, ema.average_name(v1))
         self.assertEqual(
-            ema.average_name(tensor2), ema.average(tensor2).op.name)
+            ema.average(tensor2).op.name, ema.average_name(tensor2))
 
   def testAverageVariablesNamesRespectScope(self):
     self.averageVariablesNamesRespectScopeHelper(zero_debias=True)
@@ -343,9 +368,9 @@ class ExponentialMovingAverageTest(test.TestCase):
               v2.op.name
           ]))
       ema.apply([v0, v1, tensor2])
-      self.assertEqual(ema.average_name(v0), ema.average(v0).op.name)
-      self.assertEqual(ema.average_name(v1), ema.average(v1).op.name)
-      self.assertEqual(ema.average_name(tensor2), ema.average(tensor2).op.name)
+      self.assertEqual(ema.average(v0).op.name, ema.average_name(v0))
+      self.assertEqual(ema.average(v1).op.name, ema.average_name(v1))
+      self.assertEqual(ema.average(tensor2).op.name, ema.average_name(tensor2))
 
   def testAverageVariablesDeviceAssignment(self):
     with ops.device("/job:dev_v0"):
@@ -367,6 +392,32 @@ class ExponentialMovingAverageTest(test.TestCase):
     # However, the colocation property is maintained.
     self.assertEqual([b"loc:@v1"], ema.average(v1).op.colocation_groups())
     self.assertDeviceEqual("/job:default", ema.average(tensor2).device)
+
+  def _ExportAndImportGraph(self, graph):
+    """Export and import graph into a new graph."""
+    meta_graph = saver_lib.export_meta_graph(
+        graph=graph, collection_list=graph.get_all_collection_keys())
+    graph_copy = ops.Graph()
+    with graph_copy.as_default():
+      _ = saver_lib.import_meta_graph(meta_graph)
+    return graph_copy
+
+  def testImportedGraphVariablesToRestore(self):
+    g = ops.Graph()
+    with g.as_default():
+      variables.Variable(10.0, name="v")
+    # Export and import the graph into a new graph.
+    g_copy = self._ExportAndImportGraph(g)
+    with g_copy.as_default():
+      ema = moving_averages.ExponentialMovingAverage(0.25, name="foo_avg")
+      vars_to_restore = ema.variables_to_restore()
+      # There should only be one variable in vars_to_restore. This is important
+      # to check because when importing from a GraphDef, TF makes duplicate
+      # python Variable objects referring to the same underlying variable. We
+      # need to be sure that two variables referring to the same variable don't
+      # both get added to vars_to_restore.
+      self.assertEqual(len(vars_to_restore), 1)
+      self.assertTrue("v/foo_avg" in vars_to_restore)
 
 
 if __name__ == "__main__":

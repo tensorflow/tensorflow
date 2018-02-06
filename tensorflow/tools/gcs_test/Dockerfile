@@ -1,13 +1,12 @@
 FROM ubuntu:16.04
 
-MAINTAINER Shanqing Cai <cais@google.com>
+LABEL maintainer="Shanqing Cai <cais@google.com>"
 
 RUN apt-get update
 RUN apt-get install -y \
     curl \
     libcurl4-openssl-dev \
     python \
-    python-numpy \
     python-pip
 
 # Install Google Cloud SDK

@@ -22,6 +22,8 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/framework/tensor_description.pb.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
@@ -34,6 +36,14 @@ StatSummarizer::StatSummarizer(const StatSummarizerOptions& options)
 
 StatSummarizer::StatSummarizer(const tensorflow::GraphDef& tensorflow_graph)
     : StatSummarizer(StatSummarizerOptions()) {}
+
+StatSummarizer::~StatSummarizer() {}
+
+void StatSummarizer::Reset() {
+  run_total_us_.Reset();
+  memory_.Reset();
+  details_.clear();
+}
 
 void StatSummarizer::Validate(const Detail* detail,
                               const NodeExecStats& ns) const {

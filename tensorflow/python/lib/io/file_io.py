@@ -27,9 +27,11 @@ import uuid
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import errors
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
 class FileIO(object):
@@ -234,6 +236,7 @@ class FileIO(object):
     self._writable_file = None
 
 
+@tf_export("gfile.Exists")
 def file_exists(filename):
   """Determines whether a path exists or not.
 
@@ -255,6 +258,7 @@ def file_exists(filename):
   return True
 
 
+@tf_export("gfile.Remove")
 def delete_file(filename):
   """Deletes the file located at 'filename'.
 
@@ -305,6 +309,7 @@ def write_string_to_file(filename, file_content):
     f.write(file_content)
 
 
+@tf_export("gfile.Glob")
 def get_matching_files(filename):
   """Returns a list of files that match the given pattern(s).
 
@@ -335,6 +340,7 @@ def get_matching_files(filename):
       ]
 
 
+@tf_export("gfile.MkDir")
 def create_dir(dirname):
   """Creates a directory with the name 'dirname'.
 
@@ -352,6 +358,7 @@ def create_dir(dirname):
     pywrap_tensorflow.CreateDir(compat.as_bytes(dirname), status)
 
 
+@tf_export("gfile.MakeDirs")
 def recursive_create_dir(dirname):
   """Creates a directory and all parent/intermediate directories.
 
@@ -367,6 +374,7 @@ def recursive_create_dir(dirname):
     pywrap_tensorflow.RecursivelyCreateDir(compat.as_bytes(dirname), status)
 
 
+@tf_export("gfile.Copy")
 def copy(oldpath, newpath, overwrite=False):
   """Copies data from oldpath to newpath.
 
@@ -384,14 +392,15 @@ def copy(oldpath, newpath, overwrite=False):
         compat.as_bytes(oldpath), compat.as_bytes(newpath), overwrite, status)
 
 
+@tf_export("gfile.Rename")
 def rename(oldname, newname, overwrite=False):
   """Rename or move a file / directory.
 
   Args:
     oldname: string, pathname for a file
     newname: string, pathname to which the file needs to be moved
-    overwrite: boolean, if false its an error for newpath to be occupied by an
-        existing file.
+    overwrite: boolean, if false it's an error for `newname` to be occupied by
+        an existing file.
 
   Raises:
     errors.OpError: If the operation fails.
@@ -401,7 +410,7 @@ def rename(oldname, newname, overwrite=False):
         compat.as_bytes(oldname), compat.as_bytes(newname), overwrite, status)
 
 
-def atomic_write_string_to_file(filename, contents):
+def atomic_write_string_to_file(filename, contents, overwrite=True):
   """Writes to `filename` atomically.
 
   This means that when `filename` appears in the filesystem, it will contain
@@ -413,12 +422,19 @@ def atomic_write_string_to_file(filename, contents):
   Args:
     filename: string, pathname for a file
     contents: string, contents that need to be written to the file
+    overwrite: boolean, if false it's an error for `filename` to be occupied by
+        an existing file.
   """
   temp_pathname = filename + ".tmp" + uuid.uuid4().hex
   write_string_to_file(temp_pathname, contents)
-  rename(temp_pathname, filename, overwrite=True)
+  try:
+    rename(temp_pathname, filename, overwrite)
+  except errors.OpError:
+    delete_file(temp_pathname)
+    raise
 
 
+@tf_export("gfile.DeleteRecursively")
 def delete_recursively(dirname):
   """Deletes everything under dirname recursively.
 
@@ -432,6 +448,7 @@ def delete_recursively(dirname):
     pywrap_tensorflow.DeleteRecursively(compat.as_bytes(dirname), status)
 
 
+@tf_export("gfile.IsDirectory")
 def is_directory(dirname):
   """Returns whether the path is a directory or not.
 
@@ -441,13 +458,11 @@ def is_directory(dirname):
   Returns:
     True, if the path is a directory; False otherwise
   """
-  try:
-    status = pywrap_tensorflow.TF_NewStatus()
-    return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
-  finally:
-    pywrap_tensorflow.TF_DeleteStatus(status)
+  status = c_api_util.ScopedTFStatus()
+  return pywrap_tensorflow.IsDirectory(compat.as_bytes(dirname), status)
 
 
+@tf_export("gfile.ListDirectory")
 def list_directory(dirname):
   """Returns a list of entries contained within a directory.
 
@@ -475,6 +490,7 @@ def list_directory(dirname):
     ]
 
 
+@tf_export("gfile.Walk")
 def walk(top, in_order=True):
   """Recursive directory tree generator for directories.
 
@@ -518,6 +534,7 @@ def walk(top, in_order=True):
     yield here
 
 
+@tf_export("gfile.Stat")
 def stat(filename):
   """Returns file statistics for a given path.
 

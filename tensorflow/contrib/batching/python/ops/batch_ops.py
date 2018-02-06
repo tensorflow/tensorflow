@@ -18,18 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.batching.ops import gen_batch_ops
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import gen_batch_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
-from tensorflow.contrib.batching.ops.gen_batch_ops import *
+from tensorflow.python.ops.gen_batch_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.contrib.util import loader
-from tensorflow.python.framework import ops
-from tensorflow.python.platform import resource_loader
-
-
-_batch_ops = loader.load_op_library(
-    resource_loader.get_path_to_datafile("_batch_ops.so"))
 
 
 @ops.RegisterGradient("Batch")
@@ -67,7 +61,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
 
   So, for example, in the following code
 
-  ```
+  ```python
   @batch_function(1, 2, 3)
   def layer(a):
     return tf.matmul(a, a)
@@ -129,7 +123,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
           unbatched = [
               gen_batch_ops.unbatch(t, batch_index, id_t,
                                     timeout_micros=unbatch_timeout_micros,
-                                    shared_name=unbatch_name)
+                                    shared_name=unbatch_name + "/" + t.name)
               for t in outputs_list]
         if isinstance(outputs, ops.Tensor):
           return unbatched[0]

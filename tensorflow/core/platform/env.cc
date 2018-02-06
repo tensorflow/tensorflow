@@ -13,14 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <sys/stat.h>
 #include <deque>
 #include <utility>
 #include <vector>
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #endif
+#if defined(__FreeBSD__)
+#include <sys/sysctl.h>
+#include <sys/types.h>
+#endif
 #if defined(PLATFORM_WINDOWS)
 #include <windows.h>
+#include "tensorflow/core/platform/windows/windows_file_system.h"
 #define PATH_MAX MAX_PATH
 #else
 #include <unistd.h>
@@ -30,7 +36,10 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/env_time.h"
+#include "tensorflow/core/platform/host_info.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -83,8 +92,12 @@ Status Env::GetFileSystemForFile(const string& fname, FileSystem** result) {
   io::ParseURI(fname, &scheme, &host, &path);
   FileSystem* file_system = file_system_registry_->Lookup(scheme.ToString());
   if (!file_system) {
-    return errors::Unimplemented("File system scheme ", scheme,
-                                 " not implemented");
+    if (scheme.empty()) {
+      scheme = "[local]";
+    }
+
+    return errors::Unimplemented("File system scheme '", scheme,
+                                 "' not implemented (file: '", fname, "')");
   }
   *result = file_system;
   return Status::OK();
@@ -97,6 +110,18 @@ Status Env::GetRegisteredFileSystemSchemes(std::vector<string>* schemes) {
 Status Env::RegisterFileSystem(const string& scheme,
                                FileSystemRegistry::Factory factory) {
   return file_system_registry_->Register(scheme, std::move(factory));
+}
+
+Status Env::FlushFileSystemCaches() {
+  std::vector<string> schemes;
+  TF_RETURN_IF_ERROR(GetRegisteredFileSystemSchemes(&schemes));
+  for (const string& scheme : schemes) {
+    FileSystem* fs = nullptr;
+    TF_RETURN_IF_ERROR(
+        GetFileSystemForFile(io::CreateURI(scheme, "", ""), &fs));
+    fs->FlushCaches();
+  }
+  return Status::OK();
 }
 
 Status Env::NewRandomAccessFile(const string& fname,
@@ -152,8 +177,8 @@ bool Env::FilesExist(const std::vector<string>& files,
     if (!file_system) {
       fs_result = false;
       if (fs_status) {
-        Status s = errors::Unimplemented("File system scheme ", itr.first,
-                                         " not implemented");
+        Status s = errors::Unimplemented("File system scheme '", itr.first,
+                                         "' not implemented");
         local_status.resize(itr.second.size(), s);
       }
     } else {
@@ -261,9 +286,20 @@ string Env::GetExecutablePath() {
   char unresolved_path[buffer_size];
   _NSGetExecutablePath(unresolved_path, &buffer_size);
   CHECK(realpath(unresolved_path, exe_path));
+#elif defined(__FreeBSD__)
+  int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
+  size_t exe_path_size = PATH_MAX;
+
+  if (sysctl(mib, 4, exe_path, &exe_path_size, NULL, 0) != 0) {
+    // Resolution of path failed
+    return "";
+  }
 #elif defined(PLATFORM_WINDOWS)
-  HMODULE hModule = GetModuleHandle(NULL);
-  GetModuleFileName(hModule, exe_path, MAX_PATH);
+  HMODULE hModule = GetModuleHandleW(NULL);
+  WCHAR wc_file_path[MAX_PATH] = {0};
+  GetModuleFileNameW(hModule, wc_file_path, MAX_PATH);
+  string file_path = WindowsFileSystem::WideCharToUtf8(wc_file_path);
+  std::copy(file_path.begin(), file_path.end(), exe_path);
 #else
   CHECK_NE(-1, readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1));
 #endif
@@ -271,6 +307,56 @@ string Env::GetExecutablePath() {
   exe_path[sizeof(exe_path) - 1] = 0;
 
   return exe_path;
+}
+
+bool Env::LocalTempFilename(string* filename) {
+  std::vector<string> dirs;
+  GetLocalTempDirectories(&dirs);
+
+  // Try each directory, as they might be full, have inappropriate
+  // permissions or have different problems at times.
+  for (const string& dir : dirs) {
+    *filename = io::JoinPath(dir, "tempfile-");
+    if (CreateUniqueFileName(filename, "")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool Env::CreateUniqueFileName(string* prefix, const string& suffix) {
+#ifdef __APPLE__
+  uint64_t tid64;
+  pthread_threadid_np(nullptr, &tid64);
+  int32 tid = static_cast<int32>(tid64);
+  int32 pid = static_cast<int32>(getpid());
+#elif defined(__FreeBSD__)
+  // Has to be casted to long first, else this error appears:
+  // static_cast from 'pthread_t' (aka 'pthread *') to 'int32' (aka 'int')
+  // is not allowed
+  int32 tid = static_cast<int32>(static_cast<int64>(pthread_self()));
+  int32 pid = static_cast<int32>(getpid());
+#elif defined(PLATFORM_WINDOWS)
+  int32 tid = static_cast<int32>(GetCurrentThreadId());
+  int32 pid = static_cast<int32>(GetCurrentProcessId());
+#else
+  int32 tid = static_cast<int32>(pthread_self());
+  int32 pid = static_cast<int32>(getpid());
+#endif
+  uint64 now_microsec = NowMicros();
+
+  *prefix += strings::Printf("%s-%x-%d-%llx", port::Hostname().c_str(), tid,
+                             pid, now_microsec);
+
+  if (!suffix.empty()) {
+    *prefix += suffix;
+  }
+  if (FileExists(*prefix).ok()) {
+    prefix->clear();
+    return false;
+  } else {
+    return true;
+  }
 }
 
 Thread::~Thread() {}

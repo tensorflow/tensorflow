@@ -26,6 +26,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -180,6 +181,34 @@ class TransformTest(test.TestCase):
     res = ge.graph_replace([b, c], {a: d})
     self.assertEqual(res[0].name, "b:0")
     self.assertEqual(res[1].name, "add_1:0")
+
+  def test_graph_replace_gradients(self):
+    ops.reset_default_graph()
+    w = variables.Variable(0.0, name="w")
+    y = math_ops.multiply(math_ops.multiply(w, w, name="mul1"), w, name="mul2")
+    g = gradients_impl.gradients(y, w, name="grad")[0]
+
+    # Extract the operations.
+    replacement_ts = {w.value(): g}
+    original_mul1_grad = (ops.get_default_graph().
+                          get_operation_by_name("grad/mul1_grad/Mul_1"))
+
+    # Should not raise exception.
+    res = ge.graph_replace(g, replacement_ts, dst_scope="res")
+
+    # Extract the operations after graph_replace.
+    result_mul1_grad = (ops.get_default_graph().
+                        get_operation_by_name("res/grad/mul1_grad/Mul_1"))
+
+    # Make sure _original_ops are as expected.
+    self.assertEquals(original_mul1_grad._original_op.name, u"mul1")
+    self.assertEquals(result_mul1_grad._original_op.name, u"res/mul1")
+    self.assertNotEquals(res.name, g.name)
+    with session.Session() as sess:
+      sess.run(variables.global_variables_initializer())
+      g_val, res_val = sess.run([g, res])
+    self.assertNear(g_val, 0.0, ERROR_TOLERANCE)
+    self.assertNear(res_val, 0.0, ERROR_TOLERANCE)
 
 
 if __name__ == "__main__":

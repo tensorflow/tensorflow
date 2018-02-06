@@ -32,20 +32,20 @@ namespace functor {
 // Explicit instantiation of the CPU functor.
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-template class FillProjectiveTransform<CPUDevice, uint8>;
-template class FillProjectiveTransform<CPUDevice, int32>;
-template class FillProjectiveTransform<CPUDevice, int64>;
-template class FillProjectiveTransform<CPUDevice, float>;
-template class FillProjectiveTransform<CPUDevice, double>;
+template struct FillProjectiveTransform<CPUDevice, uint8>;
+template struct FillProjectiveTransform<CPUDevice, int32>;
+template struct FillProjectiveTransform<CPUDevice, int64>;
+template struct FillProjectiveTransform<CPUDevice, float>;
+template struct FillProjectiveTransform<CPUDevice, double>;
 
 }  // end namespace functor
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 using functor::FillProjectiveTransform;
+using generator::Interpolation;
 using generator::INTERPOLATION_BILINEAR;
 using generator::INTERPOLATION_NEAREST;
-using generator::Interpolation;
 using generator::ProjectiveGenerator;
 
 template <typename Device, typename T>
@@ -72,11 +72,12 @@ class ImageProjectiveTransform : public OpKernel {
     const Tensor& transform_t = ctx->input(1);
     OP_REQUIRES(ctx, images_t.shape().dims() == 4,
                 errors::InvalidArgument("Input images must have rank 4"));
-    OP_REQUIRES(ctx, (TensorShapeUtils::IsMatrix(transform_t.shape()) &&
-                      (transform_t.dim_size(0) == images_t.dim_size(0) ||
-                       transform_t.dim_size(0) == 1) &&
-                      transform_t.dim_size(1) ==
-                          ProjectiveGenerator<Device, T>::kNumParameters),
+    OP_REQUIRES(ctx,
+                (TensorShapeUtils::IsMatrix(transform_t.shape()) &&
+                 (transform_t.dim_size(0) == images_t.dim_size(0) ||
+                  transform_t.dim_size(0) == 1) &&
+                 transform_t.dim_size(1) ==
+                     ProjectiveGenerator<Device, T>::kNumParameters),
                 errors::InvalidArgument(
                     "Input transform should be num_images x 8 or 1 x 8"));
     auto images = images_t.tensor<T, 4>();
@@ -116,7 +117,7 @@ namespace functor {
   void FillProjectiveTransform<GPUDevice, TYPE>::operator()(                \
       const GPUDevice& device, OutputType* output, const InputType& images, \
       const TransformsType& transform) const;                               \
-  extern template class FillProjectiveTransform<GPUDevice, TYPE>
+  extern template struct FillProjectiveTransform<GPUDevice, TYPE>
 
 TF_CALL_uint8(DECLARE_FUNCTOR);
 TF_CALL_int32(DECLARE_FUNCTOR);

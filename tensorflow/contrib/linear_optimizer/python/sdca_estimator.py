@@ -19,7 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib import layers
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
 from tensorflow.contrib.learn.python.learn.estimators import prediction_key
@@ -154,7 +154,7 @@ def sdca_model_fn(features, labels, mode, params, config=None):
     _add_bias_column(feature_columns, features, bias, columns_to_variables)
 
   def _train_op_fn(unused_loss):
-    global_step = contrib_variables.get_global_step()
+    global_step = training_util.get_global_step()
     sdca_model, train_op = optimizer.get_train_step(
         columns_to_variables, weight_column_name, loss_type, features, labels,
         global_step)
@@ -227,7 +227,7 @@ class _SDCAEstimator(estimator.Estimator):
         will be multiplied by the loss of the example.
       model_dir: Directory to save model parameters, graph etc. This can also be
         used to load checkpoints from the directory into an estimator to
-        continue  training a previously saved model.
+        continue training a previously saved model.
       head: type of head. Currently, _BinaryLogisticHead and _BinarySvmHead are
         supported for classification and _RegressionHead for regression. It
         should be a subclass of _SingleHead.
@@ -312,7 +312,7 @@ class SDCALogisticClassifier(_SDCAEstimator):
   ```
 
   The input_fn provided to `fit`, `evaluate` and predict_* methods should return
-  the following features, otherwise there  will be a `KeyError`:
+  the following features, otherwise there will be a `KeyError`:
     * A feature with `key=example_id_column` whose value is a `Tensor` of dtype
       string.
     * If `weight_column_name` is not `None`, a feature with
@@ -438,7 +438,7 @@ class SDCALinearRegressor(_SDCAEstimator):
   ```
 
   The input_fn provided to `fit`, `evaluate` and predict_* methods should return
-  the following features, otherwise there  will be a `KeyError`:
+  the following features, otherwise there will be a `KeyError`:
     * A feature with `key=example_id_column` whose value is a `Tensor` of dtype
       string.
     * If `weight_column_name` is not `None`, a feature with
@@ -478,7 +478,7 @@ class SDCALinearRegressor(_SDCAEstimator):
         will be multiplied by the loss of the example.
       model_dir: Directory to save model parameters, graph etc. This can also be
         used to load checkpoints from the directory into an estimator to
-        continue  training a previously saved model.
+        continue training a previously saved model.
       l1_regularization: L1-regularization parameter. Refers to global L1
         regularization (across all examples).
       l2_regularization: L2-regularization parameter. Refers to global L2

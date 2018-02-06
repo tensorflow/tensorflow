@@ -24,6 +24,7 @@ import tempfile
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import dataset_ops
+from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -59,8 +60,8 @@ class FilesystemCacheDatasetTest(test.TestCase):
 
     # Create initialization ops for iterators without and with
     # caching, respectively.
-    iterator = dataset_ops.Iterator.from_structure(cache_dataset.output_types,
-                                                   cache_dataset.output_shapes)
+    iterator = iterator_ops.Iterator.from_structure(cache_dataset.output_types,
+                                                    cache_dataset.output_shapes)
     init_fifo_op = iterator.make_initializer(repeat_dataset)
     init_cache_op = iterator.make_initializer(cache_dataset)
 

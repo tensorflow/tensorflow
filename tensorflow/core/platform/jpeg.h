@@ -20,7 +20,8 @@ limitations under the License.
 
 #if defined(PLATFORM_GOOGLE)
 #include "tensorflow/core/platform/google/build_config/jpeg.h"
-#elif (defined(PLATFORM_POSIX) && !defined(IS_MOBILE_PLATFORM)) || defined(PLATFORM_WINDOWS)
+#elif defined(PLATFORM_POSIX) || defined(PLATFORM_WINDOWS) || \
+    defined(PLATFORM_POSIX_ANDROID)
 #include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>

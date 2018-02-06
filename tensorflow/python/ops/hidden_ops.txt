@@ -5,7 +5,10 @@ BroadcastGradientArgs
 ConcatOffset
 Concat
 ConcatV2
+ConjugateTranspose
 Const
+DebugGradientIdentity
+DebugGradientRefIdentity
 EditDistance
 ExpandDims
 ListDiff
@@ -14,10 +17,12 @@ MirrorPadGrad
 OneHot
 Pack
 Pad
+PadV2
 ParallelConcat
 Placeholder
 RefIdentity
 Reverse
+Snapshot
 SpaceToBatch
 Split
 SplitV
@@ -25,6 +30,8 @@ Squeeze
 Slice
 TileGrad  # Exported through array_grad instead of array_ops.
 ZerosLike  # TODO(josh11b): Use this instead of the Python version.
+Unique
+UniqueV2
 Unpack
 
 # candidate_sampling_ops
@@ -35,6 +42,11 @@ LearnedUnigramCandidateSampler
 LogUniformCandidateSampler
 ThreadUnsafeUnigramCandidateSampler
 UniformCandidateSampler
+
+# checkpoint_ops
+GenerateVocabRemapping
+LoadAndRemapMatrix
+
 
 # control_flow_ops
 Switch
@@ -111,6 +123,10 @@ Stack
 StackClose
 StackPop
 StackPush
+StackV2
+StackCloseV2
+StackPopV2
+StackPushV2
 TensorArray
 TensorArrayClose
 TensorArrayCloseV2
@@ -152,10 +168,15 @@ TensorArrayWriteV3
 SymbolicGradient
 
 # image_ops
+AdjustContrastv2
+NonMaxSuppression
+NonMaxSuppressionV2
 RandomCrop
 ResizeBilinearGrad
+ResizeBicubicGrad
 ResizeNearestNeighborGrad
-AdjustContrastv2
+SampleDistortedBoundingBox
+SampleDistortedBoundingBoxV2
 ScaleImageGrad
 
 # io_ops
@@ -192,6 +213,7 @@ TextLineReaderV2
 TFRecordReaderV2
 WholeFileReaderV2
 LMDBReader
+DecodeCSV
 
 # linalg_ops
 BatchCholesky
@@ -204,6 +226,9 @@ BatchMatrixTriangularSolve
 BatchSelfAdjointEig
 BatchSelfAdjointEigV2
 BatchSvd
+LogMatrixDeterminant
+MatrixExponential
+MatrixLogarithm
 MatrixSolveLs
 SelfAdjointEig
 SelfAdjointEigV2
@@ -223,7 +248,9 @@ TensorSummaryV2
 
 # math_ops
 Abs
+AccumulateNV2
 AddN
+AddV2
 All
 Any
 BatchMatMul
@@ -239,6 +266,7 @@ ComplexAbs
 Conj
 FloorDiv
 FloorMod
+HistogramFixedWidth
 Max
 Mean
 Min
@@ -270,6 +298,7 @@ AvgPool3DGrad
 BatchNormWithGlobalNormalization
 BatchNormWithGlobalNormalizationGrad
 FusedBatchNorm
+FusedBatchNormV2
 SoftmaxCrossEntropyWithLogits
 SparseSoftmaxCrossEntropyWithLogits
 LRNGrad
@@ -282,6 +311,7 @@ MaxPool3DGradGrad
 ReluGrad
 Relu6Grad
 EluGrad
+SeluGrad
 SoftplusGrad
 SoftsignGrad
 TopK
@@ -291,10 +321,13 @@ BiasAddV1
 Relu6
 AvgPool
 MaxPool
+MaxPoolV2
 Softmax
 LogSoftmax
 FractionalAvgPoolGrad
 FractionalMaxPoolGrad
+InTopK
+InTopKV2
 
 # parsing_ops
 ParseExample
@@ -313,6 +346,7 @@ TruncatedNormal
 # script_ops
 PyFunc
 PyFuncStateless
+EagerPyFunc
 
 # sdca_ops
 
@@ -327,6 +361,7 @@ AddSparseToTensorsMap
 AddManySparseToTensorsMap
 TakeManySparseFromTensorsMap
 DeserializeManySparse
+DeserializeSparse
 SerializeManySparse
 SerializeSparse
 SparseAdd

@@ -88,6 +88,14 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
       dumping_wrapper.DumpingDebugWrapperSession(
           session.Session(), session_root=file_path, log_usage=False)
 
+  def testConstructWrapperWithNonexistentSessionRootCreatesDirectory(self):
+    new_dir_path = os.path.join(tempfile.mkdtemp(), "new_dir")
+    dumping_wrapper.DumpingDebugWrapperSession(
+        session.Session(), session_root=new_dir_path, log_usage=False)
+    self.assertTrue(gfile.IsDirectory(new_dir_path))
+    # Cleanup.
+    gfile.DeleteRecursively(new_dir_path)
+
   def testDumpingOnASingleRunWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
         self.sess, session_root=self.session_root, log_usage=False)
@@ -102,6 +110,20 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(repr(self.inc_v), dump.run_fetches_info)
     self.assertEqual(repr(None), dump.run_feed_keys_info)
+
+  def testDumpingOnASingleRunWorksWithRelativePathForDebugDumpDir(self):
+    sess = dumping_wrapper.DumpingDebugWrapperSession(
+        self.sess, session_root=self.session_root, log_usage=False)
+    sess.run(self.inc_v)
+    dump_dirs = glob.glob(os.path.join(self.session_root, "run_*"))
+    cwd = os.getcwd()
+    try:
+      os.chdir(self.session_root)
+      dump = debug_data.DebugDumpDir(
+          os.path.relpath(dump_dirs[0], self.session_root))
+      self.assertAllClose([10.0], dump.get_tensors("v", 0, "DebugIdentity"))
+    finally:
+      os.chdir(cwd)
 
   def testDumpingOnASingleRunWithFeedDictWorks(self):
     sess = dumping_wrapper.DumpingDebugWrapperSession(
@@ -342,12 +364,14 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
         thread_name_filter=r"MainThread$")
 
     self.assertAllClose(1.0, sess.run(self.delta))
+    child_thread_result = []
     def child_thread_job():
-      sess.run(sess.run(self.eta))
+      child_thread_result.append(sess.run(self.eta))
 
     thread = threading.Thread(name="ChildThread", target=child_thread_job)
     thread.start()
     thread.join()
+    self.assertAllClose([-1.4], child_thread_result)
 
     dump_dirs = glob.glob(os.path.join(self.session_root, "run_*"))
     self.assertEqual(1, len(dump_dirs))
@@ -364,6 +388,11 @@ class DumpingDebugWrapperSessionTest(test_util.TensorFlowTestCase):
         r"NonInteractiveDebugWrapperSession does not support node-stepper "
         r"mode\."):
       sess.invoke_node_stepper(node_stepper)
+
+  def testDumpingWrapperWithEmptyFetchWorks(self):
+    sess = dumping_wrapper.DumpingDebugWrapperSession(
+        self.sess, session_root=self.session_root, log_usage=False)
+    sess.run([])
 
 
 if __name__ == "__main__":

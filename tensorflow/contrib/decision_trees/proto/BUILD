@@ -7,7 +7,19 @@ exports_files([
     "generic_tree_model_proto.swig",
 ])
 
-load("//tensorflow/core:platform/default/build_config.bzl", "tf_proto_library")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library",
+    "tf_pyclif_proto_library",
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
+)
 
 tf_proto_library(
     name = "generic_tree_model",
@@ -15,6 +27,7 @@ tf_proto_library(
     cc_api_version = 2,
     go_api_version = 2,
     java_api_version = 2,
+    visibility = ["//visibility:public"],
 )
 
 tf_proto_library(
@@ -23,4 +36,12 @@ tf_proto_library(
     cc_api_version = 2,
     go_api_version = 2,
     protodeps = [":generic_tree_model"],
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "generic_tree_model_pyclif",
+    proto_lib = ":generic_tree_model",
+    proto_srcfile = "generic_tree_model.proto",
+    visibility = ["//visibility:public"],
 )

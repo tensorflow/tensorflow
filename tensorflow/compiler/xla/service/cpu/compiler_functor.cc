@@ -22,30 +22,29 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "external/llvm/include/llvm/ADT/StringRef.h"
-#include "external/llvm/include/llvm/Analysis/TargetLibraryInfo.h"
-#include "external/llvm/include/llvm/Analysis/TargetTransformInfo.h"
-#include "external/llvm/include/llvm/ExecutionEngine/ObjectMemoryBuffer.h"
-#include "external/llvm/include/llvm/IR/LegacyPassManager.h"
-#include "external/llvm/include/llvm/IR/Verifier.h"
-#include "external/llvm/include/llvm/MC/MCContext.h"
-#include "external/llvm/include/llvm/Object/ObjectFile.h"
-#include "external/llvm/include/llvm/Support/raw_ostream.h"
-#include "external/llvm/include/llvm/Target/TargetMachine.h"
-#include "external/llvm/include/llvm/Transforms/IPO.h"
-#include "external/llvm/include/llvm/Transforms/IPO/AlwaysInliner.h"
-#include "external/llvm/include/llvm/Transforms/IPO/PassManagerBuilder.h"
-#include "tensorflow/compiler/xla/legacy_flags/compiler_functor_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_runtime_flags.h"
+#include "llvm/ADT/StringRef.h"
+#include "llvm/Analysis/TargetLibraryInfo.h"
+#include "llvm/Analysis/TargetTransformInfo.h"
+#include "llvm/ExecutionEngine/ObjectMemoryBuffer.h"
+#include "llvm/IR/LegacyPassManager.h"
+#include "llvm/IR/Verifier.h"
+#include "llvm/MC/MCContext.h"
+#include "llvm/Object/ObjectFile.h"
+#include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetMachine.h"
+#include "llvm/Transforms/IPO.h"
+#include "llvm/Transforms/IPO/AlwaysInliner.h"
+#include "llvm/Transforms/IPO/PassManagerBuilder.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
+#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_neon.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
+#include "tensorflow/compiler/xla/service/cpu/llvm_ir_runtime.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -56,28 +55,86 @@ CompilerFunctor::AllIntrinsics() {
   VectorIntrinsics intrinsics;
   intrinsics.sse_intrinsics = true;
   intrinsics.avx_intrinsics = true;
+  intrinsics.neon_intrinsics = true;
   return intrinsics;
 }
 
+/* Create filtered versions of the LLVM Pass Managers to filter out some
+of the expensive passes.
+Profiling:
+   learning/brain/google/xla/benchmarks:inception_cpu_benchmark
+   learning/brain/google/xla/benchmarks:cifarnet
+pointed to LICM and IndVarSimplify as the hottest passes.
+LICM is known to exhibit O(n^2) time in the number of instructions.
+IndVarSimplify is slow due to SCEV. If loops are emitted in canonical form,
+this pass is not necessary.
+Disabling these as a starting point.
+*/
+// TODO(b/64227304) Creating a custom pass pipeline will replace this.
+
+namespace {
+class FilteredFunctionPassManager : public llvm::legacy::FunctionPassManager {
+ public:
+  FilteredFunctionPassManager(llvm::Module* m, bool disable_expensive_passes)
+      : llvm::legacy::FunctionPassManager(m),
+        disable_expensive_passes_(disable_expensive_passes) {}
+  void add(llvm::Pass* p) override {
+    llvm::legacy::FunctionPassManager::add(p);
+  }
+
+ private:
+  bool disable_expensive_passes_;
+};
+
+class FilteredPassManager : public llvm::legacy::PassManager {
+ public:
+  explicit FilteredPassManager(bool disable_expensive_passes)
+      : disable_expensive_passes_(disable_expensive_passes) {}
+  void add(llvm::Pass* p) override {
+    if (disable_expensive_passes_) {
+      llvm::StringRef PassName = p->getPassName();
+      if (PassName.contains("Unroll loops")) {
+        return;
+      }
+    }
+    llvm::legacy::PassManager::add(p);
+  }
+
+ private:
+  bool disable_expensive_passes_;
+};
+}  // anonymous namespace
+
 llvm::object::OwningBinary<llvm::object::ObjectFile> CompilerFunctor::
 operator()(llvm::Module& module) const {
-  llvm::legacy::PassManager module_passes;
-  llvm::legacy::FunctionPassManager function_passes(&module);
+  FilteredPassManager module_passes(disable_expensive_passes_);
+  FilteredFunctionPassManager function_passes(&module,
+                                              disable_expensive_passes_);
 
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
-  legacy_flags::CompilerFunctorFlags* flags =
-      legacy_flags::GetCompilerFunctorFlags();
-  string dump_path = flags->xla_debug_cpu_dump_ir;
-  if (!dump_path.empty()) {
-    std::unique_ptr<tensorflow::WritableFile> f;
-    TF_CHECK_OK(tensorflow::Env::Default()->NewAppendableFile(dump_path, &f));
-    TF_CHECK_OK(f->Append(llvm_ir::DumpModuleToString(module)));
-    TF_CHECK_OK(f->Close());
+
+  if (pre_optimization_hook_) {
+    TF_CHECK_OK(pre_optimization_hook_(module));
   }
 
+  // Add the appropriate TargetLibraryInfo and TargetTransformInfo.
+  AddTargetInfoPasses(&module_passes);
+
   // Build up optimization pipeline.
-  AddOptimizationPasses(&module_passes, &function_passes);
+  if (optimize_for_size_) {
+    // Optimizing for size turns on -O2 level optimizations.
+    //
+    // TODO(b/64153864): Although the code generator supports size_level = 2 to
+    // turn on more aggressive code size optimizations than size_level = 1, we
+    // pass size_level = 1 because in many cases a size_level of 2 does
+    // worse. Investigate why.
+    AddOptimizationPasses(&module_passes, &function_passes, /*opt_level=*/2,
+                          /*size_level=*/1);
+  } else {
+    AddOptimizationPasses(&module_passes, &function_passes,
+                          /*opt_level=*/opt_level_, /*size_level=*/0);
+  }
 
   // Run optimization passes on module.
   function_passes.doInitialization();
@@ -92,12 +149,18 @@ operator()(llvm::Module& module) const {
 
   CHECK(!llvm::verifyModule(module, &llvm::dbgs()));
 
+  runtime::RewriteIRRuntimeFunctions(&module, enable_fast_math_);
+
   // Buffer for holding machine code prior to constructing the ObjectFile.
   llvm::SmallVector<char, 0> stream_buffer;
   llvm::raw_svector_ostream ostream(stream_buffer);
 
   VLOG(2) << "IR after optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));
+
+  if (post_optimization_hook_) {
+    TF_CHECK_OK(post_optimization_hook_(module));
+  }
 
   // Generate code.
   llvm::MCContext* mc_context;
@@ -116,10 +179,12 @@ operator()(llvm::Module& module) const {
   std::unique_ptr<llvm::object::ObjectFile> object_file =
       std::move(object_file_or_error.get());
   if (VLOG_IS_ON(2)) {
-    StatusOr<string> disassembly_status =
+    StatusOr<DisassemblerResult> disassembly_status =
         disassembler_->DisassembleObjectFile(*object_file);
     if (disassembly_status.ok()) {
-      XLA_VLOG_LINES(2, disassembly_status.ValueOrDie());
+      auto result = disassembly_status.ValueOrDie();
+      XLA_VLOG_LINES(2, result.text);
+      VLOG(2) << "compiled code size: " << result.code_size_bytes << " bytes";
     }
   }
 
@@ -134,57 +199,85 @@ std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl(
     CompilerFunctor::VectorIntrinsics const& available_intrinsics) {
   std::vector<llvm::VecDesc> vector_functions;
 
-  const llvm::VecDesc four_wide_vector_functions[] = {
-      {"expf", runtime::kExpV4F32, 4},
-      {"llvm.exp.f32", runtime::kExpV4F32, 4},
+  const llvm::VecDesc four_wide_vector_functions_neon[] = {
+      {"expf", runtime::kExpV4F32NEONSymbolName, 4},
+      {"llvm.exp.f32", runtime::kExpV4F32NEONSymbolName, 4},
 
-      {"logf", runtime::kLogV4F32, 4},
-      {"llvm.log.f32", runtime::kLogV4F32, 4},
-
-      {"tanhf", runtime::kTanhV4F32, 4},
-      {"llvm.tanh.f32", runtime::kTanhV4F32, 4},
+      {"logf", runtime::kLogV4F32NEONSymbolName, 4},
+      {"llvm.log.f32", runtime::kLogV4F32NEONSymbolName, 4},
   };
 
-  const llvm::VecDesc eight_wide_vector_functions[] = {
-      {"expf", runtime::kExpV8F32, 8},
-      {"llvm.exp.f32", runtime::kExpV8F32, 8},
+  const llvm::VecDesc four_wide_vector_functions_sse[] = {
+      {"expf", runtime::kExpV4F32SSESymbolName, 4},
+      {"llvm.exp.f32", runtime::kExpV4F32SSESymbolName, 4},
 
-      {"logf", runtime::kLogV8F32, 8},
-      {"llvm.log.f32", runtime::kLogV8F32, 8},
-
-      {"tanhf", runtime::kTanhV8F32, 8},
-      {"llvm.tanh.f32", runtime::kTanhV8F32, 8},
+      {"logf", runtime::kLogV4F32SSESymbolName, 4},
+      {"llvm.log.f32", runtime::kLogV4F32SSESymbolName, 4},
   };
 
-  // Our vectorized library calls are currently implement by calling into Eigen.
-  // As such, only emit calls to these routines if --xla_cpu_use_eigen is
-  // enabled.
-  legacy_flags::CpuRuntimeFlags* flags = legacy_flags::GetCpuRuntimeFlags();
-  if (flags->xla_cpu_use_eigen &&
-      (arch == llvm::Triple::x86 || llvm::Triple::x86_64)) {
-    llvm::SmallVector<llvm::StringRef, 32> features;
-    feature_string.split(features, ',', -1, /*KeepEmpty=*/false);
-    if (std::find(features.begin(), features.end(), "+sse4.1") !=
-            features.end() &&
-        available_intrinsics.sse_intrinsics) {
-      vector_functions.insert(vector_functions.end(),
-                              std::begin(four_wide_vector_functions),
-                              std::end(four_wide_vector_functions));
+  const llvm::VecDesc eight_wide_vector_functions_avx[] = {
+      {"expf", runtime::kExpV8F32AVXSymbolName, 8},
+      {"llvm.exp.f32", runtime::kExpV8F32AVXSymbolName, 8},
+
+      {"logf", runtime::kLogV8F32AVXSymbolName, 8},
+      {"llvm.log.f32", runtime::kLogV8F32AVXSymbolName, 8},
+  };
+
+  // These functions are generated by XLA as LLVM IR, so they're always
+  // available.
+  const llvm::VecDesc ir_vector_functions[] = {
+      {"tanhf", runtime::kTanhV4F32SymbolName, 4},
+      {"llvm.tanh.f32", runtime::kTanhV4F32SymbolName, 4},
+
+      {"tanhf", runtime::kTanhV8F32SymbolName, 8},
+      {"llvm.tanh.f32", runtime::kTanhV8F32SymbolName, 8},
+  };
+
+  llvm::SmallVector<llvm::StringRef, 32> features;
+  feature_string.split(features, ',', -1, /*KeepEmpty=*/false);
+  auto has_feature = [&features](const llvm::StringRef feature) {
+    return std::find(features.begin(), features.end(), feature) !=
+           features.end();
+  };
+
+  switch (arch) {
+    case llvm::Triple::x86:
+    case llvm::Triple::x86_64: {
+      if (has_feature("+sse4.1") && available_intrinsics.sse_intrinsics) {
+        vector_functions.insert(vector_functions.end(),
+                                std::begin(four_wide_vector_functions_sse),
+                                std::end(four_wide_vector_functions_sse));
+      }
+      if (has_feature("+avx") && available_intrinsics.avx_intrinsics) {
+        vector_functions.insert(vector_functions.end(),
+                                std::begin(eight_wide_vector_functions_avx),
+                                std::end(eight_wide_vector_functions_avx));
+      }
+      break;
     }
-    if (std::find(features.begin(), features.end(), "+avx") != features.end() &&
-        available_intrinsics.avx_intrinsics) {
-      vector_functions.insert(vector_functions.end(),
-                              std::begin(eight_wide_vector_functions),
-                              std::end(eight_wide_vector_functions));
+    case llvm::Triple::arm:
+    case llvm::Triple::aarch64: {
+      if (has_feature("+neon") && available_intrinsics.neon_intrinsics) {
+        vector_functions.insert(vector_functions.end(),
+                                std::begin(four_wide_vector_functions_neon),
+                                std::end(four_wide_vector_functions_neon));
+      }
+      break;
     }
+    default:
+      break;
   }
+
+  vector_functions.insert(vector_functions.end(),
+                          std::begin(ir_vector_functions),
+                          std::end(ir_vector_functions));
+
   return vector_functions;
 }
 }  // namespace
 
-void CompilerFunctor::AddOptimizationPasses(
-    llvm::legacy::PassManagerBase* module_passes,
-    llvm::legacy::FunctionPassManager* function_passes) const {
+void CompilerFunctor::AddTargetInfoPasses(
+    llvm::legacy::PassManagerBase* passes) const {
   llvm::Triple target_triple(target_machine_->getTargetTriple());
   auto target_library_info_impl =
       MakeUnique<llvm::TargetLibraryInfoImpl>(target_triple);
@@ -192,16 +285,21 @@ void CompilerFunctor::AddOptimizationPasses(
       VectorFunctionsForTargetLibraryInfoImpl(
           target_triple.getArch(), target_machine_->getTargetFeatureString(),
           available_intrinsics_));
-  module_passes->add(
+  passes->add(
       new llvm::TargetLibraryInfoWrapperPass(*target_library_info_impl));
-  module_passes->add(createTargetTransformInfoWrapperPass(
+  passes->add(createTargetTransformInfoWrapperPass(
       target_machine_->getTargetIRAnalysis()));
+}
 
+void CompilerFunctor::AddOptimizationPasses(
+    llvm::legacy::PassManagerBase* module_passes,
+    llvm::legacy::FunctionPassManager* function_passes, unsigned opt_level,
+    unsigned size_level) const {
   llvm::PassManagerBuilder builder;
-  builder.OptLevel = opt_level_;
-  builder.SizeLevel = 0;
+  builder.OptLevel = opt_level;
+  builder.SizeLevel = size_level;
 
-  if (opt_level_ > 1) {
+  if (opt_level > 1) {
     builder.Inliner = llvm::createFunctionInliningPass();
   } else {
     // Only inline functions marked with "alwaysinline".
@@ -209,9 +307,9 @@ void CompilerFunctor::AddOptimizationPasses(
   }
 
   builder.DisableUnitAtATime = false;
-  builder.DisableUnrollLoops = opt_level_ == 0;
-  builder.LoopVectorize = opt_level_ > 0;
-  builder.SLPVectorize = opt_level_ > 1;
+  builder.DisableUnrollLoops = opt_level == 0;
+  builder.LoopVectorize = opt_level > 0 && size_level == 0;
+  builder.SLPVectorize = opt_level > 1 && size_level == 0;
 
   builder.populateFunctionPassManager(*function_passes);
   builder.populateModulePassManager(*module_passes);

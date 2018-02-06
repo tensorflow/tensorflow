@@ -35,19 +35,20 @@ class InfeedThunk : public Thunk {
   // infeed queue to the device buffer
   // `destination_buffer`. `mem_size` is the size of the data in
   // bytes.
-  InfeedThunk(const BufferAllocation::Slice& destination_buffer,
-              uint64 mem_size, const HloInstruction* hlo_instruction);
+  InfeedThunk(tensorflow::gtl::ArraySlice<BufferAllocation::Slice>
+                  tuple_element_buffers,
+              const BufferAllocation::Slice& destination_buffer,
+              const HloInstruction* hlo_instruction);
 
   InfeedThunk(const InfeedThunk&) = delete;
   InfeedThunk& operator=(const InfeedThunk&) = delete;
 
-  tensorflow::Status ExecuteOnStream(
-      const BufferAllocations& buffer_allocations,
-      perftools::gputools::Stream* stream) override;
+  Status ExecuteOnStream(const BufferAllocations& buffer_allocations,
+                         perftools::gputools::Stream* stream) override;
 
  private:
+  const std::vector<BufferAllocation::Slice> tuple_element_buffers_;
   const BufferAllocation::Slice destination_buffer_;
-  const uint64 mem_size_;
 };
 
 }  // namespace gpu

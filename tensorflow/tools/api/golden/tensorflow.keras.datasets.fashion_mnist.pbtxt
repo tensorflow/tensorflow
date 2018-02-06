@@ -1,0 +1,3 @@
+path: "tensorflow.keras.datasets.fashion_mnist"
+tf_module {
+}

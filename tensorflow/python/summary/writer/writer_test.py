@@ -39,6 +39,7 @@ from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary import summary_iterator
 from tensorflow.python.summary.writer import writer
 from tensorflow.python.summary.writer import writer_cache
+from tensorflow.python.util import compat
 
 
 class SummaryWriterTestCase(test.TestCase):
@@ -267,6 +268,13 @@ class SummaryWriterTestCase(test.TestCase):
     sw.close()
     self._assertRecent(time_before_close)
 
+  def testWithStatement(self):
+    test_dir = self._CleanTestDir("with_statement")
+    with writer.FileWriter(test_dir) as sw:
+      sw.add_session_log(event_pb2.SessionLog(status=SessionLog.START), 1)
+    event_paths = sorted(glob.glob(os.path.join(test_dir, "event*")))
+    self.assertEquals(1, len(event_paths))
+
   # Checks that values returned from session Run() calls are added correctly to
   # summaries.  These are numpy types so we need to check they fit in the
   # protocol buffers correctly.
@@ -312,6 +320,65 @@ class SummaryWriterTestCase(test.TestCase):
     self.assertEquals(2, ev.step)
     self.assertProtoEquals("""
       value { tag: 'l' simple_value: 2.0 }
+      """, ev.summary)
+
+    # We should be done.
+    self.assertRaises(StopIteration, lambda: next(rr))
+
+  def testPluginMetadataStrippedFromSubsequentEvents(self):
+    test_dir = self._CleanTestDir("basics")
+    sw = writer.FileWriter(test_dir)
+
+    sw.add_session_log(event_pb2.SessionLog(status=SessionLog.START), 1)
+
+    # We add 2 summaries with the same tags. They both have metadata. The writer
+    # should strip the metadata from the second one.
+    value = summary_pb2.Summary.Value(tag="foo", simple_value=10.0)
+    value.metadata.plugin_data.plugin_name = "bar"
+    value.metadata.plugin_data.content = compat.as_bytes("... content ...")
+    sw.add_summary(summary_pb2.Summary(value=[value]), 10)
+    value = summary_pb2.Summary.Value(tag="foo", simple_value=10.0)
+    value.metadata.plugin_data.plugin_name = "bar"
+    value.metadata.plugin_data.content = compat.as_bytes("... content ...")
+    sw.add_summary(summary_pb2.Summary(value=[value]), 10)
+
+    sw.close()
+    rr = self._EventsReader(test_dir)
+
+    # The first event should list the file_version.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals("brain.Event:2", ev.file_version)
+
+    # The next event should be the START message.
+    ev = next(rr)
+    self._assertRecent(ev.wall_time)
+    self.assertEquals(1, ev.step)
+    self.assertEquals(SessionLog.START, ev.session_log.status)
+
+    # This is the first event with tag foo. It should contain SummaryMetadata.
+    ev = next(rr)
+    self.assertProtoEquals("""
+      value {
+        tag: "foo"
+        simple_value: 10.0
+        metadata {
+          plugin_data {
+            plugin_name: "bar"
+            content: "... content ..."
+          }
+        }
+      }
+      """, ev.summary)
+
+    # This is the second event with tag foo. It should lack SummaryMetadata
+    # because the file writer should have stripped it.
+    ev = next(rr)
+    self.assertProtoEquals("""
+      value {
+        tag: "foo"
+        simple_value: 10.0
+      }
       """, ev.summary)
 
     # We should be done.

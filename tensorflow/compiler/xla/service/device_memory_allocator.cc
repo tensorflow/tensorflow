@@ -24,7 +24,7 @@ limitations under the License.
 namespace xla {
 
 StreamExecutorMemoryAllocator::StreamExecutorMemoryAllocator(
-    perftools::gputools::Platform* platform,
+    const perftools::gputools::Platform* platform,
     tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
         stream_executors)
     : DeviceMemoryAllocator(platform),
@@ -35,7 +35,15 @@ StreamExecutorMemoryAllocator::Allocate(int device_ordinal, uint64 size,
                                         bool retry_on_failure) {
   TF_ASSIGN_OR_RETURN(perftools::gputools::StreamExecutor * stream_executor,
                       GetStreamExecutor(device_ordinal));
-  return stream_executor->AllocateArray<uint8>(size);
+  perftools::gputools::DeviceMemoryBase result =
+      stream_executor->AllocateArray<uint8>(size);
+  if (size > 0 && result == nullptr) {
+    return ResourceExhausted(
+        "Failed to allocate request for %s (%lluB) on device ordinal %d",
+        tensorflow::strings::HumanReadableNumBytes(size).c_str(), size,
+        device_ordinal);
+  }
+  return result;
 }
 
 tensorflow::Status StreamExecutorMemoryAllocator::Deallocate(

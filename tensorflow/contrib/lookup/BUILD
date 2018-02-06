@@ -7,7 +7,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = ["//tensorflow:internal"])
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 # TODO(yleon): Refactor after one we switching to the V2 kernels.
 py_library(
@@ -18,40 +18,34 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:lookup_ops_gen",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:string_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "lookup_ops_test",
     size = "small",
     srcs = ["lookup_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
+    additional_deps = [
         ":lookup_py",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:client",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lookup_ops",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:session",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-        "@six_archive//:six",
     ],
+    grpc_enabled = True,
 )
 
 filegroup(

@@ -50,10 +50,7 @@ message DeviceProperties {
   int64 bandwidth = 13;
 }
 
-message DeviceMap {
-  message NamedDevice {
-    string name = 1;
-    DeviceProperties device = 2;
-  };
-  repeated NamedDevice name_and_device = 1;
+message NamedDevice {
+  string name = 1;
+  DeviceProperties properties = 2;
 }

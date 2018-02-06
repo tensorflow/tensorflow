@@ -21,7 +21,9 @@ See the @{$python/image} guide.
 @@decode_bmp
 @@decode_gif
 @@decode_jpeg
+@@decode_and_crop_jpeg
 @@encode_jpeg
+@@extract_jpeg_shape
 @@decode_png
 @@encode_png
 @@decode_image
@@ -47,6 +49,10 @@ See the @{$python/image} guide.
 @@grayscale_to_rgb
 @@hsv_to_rgb
 @@rgb_to_hsv
+@@rgb_to_yiq
+@@yiq_to_rgb
+@@rgb_to_yuv
+@@yuv_to_rgb
 @@convert_image_dtype
 @@adjust_brightness
 @@random_brightness
@@ -60,7 +66,6 @@ See the @{$python/image} guide.
 @@per_image_standardization
 @@draw_bounding_boxes
 @@non_max_suppression
-@@non_max_suppression_v2
 @@sample_distorted_bounding_box
 @@total_variation
 """

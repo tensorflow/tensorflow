@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <memory>
 
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -35,33 +36,30 @@ namespace xla {
 // in the same process as the client.
 class LocalService : public Service {
  public:
-  // Factory for creating a LocalService. The parameter platform is the platform
-  // that the service should target. If platform is null then the default
-  // platform is used.
-  static StatusOr<std::unique_ptr<LocalService>> NewService(
-      perftools::gputools::Platform* platform);
+  // Factory for creating a LocalService.
   static StatusOr<std::unique_ptr<LocalService>> NewService(
       const ServiceOptions& options);
 
-  // Return a handle to a buffer large enough to hold shape, allocated
-  // on device_ordinal. If allocate_space_for_deep_copy, the buffer is
-  // large enough to hold all sub-buffers of a tuple shape, otherwise
-  // it is only as large as the top-level tuple pointer array.
-  StatusOr<GlobalDataHandle> AllocateBufferOnDevice(
-      const Shape& shape, int device_ordinal,
-      bool allocate_space_for_deep_copy);
-
   // Builds an Executable with the given argument layouts and options. If
   // result_layout is non-null, then the executable is compiled to produce a
-  // result of the given layout.
+  // result of the given layout.  If device_allocator is non-null, then the
+  // compiler may use it to allocate temp space on the device.  The compiler is
+  // responsible for freeing any memory it allocates this way.
   StatusOr<std::unique_ptr<Executable>> CompileExecutable(
       const ComputationHandle& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-      const Shape* result_layout, int device_ordinal, bool has_hybrid_result);
+      const ExecutableBuildOptions& options);
+
+  // Returns the device ordinal that corresponds to the given replica number.
+  //
+  // This returns an error if there is not a one-to-one correspondence of
+  // replicas to device ordinals, but is useful as a short term mechanism for
+  // the "easy" case where a single replica is a single device.
+  StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
 
  private:
-  explicit LocalService(std::unique_ptr<Backend> backend,
-                        std::unique_ptr<Backend> compute_constant_backend);
+  explicit LocalService(const ServiceOptions& options,
+                        std::unique_ptr<Backend> backend);
   LocalService(const LocalService&) = delete;
   void operator=(const LocalService&) = delete;
 };

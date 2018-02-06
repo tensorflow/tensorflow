@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -111,32 +112,34 @@ class _Mapping(collections.namedtuple(
 
 
 @six.add_metaclass(abc.ABCMeta)
+@tf_export("distributions.bijectors.Bijector")
 class Bijector(object):
-  """Interface for invertible transformations of a `Distribution` sample.
+  r"""Interface for transformations of a `Distribution` sample.
+
+  Bijectors can be used to represent any differentiable and injective
+  (one to one) function defined on an open subset of `R^n`.  Some non-injective
+  transformations are also supported (see "Non Injective Transforms" below).
 
   #### Mathematical Details
 
-  A `Bijector` implements a
-  [diffeomorphism](https://en.wikipedia.org/wiki/Diffeomorphism), i.e., a
-  bijective, differentiable function. A `Bijector` is used by
-  `TransformedDistribution` but can be generally used for transforming a
-  `Distribution` generated `Tensor`. A `Bijector` is characterized by three
-  operations:
+  A `Bijector` implements a [smooth covering map](
+  https://en.wikipedia.org/wiki/Local_diffeomorphism), i.e., a local
+  diffeomorphism such that every point in the target has a neighborhood evenly
+  covered by a map ([see also](
+  https://en.wikipedia.org/wiki/Covering_space#Covering_of_a_manifold)).
+  A `Bijector` is used by `TransformedDistribution` but can be generally used
+  for transforming a `Distribution` generated `Tensor`. A `Bijector` is
+  characterized by three operations:
 
-  1. Forward Evaluation
-
+  1. Forward\
      Useful for turning one random outcome into another random outcome from a
      different distribution.
-
-  2. Inverse Evaluation
-
+  2. Inverse\
      Useful for "reversing" a transformation to compute one probability in
      terms of another.
-
-  3. (log o det o Jacobian o inverse)(x)
-
+  3. `(log o det o Jacobian o inverse)(x)`\
      "The log of the determinant of the matrix of all first-order partial
-     derivatives of the inverse function."
+     derivatives of the inverse function."\
      Useful for inverting a transformation to compute one probability in terms
      of another. Geometrically, the det(Jacobian) is the volume of the
      transformation and is used to scale the probability.
@@ -154,7 +157,7 @@ class Bijector(object):
   # Evaluate forward transformation.
   fwd_x = my_bijector.forward(x)
   x == my_bijector.inverse(fwd_x)
-  x != my_bijector.forward(fwd_x)  # Not equal because g(x) != g(g(x)).
+  x != my_bijector.forward(fwd_x)  # Not equal because x != g(g(x)).
   ```
 
   - Computing a log-likelihood:
@@ -271,7 +274,7 @@ class Bijector(object):
       implies `g^{-1}` is differentiable in the image of `g`.
       Applying the chain rule to `y = g(x) = g(g^{-1}(y))` yields
       `I = g'(g^{-1}(y))*g^{-1}'(y)`.
-      The same theorem also implies `g{-1}'` is non-singular therefore:
+      The same theorem also implies `g^{-1}'` is non-singular therefore:
       `inv[ g'(g^{-1}(y)) ] = g^{-1}'(y)`.
       The claim follows from [properties of determinant](
   https://en.wikipedia.org/wiki/Determinant#Multiplicativity_and_matrix_groups).
@@ -319,6 +322,59 @@ class Bijector(object):
     implemented as a cache lookup but this would require controlling the
     underlying sample generation mechanism.)
 
+  #### Non Injective Transforms
+
+  **WARNING** Handing of non-injective transforms is subject to change.
+
+  Non injective maps `g` are supported, provided their domain `D` can be
+  partitioned into `k` disjoint subsets, `Union{D1, ..., Dk}`, such that,
+  ignoring sets of measure zero, the restriction of `g` to each subset is a
+  differentiable bijection onto `g(D)`.  In particular, this imples that for
+  `y in g(D)`, the set inverse, i.e. `g^{-1}(y) = {x in D : g(x) = y}`, always
+  contains exactly `k` distinct points.
+
+  The property, `_is_injective` is set to `False` to indicate that the bijector
+  is not injective, yet satisfies the above condition.
+
+  The usual bijector API is modified in the case `_is_injective is False` (see
+  method docstrings for specifics).  Here we show by example the `AbsoluteValue`
+  bijector.  In this case, the domain `D = (-inf, inf)`, can be partitioned
+  into `D1 = (-inf, 0)`, `D2 = {0}`, and `D3 = (0, inf)`.  Let `gi` be the
+  restriction of `g` to `Di`, then both `g1` and `g3` are bijections onto
+  `(0, inf)`, with `g1^{-1}(y) = -y`, and `g3^{-1}(y) = y`.  We will use
+  `g1` and `g3` to define bijector methods over `D1` and `D3`.  `D2 = {0}` is
+  an oddball in that `g2` is one to one, and the derivative is not well defined.
+  Fortunately, when considering transformations of probability densities
+  (e.g. in `TransformedDistribution`), sets of measure zero have no effect in
+  theory, and only a small effect in 32 or 64 bit precision.  For that reason,
+  we define `inverse(0)` and `inverse_log_det_jacobian(0)` both as `[0, 0]`,
+  which is convenient and results in a left-semicontinuous pdf.
+
+
+  ```python
+  abs = tf.contrib.distributions.bijectors.AbsoluteValue()
+
+  abs.forward(-1.)
+  ==> 1.
+
+  abs.forward(1.)
+  ==> 1.
+
+  abs.inverse(1.)
+  ==> (-1., 1.)
+
+  # The |dX/dY| is constant, == 1.  So Log|dX/dY| == 0.
+  abs.inverse_log_det_jacobian(1.)
+  ==> (0., 0.)
+
+  # Special case handling of 0.
+  abs.inverse(0.)
+  ==> (0., 0.)
+
+  abs.inverse_log_det_jacobian(0.)
+  ==> (0., 0.)
+  ```
+
   """
 
   @abc.abstractmethod
@@ -356,6 +412,9 @@ class Bijector(object):
       dtype: `tf.dtype` supported by this `Bijector`. `None` means dtype is not
         enforced.
       name: The name to give Ops created by the initializer.
+
+    Raises:
+      ValueError:  If a member of `graph_parents` is not a `Tensor`.
     """
     self._event_ndims = (
         ops.convert_to_tensor(event_ndims, dtype=dtypes.int32)
@@ -379,6 +438,10 @@ class Bijector(object):
         return re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
       self._name = camel_to_snake(type(self).__name__.lstrip("_"))
 
+    for i, t in enumerate(self._graph_parents):
+      if t is None or not tensor_util.is_tensor(t):
+        raise ValueError("Graph parent item %d is not a Tensor; %s." % (i, t))
+
   @property
   def event_ndims(self):
     """Returns then number of event dimensions this bijector operates on."""
@@ -399,6 +462,22 @@ class Bijector(object):
       is_constant_jacobian: Python `bool`.
     """
     return self._is_constant_jacobian
+
+  @property
+  def _is_injective(self):
+    """Returns true iff the forward map `g` is injective (one-to-one function).
+
+    **WARNING** This hidden property and its behavior are subject to change.
+
+    Note:  Non-injective maps `g` are supported, provided their domain `D` can
+    be partitioned into `k` disjoint subsets, `Union{D1, ..., Dk}`, such that,
+    ignoring sets of measure zero, the restriction of `g` to each subset is a
+    differentiable bijection onto `g(D)`.
+
+    Returns:
+      is_injective: Python `bool`.
+    """
+    return True
 
   @property
   def validate_args(self):
@@ -511,6 +590,8 @@ class Bijector(object):
     with self._name_scope(name, [x]):
       x = ops.convert_to_tensor(x, name="x")
       self._maybe_assert_dtype(x)
+      if not self._is_injective:  # No caching for non-injective
+        return self._forward(x, **kwargs)
       mapping = self._lookup(x=x, kwargs=kwargs)
       if mapping.y is not None:
         return mapping.y
@@ -543,6 +624,8 @@ class Bijector(object):
     with self._name_scope(name, [y]):
       y = ops.convert_to_tensor(y, name="y")
       self._maybe_assert_dtype(y)
+      if not self._is_injective:  # No caching for non-injective
+        return self._inverse(y, **kwargs)
       mapping = self._lookup(y=y, kwargs=kwargs)
       if mapping.x is not None:
         return mapping.x
@@ -558,7 +641,9 @@ class Bijector(object):
       name: The name to give this op.
 
     Returns:
-      `Tensor`.
+      `Tensor`, if this bijector is injective.
+        If not injective, returns the k-tuple containing the unique
+        `k` points `(x1, ..., xk)` such that `g(xi) = y`.
 
     Raises:
       TypeError: if `self.dtype` is specified and `y.dtype` is not
@@ -577,6 +662,8 @@ class Bijector(object):
         return self._constant_ildj
       y = ops.convert_to_tensor(y, name="y")
       self._maybe_assert_dtype(y)
+      if not self._is_injective:  # No caching for non-injective
+        return self._inverse_log_det_jacobian(y, **kwargs)
       mapping = self._lookup(y=y, kwargs=kwargs)
       if mapping.ildj is not None:
         return mapping.ildj
@@ -586,7 +673,7 @@ class Bijector(object):
       except NotImplementedError as original_exception:
         try:
           x = mapping.x if mapping.x is not None else self._inverse(y, **kwargs)
-          ildj = self._inverse_log_det_jacobian(y, **kwargs)
+          ildj = -self._forward_log_det_jacobian(x, **kwargs)
         except NotImplementedError:
           raise original_exception
       mapping = mapping.merge(x=x, ildj=ildj)
@@ -600,14 +687,18 @@ class Bijector(object):
 
     Mathematically, returns: `log(det(dX/dY))(Y)`. (Recall that: `X=g^{-1}(Y)`.)
 
-    Note that `forward_log_det_jacobian` is the negative of this function.
+    Note that `forward_log_det_jacobian` is the negative of this function,
+    evaluated at `g^{-1}(y)`.
 
     Args:
       y: `Tensor`. The input to the "inverse" Jacobian evaluation.
       name: The name to give this op.
 
     Returns:
-      `Tensor`.
+      `Tensor`, if this bijector is injective.
+        If not injective, returns the tuple of local log det
+        Jacobians, `log(det(Dg_i^{-1}(y)))`, where `g_i` is the restriction
+        of `g` to the `ith` partition `Di`.
 
     Raises:
       TypeError: if `self.dtype` is specified and `y.dtype` is not
@@ -628,6 +719,8 @@ class Bijector(object):
         return -1. * self._constant_ildj
       x = ops.convert_to_tensor(x, name="x")
       self._maybe_assert_dtype(x)
+      if not self._is_injective:
+        return self._forward_log_det_jacobian(x, **kwargs)  # No caching.
       mapping = self._lookup(x=x, kwargs=kwargs)
       if mapping.ildj is not None:
         return -mapping.ildj
@@ -654,14 +747,20 @@ class Bijector(object):
       name: The name to give this op.
 
     Returns:
-      `Tensor`.
+      `Tensor`, if this bijector is injective.
+        If not injective this is not implemented.
 
     Raises:
       TypeError: if `self.dtype` is specified and `y.dtype` is not
         `self.dtype`.
       NotImplementedError: if neither `_forward_log_det_jacobian`
-        nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented.
+        nor {`_inverse`, `_inverse_log_det_jacobian`} are implemented, or
+        this is a non-injective bijector.
     """
+    if not self._is_injective:
+      raise NotImplementedError(
+          "forward_log_det_jacobian cannot be implemented for non-injective "
+          "transforms.")
     return self._call_forward_log_det_jacobian(x, name)
 
   @contextlib.contextmanager

@@ -139,5 +139,46 @@ TEST(Array2dTest, Stringification) {
   EXPECT_EQ(expected, arr->ToString());
 }
 
+TEST(Array2dTest, Equals) {
+  Array2D<int> arr0 = {{1, 2}, {3, 4}, {5, 6}};
+  Array2D<int> arr1 = {{1, 2}, {3, 4}, {5, 6}};
+  EXPECT_TRUE(arr0 == arr1);
+  EXPECT_FALSE(arr0 != arr1);
+  EXPECT_TRUE(arr1 == arr0);
+  EXPECT_FALSE(arr1 != arr0);
+
+  Array2D<int> arr2 = {{1, 2}, {3, 4}, {5, 6}, {7, 8}};
+  EXPECT_TRUE(arr0 != arr2);
+  EXPECT_FALSE(arr0 == arr2);
+  EXPECT_TRUE(arr2 != arr0);
+  EXPECT_FALSE(arr2 == arr0);
+
+  Array2D<int> arr3 = {{1, 2, 3}, {4, 5, 6}};
+  EXPECT_TRUE(arr0 != arr3);
+  EXPECT_FALSE(arr0 == arr3);
+  EXPECT_TRUE(arr3 != arr0);
+  EXPECT_FALSE(arr3 == arr0);
+
+  Array2D<int> arr4 = {{1, 2}, {3, 4}};
+  EXPECT_TRUE(arr0 != arr4);
+  EXPECT_FALSE(arr0 == arr4);
+  EXPECT_TRUE(arr4 != arr0);
+  EXPECT_FALSE(arr4 == arr0);
+
+  Array2D<int> arr5 = {{1, 2}, {13, 4}, {5, 6}};
+  EXPECT_TRUE(arr0 != arr5);
+  EXPECT_FALSE(arr0 == arr5);
+  EXPECT_TRUE(arr5 != arr0);
+  EXPECT_FALSE(arr5 == arr0);
+
+  Array2D<bool> bool_arr0 = {{false}, {true}};
+  Array2D<bool> bool_arr1 = {{false}, {true}};
+  EXPECT_TRUE(bool_arr0 == bool_arr1);
+  EXPECT_FALSE(bool_arr0 != bool_arr1);
+  Array2D<bool> bool_arr2 = {{false}, {false}};
+  EXPECT_FALSE(bool_arr0 == bool_arr2);
+  EXPECT_TRUE(bool_arr0 != bool_arr2);
+}
+
 }  // namespace
 }  // namespace xla

@@ -20,10 +20,12 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
 #include "tensorflow/core/framework/kernel_def.pb_text.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/memory_types.h"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_def_util.h"
 #include "tensorflow/core/framework/types.h"
@@ -32,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
@@ -76,8 +79,14 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
 
 // OpKernel ------------------------------------------------------------------
 
+// TODO(mrry): Convert to std::make_unique when available.
 OpKernel::OpKernel(OpKernelConstruction* context)
-    : def_(context->def()),
+    : OpKernel(context,
+               std::unique_ptr<const NodeDef>(new NodeDef(context->def()))) {}
+
+OpKernel::OpKernel(OpKernelConstruction* context,
+                   std::unique_ptr<const NodeDef> node_def)
+    : def_(std::move(node_def)),
       input_types_(context->input_types().begin(),
                    context->input_types().end()),
       input_memory_types_(context->input_memory_types().begin(),
@@ -91,21 +100,27 @@ OpKernel::OpKernel(OpKernelConstruction* context)
       input_name_map_(context->num_inputs()),
       output_name_map_(context->num_outputs()) {
   OP_REQUIRES_OK(context,
-                 NameRangesForNode(def_, *context->op_def_, &input_name_map_,
+                 NameRangesForNode(*def_, *context->op_def_, &input_name_map_,
                                    &output_name_map_));
   OP_REQUIRES_OK(context, CheckOpDeprecation(*context->op_def_,
                                              context->graph_def_version()));
 
   // Kernels executing on GPU/SYCL tie very few resources on the CPU where the
   // scheduler runs: we consider them as inexpensive.
-  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) && context->device_type() != DeviceType(DEVICE_SYCL);
+  expensive_ = context->device_type() != DeviceType(DEVICE_GPU) &&
+               context->device_type() != DeviceType(DEVICE_SYCL);
 }
 
 OpKernel::~OpKernel() {}
 
+const string& OpKernel::name() const { return def_->name(); }
+const string& OpKernel::type_string() const { return def_->op(); }
+const string& OpKernel::requested_device() const { return def_->device(); }
+const string& OpKernel::requested_input(int i) const { return def_->input(i); }
+
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
-  const auto result = input_name_map_.find(input_name.ToString());
+  const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
     return errors::InvalidArgument("Unknown input name: ", input_name);
   } else {
@@ -117,7 +132,7 @@ Status OpKernel::InputRange(StringPiece input_name, int* start,
 
 Status OpKernel::OutputRange(StringPiece output_name, int* start,
                              int* stop) const {
-  const auto result = output_name_map_.find(output_name.ToString());
+  const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
   } else {
@@ -164,6 +179,30 @@ Tensor* PersistentTensor::AccessTensor(OpKernelContext* context) {
 }
 
 // OpKernelConstruction ------------------------------------------------------
+
+OpKernelConstruction::OpKernelConstruction(
+    DeviceType device_type, DeviceBase* device, Allocator* allocator,
+    const NodeDef* node_def, const OpDef* op_def, FunctionLibraryRuntime* flib,
+    const DataTypeSlice& input_types, const MemoryTypeSlice& input_memory_types,
+    const DataTypeSlice& output_types,
+    const MemoryTypeSlice& output_memory_types, int graph_def_version,
+    Status* status)
+    : device_type_(std::move(device_type)),
+      device_(device),
+      allocator_(allocator),
+      def_(node_def),
+      op_def_(op_def),
+      flib_(flib),
+      input_types_(input_types),
+      input_memory_types_(input_memory_types),
+      output_types_(output_types),
+      output_memory_types_(output_memory_types),
+      graph_def_version_(graph_def_version),
+      status_(status) {}
+
+bool OpKernelConstruction::HasAttr(StringPiece attr_name) const {
+  return HasNodeAttr(def(), attr_name);
+}
 
 void OpKernelConstruction::SetStatus(const Status& status) {
   status_->Update(status);
@@ -221,10 +260,8 @@ OpKernelContext::OpKernelContext(Params* params)
 OpKernelContext::OpKernelContext(Params* params, int num_outputs)
     : params_(params),
       outputs_(num_outputs),
-      host_temp_memory_size_(0),
-      device_temp_memory_size_(0),
-      host_persistent_memory_allocated_(0),
-      device_persistent_memory_allocated_(0) {
+      temp_memory_size_(0),
+      persistent_memory_allocated_(0) {
   Allocator* eigen_gpu_allocator = get_allocator(AllocatorAttributes());
   params_->ensure_eigen_gpu_device();
   params_->device->ReinitializeGpuDevice(this, params_->eigen_gpu_device,
@@ -255,7 +292,7 @@ Allocator* OpKernelContext::get_allocator(AllocatorAttributes attr) {
       }
     }
     TrackingAllocator* wrapped_allocator =
-        new TrackingAllocator(allocator, attr.track_sizes());
+        new TrackingAllocator(allocator, params_->track_allocations);
     wrapped_allocators_.push_back(std::make_pair(allocator, wrapped_allocator));
     return wrapped_allocator;
   } else {
@@ -595,8 +632,10 @@ Status OpKernelContext::allocate_tensor(
   Tensor new_tensor(a, type, shape, logged_attr);
 
   if (!new_tensor.IsInitialized()) {
-    return errors::ResourceExhausted("OOM when allocating tensor with shape",
-                                     shape.DebugString());
+    return errors::ResourceExhausted(
+        "OOM when allocating tensor with shape", shape.DebugString(),
+        " and type ", DataTypeString(type), " on ", params_->device->name(),
+        " by allocator ", a->Name());
   }
   if (params_->log_memory) {
     LogMemory::RecordTensorAllocation(params_->op_kernel->name(),
@@ -635,11 +674,7 @@ Status OpKernelContext::allocate_temp(
     if (a->TracksAllocationSizes()) {
       int64 alloc_size =
           a->AllocatedSize(const_cast<char*>(out_temp->tensor_data().data()));
-      if (allocate_on_host(allocator_attr)) {
-        record_host_temp_memory_size(alloc_size);
-      } else {
-        record_device_temp_memory_size(alloc_size);
-      }
+      record_temp_memory_size(alloc_size);
     }
   }
   return s;
@@ -762,26 +797,15 @@ bool OpKernelContext::allocate_on_host(AllocatorAttributes alloc_attr) const {
   return alloc_attr.on_host() || device()->attributes().device_type() == "CPU";
 }
 
-void OpKernelContext::record_host_persistent_memory_allocation(int64 size,
-                                                               int64 alloc_id) {
-  host_persistent_memory_allocated_ += size;
-  host_persistent_alloc_ids_.push_back(alloc_id);
+void OpKernelContext::record_persistent_memory_allocation(int64 size,
+                                                          int64 alloc_id) {
+  persistent_memory_allocated_ += size;
+  persistent_alloc_ids_.push_back(alloc_id);
 }
 
-void OpKernelContext::record_device_persistent_memory_allocation(
-    int64 size, int64 alloc_id) {
-  device_persistent_memory_allocated_ += size;
-  device_persistent_alloc_ids_.push_back(alloc_id);
-}
-
-std::vector<int64> OpKernelContext::host_persistent_alloc_ids() const {
-  return std::vector<int64>(host_persistent_alloc_ids_.begin(),
-                            host_persistent_alloc_ids_.end());
-}
-
-std::vector<int64> OpKernelContext::device_persistent_alloc_ids() const {
-  return std::vector<int64>(device_persistent_alloc_ids_.begin(),
-                            device_persistent_alloc_ids_.end());
+std::vector<int64> OpKernelContext::persistent_alloc_ids() const {
+  return std::vector<int64>(persistent_alloc_ids_.begin(),
+                            persistent_alloc_ids_.end());
 }
 
 // OpKernel registration ------------------------------------------------------
@@ -924,13 +948,6 @@ Status FindKernelRegistration(const DeviceType& device_type,
     }
   }
   return Status::OK();
-}
-
-Status FindKernelRegistration(const DeviceType& device_type, const Node& node,
-                              const KernelRegistration** reg,
-                              bool* was_attr_mismatch) {
-  return FindKernelRegistration(device_type, node.def(), reg,
-                                was_attr_mismatch);
 }
 
 }  // namespace
@@ -1146,23 +1163,50 @@ const Eigen::SyclDevice& OpKernelContext::eigen_device() const {
 }
 #endif
 
-void OpKernelConstruction::CtxFailure(Status s) {
+void OpKernelConstruction::CtxFailure(const Status& s) {
   VLOG(1) << s;
   SetStatus(s);
 }
 
-void OpKernelConstruction::CtxFailureWithWarning(Status s) {
+void OpKernelConstruction::CtxFailureWithWarning(const Status& s) {
   LOG(WARNING) << s;
   SetStatus(s);
 }
 
-void OpKernelContext::CtxFailure(Status s) {
+void OpKernelConstruction::CtxFailure(const char* file, int line,
+                                      const Status& s) {
+  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+          << " : " << s;
+  SetStatus(s);
+}
+
+void OpKernelConstruction::CtxFailureWithWarning(const char* file, int line,
+                                                 const Status& s) {
+  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+               << " : " << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailure(const Status& s) {
   VLOG(1) << s;
   SetStatus(s);
 }
 
-void OpKernelContext::CtxFailureWithWarning(Status s) {
+void OpKernelContext::CtxFailureWithWarning(const Status& s) {
   LOG(WARNING) << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailure(const char* file, int line, const Status& s) {
+  VLOG(1) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+          << " : " << s;
+  SetStatus(s);
+}
+
+void OpKernelContext::CtxFailureWithWarning(const char* file, int line,
+                                            const Status& s) {
+  LOG(WARNING) << "OP_REQUIRES failed at " << io::Basename(file) << ":" << line
+               << " : " << s;
   SetStatus(s);
 }
 

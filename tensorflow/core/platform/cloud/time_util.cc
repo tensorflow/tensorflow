@@ -18,6 +18,9 @@ limitations under the License.
 #include <cmath>
 #include <cstdio>
 #include <ctime>
+#ifdef _WIN32
+#define timegm _mkgmtime
+#endif
 #include "tensorflow/core/lib/core/errors.h"
 
 namespace tensorflow {
@@ -44,7 +47,8 @@ Status ParseRfc3339Time(const string& time, int64* mtime_nsec) {
   parsed.tm_sec = int_seconds;
 
   *mtime_nsec = timegm(&parsed) * kNanosecondsPerSecond +
-                floor((seconds - int_seconds) * kNanosecondsPerSecond);
+                static_cast<int64>(
+                    floor((seconds - int_seconds) * kNanosecondsPerSecond));
 
   return Status::OK();
 }

@@ -15,8 +15,8 @@
 include (ExternalProject)
 
 set(PROTOBUF_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/protobuf/src/protobuf/src)
-set(PROTOBUF_URL https://github.com/mrry/protobuf.git)  # Includes MSVC fix.
-set(PROTOBUF_TAG 1d2c7b6c7376f396c8c7dd9b6afd2d4f83f3cb05)
+set(PROTOBUF_URL https://github.com/google/protobuf.git)
+set(PROTOBUF_TAG 396336eb961b75f03b25824fe86cf6490fb75e3a)
 
 if(WIN32)
   set(protobuf_STATIC_LIBRARIES 
@@ -44,8 +44,8 @@ ExternalProject_Add(protobuf
         ${PROTOBUF_ADDITIONAL_CMAKE_OPTIONS}
     INSTALL_COMMAND ""
     CMAKE_CACHE_ARGS
+        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=${tensorflow_ENABLE_POSITION_INDEPENDENT_CODE}
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
         -DZLIB_ROOT:STRING=${ZLIB_INSTALL}
 )

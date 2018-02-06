@@ -79,7 +79,7 @@ cd $SCRIPT_DIR/gen/proto
 tar cf $FW_DIR_TFCORE_HDRS/tmp.tar tensorflow
 cd $FW_DIR_TFCORE_HDRS
 tar xf tmp.tar
-# Dont include the auto downloaded/generated to build this library
+# Don't include the auto downloaded/generated to build this library
 rm -rf tensorflow/contrib/makefile
 rm -f tmp.tar
 

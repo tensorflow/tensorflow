@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
-#define THIRD_PARTY_TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
+#ifndef TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
+#define TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
 
 #include <memory>
 #include <string>
@@ -62,13 +62,13 @@ class QueueRunner : public RunnerInterface {
   /// Starts the queue runner with the given session and sets the run arguments
   /// for sess->Run. It also collects and stores the cost model.
   Status StartAndCollectCostGraph(Session* sess,
-                                  const RunOptions* run_options = nullptr);
+                                  const RunOptions& run_options = RunOptions());
 
   /// Starts the queue runner with the given session, and wait for up to the
   /// specified time (in milliseconds) for the queues to start to fill up.
   Status Start(Session* sess, int wait_for_ms);
   Status StartAndCollectCostGraph(Session* session, int wait_for_ms,
-                                  const RunOptions* run_options = nullptr);
+                                  const RunOptions& run_options = RunOptions());
 
   /// Requests to stop and runs the cancel op. It would be called in a separate
   /// thread when coordinator is set. If there is no coordinator it should be
@@ -105,7 +105,7 @@ class QueueRunner : public RunnerInterface {
 
   bool IsRunning() const override { return !stopped_; }
 
-  void SetRunArgumentsAndCostGraph(const RunOptions* run_options);
+  void SetRunArgumentsAndCostGraph(const RunOptions& run_options);
 
   Status RealRun(Session* sess, const string& op, bool update_costs);
 
@@ -137,4 +137,4 @@ class QueueRunner : public RunnerInterface {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_
+#endif  // TENSORFLOW_CC_TRAINING_QUEUE_RUNNER_H_

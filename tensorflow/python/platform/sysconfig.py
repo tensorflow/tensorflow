@@ -17,6 +17,8 @@
 
 @@get_include
 @@get_lib
+@@get_compile_flags
+@@get_link_flags
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -24,10 +26,14 @@ from __future__ import print_function
 
 import os.path as _os_path
 
+from tensorflow.python.framework.versions import CXX11_ABI_FLAG as _CXX11_ABI_FLAG
+from tensorflow.python.framework.versions import MONOLITHIC_BUILD as _MONOLITHIC_BUILD
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=g-import-not-at-top
+@tf_export('sysconfig.get_include')
 def get_include():
   """Get the directory containing the TensorFlow C++ header files.
 
@@ -42,6 +48,7 @@ def get_include():
   return _os_path.join(_os_path.dirname(tf.__file__), 'include')
 
 
+@tf_export('sysconfig.get_lib')
 def get_lib():
   """Get the directory containing the TensorFlow framework library.
 
@@ -49,7 +56,35 @@ def get_lib():
     The directory as string.
   """
   import tensorflow as tf
-  return _os_path.join(_os_path.dirname(tf.__file__), 'core')
+  return _os_path.join(_os_path.dirname(tf.__file__))
+
+
+@tf_export('sysconfig.get_compile_flags')
+def get_compile_flags():
+  """Get the compilation flags for custom operators.
+
+  Returns:
+    The compilation flags.
+  """
+  flags = []
+  flags.append('-I%s' % get_include())
+  flags.append('-I%s/external/nsync/public' % get_include())
+  flags.append('-D_GLIBCXX_USE_CXX11_ABI=%d' % _CXX11_ABI_FLAG)
+  return flags
+
+
+@tf_export('sysconfig.get_link_flags')
+def get_link_flags():
+  """Get the link flags for custom operators.
+
+  Returns:
+    The link flags.
+  """
+  flags = []
+  if not _MONOLITHIC_BUILD:
+    flags.append('-L%s' % get_lib())
+    flags.append('-ltensorflow_framework')
+  return flags
 
 _allowed_symbols = []
 remove_undocumented(__name__, _allowed_symbols)

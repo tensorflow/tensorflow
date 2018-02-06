@@ -18,10 +18,12 @@ limitations under the License.
 #include <deque>
 #include <vector>
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/batch_util.h"
 #include "tensorflow/core/kernels/padding_fifo_queue.h"
 #include "tensorflow/core/kernels/queue_base.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -155,7 +157,7 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                 // Finished.  Allocate attempt->tuple and
                 // copy from attempt->tuples to attempt->tuple.
                 attempt->tuple.reserve(num_components());
-                const std::vector<Tuple>& tuples = attempt->tuples;
+                std::vector<Tuple>& tuples = attempt->tuples;
 
                 std::vector<bool> dynamic_shape;
                 const int64 batch_size = tuples.size();
@@ -205,8 +207,10 @@ void PaddingFIFOQueue::TryDequeueMany(int num_elements, OpKernelContext* ctx,
                       attempt->context->SetStatus(CopyElementToLargerSlice(
                           tuples[index][i], &attempt->tuple[i], index));
                     } else {
-                      attempt->context->SetStatus(CopyElementToSlice(
-                          tuples[index][i], &attempt->tuple[i], index));
+                      attempt->context->SetStatus(
+                          batch_util::CopyElementToSlice(
+                              std::move(tuples[index][i]), &attempt->tuple[i],
+                              index));
                     }
                     if (!attempt->context->status().ok()) return kComplete;
                   }

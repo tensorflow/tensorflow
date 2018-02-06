@@ -13,11 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
 
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/mutex.h"
 
 #include "grpc++/grpc++.h"
 #include "grpc++/impl/codegen/service_type.h"
@@ -233,6 +234,11 @@ class Call : public UntypedCall<Service> {
   RequestMessage request;
   ResponseMessage response;
 
+  const std::multimap<::grpc::string_ref, ::grpc::string_ref>& client_metadata()
+      const {
+    return ctx_.client_metadata();
+  }
+
  private:
   // Creates a completion queue tag for handling cancellation by the client.
   // NOTE: This method must be called before this call is enqueued on a
@@ -259,4 +265,4 @@ class Call : public UntypedCall<Service> {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_CALL_H_

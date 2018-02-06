@@ -15,6 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/memmapped_file_system.h"
 
 #include "tensorflow/core/framework/tensor_testutil.h"
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -51,7 +52,7 @@ Status CreateMemmappedFileSystemFile(const string& filename, bool corrupted,
 
   // Save a tensor after the proto to check that alignment works.
   test::FillFn<float>(test_tensor,
-                      [](int i) { return static_cast<float>(i * i * i); });
+                      [](int i) { return static_cast<float>(i) * i * i; });
   TF_RETURN_IF_ERROR(writer.SaveTensor(*test_tensor, kTensor2FileName));
 
   if (!corrupted) {
@@ -109,7 +110,7 @@ TEST(MemmappedFileSystemTest, SimpleTest) {
             memmapped_env.FileExists("bla-bla-bla").code());
 }
 
-TEST(MemmappedFileSystemTest, NotInitalized) {
+TEST(MemmappedFileSystemTest, NotInitialized) {
   MemmappedEnv memmapped_env(Env::Default());
   std::unique_ptr<ReadOnlyMemoryRegion> memory_region;
   EXPECT_EQ(
@@ -143,8 +144,8 @@ TEST(MemmappedFileSystemTest, ProxyToDefault) {
   TF_ASSERT_OK(memmapped_env.NewAppendableFile(filename, &writable_file_temp));
   // Making sure to clean up after the test finishes.
   const auto adh = [&memmapped_env, &filename](WritableFile* f) {
-      delete f;
-      TF_CHECK_OK(memmapped_env.DeleteFile(filename));
+    delete f;
+    TF_CHECK_OK(memmapped_env.DeleteFile(filename));
   };
   std::unique_ptr<WritableFile, decltype(adh)> writable_file(
       writable_file_temp.release(), adh);

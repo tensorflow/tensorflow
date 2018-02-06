@@ -30,7 +30,7 @@ class WindowsEnvTime : public EnvTime {
     // versions of Windows. For that reason, we try to look it up in
     // kernel32.dll at runtime and use an alternative option if the function
     // is not available.
-    HMODULE module = GetModuleHandle("kernel32.dll");
+    HMODULE module = GetModuleHandleW(L"kernel32.dll");
     if (module != NULL) {
       auto func = (FnGetSystemTimePreciseAsFileTime)GetProcAddress(
           module, "GetSystemTimePreciseAsFileTime");

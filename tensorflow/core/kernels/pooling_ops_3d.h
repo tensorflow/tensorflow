@@ -22,6 +22,20 @@ limitations under the License.
 
 namespace tensorflow {
 
+enum PoolingType { MAX, AVG };
+
+template <typename Device, typename T, PoolingType Type>
+struct LaunchPoolingOp;
+
+template <typename Device, typename T>
+struct LaunchAvgPooling3dGradOp;
+
+template <typename Device, typename T>
+struct LaunchMaxPooling3dGradOp;
+
+template <typename Device, typename T>
+struct LaunchMaxPooling3dGradGradOp;
+
 // A helper class to manage sizes and shapes for 3d pooling operations.
 struct Pool3dParameters {
   // Updates context->status if there is an invalid input.

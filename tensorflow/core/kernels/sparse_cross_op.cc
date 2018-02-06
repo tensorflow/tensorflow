@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/work_sharder.h"
 
@@ -287,8 +288,7 @@ struct CrossTraits<true, int64> {
 template <bool HASHED_OUTPUT, typename InternalType>
 class SparseCrossOp : public OpKernel {
  public:
-  explicit SparseCrossOp(OpKernelConstruction* context)
-      : OpKernel(context) {
+  explicit SparseCrossOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("num_buckets", &num_buckets_));
     // Read signed_hash_key_ as int64 since uint64 attributes are not
     // supported by REGISTER_OP.
@@ -315,8 +315,8 @@ class SparseCrossOp : public OpKernel {
         GenerateColumnsFromInput(indices_list_in, values_list_in,
                                  shapes_list_in, dense_list_in);
 
-    typename CrossTraits<HASHED_OUTPUT, InternalType>::Crosser
-        crosser(columns, num_buckets_, hash_key_);
+    typename CrossTraits<HASHED_OUTPUT, InternalType>::Crosser crosser(
+        columns, num_buckets_, hash_key_);
     Tensor* indices_out;
     Tensor* values_out;
     Tensor* shape_out;
@@ -325,8 +325,8 @@ class SparseCrossOp : public OpKernel {
     CreateOutputTensors(columns, batch_size, context, &indices_out, &values_out,
                         &shape_out, &output_start_indices);
 
-    typename CrossTraits<HASHED_OUTPUT, InternalType>::Updater
-        updater(output_start_indices, indices_out, values_out);
+    typename CrossTraits<HASHED_OUTPUT, InternalType>::Updater updater(
+        output_start_indices, indices_out, values_out);
     auto do_work = [this, &columns, crosser, updater](int64 begin, int64 end) {
       for (int b = begin; b < end; b++) {
         ProductIterator<InternalType> product_iterator(columns, b);
@@ -380,8 +380,9 @@ class SparseCrossOp : public OpKernel {
               "Input values should be a std::vector but received shape ",
               values_list_in[i].shape().DebugString(), " at position ", i));
       OP_REQUIRES(
-          context, indices_list_in[i].shape().dim_size(0) ==
-                       values_list_in[i].shape().dim_size(0),
+          context,
+          indices_list_in[i].shape().dim_size(0) ==
+              values_list_in[i].shape().dim_size(0),
           errors::InvalidArgument(
               "Expected size of values to be ",
               indices_list_in[i].shape().dim_size(0), " got ",

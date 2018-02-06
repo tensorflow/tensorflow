@@ -32,6 +32,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/inlined_vector.h"
 
 namespace xla {
 
@@ -51,7 +52,7 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
 
   auto inst_it = computation->instructions().begin();
   while (inst_it != computation->instructions().end()) {
-    HloInstruction* instruction = inst_it->get();
+    HloInstruction* instruction = *inst_it;
 
     // Advance list iterator before loop body because iterator may be
     // invalidated due to deletion.
@@ -68,7 +69,7 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
       auto range = constants.equal_range(shape_string);
       HloInstruction* match = nullptr;
       for (auto it = range.first; it != range.second; ++it) {
-        if (LiteralUtil::Equal(instruction->literal(), it->second->literal())) {
+        if (instruction->literal() == it->second->literal()) {
           match = it->second;
           break;
         }
@@ -77,7 +78,7 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
         constants.emplace(shape_string, instruction);
       } else {
         // Match found, replace this instruction with the one in the multimap.
-        TF_CHECK_OK(computation->ReplaceUsesOfInstruction(instruction, match));
+        TF_CHECK_OK(instruction->ReplaceAllUsesWith(match));
         TF_CHECK_OK(computation->RemoveInstruction(instruction));
         changed = true;
       }
@@ -91,8 +92,12 @@ bool CombineConstants(HloComputation* computation, bool is_layout_sensitive) {
 
 StatusOr<bool> HloCSE::Run(HloModule* module) {
   bool changed = false;
-  for (auto& computation : module->computations()) {
-    changed |= CombineConstants(computation.get(), is_layout_sensitive_);
+  const std::function<bool(const HloInstruction*, const HloInstruction*)>
+      eq_instructions = std::equal_to<const HloInstruction*>();
+  const std::function<bool(const HloComputation*, const HloComputation*)>
+      eq_computations = std::equal_to<const HloComputation*>();
+  for (auto* computation : module->computations()) {
+    changed |= CombineConstants(computation, is_layout_sensitive_);
 
     std::list<HloInstruction*> post_order =
         computation->MakeInstructionPostOrder();
@@ -110,19 +115,20 @@ StatusOr<bool> HloCSE::Run(HloModule* module) {
       // of this instruction.
       const HloInstruction* operand = instruction->operand(0);
 
-      std::vector<HloInstruction*> equivalent_instructions;
+      tensorflow::gtl::InlinedVector<HloInstruction*, 8>
+          equivalent_instructions;
       for (HloInstruction* user : operand->users()) {
-        if (user != instruction && user->Identical(*instruction) &&
-            (!is_layout_sensitive_ ||
-             ShapeUtil::Equal(user->shape(), instruction->shape()))) {
+        if (user != instruction &&
+            user->Identical(*instruction, eq_instructions, eq_computations,
+                            is_layout_sensitive_)) {
           equivalent_instructions.push_back(user);
         }
       }
 
       // Replace all equivalent instructions with this instruction.
       for (HloInstruction* equivalent_instruction : equivalent_instructions) {
-        TF_RETURN_IF_ERROR(computation->ReplaceUsesOfInstruction(
-            equivalent_instruction, instruction));
+        TF_RETURN_IF_ERROR(
+            equivalent_instruction->ReplaceAllUsesWith(instruction));
         TF_RETURN_IF_ERROR(
             computation->RemoveInstruction(equivalent_instruction));
         removed_instructions.insert(equivalent_instruction);

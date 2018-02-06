@@ -1,21 +1,20 @@
 # TensorFlow Wide & Deep Learning Tutorial
 
-In the previous @{$wide$TensorFlow Linear Model Tutorial},
-we trained a logistic regression model to predict the probability that the
-individual has an annual income of over 50,000 dollars using the
+In the previous @{$wide$TensorFlow Linear Model Tutorial}, we trained a logistic
+regression model to predict the probability that the individual has an annual
+income of over 50,000 dollars using the
 [Census Income Dataset](https://archive.ics.uci.edu/ml/datasets/Census+Income).
-TensorFlow is
-great for training deep neural networks too, and you might be thinking which one
-you should choose—Well, why not both? Would it be possible to combine the
-strengths of both in one model?
+TensorFlow is great for training deep neural networks too, and you might be
+thinking which one you should choose—well, why not both? Would it be possible to
+combine the strengths of both in one model?
 
-In this tutorial, we'll introduce how to use the tf.contrib.learn API to jointly train a
-wide linear model and a deep feed-forward neural network. This approach combines
-the strengths of memorization and generalization. It's useful for generic
-large-scale regression and classification problems with sparse input features
-(e.g., categorical features with a large number of possible feature values). If
-you're interested in learning more about how Wide & Deep Learning works, please
-check out our [research paper](http://arxiv.org/abs/1606.07792).
+In this tutorial, we'll introduce how to use the tf.estimator API to jointly
+train a wide linear model and a deep feed-forward neural network. This approach
+combines the strengths of memorization and generalization. It's useful for
+generic large-scale regression and classification problems with sparse input
+features (e.g., categorical features with a large number of possible feature
+values). If you're interested in learning more about how Wide & Deep Learning
+works, please check out our [research paper](https://arxiv.org/abs/1606.07792).
 
 ![Wide & Deep Spectrum of Models](https://www.tensorflow.org/images/wide_n_deep.svg "Wide & Deep")
 
@@ -23,7 +22,7 @@ The figure above shows a comparison of a wide model (logistic regression with
 sparse features and transformations), a deep model (feed-forward neural network
 with an embedding layer and several hidden layers), and a Wide & Deep model
 (joint training of both). At a high level, there are only 3 steps to configure a
-wide, deep, or Wide & Deep model using the tf.contrib.learn API:
+wide, deep, or Wide & Deep model using the tf.estimator API:
 
 1.  Select features for the wide part: Choose the sparse base columns and
     crossed columns you want to use.
@@ -40,33 +39,18 @@ To try the code for this tutorial:
 
 1.  @{$install$Install TensorFlow} if you haven't already.
 
-2.  Download [the tutorial code](https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py).
+2.  Download [the tutorial code](https://github.com/tensorflow/models/tree/master/official/wide_deep/).
 
-3.  Install the pandas data analysis library. tf.contrib.learn doesn't require pandas, but it does support it, and this tutorial uses pandas. To install pandas:
+3. Execute the data download script we provide to you:
 
-    a. Get `pip`:
+        $ python data_download.py
 
-        # Ubuntu/Linux 64-bit
-        $ sudo apt-get install python-pip python-dev
+4. Execute the tutorial code with the following command to train the wide and
+deep model described in this tutorial:
 
-        # Mac OS X
-        $ sudo easy_install pip
-        $ sudo easy_install --upgrade six
+        $ python wide_deep.py
 
-    b. Use `pip` to install pandas:
-
-        $ sudo pip install pandas
-
-    If you have trouble installing pandas, consult the
-    [instructions](http://pandas.pydata.org/pandas-docs/stable/install.html)
-    on the pandas site.
-
-4. Execute the tutorial code with the following command to train the linear
-model described in this tutorial:
-
-        $ python wide_n_deep_tutorial.py --model_type=wide_n_deep
-
-Read on to find out how this code builds its linear model.
+Read on to find out how this code builds its model.
 
 
 ## Define Base Feature Columns
@@ -78,23 +62,41 @@ part and the deep part of the model.
 ```python
 import tensorflow as tf
 
-# Categorical base columns.
-gender = tf.contrib.layers.sparse_column_with_keys(column_name="gender", keys=["Female", "Male"])
-race = tf.contrib.layers.sparse_column_with_keys(column_name="race", keys=[
-  "Amer-Indian-Eskimo", "Asian-Pac-Islander", "Black", "Other", "White"])
-education = tf.contrib.layers.sparse_column_with_hash_bucket("education", hash_bucket_size=1000)
-relationship = tf.contrib.layers.sparse_column_with_hash_bucket("relationship", hash_bucket_size=100)
-workclass = tf.contrib.layers.sparse_column_with_hash_bucket("workclass", hash_bucket_size=100)
-occupation = tf.contrib.layers.sparse_column_with_hash_bucket("occupation", hash_bucket_size=1000)
-native_country = tf.contrib.layers.sparse_column_with_hash_bucket("native_country", hash_bucket_size=1000)
+# Continuous columns
+age = tf.feature_column.numeric_column('age')
+education_num = tf.feature_column.numeric_column('education_num')
+capital_gain = tf.feature_column.numeric_column('capital_gain')
+capital_loss = tf.feature_column.numeric_column('capital_loss')
+hours_per_week = tf.feature_column.numeric_column('hours_per_week')
 
-# Continuous base columns.
-age = tf.contrib.layers.real_valued_column("age")
-age_buckets = tf.contrib.layers.bucketized_column(age, boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
-education_num = tf.contrib.layers.real_valued_column("education_num")
-capital_gain = tf.contrib.layers.real_valued_column("capital_gain")
-capital_loss = tf.contrib.layers.real_valued_column("capital_loss")
-hours_per_week = tf.contrib.layers.real_valued_column("hours_per_week")
+education = tf.feature_column.categorical_column_with_vocabulary_list(
+    'education', [
+        'Bachelors', 'HS-grad', '11th', 'Masters', '9th', 'Some-college',
+        'Assoc-acdm', 'Assoc-voc', '7th-8th', 'Doctorate', 'Prof-school',
+        '5th-6th', '10th', '1st-4th', 'Preschool', '12th'])
+
+marital_status = tf.feature_column.categorical_column_with_vocabulary_list(
+    'marital_status', [
+        'Married-civ-spouse', 'Divorced', 'Married-spouse-absent',
+        'Never-married', 'Separated', 'Married-AF-spouse', 'Widowed'])
+
+relationship = tf.feature_column.categorical_column_with_vocabulary_list(
+    'relationship', [
+        'Husband', 'Not-in-family', 'Wife', 'Own-child', 'Unmarried',
+        'Other-relative'])
+
+workclass = tf.feature_column.categorical_column_with_vocabulary_list(
+    'workclass', [
+        'Self-emp-not-inc', 'Private', 'State-gov', 'Federal-gov',
+        'Local-gov', '?', 'Self-emp-inc', 'Without-pay', 'Never-worked'])
+
+# To show an example of hashing:
+occupation = tf.feature_column.categorical_column_with_hash_bucket(
+    'occupation', hash_bucket_size=1000)
+
+# Transformations.
+age_buckets = tf.feature_column.bucketized_column(
+    age, boundaries=[18, 25, 30, 35, 40, 45, 50, 55, 60, 65])
 ```
 
 ## The Wide Model: Linear Model with Crossed Feature Columns
@@ -103,12 +105,20 @@ The wide model is a linear model with a wide set of sparse and crossed feature
 columns:
 
 ```python
-wide_columns = [
-  gender, native_country, education, occupation, workclass, relationship, age_buckets,
-  tf.contrib.layers.crossed_column([education, occupation], hash_bucket_size=int(1e4)),
-  tf.contrib.layers.crossed_column([native_country, occupation], hash_bucket_size=int(1e4)),
-  tf.contrib.layers.crossed_column([age_buckets, education, occupation], hash_bucket_size=int(1e6))]
+base_columns = [
+    education, marital_status, relationship, workclass, occupation,
+    age_buckets,
+]
+
+crossed_columns = [
+    tf.feature_column.crossed_column(
+        ['education', 'occupation'], hash_bucket_size=1000),
+    tf.feature_column.crossed_column(
+        [age_buckets, 'education', 'occupation'], hash_bucket_size=1000),
+]
 ```
+
+You can also see the @{$wide$TensorFlow Linear Model Tutorial} for more details.
 
 Wide models with crossed feature columns can memorize sparse interactions
 between features effectively. That being said, one limitation of crossed feature
@@ -126,31 +136,45 @@ concatenated with the continuous features, and then fed into the hidden layers
 of a neural network in the forward pass. The embedding values are initialized
 randomly, and are trained along with all other model parameters to minimize the
 training loss. If you're interested in learning more about embeddings, check out
-the TensorFlow tutorial on
-[Vector Representations of Words](https://www.tensorflow.org/versions/r0.9/tutorials/word2vec/index.html),
-or [Word Embedding](https://en.wikipedia.org/wiki/Word_embedding) on Wikipedia.
+the TensorFlow tutorial on @{$word2vec$Vector Representations of Words} or
+[Word embedding](https://en.wikipedia.org/wiki/Word_embedding) on Wikipedia.
+
+Another way to represent categorical columns to feed into a neural network is
+via a one-hot or multi-hot representation. This is often appropriate for
+categorical columns with only a few possible values. As an example of a one-hot
+representation, for the relationship column, `"Husband"` can be represented as
+[1, 0, 0, 0, 0, 0], and `"Not-in-family"` as [0, 1, 0, 0, 0, 0], etc. This is a
+fixed representation, whereas embeddings are more flexible and calculated at
+training time.
 
 We'll configure the embeddings for the categorical columns using
-`embedding_column`, and concatenate them with the continuous columns:
+`embedding_column`, and concatenate them with the continuous columns.
+We also use `indicator_column` to create multi-hot representations of some
+categorical columns.
 
 ```python
 deep_columns = [
-  tf.contrib.layers.embedding_column(workclass, dimension=8),
-  tf.contrib.layers.embedding_column(education, dimension=8),
-  tf.contrib.layers.embedding_column(gender, dimension=8),
-  tf.contrib.layers.embedding_column(relationship, dimension=8),
-  tf.contrib.layers.embedding_column(native_country, dimension=8),
-  tf.contrib.layers.embedding_column(occupation, dimension=8),
-  age, education_num, capital_gain, capital_loss, hours_per_week]
+    age,
+    education_num,
+    capital_gain,
+    capital_loss,
+    hours_per_week,
+    tf.feature_column.indicator_column(workclass),
+    tf.feature_column.indicator_column(education),
+    tf.feature_column.indicator_column(marital_status),
+    tf.feature_column.indicator_column(relationship),
+    # To show an example of embedding
+    tf.feature_column.embedding_column(occupation, dimension=8),
+]
 ```
 
 The higher the `dimension` of the embedding is, the more degrees of freedom the
 model will have to learn the representations of the features. For simplicity, we
 set the dimension to 8 for all feature columns here. Empirically, a more
 informed decision for the number of dimensions is to start with a value on the
-order of \\(\log_2(n)\\) or \\(k\sqrt[4]n\\), where \\(n\\) is the number of unique
-features in a feature column and \\(k\\) is a small constant (usually smaller than
-10).
+order of \\(\log_2(n)\\) or \\(k\sqrt[4]n\\), where \\(n\\) is the number of
+unique features in a feature column and \\(k\\) is a small constant (usually
+smaller than 10).
 
 Through dense embeddings, deep models can generalize better and make predictions
 on feature pairs that were previously unseen in the training data. However, it
@@ -174,11 +198,9 @@ handled for you under the hood, so you simply need to create a
 `DNNLinearCombinedClassifier`:
 
 ```python
-import tempfile
-model_dir = tempfile.mkdtemp()
-m = tf.contrib.learn.DNNLinearCombinedClassifier(
-    model_dir=model_dir,
-    linear_feature_columns=wide_columns,
+model = tf.estimator.DNNLinearCombinedClassifier(
+    model_dir='/tmp/census_model',
+    linear_feature_columns=base_columns + crossed_columns,
     dnn_feature_columns=deep_columns,
     dnn_hidden_units=[100, 50])
 ```
@@ -186,81 +208,36 @@ m = tf.contrib.learn.DNNLinearCombinedClassifier(
 ## Training and Evaluating The Model
 
 Before we train the model, let's read in the Census dataset as we did in the
-@{$wide$TensorFlow Linear Model tutorial}. The code for
-input data processing is provided here again for your convenience:
-
-```python
-import pandas as pd
-import urllib
-
-# Define the column names for the data sets.
-COLUMNS = ["age", "workclass", "fnlwgt", "education", "education_num",
-  "marital_status", "occupation", "relationship", "race", "gender",
-  "capital_gain", "capital_loss", "hours_per_week", "native_country", "income_bracket"]
-LABEL_COLUMN = 'label'
-CATEGORICAL_COLUMNS = ["workclass", "education", "marital_status", "occupation",
-                       "relationship", "race", "gender", "native_country"]
-CONTINUOUS_COLUMNS = ["age", "education_num", "capital_gain", "capital_loss",
-                      "hours_per_week"]
-
-# Download the training and test data to temporary files.
-# Alternatively, you can download them yourself and change train_file and
-# test_file to your own paths.
-train_file = tempfile.NamedTemporaryFile()
-test_file = tempfile.NamedTemporaryFile()
-urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.data", train_file.name)
-urllib.urlretrieve("http://mlr.cs.umass.edu/ml/machine-learning-databases/adult/adult.test", test_file.name)
-
-# Read the training and test data sets into Pandas dataframe.
-df_train = pd.read_csv(train_file, names=COLUMNS, skipinitialspace=True)
-df_test = pd.read_csv(test_file, names=COLUMNS, skipinitialspace=True, skiprows=1)
-df_train[LABEL_COLUMN] = (df_train['income_bracket'].apply(lambda x: '>50K' in x)).astype(int)
-df_test[LABEL_COLUMN] = (df_test['income_bracket'].apply(lambda x: '>50K' in x)).astype(int)
-
-def input_fn(df):
-  # Creates a dictionary mapping from each continuous feature column name (k) to
-  # the values of that column stored in a constant Tensor.
-  continuous_cols = {k: tf.constant(df[k].values)
-                     for k in CONTINUOUS_COLUMNS}
-  # Creates a dictionary mapping from each categorical feature column name (k)
-  # to the values of that column stored in a tf.SparseTensor.
-  categorical_cols = {k: tf.SparseTensor(
-      indices=[[i, 0] for i in range(df[k].size)],
-      values=df[k].values,
-      dense_shape=[df[k].size, 1])
-                      for k in CATEGORICAL_COLUMNS}
-  # Merges the two dictionaries into one.
-  feature_cols = dict(continuous_cols.items() + categorical_cols.items())
-  # Converts the label column into a constant Tensor.
-  label = tf.constant(df[LABEL_COLUMN].values)
-  # Returns the feature columns and the label.
-  return feature_cols, label
-
-def train_input_fn():
-  return input_fn(df_train)
-
-def eval_input_fn():
-  return input_fn(df_test)
-```
+@{$wide$TensorFlow Linear Model tutorial}. See `data_download.py` as well as
+`input_fn` within
+[`wide_deep.py`](https://github.com/tensorflow/models/tree/master/official/wide_deep/wide_deep.py).
 
 After reading in the data, you can train and evaluate the model:
 
 ```python
-m.fit(input_fn=train_input_fn, steps=200)
-results = m.evaluate(input_fn=eval_input_fn, steps=1)
-for key in sorted(results):
-    print("%s: %s" % (key, results[key]))
+# Train and evaluate the model every `FLAGS.epochs_per_eval` epochs.
+for n in range(FLAGS.train_epochs // FLAGS.epochs_per_eval):
+  model.train(input_fn=lambda: input_fn(
+      FLAGS.train_data, FLAGS.epochs_per_eval, True, FLAGS.batch_size))
+
+  results = model.evaluate(input_fn=lambda: input_fn(
+      FLAGS.test_data, 1, False, FLAGS.batch_size))
+
+  # Display evaluation metrics
+  print('Results at epoch', (n + 1) * FLAGS.epochs_per_eval)
+  print('-' * 30)
+
+  for key in sorted(results):
+    print('%s: %s' % (key, results[key]))
 ```
 
-The first line of the output should be something like `accuracy: 0.84429705`. We
-can see that the accuracy was improved from about 83.6% using a wide-only linear
-model to about 84.4% using a Wide & Deep model. If you'd like to see a working
-end-to-end example, you can download our
-[example code](https://www.tensorflow.org/code/tensorflow/examples/learn/wide_n_deep_tutorial.py).
+The final output accuracy should be somewhere around 85.5%. If you'd like to
+see a working end-to-end example, you can download our
+[example code](https://github.com/tensorflow/models/tree/master/official/wide_deep/wide_deep.py).
 
 Note that this tutorial is just a quick example on a small dataset to get you
 familiar with the API. Wide & Deep Learning will be even more powerful if you
 try it on a large dataset with many sparse feature columns that have a large
 number of possible feature values. Again, feel free to take a look at our
-[research paper](http://arxiv.org/abs/1606.07792) for more ideas about how to
+[research paper](https://arxiv.org/abs/1606.07792) for more ideas about how to
 apply Wide & Deep Learning in real-world large-scale machine learning problems.

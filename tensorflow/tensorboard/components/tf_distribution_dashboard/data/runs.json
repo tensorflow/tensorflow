@@ -1,4 +1,0 @@
-{
-  "run1": {"compressedHistograms": ["histo1"]},
-  "run2": {"compressedHistograms": ["histo2", "histo1"]}
-}

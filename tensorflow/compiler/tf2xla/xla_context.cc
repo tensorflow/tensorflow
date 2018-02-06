@@ -58,7 +58,7 @@ const char XlaContext::kXlaContextResourceName[] = "_xla_context";
   return Get(ctx->op_kernel_context());
 }
 
-void XlaContext::set_args(std::vector<Argument> args) {
+void XlaContext::set_args(std::vector<XlaExpression> args) {
   args_ = std::move(args);
 }
 
@@ -69,24 +69,6 @@ XlaContext::XlaContext(XlaCompiler* compiler, xla::ComputationBuilder* builder,
       builder_(builder),
       allow_cpu_custom_calls_(allow_cpu_custom_calls),
       resolve_compile_time_constants_(resolve_compile_time_constants) {}
-
-const xla::ComputationDataHandle&
-XlaContext::GetOrCreateRuntimeContextParameter() {
-  CHECK(allow_cpu_custom_calls_);
-  if (has_context_parameter_) return context_parameter_;
-  has_context_parameter_ = true;
-
-  // Allocate the next available parameter for the context parameter.
-  int num_parameters = 0;
-  for (const Argument& arg : args_) {
-    if (!arg.value.is_constant) {
-      ++num_parameters;
-    }
-  }
-  context_parameter_ = builder_->Parameter(
-      num_parameters, xla::ShapeUtil::MakeOpaqueShape(), "tf_context");
-  return context_parameter_;
-}
 
 string XlaContext::DebugString() { return "TLA JIT context"; }
 
@@ -99,9 +81,7 @@ void XlaContext::AddRetval(int retval_index, DataType type,
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
-  retvals_[retval_index].is_constant = false;
-  retvals_[retval_index].type = type;
-  retvals_[retval_index].handle = handle;
+  retvals_[retval_index].set_handle(handle);
 }
 
 Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
@@ -111,34 +91,27 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
   if (retvals_.size() <= retval_index) {
     retvals_.resize(retval_index + 1);
   }
-  retvals_[retval_index].type = dtype;
   if (resolve_compile_time_constants_) {
-    retvals_[retval_index].is_constant = true;
-    TF_RETURN_IF_ERROR(LiteralToHostTensor(
-        literal, dtype, &retvals_[retval_index].constant_value));
+    Tensor value;
+    TF_RETURN_IF_ERROR(LiteralToHostTensor(literal, dtype, &value));
+    retvals_[retval_index].set_constant_value(std::move(value));
   } else {
-    retvals_[retval_index].is_constant = false;
-    retvals_[retval_index].handle = builder_->ConstantLiteral(literal);
+    retvals_[retval_index].set_handle(builder_->ConstantLiteral(literal));
   }
   return Status::OK();
 }
 
-void XlaContext::AddSideEffects() {
-  has_side_effects_ = true;
-}
-
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
 
-Status XlaContext::CreateVariable(int arg_num, string name, DataType type,
-                                  const xla::ComputationDataHandle& handle,
-                                  XlaVariable** variable) {
-  variables_.emplace_back(new XlaVariable);
-  *variable = variables_.back().get();
-  XlaVariable& var = **variable;
-  var.arg_num = arg_num;
-  var.name = std::move(name);
-  var.type = type;
-  var.initial_value = var.value = handle;
+Status XlaContext::CreateResource(
+    XlaResource::Kind kind, int arg_num, string name, DataType type,
+    TensorShape shape, const xla::ComputationDataHandle& handle,
+    int64 tensor_array_size, const std::set<string>& tensor_array_gradients,
+    XlaResource** resource) {
+  resources_.emplace_back(
+      new XlaResource(kind, arg_num, std::move(name), type, std::move(shape),
+                      handle, tensor_array_size, tensor_array_gradients));
+  *resource = resources_.back().get();
   return Status::OK();
 }
 
@@ -152,6 +125,20 @@ const xla::Computation* XlaContext::GetOrCreateMax(const DataType type) {
     auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
     auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
     b.Max(x, y);
+    return b.Build().ConsumeValueOrDie();
+  });
+}
+
+const xla::Computation* XlaContext::GetOrCreateMin(const DataType type) {
+  return LookupOrCreate(type, &min_func_, [this, type] {
+    const string type_string = DataTypeString(type);
+    VLOG(1) << "Building Min() for " << type_string;
+    xla::ComputationBuilder b(builder()->client(), "min<" + type_string + ">");
+    xla::PrimitiveType xla_type;
+    TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
+    auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
+    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    b.Min(x, y);
     return b.Build().ConsumeValueOrDie();
   });
 }
@@ -170,23 +157,16 @@ const xla::Computation* XlaContext::GetOrCreateAdd(const DataType type) {
   });
 }
 
-const xla::Computation* XlaContext::GetOrCreateSigmoid(const DataType type) {
-  return LookupOrCreate(type, &sigmoid_func_, [this, type] {
+const xla::Computation* XlaContext::GetOrCreateMul(const DataType type) {
+  return LookupOrCreate(type, &mul_func_, [this, type] {
     const string type_string = DataTypeString(type);
-    VLOG(1) << "Building Sigmoid() for " << type_string;
-    xla::ComputationBuilder b(builder()->client(),
-                              "sigmoid<" + type_string + ">");
+    VLOG(1) << "Building Mul() for " << type_string;
+    xla::ComputationBuilder b(builder()->client(), "mul<" + type_string + ">");
     xla::PrimitiveType xla_type;
     TF_CHECK_OK(DataTypeToPrimitiveType(type, &xla_type));
     auto x = b.Parameter(0, xla::ShapeUtil::MakeShape(xla_type, {}), "x");
-    // Clamp the inputs to the range [-18, 18] since anything outside
-    // this range is 0.0f or 1.0f in single-precision. We must clamp the range
-    // of x to avoid incorrect outputs due to fast-math optimizations for large
-    // negative x.
-    x = b.Clamp(XlaHelpers::IntegerLiteral(&b, type, -18), x,
-                XlaHelpers::IntegerLiteral(&b, type, 18));
-    auto one = XlaHelpers::One(&b, type);
-    b.Div(one, b.Add(b.Exp(b.Neg(x)), one));
+    auto y = b.Parameter(1, xla::ShapeUtil::MakeShape(xla_type, {}), "y");
+    b.Mul(x, y);
     return b.Build().ConsumeValueOrDie();
   });
 }

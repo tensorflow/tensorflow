@@ -25,6 +25,14 @@ string GetConvnet3dDataFormatAttrString() {
   return "data_format: { 'NDHWC', 'NCDHW' } = 'NDHWC' ";
 }
 
+string GetConvnetFilterFormatAttrString() {
+  return "filter_format: { 'HWIO', 'OIHW' } = 'HWIO' ";
+}
+
+string GetConvnet3dFilterFormatAttrString() {
+  return "filter_format: { 'DHWIO', 'OIDHW' } = 'DHWIO' ";
+}
+
 string ToString(TensorFormat format) {
   switch (format) {
     case FORMAT_NHWC:
@@ -35,6 +43,20 @@ string ToString(TensorFormat format) {
       return "NCHW_VECT_C";
     default:
       LOG(FATAL) << "Invalid Format: " << static_cast<int32>(format);
+      return "INVALID_FORMAT";
+  }
+}
+
+string ToString(FilterTensorFormat format) {
+  switch (format) {
+    case FORMAT_HWIO:
+      return "HWIO";
+    case FORMAT_OIHW:
+      return "OIHW";
+    case FORMAT_OIHW_VECT_I:
+      return "OIHW_VECT_I";
+    default:
+      LOG(FATAL) << "Invalid Filter Format: " << static_cast<int32>(format);
       return "INVALID_FORMAT";
   }
 }
@@ -50,6 +72,23 @@ bool FormatFromString(const string& format_str, TensorFormat* format) {
   }
   if (format_str == "NCHW_VECT_C") {
     *format = FORMAT_NCHW_VECT_C;
+    return true;
+  }
+  return false;
+}
+
+bool FilterFormatFromString(const string& format_str,
+                            FilterTensorFormat* format) {
+  if (format_str == "HWIO" || format_str == "DHWIO") {
+    *format = FORMAT_HWIO;
+    return true;
+  }
+  if (format_str == "OIHW" || format_str == "OIDHW") {
+    *format = FORMAT_OIHW;
+    return true;
+  }
+  if (format_str == "OIHW_VECT_I") {
+    *format = FORMAT_OIHW_VECT_I;
     return true;
   }
   return false;

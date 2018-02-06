@@ -19,26 +19,8 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/framework:framework_py",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
-        "//tensorflow/python:variables",
-    ],
-)
-
-py_test(
-    name = "profiler_hook_test",
-    size = "small",
-    srcs = ["python/training/profiler_hook_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":hooks",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
+        "//tensorflow/python:util",
     ],
 )
 

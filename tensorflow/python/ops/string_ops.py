@@ -47,10 +47,12 @@ from tensorflow.python.ops import math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_string_ops import *
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 
-def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
+@tf_export("string_split")
+def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
   Let N be the size of source (typically N will be the batch size). Split each
@@ -78,6 +80,7 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
     source: `1-D` string `Tensor`, the strings to split.
     delimiter: `0-D` string `Tensor`, the delimiter character, the string should
       be length 0 or 1.
+    skip_empty: A `bool`. If `True`, skip the empty strings from the result.
 
   Raises:
     ValueError: If delimiter is not a string.
@@ -92,7 +95,7 @@ def string_split(source, delimiter=" "):  # pylint: disable=invalid-name
 
   # pylint: disable=protected-access
   indices, values, shape = gen_string_ops._string_split(
-      source, delimiter=delimiter)
+      source, delimiter=delimiter, skip_empty=skip_empty)
   # pylint: enable=protected-access
   indices.set_shape([None, 2])
   values.set_shape([None])
@@ -119,6 +122,7 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return math_ops.range(array_ops.rank(x) - 1, -1, -1)
 
 
+@tf_export("reduce_join")
 def reduce_join(inputs, axis=None,
                 keep_dims=False,
                 separator="",

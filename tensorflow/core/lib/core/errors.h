@@ -37,9 +37,9 @@ void AppendToMessage(::tensorflow::Status* status, Args... args) {
 }
 
 // For propagating errors when calling a function.
-#define TF_RETURN_IF_ERROR(expr)                         \
+#define TF_RETURN_IF_ERROR(...)                          \
   do {                                                   \
-    const ::tensorflow::Status _status = (expr);         \
+    const ::tensorflow::Status _status = (__VA_ARGS__);  \
     if (TF_PREDICT_FALSE(!_status.ok())) return _status; \
   } while (0)
 

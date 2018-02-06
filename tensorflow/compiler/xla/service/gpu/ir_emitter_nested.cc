@@ -16,12 +16,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
-#include "external/llvm/include/llvm/IR/BasicBlock.h"
-#include "external/llvm/include/llvm/IR/Function.h"
-#include "external/llvm/include/llvm/IR/IRBuilder.h"
-#include "external/llvm/include/llvm/IR/Instructions.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
+
+#include "llvm/IR/BasicBlock.h"
+#include "llvm/IR/Function.h"
+#include "llvm/IR/IRBuilder.h"
+#include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -52,9 +53,9 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
     io_hlos->push_back(param);
     const Shape& param_shape = param->shape();
     argument_types.push_back(
-        llvm_ir::ShapeToIrType(param_shape, &ir_builder_)->getPointerTo());
-    int64 param_size = llvm_ir::ByteSizeOf(
-        param_shape, ir_emitter_context_->llvm_module()->getDataLayout());
+        llvm_ir::ShapeToIrType(param_shape, module_)->getPointerTo());
+    int64 param_size =
+        llvm_ir::ByteSizeOf(param_shape, module_->getDataLayout());
     argument_dereferenceable_bytes.push_back(param_size);
   }
   {
@@ -62,7 +63,7 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
     io_hlos->push_back(root);
     const Shape& root_shape = root->shape();
     argument_types.push_back(
-        llvm_ir::ShapeToIrType(root_shape, &ir_builder_)->getPointerTo());
+        llvm_ir::ShapeToIrType(root_shape, module_)->getPointerTo());
     int64 root_size = llvm_ir::ByteSizeOf(
         root_shape, ir_emitter_context_->llvm_module()->getDataLayout());
     argument_dereferenceable_bytes.push_back(root_size);
@@ -76,7 +77,7 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
       function_type,                       // The function type.
       llvm::GlobalValue::InternalLinkage,  // The linkage type.
       llvm_ir::AsStringRef(ir_emitter_context_->name_uniquer()->GetUniqueName(
-          llvm_ir::SanitizeIrName(
+          llvm_ir::SanitizeFunctionName(
               nested_computation.name()))),  // The name of the function.
       ir_emitter_context_->llvm_module());   // The parent LLVM module.
   for (size_t arg_no = 0; arg_no < argument_dereferenceable_bytes.size();
@@ -87,6 +88,9 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
     }
   }
 
+  // TODO(b/65380986): Investigate if adding fast math flags for generated
+  // kernels makes sense.
+
   llvm::BasicBlock* entry_bb =
       llvm::BasicBlock::Create(function->getContext(), "entry", function);
   // Emit a "return void" at entry_bb's end, and sets the insert point before
@@ -95,10 +99,10 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
       llvm::ReturnInst::Create(function->getContext(), entry_bb));
 
   std::vector<const HloInstruction*> non_io_hlos;
-  for (const auto& hlo : nested_computation.instructions()) {
+  for (const auto* hlo : nested_computation.instructions()) {
     if (hlo->opcode() != HloOpcode::kParameter &&
-        hlo.get() != nested_computation.root_instruction()) {
-      non_io_hlos.push_back(hlo.get());
+        hlo != nested_computation.root_instruction()) {
+      non_io_hlos.push_back(hlo);
     }
   }
   bindings_.EmitBasePointersForHlos(*io_hlos, non_io_hlos);
@@ -112,7 +116,8 @@ Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
 Status IrEmitterNested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
-  return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo), &ir_builder_)
+  return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo),
+                              &ir_builder_)
       .EmitLoop();
 }
 

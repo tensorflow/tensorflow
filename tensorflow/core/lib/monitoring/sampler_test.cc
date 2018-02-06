@@ -34,14 +34,14 @@ void EqHistograms(const Histogram& expected,
 auto* sampler_with_labels =
     Sampler<1>::New({"/tensorflow/test/sampler_with_labels",
                      "Sampler with one label.", "MyLabel"},
-                    {10.0, 20.0});
+                    Buckets::Explicit({10.0, 20.0}));
 
 TEST(LabeledSamplerTest, InitializedEmpty) {
   Histogram empty;
   EqHistograms(empty, sampler_with_labels->GetCell("Empty")->value());
 }
 
-TEST(LabeledSamplerTest, BucketBoundaries) {
+TEST(LabeledSamplerTest, ExplicitBucketBoundaries) {
   // Sampler automatically adds DBL_MAX to the list of buckets.
   Histogram expected({10.0, 20.0, DBL_MAX});
   auto* cell = sampler_with_labels->GetCell("BucketBoundaries");
@@ -61,7 +61,7 @@ TEST(LabeledSamplerTest, BucketBoundaries) {
 auto* init_sampler_without_labels =
     Sampler<0>::New({"/tensorflow/test/init_sampler_without_labels",
                      "Sampler without labels initialized as empty."},
-                    {1.5, 2.8});
+                    Buckets::Explicit({1.5, 2.8}));
 
 TEST(UnlabeledSamplerTest, InitializedEmpty) {
   Histogram empty;
@@ -71,9 +71,9 @@ TEST(UnlabeledSamplerTest, InitializedEmpty) {
 auto* sampler_without_labels =
     Sampler<0>::New({"/tensorflow/test/sampler_without_labels",
                      "Sampler without labels initialized as empty."},
-                    {1.5, 2.8});
+                    Buckets::Explicit({1.5, 2.8}));
 
-TEST(UnlabeledSamplerTest, BucketBoundaries) {
+TEST(UnlabeledSamplerTest, ExplicitBucketBoundaries) {
   // Sampler automatically adds DBL_MAX to the list of buckets.
   Histogram expected({1.5, 2.8, DBL_MAX});
   auto* cell = sampler_without_labels->GetCell();
@@ -83,6 +83,31 @@ TEST(UnlabeledSamplerTest, BucketBoundaries) {
   expected.Add(2.0);
   cell->Add(31.0);
   expected.Add(31.0);
+
+  EqHistograms(expected, cell->value());
+}
+
+auto* sampler_with_exponential =
+    Sampler<1>::New({"/tensorflow/test/sampler_with_exponential",
+                     "Sampler with exponential buckets.", "MyLabel"},
+                    // So limits are {1, 2, 4}.
+                    Buckets::Exponential(1, 2, 3));
+
+TEST(ExponentialSamplerTest, ExponentialBucketBoundaries) {
+  // Sampler automatically adds DBL_MAX to the list of buckets.
+  Histogram expected({1.0, 2.0, 4.0, DBL_MAX});
+  auto* cell = sampler_with_exponential->GetCell("BucketBoundaries");
+  sampler_with_exponential->GetCell("AddedToCheckPreviousCellValidity");
+  cell->Add(-1.0);
+  expected.Add(-1.0);
+  cell->Add(0.5);
+  expected.Add(0.5);
+  cell->Add(1.001);
+  expected.Add(1.001);
+  cell->Add(3.999);
+  expected.Add(3.999);
+  cell->Add(6.0);
+  expected.Add(6.0);
 
   EqHistograms(expected, cell->value());
 }

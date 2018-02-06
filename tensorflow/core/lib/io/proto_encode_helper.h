@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_LIB_IO_PROTO_ENCODE_HELPER_H_
 
 #include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 // A helper class for appending various kinds of values in protocol
@@ -24,7 +25,6 @@ limitations under the License.
 // a buffer and a maximum size guarantee for the number of bytes they
 // will add to this buffer.
 namespace tensorflow {
-class StringPiece;
 namespace io {
 
 class ProtoEncodeHelper {

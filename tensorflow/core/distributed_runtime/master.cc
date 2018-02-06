@@ -116,6 +116,18 @@ void Master::GC() {
   }
 }
 
+MasterSession* Master::FindMasterSession(const string& handle) {
+  MasterSession* session = nullptr;
+  {
+    mutex_lock l(mu_);
+    session = gtl::FindPtrOrNull(sessions_, handle);
+    if (session != nullptr) {
+      session->Ref();
+    }
+  }
+  return session;
+}
+
 class DeviceFinder {
  public:
   static Status GetRemoteDevices(
@@ -372,7 +384,7 @@ void Master::CreateSession(const CreateSessionRequest* req,
         DeviceNameUtils::ParsedName name = d->parsed_name();
         if (name.job == *worker_cache_factory_options.job_name &&
             name.task == worker_cache_factory_options.task_index &&
-            name.type == "CPU") {
+            name.type == "CPU" && name.id == 0) {
           device_set->set_client_device(d.get());
         }
       }
@@ -399,7 +411,8 @@ void Master::CreateSession(const CreateSessionRequest* req,
       }
     }
 
-    CHECK(device_set->client_device());
+    CHECK(device_set->client_device()) << "No client device found. Missing "
+                                       << "CPU:0 device?";
 
     SessionOptions options;
     options.config = req->config();
@@ -428,16 +441,11 @@ void Master::CreateSession(const CreateSessionRequest* req,
 
 void Master::ExtendSession(const ExtendSessionRequest* req,
                            ExtendSessionResponse* resp, MyClosure done) {
-  mu_.lock();
-  MasterSession* session = nullptr;
-  session = gtl::FindPtrOrNull(sessions_, req->session_handle());
+  auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    mu_.unlock();
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
-  session->Ref();
-  mu_.unlock();
 
   SchedClosure([session, req, resp, done]() {
     Status status = ValidateExternalGraphDefSyntax(req->graph_def());
@@ -451,15 +459,11 @@ void Master::ExtendSession(const ExtendSessionRequest* req,
 
 void Master::PartialRunSetup(const PartialRunSetupRequest* req,
                              PartialRunSetupResponse* resp, MyClosure done) {
-  mu_.lock();
-  MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());
+  auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    mu_.unlock();
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
-  session->Ref();
-  mu_.unlock();
 
   SchedClosure([this, session, req, resp, done]() {
     Status s = session->PartialRunSetup(req, resp);
@@ -470,16 +474,12 @@ void Master::PartialRunSetup(const PartialRunSetupRequest* req,
 
 void Master::RunStep(CallOptions* opts, const RunStepRequestWrapper* req,
                      MutableRunStepResponseWrapper* resp, MyClosure done) {
-  mu_.lock();
-  uint64 start_time = env_->env->NowMicros();
-  MasterSession* session = gtl::FindPtrOrNull(sessions_, req->session_handle());
+  auto start_time = env_->env->NowMicros();
+  auto session = FindMasterSession(req->session_handle());
   if (session == nullptr) {
-    mu_.unlock();
     done(errors::Aborted("Session ", req->session_handle(), " is not found."));
     return;
   }
-  session->Ref();
-  mu_.unlock();
 
   SchedClosure([this, start_time, session, opts, req, resp, done]() {
     Status status = session->Run(opts, *req, resp);
@@ -525,14 +525,7 @@ void Master::ListDevices(const ListDevicesRequest* req,
                          ListDevicesResponse* resp, MyClosure done) {
   SchedClosure([this, req, resp, done]() {
     if (!req->session_handle().empty()) {
-      MasterSession* session = nullptr;
-      {
-        mutex_lock l(mu_);
-        session = gtl::FindPtrOrNull(sessions_, req->session_handle());
-        if (session != nullptr) {
-          session->Ref();
-        }
-      }
+      auto session = FindMasterSession(req->session_handle());
       if (session == nullptr) {
         done(errors::InvalidArgument(
             "Session ", req->session_handle(),

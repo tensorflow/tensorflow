@@ -429,6 +429,13 @@ class DictHelperTest(test_lib.TestCase):
     d2 = inp._as_original_type(d, l)
     self.assertEquals(d, d2)
 
+  def testHeterogeneousKeysDictInputs(self):
+    d = {"z": 1, 1: 42, ("a", "b"): 100}
+    l = inp._as_tensor_list(d)
+    self.assertEquals([100, 42, 1], l)
+    d2 = inp._as_original_type(d, l)
+    self.assertEquals(d, d2)
+
 
 class BatchTest(test_lib.TestCase):
 
@@ -895,6 +902,29 @@ class BatchTest(test_lib.TestCase):
     batched = inp.maybe_batch(
         [sparse], keep_input=[True, False], batch_size=2, enqueue_many=True)
     self.assertIs(None, batched.dense_shape.get_shape().num_elements())
+
+  def testMaybeBatchCorrectValues(self):
+    sparse_t = sparse_tensor.SparseTensor(
+        indices=[[0, 1], [0, 2], [1, 0], [1, 3]],
+        dense_shape=[2, 4],
+        values=[5, 4, 7, 2])
+    keep = constant_op.constant([True, False])
+    batched = inp.maybe_batch(
+        [sparse_t], keep_input=keep, batch_size=1, enqueue_many=True)
+
+    with self.test_session():
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(coord=coord)
+
+      batched_np = batched.eval()
+
+      coord.request_stop()
+      for thread in threads:
+        thread.join()
+
+    self.assertAllEqual([[0, 1], [0, 2]], batched_np.indices)
+    self.assertAllEqual([5, 4], batched_np.values)
+    self.assertAllEqual([1, 4], batched_np.dense_shape)
 
 
 class BatchJoinTest(test_lib.TestCase):
@@ -1449,6 +1479,29 @@ class BatchJoinTest(test_lib.TestCase):
     batched = inp.maybe_batch_join(
         [[sparse]], keep_input=[True, False], batch_size=2, enqueue_many=True)
     self.assertIs(None, batched.dense_shape.get_shape().num_elements())
+
+  def testMaybeBatchCorrectValues(self):
+    sparse = sparse_tensor.SparseTensor(
+        indices=[[0, 1], [0, 2], [1, 0], [1, 3]],
+        dense_shape=[2, 4],
+        values=[5, 4, 7, 2])
+    keep = constant_op.constant([True, False])
+    batched = inp.maybe_batch_join(
+        [[sparse]], keep_input=keep, batch_size=1, enqueue_many=True)
+
+    with self.test_session():
+      coord = coordinator.Coordinator()
+      threads = queue_runner_impl.start_queue_runners(coord=coord)
+
+      batched_np = batched.eval()
+
+      coord.request_stop()
+      for thread in threads:
+        thread.join()
+
+    self.assertAllEqual([[0, 1], [0, 2]], batched_np.indices)
+    self.assertAllEqual([5, 4], batched_np.values)
+    self.assertAllEqual([1, 4], batched_np.dense_shape)
 
 
 class ShuffleBatchTest(test_lib.TestCase):

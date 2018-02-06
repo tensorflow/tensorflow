@@ -16,11 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_FRAMEWORK_MEMORY_TYPES_H_
 #define TENSORFLOW_FRAMEWORK_MEMORY_TYPES_H_
 
-#include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/types.h"
 
 namespace tensorflow {
+
+class NodeDef;
 
 // Returns into *{input,output}_memory_types the memory type of each
 // {input,output} tensor.

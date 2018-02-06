@@ -34,15 +34,16 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
+namespace {
 
 TEST(RendezvousTest, Key) {
   const string key = Rendezvous::CreateKey(
       "/job:mnist/replica:1/task:2/CPU:0", 7890,
-      "/job:mnist/replica:1/task:2/GPU:0", "var0", FrameAndIter(0, 0));
+      "/job:mnist/replica:1/task:2/device:GPU:0", "var0", FrameAndIter(0, 0));
   EXPECT_EQ(key,
             "/job:mnist/replica:1/task:2/CPU:0;"
             "0000000000001ed2;"  // 7890 = 0x1ed2
-            "/job:mnist/replica:1/task:2/GPU:0;"
+            "/job:mnist/replica:1/task:2/device:GPU:0;"
             "var0;"
             "0:0");
   Rendezvous::ParsedKey parsed;
@@ -50,12 +51,12 @@ TEST(RendezvousTest, Key) {
   EXPECT_EQ(parsed.src_device, "/job:mnist/replica:1/task:2/CPU:0");
   EXPECT_EQ(parsed.src_incarnation, 7890);
   EXPECT_EQ(parsed.src.type, "CPU");
-  EXPECT_EQ(parsed.dst_device, "/job:mnist/replica:1/task:2/GPU:0");
+  EXPECT_EQ(parsed.dst_device, "/job:mnist/replica:1/task:2/device:GPU:0");
   EXPECT_EQ(parsed.dst.type, "GPU");
 
   EXPECT_FALSE(Rendezvous::ParseKey("foo;bar;baz", &parsed).ok());
   EXPECT_FALSE(Rendezvous::ParseKey("/job:mnist/replica:1/task:2/CPU:0;"
-                                    "/job:mnist/replica:1/task:2/GPU:0;",
+                                    "/job:mnist/replica:1/task:2/device:GPU:0;",
                                     &parsed)
                    .ok());
   EXPECT_FALSE(
@@ -64,22 +65,20 @@ TEST(RendezvousTest, Key) {
 
 class LocalRendezvousTest : public ::testing::Test {
  public:
-  LocalRendezvousTest()
-      : threads_(new thread::ThreadPool(Env::Default(), "test", 16)) {
+  LocalRendezvousTest() : threads_(Env::Default(), "test", 16) {
     rendez_ = NewLocalRendezvous();
   }
 
-  ~LocalRendezvousTest() override {
-    rendez_->Unref();
-    delete threads_;
-  }
+  ~LocalRendezvousTest() override { rendez_->Unref(); }
 
-  void SchedClosure(std::function<void()> fn) { threads_->Schedule(fn); }
+  void SchedClosure(std::function<void()> fn) {
+    threads_.Schedule(std::move(fn));
+  }
 
   Rendezvous* rendez_;
 
  private:
-  thread::ThreadPool* threads_;
+  thread::ThreadPool threads_;
 };
 
 // string -> Tensor<string>
@@ -96,26 +95,28 @@ string V(const Tensor& tensor) {
   return tensor.scalar<string>()();
 }
 
-const char* kFoo = "/cpu:0;1;/cpu:1;foo;1;2";
-const char* kBar = "/gpu:0;2;/gpu:1;bar;1;2";
-
 Rendezvous::ParsedKey MakeKey(const string& name) {
   string s = Rendezvous::CreateKey("/job:mnist/replica:1/task:2/CPU:0", 7890,
-                                   "/job:mnist/replica:1/task:2/GPU:0", name,
-                                   FrameAndIter(0, 0));
+                                   "/job:mnist/replica:1/task:2/device:GPU:0",
+                                   name, FrameAndIter(0, 0));
   Rendezvous::ParsedKey k;
   TF_EXPECT_OK(Rendezvous::ParseKey(s, &k));
   return k;
 }
 
-Rendezvous::ParsedKey KeyFoo() { return MakeKey("foo"); }
-Rendezvous::ParsedKey KeyBar() { return MakeKey("bar"); }
+const Rendezvous::ParsedKey& KeyFoo() {
+  static auto key = MakeKey("foo");
+  return key;
+}
+
+const Rendezvous::ParsedKey& KeyBar() {
+  static auto key = MakeKey("bar");
+  return key;
+}
 
 TEST_F(LocalRendezvousTest, SendRecv) {
   Rendezvous::Args args;
   TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("hello"), false));
-  EXPECT_TRUE(
-      errors::IsAborted(rendez_->Send(KeyFoo(), args, V("hello"), false)));
   Tensor val(DT_STRING);
   bool is_dead = false;
   TF_ASSERT_OK(rendez_->Recv(KeyFoo(), args, &val, &is_dead));
@@ -135,26 +136,7 @@ TEST_F(LocalRendezvousTest, RecvSend) {
   EXPECT_EQ("hello", V(val));
 }
 
-TEST_F(LocalRendezvousTest, DuplicateWaiterRecv) {
-  SchedClosure([this]() {
-    Tensor t(DT_STRING);
-    bool is_dead = false;
-    Rendezvous::Args args;
-    TF_ASSERT_OK(rendez_->Recv(KeyFoo(), args, &t, &is_dead));
-    TF_ASSERT_OK(rendez_->Send(KeyBar(), args, t, is_dead));
-  });
-  Env::Default()->SleepForMicroseconds(1000000);
-  Tensor val(DT_STRING);
-  bool val_dead = false;
-  Rendezvous::Args args;
-  EXPECT_TRUE(
-      errors::IsAborted(rendez_->Recv(KeyFoo(), args, &val, &val_dead)));
-  TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("secret msg"), val_dead));
-  TF_ASSERT_OK(rendez_->Recv(KeyBar(), args, &val, &val_dead));
-  EXPECT_EQ("secret msg", V(val));
-}
-
-TEST_F(LocalRendezvousTest, DuplicateSerialRecv) {
+TEST_F(LocalRendezvousTest, PingPong) {
   SchedClosure([this]() {
     Tensor t(DT_STRING);
     bool is_dead = false;
@@ -169,8 +151,6 @@ TEST_F(LocalRendezvousTest, DuplicateSerialRecv) {
   TF_ASSERT_OK(rendez_->Send(KeyFoo(), args, V("secret msg"), val_dead));
   TF_ASSERT_OK(rendez_->Recv(KeyBar(), args, &val, &val_dead));
   EXPECT_EQ("secret msg", V(val));
-  EXPECT_TRUE(
-      errors::IsAborted(rendez_->Recv(KeyFoo(), args, &val, &val_dead)));
 }
 
 // A simple structure that behaves a bit like a blocking counter.  The
@@ -178,32 +158,33 @@ TEST_F(LocalRendezvousTest, DuplicateSerialRecv) {
 // thread waits for done to be notified.
 struct BlockingState {
   mutex lock;
-  int counter;
+  int counter = 0;
   Notification done;
 };
 
 TEST_F(LocalRendezvousTest, RandomSendRecv) {
-  static const int N = 1000;
+  // We are scheduling 2*N closures in the this->threads_, which is
+  // configured with only 16 threads. Furthermore, because the
+  // threadpool may execute the closures in an arbitrary order, we
+  // must use RecvAsync below. Otherwise, blocking Recv() may run
+  // before all all the Send() and deadlock.
+  static const int N = 100;
+  random::PhiloxRandom philox(testing::RandomSeed(), 17);
+  random::SimplePhilox rnd(&philox);
   BlockingState state;
   state.counter = N;
   for (int i = 0; i < N; ++i) {
-    SchedClosure([this, i]() {
-      random::PhiloxRandom philox(testing::RandomSeed() + i, 17);
-      random::SimplePhilox rnd(&philox);
-      Env::Default()->SleepForMicroseconds(1000 + rnd.Uniform(10000));
+    int micros = 100 + rnd.Uniform(1000);
+    SchedClosure([this, i, micros]() {
+      Env::Default()->SleepForMicroseconds(micros);
       Rendezvous::Args args;
       TF_ASSERT_OK(rendez_->Send(MakeKey(strings::StrCat(i)), args,
                                  V(strings::StrCat(i)), false));
     });
-    SchedClosure([this, &state, i]() {
-      random::PhiloxRandom philox(testing::RandomSeed() + N + i, 17);
-      random::SimplePhilox rnd(&philox);
-      Env::Default()->SleepForMicroseconds(1000 + rnd.Uniform(10000));
-      Tensor val(DT_STRING);
-      bool val_dead = false;
-      Rendezvous::Args args;
-      TF_ASSERT_OK(
-          rendez_->Recv(MakeKey(strings::StrCat(i)), args, &val, &val_dead));
+    auto recv_done = [this, &state, i](const Status& status,
+                                       const Rendezvous::Args& sender_args,
+                                       const Rendezvous::Args& recver_args,
+                                       const Tensor& val, const bool val_dead) {
       EXPECT_EQ(strings::StrCat(i), V(val));
       bool done = false;
       {
@@ -216,10 +197,40 @@ TEST_F(LocalRendezvousTest, RandomSendRecv) {
       if (done) {
         state.done.Notify();
       }
+    };
+    micros = 100 + rnd.Uniform(1000);
+    SchedClosure([this, i, micros, recv_done]() {
+      Env::Default()->SleepForMicroseconds(micros);
+      rendez_->RecvAsync(MakeKey(strings::StrCat(i)), Rendezvous::Args(),
+                         recv_done);
     });
   }
 
   state.done.WaitForNotification();
+}
+
+void RandomSleep() {
+  if (std::rand() % 10 == 0) {
+    Env::Default()->SleepForMicroseconds(1000);
+  }
+}
+
+TEST_F(LocalRendezvousTest, MultiSends) {
+  static const int N = 100;
+  const auto& key_foo = KeyFoo();
+  Rendezvous::Args args;
+  SchedClosure([=]() {
+    for (int i = 0; i < N; ++i) {
+      TF_ASSERT_OK(rendez_->Send(key_foo, args, V(strings::StrCat(i)), false));
+      RandomSleep();
+    }
+  });
+  Tensor val;
+  bool val_dead;
+  for (int i = 0; i < N; ++i) {
+    TF_ASSERT_OK(rendez_->Recv(key_foo, args, &val, &val_dead));
+    RandomSleep();
+  }
 }
 
 TEST_F(LocalRendezvousTest, RecvAbort) {
@@ -280,22 +291,22 @@ TEST_F(LocalRendezvousTest, TransferDummyDeviceContext) {
   Notification n;
   Rendezvous::Args args1;
   args1.device_context = new DummyDeviceContext(1);
-  rendez_->RecvAsync(KeyFoo(), args1, [&n](const Status& s,
-                                           const Rendezvous::Args& send_args,
-                                           const Rendezvous::Args& recv_args,
-                                           const Tensor& val, bool is_dead) {
-    CHECK_EQ(123,
-             dynamic_cast<const DummyDeviceContext*>(send_args.device_context)
-                 ->stream_id());
-    n.Notify();
-  });
+  rendez_->RecvAsync(
+      KeyFoo(), args1,
+      [&n](const Status& s, const Rendezvous::Args& send_args,
+           const Rendezvous::Args& recv_args, const Tensor& val, bool is_dead) {
+        CHECK_EQ(123, dynamic_cast<const DummyDeviceContext*>(
+                          send_args.device_context)
+                          ->stream_id());
+        n.Notify();
+      });
 
   n.WaitForNotification();
   args.device_context->Unref();
   args1.device_context->Unref();
 }
 
-static void BM_SendRecv(int iters) {
+void BM_SendRecv(int iters) {
   Rendezvous* rendez = NewLocalRendezvous();
   Tensor orig = V("val");
   Tensor val(DT_STRING, TensorShape({}));
@@ -304,8 +315,8 @@ static void BM_SendRecv(int iters) {
   Status s;
   if (iters > 0) {
     while (iters--) {
-      s = rendez->Send(KeyFoo(), args, orig, is_dead);
-      s = rendez->Recv(KeyFoo(), args, &val, &is_dead);
+      TF_CHECK_OK(rendez->Send(KeyFoo(), args, orig, is_dead));
+      TF_CHECK_OK(rendez->Recv(KeyFoo(), args, &val, &is_dead));
     }
     CHECK_EQ(V(val), V(orig));
   }
@@ -313,12 +324,13 @@ static void BM_SendRecv(int iters) {
 }
 BENCHMARK(BM_SendRecv);
 
-static void BM_RecvSend(int iters) {
+void BM_PingPong(int iters) {
+  CHECK_GT(iters, 0);
   thread::ThreadPool* pool = new thread::ThreadPool(Env::Default(), "test", 1);
 
-  // The main thread sends "foo" for iters/2 times and receives "bar"
-  // for iters/2 times.  The other thread sends "bar" for iters/2
-  // times and receives "foo" for iters/2 times.
+  // The main thread sends "foo" for iters times and receives "bar"
+  // for iters times.  The other thread sends "bar" for iters times
+  // and receives "foo" for iters times.
   Rendezvous* rendez = NewLocalRendezvous();
   pool->Schedule([rendez, iters]() {
     Tensor bar = V("bar");
@@ -326,9 +338,9 @@ static void BM_RecvSend(int iters) {
     bool is_dead = false;
     Rendezvous::Args args;
     Status s;
-    for (int i = 0; i < iters / 2; ++i) {
-      s = rendez->Recv(KeyFoo(), args, &foo, &is_dead);
-      s = rendez->Send(KeyBar(), args, bar, is_dead);
+    for (int i = 0; i < iters; ++i) {
+      TF_CHECK_OK(rendez->Recv(KeyFoo(), args, &foo, &is_dead));
+      TF_CHECK_OK(rendez->Send(KeyBar(), args, bar, is_dead));
     }
     CHECK_EQ("foo", V(foo));
   });
@@ -337,13 +349,14 @@ static void BM_RecvSend(int iters) {
   bool is_dead = false;
   Rendezvous::Args args;
   Status s;
-  for (int i = 0; i < iters / 2; ++i) {
-    s = rendez->Send(KeyFoo(), args, foo, is_dead);
-    s = rendez->Recv(KeyBar(), args, &bar, &is_dead);
+  for (int i = 0; i < iters; ++i) {
+    TF_CHECK_OK(rendez->Send(KeyFoo(), args, foo, is_dead));
+    TF_CHECK_OK(rendez->Recv(KeyBar(), args, &bar, &is_dead));
   }
   CHECK_EQ("bar", V(bar));
   delete pool;
 }
-BENCHMARK(BM_RecvSend);
+BENCHMARK(BM_PingPong);
 
+}  // namespace
 }  // namespace tensorflow

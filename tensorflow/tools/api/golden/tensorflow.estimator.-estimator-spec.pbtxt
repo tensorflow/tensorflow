@@ -8,11 +8,23 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
+    name: "evaluation_hooks"
+    mtype: "<type \'property\'>"
+  }
+  member {
     name: "export_outputs"
     mtype: "<type \'property\'>"
   }
   member {
     name: "loss"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "mode"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "prediction_hooks"
     mtype: "<type \'property\'>"
   }
   member {

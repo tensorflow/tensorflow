@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_
 
 // Header used to split up compilation of GPU tile ops.  For each type you want
 // to have tile ops, create a .cu.cc file containing
@@ -39,7 +39,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/tile_ops_impl.h"
 
 #define DEFINE_DIM(T, NDIM)                            \
-  template struct Tile<Eigen::GpuDevice, T, NDIM>;     \
   template struct TileGrad<Eigen::GpuDevice, T, NDIM>; \
   template struct ReduceAndReshape<Eigen::GpuDevice, T, NDIM, 1>;
 
@@ -57,4 +56,4 @@ limitations under the License.
   }                             \
   }
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_TILE_OPS_GPU_IMPL_H_

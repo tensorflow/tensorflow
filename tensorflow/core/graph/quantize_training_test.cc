@@ -282,7 +282,7 @@ TEST_F(QuantizeTrainingTest, WithBackwardNodes_FakeQuant) {
       g, strings::StrCat(c->name(), "/FakeQuantWithMinMaxVars"), &found_node));
 }
 
-TEST_F(QuantizeTrainingTest, QuantizeGraphDef) {
+TEST_F(QuantizeTrainingTest, QuantizeSerializedGraphDef) {
   // Construct a simple graph with 5 nodes.
   Reset();
   Graph* graph = g_.get();
@@ -310,8 +310,40 @@ TEST_F(QuantizeTrainingTest, QuantizeGraphDef) {
   GraphDef result_graphdef;
   EXPECT_TRUE(ParseProtoUnlimited(&result_graphdef, result_string));
 
+  // Ensure that quantizing the serialized graph_def results in a graph with the
+  // same number of nodes as quantizing the graph.
+  GraphConstructorOptions opts;
+  Graph result_graph(OpRegistry::Global());
+  TF_ASSERT_OK(ConvertGraphDefToGraph(opts, result_graphdef, &result_graph));
+  TF_ASSERT_OK(DoQuantizeTraining(num_bits, "QuantizeAndDequantizeV2", graph));
+  EXPECT_EQ(graph->num_nodes(), result_graph.num_nodes());
+}
+
+TEST_F(QuantizeTrainingTest, QuantizeGraphDef) {
+  // Construct a simple graph with 5 nodes.
+  Reset();
+  Graph* graph = g_.get();
+  Node* const_a = Constant<float>({1.0, 2.0, 3.0, 4.0}, {2, 2});
+  Node* const_b = Constant<float>({1.0, 2.0, 3.0, 4.0}, {2, 2});
+  graph->AddControlEdge(graph->source_node(), const_a);
+  graph->AddControlEdge(graph->source_node(), const_b);
+  Node* relu = test::graph::Relu(graph, const_a);
+  Node* identity = test::graph::Identity(graph, const_b);
+  Node* matmul = test::graph::Matmul(graph, relu, identity, false, false);
+  graph->AddControlEdge(matmul, graph->sink_node());
+
+  int num_bits = 8;
+
+  // Convert the graph to the graphdef string.
+  GraphDef input_graphdef;
+  graph->ToGraphDef(&input_graphdef);
+
+  GraphDef result_graphdef;
+  TF_ASSERT_OK(DoQuantizeTrainingOnGraphDef(
+      input_graphdef, num_bits, "QuantizeAndDequantizeV2", &result_graphdef));
+
   // Ensure that quantizing the graph_def results in a graph with the same
-  // number of nodes.
+  // number of nodes as the graph_def.
   GraphConstructorOptions opts;
   Graph result_graph(OpRegistry::Global());
   TF_ASSERT_OK(ConvertGraphDefToGraph(opts, result_graphdef, &result_graph));

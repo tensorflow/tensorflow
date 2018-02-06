@@ -19,12 +19,16 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.AdagradOptimizer")
 class AdagradOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adagrad algorithm.
 
@@ -61,8 +65,15 @@ class AdagradOptimizer(optimizer.Optimizer):
     for v in var_list:
       with ops.colocate_with(v):
         dtype = v.dtype.base_dtype
-        init = init_ops.constant_initializer(self._initial_accumulator_value,
-                                             dtype=dtype)
+        if v.get_shape().is_fully_defined():
+          init = init_ops.constant_initializer(self._initial_accumulator_value,
+                                               dtype=dtype)
+        else:
+          # Use a Tensor instead of initializer if variable does not have static
+          # shape.
+          init_constant = gen_array_ops.fill(array_ops.shape(v),
+                                             self._initial_accumulator_value)
+          init = math_ops.cast(init_constant, dtype)
       self._get_or_make_slot_with_initializer(v, init, v.get_shape(), dtype,
                                               "accumulator", self._name)
 

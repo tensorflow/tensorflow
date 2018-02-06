@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/neon/depthwiseconv_float.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -70,10 +71,10 @@ class NeonDepthwiseConv2dNativeOp : public BinaryOp<float> {
                                         filter.shape().DebugString()));
 
     const int32 in_depth = input.dim_size(3);
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                in_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", in_depth,
+                    " vs ", filter.dim_size(2)));
     const int32 batch = input.dim_size(0);
     const int32 input_rows = input.dim_size(1);
     const int32 input_cols = input.dim_size(2);
@@ -95,10 +96,10 @@ class NeonDepthwiseConv2dNativeOp : public BinaryOp<float> {
                                          padding_, &out_cols, &pad_cols));
     TensorShape out_shape({batch, out_rows, out_cols, out_depth});
     OP_REQUIRES(
-        context, out_shape.num_elements() <= 2147483647,
-        errors::InvalidArgument("total number of outputs should be within the "
-                                "range of int which is used in the GPU kernel",
-                                in_depth, " vs ", filter.dim_size(2)));
+        context,
+        FastBoundsCheck(out_shape.num_elements(),
+                        std::numeric_limits<int32>::max()),
+        errors::InvalidArgument("Output elements too large for NEON kernel"));
 
     // Output tensor is of the following dimensions:
     // [ in_batch, out_rows, out_cols, out_depth ]

@@ -77,4 +77,14 @@ ExecutionProfile* ExecutableRunOptions::execution_profile() const {
   return execution_profile_;
 }
 
+ExecutableRunOptions& ExecutableRunOptions::set_device_assignment(
+    DeviceAssignment* device_assignment) {
+  device_assignment_ = device_assignment;
+  return *this;
+}
+
+const DeviceAssignment* ExecutableRunOptions::device_assignment() const {
+  return device_assignment_;
+}
+
 }  // namespace xla

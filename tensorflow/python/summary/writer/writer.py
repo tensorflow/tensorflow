@@ -25,12 +25,14 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary.writer.event_file_writer import EventFileWriter
+from tensorflow.python.util.tf_export import tf_export
 
 _PLUGINS_DIR = "plugins"
 
@@ -86,6 +88,14 @@ class SummaryToEventTransformer(object):
           meta_graph.create_meta_graph_def(graph_def=graph_def or
                                            maybe_graph_as_def))
 
+    # This set contains tags of Summary Values that have been encountered
+    # already. The motivation here is that the SummaryWriter only keeps the
+    # metadata property (which is a SummaryMetadata proto) of the first Summary
+    # Value encountered for each tag. The SummaryWriter strips away the
+    # SummaryMetadata for all subsequent Summary Values with tags seen
+    # previously. This saves space.
+    self._seen_summary_tags = set()
+
   def add_summary(self, summary, global_step=None):
     """Adds a `Summary` protocol buffer to the event file.
 
@@ -108,6 +118,24 @@ class SummaryToEventTransformer(object):
       summ = summary_pb2.Summary()
       summ.ParseFromString(summary)
       summary = summ
+
+    # We strip metadata from values with tags that we have seen before in order
+    # to save space - we just store the metadata on the first value with a
+    # specific tag.
+    for value in summary.value:
+      if not value.metadata:
+        continue
+
+      if value.tag in self._seen_summary_tags:
+        # This tag has been encountered before. Strip the metadata.
+        value.ClearField("metadata")
+        continue
+
+      # We encounter a value with a tag we have not encountered previously. And
+      # it has metadata. Remember to strip metadata from future values with this
+      # tag string.
+      self._seen_summary_tags.add(value.tag)
+
     event = event_pb2.Event(summary=summary)
     self._add_event(event, global_step)
 
@@ -249,6 +277,7 @@ class SummaryToEventTransformer(object):
     self.event_writer.add_event(event)
 
 
+@tf_export("summary.FileWriter")
 class FileWriter(SummaryToEventTransformer):
   """Writes `Summary` protocol buffers to event files.
 
@@ -305,10 +334,31 @@ class FileWriter(SummaryToEventTransformer):
       graph_def: DEPRECATED: Use the `graph` argument instead.
       filename_suffix: A string. Every event file's name is suffixed with
         `suffix`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    `FileWriter` is not compatible with eager execution. To write TensorBoard
+    summaries under eager execution, use `tf.contrib.summary` instead.
+    @end_compatbility
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "tf.summary.FileWriter is not compatible with eager execution. "
+          "Use tf.contrib.summary instead.")
+
     event_writer = EventFileWriter(logdir, max_queue, flush_secs,
                                    filename_suffix)
     super(FileWriter, self).__init__(event_writer, graph, graph_def)
+
+  def __enter__(self):
+    """Make usable with "with" statement."""
+    return self
+
+  def __exit__(self, unused_type, unused_value, unused_traceback):
+    """Make usable with "with" statement."""
+    self.close()
 
   def get_logdir(self):
     """Returns the directory where event file will be written."""

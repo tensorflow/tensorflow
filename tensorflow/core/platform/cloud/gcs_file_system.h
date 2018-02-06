@@ -17,9 +17,15 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
 
 #include <string>
+#include <utility>
 #include <vector>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cloud/auth_provider.h"
+#include "tensorflow/core/platform/cloud/expiring_lru_cache.h"
+#include "tensorflow/core/platform/cloud/file_block_cache.h"
+#include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
+#include "tensorflow/core/platform/cloud/gcs_throttle.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/cloud/retrying_file_system.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -32,10 +38,17 @@ namespace tensorflow {
 /// which adds retry logic to GCS operations.
 class GcsFileSystem : public FileSystem {
  public:
+  struct TimeoutConfig;
+
   GcsFileSystem();
   GcsFileSystem(std::unique_ptr<AuthProvider> auth_provider,
                 std::unique_ptr<HttpRequest::Factory> http_request_factory,
-                size_t read_ahead_bytes, int64 initial_retry_delay_usec);
+                size_t block_size, size_t max_bytes, uint64 max_staleness,
+                uint64 stat_cache_max_age, size_t stat_cache_max_entries,
+                uint64 matching_paths_cache_max_age,
+                size_t matching_paths_cache_max_entries,
+                int64 initial_retry_delay_usec, TimeoutConfig timeouts,
+                std::pair<const string, const string>* additional_header);
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -74,7 +87,68 @@ class GcsFileSystem : public FileSystem {
 
   Status DeleteRecursively(const string& dirname, int64* undeleted_files,
                            int64* undeleted_dirs) override;
-  size_t get_readahead_buffer_size() const { return read_ahead_bytes_; }
+
+  void FlushCaches() override;
+
+  /// These accessors are mainly for testing purposes, to verify that the
+  /// environment variables that control these parameters are handled correctly.
+  size_t block_size() const { return file_block_cache_->block_size(); }
+  size_t max_bytes() const { return file_block_cache_->max_bytes(); }
+  uint64 max_staleness() const { return file_block_cache_->max_staleness(); }
+  TimeoutConfig timeouts() const { return timeouts_; }
+  string additional_header_name() const {
+    return additional_header_ ? additional_header_->first : "";
+  }
+  string additional_header_value() const {
+    return additional_header_ ? additional_header_->second : "";
+  }
+
+  uint64 stat_cache_max_age() const { return stat_cache_->max_age(); }
+  size_t stat_cache_max_entries() const { return stat_cache_->max_entries(); }
+
+  uint64 matching_paths_cache_max_age() const {
+    return matching_paths_cache_->max_age();
+  }
+  size_t matching_paths_cache_max_entries() const {
+    return matching_paths_cache_->max_entries();
+  }
+
+  /// Structure containing the information for timeouts related to accessing the
+  /// GCS APIs.
+  ///
+  /// All values are in seconds.
+  struct TimeoutConfig {
+    // The request connection timeout. If a connection cannot be established
+    // within `connect` seconds, abort the request.
+    uint32 connect = 120;  // 2 minutes
+
+    // The request idle timeout. If a request has seen no activity in `idle`
+    // seconds, abort the request.
+    uint32 idle = 60;  // 1 minute
+
+    // The maximum total time a metadata request can take. If a request has not
+    // completed within `metadata` seconds, the request is aborted.
+    uint32 metadata = 3600;  // 1 hour
+
+    // The maximum total time a block read request can take. If a request has
+    // not completed within `read` seconds, the request is aborted.
+    uint32 read = 3600;  // 1 hour
+
+    // The maximum total time an upload request can take. If a request has not
+    // completed within `write` seconds, the request is aborted.
+    uint32 write = 3600;  // 1 hour
+
+    TimeoutConfig() {}
+    TimeoutConfig(uint32 connect, uint32 idle, uint32 metadata, uint32 read,
+                  uint32 write)
+        : connect(connect),
+          idle(idle),
+          metadata(metadata),
+          read(read),
+          write(write) {}
+  };
+
+  Status CreateHttpRequest(std::unique_ptr<HttpRequest>* request);
 
  private:
   /// \brief Checks if the bucket exists. Returns OK if the check succeeded.
@@ -85,7 +159,8 @@ class GcsFileSystem : public FileSystem {
   /// \brief Checks if the object exists. Returns OK if the check succeeded.
   ///
   /// 'result' is set if the function returns OK. 'result' cannot be nullptr.
-  Status ObjectExists(const string& bucket, const string& object, bool* result);
+  Status ObjectExists(const string& fname, const string& bucket,
+                      const string& object, bool* result);
 
   /// \brief Checks if the folder exists. Returns OK if the check succeeded.
   ///
@@ -104,19 +179,37 @@ class GcsFileSystem : public FileSystem {
                             std::vector<string>* result, bool recursively,
                             bool include_self_directory_marker);
   /// Retrieves file statistics assuming fname points to a GCS object.
-  Status StatForObject(const string& bucket, const string& object,
-                       FileStatistics* stat);
+  Status StatForObject(const string& fname, const string& bucket,
+                       const string& object, FileStatistics* stat);
   Status RenameObject(const string& src, const string& target);
+
+  std::unique_ptr<FileBlockCache> MakeFileBlockCache(size_t block_size,
+                                                     size_t max_bytes,
+                                                     uint64 max_staleness);
+
+  /// Loads file contents from GCS for a given filename, offset, and length.
+  Status LoadBufferFromGCS(const string& filename, size_t offset, size_t n,
+                           char* buffer, size_t* bytes_transferred);
 
   std::unique_ptr<AuthProvider> auth_provider_;
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
+  std::unique_ptr<FileBlockCache> file_block_cache_;
+  std::unique_ptr<GcsDnsCache> dns_cache_;
+  GcsThrottle throttle_;
 
-  // The number of bytes to read ahead for buffering purposes in the
-  // RandomAccessFile implementation. Defaults to 256Mb.
-  size_t read_ahead_bytes_ = 256 * 1024 * 1024;
+  using StatCache = ExpiringLRUCache<FileStatistics>;
+  std::unique_ptr<StatCache> stat_cache_;
 
-  // The initial delay for exponential backoffs when retrying failed calls.
+  using MatchingPathsCache = ExpiringLRUCache<std::vector<string>>;
+  std::unique_ptr<MatchingPathsCache> matching_paths_cache_;
+
+  TimeoutConfig timeouts_;
+
+  /// The initial delay for exponential backoffs when retrying failed calls.
   const int64 initial_retry_delay_usec_ = 1000000L;
+
+  // Additional header material to be transmitted with all GCS requests
+  std::unique_ptr<std::pair<const string, const string>> additional_header_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);
 };

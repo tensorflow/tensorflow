@@ -216,6 +216,7 @@ def skip_gram_sample_with_text_vocab(input_tensor,
                                      vocab_delimiter=",",
                                      vocab_min_count=0,
                                      vocab_subsampling=None,
+                                     corpus_size=None,
                                      min_skips=1,
                                      max_skips=5,
                                      start=0,
@@ -267,6 +268,18 @@ def skip_gram_sample_with_text_vocab(input_tensor,
       frequently will be randomly down-sampled. Reasonable starting values may
       be around 1e-3 or 1e-5. See Eq. 5 in http://arxiv.org/abs/1310.4546 for
       more details.
+    corpus_size: (Optional) `int`, `float`, or scalar `Tensor` specifying the
+      total number of tokens in the corpus (e.g., sum of all the frequency
+      counts of `vocab_freq_file`). Used with `vocab_subsampling` for
+      down-sampling frequently occurring tokens. If this is specified,
+      `vocab_freq_file` and `vocab_subsampling` must also be specified.
+      If `corpus_size` is needed but not supplied, then it will be calculated
+      from `vocab_freq_file`. You might want to supply your own value if you
+      have already eliminated infrequent tokens from your vocabulary files
+      (where frequency < vocab_min_count) to save memory in the internal token
+      lookup table. Otherwise, the unused tokens' variables will waste memory.
+      The user-supplied `corpus_size` value must be greater than or equal to the
+      sum of all the frequency counts of `vocab_freq_file`.
     min_skips: `int` or scalar `Tensor` specifying the minimum window size to
       randomly use for each token. Must be >= 0 and <= `max_skips`. If
       `min_skips` and `max_skips` are both 0, the only label outputted will be
@@ -316,7 +329,7 @@ def skip_gram_sample_with_text_vocab(input_tensor,
   # Iterates through the vocab file and calculates the number of vocab terms as
   # well as the total corpus size (by summing the frequency counts of all the
   # vocab terms).
-  corpus_size = 0.0
+  calculated_corpus_size = 0.0
   vocab_size = 0
   with gfile.GFile(vocab_freq_file, mode="r") as f:
     reader = csv.reader(f, delimiter=vocab_delimiter)
@@ -334,7 +347,15 @@ def skip_gram_sample_with_text_vocab(input_tensor,
             format(freq, row))
       # Note: tokens whose frequencies are below vocab_min_count will still
       # contribute to the total corpus size used for vocab subsampling.
-      corpus_size += freq
+      calculated_corpus_size += freq
+
+  if not corpus_size:
+    corpus_size = calculated_corpus_size
+  elif calculated_corpus_size - corpus_size > 1e-6:
+    raise ValueError(
+        "`corpus_size`={} must be greater than or equal to the sum of all the "
+        "frequency counts ({}) of `vocab_freq_file` ({}).".format(
+            corpus_size, calculated_corpus_size, vocab_freq_file))
 
   vocab_freq_table = lookup.HashTable(
       lookup.TextFileInitializer(

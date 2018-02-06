@@ -20,9 +20,11 @@ py_library(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:functional_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:util",
+        "@six_archive//:six",
     ],
 )
 

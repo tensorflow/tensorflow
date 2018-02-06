@@ -31,6 +31,8 @@ py_library(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 

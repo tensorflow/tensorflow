@@ -18,6 +18,8 @@ limitations under the License.
 #include <string>
 #include <utility>
 
+#include "tensorflow/compiler/xla/execution_options_util.h"
+#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -58,7 +60,7 @@ StatusOr<std::unique_ptr<Literal>> Client::Transfer(
         "server provided response without a literal in "
         "TransferToClient request");
   }
-  return MakeUnique<Literal>(response.literal());
+  return Literal::CreateFromProto(*response.mutable_literal());
 }
 
 StatusOr<std::unique_ptr<GlobalData>> Client::TransferToServer(
@@ -140,8 +142,7 @@ StatusOr<std::unique_ptr<Literal>> Client::TransferFromOutfeed(
         "TransferToClient request");
   }
 
-  Literal literal(response.literal());
-  return MakeUnique<Literal>(literal);
+  return Literal::CreateFromProto(response.literal());
 }
 
 Status Client::ResetDevice() {
@@ -197,10 +198,14 @@ StatusOr<std::unique_ptr<GlobalData>> Client::Execute(
     ExecutionProfile* execution_profile) {
   ExecuteRequest request;
   *request.mutable_computation() = computation.handle();
-  if (execution_options != nullptr) {
+
+  if (execution_options == nullptr) {
+    *request.mutable_execution_options() = CreateDefaultExecutionOptions();
+  } else {
     *request.mutable_execution_options() = *execution_options;
   }
   for (GlobalData* argument : arguments) {
+    CHECK(argument != nullptr) << "Argument pointers must not be null.";
     *request.add_arguments() = argument->handle();
   }
 
@@ -235,9 +240,6 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::ExecuteParallel(
     *single_request.mutable_computation() = computation.computation.handle();
     for (GlobalData* argument : computation.arguments) {
       *single_request.add_arguments() = argument->handle();
-    }
-    if (computation.device_handle != nullptr) {
-      *single_request.mutable_device_handle() = *computation.device_handle;
     }
     *single_request.mutable_execution_options() = computation.execution_options;
     *request.add_requests() = single_request;
@@ -289,59 +291,6 @@ StatusOr<std::vector<DeviceHandle>> Client::GetDeviceHandles(
   return device_handles;
 }
 
-StatusOr<ExecutionHandle> Client::ExecuteAsync(
-    const Computation& computation,
-    tensorflow::gtl::ArraySlice<GlobalData*> arguments,
-    const ExecutionOptions* execution_options) {
-  ExecuteAsyncRequest request;
-  *request.mutable_computation() = computation.handle();
-  for (GlobalData* argument : arguments) {
-    *request.add_arguments() = argument->handle();
-  }
-  if (execution_options != nullptr) {
-    *request.mutable_execution_options() = *execution_options;
-  }
-
-  ExecuteAsyncResponse response;
-  VLOG(1) << "making execute async request: " << request.ShortDebugString();
-  Status s = stub_->ExecuteAsync(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-
-  return response.execution();
-}
-
-StatusOr<std::unique_ptr<GlobalData>> Client::WaitForExecution(
-    const Computation& computation, const ExecutionHandle& execution,
-    ExecutionProfile* execution_profile) {
-  WaitForExecutionRequest request;
-  *request.mutable_execution() = execution;
-
-  WaitForExecutionResponse response;
-  VLOG(1) << "making wait-for-execute request: " << request.ShortDebugString();
-  Status s = stub_->WaitForExecution(&request, &response);
-  VLOG(1) << "done with request";
-
-  if (!s.ok()) {
-    return s;
-  }
-
-  if (execution_profile != nullptr) {
-    *execution_profile = response.profile();
-    if (VLOG_IS_ON(1)) {
-      TF_ASSIGN_OR_RETURN(
-          auto execution_stats,
-          ExecutionStatsAsString(computation, response.profile()));
-      VLOG(1) << execution_stats;
-    }
-  }
-
-  return MakeUnique<GlobalData>(stub_, response.output());
-}
-
 Status Client::Unregister(const GlobalData& data) {
   UnregisterRequest request;
   *request.mutable_data() = data.handle();
@@ -376,9 +325,10 @@ StatusOr<std::vector<std::unique_ptr<GlobalData>>> Client::DeconstructTuple(
 }
 
 StatusOr<ComputationStats> Client::GetComputationStats(
-    const Computation& computation) const {
+    const Computation& computation, const DebugOptions& debug_options) const {
   ComputationStatsRequest request;
   *request.mutable_computation() = computation.handle();
+  *request.mutable_debug_options() = debug_options;
   ComputationStatsResponse response;
 
   VLOG(1) << "making computation stats request";
@@ -427,7 +377,10 @@ StatusOr<Shape> Client::GetShape(const GlobalData& data) {
 
 StatusOr<string> Client::ExecutionStatsAsString(
     const Computation& computation, const ExecutionProfile& profile) {
-  TF_ASSIGN_OR_RETURN(auto computation_stats, GetComputationStats(computation));
+  TF_ASSIGN_OR_RETURN(
+      auto computation_stats,
+      GetComputationStats(computation,
+                          legacy_flags::GetDebugOptionsFromFlags()));
   int64 total_flops =
       computation_stats.flop_count() + computation_stats.transcendental_count();
   if (profile.compute_time_ns() > 0) {

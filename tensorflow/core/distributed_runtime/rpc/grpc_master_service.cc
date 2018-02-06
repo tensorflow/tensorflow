@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/protobuf/master.pb.h"
 
 namespace tensorflow {
@@ -172,6 +173,7 @@ class GrpcMasterService : public AsyncServiceInterface {
 
   // RPC handler for running one step in a session.
   void RunStepHandler(MasterCall<RunStepRequest, RunStepResponse>* call) {
+    auto* trace = TraceRpc("RunStep/Server", call->client_metadata());
     CallOptions* call_opts = new CallOptions;
     if (call->request.options().timeout_in_ms() > 0) {
       call_opts->SetTimeout(call->request.options().timeout_in_ms());
@@ -183,14 +185,22 @@ class GrpcMasterService : public AsyncServiceInterface {
     MutableRunStepResponseWrapper* wrapped_response =
         new NonOwnedProtoRunStepResponse(&call->response);
     call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-    master_impl_->RunStep(call_opts, wrapped_request, wrapped_response,
-                          [call, call_opts, wrapped_request,
-                           wrapped_response](const Status& status) {
-                            call->ClearCancelCallback();
-                            delete call_opts;
-                            delete wrapped_request;
-                            call->SendResponse(ToGrpcStatus(status));
-                          });
+    master_impl_->RunStep(
+        call_opts, wrapped_request, wrapped_response,
+        [call, call_opts, wrapped_request, wrapped_response,
+         trace](const Status& status) {
+          call->ClearCancelCallback();
+          delete call_opts;
+          delete wrapped_request;
+          delete trace;
+          if (call->request.store_errors_in_response_body() && !status.ok()) {
+            call->response.set_status_code(status.code());
+            call->response.set_status_error_message(status.error_message());
+            call->SendResponse(ToGrpcStatus(Status::OK()));
+          } else {
+            call->SendResponse(ToGrpcStatus(status));
+          }
+        });
     ENQUEUE_REQUEST(RunStep, true);
   }
 
@@ -223,6 +233,18 @@ class GrpcMasterService : public AsyncServiceInterface {
     ENQUEUE_REQUEST(Reset, false);
   }
 #undef ENQUEUE_REQUEST
+
+  // Start tracing, including the ID attached to the RPC.
+  port::Tracing::TraceMe* TraceRpc(
+      StringPiece name,
+      const std::multimap<::grpc::string_ref, ::grpc::string_ref>& metadata) {
+    StringPiece id;
+    auto it = metadata.find(GrpcIdKey());
+    if (it != metadata.end()) {
+      id = StringPiece(it->second.data(), it->second.size());
+    }
+    return new port::Tracing::TraceMe(name, id);
+  }
 
   TF_DISALLOW_COPY_AND_ASSIGN(GrpcMasterService);
 };

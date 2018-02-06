@@ -41,7 +41,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 namespace {
 
@@ -205,37 +205,25 @@ struct LaunchBatchMatMul<CPUDevice, Scalar> {
     bool conjugate_result = false;
 
     // Number of matrix multiplies i.e. size of the batch.
-    const int64 num_units = in_x.dim_size(0);
+    const int64 batch_size = in_x.dim_size(0);
     const int64 cost_per_unit =
         in_x.dim_size(1) * in_x.dim_size(2) * out->dim_size(2);
-    const int64 min_dim = std::min(std::min(in_x.dim_size(1), in_x.dim_size(2)),
-                                   out->dim_size(2));
-    const int64 kMaxCostOuterParallelism = 128 * 256 * 256;  // heuristic.
+    const int64 small_dim = std::min(
+        std::min(in_x.dim_size(1), in_x.dim_size(2)), out->dim_size(2));
+    const int64 kMaxCostOuterParallelism = 128 * 128 * 256;  // heuristic.
     auto worker_threads = *(context->device()->tensorflow_cpu_worker_threads());
-    if (min_dim > 1 &&
-        (num_units == 1 || cost_per_unit > kMaxCostOuterParallelism)) {
+    if (small_dim > 1 &&
+        (batch_size == 1 || cost_per_unit > kMaxCostOuterParallelism)) {
       // Parallelize over inner dims.
       // For large matrix products it is counter-productive to parallelize
       // over the batch dimension.
       ParallelMatMulKernel::Run(context, in_x, in_y, adj_x, adj_y, out, 0,
-                                num_units);
-      conjugate_result = adj_x;
-    } else if (min_dim > 1 && worker_threads.num_threads > num_units) {
-      // Parallelize over both outer and inner dims.
-      // TODO(rmlarsen): The parallelized contraction in Eigen can deadlock
-      // when running num_threads or more contractions in parallel. Launch on
-      // all worker_threads.num_threads threads here once that is fixed.
-      Shard(std::max(1, worker_threads.num_threads - 1), worker_threads.workers,
-            num_units, cost_per_unit,
-            [context, &in_x, &in_y, adj_x, adj_y, out](int start, int limit) {
-              ParallelMatMulKernel::Run(context, in_x, in_y, adj_x, adj_y, out,
-                                        start, limit);
-            });
+                                batch_size);
       conjugate_result = adj_x;
     } else {
       // Parallelize over outer dims. For small matrices and large batches, it
       // is counter-productive to parallelize the inner matrix multiplies.
-      Shard(worker_threads.num_threads, worker_threads.workers, num_units,
+      Shard(worker_threads.num_threads, worker_threads.workers, batch_size,
             cost_per_unit,
             [&in_x, &in_y, adj_x, adj_y, out](int start, int limit) {
               SequentialMatMulKernel<Scalar>::Run(in_x, in_y, adj_x, adj_y, out,
@@ -441,14 +429,13 @@ template <typename Scalar>
 struct LaunchBatchMatMul<SYCLDevice, Scalar> {
   static void Launch(OpKernelContext* context, const Tensor& in_x,
                      const Tensor& in_y, bool adj_x, bool adj_y, Tensor* out) {
-
-  // Number of matrix multiplies i.e. size of the batch.
-  const int64 num_units = in_x.dim_size(0);
-  ParallelMatMulKernelSYCL<Scalar>::Run(context, in_x, in_y, adj_x, adj_y, out,
-                           0, num_units);
+    // Number of matrix multiplies i.e. size of the batch.
+    const int64 batch_size = in_x.dim_size(0);
+    ParallelMatMulKernelSYCL<Scalar>::Run(context, in_x, in_y, adj_x, adj_y,
+                                          out, 0, batch_size);
   }
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename Scalar>
 class BatchMatMul : public OpKernel {
@@ -474,10 +461,10 @@ class BatchMatMul : public OpKernel {
     TensorShape out_shape;
     for (int i = 0; i < ndims - 2; ++i) {
       OP_REQUIRES(ctx, in0.dim_size(i) == in1.dim_size(i),
-                  errors::InvalidArgument("In[0].dim(", i, ") and In[1].dim(",
-                                          i, ") must be the same: ",
-                                          in0.shape().DebugString(), " vs ",
-                                          in1.shape().DebugString()));
+                  errors::InvalidArgument(
+                      "In[0].dim(", i, ") and In[1].dim(", i,
+                      ") must be the same: ", in0.shape().DebugString(), " vs ",
+                      in1.shape().DebugString()));
       out_shape.AddDim(in0.dim_size(i));
     }
     auto n = (ndims == 2) ? 1 : out_shape.num_elements();
@@ -519,12 +506,12 @@ class BatchMatMul : public OpKernel {
   bool adj_y_;
 };
 
-#define REGISTER_BATCH_MATMUL_CPU(TYPE)                                              \
+#define REGISTER_BATCH_MATMUL_CPU(TYPE)                                 \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("BatchMatMul").Device(DEVICE_CPU).TypeConstraint<TYPE>("T"), \
       BatchMatMul<CPUDevice, TYPE>)
 
-#define REGISTER_BATCH_MATMUL_GPU(TYPE)                                              \
+#define REGISTER_BATCH_MATMUL_GPU(TYPE)                                 \
   REGISTER_KERNEL_BUILDER(                                              \
       Name("BatchMatMul").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"), \
       BatchMatMul<GPUDevice, TYPE>)
@@ -534,5 +521,5 @@ class BatchMatMul : public OpKernel {
   REGISTER_KERNEL_BUILDER(                                               \
       Name("BatchMatMul").Device(DEVICE_SYCL).TypeConstraint<TYPE>("T"), \
       BatchMatMul<SYCLDevice, TYPE>)
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // end namespace tensorflow

@@ -41,7 +41,7 @@ using HloConstantFoldingTest = HloTestBase;
 TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
   HloComputation::Builder builder(TestName());
   HloInstruction* input = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(42.0f)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(42.0f)));
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(S64, {}), input));
 
@@ -51,19 +51,18 @@ TEST_F(HloConstantFoldingTest, ConvertF32ToS64) {
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
 
   HloConstantFolding const_folder;
-  TF_ASSIGN_OR_ASSERT_OK(bool result, const_folder.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
   EXPECT_TRUE(result);
 
   EXPECT_THAT(computation->root_instruction(), op::Constant());
-  EXPECT_EQ(LiteralUtil::GetFirstElement<int64>(
-                computation->root_instruction()->literal()),
+  EXPECT_EQ(computation->root_instruction()->literal().GetFirstElement<int64>(),
             42);
 }
 
 TEST_F(HloConstantFoldingTest, ConvertS64ToF32) {
   HloComputation::Builder builder(TestName());
   HloInstruction* input = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int64>(42)));
+      HloInstruction::CreateConstant(Literal::CreateR0<int64>(42)));
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(F32, {}), input));
 
@@ -73,19 +72,18 @@ TEST_F(HloConstantFoldingTest, ConvertS64ToF32) {
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
 
   HloConstantFolding const_folder;
-  TF_ASSIGN_OR_ASSERT_OK(bool result, const_folder.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
   EXPECT_TRUE(result);
 
   EXPECT_THAT(computation->root_instruction(), op::Constant());
-  EXPECT_EQ(LiteralUtil::GetFirstElement<float>(
-                computation->root_instruction()->literal()),
+  EXPECT_EQ(computation->root_instruction()->literal().GetFirstElement<float>(),
             42.0f);
 }
 
 TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
   HloComputation::Builder builder(TestName());
-  HloInstruction* input = builder.AddInstruction(HloInstruction::CreateConstant(
-      LiteralUtil::CreateR1<float>({42.0f, 19.0f})));
+  HloInstruction* input = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR1<float>({42.0f, 19.0f})));
   builder.AddInstruction(
       HloInstruction::CreateConvert(ShapeUtil::MakeShape(S64, {2}), input));
 
@@ -95,16 +93,12 @@ TEST_F(HloConstantFoldingTest, ConvertF32ArrayToS64Array) {
   EXPECT_THAT(computation->root_instruction(), op::Convert(input));
 
   HloConstantFolding const_folder;
-  TF_ASSIGN_OR_ASSERT_OK(bool result, const_folder.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
   EXPECT_TRUE(result);
 
   EXPECT_THAT(computation->root_instruction(), op::Constant());
-  EXPECT_EQ(
-      LiteralUtil::Get<int64>(computation->root_instruction()->literal(), {0}),
-      42);
-  EXPECT_EQ(
-      LiteralUtil::Get<int64>(computation->root_instruction()->literal(), {1}),
-      19);
+  EXPECT_EQ(computation->root_instruction()->literal().Get<int64>({0}), 42);
+  EXPECT_EQ(computation->root_instruction()->literal().Get<int64>({1}), 19);
 }
 
 TEST_F(HloConstantFoldingTest, Concatenate) {
@@ -126,7 +120,7 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
     for (auto csize : test_config.concat_sizes) {
       dimensions[test_config.concat_dimension] = csize;
       concat_size += csize;
-      auto literal = LiteralUtil::CreateFromDimensions(F32, dimensions);
+      auto literal = Literal::CreateFromDimensions(F32, dimensions);
       HloInstruction* insn = builder.AddInstruction(
           HloInstruction::CreateConstant(std::move(literal)));
       operands.push_back(insn);
@@ -139,7 +133,7 @@ TEST_F(HloConstantFoldingTest, Concatenate) {
     auto computation = module->AddEntryComputation(builder.Build());
 
     HloConstantFolding const_folder;
-    TF_ASSIGN_OR_ASSERT_OK(bool result, const_folder.Run(module.get()));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
     EXPECT_TRUE(result);
 
     HloInstruction* root = computation->root_instruction();
@@ -153,19 +147,20 @@ TEST_F(HloConstantFoldingTest, Slice) {
   const int64 dimensions[] = {11, 8, 7, 5, 9};
   const int64 slice_start[] = {4, 2, 3, 1, 5};
   const int64 slice_limits[] = {10, 8, 6, 5, 9};
-  TF_ASSIGN_OR_ASSERT_OK(auto literal,
-                         LiteralTestUtil::CreateRandomLiteral<F32>(
-                             ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
+  const int64 slice_strides[] = {1, 1, 1, 1, 1};
+  TF_ASSERT_OK_AND_ASSIGN(auto literal,
+                          LiteralTestUtil::CreateRandomLiteral<F32>(
+                              ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
   Shape shape = ShapeUtil::MakeShape(F32, {6, 6, 3, 4, 4});
   builder.AddInstruction(HloInstruction::CreateSlice(
-      shape, literal_instruction, slice_start, slice_limits));
+      shape, literal_instruction, slice_start, slice_limits, slice_strides));
   auto module = CreateNewModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloConstantFolding const_folder;
-  TF_ASSIGN_OR_ASSERT_OK(bool result, const_folder.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
   EXPECT_TRUE(result);
 
   HloInstruction* root = computation->root_instruction();
@@ -176,10 +171,10 @@ TEST_F(HloConstantFoldingTest, Slice) {
 TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   HloComputation::Builder builder(TestName());
   const int64 dimensions[] = {11, 8, 7, 5, 9};
-  TF_ASSIGN_OR_ASSERT_OK(auto literal,
-                         LiteralTestUtil::CreateRandomLiteral<F32>(
-                             ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
-  auto literal_clone = LiteralUtil::CloneToUnique(*literal);
+  TF_ASSERT_OK_AND_ASSIGN(auto literal,
+                          LiteralTestUtil::CreateRandomLiteral<F32>(
+                              ShapeUtil::MakeShape(F32, dimensions), 0.0, 1.0));
+  auto literal_clone = literal->Literal::CloneToUnique();
   HloInstruction* literal_instruction = builder.AddInstruction(
       HloInstruction::CreateConstant(std::move(literal)));
   Shape shape = ShapeUtil::MakeShape(F32, {8, 7, 11, 9, 5});
@@ -190,7 +185,7 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
   auto computation = module->AddEntryComputation(builder.Build());
 
   HloConstantFolding const_folder;
-  TF_ASSIGN_OR_ASSERT_OK(bool result, const_folder.Run(module.get()));
+  TF_ASSERT_OK_AND_ASSIGN(bool result, const_folder.Run(module.get()));
   EXPECT_TRUE(result);
 
   HloInstruction* root = computation->root_instruction();
@@ -199,19 +194,13 @@ TEST_F(HloConstantFoldingTest, TransposeConstantFold) {
 
   using NativeT = typename primitive_util::PrimitiveTypeToNative<F32>::type;
   bool matched = true;
-  LiteralUtil::EachCell<NativeT>(
-      root->literal(),
+  root->literal().EachCell<NativeT>(
       [&](tensorflow::gtl::ArraySlice<int64> indices, NativeT value) {
         std::vector<int64> rindexes = Permute(permutation, indices);
-        matched = matched && (value == LiteralUtil::Get<NativeT>(*literal_clone,
-                                                                 rindexes));
+        matched = matched && (value == literal_clone->Get<NativeT>(rindexes));
       });
   EXPECT_TRUE(matched);
 }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

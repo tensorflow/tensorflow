@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/graph/graph_def_builder.h"
 
+#include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -25,7 +26,6 @@ namespace tensorflow {
 namespace {
 
 TEST(GraphDefBuilderTest, Version) {
-
   // Verify that our assertions will be nontrivial
   ASSERT_LT(0, TF_GRAPH_DEF_VERSION);
 

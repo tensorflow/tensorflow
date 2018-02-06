@@ -15,10 +15,12 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/clusters/single_machine.h"
 
+#include <atomic>
 #include <memory>
 
 #include "tensorflow/cc/training/queue_runner.h"
-#include "tensorflow/core/framework/step_stats.pb.h"
+#include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -31,11 +33,12 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
+static std::atomic<bool> already_provisioned(false);
+
 SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
-    : Cluster(timeout_s),
-      num_gpus_(num_gpus),
-      expected_init_time_s_(0),
-      closing_(false) {
+    : Cluster(timeout_s), expected_init_time_s_(0), closing_(false) {
+  VLOG(1) << "Number of CPU cores: " << num_cpu_cores
+          << " Number of GPUs: " << num_gpus;
   thread_pool_.reset(new thread::ThreadPool(
       Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
 
@@ -60,22 +63,42 @@ SingleMachine::~SingleMachine() {
   // Reset the thread-pool so that there are no outstanding Session::Run(...)s
   // when we delete the session.
   thread_pool_.reset();
-
-  Reset(options_, {}).IgnoreError();
 }
 
 Status SingleMachine::Provision() {
-  Status status = ResetSession();
-  if (!status.ok()) {
-    return status;
+  // This is really ugly: to avoid leaking variables, we need to reset the tf
+  // session every time we're done processing a grappler item. However,
+  // variables are global, and therefore we can't have more than 1 session alive
+  // at a time. This check detects when more that one cluster is provisioned.
+  if (already_provisioned) {
+    return errors::Unavailable(
+        "Can't provision more than one single cluster at a time");
   }
 
-  DeviceProperties attr = GetLocalCPUInfo();
-  devices_["/job:localhost/replica:0/task:0/cpu:0"] = GetLocalCPUInfo();
+  TF_RETURN_IF_ERROR(ResetSession());
 
-  for (int i = 0; i < num_gpus_; ++i) {
-    devices_[strings::StrCat("/job:localhost/replica:0/task:0/gpu:", i)] =
-        GetLocalGPUInfo(i);
+  std::vector<DeviceAttributes> devices;
+  TF_RETURN_IF_ERROR(session_->ListDevices(&devices));
+  int gpu_id = 0;
+  for (const auto& dev : devices) {
+    DeviceProperties attr;
+    if (dev.device_type() == "CPU") {
+      attr = GetLocalCPUInfo();
+    } else if (dev.device_type() == "GPU") {
+      attr = GetLocalGPUInfo(gpu_id++);
+    } else {
+      attr.set_type(dev.device_type());
+    }
+    // Overwrite the memory size since users might have requested to use only a
+    // fraction of the available device memory.
+    attr.set_memory_size(dev.memory_limit());
+    devices_[dev.name()] = attr;
+  }
+  already_provisioned = true;
+
+  // Clear highmark stats of all local allocators.
+  if (cpu_allocator_stats_enabled_) {
+    TF_RETURN_IF_ERROR(ClearAllocatorStats());
   }
   return Status::OK();
 }
@@ -93,27 +116,12 @@ Status SingleMachine::Initialize(const GrapplerItem& item) {
 }
 
 Status SingleMachine::Shutdown() {
-  TF_RETURN_IF_ERROR(CloseSession(true /*use_timeout*/));
+  TF_RETURN_IF_ERROR(ShutdownSession());
 
-  // Delete the threadpool: this ensures that all the pending closures complete
-  // before we return. Note that if that if TF deadlocked on us, the closures
-  // will never complete, and the call to thread_pool_.reset() will never
-  // return: therefore we need to delete the threadpool with the background
-  // thread. That thread itself will also never complete, so the user should
-  // abort the process to avoid leaking too many resources.
-  auto n = std::make_shared<Notification>();
-  Env::Default()->SchedClosure([this, n]() {
-    thread_pool_.reset();
-    n->Notify();
-  });
-  int64 timeout_us = 1000000ll * timeout_s_;
-  const bool notified = WaitForNotificationWithTimeout(n.get(), timeout_us);
-  if (!notified) {
-    // Let the caller know that we can't shutdown the session properly since
-    // there are calls to Session::Run() still running.
-    return errors::Unavailable("The session is still running graphs after ",
-                               timeout_s_, " seconds");
-  }
+  mutex_lock l(this->last_graph_mu_);
+  last_graph_ = nullptr;
+  already_provisioned = false;
+
   return Status::OK();
 }
 
@@ -140,12 +148,19 @@ Status SingleMachine::Run(const GraphDef& graph_def,
         // Also clear the timeline to save memory
         init_metadata_.clear_step_stats();
       }
-      for (int i = 0; i < queue_runner_defs_.size(); ++i) {
+      // We can have at most one hardware trace. Use it for the main graph, and
+      // downgrade tracing of the queue runners to a software trace.
+      RunOptions queue_options = run_options_;
+      if (queue_options.trace_level() >= RunOptions::HARDWARE_TRACE) {
+        queue_options.set_trace_level(RunOptions::SOFTWARE_TRACE);
+      }
+      for (size_t i = 0; i < queue_runner_defs_.size(); ++i) {
         std::unique_ptr<QueueRunner> queue_runner;
         TF_RETURN_IF_ERROR(QueueRunner::New(queue_runner_defs_[i],
                                             coordinator_.get(), &queue_runner));
+
         TF_RETURN_IF_ERROR(queue_runner->StartAndCollectCostGraph(
-            session_.get(), &run_options_));
+            session_.get(), queue_options));
         TF_RETURN_IF_ERROR(
             coordinator_->RegisterRunner(std::move(queue_runner)));
         TF_RETURN_IF_ERROR(coordinator_->GetStatus());
@@ -171,6 +186,41 @@ Status SingleMachine::Run(const GraphDef& graph_def,
   } else {
     return RunWithTimeout(feed, fetch, nullptr);
   }
+  return Status::OK();
+}
+
+Status SingleMachine::EnablePeakMemoryStats(bool enable) {
+  EnableCPUAllocatorStats(enable);
+  cpu_allocator_stats_enabled_ = enable;
+  // No need to enable GPU allocator stats since its stats are always collected.
+  return Status::OK();
+}
+
+Status SingleMachine::GetPeakMemoryUsage(
+    std::unordered_map<string, uint64>* device_peak_memory) const {
+  // Cpu_allocator->TracksAllocationSizes() returns true doesn't always mean the
+  // the AllocatorStats would be collected.
+  if (!cpu_allocator_stats_enabled_) {
+    return Status(error::INVALID_ARGUMENT,
+                  "Tracking allocation for CPU is not enabled.");
+  }
+
+  const DeviceMgr* device_mgr;
+  TF_RETURN_IF_ERROR(session_->LocalDeviceManager(&device_mgr));
+  std::vector<Device*> devices = device_mgr->ListDevices();
+
+  device_peak_memory->clear();
+  for (Device* device : devices) {
+    AllocatorStats stats;
+    auto* allocator = device->GetAllocator(AllocatorAttributes());
+    if (!allocator->TracksAllocationSizes()) {
+      return Status(error::INVALID_ARGUMENT,
+                    "Tracking allocation is not enabled.");
+    }
+    allocator->GetStats(&stats);
+    (*device_peak_memory)[device->name()] = stats.max_bytes_in_use;
+  }
+
   return Status::OK();
 }
 
@@ -208,7 +258,7 @@ Status SingleMachine::RunWithTimeout(
 }
 
 Status SingleMachine::CloseSession(bool use_timeout) {
-  if (!session_) {
+  if (!session_ || !thread_pool_) {
     return Status::OK();
   }
 
@@ -252,18 +302,42 @@ Status SingleMachine::CloseSession(bool use_timeout) {
   return Status::OK();
 }
 
+Status SingleMachine::ShutdownSession() {
+  TF_RETURN_IF_ERROR(CloseSession(true /*use_timeout*/));
+
+  // Delete the threadpool: this ensures that all the pending closures complete
+  // before we return. Note that if TF deadlocked on us, the closures will
+  // never complete, and the call to thread_pool_.reset() will never return:
+  // therefore we need to delete the threadpool with the background thread.
+  // That thread itself will also never complete, so the user should
+  // abort the process to avoid leaking too many resources.
+  auto n = std::make_shared<Notification>();
+  Env::Default()->SchedClosure([this, n]() {
+    thread_pool_.reset();
+    n->Notify();
+  });
+  int64 timeout_us = 1000000ll * timeout_s_;
+  const bool notified = WaitForNotificationWithTimeout(n.get(), timeout_us);
+  if (!notified) {
+    // Let the caller know that we can't shutdown the session properly since
+    // there are calls to Session::Run() still running.
+    return errors::Unavailable("The session is still running graphs after ",
+                               timeout_s_, " seconds");
+  }
+
+  return Status::OK();
+}
+
 Status SingleMachine::ResetSession() {
   if (session_) {
     LOG(INFO) << "Cleaning up previous session";
 
     // Make sure the session is properly closed
-    TF_RETURN_IF_ERROR(Shutdown());
+    TF_RETURN_IF_ERROR(ShutdownSession());
 
-    // We need to Reset the session to ensure that all the variables are
-    // deleted. But first we need to delete the session since Reset()
-    // deletes some of the containers referenced by the session.
+    // Destroying the object deletes all its variables as well. This is only
+    // true for DirectSession.
     session_.reset();
-    TF_RETURN_IF_ERROR(Reset(options_, {}));
   }
 
   LOG(INFO) << "Starting new session";
@@ -273,8 +347,9 @@ Status SingleMachine::ResetSession() {
       Env::Default(), SanitizeThreadSuffix("single_machine"), 2));
 
   session_.reset(NewSession(options_));
-  CHECK(session_ != nullptr);
-
+  if (!session_) {
+    return errors::Unknown("Failed to create session");
+  }
   coordinator_.reset(new Coordinator());
 
   return Status::OK();
@@ -309,6 +384,30 @@ void SingleMachine::MergeCosts(CostGraphDef* graph_costs,
     }
     graph_costs->add_node()->MergeFrom(node);
   }
+}
+
+Status SingleMachine::ClearAllocatorStats() const {
+  // Cpu_allocator->TracksAllocationSizes() returns true doesn't always mean the
+  // the AllocatorStats would be collected.
+  if (!cpu_allocator_stats_enabled_) {
+    return Status(error::INVALID_ARGUMENT,
+                  "Tracking allocation for CPU is not enabled.");
+  }
+
+  const DeviceMgr* device_mgr;
+  TF_RETURN_IF_ERROR(session_->LocalDeviceManager(&device_mgr));
+  std::vector<Device*> devices = device_mgr->ListDevices();
+
+  for (Device* device : devices) {
+    AllocatorStats stats;
+    auto* allocator = device->GetAllocator(AllocatorAttributes());
+    if (!allocator->TracksAllocationSizes()) {
+      return Status(error::INVALID_ARGUMENT,
+                    "Tracking allocation is not enabled.");
+    }
+    allocator->ClearStats();
+  }
+  return Status::OK();
 }
 
 }  // namespace grappler

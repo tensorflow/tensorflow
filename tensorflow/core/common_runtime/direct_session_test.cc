@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -39,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/protobuf/rewriter_config.pb.h"
 #include "tensorflow/core/public/session.h"
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -406,10 +408,35 @@ TEST(DirectSessionTest, MultipleFeedTest) {
   EXPECT_TRUE(StringPiece(s.error_message()).contains("fed more than once"));
 }
 
-REGISTER_OP("Darth")
-    .Input("x: float")
-    .Output("y: float")
-    .Doc(R"doc(
+TEST(DirectSessionTest, FetchMultipleTimes) {
+  Graph g(OpRegistry::Global());
+  Tensor seven_tensor(DT_INT32, TensorShape());
+  seven_tensor.flat<int32>()(0) = 7;
+  Node* seven_node = test::graph::Constant(&g, seven_tensor);
+
+  GraphDef def;
+  test::graph::ToGraphDef(&g, &def);
+
+  auto session = CreateSession();
+  ASSERT_TRUE(session != nullptr);
+  TF_ASSERT_OK(session->Create(def));
+
+  const std::vector<std::pair<string, Tensor>> inputs;
+  std::vector<Tensor> outputs;
+
+  auto seven = seven_node->name();
+  Status s = session->Run(inputs, {seven, seven}, {}, &outputs);
+  TF_ASSERT_OK(s);
+
+  EXPECT_EQ(2, outputs.size());
+  for (int i = 0; i < outputs.size(); ++i) {
+    const Tensor& t = outputs[i];
+    ASSERT_TRUE(t.IsInitialized()) << i;
+    EXPECT_EQ(7, t.flat<int32>()(0)) << i;
+  }
+}
+
+REGISTER_OP("Darth").Input("x: float").Output("y: float").Doc(R"doc(
 Darth promises one return value.
 
 x: float
@@ -447,7 +474,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     vx.scalar<float>()() = 1.0;
     Node* x = test::graph::Constant(&g, vx);
     Node* y = test::graph::Unary(&g, "Darth", x);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     GraphDef def;
     test::graph::ToGraphDef(&g, &def);
 
@@ -465,7 +492,7 @@ TEST(DirectSessionTest, PlacePrunedGraph) {
     vx.scalar<float>()() = 1.0;
     Node* x = test::graph::Constant(&g, vx);
     Node* y = test::graph::Unary(&g, "Darth", x);
-    y->set_assigned_device_name("/job:localhost/replica:0/task:0/gpu:0");
+    y->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
     GraphDef def;
     test::graph::ToGraphDef(&g, &def);
 
@@ -882,7 +909,8 @@ class BlockingOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("BlockingOp").Device(DEVICE_CPU), BlockingOp);
 REGISTER_OP("BlockingOp").Input("x: float").Output("y: float").Doc("");
 
-static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
+static void TestSessionInterOpThreadsImpl(bool use_function_lib,
+                                          bool use_global_pools) {
   FunctionDefLibrary library_graph_def;
   if (use_function_lib) {
     const string lib = R"proto(
@@ -917,39 +945,62 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
   options.config.mutable_graph_options()
       ->mutable_optimizer_options()
       ->set_opt_level(OptimizerOptions_Level_L0);
+  options.config.mutable_graph_options()
+      ->mutable_rewrite_options()
+      ->set_constant_folding(RewriterConfig::OFF);
   (*options.config.mutable_device_count())["CPU"] = 2;
   (*options.config.mutable_device_count())["GPU"] = 0;
   (*options.config.mutable_device_count())["SYCL"] = 0;
 
-  options.config.add_session_inter_op_thread_pool();
   auto* p = options.config.add_session_inter_op_thread_pool();
+  if (use_global_pools) p->set_global_name("large pool");
+  p = options.config.add_session_inter_op_thread_pool();
+  if (use_global_pools) p->set_global_name("small pool");
   p->set_num_threads(1);
   const int kLargePool = 0;
   const int kSmallPool = 1;
 
-  std::unique_ptr<Session> session(NewSession(options));
-  ASSERT_TRUE(session != nullptr);
-  TF_ASSERT_OK(session->Create(def));
+  std::vector<std::unique_ptr<Session>> sessions;
+  if (!use_global_pools) {
+    sessions.emplace_back(NewSession(options));
+    TF_ASSERT_OK(sessions.back()->Create(def));
+  }
+  mutex sessions_mu;
 
   std::atomic<int32> num_done(0);
   // Runs session to compute <node>:0 using inter_op thread pool <pool>.
-  auto add_session_run_call = [&session, &num_done](
-      thread::ThreadPool* tp, Node* node, int inter_op_pool) {
-    auto fn = [&session, inter_op_pool, node, &num_done]() {
-      RunOptions run_options;
-      run_options.set_inter_op_thread_pool(inter_op_pool);
-      std::vector<Tensor> outputs;
-      Status s = session->Run(run_options, {} /* inputs */,
-                              {node->name() + ":0"} /* output_names */, {},
-                              &outputs, nullptr /* run_metadata */);
-      TF_CHECK_OK(s);
-      ASSERT_EQ(1, outputs.size());
-      auto flat = outputs[0].flat<float>();
-      EXPECT_FLOAT_EQ(1.2, flat(0));
-      num_done.fetch_add(1);
-    };
-    tp->Schedule(fn);
-  };
+  auto add_session_run_call =
+      [use_global_pools, &def, &options, &sessions, &sessions_mu, &num_done](
+          thread::ThreadPool* tp, Node* node, int inter_op_pool) {
+        auto fn = [use_global_pools, &def, &options, &sessions, &sessions_mu,
+                   inter_op_pool, node, &num_done]() {
+          RunOptions run_options;
+          run_options.set_inter_op_thread_pool(inter_op_pool);
+          std::vector<Tensor> outputs;
+
+          Session* session;
+          if (use_global_pools) {
+            std::unique_ptr<Session> s(NewSession(options));
+            TF_ASSERT_OK(s->Create(def));
+            session = s.get();
+
+            mutex_lock l(sessions_mu);
+            sessions.emplace_back(std::move(s));
+          } else {
+            session = sessions[0].get();
+          }
+
+          Status s = session->Run(run_options, {} /* inputs */,
+                                  {node->name() + ":0"} /* output_names */, {},
+                                  &outputs, nullptr /* run_metadata */);
+          TF_CHECK_OK(s);
+          ASSERT_EQ(1, outputs.size());
+          auto flat = outputs[0].flat<float>();
+          EXPECT_FLOAT_EQ(1.2, flat(0));
+          num_done.fetch_add(1);
+        };
+        tp->Schedule(fn);
+      };
 
   // For blocking states:
   // - Starts at 0, BlockingOp::Compute will move to 1.
@@ -999,11 +1050,23 @@ static void TestSessionInterOpThreadsImpl(bool use_function_lib) {
 }
 
 TEST(DirectSessionTest, TestSessionInterOpThreads) {
-  TestSessionInterOpThreadsImpl(false /* use_function_lib */);
+  TestSessionInterOpThreadsImpl(false /* use_function_lib */,
+                                false /*use_global_pools */);
 }
 
 TEST(DirectSessionTest, TestSessionInterOpThreadsWithFunctions) {
-  TestSessionInterOpThreadsImpl(true /* use_function_lib */);
+  TestSessionInterOpThreadsImpl(true /* use_function_lib */,
+                                false /*use_global_pools */);
+}
+
+TEST(DirectSessionTest, TestSessionInterOpGlobalPools) {
+  TestSessionInterOpThreadsImpl(false /* use_function_lib */,
+                                true /*use_global_pools */);
+}
+
+TEST(DirectSessionTest, TestSessionInterOpGlobalPoolsWithFunctions) {
+  TestSessionInterOpThreadsImpl(true /* use_function_lib */,
+                                true /*use_global_pools */);
 }
 
 TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
@@ -1023,19 +1086,42 @@ TEST(DirectSessionTest, TestSessionInterOpThreadsInvalidOptions) {
   options.config.add_session_inter_op_thread_pool();
 
   // Wrong pool number on Run call.
-  std::unique_ptr<Session> session(NewSession(options));
-  ASSERT_TRUE(session != nullptr);
-  TF_ASSERT_OK(session->Create(def));
-  for (int pool_num = -1; pool_num <= 1; pool_num += 2) {
-    RunOptions run_options;
-    run_options.set_inter_op_thread_pool(pool_num);
-    std::vector<Tensor> outputs;
-    Status s = session->Run(run_options, {} /* inputs */,
-                            {x->name() + ":0"} /* output_names */, {}, &outputs,
-                            nullptr /* run_metadata */);
-    EXPECT_EQ(strings::StrCat(
-                  "Invalid argument: Invalid inter_op_thread_pool: ", pool_num),
-              s.ToString());
+  {
+    std::unique_ptr<Session> session(NewSession(options));
+    TF_ASSERT_OK(session->Create(def));
+    for (int pool_num = -1; pool_num <= 1; pool_num += 2) {
+      RunOptions run_options;
+      run_options.set_inter_op_thread_pool(pool_num);
+      std::vector<Tensor> outputs;
+      Status s = session->Run(run_options, {} /* inputs */,
+                              {x->name() + ":0"} /* output_names */, {},
+                              &outputs, nullptr /* run_metadata */);
+      EXPECT_EQ(
+          strings::StrCat("Invalid argument: Invalid inter_op_thread_pool: ",
+                          pool_num),
+          s.ToString());
+    }
+  }
+
+  // Global name changes thread count.
+  std::vector<std::unique_ptr<Session>> sessions;
+  auto* pool_config = options.config.mutable_session_inter_op_thread_pool(0);
+  pool_config->set_num_threads(0);
+  pool_config->set_global_name("foo");
+  sessions.emplace_back(NewSession(options));
+  TF_ASSERT_OK(sessions.back()->Create(def));
+  sessions.emplace_back(NewSession(options));  // repeat creation, okay.
+  TF_ASSERT_OK(sessions.back()->Create(def));
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int i = 1; i < 128; ++i) {
+      pool_config->set_num_threads(i);
+      sessions.emplace_back(NewSession(options));
+      auto status = sessions.back()->Create(def);
+      ASSERT_FALSE(status.ok()) << status;
+    }
+
+    // Clear existing sessions before second pass; error still happens.
+    sessions.clear();
   }
 }
 
@@ -1163,9 +1249,19 @@ TEST(DirectSessionTest, TestDirectSessionReset) {
   EXPECT_EQ("Cancelled: Session has been closed.", s.ToString());
 }
 
+TEST(DirectSessionTest, LocalDeviceManager) {
+  SessionOptions options;
+  std::unique_ptr<Session> session(NewSession(options));
+
+  const DeviceMgr* mgr = nullptr;
+  TF_ASSERT_OK(session->LocalDeviceManager(&mgr));
+  ASSERT_TRUE(mgr != nullptr);
+  EXPECT_GT(mgr->ListDevices().size(), 0);
+}
+
 // A simple benchmark for the overhead of `DirectSession::Run()` calls
 // with varying numbers of feeds/fetches.
-void FeedFetchBenchmarkHelper(int num_feeds, int iters) {
+void FeedFetchBenchmarkHelper(int iters, int num_feeds) {
   testing::StopTiming();
 
   Tensor value(DT_FLOAT, TensorShape());

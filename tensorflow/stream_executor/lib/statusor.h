@@ -49,7 +49,7 @@ limitations under the License.
 //
 //  StatusOr<std::unique_ptr<Foo>> result = FooFactory::MakeNewFoo(arg);
 //  if (result.ok()) {
-//    std::unique_ptr<Foo> foo = result.ConsumeValueOrDie();
+//    std::unique_ptr<Foo> foo = std::move(result.ValueOrDie());
 //    foo->DoSomethingCool();
 //  } else {
 //    LOG(ERROR) << result.status();
@@ -163,6 +163,7 @@ class StatusOr {
   // If you need to initialize a T object from the stored value,
   // ConsumeValueOrDie() may be more efficient.
   const T& ValueOrDie() const;
+  T& ValueOrDie();
 
   // Returns our current value, requires this->ok(). Use this if
   // you would otherwise want to say std::move(s.ValueOrDie()), for example
@@ -202,6 +203,12 @@ StatusOr<T>::StatusOr(const T& value)
 
 template <typename T>
 const T& StatusOr<T>::ValueOrDie() const {
+  TF_CHECK_OK(status_);
+  return value_;
+}
+
+template <typename T>
+T& StatusOr<T>::ValueOrDie() {
   TF_CHECK_OK(status_);
   return value_;
 }

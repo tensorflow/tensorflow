@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "QueueEnqueueV2"
+  visibility: HIDDEN
+}

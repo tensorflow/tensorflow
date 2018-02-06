@@ -16,6 +16,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def.pb_text.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -37,7 +38,7 @@ InferenceContext::InferenceContext(
         std::unique_ptr<std::vector<std::pair<TensorShapeProto, DataType>>>>&
         input_handle_shapes_and_types)
     : graph_def_version_(graph_def_version),
-      node_def_(*CHECK_NOTNULL(node_def)) {
+      node_def_(CHECK_NOTNULL(node_def)) {
   std::vector<ShapeHandle> input_tensors_as_shape_handles;
   for (const TensorShapeProto& p : input_tensors_as_shapes) {
     ShapeHandle shape;
@@ -57,6 +58,7 @@ InferenceContext::InferenceContext(
     }
     inputs_.push_back(shape);
   }
+
   std::vector<std::unique_ptr<std::vector<ShapeAndType>>> handle_data(
       input_shapes.size());
   for (int i = 0; i < input_handle_shapes_and_types.size(); ++i) {
@@ -79,6 +81,58 @@ InferenceContext::InferenceContext(
   PostInputInit(std::move(handle_data));
 }
 
+// Same as above, but with PartialTensorShape instead of TensorShapeProto
+InferenceContext::InferenceContext(
+    int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
+    const std::vector<PartialTensorShape>& input_shapes,
+    const std::vector<const Tensor*>& input_tensors,
+    const std::vector<PartialTensorShape>& input_tensors_as_shapes,
+    const std::vector<
+        std::unique_ptr<std::vector<std::pair<PartialTensorShape, DataType>>>>&
+        input_handle_shapes_and_types)
+    : graph_def_version_(graph_def_version),
+      node_def_(CHECK_NOTNULL(node_def)) {
+  std::vector<ShapeHandle> input_tensors_as_shape_handles;
+  for (const PartialTensorShape& p : input_tensors_as_shapes) {
+    ShapeHandle shape;
+    construction_status_.Update(MakeShapeFromPartialTensorShape(p, &shape));
+    if (!construction_status_.ok()) {
+      return;
+    }
+    input_tensors_as_shape_handles.push_back(shape);
+  }
+  PreInputInit(op_def, input_tensors, input_tensors_as_shape_handles);
+  if (!construction_status_.ok()) return;
+  for (const PartialTensorShape& p : input_shapes) {
+    ShapeHandle shape;
+    construction_status_.Update(MakeShapeFromPartialTensorShape(p, &shape));
+    if (!construction_status_.ok()) {
+      return;
+    }
+    inputs_.push_back(shape);
+  }
+  std::vector<std::unique_ptr<std::vector<ShapeAndType>>> handle_data(
+      input_shapes.size());
+  for (int i = 0; i < input_handle_shapes_and_types.size(); ++i) {
+    const auto& v = input_handle_shapes_and_types[i];
+    if (v == nullptr) {
+      continue;
+    }
+    handle_data[i].reset(new std::vector<ShapeAndType>(v->size()));
+    auto& new_v = *handle_data[i];
+    for (int j = 0; j < v->size(); ++j) {
+      const auto& p = (*v)[j];
+      construction_status_.Update(
+          MakeShapeFromPartialTensorShape(p.first, &new_v[j].shape));
+      if (!construction_status_.ok()) {
+        return;
+      }
+      new_v[j].dtype = p.second;
+    }
+  }
+  PostInputInit(std::move(handle_data));
+}
+
 InferenceContext::InferenceContext(
     int graph_def_version, const NodeDef* node_def, const OpDef& op_def,
     const std::vector<ShapeHandle>& input_shapes,
@@ -87,7 +141,7 @@ InferenceContext::InferenceContext(
     std::vector<std::unique_ptr<std::vector<ShapeAndType>>>
         input_handle_shapes_and_types)
     : graph_def_version_(graph_def_version),
-      node_def_(*CHECK_NOTNULL(node_def)) {
+      node_def_(CHECK_NOTNULL(node_def)) {
   PreInputInit(op_def, input_tensors, input_tensors_as_shapes);
   if (!construction_status_.ok()) return;
   inputs_ = input_shapes;
@@ -97,9 +151,24 @@ InferenceContext::InferenceContext(
 
 InferenceContext::~InferenceContext() {}
 
+Status InferenceContext::Run(
+    const std::function<Status(shape_inference::InferenceContext* c)>& fn) {
+  Status s = fn(this);
+  if (!s.ok()) {
+    return AttachContext(s);
+  }
+#ifndef NDEBUG
+  for (int i = 0; i < num_outputs(); ++i) {
+    DCHECK(output(i).IsSet())
+        << i << " for " << node_def_->name() << " of type " << node_def_->op();
+  }
+#endif  // NDEBUG
+  return s;
+}
+
 Status InferenceContext::set_output(StringPiece output_name,
                                     const std::vector<ShapeHandle>& shapes) {
-  const auto result = output_name_map_.find(output_name.ToString());
+  auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
   } else {
@@ -118,7 +187,7 @@ Status InferenceContext::set_output(StringPiece output_name,
 
 Status InferenceContext::input(StringPiece input_name,
                                std::vector<ShapeHandle>* output) const {
-  const auto result = input_name_map_.find(input_name.ToString());
+  const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
     return errors::InvalidArgument("Unknown input name: ", input_name);
   } else {
@@ -132,7 +201,7 @@ Status InferenceContext::input(StringPiece input_name,
 
 Status InferenceContext::output(StringPiece output_name,
                                 std::vector<ShapeHandle>* output) const {
-  const auto result = output_name_map_.find(output_name.ToString());
+  const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
   } else {
@@ -144,14 +213,16 @@ Status InferenceContext::output(StringPiece output_name,
   return Status::OK();
 }
 
+string InferenceContext::op() const { return node_def_->op(); }
+
 void InferenceContext::PreInputInit(
     const OpDef& op_def, const std::vector<const Tensor*>& input_tensors,
     const std::vector<ShapeHandle>& input_tensors_as_shapes) {
   input_tensors_ = input_tensors;
   input_tensors_as_shapes_ = input_tensors_as_shapes;
 
-  construction_status_ =
-      NameRangesForNode(node_def_, op_def, &input_name_map_, &output_name_map_);
+  construction_status_ = NameRangesForNode(*node_def_, op_def, &input_name_map_,
+                                           &output_name_map_);
   if (!construction_status_.ok()) return;
 
   int num_outputs = 0;
@@ -198,6 +269,24 @@ void InferenceContext::PostInputInit(
   requested_input_tensor_as_partial_shape_.resize(inputs_.size());
 }
 
+void InferenceContext::ShapeHandleToProto(ShapeHandle handle,
+                                          TensorShapeProto* proto) {
+  if (!RankKnown(handle)) {
+    proto->set_unknown_rank(true);
+    return;
+  }
+
+  for (int32 i = 0; i < Rank(handle); ++i) {
+    DimensionHandle dim = Dim(handle, i);
+    auto* dim_shape = proto->add_dim();
+    if (ValueKnown(dim)) {
+      dim_shape->set_size(Value(dim));
+    } else {
+      dim_shape->set_size(-1);
+    }
+  }
+}
+
 bool InferenceContext::FullyDefined(ShapeHandle s) {
   if (!RankKnown(s)) return false;
   for (int i = 0; i < Rank(s); ++i) {
@@ -234,7 +323,7 @@ string InferenceContext::DebugString(DimensionHandle d) {
 
 string InferenceContext::DebugString() const {
   return strings::StrCat("InferenceContext for node: ",
-                         ProtoDebugString(node_def_));
+                         ProtoDebugString(*node_def_));
 }
 
 Status InferenceContext::WithRank(ShapeHandle shape, int64 rank,
@@ -253,8 +342,8 @@ Status InferenceContext::WithRank(ShapeHandle shape, int64 rank,
     for (int i = 0; i < rank; ++i) {
       dims.push_back(UnknownDim());
     }
-    *out = shape_manager_.MakeShape(dims);
-    return Status::OK();
+    ShapeHandle shp = shape_manager_.MakeShape(dims);
+    return Merge(shape, shp, out);
   }
   *out = nullptr;
 
@@ -268,12 +357,9 @@ Status InferenceContext::WithRankAtLeast(ShapeHandle shape, int64 rank,
     return errors::InvalidArgument("Rank cannot exceed kint32max");
   }
   const int32 existing = Rank(shape);
-  if (existing >= rank) {
+  if (existing >= rank || existing == kUnknownRank) {
     *out = shape;
     return Status::OK();
-  }
-  if (existing == kUnknownRank) {
-    return ReturnUnknownShape(out);
   }
   *out = nullptr;
   return errors::InvalidArgument("Shape must be at least rank ", rank,
@@ -286,10 +372,7 @@ Status InferenceContext::WithRankAtMost(ShapeHandle shape, int64 rank,
     return errors::InvalidArgument("Rank cannot exceed kint32max");
   }
   const int32 existing = Rank(shape);
-  if (existing == kUnknownRank) {
-    return ReturnUnknownShape(out);
-  }
-  if (existing <= rank) {
+  if (existing <= rank || existing == kUnknownRank) {
     *out = shape;
     return Status::OK();
   }
@@ -306,21 +389,52 @@ Status InferenceContext::WithValue(DimensionHandle dim, int64 value,
     return Status::OK();
   }
   if (existing == kUnknownDim) {
-    *out = MakeDim(value);
-    return Status::OK();
+    DimensionHandle d = MakeDim(value);
+    return Merge(dim, d, out);
   }
   *out = nullptr;
   return errors::InvalidArgument("Dimension must be ", value, " but is ",
                                  existing);
 }
 
+void InferenceContext::Relax(DimensionHandle d_old, DimensionHandle d_new,
+                             DimensionHandle* out) {
+  if (d_old.SameHandle(d_new)) {
+    *out = d_old;
+  } else if (!ValueKnown(d_old) && !ValueKnown(d_new)) {
+    // The node will be fed by the dimension d_new instead of d_old: any
+    // equality assertion between d_old and other input dimension on this node
+    // may not be true anymore, so forget them all.
+    ForgetMerges();
+    // Return the new shape handle to force the relaxation to propagate to the
+    // fanout of the context.
+    *out = d_new;
+  } else if (!ValueKnown(d_new)) {
+    ForgetMerges();
+    *out = d_new;
+  } else if (Value(d_old) == Value(d_new)) {
+    // Return the old shape handle. This will stop the relaxation in the fanout
+    // of the context.
+    *out = d_old;
+  } else {
+    // Return a new handle that encodes a different unknown dim.
+    ForgetMerges();
+    *out = UnknownDim();
+  }
+}
+
 Status InferenceContext::Merge(DimensionHandle d0, DimensionHandle d1,
                                DimensionHandle* out) {
-  if (d0.SameHandle(d1) || !ValueKnown(d1)) {
+  if (d0.SameHandle(d1)) {
     *out = d0;
+    return Status::OK();
+  } else if (!ValueKnown(d1)) {
+    *out = d0;
+    merged_dims_.emplace_back(d0, d1);
     return Status::OK();
   } else if (!ValueKnown(d0)) {
     *out = d1;
+    merged_dims_.emplace_back(d0, d1);
     return Status::OK();
   } else if (Value(d0) == Value(d1)) {
     *out = d0;
@@ -356,13 +470,63 @@ Status InferenceContext::MergePrefix(ShapeHandle s, ShapeHandle prefix,
   return Status::OK();
 }
 
+void InferenceContext::Relax(ShapeHandle s_old, ShapeHandle s_new,
+                             ShapeHandle* out) {
+  if (s_old.SameHandle(s_new)) {
+    *out = s_old;
+    return;
+  } else if (!RankKnown(s_new) || !s_old.IsSet()) {
+    ForgetMerges();
+    *out = s_new;
+    return;
+  }
+
+  const int32 rank = Rank(s_old);
+  if (rank != Rank(s_new)) {
+    ForgetMerges();
+    *out = UnknownShape();
+    return;
+  }
+
+  bool return_s_old = true;
+  for (int i = 0; i < rank; ++i) {
+    auto d0 = Dim(s_old, i);
+    auto d1 = Dim(s_new, i);
+    if (d0.SameHandle(d1)) continue;
+
+    auto v0 = Value(d0);
+    auto v1 = Value(d1);
+    if (v0 == kUnknownDim || v1 == kUnknownDim || v0 != v1) {
+      return_s_old = false;
+      break;
+    }
+  }
+  if (return_s_old) {
+    *out = s_old;
+    return;
+  }
+
+  // Relax dims.
+  std::vector<DimensionHandle> dims(rank);
+  for (int i = 0; i < rank; ++i) {
+    Relax(Dim(s_old, i), Dim(s_new, i), &dims[i]);
+  }
+  ForgetMerges();
+  *out = MakeShape(dims);
+}
+
 Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
                                ShapeHandle* out) {
-  if (s0.SameHandle(s1) || !RankKnown(s1)) {
+  if (s0.SameHandle(s1)) {
     *out = s0;
+    return Status::OK();
+  } else if (!RankKnown(s1)) {
+    *out = s0;
+    merged_shapes_.emplace_back(s0, s1);
     return Status::OK();
   } else if (!RankKnown(s0)) {
     *out = s1;
+    merged_shapes_.emplace_back(s0, s1);
     return Status::OK();
   }
 
@@ -390,11 +554,15 @@ Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
       return_s1 = false;
     } else if (v0 != v1) {
       *out = nullptr;
-      return errors::InvalidArgument("Dimension ", i,
-                                     " in both shapes must be equal, but are ",
-                                     Value(d0), " and ", Value(d1));
+      return errors::InvalidArgument(
+          "Dimension ", i, " in both shapes must be equal, but are ", Value(d0),
+          " and ", Value(d1), ". Shapes are ", DebugString(s0), " and ",
+          DebugString(s1), ".");
     }
   }
+
+  merged_shapes_.emplace_back(s0, s1);
+
   if (return_s0 || return_s1) {
     *out = return_s0 ? s0 : s1;
     return Status::OK();
@@ -406,7 +574,14 @@ Status InferenceContext::Merge(ShapeHandle s0, ShapeHandle s1,
     // Invariant for merge was checked earlier, so CHECK is ok.
     TF_CHECK_OK(Merge(Dim(s0, i), Dim(s1, i), &dims[i]));
   }
-  return ReturnCreatedShape(dims, out);
+
+  Status s = ReturnCreatedShape(dims, out);
+  if (s.ok()) {
+    // Merge the new shape with s0. Since s0 and s1 are merged, this implies
+    // that s1 and out are also merged.
+    merged_shapes_.emplace_back(s0, *out);
+  }
+  return s;
 }
 
 Status InferenceContext::Subshape(ShapeHandle s, int64 start,
@@ -519,7 +694,7 @@ ShapeHandle InferenceContext::UnknownShape() {
 
 ShapeHandle InferenceContext::UnknownShapeOfRank(int64 rank) {
   CHECK_LE(rank, kint32max) << "rank must be less than kint32max";
-  if(rank == kUnknownRank) {
+  if (rank == kUnknownRank) {
     return UnknownShape();
   }
   CHECK_GE(rank, 0) << "rank must not be negative";
@@ -740,12 +915,15 @@ Status InferenceContext::Add(DimensionHandle first, DimensionOrConstant second,
   if (first_value == 0) {
     *out = MakeDim(second);
   } else if (second_value == 0) {
-    *out = MakeDim(first);
+    *out = first;
   } else if (first_value == kUnknownDim || second_value == kUnknownDim) {
     *out = UnknownDim();
   } else {
-    // Invariant: Both values are known and positive.
-    const int64 sum = first_value + second_value;
+    // Invariant: Both values are known and positive. Still in run-time we can
+    // get pair of values which cannot be store in output. Check below will
+    // report error. We still need to avoid undefined behavior of signed
+    // overflow and use unsigned addition.
+    const int64 sum = static_cast<uint64>(first_value) + second_value;
     if (sum < 0) {
       return errors::InvalidArgument("Dimension size overflow from adding ",
                                      first_value, " and ", second_value);
@@ -762,7 +940,7 @@ Status InferenceContext::Subtract(DimensionHandle first,
   const int64 second_value = Value(second);
   // Special cases.
   if (second_value == 0) {
-    *out = MakeDim(first);
+    *out = first;
   } else if (first_value == kUnknownDim || second_value == kUnknownDim) {
     *out = UnknownDim();
   } else {
@@ -868,7 +1046,7 @@ Status InferenceContext::AttachContext(const Status& status) {
   }
 
   string error_context = strings::StrCat(
-      " for '", node_def_.name(), "' (op: '", node_def_.op(),
+      " for '", node_def_->name(), "' (op: '", node_def_->op(),
       "') with input shapes: ", str_util::Join(input_shapes, ", "));
   if (!input_from_tensors_str.empty()) {
     strings::StrAppend(&error_context, " and with computed input tensors: ",
@@ -895,9 +1073,15 @@ bool InferenceContext::MergeHandleShapesAndTypes(
   bool refined = false;
   for (int i = 0; i < shapes_and_types.size(); ++i) {
     const ShapeAndType& existing = (*to_update)[i];
-    new_values[i].dtype = shapes_and_types[i].dtype;
-    if (new_values[i].dtype != existing.dtype && existing.dtype == DT_INVALID) {
-      refined = true;
+    if (shapes_and_types[i].dtype == existing.dtype) {
+      new_values[i].dtype = existing.dtype;
+    } else {
+      if (existing.dtype != DT_INVALID) {
+        return false;
+      } else {
+        new_values[i].dtype = shapes_and_types[i].dtype;
+        refined = true;
+      }
     }
     if (!Merge(existing.shape, shapes_and_types[i].shape, &new_values[i].shape)
              .ok()) {
@@ -937,6 +1121,62 @@ bool InferenceContext::MergeInputHandleShapesAndTypes(
   }
   return MergeHandleShapesAndTypes(shapes_and_types,
                                    input_handle_shapes_and_types_[idx].get());
+}
+
+bool InferenceContext::RelaxHandleShapesAndMergeTypes(
+    const std::vector<ShapeAndType>& shapes_and_types,
+    std::vector<ShapeAndType>* to_update) {
+  if (shapes_and_types.size() != to_update->size()) {
+    return false;
+  }
+  std::vector<ShapeAndType> new_values(shapes_and_types.size());
+  bool refined = false;
+  for (int i = 0; i < shapes_and_types.size(); ++i) {
+    const ShapeAndType& existing = (*to_update)[i];
+    if (shapes_and_types[i].dtype == existing.dtype) {
+      new_values[i].dtype = existing.dtype;
+    } else {
+      if (existing.dtype != DT_INVALID) {
+        return false;
+      } else {
+        new_values[i].dtype = shapes_and_types[i].dtype;
+        refined = true;
+      }
+    }
+    Relax(existing.shape, shapes_and_types[i].shape, &new_values[i].shape);
+    if (!existing.shape.SameHandle(new_values[i].shape)) {
+      refined = true;
+    }
+  }
+  if (!refined) {
+    return false;
+  }
+  for (int i = 0; i < new_values.size(); ++i) {
+    (*to_update)[i] = new_values[i];
+  }
+  return true;
+}
+
+bool InferenceContext::RelaxOutputHandleShapesAndMergeTypes(
+    int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+  if (output_handle_shapes_and_types_[idx] == nullptr) {
+    output_handle_shapes_and_types_[idx].reset(
+        new std::vector<ShapeAndType>(shapes_and_types));
+    return true;
+  }
+  return RelaxHandleShapesAndMergeTypes(
+      shapes_and_types, output_handle_shapes_and_types_[idx].get());
+}
+
+bool InferenceContext::RelaxInputHandleShapesAndMergeTypes(
+    int idx, const std::vector<ShapeAndType>& shapes_and_types) {
+  if (input_handle_shapes_and_types_[idx] == nullptr) {
+    input_handle_shapes_and_types_[idx].reset(
+        new std::vector<ShapeAndType>(shapes_and_types));
+    return true;
+  }
+  return RelaxHandleShapesAndMergeTypes(
+      shapes_and_types, input_handle_shapes_and_types_[idx].get());
 }
 
 // -----------------------------------------------------------------------------

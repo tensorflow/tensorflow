@@ -19,17 +19,24 @@ limitations under the License.
 
 #include "third_party/eigen3/Eigen/Core"
 
+#ifdef TF_XLA_HAS_AVX
+xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_ExpV8F32AVX(
+    xla::cpu::runtime::V8F32AVX x) {
+  return Eigen::internal::pexp(x);
+}
+
+xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_LogV8F32AVX(
+    xla::cpu::runtime::V8F32AVX x) {
+  return Eigen::internal::plog(x);
+}
+#endif  // TF_XLA_HAS_AVX
+
 namespace xla {
 namespace cpu {
 namespace runtime {
 
-#ifdef __AVX__
-V8F32 ExpV8F32(V8F32 x) { return Eigen::internal::pexp(x); }
-
-V8F32 LogV8F32(V8F32 x) { return Eigen::internal::plog(x); }
-
-V8F32 TanhV8F32(V8F32 x) { return Eigen::internal::ptanh(x); }
-#endif  // __AVX__
+const char *const kExpV8F32AVXSymbolName = "__xla_cpu_runtime_ExpV8F32AVX";
+const char *const kLogV8F32AVXSymbolName = "__xla_cpu_runtime_LogV8F32AVX";
 
 }  // namespace runtime
 }  // namespace cpu

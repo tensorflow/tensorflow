@@ -22,7 +22,8 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":api_objects_proto_py",
-        "//tensorflow/tools/common:traverse",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:util",
     ],
 )
 

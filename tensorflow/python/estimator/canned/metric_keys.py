@@ -21,12 +21,11 @@ from __future__ import print_function
 from tensorflow.python.estimator import model_fn
 
 
-# TODO(pucker): Merge with model_fn.MetricKeys once we've worked out out naming
-# conventions.
 class MetricKeys(object):
   """Metric key strings."""
-  LOSS = model_fn.MetricKeys.LOSS
-  LOSS_MEAN = model_fn.MetricKeys.AVERAGE_LOSS
+  LOSS = model_fn.LOSS_METRIC_KEY
+  LOSS_MEAN = model_fn.AVERAGE_LOSS_METRIC_KEY
+  LOSS_REGULARIZATION = 'regularization_loss'
 
   ACCURACY = 'accuracy'
   # This is the best the model could do by always predicting one class.

@@ -29,9 +29,11 @@ import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.core.util import event_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.lib import debug_data
+from tensorflow.python.debug.lib import debug_graphs
 from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -51,6 +53,15 @@ import tensorflow.python.ops.tensor_array_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
+
+
+def no_rewrite_session_config():
+  rewriter_config = rewriter_config_pb2.RewriterConfig(
+      disable_model_pruning=True,
+      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+  graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
+  return config_pb2.ConfigProto(graph_options=graph_options)
 
 
 class _RNNCellForTest(rnn_cell_impl.RNNCell):
@@ -86,7 +97,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     else:
       cls._expected_partition_graph_count = 1
       cls._expected_num_devices = 1
-      cls._main_device = "/job:localhost/replica:0/task:0/cpu:0"
+      cls._main_device = "/job:localhost/replica:0/task:0/device:CPU:0"
 
   @classmethod
   def tearDownClass(cls):
@@ -160,7 +171,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
         validate=validate)
 
   def _generate_dump_from_simple_addition_graph(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       v_init_val = np.array([[2.0], [-1.0]])
 
@@ -234,7 +245,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       v_copy_node_def = None
       for partition_graph in run_metadata.partition_graphs:
         for node_def in partition_graph.node:
-          if debug_data.is_copy_node(node_def.name):
+          if debug_graphs.is_copy_node(node_def.name):
             if node_def.name == "__copy_u_0":
               u_copy_node_def = node_def
             elif node_def.name == "__copy_v_0":
@@ -304,7 +315,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       results.dump.node_op_type("foo_bar")
 
   def testDumpStringTensorsWorks(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       str1_init_val = np.array(b"abc")
       str2_init_val = np.array(b"def")
 
@@ -385,9 +396,9 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
 
       # Add debug tensor watch for u.
       debug_utils.add_debug_tensor_watch(
-          run_options, "%s" % u_name, 0, debug_urls=debug_urls)
+          run_options, u_name, 0, debug_urls=debug_urls)
       debug_utils.add_debug_tensor_watch(
-          run_options, "%s" % s_name, 0, debug_urls=debug_urls)
+          run_options, s_name, 0, debug_urls=debug_urls)
 
       run_metadata = config_pb2.RunMetadata()
 
@@ -419,7 +430,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(s_init_val, sess.run(s))
 
   def testDebugWhileLoopGeneratesMultipleDumps(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       num_iter = 10
 
       # "u" is the Variable being updated in the loop.
@@ -659,7 +670,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertEqual(x_name, first_bad_datum[0].node_name)
 
   def _session_run_for_graph_structure_lookup(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_name = "testDumpGraphStructureLookup/u"
       v_name = "testDumpGraphStructureLookup/v"
       w_name = "testDumpGraphStructureLookup/w"
@@ -703,7 +714,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     # Test node name list lookup of the DebugDumpDir object.
     if test_util.gpu_device_name():
       node_names = dump.nodes(
-          device_name="/job:localhost/replica:0/task:0/gpu:0")
+          device_name="/job:localhost/replica:0/task:0/device:GPU:0")
     else:
       node_names = dump.nodes()
     self.assertTrue(u_name in node_names)
@@ -798,7 +809,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
     self.assertTrue(dump.loaded_partition_graphs())
 
   def testGraphPathFindingOnControlEdgesWorks(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       v1 = variables.Variable(1.0, name="v1")
       v2 = variables.Variable(2.0, name="v2")
       v3 = variables.Variable(3.0, name="v3")
@@ -814,7 +825,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertIsNone(dump.find_some_path("v1", "c", include_control=False))
 
   def testGraphPathFindingReverseRefEdgeWorks(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       v = variables.Variable(10.0, name="v")
       delta = variables.Variable(1.0, name="delta")
       inc_v = state_ops.assign_add(v, delta, name="inc_v")
@@ -828,7 +839,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertIsNone(dump.find_some_path("delta", "v"))
 
   def testCausalityCheckOnDumpsDetectsWrongTemporalOrder(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_name = "testDumpCausalityCheck/u"
       v_name = "testDumpCausalityCheck/v"
       w_name = "testDumpCausalityCheck/w"
@@ -953,7 +964,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
   def testOutputSlotWithoutOutgoingEdgeCanBeWatched(self):
     """Test watching output slots not attached to any outgoing edges."""
 
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       u_init_val = np.array([[5.0, 3.0], [-1.0, 0.0]])
       u = constant_op.constant(u_init_val, shape=[2, 2], name="u")
 
@@ -1164,7 +1175,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertAllClose(np.array([[-3.0, 0.0]]), x_dumps[0].get_tensor())
 
   def testDebugNumericSummaryOnInitializedTensorGivesCorrectResult(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       a = variables.Variable(
           [
               np.nan, np.nan, 0.0, 0.0, 0.0, -1.0, -3.0, 3.0, 7.0, -np.inf,
@@ -1252,7 +1263,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       self.assertIn("m:0:DebugNumericSummary", dump.debug_watch_keys("m"))
 
   def testDebugNumericSummaryInvalidAttributesStringAreCaught(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       a = variables.Variable(10.0, name="a")
       b = variables.Variable(0.0, name="b")
       c = variables.Variable(0.0, name="c")
@@ -1272,7 +1283,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
           r"1 attribute key\(s\) were not valid for debug node "
-          r"__dbg_a:0_0_DebugNumericSummary: foo"):
+          r"__dbg_.:0_0_DebugNumericSummary: foo"):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -1284,7 +1295,7 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
           r"2 attribute key\(s\) were not valid for debug node "
-          r"__dbg_a:0_0_DebugNumericSummary:"):
+          r"__dbg_.:0_0_DebugNumericSummary:"):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
       run_options = config_pb2.RunOptions(output_partition_graphs=True)
@@ -1296,11 +1307,11 @@ class SessionDebugTestBase(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(
           errors.FailedPreconditionError,
           r"1 attribute key\(s\) were not valid for debug node "
-          r"__dbg_a:0_0_DebugNumericSummary: foo"):
+          r"__dbg_.:0_0_DebugNumericSummary: foo"):
         sess.run(y, options=run_options, run_metadata=run_metadata)
 
   def testDebugNumericSummaryMuteOnHealthyMutesOnlyHealthyTensorDumps(self):
-    with session.Session() as sess:
+    with session.Session(config=no_rewrite_session_config()) as sess:
       a = variables.Variable(10.0, name="a")
       b = variables.Variable(0.0, name="b")
       c = variables.Variable(0.0, name="c")

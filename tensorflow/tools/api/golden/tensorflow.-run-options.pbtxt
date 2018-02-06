@@ -35,6 +35,10 @@ tf_class {
     mtype: "<type \'int\'>"
   }
   member {
+    name: "REPORT_TENSOR_ALLOCATIONS_UPON_OOM_FIELD_NUMBER"
+    mtype: "<type \'int\'>"
+  }
+  member {
     name: "SOFTWARE_TRACE"
     mtype: "<type \'int\'>"
   }

@@ -1,0 +1,22 @@
+op {
+  graph_op_name: "RangeDataset"
+  in_arg {
+    name: "start"
+    description: <<END
+corresponds to start in python's xrange().
+END
+  }
+  in_arg {
+    name: "stop"
+    description: <<END
+corresponds to stop in python's xrange().
+END
+  }
+  in_arg {
+    name: "step"
+    description: <<END
+corresponds to step in python's xrange().
+END
+  }
+  summary: "Creates a dataset with a range of values. Corresponds to python\'s xrange."
+}

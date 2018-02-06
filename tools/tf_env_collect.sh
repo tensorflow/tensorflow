@@ -16,9 +16,20 @@
 
 set -u  # Check for undefined variables
 
+die() {
+  # Print a message and exit with code 1.
+  #
+  # Usage: die <error_message>
+  #   e.g., die "Something bad happened."
+
+  echo $@
+  exit 1
+}
+
 echo "Collecting system information..."
 
 OUTPUT_FILE=tf_env.txt
+python_bin_path=$(which python || which python3 || die "Cannot find Python binary")
 
 {
   echo
@@ -55,7 +66,7 @@ OUTPUT_FILE=tf_env.txt
   
   echo
   echo '== check for virtualenv ========================================='
-  python -c "import sys;print(hasattr(sys, \"real_prefix\"))"
+  ${python_bin_path} -c "import sys;print(hasattr(sys, \"real_prefix\"))"
   
   echo
   echo '== tensorflow import ============================================'
@@ -69,9 +80,9 @@ print("tf.COMPILER_VERSION = %s" % tf.GIT_VERSION)
 with tf.Session() as sess:
   print("Sanity check: %r" % sess.run(tf.constant([1,2,3])[:1]))
 EOF
-python /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
+${python_bin_path} /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
 
-DEBUG_LD=libs python -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
+DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
 
 {
   grep libcudnn.so /tmp/loadedlibs

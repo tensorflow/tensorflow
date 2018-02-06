@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Monitors instrument the training process.
 
 @@get_default_monitors
@@ -42,17 +41,15 @@ import time
 import numpy as np
 import six
 
-from tensorflow.contrib.framework import deprecated
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
-from tensorflow.contrib.learn.python.learn import session_run_hook
-from tensorflow.contrib.learn.python.learn.summary_writer_cache import SummaryWriterCache
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.util.event_pb2 import SessionLog
 from tensorflow.python.estimator import estimator as core_estimator
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary as core_summary
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training import summary_io
+from tensorflow.python.training import session_run_hook
+from tensorflow.python.training import training_util
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_inspect
 
@@ -153,8 +150,8 @@ class BaseMonitor(object):
       ValueError: if we've not begun an epoch, or `epoch` number does not match.
     """
     if self._current_epoch != epoch:
-      raise ValueError(
-          "epoch_end expected %s but got %s.", self._current_epoch, epoch)
+      raise ValueError("epoch_end expected %s but got %s.", self._current_epoch,
+                       epoch)
     self._current_epoch = None
 
   def step_begin(self, step):
@@ -173,8 +170,8 @@ class BaseMonitor(object):
       ValueError: if we've already begun a step, or `step` < 0, or
           `step` > `max_steps`.
     """
-    if (step < 0) or (
-        (self._max_steps is not None) and (step > self._max_steps)):
+    if (step < 0) or ((self._max_steps is not None) and
+                      (step > self._max_steps)):
       raise ValueError("Invalid step %s." % step)
     self._current_step = step
     return []
@@ -205,8 +202,8 @@ class BaseMonitor(object):
       ValueError: if we've not begun a step, or `step` number does not match.
     """
     if self._current_step != step:
-      raise ValueError(
-          "step_end expected %s but got %s.", self._current_step, step)
+      raise ValueError("step_end expected %s but got %s.", self._current_step,
+                       step)
     self._current_step = None
     return False
 
@@ -255,6 +252,7 @@ class EveryN(BaseMonitor):
   treatment.
 
   """
+
   # TODO(ipolosukhin): Add also every n seconds.
 
   def __init__(self, every_n_steps=100, first_n_steps=1):
@@ -477,8 +475,8 @@ class LoggingTrainable(EveryN):
     super(LoggingTrainable, self).every_n_step_begin(step)
     # Get a list of trainable variables at the beginning of every N steps.
     # We cannot get this in __init__ because train_op has not been generated.
-    trainables = ops.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES,
-                                    scope=self._scope)
+    trainables = ops.get_collection(
+        ops.GraphKeys.TRAINABLE_VARIABLES, scope=self._scope)
     self._names = {}
     for var in trainables:
       self._names[var.name] = var.value().name
@@ -521,7 +519,7 @@ class SummarySaver(EveryN):
     self._summary_op = summary_op
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
-      self._summary_writer = summary_io.SummaryWriter(output_dir)
+      self._summary_writer = core_summary.FileWriter(output_dir)
     self._scaffold = scaffold
     # TODO(mdan): Throw an error if output_dir and summary_writer are None.
 
@@ -529,7 +527,7 @@ class SummarySaver(EveryN):
     super(SummarySaver, self).set_estimator(estimator)
     # TODO(mdan): This line looks redundant.
     if self._summary_writer is None:
-      self._summary_writer = summary_io.SummaryWriter(estimator.model_dir)
+      self._summary_writer = core_summary.FileWriter(estimator.model_dir)
 
   def every_n_step_begin(self, step):
     super(SummarySaver, self).every_n_step_begin(step)
@@ -563,12 +561,19 @@ class ValidationMonitor(EveryN):
   provided.
   """
 
-  def __init__(self, x=None, y=None, input_fn=None, batch_size=None,
+  def __init__(self,
+               x=None,
+               y=None,
+               input_fn=None,
+               batch_size=None,
                eval_steps=None,
-               every_n_steps=100, metrics=None, hooks=None,
+               every_n_steps=100,
+               metrics=None,
+               hooks=None,
                early_stopping_rounds=None,
                early_stopping_metric="loss",
-               early_stopping_metric_minimize=True, name=None):
+               early_stopping_metric_minimize=True,
+               name=None):
     """Initializes a ValidationMonitor.
 
     Args:
@@ -599,8 +604,8 @@ class ValidationMonitor(EveryN):
     Raises:
       ValueError: If both x and input_fn are provided.
     """
-    super(ValidationMonitor, self).__init__(every_n_steps=every_n_steps,
-                                            first_n_steps=-1)
+    super(ValidationMonitor, self).__init__(
+        every_n_steps=every_n_steps, first_n_steps=-1)
     # TODO(mdan): Checks like this are already done by evaluate.
     if x is None and input_fn is None:
       raise ValueError("Either x or input_fn should be provided.")
@@ -656,20 +661,27 @@ class ValidationMonitor(EveryN):
 
   def _evaluate_estimator(self):
     if isinstance(self._estimator, core_estimator.Estimator):
-      if any((x is not None for x in
-              [self.x, self.y, self.batch_size, self.metrics])):
+      if any((x is not None
+              for x in [self.x, self.y, self.batch_size, self.metrics])):
         raise ValueError(
             "tf.estimator.Estimator does not support following "
             "arguments: x, y, batch_size, metrics. Should set as `None` "
             "in ValidationMonitor")
       return self._estimator.evaluate(
-          input_fn=self.input_fn, steps=self.eval_steps, hooks=self.hooks,
+          input_fn=self.input_fn,
+          steps=self.eval_steps,
+          hooks=self.hooks,
           name=self.name)
     else:
       return self._estimator.evaluate(
-          x=self.x, y=self.y, input_fn=self.input_fn,
-          batch_size=self.batch_size, steps=self.eval_steps,
-          metrics=self.metrics, hooks=self.hooks, name=self.name)
+          x=self.x,
+          y=self.y,
+          input_fn=self.input_fn,
+          batch_size=self.batch_size,
+          steps=self.eval_steps,
+          metrics=self.metrics,
+          hooks=self.hooks,
+          name=self.name)
 
   def every_n_step_end(self, step, outputs):
     super(ValidationMonitor, self).every_n_step_end(step, outputs)
@@ -702,8 +714,9 @@ class ValidationMonitor(EveryN):
     # Early stopping logic.
     if self.early_stopping_rounds is not None:
       if self.early_stopping_metric not in validation_outputs:
-        raise ValueError("Metric %s missing from outputs %s." % (
-            self.early_stopping_metric, set(validation_outputs.keys())))
+        raise ValueError("Metric %s missing from outputs %s." %
+                         (self.early_stopping_metric,
+                          set(validation_outputs.keys())))
       current_value = validation_outputs[self.early_stopping_metric]
       if (self._best_value is None or (self.early_stopping_metric_minimize and
                                        (current_value < self._best_value)) or
@@ -714,9 +727,9 @@ class ValidationMonitor(EveryN):
         self._best_value_step = step
       stop_now = (step - self._best_value_step >= self.early_stopping_rounds)
       if stop_now:
-        logging.info("Stopping. Best step: {} with {} = {}."
-                     .format(self._best_value_step,
-                             self.early_stopping_metric, self._best_value))
+        logging.info("Stopping. Best step: {} with {} = {}.".format(
+            self._best_value_step, self.early_stopping_metric,
+            self._best_value))
         self._early_stopped = True
         return True
     return False
@@ -765,8 +778,11 @@ class CaptureVariable(EveryN):
     self._var_values[step] = _extract_output(outputs, self._var_name)
 
 
-def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
-                         output_dir=None, summary_writer=None):
+def get_default_monitors(loss_op=None,
+                         summary_op=None,
+                         save_summary_steps=100,
+                         output_dir=None,
+                         summary_writer=None):
   """Returns a default set of typically-used monitors.
 
   Args:
@@ -784,9 +800,12 @@ def get_default_monitors(loss_op=None, summary_op=None, save_summary_steps=100,
   if loss_op is not None:
     monitors.append(PrintTensor(tensor_names={"loss": loss_op.name}))
   if summary_op is not None:
-    monitors.append(SummarySaver(summary_op, save_steps=save_summary_steps,
-                                 output_dir=output_dir,
-                                 summary_writer=summary_writer))
+    monitors.append(
+        SummarySaver(
+            summary_op,
+            save_steps=save_summary_steps,
+            output_dir=output_dir,
+            summary_writer=summary_writer))
   return monitors
 
 
@@ -796,8 +815,10 @@ class GraphDump(BaseMonitor):
   Note, this is very expensive, prefer `PrintTensor` in production.
   """
 
-  IGNORE_OPS = ["Const", "Assign", "Identity", "Placeholder",
-                "RandomUniform", "Cast", "RestoreSlice"]
+  IGNORE_OPS = [
+      "Const", "Assign", "Identity", "Placeholder", "RandomUniform", "Cast",
+      "RestoreSlice"
+  ]
 
   def __init__(self, ignore_ops=None):
     """Initializes GraphDump monitor.
@@ -858,7 +879,7 @@ class GraphDump(BaseMonitor):
     this_output = self.data[step] if step in self.data else {}
     other_output = other_dump.data[step] if step in other_dump.data else {}
     for key in this_output:
-      if not isinstance(key, str) and not isinstance(key, unicode):
+      if not isinstance(key, six.string_types):
         continue
       if key not in other_output:
         raise ValueError("%s missing at step %s.", (key, step))
@@ -882,9 +903,9 @@ class GraphDump(BaseMonitor):
 class ExportMonitor(EveryN):
   """Monitor that exports Estimator every N steps."""
 
-  @deprecated("2017-03-25",
-              "ExportMonitor is deprecated. Please pass an "
-              "ExportStrategy to Experiment instead.")
+  @deprecation.deprecated("2017-03-25",
+                          "ExportMonitor is deprecated. Please pass an "
+                          "ExportStrategy to Experiment instead.")
   def __init__(self,
                every_n_steps,
                export_dir,
@@ -1029,7 +1050,7 @@ class CheckpointSaver(BaseMonitor):
     logging.info("Create CheckpointSaver.")
     super(CheckpointSaver, self).__init__()
     self._saver = saver
-    self._summary_writer = SummaryWriterCache.get(checkpoint_dir)
+    self._summary_writer = core_summary.FileWriterCache.get(checkpoint_dir)
     self._save_path = os.path.join(checkpoint_dir, checkpoint_basename)
     self._scaffold = scaffold
     self._save_secs = save_secs
@@ -1090,20 +1111,20 @@ class CheckpointSaver(BaseMonitor):
 class StepCounter(EveryN):
   """Steps per second monitor."""
 
-  def __init__(self, every_n_steps=100, output_dir=None,
-               summary_writer=None):
+  def __init__(self, every_n_steps=100, output_dir=None, summary_writer=None):
     super(StepCounter, self).__init__(every_n_steps=every_n_steps)
     self._summary_tag = "global_step/sec"
     self._last_reported_step = None
     self._last_reported_time = None
     self._summary_writer = summary_writer
     if summary_writer is None and output_dir:
-      self._summary_writer = SummaryWriterCache.get(output_dir)
+      self._summary_writer = core_summary.FileWriterCache.get(output_dir)
 
   def set_estimator(self, estimator):
     super(StepCounter, self).set_estimator(estimator)
     if self._summary_writer is None:
-      self._summary_writer = SummaryWriterCache.get(estimator.model_dir)
+      self._summary_writer = core_summary.FileWriterCache.get(
+          estimator.model_dir)
 
   def every_n_step_end(self, current_step, outputs):
     current_time = time.time()
@@ -1111,8 +1132,9 @@ class StepCounter(EveryN):
       added_steps = current_step - self._last_reported_step
       elapsed_time = current_time - self._last_reported_time
       steps_per_sec = added_steps / elapsed_time
-      summary = Summary(value=[Summary.Value(tag=self._summary_tag,
-                                             simple_value=steps_per_sec)])
+      summary = Summary(value=[
+          Summary.Value(tag=self._summary_tag, simple_value=steps_per_sec)
+      ])
       self._summary_writer.add_summary(summary, current_step)
     self._last_reported_step = current_step
     self._last_reported_time = current_time
@@ -1169,7 +1191,7 @@ class RunHookAdapterForMonitors(session_run_hook.SessionRunHook):
 
   def begin(self):
     self._last_step = None
-    self._global_step_tensor = contrib_variables.get_global_step()
+    self._global_step_tensor = training_util.get_global_step()
     for m in self._monitors:
       m.begin(max_steps=None)
 

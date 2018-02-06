@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_execution_profile.h"
 #include "tensorflow/compiler/xla/types.h"
+#include "tensorflow/compiler/xla/xla.pb.h"
 
 namespace xla {
 namespace hlo_graph_dumper {
@@ -38,15 +39,32 @@ class GraphRendererInterface {
 
   // Renders a DOT graph, returning a description of the rendered output
   // (e.g., a URL)
-  virtual string RenderGraph(const string& graph, GraphKind graph_kind) = 0;
+  virtual string RenderGraph(const string& graph, GraphKind graph_kind,
+                             const DebugOptions& debug_options) = 0;
 };
+
+// Dump the given HLO module if a dump is requested in its debug options. Based
+// on the debug options, either a graph dump, a text dump or both may be
+// generated. If a graph dump is generated, the description (e.g. an URL) is
+// returned; otherwise an empty string is returned.
+string MaybeDumpHloModule(const HloModule& module, const string& label,
+                          const HloExecutionProfile* profile = nullptr);
 
 // Dumps a graph of the computation and returns a description of the rendered
 // graph (e.g., a URL) based on the renderer. The "best" renderer in the
 // registry is used.
 string DumpGraph(const HloComputation& computation, const string& label,
-                 bool show_addresses, bool show_layouts,
-                 const HloExecutionProfile* hlo_execution_profile = nullptr);
+                 const DebugOptions& debug_options,
+                 const HloExecutionProfile* hlo_execution_profile = nullptr,
+                 bool show_metadata = false);
+
+// Like DumpGraph, but renders only nodes "near" the given node in the graph.
+//
+// The number of nodes dumped is controlled by the radius parameter, which
+// (roughly) corresponds to the max distance a node may be from the primary node
+// before it's omitted from the graph.
+string DumpNeighborhoodAround(const HloInstruction& node, int radius,
+                              bool show_metadata = false);
 
 // Dumps the HloModule::ToString() as a file into the provided directory path
 // suffixed with the provided label.
@@ -66,11 +84,10 @@ void DumpText(const HloModule& module, const string& label,
 
 // Internal implementation details below this point.
 
-// Class that registers a graph renderer. Higher-priority renders are chosen
-// first.
+// Class that registers a graph renderer.
 class Registrar {
  public:
-  Registrar(GraphRendererInterface* dumper, int priority);
+  Registrar(GraphRendererInterface* dumper);
 };
 
 #define XLA_INTERNAL_REGISTER_GRAPH_RENDERER(factory, ctr, ...)   \

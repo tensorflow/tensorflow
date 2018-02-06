@@ -57,7 +57,6 @@ from tensorflow.core.protobuf.meta_graph_pb2 import TensorInfo
 from tensorflow.core.protobuf.meta_graph_pb2 import MetaGraphDef
 from tensorflow.core.protobuf.config_pb2 import *
 from tensorflow.core.protobuf.tensorflow_server_pb2 import *
-from tensorflow.core.protobuf.rewriter_config_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
 # Framework
@@ -72,22 +71,33 @@ from tensorflow.python.client.client_lib import *
 # Ops
 from tensorflow.python.ops.standard_ops import *
 
+# Namespaces
+from tensorflow.python.ops import initializers_ns as initializers
+
 # pylint: enable=wildcard-import
 
 # Bring in subpackages.
+from tensorflow.python import data
+from tensorflow.python import keras
 from tensorflow.python.estimator import estimator_lib as estimator
 from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.layers import layers
+from tensorflow.python.ops import bitwise_ops as bitwise
 from tensorflow.python.ops import image_ops as image
+from tensorflow.python.ops import manip_ops as manip
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import sets
 from tensorflow.python.ops import spectral_ops as spectral
+from tensorflow.python.ops.distributions import distributions
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.ops.losses import losses
-from tensorflow.python.user_ops import user_ops
-from tensorflow.python.util import compat
+from tensorflow.python.profiler import profiler
 from tensorflow.python.saved_model import saved_model
 from tensorflow.python.summary import summary
+from tensorflow.python.user_ops import user_ops
+from tensorflow.python.util import compat
+
 
 # Import the names from python/training.py as train.Name.
 from tensorflow.python.training import training as train
@@ -112,6 +122,7 @@ from tensorflow.python.util.all_util import make_all
 from tensorflow.python.client import client_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import framework_lib
+from tensorflow.python.framework import subscribe
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import confusion_matrix as confusion_matrix_m
@@ -132,7 +143,6 @@ from tensorflow.python.ops import tensor_array_ops
 # documentation, or remove.
 _allowed_symbols = [
     'AttrValue',
-    'AutoParallelOptions',
     'ConfigProto',
     'ClusterDef',
     'DeviceSpec',
@@ -149,11 +159,11 @@ _allowed_symbols = [
     'NameAttrList',
     'NodeDef',
     'OptimizerOptions',
-    'RewriterConfig',
     'RunOptions',
     'RunMetadata',
     'SessionLog',
     'Summary',
+    'SummaryMetadata',
     'TensorInfo',  # Used for tf.saved_model functionality.
 ]
 
@@ -204,15 +214,21 @@ _allowed_symbols.extend([
     'quint16',
     'quint8',
     'string',
+    'uint64',
+    'uint32',
     'uint16',
     'uint8',
     'resource',
+    'variant',
 ])
 
 # Export modules and constants.
 _allowed_symbols.extend([
     'app',
+    'bitwise',
     'compat',
+    'data',
+    'distributions',
     'errors',
     'estimator',
     'feature_column',
@@ -220,11 +236,17 @@ _allowed_symbols.extend([
     'gfile',
     'graph_util',
     'image',
+    'initializers',
+    'keras',
+    'layers',
+    'linalg',
     'logging',
     'losses',
+    'manip',
     'metrics',
     'newaxis',
     'nn',
+    'profiler',
     'python_io',
     'resource_loader',
     'saved_model',
@@ -235,7 +257,6 @@ _allowed_symbols.extend([
     'test',
     'train',
     'user_ops',
-    'layers',
 ])
 
 # Variables framework.versions:
@@ -243,16 +264,19 @@ _allowed_symbols.extend([
     'VERSION',
     'GIT_VERSION',
     'COMPILER_VERSION',
+    'CXX11_ABI_FLAG',
+    'MONOLITHIC_BUILD',
 ])
 
 # Remove all extra symbols that don't have a docstring or are not explicitly
 # referenced in the whitelist.
 remove_undocumented(__name__, _allowed_symbols, [
     framework_lib, array_ops, check_ops, client_lib, compat, constant_op,
-    control_flow_ops, confusion_matrix_m, functional_ops, histogram_ops, io_ops,
-    losses, math_ops, metrics, nn, resource_loader, sets, script_ops,
+    control_flow_ops, confusion_matrix_m, data, distributions,
+    functional_ops, histogram_ops, io_ops, keras, layers,
+    losses, math_ops, metrics, nn, profiler, resource_loader, sets, script_ops,
     session_ops, sparse_ops, state_ops, string_ops, summary, tensor_array_ops,
-    train, layers
+    train
 ])
 
 # Special dunders that we choose to export:
@@ -260,6 +284,8 @@ _exported_dunders = set([
     '__version__',
     '__git_version__',
     '__compiler_version__',
+    '__cxx11_abi_flag__',
+    '__monolithic_build__',
 ])
 
 # Expose symbols minus dunders, unless they are whitelisted above.

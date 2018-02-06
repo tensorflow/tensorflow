@@ -57,22 +57,14 @@ TEST_F(MultipleAdditiveTreesTest, Empty) {
   DecisionTreeEnsembleConfig tree_ensemble_config;
   auto output_tensor = AsTensor<float>({9.0f, 23.0f}, {2, 1});
   auto output_matrix = output_tensor.matrix<float>();
-  auto no_dropout_output_matrix = output_tensor.matrix<float>();
 
   // Predict for both instances.
   tensorflow::thread::ThreadPool threads(tensorflow::Env::Default(), "test",
                                          kNumThreadsSingleThreaded);
-  MultipleAdditiveTrees::Predict(tree_ensemble_config,
-                                 false,  // include non-finalized trees
-                                 {}, batch_features_, &threads, output_matrix,
-                                 no_dropout_output_matrix);
+  MultipleAdditiveTrees::Predict(tree_ensemble_config, {}, batch_features_,
+                                 &threads, output_matrix);
   EXPECT_EQ(0, output_matrix(0, 0));
   EXPECT_EQ(0, output_matrix(1, 0));
-
-  // There was no dropout
-  for (int i = 0; i < 2; ++i) {
-    EXPECT_EQ(output_matrix(i, 0), no_dropout_output_matrix(i, 0));
-  }
 }
 
 TEST_F(MultipleAdditiveTreesTest, SingleClass) {
@@ -101,89 +93,48 @@ TEST_F(MultipleAdditiveTreesTest, SingleClass) {
   auto output_tensor = AsTensor<float>({0.0f, 0.0f}, {2, 1});
   auto output_matrix = output_tensor.matrix<float>();
 
-  auto no_dropout_output_tensor = AsTensor<float>({0.0f, 0.0f}, {2, 1});
-  auto no_dropout_output_matrix = no_dropout_output_tensor.matrix<float>();
-
   tensorflow::thread::ThreadPool threads(tensorflow::Env::Default(), "test",
                                          kNumThreadsSingleThreaded);
 
   // Normal case.
   {
-    MultipleAdditiveTrees::Predict(tree_ensemble_config,
-                                   false,  // include non-finalized trees
-                                   {}, batch_features_, &threads, output_matrix,
-                                   no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(tree_ensemble_config, {0, 1},
+                                   batch_features_, &threads, output_matrix);
     EXPECT_FLOAT_EQ(-0.2f, output_matrix(0, 0));  // -0.4 (bias) + 0.2 (leaf 2).
     EXPECT_FLOAT_EQ(0.5f, output_matrix(1, 0));   // -0.4 (bias) + 0.9 (leaf 1).
-
-    // No dropout predictions are the same.
-    for (int i = 0; i < 2; ++i) {
-      EXPECT_EQ(output_matrix(i, 0), no_dropout_output_matrix(i, 0));
-    }
   }
   // Weighted case
   {
     DecisionTreeEnsembleConfig weighted = tree_ensemble_config;
     weighted.set_tree_weights(0, 6.0);
     weighted.set_tree_weights(1, 3.2);
-    MultipleAdditiveTrees::Predict(weighted,
-                                   false,  // include non-finalized trees
-                                   {}, batch_features_, &threads, output_matrix,
-                                   no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(weighted, {0, 1}, batch_features_, &threads,
+                                   output_matrix);
     // -0.4 (bias) + 0.2 (leaf 2).
     EXPECT_FLOAT_EQ(-0.4f * 6 + 0.2 * 3.2, output_matrix(0, 0));
     // -0.4 (bias) + 0.9 (leaf 1).
     EXPECT_FLOAT_EQ(-0.4f * 6 + 0.9 * 3.2, output_matrix(1, 0));
-
-    // No dropout predictions are the same.
-    for (int i = 0; i < 2; ++i) {
-      EXPECT_EQ(output_matrix(i, 0), no_dropout_output_matrix(i, 0));
-    }
   }
   // Drop first tree.
   {
-    MultipleAdditiveTrees::Predict(tree_ensemble_config,
-                                   false,  // include non-finalized trees
-                                   {0}, batch_features_, &threads,
-                                   output_matrix, no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(tree_ensemble_config, {1}, batch_features_,
+                                   &threads, output_matrix);
     EXPECT_FLOAT_EQ(0.2f, output_matrix(0, 0));  // 0.2 (leaf 2).
     EXPECT_FLOAT_EQ(0.9f, output_matrix(1, 0));  // 0.9 (leaf 1).
-
-    // No dropout predictions
-    EXPECT_FLOAT_EQ(
-        -0.2f, no_dropout_output_matrix(0, 0));  // -0.4 (bias) + 0.2 (leaf 2).
-    EXPECT_FLOAT_EQ(
-        0.5f, no_dropout_output_matrix(1, 0));  // -0.4 (bias) + 0.9 (leaf 1).
   }
   // Drop second tree.
   {
-    MultipleAdditiveTrees::Predict(tree_ensemble_config,
-                                   false,  // include non-finalized trees
-                                   {1}, batch_features_, &threads,
-                                   output_matrix, no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(tree_ensemble_config, {0}, batch_features_,
+                                   &threads, output_matrix);
     EXPECT_FLOAT_EQ(-0.4f, output_matrix(0, 0));  // -0.4 (bias).
     EXPECT_FLOAT_EQ(-0.4f, output_matrix(1, 0));  // -0.4 (bias).
-
-    // No dropout predictions
-    EXPECT_FLOAT_EQ(
-        -0.2f, no_dropout_output_matrix(0, 0));  // -0.4 (bias) + 0.2 (leaf 2).
-    EXPECT_FLOAT_EQ(
-        0.5f, no_dropout_output_matrix(1, 0));  // -0.4 (bias) + 0.9 (leaf 1).
   }
   // Drop all trees.
   {
-    MultipleAdditiveTrees::Predict(tree_ensemble_config,
-                                   false,  // include non-finalized trees
-                                   {0, 1}, batch_features_, &threads,
-                                   output_matrix, no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(tree_ensemble_config, {}, batch_features_,
+                                   &threads, output_matrix);
     EXPECT_FLOAT_EQ(0.0, output_matrix(0, 0));
     EXPECT_FLOAT_EQ(0.0, output_matrix(1, 0));
-
-    // No dropout predictions
-    EXPECT_FLOAT_EQ(
-        -0.2f, no_dropout_output_matrix(0, 0));  // -0.4 (bias) + 0.2 (leaf 2).
-    EXPECT_FLOAT_EQ(
-        0.5f, no_dropout_output_matrix(1, 0));  // -0.4 (bias) + 0.9 (leaf 1).
   }
 }
 
@@ -218,37 +169,22 @@ TEST_F(MultipleAdditiveTreesTest, MultiClass) {
   auto output_tensor = AsTensor<float>({0.0f, 0.0f, 0.0f, 0.0f}, {2, 2});
   auto output_matrix = output_tensor.matrix<float>();
 
-  auto no_dropout_output_tensor =
-      AsTensor<float>({0.0f, 0.0f, 0.0f, 0.0f}, {2, 2});
-  auto no_dropout_output_matrix = no_dropout_output_tensor.matrix<float>();
-
   // Normal case.
   {
-    MultipleAdditiveTrees::Predict(tree_ensemble_config,
-                                   false,  // include non-finalized trees
-                                   {}, batch_features_, &threads, output_matrix,
-                                   no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(tree_ensemble_config, {0, 1},
+                                   batch_features_, &threads, output_matrix);
     EXPECT_FLOAT_EQ(-0.4f, output_matrix(0, 0));  // -0.4 (bias)
     EXPECT_FLOAT_EQ(-0.5f, output_matrix(0, 1));  // -0.7 (bias) + 0.2 (leaf 2)
     EXPECT_FLOAT_EQ(0.5f, output_matrix(1, 0));   // -0.4 (bias) + 0.9 (leaf 1)
     EXPECT_FLOAT_EQ(-0.7f, output_matrix(1, 1));  // -0.7 (bias)
-
-    // No dropout predictions are the same.
-    for (int i = 0; i < 2; ++i) {
-      for (int j = 0; j < 2; ++j) {
-        EXPECT_EQ(output_matrix(i, j), no_dropout_output_matrix(i, j));
-      }
-    }
   }
   // Weighted case.
   {
     DecisionTreeEnsembleConfig weighted = tree_ensemble_config;
     weighted.set_tree_weights(0, 6.0);
     weighted.set_tree_weights(1, 3.2);
-    MultipleAdditiveTrees::Predict(weighted,
-                                   false,  // include non-finalized trees
-                                   {}, batch_features_, &threads, output_matrix,
-                                   no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(weighted, {0, 1}, batch_features_, &threads,
+                                   output_matrix);
     // bias
     EXPECT_FLOAT_EQ(-0.4f * 6, output_matrix(0, 0));
     // bias + leaf 2
@@ -260,60 +196,30 @@ TEST_F(MultipleAdditiveTreesTest, MultiClass) {
   }
   // Dropout first tree.
   {
-    MultipleAdditiveTrees::Predict(tree_ensemble_config,
-                                   false,  // include non-finalized trees
-                                   {0}, batch_features_, &threads,
-                                   output_matrix, no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(tree_ensemble_config, {1}, batch_features_,
+                                   &threads, output_matrix);
     EXPECT_FLOAT_EQ(0.0, output_matrix(0, 0));
     EXPECT_FLOAT_EQ(0.2f, output_matrix(0, 1));  // 0.2 (leaf 2)
     EXPECT_FLOAT_EQ(0.9f, output_matrix(1, 0));  // 0.9 (leaf 2)
     EXPECT_FLOAT_EQ(0.0f, output_matrix(1, 1));
-
-    // No dropout predictions
-    EXPECT_FLOAT_EQ(-0.4f, no_dropout_output_matrix(0, 0));  // -0.4 (bias)
-    EXPECT_FLOAT_EQ(
-        -0.5f, no_dropout_output_matrix(0, 1));  // -0.7 (bias) + 0.2 (leaf 2)
-    EXPECT_FLOAT_EQ(
-        0.5f, no_dropout_output_matrix(1, 0));  // -0.4 (bias) + 0.9 (leaf 2)
-    EXPECT_FLOAT_EQ(-0.7f, no_dropout_output_matrix(1, 1));  // -0.7 (bias)
   }
   // Dropout second tree.
   {
-    MultipleAdditiveTrees::Predict(tree_ensemble_config,
-                                   false,  // include non-finalized trees
-                                   {1}, batch_features_, &threads,
-                                   output_matrix, no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(tree_ensemble_config, {0}, batch_features_,
+                                   &threads, output_matrix);
     EXPECT_FLOAT_EQ(-0.4f, output_matrix(0, 0));  // -0.4 (bias)
     EXPECT_FLOAT_EQ(-0.7f, output_matrix(0, 1));  // -0.7 (bias)
     EXPECT_FLOAT_EQ(-0.4f, output_matrix(1, 0));  // -0.4 (bias)
     EXPECT_FLOAT_EQ(-0.7f, output_matrix(1, 1));  // -0.7 (bias)
-
-    // No dropout predictions
-    EXPECT_FLOAT_EQ(-0.4f, no_dropout_output_matrix(0, 0));  // -0.4 (bias)
-    EXPECT_FLOAT_EQ(
-        -0.5f, no_dropout_output_matrix(0, 1));  // -0.7 (bias) + 0.2 (leaf 2)
-    EXPECT_FLOAT_EQ(
-        0.5f, no_dropout_output_matrix(1, 0));  // -0.4 (bias) + 0.9 (leaf 2)
-    EXPECT_FLOAT_EQ(-0.7f, no_dropout_output_matrix(1, 1));  // -0.7 (bias)
   }
   // Drop both trees.
   {
-    MultipleAdditiveTrees::Predict(tree_ensemble_config,
-                                   false,  // include non-finalized trees
-                                   {0, 1}, batch_features_, &threads,
-                                   output_matrix, no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(tree_ensemble_config, {}, batch_features_,
+                                   &threads, output_matrix);
     EXPECT_FLOAT_EQ(0.0f, output_matrix(0, 0));
     EXPECT_FLOAT_EQ(0.0f, output_matrix(0, 1));
     EXPECT_FLOAT_EQ(0.0f, output_matrix(1, 0));
     EXPECT_FLOAT_EQ(0.0f, output_matrix(1, 1));
-
-    // No dropout predictions
-    EXPECT_FLOAT_EQ(-0.4f, no_dropout_output_matrix(0, 0));  // -0.4 (bias)
-    EXPECT_FLOAT_EQ(
-        -0.5f, no_dropout_output_matrix(0, 1));  // -0.7 (bias) + 0.2 (leaf 2)
-    EXPECT_FLOAT_EQ(
-        0.5f, no_dropout_output_matrix(1, 0));  // -0.4 (bias) + 0.9 (leaf 2)
-    EXPECT_FLOAT_EQ(-0.7f, no_dropout_output_matrix(1, 1));  // -0.7 (bias)
   }
 }
 
@@ -349,29 +255,16 @@ TEST_F(MultipleAdditiveTreesTest, DenseLeaves) {
       AsTensor<float>({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}, {2, 3});
   auto output_matrix = output_tensor.matrix<float>();
 
-  auto no_dropout_output_tensor =
-      AsTensor<float>({0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f}, {2, 3});
-  auto no_dropout_output_matrix = no_dropout_output_tensor.matrix<float>();
-
   // Normal case.
   {
-    MultipleAdditiveTrees::Predict(tree_ensemble_config,
-                                   false,  // include non-finalized trees
-                                   {}, batch_features_, &threads, output_matrix,
-                                   no_dropout_output_matrix);
+    MultipleAdditiveTrees::Predict(tree_ensemble_config, {0, 1},
+                                   batch_features_, &threads, output_matrix);
     EXPECT_FLOAT_EQ(-0.2f, output_matrix(0, 0));  // -0.4 (tree1) + 0.2 (leaf 2)
     EXPECT_FLOAT_EQ(-0.4f, output_matrix(0, 1));  // -0.7 (tree1) + 0.3 (leaf 2)
     EXPECT_FLOAT_EQ(3.4f, output_matrix(0, 2));   // 3.0 -(tree1) + 0.4 (leaf 2)
     EXPECT_FLOAT_EQ(0.5f, output_matrix(1, 0));   // -0.4 (tree1) + 0.9 (leaf 1)
     EXPECT_FLOAT_EQ(0.1f, output_matrix(1, 1));   // -0.7 (tree1) + 0.8 (leaf 1)
     EXPECT_FLOAT_EQ(3.7f, output_matrix(1, 2));   // 3.0 (tree1) + 0.7 (leaf 1)
-
-    // No dropout predictions are the same.
-    for (int i = 0; i < 2; ++i) {
-      for (int j = 0; j < 3; ++j) {
-        EXPECT_EQ(output_matrix(i, j), no_dropout_output_matrix(i, j));
-      }
-    }
   }
 }
 

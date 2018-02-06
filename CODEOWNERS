@@ -1,0 +1,53 @@
+# NOTE: Disabled temporarily because it's too noisy on pushes.
+# Where component owners are known, add them here.
+
+# /tensorflow/core/platform/windows/ @mrry
+# /tensorflow/java/ @asimshankar
+# /tensorflow/tensorboard/ @jart @dandelionmane
+# /tensorflow/tools/docs/ @markdaoust
+
+# contrib
+
+# NEED OWNER: /tensorflow/contrib/avro/
+# /tensorflow/contrib/batching/ @alextp @chrisolston
+# /tensorflow/contrib/bayesflow/ @ebrevdo @rsepassi @jvdillon
+# /tensorflow/contrib/boosted_trees/ @sshrdp @yk5 @nataliaponomareva
+# /tensorflow/contrib/cmake/ @mrry @benoitsteiner
+# /tensorflow/contrib/copy_graph/ @tucker @poxvoculi
+# /tensorflow/contrib/crf/ @kentonl
+# /tensorflow/contrib/data/ @mrry
+# /tensorflow/contrib/distributions/ @jvdillon @langmore @rsepassi
+# /tensorflow/contrib/factorization/ @agarwal-ashish @xavigonzalvo
+# /tensorflow/contrib/ffmpeg/ @fredbertsch
+# NEED OWNER: /tensorflow/contrib/framework/
+# /tensorflow/contrib/graph_editor/ @purpledog
+# NEED OWNER: /tensorflow/contrib/grid_rnn/
+# /tensorflow/contrib/hvx/ @satok16
+# /tensorflow/contrib/integrate/ @shoyer
+# /tensorflow/contrib/kernel_methods/ @petrosmol
+# /tensorflow/contrib/ios_examples/ @petewarden
+# /tensorflow/contrib/labeled_tensor/ @shoyer
+# /tensorflow/contrib/layers/ @fchollet @martinwicke
+# /tensorflow/contrib/learn/ @martinwicke @ispirmustafa @alextp
+# /tensorflow/contrib/linalg/ @langmore
+# /tensorflow/contrib/linear_optimizer/ @petrosmol @andreasst @katsiapis
+# /tensorflow/contrib/lookup/ @ysuematsu @andreasst
+# /tensorflow/contrib/losses/ @alextp @ispirmustafa
+# /tensorflow/contrib/makefile/ @petewarden @satok16 @wolffg
+# /tensorflow/contrib/metrics/ @alextp @honkentuber @ispirmustafa
+# /tensorflow/contrib/nccl/ @cwhipkey @zheng-xq
+# /tensorflow/contrib/opt/ @strategist333
+# /tensorflow/contrib/pi_examples/ @maciekcc
+# /tensorflow/contrib/quantization/ @petewarden @cwhipkey @keveman
+# /tensorflow/contrib/rnn/ @ebrevdo
+# /tensorflow/contrib/saved_model/ @nfiedel @sukritiramesh
+# /tensorflow/contrib/seq2seq/ @lukaszkaiser
+# /tensorflow/contrib/session_bundle/ @nfiedel @sukritiramesh
+# /tensorflow/contrib/slim/ @sguada @thenbasilmanran
+# /tensorflow/contrib/stateless/ @girving
+# /tensorflow/contrib/tensor_forest/ @gilberthendry @thomascolthurst
+# /tensorflow/contrib/testing/ @dandelionmane
+# /tensorflow/contrib/timeseries/ @allenlavoie
+# /tensorflow/contrib/tpu/ @frankchn @saeta @jhseu
+# /tensorflow/contrib/training/ @joel-shor @ebrevdo
+# /tensorflow/contrib/util/ @sherrym

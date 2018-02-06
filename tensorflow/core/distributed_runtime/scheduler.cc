@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <queue>
 
-#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
@@ -33,7 +33,7 @@ void InitializePending(const Graph* graph, std::vector<int>* pending) {
     const int id = node->id();
     int num_in_edges = 0;
     if (IsMerge(node)) {
-      // For forward executon order, Merge nodes are special. We process
+      // For forward execution order, Merge nodes are special. We process
       // them only once when one of its inputs is processed.
       for (const Edge* edge : node->in_edges()) {
         if (edge->IsControlEdge()) {
@@ -122,7 +122,7 @@ Microseconds SlackAnalysis::ComputeAlap(std::vector<Microseconds>* alap_times) {
   std::vector<int> pending_count;
   pending_count.resize(graph_->num_node_ids());
   for (const Node* n : graph_->nodes()) {
-    // For reverse executon order, Switch nodes are special. We process
+    // For reverse execution order, Switch nodes are special. We process
     // them only once when one of its outputs is processed.
     if (IsSwitch(n)) {
       int32 num_control_edges = 0;
@@ -226,7 +226,6 @@ Microseconds GreedyScheduler::ComputeSchedule(
   while (!event_queue.empty()) {
     Event event = event_queue.top();
     event_queue.pop();
-    Microseconds curr_time;
     if (event.is_completion) {
       Sim* sim = device_states_[event.node->assigned_device_name()];
       --sim->num_running;

@@ -28,10 +28,19 @@ namespace profile_utils {
 
 static ICpuUtilsHelper* cpu_utils_helper_instance_ = nullptr;
 
+#if (defined(__powerpc__) ||                                             \
+     defined(__ppc__) && (__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__)) || \
+    (defined(__s390x__))
+/* static */ uint64 CpuUtils::GetCycleCounterFrequency() {
+  static const uint64 cpu_frequency = GetCycleCounterFrequencyImpl();
+  return cpu_frequency;
+}
+#else
 /* static */ int64 CpuUtils::GetCycleCounterFrequency() {
   static const int64 cpu_frequency = GetCycleCounterFrequencyImpl();
   return cpu_frequency;
 }
+#endif
 
 /* static */ double CpuUtils::GetMicroSecPerClock() {
   static const double micro_sec_per_clock =

@@ -20,8 +20,10 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "grpc/support/alloc.h"
+
 #include "tensorflow/core/distributed_runtime/rpc/rpc_rendezvous_mgr.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/env.h"
 

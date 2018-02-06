@@ -83,12 +83,14 @@ def stack_bidirectional_rnn(cells_fw,
     raise ValueError("cells_bw must be a list of RNNCells (one per layer).")
   if len(cells_fw) != len(cells_bw):
     raise ValueError("Forward and Backward cells must have the same depth.")
-  if initial_states_fw is not None and (not isinstance(cells_fw, list) or
-                                        len(cells_fw) != len(cells_fw)):
+  if (initial_states_fw is not None and
+      (not isinstance(initial_states_fw, list) or
+       len(initial_states_fw) != len(cells_fw))):
     raise ValueError(
         "initial_states_fw must be a list of state tensors (one per layer).")
-  if initial_states_bw is not None and (not isinstance(cells_bw, list) or
-                                        len(cells_bw) != len(cells_bw)):
+  if (initial_states_bw is not None and
+      (not isinstance(initial_states_bw, list) or
+       len(initial_states_bw) != len(cells_bw))):
     raise ValueError(
         "initial_states_bw must be a list of state tensors (one per layer).")
   states_fw = []
@@ -128,6 +130,7 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
                                     dtype=None,
                                     sequence_length=None,
                                     parallel_iterations=None,
+                                    time_major=False,
                                     scope=None):
   """Creates a dynamic bidirectional recurrent neural network.
 
@@ -160,6 +163,13 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
       and can be run in parallel, will be.  This parameter trades off
       time for space.  Values >> 1 use more memory but take less time,
       while smaller values use less memory but computations take longer.
+    time_major: The shape format of the inputs and outputs Tensors. If true,
+      these Tensors must be shaped [max_time, batch_size, depth]. If false,
+      these Tensors must be shaped [batch_size, max_time, depth]. Using
+      time_major = True is a bit more efficient because it avoids transposes at
+      the beginning and end of the RNN calculation. However, most TensorFlow
+      data is batch-major, so by default this function accepts input and emits
+      output in batch-major form.
     scope: VariableScope for the created subgraph; defaults to None.
 
   Returns:
@@ -186,12 +196,14 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
     raise ValueError("cells_bw must be a list of RNNCells (one per layer).")
   if len(cells_fw) != len(cells_bw):
     raise ValueError("Forward and Backward cells must have the same depth.")
-  if initial_states_fw is not None and (not isinstance(cells_fw, list) or
-                                        len(cells_fw) != len(cells_fw)):
+  if (initial_states_fw is not None and
+      (not isinstance(initial_states_fw, list) or
+       len(initial_states_fw) != len(cells_fw))):
     raise ValueError(
         "initial_states_fw must be a list of state tensors (one per layer).")
-  if initial_states_bw is not None and (not isinstance(cells_bw, list) or
-                                        len(cells_bw) != len(cells_bw)):
+  if (initial_states_bw is not None and
+      (not isinstance(initial_states_bw, list) or
+       len(initial_states_bw) != len(cells_bw))):
     raise ValueError(
         "initial_states_bw must be a list of state tensors (one per layer).")
 
@@ -217,7 +229,8 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
             initial_state_bw=initial_state_bw,
             sequence_length=sequence_length,
             parallel_iterations=parallel_iterations,
-            dtype=dtype)
+            dtype=dtype,
+            time_major=time_major)
         # Concat the outputs to create the new input.
         prev_layer = array_ops.concat(outputs, 2)
       states_fw.append(state_fw)

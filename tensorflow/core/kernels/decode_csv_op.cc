@@ -36,8 +36,8 @@ class DecodeCSVOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_quote_delim", &use_quote_delim_));
     OP_REQUIRES(ctx, delim.size() == 1,
                 errors::InvalidArgument("field_delim should be only 1 char"));
-
     delim_ = delim[0];
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("na_value", &na_value_));
   }
 
   void Compute(OpKernelContext* ctx) override {
@@ -79,9 +79,9 @@ class DecodeCSVOp : public OpKernel {
         const DataType& dtype = out_type_[f];
         switch (dtype) {
           case DT_INT32: {
-            // If this field is empty, check if default is given:
+            // If this field is empty or NA value, check if default is given:
             // If yes, use default value; Otherwise report error.
-            if (fields[f].empty()) {
+            if (fields[f].empty() || fields[f] == na_value_) {
               OP_REQUIRES(ctx, record_defaults[f].NumElements() == 1,
                           errors::InvalidArgument(
                               "Field ", f,
@@ -99,9 +99,9 @@ class DecodeCSVOp : public OpKernel {
             break;
           }
           case DT_INT64: {
-            // If this field is empty, check if default is given:
+            // If this field is empty or NA value, check if default is given:
             // If yes, use default value; Otherwise report error.
-            if (fields[f].empty()) {
+            if (fields[f].empty() || fields[f] == na_value_) {
               OP_REQUIRES(ctx, record_defaults[f].NumElements() == 1,
                           errors::InvalidArgument(
                               "Field ", f,
@@ -119,9 +119,9 @@ class DecodeCSVOp : public OpKernel {
             break;
           }
           case DT_FLOAT: {
-            // If this field is empty, check if default is given:
+            // If this field is empty or NA value, check if default is given:
             // If yes, use default value; Otherwise report error.
-            if (fields[f].empty()) {
+            if (fields[f].empty() || fields[f] == na_value_) {
               OP_REQUIRES(ctx, record_defaults[f].NumElements() == 1,
                           errors::InvalidArgument(
                               "Field ", f,
@@ -137,10 +137,30 @@ class DecodeCSVOp : public OpKernel {
             }
             break;
           }
-          case DT_STRING: {
-            // If this field is empty, check if default is given:
+          case DT_DOUBLE: {
+            // If this field is empty or NA value, check if default is given:
             // If yes, use default value; Otherwise report error.
-            if (fields[f].empty()) {
+            if (fields[f].empty() || fields[f] == na_value_) {
+              OP_REQUIRES(ctx, record_defaults[f].NumElements() == 1,
+                          errors::InvalidArgument(
+                              "Field ", f,
+                              " is required but missing in record ", i, "!"));
+              output[f]->flat<double>()(i) =
+                  record_defaults[f].flat<double>()(0);
+            } else {
+              double value;
+              OP_REQUIRES(ctx, strings::safe_strtod(fields[f].c_str(), &value),
+                          errors::InvalidArgument(
+                              "Field ", f, " in record ", i,
+                              " is not a valid double: ", fields[f]));
+              output[f]->flat<double>()(i) = value;
+            }
+            break;
+          }
+          case DT_STRING: {
+            // If this field is empty or NA value, check if default is given:
+            // If yes, use default value; Otherwise report error.
+            if (fields[f].empty() || fields[f] == na_value_) {
               OP_REQUIRES(ctx, record_defaults[f].NumElements() == 1,
                           errors::InvalidArgument(
                               "Field ", f,
@@ -165,6 +185,7 @@ class DecodeCSVOp : public OpKernel {
   std::vector<DataType> out_type_;
   char delim_;
   bool use_quote_delim_;
+  string na_value_;
 
   void ExtractFields(OpKernelContext* ctx, StringPiece input,
                      std::vector<string>* result) {

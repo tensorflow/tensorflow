@@ -35,11 +35,15 @@ namespace graph_transforms {
 Status QuantizeWeights(const GraphDef& input_graph_def,
                        const TransformFuncContext& context,
                        GraphDef* output_graph_def) {
+  int32 minimum_size;
+  TF_RETURN_IF_ERROR(
+      context.GetOneInt32Parameter("minimum_size", 1024, &minimum_size));
   TF_RETURN_IF_ERROR(ReplaceMatchingOpTypes(
       input_graph_def, {"Const"},
-      [](const NodeMatch& match, const std::set<string>& input_nodes,
-         const std::set<string>& output_nodes,
-         std::vector<NodeDef>* new_nodes) {
+      [minimum_size](const NodeMatch& match,
+                     const std::set<string>& input_nodes,
+                     const std::set<string>& output_nodes,
+                     std::vector<NodeDef>* new_nodes) {
         const NodeDef& old_const_node = match.node;
         if (!old_const_node.attr().count("dtype")) {
           return errors::InvalidArgument("No 'dtype' attribute for Const node ",
@@ -58,7 +62,7 @@ Status QuantizeWeights(const GraphDef& input_graph_def,
         const size_t num_elements = old_tensor.NumElements();
         // If this isn't a float constant, or it's too small, then reuse the
         // same node with no changes.
-        if ((old_dtype != DT_FLOAT) || (num_elements < 16)) {
+        if ((old_dtype != DT_FLOAT) || (num_elements < minimum_size)) {
           new_nodes->push_back(old_const_node);
           return Status::OK();
         }

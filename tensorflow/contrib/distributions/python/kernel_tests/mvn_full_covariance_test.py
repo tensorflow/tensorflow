@@ -47,6 +47,13 @@ class MultivariateNormalFullCovarianceTest(test.TestCase):
       with self.assertRaisesOpError("not symmetric"):
         mvn.covariance().eval()
 
+  def testNamePropertyIsSetByInitArg(self):
+    with self.test_session():
+      mu = [1., 2.]
+      sigma = [[1., 0.], [0., 1.]]
+      mvn = ds.MultivariateNormalFullCovariance(mu, sigma, name="Billy")
+      self.assertEqual(mvn.name, "Billy")
+
   def testDoesNotRaiseIfInitializedWithSymmetricMatrix(self):
     with self.test_session():
       mu = rng.rand(10)

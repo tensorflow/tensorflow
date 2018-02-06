@@ -68,6 +68,6 @@ def get_name_scope():
     would print the string `scope1/scope2`.
 
   Returns:
-    A string represnting the current name scope.
+    A string representing the current name scope.
   """
   return ops.get_default_graph().get_name_scope()

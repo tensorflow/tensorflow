@@ -21,8 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -48,10 +46,10 @@ class CompilationCacheTest : public ClientLibraryTestBase {
     std::unique_ptr<Literal> result =
         client_
             ->ExecuteAndTransfer(computation, arguments,
-                                 /*execution_options=*/nullptr,
+                                 /*execution_options=*/&execution_options_,
                                  &execution_profile)
             .ConsumeValueOrDie();
-    LiteralTestUtil::ExpectNear(*LiteralUtil::CreateR0<float>(expected_result),
+    LiteralTestUtil::ExpectNear(*Literal::CreateR0<float>(expected_result),
                                 *result, error_spec_);
     EXPECT_EQ(expect_cache_hit, execution_profile.compilation_cache_hit());
   }
@@ -62,14 +60,13 @@ class CompilationCacheTest : public ClientLibraryTestBase {
       std::initializer_list<std::initializer_list<float>> expected_result,
       bool expect_cache_hit) {
     ExecutionProfile execution_profile;
-    auto data_handle =
-        client_
-            ->Execute(computation, arguments, /*execution_options=*/nullptr,
-                      &execution_profile)
-            .ConsumeValueOrDie();
+    auto data_handle = client_
+                           ->Execute(computation, arguments,
+                                     &execution_options_, &execution_profile)
+                           .ConsumeValueOrDie();
     std::unique_ptr<Literal> result =
         client_->Transfer(*data_handle).ConsumeValueOrDie();
-    LiteralTestUtil::ExpectNear(*LiteralUtil::CreateR2<float>(expected_result),
+    LiteralTestUtil::ExpectNear(*Literal::CreateR2<float>(expected_result),
                                 *result, error_spec_);
     EXPECT_EQ(expect_cache_hit, execution_profile.compilation_cache_hit());
   }
@@ -89,13 +86,13 @@ XLA_TEST_F(CompilationCacheTest, ComputationCalledMultipleTimes) {
 
 XLA_TEST_F(CompilationCacheTest, ComputationCalledWithDifferentParameters) {
   std::unique_ptr<GlobalData> data_42 =
-      client_->TransferToServer(*LiteralUtil::CreateR0<float>(42.0f))
+      client_->TransferToServer(*Literal::CreateR0<float>(42.0f))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> data_123 =
-      client_->TransferToServer(*LiteralUtil::CreateR0<float>(123.0f))
+      client_->TransferToServer(*Literal::CreateR0<float>(123.0f))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> data_456 =
-      client_->TransferToServer(*LiteralUtil::CreateR0<float>(456.0f))
+      client_->TransferToServer(*Literal::CreateR0<float>(456.0f))
           .ConsumeValueOrDie();
 
   ComputationBuilder builder(client_, TestName());
@@ -141,13 +138,13 @@ XLA_TEST_F(CompilationCacheTest, DifferentParameterLayouts) {
   // layouts. Use these arrays as parameters to a simple computation. If the
   // layout of the array changes then computation should be recompiled (cache
   // miss).
-  auto rowmaj_array = test_utils::CreateR2LiteralWithLayout(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, /*minor_to_major=*/{1, 0});
+  auto rowmaj_array = Literal::CreateR2WithLayout(
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({1, 0}));
   auto rowmaj_handle =
       client_->TransferToServer(*rowmaj_array).ConsumeValueOrDie();
 
-  auto colmaj_array = test_utils::CreateR2LiteralWithLayout(
-      {{1.0f, 2.0f}, {3.0f, 4.0f}}, /*minor_to_major=*/{0, 1});
+  auto colmaj_array = Literal::CreateR2WithLayout(
+      {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({0, 1}));
   auto colmaj_handle =
       client_->TransferToServer(*colmaj_array).ConsumeValueOrDie();
 
@@ -201,21 +198,3 @@ XLA_TEST_F(CompilationCacheTest, MutatedComputation) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

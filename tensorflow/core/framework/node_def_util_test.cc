@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/node_def_util.h"
 
+#include "tensorflow/core/framework/attr_value.pb.h"  // NOLINT
 #include "tensorflow/core/framework/fake_input.h"
 #include "tensorflow/core/framework/node_def_builder.h"
 #include "tensorflow/core/framework/op_def_builder.h"
@@ -150,8 +151,9 @@ TEST(NodeDefUtilTest, Out) {
   AddNodeAttr("T", DT_STRING, &bad);
   ExpectFailure(bad, op,
                 "Value for attr 'T' of string is not in the list of allowed "
-                "values: float, double, int64, int32, uint8, uint16, int16, "
-                "int8, complex64, complex128, qint8, quint8, qint32");
+                "values: float, double, int32, uint8, int16, int8, complex64, "
+                "int64, qint8, quint8, qint32, bfloat16, uint16, complex128, "
+                "half, uint32, uint64");
 }
 
 TEST(NodeDefUtilTest, Enum) {

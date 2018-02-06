@@ -18,9 +18,11 @@ limitations under the License.
 #include <math.h>
 #include <algorithm>
 #include <functional>
+#include <numeric>
 #include <unordered_map>
 #include <vector>
 
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/random/philox_random.h"
 #include "tensorflow/core/lib/random/philox_random_test_utils.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -43,8 +45,8 @@ void FillRandomsWithSingles(PhiloxRandom gen,
                             int64 size) {
   int granularity = Distribution::kResultElementCount;
 
-  CHECK(size % granularity == 0) << " size: " << size
-                                 << " granularity: " << granularity;
+  CHECK(size % granularity == 0)
+      << " size: " << size << " granularity: " << granularity;
 
   SingleSampleAdapter<PhiloxRandom> single_samples(&gen);
 
@@ -104,12 +106,12 @@ bool CheckSamplesMoments(const std::vector<T>& samples,
 
   for (int i = 1; i <= max_moments; ++i) {
     // Calculate the theoretical mean and variance
-    const double moments_i_mean = (stride == 0)
-                                      ? theoretical_moments(i)
-                                      : std::pow(theoretical_moments(1), i);
-    const double moments_i_squared = (stride == 0)
-                                         ? theoretical_moments(2 * i)
-                                         : std::pow(theoretical_moments(2), i);
+    const double moments_i_mean =
+        (stride == 0) ? theoretical_moments(i)
+                      : MathUtil::IPow(theoretical_moments(1), i);
+    const double moments_i_squared =
+        (stride == 0) ? theoretical_moments(2 * i)
+                      : MathUtil::IPow(theoretical_moments(2), i);
     const double moments_i_var =
         moments_i_squared - moments_i_mean * moments_i_mean;
 
@@ -150,8 +152,8 @@ void UniformMomentsTest(int count, int max_moments,
   PhiloxRandom gen(seed);
   FillRandoms<UniformDistribution<PhiloxRandom, T> >(gen, &v1[0], v1.size());
   for (int stride : strides) {
-    bool status = CheckSamplesMoments<T>(v1, uniform_moments, max_moments,
-                                         stride, z_limit);
+    bool status =
+        CheckSamplesMoments(v1, uniform_moments, max_moments, stride, z_limit);
     ASSERT_TRUE(status) << " UniformMomentsTest failing. seed: " << seed;
   }
 }
@@ -182,8 +184,8 @@ void NormalMomentsTest(int count, int max_moments,
   FillRandoms<NormalDistribution<PhiloxRandom, T> >(gen, &v1[0], v1.size());
 
   for (int stride : strides) {
-    bool status = CheckSamplesMoments<T>(v1, normal_moments, max_moments,
-                                         stride, z_limit);
+    bool status =
+        CheckSamplesMoments(v1, normal_moments, max_moments, stride, z_limit);
     ASSERT_TRUE(status) << " NormalMomentsTest failing. seed: " << seed;
   }
 }
@@ -213,7 +215,7 @@ class TruncatedNormalMoments {
     }
 
     // The real computation of the moment.
-    double bias = 2.0 * std::pow(kV, n - 1) * kFV / (2.0 * kPhiV - 1.0);
+    double bias = 2.0 * MathUtil::IPow(kV, n - 1) * kFV / (2.0 * kPhiV - 1.0);
     double moment_n_minus_2 = (*this)(n - 2);
     double moment_n = (n - 1) * moment_n_minus_2 - bias;
 
@@ -244,8 +246,8 @@ void RandomParametersMomentsTest(int count, int max_moments,
       gen, &v1[0], v1.size());
 
   for (int stride : strides) {
-    bool status = CheckSamplesMoments<T>(v1, TruncatedNormalMoments(),
-                                         max_moments, stride, z_limit);
+    bool status = CheckSamplesMoments(v1, TruncatedNormalMoments(), max_moments,
+                                      stride, z_limit);
     ASSERT_TRUE(status) << " NormalMomentsTest failing. seed: " << seed;
   }
 }
@@ -278,6 +280,72 @@ TEST(PhiloxRandomTest, NormalDoubleMomentsTest) {
 TEST(PhiloxRandomTest, RandomParametersDoubleMomentsTest) {
   const std::vector<int> strides = {0, 1, 4, 17};
   RandomParametersMomentsTest<double>(1 << 20, 40, strides, kZLimit);
+}
+
+class MockGenerator {
+ public:
+  explicit MockGenerator(uint64 seed) : counter_(seed) {}
+  using ResultType = std::vector<uint32>;
+  using ResultElementType = uint32;
+  static const int kResultElementCount = 1;
+  ResultType operator()() {
+    ResultType result;
+    result.push_back(counter_++);
+    return result;
+  }
+
+ private:
+  uint32 counter_;
+};
+
+template <typename T>
+void SingleSampleAdapterSkipTest() {
+  std::vector<uint64> skips(10);
+  std::vector<uint64> skip_afters(10);
+  std::iota(skips.begin(), skips.end(), 0);
+  std::iota(skip_afters.begin(), skip_afters.end(), 0);
+  uint64 total_samples = 100;
+  uint64 seed = GetTestSeed();
+
+  for (uint64 skip : skips) {
+    for (uint64 skip_after : skip_afters) {
+      // Baseline rngs.
+      T parent_gen(seed);
+      SingleSampleAdapter<T> gen(&parent_gen);
+
+      // Rng on which Skip() is performed.
+      T parent_gen_to_skip(seed);
+      SingleSampleAdapter<T> gen_to_skip(&parent_gen_to_skip);
+
+      // Skip over `skip_after` samples from both `gen` and `gen_to_skip`.
+      int cur = 0;
+      for (; cur < skip_after; cur++) {
+        gen();
+        gen_to_skip();
+      }
+
+      // Skip over `skip_` samples from `gen` iteratively.
+      for (; cur < skip_after + skip; cur++) {
+        gen();
+      }
+
+      // Skip over `skip_` samples from `gen_to_skip` by calling `Skip()`.
+      gen_to_skip.Skip(skip);
+
+      // Assert that they produce same outputs afterwards.
+      for (; cur < total_samples; cur++) {
+        ASSERT_EQ(gen(), gen_to_skip());
+      }
+    }
+  }
+}
+
+TEST(SingleSampleAdapterTest, PhiloxRandomSkip) {
+  SingleSampleAdapterSkipTest<PhiloxRandom>();
+}
+
+TEST(SingleSampleAdapterTest, MockGeneratorSkip) {
+  SingleSampleAdapterSkipTest<MockGenerator>();
 }
 
 }  // namespace

@@ -56,8 +56,8 @@ void SpaceToBatch(XlaOpKernelContext* ctx,
   padding_config.add_dimensions();  // Don't pad the batch dimension.
   for (int i = 0; i < block_rank; ++i) {
     auto* dim = padding_config.add_dimensions();
-    int64 pad_start = xla::LiteralUtil::Get<int64>(paddings, {i, 0});
-    int64 pad_end = xla::LiteralUtil::Get<int64>(paddings, {i, 1});
+    int64 pad_start = paddings.Get<int64>({i, 0});
+    int64 pad_end = paddings.Get<int64>({i, 1});
     OP_REQUIRES(ctx, pad_start >= 0 && pad_end >= 0,
                 errors::InvalidArgument("Paddings must be non-negative"));
     dim->set_edge_padding_low(pad_start);
@@ -162,7 +162,10 @@ class SpaceToBatchNDOp : public XlaOpKernel {
                  block_shape, paddings);
   }
 };
-REGISTER_XLA_OP(Name("SpaceToBatchND"), SpaceToBatchNDOp);
+REGISTER_XLA_OP(Name("SpaceToBatchND")
+                    .CompileTimeConstInput("paddings")
+                    .CompileTimeConstInput("block_shape"),
+                SpaceToBatchNDOp);
 
 class SpaceToBatchOp : public XlaOpKernel {
  public:
@@ -184,7 +187,8 @@ class SpaceToBatchOp : public XlaOpKernel {
  private:
   int block_size_;
 };
-REGISTER_XLA_OP(Name("SpaceToBatch"), SpaceToBatchOp);
+REGISTER_XLA_OP(Name("SpaceToBatch").CompileTimeConstInput("paddings"),
+                SpaceToBatchOp);
 
 }  // namespace
 }  // namespace tensorflow

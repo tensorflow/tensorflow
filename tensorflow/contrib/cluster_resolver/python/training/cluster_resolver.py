@@ -75,8 +75,8 @@ class UnionClusterResolver(ClusterResolver):
 
   This class performs a union given two or more existing ClusterResolvers. It
   merges the underlying ClusterResolvers, and returns one unified ClusterSpec
-  when as_cluster_spec is called. The details of the merge function is
-  documented in the as_cluster_spec function.
+  when cluster_spec is called. The details of the merge function is
+  documented in the cluster_spec function.
   """
 
   def __init__(self, *args):

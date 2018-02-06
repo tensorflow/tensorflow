@@ -33,8 +33,12 @@ GraphOptimizer::GraphOptimizer(const OptimizerOptions& opts) : opts_(opts) {
 
 GraphOptimizer::~GraphOptimizer() {}
 
-void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
-                              Device* device, std::unique_ptr<Graph>* graph) {
+void GraphOptimizer::Optimize(
+    FunctionLibraryRuntime* runtime, Env* env, Device* device,
+    std::unique_ptr<Graph>* graph,
+    const std::unordered_map<string, std::vector<PartialTensorShape>>*
+        shape_map,
+    const std::function<bool(const Node*)>& cse_consider_fn) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -57,6 +61,11 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
 
     if (opts_.do_constant_folding()) {
       ConstantFoldingOptions cf_opts;
+      cf_opts.shape_map = shape_map;
+      if (opts_.max_folded_constant_in_bytes() > 0) {
+        cf_opts.max_constant_size_in_bytes =
+            opts_.max_folded_constant_in_bytes();
+      }
       bool was_mutated;
       ConstantFold(cf_opts, runtime, env, device, g, &was_mutated)
           .IgnoreError();
@@ -72,7 +81,7 @@ void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
       changed = true;
     }
     if (opts_.do_common_subexpression_elimination() &&
-        OptimizeCSE(g, nullptr)) {
+        OptimizeCSE(g, cse_consider_fn)) {
       DumpGraph("OptimizeCSE", g);
       changed = true;
     }

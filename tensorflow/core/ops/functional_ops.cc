@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -37,32 +38,14 @@ REGISTER_OP("SymbolicGradient")
         c->set_output(i, c->input(i));
       }
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes the gradient function for function f via backpropagation.
+    });
 
-input: a list of input tensors of size N + M;
-output: a list of output tensors of size N;
-Tin: the type list for the input list.
-Tout: the type list for the input list.
-f: The function we want to compute the gradient for.
-
-The function 'f' must be a numerical function which takes N inputs and
-produces M outputs. Its gradient function 'g', which is computed by
-this SymbolicGradient op is a function taking N + M inputs and
-produces N outputs.
-
-I.e. if we have
-   (y1, y2, ..., y_M) = f(x1, x2, ..., x_N),
-then, g is
-   (dL/dx1, dL/dx2, ..., dL/dx_N) = g(x1, x2, ..., x_N,
-                                     dL/dy1, dL/dy2, ..., dL/dy_M),
-
-where L is a scalar-value function of (x1, x2, ..., xN) (e.g., the
-loss function). dL/dx_i is the partial derivative of L with respect
-to x_i.
-
-(Needs some math expert to say the comment above better.)
-)doc");
-
+REGISTER_OP("RemoteCall")
+    .Input("target: string")
+    .Input("args: Tin")
+    .Output("output: Tout")
+    .Attr("Tin: list(type)")
+    .Attr("Tout: list(type)")
+    .Attr("f: func")
+    .SetShapeFn(shape_inference::UnknownShape);
 }  // end namespace tensorflow

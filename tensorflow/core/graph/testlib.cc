@@ -18,6 +18,7 @@ limitations under the License.
 #include <vector>
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def_builder.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -39,7 +40,7 @@ REGISTER_KERNEL_BUILDER(
 #ifdef TENSORFLOW_USE_SYCL
 REGISTER_KERNEL_BUILDER(
     Name("HostConst").Device(DEVICE_SYCL).HostMemory("output"), HostConstantOp);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 // Register the HostConst Op
 // Returns a constant tensor on the host.  Useful for writing C++ tests
@@ -272,6 +273,16 @@ Node* Reverse(Graph* g, Node* tensor, Node* axis) {
   return Binary(g, "ReverseV2", tensor, axis);
 }
 
+Node* Roll(Graph* g, Node* input, Node* shift, Node* axis) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Roll", g->op_registry())
+                  .Input(input)
+                  .Input(shift)
+                  .Input(axis)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Error(Graph* g, Node* input, const string& errmsg) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Error")
@@ -420,11 +431,12 @@ Node* Cast(Graph* g, Node* in, DataType dst) {
   return ret;
 }
 
-Node* Gather(Graph* g, Node* in0, Node* in1) {
+Node* Gather(Graph* g, Node* in0, Node* in1, Node* axis) {
   Node* ret;
-  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Gather")
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "GatherV2")
                   .Input(in0)
                   .Input(in1)
+                  .Input(axis)
                   .Finalize(g, &ret));
   return ret;
 }
@@ -474,6 +486,24 @@ Node* Conv2D(Graph* g, Node* in0, Node* in1) {
                   .Attr("T", DT_FLOAT)
                   .Attr("strides", {1, 1, 1, 1})
                   .Attr("padding", "SAME")
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Diag(Graph* g, Node* in, DataType type) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Diag")
+                  .Input(in)
+                  .Attr("T", type)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* DiagPart(Graph* g, Node* in, DataType type) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "DiagPart")
+                  .Input(in)
+                  .Attr("T", type)
                   .Finalize(g, &ret));
   return ret;
 }

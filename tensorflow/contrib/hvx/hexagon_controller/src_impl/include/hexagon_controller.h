@@ -40,16 +40,37 @@ int hexagon_controller_GetWrapperVersion();
 
 int hexagon_controller_GetHexagonBinaryVersion();
 
+// Buffer operations
+bool hexagon_controller_SetAllInputTensorDef(int node_count,
+                                             hexagon_nn_tensordef* tensordef);
+
+bool hexagon_controller_SetAllInputTensorDef(int node_count,
+                                             hexagon_nn_tensordef* tensordef);
+
 // Hexagon perf functions
 int hexagon_controller_InitHexagonWithMaxAttributes(int enable_dcvs,
                                                     int bus_usage, int version);
 
+bool hexagon_controller_AllocateInputNodeDataBuffersWithPort(int port,
+                                                             int input_size);
+
+bool hexagon_controller_AllocateOutNodeDataBuffersWithPort(int port,
+                                                           int output_size);
+
 bool hexagon_controller_AllocateNodeDataBuffers(int input_size,
                                                 int output_size);
 
+bool hexagon_controller_AllocateMultipleNodeDataBuffers(int input_count,
+                                                        int* input_sizes,
+                                                        int output_count,
+                                                        int* output_sizes);
+
+bool hexagon_controller_ReleaseInputNodeDataBuffersWithPort(int port);
+bool hexagon_controller_ReleaseOutputNodeDataBuffersWithPort(int port);
+
 bool hexagon_controller_ReleaseNodeDataBuffers();
 
-bool hexagon_controller_CopyByteNodeData(int x, int y, int z, int d,
+bool hexagon_controller_CopyByteNodeData(int port, int x, int y, int z, int d,
                                          int type_byte_size,
                                          uint8_t* array_data);
 
@@ -63,10 +84,10 @@ void hexagon_controller_SetTargetGraphId(uint32_t graph_id);
 void hexagon_controller_GrowMemorySize();
 
 // Graph data transfer functions
-struct NodeDataFloat* hexagon_controller_GetInputNodeDataFloatBuffer();
+struct NodeDataFloat* hexagon_controller_GetInputNodeDataBuffer(int port);
 
-float* hexagon_controller_GetOutputNodeDataFloatBuffer(
-    const char* const node_name, int* out_array_size);
+uint8_t* hexagon_controller_GetOutputNodeDataBuffer(int port,
+                                                    int* out_array_byte_size);
 
 // Graph functions
 uint32_t hexagon_controller_InstantiateGraph();
@@ -78,6 +99,10 @@ bool hexagon_controller_ConstructGraph(uint32_t nn_id);
 uint32_t hexagon_controller_SetupGraph(int version);
 
 bool hexagon_controller_ExecuteInceptionDummyData(uint32_t nn_id);
+
+bool hexagon_controller_ExecuteGraphWithMultipleInOut(
+    const uint32_t nn_id, const int input_count, hexagon_nn_tensordef* inputs,
+    const int output_count, hexagon_nn_tensordef* outputs);
 
 bool hexagon_controller_ExecuteGraph(
     const uint32_t nn_id, const uint32_t batches, const uint32_t height,
@@ -116,8 +141,6 @@ int hexagon_controller_AppendConstNode(const char* const name, int graph_id,
 void hexagon_controller_EnableDbgUseInceptionDummyData(bool enable);
 
 bool hexagon_controller_IsDbgUseInceptionDummyDataEnabled();
-
-void hexagon_controller_PrintLog(uint32_t nn_id);
 
 #ifdef __cplusplus
 }

@@ -24,11 +24,13 @@ limitations under the License.
 
 #include "adspmsgd.h"
 #include "dspCV.h"
-#include "rpcmem.h"    // helper API's for shared buffer allocation
+#include "node_data_float.h"
+#include "rpcmem.h"  // helper API's for shared buffer allocation
 #include "soc_interface.h"
 #include "tfm_log.h"
 
-// if false, use int data as input.  This is only for acceleration purpose
+// if false, use int data as input.  This is only for acceleration purpose.
+// Also you may need to change android.min.
 static const bool USE_FLOAT_DATA = true;
 
 // if true, show id for each node
@@ -43,27 +45,96 @@ extern uint8_t inception_dummy_int_data_224x224[];
 extern uint8_t inception_dummy_int_data_299x299[];
 extern float inception_dummy_float_data_299x299[];
 
-#define HEXAGON_CONTROLLER_VERSION 92
+#define HEXAGON_CONTROLLER_VERSION 101
 
 // allocate print bufsize in advance @MB
 #define PRINT_BUFSIZE (2 * 1024 * 1024)
 
 static unsigned char s_print_buf[PRINT_BUFSIZE];
 
-// input node data buffer size
-// x2 1024 * 1024 * 2 > 299 * 299 * 3 * 4 > 1024 * 1024
-static const int INPUT_NODE_DATA_BUFFER_SIZE = 1024 * 1024 * 2;
-// output node data buffer size
-// (1008 is enough for inception)
-static const int OUTPUT_NODE_DATA_BUFFER_SIZE = 300 * 300 * 3 * 4;
+#define MAX_INPUTS 10
+#define MAX_OUTPUTS 10
 
-static struct NodeDataFloat s_input_node_data_float_buffer;
-static float* s_output_node_data_float_buffer;
-static int s_output_node_data_float_buffer_byte_size;
-static int s_output_node_data_float_array_size;
+static struct NodeDataFloat s_input_node_data_buffer[MAX_INPUTS];
+static uint8_t* s_output_node_data_buffer[MAX_OUTPUTS];
+static int s_output_node_data_buffer_max_byte_size[MAX_OUTPUTS];
+static int s_output_node_data_array_byte_size[MAX_OUTPUTS];
 static uint32_t s_target_graph_id;
 
 static bool s_dbg_use_inception_dummy_data = false;
+static int s_dbg_inception_version = 3;
+
+static int GetInputNodeCount() {
+  for (int i = 0; i < MAX_INPUTS; ++i) {
+    if (s_input_node_data_buffer[i].max_buf_byte_size == 0) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+static int GetOutputNodeCount() {
+  for (int i = 0; i < MAX_OUTPUTS; ++i) {
+    if (s_output_node_data_buffer_max_byte_size[i] == 0) {
+      return i;
+    }
+  }
+  return 0;
+}
+
+static bool SetInputTensorDef(int port, hexagon_nn_tensordef* tensordef) {
+  if (port >= GetInputNodeCount()) {
+    TFMLOGE("Error exceeds input count.");
+    return false;
+  }
+  struct NodeDataFloat* input_node_data_buffer =
+      &s_input_node_data_buffer[port];
+  tensordef->batches = input_node_data_buffer->x;
+  tensordef->height = input_node_data_buffer->y;
+  tensordef->width = input_node_data_buffer->z;
+  tensordef->depth = input_node_data_buffer->d;
+  tensordef->data = input_node_data_buffer->byte_array_data;
+  tensordef->dataLen = input_node_data_buffer->array_byte_size;
+
+  return true;
+}
+
+bool hexagon_controller_SetAllInputTensorDef(int node_count,
+                                             hexagon_nn_tensordef* tensordef) {
+  bool success = true;
+  if (node_count != GetInputNodeCount()) {
+    TFMLOGE("Error invalid input node count.");
+    return false;
+  }
+  for (int i = 0; i < node_count; ++i) {
+    SetInputTensorDef(i, &tensordef[i]);
+  }
+  return success;
+}
+
+static bool SetOutputTensorDef(int port, hexagon_nn_tensordef* tensordef) {
+  if (port >= GetOutputNodeCount()) {
+    TFMLOGE("Error exceeds output count.");
+    return false;
+  }
+  tensordef->data = s_output_node_data_buffer[port];
+  tensordef->dataLen = s_output_node_data_buffer_max_byte_size[port];
+  return true;
+}
+
+bool hexagon_controller_SetAllOutputTensorDef(int node_count,
+                                              hexagon_nn_tensordef* tensordef) {
+  bool success = true;
+  if (node_count != GetOutputNodeCount()) {
+    TFMLOGE("Error invalid output node count. %d != %d", node_count,
+            GetOutputNodeCount());
+    return false;
+  }
+  for (int i = 0; i < node_count; ++i) {
+    SetOutputTensorDef(i, &tensordef[i]);
+  }
+  return success;
+}
 
 void hexagon_controller_InitInputNodeDataToInceptionDummyData(int version) {
   if (version == 1) {
@@ -72,44 +143,54 @@ void hexagon_controller_InitInputNodeDataToInceptionDummyData(int version) {
       return;
     }
     hexagon_controller_CopyByteNodeData(
-        INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V1,
-        INCEPTION_PARAM_WIDTH_V1, INCEPTION_PARAM_DEPTH,
-        1, inception_dummy_int_data_224x224);
+        0, INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V1,
+        INCEPTION_PARAM_WIDTH_V1, INCEPTION_PARAM_DEPTH, 1,
+        inception_dummy_int_data_224x224);
   } else if (version == 3) {
     if (USE_FLOAT_DATA) {
       hexagon_controller_CopyByteNodeData(
-          INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
-          INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH,
-          sizeof(float), (uint8_t*)inception_dummy_float_data_299x299);
+          0, INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
+          INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH, sizeof(float),
+          (uint8_t*)inception_dummy_float_data_299x299);
     } else {
       hexagon_controller_CopyByteNodeData(
-          INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
-          INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH,
-          1, inception_dummy_int_data_299x299);
+          0, INCEPTION_PARAM_BATCHES, INCEPTION_PARAM_HEIGHT_V3,
+          INCEPTION_PARAM_WIDTH_V3, INCEPTION_PARAM_DEPTH, 1,
+          inception_dummy_int_data_299x299);
     }
   }
 }
 
-bool hexagon_controller_ExecuteGraphWithBuffer(
-    uint32_t nn_id, bool show_ranking) {
-  uint32_t out_batches, out_height, out_width, out_depth;
-  uint32_t out_data_size;
-  int x = s_input_node_data_float_buffer.x;
-  int y = s_input_node_data_float_buffer.y;
-  int z = s_input_node_data_float_buffer.z;
-  int d = s_input_node_data_float_buffer.d;
-  uint8_t *byte_data = s_input_node_data_float_buffer.byte_array_data;
-  int array_size = s_input_node_data_float_buffer.array_size;
-  const bool success = hexagon_controller_ExecuteGraph(
-      nn_id, x, y, z, d, byte_data, array_size,
-      &out_batches, &out_height, &out_width, &out_depth,
-      (uint8_t *)s_output_node_data_float_buffer,
-      s_output_node_data_float_buffer_byte_size,
-      &out_data_size);
-  s_output_node_data_float_array_size =
-      out_batches * out_height * out_width * out_depth;
+bool hexagon_controller_ExecuteGraphWithBuffer(uint32_t nn_id,
+                                               bool show_ranking) {
+  const int input_node_count = GetInputNodeCount();
+  hexagon_nn_tensordef inputs[input_node_count];
+  const int output_node_count = GetOutputNodeCount();
+  if (output_node_count <= 0) {
+    TFMLOGI("Error output node count is 0.");
+    return false;
+  }
+  hexagon_nn_tensordef outputs[output_node_count];
+  hexagon_controller_SetAllInputTensorDef(input_node_count, inputs);
+  hexagon_controller_SetAllOutputTensorDef(output_node_count, outputs);
+  const bool success = hexagon_controller_ExecuteGraphWithMultipleInOut(
+      nn_id, input_node_count, inputs, output_node_count, outputs);
+  for (int i = 0; i < output_node_count; ++i) {
+    s_output_node_data_array_byte_size[i] = outputs[i].data_valid_len;
+  }
+
+  const hexagon_nn_tensordef* output0 = &outputs[0];
+
+  const uint32_t out_batches = output0->batches;
+  const uint32_t out_height = output0->height;
+  const uint32_t out_width = output0->width;
+  const uint32_t out_depth = output0->depth;
+  const uint32_t out_data_size = output0->data_valid_len;
+  const uint32_t out_buf_byte_size = output0->dataLen;
+
   if (!success) {
     TFMLOGE("Execution failed");
+    DumpNNId(nn_id);
     return false;
   } else if (!show_ranking) {
     return true;
@@ -118,15 +199,11 @@ bool hexagon_controller_ExecuteGraphWithBuffer(
   static const int OUT_RANKING_SIZE = 5;
   int out_ranking[OUT_RANKING_SIZE];
   hexagon_controller_PrintMaxNIdx(
-      s_output_node_data_float_buffer,
-      out_batches * out_height * out_width * out_depth,
-      OUT_RANKING_SIZE, out_ranking);
-  TFMLOGD("%d x %d x %d x %d, byte size = %d\n",
-          out_batches,
-          out_height,
-          out_width,
-          out_depth,
-          out_data_size);
+      (float*)s_output_node_data_buffer[0],
+      out_batches * out_height * out_width * out_depth, OUT_RANKING_SIZE,
+      out_ranking);
+  TFMLOGD("%d x %d x %d x %d, byte size = %d, buf size = %d\n", out_batches,
+          out_height, out_width, out_depth, out_data_size, out_buf_byte_size);
   if (s_dbg_use_inception_dummy_data) {
     // Check the result of inception with a dummy data. This step shouldn't
     // be passed when show_ranking != true to avoid adding unnecessary
@@ -142,9 +219,7 @@ bool hexagon_controller_ExecuteGraphWithBuffer(
   return true;
 }
 
-uint32_t hexagon_controller_GetTargetGraphId() {
-  return s_target_graph_id;
-}
+uint32_t hexagon_controller_GetTargetGraphId() { return s_target_graph_id; }
 
 void hexagon_controller_SetTargetGraphId(uint32_t graph_id) {
   s_target_graph_id = graph_id;
@@ -168,69 +243,129 @@ int hexagon_controller_GetHexagonBinaryVersion() {
   return retval;
 }
 
-bool hexagon_controller_AllocateNodeDataBuffers(
-    int input_size, int output_size) {
-  TFMLOGD("Allocate memory for input / output node data float");
-  if (s_input_node_data_float_buffer.buf_size != 0) {
+bool hexagon_controller_AllocateInputNodeDataBuffers(int port,
+                                                     int input_buf_byte_size) {
+  TFMLOGD("Allocate memory for input node data. port = %d, size = %d", port,
+          input_buf_byte_size);
+  if (s_input_node_data_buffer[port].max_buf_byte_size != 0) {
     TFMLOGE("ERROR! input buffer is already allocated!!");
     return false;
   } else {
-    int byte_array_data_size = USE_FLOAT_DATA ?
-        input_size * sizeof(float) : input_size; /* sizeof(uint8_t) ? */
-    s_input_node_data_float_buffer.buf_size = input_size;
-    // unused? remove?
-    s_input_node_data_float_buffer.array_data =
-        malloc(input_size * sizeof(float));
-    s_input_node_data_float_buffer.byte_array_data =
-        malloc(byte_array_data_size);
+    s_input_node_data_buffer[port].max_buf_byte_size = input_buf_byte_size;
+    posix_memalign((void**)&s_input_node_data_buffer[port].byte_array_data, 128,
+                   input_buf_byte_size);
+    TFMLOGD("allocate input node data buffers done");
+  }
+  return true;
+}
 
-    s_output_node_data_float_buffer = malloc(output_size * sizeof(float));
-    s_output_node_data_float_buffer_byte_size = output_size * sizeof(float);
-    s_output_node_data_float_array_size = 0;
-    TFMLOGD("allocate node data buffers");
+bool hexagon_controller_AllocateOutputNodeDataBuffers(
+    int port, int output_buf_byte_size) {
+  TFMLOGD("Allocate memory for output node data. port = %d, size = %d", port,
+          output_buf_byte_size);
+  if (s_output_node_data_buffer_max_byte_size[port] != 0) {
+    TFMLOGE("ERROR! input buffer is already allocated!!");
+    return false;
+  } else {
+    // s_output_node_data_buffer = malloc(output_size * sizeof(float));
+    posix_memalign((void**)&s_output_node_data_buffer[port], 128,
+                   output_buf_byte_size);
+    s_output_node_data_buffer_max_byte_size[port] = output_buf_byte_size;
+    s_output_node_data_array_byte_size[port] = 0;
+    TFMLOGD("allocate output node data buffers");
+  }
+  return true;
+}
+
+bool hexagon_controller_AllocateMultipleNodeDataBuffers(int input_count,
+                                                        int* input_sizes,
+                                                        int output_count,
+                                                        int* output_sizes) {
+  bool success = true;
+  for (int i = 0; i < input_count; ++i) {
+    success &=
+        hexagon_controller_AllocateInputNodeDataBuffers(i, input_sizes[i]);
+  }
+  for (int i = 0; i < output_count; ++i) {
+    success &=
+        hexagon_controller_AllocateOutputNodeDataBuffers(i, output_sizes[i]);
+  }
+
+  if (s_dbg_use_inception_dummy_data) {
+    hexagon_controller_InitInputNodeDataToInceptionDummyData(
+        s_dbg_inception_version);
+  }
+  return success;
+}
+
+bool hexagon_controller_AllocateNodeDataBuffers(int input_size,
+                                                int output_size) {
+  return hexagon_controller_AllocateMultipleNodeDataBuffers(1, &input_size, 1,
+                                                            &output_size);
+}
+
+bool hexagon_controller_ReleaseInputNodeDataBuffersWithPort(int port) {
+  struct NodeDataFloat* input_node_data_buffer =
+      &s_input_node_data_buffer[port];
+  if (input_node_data_buffer->max_buf_byte_size == 0) {
+    TFMLOGE("ERROR! input buffer has not been allocated yet!!");
+    return false;
+  } else {
+    input_node_data_buffer->max_buf_byte_size = 0;
+    input_node_data_buffer->array_byte_size = 0;
+    free(input_node_data_buffer->byte_array_data);
+  }
+  return true;
+}
+
+bool hexagon_controller_ReleaseOutputNodeDataBuffersWithPort(int port) {
+  if (s_output_node_data_buffer_max_byte_size[port] == 0) {
+    TFMLOGE("ERROR! output buffer has not been allocated yet!!");
+    return false;
+  } else {
+    s_output_node_data_buffer_max_byte_size[port] = 0;
+    s_output_node_data_array_byte_size[port] = 0;
+    free(s_output_node_data_buffer[port]);
   }
   return true;
 }
 
 bool hexagon_controller_ReleaseNodeDataBuffers() {
-  if (s_input_node_data_float_buffer.buf_size == 0) {
-    TFMLOGE("ERROR! input buffer has not been allocated yet!!");
-    return false;
-  } else {
-    s_input_node_data_float_buffer.buf_size = 0;
-    free(s_input_node_data_float_buffer.array_data);
+  bool success = true;
+  for (int i = 0; i < GetInputNodeCount(); ++i) {
+    success &= hexagon_controller_ReleaseInputNodeDataBuffersWithPort(i);
   }
-  if (s_output_node_data_float_buffer_byte_size == 0) {
-    TFMLOGE("ERROR! output buffer has not been allocated yet!!");
-    return false;
-  } else {
-    s_output_node_data_float_buffer_byte_size = 0;
-    free(s_input_node_data_float_buffer.byte_array_data);
+  for (int i = 0; i < GetOutputNodeCount(); ++i) {
+    success &= hexagon_controller_ReleaseOutputNodeDataBuffersWithPort(i);
   }
-  return true;
+  return success;
 }
 
-bool hexagon_controller_CopyByteNodeData(
-    int x, int y, int z, int d, int type_byte_size, uint8_t* array_data) {
+bool hexagon_controller_CopyByteNodeData(int port, int x, int y, int z, int d,
+                                         int type_byte_size,
+                                         uint8_t* array_data) {
   int array_byte_size = x * y * z * d * type_byte_size;
-  TFMLOGD("--- %d, %d, %d, %d, %d, %d",x,y,z,d,type_byte_size,array_byte_size);
-  if (s_input_node_data_float_buffer.buf_size < array_byte_size) {
+  TFMLOGD("--- %d, %d, %d, %d, %d, %d", x, y, z, d, type_byte_size,
+          array_byte_size);
+  struct NodeDataFloat* input_node_data_buffer = &s_input_node_data_buffer[0];
+
+  if (input_node_data_buffer->max_buf_byte_size < array_byte_size) {
     TFMLOGE("ERROR! input buffer size is too small! %d < %d",
-            s_input_node_data_float_buffer.buf_size, array_byte_size);
+            input_node_data_buffer->max_buf_byte_size, array_byte_size);
     return false;
   }
-  memcpy(s_input_node_data_float_buffer.byte_array_data,
-         array_data, array_byte_size);
-  s_input_node_data_float_buffer.array_size = array_byte_size;
-  s_input_node_data_float_buffer.x = x;
-  s_input_node_data_float_buffer.y = y;
-  s_input_node_data_float_buffer.z = z;
-  s_input_node_data_float_buffer.d = d;
+  memcpy(input_node_data_buffer->byte_array_data, array_data, array_byte_size);
+  input_node_data_buffer->array_byte_size = array_byte_size;
+  input_node_data_buffer->x = x;
+  input_node_data_buffer->y = y;
+  input_node_data_buffer->z = z;
+  input_node_data_buffer->d = d;
   return true;
 }
 
-int hexagon_controller_InitHexagonWithMaxAttributes(
-    int enable_dcvs, int bus_usage, int version) {
+int hexagon_controller_InitHexagonWithMaxAttributes(int enable_dcvs,
+                                                    int bus_usage,
+                                                    int version) {
   TFMLOGI("Init hexagon with max attributes (Controller version = %d)",
           HEXAGON_CONTROLLER_VERSION);
   const int MCPS = 1000;
@@ -239,17 +374,17 @@ int hexagon_controller_InitHexagonWithMaxAttributes(
   adspmsgd_start(0, RPCMEM_HEAP_DEFAULT, 4096);
 
   dspCV_Attribute attrib[] = {
-    // The below values will result in the maximum aDSP performance,
-    // at Turbo voltage.
-    // Slightly more MCPS than are available on current targets
-    {DSP_TOTAL_MCPS, MCPS},
-    // drive the clock to MAX on known targets
-    {DSP_MCPS_PER_THREAD, MCPS / 2},
-    // 12 GB/sec is slightly higher than the max realistic
-    // max BW on existing targets.
-    {PEAK_BUS_BANDWIDTH_MBPS, MBPS},
-    // This app is non-real time, and constantly reading/writing memory
-    {BUS_USAGE_PERCENT, bus_usage},
+      // The below values will result in the maximum aDSP performance,
+      // at Turbo voltage.
+      // Slightly more MCPS than are available on current targets
+      {DSP_TOTAL_MCPS, MCPS},
+      // drive the clock to MAX on known targets
+      {DSP_MCPS_PER_THREAD, MCPS / 2},
+      // 12 GB/sec is slightly higher than the max realistic
+      // max BW on existing targets.
+      {PEAK_BUS_BANDWIDTH_MBPS, MBPS},
+      // This app is non-real time, and constantly reading/writing memory
+      {BUS_USAGE_PERCENT, bus_usage},
   };
   int retval = 0;
   if (!enable_dcvs) {
@@ -263,13 +398,8 @@ int hexagon_controller_InitHexagonWithMaxAttributes(
       dspCV_initQ6_with_attributes(attrib, sizeof(attrib) / sizeof(attrib[0]));
   TFMLOGD("Return value from dspCV_initQ6() : %d\n", retval);
 
-  hexagon_controller_AllocateNodeDataBuffers(
-      INPUT_NODE_DATA_BUFFER_SIZE, OUTPUT_NODE_DATA_BUFFER_SIZE);
-
-  if (s_dbg_use_inception_dummy_data) {
-    hexagon_controller_InitInputNodeDataToInceptionDummyData(version);
-  }
   s_target_graph_id = 0;
+  s_dbg_inception_version = version;
 
   return retval;
 }
@@ -285,31 +415,36 @@ int hexagon_controller_DeInitHexagon() {
   return retval;
 }
 
-void hexagon_controller_GrowMemorySize() {
-  hexagon_nn_config();
+void hexagon_controller_GrowMemorySize() { hexagon_nn_config(); }
+
+struct NodeDataFloat* hexagon_controller_GetInputNodeDataBuffer(int port) {
+  if (port >= GetInputNodeCount()) {
+    TFMLOGE("port should be less than 1");
+  }
+  return &s_input_node_data_buffer[port];
 }
 
-struct NodeDataFloat* hexagon_controller_GetInputNodeDataFloatBuffer() {
-  return &s_input_node_data_float_buffer;
-}
-
-float* hexagon_controller_GetOutputNodeDataFloatBuffer(
-    const char *const node_name, int* out_array_size) {
-  *out_array_size = s_output_node_data_float_array_size;
-  return s_output_node_data_float_buffer;
+uint8_t* hexagon_controller_GetOutputNodeDataBuffer(int port,
+                                                    int* out_array_byte_size) {
+  if (port >= GetOutputNodeCount()) {
+    TFMLOGE("port should be less than 1");
+  }
+  *out_array_byte_size = s_output_node_data_array_byte_size[port];
+  return s_output_node_data_buffer[port];
 }
 
 // Append const node to the graph
-int hexagon_controller_AppendConstNode(
-    const char* const name, int graph_id, int node_id,
-    int batch, int height, int width, int depth,
-    const uint8_t* const data, int data_length) {
+int hexagon_controller_AppendConstNode(const char* const name, int graph_id,
+                                       int node_id, int batch, int height,
+                                       int width, int depth,
+                                       const uint8_t* const data,
+                                       int data_length) {
   if (DBG_SHOW_ID) {
-    TFMLOGV("---(CONST) %s, %d, %d, %d, %d, %d, %d",
-            name, node_id, batch, height, width, depth, data_length);
+    TFMLOGV("---(CONST) %s, %d, %d, %d, %d, %d, %d", name, node_id, batch,
+            height, width, depth, data_length);
   } else {
-    TFMLOGV("---(CONST) %s, %d, %d, %d, %d, %d",
-            name, batch, height, width, depth, data_length);
+    TFMLOGV("---(CONST) %s, %d, %d, %d, %d, %d", name, batch, height, width,
+            depth, data_length);
   }
   const int retval = hexagon_nn_append_const_node(
       graph_id, node_id, batch, height, width, depth, data, data_length);
@@ -321,11 +456,12 @@ int hexagon_controller_AppendConstNode(
 }
 
 // Append node to the graph
-int hexagon_controller_AppendNode(
-    const char* const name, int graph_id, int node_id, int ops_id,
-    int padding_id, const hexagon_nn_input* const inputs,
-    int inputs_count, const hexagon_nn_output* const outputs,
-    int outputs_count) {
+int hexagon_controller_AppendNode(const char* const name, int graph_id,
+                                  int node_id, int ops_id, int padding_id,
+                                  const hexagon_nn_input* const inputs,
+                                  int inputs_count,
+                                  const hexagon_nn_output* const outputs,
+                                  int outputs_count) {
   char input_param_buf[OUTPUT_PARAM_MAX_LINE_SIZE];
   memset(input_param_buf, 0, OUTPUT_PARAM_MAX_LINE_SIZE);
   int pos = 0;
@@ -335,8 +471,8 @@ int hexagon_controller_AppendNode(
       pos += snprintf(&input_param_buf[pos], 500, "(%d, %d), ",
                       inputs[i].src_id, inputs[i].output_idx);
     } else {
-      pos += snprintf(&input_param_buf[pos], 500, "(%d), ",
-                      inputs[i].output_idx);
+      pos +=
+          snprintf(&input_param_buf[pos], 500, "(%d), ", inputs[i].output_idx);
     }
   }
 
@@ -349,18 +485,16 @@ int hexagon_controller_AppendNode(
   }
 
   if (DBG_SHOW_ID) {
-    TFMLOGV("---(OP) %s, %d, %d, %d, %d, %d, %s, %s", name, node_id,
-            ops_id, padding_id, inputs_count, outputs_count, input_param_buf,
+    TFMLOGV("---(OP) %s, %d, %d, %d, %d, %d, %s, %s", name, node_id, ops_id,
+            padding_id, inputs_count, outputs_count, input_param_buf,
             output_param_buf);
   } else {
-    TFMLOGV("---(OP) %s, %d, %d, %d, %d, %s, %s", name,
-            ops_id, padding_id, inputs_count, outputs_count, input_param_buf,
-            output_param_buf);
+    TFMLOGV("---(OP) %s, %d, %d, %d, %d, %s, %s", name, ops_id, padding_id,
+            inputs_count, outputs_count, input_param_buf, output_param_buf);
   }
-  const int retval = hexagon_nn_append_node(
-      graph_id, node_id, ops_id, padding_id,
-      inputs, inputs_count,
-      outputs, outputs_count);
+  const int retval =
+      hexagon_nn_append_node(graph_id, node_id, ops_id, padding_id, inputs,
+                             inputs_count, outputs, outputs_count);
   if (retval != 0) {
     TFMLOGE("Failed to append const node %d", node_id);
     return retval;
@@ -374,14 +508,4 @@ void hexagon_controller_EnableDbgUseInceptionDummyData(bool enable) {
 
 bool hexagon_controller_IsDbgUseInceptionDummyDataEnabled() {
   return s_dbg_use_inception_dummy_data;
-}
-
-void hexagon_controller_PrintLog(uint32_t nn_id) {
-  unsigned char *buf;
-  if ((buf = malloc(PRINT_BUFSIZE)) == NULL) {
-    return;
-  }
-  hexagon_nn_getlog(nn_id, buf, PRINT_BUFSIZE);
-  TFMLOGE("DUMP HEXAGON LOG: %s", buf);
-  free(buf);
 }

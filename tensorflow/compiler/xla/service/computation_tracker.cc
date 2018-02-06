@@ -216,6 +216,7 @@ StatusOr<std::unique_ptr<HloModule>> ComputationTracker::BuildHloModule(
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloComputation> hlo_computation,
         computation->BuildHloComputation(versioned_handle.version, resolver,
+                                         config.debug_options(),
                                          include_unreachable_instructions));
 
     // Add the newly created computation to VersionedHandle-to-HloComputation

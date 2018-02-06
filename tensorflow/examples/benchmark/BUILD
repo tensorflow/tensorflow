@@ -12,7 +12,6 @@ exports_files(["LICENSE"])
 
 py_test(
     name = "sample_benchmark",
-    size = "small",
     srcs = ["sample_benchmark.py"],
     srcs_version = "PY2AND3",
     deps = [

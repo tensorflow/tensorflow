@@ -26,8 +26,10 @@ import six
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('estimator.export.ExportOutput')
 class ExportOutput(object):
   """Represents an output of a model that can be served.
 
@@ -50,6 +52,7 @@ class ExportOutput(object):
     pass
 
 
+@tf_export('estimator.export.ClassificationOutput')
 class ClassificationOutput(ExportOutput):
   """Represents the output of a classification head.
 
@@ -118,6 +121,7 @@ class ClassificationOutput(ExportOutput):
         examples, self.classes, self.scores)
 
 
+@tf_export('estimator.export.RegressionOutput')
 class RegressionOutput(ExportOutput):
   """Represents the output of a regression head."""
 
@@ -150,6 +154,10 @@ class RegressionOutput(ExportOutput):
     return signature_def_utils.regression_signature_def(examples, self.value)
 
 
+_SINGLE_OUTPUT_DEFAULT_NAME = 'output'
+
+
+@tf_export('estimator.export.PredictOutput')
 class PredictOutput(ExportOutput):
   """Represents the output of a generic prediction head.
 
@@ -162,16 +170,15 @@ class PredictOutput(ExportOutput):
     """Constructor for PredictOutput.
 
     Args:
-      outputs: A dict of string to `Tensor` representing the predictions.
+      outputs: A `Tensor` or a dict of string to `Tensor` representing the
+        predictions.
 
     Raises:
       ValueError: if the outputs is not dict, or any of its keys are not
           strings, or any of its values are not `Tensor`s.
     """
     if not isinstance(outputs, dict):
-      raise ValueError(
-          'Prediction outputs must be given as a dict of string to Tensor; '
-          'got {}'.format(outputs))
+      outputs = {_SINGLE_OUTPUT_DEFAULT_NAME: outputs}
     for key, value in outputs.items():
       if not isinstance(key, six.string_types):
         raise ValueError(

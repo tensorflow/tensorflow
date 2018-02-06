@@ -31,6 +31,10 @@ namespace xla {
 HloProto MakeHloProto(const HloModule& module,
                       const BufferAssignment& assignment);
 
+// Returns a serialized representation of the HLO state, but buffer assignment
+// will not be included in the output.
+HloProto MakeHloProto(const HloModule& module);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_PROTO_UTIL_H_

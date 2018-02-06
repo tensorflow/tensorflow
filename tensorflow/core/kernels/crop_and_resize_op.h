@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/numeric_types.h"
+#include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
 namespace tensorflow {
@@ -26,7 +27,8 @@ namespace functor {
 template <typename Device, typename T>
 struct CropAndResize {
   // We assume that the tensor sizes are correct.
-  bool operator()(const Device& d, typename TTypes<T, 4>::ConstTensor image,
+  bool operator()(const OpKernelContext* context,
+                  typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
                   float extrapolation_value,
@@ -53,12 +55,12 @@ struct CropAndResizeBackpropBoxes {
 };
 
 template <typename Device>
-struct CheckValidBoxIndHelper {
-  // Checks if all values in box_ind are in [0, batch).
+struct CheckValidBoxIndexHelper {
+  // Checks if all values in box_index are in [0, batch).
   void operator()(const Device& d,
-                  typename TTypes<int32, 1>::ConstTensor box_ind, int batch,
+                  typename TTypes<int32, 1>::ConstTensor box_index, int batch,
                   typename TTypes<bool, 0>::Tensor isvalid) {
-    isvalid.device(d) = ((box_ind >= 0) && (box_ind < batch)).all();
+    isvalid.device(d) = ((box_index >= 0) && (box_index < batch)).all();
   }
 };
 

@@ -11,6 +11,9 @@ message VariableDef {
   // Name of the variable tensor.
   string variable_name = 1;
 
+  // Name of the tensor holding the variable's initial value.
+  string initial_value_name = 6;
+
   // Name of the initializer op.
   string initializer_name = 2;
 

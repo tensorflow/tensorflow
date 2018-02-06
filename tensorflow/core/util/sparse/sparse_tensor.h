@@ -69,6 +69,21 @@ class SparseTensor {
     CHECK_EQ(shape.size(), dims_) << "Shape rank must be SparseTensor rank.";
   }
 
+  SparseTensor(const SparseTensor& other)
+      : SparseTensor(other.ix_, other.vals_, other.shape_, other.order_) {}
+
+  SparseTensor(SparseTensor&& other)
+      : SparseTensor(std::move(other.ix_), std::move(other.vals_),
+                     std::move(other.shape_), std::move(other.order_)) {}
+
+  SparseTensor& operator=(const SparseTensor& other) {
+    ix_ = other.ix_;
+    vals_ = other.vals_;
+    shape_ = other.shape_;
+    order_ = other.order_;
+    return *this;
+  }
+
   std::size_t num_entries() const { return ix_.dim_size(0); }
 
   int dims() const { return shape_.size(); }
@@ -154,6 +169,15 @@ class SparseTensor {
   static std::vector<SparseTensor> Split(const SparseTensor& tensor,
                                          const int split_dim,
                                          const int num_split);
+
+  // Slice() will slice the input SparseTensor into a SparseTensor based on
+  // specified start and size. Both start and size are 1-D array with each
+  // element of the array representing one dimension. The start is the start
+  // index at each dimension and the size is the size at each dimension.
+  template <typename T>
+  static SparseTensor Slice(const SparseTensor& tensor,
+                            const gtl::ArraySlice<int64>& start,
+                            const gtl::ArraySlice<int64>& size);
 
   // Picks out the dimensions according to `dim_indices`.
   std::vector<int64> PickDims(gtl::ArraySlice<int64> dim_indices) const {
@@ -539,6 +563,81 @@ std::vector<SparseTensor> SparseTensor::Split(const SparseTensor& input_tensor,
                                 output_shapes[i]);
   }
   return output_tensors;
+}
+
+template <typename T>
+SparseTensor SparseTensor::Slice(const SparseTensor& input_tensor,
+                                 const gtl::ArraySlice<int64>& start,
+                                 const gtl::ArraySlice<int64>& size) {
+  TensorShape output_shape(input_tensor.shape());
+
+  const int dims = input_tensor.dims();
+  for (int dim = 0; dim < dims; dim++) {
+    int64 dim_size = start[dim] + size[dim] < output_shape.dim_size(dim)
+                         ? size[dim]
+                         : output_shape.dim_size(dim) - start[dim];
+    output_shape.set_dim(dim, dim_size);
+  }
+
+  auto input_indices_t = input_tensor.indices().matrix<int64>();
+  auto input_values_t = input_tensor.values().vec<T>();
+
+  // Find the number of indices that fall inside start and size.
+  int count = 0;
+  for (int i = 0; i < input_tensor.indices().dim_size(0); i++) {
+    // The following will check to see if an input is within the
+    // range specified by start and size.
+    // The for loop below iterates through all dimensions. In case
+    // the index falls outside of the start and size at any dimension,
+    // it will be considered as a "no hit" (hit = false). In this
+    // case, it will not be counted as the index that fall inside
+    // the range specified by start and size.
+    bool hit = true;
+    for (int dim = 0; dim < dims; dim++) {
+      if (!(start[dim] <= input_indices_t(i, dim) &&
+            input_indices_t(i, dim) < start[dim] + size[dim])) {
+        hit = false;
+        break;
+      }
+    }
+    if (!hit) {
+      continue;
+    }
+    count++;
+  }
+
+  Tensor output_values(DataTypeToEnum<T>::v(), TensorShape({count}));
+  Tensor output_indices(DT_INT64, TensorShape({count, dims}));
+
+  auto output_values_t = output_values.vec<T>();
+  auto output_indices_t = output_indices.matrix<int64>();
+
+  // Obtain the output indices that fall inside start and size.
+  int index = 0;
+  for (int i = 0; i < input_tensor.indices().dim_size(0) && index < count;
+       i++) {
+    // The logic here is similar as the above except that the above
+    // only count the number of indices while here we actually generate
+    // the output.
+    bool hit = true;
+    for (int dim = 0; dim < dims; dim++) {
+      if (!(start[dim] <= input_indices_t(i, dim) &&
+            input_indices_t(i, dim) < start[dim] + size[dim])) {
+        hit = false;
+        break;
+      }
+    }
+    if (!hit) {
+      continue;
+    }
+    output_values_t(index) = input_values_t(i);
+    for (int dim = 0; dim < dims; dim++) {
+      output_indices_t(index, dim) = input_indices_t(i, dim) - start[dim];
+    }
+    index++;
+  }
+
+  return SparseTensor(output_indices, output_values, output_shape);
 }
 
 }  // namespace sparse

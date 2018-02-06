@@ -35,8 +35,8 @@ namespace op = xla::testing::opcode_matchers;
 namespace xla {
 namespace {
 
-using ::testing::UnorderedElementsAreArray;
 using ::testing::UnorderedElementsAre;
+using ::testing::UnorderedElementsAreArray;
 
 class TuplePointsToAnalysisTest : public HloTestBase {
  protected:
@@ -62,7 +62,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // index. CHECKs if no buffer is defined at that point.
   const LogicalBuffer* const GetBuffer(const HloInstruction* instruction,
                                        const ShapeIndex& index) {
-    const std::vector<const LogicalBuffer*>& pointed_to =
+    const auto& pointed_to =
         points_to_analysis_->GetPointsToSet(instruction).element(index);
     CHECK_EQ(1, pointed_to.size());
     CHECK_EQ(instruction, pointed_to[0]->instruction());
@@ -73,7 +73,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // Checks that the given points-to set contains exactly (unordered) the given
   // LogicalBuffers.
   void ExpectHasBuffers(
-      const std::vector<const LogicalBuffer*>& points_to_set,
+      const PointsToSet::BufferList& points_to_set,
       tensorflow::gtl::ArraySlice<const LogicalBuffer*> buffers) {
     std::vector<const LogicalBuffer*> vec(buffers.begin(), buffers.end());
     EXPECT_THAT(points_to_set, UnorderedElementsAreArray(vec));
@@ -82,22 +82,22 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // Checks that the given points-to set contains exactly (unordered) the
   // top-level buffers of the given instructions.
   void ExpectHasTopLevelBuffers(
-      const std::vector<const LogicalBuffer*>& points_to_set,
+      const PointsToSet::BufferList& points_to_set,
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
-    std::vector<const LogicalBuffer*> buffers;
+    PointsToSet::BufferList buffers;
     for (auto instruction : instructions) {
       buffers.push_back(GetBuffer(instruction, /*index=*/{}));
     }
     ExpectHasBuffers(points_to_set, buffers);
   }
 
-  // Overload which takes a std::set instead of a std::vector.
+  // Overload which takes a set instead of a vector.
   void ExpectHasTopLevelBuffers(
-      const tensorflow::gtl::FlatSet<const LogicalBuffer*>& points_to_set,
+      const PointsToSet::BufferSet& points_to_set,
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
-    ExpectHasTopLevelBuffers(std::vector<const LogicalBuffer*>(
-                                 points_to_set.begin(), points_to_set.end()),
-                             instructions);
+    ExpectHasTopLevelBuffers(
+        PointsToSet::BufferList(points_to_set.begin(), points_to_set.end()),
+        instructions);
   }
 
   // Checks that the buffer defined at the given instruction and index has
@@ -124,9 +124,9 @@ class TuplePointsToAnalysisTest : public HloTestBase {
 TEST_F(TuplePointsToAnalysisTest, SimpleTuple) {
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
 
@@ -177,14 +177,14 @@ TEST_F(TuplePointsToAnalysisTest, NestedTuple) {
   // tuple.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   auto inner_tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
 
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(3.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({inner_tuple, constant3}));
 
@@ -238,14 +238,14 @@ TEST_F(TuplePointsToAnalysisTest, GetTupleElement) {
   // tuple.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   auto inner_tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
 
   auto constant3 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(3.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(3.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({inner_tuple, constant3}));
 
@@ -270,7 +270,7 @@ TEST_F(TuplePointsToAnalysisTest, DuplicatedElement) {
   // Create a tuple which contains duplicate elements.
   auto builder = HloComputation::Builder(TestName());
   auto constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant, constant, constant}));
 
@@ -291,9 +291,9 @@ TEST_F(TuplePointsToAnalysisTest, TupleCopy) {
   // the same.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto copy = builder.AddInstruction(
@@ -313,21 +313,66 @@ TEST_F(TuplePointsToAnalysisTest, TupleCopy) {
       {constant1, constant2, copy});
 }
 
+TEST_F(TuplePointsToAnalysisTest, SendAndSendDone) {
+  // Send forwards its operand to the output tuple at {0}.
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto send = builder.AddInstruction(
+      HloInstruction::CreateSend(constant, /*channel_id=*/0));
+  auto send_done = builder.AddInstruction(HloInstruction::CreateSendDone(send));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(send).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(send).IsDistinct());
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(send_done).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(send_done).IsDistinct());
+
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(send).element({}), {send});
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(send).element({0}), {constant});
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(send_done).CreateFlattenedSet(),
+      {send_done});
+  ExpectHasBufferAliases(constant, {}, {{constant, {}}, {send, {0}}});
+}
+
+TEST_F(TuplePointsToAnalysisTest, RecvAndRecvDone) {
+  // RecvDone forwards its operand tuple element at {0} to the output.
+  auto builder = HloComputation::Builder(TestName());
+  auto recv = builder.AddInstruction(HloInstruction::CreateRecv(
+      ShapeUtil::MakeShape(F32, {1, 2, 3}), /*channel_id=*/0));
+  auto recv_done = builder.AddInstruction(HloInstruction::CreateRecvDone(recv));
+
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(recv).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(recv).IsDistinct());
+  EXPECT_FALSE(points_to_analysis_->GetPointsToSet(recv_done).IsAmbiguous());
+  EXPECT_TRUE(points_to_analysis_->GetPointsToSet(recv_done).IsDistinct());
+
+  ExpectHasTopLevelBuffers(
+      points_to_analysis_->GetPointsToSet(recv).element({}), {recv});
+  ExpectHasBufferAliases(recv, {0}, {{recv, {0}}, {recv_done, {}}});
+}
+
 TEST_F(TuplePointsToAnalysisTest, TupleSelect) {
   // Select from two different tuples. This should create an ambiguous points to
   // set containing the union of both sides.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   auto tuple1 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto tuple2 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant2, constant2}));
 
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
       tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
 
@@ -356,7 +401,7 @@ TEST_F(TuplePointsToAnalysisTest, SelectTupleParameters) {
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, tuple_shape, "param1"));
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
       tuple_shape, HloOpcode::kSelect, pred, param0, param1));
   auto copy = builder.AddInstruction(
@@ -396,16 +441,16 @@ TEST_F(TuplePointsToAnalysisTest, UnambiguousTupleSelect) {
   // Select from two identical tuples. The result should not be ambiguous.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   auto tuple1 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto tuple2 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
 
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
       tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
 
@@ -427,9 +472,9 @@ TEST_F(TuplePointsToAnalysisTest, NestedTupleSelect) {
   // the right values.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   auto inner_tuple1 = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto inner_tuple2 = builder.AddInstruction(
@@ -441,7 +486,7 @@ TEST_F(TuplePointsToAnalysisTest, NestedTupleSelect) {
       builder.AddInstruction(HloInstruction::CreateTuple({inner_tuple2}));
 
   auto pred = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(false)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
   auto select = builder.AddInstruction(HloInstruction::CreateTernary(
       tuple1->shape(), HloOpcode::kSelect, pred, tuple1, tuple2));
 
@@ -474,9 +519,9 @@ TEST_F(TuplePointsToAnalysisTest, TupleWithBitcast) {
   // have the operand of the bitcast in its points-to set.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   auto bitcast = builder.AddInstruction(HloInstruction::CreateUnary(
       constant2->shape(), HloOpcode::kBitcast, constant2));
   auto tuple =
@@ -510,10 +555,9 @@ TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
   // Construct a tuple constant and kCopy it. Verify the points-to set of the
   // copy correctly correctly points into the nested elements of the constant.
   auto builder = HloComputation::Builder(TestName());
-  auto tuple_constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::MakeTuple(
-          {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}).get(),
-           LiteralUtil::CreateR1<float>({2.0, 42}).get()})));
+  auto tuple_constant = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::MakeTuple({Literal::CreateR2<float>({{1.0}, {2.0}}).get(),
+                          Literal::CreateR1<float>({2.0, 42}).get()})));
   auto copy = builder.AddInstruction(HloInstruction::CreateUnary(
       tuple_constant->shape(), HloOpcode::kCopy, tuple_constant));
 
@@ -533,9 +577,9 @@ TEST_F(TuplePointsToAnalysisTest, BufferAliases) {
   // times. Verify buffer alias sets.
   auto builder = HloComputation::Builder(TestName());
   auto constant1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
   auto constant2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(2.0)));
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(2.0)));
   auto inner_tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({constant1, constant2}));
   auto tuple = builder.AddInstruction(
@@ -574,7 +618,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     auto tuple_element1 = builder.AddInstruction(
         HloInstruction::CreateGetTupleElement(update_shape, tuple_param0, 1));
     auto ones = builder.AddInstruction(HloInstruction::CreateConstant(
-        LiteralUtil::CreateR1<float>({1.f, 1.f, 1.f, 1.f})));
+        Literal::CreateR1<float>({1.f, 1.f, 1.f, 1.f})));
     // Create 'update' = Add(GetTupleElement(tuple_param0, 1), ones)
     auto update = builder.AddInstruction(HloInstruction::CreateBinary(
         update_shape, HloOpcode::kAdd, tuple_element1, ones));
@@ -585,7 +629,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
     if (add_additional_gte0_user) {
       // Create 'slice' as an additional user of 'input'.
       auto slice = builder.AddInstruction(
-          HloInstruction::CreateSlice(update_shape, input, {0}, {3}));
+          HloInstruction::CreateSlice(update_shape, input, {0}, {3}, {1}));
       // Modify 'update' to take 'slice' output.
       update = builder.AddInstruction(HloInstruction::CreateBinary(
           update_shape, HloOpcode::kAdd, update, slice));
@@ -662,13 +706,12 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
                                                HloInstruction* operand) {
     auto it = std::find_if(
         fusion->fused_instructions().begin(),
-        fusion->fused_instructions().end(),
-        [=](const std::unique_ptr<HloInstruction>& fused) {
+        fusion->fused_instructions().end(), [=](const HloInstruction* fused) {
           return fused->opcode() == HloOpcode::kParameter &&
                  fusion->operand(fused->parameter_number()) == operand;
         });
     CHECK(it != fusion->fused_instructions().end());
-    return (*it).get();
+    return *it;
   }
 
   // Returns all users of 'fusion_paran' at 'tuple_index'.
@@ -764,7 +807,3 @@ TEST_F(FusionPointsToAnalysisTest, FusionParam0TwoUsers) {
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

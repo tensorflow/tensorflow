@@ -12,7 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Implementation of k-means clustering on top of tf.learn API."""
+"""Implementation of k-means clustering on top of `Estimator` API.
+
+This module is deprecated. Please use
+@{tf.contrib.factorization.KMeansClustering} instead of
+@{tf.contrib.learn.KMeansClustering}. It has a similar interface, but uses the
+@{tf.estimator.Estimator} API instead of @{tf.contrib.learn.Estimator}.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,19 +28,24 @@ import time
 import numpy as np
 
 from tensorflow.contrib.factorization.python.ops import clustering_ops
-from tensorflow.contrib.framework.python.ops import variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators.model_fn import ModelFnOps
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.summary import summary
 from tensorflow.python.ops.control_flow_ops import with_dependencies
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training.session_run_hook import SessionRunArgs
+from tensorflow.python.util.deprecation import deprecated
+
+_USE_TF_CONTRIB_FACTORIZATION = (
+    'Please use tf.contrib.factorization.KMeansClustering instead of'
+    ' tf.contrib.learn.KMeansClustering. It has a similar interface, but uses'
+    ' the tf.estimator.Estimator API instead of tf.contrib.learn.Estimator.')
 
 
 class _LossRelativeChangeHook(session_run_hook.SessionRunHook):
@@ -117,7 +128,7 @@ def _kmeans_clustering_model_fn(features, labels, mode, params, config):
        random_seed=params.get('random_seed'),
        kmeans_plus_plus_num_retries=params.get(
            'kmeans_plus_plus_num_retries')).training_graph()
-  incr_step = state_ops.assign_add(variables.get_global_step(), 1)
+  incr_step = state_ops.assign_add(training_util.get_global_step(), 1)
   loss = math_ops.reduce_sum(losses, name=KMeansClustering.LOSS_OP_NAME)
   summary.scalar('loss/raw', loss)
   training_op = with_dependencies([training_op, incr_step], loss)
@@ -153,6 +164,7 @@ class KMeansClustering(estimator.Estimator):
   ALL_SCORES = 'all_scores'
   LOSS_OP_NAME = 'kmeans_loss'
 
+  @deprecated(None, _USE_TF_CONTRIB_FACTORIZATION)
   def __init__(self,
                num_clusters,
                model_dir=None,
@@ -204,6 +216,7 @@ class KMeansClustering(estimator.Estimator):
         model_dir=model_dir,
         config=config)
 
+  @deprecated(None, _USE_TF_CONTRIB_FACTORIZATION)
   def predict_cluster_idx(self, input_fn=None):
     """Yields predicted cluster indices."""
     key = KMeansClustering.CLUSTER_IDX
@@ -212,6 +225,7 @@ class KMeansClustering(estimator.Estimator):
     for result in results:
       yield result[key]
 
+  @deprecated(None, _USE_TF_CONTRIB_FACTORIZATION)
   def score(self, input_fn=None, steps=None):
     """Predict total sum of distances to nearest clusters.
 
@@ -229,6 +243,7 @@ class KMeansClustering(estimator.Estimator):
         self.evaluate(
             input_fn=input_fn, steps=steps)[KMeansClustering.SCORES])
 
+  @deprecated(None, _USE_TF_CONTRIB_FACTORIZATION)
   def transform(self, input_fn=None, as_iterable=False):
     """Transforms each element to distances to cluster centers.
 
@@ -255,6 +270,7 @@ class KMeansClustering(estimator.Estimator):
     else:
       return results
 
+  @deprecated(None, _USE_TF_CONTRIB_FACTORIZATION)
   def clusters(self):
     """Returns cluster centers."""
     return super(KMeansClustering, self).get_variable_value(self.CLUSTERS)

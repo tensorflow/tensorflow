@@ -140,11 +140,16 @@ class SavedModelBuilder(object):
 
     Raises:
       TypeError if legacy init op is not of type `Operation`.
+      AssertionError if the graph already contains one or more legacy init ops.
     """
     if legacy_init_op is not None:
       if not isinstance(legacy_init_op, ops.Operation):
         raise TypeError("legacy_init_op needs to be an Operation: %r" %
                         legacy_init_op)
+      if ops.get_collection(constants.LEGACY_INIT_OP_KEY):
+        raise AssertionError(
+            "graph already contains one or more legacy init ops under the "
+            "collection {}.".format(constants.LEGACY_INIT_OP_KEY))
       ops.add_to_collection(constants.LEGACY_INIT_OP_KEY, legacy_init_op)
 
   def _add_main_op(self, main_op):
@@ -234,7 +239,9 @@ class SavedModelBuilder(object):
                      assets_collection=None,
                      legacy_init_op=None,
                      clear_devices=False,
-                     main_op=None):
+                     main_op=None,
+                     strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Adds the current meta graph to the SavedModel.
 
     Creates a Saver in the current scope and uses the Saver to export the meta
@@ -252,12 +259,18 @@ class SavedModelBuilder(object):
           restore op upon a load.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
-      main_op: Op or group of ops to execute when the graph is loaded.
+      main_op: Op or group of ops to execute when the graph is loaded. Note
+          that when the main_op is specified it is run after the restore op at
+          load-time.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Raises:
       AssertionError: If the variables for the SavedModel have not been saved
-          yet.
+          yet, or if the graph already contains one or more legacy init ops.
     """
+    # pylint: enable=line-too-long
     if not self._has_saved_variables:
       raise AssertionError(
           "Graph state including variables and assets has not been saved yet. "
@@ -287,16 +300,13 @@ class SavedModelBuilder(object):
     # The graph almost certainly previously contained at least one Saver, and
     # possibly several (e.g. one for loading a pretrained embedding, and another
     # for the model weights).  However, a *new* Saver was just created that
-    # includes all of the variables.  In the context of the SavedModel, this
-    # new Saver is the only one that needs to be retained. The associated
-    # checkpoint produced in add_meta_graph_and_variables() contains all of the
-    # variable values.  Thus, any preexisting Savers are redundant and useless
-    # at best, but worse may break downstream graph-processing tools, and can be
-    # confusing during debugging. It is therefore safe and wise to set
-    # `clear_extraneous_savers` to `True`, since it removes both the extraneous
-    # SaverDefs and their associated Save/Restore Ops from the graph.
-    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices,
-                                             clear_extraneous_savers=True)
+    # includes all of the variables.  Removing the preexisting ones was the
+    # motivation for the clear_extraneous_savers option, but it turns out that
+    # there are edge cases where that option breaks the graph.  Until that is
+    # resolved, we just leave the option set to False for now.
+    # TODO(soergel): Reinstate clear_extraneous_savers=True when possible.
+    meta_graph_def = saver.export_meta_graph(
+        clear_devices=clear_devices, strip_default_attrs=strip_default_attrs)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)
@@ -308,7 +318,9 @@ class SavedModelBuilder(object):
                                    assets_collection=None,
                                    legacy_init_op=None,
                                    clear_devices=False,
-                                   main_op=None):
+                                   main_op=None,
+                                   strip_default_attrs=False):
+    # pylint: disable=line-too-long
     """Adds the current meta graph to the SavedModel and saves variables.
 
     Creates a Saver to save the variables from the provided session. Exports the
@@ -328,8 +340,14 @@ class SavedModelBuilder(object):
           restore op upon a load.
       clear_devices: Set to true if the device info on the default graph should
           be cleared.
-      main_op: Op or group of ops to execute when the graph is loaded.
+      main_op: Op or group of ops to execute when the graph is loaded. Note
+          that when the main_op is specified it is run after the restore op at
+          load-time.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will be
+        removed from the NodeDefs. For a detailed guide, see
+        [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
     """
+    # pylint: enable=line-too-long
     if self._has_saved_variables:
       raise AssertionError("Graph state including variables and assets has "
                            "already been saved. Please invoke "
@@ -378,16 +396,13 @@ class SavedModelBuilder(object):
     # The graph almost certainly previously contained at least one Saver, and
     # possibly several (e.g. one for loading a pretrained embedding, and another
     # for the model weights).  However, a *new* Saver was just created that
-    # includes all of the variables.  In the context of the SavedModel, this
-    # new Saver is the only one that needs to be retained.  The associated
-    # checkpoint that was saved just above contains all of the variable values.
-    # Thus, any preexisting Savers are redundant and useless at best, but worse
-    # may break downstream graph-processing tools, and can be confusing during
-    # debugging.  It is therefore safe and wise to set `clear_extraneous_savers`
-    # to `True`, since it removes both the extraneous SaverDefs and their
-    # associated Save/Restore Ops from the graph.
-    meta_graph_def = saver.export_meta_graph(clear_devices=clear_devices,
-                                             clear_extraneous_savers=True)
+    # includes all of the variables.  Removing the preexisting ones was the
+    # motivation for the clear_extraneous_savers option, but it turns out that
+    # there are edge cases where that option breaks the graph.  Until that is
+    # resolved, we just leave the option set to False for now.
+    # TODO(soergel): Reinstate clear_extraneous_savers=True when possible.
+    meta_graph_def = saver.export_meta_graph(
+        clear_devices=clear_devices, strip_default_attrs=strip_default_attrs)
 
     # Tag the meta graph def and add it to the SavedModel.
     self._tag_and_add_meta_graph(meta_graph_def, tags, signature_def_map)

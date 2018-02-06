@@ -23,7 +23,7 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.layers.python.layers import optimizers
 from tensorflow.contrib.learn.python.learn import metric_spec
@@ -189,7 +189,7 @@ def _dnn_model_fn(features, labels, mode, params, config=None):
       """Returns the op to optimize the loss."""
       return optimizers.optimize_loss(
           loss=loss,
-          global_step=contrib_variables.get_global_step(),
+          global_step=training_util.get_global_step(),
           learning_rate=_LEARNING_RATE,
           optimizer=_get_optimizer(optimizer),
           gradient_multipliers=(
@@ -245,7 +245,9 @@ class DNNClassifier(estimator.Estimator):
   def input_fn_eval: # returns x, y (where y represents label's class index).
     pass
   estimator.evaluate(input_fn=input_fn_eval)
+
   def input_fn_predict: # returns x, None
+    pass
   # predict_classes returns class indices.
   estimator.predict_classes(input_fn=input_fn_predict)
   ```

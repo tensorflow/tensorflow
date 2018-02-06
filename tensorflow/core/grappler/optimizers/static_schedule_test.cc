@@ -29,7 +29,7 @@ namespace {
 
 class StaticScheduleTest : public ::testing::Test {
  public:
-  VirtualCluster CreateVirtualCluster() const {
+  std::unique_ptr<VirtualCluster> CreateVirtualCluster() const {
     // Invent a CPU so that predictions remain the same from machine to machine.
     DeviceProperties cpu_device;
     cpu_device.set_type("CPU");
@@ -41,7 +41,7 @@ class StaticScheduleTest : public ::testing::Test {
     cpu_device.set_l3_cache_size(4 * 1024 * 1024);
     std::unordered_map<string, DeviceProperties> devices;
     devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
-    return VirtualCluster(devices);
+    return std::unique_ptr<VirtualCluster>(new VirtualCluster(devices));
   }
 };
 
@@ -51,11 +51,11 @@ TEST_F(StaticScheduleTest, BasicGraph) {
   GrapplerItem item;
   CHECK(fake_input.NextItem(&item));
 
-  VirtualCluster cluster(CreateVirtualCluster());
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
 
   std::unordered_map<const NodeDef*, Costs::NanoSeconds> completion_times;
   Status status =
-      EstimateEarliestExecutionTimes(item, &cluster, &completion_times);
+      EstimateEarliestExecutionTimes(item, cluster.get(), &completion_times);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(item.graph.node_size(), completion_times.size());
@@ -64,17 +64,17 @@ TEST_F(StaticScheduleTest, BasicGraph) {
     if (time.first->name() == "Const/Const") {
       EXPECT_EQ(Costs::NanoSeconds(1), time.second);
     } else if (time.first->name() == "x") {
-      EXPECT_EQ(Costs::NanoSeconds(250002), time.second);
-    } else if (time.first->name() == "AddN") {
-      EXPECT_EQ(Costs::NanoSeconds(1500005), time.second);
-    } else if (time.first->name() == "AddN_1") {
-      EXPECT_EQ(Costs::NanoSeconds(2750008), time.second);
-    } else if (time.first->name() == "AddN_2") {
-      EXPECT_EQ(Costs::NanoSeconds(4000011), time.second);
-    } else if (time.first->name() == "AddN_3") {
-      EXPECT_EQ(Costs::NanoSeconds(5250014), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(250001), time.second);
+    } else if (time.first->name() == "Square") {
+      EXPECT_EQ(Costs::NanoSeconds(1500004), time.second);
+    } else if (time.first->name() == "Square_1") {
+      EXPECT_EQ(Costs::NanoSeconds(2750007), time.second);
+    } else if (time.first->name() == "Square_2") {
+      EXPECT_EQ(Costs::NanoSeconds(4000010), time.second);
+    } else if (time.first->name() == "Square_3") {
+      EXPECT_EQ(Costs::NanoSeconds(5250013), time.second);
     } else if (time.first->name() == "y") {
-      EXPECT_EQ(Costs::NanoSeconds(6500017), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(6500013), time.second);
     }
   }
 }
@@ -97,11 +97,11 @@ TEST_F(StaticScheduleTest, BasicGraphWithCtrlDependencies) {
   EXPECT_EQ("e", item.graph.node(4).name());
   *item.graph.mutable_node(4)->add_input() = "^c";
 
-  VirtualCluster cluster(CreateVirtualCluster());
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
 
   std::unordered_map<const NodeDef*, Costs::NanoSeconds> completion_times;
   Status status =
-      EstimateEarliestExecutionTimes(item, &cluster, &completion_times);
+      EstimateEarliestExecutionTimes(item, cluster.get(), &completion_times);
   TF_EXPECT_OK(status);
 
   EXPECT_EQ(item.graph.node_size(), completion_times.size());
@@ -110,13 +110,51 @@ TEST_F(StaticScheduleTest, BasicGraphWithCtrlDependencies) {
     if (time.first->name() == "a") {
       EXPECT_EQ(Costs::NanoSeconds(1), time.second);
     } else if (time.first->name() == "b") {
-      EXPECT_EQ(Costs::NanoSeconds(12500026), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(12500001), time.second);
     } else if (time.first->name() == "c") {
-      EXPECT_EQ(Costs::NanoSeconds(12500027), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(12500002), time.second);
     } else if (time.first->name() == "d") {
-      EXPECT_EQ(Costs::NanoSeconds(12500028), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(12500003), time.second);
     } else if (time.first->name() == "e") {
-      EXPECT_EQ(Costs::NanoSeconds(25000053), time.second);
+      EXPECT_EQ(Costs::NanoSeconds(25000003), time.second);
+    }
+  }
+}
+
+TEST_F(StaticScheduleTest, RequiredTimes) {
+  // This trivial graph is so basic there's nothing to prune.
+  TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
+  GrapplerItem item;
+  CHECK(fake_input.NextItem(&item));
+
+  std::unique_ptr<VirtualCluster> cluster(CreateVirtualCluster());
+
+  std::unordered_map<const NodeDef*, Costs::NanoSeconds> execution_times;
+  for (const NodeDef& node : item.graph.node()) {
+    execution_times[&node] = 0;
+  }
+  std::unordered_map<const NodeDef*, Costs::NanoSeconds> required_times;
+  Status status = EstimateRequiredTimes(item, cluster.get(), execution_times,
+                                        &required_times);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(item.graph.node_size(), required_times.size());
+
+  for (auto time : required_times) {
+    if (time.first->name() == "Const/Const") {
+      EXPECT_EQ(Costs::NanoSeconds(-6500012), time.second);
+    } else if (time.first->name() == "x") {
+      EXPECT_EQ(Costs::NanoSeconds(-6250012), time.second);
+    } else if (time.first->name() == "Square") {
+      EXPECT_EQ(Costs::NanoSeconds(-5000009), time.second);
+    } else if (time.first->name() == "Square_1") {
+      EXPECT_EQ(Costs::NanoSeconds(-3750006), time.second);
+    } else if (time.first->name() == "Square_2") {
+      EXPECT_EQ(Costs::NanoSeconds(-2500003), time.second);
+    } else if (time.first->name() == "Square_3") {
+      EXPECT_EQ(Costs::NanoSeconds(-1250000), time.second);
+    } else if (time.first->name() == "y") {
+      EXPECT_EQ(Costs::NanoSeconds(0), time.second);
     }
   }
 }

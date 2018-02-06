@@ -1,5 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
+load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 
 filegroup(
@@ -65,7 +66,25 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":cluster",
+        "//tensorflow/core:framework",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler/costs:op_level_cost_estimator",
+        "//tensorflow/core/grappler/costs:virtual_scheduler",
+    ],
+)
+
+tf_cc_test(
+    name = "virtual_cluster_test",
+    srcs = ["virtual_cluster_test.cc"],
+    deps = [
+        ":virtual_cluster",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:scope",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
 
@@ -82,22 +101,26 @@ cc_library(
         "//tensorflow/cc:coordinator",
         "//tensorflow/cc:queue_runner",
         "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "single_machine_test",
     srcs = ["single_machine_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
+    tags = ["no_gpu"],
     deps = [
         ":single_machine",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:resource_variable_ops",
         "//tensorflow/cc:scope",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

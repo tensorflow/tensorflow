@@ -31,6 +31,7 @@ from tensorflow.python.training import optimizer
 from tensorflow.python.training import queue_runner
 from tensorflow.python.training import session_manager
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.util.tf_export import tf_export
 
 
 # Please note that the gradients from replicas are averaged instead of summed
@@ -38,6 +39,7 @@ from tensorflow.python.training import session_run_hook
 # rate according to the number of replicas. This change is introduced to be
 # consistent with how gradients are aggregated (averaged) within a batch in a
 # replica.
+@tf_export("train.SyncReplicasOptimizer")
 class SyncReplicasOptimizer(optimizer.Optimizer):
   """Class to synchronize, aggregate gradients and pass them to the optimizer.
 
@@ -99,7 +101,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
   # Note that if you want to have 2 backup replicas, you can change
   # total_num_replicas=52 and make sure this number matches how many physical
   # replicas you started in your job.
-  opt = tf.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
+  opt = tf.train.SyncReplicasOptimizer(opt, replicas_to_aggregate=50,
                                  total_num_replicas=50)
 
   # Some models have startup_delays to help stabilize the model but when using
@@ -127,7 +129,7 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
 
   To use SyncReplicasOptimizer with an `Estimator`, you need to send
   sync_replicas_hook while calling the fit.
-  ```
+  ```python
   my_estimator = DNNClassifier(..., optimizer=opt)
   my_estimator.fit(..., hooks=[sync_replicas_hook])
   ```
@@ -374,6 +376,17 @@ class SyncReplicasOptimizer(optimizer.Optimizer):
     """
     return self._opt.get_slot(*args, **kwargs)
 
+  def variables(self):
+    """Fetches a list of optimizer variables in the default graph.
+
+    This wraps `variables()` from the actual optimizer. It does not include
+    the `SyncReplicasOptimizer`'s local step.
+
+    Returns:
+      A list of variables.
+    """
+    return self._opt.variables()
+
   def get_slot_names(self, *args, **kwargs):
     """Return a list of the names of slots created by the `Optimizer`.
 
@@ -438,7 +451,7 @@ class _SyncReplicasOptimizerHook(session_run_hook.SessionRunHook):
   """A SessionRunHook handles ops related to SyncReplicasOptimizer."""
 
   def __init__(self, sync_optimizer, is_chief, num_tokens):
-    """Creates hook to handle SyncReplicaOptimizer initialization ops.
+    """Creates hook to handle SyncReplicasOptimizer initialization ops.
 
     Args:
       sync_optimizer: `SyncReplicasOptimizer` which this hook will initialize.

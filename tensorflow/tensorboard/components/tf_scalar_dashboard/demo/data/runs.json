@@ -1,4 +1,0 @@
-{
-  "run1": {"scalars": ["foo/sin", "foo/cos", "foo/square", "bar/square"]},
-  "run2": {"scalars": ["foo/cos", "foo/square", "bar/square"]}
-}

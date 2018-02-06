@@ -124,6 +124,20 @@ class MutableHashTableOfScalars final : public LookupInterface {
 
   TensorShape value_shape() const override { return TensorShape(); }
 
+  int64 MemoryUsed() const override {
+    int64 ret = 0;
+    mutex_lock l(mu_);
+    for (unsigned i = 0; i < table_.bucket_count(); ++i) {
+      size_t bucket_size = table_.bucket_size(i);
+      if (bucket_size == 0) {
+        ret++;
+      } else {
+        ret += bucket_size;
+      }
+    }
+    return sizeof(MutableHashTableOfScalars) + ret;
+  }
+
  private:
   // TODO(andreasst): consider using a read/write lock or a concurrent map
   mutable mutex mu_;
@@ -238,6 +252,20 @@ class MutableHashTableOfTensors final : public LookupInterface {
   TensorShape key_shape() const final { return TensorShape(); }
 
   TensorShape value_shape() const override { return value_shape_; }
+
+  int64 MemoryUsed() const override {
+    int64 ret = 0;
+    mutex_lock l(mu_);
+    for (unsigned i = 0; i < table_.bucket_count(); ++i) {
+      size_t bucket_size = table_.bucket_size(i);
+      if (bucket_size == 0) {
+        ret++;
+      } else {
+        ret += bucket_size;
+      }
+    }
+    return sizeof(MutableHashTableOfTensors) + ret;
+  }
 
  private:
   TensorShape value_shape_;
@@ -447,9 +475,7 @@ class MutableDenseHashTable final : public LookupInterface {
     // of all keys, removing the dimensions particular to each key and then
     // appending the shape of a single value.
     TensorShape expected_value_shape = keys.shape();
-    for (int i = 0; i < key_shape.dims(); ++i) {
-      expected_value_shape.RemoveDim(expected_value_shape.dims() - 1);
-    }
+    expected_value_shape.RemoveLastDims(key_shape.dims());
     expected_value_shape.AppendShape(value_shape);
     if (values.shape() != expected_value_shape) {
       return errors::InvalidArgument(
@@ -466,6 +492,12 @@ class MutableDenseHashTable final : public LookupInterface {
   TensorShape key_shape() const override { return key_shape_; }
 
   TensorShape value_shape() const override { return value_shape_; }
+
+  int64 MemoryUsed() const override {
+    mutex_lock l(mu_);
+    return sizeof(MutableDenseHashTable) + key_buckets_.AllocatedBytes() +
+           value_buckets_.AllocatedBytes() + empty_key_.AllocatedBytes();
+  }
 
  private:
   Status DoInsert(OpKernelContext* ctx, const Tensor& key, const Tensor& value,
@@ -637,9 +669,7 @@ class LookupTableFindOp : public OpKernel {
     OP_REQUIRES_OK(ctx, table->CheckFindArguments(key, default_value));
 
     TensorShape output_shape = key.shape();
-    for (int i = table->key_shape().dims(); i > 0; --i) {
-      output_shape.RemoveDim(output_shape.dims() - 1);
-    }
+    output_shape.RemoveLastDims(table->key_shape().dims());
     output_shape.AppendShape(table->value_shape());
     Tensor* out;
     OP_REQUIRES_OK(ctx, ctx->allocate_output("values", output_shape, &out));
@@ -679,8 +709,8 @@ class LookupTableInsertOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, table->Insert(ctx, keys, values));
     if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
-                                                    memory_used_before);
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
     }
   }
 };
@@ -756,8 +786,8 @@ class LookupTableImportOp : public OpKernel {
     }
     OP_REQUIRES_OK(ctx, table->ImportValues(ctx, keys, values));
     if (ctx->track_allocations()) {
-      ctx->record_host_persistent_memory_allocation(table->MemoryUsed() -
-                                                    memory_used_before);
+      ctx->record_persistent_memory_allocation(table->MemoryUsed() -
+                                               memory_used_before);
     }
   }
 };
@@ -790,8 +820,10 @@ REGISTER_KERNEL(string, int32);
 REGISTER_KERNEL(string, int64);
 REGISTER_KERNEL(int64, string);
 REGISTER_KERNEL(int64, int64);
+REGISTER_KERNEL(int64, float);
 REGISTER_KERNEL(string, string);
 REGISTER_KERNEL(string, bool);
+REGISTER_KERNEL(int32, int32);
 
 #undef REGISTER_KERNEL
 

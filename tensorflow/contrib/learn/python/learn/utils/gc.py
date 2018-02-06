@@ -32,13 +32,14 @@ Note that functions should always return a sorted list.
 
 For example,
   base_dir = "/tmp"
-  # create the directories
+  # Create the directories.
   for e in xrange(10):
     os.mkdir("%s/%d" % (base_dir, e), 0o755)
 
-  # create a simple parser that pulls the export_version from the directory
+  # Create a simple parser that pulls the export_version from the directory.
+  path_regex = "^" + re.escape(base_dir) + "/(\\d+)$"
   def parser(path):
-    match = re.match("^" + base_dir + "/(\\d+)$", path.path)
+    match = re.match(path_regex, path.path)
     if not match:
       return None
     return path._replace(export_version=int(match.group(1)))
@@ -46,15 +47,15 @@ For example,
   path_list = gc.get_paths("/tmp", parser)  # contains all ten Paths
 
   every_fifth = gc.mod_export_version(5)
-  print every_fifth(path_list) # shows ["/tmp/0", "/tmp/5"]
+  print(every_fifth(path_list))  # shows ["/tmp/0", "/tmp/5"]
 
   largest_three = gc.largest_export_versions(3)
-  print largest_three(all_paths)  # shows ["/tmp/7", "/tmp/8", "/tmp/9"]
+  print(largest_three(all_paths))  # shows ["/tmp/7", "/tmp/8", "/tmp/9"]
 
   both = gc.union(every_fifth, largest_three)
-  print both(all_paths)  # shows ["/tmp/0", "/tmp/5",
-                         #        "/tmp/7", "/tmp/8", "/tmp/9"]
-  # delete everything not in 'both'
+  print(both(all_paths))  # shows ["/tmp/0", "/tmp/5",
+                          #        "/tmp/7", "/tmp/8", "/tmp/9"]
+  # Delete everything not in 'both'.
   to_delete = gc.negation(both)
   for p in to_delete(all_paths):
     gfile.DeleteRecursively(p.path)  # deletes:  "/tmp/1", "/tmp/2",

@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "IsFinite"
+  summary: "Returns which elements of x are finite."
+  description: <<END
+@compatibility(numpy)
+Equivalent to np.isfinite
+@end_compatibility
+END
+}

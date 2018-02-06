@@ -56,6 +56,9 @@ void ForEach(int first, int last, const std::function<void(int)>& f) {
 FileSystem::~FileSystem() {}
 
 string FileSystem::TranslateName(const string& name) const {
+  // If the name is empty, CleanPath returns "." which is incorrect and
+  // we should return the empty path instead.
+  if (name.empty()) return name;
   return io::CleanPath(name);
 }
 
@@ -69,6 +72,8 @@ Status FileSystem::IsDirectory(const string& name) {
   }
   return Status(tensorflow::error::FAILED_PRECONDITION, "Not a directory");
 }
+
+void FileSystem::FlushCaches() {}
 
 RandomAccessFile::~RandomAccessFile() {}
 
@@ -126,18 +131,19 @@ Status FileSystem::GetMatchingPaths(const string& pattern,
     if (children.empty()) continue;
     // This IsDirectory call can be expensive for some FS. Parallelizing it.
     children_dir_status.resize(children.size());
-    ForEach(0, children.size(), [this, &current_dir, &children, &fixed_prefix,
-                                 &children_dir_status](int i) {
-      const string child_path = io::JoinPath(current_dir, children[i]);
-      // In case the child_path doesn't start with the fixed_prefix then
-      // we don't need to explore this path.
-      if (!StringPiece(child_path).starts_with(fixed_prefix)) {
-        children_dir_status[i] =
-            Status(tensorflow::error::CANCELLED, "Operation not needed");
-      } else {
-        children_dir_status[i] = IsDirectory(child_path);
-      }
-    });
+    ForEach(0, children.size(),
+            [this, &current_dir, &children, &fixed_prefix,
+             &children_dir_status](int i) {
+              const string child_path = io::JoinPath(current_dir, children[i]);
+              // In case the child_path doesn't start with the fixed_prefix then
+              // we don't need to explore this path.
+              if (!StringPiece(child_path).starts_with(fixed_prefix)) {
+                children_dir_status[i] = Status(tensorflow::error::CANCELLED,
+                                                "Operation not needed");
+              } else {
+                children_dir_status[i] = IsDirectory(child_path);
+              }
+            });
     for (int i = 0; i < children.size(); ++i) {
       const string child_path = io::JoinPath(current_dir, children[i]);
       // If the IsDirectory call was cancelled we bail.

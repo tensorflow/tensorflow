@@ -67,7 +67,8 @@ class HloRematerializationTest : public HloTestBase {
         /*dimension=*/0));
     auto slice_1 = builder.AddInstruction(HloInstruction::CreateSlice(
         vec1_shape_, concat_1, /*start_indices=*/{0},
-        /*limit_indices=*/{1}));
+        /*limit_indices=*/{1},
+        /*strides=*/{1}));
     auto concat_2 = builder.AddInstruction(HloInstruction::CreateConcatenate(
         ShapeUtil::MakeShape(xla::F32, {1025}), {bcast, slice_1},
         /*dimension=*/0));
@@ -75,7 +76,8 @@ class HloRematerializationTest : public HloTestBase {
     // which is necessary to use this computation in a while.
     builder.AddInstruction(HloInstruction::CreateSlice(vec1_shape_, concat_2,
                                                        /*start_indices=*/{0},
-                                                       /*limit_indices=*/{1}));
+                                                       /*limit_indices=*/{1},
+                                                       /*strides=*/{1}));
     return builder.Build();
   }
 
@@ -103,7 +105,8 @@ class HloRematerializationTest : public HloTestBase {
         HloInstruction::CreateBroadcast(vec1024_shape_, param, {}));
     auto slice_1 = builder.AddInstruction(
         HloInstruction::CreateSlice(vec1_shape_, bcast, /*start_indices=*/{0},
-                                    /*limit_indices=*/{1}));
+                                    /*limit_indices=*/{1},
+                                    /*strides=*/{1}));
     auto while_inst = builder.AddInstruction(HloInstruction::CreateWhile(
         vec1_shape_, while_cond, while_body, slice_1));
     auto concat = builder.AddInstruction(HloInstruction::CreateConcatenate(
@@ -111,7 +114,8 @@ class HloRematerializationTest : public HloTestBase {
         /*dimension=*/0));
     builder.AddInstruction(HloInstruction::CreateSlice(vec1_shape_, concat,
                                                        /*start_indices=*/{0},
-                                                       /*limit_indices=*/{1}));
+                                                       /*limit_indices=*/{1},
+                                                       /*strides=*/{1}));
     return builder.Build();
   }
 
@@ -122,7 +126,7 @@ class HloRematerializationTest : public HloTestBase {
     builder.AddInstruction(
         HloInstruction::CreateParameter(0, vec1_shape_, "param"));
     builder.AddInstruction(
-        HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+        HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
     return builder.Build();
   }
 
@@ -154,11 +158,11 @@ TEST_F(HloRematerializationTest, SingleComputation) {
   SequentialHloOrdering::HloModuleSequence sequence;
   // Computation requires 16KB without rematerialization, but uses only 12KB
   // with rematerialization so pick a memory limit between these values (14KB).
-  TF_ASSIGN_OR_ASSERT_OK(
-      bool changed,
-      HloRematerialization::RematerializeAndSchedule(
-          ByteSizeOf,
-          /*memory_limit_bytes=*/14 * 1024, module.get(), &sequence));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          HloRematerialization::RematerializeAndSchedule(
+                              ByteSizeOf,
+                              /*memory_limit_bytes=*/14 * 1024, module.get(),
+                              SchedulerAlgorithm::kAuto, &sequence));
   EXPECT_TRUE(changed);
 
   // Root should not have changed.
@@ -187,11 +191,11 @@ TEST_F(HloRematerializationTest, SingleComputationNoRematerialization) {
   EXPECT_EQ(computation->instruction_count(), 7);
 
   SequentialHloOrdering::HloModuleSequence sequence;
-  TF_ASSIGN_OR_ASSERT_OK(
-      bool changed,
-      HloRematerialization::RematerializeAndSchedule(
-          ByteSizeOf,
-          /*memory_limit_bytes=*/20 * 1024, module.get(), &sequence));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          HloRematerialization::RematerializeAndSchedule(
+                              ByteSizeOf,
+                              /*memory_limit_bytes=*/20 * 1024, module.get(),
+                              SchedulerAlgorithm::kAuto, &sequence));
 
   // No instructions should have been materialized.
   EXPECT_FALSE(changed);
@@ -211,7 +215,7 @@ TEST_F(HloRematerializationTest, RematerializeAroundWhile) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, vec1_shape_, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -228,11 +232,11 @@ TEST_F(HloRematerializationTest, RematerializeAroundWhile) {
   // while so the peak memory use of the module is 18KB. Set the memory limit a
   // bit lower (17KB) to force rematerialization of the entry computation.
   SequentialHloOrdering::HloModuleSequence sequence;
-  TF_ASSIGN_OR_ASSERT_OK(
-      bool changed,
-      HloRematerialization::RematerializeAndSchedule(
-          ByteSizeOf,
-          /*memory_limit_bytes=*/17 * 1024, module.get(), &sequence));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          HloRematerialization::RematerializeAndSchedule(
+                              ByteSizeOf,
+                              /*memory_limit_bytes=*/17 * 1024, module.get(),
+                              SchedulerAlgorithm::kAuto, &sequence));
   EXPECT_TRUE(changed);
 
   // Only the entry computation should have a rematerialized instruction added.
@@ -250,7 +254,7 @@ TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBody) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, vec1_shape_, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -264,11 +268,11 @@ TEST_F(HloRematerializationTest, RematerializeEntryAndWhileBody) {
   EXPECT_EQ(body_computation->instruction_count(), 7);
 
   SequentialHloOrdering::HloModuleSequence sequence;
-  TF_ASSIGN_OR_ASSERT_OK(
-      bool changed,
-      HloRematerialization::RematerializeAndSchedule(
-          ByteSizeOf,
-          /*memory_limit_bytes=*/15 * 1024, module.get(), &sequence));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          HloRematerialization::RematerializeAndSchedule(
+                              ByteSizeOf,
+                              /*memory_limit_bytes=*/15 * 1024, module.get(),
+                              SchedulerAlgorithm::kAuto, &sequence));
   EXPECT_TRUE(changed);
 
   // Both computations should have a rematerialized instruction added.
@@ -285,7 +289,7 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
   cond_builder.AddInstruction(
       HloInstruction::CreateParameter(0, vec1_shape_, "param"));
   cond_builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<bool>(true)));
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
   HloComputation* while_cond =
       module->AddEmbeddedComputation(cond_builder.Build());
 
@@ -306,17 +310,87 @@ TEST_F(HloRematerializationTest, RematerializeNestedComputations) {
   // If all computations are maximally rematerialized then peak memory usage is
   // ~12K so pick something slightly larger.
   SequentialHloOrdering::HloModuleSequence sequence;
-  TF_ASSIGN_OR_ASSERT_OK(
-      bool changed,
-      HloRematerialization::RematerializeAndSchedule(
-          ByteSizeOf,
-          /*memory_limit_bytes=*/13 * 1024, module.get(), &sequence));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          HloRematerialization::RematerializeAndSchedule(
+                              ByteSizeOf,
+                              /*memory_limit_bytes=*/13 * 1024, module.get(),
+                              SchedulerAlgorithm::kAuto, &sequence));
   EXPECT_TRUE(changed);
 
   // All computations should have a rematerialized instruction added.
   EXPECT_EQ(entry_computation->instruction_count(), 7);
   EXPECT_EQ(middle_computation->instruction_count(), 7);
   EXPECT_EQ(inner_computation->instruction_count(), 8);
+}
+
+TEST_F(HloRematerializationTest, RngNotRematerialized) {
+  // Test that a single rng is not rematerialized:
+  //
+  // Entry computation:
+  //   F32[] %param = {...}
+  //   F32[1024] rng = rng(param)
+  //   F32[1024] tanh = tanh(rng)
+  //   F32[1024] exp = exp(rng)
+  //   F32[1024] add_0 = add(rng, tanh)              // LIVE: add_0 + rng +
+  //                                                 //       tanh + exp
+  //
+  //   F32[1024] add_1 = add(rng, add(exp, add_0))   // LIVE: add_1 + add_0 +
+  //                                                 //       rng + tanh + exp
+  //
+  //   F32[1024] add_2 = add(rng, add(tanh, add_1))  // LIVE: add_2 + add_1 +
+  //                                                 //       rng + tanh + exp
+  auto module = CreateNewModule();
+
+  auto builder = HloComputation::Builder(TestName());
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, scalar_shape_, "param"));
+  auto rng = builder.AddInstruction(HloInstruction::CreateRng(
+      vec1024_shape_, RandomDistribution::RNG_UNIFORM, {param, param}));
+  auto tanh = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kTanh, rng));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(vec1024_shape_, HloOpcode::kExp, rng));
+  auto add_0 = builder.AddInstruction(
+      HloInstruction::CreateBinary(vec1024_shape_, HloOpcode::kAdd, rng, tanh));
+  auto add_1 = builder.AddInstruction(HloInstruction::CreateBinary(
+      vec1024_shape_, HloOpcode::kAdd, rng,
+      builder.AddInstruction(HloInstruction::CreateBinary(
+          vec1024_shape_, HloOpcode::kAdd, exp, add_0))));
+  builder.AddInstruction(HloInstruction::CreateBinary(
+      vec1024_shape_, HloOpcode::kAdd, rng,
+      builder.AddInstruction(HloInstruction::CreateBinary(
+          vec1024_shape_, HloOpcode::kAdd, tanh, add_1))));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  auto count_rngs = [](const HloComputation* computation) {
+    int64 rng_count = 0;
+    for (auto* instruction : computation->instructions()) {
+      if (instruction->opcode() == HloOpcode::kRng) {
+        ++rng_count;
+      }
+    }
+    return rng_count;
+  };
+  // Before rematerialization there should be a single broadcast rng in
+  // the graph.
+  ASSERT_EQ(count_rngs(entry_computation), 1);
+  const int64 original_instruction_count =
+      entry_computation->instruction_count();
+  SequentialHloOrdering::HloModuleSequence sequence;
+  // Pick a memory limit some where between 24KB (initial peak memory including
+  // parameter and output) and 20KB (peak memory possible with
+  // rematerialization).
+  TF_ASSERT_OK_AND_ASSIGN(
+      bool changed, HloRematerialization::RematerializeAndSchedule(
+                        ByteSizeOf,
+                        /*memory_limit_bytes=*/4 * ByteSizeOf(vec1024_shape_),
+                        module.get(), SchedulerAlgorithm::kAuto, &sequence));
+  EXPECT_TRUE(changed);
+  // The rng should not have been rematerialized.
+  EXPECT_EQ(count_rngs(entry_computation), 1);
+  // There should have been rematerialization.
+  EXPECT_GT(entry_computation->instruction_count(), original_instruction_count);
 }
 
 TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
@@ -353,7 +427,7 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
         /*dimension=*/0));
     builder.AddInstruction(HloInstruction::CreateSlice(
         vec1024_shape_, concat, /*start_indices=*/{0},
-        /*limit_indices=*/{1024}));
+        /*limit_indices=*/{1024}, /*strides=*/{1}));
     subcomputation = module->AddEmbeddedComputation(builder.Build());
   }
 
@@ -381,7 +455,7 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
 
   auto count_broadcasts = [](const HloComputation* computation) {
     int64 bcast_count = 0;
-    for (auto& instruction : computation->instructions()) {
+    for (auto* instruction : computation->instructions()) {
       if (instruction->opcode() == HloOpcode::kBroadcast) {
         bcast_count++;
       }
@@ -402,11 +476,11 @@ TEST_F(HloRematerializationTest, InstructionRematerializedMultipleTimes) {
   // Pick a memory limit some where between 24KB (initial peak memory including
   // parameter and output) and 20KB (peak memory possible with
   // rematerialization).
-  TF_ASSIGN_OR_ASSERT_OK(
-      bool changed,
-      HloRematerialization::RematerializeAndSchedule(
-          ByteSizeOf,
-          /*memory_limit_bytes=*/22 * 1024, module.get(), &sequence));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          HloRematerialization::RematerializeAndSchedule(
+                              ByteSizeOf,
+                              /*memory_limit_bytes=*/22 * 1024, module.get(),
+                              SchedulerAlgorithm::kAuto, &sequence));
   EXPECT_TRUE(changed);
 
   // The broadcast should have been rematerialized 3 times.
@@ -469,7 +543,7 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
         /*dimension=*/0));
     builder.AddInstruction(HloInstruction::CreateSlice(
         vec1024_shape_, concat, /*start_indices=*/{0},
-        /*limit_indices=*/{1024}));
+        /*limit_indices=*/{1024}, /*strides=*/{1}));
     subcomputation = module->AddEmbeddedComputation(builder.Build());
   }
 
@@ -499,11 +573,11 @@ TEST_P(IndirectUseTest, IndirectUseNotRematerialized) {
   // Pick a memory limit some where between 24KB (initial peak memory including
   // parameter and output) and 20KB (peak memory possible with
   // rematerialization).
-  TF_ASSIGN_OR_ASSERT_OK(
-      bool changed,
-      HloRematerialization::RematerializeAndSchedule(
-          ByteSizeOf,
-          /*memory_limit_bytes=*/22 * 1024, module.get(), &sequence));
+  TF_ASSERT_OK_AND_ASSIGN(bool changed,
+                          HloRematerialization::RematerializeAndSchedule(
+                              ByteSizeOf,
+                              /*memory_limit_bytes=*/22 * 1024, module.get(),
+                              SchedulerAlgorithm::kAuto, &sequence));
   // Rematerialization should only occur if the rematerializable instruction has
   // no indirect uses.
   if (indirectly_used) {
@@ -521,7 +595,3 @@ INSTANTIATE_TEST_CASE_P(IndirectUseTestInstantiation, IndirectUseTest,
 }  // namespace
 
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  return xla::ParseDebugOptionsFlagsAndRunTests(argc, argv);
-}

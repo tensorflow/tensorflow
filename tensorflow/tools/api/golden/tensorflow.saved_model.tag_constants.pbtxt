@@ -1,7 +1,15 @@
 path: "tensorflow.saved_model.tag_constants"
 tf_module {
   member {
+    name: "GPU"
+    mtype: "<type \'str\'>"
+  }
+  member {
     name: "SERVING"
+    mtype: "<type \'str\'>"
+  }
+  member {
+    name: "TPU"
     mtype: "<type \'str\'>"
   }
   member {

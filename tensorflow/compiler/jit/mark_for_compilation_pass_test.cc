@@ -14,11 +14,13 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
-#include "tensorflow/compiler/jit/defs.h"
 
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/compiler/jit/defs.h"
+#include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -32,8 +34,8 @@ namespace {
 REGISTER_OP("UncompilableNullary").Output("o: float");
 REGISTER_OP("UncompilableUnary").Input("a: float").Output("o: float");
 
-void MarkForCompilation(std::unique_ptr<Graph>* graph,
-                        FunctionLibraryDefinition* flib_def) {
+Status MarkForCompilation(std::unique_ptr<Graph>* graph,
+                          FunctionLibraryDefinition* flib_def) {
   // Assign all nodes to the CPU device.
   static const char* kCpuDevice = "/job:localhost/replica:0/task:0/cpu:0";
   for (Node* n : (*graph)->nodes()) {
@@ -44,13 +46,13 @@ void MarkForCompilation(std::unique_ptr<Graph>* graph,
   opt_options.graph = graph;
   opt_options.flib_def = flib_def;
   MarkForCompilationPass pass;
-  CHECK(pass.RunImpl(opt_options).ok());
+  return pass.RunImpl(opt_options);
 }
 
-void MarkForCompilation(std::unique_ptr<Graph>* graph) {
+Status MarkForCompilation(std::unique_ptr<Graph>* graph) {
   FunctionDefLibrary flib;
   FunctionLibraryDefinition flib_def((*graph)->op_registry(), flib);
-  MarkForCompilation(graph, &flib_def);
+  return MarkForCompilation(graph, &flib_def);
 }
 
 std::unordered_map<string, string> GetClusters(const Graph& graph) {
@@ -81,7 +83,7 @@ TEST(XlaCompilationTest, Chains) {
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
   EXPECT_EQ(4, clusters.size());
   EXPECT_EQ(clusters["B"], clusters["C"]);
@@ -106,7 +108,7 @@ TEST(XlaCompilationTest, UncompilableCycles) {
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
 
   EXPECT_TRUE(clusters.empty());
@@ -126,7 +128,7 @@ TEST(XlaCompilationTest, CompilableCycles) {
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
 
   EXPECT_EQ(3, clusters.size());
@@ -142,14 +144,14 @@ TEST(XlaCompilationTest, UnsupportedTypes) {
     Node* a = ops::SourceOp(
         "Const", builder.opts()
                      .WithName("A")
-                     .WithAttr("dtype", DT_COMPLEX64)
-                     .WithAttr("value", Tensor(DT_COMPLEX64, TensorShape())));
+                     .WithAttr("dtype", DT_COMPLEX128)
+                     .WithAttr("value", Tensor(DT_COMPLEX128, TensorShape())));
     Node* b = ops::UnaryOp("Neg", a, builder.opts().WithName("B"));
     ops::BinaryOp("MatMul", a, b, builder.opts().WithName("C"));
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
   EXPECT_TRUE(clusters.empty());
 }
@@ -178,7 +180,7 @@ TEST(XlaCompilationTest, ConcatWithConstArg) {
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
   EXPECT_EQ(3, clusters.size());  // Everything should be compiled.
 }
@@ -213,7 +215,7 @@ TEST(XlaCompilationTest, FunctionCalls) {
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
-  MarkForCompilation(&graph, &flib_def);
+  TF_ASSERT_OK(MarkForCompilation(&graph, &flib_def));
   auto clusters = GetClusters(*graph);
 
   EXPECT_EQ(2, clusters.size());
@@ -244,7 +246,7 @@ TEST(XlaCompilationTest, MetadataOpsDontStartClusters) {
     ops::UnaryOp("Shape", d, builder.opts().WithName("E"));
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
   EXPECT_EQ(0, clusters.size());  // Nothing should be compiled.
 }
@@ -331,7 +333,7 @@ TEST(XlaCompilationTest, SymbolicGradients) {
     TF_EXPECT_OK(builder.ToGraph(graph.get()));
   }
 
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
 
   EXPECT_EQ(2, clusters.size());
@@ -356,7 +358,7 @@ TEST(XlaCompilationTest, Loops) {
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_EXPECT_OK(root.ToGraph(graph.get()));
 
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
 
   // Nothing should be compiled. In particular, 'd' and 'c' must not be
@@ -383,7 +385,7 @@ TEST(XlaCompilationTest, CyclesWithAllDifferentScopes) {
     TF_CHECK_OK(builder.ToGraph(graph.get()));
   }
 
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
 
   // The computation is: C = A + relu(A)
@@ -414,7 +416,7 @@ TEST(XlaCompilationTest, CyclesWithSplittingScopes) {
     TF_CHECK_OK(builder.ToGraph(graph.get()));
   }
 
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
 
   // The computation is: D = relu(A) + (A @ relu(A))
@@ -444,7 +446,7 @@ TEST(XlaCompilationTest, CyclesWithDifferentScopesAndBridge) {
     TF_CHECK_OK(builder.ToGraph(graph.get()));
   }
 
-  MarkForCompilation(&graph);
+  TF_ASSERT_OK(MarkForCompilation(&graph));
   auto clusters = GetClusters(*graph);
 
   // The computation is: C = A @ relu(A)
@@ -453,6 +455,101 @@ TEST(XlaCompilationTest, CyclesWithDifferentScopesAndBridge) {
   EXPECT_EQ(2, clusters.size());
   EXPECT_NE(clusters["A"], clusters["B"]);
   EXPECT_EQ(clusters["B"], clusters["C"]);
+}
+
+REGISTER_OP("ResourceInput").Input("a: resource").Output("o: float");
+REGISTER_OP("ResourceOutput").Input("a: float").Output("o: resource");
+
+namespace {
+
+class DummyOp : public XlaOpKernel {
+  using XlaOpKernel::XlaOpKernel;
+  void Compile(XlaOpKernelContext* ctx) override {}
+};
+
+REGISTER_XLA_OP(Name("ResourceInput"), DummyOp);
+REGISTER_XLA_OP(Name("ResourceOutput"), DummyOp);
+
+}  // namespace
+
+TEST(XlaCompilationTest, Resources) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphDef graphdef;
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* a =
+        ops::SourceOp("UncompilableNullary", builder.opts().WithName("A"));
+    Node* b = ops::UnaryOp("Relu", a, builder.opts().WithName("B"));
+    // We should not form clusters with resource ops by default.
+    Node* c = ops::UnaryOp("ResourceOutput", b, builder.opts().WithName("C"));
+    Node* d = ops::UnaryOp("ResourceInput", c, builder.opts().WithName("D"));
+    ops::UnaryOp("Relu", d, builder.opts().WithName("E"));
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
+  }
+  TF_ASSERT_OK(MarkForCompilation(&graph));
+  auto clusters = GetClusters(*graph);
+  EXPECT_EQ(0, clusters.size());  // Nothing should be compiled.
+}
+
+TEST(XlaCompilationTest, IllegalCycle_UsefulErrorMessage) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  Scope root = Scope::NewRootScope().ExitOnError();
+  {
+    auto BuildNoopNode = [](StringPiece name, Graph* graph) {
+      NodeDefBuilder builder(name, "NoOp");
+      NodeDef def;
+      TF_CHECK_OK(builder.Finalize(&def));
+
+      Status status;
+      Node* node = graph->AddNode(def, &status);
+      TF_CHECK_OK(status);
+      return node;
+    };
+
+    Node* a = BuildNoopNode("a", graph.get());
+    Node* b = BuildNoopNode("b", graph.get());
+    Node* c = BuildNoopNode("c", graph.get());
+    graph->AddControlEdge(a, b);
+    graph->AddControlEdge(b, c);
+    graph->AddControlEdge(c, a);
+  }
+
+  TF_EXPECT_OK(root.ToGraph(graph.get()));
+
+  Status status = MarkForCompilation(&graph);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(StringPiece(status.ToString())
+                  .contains("Edge from c to a would create a cycle.\n"
+                            "+-> a\n"
+                            "|   b\n"
+                            "+-- c\n"));
+}
+
+TEST(XlaCompilationTest, Retval) {
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphDef graphdef;
+  {
+    GraphDefBuilder builder(GraphDefBuilder::kFailImmediately);
+    Node* a = ops::SourceOp("Const", builder.opts()
+                                         .WithName("A")
+                                         .WithAttr("dtype", DT_FLOAT)
+                                         .WithAttr("value", Tensor()));
+    Node* b = ops::UnaryOp("Relu", a, builder.opts().WithName("B"));
+    ops::UnaryOp("_Retval", b,
+                 builder.opts()
+                     .WithName("R")
+                     .WithAttr("T", DT_FLOAT)
+                     .WithAttr("index", 0));
+
+    TF_EXPECT_OK(builder.ToGraph(graph.get()));
+  }
+
+  TF_ASSERT_OK(MarkForCompilation(&graph));
+  auto clusters = GetClusters(*graph);
+
+  EXPECT_EQ(2, clusters.size());
+  EXPECT_TRUE(clusters.find("R") == clusters.cend());
+  EXPECT_EQ(clusters["A"], clusters["B"]);
 }
 
 }  // namespace

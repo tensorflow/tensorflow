@@ -4,6 +4,18 @@ licenses(["notice"])  # BSD 3-Clause
 
 exports_files(["COPYING"])
 
+config_setting(
+    name = "windows",
+    values = {"cpu": "x64_windows"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "windows_msvc",
+    values = {"cpu": "x64_windows_msvc"},
+    visibility = ["//visibility:public"],
+)
+
 cc_library(
     name = "snappy",
     srcs = [
@@ -19,10 +31,14 @@ cc_library(
         "snappy-stubs-public.h",
     ],
     hdrs = ["snappy.h"],
-    copts = [
-        "-Wno-shift-negative-value",
-        "-Wno-implicit-function-declaration",
-    ],
+    copts = select({
+        ":windows": [],
+        ":windows_msvc": [],
+        "//conditions:default": [
+            "-Wno-shift-negative-value",
+            "-Wno-implicit-function-declaration",
+        ],
+    }),
 )
 
 genrule(
@@ -34,8 +50,8 @@ genrule(
            "-e 's/@ac_cv_have_stddef_h@/1/g' " +
            "-e 's/@ac_cv_have_stdint_h@/1/g' " +
            select({
-               "@%ws%//tensorflow:windows": "-e 's/@ac_cv_have_sys_uio_h@/0/g' ",
-               "@%ws%//tensorflow:windows_msvc": "-e 's/@ac_cv_have_sys_uio_h@/0/g' ",
+               "@org_tensorflow//tensorflow:windows": "-e 's/@ac_cv_have_sys_uio_h@/0/g' ",
+               "@org_tensorflow//tensorflow:windows_msvc": "-e 's/@ac_cv_have_sys_uio_h@/0/g' ",
                "//conditions:default": "-e 's/@ac_cv_have_sys_uio_h@/1/g' ",
            }) +
            "-e 's/@SNAPPY_MAJOR@/1/g' " +

@@ -26,8 +26,12 @@ from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.feature_column import feature_column as feature_column_lib
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
+from tensorflow.python.summary import summary
 from tensorflow.python.training import ftrl
 from tensorflow.python.training import training_util
 
@@ -42,38 +46,103 @@ def _get_default_optimizer(feature_columns):
   return ftrl.FtrlOptimizer(learning_rate=learning_rate)
 
 
-# TODO(b/36813849): Revisit passing params vs named arguments.
-def _linear_model_fn(features, labels, mode, params, config):
+def _compute_fraction_of_zero(cols_to_vars):
+  """Given a linear cols_to_vars dict, compute the fraction of zero weights.
+
+  Args:
+    cols_to_vars: A dictionary mapping FeatureColumns to lists of tf.Variables
+      like one returned from feature_column_lib.linear_model.
+
+  Returns:
+    The fraction of zeros (sparsity) in the linear model.
+  """
+  all_weight_vars = []
+  for var_or_var_list in cols_to_vars.values():
+    # Skip empty-lists associated with columns that created no Variables.
+    if var_or_var_list:
+      all_weight_vars += [
+          array_ops.reshape(var, [-1]) for var in var_or_var_list
+      ]
+  return nn.zero_fraction(array_ops.concat(all_weight_vars, axis=0))
+
+
+def _linear_logit_fn_builder(units, feature_columns):
+  """Function builder for a linear logit_fn.
+
+  Args:
+    units: An int indicating the dimension of the logit layer.
+    feature_columns: An iterable containing all the feature columns used by
+      the model.
+
+  Returns:
+    A logit_fn (see below).
+
+  """
+
+  def linear_logit_fn(features):
+    """Linear model logit_fn.
+
+    Args:
+      features: This is the first item returned from the `input_fn`
+                passed to `train`, `evaluate`, and `predict`. This should be a
+                single `Tensor` or `dict` of same.
+
+    Returns:
+      A `Tensor` representing the logits.
+    """
+    cols_to_vars = {}
+    logits = feature_column_lib.linear_model(
+        features=features,
+        feature_columns=feature_columns,
+        units=units,
+        cols_to_vars=cols_to_vars)
+    bias = cols_to_vars.pop('bias')
+    if units > 1:
+      summary.histogram('bias', bias)
+    else:
+      # If units == 1, the bias value is a length-1 list of a scalar Tensor,
+      # so we should provide a scalar summary.
+      summary.scalar('bias', bias[0][0])
+    summary.scalar('fraction_of_zero_weights',
+                   _compute_fraction_of_zero(cols_to_vars))
+    return logits
+
+  return linear_logit_fn
+
+
+def _linear_model_fn(features, labels, mode, head, feature_columns, optimizer,
+                     partitioner, config):
   """A model_fn for linear models that use a gradient-based optimizer.
 
   Args:
-    features: Dict of `Tensor`.
+    features: dict of `Tensor`.
     labels: `Tensor` of shape `[batch_size, logits_dimension]`.
     mode: Defines whether this is training, evaluation or prediction.
       See `ModeKeys`.
-    params: A dict of hyperparameters.
-      The following hyperparameters are expected:
-      * head: A `Head` instance.
-      * feature_columns: An iterable containing all the feature columns used by
-          the model.
-      * optimizer: string, `Optimizer` object, or callable that defines the
-          optimizer to use for training. If `None`, will use a FTRL optimizer.
+    head: A `Head` instance.
+    feature_columns: An iterable containing all the feature columns used by
+      the model.
+    optimizer: string, `Optimizer` object, or callable that defines the
+      optimizer to use for training. If `None`, will use a FTRL optimizer.
+    partitioner: Partitioner for variables.
     config: `RunConfig` object to configure the runtime settings.
 
   Returns:
     An `EstimatorSpec` instance.
 
   Raises:
-    ValueError: If mode or params are invalid.
+    ValueError: mode or params are invalid, or features has the wrong type.
   """
-  head = params['head']
-  feature_columns = tuple(params['feature_columns'])
+  if not isinstance(features, dict):
+    raise ValueError('features should be a dictionary of `Tensor`s. '
+                     'Given type: {}'.format(type(features)))
+
   optimizer = optimizers.get_optimizer_instance(
-      params.get('optimizer') or _get_default_optimizer(feature_columns),
+      optimizer or _get_default_optimizer(feature_columns),
       learning_rate=_LEARNING_RATE)
   num_ps_replicas = config.num_ps_replicas if config else 0
 
-  partitioner = params.get('partitioner') or (
+  partitioner = partitioner or (
       partitioned_variables.min_max_variable_partitioner(
           max_partitions=num_ps_replicas,
           min_slice_size=64 << 20))
@@ -83,10 +152,9 @@ def _linear_model_fn(features, labels, mode, params, config):
       values=tuple(six.itervalues(features)),
       partitioner=partitioner):
 
-    logits = feature_column_lib.linear_model(
-        features=features,
-        feature_columns=feature_columns,
-        units=head.logits_dimension)
+    logit_fn = _linear_logit_fn_builder(
+        units=head.logits_dimension, feature_columns=feature_columns)
+    logits = logit_fn(features=features)
 
     def _train_op_fn(loss):
       """Returns the op to optimize the loss."""
@@ -111,22 +179,31 @@ class LinearClassifier(estimator.Estimator):
   Example:
 
   ```python
-  sparse_column_a = sparse_column_with_hash_bucket(...)
-  sparse_column_b = sparse_column_with_hash_bucket(...)
+  categorical_column_a = categorical_column_with_hash_bucket(...)
+  categorical_column_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
+  categorical_feature_a_x_categorical_feature_b = crossed_column(...)
 
   # Estimator using the default optimizer.
   estimator = LinearClassifier(
-      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b])
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b])
 
   # Or estimator using the FTRL optimizer with regularization.
   estimator = LinearClassifier(
-      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b],
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
       optimizer=tf.train.FtrlOptimizer(
         learning_rate=0.1,
         l1_regularization_strength=0.001
       ))
+
+  # Or estimator with warm-starting from a previous checkpoint.
+  estimator = LinearClassifier(
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
+      warm_start_from="/path/to/checkpoint/dir")
+
 
   # Input builders
   def input_fn_train: # returns x, y (where y represents label's class index).
@@ -151,6 +228,12 @@ class LinearClassifier(estimator.Estimator):
       Both features' `value` must be a `SparseTensor`.
     - if `column` is a `RealValuedColumn`, a feature with `key=column.name`
       whose `value` is a `Tensor`.
+
+  Loss is calculated by using softmax cross entropy.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self,
@@ -161,7 +244,9 @@ class LinearClassifier(estimator.Estimator):
                label_vocabulary=None,
                optimizer='Ftrl',
                config=None,
-               partitioner=None):
+               partitioner=None,
+               warm_start_from=None,
+               loss_reduction=losses.Reduction.SUM):
     """Construct a `LinearClassifier` estimator object.
 
     Args:
@@ -193,6 +278,13 @@ class LinearClassifier(estimator.Estimator):
         to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
+      warm_start_from: A string filepath to a checkpoint to warm-start from, or
+        a `WarmStartSettings` object to fully configure warm-starting.  If the
+        string filepath is provided instead of a `WarmStartSettings`, then all
+        weights and biases are warm-started, and it is assumed that vocabularies
+        and Tensor names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
 
     Returns:
       A `LinearClassifier` estimator.
@@ -203,21 +295,31 @@ class LinearClassifier(estimator.Estimator):
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
           weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
           n_classes, weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
+
+    def _model_fn(features, labels, mode, config):
+      """Call the defined shared _linear_model_fn."""
+      return _linear_model_fn(
+          features=features,
+          labels=labels,
+          mode=mode,
+          head=head,
+          feature_columns=tuple(feature_columns or []),
+          optimizer=optimizer,
+          partitioner=partitioner,
+          config=config)
+
     super(LinearClassifier, self).__init__(
-        model_fn=_linear_model_fn,
+        model_fn=_model_fn,
         model_dir=model_dir,
         config=config,
-        params={
-            'head': head,
-            'feature_columns': feature_columns,
-            'optimizer': optimizer,
-            'partitioner': partitioner,
-        })
+        warm_start_from=warm_start_from)
 
 
 class LinearRegressor(estimator.Estimator):
@@ -229,13 +331,21 @@ class LinearRegressor(estimator.Estimator):
   Example:
 
   ```python
-  sparse_column_a = sparse_column_with_hash_bucket(...)
-  sparse_column_b = sparse_column_with_hash_bucket(...)
+  categorical_column_a = categorical_column_with_hash_bucket(...)
+  categorical_column_b = categorical_column_with_hash_bucket(...)
 
-  sparse_feature_a_x_sparse_feature_b = crossed_column(...)
+  categorical_feature_a_x_categorical_feature_b = crossed_column(...)
 
   estimator = LinearRegressor(
-      feature_columns=[sparse_column_a, sparse_feature_a_x_sparse_feature_b])
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b])
+
+  # Or estimator with warm-starting from a previous checkpoint.
+  estimator = LinearRegressor(
+      feature_columns=[categorical_column_a,
+                       categorical_feature_a_x_categorical_feature_b],
+      warm_start_from="/path/to/checkpoint/dir")
+
 
   # Input builders
   def input_fn_train: # returns x, y
@@ -260,6 +370,12 @@ class LinearRegressor(estimator.Estimator):
          key=weight column name, value=a `SparseTensor`}
     - if isinstance(column, `RealValuedColumn`):
         key=column.name, value=a `Tensor`
+
+  Loss is calculated by using mean squared error.
+
+  @compatibility(eager)
+  Estimators are not compatible with eager execution.
+  @end_compatibility
   """
 
   def __init__(self,
@@ -269,7 +385,9 @@ class LinearRegressor(estimator.Estimator):
                weight_column=None,
                optimizer='Ftrl',
                config=None,
-               partitioner=None):
+               partitioner=None,
+               warm_start_from=None,
+               loss_reduction=losses.Reduction.SUM):
     """Initializes a `LinearRegressor` instance.
 
     Args:
@@ -293,22 +411,32 @@ class LinearRegressor(estimator.Estimator):
         to FTRL optimizer.
       config: `RunConfig` object to configure the runtime settings.
       partitioner: Optional. Partitioner for input layer.
+      warm_start_from: A string filepath to a checkpoint to warm-start from, or
+        a `WarmStartSettings` object to fully configure warm-starting.  If the
+        string filepath is provided instead of a `WarmStartSettings`, then all
+        weights and biases are warm-started, and it is assumed that vocabularies
+        and Tensor names are unchanged.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
     """
+    head = head_lib._regression_head_with_mean_squared_error_loss(  # pylint: disable=protected-access
+        label_dimension=label_dimension, weight_column=weight_column,
+        loss_reduction=loss_reduction)
+
+    def _model_fn(features, labels, mode, config):
+      """Call the defined shared _linear_model_fn."""
+      return _linear_model_fn(
+          features=features,
+          labels=labels,
+          mode=mode,
+          head=head,
+          feature_columns=tuple(feature_columns or []),
+          optimizer=optimizer,
+          partitioner=partitioner,
+          config=config)
+
     super(LinearRegressor, self).__init__(
-        model_fn=_linear_model_fn,
+        model_fn=_model_fn,
         model_dir=model_dir,
         config=config,
-        params={
-            # pylint: disable=protected-access
-            'head':
-                head_lib._regression_head_with_mean_squared_error_loss(
-                    label_dimension=label_dimension,
-                    weight_column=weight_column),
-            # pylint: enable=protected-access
-            'feature_columns':
-                feature_columns,
-            'optimizer':
-                optimizer,
-            'partitioner':
-                partitioner,
-        })
+        warm_start_from=warm_start_from)

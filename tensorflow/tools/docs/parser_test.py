@@ -75,8 +75,9 @@ class ParserTest(googletest.TestCase):
       def foo(self):
         pass
 
-    string = ('A @{tf.reference}, another @{tf.reference}, '
-              'a member @{tf.reference.foo}, and a @{tf.third}.')
+    string = (
+        'A @{tf.reference}, another @{tf.reference}, a member '
+        '@{tf.reference.foo}, and a @{tf.third$link `text` with `code` in it}.')
     duplicate_of = {'tf.third': 'tf.fourth'}
     index = {'tf.reference': HasOneMember,
              'tf.reference.foo': HasOneMember.foo,
@@ -89,12 +90,15 @@ class ParserTest(googletest.TestCase):
         visitor=visitor, doc_index={}, py_module_names=['tf'])
 
     result = reference_resolver.replace_references(string, '../..')
-    self.assertEqual(
-        'A [`tf.reference`](../../tf/reference.md), another '
-        '[`tf.reference`](../../tf/reference.md), '
-        'a member [`tf.reference.foo`](../../tf/reference.md#foo), '
-        'and a [`tf.third`](../../tf/fourth.md).',
-        result)
+    self.assertEqual('A <a href="../../tf/reference.md">'
+                     '<code>tf.reference</code></a>, '
+                     'another <a href="../../tf/reference.md">'
+                     '<code>tf.reference</code></a>, '
+                     'a member <a href="../../tf/reference.md#foo">'
+                     '<code>tf.reference.foo</code></a>, '
+                     'and a <a href="../../tf/fourth.md">link '
+                     '<code>text</code> with '
+                     '<code>code</code> in it</a>.', result)
 
   def test_doc_replace_references(self):
     string = '@{$doc1} @{$doc1#abc} @{$doc1$link} @{$doc1#def$zelda} @{$do/c2}'
@@ -114,10 +118,11 @@ class ParserTest(googletest.TestCase):
     reference_resolver = parser.ReferenceResolver.from_visitor(
         visitor=visitor, doc_index=doc_index, py_module_names=['tf'])
     result = reference_resolver.replace_references(string, 'python')
-    self.assertEqual(
-        '[Title1](../URL1) [Title1](../URL1#abc) [link](../URL1) '
-        '[zelda](../URL1#def) [Two words](../somewhere/else)',
-        result)
+    self.assertEqual('<a href="../URL1">Title1</a> '
+                     '<a href="../URL1#abc">Title1</a> '
+                     '<a href="../URL1">link</a> '
+                     '<a href="../URL1#def">zelda</a> '
+                     '<a href="../somewhere/else">Two words</a>', result)
 
   def test_docs_for_class(self):
 
@@ -389,7 +394,7 @@ class ParserTest(googletest.TestCase):
     self.assertIn('TestModule.test_function', docs)
     # Leading backtick to make sure it's included top-level.
     # This depends on formatting, but should be stable.
-    self.assertIn('`test_function', docs)
+    self.assertIn('<code>test_function', docs)
 
   def test_argspec_for_functools_partial(self):
 
@@ -491,18 +496,18 @@ Returns:
 
 class TestParseFunctionDetails(googletest.TestCase):
 
-  def testParseFunctionDetails(self):
+  def test_parse_function_details(self):
     docstring, function_details = parser._parse_function_details(RELU_DOC)
 
     self.assertEqual(len(function_details), 2)
     args = function_details[0]
     self.assertEqual(args.keyword, 'Args')
-    self.assertEmpty(args.header)
+    self.assertEqual(len(args.header), 0)
     self.assertEqual(len(args.items), 2)
     self.assertEqual(args.items[0][0], 'features')
     self.assertEqual(args.items[1][0], 'name')
     self.assertEqual(args.items[1][1],
-                     ' A name for the operation (optional)\n\n')
+                     'A name for the operation (optional)\n\n')
     returns = function_details[1]
     self.assertEqual(returns.keyword, 'Returns')
 
@@ -513,6 +518,61 @@ class TestParseFunctionDetails(googletest.TestCase):
     self.assertEqual(
         RELU_DOC,
         docstring + ''.join(str(detail) for detail in function_details))
+
+
+class TestGenerateSignature(googletest.TestCase):
+
+  def test_known_object(self):
+    if sys.version_info >= (3, 0):
+      print('Warning: Doc generation is not supported from python3.')
+      return
+
+    known_object = object()
+    reverse_index = {id(known_object): 'location.of.object.in.api'}
+
+    def example_fun(arg=known_object):  # pylint: disable=unused-argument
+      pass
+
+    sig = parser._generate_signature(example_fun, reverse_index)
+    self.assertEqual(sig, ['arg=location.of.object.in.api'])
+
+  def test_literals(self):
+    if sys.version_info >= (3, 0):
+      print('Warning: Doc generation is not supported from python3.')
+      return
+
+    def example_fun(a=5, b=5.0, c=None, d=True, e='hello', f=(1, (2, 3))):  # pylint: disable=g-bad-name, unused-argument
+      pass
+
+    sig = parser._generate_signature(example_fun, reverse_index={})
+    self.assertEqual(
+        sig, ['a=5', 'b=5.0', 'c=None', 'd=True', "e='hello'", 'f=(1, (2, 3))'])
+
+  def test_dotted_name(self):
+    if sys.version_info >= (3, 0):
+      print('Warning: Doc generation is not supported from python3.')
+      return
+
+    # pylint: disable=g-bad-name
+    class a(object):
+
+      class b(object):
+
+        class c(object):
+
+          class d(object):
+
+            def __init__(self, *args):
+              pass
+    # pylint: enable=g-bad-name
+
+    e = {'f': 1}
+
+    def example_fun(arg1=a.b.c.d, arg2=a.b.c.d(1, 2), arg3=e['f']):  # pylint: disable=unused-argument
+      pass
+
+    sig = parser._generate_signature(example_fun, reverse_index={})
+    self.assertEqual(sig, ['arg1=a.b.c.d', 'arg2=a.b.c.d(1, 2)', "arg3=e['f']"])
 
 
 if __name__ == '__main__':

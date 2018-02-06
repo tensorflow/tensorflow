@@ -47,13 +47,13 @@ class GeometricTest(test.TestCase):
     invalid_ps = [-.01, -0.01, -2.]
     with self.test_session():
       with self.assertRaisesOpError("Condition x >= 0"):
-        geom = geometric.Geometric(probs=invalid_ps)
+        geom = geometric.Geometric(probs=invalid_ps, validate_args=True)
         geom.probs.eval()
 
     invalid_ps = [1.1, 3., 5.]
     with self.test_session():
       with self.assertRaisesOpError("Condition x <= y"):
-        geom = geometric.Geometric(probs=invalid_ps)
+        geom = geometric.Geometric(probs=invalid_ps, validate_args=True)
         geom.probs.eval()
 
   def testGeomLogPmf(self):
@@ -78,7 +78,7 @@ class GeometricTest(test.TestCase):
       probs = constant_op.constant([.9] * batch_size)
       x = array_ops.placeholder(dtypes.float32, shape=[6])
       feed_dict = {x: [2.5, 3.2, 4.3, 5.1, 6., 7.]}
-      geom = geometric.Geometric(probs=probs)
+      geom = geometric.Geometric(probs=probs, validate_args=True)
 
       with self.assertRaisesOpError("Condition x == y"):
         log_prob = geom.log_prob(x)
@@ -88,7 +88,7 @@ class GeometricTest(test.TestCase):
         log_prob = geom.log_prob(np.array([-1.], dtype=np.float32))
         log_prob.eval()
 
-      geom = geometric.Geometric(probs=probs, validate_args=False)
+      geom = geometric.Geometric(probs=probs)
       log_prob = geom.log_prob(x)
       self.assertEqual([6,], log_prob.get_shape())
       pmf = geom.prob(x)
@@ -216,7 +216,7 @@ class GeometricTest(test.TestCase):
 
   def testGeometricAtBoundary(self):
     with self.test_session():
-      geom = geometric.Geometric(probs=1.)
+      geom = geometric.Geometric(probs=1., validate_args=True)
 
       x = np.array([0., 2., 3., 4., 5., 6., 7.], dtype=np.float32)
       expected_log_prob = stats.geom.logpmf(x, [1.], loc=-1)

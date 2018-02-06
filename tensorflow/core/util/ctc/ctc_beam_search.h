@@ -16,11 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
 #define TENSORFLOW_CORE_UTIL_CTC_CTC_BEAM_SEARCH_H_
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 #include <memory>
+#include <vector>
 
 #include "third_party/eigen3/Eigen/Core"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/top_n.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -69,6 +73,7 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   //   P(l=abc? @ t=3) = P(a @ 0)*P(b @ 1)*P(c @ 2)*P(? @ 3)
   // but we calculate it recursively for speed purposes.
   typedef ctc_beam_search::BeamEntry<CTCBeamState> BeamEntry;
+  typedef ctc_beam_search::BeamRoot<CTCBeamState> BeamRoot;
   typedef ctc_beam_search::BeamProbability BeamProbability;
 
  public:
@@ -101,6 +106,11 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   // Calculate the next step of the beam search and update the internal state.
   template <typename Vector>
   void Step(const Vector& log_input_t);
+
+  template <typename Vector>
+  float GetTopK(const int K, const Vector& input,
+                std::vector<float>* top_k_logits,
+                std::vector<int>* top_k_indices);
 
   // Retrieve the beam scorer instance used during decoding.
   BaseBeamScorer<CTCBeamState>* GetBeamScorer() const { return beam_scorer_; }
@@ -137,7 +147,7 @@ class CTCBeamSearchDecoder : public CTCDecoder {
   float label_selection_margin_ = -1;  // -1 means unlimited.
 
   gtl::TopN<BeamEntry*, CTCBeamComparer> leaves_;
-  std::unique_ptr<BeamEntry> beam_root_;
+  std::unique_ptr<BeamRoot> beam_root_;
   BaseBeamScorer<CTCBeamState>* beam_scorer_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(CTCBeamSearchDecoder);
@@ -204,29 +214,57 @@ Status CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Decode(
 
 template <typename CTCBeamState, typename CTCBeamComparer>
 template <typename Vector>
+float CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::GetTopK(
+    const int K, const Vector& input, std::vector<float>* top_k_logits,
+    std::vector<int>* top_k_indices) {
+  // Find Top K choices, complexity nk in worst case. The array input is read
+  // just once.
+  CHECK_EQ(num_classes_, input.size());
+  top_k_logits->clear();
+  top_k_indices->clear();
+  top_k_logits->resize(K, -INFINITY);
+  top_k_indices->resize(K, -1);
+  for (int j = 0; j < num_classes_ - 1; ++j) {
+    const float logit = input(j);
+    if (logit > (*top_k_logits)[K - 1]) {
+      int k = K - 1;
+      while (k > 0 && logit > (*top_k_logits)[k - 1]) {
+        (*top_k_logits)[k] = (*top_k_logits)[k - 1];
+        (*top_k_indices)[k] = (*top_k_indices)[k - 1];
+        k--;
+      }
+      (*top_k_logits)[k] = logit;
+      (*top_k_indices)[k] = j;
+    }
+  }
+  // Return max value which is in 0th index or blank character logit
+  return std::max((*top_k_logits)[0], input(num_classes_ - 1));
+}
+
+template <typename CTCBeamState, typename CTCBeamComparer>
+template <typename Vector>
 void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
     const Vector& raw_input) {
-  Eigen::ArrayXf input = raw_input;
-  // Remove the max for stability when performing log-prob calculations.
-  input -= input.maxCoeff();
-
-  // Minimum allowed input value for label selection:
-  float label_selection_input_min = -std::numeric_limits<float>::infinity();
-  if (label_selection_size_ > 0 && label_selection_size_ < input.size()) {
-    std::vector<float> input_copy(input.data(), input.data() + input.size());
-    std::nth_element(input_copy.begin(),
-                     input_copy.begin() + label_selection_size_ - 1,
-                     input_copy.end(), [](float a, float b) { return a > b; });
-    label_selection_input_min = input_copy[label_selection_size_ - 1];
+  std::vector<float> top_k_logits;
+  std::vector<int> top_k_indices;
+  const bool top_k =
+      (label_selection_size_ > 0 && label_selection_size_ < raw_input.size());
+  // Number of character classes to consider in each step.
+  const int max_classes = top_k ? label_selection_size_ : (num_classes_ - 1);
+  // Get max coefficient and remove it from raw_input later.
+  float max_coeff;
+  if (top_k) {
+    max_coeff = GetTopK(label_selection_size_, raw_input, &top_k_logits,
+                        &top_k_indices);
+  } else {
+    max_coeff = raw_input.maxCoeff();
   }
-  if (label_selection_margin_ >= 0) {
-    // max element is 0, per normalization above
-    label_selection_input_min =
-        std::max(label_selection_input_min, -label_selection_margin_);
-  }
+  const float label_selection_input_min =
+      (label_selection_margin_ >= 0) ? (max_coeff - label_selection_margin_)
+                                     : -std::numeric_limits<float>::infinity();
 
   // Extract the beams sorted in decreasing new probability
-  CHECK_EQ(num_classes_, input.size());
+  CHECK_EQ(num_classes_, raw_input.size());
 
   std::unique_ptr<std::vector<BeamEntry*>> branches(leaves_.Extract());
   leaves_.Reset();
@@ -252,10 +290,10 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
                       beam_scorer_->GetStateExpansionScore(b->state, previous));
       }
       // Plabel(l=abc @ t=6) *= P(c @ 6)
-      b->newp.label += input(b->label);
+      b->newp.label += raw_input(b->label) - max_coeff;
     }
     // Pblank(l=abc @ t=6) = P(l=abc @ t=5) * P(- @ 6)
-    b->newp.blank = b->oldp.total + input(blank_index_);
+    b->newp.blank = b->oldp.total + raw_input(blank_index_) - max_coeff;
     // P(l=abc @ t=6) = Plabel(l=abc @ t=6) + Pblank(l=abc @ t=6)
     b->newp.total = LogSumExp(b->newp.blank, b->newp.label);
 
@@ -285,17 +323,16 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
       continue;
     }
 
-    if (!b->HasChildren()) {
-      b->PopulateChildren(num_classes_ - 1);
-    }
-
-    for (BeamEntry& c : *b->Children()) {
+    for (int ind = 0; ind < max_classes; ind++) {
+      const int label = top_k ? top_k_indices[ind] : ind;
+      const float logit = top_k ? top_k_logits[ind] : raw_input(ind);
+      // Perform label selection: if input for this label looks very
+      // unpromising, never evaluate it with a scorer.
+      if (logit < label_selection_input_min) {
+        continue;
+      }
+      BeamEntry& c = b->GetChild(label);
       if (!c.Active()) {
-        // Perform label selection: if input for this label looks very
-        // unpromising, never evaluate it with a scorer.
-        if (input(c.label) < label_selection_input_min) {
-          continue;
-        }
         //   Pblank(l=abcd @ t=6) = 0
         c.newp.blank = kLogZero;
         // If new child label is identical to beam label:
@@ -304,7 +341,7 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
         //   Plabel(l=abcd @ t=6) = P(l=abc @ t=5) * P(d @ 6)
         beam_scorer_->ExpandState(b->state, b->label, &c.state, c.label);
         float previous = (c.label == b->label) ? b->oldp.blank : b->oldp.total;
-        c.newp.label = input(c.label) +
+        c.newp.label = logit - max_coeff +
                        beam_scorer_->GetStateExpansionScore(c.state, previous);
         // P(l=abcd @ t=6) = Plabel(l=abcd @ t=6)
         c.newp.total = c.newp.label;
@@ -320,13 +357,13 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Step(
           }
           leaves_.push(&c);
         } else {
-          // Deactivate child (signal it's not in the beam)
+          // Deactivate child.
           c.oldp.Reset();
           c.newp.Reset();
         }
-      }  // if (!c.Active()) ...
-    }    // for (BeamEntry& c in children...
-  }      // for (BeamEntry* b...
+      }
+    }
+  }  // for (BeamEntry* b...
 }
 
 template <typename CTCBeamState, typename CTCBeamComparer>
@@ -335,15 +372,15 @@ void CTCBeamSearchDecoder<CTCBeamState, CTCBeamComparer>::Reset() {
 
   // This beam root, and all of its children, will be in memory until
   // the next reset.
-  beam_root_.reset(new BeamEntry(nullptr, -1, num_classes_ - 1, -1));
-  beam_root_->newp.total = 0.0;  // ln(1)
-  beam_root_->newp.blank = 0.0;  // ln(1)
+  beam_root_.reset(new BeamRoot(nullptr, -1));
+  beam_root_->RootEntry()->newp.total = 0.0;  // ln(1)
+  beam_root_->RootEntry()->newp.blank = 0.0;  // ln(1)
 
   // Add the root as the initial leaf.
-  leaves_.push(beam_root_.get());
+  leaves_.push(beam_root_->RootEntry());
 
   // Call initialize state on the root object.
-  beam_scorer_->InitializeState(&beam_root_->state);
+  beam_scorer_->InitializeState(&beam_root_->RootEntry()->state);
 }
 
 template <typename CTCBeamState, typename CTCBeamComparer>

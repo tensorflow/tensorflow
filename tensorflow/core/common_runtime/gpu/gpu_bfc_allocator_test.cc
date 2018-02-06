@@ -20,6 +20,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -45,7 +46,7 @@ static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
 }
 
 TEST(GPUBFCAllocatorTest, NoDups) {
-  GPUBFCAllocator a(0, 1 << 30);
+  GPUBFCAllocator a(CudaGpuId(0), 1 << 30, "GPU_0_bfc");
   CheckStats(&a, 0, 0, 0, 0);
 
   // Allocate a lot of raw pointers
@@ -74,7 +75,7 @@ TEST(GPUBFCAllocatorTest, NoDups) {
 }
 
 TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
-  GPUBFCAllocator a(0, 1 << 30);
+  GPUBFCAllocator a(CudaGpuId(0), 1 << 30, "GPU_0_bfc");
   // Allocate 256 raw pointers of sizes between 100 bytes and about
   // a meg
   random::PhiloxRandom philox(123, 17);
@@ -98,6 +99,11 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
       existing_ptrs.push_back(initial_ptrs[i]);
     }
   }
+
+  // Ensure out of memory errors work and do not prevent future allocations from
+  // working.
+  void* out_of_memory_ptr = a.AllocateRaw(1, (1 << 30) + 1);
+  CHECK_EQ(out_of_memory_ptr, nullptr);
 
   // Allocate a lot of raw pointers
   for (int s = 1; s < 256; s++) {
@@ -127,7 +133,7 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocations) {
 }
 
 TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
-  GPUBFCAllocator a(0, 1 << 30);
+  GPUBFCAllocator a(CudaGpuId(0), 1 << 30, "GPU_0_bfc");
   CheckStats(&a, 0, 0, 0, 0);
 
   float* first_ptr = a.Allocate<float>(1024);
@@ -148,8 +154,9 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
     a.DeallocateRaw(t3);
     a.DeallocateRaw(t4);
   }
-  CheckStats(&a, 4097, 0, 1024 * sizeof(float) + 1048576 * sizeof(int64) +
-                              2048 * sizeof(double) + 10485760 * sizeof(float),
+  CheckStats(&a, 4097, 0,
+             1024 * sizeof(float) + 1048576 * sizeof(int64) +
+                 2048 * sizeof(double) + 10485760 * sizeof(float),
              10485760 * sizeof(float));
 
   // At the end, we should have coalesced all memory into one region
@@ -161,18 +168,18 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
 }
 
 TEST(GPUBFCAllocatorTest, AllocateZeroBufSize) {
-  GPUBFCAllocator a(0, 1 << 30);
+  GPUBFCAllocator a(CudaGpuId(0), 1 << 30, "GPU_0_bfc");
   float* ptr = a.Allocate<float>(0);
   EXPECT_EQ(nullptr, ptr);
 }
 
 TEST(GPUBFCAllocatorTest, TracksSizes) {
-  GPUBFCAllocator a(0, 1 << 30);
+  GPUBFCAllocator a(CudaGpuId(0), 1 << 30, "GPU_0_bfc");
   EXPECT_EQ(true, a.TracksAllocationSizes());
 }
 
 TEST(GPUBFCAllocatorTest, AllocatedVsRequested) {
-  GPUBFCAllocator a(0, 1 << 30);
+  GPUBFCAllocator a(CudaGpuId(0), 1 << 30, "GPU_0_bfc");
   float* t1 = a.Allocate<float>(1);
   EXPECT_EQ(4, a.RequestedSize(t1));
   EXPECT_EQ(256, a.AllocatedSize(t1));
@@ -181,7 +188,7 @@ TEST(GPUBFCAllocatorTest, AllocatedVsRequested) {
 
 TEST(GPUBFCAllocatorTest, TestCustomMemoryLimit) {
   // Configure a 1MiB byte limit
-  GPUBFCAllocator a(0, 1 << 20);
+  GPUBFCAllocator a(CudaGpuId(0), 1 << 20, "GPU_0_bfc");
 
   float* first_ptr = a.Allocate<float>(1 << 6);
   float* second_ptr = a.Allocate<float>(1 << 20);
@@ -196,7 +203,7 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
   options.set_allow_growth(true);
 
   // Max of 2GiB, but starts out small.
-  GPUBFCAllocator a(0, 1LL << 31, options);
+  GPUBFCAllocator a(CudaGpuId(0), 1LL << 31, options, "GPU_0_bfc");
 
   // Allocate 10 raw pointers of sizes between 100 bytes and about
   // 64 megs.
@@ -257,8 +264,8 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
 }
 
 TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
-  GPUBFCAllocator a(0, 1UL << 60);
-  GPUBFCAllocator b(0, 1UL << 60);
+  GPUBFCAllocator a(CudaGpuId(0), 1UL << 60, "GPU_0_bfc");
+  GPUBFCAllocator b(CudaGpuId(0), 1UL << 60, "GPU_0_bfc");
   void* amem = a.AllocateRaw(1, 1);
   void* bmem = b.AllocateRaw(1, 1 << 30);
   a.DeallocateRaw(amem);
@@ -266,7 +273,7 @@ TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {
 }
 
 static void BM_Allocation(int iters) {
-  GPUBFCAllocator a(0, 1uLL << 33);
+  GPUBFCAllocator a(CudaGpuId(0), 1uLL << 33, "GPU_0_bfc");
   // Exercise a few different allocation sizes
   std::vector<size_t> sizes = {256,        4096,      16384,    524288,
                                512,        1048576,   10485760, 104857600,
@@ -282,7 +289,7 @@ static void BM_Allocation(int iters) {
 BENCHMARK(BM_Allocation);
 
 static void BM_AllocationThreaded(int iters, int num_threads) {
-  GPUBFCAllocator a(0, 1uLL << 33);
+  GPUBFCAllocator a(CudaGpuId(0), 1uLL << 33, "GPU_0_bfc");
   thread::ThreadPool pool(Env::Default(), "test", num_threads);
   std::atomic_int_fast32_t count(iters);
   mutex done_lock;
@@ -318,7 +325,7 @@ BENCHMARK(BM_AllocationThreaded)->Arg(1)->Arg(4)->Arg(16);
 // A more complex benchmark that defers deallocation of an object for
 // "delay" allocations.
 static void BM_AllocationDelayed(int iters, int delay) {
-  GPUBFCAllocator a(0, 1 << 30);
+  GPUBFCAllocator a(CudaGpuId(0), 1 << 30, "GPU_0_bfc");
   // Exercise a few different allocation sizes
   std::vector<int> sizes = {256, 4096, 16384, 4096, 512, 1024, 1024};
   int size_index = 0;
@@ -348,6 +355,109 @@ static void BM_AllocationDelayed(int iters, int delay) {
 BENCHMARK(BM_AllocationDelayed)->Arg(1)->Arg(10)->Arg(100)->Arg(1000);
 
 }  // namespace
+
+class GPUBFCAllocatorPrivateMethodsTest : public ::testing::Test {
+ protected:
+  // The following test methods are called from tests. The reason for this is
+  // that this class is a friend class to BFCAllocator, but tests are not, so
+  // only methods inside this class can access private members of BFCAllocator.
+
+  void TestBinDebugInfo() {
+    GPUBFCAllocator a(CudaGpuId(0), 1 << 30, "GPU_0_bfc");
+
+    std::vector<void*> initial_ptrs;
+    std::vector<size_t> initial_ptrs_allocated_sizes;
+    for (int i = 0; i < 5; i++) {
+      for (int j = 0; j < 2; j++) {
+        size_t size = 256 << i;
+        void* raw = a.AllocateRaw(1, size);
+        ASSERT_NE(raw, nullptr);
+        initial_ptrs.push_back(raw);
+        initial_ptrs_allocated_sizes.push_back(a.AllocatedSize(raw));
+      }
+    }
+
+    std::array<BFCAllocator::BinDebugInfo, BFCAllocator::kNumBins> bin_infos;
+    {
+      mutex_lock l(a.lock_);
+      bin_infos = a.get_bin_debug_info();
+    }
+
+    for (int i = 0; i < BFCAllocator::kNumBins; i++) {
+      const BFCAllocator::BinDebugInfo& bin_info = bin_infos[i];
+      if (i < 5) {
+        const size_t requested_size = 2 * (256 << i);
+        EXPECT_EQ(requested_size, a.RequestedSize(initial_ptrs[2 * i]) +
+                                      a.RequestedSize(initial_ptrs[2 * i + 1]));
+        size_t allocated_size = initial_ptrs_allocated_sizes[2 * i] +
+                                initial_ptrs_allocated_sizes[2 * i + 1];
+        EXPECT_EQ(bin_info.total_bytes_in_use, allocated_size);
+        EXPECT_EQ(bin_info.total_bytes_in_bin, allocated_size);
+        EXPECT_EQ(bin_info.total_requested_bytes_in_use, requested_size);
+        EXPECT_EQ(bin_info.total_chunks_in_use, 2);
+        EXPECT_EQ(bin_info.total_chunks_in_bin, 2);
+      } else {
+        EXPECT_EQ(bin_info.total_bytes_in_use, 0);
+        EXPECT_EQ(bin_info.total_requested_bytes_in_use, 0);
+        EXPECT_EQ(bin_info.total_chunks_in_use, 0);
+        if (i == BFCAllocator::kNumBins - 1) {
+          EXPECT_GT(bin_info.total_bytes_in_bin, 0);
+          EXPECT_EQ(bin_info.total_chunks_in_bin, 1);
+        } else {
+          EXPECT_EQ(bin_info.total_bytes_in_bin, 0);
+          EXPECT_EQ(bin_info.total_chunks_in_bin, 0);
+        }
+      }
+    }
+
+    for (size_t i = 1; i < initial_ptrs.size(); i += 2) {
+      a.DeallocateRaw(initial_ptrs[i]);
+      initial_ptrs[i] = nullptr;
+    }
+    {
+      mutex_lock l(a.lock_);
+      bin_infos = a.get_bin_debug_info();
+    }
+    for (int i = 0; i < BFCAllocator::kNumBins; i++) {
+      const BFCAllocator::BinDebugInfo& bin_info = bin_infos[i];
+      if (i < 5) {
+        // We cannot assert the exact number of bytes or chunks in the bin,
+        // because it depends on what chunks were coalesced.
+        size_t requested_size = 256 << i;
+        EXPECT_EQ(requested_size, a.RequestedSize(initial_ptrs[2 * i]));
+        EXPECT_EQ(bin_info.total_bytes_in_use,
+                  initial_ptrs_allocated_sizes[2 * i]);
+        EXPECT_GE(bin_info.total_bytes_in_bin,
+                  initial_ptrs_allocated_sizes[2 * i]);
+        EXPECT_EQ(bin_info.total_requested_bytes_in_use, requested_size);
+        EXPECT_EQ(bin_info.total_chunks_in_use, 1);
+        EXPECT_GE(bin_info.total_chunks_in_bin, 1);
+      } else {
+        EXPECT_EQ(bin_info.total_bytes_in_use, 0);
+        EXPECT_EQ(bin_info.total_requested_bytes_in_use, 0);
+        EXPECT_EQ(bin_info.total_chunks_in_use, 0);
+      }
+    }
+  }
+
+  void TestLog2FloorNonZeroSlow() {
+    GPUBFCAllocator a(CudaGpuId(0), 1 /* total_memory */, "GPU_0_bfc");
+    EXPECT_EQ(-1, a.Log2FloorNonZeroSlow(0));
+    EXPECT_EQ(0, a.Log2FloorNonZeroSlow(1));
+    EXPECT_EQ(1, a.Log2FloorNonZeroSlow(2));
+    EXPECT_EQ(1, a.Log2FloorNonZeroSlow(3));
+    EXPECT_EQ(9, a.Log2FloorNonZeroSlow(1023));
+    EXPECT_EQ(10, a.Log2FloorNonZeroSlow(1024));
+    EXPECT_EQ(10, a.Log2FloorNonZeroSlow(1025));
+  }
+};
+
+TEST_F(GPUBFCAllocatorPrivateMethodsTest, BinDebugInfo) { TestBinDebugInfo(); }
+
+TEST_F(GPUBFCAllocatorPrivateMethodsTest, Log2FloorNonZeroSlow) {
+  TestLog2FloorNonZeroSlow();
+}
+
 }  // namespace tensorflow
 
 #endif  // GOOGLE_CUDA

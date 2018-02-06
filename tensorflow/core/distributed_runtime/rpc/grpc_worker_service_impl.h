@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_
 
 #include "grpc++/impl/codegen/async_stream.h"
 #include "grpc++/impl/codegen/async_unary_call.h"
@@ -110,6 +110,7 @@ namespace tensorflow {
 enum class GrpcWorkerMethod {
   kGetStatus,
   kCreateWorkerSession,
+  kDeleteWorkerSession,
   kRegisterGraph,
   kDeregisterGraph,
   kRunGraph,
@@ -130,7 +131,7 @@ namespace grpc {
 // definition in "//tensorflow/core/protobuf/worker_service.proto",
 // and the gRPC generated stub and service classes.
 // See the proto file for the definition of methods and messages.
-class WorkerService GRPC_FINAL {
+class WorkerService final {
  public:
   class AsyncService : public ::grpc::Service {
    public:
@@ -146,4 +147,4 @@ class WorkerService GRPC_FINAL {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_WORKER_SERVICE_IMPL_H_

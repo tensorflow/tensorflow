@@ -72,8 +72,18 @@ class AotCompilationOptions {
   // Returns the ID of the platform to which these options apply.
   virtual perftools::gputools::Platform::Id PlatformId() const = 0;
 
+  // Optional allocator that may be used for allocating temp space on the device
+  // during compilation.
+  DeviceMemoryAllocator* device_allocator() const { return device_allocator_; }
+  void set_device_allocator(DeviceMemoryAllocator* device_allocator) {
+    device_allocator_ = device_allocator;
+  }
+
  protected:
   AotCompilationOptions() = default;
+
+ private:
+  DeviceMemoryAllocator* device_allocator_ = nullptr;
 };
 
 // Abstract compiler interface that is subclassed for compilation on a
@@ -92,42 +102,59 @@ class AotCompilationOptions {
 // platform.
 class Compiler {
  public:
-  // Callback signature used to dump the HLO graph during compilation.
-  // Different compiler backends will call this as they please, providing
-  // a view of the HLO at different points in compilation -- context for the
-  // dump is indicated by the label string.
-  using HloDumper =
-      std::function<void(const HloModule& module, const string& label)>;
-
   virtual ~Compiler() {}
 
   // Returns the ID of the platform that this compiler targets.
   virtual perftools::gputools::Platform::Id PlatformId() const = 0;
 
+  // Runs Hlo passes to optimize the given Hlo module, returns the optimized
+  // module.
+  //
+  // If device_allocator is not null, the compiler may use it to allocate temp
+  // space on the device for use during compilation.  For example, the compiler
+  // may allocate buffers on the device and then run variants of a given
+  // algorithm over those buffers, to see which variant is fastest.  Any space
+  // allocated should be deallocated before this function returns.
+  virtual StatusOr<std::unique_ptr<HloModule>> RunHloPasses(
+      std::unique_ptr<HloModule> module,
+      perftools::gputools::StreamExecutor* executor,
+      DeviceMemoryAllocator* device_allocator) = 0;
+
   // Compiles the HLO module for execution on a device given by the executor,
-  // and returns an executable object or an error status. Takes ownership of the
-  // HLO module and is free to transform it.
+  // and returns an executable object or an error status. No HLO passes are
+  // applied to module. Generally a module should be passed through RunHloPasses
+  // prior to calling this method because the some HLO passes are required for
+  // correctness. Takes ownership of the HLO module and is free to transform it.
   //
   // The compiler may optionally specialize to the individual device
   // (not just type of device) indicated by the executor.
   //
+  // device_allocator is optional; see RunHloPasses.
+  //
   // Use the overload below to compile computations that run in parallel.
-  virtual StatusOr<std::unique_ptr<Executable>> Compile(
-      std::unique_ptr<HloModule> module, HloDumper dump_hlo,
-      perftools::gputools::StreamExecutor* executor) = 0;
+  virtual StatusOr<std::unique_ptr<Executable>> RunBackend(
+      std::unique_ptr<HloModule> module,
+      perftools::gputools::StreamExecutor* executor,
+      DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles a set of HLO modules that can run in parallel, potentially
   // communicating data between the modules, and returns a corresponding
   // sequence of executable objects.
+  //
+  // device_allocator is optional; see RunHloPasses.
+  //
+  // TODO(b/68666782): Remove this method after adding support for multiple
+  // modules to RunHloPasses and RunBackends.
   virtual StatusOr<std::vector<std::unique_ptr<Executable>>> Compile(
-      std::vector<std::unique_ptr<HloModule>> modules, HloDumper dump_hlo,
-      std::vector<perftools::gputools::StreamExecutor*> stream_exec) = 0;
+      std::vector<std::unique_ptr<HloModule>> modules,
+      std::vector<std::vector<perftools::gputools::StreamExecutor*>>
+          stream_exec,
+      DeviceMemoryAllocator* device_allocator) = 0;
 
   // Compiles the HLO module for ahead-of-time execution.  This is intended for
   // use in static compilation.
   virtual StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
   CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
-                     HloDumper dump_hlo,
                      const AotCompilationOptions& options) = 0;
 
   /////
@@ -164,8 +191,7 @@ class Compiler {
 
  private:
   // Mutex that guards the platform-compiler map.
-  static tensorflow::mutex* platform_compiler_mutex_;
-  static void LazyInitMutex();
+  static tensorflow::mutex platform_compiler_mutex_;
 
   // Map from platform kind to compiler factory.
   static std::map<perftools::gputools::Platform::Id, CompilerFactory>*

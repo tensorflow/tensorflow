@@ -20,6 +20,15 @@ cc_library(
         "lib/quantize.c",
     ],
     hdrs = ["lib/gif_lib.h"],
+    defines = select({
+        #"@org_tensorflow//tensorflow:android": [
+        ":android": [
+            "S_IREAD=S_IRUSR",
+            "S_IWRITE=S_IWUSR",
+            "S_IEXEC=S_IXUSR",
+        ],
+        "//conditions:default": [],
+    }),
     includes = ["lib/."],
     visibility = ["//visibility:public"],
     deps = select({
@@ -53,4 +62,9 @@ config_setting(
     values = {
         "cpu": "x64_windows",
     },
+)
+
+config_setting(
+    name = "android",
+    values = {"crosstool_top": "//external:android/crosstool"},
 )

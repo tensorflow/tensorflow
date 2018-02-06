@@ -1,4 +1,4 @@
-# Text form of tensorflow.tfcompile.Config proto.
+# Text form of tensorflow.tf2xla.Config proto.
 feed {
   id { node_name: "x_const" }
   shape {
@@ -6,7 +6,7 @@ feed {
   }
 }
 feed {
-  id { node_name: "y_const" }
+  id { node_name: "y_reshape" }
   shape {
     dim { size: 1 }
   }

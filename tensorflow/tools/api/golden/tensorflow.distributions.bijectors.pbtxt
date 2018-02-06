@@ -1,0 +1,11 @@
+path: "tensorflow.distributions.bijectors"
+tf_module {
+  member {
+    name: "Bijector"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "Identity"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+}

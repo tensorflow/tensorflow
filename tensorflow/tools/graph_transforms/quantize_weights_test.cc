@@ -40,7 +40,7 @@ class QuantizeWeightsTest : public ::testing::Test {
                      const TensorShape& weight_shape,
                      std::initializer_list<float> weight_values,
                      GraphDef* original_graph_def) {
-    auto root = tensorflow::Scope::NewRootScope();
+    auto root = tensorflow::Scope::DisabledShapeInferenceScope();
 
     Tensor input_data(DT_FLOAT, input_shape);
     test::FillValues<float>(&input_data, input_values);
@@ -70,9 +70,12 @@ class QuantizeWeightsTest : public ::testing::Test {
                    0.3f, 0.4f, 1.0f, 2.0f, 3.0f, 4.0f, 0.1f, 0.2f, 0.3f, 0.4f},
                   &original_graph_def);
 
+    TransformFuncContext context;
+    context.output_names = {"output"};
+    context.params["minimum_size"] = {"16"};
     GraphDef quantized_graph_def;
-    TF_ASSERT_OK(QuantizeWeights(original_graph_def, {{}, {"output"}},
-                                 &quantized_graph_def));
+    TF_ASSERT_OK(
+        QuantizeWeights(original_graph_def, context, &quantized_graph_def));
 
     // Verify the structure of the quantized graph.
     std::map<string, const NodeDef*> node_lookup;
@@ -122,9 +125,12 @@ TEST_F(QuantizeWeightsTest, RangesAlwaysIncludeZero) {
                  0.1f, 0.2f, 0.3f, 0.4f, 1.0f, 2.0f, 3.0f, 4.0f, 0.1f, 0.2f,
                  0.3f, 0.4f, 1.0f, 2.0f, 3.0f, 4.0f, 0.1f, 0.2f, 0.3f, 0.4f},
                 &original_graph_def);
+  TransformFuncContext context;
+  context.output_names = {"output"};
+  context.params["minimum_size"] = {"16"};
   GraphDef quantized_graph_def;
-  TF_ASSERT_OK(QuantizeWeights(original_graph_def, {{}, {"output"}},
-                               &quantized_graph_def));
+  TF_ASSERT_OK(
+      QuantizeWeights(original_graph_def, context, &quantized_graph_def));
 
   std::map<string, const NodeDef*> node_lookup;
   MapNamesToNodes(quantized_graph_def, &node_lookup);

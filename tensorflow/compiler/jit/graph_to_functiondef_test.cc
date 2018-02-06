@@ -82,5 +82,38 @@ TEST(GraphToFunctionDefTest, Basics) {
   EXPECT_TRUE(fdefs_equal) << diff;
 }
 
+// Regression test for a crash if there was a control edge to a _Retval node.
+TEST(GraphToFunctionDefTest, ControlDependencies) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(root.WithOpName("a"), DT_FLOAT, 0);
+  auto b = ops::Neg(root.WithOpName("b").WithControlDependencies(a), a);
+  auto c = ops::_Retval(root.WithOpName("c").WithControlDependencies(b), b, 0);
+
+  GraphDef graph_def;
+  TF_EXPECT_OK(root.ToGraphDef(&graph_def));
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  GraphConstructorOptions options;
+  TF_EXPECT_OK(ConvertGraphDefToGraph(options, graph_def, graph.get()));
+
+  FunctionDef fdef;
+  TF_EXPECT_OK(GraphToFunctionDef(*graph, "test_fn", &fdef));
+
+  FunctionDef fdef_expected = FunctionDefHelper::Create(
+      "test_fn",     // function name
+      {"a: float"},  // inputs
+      {"c: float"},  // outputs
+      {},            // attrs
+      {
+          // nodes in the function body
+          {{"b"}, "Neg", {"a", "^a"}, {{"T", DT_FLOAT}}},
+      },
+      {{"c", "b:y:0"}});  // return values
+
+  string diff;
+  bool fdefs_equal = EqualFunctionDef(fdef_expected, fdef, &diff);
+  EXPECT_TRUE(fdefs_equal) << diff;
+}
+
 }  // namespace
 }  // namespace tensorflow

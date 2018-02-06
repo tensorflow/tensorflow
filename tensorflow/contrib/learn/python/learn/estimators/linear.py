@@ -26,7 +26,7 @@ import six
 from tensorflow.contrib import layers
 from tensorflow.contrib.framework import deprecated
 from tensorflow.contrib.framework import deprecated_arg_values
-from tensorflow.contrib.framework.python.ops import variables as contrib_variables
+from tensorflow.python.training import training_util
 from tensorflow.contrib.layers.python.layers import feature_column
 from tensorflow.contrib.learn.python.learn.estimators import estimator
 from tensorflow.contrib.learn.python.learn.estimators import head as head_lib
@@ -170,7 +170,7 @@ def _linear_model_fn(features, labels, mode, params, config=None):
           weight_collections=[parent_scope])
 
     def _train_op_fn(loss):
-      global_step = contrib_variables.get_global_step()
+      global_step = training_util.get_global_step()
       my_vars = ops.get_collection(parent_scope)
       grads = gradients.gradients(loss, my_vars)
       if gradient_clip_norm:
@@ -252,7 +252,7 @@ def sdca_model_fn(features, labels, mode, params):
     _add_bias_column(feature_columns, features, bias, columns_to_variables)
 
   def _train_op_fn(unused_loss):
-    global_step = contrib_variables.get_global_step()
+    global_step = training_util.get_global_step()
     sdca_model, train_op = optimizer.get_train_step(columns_to_variables,
                                                     weight_column_name,
                                                     loss_type, features,
@@ -441,18 +441,16 @@ class LinearClassifier(estimator.Estimator):
 
     Raises:
       ValueError: if n_classes < 2.
+      ValueError: if enable_centered_bias=True and optimizer is SDCAOptimizer.
     """
-    # TODO(zoy): Give an unsupported error if enable_centered_bias is
-    #    requested for SDCA once its default changes to False.
+    if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
+        enable_centered_bias):
+      raise ValueError("enable_centered_bias is not supported with SDCA")
+
     self._feature_columns = tuple(feature_columns or [])
     assert self._feature_columns
 
     chief_hook = None
-    if (isinstance(optimizer, sdca_optimizer.SDCAOptimizer) and
-        enable_centered_bias):
-      enable_centered_bias = False
-      logging.warning("centered_bias is not supported with SDCA, "
-                      "please disable it explicitly.")
     head = head_lib.multi_class_head(
         n_classes,
         weight_column_name=weight_column_name,

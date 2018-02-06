@@ -19,19 +19,23 @@ limitations under the License.
 
 namespace tensorflow {
 
-// TODO(satok): Implement shape_inference
+namespace {
+using shape_inference::InferenceContext;
+
+Status RemoteFusedGraphExecuteShapeFn(InferenceContext* c) {
+  for (int i = 0; i < c->num_outputs(); ++i) {
+    c->set_output(i, c->UnknownShape());
+  }
+  return Status::OK();
+}
+}  // namespace
+
 REGISTER_OP("RemoteFusedGraphExecute")
     .Input("inputs: Tinputs")
     .Output("outputs: Toutputs")
     .Attr("Tinputs: list(type) >= 0")
     .Attr("Toutputs: list(type) >= 0")
     .Attr("serialized_remote_fused_graph_execute_info: string")
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(R"doc(
-Execute a sub graph on a remote processor transferred by GraphTransferer.
-The graph specifications are serialized by protobuf as graph_transfer_info.
-The implementation / limitations may differ for each platform
-and each available peripheral.
-)doc");
+    .SetShapeFn(RemoteFusedGraphExecuteShapeFn);
 
 }  // namespace tensorflow

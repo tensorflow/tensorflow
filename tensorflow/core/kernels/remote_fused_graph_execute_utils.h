@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
+#define TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
 
 #include <unordered_map>
 #include <unordered_set>
@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/kernels/i_remote_fused_graph_executor.h"
+#include "tensorflow/core/kernels/i_remote_fused_graph_ops_definitions.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/macros.h"
 
@@ -57,6 +58,10 @@ class RemoteFusedGraphExecuteUtils {
       "border_inputs";
   static constexpr const char* const TRANSFORM_ARG_BORDER_OUTPUTS =
       "border_outputs";
+  static constexpr const char* const TRANSFORM_ARG_FUSED_OP_TYPES =
+      "fused_op_types";
+  static constexpr const char* const TRANSFORM_ARG_FUSE_BY_EXECUTOR =
+      "fuse_by_executor";
   static constexpr const char* const TRANSFORM_ARG_INPUT_TYPES = "input_types";
   static constexpr const char* const TRANSFORM_ARG_INPUT_SHAPES =
       "input_shapes";
@@ -157,7 +162,7 @@ class RemoteFusedGraphExecuteUtils {
       const std::vector<std::pair<string, Tensor>>& input_tensors,
       const bool dry_run_inference, GraphDef* graph_def);
 
-  // Build remote fused graph execute info
+  // Build remote fused graph execute info.
   static Status BuildRemoteFusedGraphExecuteInfo(
       const string& executor_name, const GraphDef& subgraph_def,
       const std::vector<string>& inputs, const std::vector<string>& outputs,
@@ -165,31 +170,31 @@ class RemoteFusedGraphExecuteUtils {
       DataTypeVector* input_types, DataTypeVector* output_types);
 
   // Build remote fused graph execute op node by fusing specified subgraph
-  // as remote fused graph execute info
+  // as remote fused graph execute info.
   static Status BuildRemoteFusedGraphExecuteOpNode(
       const string& node_name, const string& executor_name,
       const GraphDef& subgraph_def, const std::vector<string>& inputs,
       const std::vector<string>& outputs, const bool require_shape_type,
       Graph* graph, Node** created_node);
 
-  // Build Identity node to forward remote graph node output
+  // Build Identity node to forward remote graph node output.
   static Status BuildIdentityOpNode(const string& node_name,
                                     const string& input_node_name,
                                     const int input_node_port,
                                     const DataType dt, Graph* graph,
                                     Node** created_node);
 
-  // Create clusters of given nodes
+  // Create clusters of given nodes.
   static Status ClusterizeNodes(const std::unordered_set<string>& node_names,
                                 const GraphDef& graph_def,
                                 std::vector<ClusterInfo>* cluster_infos);
 
-  // Build GraphDef of a given cluster
+  // Build GraphDef of a given cluster.
   static Status BuildClusterSubgraphDef(const ClusterInfo& cluster,
                                         const GraphDef& graph_def,
                                         GraphDef* subgraph_def);
 
-  // Build a cluster by given border
+  // Build a cluster by given border.
   // CAVEAT: The border must be consistent for one cluster.
   static Status BuildClusterByBorder(const std::vector<string>& border_inputs,
                                      const std::vector<string>& border_outputs,
@@ -211,7 +216,7 @@ class RemoteFusedGraphExecuteUtils {
                             const bool require_shape_type,
                             GraphDef* output_graph_def);
 
-  // Fuse subgraph of specified nodes
+  // Fuse subgraph of specified nodes.
   static Status FuseRemoteGraphByNodeNames(
       const GraphDef& input_graph_def, const std::vector<string>& inputs,
       const std::vector<string>& outputs,
@@ -220,7 +225,7 @@ class RemoteFusedGraphExecuteUtils {
       const string& remote_fused_graph_executor_name,
       const bool require_shape_type, GraphDef* output_graph_def);
 
-  // Fuse subgraph of specified border
+  // Fuse subgraph of specified border.
   static Status FuseRemoteGraphByBorder(
       const GraphDef& input_graph_def, const std::vector<string>& inputs,
       const std::vector<string>& outputs,
@@ -230,24 +235,56 @@ class RemoteFusedGraphExecuteUtils {
       const string& remote_graph_executor_name, const bool require_shape_type,
       GraphDef* output_graph_def);
 
-  // Place arguments to fuse remote graph
+  // Fuse subgraph of specified op types.
+  static Status FuseRemoteGraphByOpTypes(
+      const GraphDef& input_graph_def, const std::vector<string>& inputs,
+      const std::vector<string>& outputs,
+      const string& remote_fused_graph_node_name_prefix,
+      const std::unordered_set<string>& fused_op_types,
+      const string& remote_fused_graph_executor_name,
+      const bool require_shape_type, GraphDef* output_graph_def);
+
+  // Place arguments to fuse remote graph.
   static Status PlaceRemoteGraphArguments(
       const std::vector<string>& inputs, const std::vector<string>& outputs,
       const std::unordered_set<string>& fused_node_names,
       const std::vector<string>& border_inputs,
       const std::vector<string>& border_outputs,
+      const std::unordered_set<string>& fused_op_types,
       const string& remote_fused_graph_node_name,
       const string& remote_graph_executor_name, GraphDef* graph_def);
 
-  // Fuse remote graph by placed arguments
+  // Fuse remote graph by placed arguments.
   static Status FuseRemoteGraphByPlacedArguments(
       const GraphDef& input_graph_def,
       const std::vector<std::pair<string, Tensor>>& input_tensors,
       GraphDef* output_graph_def);
 
+  static Status FuseRemoteGraphByExecutor(const GraphDef& input_graph_def,
+                                          const std::vector<string>& inputs,
+                                          const std::vector<string>& outputs,
+                                          const string& executor_name,
+                                          GraphDef* output_graph_def);
+
   static bool IsFuseReady(
       const GraphDef& input_graph_def,
       const std::vector<std::pair<string, Tensor>>& input_tensors);
+
+  // Copy a byte array to a tensor data.  Though tensor data must be
+  // updated with typed information in general, we can't guarantee that
+  // returned values from a remote processor has typed information because
+  // a logic running in the remote processor possibly be in a separate binary
+  // which may not link tensorflow libraries.  To deal with this situation,
+  // remote fused graph needs to overwrite the tensor data by a byte array.
+  static Status CopyByteArrayToTensor(const void* src_ptr, const int src_size,
+                                      Tensor* tensor);
+
+  static std::unordered_set<string> BuildNodeMapFromOpTypes(
+      const GraphDef& graph_def, const std::unordered_set<string>& op_types);
+
+  static std::unordered_set<string> BuildNodeMapFromOpsDefinitions(
+      const GraphDef& graph_def,
+      const IRemoteFusedGraphOpsDefinitions& ops_definitions);
 
  private:
   static void EmplaceTensorShapeType(const string& name, const Tensor& tensor,
@@ -275,4 +312,4 @@ class RemoteFusedGraphExecuteUtils {
 };
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_REMOTE_FUSED_GRAPH_EXECUTE_UTILS_H_

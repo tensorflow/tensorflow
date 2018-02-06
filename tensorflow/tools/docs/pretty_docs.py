@@ -28,6 +28,7 @@ from __future__ import division
 from __future__ import print_function
 
 import itertools
+import textwrap
 
 
 def build_md_page(page_info):
@@ -116,7 +117,8 @@ def _build_class_page(page_info):
   parts.append(page_info.guides)
   parts.append(page_info.doc.docstring)
   parts.append(_build_function_details(page_info.doc.function_details))
-  assert not page_info.doc.compatibility
+  parts.append(_build_compatibility(page_info.doc.compatibility))
+
   parts.append('\n\n')
 
   if page_info.classes:
@@ -138,7 +140,8 @@ def _build_class_page(page_info):
 
       parts.append(prop_info.doc.docstring)
       parts.append(_build_function_details(prop_info.doc.function_details))
-      assert not prop_info.doc.compatibility
+      parts.append(_build_compatibility(prop_info.doc.compatibility))
+
       parts.append('\n\n')
 
     parts.append('\n\n')
@@ -159,7 +162,7 @@ def _build_class_page(page_info):
       parts.append(h3.format(**method_info.__dict__))
 
       if method_info.signature is not None:
-        parts.append(_build_signature(method_info))
+        parts.append(_build_signature(method_info, use_full_name=False))
 
       parts.append(method_info.doc.docstring)
       parts.append(_build_function_details(method_info.doc.function_details))
@@ -205,6 +208,8 @@ def _build_module_page(page_info):
     parts.append(str(page_info.defined_in))
 
   parts.append(page_info.doc.docstring)
+  parts.append(_build_compatibility(page_info.doc.compatibility))
+
   parts.append('\n\n')
 
   if page_info.modules:
@@ -254,20 +259,19 @@ def _build_module_page(page_info):
   return ''.join(parts)
 
 
-def _build_signature(obj_info):
+def _build_signature(obj_info, use_full_name=True):
   """Returns a md code block showing the function signature."""
   # Special case tf.range, since it has an optional first argument
   if obj_info.full_name == 'tf.range':
     return (
         '``` python\n'
-        "range(limit, delta=1, dtype=None, name='range')\n"
-        "range(start, limit, delta=1, dtype=None, name='range')\n"
+        "tf.range(limit, delta=1, dtype=None, name='range')\n"
+        "tf.range(start, limit, delta=1, dtype=None, name='range')\n"
         '```\n\n')
 
-  signature_template = '\n'.join([
-      '``` python',
-      '{name}({sig})',
-      '```\n\n'])
+  parts = ['``` python']
+  parts.extend(['@' + dec for dec in obj_info.decorators])
+  signature_template = '{name}({sig})'
 
   if not obj_info.signature:
     sig = ''
@@ -277,7 +281,14 @@ def _build_signature(obj_info):
     sig = ',\n'.join('    %s' % sig_item for sig_item in obj_info.signature)
     sig = '\n'+sig+'\n'
 
-  return signature_template.format(name=obj_info.short_name, sig=sig)
+  if use_full_name:
+    obj_name = obj_info.full_name
+  else:
+    obj_name = obj_info.short_name
+  parts.append(signature_template.format(name=obj_name, sig=sig))
+  parts.append('```\n\n')
+
+  return '\n'.join(parts)
 
 
 def _build_compatibility(compatibility):
@@ -287,7 +298,9 @@ def _build_compatibility(compatibility):
   for key in sorted_keys:
 
     value = compatibility[key]
-    parts.append('\n\n#### %s compatibility\n%s\n' % (key, value))
+    # Dedent so that it does not trigger markdown code formatting.
+    value = textwrap.dedent(value)
+    parts.append('\n\n#### %s Compatibility\n%s\n' % (key.title(), value))
 
   return ''.join(parts)
 
@@ -298,9 +311,9 @@ def _build_function_details(function_details):
   for detail in function_details:
     sub = []
     sub.append('#### ' + detail.keyword + ':\n\n')
-    sub.append(detail.header)
+    sub.append(textwrap.dedent(detail.header))
     for key, value in detail.items:
-      sub.append('* <b>`%s`</b>:%s' % (key, value))
+      sub.append('* <b>`%s`</b>: %s' % (key, value))
     parts.append(''.join(sub))
 
   return '\n'.join(parts)
@@ -314,7 +327,7 @@ class _Metadata(object):
   """
 
   def __init__(self, name):
-    """Creata a Metadata builder.
+    """Create a Metadata builder.
 
     Args:
       name: The name of the page being described by the Metadata block.

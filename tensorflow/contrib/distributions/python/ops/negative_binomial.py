@@ -148,39 +148,33 @@ class NegativeBinomial(distribution.Distribution):
         beta=math_ops.exp(-self.logits),
         dtype=self.dtype,
         seed=seed)
-
     return random_ops.random_poisson(
         rate,
         shape=[],
         dtype=self.dtype,
         seed=distribution_util.gen_new_seed(seed, "negative_binom"))
 
-  def _cdf(self, positive_counts):
+  def _cdf(self, x):
     if self.validate_args:
-      positive_counts = math_ops.floor(
-          distribution_util.embed_check_nonnegative_discrete(
-              positive_counts, check_integer=False))
-    return math_ops.betainc(
-        self.total_count, positive_counts + 1.,
-        math_ops.sigmoid(-self.logits))
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    return math_ops.betainc(self.total_count, 1. + x,
+                            math_ops.sigmoid(-self.logits))
 
-  def _log_prob(self, positive_counts):
-    return (self._log_unnormalized_prob(positive_counts)
-            - self._log_normalization(positive_counts))
+  def _log_prob(self, x):
+    return (self._log_unnormalized_prob(x)
+            - self._log_normalization(x))
 
-  def _log_unnormalized_prob(self, positive_counts):
+  def _log_unnormalized_prob(self, x):
     if self.validate_args:
-      positive_counts = distribution_util.embed_check_nonnegative_discrete(
-          positive_counts, check_integer=True)
-    return self.total_count * math_ops.log1p(
-        -self.probs) + positive_counts * math_ops.log(self.probs)
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    return (self.total_count * math_ops.log_sigmoid(-self.logits)
+            + x * math_ops.log_sigmoid(self.logits))
 
-  def _log_normalization(self, positive_counts):
+  def _log_normalization(self, x):
     if self.validate_args:
-      positive_counts = distribution_util.embed_check_nonnegative_discrete(
-          positive_counts, check_integer=True)
-    return (-math_ops.lgamma(self.total_count + positive_counts)
-            + math_ops.lgamma(positive_counts + 1.)
+      x = distribution_util.embed_check_nonnegative_integer_form(x)
+    return (-math_ops.lgamma(self.total_count + x)
+            + math_ops.lgamma(1. + x)
             + math_ops.lgamma(self.total_count))
 
   def _mean(self):

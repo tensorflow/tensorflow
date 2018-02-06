@@ -72,9 +72,6 @@ class HostPlatform : public Platform {
   // This platform's name.
   string name_;
 
-  // mutex that guards the ordinal-to-executor map.
-  mutable mutex executors_mutex_;
-
   // Cache of created StreamExecutors.
   ExecutorCache executor_cache_;
 

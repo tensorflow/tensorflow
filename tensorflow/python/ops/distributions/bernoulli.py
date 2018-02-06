@@ -22,7 +22,6 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -30,8 +29,10 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("distributions.Bernoulli")
 class Bernoulli(distribution.Distribution):
   """Bernoulli distribution.
 
@@ -121,9 +122,12 @@ class Bernoulli(distribution.Distribution):
     return math_ops.cast(sample, self.dtype)
 
   def _log_prob(self, event):
-    event = self._maybe_assert_valid_sample(event)
+    if self.validate_args:
+      event = distribution_util.embed_check_integer_casting_closed(
+          event, target_dtype=dtypes.bool)
+
     # TODO(jaana): The current sigmoid_cross_entropy_with_logits has
-    # inconsistent  behavior for logits = inf/-inf.
+    # inconsistent behavior for logits = inf/-inf.
     event = math_ops.cast(event, self.logits.dtype)
     logits = self.logits
     # sigmoid_cross_entropy_with_logits doesn't broadcast shape,
@@ -161,17 +165,6 @@ class Bernoulli(distribution.Distribution):
   def _mode(self):
     """Returns `1` if `prob > 0.5` and `0` otherwise."""
     return math_ops.cast(self.probs > 0.5, self.dtype)
-
-  def _maybe_assert_valid_sample(self, event, check_integer=True):
-    if not self.validate_args:
-      return event
-    event = distribution_util.embed_check_nonnegative_discrete(
-        event, check_integer=check_integer)
-    return control_flow_ops.with_dependencies([
-        check_ops.assert_less_equal(
-            event, array_ops.ones_like(event),
-            message="event is not less than or equal to 1."),
-    ], event)
 
 
 class BernoulliWithSigmoidProbs(Bernoulli):

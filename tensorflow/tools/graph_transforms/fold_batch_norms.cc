@@ -57,6 +57,17 @@ Status FoldBatchNorms(const GraphDef& input_graph_def,
         const NodeDef& weights_node = match.inputs[0].inputs[1].node;
         const NodeDef& mul_values_node = match.inputs[1].node;
 
+        // Check that nodes that we use are not used somewhere else.
+        for (const auto& node : {conv_node, weights_node, mul_values_node}) {
+          if (output_nodes.count(node.name())) {
+            // Return original nodes.
+            new_nodes->insert(new_nodes->end(),
+                              {mul_node, conv_node, input_node, weights_node,
+                               mul_values_node});
+            return Status::OK();
+          }
+        }
+
         Tensor weights = GetNodeTensorAttr(weights_node, "value");
         Tensor mul_values = GetNodeTensorAttr(mul_values_node, "value");
 

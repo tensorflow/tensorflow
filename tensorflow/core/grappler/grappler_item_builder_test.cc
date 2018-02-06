@@ -14,14 +14,18 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/grappler_item_builder.h"
+#include "google/protobuf/any.pb.h"
 #include "tensorflow/cc/framework/gradients.h"
 #include "tensorflow/cc/gradients/grad_testutil.h"
 #include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
 
@@ -51,7 +55,11 @@ void SampleSumSymbolicGradientGraphdef(
   auto g0 = SymbolicGradient(scope, std::initializer_list<Input>{x, y, z},
                              {DT_FLOAT, DT_INT32}, fn);
 
-  fetches->mutable_node_list()->add_value(g0[0].name());
+  // TODO(bsteiner): we should rewrite the feed/fetch nodes to reflect the
+  // inlining that's done in the item builder
+  // fetches->mutable_node_list()->add_value(g0[0].name());
+  fetches->mutable_node_list()->add_value("SymbolicGradient/dx");
+  fetches->mutable_node_list()->add_value("SymbolicGradient/dy_reshaped");
 
   TF_CHECK_OK(scope.ToGraphDef(def));
 
@@ -109,11 +117,286 @@ TEST_F(GrapplerItemBuilderTest, SymbolicGradientInlining) {
   std::unique_ptr<GrapplerItem> with_inline = CreateGrapplerItem(def, fetches);
 
   // For the inlined graph, there should be 0 symbolic gradient ops.
-  CHECK_EQ(0, CountSymbolicGradientOps(with_inline));
+  EXPECT_EQ(0, CountSymbolicGradientOps(with_inline));
 
   // For the inlined graph, make sure all the required expanded op’s are in the
   // graph.
-  CHECK_EQ(ops_of_inline.size(), CountOpsWithNames(with_inline, ops_of_inline));
+  EXPECT_EQ(ops_of_inline.size(),
+            CountOpsWithNames(with_inline, ops_of_inline));
+}
+
+TEST_F(GrapplerItemBuilderTest, AssetFilepathOverrideTest) {
+  MetaGraphDef meta_graph;
+
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output var =
+      ops::Variable(s.WithOpName("var"), TensorShape(), DataType::DT_FLOAT);
+  Output filename_node =
+      ops::Const(s.WithOpName("filename"), string("model"), TensorShape());
+  Output tensor_name =
+      ops::Const(s.WithOpName("tensorname"), string("var"), TensorShape());
+  Output restore = ops::Restore(s.WithOpName("restore"), filename_node,
+                                tensor_name, DataType::DT_FLOAT);
+  Output assign = ops::Assign(s.WithOpName("assign"), var, restore);
+
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  string temp_dir = testing::TmpDir();
+
+  Env *env = Env::Default();
+  string filename =
+      io::JoinPath(temp_dir, "grappler_item_builder_test_filename");
+  env->DeleteFile(filename).IgnoreError();
+  std::unique_ptr<WritableFile> file_to_write;
+  TF_CHECK_OK(env->NewWritableFile(filename, &file_to_write));
+  TF_CHECK_OK(file_to_write->Close());
+  TF_CHECK_OK(env->FileExists(filename));
+  LOG(INFO) << filename;
+
+  AssetFileDef asset_file_def;
+  *asset_file_def.mutable_tensor_info()->mutable_name() = "filename";
+  *asset_file_def.mutable_filename() = "grappler_item_builder_test_filename";
+
+  (*meta_graph.mutable_collection_def())["saved_model_assets"]
+      .mutable_any_list()
+      ->add_value()
+      ->PackFrom(asset_file_def);
+  *((*meta_graph.mutable_collection_def())["train_op"]
+        .mutable_node_list()
+        ->add_value()) = "assign";
+
+  ItemConfig cfg;
+  cfg.assets_directory_override = temp_dir;
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+  ASSERT_TRUE(item != nullptr);
+  for (const NodeDef &node : item->graph.node()) {
+    if (node.name() == "filename") {
+      const auto iter = node.attr().find("value");
+      ASSERT_TRUE(iter != node.attr().end());
+      ASSERT_TRUE(iter->second.has_tensor());
+      ASSERT_EQ(1, iter->second.tensor().string_val_size());
+
+      string tensor_string_val = iter->second.tensor().string_val(0);
+      EXPECT_EQ(tensor_string_val, filename);
+    }
+  }
+}
+
+TEST_F(GrapplerItemBuilderTest, AssetFilepathOverrideTest_FileNotAccessible) {
+  MetaGraphDef meta_graph;
+
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output var =
+      ops::Variable(s.WithOpName("var"), TensorShape(), DataType::DT_FLOAT);
+  Output filename_node1 =
+      ops::Const(s.WithOpName("filename1"), string("model1"), TensorShape());
+  Output filename_node2 =
+      ops::Const(s.WithOpName("filename2"), string("model2"), TensorShape());
+  Output tensor_name =
+      ops::Const(s.WithOpName("tensorname"), string("var"), TensorShape());
+  Output restore1 = ops::Restore(s.WithOpName("restore1"), filename_node1,
+                                 tensor_name, DataType::DT_FLOAT);
+  Output restore2 = ops::Restore(s.WithOpName("restore2"), filename_node1,
+                                 tensor_name, DataType::DT_FLOAT);
+  Output assign1 = ops::Assign(s.WithOpName("assign1"), var, restore1);
+  Output assign2 = ops::Assign(s.WithOpName("assign2"), var, restore2);
+
+  TF_CHECK_OK(s.ToGraphDef(meta_graph.mutable_graph_def()));
+
+  string temp_dir = testing::TmpDir();
+
+  // Create the first AssetFileDef that has a valid file.
+  Env *env = Env::Default();
+  string filename1 =
+      io::JoinPath(temp_dir, "grappler_item_builder_test_filename1");
+  env->DeleteFile(filename1).IgnoreError();
+  std::unique_ptr<WritableFile> file_to_write;
+  TF_CHECK_OK(env->NewWritableFile(filename1, &file_to_write));
+  TF_CHECK_OK(file_to_write->Close());
+  TF_CHECK_OK(env->FileExists(filename1));
+
+  AssetFileDef asset_file_def1;
+  *asset_file_def1.mutable_tensor_info()->mutable_name() = "filename1";
+  *asset_file_def1.mutable_filename() = "grappler_item_builder_test_filename1";
+
+  // Create the second AssetFileDef that has not a valid file.
+  string filename2 =
+      io::JoinPath(temp_dir, "grappler_item_builder_test_filename1");
+  env->DeleteFile(filename2).IgnoreError();
+  EXPECT_FALSE(env->FileExists(filename2).ok());
+
+  AssetFileDef asset_file_def2;
+  *asset_file_def2.mutable_tensor_info()->mutable_name() = "filename2";
+  *asset_file_def2.mutable_filename() = "grappler_item_builder_test_filename2";
+
+  (*meta_graph.mutable_collection_def())["saved_model_assets"]
+      .mutable_any_list()
+      ->add_value()
+      ->PackFrom(asset_file_def1);
+  (*meta_graph.mutable_collection_def())["saved_model_assets"]
+      .mutable_any_list()
+      ->add_value()
+      ->PackFrom(asset_file_def2);
+
+  *((*meta_graph.mutable_collection_def())["train_op"]
+        .mutable_node_list()
+        ->add_value()) = "assign1";
+  *((*meta_graph.mutable_collection_def())["train_op"]
+        .mutable_node_list()
+        ->add_value()) = "assign2";
+
+  ItemConfig cfg;
+  cfg.assets_directory_override = temp_dir;
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+  ASSERT_TRUE(item == nullptr);
+}
+
+TEST_F(GrapplerItemBuilderTest, GraphWithFunctions) {
+  MetaGraphDef meta_graph;
+  // y = XTimesTwo(x)
+  constexpr char device[] = "/cpu:0";
+  *meta_graph.mutable_graph_def() = test::function::GDef(
+      {test::function::NDef("x", "Const", {}, {{"dtype", DT_FLOAT}}, device),
+       test::function::NDef("y", "XTimesTwo", {"x"}, {{"T", DT_FLOAT}},
+                            device)},
+      // FunctionLib
+      {
+          test::function::XTimesTwo(),
+      });
+
+  CollectionDef train_op;
+  train_op.mutable_node_list()->add_value("y");
+  (*meta_graph.mutable_collection_def())["train_op"] = train_op;
+
+  ItemConfig cfg;
+  cfg.inline_functions = false;
+
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromMetaGraphDef("0", meta_graph, cfg);
+  ASSERT_TRUE(item != nullptr);
+}
+
+TEST_F(GrapplerItemBuilderTest, FromSimpleFunctionDef) {
+  const Tensor kTwo = test::AsScalar<int64>(2);
+  FunctionDef func = FunctionDefHelper::Define(
+      // Name
+      "XTimesTwo",
+      // Args
+      {"x: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"two"}, "Const", {}, {{"value", kTwo}, {"dtype", DT_INT64}}},
+          {{"scale"}, "Cast", {"two"}, {{"SrcT", DT_INT64}, {"DstT", "$T"}}},
+          {{"y"}, "Mul", {"x", "scale"}, {{"T", "$T"}}},
+      });
+
+  std::unordered_map<string, AttrValue> func_attr;
+  func_attr["T"].set_type(DT_FLOAT);
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromFunctionDef("test", func, func_attr);
+  CHECK(item);
+  EXPECT_EQ(4, item->graph.node_size());
+  EXPECT_EQ(std::vector<string>({"y"}), item->fetch);
+  EXPECT_EQ(1, item->feed.size());
+  EXPECT_EQ("x", item->feed[0].first);
+
+  for (const NodeDef &node : item->graph.node()) {
+    if (node.name() == "x") {
+      EXPECT_EQ("Placeholder", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(0, node.input_size());
+    } else if (node.name() == "two") {
+      EXPECT_EQ("Const", node.op());
+      EXPECT_EQ(0, node.input_size());
+    } else if (node.name() == "scale") {
+      EXPECT_EQ("Cast", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("DstT").type());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("two:0", node.input(0));
+    } else if (node.name() == "y") {
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("scale:0", node.input(1));
+    }
+  }
+}
+
+TEST_F(GrapplerItemBuilderTest, FromFunctionDefWithMultiOutputNodes) {
+  // Gradient graph for the Subtract operation
+  std::vector<FunctionDefHelper::Node> nodes = {
+      {{"sx"}, "Shape", {"x"}},
+      {{"sy"}, "Shape", {"y"}},
+      {{"gx"}, "Identity", {"dz"}},
+      {{"gy"}, "Neg", {"dz"}},
+      {{"rx", "ry"}, "BroadcastGradientArgs", {"sx", "sy"}},
+      {{"sum_gx"}, "Sum", {"gx", "rx"}},
+      {{"dx"}, "Reshape", {"sum_gx", "sx"}},
+      {{"sum_gy"}, "Sum", {"gy", "ry"}},
+      {{"dy"}, "Reshape", {"sum_gy", "sy"}},
+  };
+
+  for (auto &n : nodes) {
+    // "BroadcastGradientArgs" doesn't need any attrs.
+    if (n.attr.empty() && n.op != "BroadcastGradientArgs") {
+      n.attr = {{"T", "$T"}};
+    }
+  }
+  FunctionDef func = FunctionDefHelper::Define(
+      // Name
+      "SubGrad",
+      // Arg defs
+      {"x: T", "y: T", "dz: T"},
+      // Ret val defs
+      {"dx: T", "dy: T"},
+      // Attr defs
+      {{"T: {half, float, double}"}},
+      // Nodes
+      nodes);
+
+  std::unordered_map<string, AttrValue> func_attr;
+  func_attr["T"].set_type(DT_FLOAT);
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromFunctionDef("test", func, func_attr);
+  CHECK(item);
+  EXPECT_EQ(12, item->graph.node_size());
+  EXPECT_EQ(std::vector<string>({"dx", "dy"}), item->fetch);
+  EXPECT_EQ(3, item->feed.size());
+  EXPECT_EQ("x", item->feed[0].first);
+  EXPECT_EQ("y", item->feed[1].first);
+  EXPECT_EQ("dz", item->feed[2].first);
+
+  for (const NodeDef &node : item->graph.node()) {
+    if (node.name() == "x" || node.name() == "y" || node.name() == "dz") {
+      EXPECT_EQ("Placeholder", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(0, node.input_size());
+    } else if (node.name() == "rx") {
+      EXPECT_EQ("BroadcastGradientArgs", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("sx:0", node.input(0));
+      EXPECT_EQ("sy:0", node.input(1));
+    } else if (node.name() == "sum_gx") {
+      EXPECT_EQ("Sum", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("gx:0", node.input(0));
+      EXPECT_EQ("rx:0", node.input(1));
+    } else if (node.name() == "sum_gy") {
+      EXPECT_EQ("Sum", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("gy:0", node.input(0));
+      EXPECT_EQ("rx:1", node.input(1));
+    }
+  }
 }
 
 }  // namespace

@@ -121,7 +121,7 @@ TEST(ImmutableConstantOpTest, ExecutionError) {
   const TensorShape kBadTensorShape({40, 100});
   const TensorShape kTestTensorShapeT({1, 4});
 
-  auto root = Scope::NewRootScope().ExitOnError();
+  auto root = Scope::DisabledShapeInferenceScope().ExitOnError();
   auto node1 =
       ops::ImmutableConst(root, DT_FLOAT, kBadTensorShape, "test:///2");
   auto node2 =
@@ -147,8 +147,8 @@ Status CreateTempFile(Env* env, float value, uint64 size, string* filename) {
   std::unique_ptr<WritableFile> file;
   TF_RETURN_IF_ERROR(env->NewWritableFile(*filename, &file));
   for (uint64 i = 0; i < size; ++i) {
-    StringPiece sp;
-    sp.set(&value, sizeof(value));
+    StringPiece sp(static_cast<char*>(static_cast<void*>(&value)),
+                   sizeof(value));
     TF_RETURN_IF_ERROR(file->Append(sp));
   }
   TF_RETURN_IF_ERROR(file->Close());

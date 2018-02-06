@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client.h"
 #include "tensorflow/compiler/xla/client/computation.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -33,55 +34,13 @@ limitations under the License.
 
 namespace xla {
 
-// Class containing options for building an LocalExecutable with
-// LocalClient::Compile.
-class ExecutableBuildOptions {
- public:
-  // If set, this is the platform to build the computation for. This must match
-  // the underlying platform of the service. A value of nullptr indicates the
-  // option has not been set.
-  //
-  // TODO(b/28616830): Support multiple platforms.
-  ExecutableBuildOptions& set_platform(perftools::gputools::Platform* platform);
-  perftools::gputools::Platform* platform() const;
-
-  // If set, this is the device to build the computation for. Valid
-  // device_ordinal values are: 0 to # of devices - 1. These values are
-  // identical to the device ordinal values used by StreamExecutor. The built
-  // executable will be executable on any device equivalent to the specified
-  // device as determined by Backend::devices_equivalent(). A value of -1
-  // indicates this option has not been set.
-  ExecutableBuildOptions& set_device_ordinal(int device_ordinal);
-  int device_ordinal() const;
-
-  // If set, this specifies the layout of the result of the computation. If not
-  // set, the service will chose the layout of the result. A Shape is used to
-  // store the layout to accommodate tuple result shapes. A value of nullptr
-  // indicates the option has not been set.
-  ExecutableBuildOptions& set_result_layout(const Shape& shape_with_layout);
-  const Shape* result_layout() const;
-
-  // If set, the executable will be built to output a hybrid
-  // ShapedBuffer with top-level tuple pointers in host memory and
-  // result buffers in device memory.
-  ExecutableBuildOptions& set_has_hybrid_result(bool has_hybrid_result);
-  bool has_hybrid_result() const;
-
- private:
-  perftools::gputools::Platform* platform_ = nullptr;
-  int device_ordinal_ = -1;
-  Shape result_layout_;
-  bool result_layout_set_ = false;
-  bool has_hybrid_result_ = true;
-};
-
 class LocalExecutable {
  public:
   // Run the compiled computation with the given arguments and options and
   // return the result.
-  StatusOr<std::unique_ptr<ShapedBuffer>> Run(
+  StatusOr<std::unique_ptr<ScopedShapedBuffer>> Run(
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
-      const ExecutableRunOptions& options);
+      ExecutableRunOptions run_options);
 
   // Return the layout (contained in a shape) of the result produced by the
   // computation.
@@ -104,8 +63,7 @@ class LocalExecutable {
 
   // Constructor invoked by LocalClient.
   LocalExecutable(std::unique_ptr<Executable> executable, Backend* backend,
-                  int device_ordinal,
-                  const ExecutableBuildOptions& build_options);
+                  ExecutableBuildOptions build_options);
 
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
@@ -115,7 +73,7 @@ class LocalExecutable {
 
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
-  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAndDump(
+  StatusOr<std::unique_ptr<ScopedShapedBuffer>> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
       const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
 
@@ -129,23 +87,23 @@ class LocalExecutable {
   tensorflow::Status RecordResult(const ShapedBuffer* result,
                                   SessionModule* session_module);
 
-  // Copies the contents of a ShapedBuffer into a Literal proto.
-  tensorflow::Status LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer,
-                                             Literal* literal);
+  // Returns a literal containing the contents of the given ShapedBuffer.
+  StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(
+      const ShapedBuffer& shaped_buffer);
+
+  // The ordinal of the device which this executable was compiled for. The
+  // executable can run on all equivalent devices (as determined by
+  // Backend::devices_equivalent).
+  int build_device_ordinal() const { return build_options_.device_ordinal(); }
 
   // Compiled computation.
   std::unique_ptr<Executable> executable_;
 
   // Execution backend.
-  Backend* backend_;
-
-  // The ordinal of the device which this executable was compiled for. The
-  // executable can run on all equivalent devices (as determined by
-  // Backend::devices_equivalent).
-  int build_device_ordinal_;
+  Backend* backend_ = nullptr;
 
   // Options used to build the executable.
-  const ExecutableBuildOptions& build_options_;
+  const ExecutableBuildOptions build_options_;
 };
 
 // An XLA Client specialization for use when the client and service run in
@@ -158,21 +116,46 @@ class LocalClient : public Client {
   LocalClient(const LocalClient&) = delete;
   void operator=(const LocalClient&) = delete;
 
-  // Return a handle to a buffer large enough to hold shape, allocated
-  // on device_ordinal on the local service. If
-  // allocate_space_for_deep_copy, the buffer is large enough to hold
-  // all sub-buffers of a tuple shape, otherwise it is only as large
-  // as the top-level tuple pointer array.
-  StatusOr<std::unique_ptr<GlobalData>> AllocateBufferOnDevice(
-      const Shape& shape, int device_ordinal,
-      bool allocate_space_for_deep_copy);
-
   // Build and return a LocalExecutable object. The executable is compiled using
   // the given argument layouts and options.
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const Computation& computation,
       const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
       const ExecutableBuildOptions& options);
+
+  // Copy the literal data to the device with the given ordinal and return as a
+  // ScopedShapedBuffer. If non-null the given memory allocator is used for
+  // device memory allocation. If null, the default memory allocator for the
+  // device is used.
+  StatusOr<std::unique_ptr<ScopedShapedBuffer>> LiteralToShapedBuffer(
+      const Literal& literal, int device_ordinal,
+      DeviceMemoryAllocator* allocator = nullptr);
+
+  // Copy the data from the device contained in the given ShapedBuffer and
+  // return as a Literal.
+  StatusOr<std::unique_ptr<Literal>> ShapedBufferToLiteral(
+      const ShapedBuffer& shaped_buffer);
+
+  // Transfer the given literal to the infeed queue of the given device.
+  // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
+  // not inherit from Client and there is no possibility of confusion with
+  // Client::TransferToInfeed.
+  Status TransferToInfeedLocal(const Literal& literal, int device_ordinal);
+
+  // Transfer and return a value of the given shape from the outfeed of the
+  // given device.
+  // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
+  // not inherit from Client and there is no possibility of confusion with
+  // Client::TransferFromOutfeed.
+  StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocal(
+      const Shape& shape, int device_ordinal);
+
+  // Returns the device ordinal that corresponds to the given replica number.
+  //
+  // This returns an error if there is not a one-to-one correspondence of
+  // replicas to device ordinals, but is useful as a short term mechanism for
+  // the "easy" case where a single replica is a single device.
+  StatusOr<int> ReplicaNumberToDeviceOrdinal(int replica_number);
 
   // Returns the platform that the underlying service targets.
   perftools::gputools::Platform* platform() const;

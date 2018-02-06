@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """This pip smoke test verifies dependency files exist in the pip package.
 
 This script runs bazel queries to see what python files are required by the
@@ -23,18 +22,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import subprocess
 
-PIP_PACKAGE_QUERY = """bazel query \
-  'deps(//tensorflow/tools/pip_package:build_pip_package)'"""
+os.chdir(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 
-PY_TEST_QUERY = """bazel query 'deps(\
+PIP_PACKAGE_QUERY_EXPRESSION = (
+    "deps(//tensorflow/tools/pip_package:build_pip_package)")
+
+# pylint: disable=g-backslash-continuation
+PY_TEST_QUERY_EXPRESSION = 'deps(\
   filter("^((?!benchmark).)*$",\
   kind(py_test,\
   //tensorflow/python/... \
   + //tensorflow/contrib/... \
   - //tensorflow/contrib/tensorboard/... \
-  - attr(tags, "manual|no_pip", //tensorflow/...))), 1)'"""
+  - attr(tags, "manual|no_pip", //tensorflow/...))), 1)'
+# pylint: enable=g-backslash-continuation
 
 # Hard-coded blacklist of files if not included in pip package
 # TODO(amitpatankar): Clean up blacklist.
@@ -42,6 +46,7 @@ BLACKLIST = [
     "//tensorflow/python:extra_py_tests_deps",
     "//tensorflow/cc/saved_model:saved_model_half_plus_two",
     "//tensorflow:no_tensorflow_py_deps",
+    "//tensorflow/tools/pip_package:win_pip_package_marker",
     "//tensorflow/python:test_ops_2",
     "//tensorflow/python:tf_optimizer",
     "//tensorflow/python:compare_test_proto_py",
@@ -60,6 +65,12 @@ BLACKLIST = [
     "//tensorflow/contrib/framework:checkpoint_ops_testdata",
     "//tensorflow/contrib/bayesflow:reinforce_simple_example",
     "//tensorflow/contrib/bayesflow:examples/reinforce_simple/reinforce_simple_example.py",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/timeseries/examples:predict",
+    "//tensorflow/contrib/timeseries/examples:multivariate",
+    "//tensorflow/contrib/timeseries/examples:known_anomaly",
+    "//tensorflow/contrib/timeseries/examples:data/period_trend.csv",  # pylint:disable=line-too-long
+    "//tensorflow/contrib/timeseries/python/timeseries:test_utils",
+    "//tensorflow/contrib/timeseries/python/timeseries/state_space_models:test_utils",  # pylint:disable=line-too-long
 ]
 
 
@@ -78,14 +89,14 @@ def main():
 
   # pip_package_dependencies_list is the list of included files in pip packages
   pip_package_dependencies = subprocess.check_output(
-      PIP_PACKAGE_QUERY, shell=True)
+      ["bazel", "query", PIP_PACKAGE_QUERY_EXPRESSION])
   pip_package_dependencies_list = pip_package_dependencies.strip().split("\n")
   print("Pip package superset size: %d" % len(pip_package_dependencies_list))
 
   # tf_py_test_dependencies is the list of dependencies for all python
   # tests in tensorflow
   tf_py_test_dependencies = subprocess.check_output(
-      PY_TEST_QUERY, shell=True)
+      ["bazel", "query", PY_TEST_QUERY_EXPRESSION])
   tf_py_test_dependencies_list = tf_py_test_dependencies.strip().split("\n")
   print("Pytest dependency subset size: %d" % len(tf_py_test_dependencies_list))
 
@@ -106,11 +117,8 @@ def main():
 
       # Check if the dependency is in the pip package, the blacklist, or
       # should be ignored because of its file extension
-      if (ignore or
-          dependency in pip_package_dependencies_list or
-          dependency in BLACKLIST):
-        continue
-      else:
+      if not (ignore or dependency in pip_package_dependencies_list or
+              dependency in BLACKLIST):
         missing_dependencies.append(dependency)
 
   print("Ignored files: %d" % ignored_files)
@@ -120,19 +128,20 @@ def main():
     for missing_dependency in missing_dependencies:
       print("\nMissing dependency: %s " % missing_dependency)
       print("Affected Tests:")
-      rdep_query = """bazel query 'rdeps(kind(py_test, \
-      //tensorflow/python/...), %s)'""" % missing_dependency
-      affected_tests = subprocess.check_output(rdep_query, shell=True)
+      rdep_query = ("rdeps(kind(py_test, //tensorflow/python/...), %s)" %
+                    missing_dependency)
+      affected_tests = subprocess.check_output(["bazel", "query", rdep_query])
       affected_tests_list = affected_tests.split("\n")[:-2]
       print("\n".join(affected_tests_list))
 
     raise RuntimeError("""One or more dependencies are not in the pip package.
 Please either blacklist the dependencies in
-tensorflow/tensorflow/tensorflow/tools/pip_package/pip_smoke_test.py
-or add them to tensorflow/tensorflow/tensorflow/tools/pip_package/BUILD.""")
+//tensorflow/tools/pip_package/pip_smoke_test.py
+or add them to //tensorflow/tools/pip_package/BUILD.""")
 
   else:
     print("TEST PASSED")
+
 
 if __name__ == "__main__":
   main()

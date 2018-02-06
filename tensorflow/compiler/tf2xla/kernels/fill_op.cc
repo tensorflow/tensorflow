@@ -52,7 +52,7 @@ class FillOp : public XlaOpKernel {
     std::vector<int64> broadcast;
     broadcast.reserve(dims_literal.shape().dimensions(0));
     for (int i = 0; i < dims_literal.shape().dimensions(0); ++i) {
-      broadcast.push_back(xla::LiteralUtil::Get<int>(dims_literal, {i}));
+      broadcast.push_back(dims_literal.Get<int>({i}));
     }
     // Look up the value input, reshaping to a scalar if it was a
     // 'legacy' scalar (secretly a vector).
@@ -69,7 +69,7 @@ class FillOp : public XlaOpKernel {
   }
 };
 
-REGISTER_XLA_OP(Name("Fill"), FillOp);
+REGISTER_XLA_OP(Name("Fill").CompileTimeConstInput("dims"), FillOp);
 
 }  // namespace
 }  // namespace tensorflow

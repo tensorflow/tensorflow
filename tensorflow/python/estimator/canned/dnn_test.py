@@ -65,6 +65,23 @@ class DNNModelFnTest(dnn_testing_utils.BaseDNNModelFnTest, test.TestCase):
     dnn_testing_utils.BaseDNNModelFnTest.__init__(self, dnn._dnn_model_fn)
 
 
+class DNNLogitFnTest(dnn_testing_utils.BaseDNNLogitFnTest, test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNLogitFnTest.__init__(self,
+                                                  dnn._dnn_logit_fn_builder)
+
+
+class DNNWarmStartingTest(dnn_testing_utils.BaseDNNWarmStartingTest,
+                          test.TestCase):
+
+  def __init__(self, methodName='runTest'):  # pylint: disable=invalid-name
+    test.TestCase.__init__(self, methodName)
+    dnn_testing_utils.BaseDNNWarmStartingTest.__init__(self, _dnn_classifier_fn,
+                                                       _dnn_regressor_fn)
+
+
 class DNNClassifierEvaluateTest(
     dnn_testing_utils.BaseDNNClassifierEvaluateTest, test.TestCase):
 

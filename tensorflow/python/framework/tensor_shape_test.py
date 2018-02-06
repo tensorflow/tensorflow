@@ -275,6 +275,26 @@ class ShapeTest(test_util.TensorFlowTestCase):
         tensor_shape.TensorShape([1, 2]).concatenate(
             tensor_shape.Dimension(3)))
 
+  def _testMostSpecificCompatibleShapeHelper(self, x, y, expected):
+    mcs = tensor_shape.TensorShape(x).most_specific_compatible_shape(
+        tensor_shape.TensorShape(y))
+    mcs_dims = mcs.dims
+    if expected is None or mcs_dims is None:
+      self.assertIs(expected, mcs_dims)
+    else:
+      self.assertEqual(expected, mcs.as_list())
+
+  def testMostSpecificCompatibleShape(self):
+    self._testMostSpecificCompatibleShapeHelper([1, 2], None, None)
+    self._testMostSpecificCompatibleShapeHelper(None, [1, 2], None)
+    self._testMostSpecificCompatibleShapeHelper([1, 2], [1, 2, 3, 4], None)
+    self._testMostSpecificCompatibleShapeHelper([1, 2, 3, 4], [1, 2], None)
+    self._testMostSpecificCompatibleShapeHelper([1, 2], [1, 2], [1, 2])
+    self._testMostSpecificCompatibleShapeHelper([None, 2, 3], [1, 1, 3],
+                                                [None, None, 3])
+    self._testMostSpecificCompatibleShapeHelper([1, 1, 3], [None, 2, 3],
+                                                [None, None, 3])
+
   def testHelpers(self):
     tensor_shape.TensorShape([]).assert_is_compatible_with(
         tensor_shape.scalar())

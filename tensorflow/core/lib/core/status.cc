@@ -20,7 +20,7 @@ namespace tensorflow {
 
 Status::Status(tensorflow::error::Code code, StringPiece msg) {
   assert(code != tensorflow::error::OK);
-  state_ = new State;
+  state_ = std::unique_ptr<State>(new State);
   state_->code = code;
   state_->msg = msg.ToString();
 }
@@ -32,11 +32,10 @@ void Status::Update(const Status& new_status) {
 }
 
 void Status::SlowCopyFrom(const State* src) {
-  delete state_;
   if (src == nullptr) {
     state_ = nullptr;
   } else {
-    state_ = new State(*src);
+    state_ = std::unique_ptr<State>(new State(*src));
   }
 }
 

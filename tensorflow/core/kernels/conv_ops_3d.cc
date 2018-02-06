@@ -145,6 +145,7 @@ class Conv3DOp : public BinaryOp<T> {
   REGISTER_KERNEL_BUILDER(                                      \
       Name("Conv3D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       Conv3DOp<CPUDevice, T>);
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #undef REGISTER_CPU_KERNEL
@@ -376,6 +377,9 @@ struct LaunchConvOp<GPUDevice, T> {
         {{in_planes, in_rows, in_cols}},
         out_depth,
         {{filter_planes, filter_rows, filter_cols}},
+        // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
+        // conv is supported.
+        /*dilation=*/{{1, 1, 1}},
         {{strides[0], strides[1], strides[2]}},
         {{pad_planes, pad_rows, pad_cols}},
         dtype,
@@ -383,15 +387,14 @@ struct LaunchConvOp<GPUDevice, T> {
     };
 
     using perftools::gputools::dnn::AlgorithmConfig;
-    using perftools::gputools::dnn::AlgorithmType;
+    using perftools::gputools::dnn::AlgorithmDesc;
     using perftools::gputools::dnn::ProfileResult;
-    using perftools::gputools::dnn::kDefaultAlgorithm;
 
     AlgorithmConfig algorithm_config;
 
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
-      std::vector<AlgorithmType> algorithms;
+      std::vector<AlgorithmDesc> algorithms;
       CHECK(stream->parent()->GetConvolveAlgorithms(
           conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(), &algorithms));
       ProfileResult best_result;
@@ -423,16 +426,15 @@ struct LaunchConvOp<GPUDevice, T> {
         }
       }
       OP_REQUIRES(ctx,
-                  best_result.is_valid() &&
-                      best_result.algorithm() != kDefaultAlgorithm,
+                  best_result.is_valid() || best_result_no_scratch.is_valid(),
                   errors::NotFound("No algorithm worked!"));
-      OP_REQUIRES(ctx,
-                  best_result_no_scratch.is_valid() &&
-                      best_result_no_scratch.algorithm() != kDefaultAlgorithm,
-                  errors::NotFound("No algorithm without scratch worked!"));
-      algorithm_config.set_algorithm(best_result.algorithm());
-      algorithm_config.set_algorithm_no_scratch(
-          best_result_no_scratch.algorithm());
+      if (best_result.is_valid()) {
+        algorithm_config.set_algorithm(best_result.algorithm());
+      }
+      if (best_result_no_scratch.is_valid()) {
+        algorithm_config.set_algorithm_no_scratch(
+            best_result_no_scratch.algorithm());
+      }
       AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 
@@ -484,12 +486,16 @@ namespace functor {
       const std::array<int, 3>& padding_right,                        \
       typename TTypes<T, 5, int>::Tensor out, TensorFormat format);
 
+DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
 #undef DECLARE_GPU_SPEC
 
 }  // namespace functor
 
 // Registration of the GPU implementations.
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<Eigen::half>("T"),
+    Conv3DOp<GPUDevice, Eigen::half>);
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv3DOp<GPUDevice, float>);

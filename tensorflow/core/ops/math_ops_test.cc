@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference_testutil.h"
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
@@ -514,4 +515,15 @@ TEST(MathOpstest, RequantizationRange_ShapeFn) {
   INFER_ERROR("must be rank 0", op, "?;?;[2]");
 }
 
+TEST(MathOpsTest, Cross_ShapeFn) {
+  ShapeInferenceTestOp op("Cross");
+
+  INFER_ERROR("Shape must be at least rank 1 but is rank 0", op, "[];[]");
+  INFER_ERROR("Dimension 0 in both shapes must be equal, but", op, "[3];[5]");
+  INFER_ERROR("Dimension must be 3 but", op, "[3,5];[3,5]");
+
+  INFER_OK(op, "?;?", "in0");
+  INFER_OK(op, "[?];[?]", "in0");
+  INFER_OK(op, "[1,?,3];[?,?,?]", "in0");
+}
 }  // end namespace tensorflow

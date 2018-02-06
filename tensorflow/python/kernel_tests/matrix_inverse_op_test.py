@@ -20,9 +20,14 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -41,7 +46,7 @@ class InverseOpTest(test.TestCase):
           tiling[-2:] = [1, 1]
           np_ans = np.tile(np_ans, tiling)
         out = tf_ans.eval()
-        self.assertAllClose(np_ans, out)
+        self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
         self.assertShapeEqual(y, tf_ans)
 
   def _verifyInverseReal(self, x):
@@ -54,7 +59,8 @@ class InverseOpTest(test.TestCase):
 
   def _makeBatch(self, matrix1, matrix2):
     matrix_batch = np.concatenate(
-        [np.expand_dims(matrix1, 0), np.expand_dims(matrix2, 0)])
+        [np.expand_dims(matrix1, 0),
+         np.expand_dims(matrix2, 0)])
     matrix_batch = np.tile(matrix_batch, [2, 3, 1, 1])
     return matrix_batch
 
@@ -118,6 +124,86 @@ class InverseOpTest(test.TestCase):
   def testEmpty(self):
     self._verifyInverseReal(np.empty([0, 2, 2]))
     self._verifyInverseReal(np.empty([2, 0, 0]))
+
+  def testRandomSmallAndLarge(self):
+    np.random.seed(42)
+    for dtype in np.float32, np.float64, np.complex64, np.complex128:
+      for batch_dims in [(), (1,), (3,), (2, 2)]:
+        for size in 8, 31, 32:
+          shape = batch_dims + (size, size)
+          matrix = np.random.uniform(
+              low=-1.0, high=1.0,
+              size=np.prod(shape)).reshape(shape).astype(dtype)
+          self._verifyInverseReal(matrix)
+
+  def testConcurrentExecutesWithoutError(self):
+    with self.test_session(use_gpu=True) as sess:
+      all_ops = []
+      for adjoint_ in True, False:
+        matrix1 = random_ops.random_normal([5, 5], seed=42)
+        matrix2 = random_ops.random_normal([5, 5], seed=42)
+        inv1 = linalg_ops.matrix_inverse(matrix1, adjoint=adjoint_)
+        inv2 = linalg_ops.matrix_inverse(matrix2, adjoint=adjoint_)
+        all_ops += [inv1, inv2]
+      inv = sess.run(all_ops)
+      self.assertAllEqual(inv[0], inv[1])
+      self.assertAllEqual(inv[2], inv[3])
+
+
+class MatrixInverseBenchmark(test.Benchmark):
+
+  shapes = [
+      (4, 4),
+      (10, 10),
+      (16, 16),
+      (101, 101),
+      (256, 256),
+      (1000, 1000),
+      (1024, 1024),
+      (2048, 2048),
+      (513, 4, 4),
+      (513, 16, 16),
+      (513, 256, 256),
+  ]
+
+  def _GenerateMatrix(self, shape):
+    batch_shape = shape[:-2]
+    shape = shape[-2:]
+    assert shape[0] == shape[1]
+    n = shape[0]
+    matrix = np.ones(shape).astype(np.float32) / (
+        2.0 * n) + np.diag(np.ones(n).astype(np.float32))
+    return variables.Variable(np.tile(matrix, batch_shape + (1, 1)))
+
+  def benchmarkMatrixInverseOp(self):
+    for adjoint in False, True:
+      for shape in self.shapes:
+        with ops.Graph().as_default(), \
+            session.Session() as sess, \
+            ops.device("/cpu:0"):
+          matrix = self._GenerateMatrix(shape)
+          inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)
+          variables.global_variables_initializer().run()
+          self.run_op_benchmark(
+              sess,
+              control_flow_ops.group(inv),
+              min_iters=25,
+              name="matrix_inverse_cpu_{shape}_adjoint_{adjoint}".format(
+                  shape=shape, adjoint=adjoint))
+
+        if test.is_gpu_available(True):
+          with ops.Graph().as_default(), \
+              session.Session() as sess, \
+              ops.device("/gpu:0"):
+            matrix = self._GenerateMatrix(shape)
+            inv = linalg_ops.matrix_inverse(matrix, adjoint=adjoint)
+            variables.global_variables_initializer().run()
+            self.run_op_benchmark(
+                sess,
+                control_flow_ops.group(inv),
+                min_iters=25,
+                name="matrix_inverse_gpu_{shape}_adjoint_{adjoint}".format(
+                    shape=shape, adjoint=adjoint))
 
 
 if __name__ == "__main__":

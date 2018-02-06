@@ -99,6 +99,10 @@ class GraphDefBuilder {
     // Use this to skip processing that may depend on prior results.
     bool HaveError() const { return status_ != nullptr && !status_->ok(); }
 
+    // Returns a string representation of the status associated with *this.
+    // Returns the string `"OK"` if the status doesn't have any error.
+    string StatusToString() const { return status_->ToString(); }
+
     // Given the Op type name, return a name for a node of that type.
     // Uses the value set in WithName() if that has been called.  Otherwise,
     // returns a name built out of the Op type name.
@@ -164,6 +168,20 @@ class GraphDefBuilder {
   // edges from the source and to the sink node, resolves back edges
   // by name), and makes sure the resulting graph is valid.
   Status ToGraph(Graph* graph) const;
+
+  // Adds the function and gradient definitions in `fdef_lib` to this graph's op
+  // registry. Ignores duplicate functions, and returns a bad status if an
+  // imported function differs from an existing function or op with the same
+  // name.
+  Status AddFunctionLibrary(const FunctionDefLibrary& fdef_lib) {
+    return graph_.AddFunctionLibrary(fdef_lib);
+  }
+
+  // Returns whether a user-defined function with `name` already exists in the
+  // graph.
+  bool HasFunction(const string& name) {
+    return graph_.flib_def().Find(name) != nullptr;
+  }
 
  private:
   Graph graph_;

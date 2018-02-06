@@ -18,18 +18,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.keras.python.keras.utils.data_utils import get_file
-from tensorflow.contrib.keras.python.keras.utils.generic_utils import custom_object_scope
-from tensorflow.contrib.keras.python.keras.utils.generic_utils import CustomObjectScope
-from tensorflow.contrib.keras.python.keras.utils.generic_utils import deserialize_keras_object
-from tensorflow.contrib.keras.python.keras.utils.generic_utils import get_custom_objects
-from tensorflow.contrib.keras.python.keras.utils.generic_utils import Progbar
-from tensorflow.contrib.keras.python.keras.utils.generic_utils import serialize_keras_object
-from tensorflow.contrib.keras.python.keras.utils.io_utils import HDF5Matrix
-from tensorflow.contrib.keras.python.keras.utils.layer_utils import convert_all_kernels_in_model
-from tensorflow.contrib.keras.python.keras.utils.np_utils import normalize
-from tensorflow.contrib.keras.python.keras.utils.np_utils import to_categorical
-from tensorflow.contrib.keras.python.keras.utils.vis_utils import plot_model
+from tensorflow.python.keras._impl.keras.utils.data_utils import GeneratorEnqueuer
+from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.keras._impl.keras.utils.data_utils import Sequence
+from tensorflow.python.keras._impl.keras.utils.data_utils import SequenceEnqueuer
+from tensorflow.python.keras._impl.keras.utils.generic_utils import custom_object_scope
+from tensorflow.python.keras._impl.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
+from tensorflow.python.keras._impl.keras.utils.generic_utils import get_custom_objects
+from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
+from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.keras._impl.keras.utils.io_utils import HDF5Matrix
+from tensorflow.python.keras._impl.keras.utils.layer_utils import convert_all_kernels_in_model
+from tensorflow.python.keras._impl.keras.utils.np_utils import normalize
+from tensorflow.python.keras._impl.keras.utils.np_utils import to_categorical
+from tensorflow.python.keras._impl.keras.utils.vis_utils import plot_model
 
 del absolute_import
 del division

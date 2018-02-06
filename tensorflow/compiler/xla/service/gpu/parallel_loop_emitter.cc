@@ -20,8 +20,8 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
-#include "external/llvm/include/llvm/IR/Intrinsics.h"
-#include "external/llvm/include/llvm/IR/Value.h"
+#include "llvm/IR/Intrinsics.h"
+#include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -38,12 +38,20 @@ ParallelLoopEmitter::ParallelLoopEmitter(
 
 ParallelLoopEmitter::ParallelLoopEmitter(
     const llvm_ir::ElementGenerator& target_element_generator,
+    tensorflow::gtl::ArraySlice<llvm_ir::IrArray> target_arrays,
+    const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder)
+    : LoopEmitter(target_element_generator, target_arrays, ir_builder),
+      launch_dimensions_(launch_dimensions) {}
+
+ParallelLoopEmitter::ParallelLoopEmitter(
+    const llvm_ir::ElementGenerator& target_element_generator,
     const llvm_ir::IrArray& target_array,
     const LaunchDimensions& launch_dimensions, llvm::IRBuilder<>* ir_builder)
     : LoopEmitter(target_element_generator, target_array, ir_builder),
       launch_dimensions_(launch_dimensions) {}
 
-llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock() {
+llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
+    tensorflow::StringPiece loop_name) {
   // Emit the following code in LLVM IR:
   //   linear_index = blockIdx.x * blockDim.x + threadIdx.x;
   //   if (linear_index < num_elements) {
@@ -80,10 +88,27 @@ llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock() {
           /*HasNUW=*/true, /*HasNSW=*/true),
       thread_id, "linear_index", /*HasNUW=*/true, /*HasNSW=*/true);
 
+  // Add an @llvm.assume(linear_index < threads_per_block * num_blocks).
+  //
+  // This might seem obvious from the computation above, but LLVM does not
+  // currently determine the range of linear_index precisely.  InstCombine uses
+  // known-bits, which, when applied to the task of determining a value's range,
+  // is imprecise for everything other than powers of 2.  And
+  // CorrelatedValuePropagation is, as a cost-saving measure, disabled for
+  // conditions in the same basic block as their operands.
+  llvm_ir::EmitCallToIntrinsic(
+      llvm::Intrinsic::assume,
+      {ir_builder_->CreateICmpULT(
+          linear_index,
+          ir_builder_->getInt64(launch_dimensions_.threads_per_block() *
+                                launch_dimensions_.block_count()),
+          "linear_index_in_range")},
+      {}, ir_builder_);
+
   auto if_in_bounds = llvm_ir::EmitIfThenElse(
       ir_builder_->CreateICmpULT(
           linear_index, ir_builder_->getInt64(ShapeUtil::ElementsIn(shape_))),
-      "in_bounds", ir_builder_, false);
+      llvm_ir::IrName(loop_name, "in_bounds"), ir_builder_, false);
 
   // Set exit_bb_ to the exit block of the if structure.
   exit_bb_ = if_in_bounds.after_block;

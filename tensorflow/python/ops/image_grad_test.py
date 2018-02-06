@@ -173,6 +173,67 @@ class ResizeBilinearOpTest(test.TestCase):
       self.assertAllClose(grad[False], grad[True], rtol=1e-4, atol=1e-4)
 
 
+class ResizeBicubicOpTest(test.TestCase):
+
+  def testShapeIsCorrectAfterOp(self):
+    in_shape = [1, 2, 2, 1]
+    out_shape = [1, 4, 6, 1]
+
+    x = np.arange(0, 4).reshape(in_shape).astype(np.float32)
+
+    for align_corners in [True, False]:
+      with self.test_session() as sess:
+        input_tensor = constant_op.constant(x, shape=in_shape)
+        resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
+                                              align_corners=align_corners)
+        self.assertEqual(out_shape, list(resize_out.get_shape()))
+
+        resize_out = sess.run(resize_out)
+        self.assertEqual(out_shape, list(resize_out.shape))
+
+  def testGradFromResizeToLargerInBothDims(self):
+    in_shape = [1, 2, 3, 1]
+    out_shape = [1, 4, 6, 1]
+
+    x = np.arange(0, 6).reshape(in_shape).astype(np.float32)
+
+    for align_corners in [True, False]:
+      with self.test_session():
+        input_tensor = constant_op.constant(x, shape=in_shape)
+        resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
+                                              align_corners=align_corners)
+        err = gradient_checker.compute_gradient_error(
+            input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
+      self.assertLess(err, 1e-3)
+
+  def testGradFromResizeToSmallerInBothDims(self):
+    in_shape = [1, 4, 6, 1]
+    out_shape = [1, 2, 3, 1]
+
+    x = np.arange(0, 24).reshape(in_shape).astype(np.float32)
+
+    for align_corners in [True, False]:
+      with self.test_session():
+        input_tensor = constant_op.constant(x, shape=in_shape)
+        resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3],
+                                              align_corners=align_corners)
+        err = gradient_checker.compute_gradient_error(
+            input_tensor, in_shape, resize_out, out_shape, x_init_value=x)
+      self.assertLess(err, 1e-3)
+
+  def testGradOnUnsupportedType(self):
+    in_shape = [1, 4, 6, 1]
+    out_shape = [1, 2, 3, 1]
+
+    x = np.arange(0, 24).reshape(in_shape).astype(np.uint8)
+
+    with self.test_session():
+      input_tensor = constant_op.constant(x, shape=in_shape)
+      resize_out = image_ops.resize_bicubic(input_tensor, out_shape[1:3])
+      grad = gradients_impl.gradients(input_tensor, [resize_out])
+      self.assertEqual([None], grad)
+
+
 class CropAndResizeOpTest(test.TestCase):
 
   def testShapeIsCorrectAfterOp(self):

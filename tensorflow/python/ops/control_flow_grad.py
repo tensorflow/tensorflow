@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import,undefined-variable
@@ -52,7 +53,8 @@ def _SwitchGrad(op, *grad):
       # TODO(yuanbyu): Perform shape inference with this new input.
       if grad[1] is not None:
         # pylint: disable=protected-access
-        control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1])
+        control_flow_ops._AddNextAndBackEdge(merge_grad, grad[1],
+                                             enforce_shape_invariant=False)
         # pylint: enable=protected-access
       return None, None
     elif grad[0] is not None:
@@ -69,13 +71,12 @@ def _SwitchGrad(op, *grad):
       # meaning the output is not differentiable.
       return None, None
   elif isinstance(op_ctxt, CondContext):
-    good_grad = grad[op_ctxt.branch]
     zero_grad = grad[1 - op_ctxt.branch]
     # At this point, we have created zero_grad guarded by the right switch.
     # Unfortunately, we may still get None here for not trainable data types.
     if zero_grad is None:
       return None, None
-    return merge([good_grad, zero_grad], name="cond_grad")[0], None
+    return merge(grad, name="cond_grad")[0], None
   else:
     false_grad = switch(grad[0], op.inputs[1])[0]
     true_grad = switch(grad[1], op.inputs[1])[1]
@@ -92,7 +93,7 @@ def _MergeGrad(op, grad, _):
   input_op = op.inputs[0].op
   graph = ops.get_default_graph()
   # pylint: disable=protected-access
-  op_ctxt = control_flow_ops._GetOutputContext(input_op)
+  op_ctxt = control_flow_util.GetOutputContext(input_op)
   grad_ctxt = graph._get_control_flow_context()
   # pylint: enable=protected-access
   if isinstance(op_ctxt, WhileContext):
@@ -117,7 +118,7 @@ def _MergeGrad(op, grad, _):
 
         # Add the stack pop op. If pred.op is in a (outer) CondContext,
         # the stack pop will be guarded with a switch.
-        real_pred = grad_state.AddBackPropAccumulatedValue(history_pred, pred)
+        real_pred = grad_state.AddBackpropAccumulatedValue(history_pred, pred)
         grad_state.history_map[pred.name] = real_pred
       pred = real_pred
     # pylint: disable=protected-access
@@ -214,9 +215,9 @@ def _EnterGrad(op, grad):
   if op.get_attr("is_constant"):
     # Add a gradient accumulator for each loop invariant.
     if isinstance(grad, ops.Tensor):
-      result = grad_ctxt.AddBackPropAccumulator(op, grad)
+      result = grad_ctxt.AddBackpropAccumulator(op, grad)
     elif isinstance(grad, ops.IndexedSlices):
-      result = grad_ctxt.AddBackPropIndexedSlicesAccumulator(op, grad)
+      result = grad_ctxt.AddBackpropIndexedSlicesAccumulator(op, grad)
     else:
       # TODO(yuanbyu, lukasr): Add support for SparseTensor.
       raise TypeError("Type %s not supported" % type(grad))

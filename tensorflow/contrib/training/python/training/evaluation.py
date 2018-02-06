@@ -226,7 +226,7 @@ def checkpoints_iterator(checkpoint_dir,
 
   This behavior gives control to callers on what to do if checkpoints do not
   come fast enough or stop being generated.  For example, if callers have a way
-  to detect that the training has stopped and know that no new new checkpoints
+  to detect that the training has stopped and know that no new checkpoints
   will be generated, they can provide a `timeout_fn` that returns `True` when
   the training has stopped.  If they know that the training is still going on
   they return `False` instead.
@@ -379,7 +379,7 @@ def evaluate_repeatedly(checkpoint_dir,
 
   Args:
     checkpoint_dir: The directory where checkpoints are stored.
-    master: The BNS address of the TensorFlow master.
+    master: The address of the TensorFlow master.
     scaffold: An tf.train.Scaffold instance for initializing variables and
       restoring variables. Note that `scaffold.init_fn` is used by the function
       to restore the checkpoint. If you supply a custom init_fn, then it must

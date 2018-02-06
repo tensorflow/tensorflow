@@ -95,11 +95,9 @@ class LogicalBuffer {
 
   // Functions which return the size and alignment of a logical buffer in bytes.
   using SizeFunction = std::function<int64(const LogicalBuffer&)>;
-  using AlignmentFunction = std::function<int64(const LogicalBuffer&)>;
+  using AlignmentFunction = std::function<int64(LogicalBuffer::Color)>;
 
-  LogicalBuffer(HloInstruction* instruction, const ShapeIndex& index, Id id,
-                Color color)
-      : instruction_(instruction), index_(index), id_(id), color_(color) {}
+  LogicalBuffer(HloInstruction* instruction, const ShapeIndex& index, Id id);
 
   Id id() const { return id_; }
 
@@ -112,8 +110,19 @@ class LogicalBuffer {
 
   // Return the color of the logical buffer. Differently colored buffers can
   // not be parts of the same allocation.
-  Color color() const { return color_; }
-  void set_color(Color color) { color_ = color; }
+  Color color() const {
+    CHECK_NE(color_, kInvalidColor)
+        << "Should not query the color of a buffer that was never colored";
+    return color_;
+  }
+
+  void set_color(Color color) {
+    CHECK_NE(color, kInvalidColor)
+        << "Should not set the color of a buffer to the invalid color";
+    color_ = color;
+  }
+
+  bool has_color() const { return color_ != kInvalidColor; }
 
   // Return the shape of the buffer. This reference points into the shape field
   // of the instruction defining the buffer.  Therefore, the returned shape will
@@ -127,13 +136,13 @@ class LogicalBuffer {
   bool IsTopLevel() const { return index_.empty(); }
 
   // Whether this buffer contains a tuple.
-  bool IsTuple() const { return ShapeUtil::IsTuple(shape()); }
+  bool IsTuple() const { return is_tuple_; }
+
+  // Whether this buffer contains an array.
+  bool IsArray() const { return is_array_; }
 
   // operator< is required for std::set.
   bool operator<(const LogicalBuffer& other) const { return id_ < other.id_; }
-
-  // Whether this buffer contains an array.
-  bool IsArray() const { return ShapeUtil::IsArray(shape()); }
 
   string ToString() const;
   LogicalBufferProto ToProto(const SizeFunction& size_fn) const;
@@ -143,11 +152,15 @@ class LogicalBuffer {
   static LogicalBufferProto::Location ToLocationProto(
       const HloInstruction& instruction, const ShapeIndex& index);
 
+  const Color kInvalidColor = Color(-1);
+
  private:
   HloInstruction* instruction_;
-  ShapeIndex index_;
-  Id id_;
+  Id id_ : 62;
+  bool is_array_ : 1;
+  bool is_tuple_ : 1;
   Color color_;
+  ShapeIndex index_;
 
   // Similar to HLO constructs (HloInstruction, etc), pointers are used for
   // comparison to equality, so disable all copying.

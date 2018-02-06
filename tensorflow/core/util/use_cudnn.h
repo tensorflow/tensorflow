@@ -13,15 +13,26 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// The utility to check whether we have Cudnn dependency.
+// The utility to check Cudnn dependency and set Cudnn-related flags.
 
 #ifndef TENSORFLOW_UTIL_USE_CUDNN_H_
 #define TENSORFLOW_UTIL_USE_CUDNN_H_
 
 namespace tensorflow {
 
+// FP16ConvMode: The mode to set the internal compute type for cudnn convolution
+// when the input data type is float16. Two types of modes are supported:
+//   kAccurate: Always use float32 as the internal compute type.
+//   kFast: Include both float32 and float16 compute type in the autotune.
+enum class FP16ConvMode {
+  kAccurate = 1,
+  kFast = 2,
+};
+
 bool CanUseCudnn();
 bool CudnnUseAutotune();
+bool CudnnDisableConv1x1Optimization();
+FP16ConvMode CudnnConvComputeMode();
 
 }  // namespace tensorflow
 

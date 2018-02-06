@@ -60,7 +60,7 @@ bool WorkerCacheLogger::RetrieveLogs(int64 step_id, StepStats* ss) {
   mutex_lock l(mu_);
   LogMap::iterator iter = log_map_.find(step_id);
   if (iter != log_map_.end()) {
-    iter->second.collector->Swap(ss);
+    iter->second.collector->FinalizeAndSwap(ss);
     delete iter->second.collector;
     log_map_.erase(iter);
     return true;
@@ -88,14 +88,31 @@ void WorkerCacheLogger::RecordRecvTensor(int64 step_id, int64 start_usecs,
                                          const string& src_device,
                                          const string& dst_device,
                                          int64 bytes) {
+  RecordDataTransfer(step_id, start_usecs, end_usecs, tensor_name, src_device,
+                     dst_device, bytes, "", "RecvTensor");
+}
+
+void WorkerCacheLogger::RecordDataTransfer(int64 step_id, int64 start_usecs,
+                                           int64 end_usecs,
+                                           const string& tensor_name,
+                                           const string& src_device,
+                                           const string& dst_device,
+                                           int64 bytes, const string& details,
+                                           const string& transfer_method_name) {
   NodeExecStats* ns = new NodeExecStats;
-  ns->set_node_name("RecvTensor");
-  string byte_string = strings::StrCat("[", bytes, "B] ");
-  if (bytes >= 0.1 * 1048576.0) {
-    byte_string = strings::Printf("[%.1fMB] ", bytes / 1048576.0);
+  ns->set_node_name(transfer_method_name);
+  if (details.empty()) {
+    auto byte_string = strings::StrCat("[", bytes, "B] ");
+    if (bytes >= 0.1 * 1048576.0) {
+      byte_string = strings::Printf("[%.1fMB] ", bytes / 1048576.0);
+    }
+    auto label = strings::StrCat(byte_string, tensor_name, " from ", src_device,
+                                 " to ", dst_device);
+    ns->set_timeline_label(label);
+  } else {
+    ns->set_timeline_label(details);
   }
-  ns->set_timeline_label(strings::StrCat(byte_string, tensor_name, " from ",
-                                         src_device, " to ", dst_device));
+
   ns->set_all_start_micros(start_usecs);
   ns->set_op_start_rel_micros(0);
   int64 elapsed = end_usecs - start_usecs;

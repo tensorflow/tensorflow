@@ -22,6 +22,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client",
         "//tensorflow/python:errors",
         "//tensorflow/python:platform",
@@ -46,6 +47,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":system_info_lib",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:platform",
     ],
 )
@@ -54,8 +56,10 @@ py_binary(
     name = "run_and_gather_logs",
     srcs = ["run_and_gather_logs.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":run_and_gather_logs_lib",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:platform",
     ],
@@ -99,13 +103,4 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
-)
-
-py_test(
-    name = "check_futures_test",
-    size = "small",
-    srcs = ["check_futures_test.py"],
-    data = ["//tensorflow:all_opensource_files"],
-    srcs_version = "PY2AND3",
-    deps = ["@six_archive//:six"],
 )

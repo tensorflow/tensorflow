@@ -31,11 +31,11 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
-using namespace ops;  // NOLINT(build/namespaces)
+namespace ops {
+namespace {
 
 TEST(MfccOpTest, SimpleTest) {
-  Scope root = Scope::NewRootScope();
+  Scope root = Scope::DisabledShapeInferenceScope();
 
   Tensor spectrogram_tensor(DT_FLOAT, TensorShape({1, 1, 513}));
   test::FillIota<float>(&spectrogram_tensor, 1.0f);
@@ -74,4 +74,6 @@ TEST(MfccOpTest, SimpleTest) {
       1e-3);
 }
 
+}  // namespace
+}  // namespace ops
 }  // namespace tensorflow

@@ -71,7 +71,7 @@ class CreatedContexts {
  public:
   // Returns whether context is a member of the live set.
   static bool Has(CUcontext context) {
-    shared_lock lock{mu_};
+    tf_shared_lock lock{mu_};
     return Live()->find(context) != Live()->end();
   }
 
@@ -516,13 +516,25 @@ bool DeviceOptionsToContextFlags(const DeviceOptions &device_options,
     former_context = CUDADriver::CurrentContextOrDie();
     res = cuDevicePrimaryCtxRetain(&new_context, device);
     if (former_context != nullptr) {
-      if (former_context == new_context) {
-        VLOG(2) << "The primary context " << former_context
-                << " exists before initializing the StreamExecutor.";
+      CUdevice former_device;
+      if (cuCtxGetDevice(&former_device) == CUDA_SUCCESS) {
+        if (former_device == device) {
+          if (former_context == new_context) {
+            VLOG(2) << "The primary context " << former_context
+                    << " for device " << device
+                    << " exists before initializing the StreamExecutor.";
+          } else {
+            LOG(WARNING)
+                << "A non-primary context " << former_context << " for device "
+                << device
+                << " exists before initializing the StreamExecutor. The "
+                << "primary context is now " << new_context << ". We "
+                << "haven't verified StreamExecutor works with that.";
+          }
+        }
       } else {
-        LOG(WARNING) << "A non-primary context " << former_context
-                     << " exists before initializing the StreamExecutor. We "
-                        "haven't verified StreamExecutor works with that.";
+        LOG(ERROR) << "Failed to get the device of the current context "
+                   << former_context;
       }
     }
 #else
@@ -1103,19 +1115,20 @@ CUDADriver::ContextGetSharedMemConfig(CudaContext* context) {
   return true;
 }
 
-/* static */ bool CUDADriver::SynchronizeStream(CudaContext* context,
-                                                CUstream stream) {
+/* static */ port::Status CUDADriver::SynchronizeStream(CudaContext *context,
+                                                        CUstream stream) {
   ScopedActivateContext activated{context};
   CHECK(stream != nullptr);
   CUresult res = cuStreamSynchronize(stream);
   if (res != CUDA_SUCCESS) {
-    LOG(ERROR) << "could not synchronize on CUDA stream: " << ToString(res)
-               << " :: " << port::CurrentStackTrace();
-    return false;
+    port::Status status = port::InternalError(
+        port::StrCat("could not synchronize on CUDA stream: ", ToString(res)));
+    LOG(ERROR) << status << " :: " << port::CurrentStackTrace();
+    return status;
   }
   VLOG(2) << "successfully synchronized stream " << stream << " on context "
           << context;
-  return true;
+  return port::Status::OK();
 }
 
 /* static */ bool CUDADriver::IsStreamIdle(CudaContext *context,

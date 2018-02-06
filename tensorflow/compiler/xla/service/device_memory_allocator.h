@@ -64,7 +64,7 @@ class DeviceMemoryAllocator {
 class StreamExecutorMemoryAllocator : public DeviceMemoryAllocator {
  public:
   StreamExecutorMemoryAllocator(
-      perftools::gputools::Platform* platform,
+      const perftools::gputools::Platform* platform,
       tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
           stream_executors);
 

@@ -25,11 +25,13 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import test
 
 
+@test_util.with_c_api
 class SoftmaxTest(test.TestCase):
 
   def _npSoftmax(self, features, dim=-1, log=False):
@@ -67,8 +69,6 @@ class SoftmaxTest(test.TestCase):
           np.ones(sum_along_dim.shape), sum_along_dim)
 
   def _testAll(self, features):
-    self._testSoftmax(features, use_gpu=False)
-    self._testSoftmax(features, log=True, use_gpu=False)
     self._testSoftmax(features, use_gpu=True)
     self._testSoftmax(features, log=True, use_gpu=True)
     self._testOverflow(use_gpu=True)
@@ -176,8 +176,11 @@ class SoftmaxTest(test.TestCase):
 
   def testDimTooLarge(self):
     with self.test_session():
+      # Use placeholder to make sure we get runtime error instead of shape
+      # inference error.
+      dim = array_ops.placeholder_with_default(100, shape=[])
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        nn_ops.softmax([1., 2., 3., 4.], dim=100).eval()
+        nn_ops.softmax([1., 2., 3., 4.], dim=dim).eval()
 
   def testLargeDims(self):
     # Make sure that we properly handle large inputs. See

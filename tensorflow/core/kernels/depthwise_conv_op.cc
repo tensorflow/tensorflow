@@ -54,9 +54,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-template <typename Device, typename T>
-struct LaunchDepthwiseConvOp;
-
 // Computes the vectorized product of 'input_buffer' and 'filter' and stores
 // result in 'output' at location specified by 'out_r' and 'out_c'.
 //
@@ -97,7 +94,7 @@ struct DepthwiseConv2DKernel {
 
     for (int i = 0; i < output_vectorized_size; i += kPacketSize) {
       // Reset accumulator.
-      auto vaccum = Eigen::internal::pset1<Packet>(0);
+      auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
         // Calculate index.
         const int64 index = i + j * padded_filter_inner_dim_size;
@@ -118,7 +115,7 @@ struct DepthwiseConv2DKernel {
     }
 
     if (output_scalar_size > 0) {
-      auto vaccum = Eigen::internal::pset1<Packet>(0);
+      auto vaccum = Eigen::internal::pset1<Packet>(static_cast<T>(0));
       for (int j = 0; j < filter_spatial_size; ++j) {
         const int64 index =
             output_vectorized_size + j * padded_filter_inner_dim_size;
@@ -156,9 +153,9 @@ template <typename T>
 struct LaunchDepthwiseConvOp<CPUDevice, T> {
   typedef typename Eigen::internal::packet_traits<T>::type Packet;
 
-  static void launch(OpKernelContext* ctx, const DepthwiseArgs& args,
-                     const T* input, const T* depthwise_filter, T* output,
-                     TensorFormat data_format) {
+  void operator()(OpKernelContext* ctx, const DepthwiseArgs& args,
+                  const T* input, const T* depthwise_filter, T* output,
+                  TensorFormat data_format) {
     OP_REQUIRES(
         ctx, data_format == FORMAT_NHWC,
         errors::Unimplemented(
@@ -248,27 +245,10 @@ extern template class LaunchConv2DOp<CPUDevice, float>;
 
 #if GOOGLE_CUDA
 
-template <typename T>
-struct DepthwiseConv2dGPULaunch {
-  static void Run(const GPUDevice& d, const DepthwiseArgs args, const T* input,
-                  const T* filter, T* output, TensorFormat data_format);
-};
-
-template <typename T>
-struct LaunchDepthwiseConvOp<GPUDevice, T> {
-  static void launch(OpKernelContext* ctx, const DepthwiseArgs args,
-                     const T* input, const T* filter, T* output,
-                     TensorFormat data_format) {
-    const GPUDevice& d = ctx->eigen_device<GPUDevice>();
-    DepthwiseConv2dGPULaunch<T>().Run(d, args, input, filter, output,
-                                      data_format);
-    auto stream = ctx->op_device_context()->stream();
-    OP_REQUIRES(
-        ctx, stream->ok(),
-        errors::Internal(
-            "Launch of gpu kernel for DepthwiseConv2dGPULaunch failed"));
-  }
-};
+// Extern template instantiated in depthwise_conv_op_gpu.cc.
+extern template struct LaunchDepthwiseConvOp<GPUDevice, Eigen::half>;
+extern template struct LaunchDepthwiseConvOp<GPUDevice, float>;
+extern template struct LaunchDepthwiseConvOp<GPUDevice, double>;
 
 // Extern template instantiated in conv_ops.cc.
 extern template class LaunchConv2DOp<GPUDevice, float>;
@@ -328,10 +308,10 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
 
     // in_depth for input and filter must match.
     const int64 in_depth = GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                in_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", in_depth,
+                    " vs ", filter.dim_size(2)));
 
     // The last dimension for filter is depth multiplier.
     const int32 depth_multiplier = filter.dim_size(3);
@@ -368,10 +348,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     TensorShape out_shape =
         ShapeFromFormat(data_format_, batch, out_rows, out_cols, out_depth);
     OP_REQUIRES(
-        context, out_shape.num_elements() <= 2147483647,
-        errors::InvalidArgument("total number of outputs should be within the "
-                                "range of int which is used in the GPU kernel",
-                                in_depth, " vs ", filter.dim_size(2)));
+        context,
+        (!std::is_same<Device, GPUDevice>::value ||
+         FastBoundsCheck(out_shape.num_elements(),
+                         std::numeric_limits<int32>::max())),
+        errors::InvalidArgument("Output elements too large for GPU kernel"));
 
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context, context->allocate_output(0, out_shape, &output));
@@ -392,9 +373,11 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     // If in_depth==1, this operation is just a standard convolution, so
     // invoke that op.
     if (std::is_same<T, float>::value && in_depth == 1) {
-      launcher_.launch(context, use_cudnn_, cudnn_use_autotune_, input, filter,
-                       stride_, stride_, BrainPadding2EigenPadding(padding_),
-                       output, data_format_);
+      // TODO(yangzihao): Send in arbitrary dilation rates after the dilated
+      // conv is supported.
+      launcher_(context, use_cudnn_, cudnn_use_autotune_, input, filter,
+                /*row_dilation=*/1, /*col_dilation=*/1, stride_, stride_,
+                padding_, output, data_format_);
       return;
     }
 
@@ -416,8 +399,8 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
     auto input_ptr = input.template flat<T>().data();
     auto filter_ptr = filter.template flat<T>().data();
     auto output_ptr = output->template flat<T>().data();
-    LaunchDepthwiseConvOp<Device, T>::launch(
-        context, args, input_ptr, filter_ptr, output_ptr, data_format_);
+    LaunchDepthwiseConvOp<Device, T>()(context, args, input_ptr, filter_ptr,
+                                       output_ptr, data_format_);
   }
 
  private:
@@ -440,12 +423,18 @@ class DepthwiseConv2dNativeOp : public BinaryOp<T> {
       Name("DepthwiseConv2dNative").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       DepthwiseConv2dNativeOp<CPUDevice, T>);
 
+TF_CALL_half(REGISTER_CPU_KERNEL);
 TF_CALL_float(REGISTER_CPU_KERNEL);
 #if !defined(PLATFORM_WINDOWS) || !defined(_DEBUG)
 TF_CALL_double(REGISTER_CPU_KERNEL);
 #endif
 
 #if GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("DepthwiseConv2dNative")
+                            .Device(DEVICE_GPU)
+                            .TypeConstraint<Eigen::half>("T"),
+                        DepthwiseConv2dNativeOp<GPUDevice, Eigen::half>);
+
 REGISTER_KERNEL_BUILDER(
     Name("DepthwiseConv2dNative").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     DepthwiseConv2dNativeOp<GPUDevice, float>);

@@ -50,7 +50,7 @@ class CostAnalyzer {
  public:
   explicit CostAnalyzer(const GrapplerItem& item, Cluster* cluster,
                         const string& suffix);
-  Status GenerateReport(std::ostream& os);
+  Status GenerateReport(std::ostream& os, bool per_node_report);
 
  private:
   void PredictCosts(CostEstimator* cost_estimator, CostGraphDef* cost_graph,
@@ -59,7 +59,7 @@ class CostAnalyzer {
   void PreprocessCosts();
   void AnalyzeCosts();
   void SortOpsByTime(std::map<string, OpPerfSummary> ops);
-  void PrintAnalysis(std::ostream& os) const;
+  void PrintAnalysis(std::ostream& os, bool per_node_report) const;
 
   const GrapplerItem* item_;
   MeasuringCostEstimator measure_estimator_;

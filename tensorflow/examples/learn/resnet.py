@@ -25,31 +25,17 @@ from __future__ import print_function
 
 from collections import namedtuple
 from math import sqrt
-import os
 
+import numpy as np
 import tensorflow as tf
 
-batch_norm = tf.contrib.layers.batch_norm
-convolution2d = tf.contrib.layers.convolution2d
+
+N_DIGITS = 10  # Number of digits.
+X_FEATURE = 'x'  # Name of the input feature.
 
 
-def res_net(x, y, activation=tf.nn.relu):
-  """Builds a residual network.
-
-  Note that if the input tensor is 2D, it must be square in order to be
-  converted to a 4D tensor.
-
-  Borrowed structure from:
-  github.com/pkmital/tensorflow_tutorials/blob/master/10_residual_network.py
-
-  Args:
-    x: Input of the network
-    y: Output of the network
-    activation: Activation function to apply after each convolution
-
-  Returns:
-    Predictions and loss tensors.
-  """
+def res_net_model(features, labels, mode):
+  """Builds a residual network."""
 
   # Configurations for each bottleneck group.
   BottleneckGroup = namedtuple('BottleneckGroup',
@@ -59,6 +45,7 @@ def res_net(x, y, activation=tf.nn.relu):
       BottleneckGroup(3, 512, 128), BottleneckGroup(3, 1024, 256)
   ]
 
+  x = features[X_FEATURE]
   input_shape = x.get_shape().as_list()
 
   # Reshape the input into the right shape if it's 2D tensor
@@ -68,15 +55,24 @@ def res_net(x, y, activation=tf.nn.relu):
 
   # First convolution expands to 64 channels
   with tf.variable_scope('conv_layer1'):
-    net = convolution2d(
-        x, 64, 7, normalizer_fn=batch_norm, activation_fn=activation)
+    net = tf.layers.conv2d(
+        x,
+        filters=64,
+        kernel_size=7,
+        activation=tf.nn.relu)
+    net = tf.layers.batch_normalization(net)
 
   # Max pool
-  net = tf.nn.max_pool(net, [1, 3, 3, 1], strides=[1, 2, 2, 1], padding='SAME')
+  net = tf.layers.max_pooling2d(
+      net, pool_size=3, strides=2, padding='same')
 
   # First chain of resnets
   with tf.variable_scope('conv_layer2'):
-    net = convolution2d(net, groups[0].num_filters, 1, padding='VALID')
+    net = tf.layers.conv2d(
+        net,
+        filters=groups[0].num_filters,
+        kernel_size=1,
+        padding='valid')
 
   # Create the bottleneck groups, each of which contains `num_blocks`
   # bottleneck groups.
@@ -86,33 +82,33 @@ def res_net(x, y, activation=tf.nn.relu):
 
       # 1x1 convolution responsible for reducing dimension
       with tf.variable_scope(name + '/conv_in'):
-        conv = convolution2d(
+        conv = tf.layers.conv2d(
             net,
-            group.bottleneck_size,
-            1,
-            padding='VALID',
-            activation_fn=activation,
-            normalizer_fn=batch_norm)
+            filters=group.num_filters,
+            kernel_size=1,
+            padding='valid',
+            activation=tf.nn.relu)
+        conv = tf.layers.batch_normalization(conv)
 
       with tf.variable_scope(name + '/conv_bottleneck'):
-        conv = convolution2d(
+        conv = tf.layers.conv2d(
             conv,
-            group.bottleneck_size,
-            3,
-            padding='SAME',
-            activation_fn=activation,
-            normalizer_fn=batch_norm)
+            filters=group.bottleneck_size,
+            kernel_size=3,
+            padding='same',
+            activation=tf.nn.relu)
+        conv = tf.layers.batch_normalization(conv)
 
       # 1x1 convolution responsible for restoring dimension
       with tf.variable_scope(name + '/conv_out'):
         input_dim = net.get_shape()[-1].value
-        conv = convolution2d(
+        conv = tf.layers.conv2d(
             conv,
-            input_dim,
-            1,
-            padding='VALID',
-            activation_fn=activation,
-            normalizer_fn=batch_norm)
+            filters=input_dim,
+            kernel_size=1,
+            padding='valid',
+            activation=tf.nn.relu)
+        conv = tf.layers.batch_normalization(conv)
 
       # shortcut connections that turn the network into its counterpart
       # residual function (identity shortcut)
@@ -122,13 +118,13 @@ def res_net(x, y, activation=tf.nn.relu):
       # upscale to the next group size
       next_group = groups[group_i + 1]
       with tf.variable_scope('block_%d/conv_upscale' % group_i):
-        net = convolution2d(
+        net = tf.layers.conv2d(
             net,
-            next_group.num_filters,
-            1,
-            activation_fn=None,
-            biases_initializer=None,
-            padding='SAME')
+            filters=next_group.num_filters,
+            kernel_size=1,
+            padding='same',
+            activation=None,
+            bias_initializer=None)
     except IndexError:
       pass
 
@@ -142,48 +138,63 @@ def res_net(x, y, activation=tf.nn.relu):
   net_shape = net.get_shape().as_list()
   net = tf.reshape(net, [-1, net_shape[1] * net_shape[2] * net_shape[3]])
 
-  target = tf.one_hot(y, depth=10, dtype=tf.float32)
-  logits = tf.contrib.layers.fully_connected(net, 10, activation_fn=None)
-  loss = tf.losses.softmax_cross_entropy(target, logits)
-  return tf.nn.softmax(logits), loss
+  # Compute logits (1 per class) and compute loss.
+  logits = tf.layers.dense(net, N_DIGITS, activation=None)
+
+  # Compute predictions.
+  predicted_classes = tf.argmax(logits, 1)
+  if mode == tf.estimator.ModeKeys.PREDICT:
+    predictions = {
+        'class': predicted_classes,
+        'prob': tf.nn.softmax(logits)
+    }
+    return tf.estimator.EstimatorSpec(mode, predictions=predictions)
+
+  # Compute loss.
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
+
+  # Create training op.
+  if mode == tf.estimator.ModeKeys.TRAIN:
+    optimizer = tf.train.AdagradOptimizer(learning_rate=0.01)
+    train_op = optimizer.minimize(loss, global_step=tf.train.get_global_step())
+    return tf.estimator.EstimatorSpec(mode, loss=loss, train_op=train_op)
+
+  # Compute evaluation metrics.
+  eval_metric_ops = {
+      'accuracy': tf.metrics.accuracy(
+          labels=labels, predictions=predicted_classes)
+  }
+  return tf.estimator.EstimatorSpec(
+      mode, loss=loss, eval_metric_ops=eval_metric_ops)
 
 
-def res_net_model(x, y):
-  prediction, loss = res_net(x, y)
-  predicted = tf.argmax(prediction, 1)
-  accuracy = tf.equal(predicted, tf.cast(y, tf.int64))
-  predictions = {'prob': prediction, 'class': predicted, 'accuracy': accuracy}
-  train_op = tf.contrib.layers.optimize_loss(
-      loss,
-      tf.contrib.framework.get_global_step(),
-      optimizer='Adagrad',
-      learning_rate=0.001)
-  return predictions, loss, train_op
+def main(unused_args):
+  # Download and load MNIST data.
+  mnist = tf.contrib.learn.datasets.DATASETS['mnist']('/tmp/mnist')
+
+  # Create a new resnet classifier.
+  classifier = tf.estimator.Estimator(model_fn=res_net_model)
+
+  tf.logging.set_verbosity(tf.logging.INFO)  # Show training logs.
+
+  # Train model and save summaries into logdir.
+  train_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={X_FEATURE: mnist.train.images},
+      y=mnist.train.labels.astype(np.int32),
+      batch_size=100,
+      num_epochs=None,
+      shuffle=True)
+  classifier.train(input_fn=train_input_fn, steps=100)
+
+  # Calculate accuracy.
+  test_input_fn = tf.estimator.inputs.numpy_input_fn(
+      x={X_FEATURE: mnist.test.images},
+      y=mnist.test.labels.astype(np.int32),
+      num_epochs=1,
+      shuffle=False)
+  scores = classifier.evaluate(input_fn=test_input_fn)
+  print('Accuracy: {0:f}'.format(scores['accuracy']))
 
 
-# Download and load MNIST data.
-mnist = tf.contrib.learn.datasets.load_dataset('mnist')
-
-# Create a new resnet classifier.
-classifier = tf.contrib.learn.Estimator(model_fn=res_net_model)
-
-tf.logging.set_verbosity(tf.logging.INFO)  # Show training logs. (avoid silence)
-
-# Train model and save summaries into logdir.
-classifier.fit(mnist.train.images,
-               mnist.train.labels,
-               batch_size=100,
-               steps=1000)
-
-# Calculate accuracy.
-result = classifier.evaluate(
-    x=mnist.test.images,
-    y=mnist.test.labels,
-    metrics={
-        'accuracy':
-            tf.contrib.learn.MetricSpec(
-                metric_fn=tf.contrib.metrics.streaming_accuracy,
-                prediction_key='accuracy'),
-    })
-score = result['accuracy']
-print('Accuracy: {0:f}'.format(score))
+if __name__ == '__main__':
+  tf.app.run()

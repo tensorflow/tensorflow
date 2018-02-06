@@ -23,8 +23,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/array4d.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
-#include "tensorflow/compiler/xla/legacy_flags/cpu_compiler_flags.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
@@ -113,7 +111,7 @@ TEST_F(ConstantsTest, Small_2x2) {
 TEST_F(ConstantsTest, Empty_3x0x2) {
   ComputationBuilder builder(client_, TestName());
   auto constant = builder.ConstantLiteral(
-      *LiteralUtil::CreateR3FromArray3D<float>(Array3D<float>(3, 0, 2)));
+      *Literal::CreateR3FromArray3D<float>(Array3D<float>(3, 0, 2)));
 
   ComputeAndCompareR3<float>(&builder, Array3D<float>(3, 0, 2), {});
 }
@@ -128,8 +126,8 @@ TEST_F(ConstantsTest, Small_2x2x2) {
       {{5.f, 6.f},   // y0
        {7.f, 8.f}},  // y1
   });
-  auto constant = builder.ConstantLiteral(
-      *LiteralUtil::CreateR3FromArray3D<float>(array3d));
+  auto constant =
+      builder.ConstantLiteral(*Literal::CreateR3FromArray3D<float>(array3d));
 
   ComputeAndCompareR3<float>(&builder, array3d, {});
 }
@@ -143,11 +141,12 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
       {5.0f, 4.4f},   // p2
   });
   input_array.FillWithPZ(pz);
-  Literal input_literal = *LiteralUtil::CreateR4FromArray4D(input_array);
+  std::unique_ptr<Literal> input_literal =
+      Literal::CreateR4FromArray4D(input_array);
 
   {
     ComputationBuilder builder(client_, TestName());
-    builder.ConstantLiteral(input_literal);
+    builder.ConstantLiteral(*input_literal);
     ComputeAndCompareR4<float>(&builder, input_array, {}, error_spec_);
   }
 
@@ -161,35 +160,17 @@ TEST_F(ConstantsTest, Small_3x2x1x1) {
 // TODO(b/29263943): Support tuple constants.
 TEST_F(ConstantsTest, DISABLED_TupleConstant) {
   ComputationBuilder builder(client_, TestName());
-  builder.ConstantLiteral(*LiteralUtil::MakeTuple(
-      {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}).get(),
-       LiteralUtil::CreateR1<float>({2.0, 42}).get()}));
+  builder.ConstantLiteral(
+      *Literal::MakeTuple({Literal::CreateR2<float>({{1.0}, {2.0}}).get(),
+                           Literal::CreateR1<float>({2.0, 42}).get()}));
 
   std::unique_ptr<Literal> result = ExecuteAndTransferOrDie(&builder, {});
 
-  LiteralTestUtil::ExpectR2Near<float>({{1.0}, {2.0}},
-                                       result->tuple_literals(0), error_spec_);
-  LiteralTestUtil::ExpectR1Near<float>({2.0, 42.0}, result->tuple_literals(1),
-                                       error_spec_);
+  LiteralTestUtil::ExpectR2Near<float>(
+      {{1.0}, {2.0}}, LiteralView::Create(*result, {0}), error_spec_);
+  LiteralTestUtil::ExpectR1Near<float>(
+      {2.0, 42.0}, LiteralView::Create(*result, {1}), error_spec_);
 }
 
 }  // namespace
 }  // namespace xla
-
-int main(int argc, char** argv) {
-  std::vector<tensorflow::Flag> flag_list;
-  xla::legacy_flags::AppendDebugOptionsFlags(&flag_list);
-  xla::legacy_flags::AppendCpuCompilerFlags(&flag_list);
-  xla::string usage = tensorflow::Flags::Usage(argv[0], flag_list);
-  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  if (!parse_result) {
-    LOG(ERROR) << "\n" << usage;
-    return 2;
-  }
-  testing::InitGoogleTest(&argc, argv);
-  if (argc > 1) {
-    LOG(ERROR) << "Unknown argument " << argv[1] << "\n" << usage;
-    return 2;
-  }
-  return RUN_ALL_TESTS();
-}

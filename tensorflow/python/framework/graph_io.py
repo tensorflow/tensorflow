@@ -24,12 +24,14 @@ import os.path
 from google.protobuf import text_format
 from tensorflow.python.framework import ops
 from tensorflow.python.lib.io import file_io
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('train.write_graph')
 def write_graph(graph_or_graph_def, logdir, name, as_text=True):
   """Writes a graph proto to a file.
 
-  The graph is written as a binary proto unless `as_text` is `True`.
+  The graph is written as a text proto unless `as_text` is `False`.
 
   ```python
   v = tf.Variable(0, name='my_variable')

@@ -13,13 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CC_SAVED_MODEL_CONSTANTS_H_
-#define THIRD_PARTY_TENSORFLOW_CC_SAVED_MODEL_CONSTANTS_H_
+#ifndef TENSORFLOW_CC_SAVED_MODEL_CONSTANTS_H_
+#define TENSORFLOW_CC_SAVED_MODEL_CONSTANTS_H_
 
 namespace tensorflow {
 
 /// SavedModel assets directory.
 constexpr char kSavedModelAssetsDirectory[] = "assets";
+
+/// SavedModel assets.extra directory.
+constexpr char kSavedModelAssetsExtraDirectory[] = "assets.extra";
 
 /// SavedModel assets key for graph collection-def.
 constexpr char kSavedModelAssetsKey[] = "saved_model_assets";
@@ -44,4 +47,4 @@ constexpr char kSavedModelVariablesFilename[] = "variables";
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CC_SAVED_MODEL_CONSTANTS_H_
+#endif  // TENSORFLOW_CC_SAVED_MODEL_CONSTANTS_H_

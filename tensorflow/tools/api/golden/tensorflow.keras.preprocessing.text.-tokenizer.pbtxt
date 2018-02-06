@@ -1,0 +1,33 @@
+path: "tensorflow.keras.preprocessing.text.Tokenizer"
+tf_class {
+  is_instance: "<class \'tensorflow.python.keras._impl.keras.preprocessing.text.Tokenizer\'>"
+  is_instance: "<type \'object\'>"
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'num_words\', \'filters\', \'lower\', \'split\', \'char_level\', \'oov_token\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'!\"#$%&()*+,-./:;<=>?@[\\\\]^_`{|}~\\t\\n\', \'True\', \' \', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "fit_on_sequences"
+    argspec: "args=[\'self\', \'sequences\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "fit_on_texts"
+    argspec: "args=[\'self\', \'texts\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "sequences_to_matrix"
+    argspec: "args=[\'self\', \'sequences\', \'mode\'], varargs=None, keywords=None, defaults=[\'binary\'], "
+  }
+  member_method {
+    name: "texts_to_matrix"
+    argspec: "args=[\'self\', \'texts\', \'mode\'], varargs=None, keywords=None, defaults=[\'binary\'], "
+  }
+  member_method {
+    name: "texts_to_sequences"
+    argspec: "args=[\'self\', \'texts\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "texts_to_sequences_generator"
+    argspec: "args=[\'self\', \'texts\'], varargs=None, keywords=None, defaults=None"
+  }
+}

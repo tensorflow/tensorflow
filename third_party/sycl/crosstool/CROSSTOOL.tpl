@@ -35,10 +35,10 @@ toolchain {
   tool_path { name: "compat-ld" path: "/usr/bin/ld" }
   tool_path { name: "cpp" path: "/usr/bin/cpp" }
   tool_path { name: "dwp" path: "/usr/bin/dwp" }
-  tool_path { name: "gcc" path: "computecpp" }
+  tool_path { name: "gcc" path: "%{sycl_impl}" }
   # Use "-std=c++11" for nvcc. For consistency, force both the host compiler
   # and the device compiler to use "-std=c++11".
-  cxx_flag: "-std=c++11"
+  cxx_flag: "%{c++_std}"
   linker_flag: "-Wl,-no-as-needed"
   linker_flag: "-lstdc++"
   linker_flag: "-B/usr/bin/"
@@ -53,7 +53,7 @@ toolchain {
   cxx_builtin_include_directory: "/usr/local/include"
   cxx_builtin_include_directory: "/usr/include"
 
-  cxx_builtin_include_directory: "%{computecpp_toolkit_path}"
+  cxx_builtin_include_directory: "%{sycl_include_dir}"
   cxx_builtin_include_directory: "%{python_lib_path}"
 
   tool_path { name: "gcov" path: "/usr/bin/gcov" }
@@ -75,6 +75,18 @@ toolchain {
   unfiltered_cxx_flag: "-D__DATE__=\"redacted\""
   unfiltered_cxx_flag: "-D__TIMESTAMP__=\"redacted\""
   unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
+
+  compiler_flag: "-fPIE"
+
+  # Keep stack frames for debugging, even in opt mode.
+  compiler_flag: "-fno-omit-frame-pointer"
+
+  # Anticipated future default.
+  linker_flag: "-no-canonical-prefixes"
+  unfiltered_cxx_flag: "-fno-canonical-system-headers"
+
+  # Have gcc return the exit code from ld.
+  linker_flag: "-pass-exit-codes"
 
   # All warnings are enabled. Maybe enable -Werror as well?
   compiler_flag: "-Wall"
@@ -105,6 +117,9 @@ toolchain {
     compiler_flag: "-g0"
     compiler_flag: "-O2"
     compiler_flag: "-DNDEBUG"
+    compiler_flag: "-ffunction-sections"
+    compiler_flag: "-fdata-sections"
+    linker_flag: "-Wl,--gc-sections"
   }
 }
 

@@ -27,6 +27,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -43,9 +44,11 @@ from tensorflow.python.ops.gen_functional_ops import *
 from tensorflow.python.ops.gen_functional_ops import _symbolic_gradient
 # pylint: enable=unused-import
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
+@tf_export("foldl")
 def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
           swap_memory=False, name=None):
   """foldl on the list of tensors unpacked from `elems` on dimension 0.
@@ -87,15 +90,20 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
+  in_graph_mode = context.in_graph_mode()
   with ops.name_scope(name, "foldl", [elems]):
-    # Any get_variable calls in fn will cache the first call locally
-    # and not issue repeated network I/O requests for each iteration.
-    varscope = vs.get_variable_scope()
-    varscope_caching_device_was_none = False
-    if varscope.caching_device is None:
-      # TODO(ebrevdo): Change to using colocate_with here and in other methods.
-      varscope.set_caching_device(lambda op: op.device)
-      varscope_caching_device_was_none = True
+    # TODO(akshayka): Remove the in_graph_mode check once caching devices are
+    # supported in Eager
+    if in_graph_mode:
+      # Any get_variable calls in fn will cache the first call locally
+      # and not issue repeated network I/O requests for each iteration.
+      varscope = vs.get_variable_scope()
+      varscope_caching_device_was_none = False
+      if varscope.caching_device is None:
+        # TODO(ebrevdo): Change to using colocate_with here and in other
+        # methods.
+        varscope.set_caching_device(lambda op: op.device)
+        varscope_caching_device_was_none = True
 
     # Convert elems to tensor array.
     elems = ops.convert_to_tensor(elems, name="elems")
@@ -121,11 +129,14 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         back_prop=back_prop,
         swap_memory=swap_memory)
 
-    if varscope_caching_device_was_none:
+    # TODO(akshayka): Remove the in_graph_mode check once caching devices are
+    # supported in Eager
+    if in_graph_mode and varscope_caching_device_was_none:
       varscope.set_caching_device(None)
     return r_a
 
 
+@tf_export("foldr")
 def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
           swap_memory=False, name=None):
   """foldr on the list of tensors unpacked from `elems` on dimension 0.
@@ -167,15 +178,20 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   if not callable(fn):
     raise TypeError("fn must be callable.")
 
+  in_graph_mode = context.in_graph_mode()
   with ops.name_scope(name, "foldr", [elems]):
-    # Any get_variable calls in fn will cache the first call locally
-    # and not issue repeated network I/O requests for each iteration.
-    varscope = vs.get_variable_scope()
-    varscope_caching_device_was_none = False
-    if varscope.caching_device is None:
-      # TODO(ebrevdo): Change to using colocate_with here and in other methods.
-      varscope.set_caching_device(lambda op: op.device)
-      varscope_caching_device_was_none = True
+    # TODO(akshayka): Remove the in_graph_mode check once caching devices are
+    # supported in Eager
+    if in_graph_mode:
+      # Any get_variable calls in fn will cache the first call locally and not
+      # issue repeated network I/O requests for each iteration.
+      varscope = vs.get_variable_scope()
+      varscope_caching_device_was_none = False
+      if varscope.caching_device is None:
+        # TODO(ebrevdo): Change to using colocate_with here and in other
+        # methods.
+        varscope.set_caching_device(lambda op: op.device)
+        varscope_caching_device_was_none = True
 
     # Convert elems to tensor array.
     elems = ops.convert_to_tensor(elems, name="elems")
@@ -201,11 +217,14 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         back_prop=back_prop,
         swap_memory=swap_memory)
 
-    if varscope_caching_device_was_none:
+    # TODO(akshayka): Remove the in_graph_mode check once caching devices are
+    # supported in Eager
+    if in_graph_mode and varscope_caching_device_was_none:
       varscope.set_caching_device(None)
     return r_a
 
 
+@tf_export("map_fn")
 def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
            swap_memory=False, infer_shape=True, name=None):
   """map on the list of tensors unpacked from `elems` on dimension 0.
@@ -324,15 +343,20 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
+  in_graph_mode = context.in_graph_mode()
   with ops.name_scope(name, "map", elems_flat):
-    # Any get_variable calls in fn will cache the first call locally
-    # and not issue repeated network I/O requests for each iteration.
-    varscope = vs.get_variable_scope()
-    varscope_caching_device_was_none = False
-    if varscope.caching_device is None:
-      # TODO(ebrevdo): Change to using colocate_with here and in other methods.
-      varscope.set_caching_device(lambda op: op.device)
-      varscope_caching_device_was_none = True
+    # TODO(akshayka): Remove the in_graph_mode check once caching devices are
+    # supported in Eager
+    if in_graph_mode:
+      # Any get_variable calls in fn will cache the first call locally
+      # and not issue repeated network I/O requests for each iteration.
+      varscope = vs.get_variable_scope()
+      varscope_caching_device_was_none = False
+      if varscope.caching_device is None:
+        # TODO(ebrevdo): Change to using colocate_with here and in other
+        # methods.
+        varscope.set_caching_device(lambda op: op.device)
+        varscope_caching_device_was_none = True
 
     elems_flat = [
         ops.convert_to_tensor(elem, name="elem") for elem in elems_flat]
@@ -396,12 +420,15 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
       r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
           r.get_shape()[1:]))
 
-    if varscope_caching_device_was_none:
+    # TODO(akshayka): Remove the in_graph_mode check once caching devices are
+    # supported in Eager
+    if in_graph_mode and varscope_caching_device_was_none:
       varscope.set_caching_device(None)
 
     return output_pack(results_flat)
 
 
+@tf_export("scan")
 def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
          swap_memory=False, infer_shape=True, name=None):
   """scan on the list of tensors unpacked from `elems` on dimension 0.
@@ -431,7 +458,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   For example, if `elems` is `(t1, [t2, t3])` and `initializer` is
   `[i1, i2]` then an appropriate signature for `fn` in `python2` is:
-  `fn = lambda (acc_p1, acc_p2), (t1 [t2, t3]):` and `fn` must return a list,
+  `fn = lambda (acc_p1, acc_p2), (t1, [t2, t3]):` and `fn` must return a list,
   `[acc_n1, acc_n2]`.  An alternative correct signature for `fn`, and the
    one that works in `python3`, is:
   `fn = lambda a, t:`, where `a` and `t` correspond to the input tuples.
@@ -509,15 +536,20 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
   elems_flat = input_flatten(elems)
 
+  in_graph_mode = context.in_graph_mode()
   with ops.name_scope(name, "scan", elems_flat):
-    # Any get_variable calls in fn will cache the first call locally
-    # and not issue repeated network I/O requests for each iteration.
-    varscope = vs.get_variable_scope()
-    varscope_caching_device_was_none = False
-    if varscope.caching_device is None:
-      # TODO(ebrevdo): Change to using colocate_with here and in other methods.
-      varscope.set_caching_device(lambda op: op.device)
-      varscope_caching_device_was_none = True
+    # TODO(akshayka): Remove the in_graph_mode check once caching devices are
+    # supported in Eager
+    if in_graph_mode:
+      # Any get_variable calls in fn will cache the first call locally
+      # and not issue repeated network I/O requests for each iteration.
+      varscope = vs.get_variable_scope()
+      varscope_caching_device_was_none = False
+      if varscope.caching_device is None:
+        # TODO(ebrevdo): Change to using colocate_with here and in other
+        # methods.
+        varscope.set_caching_device(lambda op: op.device)
+        varscope_caching_device_was_none = True
 
     # Convert elems to tensor array.
     elems_flat = [
@@ -545,9 +577,11 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
     # Create a tensor array to store the intermediate values.
     accs_ta = [
-        tensor_array_ops.TensorArray(dtype=init.dtype, size=n,
-                                     dynamic_size=False,
-                                     infer_shape=infer_shape)
+        tensor_array_ops.TensorArray(
+            dtype=init.dtype, size=n,
+            element_shape=init.shape if infer_shape else None,
+            dynamic_size=False,
+            infer_shape=infer_shape)
         for init in a_flat]
 
     if initializer is None:
@@ -592,7 +626,9 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
           r.get_shape()[1:]))
 
-    if varscope_caching_device_was_none:
+    # TODO(akshayka): Remove the in_graph_mode check once caching devices are
+    # supported in Eager
+    if in_graph_mode and varscope_caching_device_was_none:
       varscope.set_caching_device(None)
 
     return output_pack(results_flat)

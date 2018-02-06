@@ -9,6 +9,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "if_not_windows",
     "tf_copts",
+    "tf_cc_binary",
     "tf_cc_test",
     "tf_py_test",
 )
@@ -26,14 +27,11 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:core_cpu",
-        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:tensorflow",
     ],
 )
 
@@ -44,11 +42,44 @@ tf_cc_test(
     deps = [
         ":transform_utils",
         "//tensorflow/cc:cc_ops",
-        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_base",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "file_utils",
+    srcs = [
+        "file_utils.cc",
+    ],
+    hdrs = [
+        "file_utils.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_cc_test(
+    name = "file_utils_test",
+    size = "small",
+    srcs = ["file_utils_test.cc"],
+    deps = [
+        ":file_utils",
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -60,12 +91,15 @@ cc_library(
     srcs = [
         "add_default_attributes.cc",
         "backports.cc",
+        "fake_quantize_training.cc",
+        "flatten_atrous.cc",
         "fold_batch_norms.cc",
         "fold_constants_lib.cc",
         "fold_old_batch_norms.cc",
         "freeze_requantization_ranges.cc",
         "fuse_convolutions.cc",
         "insert_logging.cc",
+        "remove_ema.cc",
         "obfuscate_names.cc",
         "remove_attribute.cc",
         "remove_device.cc",
@@ -88,13 +122,18 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":transform_utils",
+        "//tensorflow/c:checkpoint_reader",
+        "//tensorflow/core/util/tensor_bundle",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:tensorflow",
+        "//tensorflow/contrib/rnn:gru_ops_op_lib",
+        "//tensorflow/contrib/rnn:lstm_ops_op_lib",
     ] + if_not_windows([
         "//tensorflow/core/kernels:quantized_ops",
         "//tensorflow/core/kernels:remote_fused_graph_rewriter_transform",
@@ -109,6 +148,8 @@ tf_cc_test(
     srcs = [
         "add_default_attributes_test.cc",
         "backports_test.cc",
+        "fake_quantize_training_test.cc",
+        "flatten_atrous_test.cc",
         "fold_batch_norms_test.cc",
         "fold_constants_test.cc",
         "fold_old_batch_norms_test.cc",
@@ -120,6 +161,7 @@ tf_cc_test(
         "quantize_weights_test.cc",
         "remove_attribute_test.cc",
         "remove_device_test.cc",
+        "remove_ema_test.cc",
         "remove_nodes_test.cc",
         "rename_attribute_test.cc",
         "rename_op_test.cc",
@@ -135,13 +177,13 @@ tf_cc_test(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core:core_cpu",
-        "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/kernels:quantized_ops",
+        "//tensorflow/core/util/tensor_bundle",
     ],
 )
 
@@ -152,6 +194,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":file_utils",
         ":transform_utils",
         ":transforms_lib",
         "//tensorflow/core:framework_internal",
@@ -176,7 +219,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "transform_graph",
     copts = tf_copts(),
     linkstatic = 1,
@@ -213,6 +256,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
+        ":file_utils",
         ":transform_utils",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -221,7 +265,7 @@ cc_library(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "summarize_graph",
     copts = tf_copts(),
     linkstatic = 1,
@@ -231,16 +275,16 @@ cc_binary(
     ],
 )
 
-cc_binary(
+tf_cc_binary(
     name = "compare_graphs",
     srcs = ["compare_graphs.cc"],
     copts = tf_copts(),
     linkstatic = 1,
     visibility = ["//visibility:public"],
     deps = [
+        ":file_utils",
         ":transform_utils",
         "//tensorflow/core:core_cpu_internal",
-        "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
     ],
@@ -250,7 +294,12 @@ py_library(
     name = "transform_graph_py",
     srcs = ["__init__.py"],
     srcs_version = "PY2AND3",
-    deps = ["//tensorflow/python:pywrap_tensorflow"],
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:errors",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:util",
+    ],
 )
 
 tf_py_test(
@@ -266,4 +315,15 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     main = "python/transform_graph_test.py",
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
 )

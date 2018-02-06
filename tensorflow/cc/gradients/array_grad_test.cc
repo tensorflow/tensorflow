@@ -23,10 +23,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {
+namespace {
+
 using namespace ops;  // NOLINT(build/namespaces)
 using ops::internal::MirrorPadGrad;
-
-namespace {
 
 class ArrayGradTest : public ::testing::Test {
  protected:
@@ -36,8 +36,8 @@ class ArrayGradTest : public ::testing::Test {
                const TensorShape& y_shape) {
     TF_ASSERT_OK(scope_.status());
     float max_error;
-    TF_ASSERT_OK(ComputeGradientError(scope_, {x}, {x_shape}, {y}, {y_shape},
-                                      &max_error));
+    TF_ASSERT_OK((ComputeGradientError<float, float, float>(
+        scope_, {x}, {x_shape}, {y}, {y_shape}, &max_error)));
     EXPECT_LT(max_error, 1e-3);
   }
 
@@ -45,8 +45,8 @@ class ArrayGradTest : public ::testing::Test {
                const OutputList& ys, const std::vector<TensorShape>& y_shapes) {
     TF_ASSERT_OK(scope_.status());
     float max_error;
-    TF_ASSERT_OK(
-        ComputeGradientError(scope_, xs, x_shapes, ys, y_shapes, &max_error));
+    TF_ASSERT_OK((ComputeGradientError<float, float, float>(
+        scope_, xs, x_shapes, ys, y_shapes, &max_error)));
     EXPECT_LT(max_error, 1e-3);
   }
 
@@ -231,6 +231,28 @@ TEST_F(ArrayGradTest, ScatterNdGrad_SliceIndexing) {
   TensorShape y_shape({4, 4, 4});
   auto y = ScatterNd(scope_, indices, updates, {4, 4, 4});
   RunTest(updates, updates_shape, y, y_shape);
+}
+
+TEST_F(ArrayGradTest, ScatterNdNonAliasingAddGrad_SimpleIndexing) {
+  TensorShape updates_shape({4});
+  TensorShape input_shape({8});
+  auto input = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(input_shape));
+  auto updates =
+      Placeholder(scope_, DT_FLOAT, Placeholder::Shape(updates_shape));
+  auto indices = Const(scope_, {{4}, {3}, {1}, {7}});
+  auto y = ScatterNdNonAliasingAdd(scope_, input, indices, updates);
+  RunTest({input, updates}, {input_shape, updates_shape}, {y}, {input_shape});
+}
+
+TEST_F(ArrayGradTest, ScatterNdNonAliasingAddGrad_SliceIndexing) {
+  TensorShape updates_shape({2, 4, 4});
+  TensorShape input_shape({4, 4, 4});
+  auto input = Placeholder(scope_, DT_FLOAT, Placeholder::Shape(input_shape));
+  auto updates =
+      Placeholder(scope_, DT_FLOAT, Placeholder::Shape(updates_shape));
+  auto indices = Const(scope_, {{0}, {2}});
+  auto y = ScatterNdNonAliasingAdd(scope_, input, indices, updates);
+  RunTest({input, updates}, {input_shape, updates_shape}, {y}, {input_shape});
 }
 
 TEST_F(ArrayGradTest, PadGrad) {

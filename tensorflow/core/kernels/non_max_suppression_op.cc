@@ -65,9 +65,11 @@ static inline void DecreasingArgSort(const std::vector<float>& values,
       [&values](const int i, const int j) { return values[i] > values[j]; });
 }
 
-// Compute intersection-over-union overlap between boxes i and j.
-static inline float ComputeIOU(typename TTypes<float, 2>::ConstTensor boxes,
-                               int i, int j) {
+// Return true if intersection-over-union overlap between boxes i and j
+// is greater than iou_threshold.
+static inline bool IOUGreaterThanThreshold(
+    typename TTypes<float, 2>::ConstTensor boxes, int i, int j,
+    float iou_threshold) {
   const float ymin_i = std::min<float>(boxes(i, 0), boxes(i, 2));
   const float xmin_i = std::min<float>(boxes(i, 1), boxes(i, 3));
   const float ymax_i = std::max<float>(boxes(i, 0), boxes(i, 2));
@@ -76,7 +78,6 @@ static inline float ComputeIOU(typename TTypes<float, 2>::ConstTensor boxes,
   const float xmin_j = std::min<float>(boxes(j, 1), boxes(j, 3));
   const float ymax_j = std::max<float>(boxes(j, 0), boxes(j, 2));
   const float xmax_j = std::max<float>(boxes(j, 1), boxes(j, 3));
-
   const float area_i = (ymax_i - ymin_i) * (xmax_i - xmin_i);
   const float area_j = (ymax_j - ymin_j) * (xmax_j - xmin_j);
   if (area_i <= 0 || area_j <= 0) return 0.0;
@@ -87,7 +88,8 @@ static inline float ComputeIOU(typename TTypes<float, 2>::ConstTensor boxes,
   const float intersection_area =
       std::max<float>(intersection_ymax - intersection_ymin, 0.0) *
       std::max<float>(intersection_xmax - intersection_xmin, 0.0);
-  return intersection_area / (area_i + area_j - intersection_area);
+  const float iou = intersection_area / (area_i + area_j - intersection_area);
+  return iou > iou_threshold;
 }
 
 void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& boxes,
@@ -110,25 +112,25 @@ void DoNonMaxSuppressionOp(OpKernelContext* context, const Tensor& boxes,
   std::vector<int> sorted_indices;
   DecreasingArgSort(scores_data, &sorted_indices);
 
-  std::vector<bool> active(num_boxes, true);
   std::vector<int> selected;
-  int num_active = active.size();
+  std::vector<int> selected_indices(output_size, 0);
+  int num_selected = 0;
   for (int i = 0; i < num_boxes; ++i) {
-    if (num_active == 0 || selected.size() >= output_size) break;
-    if (active[i]) {
-      selected.push_back(sorted_indices[i]);
-    } else {
-      continue;
-    }
-    for (int j = i + 1; j < num_boxes; ++j) {
-      if (active[j]) {
-        float iou =
-            ComputeIOU(boxes_data, sorted_indices[i], sorted_indices[j]);
-        if (iou > iou_threshold) {
-          active[j] = false;
-          num_active--;
-        }
+    if (selected.size() >= output_size) break;
+    bool should_select = true;
+    // Overlapping boxes are likely to have similar scores,
+    // therefore we iterate through the selected boxes backwards.
+    for (int j = num_selected - 1; j >= 0; --j) {
+      if (IOUGreaterThanThreshold(boxes_data, sorted_indices[i],
+                                  sorted_indices[selected_indices[j]],
+                                  iou_threshold)) {
+        should_select = false;
+        break;
       }
+    }
+    if (should_select) {
+      selected.push_back(sorted_indices[i]);
+      selected_indices[num_selected++] = i;
     }
   }
 
