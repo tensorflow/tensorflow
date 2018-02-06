@@ -1633,10 +1633,13 @@ class ControlFlowContext(object):
         ctxt = util.GetOutputContext(x)
         if ctxt is not None and ctxt.GetWhileContext() == while_ctxt:
           internal_control_inputs.append(x)
+    external_control_inputs = []
     if len(internal_control_inputs) != len(op.control_inputs):
+      external_control_inputs = list(set(op.control_inputs)
+                                     - set(internal_control_inputs))
       op._remove_all_control_inputs()
       op._add_control_inputs(internal_control_inputs)
-    return internal_control_inputs
+    return internal_control_inputs, external_control_inputs
 
   # pylint: enable=protected-access
 
@@ -2445,14 +2448,12 @@ class WhileContext(ControlFlowContext):
   def _AddOpInternal(self, op):
     """Add `op` to the current context.
 
-    In the case that op has only external data inputs, we remove all of its
-    external control inputs so all its inputs are in the same while loop
-    context. This is valid because op now has an Enter input that has all
-    the right control dependency.
+    We move any external control dependencies of the op to the loop pivot, to
+    ensure they get executed.
     """
     if not op.inputs:
       # Remove any external control dependency on this op
-      control_inputs = self._RemoveExternalControlEdges(op)
+      control_inputs, external_inputs = self._RemoveExternalControlEdges(op)
       # Add a control edge from the control pivot to this op.
       if not control_inputs:
         # pylint: disable=protected-access
@@ -2465,14 +2466,20 @@ class WhileContext(ControlFlowContext):
         x = op.inputs[index]
         real_x = self.AddValue(x)
         if real_x != x:
-          op._update_input(index, real_x)
+          op._update_input(index, real_x)  # pylint: disable=protected-access
       # Remove any external control dependency on this op.
-      self._RemoveExternalControlEdges(op)
+      _, external_inputs = self._RemoveExternalControlEdges(op)
       # Add a control dependency to prevent loop invariants from
       # enabling ops that should not be executed.
       self._MaybeAddControlDependency(op)
       for x in op.outputs:
         self._values.add(x.name)
+    if external_inputs:
+      # Use an identity to pull control inputs as data inputs. Note that we
+      # ignore ops which don't have outputs. TODO(apassos): fix that
+      external_inputs = [array_ops.identity(x.outputs[0]).op
+                         for x in external_inputs if x.outputs]
+      op._add_control_inputs(external_inputs)  # pylint: disable=protected-access
     if self._outer_context or not util.IsLoopExit(op):
       op.graph.prevent_fetching(op)
       for x in op.outputs:
