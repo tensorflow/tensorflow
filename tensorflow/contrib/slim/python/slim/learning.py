@@ -738,6 +738,7 @@ def train(train_op,
   if summary_writer is not None:
     train_step_kwargs['summary_writer'] = sv.summary_writer
 
+  total_loss = 0
   should_retry = True
   while should_retry:
     try:

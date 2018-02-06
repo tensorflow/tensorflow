@@ -252,7 +252,7 @@ Clamps an operand to within the range between a minimum and maximum value.
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range.  That is, `clamp(a, x, b) =  max(min(a, x), b)`.
+range.  That is, `clamp(a, x, b) =  min(max(a, x), b)`.
 
 All three arrays must be the same shape. Alternately, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.

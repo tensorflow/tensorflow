@@ -125,3 +125,23 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+cc_library(
+    name = "grappler_test",
+    testonly = 1,
+    srcs = [
+        "grappler_test.cc",
+    ],
+    hdrs = ["grappler_test.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//tensorflow/core:all_kernels",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:direct_session",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core/grappler:utils",
+    ],
+)
