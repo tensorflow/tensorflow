@@ -3033,6 +3033,7 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
   def __init__(self, num_units, depth, forget_bias=1.0,
                state_is_tuple=True, use_peepholes=False,
                activation=None, gate_activation=None,
+               cell_activation=None,
                use_bias=True, reuse=None, name=None):
     """Initialize the basic NLSTM cell.
 
@@ -3049,6 +3050,8 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
         including new inputs and new cell states.  Default: `sigmoid`.
       gate_activation: Activation function of the gates,
         including the input, ouput, and forget gate. Default: `sigmoid`.
+      cell_activation: Activation function of the first cell gate. Default: `identity`.
+        Note that in the paper only the first cell_activation is identity.
       use_bias: `bool`. Default: `True`.
       reuse: `bool`(optional) Python boolean describing whether to reuse variables
         in an existing scope.  If not `True`, and the existing scope already has
@@ -3069,8 +3072,9 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
     self._state_is_tuple = state_is_tuple
     self._use_peepholes = use_peepholes
     self._depth = depth
-    self._activation = activation or math_ops.sigmoid
+    self._activation = activation or math_ops.tanh
     self._gate_activation = gate_activation or math_ops.sigmoid
+    self._cell_activation = cell_activation or array_ops.identity
     self._use_bias = use_bias
     self._kernels = None
     self._biases = None
@@ -3155,15 +3159,15 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
         array_ops.concat([inputs, h], 1), self._kernels[depth])
     if self._use_bias:
       gate_inputs = nn_ops.bias_add(gate_inputs, self._biases[depth])
-    if self._use_peepholes:
-      peep_gate_inputs = math_ops.matmul(c, self._peep_kernels[depth])
-      i_peep, f_peep, o_peep = array_ops.split(
-          value=peep_gate_inputs, num_or_size_splits=3, axis=one)
 
     # i = input_gate, j = new_input, f = forget_gate, o = output_gate
     i, j, f, o = array_ops.split(
         value=gate_inputs, num_or_size_splits=4, axis=one)
+
     if self._use_peepholes:
+      peep_gate_inputs = math_ops.matmul(c, self._peep_kernels[depth])
+      i_peep, f_peep, o_peep = array_ops.split(
+          value=peep_gate_inputs, num_or_size_splits=3, axis=one)
       i += i_peep
       f += f_peep
       o += o_peep 
@@ -3178,7 +3182,12 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
       f = add(f, forget_bias_tensor)
 
     inner_hidden = multiply(c, self._gate_activation(f))
-    inner_input = multiply(self._gate_activation(i), self._activation(j))
+
+    if depth == 0:
+      inner_input = multiply(self._gate_activation(i), self._cell_activation(j))
+    else:
+      inner_input = multiply(self._gate_activation(i), self._activation(j))
+
     if depth == (self.depth - 1):
       new_c = add(inner_hidden, inner_input)
       new_cs = [new_c]
