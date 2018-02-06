@@ -619,7 +619,7 @@ def make_constant_tests(zip_path):
 
   def build_graph(parameters):
     # Since Toco & Tflite can't have a single constant op in the entire graph,
-    # this test adds a zero tesnor with a constant op tensor.
+    # this test adds a zero tensor with a constant op tensor.
     input1 = tf.placeholder(dtype=parameters["dtype"], name="input1",
                             shape=parameters["input_shape"])
     out = tf.ones(parameters["input_shape"], dtype=parameters["dtype"]) + input1
