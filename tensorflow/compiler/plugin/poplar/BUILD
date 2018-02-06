@@ -344,6 +344,16 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "conditional_test",
+    size = "small",
+    srcs = ["tests/conditional_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -366,6 +376,7 @@ test_suite(
         "hlo_matcher_test",
         "wide_const_finder_test",
         "monitored_session_test",
+        "conditional_test",
     ],
 )
 
@@ -387,6 +398,7 @@ test_suite(
         "hlo_matcher_test",
         "wide_const_finder_test",
         "monitored_session_test",
+        "conditional_test",
     ],
 )
 
