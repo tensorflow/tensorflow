@@ -37,6 +37,7 @@ py_library(
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow/contrib/estimator:estimator_py",
         "//tensorflow/contrib/factorization:factorization_py",
+        "//tensorflow/contrib/feature_column:feature_column_py",
         "//tensorflow/contrib/ffmpeg:ffmpeg_ops_py",
         "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/fused_conv:fused_conv_py",
