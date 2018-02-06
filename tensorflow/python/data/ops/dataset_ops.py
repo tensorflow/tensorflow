@@ -591,7 +591,7 @@ class Dataset(object):
     max_value = np.iinfo(dtypes.int64.as_numpy_dtype).max
     return Dataset.zip((Dataset.range(start, max_value), self))
 
-  def shuffle(self, buffer_size, seed=None, reshuffle_each_iteration=None):
+  def shuffle(self, buffer_size, seed=None, reshuffle_each_iteration=True):
     """Randomly shuffles the elements of this dataset.
 
     Args:
@@ -1257,7 +1257,7 @@ class ShuffleDataset(Dataset):
                input_dataset,
                buffer_size,
                seed=None,
-               reshuffle_each_iteration=None):
+               reshuffle_each_iteration=True):
     """Randomly shuffles the elements of this dataset.
 
     Args:
@@ -1292,10 +1292,7 @@ class ShuffleDataset(Dataset):
     else:
       self._seed2 = ops.convert_to_tensor(
           seed2, dtype=dtypes.int64, name="seed2")
-    if reshuffle_each_iteration is None:
-      self._reshuffle_each_iteration = True
-    else:
-      self._reshuffle_each_iteration = reshuffle_each_iteration
+    self._reshuffle_each_iteration = reshuffle_each_iteration
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.shuffle_dataset(
