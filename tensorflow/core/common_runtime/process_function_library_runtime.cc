@@ -70,23 +70,6 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
   }
 }
 
-ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options)
-    : ProcessFunctionLibraryRuntime(device_mgr, env, graph_def_version, lib_def,
-                                    optimizer_options,
-                                    nullptr /* cluster_flr */) {}
-
-ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator)
-    : ProcessFunctionLibraryRuntime(
-          device_mgr, env, graph_def_version, lib_def, optimizer_options,
-          std::move(custom_kernel_creator), nullptr /* cluster_flr */) {}
-
 /* static */
 Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& source_device, const string& target_device,
