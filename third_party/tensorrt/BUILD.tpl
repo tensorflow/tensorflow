@@ -1,10 +1,11 @@
 # NVIDIA TensorRT
 # A high-performance deep learning inference optimizer and runtime.
 
-load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
 licenses(["notice"])
 
 exports_files(["LICENSE"])
+
+load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
 
 package(default_visibility = ["//visibility:public"])
 

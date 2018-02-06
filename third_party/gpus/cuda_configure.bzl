@@ -367,19 +367,19 @@ def find_cuda_define(repository_ctx, header_dir, header_file, define):
   if result.stdout.find(define) == -1:
     auto_configure_fail("Cannot find line containing '%s' in %s" %
                         (define, h_path))
-  #split results to lines
+  # Split results to lines
   lines = result.stdout.split('\n')
-  lenLines = len(lines)
-  for l in range(lenLines):
+  num_lines = len(lines)
+  for l in range(num_lines):
     line = lines[l]
-    if define in line: # find the line with define
+    if define in line:  # Find the line with define
       version = line
-      if l != lenLines-1 and line[-1] == '\\': # add next line, if multiline
+      if l != num_lines-1 and line[-1] == '\\':  # Add next line, if multiline
         version = version[:-1] + lines[l+1]
       break
-  #remove any comments
+  # Remove any comments
   version = version.split("//")[0]
-  # remove define name
+  # Remove define name
   version = version.replace(define, "").strip()
   # Remove the code after the version number.
   version_end = version.find(" ")
