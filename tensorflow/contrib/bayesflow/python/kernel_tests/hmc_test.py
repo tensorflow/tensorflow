@@ -617,7 +617,7 @@ class _HMCHandlesLists(object):
           expected_vars,
       ])
       self.assertAllClose(expected_means_, actual_means_, atol=0.05, rtol=0.16)
-      self.assertAllClose(expected_vars_, actual_vars_, atol=0., rtol=0.30)
+      self.assertAllClose(expected_vars_, actual_vars_, atol=0., rtol=0.40)
 
 
 class HMCHandlesLists16(_HMCHandlesLists, test.TestCase):
