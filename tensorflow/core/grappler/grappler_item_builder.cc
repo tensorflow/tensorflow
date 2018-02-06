@@ -511,14 +511,14 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
 }
 
 std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
-    const string& id, const FunctionDef& func,
+    const FunctionDef& func,
     const std::unordered_map<string, AttrValue>& func_attr) {
-  if (id.empty()) {
-    LOG(ERROR) << "id must be non-empty.";
+  if (func.signature().name().empty()) {
+    LOG(ERROR) << "function name must be specified.";
     return nullptr;
   }
   std::unique_ptr<GrapplerItem> new_item(new GrapplerItem());
-  new_item->id = id;
+  new_item->id = func.signature().name();
 
   std::unordered_map<string, string> port_map;
 

@@ -301,8 +301,9 @@ TEST_F(GrapplerItemBuilderTest, FromSimpleFunctionDef) {
   std::unordered_map<string, AttrValue> func_attr;
   func_attr["T"].set_type(DT_FLOAT);
   std::unique_ptr<GrapplerItem> item =
-      GrapplerItemFromFunctionDef("test", func, func_attr);
+      GrapplerItemFromFunctionDef(func, func_attr);
   CHECK(item);
+  EXPECT_EQ("XTimesTwo", item->id);
   EXPECT_EQ(4, item->graph.node_size());
   EXPECT_EQ(std::vector<string>({"y"}), item->fetch);
   EXPECT_EQ(1, item->feed.size());
@@ -366,8 +367,9 @@ TEST_F(GrapplerItemBuilderTest, FromFunctionDefWithMultiOutputNodes) {
   std::unordered_map<string, AttrValue> func_attr;
   func_attr["T"].set_type(DT_FLOAT);
   std::unique_ptr<GrapplerItem> item =
-      GrapplerItemFromFunctionDef("test", func, func_attr);
+      GrapplerItemFromFunctionDef(func, func_attr);
   CHECK(item);
+  EXPECT_EQ("SubGrad", item->id);
   EXPECT_EQ(12, item->graph.node_size());
   EXPECT_EQ(std::vector<string>({"dx", "dy"}), item->fetch);
   EXPECT_EQ(3, item->feed.size());
