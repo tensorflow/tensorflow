@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for copier module."""
+"""Tests for ast_util module."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,11 +20,37 @@ from __future__ import print_function
 
 import ast
 
-from tensorflow.contrib.py2tf.pyct import copier
+from tensorflow.contrib.py2tf.pyct import ast_util
+from tensorflow.contrib.py2tf.pyct import qual_names
 from tensorflow.python.platform import test
 
 
-class CopierTest(test.TestCase):
+class AstUtilTest(test.TestCase):
+
+  def test_rename_symbols(self):
+    node = ast.Tuple([
+        ast.Name('a', ast.Load()),
+        ast.Name('b', ast.Load()),
+        ast.Attribute(ast.Name('b', None), 'c', ast.Store()),
+        ast.Attribute(
+            ast.Attribute(ast.Name('b', None), 'c', ast.Load()), 'd',
+            None)
+    ], None)
+    node = qual_names.resolve(node)
+    node = ast_util.rename_symbols(
+        node,
+        {
+            qual_names.QN('a'): qual_names.QN('renamed_a'),
+            qual_names.QN('b.c'): qual_names.QN('renamed_b_c'),
+        })
+
+    self.assertEqual(node.elts[0].id, 'renamed_a')
+    self.assertTrue(isinstance(node.elts[0].ctx, ast.Load))
+    self.assertEqual(node.elts[1].id, 'b')
+    self.assertEqual(node.elts[2].id, 'renamed_b_c')
+    self.assertTrue(isinstance(node.elts[2].ctx, ast.Store))
+    self.assertEqual(node.elts[3].value.id, 'renamed_b_c')
+    self.assertTrue(isinstance(node.elts[3].value.ctx, ast.Load))
 
   def test_copy_clean(self):
     ret = ast.Return(
@@ -43,7 +69,7 @@ class CopierTest(test.TestCase):
         body=[ret],
         decorator_list=[],
         returns=None)
-    new_node = copier.copy_clean(node)
+    new_node = ast_util.copy_clean(node)
     self.assertFalse(node is new_node)
     self.assertFalse(ret is new_node.body[0])
     self.assertFalse(hasattr(new_node.body[0], '__foo'))

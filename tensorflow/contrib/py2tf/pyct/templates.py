@@ -26,7 +26,7 @@ import textwrap
 
 import gast
 
-from tensorflow.contrib.py2tf.pyct import copier
+from tensorflow.contrib.py2tf.pyct import ast_util
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import qual_names
 
@@ -77,7 +77,7 @@ class ReplaceTransformer(gast.NodeTransformer):
     if node.id not in self.replacements:
       return node
 
-    new_nodes = copier.copy_clean(self.replacements[node.id])
+    new_nodes = ast_util.copy_clean(self.replacements[node.id])
     if isinstance(new_nodes, gast.AST):
       new_nodes = [new_nodes]
 

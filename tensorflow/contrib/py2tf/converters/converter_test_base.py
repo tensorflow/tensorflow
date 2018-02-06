@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import imp
+
 from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import qual_names
@@ -28,6 +30,17 @@ from tensorflow.python.platform import test
 
 
 class TestCase(test.TestCase):
+  """Base class for unit tests in this module. Contains relevant utilities."""
+
+  def make_fake_tf(self, *symbols):
+    fake_tf = imp.new_module('fake_tf')
+    for s in symbols:
+      setattr(fake_tf, s.__name__, s)
+    return fake_tf
+
+  def attach_namespace(self, module, **ns):
+    for k, v in ns.items():
+      setattr(module, k, v)
 
   def parse_and_analyze(self,
                         test_fn,
