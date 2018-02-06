@@ -2271,6 +2271,8 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk) {
+  VLOG(3) << bindings_.ToString();
+
   const Shape& element_shape = hlo.IsMultiOutputFusion()
                                    ? ShapeUtil::GetSubshape(hlo.shape(), {0})
                                    : hlo.shape();
