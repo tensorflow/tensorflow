@@ -78,6 +78,14 @@ class TrainingTest(test.TestCase):
           verbose=2)
       model.train_on_batch([input_a_np, input_b_np], [output_d_np, output_e_np])
 
+      # Test model with input data as a list of lists
+      model.fit(
+          [np.ndarray.tolist(input_a_np), np.ndarray.tolist(input_b_np)],
+          [output_d_np, output_e_np],
+          epochs=2,
+          batch_size=5,
+          verbose=2)
+
       # Test with validation data
       model.fit(
           [input_a_np, input_b_np], [output_d_np, output_e_np],
@@ -204,6 +212,16 @@ class TrainingTest(test.TestCase):
       model.fit([input_a_np], output_d_np, epochs=1)
       with self.assertRaises(ValueError):
         model.fit([input_a_np, input_a_np], output_d_np, epochs=1)
+
+      # Test model on a list of floats
+      input_a_np = np.random.random((10, 3))
+      input_b_np = np.random.random((10, 4))
+
+      model.fit([np.ndarray.tolist(input_a_np)],
+                [np.ndarray.tolist(input_b_np)],
+                epochs=2,
+                batch_size=5,
+                verbose=2)
 
   def test_evaluate_predict_on_arrays(self):
     with self.test_session():

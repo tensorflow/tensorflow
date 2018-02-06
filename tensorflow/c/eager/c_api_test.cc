@@ -60,6 +60,31 @@ TFE_Op* MatMulOp(TFE_Context* ctx, TFE_TensorHandle* a, TFE_TensorHandle* b) {
   return op;
 }
 
+// If there is a GPU device, returns true and sets 'gpu_device_name'
+// accordingly.
+bool GetGPUDeviceName(TFE_Context* ctx, string* gpu_device_name) {
+  std::unique_ptr<TF_Status, decltype(&TF_DeleteStatus)> status(
+      TF_NewStatus(), TF_DeleteStatus);
+  TF_DeviceList* devices = TFE_ContextListDevices(ctx, status.get());
+  CHECK_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+
+  const int num_devices = TF_DeviceListCount(devices);
+  for (int i = 0; i < num_devices; ++i) {
+    const string device_type(TF_DeviceListType(devices, i, status.get()));
+    CHECK_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
+    const string device_name(TF_DeviceListName(devices, i, status.get()));
+    CHECK_EQ(TF_GetCode(status.get()), TF_OK) << TF_Message(status.get());
+    if (device_type == "GPU") {
+      *gpu_device_name = device_name;
+      LOG(INFO) << "Found GPU device " << device_name;
+      TF_DeleteDeviceList(devices);
+      return true;
+    }
+  }
+  TF_DeleteDeviceList(devices);
+  return false;
+}
+
 void BM_InitOp(int iters) {
   tensorflow::testing::StopTiming();
   TF_Status* status = TF_NewStatus();
@@ -288,22 +313,15 @@ TEST(CAPI, TensorHandleSilentCopy) {
   TF_Tensor* t = TFE_TensorHandleResolve(hcpu, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
-  TF_DeviceList* devices = TFE_ContextListDevices(ctx, status.get());
-  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-  const int num_devices = TF_DeviceListCount(devices);
-
   // Disable the test if no GPU is present.
-  if (num_devices > 1) {
-    const int device_to_use = 1;
-    const string name(TF_DeviceListName(devices, device_to_use, status.get()));
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-
-    TFE_TensorHandle* hgpu =
-        TFE_TensorHandleCopyToDevice(hcpu, ctx, name.c_str(), status.get());
+  string gpu_device_name;
+  if (GetGPUDeviceName(ctx, &gpu_device_name)) {
+    TFE_TensorHandle* hgpu = TFE_TensorHandleCopyToDevice(
+        hcpu, ctx, gpu_device_name.c_str(), status.get());
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
     TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
-    TFE_OpSetDevice(matmul, name.c_str(), status.get());
+    TFE_OpSetDevice(matmul, gpu_device_name.c_str(), status.get());
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
     TFE_TensorHandle* retvals[1];
     int num_retvals = 1;
@@ -314,7 +332,6 @@ TEST(CAPI, TensorHandleSilentCopy) {
     TFE_DeleteTensorHandle(hgpu);
   }
 
-  TF_DeleteDeviceList(devices);
   TF_DeleteTensor(t);
   TFE_DeleteTensorHandle(hcpu);
   TFE_DeleteContext(ctx, status.get());
@@ -337,22 +354,15 @@ TEST(CAPI, TensorHandleSilentCopyLocal) {
   TF_Tensor* t = TFE_TensorHandleResolve(hcpu, status.get());
   ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
 
-  TF_DeviceList* devices = TFE_ContextListDevices(ctx, status.get());
-  ASSERT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
-  const int num_devices = TF_DeviceListCount(devices);
-
   // Disable the test if no GPU is present.
-  if (num_devices > 1) {
-    const int device_to_use = 1;
-    const string name(TF_DeviceListName(devices, device_to_use, status.get()));
-    ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
-
-    TFE_TensorHandle* hgpu =
-        TFE_TensorHandleCopyToDevice(hcpu, ctx, name.c_str(), status.get());
+  string gpu_device_name;
+  if (GetGPUDeviceName(ctx, &gpu_device_name)) {
+    TFE_TensorHandle* hgpu = TFE_TensorHandleCopyToDevice(
+        hcpu, ctx, gpu_device_name.c_str(), status.get());
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
 
     TFE_Op* matmul = MatMulOp(ctx, hcpu, hgpu);
-    TFE_OpSetDevice(matmul, name.c_str(), status.get());
+    TFE_OpSetDevice(matmul, gpu_device_name.c_str(), status.get());
     ASSERT_TRUE(TF_GetCode(status.get()) == TF_OK) << TF_Message(status.get());
     TFE_TensorHandle* retvals[1];
     int num_retvals = 1;
@@ -363,11 +373,41 @@ TEST(CAPI, TensorHandleSilentCopyLocal) {
     TFE_DeleteTensorHandle(hgpu);
   }
 
-  TF_DeleteDeviceList(devices);
   TF_DeleteTensor(t);
   TFE_DeleteTensorHandle(hcpu);
   TFE_DeleteContext(ctx, status.get());
   EXPECT_EQ(TF_OK, TF_GetCode(status.get())) << TF_Message(status.get());
+}
+
+TEST(CAPI, SetAndGetOpDevices) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_TensorHandle* m = TestMatrixTensorHandle();
+  TFE_Op* matmul = MatMulOp(ctx, m, m);
+
+  // Disable the test if no GPU is present.
+  string gpu_device_name;
+  if (GetGPUDeviceName(ctx, &gpu_device_name)) {
+    TFE_OpSetDevice(matmul, "GPU:0", status);
+    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+    const char* device_name = TFE_OpGetDevice(matmul, status);
+    ASSERT_TRUE(strstr(device_name, "GPU:0") != nullptr);
+
+    TFE_OpSetDevice(matmul, "CPU:0", status);
+    ASSERT_TRUE(TF_GetCode(status) == TF_OK) << TF_Message(status);
+    device_name = TFE_OpGetDevice(matmul, status);
+    ASSERT_TRUE(strstr(device_name, "CPU:0") != nullptr);
+  }
+
+  TFE_DeleteOp(matmul);
+  TFE_DeleteTensorHandle(m);
+  TFE_DeleteContext(ctx, status);
+  ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TF_DeleteStatus(status);
 }
 
 TEST(CAPI, Execute) {

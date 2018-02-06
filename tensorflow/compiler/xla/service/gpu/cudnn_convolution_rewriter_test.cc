@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,23 +13,29 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/gpu/convolution_folding.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_rewriter.h"
 
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
+#include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace xla {
 namespace gpu {
+namespace {
 
-class ConvolutionFoldingTest : public HloTestBase {
+namespace op = xla::testing::opcode_matchers;
+
+class CudnnConvolutionRewriterTest : public HloTestBase {
  public:
-  ConvolutionFoldingTest() {
+  CudnnConvolutionRewriterTest() {
     for (int i = 0; i < 2; ++i) {
       WindowDimension* window_dim = default_conv_window_.add_dimensions();
       window_dim->set_size(1);
@@ -44,7 +50,8 @@ class ConvolutionFoldingTest : public HloTestBase {
     // the batch and feature dimension in the activations, and treat the batch
     // dimension in gradients as the input feature dimension in the filter.
     //
-    // TODO(jingyue): Add more tests on NCHW input order which TF also supports.
+    // TODO(jingyue): Add more tests on NCHW input order, which TF also
+    // supports.
     tf_default_dnums_for_backward_filter_.set_input_batch_dimension(3);
     tf_default_dnums_for_backward_filter_.set_input_feature_dimension(0);
     tf_default_dnums_for_backward_filter_.add_input_spatial_dimensions(1);
@@ -74,9 +81,8 @@ class ConvolutionFoldingTest : public HloTestBase {
   }
 
  protected:
-  bool FoldConvolution(HloModule* module) {
-    ConvolutionFolding convolution_folding;
-    return convolution_folding.Run(module).ValueOrDie();
+  bool RunPass(HloModule* module) {
+    return CudnnConvolutionRewriter().Run(module).ValueOrDie();
   }
 
   // A convolution window with stride 1 and zero padding. The size fields are
@@ -86,7 +92,7 @@ class ConvolutionFoldingTest : public HloTestBase {
   ConvolutionDimensionNumbers tf_default_dnums_for_backward_input_;
 };
 
-TEST_F(ConvolutionFoldingTest, BackwardFilterConvolve) {
+TEST_F(CudnnConvolutionRewriterTest, BackwardFilterConvolve) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -108,14 +114,13 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolve) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(module.get()));
-  EXPECT_EQ(HloOpcode::kFusion,
-            entry_computation->root_instruction()->opcode());
-  EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardFilter ==
-              entry_computation->root_instruction()->fusion_kind());
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(entry_computation->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
 }
 
-TEST_F(ConvolutionFoldingTest,
+TEST_F(CudnnConvolutionRewriterTest,
        BackwardFilterConvolveEquivalentToForwardConvolution) {
   HloComputation::Builder builder(TestName());
   HloInstruction* activations =
@@ -135,12 +140,17 @@ TEST_F(ConvolutionFoldingTest,
       tf_default_dnums_for_backward_filter_));
 
   auto module = CreateNewModule();
-  module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(module.get()));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(entry_computation->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
 }
 
 // Extracted from block35 training.
-TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithPaddedActivations) {
+TEST_F(CudnnConvolutionRewriterTest,
+       BackwardFilterConvolveWithPaddedActivations) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -162,15 +172,15 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithPaddedActivations) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(module.get()));
-  EXPECT_EQ(HloOpcode::kFusion,
-            entry_computation->root_instruction()->opcode());
-  EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardFilter ==
-              entry_computation->root_instruction()->fusion_kind());
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(entry_computation->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
 }
 
 // Extracted from inception v3 training.
-TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithPaddedGradients) {
+TEST_F(CudnnConvolutionRewriterTest,
+       BackwardFilterConvolveWithPaddedGradients) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -192,14 +202,13 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithPaddedGradients) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(module.get()));
-  EXPECT_EQ(HloOpcode::kFusion,
-            entry_computation->root_instruction()->opcode());
-  EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardFilter ==
-              entry_computation->root_instruction()->fusion_kind());
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(entry_computation->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
 }
 
-TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithUnevenPadding) {
+TEST_F(CudnnConvolutionRewriterTest, BackwardFilterConvolveWithUnevenPadding) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* activations =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -221,14 +230,13 @@ TEST_F(ConvolutionFoldingTest, BackwardFilterConvolveWithUnevenPadding) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(module.get()));
-  EXPECT_EQ(HloOpcode::kFusion,
-            entry_computation->root_instruction()->opcode());
-  EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardFilter ==
-              entry_computation->root_instruction()->fusion_kind());
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(entry_computation->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardFilterCallTarget), 0));
 }
 
-TEST_F(ConvolutionFoldingTest, BackwardInputConvolveEvenPadding) {
+TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolveEvenPadding) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -272,14 +280,15 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveEvenPadding) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(module.get()));
-  EXPECT_EQ(HloOpcode::kFusion,
-            entry_computation->root_instruction()->opcode());
-  EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardInput ==
-              entry_computation->root_instruction()->fusion_kind());
+  EXPECT_TRUE(RunPass(module.get()));
+
+  ASSERT_THAT(entry_computation->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardInputCallTarget), 0));
+  const HloInstruction* custom_call =
+      entry_computation->root_instruction()->operand(0);
   for (int i = 0; i < 2; ++i) {
-    const WindowDimension& window_dim =
-        entry_computation->root_instruction()->window().dimensions(i);
+    const WindowDimension& window_dim = custom_call->window().dimensions(i);
     // Low padding of the backward input convolution
     //   = kernel_size - 1 - low padding on gradients.
     EXPECT_EQ(3, window_dim.padding_low());
@@ -291,7 +300,7 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveEvenPadding) {
 // Convolve([abc], [x], base_dilation=2)
 //   = Convolve([abc], Reverse([x]), base_dilation=2)
 //   = BackwardInputConvolve([abc], [x], stride=2)
-TEST_F(ConvolutionFoldingTest, BackwardInputConvolve1x1Filter) {
+TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolve1x1Filter) {
   auto builder = HloComputation::Builder(TestName());
   // NHWC dimension order.
   HloInstruction* output =
@@ -316,17 +325,16 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolve1x1Filter) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(module.get()));
-  EXPECT_EQ(HloOpcode::kFusion,
-            entry_computation->root_instruction()->opcode());
-  EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardInput ==
-              entry_computation->root_instruction()->fusion_kind());
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(entry_computation->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardInputCallTarget), 0));
 }
 
 // BackwardInputConvolve([abc], [x], stride=1) is equivalent to
 // ForwardConvolve([abc], [x], stride=1). No need to fold it into backward input
 // convolution.
-TEST_F(ConvolutionFoldingTest,
+TEST_F(CudnnConvolutionRewriterTest,
        BackwardInputConvolve1x1FilterEquivalentToForwardConvolve) {
   auto builder = HloComputation::Builder(TestName());
   // NHWC dimension order.
@@ -347,8 +355,12 @@ TEST_F(ConvolutionFoldingTest,
       tf_default_dnums_for_backward_input_));
 
   auto module = CreateNewModule();
-  module->AddEntryComputation(builder.Build());
-  EXPECT_FALSE(FoldConvolution(module.get()));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(
+      entry_computation->root_instruction(),
+      op::GetTupleElement(op::CustomCall(kCudnnConvForwardCallTarget), 0));
 }
 
 // Extracted from Inception V3 training.
@@ -365,7 +377,8 @@ TEST_F(ConvolutionFoldingTest,
 //                     20x10x10x192
 //
 // Gradients are padded unevenly.
-TEST_F(ConvolutionFoldingTest, BackwardInputConvolveUnevenPaddingOnGradients) {
+TEST_F(CudnnConvolutionRewriterTest,
+       BackwardInputConvolveUnevenPaddingOnGradients) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -397,14 +410,14 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveUnevenPaddingOnGradients) {
   auto module = CreateNewModule();
   HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(module.get()));
-  EXPECT_EQ(HloOpcode::kFusion,
-            entry_computation->root_instruction()->opcode());
-  EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardInput ==
-              entry_computation->root_instruction()->fusion_kind());
+  EXPECT_TRUE(RunPass(module.get()));
+  ASSERT_THAT(entry_computation->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardInputCallTarget), 0));
+  const HloInstruction* custom_call =
+      entry_computation->root_instruction()->operand(0);
   for (int i = 0; i < 2; ++i) {
-    const WindowDimension& window_dim =
-        entry_computation->root_instruction()->window().dimensions(i);
+    const WindowDimension& window_dim = custom_call->window().dimensions(i);
     EXPECT_EQ(0, window_dim.padding_low());
     EXPECT_EQ(0, window_dim.padding_high());
     EXPECT_EQ(2, window_dim.stride());
@@ -413,7 +426,7 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveUnevenPaddingOnGradients) {
 
 // Similar to BackwardInputConvolveUnevenPadding, but the low padding of the
 // gradients exceeds kernel_size - 1. Therefore, this pattern cannot be fused.
-TEST_F(ConvolutionFoldingTest, BackwardInputConvolveLowPaddingTooLarge) {
+TEST_F(CudnnConvolutionRewriterTest, BackwardInputConvolveLowPaddingTooLarge) {
   auto builder = HloComputation::Builder(TestName());
   HloInstruction* output =
       builder.AddInstruction(HloInstruction::CreateParameter(
@@ -442,8 +455,12 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveLowPaddingTooLarge) {
                          .ValueOrDie()));
 
   auto module = CreateNewModule();
-  module->AddEntryComputation(builder.Build());
-  EXPECT_FALSE(FoldConvolution(module.get()));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(
+      entry_computation->root_instruction(),
+      op::GetTupleElement(op::CustomCall(kCudnnConvForwardCallTarget), 0));
 }
 
 // Extracted from //learning/brain/google/xla/benchmarks/resnet.py
@@ -460,7 +477,7 @@ TEST_F(ConvolutionFoldingTest, BackwardInputConvolveLowPaddingTooLarge) {
 //
 // We should fuse BC even though padding on activations is uneven, because
 // PadInsertion will canonicalize the fusion HLO.
-TEST_F(ConvolutionFoldingTest,
+TEST_F(CudnnConvolutionRewriterTest,
        BackwardInputConvolveUnevenPaddingOnActivations) {
   auto builder = HloComputation::Builder(TestName());
   // The gradients are in NCHW layout.
@@ -493,13 +510,12 @@ TEST_F(ConvolutionFoldingTest,
   auto module = CreateNewModule();
   const HloComputation* entry_computation =
       module->AddEntryComputation(builder.Build());
-  EXPECT_TRUE(FoldConvolution(module.get()));
-  const HloInstruction* backward_conv = entry_computation->root_instruction();
-  EXPECT_EQ(HloOpcode::kFusion, backward_conv->opcode());
-  EXPECT_TRUE(HloInstruction::FusionKind::kConvBackwardInput ==
-              backward_conv->fusion_kind());
+  EXPECT_TRUE(RunPass(module.get()));
+  ASSERT_THAT(entry_computation->root_instruction(),
+              op::GetTupleElement(
+                  op::CustomCall(kCudnnConvBackwardInputCallTarget), 0));
   const WindowDimension& backward_conv_col_dim =
-      backward_conv->window().dimensions(1);
+      entry_computation->root_instruction()->operand(0)->window().dimensions(1);
   EXPECT_EQ(0, backward_conv_col_dim.padding_low());
   EXPECT_EQ(1, backward_conv_col_dim.padding_high());
 }
@@ -515,7 +531,7 @@ TEST_F(ConvolutionFoldingTest,
 //
 // We currently don't fuse BC because PadInsertion doesn't support negative
 // padding on the gradients of backward convolution (b/32744257).
-TEST_F(ConvolutionFoldingTest,
+TEST_F(CudnnConvolutionRewriterTest,
        BackwardInputConvolveNegativePaddingHighOnActivations) {
   auto builder = HloComputation::Builder(TestName());
   // The gradients are in NCHW layout.
@@ -544,9 +560,14 @@ TEST_F(ConvolutionFoldingTest,
                          .ValueOrDie()));
 
   auto module = CreateNewModule();
-  module->AddEntryComputation(builder.Build());
-  EXPECT_FALSE(FoldConvolution(module.get()));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+  EXPECT_TRUE(RunPass(module.get()));
+  EXPECT_THAT(
+      entry_computation->root_instruction(),
+      op::GetTupleElement(op::CustomCall(kCudnnConvForwardCallTarget), 0));
 }
 
+}  // anonymous namespace
 }  // namespace gpu
 }  // namespace xla

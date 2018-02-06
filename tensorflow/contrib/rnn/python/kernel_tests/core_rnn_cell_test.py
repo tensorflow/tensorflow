@@ -157,7 +157,7 @@ class RNNCellTest(test.TestCase):
             m.name: np.array([[0.1, 0.1]])
         })
         # Smoke test
-        self.assertAllClose(res[0], [[0.509682,  0.509682]])
+        self.assertAllClose(res[0], [[0.509682, 0.509682]])
 
   def testSRUCellWithDiffSize(self):
     with self.test_session() as sess:

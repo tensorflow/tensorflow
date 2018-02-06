@@ -403,7 +403,7 @@ def map_and_batch(map_func, batch_size, num_parallel_batches=1):
     num_parallel_batches: A `tf.int64` scalar `tf.Tensor`, representing the
       number of batches to create in parallel. On one hand, higher values can
       help mitigate the effect of stragglers. On the other hand, higher values
-      can increasing contention if CPU is scarce.
+      can increase contention if CPU is scarce.
 
   Returns:
     A `Dataset` transformation function, which can be passed to

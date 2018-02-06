@@ -407,7 +407,7 @@ $(MARCH_OPTION) \
 -I$(JETPACK)/cuda/extras/CUPTI/include
 
 
-		LIBS += \
+		CUDA_LIBS := \
 -ltfcuda \
 -lcudart_static \
 -lcudnn \
@@ -420,10 +420,10 @@ $(MARCH_OPTION) \
 -lculibos \
 -lcurand_static
 
-		OBJDIR := $(OBJDIR)Tegra/
-		LIBDIR := $(LIBDIR)Tegra/
-		BINDIR := $(BINDIR)Tegra/
-		DEPDIR := $(DEPDIR)Tegra/
+		OBJDIR := $(OBJDIR)android_arm64-v8a/
+		LIBDIR := $(LIBDIR)android_arm64-v8a/
+		BINDIR := $(BINDIR)android_arm64-v8a/
+		DEPDIR := $(DEPDIR)android_arm64-v8a/
 
 		TEGRA_LIBS := \
 -L$(JETPACK)/cuda/targets/aarch64-linux-androideabi/lib \
@@ -729,7 +729,7 @@ $(BENCHMARK_NAME): $(BENCHMARK_OBJS) $(LIB_PATH) $(CUDA_LIB_DEPS)
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) $(INCLUDES) \
 	-o $(BENCHMARK_NAME) $(BENCHMARK_OBJS) \
-	$(LIBFLAGS) $(TEGRA_LIBS) $(LIB_PATH) $(LDFLAGS) $(LIBS)
+	$(LIBFLAGS) $(TEGRA_LIBS) $(LIB_PATH) $(LDFLAGS) $(LIBS) $(CUDA_LIBS)
 
 # NVCC compilation rules for Tegra
 ifeq ($(BUILD_FOR_TEGRA),1)

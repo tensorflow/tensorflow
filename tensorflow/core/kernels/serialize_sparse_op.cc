@@ -426,7 +426,6 @@ class DeserializeSparseOp : public OpKernel {
     switch (dtype_) {
       TF_CALL_ALL_TYPES(HANDLE_TYPE);
       TF_CALL_QUANTIZED_TYPES(HANDLE_TYPE);
-      TF_CALL_variant(HANDLE_TYPE);
 #undef HANDLE_TYPE
       default:
         OP_REQUIRES(context, false,

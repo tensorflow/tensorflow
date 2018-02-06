@@ -29,6 +29,7 @@ import numpy as np
 
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as session_module
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
@@ -326,7 +327,15 @@ def learning_phase():
 
   Returns:
       Learning phase (scalar integer tensor or Python integer).
+
+  Raises:
+      ValueError: If called when Eager execution is enabled.
   """
+  if context.in_eager_mode():
+    if 'eager' not in _GRAPH_LEARNING_PHASES:
+      raise ValueError('No learning phase set in Eager mode.')
+    return _GRAPH_LEARNING_PHASES['eager']
+
   graph = ops.get_default_graph()
   if graph not in _GRAPH_LEARNING_PHASES:
     phase = array_ops.placeholder_with_default(
@@ -347,7 +356,10 @@ def set_learning_phase(value):
   global _GRAPH_LEARNING_PHASES  # pylint: disable=global-variable-not-assigned
   if value not in {0, 1}:
     raise ValueError('Expected learning phase to be ' '0 or 1.')
-  _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
+  if context.in_eager_mode():
+    _GRAPH_LEARNING_PHASES['eager'] = value
+  else:
+    _GRAPH_LEARNING_PHASES[ops.get_default_graph()] = value
 
 
 def get_session():

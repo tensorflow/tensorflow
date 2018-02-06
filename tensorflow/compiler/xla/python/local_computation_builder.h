@@ -59,7 +59,9 @@ StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
 // client.
 class LocalShapedBuffer {
  public:
-  static LocalShapedBuffer* FromLiteral(const Literal& argument);
+  static LocalShapedBuffer* FromLiteral(
+      const Literal& argument,
+      const tensorflow::gtl::optional<Shape>& shape_with_layout);
   LocalShapedBuffer(std::unique_ptr<ScopedShapedBuffer> shaped_buffer);
   const std::unique_ptr<ScopedShapedBuffer>& shaped_buffer() const;
   std::unique_ptr<Literal> ToLiteral() const;
@@ -77,8 +79,15 @@ class LocalShapedBuffer {
 class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
+
+  // Execute the computation with the given argument literals, and
+  // with optionally-specified argument layouts. The literals will be
+  // re-laid out according to the corresponding elements of
+  // shapes_with_layout.
   StatusOr<std::unique_ptr<Literal> > Execute(
-      const std::vector<Literal>& arguments);
+      const std::vector<Literal>& arguments,
+      const std::vector<tensorflow::gtl::optional<Shape> >& shapes_with_layout);
+
   LocalShapedBuffer* ExecuteWithShapedBuffers(
       tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles);
 
@@ -174,10 +183,6 @@ class LocalComputationBuilder {
       const ComputationDataHandle& source,
       const ComputationDataHandle& init_value, const LocalComputation& scatter);
 
-  ComputationDataHandle Select(const ComputationDataHandle& pred,
-                               const ComputationDataHandle& on_true,
-                               const ComputationDataHandle& on_false);
-
   ComputationDataHandle Tuple(
       tensorflow::gtl::ArraySlice<ComputationDataHandle> elements);
 
@@ -186,6 +191,10 @@ class LocalComputationBuilder {
 
   ComputationDataHandle Dot(const ComputationDataHandle& lhs,
                             const ComputationDataHandle& rhs);
+
+  ComputationDataHandle DotGeneral(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      const DotDimensionNumbers& dimension_numbers);
 
   ComputationDataHandle ConvGeneralDilated(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
@@ -254,6 +263,14 @@ class LocalComputationBuilder {
       (const ComputationDataHandle& lhs, const ComputationDataHandle& rhs, \
        tensorflow::gtl::ArraySlice<int64> broadcast_dimensions))
 
+#define _FORWARD_TRIOP(method_name)                                        \
+  _FORWARD(                                                                \
+      method_name, ComputationDataHandle,                                  \
+      (const ComputationDataHandle& lhs, const ComputationDataHandle& rhs, \
+       const ComputationDataHandle& ehs))
+
+  _FORWARD_TRIOP(Select)
+  _FORWARD_TRIOP(Clamp)
   _FORWARD_BINOP(Eq)
   _FORWARD_BINOP(Ne)
   _FORWARD_BINOP(Ge)
@@ -274,6 +291,7 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Exp)
   _FORWARD_UNOP(Floor)
   _FORWARD_UNOP(Ceil)
+  _FORWARD_UNOP(Round)
   _FORWARD_UNOP(Log)
   _FORWARD_UNOP(Sign)
   _FORWARD_UNOP(Cos)
@@ -290,6 +308,7 @@ class LocalComputationBuilder {
 #undef _FORWARD
 #undef _FORWARD_UNOP
 #undef _FORWARD_BINOP
+#undef _FORWARD_TRIOP
 
  private:
   ComputationBuilder builder_;

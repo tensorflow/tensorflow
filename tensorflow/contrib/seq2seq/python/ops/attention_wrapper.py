@@ -331,7 +331,7 @@ def _luong_score(query, keys, scale):
   # batched matmul on:
   #   [batch_size, 1, depth] . [batch_size, depth, max_time]
   # resulting in an output shape of:
-  #   [batch_time, 1, max_time].
+  #   [batch_size, 1, max_time].
   # we then squeeze out the center singleton dimension.
   score = math_ops.matmul(query, keys, transpose_b=True)
   score = array_ops.squeeze(score, [1])
@@ -924,8 +924,7 @@ class LuongMonotonicAttention(_BaseMonotonicAttentionMechanism):
         _monotonic_probability_fn, sigmoid_noise=sigmoid_noise, mode=mode,
         seed=sigmoid_noise_seed)
     super(LuongMonotonicAttention, self).__init__(
-        query_layer=layers_core.Dense(
-            num_units, name="query_layer", use_bias=False, dtype=dtype),
+        query_layer=None,
         memory_layer=layers_core.Dense(
             num_units, name="memory_layer", use_bias=False, dtype=dtype),
         memory=memory,

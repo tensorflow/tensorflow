@@ -46,6 +46,7 @@ py_library(
     deps = [
         ":converters",
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
+        "//tensorflow/contrib/py2tf/utils",
         "@gast_archive//:gast",
     ],
 )
@@ -130,6 +131,8 @@ py_test(
 py_test(
     name = "for_canonicalization_test",
     srcs = ["for_canonicalization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["nomac"],
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",

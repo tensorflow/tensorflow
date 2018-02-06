@@ -28,6 +28,7 @@ from __future__ import division
 from __future__ import print_function
 
 import functools
+import os
 import sys
 import tarfile
 
@@ -189,20 +190,31 @@ def get_graph_def_from_resource(filename):
   return graph_pb2.GraphDef.FromString(resource_loader.load_resource(filename))
 
 
-def get_graph_def_from_url_tarball(url, filename):
-  """Get a GraphDef proto from a tarball on the web."""
-  def _progress(count, block_size, total_size):
-    sys.stdout.write('\r>> Downloading %s %.1f%%' % (
-        url, float(count * block_size) / float(total_size) * 100.0))
-    sys.stdout.flush()
-  tar_filename, _ = urllib.request.urlretrieve(url, reporthook=_progress)
+def get_graph_def_from_url_tarball(url, filename, tar_filename=None):
+  """Get a GraphDef proto from a tarball on the web.
+
+  Args:
+    url: Web address of tarball
+    filename: Filename of graph definition within tarball
+    tar_filename: Temporary download filename (None = always download)
+
+  Returns:
+    A GraphDef loaded from a file in the downloaded tarball.
+  """
+  if not (tar_filename and os.path.exists(tar_filename)):
+    def _progress(count, block_size, total_size):
+      sys.stdout.write('\r>> Downloading %s %.1f%%' % (
+          url, float(count * block_size) / float(total_size) * 100.0))
+      sys.stdout.flush()
+    tar_filename, _ = urllib.request.urlretrieve(url, tar_filename, _progress)
   with tarfile.open(tar_filename, 'r:gz') as tar:
     proto_str = tar.extractfile(filename).read()
   return graph_pb2.GraphDef.FromString(proto_str)
 
 
 def _default_graph_def_fn():
-  return get_graph_def_from_url_tarball(INCEPTION_URL, INCEPTION_FROZEN_GRAPH)
+  return get_graph_def_from_url_tarball(INCEPTION_URL, INCEPTION_FROZEN_GRAPH,
+                                        os.path.basename(INCEPTION_URL))
 
 
 def run_inception(images,

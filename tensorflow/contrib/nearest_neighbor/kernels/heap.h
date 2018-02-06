@@ -56,7 +56,7 @@ class HeapBase {
 
   // This method adds an element at the end of the internal array without
   // "heapifying" the array afterwards. This is useful for setting up a heap
-  // where a single call to heapify at the end of the inital insertion
+  // where a single call to heapify at the end of the initial insertion
   // operations suffices.
   void InsertUnsorted(const KeyType& key, const DataType& data) {
     if (v_.size() == static_cast<size_t>(num_elements_)) {
