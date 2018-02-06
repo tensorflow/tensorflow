@@ -32,17 +32,18 @@ namespace {
 
 // Builds XlaCompiler argument descriptions `args` from `ctx`.
 Status MakeXlaCompilerArgumentsFromInputs(
-    XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args,
-    bool* has_uninitialized_vars, bool* has_tensor_arrays) {
+    XlaOpKernelContext* ctx, int skip_inputs,
+    std::vector<XlaCompiler::Argument>* args, bool* has_uninitialized_vars,
+    bool* has_tensor_arrays) {
   VLOG(2) << "Num inputs " << ctx->num_inputs();
-  args->resize(ctx->num_inputs());
+  args->resize(ctx->num_inputs() - skip_inputs);
   *has_uninitialized_vars = false;
   *has_tensor_arrays = false;
-  for (int i = 0; i < ctx->num_inputs(); ++i) {
+  for (int i = skip_inputs; i < ctx->num_inputs(); ++i) {
     VLOG(2) << " Input " << i
             << " type: " << DataTypeString(ctx->input_type(i))
             << " shape: " << ctx->InputShape(i).DebugString();
-    XlaCompiler::Argument& arg = (*args)[i];
+    XlaCompiler::Argument& arg = (*args)[i - skip_inputs];
     DataType type = ctx->input_type(i);
     // When reading a resource input, use the type and shape of the resource's
     // current value.
@@ -99,7 +100,7 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   bool has_tensor_arrays;
   OP_REQUIRES_OK(
       ctx, MakeXlaCompilerArgumentsFromInputs(
-               ctx, &arguments, &has_uninitialized_vars, &has_tensor_arrays));
+          ctx, 0, &arguments, &has_uninitialized_vars, &has_tensor_arrays));
 
   xla::ComputationBuilder* builder = ctx->builder();
   XlaCompiler* compiler = ctx->compiler();
@@ -301,5 +302,91 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
 }
 
 REGISTER_XLA_OP(Name("XlaWhile").AllowResourceTypes(), XlaWhileOp);
+
+
+XlaIfOp::XlaIfOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+  const NameAttrList* name_attr;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("then_branch", &name_attr));
+  then_name_attr_ = *name_attr;
+  OP_REQUIRES_OK(ctx, ctx->GetAttr("else_branch", &name_attr));
+  else_name_attr_ = *name_attr;
+}
+
+void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
+  VLOG(1) << "XlaIfOp::Compile";
+
+  std::vector<XlaCompiler::Argument> arguments;
+  bool has_uninitialized_vars;
+  bool has_tensor_arrays;
+  OP_REQUIRES_OK(
+      ctx, MakeXlaCompilerArgumentsFromInputs(
+          ctx, 1, &arguments, &has_uninitialized_vars, &has_tensor_arrays));
+
+  xla::ComputationDataHandle a = ctx->Input(0);
+
+  xla::ComputationBuilder* builder = ctx->builder();
+  XlaCompiler* compiler = ctx->compiler();
+
+  XlaCompiler::CompileOptions comp_options;
+  comp_options.use_tuple_arg = true;
+  comp_options.resolve_compile_time_constants = false;
+  comp_options.is_entry_computation = false;
+
+  XlaCompiler::CompilationResult then_body;
+  OP_REQUIRES_OK(ctx, compiler->CompileFunction(comp_options, then_name_attr_,
+                                                arguments, &then_body));
+
+  XlaCompiler::CompilationResult else_body;
+  OP_REQUIRES_OK(ctx, compiler->CompileFunction(comp_options, else_name_attr_,
+                                                arguments, &else_body));
+
+  int num_inputs = then_body.input_mapping.size();
+  std::vector<xla::ComputationDataHandle> inputs(num_inputs);
+  for (int i = 0; i < num_inputs; ++i) {
+    int input_num = then_body.input_mapping[i] + 1;
+    if (ctx->input_type(input_num) == DT_RESOURCE) {
+      XlaResource* resource;
+      OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
+
+      OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], builder));
+    } else {
+      inputs[i] = ctx->Input(i+1);
+    }
+  }
+
+  xla::ComputationDataHandle tuple = builder->Tuple(inputs);
+
+  auto if_result = builder->Conditional(a, tuple, *then_body.computation,
+                                        tuple, *else_body.computation);
+
+  // Sets non-variable outputs.
+  for (int i = 0; i < ctx->num_outputs(); ++i) {
+    if (ctx->input_type(i) != DT_RESOURCE) {
+      ctx->SetOutput(i, builder->GetTupleElement(if_result, i));
+    }
+  }
+
+  // Updates the values of any resource variables modified by the condition.
+  for (int i = 0; i < then_body.resource_updates.size(); ++i) {
+    const XlaCompiler::ResourceUpdate& update = then_body.resource_updates[i];
+    XlaResource* resource;
+    unsigned input_num = update.input_index + 1;
+    OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
+    if (update.modified) {
+      int pos = then_body.outputs.size() + i;
+      OP_REQUIRES_OK(ctx,
+                     resource->SetFromPack(
+                         arguments[input_num].tensor_array_gradients,
+                         builder->GetTupleElement(if_result, pos), builder));
+    }
+
+    // Copies the identity of the resource variable from input to output
+    // unchanged, even if the variable was not modified.
+    ctx->op_kernel_context()->set_output(input_num,
+        ctx->op_kernel_context()->input(input_num));
+  }
+}
+
+REGISTER_XLA_OP(Name("XlaIf").AllowResourceTypes(), XlaIfOp);
 
 }  // namespace tensorflow

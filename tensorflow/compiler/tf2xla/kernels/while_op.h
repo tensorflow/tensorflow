@@ -60,6 +60,22 @@ class XlaWhileOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(XlaWhileOp);
 };
 
+// This Tensorflow op provides a conditional primitive. It is created by
+// the functionalize code when converting the Switch/Merge structures of
+// tf.cond
+class XlaIfOp : public XlaOpKernel {
+ public:
+  explicit XlaIfOp(OpKernelConstruction* ctx);
+
+  void Compile(XlaOpKernelContext* ctx) override;
+
+ private:
+  NameAttrList then_name_attr_;
+  NameAttrList else_name_attr_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(XlaIfOp);
+};
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_KERNELS_WHILE_OP_H_
