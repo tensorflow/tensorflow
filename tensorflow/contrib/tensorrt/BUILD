@@ -11,16 +11,17 @@ exports_files(["LICENSE"])
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_cc_test",
+    "tf_copts",
+    "tf_cuda_library",
     "tf_custom_op_library",
+    "tf_custom_op_library_additional_deps",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
-    "tf_py_wrap_cc",
-    "tf_cc_test",
-    "tf_cuda_cc_test",
-    "tf_cuda_library",
-    "tf_custom_op_py_library",
-    "tf_copts",
 )
+load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
+load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 load(
     "@local_config_tensorrt//:build_defs.bzl",
     "if_tensorrt",
@@ -62,12 +63,8 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":trt_logging",
-        "//tensorflow/core:framework_headers_lib",
-        "//third_party/eigen3",
         "@local_config_tensorrt//:nv_infer",
-        "@nsync//:nsync_headers",
-        "@protobuf_archive//:protobuf",
-    ],
+    ] + tf_custom_op_library_additional_deps(),
 )
 
 cc_library(
@@ -77,14 +74,11 @@ cc_library(
     copts = tf_copts(),
     deps = [
         ":trt_logging",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor_headers_lib",
-        "//third_party/eigen3",
         "@local_config_tensorrt//:nv_infer",
-        "@nsync//:nsync_headers",
-    ],
+    ] + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
 
@@ -185,7 +179,6 @@ tf_cuda_library(
     deps = [
         ":segment",
         ":trt_logging",
-        "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
@@ -195,9 +188,7 @@ tf_cuda_library(
         "//tensorflow/core/grappler/optimizers:constant_folding",
         "//tensorflow/core/grappler/optimizers:layout_optimizer",
         "@local_config_tensorrt//:nv_infer",
-        "@nsync//:nsync_headers",
-        "@protobuf_archive//:protobuf_headers",
-    ],
+    ] + tf_custom_op_library_additional_deps(),
 )
 
 # Library for the segmenting portion of TensorRT operation creation

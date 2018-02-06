@@ -14,12 +14,14 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
-#include "cuda/include/cuda_runtime_api.h"
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/platform/types.h"
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+#include "cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -27,7 +29,7 @@ static ::tensorflow::tensorrt::Logger logger;
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   // read serialized_engine
-  std::string serialized_engine;
+  string serialized_engine;
   OP_REQUIRES_OK(context,
                  context->GetAttr("serialized_engine", &serialized_engine));
 

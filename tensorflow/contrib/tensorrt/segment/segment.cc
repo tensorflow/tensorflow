@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 
 #include <set>
-#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -26,6 +25,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 namespace tensorrt {
@@ -216,7 +216,7 @@ tensorflow::Status SegmentGraph(
 
   // Collect the segments/subgraphs. Each subgraph is represented by a
   // set of the names of the nodes in that subgraph.
-  std::unordered_map<std::string, std::set<std::string>> sg_map;
+  std::unordered_map<string, std::set<string>> sg_map;
   for (auto& u : node_segments) {
     if ((u.Value() != nullptr) && (u.ParentValue() != nullptr)) {
       sg_map[u.ParentValue()->name()].insert(u.Value()->name());
@@ -227,7 +227,7 @@ tensorflow::Status SegmentGraph(
   for (const auto& itr : sg_map) {
     const auto& segment_node_names = itr.second;
     if (VLOG_IS_ON(1)) {
-      std::string s;
+      string s;
       for (const auto& name : segment_node_names) {
         s += " " + name;
       }
