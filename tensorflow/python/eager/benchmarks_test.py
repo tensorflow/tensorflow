@@ -44,6 +44,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
@@ -271,6 +272,14 @@ class MicroBenchmarks(test.Benchmark):
     func = lambda: f(m, m, transpose_b)
     self._run(func, num_iters)
 
+  def _benchmark_read_variable(self, m, num_iters):
+    self._run(m.value, num_iters)
+
+  def _benchmark_read_variable_with_tape(self, m, num_iters):
+    with backprop.GradientTape() as tape:
+      tape.watch(m)
+      self._run(m.value, num_iters)
+
   # Benchmarks for A^2, A of dimension 2 by 2.
   def benchmark_np_matmul_2_by_2(self):
     self._benchmark_np_matmul(
@@ -406,6 +415,32 @@ class MicroBenchmarks(test.Benchmark):
       m = self._m_100_by_784.gpu()
       self._benchmark_defun_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_read_variable_op_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_read_variable(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_read_variable_op_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_read_variable(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_read_variable_op_with_tape_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_read_variable_with_tape(
+          m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_read_variable_op_with_tape_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_read_variable_with_tape(
+          m, num_iters=self._num_iters_2_by_2)
 
 
 if __name__ == "__main__":
