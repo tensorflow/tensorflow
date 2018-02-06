@@ -94,7 +94,7 @@ TEST(ConcatenationOpTest, TwoDimensionalOneInput) {
   EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
 }
 
-TEST(ConcatenationOpTest, TwoInputsTwoAxis) {
+TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxes) {
   // We will concatenate two tensors along different dimensions.
   auto tensor0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   auto tensor1 = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
@@ -107,12 +107,28 @@ TEST(ConcatenationOpTest, TwoInputsTwoAxis) {
   EXPECT_THAT(m0.GetOutput(),
               ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
 
+  ConcatenationOpModel m0_negative({TensorType_FLOAT32, {2, 3}}, /*axis=*/-2,
+                                   /*num_inputs=*/2);
+  m0_negative.SetInput(0, tensor0);
+  m0_negative.SetInput(1, tensor1);
+  m0_negative.Invoke();
+  EXPECT_THAT(m0_negative.GetOutput(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+
   ConcatenationOpModel m1({TensorType_FLOAT32, {2, 3}}, /*axis=*/1,
                           /*num_inputs=*/2);
   m1.SetInput(0, tensor0);
   m1.SetInput(1, tensor1);
   m1.Invoke();
   EXPECT_THAT(m1.GetOutput(),
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+
+  ConcatenationOpModel m1_negative({TensorType_FLOAT32, {2, 3}}, /*axis=*/-1,
+                                   /*num_inputs=*/2);
+  m1_negative.SetInput(0, tensor0);
+  m1_negative.SetInput(1, tensor1);
+  m1_negative.Invoke();
+  EXPECT_THAT(m1_negative.GetOutput(),
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
 
