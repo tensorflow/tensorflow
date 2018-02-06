@@ -380,6 +380,13 @@ def find_cuda_define(repository_ctx, header_dir, header_file, define):
           "Cannot extract the version from line containing '%s' in %s" %
           (define, str(h_path)))
     version = version[:version_end].strip()
+  version_end = version.find("\t")
+  if version_end != -1:
+    if version_end == 0:
+      auto_configure_fail(
+          "Cannot extract the version from line containing '%s' in %s" %
+          (define, str(h_path)))
+    version = version[:version_end].strip()
   return version
 
 
