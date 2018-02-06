@@ -621,7 +621,8 @@ void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
                             GraphDef* tensorflow_graph) {
   string softmax_input;
   Operator* providing_op = GetOpWithOutput(model, src_op.inputs[0]);
-  if (providing_op->type == OperatorType::kTensorFlowReshape) {
+  if (providing_op != nullptr &&
+      providing_op->type == OperatorType::kTensorFlowReshape) {
     softmax_input = src_op.inputs[0];
   } else {
     // Insert a reshape operator that reduces the dimensions down to the 2 that

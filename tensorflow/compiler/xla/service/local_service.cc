@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/execution_options_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/backend.h"
@@ -71,7 +72,7 @@ LocalService::LocalService(const ServiceOptions& options,
 StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
     const ComputationHandle& computation,
     const tensorflow::gtl::ArraySlice<const Shape*> argument_layouts,
-    const Shape* result_layout, int device_ordinal) {
+    const ExecutableBuildOptions& build_options) {
   TF_ASSIGN_OR_RETURN(UserComputation * user_computation,
                       computation_tracker_.Resolve(computation));
   VersionedComputationHandle versioned_handle =
@@ -112,14 +113,19 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
           ShapeUtil::HumanString(argument_shape).c_str());
     }
   }
-  if (result_layout != nullptr) {
-    TF_RETURN_IF_ERROR(
-        ValidateResultShapeWithLayout(*result_layout, program_shape->result()));
+  if (build_options.result_layout() != nullptr) {
+    TF_RETURN_IF_ERROR(ValidateResultShapeWithLayout(
+        *build_options.result_layout(), program_shape->result()));
   }
 
   ExecutionOptions execution_options = CreateDefaultExecutionOptions();
-  if (result_layout != nullptr) {
-    *execution_options.mutable_shape_with_output_layout() = *result_layout;
+  if (build_options.generate_hlo_graph().has_value()) {
+    execution_options.mutable_debug_options()->set_xla_generate_hlo_graph(
+        build_options.generate_hlo_graph().value());
+  }
+  if (build_options.result_layout() != nullptr) {
+    *execution_options.mutable_shape_with_output_layout() =
+        *build_options.result_layout();
   } else {
     *execution_options.mutable_shape_with_output_layout() =
         program_shape->result();
@@ -131,11 +137,13 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
       CreateModuleConfig(*program_shape, argument_layouts, &execution_options,
                          *user_computation));
 
-  TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
-                      execute_backend_->stream_executor(device_ordinal));
+  TF_ASSIGN_OR_RETURN(
+      se::StreamExecutor * executor,
+      execute_backend_->stream_executor(build_options.device_ordinal()));
 
   return BuildExecutable(versioned_handle, std::move(module_config),
-                         execute_backend_.get(), executor);
+                         execute_backend_.get(), executor,
+                         build_options.device_allocator());
 }
 
 StatusOr<int> LocalService::ReplicaNumberToDeviceOrdinal(int replica_number) {

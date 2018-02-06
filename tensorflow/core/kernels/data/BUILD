@@ -49,6 +49,7 @@ cc_library(
     srcs = ["dataset.cc"],
     hdrs = ["dataset.h"],
     deps = [
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
@@ -81,9 +82,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:session_options",
         "//tensorflow/core/kernels:variable_ops",
     ],
 )
@@ -122,6 +121,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:batch_util",
     ],
 )
 
@@ -403,6 +403,19 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "tensor_queue_dataset_op",
+    srcs = ["tensor_queue_dataset_op.cc"],
+    deps = [
+        ":dataset",
+        "//tensorflow/core:dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core/kernels:batch_util",
+    ],
+)
+
+tf_kernel_library(
     name = "tensor_slice_dataset_op",
     srcs = ["tensor_slice_dataset_op.cc"],
     deps = [
@@ -540,6 +553,7 @@ tf_kernel_library(
         ":stats_dataset_ops",
         ":take_dataset_op",
         ":tensor_dataset_op",
+        ":tensor_queue_dataset_op",
         ":tensor_slice_dataset_op",
         ":unique_dataset_op",
         ":zip_dataset_op",

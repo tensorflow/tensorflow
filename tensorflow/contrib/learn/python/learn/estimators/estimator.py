@@ -600,7 +600,8 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
               input_fn=None,
               batch_size=None,
               outputs=None,
-              as_iterable=True):
+              as_iterable=True,
+              iterate_batches=False):
     """Returns predictions for given features.
 
     Args:
@@ -616,6 +617,9 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
         for each example until inputs are exhausted. Note: The inputs must
         terminate if you want the iterable to terminate (e.g. be sure to pass
         num_epochs=1 if you are using something like read_batch_features).
+      iterate_batches: If True, yield the whole batch at once instead of
+        decomposing the batch into individual samples. Only relevant when
+        as_iterable is True.
 
     Returns:
       A numpy array of predicted classes or regression values if the
@@ -635,7 +639,8 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
         input_fn=input_fn,
         feed_fn=feed_fn,
         outputs=outputs,
-        as_iterable=as_iterable)
+        as_iterable=as_iterable,
+        iterate_batches=iterate_batches)
 
   def get_variable_value(self, name):
     """Returns value of the variable given by name.

@@ -763,16 +763,13 @@ HloInstruction::CreateBroadcastSequence(
   return instruction;
 }
 
-// We put the fusion kind into the instruction's name for transpose-dot and
-// backward-conv fusions, since those fusions are really just describing a type
-// of dot/conv rather than generating a novel computation.
+// We put the fusion kind into the instruction's name for transpose-dot fusions,
+// since those fusions are really just describing a type of dot rather than
+// generating a novel computation.
 static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
   switch (fusion_kind) {
     case HloInstruction::FusionKind::kTransposeDot:
       return "dot_fusion";
-    case HloInstruction::FusionKind::kConvBackwardInput:
-    case HloInstruction::FusionKind::kConvBackwardFilter:
-      return "conv_fusion";
     default:
       return "fusion";
   }
@@ -802,18 +799,6 @@ static string FusionNodeName(HloInstruction::FusionKind fusion_kind) {
   instruction->called_computations_.push_back(fusion_computation);
   fusion_computation->SetFusionInstruction(instruction.get());
   return instruction;
-}
-
-/* static */ std::unique_ptr<HloInstruction>
-HloInstruction::CreateFusionForBackwardConvolution(
-    const Shape& shape, FusionKind fusion_kind, const Window& window,
-    const ConvolutionDimensionNumbers& conv_dnums, HloInstruction* fused_root) {
-  std::unique_ptr<HloInstruction> fusion =
-      CreateFusion(shape, fusion_kind, fused_root);
-  fusion->window_ = MakeUnique<Window>(window);
-  fusion->convolution_dimension_numbers_ =
-      MakeUnique<ConvolutionDimensionNumbers>(conv_dnums);
-  return fusion;
 }
 
 void HloInstruction::MergeFusionInstruction(
@@ -2318,7 +2303,7 @@ string HloInstruction::ToCategory() const {
     return "data formatting";
   }
 
-  auto conv_category = [&] {
+  if (opcode() == HloOpcode::kConvolution) {
     string category = "convolution";
     if (window_util::HasBaseDilation(window())) {
       category += " base-dilated";
@@ -2327,10 +2312,6 @@ string HloInstruction::ToCategory() const {
       category += " window-dilated";
     }
     return category;
-  };
-
-  if (opcode() == HloOpcode::kConvolution) {
-    return conv_category();
   }
 
   // Give transpose-dot and backwards-conv fusions the categories "dot" and
@@ -2348,9 +2329,6 @@ string HloInstruction::ToCategory() const {
         return "output fusion";
       case FusionKind::kTransposeDot:
         return "dot";
-      case FusionKind::kConvBackwardFilter:
-      case FusionKind::kConvBackwardInput:
-        return conv_category();
       case FusionKind::kCustom:
         return "custom fusion";
     }
@@ -3125,10 +3103,6 @@ string ToString(HloInstruction::FusionKind kind) {
       return "kOutput";
     case HloInstruction::FusionKind::kTransposeDot:
       return "kTransposeDot";
-    case HloInstruction::FusionKind::kConvBackwardFilter:
-      return "kConvBackwardFilter";
-    case HloInstruction::FusionKind::kConvBackwardInput:
-      return "kConvBackwardInput";
     case HloInstruction::FusionKind::kCustom:
       return "kCustom";
   }
@@ -3147,12 +3121,6 @@ StatusOr<HloInstruction::FusionKind> StringToFusionKind(
   }
   if (kind_name == "kTransposeDot") {
     return HloInstruction::FusionKind::kTransposeDot;
-  }
-  if (kind_name == "kConvBackwardFilter") {
-    return HloInstruction::FusionKind::kConvBackwardFilter;
-  }
-  if (kind_name == "kConvBackwardInput") {
-    return HloInstruction::FusionKind::kConvBackwardInput;
   }
   if (kind_name == "kCustom") {
     return HloInstruction::FusionKind::kCustom;
@@ -3261,7 +3229,13 @@ string HloInstruction::ConvolutionDimensionNumbersToString() const {
   result += "_";
   append_dims(rhs_dims, operand(1)->shape());
   result += "->";
-  append_dims(output_dims, shape());
+
+  // A convolution can be represented as a kConvolution HLO or as a CustomCall
+  // that returns a tuple, the first element of which is the result of the
+  // convolution.
+  Shape this_shape =
+      ShapeUtil::IsTuple(shape()) ? shape().tuple_shapes(0) : shape();
+  append_dims(output_dims, this_shape);
   return result;
 }
 

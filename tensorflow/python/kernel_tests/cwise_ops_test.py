@@ -71,6 +71,7 @@ def _sparsify(x, thresh=0.5, index_dtype=np.int64):
   return sparse_tensor.SparseTensor(
       indices=x_indices, values=x_values, dense_shape=x_shape), x_values
 
+
 def _default_tolerance(dtype):
   """Returns a sensible default tolerance for comparing results of a given
   type"""
@@ -81,7 +82,7 @@ def _default_tolerance(dtype):
   elif dtype in (np.float64, np.complex128):
     return 1e-5
   else:
-    return None # Fail fast for unexpected types
+    return None  # Fail fast for unexpected types
 
 
 class UnaryOpTest(test.TestCase):
@@ -233,10 +234,10 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(k, np.arccos, math_ops.acos)
     self._compareBoth(x, np.arctan, math_ops.atan)
     self._compareBoth(x, np.tan, math_ops.tan)
-    self._compareBoth(
-        y,
-        np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
-        math_ops.lgamma)
+    self._compareBoth(y,
+                      np.vectorize(
+                          self._replace_domain_error_with_inf(math.lgamma)),
+                      math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
 
@@ -298,8 +299,8 @@ class UnaryOpTest(test.TestCase):
     w = x - x.min() + 1.02  # all greater than 1
     y = (x + .5).astype(np.float64)  # no zero
     z = (x + 15.5).astype(np.float64)  # all positive
-    k = np.arange(-0.90, 0.90, 0.35).reshape(1, 3, 2).astype(
-        np.float64)  # between -1 and 1
+    k = np.arange(-0.90, 0.90,
+                  0.35).reshape(1, 3, 2).astype(np.float64)  # between -1 and 1
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
     self._compareBoth(x, np.negative, math_ops.negative)
@@ -322,10 +323,10 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(y, np.sign, math_ops.sign)
     self._compareBoth(x, np.sin, math_ops.sin)
     self._compareBoth(x, np.cos, math_ops.cos)
-    self._compareBoth(
-        y,
-        np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
-        math_ops.lgamma)
+    self._compareBoth(y,
+                      np.vectorize(
+                          self._replace_domain_error_with_inf(math.lgamma)),
+                      math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
     self._compareBoth(x, np.arctan, math_ops.atan)
@@ -362,10 +363,10 @@ class UnaryOpTest(test.TestCase):
     self._compareBoth(y, np.sign, math_ops.sign)
     self._compareBoth(x, np.sin, math_ops.sin)
     self._compareBoth(x, np.cos, math_ops.cos)
-    self._compareBoth(
-        y,
-        np.vectorize(self._replace_domain_error_with_inf(math.lgamma)),
-        math_ops.lgamma)
+    self._compareBoth(y,
+                      np.vectorize(
+                          self._replace_domain_error_with_inf(math.lgamma)),
+                      math_ops.lgamma)
     self._compareBoth(x, np.vectorize(math.erf), math_ops.erf)
     self._compareBoth(x, np.vectorize(math.erfc), math_ops.erfc)
 
@@ -406,8 +407,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(x, np.sign, math_ops.sign)
 
   def testComplex64Basic(self):
-    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3,
-                                                    2).astype(np.complex64)
+    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
+        np.complex64)
     y = x + np.complex(0.5, 0.5)  # no zeros
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
@@ -450,8 +451,8 @@ class UnaryOpTest(test.TestCase):
     self._compareBothSparse(y, complex_sign, math_ops.sign)
 
   def testComplex128Basic(self):
-    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3,
-                                                    2).astype(np.complex128)
+    x = np.complex(1, 1) * np.arange(-3, 3).reshape(1, 3, 2).astype(
+        np.complex128)
     y = x + np.complex(0.5, 0.5)  # no zeros
     self._compareBoth(x, np.abs, math_ops.abs)
     self._compareBoth(x, np.abs, _ABS)
@@ -805,10 +806,10 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y, np.mod, _MOD)
 
   def testComplex64Basic(self):
-    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(
-        1, 3, 2).astype(np.complex64)
-    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(
-        1, 3, 2).astype(np.complex64)
+    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(
+        np.complex64)
+    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(
+        np.complex64)
     self._compareBoth(x, y, np.add, math_ops.add)
     self._compareBoth(x, y, np.subtract, math_ops.subtract)
     self._compareBoth(x, y, np.multiply, math_ops.multiply)
@@ -819,10 +820,10 @@ class BinaryOpTest(test.TestCase):
     self._compareBoth(x, y + 0.1, np.true_divide, _TRUEDIV)
 
   def testComplex128Basic(self):
-    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(
-        1, 3, 2).astype(np.complex128)
-    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(
-        1, 3, 2).astype(np.complex128)
+    x = np.complex(1, 1) * np.linspace(-10, 10, 6).reshape(1, 3, 2).astype(
+        np.complex128)
+    y = np.complex(1, 1) * np.linspace(20, -20, 6).reshape(1, 3, 2).astype(
+        np.complex128)
     self._compareBoth(x, y, np.add, math_ops.add)
     self._compareBoth(x, y, np.subtract, math_ops.subtract)
     self._compareBoth(x, y, np.multiply, math_ops.multiply)
@@ -1127,8 +1128,8 @@ class BinaryOpTest(test.TestCase):
 
   def testMismatchedDimensions(self):
     for func in [
-        math_ops.add, math_ops.subtract, math_ops.multiply, math_ops.div,
-        _ADD, _SUB, _MUL, _TRUEDIV, _FLOORDIV
+        math_ops.add, math_ops.subtract, math_ops.multiply, math_ops.div, _ADD,
+        _SUB, _MUL, _TRUEDIV, _FLOORDIV
     ]:
       with self.assertRaisesWithPredicateMatch(
           ValueError, lambda e: "Dimensions must" in str(e)):
@@ -1161,8 +1162,8 @@ class BinaryOpTest(test.TestCase):
                    (1.2345, float("inf")), (1.2345, -float("inf")),
                    (-4.321, float("inf")), (-4.125, -float("inf")),
                    (float("inf"), float("inf")), (float("inf"), -float("inf")),
-                   (-float("inf"), float("inf")), (-float("inf"),
-                                                   -float("inf")))
+                   (-float("inf"), float("inf")),
+                   (-float("inf"), -float("inf")))
     for dtype in np.float32, np.float64:
       x1 = np.array(x1l).astype(dtype)
       x2 = np.array(x2l).astype(dtype)
@@ -1213,22 +1214,22 @@ class ComparisonOpTest(test.TestCase):
       for x in data:
         for y in data:
           self.assertEqual(self._compareScalar(math_ops.less, x, y, t), x < y)
-          self.assertEqual(self._compareScalar(math_ops.less_equal, x, y, t),
-                           x <= y)
-          self.assertEqual(self._compareScalar(math_ops.greater, x, y, t),
-                           x > y)
+          self.assertEqual(
+              self._compareScalar(math_ops.less_equal, x, y, t), x <= y)
+          self.assertEqual(
+              self._compareScalar(math_ops.greater, x, y, t), x > y)
           self.assertEqual(
               self._compareScalar(math_ops.greater_equal, x, y, t), x >= y)
           self.assertEqual(self._compareScalar(math_ops.equal, x, y, t), x == y)
-          self.assertEqual(self._compareScalar(math_ops.not_equal, x, y, t),
-                           x != y)
+          self.assertEqual(
+              self._compareScalar(math_ops.not_equal, x, y, t), x != y)
     data = [-1, 0, 1, -1j, 1j, 1 + 1j, 1 - 1j]
     for t in [np.complex64, np.complex128]:
       for x in data:
         for y in data:
           self.assertEqual(self._compareScalar(math_ops.equal, x, y, t), x == y)
-          self.assertEqual(self._compareScalar(math_ops.not_equal, x, y, t),
-                           x != y)
+          self.assertEqual(
+              self._compareScalar(math_ops.not_equal, x, y, t), x != y)
 
   def _compare(self, x, y, np_func, tf_func):
     np_ans = np_func(x, y)
@@ -1311,8 +1312,8 @@ class ComparisonOpTest(test.TestCase):
     self._testBCastByFunc(np.equal, math_ops.equal, include_complex=True)
 
   def testBCastNotEqual(self):
-    self._testBCastByFunc(np.not_equal, math_ops.not_equal,
-                          include_complex=True)
+    self._testBCastByFunc(
+        np.not_equal, math_ops.not_equal, include_complex=True)
 
   def testShapeMismatch(self):
     dtypes = [np.float16, np.float32, np.float64, np.int32, np.int64]
@@ -1771,9 +1772,8 @@ class MathOpsOverloadTest(test.TestCase):
   def _compareUnary(self, x, dtype, np_func, tf_func):
     np_ans = np_func(x).astype(dtype.as_numpy_dtype)
     with self.test_session(use_gpu=False):
-      self.assertAllClose(
-          np_ans, tf_func(ops.convert_to_tensor(
-              x, dtype=dtype)).eval())
+      self.assertAllClose(np_ans,
+                          tf_func(ops.convert_to_tensor(x, dtype=dtype)).eval())
 
   def testOverload(self):
     dtypes = [
@@ -1795,8 +1795,8 @@ class MathOpsOverloadTest(test.TestCase):
     ]
     for dtype in dtypes:
       for np_func, tf_func in funcs:
-        if dtype in (dtypes_lib.complex64, dtypes_lib.complex128
-                    ) and tf_func == _FLOORDIV:
+        if dtype in (dtypes_lib.complex64,
+                     dtypes_lib.complex128) and tf_func == _FLOORDIV:
           continue  # floordiv makes no sense for complex
         self._compareBinary(10, 5, dtype, np_func, tf_func)
     # Mod only works for int32 and int64.
@@ -2008,7 +2008,8 @@ class ComplexMakeRealImagTest(test.TestCase):
     # self._compareAngle(cplx, use_gpu=True)
 
   def testRealReal(self):
-    for dtype in dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float32, dtypes_lib.float64:
+    for dtype in (dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float32,
+                  dtypes_lib.float64):
       x = array_ops.placeholder(dtype)
       y = math_ops.real(x)
       self.assertEqual(x, y)
@@ -2037,15 +2038,16 @@ class ComplexMakeRealImagTest(test.TestCase):
     self._compareConj(cplx, use_gpu=True)
 
   def testConjReal(self):
-    for dtype in dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float16, dtypes_lib.float32, dtypes_lib.float64:
+    for dtype in (dtypes_lib.int32, dtypes_lib.int64, dtypes_lib.float16,
+                  dtypes_lib.float32, dtypes_lib.float64):
       x = array_ops.placeholder(dtype)
       y = math_ops.conj(x)
       self.assertEqual(x, y)
 
   def testConjString(self):
     x = array_ops.placeholder(dtypes_lib.string)
-    with self.assertRaisesRegexp(
-        TypeError, r"Expected numeric or variant tensor"):
+    with self.assertRaisesRegexp(TypeError,
+                                 r"Expected numeric or variant tensor"):
       math_ops.conj(x)
 
   def _compareGradient(self, x):
@@ -2060,8 +2062,9 @@ class ComplexMakeRealImagTest(test.TestCase):
       real, imag = array_ops.reshape(real, [-1]), array_ops.reshape(imag, [-1])
       cplx = math_ops.complex(real, imag)
       cplx = math_ops.conj(cplx)
-      loss = math_ops.reduce_sum(math_ops.square(math_ops.real(
-          cplx))) + math_ops.reduce_sum(math_ops.square(math_ops.imag(cplx)))
+      loss = math_ops.reduce_sum(math_ops.square(
+          math_ops.real(cplx))) + math_ops.reduce_sum(
+              math_ops.square(math_ops.imag(cplx)))
       epsilon = 1e-3
       jacob_t, jacob_n = gradient_checker.compute_gradient(
           inx, list(x.shape), loss, [1], x_init_value=x, delta=epsilon)
@@ -2125,8 +2128,8 @@ class AccumulateTest(test.TestCase):
           np.random.rand(16, 16, 16, 16).astype(np.float32) for _ in range(20)
       ]
       random_tensors = [
-          ops.convert_to_tensor(
-              x, dtype=dtypes_lib.float32) for x in random_arrays
+          ops.convert_to_tensor(x, dtype=dtypes_lib.float32)
+          for x in random_arrays
       ]
       tf_val = math_ops.accumulate_n(random_tensors)
       np_val = random_arrays[0]

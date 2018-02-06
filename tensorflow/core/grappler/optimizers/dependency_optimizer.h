@@ -43,6 +43,9 @@ class DependencyOptimizer : public GraphOptimizer {
                 const GraphDef& optimized_graph, double result) override;
 
  private:
+  // Returns true if node is not an Identity node or if it is an Identity
+  // that is safe to remove.
+  bool SafeToRemoveIdentity(const NodeDef& node);
   // Returns true if it is safe to convert node to NoOp.
   bool SafeToConvertToNoOp(const NodeDef& node);
   // Removes all duplicate control dependencies.

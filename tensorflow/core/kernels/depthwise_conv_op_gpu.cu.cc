@@ -17,12 +17,12 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "external/cub_archive/cub/util_ptx.cuh"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/kernels/depthwise_conv_op.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "external/cub_archive/cub/util_ptx.cuh"
 
 #if !defined(_MSC_VER)
 #define UNROLL _Pragma("unroll")
@@ -1021,7 +1021,7 @@ __global__ void __launch_bounds__(640, 2)
 
 // Device function to compute sub-warp sum reduction for a power-of-two group of
 // neighboring threads.
-template<int kWidth, typename T>
+template <int kWidth, typename T>
 __device__ __forceinline__ T WarpSumReduce(T val) {
   // support only power-of-two widths.
   assert(__popc(kWidth) == 1);

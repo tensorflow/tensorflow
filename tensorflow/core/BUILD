@@ -381,7 +381,6 @@ cc_library(
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
     deps = [
-        ":abi",
         ":lib",
         ":lib_platform",
     ],
@@ -434,6 +433,7 @@ tf_cuda_library(
         "framework/common_shape_fns.h",
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
         "framework/dataset.h",
+        "framework/dataset_stateful_op_whitelist.h",
         "framework/device_base.h",
         "framework/function.h",
         "framework/graph_def_util.h",
@@ -611,6 +611,7 @@ tf_gen_op_libs(
         "list_ops",
         "lookup_ops",
         "logging_ops",
+        "manip_ops",
         "math_ops",
         "nn_ops",
         "no_op",
@@ -693,6 +694,7 @@ cc_library(
         ":list_ops_op_lib",
         ":logging_ops_op_lib",
         ":lookup_ops_op_lib",
+        ":manip_ops_op_lib",
         ":math_ops_op_lib",
         ":nn_ops_op_lib",
         ":no_op_op_lib",
@@ -830,6 +832,7 @@ cc_library(
         "//tensorflow/core/kernels:list_kernels",
         "//tensorflow/core/kernels:lookup",
         "//tensorflow/core/kernels:logging",
+        "//tensorflow/core/kernels:manip",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:multinomial_op",
         "//tensorflow/core/kernels:nn",
@@ -1152,6 +1155,7 @@ cc_library(
     deps = [
         ":protos_all_cc_impl",
         "//third_party/eigen3",
+        "@nsync//:nsync_cpp",
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
@@ -1349,6 +1353,13 @@ tf_pyclif_proto_library(
     name = "protobuf/meta_graph_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "protobuf/meta_graph.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
+    name = "protobuf/device_properties_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/device_properties.proto",
     visibility = ["//visibility:public"],
 )
 
@@ -1899,6 +1910,7 @@ cc_library(
 tf_cuda_library(
     name = "cuda_device_functions",
     hdrs = ["util/cuda_device_functions.h"],
+    cuda_deps = ["//third_party_gpus/cuda:cuda_headers"],
     visibility = ["//visibility:public"],
     deps = [":framework_lite"],
 )
@@ -2413,7 +2425,6 @@ cc_library(
     deps = [
         ":lib",
         ":lib_internal",
-        ":stacktrace_handler",
         ":test",  # buildcleaner: keep
         "//tensorflow/core/platform/default/build_config:test_main",
     ],

@@ -46,6 +46,7 @@ from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gen_control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
@@ -1745,8 +1746,10 @@ class SessionTest(test_util.TensorFlowTestCase):
   def runTestBuildGraphError(self, sess):
     # Ensure that errors from building the graph get propagated.
     data = array_ops.placeholder(dtypes.float32, shape=[])
-    enter_1 = control_flow_ops.enter(data, 'foo_1', False)
-    enter_2 = control_flow_ops.enter(data, 'foo_2', False)
+    # pylint: disable=protected-access
+    enter_1 = gen_control_flow_ops._enter(data, 'foo_1', False)
+    enter_2 = gen_control_flow_ops._enter(data, 'foo_2', False)
+    # pylint: enable=protected-access
     res = math_ops.add(enter_1, enter_2)
     with self.assertRaisesOpError('has inputs from different frames'):
       sess.run(res, feed_dict={data: 1.0})

@@ -71,10 +71,10 @@ class NeonDepthwiseConv2dNativeOp : public BinaryOp<float> {
                                         filter.shape().DebugString()));
 
     const int32 in_depth = input.dim_size(3);
-    OP_REQUIRES(
-        context, in_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                in_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, in_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", in_depth,
+                    " vs ", filter.dim_size(2)));
     const int32 batch = input.dim_size(0);
     const int32 input_rows = input.dim_size(1);
     const int32 input_cols = input.dim_size(2);

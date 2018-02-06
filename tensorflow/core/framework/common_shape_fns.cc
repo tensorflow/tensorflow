@@ -1356,10 +1356,11 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", num_outer_dims, " dimensions of indices.shape=",
-            c->DebugString(indices_shape), " must match the outer ",
-            num_outer_dims, " dimensions of updates.shape=",
-            c->DebugString(updates_shape), ": ", s.error_message());
+            "The outer ", num_outer_dims,
+            " dimensions of indices.shape=", c->DebugString(indices_shape),
+            " must match the outer ", num_outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
       }
 
       ShapeHandle input_suffix;

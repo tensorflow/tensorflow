@@ -194,7 +194,8 @@ void SegmentSumFunctor<T, Index>::operator()(
 
 // UnsortedSegmentSumFunctor implementation for GPUDevice.
 template <typename T, typename Index>
-struct UnsortedSegmentSumFunctor<GPUDevice, T, Index>: UnsortedSegmentBaseFunctor<GPUDevice, T, Index> {
+struct UnsortedSegmentSumFunctor<GPUDevice, T, Index>
+    : UnsortedSegmentBaseFunctor<GPUDevice, T, Index> {
   void operator()(OpKernelContext* ctx, const GPUDevice& d,
                   const Index output_rows, const TensorShape& segment_ids_shape,
                   typename TTypes<Index>::ConstFlat segment_ids,
@@ -221,11 +222,10 @@ struct UnsortedSegmentSumFunctor<GPUDevice, T, Index>: UnsortedSegmentBaseFuncto
     const Index input_inner_dim_size = input_total_size / input_outer_dim_size;
 
     config = GetCudaLaunchConfig(input_total_size, d);
-    UnsortedSegmentSumCustomKernel<
-        T,
-        Index><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        input_outer_dim_size, input_inner_dim_size, output_rows,
-        segment_ids.data(), data, output.data());
+    UnsortedSegmentSumCustomKernel<T, Index>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            input_outer_dim_size, input_inner_dim_size, output_rows,
+            segment_ids.data(), data, output.data());
   }
 };
 

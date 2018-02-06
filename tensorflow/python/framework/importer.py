@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """A utility function for importing TensorFlow graphs."""
 from __future__ import absolute_import
 from __future__ import division
@@ -43,8 +42,8 @@ from tensorflow.python.util.tf_export import tf_export
 # the logic here.
 def _GetNodeAttr(node_def, attr_name):
   if attr_name not in node_def.attr:
-    raise ValueError('Expected one attr with name %r in %s.'
-                     % (attr_name, str(node_def)))
+    raise ValueError('Expected one attr with name %r in %s.' % (attr_name,
+                                                                str(node_def)))
   return node_def.attr[attr_name]
 
 
@@ -170,9 +169,8 @@ def _ProcessInputMapParam(input_map):
   if input_map is None:
     input_map = {}
   else:
-    if not (isinstance(input_map, dict)
-            and all(isinstance(k, compat.bytes_or_text_types)
-                    for k in input_map.keys())):
+    if not (isinstance(input_map, dict) and all(
+        isinstance(k, compat.bytes_or_text_types) for k in input_map.keys())):
       raise TypeError('input_map must be a dictionary mapping strings to '
                       'Tensor objects.')
   return input_map
@@ -180,9 +178,10 @@ def _ProcessInputMapParam(input_map):
 
 def _ProcessReturnElementsParam(return_elements):
   """Type-checks and possibly canonicalizes `return_elements`."""
-  if return_elements is None: return None
-  if not all(isinstance(x, compat.bytes_or_text_types)
-             for x in return_elements):
+  if return_elements is None:
+    return None
+  if not all(
+      isinstance(x, compat.bytes_or_text_types) for x in return_elements):
     raise TypeError('return_elements must be a list of strings.')
   return tuple(compat.as_str(x) for x in return_elements)
 
@@ -262,14 +261,14 @@ def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
     if input_src.startswith('^'):
       src_name = compat.as_bytes(input_src[1:])
       dst_op = input_dst._as_tf_output().oper  # pylint: disable=protected-access
-      c_api.TF_ImportGraphDefOptionsRemapControlDependency(options, src_name,
-                                                           dst_op)
+      c_api.TF_ImportGraphDefOptionsRemapControlDependency(
+          options, src_name, dst_op)
     else:
       src_name, src_idx = _ParseTensorName(input_src)
       src_name = compat.as_str(src_name)
       dst_output = input_dst._as_tf_output()  # pylint: disable=protected-access
-      c_api.TF_ImportGraphDefOptionsAddInputMapping(options, src_name,
-                                                    src_idx, dst_output)
+      c_api.TF_ImportGraphDefOptionsAddInputMapping(options, src_name, src_idx,
+                                                    dst_output)
   for name in return_elements or []:
     if ':' in name:
       op_name, index = _ParseTensorName(name)
@@ -315,8 +314,8 @@ def _ProcessNewOps(graph):
         coloc_op = graph._get_operation_by_name_unsafe(coloc_op_name)  # pylint: disable=protected-access
       except KeyError:
         raise ValueError('Specified colocation to an op that '
-                         'does not exist during import: %s in %s' % (
-                             coloc_op_name, op.name))
+                         'does not exist during import: %s in %s' %
+                         (coloc_op_name, op.name))
       if coloc_op.device:
         coloc_device = pydev.DeviceSpec.from_string(coloc_op.device)
         break
@@ -373,10 +372,13 @@ def _GatherReturnElements(requested_return_elements, graph, results):
 @tf_export('import_graph_def')
 @deprecated_args(None, 'Please file an issue at '
                  'https://github.com/tensorflow/tensorflow/issues if you depend'
-                 ' on this feature.',
-                 'op_dict')
-def import_graph_def(graph_def, input_map=None, return_elements=None,
-                     name=None, op_dict=None, producer_op_list=None):
+                 ' on this feature.', 'op_dict')
+def import_graph_def(graph_def,
+                     input_map=None,
+                     return_elements=None,
+                     name=None,
+                     op_dict=None,
+                     producer_op_list=None):
   """Imports the graph from `graph_def` into the current default `Graph`.
 
   This function provides a way to import a serialized TensorFlow
@@ -480,11 +482,12 @@ def import_graph_def(graph_def, input_map=None, return_elements=None,
         c_api.TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
             results))
     if missing_unused_input_keys:
-      missing_unused_input_keys = [compat.as_str(s)
-                                   for s in missing_unused_input_keys]
+      missing_unused_input_keys = [
+          compat.as_str(s) for s in missing_unused_input_keys
+      ]
       raise ValueError(
-          'Attempted to map inputs that were not found in graph_def: [%s]'
-          % ', '.join(missing_unused_input_keys))
+          'Attempted to map inputs that were not found in graph_def: [%s]' %
+          ', '.join(missing_unused_input_keys))
 
     if return_elements is None:
       return None

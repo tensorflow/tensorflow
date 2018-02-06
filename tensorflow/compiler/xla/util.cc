@@ -339,7 +339,7 @@ std::vector<std::pair<int64, int64>> CommonFactors(
 
 string SanitizeFileName(string file_name) {
   for (char& c : file_name) {
-    if (c == '/' || c == '\\' || c == '[' || c == ']') {
+    if (c == '/' || c == '\\' || c == '[' || c == ']' || c == ' ') {
       c = '_';
     }
   }

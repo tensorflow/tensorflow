@@ -478,13 +478,16 @@ class Estimator(object):
       estimator_spec = self._call_model_fn(
           features, None, model_fn_lib.ModeKeys.PREDICT, self.config)
       predictions = self._extract_keys(estimator_spec.predictions, predict_keys)
+      all_hooks = list(input_hooks)
+      all_hooks.extend(hooks)
+      all_hooks.extend(list(estimator_spec.prediction_hooks or []))
       with training.MonitoredSession(
           session_creator=training.ChiefSessionCreator(
               checkpoint_filename_with_path=checkpoint_path,
               master=self._config.master,
               scaffold=estimator_spec.scaffold,
               config=self._session_config),
-          hooks=input_hooks + hooks) as mon_sess:
+          hooks=all_hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
           if not isinstance(predictions, dict):

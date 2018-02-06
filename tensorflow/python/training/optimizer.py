@@ -36,6 +36,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _get_variable_for(v):
@@ -187,6 +188,7 @@ def _get_processor(v):
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
+@tf_export("train.Optimizer")
 class Optimizer(object):
   """Base class for optimizers.
 
@@ -533,7 +535,15 @@ class Optimizer(object):
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
           with ops.colocate_with(global_step):
-            apply_updates = state_ops.assign_add(global_step, 1, name=name)
+            if isinstance(global_step, resource_variable_ops.ResourceVariable):
+              # TODO(apassos): the implicit read in assign_add is slow; consider
+              # making it less so.
+              apply_updates = resource_variable_ops.assign_add_variable_op(
+                  global_step.handle,
+                  ops.convert_to_tensor(1, dtype=global_step.dtype),
+                  name=name)
+            else:
+              apply_updates = state_ops.assign_add(global_step, 1, name=name)
 
       if context.in_graph_mode():
         if isinstance(apply_updates, ops.Tensor):
@@ -592,7 +602,7 @@ class Optimizer(object):
       if executing_eagerly:
         # No variable.op in eager mode. We don't expect lots of eager graphs,
         # but behavior should be consistent with graph mode.
-        return variable._container_prefix == current_graph._container_prefix  # pylint: disable=protected-access
+        return variable._graph_key == current_graph._graph_key  # pylint: disable=protected-access
       else:
         return variable.op.graph is current_graph
 

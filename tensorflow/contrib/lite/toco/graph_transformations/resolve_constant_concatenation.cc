@@ -73,7 +73,7 @@ void CopyTensorSegments(const std::vector<Array*>& input_arrays,
 
 // Receives a series of input arrays of type Array and an integer showing the
 // axis on which those arrays will be concatenated. It returns the concatenated
-// arrray.
+// array.
 template <ArrayDataType A>
 void ConcatenateTensorBuffers(const std::vector<Array*>& input_arrays,
                               int concatenation_axis,

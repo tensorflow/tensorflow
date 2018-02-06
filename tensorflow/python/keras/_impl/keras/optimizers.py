@@ -24,6 +24,7 @@ import copy
 import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.keras._impl.keras import backend as K
@@ -680,7 +681,14 @@ class TFOptimizer(Optimizer):
   def __init__(self, optimizer):  # pylint: disable=super-init-not-called
     self.optimizer = optimizer
     with K.name_scope(self.__class__.__name__):
-      self.iterations = K.variable(0, dtype='int64', name='iterations')
+      if context.in_graph_mode():
+        self.iterations = K.variable(0, dtype='int64', name='iterations')
+
+  def apply_gradients(self, grads):
+    self.optimizer.apply_gradients(grads)
+
+  def get_grads(self, loss, params):
+    return self.optimizer.compute_gradients(loss, params)
 
   def get_updates(self, loss, params):
     grads = self.optimizer.compute_gradients(loss, params)

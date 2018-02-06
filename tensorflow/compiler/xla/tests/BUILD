@@ -578,6 +578,7 @@ xla_test(
 xla_test(
     name = "reduce_precision_test",
     srcs = ["reduce_precision_test.cc"],
+    tags = ["enable_for_xla_interpreter"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal_util",
