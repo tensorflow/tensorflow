@@ -21,7 +21,8 @@ from __future__ import print_function
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
+from tensorflow.contrib.py2tf.pyct import qual_names
+from tensorflow.contrib.py2tf.pyct.static_analysis import activity
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.client import session
@@ -65,7 +66,8 @@ class TypeInfoResolverTest(test.TestCase):
         arg_values=None,
         arg_types=arg_types,
         recursive=True)
-    node = access.resolve(node, ctx)
+    node = qual_names.resolve(node)
+    node = activity.resolve(node, ctx)
     node = live_values.resolve(node, ctx, {})
     node = type_info.resolve(node, ctx)
     node = live_values.resolve(node, ctx, {})

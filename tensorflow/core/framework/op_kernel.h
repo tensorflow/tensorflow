@@ -75,6 +75,14 @@ class OpKernel {
   // OpKernel won't be instantiated by the scheduler, so you may perform
   // expensive initialization in the descendant's constructor.
   explicit OpKernel(OpKernelConstruction* context);
+
+  // Specialized constructor that enables the descendant to provide a different
+  // `NodeDef` value. For example, this constructor can be used to provide a
+  // stripped-down `NodeDef` that does not contain the full set of attrs (such
+  // as tensor values) if the descendant stores them in a different form.
+  explicit OpKernel(OpKernelConstruction* context,
+                    std::unique_ptr<const NodeDef> node_def);
+
   virtual ~OpKernel();
 
   // An OpKernel's computation can be either synchronous or
@@ -901,9 +909,13 @@ class OpKernelContext {
   }
 
   AllocatorAttributes input_alloc_attr(int index) const {
-    DCHECK_GE(index, 0);
-    DCHECK_LT(index, params_->input_alloc_attrs->size());
-    return (*params_->input_alloc_attrs)[index];
+    if (params_->input_alloc_attrs == nullptr) {
+      return AllocatorAttributes();
+    } else {
+      DCHECK_GE(index, 0);
+      DCHECK_LT(index, params_->input_alloc_attrs->size());
+      return (*params_->input_alloc_attrs)[index];
+    }
   }
 
   AllocatorAttributes output_alloc_attr(int index) const {

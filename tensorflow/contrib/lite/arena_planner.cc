@@ -185,8 +185,12 @@ TfLiteStatus ArenaPlanner::CalculateAllocations(int first_node, int last_node) {
 TfLiteStatus ArenaPlanner::ResolveTensorAllocation(int tensor_index) {
   TfLiteTensor& tensor = *graph_info_->tensor(tensor_index);
   if (tensor.allocation_type == kTfLiteArenaRw) {
-    TF_LITE_ENSURE_STATUS(
-        arena_.ResolveAlloc(context_, allocs_[tensor_index], &tensor.data.raw));
+    // Skip resolution if the size of the tensor is zero, leaving it as a
+    // nullptr.
+    if (allocs_[tensor_index].size != 0) {
+      TF_LITE_ENSURE_STATUS(arena_.ResolveAlloc(context_, allocs_[tensor_index],
+                                                &tensor.data.raw));
+    }
   }
   if (tensor.allocation_type == kTfLiteArenaRwPersistent) {
     TF_LITE_ENSURE_STATUS(persistent_arena_.ResolveAlloc(

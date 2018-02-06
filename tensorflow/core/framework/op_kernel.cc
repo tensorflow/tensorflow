@@ -79,8 +79,14 @@ Status MatchSignatureHelper(const DataTypeSlice expected_inputs,
 
 // OpKernel ------------------------------------------------------------------
 
+// TODO(mrry): Convert to std::make_unique when available.
 OpKernel::OpKernel(OpKernelConstruction* context)
-    : def_(new NodeDef(context->def())),
+    : OpKernel(context,
+               std::unique_ptr<const NodeDef>(new NodeDef(context->def()))) {}
+
+OpKernel::OpKernel(OpKernelConstruction* context,
+                   std::unique_ptr<const NodeDef> node_def)
+    : def_(std::move(node_def)),
       input_types_(context->input_types().begin(),
                    context->input_types().end()),
       input_memory_types_(context->input_memory_types().begin(),

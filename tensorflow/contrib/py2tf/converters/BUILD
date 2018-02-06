@@ -26,7 +26,6 @@ py_library(
         "decorators.py",
         "for_canonicalization.py",
         "logical_expressions.py",
-        "print_functions.py",
         "side_effect_guards.py",
     ],
     srcs_version = "PY2AND3",
@@ -148,18 +147,6 @@ py_test(
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "print_functions_test",
-    srcs = ["print_functions_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/python:client_testlib",
-        "@gast_archive//:gast",
     ],
 )
 

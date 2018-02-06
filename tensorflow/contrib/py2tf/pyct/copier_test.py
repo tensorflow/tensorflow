@@ -12,33 +12,41 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for print_functions module."""
+"""Tests for copier module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gast
+import ast
 
-from tensorflow.contrib.py2tf.converters import converter_test_base
-from tensorflow.contrib.py2tf.converters import print_functions
-from tensorflow.contrib.py2tf.pyct import compiler
+from tensorflow.contrib.py2tf.pyct import copier
 from tensorflow.python.platform import test
 
 
-class PrintFunctionsTest(converter_test_base.TestCase):
+class CopierTest(test.TestCase):
 
-  def test_transform(self):
-
-    def test_fn(a):
-      print(a)
-
-    node = self.parse_and_analyze(test_fn, {'print': print})
-    node = print_functions.transform(node)
-    result = compiler.ast_to_object(node)
-
-    result.test_fn('a')
-    self.assertTrue(isinstance(node.body[0].body[0].value, gast.Call))
+  def test_copy_clean(self):
+    ret = ast.Return(
+        ast.BinOp(
+            op=ast.Add(),
+            left=ast.Name(id='a', ctx=ast.Load()),
+            right=ast.Num(1)))
+    setattr(ret, '__foo', 'bar')
+    node = ast.FunctionDef(
+        name='f',
+        args=ast.arguments(
+            args=[ast.Name(id='a', ctx=ast.Param())],
+            vararg=None,
+            kwarg=None,
+            defaults=[]),
+        body=[ret],
+        decorator_list=[],
+        returns=None)
+    new_node = copier.copy_clean(node)
+    self.assertFalse(node is new_node)
+    self.assertFalse(ret is new_node.body[0])
+    self.assertFalse(hasattr(new_node.body[0], '__foo'))
 
 
 if __name__ == '__main__':

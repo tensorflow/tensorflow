@@ -87,7 +87,6 @@ tf_kernel_library(
         "variable_ops.cc",
     ],
     hdrs = [
-        "gather_op.h",
         "index_ops.h",
         "shape_util.h",
     ],

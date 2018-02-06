@@ -307,7 +307,8 @@ class Interpreter {
   TfLiteStatus BytesRequired(TfLiteType type, const int* dims, int dims_size,
                              size_t* bytes);
 
-  // Request an tensor be resized implementation.
+  // Request an tensor be resized implementation. If the given tensor is of
+  // type kTfLiteDynamic it will also be allocated new memory.
   TfLiteStatus ResizeTensorImpl(TfLiteTensor* tensor, TfLiteIntArray* new_size);
 
   // Report a detailed error string (will be printed to stderr).

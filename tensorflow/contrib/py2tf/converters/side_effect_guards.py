@@ -40,6 +40,8 @@ import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import templates
+from tensorflow.contrib.py2tf.pyct import transformer
+from tensorflow.contrib.py2tf.pyct.static_analysis.annos import NodeAnno
 
 
 class SymbolNamer(object):
@@ -57,11 +59,11 @@ class SymbolNamer(object):
     raise NotImplementedError()
 
 
-class SideEffectGuardTransformer(gast.NodeTransformer):
+class SideEffectGuardTransformer(transformer.Base):
   """Adds control dependencies to functions with side effects."""
 
-  def __init__(self, namer):
-    self.namer = namer
+  def __init__(self, context):
+    super(SideEffectGuardTransformer, self).__init__(context)
     self.indent_next = False
     self.next_indent_owner = None
 
@@ -90,8 +92,6 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
     return new_nodes
 
   def visit_FunctionDef(self, node):
-    if anno.hasanno(node, 'skip_processing'):
-      return node
     node.body = self._visit_and_reindent(node.body)
     return node
 
@@ -124,7 +124,7 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
       # First, attempt to gate future evaluation of args. If that's not
       # possible, gate all remaining statements (and that may fail too, see
       # _visit_and_reindent.
-      args_scope = anno.getanno(node.value, 'args_scope')
+      args_scope = anno.getanno(node.value, NodeAnno.ARGS_SCOPE)
       guarded_args = tuple(args_scope.used & (args_scope.parent.modified
                                               | args_scope.parent.returned))
       if guarded_args:
@@ -140,6 +140,5 @@ class SideEffectGuardTransformer(gast.NodeTransformer):
   # pylint:enable=invalid-name
 
 
-def transform(node, namer):
-  transformer = SideEffectGuardTransformer(namer)
-  return transformer.visit(node)
+def transform(node, context):
+  return SideEffectGuardTransformer(context).visit(node)

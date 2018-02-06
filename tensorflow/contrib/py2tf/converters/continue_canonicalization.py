@@ -18,17 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gast
-
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import templates
+from tensorflow.contrib.py2tf.pyct import transformer
+from tensorflow.contrib.py2tf.pyct.static_analysis.annos import NodeAnno
 
 
-class ContinueCanonicalizationTransformer(gast.NodeTransformer):
+class ContinueCanonicalizationTransformer(transformer.Base):
   """Canonicalizes continue statements into additional conditionals."""
 
-  def __init__(self, namer):
-    self.namer = namer
+  def __init__(self, context):
+    super(ContinueCanonicalizationTransformer, self).__init__(context)
     # This is a stack structure, to correctly process nested loops.
     self.continuation_uses = []
 
@@ -76,7 +76,7 @@ class ContinueCanonicalizationTransformer(gast.NodeTransformer):
     return reorganized_nodes
 
   def _process_loop_block(self, block, scope):
-    cont_var = self.namer.new_symbol('cont_requested', scope.referenced)
+    cont_var = self.context.namer.new_symbol('cont_requested', scope.referenced)
     self.continuation_uses.append([False, cont_var])
     block = self._visit_and_reindent_if_necessary(block)
     if self.continuation_uses[-1][0]:
@@ -87,7 +87,8 @@ class ContinueCanonicalizationTransformer(gast.NodeTransformer):
   def visit_While(self, node):
     self.generic_visit(node.test)
     node.body = self._process_loop_block(node.body,
-                                         anno.getanno(node, 'body_scope'))
+                                         anno.getanno(node,
+                                                      NodeAnno.BODY_SCOPE))
     for n in node.orelse:
       self.generic_visit(n)
     return node
@@ -96,7 +97,8 @@ class ContinueCanonicalizationTransformer(gast.NodeTransformer):
     self.generic_visit(node.target)
     self.generic_visit(node.iter)
     node.body = self._process_loop_block(node.body,
-                                         anno.getanno(node, 'body_scope'))
+                                         anno.getanno(node,
+                                                      NodeAnno.BODY_SCOPE))
     for n in node.orelse:
       self.generic_visit(n)
     return node
@@ -122,6 +124,4 @@ class ContinueCanonicalizationTransformer(gast.NodeTransformer):
 
 
 def transform(node, namer):
-  transformer = ContinueCanonicalizationTransformer(namer)
-  node = transformer.visit(node)
-  return node
+  return ContinueCanonicalizationTransformer(namer).visit(node)

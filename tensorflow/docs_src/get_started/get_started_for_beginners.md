@@ -357,7 +357,7 @@ my_feature_columns = [
 
 ### Select the type of model
 
-We need the select the kind of model that will be trained.
+We need to select the kind of model that will be trained.
 Lots of model types exist; picking the ideal type takes experience.
 We've selected a neural network to solve the Iris problem.  [**Neural
 networks**](https://developers.google.com/machine-learning/glossary/#neural_network)
@@ -655,7 +655,9 @@ calls as follows:
 
 ```python
 predictions = classifier.predict(
-    input_fn=lambda:eval_input_fn(predict_x, batch_size=args.batch_size))
+    input_fn=lambda:eval_input_fn(predict_x,
+                                  labels=None,
+                                  batch_size=args.batch_size))
 ```
 
 As with the `evaluate` method, our `predict` method also gathers examples

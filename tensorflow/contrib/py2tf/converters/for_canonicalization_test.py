@@ -41,8 +41,8 @@ class ControlFlowTest(converter_test_base.TestCase):
         s += e
       return s
 
-    node = self.parse_and_analyze(test_fn, {})
-    node = for_canonicalization.transform(node, TestNamer())
+    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = for_canonicalization.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
 
     l = [1, 2, 3]

@@ -546,6 +546,9 @@ void ProcessConcatenationOperator(Model* model, ConcatenationOperator* op) {
   // Use 0 input as basis for output dimensions.
   const auto& first_input_array = model->GetArray(op->inputs[0]);
   output_array.copy_shape(first_input_array.shape());
+  // Negative axis means the count starts at the back of the dims().
+  int axis = op->axis;
+  if (axis < 0) axis += first_input_array.shape().dims().size();
   // Determine the concat size, and enfore that all inputs have
   // the same dimensions count.
   int concat_size = 0;
@@ -558,14 +561,14 @@ void ProcessConcatenationOperator(Model* model, ConcatenationOperator* op) {
     CHECK_EQ(input_array.shape().dimensions_count(),
              output_array.shape().dimensions_count());
     const std::vector<int>& input_dims = input_array.shape().dims();
-    CHECK_LT(op->axis, input_dims.size());
-    concat_size += input_dims[op->axis];
+    CHECK_LT(axis, input_dims.size());
+    concat_size += input_dims[axis];
   }
   // Write out the concat_size on the output array shape.
   auto& output_shape = *output_array.mutable_shape();
   auto& output_dims = *output_shape.mutable_dims();
-  CHECK_LT(op->axis, output_shape.dimensions_count());
-  output_dims[op->axis] = concat_size;
+  CHECK_LT(axis, output_shape.dimensions_count());
+  output_dims[axis] = concat_size;
 }
 
 void ProcessRangeOperator(Model* model, RangeOperator* op) {
