@@ -300,8 +300,9 @@ TEST_F(GrapplerItemBuilderTest, FromSimpleFunctionDef) {
 
   std::unordered_map<string, AttrValue> func_attr;
   func_attr["T"].set_type(DT_FLOAT);
+  FunctionDefLibrary library;
   std::unique_ptr<GrapplerItem> item =
-      GrapplerItemFromFunctionDef(func, func_attr);
+      GrapplerItemFromFunctionDef(func, func_attr, library);
   CHECK(item);
   EXPECT_EQ("XTimesTwo", item->id);
   EXPECT_EQ(4, item->graph.node_size());
@@ -366,8 +367,9 @@ TEST_F(GrapplerItemBuilderTest, FromFunctionDefWithMultiOutputNodes) {
 
   std::unordered_map<string, AttrValue> func_attr;
   func_attr["T"].set_type(DT_FLOAT);
+  FunctionDefLibrary library;
   std::unique_ptr<GrapplerItem> item =
-      GrapplerItemFromFunctionDef(func, func_attr);
+      GrapplerItemFromFunctionDef(func, func_attr, library);
   CHECK(item);
   EXPECT_EQ("SubGrad", item->id);
   EXPECT_EQ(12, item->graph.node_size());
@@ -397,6 +399,82 @@ TEST_F(GrapplerItemBuilderTest, FromFunctionDefWithMultiOutputNodes) {
       EXPECT_EQ(2, node.input_size());
       EXPECT_EQ("gy:0", node.input(0));
       EXPECT_EQ("rx:1", node.input(1));
+    }
+  }
+}
+
+TEST_F(GrapplerItemBuilderTest, FromFunctionDefWithNestedFuncs) {
+  FunctionDefLibrary library;
+  *library.add_function() = FunctionDefHelper::Define(
+      // Name
+      "Swap",
+      // Args
+      {"i0: T", "i1: T"},
+      // Return values
+      {"o0: T", "o1: T"},
+      // Attr def
+      {"T: {float, double}"},
+      // Nodes
+      {{{"o0"}, "Identity", {"i1"}, {{"T", "$T"}}},
+       {{"o1"}, "Identity", {"i0"}, {{"T", "$T"}}}});
+
+  FunctionDef func = FunctionDefHelper::Create(
+      // Name
+      "ManySwapsFirst",
+      // Args
+      {"x: float", "y: float"},
+      // Return values
+      {"o: float"},
+      // attr def
+      {},
+      // Nodes
+      // o = x*x + y*y.  Furthermore, The 1st swap depends on x2, and
+      // y2 depends on the 2nd swap.  The 2nd swap has data dependency
+      // on the 1st swap.
+      {{{"a0"}, "Swap", {"x", "y"}, {{"T", DT_FLOAT}}, {"x2"}},
+       {{"a1"}, "Swap", {"a0:o0:0", "a0:o1:0"}, {{"T", DT_FLOAT}}},
+       {{"x2"}, "Mul", {"x", "x"}, {{"T", DT_FLOAT}}},
+       {{"y2"}, "Mul", {"y", "y"}, {{"T", DT_FLOAT}}, {"a1"}},
+       {{"o"}, "Add", {"x2:z:0", "y2:z:0"}, {{"T", DT_FLOAT}}}},
+      {{"o", "o:z:0"}});
+
+  std::unordered_map<string, AttrValue> func_attr;
+  func_attr["T"].set_type(DT_FLOAT);
+  std::unique_ptr<GrapplerItem> item =
+      GrapplerItemFromFunctionDef(func, func_attr, library);
+
+  for (const NodeDef &node : item->graph.node()) {
+    if (node.name() == "x" || node.name() == "y") {
+      EXPECT_EQ("Placeholder", node.op());
+      EXPECT_EQ(DT_FLOAT, node.attr().at("T").type());
+      EXPECT_EQ(0, node.input_size());
+    } else if (node.name() == "a0") {
+      EXPECT_EQ("Swap", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+      EXPECT_EQ("^x2", node.input(2));
+    } else if (node.name() == "a1") {
+      EXPECT_EQ("Swap", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("a0:0", node.input(0));
+      EXPECT_EQ("a0:1", node.input(1));
+    } else if (node.name() == "x2") {
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("x", node.input(1));
+    } else if (node.name() == "y2") {
+      EXPECT_EQ("Mul", node.op());
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+      EXPECT_EQ("^a1", node.input(2));
+    } else if (node.name() == "o") {
+      EXPECT_EQ("Add", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x2:0", node.input(0));
+      EXPECT_EQ("y2:0", node.input(1));
     }
   }
 }

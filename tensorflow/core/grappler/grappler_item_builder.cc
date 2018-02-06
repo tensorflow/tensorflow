@@ -512,7 +512,8 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
 
 std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
     const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr) {
+    const std::unordered_map<string, AttrValue>& func_attr,
+    const FunctionDefLibrary& library) {
   if (func.signature().name().empty()) {
     LOG(ERROR) << "function name must be specified.";
     return nullptr;
@@ -543,6 +544,8 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
   }
 
   // Add the function body to the graph.
+  FunctionLibraryDefinition func_def(OpRegistry::Global(), library);
+
   for (const NodeDef& node : func.node_def()) {
     NodeDef* new_node = new_item->graph.add_node();
     *new_node = node;
@@ -557,15 +560,17 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
 
     // Functions use a custom format to encode connectivity. Map these custom
     // strings to regular ones.
-    const OpDef* op_def = nullptr;
-    Status status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
+    const OpRegistrationData* registration;
+    Status status = func_def.LookUp(node.op(), &registration);
     if (!status.ok()) {
       LOG(ERROR) << "Op " << node.op() << " not registered: " << status;
       return nullptr;
     }
+
     tensorflow::NameRangeMap inputs;
     tensorflow::NameRangeMap outputs;
-    status = tensorflow::NameRangesForNode(node, *op_def, &inputs, &outputs);
+    status = tensorflow::NameRangesForNode(node, registration->op_def, &inputs,
+                                           &outputs);
     if (!status.ok()) {
       LOG(ERROR) << "Op " << node.op() << " invalid: " << status;
       return nullptr;
@@ -587,12 +592,17 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
     // Rewrite the inputs to use the normal naming convention.
     for (int i = 0; i < node.input_size(); ++i) {
       const string& input = node.input(i);
-      auto it = port_map.find(input);
-      if (it == port_map.end()) {
-        LOG(ERROR) << "Unknown input: " << input;
-        return nullptr;
+      if (IsControlInput(input)) {
+        // No need to remap control dependencies.
+        continue;
+      } else {
+        auto it = port_map.find(input);
+        if (it == port_map.end()) {
+          LOG(ERROR) << "Unknown input: " << input;
+          return nullptr;
+        }
+        node.set_input(i, it->second);
       }
-      node.set_input(i, it->second);
     }
   }
 

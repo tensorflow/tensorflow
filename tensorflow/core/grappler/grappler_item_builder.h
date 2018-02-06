@@ -62,7 +62,8 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
 // Returns nullptr if the given function def cannot be converted.
 std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
     const FunctionDef& func,
-    const std::unordered_map<string, AttrValue>& func_attr);
+    const std::unordered_map<string, AttrValue>& func_attr,
+    const FunctionDefLibrary& library);
 
 }  // end namespace grappler
 }  // end namespace tensorflow
