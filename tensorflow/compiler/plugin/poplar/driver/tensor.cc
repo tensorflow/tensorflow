@@ -285,14 +285,29 @@ AddTensor(poplar::Graph& graph,
         break;
       }
       case HloOpcode::kDynamicSlice:
+      {
+        if (target->second.second == 0) {
+          if (ShapeUtil::Rank(shape) == 3) {
+            TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
+          } else {
+            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+          }
+        } else {
+            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+        }
+        break;
+      }
       case HloOpcode::kDynamicUpdateSlice:
       {
-        if (ShapeUtil::Rank(shape) == 3) {
-          TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
+        if (target->second.second == 0) {
+          if (ShapeUtil::Rank(shape) == 3) {
+            TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
+          } else {
+            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+          }
         } else {
           TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
         }
-        break;
       }
       default:
         return tensorflow::errors::FailedPrecondition(
