@@ -303,7 +303,6 @@ TfLiteStatus Interpreter::Invoke() {
 
   TfLiteStatus status = kTfLiteOk;
   if (nnapi_delegate_) {
-    TF_LITE_ENSURE_STATUS(PrepareOpsAndTensors());
     if (next_execution_plan_index_to_prepare_ == execution_plan_.size()) {
       TF_LITE_ENSURE_OK(&context_, nnapi_delegate_->Invoke(this));
       return kTfLiteOk;
