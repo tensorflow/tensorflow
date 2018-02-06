@@ -2477,8 +2477,11 @@ class WhileContext(ControlFlowContext):
     if external_inputs:
       # Use an identity to pull control inputs as data inputs. Note that we
       # ignore ops which don't have outputs. TODO(apassos): fix that
-      external_inputs = [array_ops.identity(x.outputs[0]).op
-                         for x in external_inputs if x.outputs]
+      with ops.control_dependencies(None):
+        self.Enter()
+        external_inputs = [array_ops.identity(x.outputs[0]).op
+                           for x in external_inputs if x.outputs]
+        self.Exit()
       op._add_control_inputs(external_inputs)  # pylint: disable=protected-access
     if self._outer_context or not util.IsLoopExit(op):
       op.graph.prevent_fetching(op)
