@@ -40,10 +40,14 @@ def _stride_size(node, name_to_node):
 
   Args:
     node: Tensorflow node (NodeDef proto).
+    name_to_node: For MaxPoolV2, mapping from variable name Tensorflow node.
 
   Returns:
     stride_x: Stride size for horizontal direction (integer).
     stride_y: Stride size for vertical direction (integer).
+
+  Raises:
+    ValueError: If stride input cannot be found in `name_to_node`.
   """
   if node.op == "MaxPoolV2":
     strides_input_name = node.input[2]
@@ -159,6 +163,7 @@ def _pool_kernel_size(node, name_to_node):
 
   Args:
     node: Tensorflow node (NodeDef proto).
+    name_to_node: For MaxPoolV2, mapping from node name to NodeDef.
 
   Returns:
     kernel_size_x: Kernel size for horizontal direction (integer).

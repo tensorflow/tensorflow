@@ -71,11 +71,14 @@ xla::StatusOr<xla::ComputationDataHandle> CholeskyUnblocked(
                           SliceInMinorDims(builder, l, {j + 1, 0}, {n, j}));
       TF_ASSIGN_OR_RETURN(auto r_squared,
                           BatchDot(builder, r, r, /*transpose_x=*/false,
-                                   /*transpose_y=*/true));
+                                   /*transpose_y=*/true, /*conjugate_x=*/false,
+                                   /*conjugate_y=*/false));
       new_d_squared = builder->Sub(new_d_squared, r_squared);
 
       TF_ASSIGN_OR_RETURN(br, BatchDot(builder, b, r, /*transpose_x=*/false,
-                                       /*transpose_y=*/true));
+                                       /*transpose_y=*/true,
+                                       /*conjugate_x=*/false,
+                                       /*conjugate_y=*/false));
     }
     auto new_d_inv = builder->Pow(
         new_d_squared, FloatLiteral(builder, shape->element_type(), -0.5));
@@ -134,7 +137,8 @@ xla::StatusOr<xla::ComputationDataHandle> Cholesky(
                           SliceInMinorDims(builder, l, {i, 0}, {i + k, i}));
       TF_ASSIGN_OR_RETURN(auto delta,
                           BatchDot(builder, lhs, rhs, /*transpose_x=*/false,
-                                   /*transpose_y=*/true));
+                                   /*transpose_y=*/true, /*conjugate_x=*/false,
+                                   /*conjugate_y=*/false));
       TF_ASSIGN_OR_RETURN(auto before,
                           SliceInMinorDims(builder, a, {i, i}, {n, i + k}));
       TF_ASSIGN_OR_RETURN(
@@ -155,6 +159,10 @@ xla::StatusOr<xla::ComputationDataHandle> Cholesky(
                           SliceInMinorDims(builder, a, {i + k, i}, {n, i + k}));
       TF_ASSIGN_OR_RETURN(auto update,
                           TriangularSolve(builder, factorized, panel,
+                                          /*left_side=*/false,
+                                          /*lower=*/true,
+                                          /*transpose_a=*/true,
+                                          /*conjugate_a=*/false,
                                           /*block_size=*/8));
       TF_ASSIGN_OR_RETURN(
           l, UpdateSliceInMinorDims(builder, l, update, {i + k, i}));

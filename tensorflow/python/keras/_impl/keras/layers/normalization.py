@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
@@ -108,7 +109,7 @@ class BatchNormalization(tf_normalization_layers.BatchNormalization, Layer):
     if training is None:
       training = K.learning_phase()
     output = super(BatchNormalization, self).call(inputs, training=training)
-    if training is K.learning_phase():
+    if context.in_graph_mode() and training is K.learning_phase():
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
 

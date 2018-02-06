@@ -246,9 +246,9 @@ and 'indices' is [[0,1]
                   [1,1]
                   [0,2]],
 
-the the output will be [[          1,         20,          3]
-                        [ +BIG_VALUE, +BIG_VALUE, +BIG_VALUE]
-                        [          1,          5,          3]].
+the output will be [[          1,         20,          3]
+                    [ +BIG_VALUE, +BIG_VALUE, +BIG_VALUE]
+                    [          1,          5,          3]].
 ```
 
 The data must be at least rank 1. The indices can be of shape (?,2) where the

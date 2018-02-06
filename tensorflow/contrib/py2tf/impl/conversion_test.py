@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import gast
 
-from tensorflow.contrib.py2tf import conversion
+from tensorflow.contrib.py2tf.impl import conversion
 from tensorflow.python.platform import test
 
 

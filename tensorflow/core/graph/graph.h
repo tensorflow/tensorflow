@@ -62,8 +62,8 @@ class Node;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;  // Declared below
-class NodeIter;      // Declared below
+class NeighborIter;    // Declared below
+class NodeIter;        // Declared below
 class NodeProperties;  // Defined in .cc
 
 class Node {

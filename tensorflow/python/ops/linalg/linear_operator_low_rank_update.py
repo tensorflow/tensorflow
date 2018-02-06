@@ -150,8 +150,8 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     `is_X` matrix property hints, which will trigger the appropriate code path.
 
     Args:
-      base_operator:  Shape `[B1,...,Bb, M, N]` real `float32` or `float64`
-        `LinearOperator`.  This is `L` above.
+      base_operator:  Shape `[B1,...,Bb, M, N]` real `float16`, `float32` or
+        `float64` `LinearOperator`.  This is `L` above.
       u:  Shape `[B1,...,Bb, M, K]` `Tensor` of same `dtype` as `base_operator`.
         This is `U` above.
       diag_update:  Optional shape `[B1,...,Bb, K]` `Tensor` with same `dtype`
@@ -188,7 +188,11 @@ class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
     #    because if diag has non-zero imaginary part, it will not be
     #    self-adjoint positive definite.
     dtype = base_operator.dtype
-    allowed_dtypes = [dtypes.float32, dtypes.float64]
+    allowed_dtypes = [
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+    ]
     if dtype not in allowed_dtypes:
       raise TypeError(
           "Argument matrix must have dtype in %s.  Found: %s"

@@ -50,7 +50,7 @@ class TFMultiShow {
 
  protected:
   virtual const ShowMultiNode* ShowInternal(const Options& opts,
-                                           Timeline* timeline) = 0;
+                                            Timeline* timeline) = 0;
 
   bool LookUpCheckPoint(const string& name,
                         std::unique_ptr<TFProfTensor>* tensor);

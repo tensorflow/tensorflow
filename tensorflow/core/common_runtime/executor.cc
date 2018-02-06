@@ -1609,7 +1609,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_usec) {
         auto done = [this, state]() {
           Device* device = impl_->params_.device;
           NodeExecStatsWrapper* stats = state->stats;  // Shorthand
-          Entry* first_input = state->first_input;  // Shorthand
+          Entry* first_input = state->first_input;     // Shorthand
 
           nodestats::SetOpEnd(stats);
           EntryVector outputs;
@@ -1776,6 +1776,19 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         entry->ref_mu = nullptr;
 
         inp->tensor = entry->val.get();
+        // The dtype of entry->ref could have been changed by another operation
+        // that ran after the operation that "produced" it executed, so
+        // re-validate that the type of the dereferenced tensor matches the
+        // expected input type.
+        if (item.input_type(i) != inp->tensor->dtype()) {
+          return AttachDef(
+              errors::InvalidArgument(
+                  i, "-th input expects type ",
+                  DataTypeString(item.input_type(i)),
+                  " but automatically dereferenced input tensor has type ",
+                  DataTypeString(inp->tensor->dtype())),
+              item.kernel->def());
+        }
       }
     }
   }

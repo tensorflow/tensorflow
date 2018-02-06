@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf import naming
+from tensorflow.contrib.py2tf.impl import naming
 from tensorflow.python.platform import test
 
 
@@ -29,8 +29,9 @@ class NamerTest(test.TestCase):
       pass
 
     namer = naming.Namer({}, True, None, ())
-    self.assertEqual('tf__foo', namer.compiled_function_name('foo'))
-    self.assertEqual('tf__bar', namer.compiled_function_name('bar', bar))
+    self.assertEqual(('tf__foo', True), namer.compiled_function_name('foo'))
+    self.assertEqual(('tf__bar', True), namer.compiled_function_name(
+        'bar', bar))
     self.assertEqual({bar: 'tf__bar'}, namer.renamed_calls)
     self.assertItemsEqual(('tf__bar', 'tf__foo'), namer.generated_names)
 
@@ -39,15 +40,18 @@ class NamerTest(test.TestCase):
       pass
 
     namer = naming.Namer({}, True, None, ())
-    self.assertEqual('tf__foo', namer.compiled_function_name('foo', foo))
-    self.assertEqual('tf__foo', namer.compiled_function_name('foo', foo))
+    self.assertEqual(('tf__foo', True), namer.compiled_function_name(
+        'foo', foo))
+    self.assertEqual(('tf__foo', True), namer.compiled_function_name(
+        'foo', foo))
 
   def test_compiled_function_name_avoids_global_conflicts(self):
     def foo():
       pass
 
     namer = naming.Namer({'tf__foo': 1}, True, None, ())
-    self.assertEqual('tf__foo_1', namer.compiled_function_name('foo', foo))
+    self.assertEqual(('tf__foo_1', True),
+                     namer.compiled_function_name('foo', foo))
 
   def test_new_symbol_tracks_names(self):
     namer = naming.Namer({}, True, None, ())

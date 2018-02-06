@@ -156,6 +156,7 @@ cc_library(
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:string_util",
         "//tensorflow/contrib/lite/kernels:gemm_support",
+        "//tensorflow/contrib/lite/kernels/internal:kernel_utils",
         "//tensorflow/contrib/lite/kernels/internal:optimized",
         "//tensorflow/contrib/lite/kernels/internal:optimized_base",
         "//tensorflow/contrib/lite/kernels/internal:quantization_util",
@@ -249,6 +250,7 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_absl//absl/memory",
         "@com_google_googletest//:gtest",
     ],
 )

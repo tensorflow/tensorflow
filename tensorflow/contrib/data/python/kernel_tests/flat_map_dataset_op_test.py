@@ -225,6 +225,21 @@ class FlatMapDatasetSerializationTest(
 
     self.verify_error_on_save(build_ds, 500, errors.InvalidArgumentError)
 
+  def testSparseCore(self):
+
+    def _map_fn(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
+
+    def _flat_map_fn(x):
+      return dataset_ops.Dataset.from_tensor_slices(
+          sparse_ops.sparse_to_dense(x.indices, x.dense_shape, x.values))
+
+    def _build_ds():
+      return dataset_ops.Dataset.range(10).map(_map_fn).flat_map(_flat_map_fn)
+
+    self.run_core_tests(_build_ds, None, 20)
+
 
 if __name__ == "__main__":
   test.main()

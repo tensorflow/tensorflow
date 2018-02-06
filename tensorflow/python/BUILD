@@ -299,6 +299,7 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -4262,12 +4263,6 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
-    name = "hidden_ops",
-    srcs = ["ops/hidden_ops.txt"],
     visibility = ["//tensorflow:__subpackages__"],
 )
 

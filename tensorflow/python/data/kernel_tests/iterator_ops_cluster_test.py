@@ -21,6 +21,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import function
@@ -28,6 +29,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
 
@@ -102,6 +105,40 @@ class IteratorClusterTest(test.TestCase):
     self._testRemoteIteratorHelper("/job:worker/replica:0/task:0/cpu:0",
                                    "/job:worker/replica:0/task:1/cpu:0",
                                    workers[0].target)
+
+  def testCaptureHashTableInSharedIterator(self):
+    worker, _ = test_util.create_local_cluster(1, 1)
+
+    # NOTE(mrry): We must use the V2 variants of `HashTable`
+    # etc. because these produce a `tf.resource`-typed output that is
+    # compatible with the in-graph function implementation.
+    default_val = -1
+    keys = constant_op.constant(["brain", "salad", "surgery"])
+    values = constant_op.constant([0, 1, 2], dtypes.int64)
+    table = lookup_ops.HashTable(
+        lookup_ops.KeyValueTensorInitializer(keys, values),
+        default_val,
+        shared_name="shared_table")
+
+    input_sentences = dataset_ops.Dataset.from_tensor_slices(
+        ["brain brain tank salad surgery", "surgery brain"])
+
+    iterator = (
+        input_sentences.map(lambda x: string_ops.string_split([x]).values).map(
+            table.lookup)
+        .make_initializable_iterator(shared_name="shared_iterator"))
+    init_op = iterator.initializer
+    get_next = iterator.get_next()
+
+    with session.Session(worker[0].target) as sess:
+      sess.run(table.init)
+      sess.run(init_op)
+      self.assertAllEqual([0, 0, -1, 1, 2], sess.run(get_next))
+
+    with session.Session(worker[0].target) as sess:
+      self.assertAllEqual([2, 0], sess.run(get_next))
+      with self.assertRaises(errors.OutOfRangeError):
+        sess.run(get_next)
 
 
 if __name__ == "__main__":

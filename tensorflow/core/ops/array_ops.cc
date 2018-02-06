@@ -708,10 +708,11 @@ REGISTER_OP("MatrixDiagPart")
 // --------------------------------------------------------------------------
 REGISTER_OP("MatrixBandPart")
     .Input("input: T")
-    .Input("num_lower: int64")
-    .Input("num_upper: int64")
+    .Input("num_lower: Tindex")
+    .Input("num_upper: Tindex")
     .Output("band: T")
     .Attr("T: type")
+    .Attr("Tindex: {int32, int64} = DT_INT64")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 // --------------------------------------------------------------------------

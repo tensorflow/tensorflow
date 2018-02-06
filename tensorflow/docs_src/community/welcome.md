@@ -65,5 +65,5 @@ please read the following list carefully:
     on GitHub.  For example, use the issue tracker to request a
     new operation in TensorFlow.
   * To report vulnerabilities, please follow our
-    [vulnerability disclosure guidelines](https://github.com/tensorflow/tensorflow/blob/master/SECURITY.md).
+    [vulnerability disclosure guidelines](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/SECURITY.md).
 
