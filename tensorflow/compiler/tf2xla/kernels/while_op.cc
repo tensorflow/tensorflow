@@ -376,7 +376,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       int pos = then_body.outputs.size() + i;
       OP_REQUIRES_OK(ctx,
                      resource->SetFromPack(
-                         arguments[input_num].tensor_array_gradients,
+                         arguments[update.input_index].tensor_array_gradients,
                          builder->GetTupleElement(if_result, pos), builder));
     }
 
