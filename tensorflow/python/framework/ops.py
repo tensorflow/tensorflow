@@ -1618,7 +1618,7 @@ class Operation(object):
           for i, x in zip(inputs, input_types)):
         raise TypeError("In op '%s', input types (%s) are not compatible "
                         "with expected types (%s)" %
-                        (self.node_def.name, [i.dtype for i in inputs],
+                        (node_def.name, [i.dtype for i in inputs],
                          input_types))
 
     # Build the list of control inputs.
