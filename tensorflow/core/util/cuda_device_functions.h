@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <complex>
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "cuda/include/cuda.h"
 #include "tensorflow/core/platform/types.h"
 

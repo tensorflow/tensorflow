@@ -328,7 +328,7 @@ def _UnsortedSegmentProdGrad(op, grad):
   a different number of elements. Therefore we consider three cases:
   1) A segment input contains no zeros and we can safely divide by the input
      tensor.
-  2) A segment contains exactly on zero. Then the gradient of each input of
+  2) A segment contains exactly one zero. Then the gradient of each input of
      the segment is zero except for the 0-input, there the gradient is
      the product of the remaining segment entries.
   3) A segment contains at least two zeros. The gradient is zero for all
