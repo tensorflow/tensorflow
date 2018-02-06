@@ -22,14 +22,14 @@ import numpy as np
 
 from tensorflow.contrib.specs import python
 from tensorflow.contrib.specs.python import summaries
+from tensorflow.contrib.specs.python.specs_ops import Cr
+from tensorflow.contrib.specs.python.specs_ops import Fr
+from tensorflow.contrib.specs.python.specs_ops import Shared
+from tensorflow.contrib.specs.python.specs_ops import Var
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import variables
 import tensorflow.python.ops.math_ops  # pylint: disable=unused-import
-from tensorflow.python.ops.spec_ops import Cr
-from tensorflow.python.ops.spec_ops import Fr
-from tensorflow.python.ops.spec_ops import Shared
-from tensorflow.python.ops.spec_ops import Var
 from tensorflow.python.platform import test
 
 specs = python
