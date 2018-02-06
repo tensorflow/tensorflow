@@ -6,6 +6,8 @@ licenses(["notice"])  # Apache 2.0
 
 load("//tensorflow/contrib/lite:build_def.bzl", "tflite_copts", "gen_selected_ops")
 
+exports_files(["LICENSE"])
+
 exports_files(glob([
     "testdata/*.bin",
     "models/testdata/*",
@@ -23,11 +25,6 @@ config_setting(
     values = {
         "cpu": "mips64",
     },
-)
-
-load(
-    "//tensorflow:tensorflow.bzl",
-    "tf_cc_test",
 )
 
 cc_library(
