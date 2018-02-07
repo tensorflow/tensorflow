@@ -106,6 +106,7 @@ cc_library(
     srcs = [
         "allocation.cc",
         "error_reporter.cc",
+        "graph_info.cc",
         "interpreter.cc",
         "model.cc",
         "nnapi_delegate.cc",
@@ -115,6 +116,7 @@ cc_library(
         "allocation.h",
         "context.h",
         "error_reporter.h",
+        "graph_info.h",
         "interpreter.h",
         "model.h",
         "nnapi_delegate.h",
@@ -163,6 +165,19 @@ cc_test(
     name = "interpreter_test",
     size = "small",
     srcs = ["interpreter_test.cc"],
+    deps = [
+        ":framework",
+        ":string_util",
+        "//tensorflow/contrib/lite/testing:util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+# Test graph utils
+cc_test(
+    name = "graph_info_test",
+    size = "small",
+    srcs = ["graph_info_test.cc"],
     deps = [
         ":framework",
         ":string_util",
