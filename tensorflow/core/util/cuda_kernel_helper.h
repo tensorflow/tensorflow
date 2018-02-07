@@ -90,60 +90,6 @@ __device__ EIGEN_ALWAYS_INLINE Eigen::half CudaShuffleXorSync(
       CudaShuffleXorSync(mask, static_cast<uint16>(value), lane_mask, width));
 }
 
-namespace detail {
-// Overload of above function for half. Note that we don't have
-// atomicCAS() for anything less than 32 bits, so we need to include the
-// other 16 bits in the operation.
-//
-// This version is going to be very slow
-// under high concurrency, since most threads will be spinning on failing
-// their compare-and-swap tests. (The fact that we get false sharing on the
-// neighboring fp16 makes this even worse.) If you are doing a large reduction,
-// you are much better off with doing the intermediate steps in fp32 and then
-// switching to fp16 as late as you can in the calculations.
-//
-// Note: Assumes little endian.
-template <typename F>
-__device__ Eigen::half CudaAtomicCasHelper(Eigen::half* ptr, F accumulate) {
-#if defined(__BYTE_ORDER__) && defined(__ORDER_LITTLE_ENDIAN__)
-  static_assert(__BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__, "Not little endian");
-#endif
-  namespace half_impl = Eigen::half_impl;
-  intptr_t intptr = reinterpret_cast<intptr_t>(ptr);
-  assert(!(intptr & 0x1));  // should be 2-aligned.
-  if (intptr & 0x2) {
-    // The half is in the second part of the uint32 (upper 16 bits).
-    uint32* address = reinterpret_cast<uint32*>(intptr - 2);
-    uint32 result = CudaAtomicCasHelper(address, [accumulate](uint32 arg) {
-      unsigned short high = static_cast<unsigned short>(arg >> 16);
-      Eigen::half acc = accumulate(half_impl::raw_uint16_to_half(high));
-      return (static_cast<uint32>(acc.x) << 16) | (arg & 0xffff);
-    });
-    return half_impl::raw_uint16_to_half(static_cast<uint16>(result >> 16));
-  } else {
-    // The half is in the first part of the uint32 (lower 16 bits).
-    uint32* address = reinterpret_cast<uint32*>(intptr);
-    uint32 result = CudaAtomicCasHelper(address, [accumulate](uint32 arg) {
-      unsigned short low = static_cast<unsigned short>(arg & 0xffff);
-      Eigen::half acc = accumulate(half_impl::raw_uint16_to_half(low));
-      return (arg & 0xffff0000) | static_cast<uint32>(acc.x);
-    });
-    return half_impl::raw_uint16_to_half(static_cast<uint16>(result & 0xffff));
-  }
-}
-}  // namespace detail
-
-__device__ inline Eigen::half CudaAtomicAdd(Eigen::half* ptr,
-                                            Eigen::half value) {
-  return detail::CudaAtomicCasHelper(
-      ptr, [value](Eigen::half a) { return a + value; });
-}
-__device__ inline Eigen::half CudaAtomicSub(Eigen::half* ptr,
-                                            Eigen::half value) {
-  return detail::CudaAtomicCasHelper(
-      ptr, [value](Eigen::half a) { return a - value; });
-}
-
 namespace cuda_helper {
 template <typename IntType>
 __device__ IntType upper_bound(IntType* first, IntType count, IntType val) {
