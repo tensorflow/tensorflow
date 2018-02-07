@@ -156,7 +156,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t RequestedSize(void* ptr) {
+  virtual size_t RequestedSize(const void* ptr) {
     CHECK(false) << "allocator doesn't track sizes";
     return size_t(0);
   }
@@ -169,7 +169,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSize(void* ptr) { return RequestedSize(ptr); }
+  virtual size_t AllocatedSize(const void* ptr) { return RequestedSize(ptr); }
 
   // Returns either 0 or an identifier assigned to the buffer at 'ptr'
   // when the buffer was returned by AllocateRaw. If non-zero, the
@@ -180,7 +180,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual int64 AllocationId(void* ptr) { return 0; }
+  virtual int64 AllocationId(const void* ptr) { return 0; }
 
   // Returns the allocated size of the buffer at 'ptr' if known,
   // otherwise returns 0. This method can be called when
@@ -188,7 +188,7 @@ class Allocator {
   //
   // REQUIRES: 'ptr!=nullptr' and points to a buffer previously
   // allocated by this allocator.
-  virtual size_t AllocatedSizeSlow(void* ptr) {
+  virtual size_t AllocatedSizeSlow(const void* ptr) {
     if (TracksAllocationSizes()) {
       return AllocatedSize(ptr);
     }
@@ -312,17 +312,19 @@ class AllocatorWrapper : public Allocator {
     return wrapped_->TracksAllocationSizes();
   }
 
-  size_t RequestedSize(void* ptr) override {
+  size_t RequestedSize(const void* ptr) override {
     return wrapped_->RequestedSize(ptr);
   }
 
-  size_t AllocatedSize(void* ptr) override {
+  size_t AllocatedSize(const void* ptr) override {
     return wrapped_->AllocatedSize(ptr);
   }
 
-  int64 AllocationId(void* ptr) override { return wrapped_->AllocationId(ptr); }
+  int64 AllocationId(const void* ptr) override {
+    return wrapped_->AllocationId(ptr);
+  }
 
-  size_t AllocatedSizeSlow(void* ptr) override {
+  size_t AllocatedSizeSlow(const void* ptr) override {
     return wrapped_->AllocatedSizeSlow(ptr);
   }
 
