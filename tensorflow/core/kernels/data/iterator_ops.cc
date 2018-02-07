@@ -160,6 +160,10 @@ class IteratorResource : public ResourceBase {
       params.runner = *(ctx->runner());
       params.function_library = flib_def;
       params.lib = lib_;
+      DeviceBase* device = lib_->device();
+      params.allocator_getter = [device](AllocatorAttributes attrs) {
+        return device->GetAllocator(attrs);
+      };
       IteratorContext iter_ctx(std::move(params));
 
       TF_RETURN_IF_ERROR(captured_iterator->Restore(&iter_ctx, reader));
@@ -605,6 +609,11 @@ class ToSingleElementOp : public AsyncOpKernel {
       params.env = ctx->env();
       params.runner = *(ctx->runner());
       params.lib = ctx->function_library();
+      DeviceBase* device = ctx->function_library()->device();
+      params.allocator_getter = [device](AllocatorAttributes attrs) {
+        return device->GetAllocator(attrs);
+      };
+
       IteratorContext iter_ctx(std::move(params));
 
       std::vector<Tensor> components;
@@ -863,6 +872,10 @@ class IteratorGetNextOp : public AsyncOpKernel {
           };
           params.runner = *(ctx->runner());
           params.function_library = iterator->function_library();
+          DeviceBase* device = ctx->function_library()->device();
+          params.allocator_getter = [device](AllocatorAttributes attrs) {
+            return device->GetAllocator(attrs);
+          };
           IteratorContext iter_ctx(std::move(params));
 
           OP_REQUIRES_OK_ASYNC(
@@ -905,6 +918,10 @@ class IteratorGetNextSyncOp : public OpKernel {
     };
     params.runner = *(ctx->runner());
     params.function_library = iterator->function_library();
+    DeviceBase* device = ctx->function_library()->device();
+    params.allocator_getter = [device](AllocatorAttributes attrs) {
+      return device->GetAllocator(attrs);
+    };
     IteratorContext iter_ctx(std::move(params));
 
     OP_REQUIRES_OK(ctx,

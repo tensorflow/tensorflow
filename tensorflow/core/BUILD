@@ -784,6 +784,7 @@ tf_cuda_library(
         "graph/graph.h",
         "graph/graph_constructor.h",
         "graph/graph_def_builder.h",
+        "graph/graph_def_builder_util.h",
         "graph/node_builder.h",
         "graph/validate.h",
         "graph/while_context.h",
@@ -1718,6 +1719,9 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
     "platform/variant_coding.h",
     "graph/edgeset.h",
     "graph/graph.h",
+    "graph/graph_def_builder.h",
+    "graph/node_builder.h",
+    "graph/tensor_id.h",
 ] + glob(
     [
         "example/**/*.h",
@@ -1804,6 +1808,9 @@ tf_cuda_library(
         ] + [
             "graph/edgeset.cc",
             "graph/graph.cc",
+            "graph/graph_def_builder.cc",
+            "graph/node_builder.cc",
+            "graph/tensor_id.cc",
             "graph/while_context.h",
             "graph/while_context.cc",
         ],
@@ -1932,6 +1939,7 @@ GRAPH_HDRS = [
     "graph/graph.h",
     "graph/graph_constructor.h",  # NOTE(mrry): Don't include the .cc since it depends on common_runtime.
     "graph/graph_def_builder.h",
+    "graph/graph_def_builder_util.h",
     "graph/graph_partition.h",
     "graph/mkl_layout_pass.h",
     "graph/mkl_tfconversion_pass.h",
@@ -1952,12 +1960,9 @@ tf_cuda_library(
         "graph/colors.cc",
         "graph/control_flow.cc",
         "graph/costmodel.cc",
-        "graph/graph_def_builder.cc",
         "graph/graph_partition.cc",
-        "graph/node_builder.cc",
         "graph/optimizer_cse.cc",
         "graph/subgraph.cc",
-        "graph/tensor_id.cc",
         "graph/validate.cc",
     ],
     hdrs = GRAPH_HDRS,
@@ -1986,6 +1991,7 @@ tf_cuda_library(
         "common_runtime/shape_refiner.h",
         "framework/versions.h",
         "graph/graph_constructor.cc",  # Depends on common_runtime.
+        "graph/graph_def_builder_util.cc",  # Depends on common_runtime.
         "public/session.h",
         "public/session_options.h",
         "public/version.h",
