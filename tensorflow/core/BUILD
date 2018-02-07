@@ -433,6 +433,7 @@ tf_cuda_library(
         "framework/common_shape_fns.h",
         "framework/control_flow.h",  # TODO(josh11b): Make internal?
         "framework/dataset.h",
+        "framework/dataset_stateful_op_whitelist.h",
         "framework/device_base.h",
         "framework/function.h",
         "framework/graph_def_util.h",
@@ -1355,6 +1356,13 @@ tf_pyclif_proto_library(
     visibility = ["//visibility:public"],
 )
 
+tf_pyclif_proto_library(
+    name = "protobuf/device_properties_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "protobuf/device_properties.proto",
+    visibility = ["//visibility:public"],
+)
+
 # -----------------------------------------------------------------------------
 # Internal targets
 
@@ -1902,6 +1910,7 @@ cc_library(
 tf_cuda_library(
     name = "cuda_device_functions",
     hdrs = ["util/cuda_device_functions.h"],
+    cuda_deps = ["//third_party_gpus/cuda:cuda_headers"],
     visibility = ["//visibility:public"],
     deps = [":framework_lite"],
 )

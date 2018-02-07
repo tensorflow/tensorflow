@@ -21,8 +21,10 @@ py_library(
         "anno.py",
         "compiler.py",
         "context.py",
+        "copier.py",
         "parser.py",
         "pretty_printer.py",
+        "qual_names.py",
         "templates.py",
         "transformer.py",
     ],
@@ -31,6 +33,7 @@ py_library(
     deps = [
         "@astor_archive//:astor",
         "@gast_archive//:gast",
+        "@six_archive//:six",
         "@termcolor_archive//:termcolor",
     ],
 )
@@ -48,6 +51,17 @@ py_test(
 py_test(
     name = "compiler_test",
     srcs = ["compiler_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
+    ],
+)
+
+py_test(
+    name = "copier_test",
+    srcs = ["copier_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":pyct",

@@ -82,6 +82,8 @@ std::vector<std::unique_ptr<Operator>>::iterator FindOp(Model& model,
 const char* OperatorTypeName(OperatorType type);
 string HelpfulOperatorTypeName(const Operator& op);
 
+bool OperatorSupportsFusedActivation(OperatorType type);
+
 void DumpGraphvizVideoFrame(const Model& model);
 void LogDump(int log_level, const string& message, const Model& model);
 void LogSummary(int log_level, const string& message, const Model& model);
@@ -282,6 +284,9 @@ void CheckFinalDataTypesSatisfied(const Model& model);
 ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 
 void UseArraysExtraInfo(Model* model);
+
+bool IsRnnSourceArray(const toco::Model& model, const string& array_name);
+bool IsRnnStateArray(const toco::Model& model, const string& array_name);
 
 }  // namespace toco
 

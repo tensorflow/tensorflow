@@ -121,8 +121,8 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
 
     Args:
       diag:  Shape `[B1,...,Bb, N]` `Tensor` with `b >= 0` `N >= 0`.
-        The diagonal of the operator.  Allowed dtypes: `float32`, `float64`,
-          `complex64`, `complex128`.
+        The diagonal of the operator.  Allowed dtypes: `float16`, `float32`,
+          `float64`, `complex64`, `complex128`.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.  If `diag.dtype` is real, this is auto-set to `True`.
@@ -167,7 +167,12 @@ class LinearOperatorDiag(linear_operator.LinearOperator):
   def _check_diag(self, diag):
     """Static check of diag."""
     allowed_dtypes = [
-        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.complex64,
+        dtypes.complex128,
+    ]
 
     dtype = diag.dtype
     if dtype not in allowed_dtypes:

@@ -167,12 +167,14 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_SwitchIdentity) {
       ops::Const(scope.WithOpName("c2").WithControlDependencies(ctrl_dep_id),
                  {1.0f, 2.0f}, {1, 2});
   Output neg1 = ops::Neg(scope.WithOpName("neg1"), s.output_false);
+  Output neg2 = ops::Neg(scope.WithOpName("neg2"), ctrl_dep_id);
 
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
   item.fetch.push_back("c1");
   item.fetch.push_back("c2");
   item.fetch.push_back("neg1");
+  item.fetch.push_back("neg2");
 
   DependencyOptimizer optimizer;
   GraphDef output;
@@ -323,25 +325,148 @@ TEST_F(DependencyOptimizerTest, RemoveNoOps_SingleInputOrOutput) {
   }
 }
 
+TEST_F(DependencyOptimizerTest, RemoveIdentity) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::RandomUniform(s.WithOpName("x"), {1, 2}, DT_FLOAT);
+  Output y = ops::RandomUniform(s.WithOpName("y"), {1, 2}, DT_FLOAT);
+  Output z = ops::RandomUniform(s.WithOpName("z"), {1, 2}, DT_FLOAT);
+
+  // Identity nodes to be removed.
+  // Case a) with a single input- and multiple outputs.
+  auto id_a = ops::Identity(s.WithOpName("id_a"), x);
+  // Case b) with multiple inputs and a single output.
+  auto id_b = ops::Identity(
+      s.WithOpName("id_b").WithControlDependencies(y).WithControlDependencies(
+          z),
+      x);
+  // Case c) with two inputs and two outputs.
+  auto id_c = ops::Identity(s.WithOpName("id_c").WithControlDependencies(y), x);
+
+  // Output for Case a.
+  Output a_a = ops::Identity(s.WithOpName("a_a"), id_a);
+  Output a_b = ops::Identity(s.WithOpName("a_b"), id_a);
+  Output a_c =
+      ops::Identity(s.WithOpName("a_c").WithControlDependencies(id_a), z);
+  Output a_d =
+      ops::Identity(s.WithOpName("a_d").WithControlDependencies(id_a), z);
+  // Output for Case b.
+  Output b_a = ops::Identity(s.WithOpName("b_a"), id_b);
+  // Output for Case c.
+  Output c_a = ops::Identity(s.WithOpName("c_a"), id_c);
+  Output c_b =
+      ops::Identity(s.WithOpName("c_b").WithControlDependencies(id_c), z);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"a_a", "a_b", "a_c", "a_d", "b_a", "c_a", "c_b"};
+
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(item.graph.node_size() - 3, output.node_size());
+  for (const NodeDef& node : output.node()) {
+    EXPECT_NE("id_a", node.name());
+    EXPECT_NE("id_b", node.name());
+    EXPECT_NE("id_c", node.name());
+    if (node.name() == "a_a" || node.name() == "a_b") {
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+    }
+    if (node.name() == "a_c" || node.name() == "a_d") {
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("z", node.input(0));
+      EXPECT_EQ("^x", node.input(1));
+    }
+    if (node.name() == "b_a") {
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^y", node.input(1));
+      EXPECT_EQ("^z", node.input(2));
+    }
+    if (node.name() == "c_a") {
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("^y", node.input(1));
+    }
+    if (node.name() == "c_b") {
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("z", node.input(0));
+      EXPECT_EQ("^x", node.input(1));
+      EXPECT_EQ("^y", node.input(2));
+    }
+  }
+}
+
+TEST_F(DependencyOptimizerTest, RemoveIdentity_RepeatedInputs) {
+  // Corner cases with repeated inputs.
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  ops::Variable x(scope.WithOpName("x"), {}, DT_BOOL);
+  ops::Variable y(scope.WithOpName("y"), {}, DT_BOOL);
+  ops::Switch sw(scope.WithOpName("switch"), x, x);
+  // id0 should be removed.
+  Output id0 = ops::Identity(scope.WithOpName("id0"), sw.output_true);
+  // id1 should not be removed, since it would anchor a control dependency
+  // on the switch.
+  Output id1 = ops::Identity(scope.WithOpName("id1"), sw.output_false);
+  Output or0 = ops::LogicalOr(scope.WithOpName("or0"), id0, id0);
+  Output or1 = ops::LogicalOr(scope.WithOpName("or1"), id0, y);
+  Output or2 = ops::LogicalOr(
+      scope.WithOpName("or2").WithControlDependencies(id1), y, y);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch.push_back("or0");
+  item.fetch.push_back("or1");
+  item.fetch.push_back("or2");
+  DependencyOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(item.graph.node_size() - 1, output.node_size());
+  for (const NodeDef& node : output.node()) {
+    EXPECT_NE("id0", node.name());
+    if (node.name() == "or0") {
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("switch:1", node.input(0));
+      EXPECT_EQ("switch:1", node.input(1));
+    }
+    if (node.name() == "or1") {
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("switch:1", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+    }
+    if (node.name() == "or2") {
+      // or1 should be unchanged.
+      EXPECT_EQ(3, node.input_size());
+      EXPECT_EQ("y", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+      EXPECT_EQ("^id1", node.input(2));
+    }
+  }
+}
+
 TEST_F(DependencyOptimizerTest, Transitive_Reduction_Simple) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   Output c = ops::Const(s.WithOpName("c"), {1.0f, 2.0f}, {1, 2});
   Output x = ops::Square(s.WithOpName("x"), c);
-  Output id1 = ops::Identity(s.WithOpName("id1"), x);
-  Output id2 =
-      ops::Identity(s.WithOpName("id2").WithControlDependencies({x}), id1);
+  Output neg1 = ops::Neg(s.WithOpName("neg1"), x);
+  Output neg2 =
+      ops::Neg(s.WithOpName("neg2").WithControlDependencies({x}), neg1);
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-  item.fetch.push_back("id2");
+  item.fetch.push_back("neg2");
   DependencyOptimizer optimizer;
   GraphDef output;
   Status status = optimizer.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
   EXPECT_EQ(4, output.node_size());
-  EXPECT_EQ("id2", output.node(3).name());
+  EXPECT_EQ("neg2", output.node(3).name());
   EXPECT_EQ(1, output.node(3).input_size());
-  EXPECT_EQ("id1", output.node(3).input(0));
+  EXPECT_EQ("neg1", output.node(3).input(0));
 }
 
 TEST_F(DependencyOptimizerTest, ChangeToNoop_Identity) {
@@ -356,17 +481,18 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_Identity) {
   Output grappler_added_id = ops::Identity(
       scope.WithOpName("ConstantFoldingCtrl/switch_1"), s.output_true);
   Output c1 = ops::Const(scope.WithOpName("c1")
-                             .WithControlDependencies(id0)
                              .WithControlDependencies(id_after_var)
                              .WithControlDependencies(grappler_added_id),
                          {1.0f, 2.0f}, {1, 2});
   Output id1 = ops::Identity(scope.WithOpName("id1"), c1);
+  Output id2 = ops::Identity(scope.WithOpName("id2"), id0);
   Output fetch =
       ops::Identity(scope.WithOpName("fetch").WithControlDependencies(id1), c1);
 
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
   item.fetch.push_back("c1");
+  item.fetch.push_back("id2");
   item.fetch.push_back("fetch");
 
   DependencyOptimizer optimizer;
@@ -377,8 +503,8 @@ TEST_F(DependencyOptimizerTest, ChangeToNoop_Identity) {
   EXPECT_EQ(item.graph.node_size() - 2, output.node_size());
   for (int i = 0; i < output.node_size(); ++i) {
     const NodeDef& node = output.node(i);
-    // "id0" and "id1" but neither "ConstantFoldingCtrl/switch_1" nor
-    // "id_after_var" should be eliminated.
+    // "id0" and "id1" but neither "ConstantFoldingCtrl/switch_1",
+    // "id_after_var, nor "id2"" should be eliminated.
     EXPECT_NE("id0", node.name());
     EXPECT_NE("id1", node.name());
     if (node.name() == "c1") {

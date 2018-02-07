@@ -12,7 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/contrib/lite/tools/verifier.h"
+#include <string>
+#include <vector>
+
 #include "flatbuffers/flatbuffers.h"
 #include "flatbuffers/util.h"
 #include <gtest/gtest.h>
@@ -20,7 +22,9 @@ limitations under the License.
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/testing/util.h"
+#include "tensorflow/contrib/lite/tools/verifier.h"
 #include "tensorflow/contrib/lite/version.h"
+#include "tensorflow/core/framework/numeric_types.h"
 
 namespace tflite {
 
@@ -28,31 +32,62 @@ using flatbuffers::FlatBufferBuilder;
 using flatbuffers::Offset;
 using flatbuffers::Vector;
 
-// Class that abstracts the list of buffers at the end of the TF Lite structure
-class DeferredBufferWriter {
+// Build single subgraph model.
+class TfLiteFlatbufferModelBuilder {
  public:
-  DeferredBufferWriter() {
-    data_.push_back({});  // sentinel empty buffer.
+  TfLiteFlatbufferModelBuilder() {
+    buffers_.push_back(
+        CreateBuffer(builder_, builder_.CreateVector(std::vector<uint8_t>{})));
   }
 
-  Offset<Vector<Offset<Buffer>>> BuildBuffers(FlatBufferBuilder *builder) {
-    std::vector<Offset<Buffer>> buffer_vector;
-    for (const auto &vec : data_) {
-      auto data_buffer = builder->CreateVector(vec.data(), vec.size());
-      buffer_vector.push_back(tflite::CreateBuffer(*builder, data_buffer));
+  void AddTensor(const std::vector<int>& shape, tflite::TensorType type,
+                 const std::vector<uint8_t>& buffer, const char* name) {
+    int buffer_index = 0;
+    if (!buffer.empty()) {
+      buffer_index = buffers_.size();
+      buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector(buffer)));
     }
-    return builder->CreateVector(buffer_vector);
+    tensors_.push_back(CreateTensorDirect(builder_, &shape, type, buffer_index,
+                                          name, /*quantization=*/0));
   }
 
-  // Registers a buffer index and takes ownership of the data to write to it.
-  int Record(std::vector<uint8_t> data) {
-    int buffer_index = data_.size();
-    data_.emplace_back(std::move(data));
-    return buffer_index;
+  void AddOperator(const std::vector<int32_t>& inputs,
+                   const std::vector<int32_t>& outputs,
+                   tflite::BuiltinOperator builtin_op, const char* custom_op) {
+    operator_codes_.push_back(
+        CreateOperatorCodeDirect(builder_, builtin_op, custom_op));
+    operators_.push_back(CreateOperator(
+        builder_, operator_codes_.size() - 1, builder_.CreateVector(inputs),
+        builder_.CreateVector(outputs), BuiltinOptions_NONE,
+        /*builtin_options=*/0,
+        /*custom_options=*/0, tflite::CustomOptionsFormat_FLEXBUFFERS));
+  }
+
+  void FinishModel(const std::vector<int32_t>& inputs,
+                   const std::vector<int32_t>& outputs) {
+    auto subgraph = std::vector<Offset<SubGraph>>({CreateSubGraph(
+        builder_, builder_.CreateVector(tensors_),
+        builder_.CreateVector(inputs), builder_.CreateVector(outputs),
+        builder_.CreateVector(operators_),
+        builder_.CreateString("test_subgraph"))});
+    auto result = CreateModel(
+        builder_, TFLITE_SCHEMA_VERSION, builder_.CreateVector(operator_codes_),
+        builder_.CreateVector(subgraph), builder_.CreateString("test_model"),
+        builder_.CreateVector(buffers_));
+    tflite::FinishModelBuffer(builder_, result);
+  }
+
+  bool Verify() {
+    return tflite::Verify(builder_.GetBufferPointer(), builder_.GetSize(),
+                          DefaultErrorReporter());
   }
 
  private:
-  std::vector<std::vector<unsigned char>> data_;
+  FlatBufferBuilder builder_;
+  std::vector<Offset<Operator>> operators_;
+  std::vector<Offset<OperatorCode>> operator_codes_;
+  std::vector<Offset<Tensor>> tensors_;
+  std::vector<Offset<Buffer>> buffers_;
 };
 
 TEST(VerifyModel, TestEmptyModel) {
@@ -62,43 +97,26 @@ TEST(VerifyModel, TestEmptyModel) {
                            /*description=*/0, /*buffers=*/0);
   ::tflite::FinishModelBuffer(builder, model);
 
-  ASSERT_TRUE(Verify(builder.GetBufferPointer(), builder.GetSize()));
+  ASSERT_TRUE(Verify(builder.GetBufferPointer(), builder.GetSize(),
+                     DefaultErrorReporter()));
 }
 
 TEST(VerifyModel, TestSimpleModel) {
-  FlatBufferBuilder builder;
-  auto inputs = builder.CreateVector<int32_t>({0});
-  auto outputs = builder.CreateVector<int32_t>({1});
-  auto operator_codes = builder.CreateVector(std::vector<Offset<OperatorCode>>{
-      CreateOperatorCodeDirect(builder, BuiltinOperator_CUSTOM, "test")});
-  auto operators =
-      builder.CreateVector(std::vector<Offset<Operator>>{CreateOperator(
-          builder, /*opcode_index=*/0,
-          /*inputs=*/builder.CreateVector<int32_t>({0}),
-          /*outputs=*/builder.CreateVector<int32_t>({1}), BuiltinOptions_NONE,
-          /*builtin_options=*/0,
-          /*custom_options=*/0, ::tflite::CustomOptionsFormat_FLEXBUFFERS)});
-  std::vector<int> shape;
-  auto tensors = builder.CreateVector(std::vector<Offset<Tensor>>{
-      CreateTensorDirect(builder, &shape, TensorType_INT32, /*buffer=*/0,
-                         "input", /*quantization=*/0),
-      CreateTensorDirect(builder, &shape, TensorType_INT32, /*buffer=*/0,
-                         "output", /*quantization=*/0)});
-  auto subgraph = std::vector<Offset<SubGraph>>(
-      {CreateSubGraph(builder, tensors, inputs, outputs, operators,
-                      builder.CreateString("Main"))});
-
-  auto model = CreateModel(builder, TFLITE_SCHEMA_VERSION, operator_codes,
-                           builder.CreateVector(subgraph),
-                           builder.CreateString("SmartReply"), /*buffers=*/0);
-
-  ::tflite::FinishModelBuffer(builder, model);
-  ASSERT_TRUE(Verify(builder.GetBufferPointer(), builder.GetSize()));
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 'A', 'B', 'C'},
+      "data");
+  builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
+  builder.FinishModel({0, 1}, {2});
+  ASSERT_TRUE(builder.Verify());
 }
 
 TEST(VerifyModel, TestCorruptedData) {
-  string model = "123";
-  ASSERT_FALSE(Verify(model.data(), model.size()));
+  std::string model = "123";
+  ASSERT_FALSE(Verify(model.data(), model.size(), /*error_reporter=*/nullptr));
 }
 
 TEST(VerifyModel, TestUnsupportedVersion) {
@@ -106,7 +124,8 @@ TEST(VerifyModel, TestUnsupportedVersion) {
   auto model = CreateModel(builder, /*version=*/1, /*operator_codes=*/0,
                            /*subgraphs=*/0, /*description=*/0, /*buffers=*/0);
   ::tflite::FinishModelBuffer(builder, model);
-  ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize()));
+  ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(),
+                      DefaultErrorReporter()));
 }
 
 TEST(VerifyModel, TestRandomModificationIsNotAllowed) {
@@ -116,20 +135,105 @@ TEST(VerifyModel, TestRandomModificationIsNotAllowed) {
                            /*subgraphs=*/0, /*description=*/0, /*buffers=*/0);
   ::tflite::FinishModelBuffer(builder, model);
 
-  string model_content(reinterpret_cast<char *>(builder.GetBufferPointer()),
-                       builder.GetSize());
+  std::string model_content(reinterpret_cast<char*>(builder.GetBufferPointer()),
+                            builder.GetSize());
   for (int i = 0; i < model_content.size(); i++) {
     model_content[i] = (model_content[i] + 137) % 255;
-    EXPECT_FALSE(Verify(model_content.data(), model_content.size()))
+    EXPECT_FALSE(Verify(model_content.data(), model_content.size(),
+                        DefaultErrorReporter()))
         << "Fail at position: " << i;
   }
+}
+
+TEST(VerifyModel, TestIntTensorShapeIsGreaterThanBuffer) {
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4}, "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+}
+
+TEST(VerifyModel, TestIntTensorShapeIsSmallerThanBuffer) {
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor({2, 1}, TensorType_UINT8, {1, 2, 3, 4}, "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+}
+
+TEST(VerifyModel, TestIntTensorShapeOverflow) {
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor({1024, 2048, 4096}, TensorType_UINT8, {1, 2, 3, 4},
+                    "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+}
+
+TEST(VerifyModel, TensorBufferIsNotValid) {
+  FlatBufferBuilder builder;
+  std::vector<int> shape = {2, 3};
+  auto tensors = builder.CreateVector(std::vector<Offset<Tensor>>{
+      CreateTensorDirect(builder, &shape, TensorType_INT32, /*buffer=*/2,
+                         "input", /*quantization=*/0)});
+  auto subgraph = std::vector<Offset<SubGraph>>(
+      {CreateSubGraph(builder, tensors, /*inputs=*/0, /*outputs=*/0,
+                      /*operators=*/0, builder.CreateString("Main"))});
+
+  auto buffers = builder.CreateVector(std::vector<Offset<Buffer>>{
+      CreateBuffer(builder,
+                   builder.CreateVector(std::vector<uint8>{1, 2, 3, 4, 5, 6})),
+  });
+
+  auto model = CreateModel(builder, TFLITE_SCHEMA_VERSION, /*operator_codes=*/0,
+                           builder.CreateVector(subgraph),
+                           builder.CreateString("SmartReply"), buffers);
+
+  ::tflite::FinishModelBuffer(builder, model);
+  ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(),
+                      DefaultErrorReporter()));
+}
+
+TEST(VerifyModel, StringTensorHasInvalidNumString) {
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {0x00, 0x00, 0x00, 0x20, 16, 0, 0, 0, 17, 0, 0, 0, 18, 0, 0, 0, 'A', 'B'},
+      "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+}
+
+TEST(VerifyModel, StringTensorOffsetTooSmall) {
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {2, 0, 0, 0, 12, 0, 0, 0, 17, 0, 0, 0, 18, 0, 0, 0, 'A', 'B'}, "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+}
+
+TEST(VerifyModel, StringTensorOffsetOutOfRange) {
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 22, 0, 0, 0, 'A', 'B'}, "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+}
+
+TEST(VerifyModel, StringTensorIsLargerThanRequired) {
+  TfLiteFlatbufferModelBuilder builder;
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 18, 0, 0, 0, 'A', 'B', 'C'},
+      "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
 }
 
 // TODO(yichengfan): make up malicious files to test with.
 
 }  // namespace tflite
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

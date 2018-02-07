@@ -87,6 +87,10 @@ def _node_def(from_node_def, export_scope, unbound_inputs, clear_devices=False):
                compat.as_str(s).split("@")[1].startswith(export_scope)]
       node_def.attr[k].CopyFrom(attr_value_pb2.AttrValue(
           list=attr_value_pb2.AttrValue.ListValue(s=new_s)))
+    elif node_def.op in ("Enter", "RefEnter") and k == "frame_name":
+      if not export_scope or compat.as_str(v.s).startswith(export_scope):
+        new_s = compat.as_bytes(ops.strip_name_scope(v.s, export_scope))
+      node_def.attr[k].CopyFrom(attr_value_pb2.AttrValue(s=new_s))
     else:
       node_def.attr[k].CopyFrom(v)
 
@@ -959,5 +963,3 @@ def copy_scoped_meta_graph(from_scope, to_scope,
                                       graph=to_graph,
                                       import_scope=to_scope)
   return var_list
-
-

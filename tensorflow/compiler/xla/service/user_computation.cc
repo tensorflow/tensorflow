@@ -1185,7 +1185,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddInfeedInstruction(
   return handle;
 }
 
-Status UserComputation::AddOutfeedInstruction(
+StatusOr<ComputationDataHandle> UserComputation::AddOutfeedInstruction(
     const OutfeedRequest& outfeed_request) {
   tensorflow::mutex_lock lock(mutex_);
 
@@ -1197,8 +1197,6 @@ Status UserComputation::AddOutfeedInstruction(
   // Verify that operand is valid.
   TF_RETURN_IF_ERROR(LookUpRequest(outfeed_request.operand()).status());
 
-  // No handle is returned, but a handle must be assigned to this instruction
-  // for computation versioning.
   ComputationDataHandle handle = CreateComputationDataHandle();
   OperationRequest& request =
       (*session_computation_.mutable_requests())[handle.handle()];
@@ -1209,7 +1207,7 @@ Status UserComputation::AddOutfeedInstruction(
   VLOG(1) << "AddOutfeedInstruction (" << GetVersionedHandleInternal()
           << "), data handle " << handle.handle() << ": "
           << outfeed_request.ShortDebugString();
-  return Status::OK();
+  return handle;
 }
 
 StatusOr<ComputationDataHandle> UserComputation::AddCallInstruction(

@@ -278,7 +278,7 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
     return gen_state_ops.assign(
         ref, value, use_locking=use_locking, name=name,
         validate_shape=validate_shape)
-  return ref.assign(value)
+  return ref.assign(value, name=name)
 
 
 @tf_export("count_up_to")

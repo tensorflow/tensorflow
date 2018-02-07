@@ -82,7 +82,8 @@ def _convert_default_signature_to_signature_def(signatures):
   """
   default_signature = signatures.default_signature
   signature_def = meta_graph_pb2.SignatureDef()
-  if default_signature.WhichOneof("type") == legacy_constants.REGRESSION_SIGNATURE:
+  if (default_signature.WhichOneof("type") ==
+      legacy_constants.REGRESSION_SIGNATURE):
     regression_signature = default_signature.regression_signature
     signature_def.method_name = signature_constants.REGRESS_METHOD_NAME
     _add_input_to_signature_def(regression_signature.input.tensor_name,
@@ -91,7 +92,8 @@ def _convert_default_signature_to_signature_def(signatures):
     _add_output_to_signature_def(regression_signature.output.tensor_name,
                                  signature_constants.REGRESS_OUTPUTS,
                                  signature_def)
-  elif default_signature.WhichOneof("type") == legacy_constants.CLASSIFICATION_SIGNATURE:
+  elif (default_signature.WhichOneof("type") ==
+        legacy_constants.CLASSIFICATION_SIGNATURE):
     classification_signature = default_signature.classification_signature
     signature_def.method_name = signature_constants.CLASSIFY_METHOD_NAME
     _add_input_to_signature_def(classification_signature.input.tensor_name,
@@ -132,8 +134,10 @@ def _convert_named_signatures_to_signature_def(signatures):
       signature_constants.PREDICT_OUTPUTS]
   # TODO(pdudnik): what if there are other signatures? Mimic cr/140900781 once
   # it is submitted.
-  if (input_signature.WhichOneof("type") != legacy_constants.GENERIC_SIGNATURE or
-      output_signature.WhichOneof("type") != legacy_constants.GENERIC_SIGNATURE):
+  if (input_signature.WhichOneof("type") !=
+      legacy_constants.GENERIC_SIGNATURE or
+      output_signature.WhichOneof("type") !=
+      legacy_constants.GENERIC_SIGNATURE):
     raise RuntimeError("Named input and output signatures can only be "
                        "up-converted if they are generic signature. "
                        "Input signature type is %s, output signature type is "

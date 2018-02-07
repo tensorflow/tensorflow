@@ -65,7 +65,10 @@ inline bool IsDynamicTensor(TfLiteTensor* tensor) {
 
 // Sets tensor to dynamic.
 inline void SetTensorToDynamic(TfLiteTensor* tensor) {
-  tensor->allocation_type = kTfLiteDynamic;
+  if (tensor->allocation_type != kTfLiteDynamic) {
+    tensor->allocation_type = kTfLiteDynamic;
+    tensor->data.raw = nullptr;
+  }
 }
 
 // Calculates the multiplication factor for a quantized convolution (or

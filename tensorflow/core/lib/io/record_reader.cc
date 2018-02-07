@@ -207,7 +207,7 @@ Status RecordReader::SkipNBytes(uint64 offset) {
     }
   }
   return Status::OK();
-}
+}  // namespace io
 
 SequentialRecordReader::SequentialRecordReader(
     RandomAccessFile* file, const RecordReaderOptions& options)

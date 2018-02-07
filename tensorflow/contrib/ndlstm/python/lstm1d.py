@@ -88,7 +88,7 @@ def ndlstm_base_dynamic(inputs, noutput, scope=None, reverse=False):
     if reverse:
       inputs = array_ops.reverse_v2(inputs, [0])
     outputs, _ = rnn.dynamic_rnn(
-      lstm_cell, inputs, time_major=True, dtype=inputs.dtype)
+        lstm_cell, inputs, time_major=True, dtype=inputs.dtype)
     if reverse:
       outputs = array_ops.reverse_v2(outputs, [0])
     return outputs

@@ -230,7 +230,7 @@ template <typename LiteralPtr>
     const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
-      HloRunner::ReadModule(filename, GetDebugOptionsForTest());
+      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "failed reading hlo module from file";
@@ -258,7 +258,7 @@ template <typename LiteralPtr>
     const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
-      HloRunner::ReadModule(filename, GetDebugOptionsForTest());
+      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "failed reading hlo module from file";

@@ -217,6 +217,24 @@ Status Unavailable(const char* format, ...) TF_PRINTF_ATTRIBUTE(1, 2);
 // Passed-varargs variant of the InvalidArgument factory above.
 Status InvalidArgumentV(const char* format, va_list args);
 
+template <typename... Args>
+Status UnimplementedStrCat(Args&&... concat) {
+  return Unimplemented(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
+Status InternalErrorStrCat(Args&&... concat) {
+  return InternalError(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
+template <typename... Args>
+Status ResourceExhaustedStrCat(Args&&... concat) {
+  return ResourceExhausted(
+      "%s", tensorflow::strings::StrCat(std::forward<Args>(concat)...).c_str());
+}
+
 // Splits the lines of the original, replaces leading whitespace with the prefix
 // given by "indentation", and returns the string joined by newlines again. As a
 // side effect, any additional trailing whitespace is removed.
