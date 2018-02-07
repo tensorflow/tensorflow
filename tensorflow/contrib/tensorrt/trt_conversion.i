@@ -19,9 +19,43 @@ limitations under the License.
 %}
 %include "std_pair.i"
 %include "tensorflow/python/platform/base.i"
-%template(StringPair) std::pair<string, string>;
-%template() std::pair<swig::SwigPtr_PyObject, swig::SwigPtr_PyObject>;
 
+%{
+  PyObject* pair_helper(std::pair<string,string>* in){
+    PyObject *first(nullptr), *second(nullptr), *tuple(nullptr);
+    first = PyBytes_FromStringAndSize(in->first.data(), in->first.length());
+    if(!first){
+      if(!PyErr_Occurred()){
+        PyErr_SetString(PyExc_TypeError,
+                        "Pair conversion first argument failed");
+      }
+      return NULL;
+    }
+    second=PyBytes_FromStringAndSize(in->second.data(), in->second.length());
+    if(!second){
+      if(!PyErr_Occurred()){
+        PyErr_SetString(PyExc_TypeError,
+                        "Pair conversion second argument failed");
+      }
+      return NULL;
+    }
+    tuple=Py_BuildValue("(OO)", first, second);
+    if(!tuple){
+      if(!PyErr_Occurred()){
+        PyErr_SetString(PyExc_TypeError,
+                        "Tuple creation from pair<string,string> failed!");
+      }
+      return NULL;
+    }
+    return tuple;
+  }
+
+%}
+%typemap(out) std::pair<string, string> {
+  PyObject *tuple = pair_helper(&$1);
+  if(!tuple) SWIG_fail;
+  $result = tuple;
+ }
 %{
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -94,5 +128,6 @@ std::pair<string, string> trt_convert(string graph_def_string,
                                       std::vector<string> output_names,
                                       size_t max_batch_size,
                                       size_t max_workspace_size_bytes);
+
 
 %unignoreall
