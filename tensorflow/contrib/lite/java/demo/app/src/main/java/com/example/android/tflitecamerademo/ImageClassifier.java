@@ -266,8 +266,8 @@ public abstract class ImageClassifier {
   protected abstract float getNormalizedProbability(int labelIndex);
 
   /**
-   * Run inference using the prepared input in this.imgData.
-   * The result will be saved in this.labelPropArray.
+   * Run inference using the prepared input in {@link #imgData}.
+   * Afterwards, the result will be provided by getProbability().
    *
    * This additional method is necessary, because we don't have a common base for different
    * primitive data types.
