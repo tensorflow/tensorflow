@@ -25,6 +25,9 @@ limitations under the License.
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/eager/c_api_internal.h"
 #include "tensorflow/c/eager/runtime.h"
+#ifdef TENSORFLOW_EAGER_USE_XLA
+#include "tensorflow/compiler/tf2xla/xla_op_registry.h"
+#endif  // TENSORFLOW_EAGER_USE_XLA
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -46,6 +49,12 @@ using tensorflow::string;
 namespace {
 bool IsCPU(tensorflow::Device* d) {
   return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
+}
+
+bool IsXLA(tensorflow::Device* d) {
+  if (d == nullptr) return false;
+  const auto& device_type = d->attributes().device_type();
+  return device_type.find("XLA") != std::string::npos;
 }
 
 string DeviceName(tensorflow::Device* d) {
@@ -183,7 +192,10 @@ TFE_TensorHandle* TFE_TensorHandleCopyToDevice(TFE_TensorHandle* h,
       (srcd == dstd) || (DeviceName(srcd) == DeviceName(dstd));
   const bool dst_cpu = IsCPU(dstd);
   const bool src_cpu = IsCPU(srcd);
-  if (is_same_device) {
+  // both_on_cpu can be true and yet is_same_device is false, if one of src/dst
+  // has device type XLA_CPU, and the other CPU.
+  const bool both_on_cpu = src_cpu && dst_cpu;
+  if (is_same_device || both_on_cpu) {
     return new TFE_TensorHandle(h->t, dst_cpu ? nullptr : dstd);
   }
   tensorflow::Tensor* src = &(h->t);

@@ -66,3 +66,31 @@ def copy_clean(node):
     return tuple(copier.visit(n) for n in node)
   else:
     return copier.visit(node)
+
+
+class SymbolRenamer(gast.NodeTransformer):
+  """Transformer that can rename symbols to a simple names."""
+
+  def __init__(self, name_map):
+    self.name_map = name_map
+
+  def _process(self, node):
+    qn = anno.getanno(node, anno.Basic.QN)
+    if qn in self.name_map:
+      return gast.Name(str(self.name_map[qn]), node.ctx, None)
+    return self.generic_visit(node)
+
+  def visit_Name(self, node):
+    return self._process(node)
+
+  def visit_Attribute(self, node):
+    return self._process(node)
+
+
+def rename_symbols(node, name_map):
+  renamer = SymbolRenamer(name_map)
+  if isinstance(node, list):
+    return [renamer.visit(n) for n in node]
+  elif isinstance(node, tuple):
+    return tuple(renamer.visit(n) for n in node)
+  return renamer.visit(node)
