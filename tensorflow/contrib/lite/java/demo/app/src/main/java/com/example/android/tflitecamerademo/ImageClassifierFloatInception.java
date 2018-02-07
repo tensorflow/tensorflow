@@ -92,7 +92,7 @@ public class ImageClassifierFloatInception extends ImageClassifier {
 
     @Override
     protected float getNormalizedProbability(int labelIndex) {
-        // nothing to do here
+        // TODO the following value isn't in [0,1] yet, but may be greater. Why?
         return getProbability(labelIndex);
     }
 
