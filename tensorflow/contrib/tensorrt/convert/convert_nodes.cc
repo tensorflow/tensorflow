@@ -120,7 +120,7 @@ class TRT_ShapedWeights {
         type_(type),
         values_(values),
         owned_values_(owned_values ? *owned_values : std::vector<char>({})),
-        dummy_flag_(false) {
+        empty_weight_flag_(false) {
     // Note: this->shape.type[] is not used
   }
 
@@ -129,14 +129,14 @@ class TRT_ShapedWeights {
         type_(type),
         values_(nullptr),
         owned_values_(),
-        dummy_flag_(true) {}
+        empty_weight_flag_(true) {}
 
   TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
       : shape_(rhs.shape_),
         type_(rhs.type_),
         values_(rhs.values_),
         owned_values_(rhs.owned_values_),
-        dummy_flag_(rhs.dummy_flag_) {}
+        empty_weight_flag_(rhs.empty_weight_flag_) {}
 
   int64_t count() const {
     int64_t c = 1;
@@ -147,7 +147,7 @@ class TRT_ShapedWeights {
   nvinfer1::Weights GetWeightsForTRT() const {
     nvinfer1::DataType trt_type(nvinfer1::DataType::kFLOAT);
     TF_CHECK_OK(ConvertDType(type_, &trt_type));
-    if (dummy_flag_) return nvinfer1::Weights{trt_type, nullptr, 0};
+    if (empty_weight_flag_) return nvinfer1::Weights{trt_type, nullptr, 0};
 
     // Note: this->shape.type[] is not used
     return nvinfer1::Weights{trt_type, GetValues(), GetShapeSize(shape_)};
@@ -178,39 +178,39 @@ class TRT_ShapedWeights {
  private:
   const void* values_;
   std::vector<char> owned_values_;
-  bool dummy_flag_;
+  bool empty_weight_flag_;
 };
 
 class TRT_TensorOrWeights {
  public:
   explicit TRT_TensorOrWeights(nvinfer1::ITensor* tensor)
-      : _tensor_(tensor), _weights_(DT_FLOAT), _variant_(TRT_NODE_TENSOR) {}
+      : tensor_(tensor), weights_(DT_FLOAT), variant_(TRT_NODE_TENSOR) {}
   explicit TRT_TensorOrWeights(const TRT_ShapedWeights& weights)
-      : _tensor_(nullptr), _weights_(weights), _variant_(TRT_NODE_WEIGHTS) {}
+      : tensor_(nullptr), weights_(weights), variant_(TRT_NODE_WEIGHTS) {}
   TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs)
-      : _tensor_(rhs._tensor_),
-        _weights_(rhs._weights_),
-        _variant_(rhs._variant_) {}
+      : tensor_(rhs.tensor_),
+        weights_(rhs.weights_),
+        variant_(rhs.variant_) {}
   ~TRT_TensorOrWeights() {}
 
-  bool is_tensor() const { return _variant_ == TRT_NODE_TENSOR; }
-  bool is_weights() const { return _variant_ == TRT_NODE_WEIGHTS; }
+  bool is_tensor() const { return variant_ == TRT_NODE_TENSOR; }
+  bool is_weights() const { return variant_ == TRT_NODE_WEIGHTS; }
 
   nvinfer1::ITensor* tensor() {
     CHECK_EQ(is_tensor(), true);
-    return _tensor_;
+    return tensor_;
   }
   const nvinfer1::ITensor* tensor() const {
     CHECK_EQ(is_tensor(), true);
-    return _tensor_;
+    return tensor_;
   }
   TRT_ShapedWeights& weights() {
     CHECK_EQ(is_weights(), true);
-    return _weights_;
+    return weights_;
   }
   const TRT_ShapedWeights& weights() const {
     CHECK_EQ(is_weights(), true);
-    return _weights_;
+    return weights_;
   }
   nvinfer1::Dims shape() const {
     if (is_tensor()) {
@@ -221,69 +221,35 @@ class TRT_TensorOrWeights {
   }
 
  private:
-  nvinfer1::ITensor* _tensor_;
-  TRT_ShapedWeights _weights_;
-  enum { TRT_NODE_TENSOR, TRT_NODE_WEIGHTS } _variant_;
-};
-
-class TRT_LayerOrWeights {
- public:
-  explicit TRT_LayerOrWeights(nvinfer1::ILayer* layer)
-      : _layer_(layer), _variant_(TRT_NODE_LAYER) {}
-  explicit TRT_LayerOrWeights(const TRT_ShapedWeights& weights)
-      : _weights_(weights), _variant_(TRT_NODE_WEIGHTS) {}
-  bool is_layer() const { return _variant_ == TRT_NODE_LAYER; }
-  bool is_weights() const { return _variant_ == TRT_NODE_WEIGHTS; }
-  nvinfer1::ILayer* layer() {
-    CHECK_EQ(this->is_layer(), true);
-    return _layer_;
-  }
-  TRT_ShapedWeights& weights() {
-    CHECK_EQ(this->is_weights(), true);
-    return _weights_;
-  }
-  TRT_TensorOrWeights output(int index = 0) const {
-    if (this->is_layer()) {
-      nvinfer1::ITensor* tensor = _layer_->getOutput(index);
-      return TRT_TensorOrWeights(tensor);
-    } else {
-      CHECK_EQ(index, 0);
-      return TRT_TensorOrWeights(_weights_);
-    }
-  }
-
- private:
-  union {
-    nvinfer1::ILayer* _layer_;
-    TRT_ShapedWeights _weights_;
-  };
-  enum { TRT_NODE_LAYER, TRT_NODE_WEIGHTS } _variant_;
+  nvinfer1::ITensor* tensor_;
+  TRT_ShapedWeights weights_;
+  enum { TRT_NODE_TENSOR, TRT_NODE_WEIGHTS } variant_;
 };
 
 class TFAttrs {
  public:
   explicit TFAttrs(const tensorflow::NodeDef& tf_node) {
     for (const auto& attr : tf_node.attr()) {
-      _attrs.insert({attr.first, &attr.second});
+      attrs_.insert({attr.first, &attr.second});
     }
   }
-  bool count(string key) const { return _attrs.count(key); }
+  bool count(string key) const { return attrs_.count(key); }
   tensorflow::AttrValue const* at(string key) const {
-    if (!_attrs.count(key)) {
+    if (!attrs_.count(key)) {
       LOG(FATAL) << "Attribute not found: " << key;
     }
-    return _attrs.at(key);
+    return attrs_.at(key);
   }
   template <typename T>
   T get(string key) const;
   template <typename T>
   T get(string key, const T& default_value) const {
-    return _attrs.count(key) ? this->get<T>(key) : default_value;
+    return attrs_.count(key) ? this->get<T>(key) : default_value;
   }
 
  private:
   typedef std::map<string, tensorflow::AttrValue const*> AttrMap;
-  AttrMap _attrs;
+  AttrMap attrs_;
 };
 
 template <>
@@ -385,10 +351,10 @@ using OpConverter =
                                      std::vector<TRT_TensorOrWeights>*)>;
 
 class Converter {
-  std::unordered_map<string, TRT_TensorOrWeights> _trt_tensors;
-  std::unordered_map<string, OpConverter> _op_registry;
-  nvinfer1::INetworkDefinition* _trt_network;
-  std::list<std::vector<uint8_t>> _temp_bufs;
+  std::unordered_map<string, TRT_TensorOrWeights> trt_tensors_;
+  std::unordered_map<string, OpConverter> op_registry_;
+  nvinfer1::INetworkDefinition* trt_network_;
+  std::list<std::vector<uint8_t>> temp_bufs_;
 
   void register_op_converters();
 
@@ -397,14 +363,14 @@ class Converter {
     std::vector<TRT_TensorOrWeights> inputs;
     for (const auto& input_name : node_def.input()) {
       VLOG(2) << "Retrieve input: " << input_name;
-      inputs.push_back(_trt_tensors.at(input_name));
+      inputs.push_back(trt_tensors_.at(input_name));
     }
     return inputs;
   }
 
  public:
   explicit Converter(nvinfer1::INetworkDefinition* trt_network)
-      : _trt_network(trt_network) {
+      : trt_network_(trt_network) {
     this->register_op_converters();
   }
 
@@ -412,8 +378,8 @@ class Converter {
                                      nvinfer1::Dims shape) {
     TRT_ShapedWeights weights(type, nullptr, shape);
     // TODO(jie): check weights size_bytes. 0 means type error
-    _temp_bufs.push_back(std::vector<uint8_t>(weights.size_bytes()));
-    weights.SetValues(_temp_bufs.back().data());
+    temp_bufs_.push_back(std::vector<uint8_t>(weights.size_bytes()));
+    weights.SetValues(temp_bufs_.back().data());
     return weights;
   }
 
@@ -424,11 +390,11 @@ class Converter {
   tensorflow::Status convert_node(const tensorflow::NodeDef& node_def) {
     std::vector<TRT_TensorOrWeights> inputs = this->get_inputs(node_def);
     string op = node_def.op();
-    if (!_op_registry.count(op)) {
+    if (!op_registry_.count(op)) {
       return tensorflow::errors::Unimplemented(
           "No converter registered for op: " + op);
     }
-    OpConverter op_converter = _op_registry.at(op);
+    OpConverter op_converter = op_registry_.at(op);
     std::vector<TRT_TensorOrWeights> outputs;
     TF_RETURN_IF_ERROR(op_converter(*this, node_def, inputs, &outputs));
     for (size_t i = 0; i < outputs.size(); ++i) {
@@ -440,7 +406,7 @@ class Converter {
         output.tensor()->setName(output_name.c_str());
       }
       VLOG(2) << "Write out tensor: " << output_name;
-      if (!_trt_tensors.insert({output_name, output}).second) {
+      if (!trt_tensors_.insert({output_name, output}).second) {
         return tensorflow::errors::AlreadyExists(
             "Output tensor already exists for op: " + op);
       }
@@ -448,17 +414,17 @@ class Converter {
     return tensorflow::Status::OK();
   }
 
-  nvinfer1::INetworkDefinition* network() { return _trt_network; }
+  nvinfer1::INetworkDefinition* network() { return trt_network_; }
 
   TRT_TensorOrWeights get_tensor(string name) {
-    if (!_trt_tensors.count(name)) {
+    if (!trt_tensors_.count(name)) {
       return TRT_TensorOrWeights(nullptr);
     }
-    return _trt_tensors.at(name);
+    return trt_tensors_.at(name);
   }
 
   bool insert_input_tensor(string name, nvinfer1::ITensor* tensor) {
-    return _trt_tensors.insert({name, TRT_TensorOrWeights(tensor)}).second;
+    return trt_tensors_.insert({name, TRT_TensorOrWeights(tensor)}).second;
   }
 
   nvinfer1::ITensor* TransposeTensor(nvinfer1::ITensor* input_tensor,
@@ -1428,25 +1394,25 @@ tensorflow::Status ConvertPad(Converter& ctx,
 
 void Converter::register_op_converters() {
   // vgg_16 slim implementation
-  _op_registry["Placeholder"] = ConvertPlaceholder;
-  _op_registry["Conv2D"] = ConvertConv2D;
-  _op_registry["Relu"] = ConvertActivation;
-  _op_registry["MaxPool"] = ConvertPool;
+  op_registry_["Placeholder"] = ConvertPlaceholder;
+  op_registry_["Conv2D"] = ConvertConv2D;
+  op_registry_["Relu"] = ConvertActivation;
+  op_registry_["MaxPool"] = ConvertPool;
   // This could be really handled as ConvertBinary
-  _op_registry["BiasAdd"] = ConvertScale;
-  _op_registry["Const"] = ConvertConst;
-  // _op_registry["MatMul"] = ConvertFullyConnected;  // Not used in vgg
+  op_registry_["BiasAdd"] = ConvertScale;
+  op_registry_["Const"] = ConvertConst;
+  // op_registry_["MatMul"] = ConvertFullyConnected;  // Not used in vgg
   // TODO(ben,jie): this is a temp hack.
-  _op_registry["Identity"] = ConvertIdentity;  // Identity should be removed
-  // _op_registry["AvgPool"] = ConvertPool;
+  op_registry_["Identity"] = ConvertIdentity;  // Identity should be removed
+  // op_registry_["AvgPool"] = ConvertPool;
 
   // resnet_50_v1 slim implementation
-  _op_registry["Add"] = ConvertBinary;
-  _op_registry["Mul"] = ConvertBinary;
-  _op_registry["Sub"] = ConvertBinary;
-  _op_registry["Rsqrt"] = ConvertUnary;
-  _op_registry["Mean"] = ConvertReduce;
-  _op_registry["Pad"] = ConvertPad;
+  op_registry_["Add"] = ConvertBinary;
+  op_registry_["Mul"] = ConvertBinary;
+  op_registry_["Sub"] = ConvertBinary;
+  op_registry_["Rsqrt"] = ConvertUnary;
+  op_registry_["Mean"] = ConvertReduce;
+  op_registry_["Pad"] = ConvertPad;
   // TODO(ben,jie): Add more ops
 }
 
@@ -1595,6 +1561,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   }
 
   VLOG(2) << "Finished output";
+  // TODO(jie): static_id is not thread safe.
   static int static_id = 0;
 
   // Build the engine
