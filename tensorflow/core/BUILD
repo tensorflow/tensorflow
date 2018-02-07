@@ -244,6 +244,7 @@ tf_nano_proto_library(
 
 exports_files([
     "framework/types.proto",
+    "ops/ops.pbtxt",
 ])
 
 tf_proto_library(
