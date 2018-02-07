@@ -26,11 +26,7 @@ import os
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.platform import tf_logging as logging
-
-# pylint: disable=protected-access
-_TF_CONFIG_ENV = run_config_lib._TF_CONFIG_ENV
-_SERVICE_KEY = run_config_lib._SERVICE_KEY
-_TPU_WORKER_JOB_NAME = 'tpu_worker_job_name'
+from tensorflow.contrib.tpu.python.tpu import tpu_constant
 
 # pylint: enable=protected-access
 
@@ -161,8 +157,8 @@ def _get_tpu_job_name_from_tf_config():
   """Extracts the TPU job name from TF_CONFIG env variable."""
   # TODO(xiejw): Extends this to support both TF_CONFIG env variable and cluster
   # spec propagation.
-  tf_config = json.loads(os.environ.get(_TF_CONFIG_ENV, '{}'))
-  tpu_job_name = tf_config.get(_SERVICE_KEY, {}).get(_TPU_WORKER_JOB_NAME)
+  tf_config = json.loads(os.environ.get(tpu_constant._TF_CONFIG_ENV, '{}'))
+  tpu_job_name = tf_config.get(tpu_constant._SERVICE_KEY, {}).get(tpu_constant._TPU_WORKER_JOB_NAME)
   if tpu_job_name:
     logging.info('Load TPU job name from TF_CONFIG: %s', tpu_job_name)
   return tpu_job_name

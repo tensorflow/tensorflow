@@ -23,6 +23,7 @@ from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import tpu_function
+from tensorflow.contrib.tpu.python.tpu import tpu_constant
 
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import ops
@@ -31,32 +32,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import compat
-
-
-# Operations that indicate some error in the users graph, e.g. a placeholder
-# that's introduced outside of the infeed.
-_BLACKLISTED_OPS = set([
-    "Placeholder",
-])
-
-# These operations will currently fail to compile, but we should be able to
-# support them eventually via CPU offload or extending our operation set.
-_NOT_IMPLEMENTED_OPS = set([
-    "AudioSummary",
-    "AudioSummaryV2",
-    "HistogramSummary",
-    "ImageSummary",
-    "MergeSummary",
-    "Print",
-    "ScalarSummary",
-    "TensorSummary",
-    "TensorSummaryV2",
-    ])
-
-_MAX_WARNING_LINES = 5
-
-_TPU_REPLICATE_ATTR = "_tpu_replicate"
-
 
 def _tpu_system_device_name(job):
   """Returns the device name for the TPU_SYSTEM device of `job`."""
@@ -129,33 +104,33 @@ class TPUReplicateContext(control_flow_ops.XLAControlFlowContext):
   def report_unsupported_operations(self):
     if self._unsupported_ops:
       op_str = "\n".join(["  %s (%s)" % (op.type, op.name)
-                          for op in self._unsupported_ops[:_MAX_WARNING_LINES]])
+                          for op in self._unsupported_ops[:tpu_constant._MAX_WARNING_LINES]])
       logging.warning("%d unsupported operations found: \n%s",
                       len(self._unsupported_ops), op_str)
-      if len(self._unsupported_ops) > _MAX_WARNING_LINES:
+      if len(self._unsupported_ops) > tpu_constant._MAX_WARNING_LINES:
         logging.warning("... and %d more" %
-                        (len(self._unsupported_ops) - _MAX_WARNING_LINES))
+                        (len(self._unsupported_ops) - tpu_constant._MAX_WARNING_LINES))
 
   def AddOp(self, op):
     self._AddOpInternal(op)
 
   def _AddOpInternal(self, op):
     # pylint: disable=protected-access
-    if op.type in _BLACKLISTED_OPS:
+    if op.type in tpu_constant._BLACKLISTED_OPS:
       logging.error("Operation of type %s (%s) is not supported on the TPU. "
                     "Execution will fail if this op is used in the graph. " %
                     (op.type, op.name))
 
-    if op.type in _NOT_IMPLEMENTED_OPS:
+    if op.type in tpu_constant._NOT_IMPLEMENTED_OPS:
       self._unsupported_ops.append(op)
 
     if any(x.dtype._is_ref_dtype for x in op.inputs):
       raise NotImplementedError(
           "Non-resource Variables are not supported inside TPU computations "
           "(operator name: %s)" % op.name)
-    if _TPU_REPLICATE_ATTR in op.node_def.attr:
+    if tpu_constant._TPU_REPLICATE_ATTR in op.node_def.attr:
       raise ValueError("TPU computations cannot be nested")
-    op._set_attr(_TPU_REPLICATE_ATTR,
+    op._set_attr(tpu_constant._TPU_REPLICATE_ATTR,
                  attr_value_pb2.AttrValue(s=compat.as_bytes(self._name)))
     # pylint: enable=protected-access
     op.graph.prevent_feeding(op)

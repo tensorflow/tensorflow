@@ -22,10 +22,7 @@ from __future__ import print_function
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.framework import tensor_shape
-
-_DEFAULT_NUMBER_OF_SHARDS = 1
-_DEFAULT_SHARD_DIMENSION = 0
-
+from tensorflow.contrib.tpu.python.tpu import tpu_constant
 
 # TODO(b/36777903) change other parts of tpu.py to use this class.
 class ShardingPolicy(object):
@@ -46,10 +43,10 @@ class ShardingPolicy(object):
 
   def _fill_default_values(self):
     if self._number_of_shards is None:
-      self._number_of_shards = _DEFAULT_NUMBER_OF_SHARDS
+      self._number_of_shards = tpu_constant._DEFAULT_NUMBER_OF_SHARDS
     if self._shard_dimension is None:
       self._shard_dimension = tensor_shape.as_dimension(
-          _DEFAULT_SHARD_DIMENSION)
+          tpu_constant._DEFAULT_SHARD_DIMENSION)
 
   def freeze(self):
     """Prevents further modification to the sharding policy.
