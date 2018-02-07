@@ -1750,7 +1750,8 @@ class Saver(object):
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
     if (os.path.isfile(save_path) and
-        self._write_version != saver_pb2.SaverDef.V1):
+        self._write_version != saver_pb2.SaverDef.V1 and
+        self._write_version != saver_pb2.SaverDef.V2):
       raise ValueError("The specified path: %s is a file."
                        " Please specify only the path prefix"
                        " to the checkpoint files." % save_path)

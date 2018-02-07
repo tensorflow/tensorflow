@@ -57,10 +57,6 @@ from tensorflow.python.ops.gradient_checker import compute_gradient
 
 import sys
 from tensorflow.python.util.tf_export import tf_export
-if sys.version_info.major == 2:
-  import mock                # pylint: disable=g-import-not-at-top,unused-import
-else:
-  from unittest import mock  # pylint: disable=g-import-not-at-top
 
 # Import Benchmark class
 Benchmark = _googletest.Benchmark  # pylint: disable=invalid-name
