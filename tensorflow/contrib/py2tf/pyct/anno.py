@@ -21,6 +21,25 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from enum import Enum
+
+
+class NoValue(Enum):
+
+  def __repr__(self):
+    return self.name
+
+
+class Basic(NoValue):
+  """Container for annotation keys.
+
+  The enum values are used strictly for documentation purposes.
+  """
+
+  QN = 'Qualified name, as it appeared in the code.'
+  SKIP_PROCESSING = (
+      'This node should be preserved as is and not processed any further.')
+
 
 def getanno(node, key, field_name='___pyct_anno'):
   return getattr(node, field_name)[key]

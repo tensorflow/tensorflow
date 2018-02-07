@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.contrib.py2tf.converters import side_effect_guards
 from tensorflow.contrib.py2tf.pyct import compiler
@@ -42,10 +43,12 @@ class SideEffectGuardsTest(converter_test_base.TestCase):
       state_ops.assign(a, a + 1)
       return a
 
-    node = self.parse_and_analyze(test_fn, {'state_ops': state_ops})
-    node = side_effect_guards.transform(node, TestNamer())
+    node = self.parse_and_analyze(
+        test_fn, {'state_ops': state_ops}, namer=TestNamer())
+    node = side_effect_guards.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
     setattr(result, 'state_ops', state_ops)
+    setattr(result, 'py2tf_utils', utils)
 
     # TODO(mdan): Configure the namespaces instead of doing these hacks.
     ops.identity = array_ops.identity

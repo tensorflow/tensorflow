@@ -276,7 +276,7 @@ void RangeEncoder::Finalize(string* sink) {
     }
   } else if (base_ != 0) {
     // If base == 0, then pick 0 from [base, base + size) and no zeros are
-    // explcitly written.
+    // explicitly written.
     //
     // Otherwise, pick (base + (2^16 - base[16:0])), i.e., round up base to the
     // next multiple of 2^16. As 2^16 < size, this value should be in the

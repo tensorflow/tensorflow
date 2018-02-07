@@ -992,11 +992,11 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
           for (int k = 0; k < 4; k++) {
             acc[k] = vld1q_f32(acc_buffer + i + 4 * k);
           }
-            for (int k = 0; k < 4; k++) {
-              acc[k] = vmaxq_f32(
-                  vdupq_n_f32(output_activation_min),
-                  vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
-            }
+          for (int k = 0; k < 4; k++) {
+            acc[k] = vmaxq_f32(
+                vdupq_n_f32(output_activation_min),
+                vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
+          }
           for (int k = 0; k < 4; k++) {
             vst1q_f32(output_ptr + 4 * k, acc[k]);
           }

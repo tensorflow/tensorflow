@@ -219,6 +219,12 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       changed = HardcodeMinMaxForOutput(model, op, 0, 255. / 256.);
       break;
 
+    case OperatorType::kTanh:
+      // We hardcode quantization_params to: zero_point=127, scale=1/128.
+      // This choice of minmax is the one that is equivalent to that.
+      changed = HardcodeMinMaxForOutput(model, op, -127. / 128., 1.0);
+      break;
+
     default:
       break;
   }

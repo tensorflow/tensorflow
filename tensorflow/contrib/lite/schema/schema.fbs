@@ -273,6 +273,9 @@ table LSTMOptions {
 }
 
 table ResizeBilinearOptions {
+  new_height: int (deprecated);
+  new_width: int (deprecated);
+  align_corners: bool;
 }
 
 // A call operation options
@@ -289,15 +292,9 @@ table ReshapeOptions {
 }
 
 table SpaceToBatchNDOptions {
-  block_shape:[int];
-  before_paddings:[int];
-  after_paddings:[int];
 }
 
 table BatchToSpaceNDOptions {
-  block_shape:[int];
-  before_crops:[int];
-  after_crops:[int];
 }
 
 table SkipGramOptions {
@@ -336,7 +333,6 @@ table TransposeOptions {
 }
 
 table MeanOptions {
-  axis:[int];
   keep_dims: bool;
 }
 

@@ -357,6 +357,9 @@ tf_py_test(
         "//tensorflow/python:session",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:string_ops",
+        "//tensorflow/python:lookup_ops",
     ],
     grpc_enabled = True,
     tags = [

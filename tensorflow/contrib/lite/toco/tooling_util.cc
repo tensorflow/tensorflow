@@ -304,6 +304,19 @@ string HelpfulOperatorTypeName(const Operator& op) {
   return OperatorTypeName(op.type);
 }
 
+bool OperatorSupportsFusedActivation(OperatorType type) {
+  switch (type) {
+    case OperatorType::kConcatenation:
+    case OperatorType::kSlice:
+    case OperatorType::kSqueeze:
+    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kTensorFlowSplit:
+      return false;
+    default:
+      return true;
+  }
+}
+
 void LogSummary(int log_level, const Model& model) {
   VLOG(log_level) << "Operators summary (" << model.operators.size()
                   << " operators):";
@@ -1745,6 +1758,24 @@ void UseArraysExtraInfo(Model* model) {
     minmax.min = entry.min();
     minmax.max = entry.max();
   }
+}
+
+bool IsRnnSourceArray(const toco::Model& model, const string& array_name) {
+  for (const auto& rnn_state : model.flags.rnn_states()) {
+    if (array_name == rnn_state.back_edge_source_array()) {
+      return true;
+    }
+  }
+  return false;
+}
+
+bool IsRnnStateArray(const toco::Model& model, const string& array_name) {
+  for (const auto& rnn_state : model.flags.rnn_states()) {
+    if (array_name == rnn_state.state_array()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace toco

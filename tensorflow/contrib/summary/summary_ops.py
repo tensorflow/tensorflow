@@ -202,7 +202,7 @@ def create_file_writer(logdir,
     if flush_millis is None:
       flush_millis = constant_op.constant(2 * 60 * 1000)
     if filename_suffix is None:
-      filename_suffix = constant_op.constant("")
+      filename_suffix = constant_op.constant(".v2")
     return _make_summary_writer(
         name,
         gen_summary_ops.create_summary_file_writer,

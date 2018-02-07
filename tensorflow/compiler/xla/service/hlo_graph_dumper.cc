@@ -1426,9 +1426,11 @@ void DumpText(const HloModule& module, const string& label,
 
 string MaybeDumpHloModule(const HloModule& module, const string& label,
                           const HloExecutionProfile* profile) {
-  VLOG(2) << "MaybeDumpHloModule called on module " << module.name();
-  string graph_url;
   const DebugOptions& debug_options = module.config().debug_options();
+  VLOG(2) << "MaybeDumpHloModule called on module " << module.name()
+          << " with generate_hlo_graph regex \""
+          << debug_options.xla_generate_hlo_graph() << "\"";
+  string graph_url;
   if (!debug_options.xla_generate_hlo_graph().empty() &&
       RE2::PartialMatch(module.name(),
                         debug_options.xla_generate_hlo_graph())) {

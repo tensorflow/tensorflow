@@ -317,8 +317,11 @@ class MklAddNOp : public OpKernel {
                                                 : src2_tensor.dims();
       // if the shapes of two tensors are not same raise op error
       TensorShape src1_shape, src2_shape;
-      src1_shape = src1_tensor.shape();
-      src2_shape = src2_tensor.shape();
+      src1_shape = input1_in_mkl_format ? src1_mkl_shape.GetTfShape()
+                  : src1_tensor.shape();
+      src2_shape = input2_in_mkl_format ? src2_mkl_shape.GetTfShape()
+                  : src2_tensor.shape();
+
       if (!src1_shape.IsSameSize(src2_shape)) {
         ctx->SetStatus(errors::InvalidArgument(
             "Inputs to operation ", this->name(), " of type ",

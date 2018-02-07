@@ -519,8 +519,8 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   // ownership is std::moved.
   const bool embed_ir_in_executable =
       module->config().debug_options().xla_embed_ir_in_executable();
-  const string xla_dump_hlo_proto_to =
-      module->config().debug_options().xla_dump_hlo_proto_to();
+  const string xla_dump_optimized_hlo_proto_to =
+      module->config().debug_options().xla_dump_optimized_hlo_proto_to();
 
   if (options::CpuParallelBackendRequested(module->config())) {
     VLOG(1) << "Using parallel cpu backend";
@@ -540,10 +540,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    if (!xla_dump_hlo_proto_to.empty()) {
+    if (!xla_dump_optimized_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-          proto, xla_dump_hlo_proto_to, module->name()));
+          proto, xla_dump_optimized_hlo_proto_to, module->name()));
     }
 
     // If we are using the parallel CPU backend, we need to create map from
@@ -649,10 +649,10 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    if (!xla_dump_hlo_proto_to.empty()) {
+    if (!xla_dump_optimized_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-          proto, xla_dump_hlo_proto_to, module->name()));
+          proto, xla_dump_optimized_hlo_proto_to, module->name()));
     }
 
     // Each computation is a single function.  Emit all embedded computations
@@ -828,12 +828,12 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
     // print one ourselves.
     XLA_VLOG_LINES(2, assignment->ToString());
 
-    const string xla_dump_hlo_proto_to =
-        module->config().debug_options().xla_dump_hlo_proto_to();
-    if (!xla_dump_hlo_proto_to.empty()) {
+    const string xla_dump_optimized_hlo_proto_to =
+        module->config().debug_options().xla_dump_optimized_hlo_proto_to();
+    if (!xla_dump_optimized_hlo_proto_to.empty()) {
       HloProto proto = MakeHloProto(*module, *assignment);
       TF_RETURN_IF_ERROR(protobuf_util::DumpProtoToDirectory(
-          proto, xla_dump_hlo_proto_to, module->name()));
+          proto, xla_dump_optimized_hlo_proto_to, module->name()));
     }
 
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,

@@ -49,6 +49,10 @@ xla::StatusOr<xla::ComputationDataHandle> UpdateSliceInMinorDims(
     xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
     const xla::ComputationDataHandle& update, gtl::ArraySlice<int64> start);
 
+// Transposes a stack of matrices `x` by swapping the last two dimensions.
+xla::StatusOr<xla::ComputationDataHandle> TransposeInMinorDims(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_LIB_UTIL_H_

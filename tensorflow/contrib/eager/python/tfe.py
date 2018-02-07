@@ -59,7 +59,6 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@in_eager_mode
 @@in_graph_mode
 
-@@IsolateTest
 @@run_test_in_graph_and_eager_modes
 
 @@DEVICE_PLACEMENT_EXPLICIT
@@ -101,7 +100,6 @@ from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
 from tensorflow.python.framework.ops import enable_eager_execution
 from tensorflow.python.framework.ops import eager_run as run
-from tensorflow.python.framework.test_util import IsolateTest
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
 from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 from tensorflow.python.ops.variable_scope import EagerVariableStore

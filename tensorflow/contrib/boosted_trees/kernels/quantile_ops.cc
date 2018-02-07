@@ -36,8 +36,8 @@
 namespace tensorflow {
 
 using ::boosted_trees::QuantileConfig;
-using boosted_trees::utils::TensorUtils;
 using boosted_trees::QuantileStreamResource;
+using boosted_trees::utils::TensorUtils;
 
 namespace {
 const char* const kExampleWeightsName = "example_weights";
@@ -384,7 +384,7 @@ class MakeQuantileSummariesOp : public OpKernel {
         protobuf::Arena arena;
         ::boosted_trees::QuantileSummaryState* summary_proto =
             protobuf::Arena::CreateMessage<
-            ::boosted_trees::QuantileSummaryState>(&arena);
+                ::boosted_trees::QuantileSummaryState>(&arena);
         const auto& summary = stream.GetFinalSummary();
         CopySummaryToProto(summary, summary_proto);
         // Output to tensor.

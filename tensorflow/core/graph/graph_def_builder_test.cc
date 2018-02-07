@@ -26,7 +26,6 @@ namespace tensorflow {
 namespace {
 
 TEST(GraphDefBuilderTest, Version) {
-
   // Verify that our assertions will be nontrivial
   ASSERT_LT(0, TF_GRAPH_DEF_VERSION);
 
