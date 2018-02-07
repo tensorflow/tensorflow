@@ -391,6 +391,7 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       ],
       sha256 = "51f81ff4202bbb820cdbedc061bd2eb6765f2b5c06489e7a8694bedac329e8f8",
       strip_prefix = "nsync-8502189abfa44c249c01c2cad64e6ed660a9a668",
+      patch_file = str(Label("//tools/arm_compiler/gcc_arm_rpi:nsync_rpi3.patch")),
   )
 
   tf_http_archive(
