@@ -21,26 +21,13 @@ from __future__ import print_function
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import execute
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
-
-
-def record_gradient_callback(inputs, attrs, results):
-  return backprop._record_gradient("MatMul", inputs, attrs, results, None)
-
-
-def c_tfe_py_fastpath_execute(a, b, transpose_a=False, transpose_b=False):
-  ctx = context.context()
-  assert not ctx.in_graph_mode(
-  ), "The prototype doesn't contain C code for graph construction"
-  ctx_handle = ctx._handle  # pylint: disable=protected-access
-
-  return pywrap_tensorflow.TFE_Py_FastPathExecute(
-      ctx_handle, ctx.device_name, "MatMul", record_gradient_callback, a, b,
-      "transpose_a", transpose_a, "transpose_b", transpose_b)[0]
 
 
 class Tests(test.TestCase):
@@ -54,31 +41,100 @@ class Tests(test.TestCase):
     a_100_by_784 = random_ops.random_uniform((100, 784))
     b_100_by_784 = random_ops.random_uniform((100, 784))
 
+    ctx = context.context()
+
     self.assertAllClose(
         math_ops.matmul(a_2_by_2, b_2_by_2),
-        c_tfe_py_fastpath_execute(a_2_by_2, b_2_by_2))
+        pywrap_tensorflow.TFE_Py_FastPathExecute(
+            ctx._handle, ctx.device_name, "MatMul", execute.record_gradient,
+            None, None, a_2_by_2, b_2_by_2, "transpose_a", False, "transpose_b",
+            False))
     self.assertAllClose(
         math_ops.matmul(a_100_by_784, b_100_by_784, transpose_b=True),
-        c_tfe_py_fastpath_execute(a_100_by_784, b_100_by_784, transpose_b=True))
+        pywrap_tensorflow.TFE_Py_FastPathExecute(
+            ctx._handle, ctx.device_name, "MatMul", execute.record_gradient,
+            None, None, a_100_by_784, b_100_by_784, "transpose_a", False,
+            "transpose_b", True))
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
   def testFastpathExecute_TapeWrite(self):
+    ctx = context.context()
     with backprop.GradientTape(persistent=True) as tape:
       a_2_by_2 = constant_op.constant(1.0, shape=[2, 2])
       tape.watch(a_2_by_2)
-      z = c_tfe_py_fastpath_execute(a_2_by_2, a_2_by_2)
+      z = pywrap_tensorflow.TFE_Py_FastPathExecute(
+          ctx._handle, ctx.device_name, "MatMul", execute.record_gradient, None,
+          None, a_2_by_2, a_2_by_2, "transpose_a", False, "transpose_b", False)
     dz_dy = tape.gradient(z, [a_2_by_2])[0]
     self.assertAllEqual(dz_dy.numpy(),
                         constant_op.constant(4.0, shape=[2, 2]).numpy())
 
+  # Tests homogeneous list op
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
-  def testFastpathExecute_MatMulSlowPath(self):
-    a_2_by_2 = random_ops.random_uniform((2, 2)).cpu().numpy()
+  def testFastpathExecute_AddNCorrectResponse(self):
+    ctx = context.context()
+    a_2_by_2 = random_ops.random_uniform((2, 2))
+    b_2_by_2 = random_ops.random_uniform((2, 2))
 
-    with self.assertRaises(NotImplementedError):
-      c_tfe_py_fastpath_execute(a_2_by_2, a_2_by_2)
+    self.assertAllClose(
+        math_ops.add_n([a_2_by_2, b_2_by_2]),
+        pywrap_tensorflow.TFE_Py_FastPathExecute(
+            ctx._handle, ctx.device_name, "AddN", execute.record_gradient, None,
+            None, [a_2_by_2, b_2_by_2]))
+
+  # Tests homogeneous list op
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testFastpathExecute_AddNTapeWrite(self):
+    ctx = context.context()
+    a_2_by_2 = random_ops.random_uniform((2, 2))
+    b_2_by_2 = random_ops.random_uniform((2, 2))
+
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(a_2_by_2)
+      tape.watch(b_2_by_2)
+      z1 = pywrap_tensorflow.TFE_Py_FastPathExecute(
+          ctx._handle, ctx.device_name, "AddN", execute.record_gradient, None,
+          None, [a_2_by_2, b_2_by_2])
+      z2 = math_ops.add_n([a_2_by_2, b_2_by_2])
+    dz1_dy = tape.gradient(z1, [a_2_by_2])[0]
+    dz2_dy = tape.gradient(z2, [a_2_by_2])[0]
+    self.assertAllEqual(dz1_dy.numpy(), dz2_dy.numpy())
+
+  # Tests heterogeneous list op
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testFastpathExecute_IdentityNCorrectResponse(self):
+    ctx = context.context()
+    a_2_by_2 = random_ops.random_uniform((2, 2))
+    b_2_by_2 = random_ops.random_uniform((2, 2))
+
+    self.assertAllClose(
+        array_ops.identity_n([a_2_by_2, b_2_by_2]),
+        pywrap_tensorflow.TFE_Py_FastPathExecute(
+            ctx._handle, ctx.device_name, "IdentityN", execute.record_gradient,
+            None, None, [a_2_by_2, b_2_by_2]))
+
+  # Tests heterogeneous list op
+  @test_util.assert_no_new_tensors
+  @test_util.assert_no_garbage_created
+  def testFastpathExecute_IdentityNTapeWrite(self):
+    ctx = context.context()
+    a_2_by_2 = random_ops.random_uniform((2, 2))
+    b_2_by_2 = random_ops.random_uniform((2, 2))
+
+    with backprop.GradientTape(persistent=True) as tape:
+      tape.watch(a_2_by_2)
+      tape.watch(b_2_by_2)
+      z1 = pywrap_tensorflow.TFE_Py_FastPathExecute(
+          ctx._handle, ctx.device_name, "IdentityN", execute.record_gradient,
+          None, None, [a_2_by_2, b_2_by_2])
+      z2 = array_ops.identity_n([a_2_by_2, b_2_by_2])
+    dz1_dy = tape.gradient(z1[0], [a_2_by_2])[0]
+    dz2_dy = tape.gradient(z2[0], [a_2_by_2])[0]
+    self.assertAllEqual(dz1_dy.numpy(), dz2_dy.numpy())
 
   @test_util.assert_no_new_tensors
   @test_util.assert_no_garbage_created
@@ -89,20 +145,24 @@ class Tests(test.TestCase):
     ), "The prototype doesn't contain C code for graph construction"
     ctx_handle = ctx._handle  # pylint: disable=protected-access
 
+    # Not enough base params
     with self.assertRaisesRegexp(ValueError,
-                                 "at least 4 items in the input tuple"):
+                                 "at least 6 items in the input tuple"):
       pywrap_tensorflow.TFE_Py_FastPathExecute(ctx_handle, ctx.device_name,
                                                "Identity")
 
+    # Not enough inputs
     with self.assertRaisesRegexp(ValueError,
-                                 "Expected to be at least 5, was 4"):
+                                 "Expected to be at least 7, was 6"):
       pywrap_tensorflow.TFE_Py_FastPathExecute(
-          ctx_handle, ctx_handle, "Identity", record_gradient_callback)
+          ctx_handle, ctx_handle, "Identity", backprop._record_gradient, None,
+          [])
 
+    # Bad type
     with self.assertRaisesRegexp(TypeError, "expected a string for op_name"):
       pywrap_tensorflow.TFE_Py_FastPathExecute(
-          ctx_handle, ctx.device_name, ctx_handle, record_gradient_callback,
-          a_2_by_2)
+          ctx_handle, ctx.device_name, ctx_handle, backprop._record_gradient,
+          None, [], a_2_by_2)
 
 
 if __name__ == "__main__":

@@ -29,7 +29,7 @@ message RewriterConfig {
     AGGRESSIVE = 3;
   }
 
-  // Optimize tensor layouts
+  // Optimize tensor layouts (default is ON)
   Toggle layout_optimizer = 1;
   // Fold constants (default is ON)
   Toggle constant_folding = 3;

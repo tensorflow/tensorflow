@@ -1,5 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
+exports_files(["LICENSE"])
+
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 filegroup(
@@ -19,9 +21,9 @@ py_library(
     srcs = [
         "__init__.py",
         "anno.py",
+        "ast_util.py",
         "compiler.py",
         "context.py",
-        "copier.py",
         "parser.py",
         "pretty_printer.py",
         "qual_names.py",
@@ -49,8 +51,8 @@ py_test(
 )
 
 py_test(
-    name = "compiler_test",
-    srcs = ["compiler_test.py"],
+    name = "ast_util_test",
+    srcs = ["ast_util_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":pyct",
@@ -60,8 +62,8 @@ py_test(
 )
 
 py_test(
-    name = "copier_test",
-    srcs = ["copier_test.py"],
+    name = "compiler_test",
+    srcs = ["compiler_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":pyct",

@@ -156,6 +156,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/coder/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/data/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/feature_column/python/feature_column/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/image/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/python/kernel_tests/*_test.py"

@@ -39,6 +39,11 @@ class Basic(NoValue):
   QN = 'Qualified name, as it appeared in the code.'
   SKIP_PROCESSING = (
       'This node should be preserved as is and not processed any further.')
+  INDENT_BLOCK_REMAINDER = (
+      'When a node is annotated with this, the remainder of the block should '
+      'be indented below it. The annotation contains a tuple '
+      '(new_body, name_map), where `new_body` is the new indented block and '
+      '`name_map` allows renaming symbols.')
 
 
 def getanno(node, key, field_name='___pyct_anno'):
@@ -57,3 +62,11 @@ def setanno(node, key, value, field_name='___pyct_anno'):
   # So that the annotations survive gast_to_ast() and ast_to_gast()
   if field_name not in node._fields:
     node._fields += (field_name,)
+
+
+def delanno(node, key, field_name='___pyct_anno'):
+  annotations = getattr(node, field_name)
+  del annotations[key]
+  if not annotations:
+    delattr(node, field_name)
+    node._fields = tuple(f for f in node._fields if f != field_name)
