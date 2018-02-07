@@ -39,8 +39,6 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
-from tensorflow.python.framework import test_util
-from tensorflow.contrib.rnn.python.ops import rnn_cell as contrib_rnn_cell
 
 # pylint: enable=protected-access
 Linear = core_rnn_cell._Linear  # pylint: disable=invalid-name

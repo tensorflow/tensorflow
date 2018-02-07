@@ -38,7 +38,7 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.wrappers import local_cli_wrapper
 from tensorflow.python.framework import ops as ops_lib
-from tensorflow.python.platform import app
+from tensorflow.python.platform import app  # pylint: disable=unused-import
 from tensorflow.python.saved_model import loader
 from tensorflow.python.tools import saved_model_utils
 

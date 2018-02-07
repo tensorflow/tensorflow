@@ -32,9 +32,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import gen_state_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util.deprecation import deprecated

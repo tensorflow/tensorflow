@@ -23,13 +23,11 @@ import csv
 import os
 from os import path
 import random
-import tempfile
 import time
 
 import numpy as np
 from six.moves import urllib
 
-from tensorflow.contrib.framework import deprecated
 from tensorflow.python.platform import gfile
 
 Dataset = collections.namedtuple('Dataset', ['data', 'target'])
