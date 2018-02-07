@@ -105,19 +105,20 @@ public:
 bool
 AllocationFinder::CompareConvolutionTargets(const TensorTarget& a,
                                             const TensorTarget& b) {
-  return IsForwardConvolution(a.first) && !IsForwardConvolution(b.first);
+  return IsForwardConvolution(a.tgt) && !IsForwardConvolution(b.tgt);
 }
 
 bool
 AllocationFinder::CompareDotTargets(const TensorTarget& a,
                                     const TensorTarget& b) {
-  return IsForwardMatMul(a.first) && !IsForwardMatMul(b.first);
+  return IsForwardMatMul(a.tgt) && !IsForwardMatMul(b.tgt);
 }
 
 void
 AllocationFinder::FindConsumers(const TensorSource& src,
                                 const HloInstruction* tgt,
                                 int64 index) {
+  path.emplace_back(tgt);
   for (auto user : tgt->users()) {
     if (visited.count(user) == 0) {
       visited.insert(user);
@@ -125,30 +126,30 @@ AllocationFinder::FindConsumers(const TensorSource& src,
       switch (user->opcode()) {
         case HloOpcode::kConvolution:
         {
-          auto t = std::make_pair(user, op_index);
+          auto t = TensorTarget(user, op_index, path);
           auto i = tensor_allocation_map.find(src);
           if (i != tensor_allocation_map.end() &&
               CompareConvolutionTargets(t, i->second)) {
             tensor_allocation_map.erase(src);
           }
           tensor_allocation_map.insert(std::make_pair(src, t));
-          return;
+          break;
         }
         case HloOpcode::kDot:
         {
-          auto t = std::make_pair(user, op_index);
+          auto t = TensorTarget(user, op_index, path);
           auto i = tensor_allocation_map.find(src);
           if (i != tensor_allocation_map.end() &&
               CompareDotTargets(t, i->second)) {
             tensor_allocation_map.erase(src);
           }
           tensor_allocation_map.insert(std::make_pair(src, t));
-          return;
+          break;
         }
         case HloOpcode::kDynamicSlice:
         {
           if (op_index == 0) {
-            auto t = std::make_pair(user, op_index);
+            auto t = TensorTarget(user, op_index, path);
             tensor_allocation_map.insert(std::make_pair(src, t));
           }
           break;
@@ -156,7 +157,7 @@ AllocationFinder::FindConsumers(const TensorSource& src,
         case HloOpcode::kDynamicUpdateSlice:
         {
           if (op_index == 0 || op_index==1) {
-            auto t = std::make_pair(user, op_index);
+            auto t = TensorTarget(user, op_index, path);
             tensor_allocation_map.insert(std::make_pair(src, t));
           }
           break;
@@ -190,6 +191,16 @@ AllocationFinder::FindConsumers(const TensorSource& src,
           }
           break;
         }
+        case HloOpcode::kReshape:
+        {
+          FindConsumers(src, user, index);
+          break;
+        }
+        case HloOpcode::kTranspose:
+        {
+          FindConsumers(src, user, index);
+          break;
+        }
         default:
         {
           auto shapes = FlattenedXlaShape(src.first->shape());
@@ -201,6 +212,7 @@ AllocationFinder::FindConsumers(const TensorSource& src,
       }
     }
   }
+  path.pop_back();
   return;
 }
 

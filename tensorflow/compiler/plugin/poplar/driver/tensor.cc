@@ -235,21 +235,21 @@ AddTensor(poplar::Graph& graph,
 
   auto target = resources.tensor_allocation_map.find(src);
   if (target != resources.tensor_allocation_map.end()) {
-    switch (target->second.first->opcode()) {
+    switch (target->second.tgt->opcode()) {
       case HloOpcode::kConvolution:
       {
-        switch (target->second.second) {
+        switch (target->second.input_index) {
           case 0:
           {
             TF_ASSIGN_OR_RETURN(out, AddConvolutionInput(graph, src.first,
-                                                         target->second.first,
+                                                         target->second.tgt,
                                                          resources));
             break;
           }
           case 1:
           {
             TF_ASSIGN_OR_RETURN(out, AddConvolutionWeights(graph, src.first,
-                                                           target->second.first,
+                                                           target->second.tgt,
                                                            resources));
             break;
           }
@@ -262,18 +262,18 @@ AddTensor(poplar::Graph& graph,
       }
       case HloOpcode::kDot:
       {
-        switch (target->second.second) {
+        switch (target->second.input_index) {
           case 0:
           {
             TF_ASSIGN_OR_RETURN(out, AddLeftMatMul(graph, src.first,
-                                                   target->second.first,
+                                                   target->second.tgt,
                                                    resources));
             break;
           }
           case 1:
           {
             TF_ASSIGN_OR_RETURN(out, AddRightMatMul(graph, src.first,
-                                                    target->second.first,
+                                                    target->second.tgt,
                                                     resources));
             break;
           }
@@ -286,7 +286,7 @@ AddTensor(poplar::Graph& graph,
       }
       case HloOpcode::kDynamicSlice:
       {
-        if (target->second.second == 0) {
+        if (target->second.input_index == 0) {
           if (ShapeUtil::Rank(shape) == 3) {
             TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
           } else {
@@ -299,7 +299,7 @@ AddTensor(poplar::Graph& graph,
       }
       case HloOpcode::kDynamicUpdateSlice:
       {
-        if (target->second.second == 0) {
+        if (target->second.input_index == 0) {
           if (ShapeUtil::Rank(shape) == 3) {
             TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
           } else {
@@ -308,11 +308,41 @@ AddTensor(poplar::Graph& graph,
         } else {
           TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
         }
+        break;
       }
       default:
         return tensorflow::errors::FailedPrecondition(
                 port::StrCat("unknown special tensor target on ",
                              src.first->name()));
+    }
+
+    // Now apply any transformations required by the path from the source to
+    // the target
+    const std::vector<const HloInstruction*>& path = target->second.path;
+    for (auto i = path.rbegin(); i != path.rend(); ++i) {
+      auto& inst = *i;
+      switch (inst->opcode()) {
+        case HloOpcode::kTranspose:
+        {
+          std::vector<unsigned> permutation(
+              convert_array<std::vector<unsigned>>(inst->dimensions()));
+          std::vector<unsigned> shuffle(permutation.size());
+          for (int d=0; d<permutation.size(); d++) {
+            shuffle[permutation[d]] = d;
+          }
+          out = out.dimShuffle(shuffle);
+          break;
+        }
+        case HloOpcode::kReshape:
+        {
+          std::vector<size_t> dims(PoplarShapeFromXlaShape(
+              inst->operand(0)->shape()));
+          out = out.reshape(dims);
+          break;
+        }
+        default:
+          break;
+      }
     }
   } else {
     TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));

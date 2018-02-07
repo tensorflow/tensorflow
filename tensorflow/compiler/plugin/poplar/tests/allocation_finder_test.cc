@@ -113,10 +113,16 @@ TEST_F(AllocationFinderTest, FindBasicTensorAllocations) {
   const HloInstruction* c_conv = conv;
 
   ASSERT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op1,0)),
-        std::make_pair(c_conv,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op2,0)),
-        std::make_pair(c_conv,1ll));
+
+  auto t1 = finder.tensor_allocation_map.at(std::make_pair(op1,0));
+  EXPECT_EQ(t1.tgt, c_conv);
+  EXPECT_EQ(t1.input_index, 0ll);
+  EXPECT_EQ(t1.path.size(), 1);
+
+  auto t2 = finder.tensor_allocation_map.at(std::make_pair(op2,0));
+  EXPECT_EQ(t2.tgt, c_conv);
+  EXPECT_EQ(t2.input_index, 1ll);
+  EXPECT_EQ(t2.path.size(), 1);
 }
 
 // Check it goes through call sites
@@ -172,14 +178,25 @@ TEST_F(AllocationFinderTest, FindSubCompTensorAllocations) {
   const HloInstruction* c_conv = conv;
 
   ASSERT_EQ(finder.tensor_allocation_map.size(), 4);
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op1,0)),
-        std::make_pair(c_conv,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op2,0)),
-        std::make_pair(c_conv,1ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op0_sub,0)),
-        std::make_pair(c_conv,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op1_sub,0)),
-        std::make_pair(c_conv,1ll));
+  auto t1 = finder.tensor_allocation_map.at(std::make_pair(op1,0));
+  EXPECT_EQ(t1.tgt, c_conv);
+  EXPECT_EQ(t1.input_index, 0ll);
+  EXPECT_EQ(t1.path.size(), 2);
+
+  auto t2 = finder.tensor_allocation_map.at(std::make_pair(op2,0));
+  EXPECT_EQ(t2.tgt, c_conv);
+  EXPECT_EQ(t2.input_index, 1ll);
+  EXPECT_EQ(t2.path.size(), 2);
+
+  auto t3 = finder.tensor_allocation_map.at(std::make_pair(op0_sub,0));
+  EXPECT_EQ(t3.tgt, c_conv);
+  EXPECT_EQ(t3.input_index, 0ll);
+  EXPECT_EQ(t3.path.size(), 1);
+
+  auto t4 = finder.tensor_allocation_map.at(std::make_pair(op1_sub,0));
+  EXPECT_EQ(t4.tgt, c_conv);
+  EXPECT_EQ(t4.input_index, 1ll);
+  EXPECT_EQ(t4.path.size(), 1);
 }
 
 
@@ -271,18 +288,35 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations1) {
   const HloInstruction* c_conv2 = conv2;
 
   ASSERT_EQ(finder.tensor_allocation_map.size(), 6);
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op1,0)),
-        std::make_pair(c_conv1,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op2,0)),
-        std::make_pair(c_conv1,1ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op0_sub1,0)),
-        std::make_pair(c_conv1,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op1_sub1,0)),
-        std::make_pair(c_conv1,1ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op0_sub2,0)),
-        std::make_pair(c_conv2,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op1_sub2,0)),
-        std::make_pair(c_conv2,1ll));
+  auto t1 = finder.tensor_allocation_map.at(std::make_pair(op1,0));
+  EXPECT_EQ(t1.tgt, c_conv1);
+  EXPECT_EQ(t1.input_index, 0ll);
+  EXPECT_EQ(t1.path.size(), 2);
+
+  auto t2 = finder.tensor_allocation_map.at(std::make_pair(op2,0));
+  EXPECT_EQ(t2.tgt, c_conv1);
+  EXPECT_EQ(t2.input_index, 1ll);
+  EXPECT_EQ(t2.path.size(), 2);
+
+  auto t3 = finder.tensor_allocation_map.at(std::make_pair(op0_sub1,0));
+  EXPECT_EQ(t3.tgt, c_conv1);
+  EXPECT_EQ(t3.input_index, 0ll);
+  EXPECT_EQ(t3.path.size(), 1);
+
+  auto t4 = finder.tensor_allocation_map.at(std::make_pair(op1_sub1,0));
+  EXPECT_EQ(t4.tgt, c_conv1);
+  EXPECT_EQ(t4.input_index, 1ll);
+  EXPECT_EQ(t4.path.size(), 1);
+
+  auto t5 = finder.tensor_allocation_map.at(std::make_pair(op0_sub2,0));
+  EXPECT_EQ(t5.tgt, c_conv2);
+  EXPECT_EQ(t5.input_index, 0ll);
+  EXPECT_EQ(t5.path.size(), 1);
+
+  auto t6 = finder.tensor_allocation_map.at(std::make_pair(op1_sub2,0));
+  EXPECT_EQ(t6.tgt, c_conv2);
+  EXPECT_EQ(t6.input_index, 1ll);
+  EXPECT_EQ(t6.path.size(), 1);
 }
 
 // Check it works for multiple valid destinations (perferred one second)
@@ -374,18 +408,36 @@ TEST_F(AllocationFinderTest, FindMultiCompTensorAllocations2) {
   const HloInstruction* c_conv2 = conv2;
 
   ASSERT_EQ(finder.tensor_allocation_map.size(), 6);
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op1,0)),
-          std::make_pair(c_conv2,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op2,0)),
-          std::make_pair(c_conv2,1ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op0_sub1,0)),
-          std::make_pair(c_conv1,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op1_sub1,0)),
-          std::make_pair(c_conv1,1ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op0_sub2,0)),
-          std::make_pair(c_conv2,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op1_sub2,0)),
-          std::make_pair(c_conv2,1ll));
+
+  auto t1 = finder.tensor_allocation_map.at(std::make_pair(op1,0));
+  EXPECT_EQ(t1.tgt, c_conv2);
+  EXPECT_EQ(t1.input_index, 0ll);
+  EXPECT_EQ(t1.path.size(), 2);
+
+  auto t2 = finder.tensor_allocation_map.at(std::make_pair(op2,0));
+  EXPECT_EQ(t2.tgt, c_conv2);
+  EXPECT_EQ(t2.input_index, 1ll);
+  EXPECT_EQ(t2.path.size(), 2);
+
+  auto t3 = finder.tensor_allocation_map.at(std::make_pair(op0_sub1,0));
+  EXPECT_EQ(t3.tgt, c_conv1);
+  EXPECT_EQ(t3.input_index, 0ll);
+  EXPECT_EQ(t3.path.size(), 1);
+
+  auto t4 = finder.tensor_allocation_map.at(std::make_pair(op1_sub1,0));
+  EXPECT_EQ(t4.tgt, c_conv1);
+  EXPECT_EQ(t4.input_index, 1ll);
+  EXPECT_EQ(t4.path.size(), 1);
+
+  auto t5 = finder.tensor_allocation_map.at(std::make_pair(op0_sub2,0));
+  EXPECT_EQ(t5.tgt, c_conv2);
+  EXPECT_EQ(t5.input_index, 0ll);
+  EXPECT_EQ(t5.path.size(), 1);
+
+  auto t6 = finder.tensor_allocation_map.at(std::make_pair(op1_sub2,0));
+  EXPECT_EQ(t6.tgt, c_conv2);
+  EXPECT_EQ(t6.input_index, 1ll);
+  EXPECT_EQ(t6.path.size(), 1);
 }
 
 // Check it works for constants
@@ -428,10 +480,16 @@ TEST_F(AllocationFinderTest, FindConstantTensorAllocations) {
   const HloInstruction* c_conv = conv;
 
   ASSERT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op1,0)),
-        std::make_pair(c_conv,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(op2,0)),
-        std::make_pair(c_conv,1ll));
+
+  auto t1 = finder.tensor_allocation_map.at(std::make_pair(op1,0));
+  EXPECT_EQ(t1.tgt, c_conv);
+  EXPECT_EQ(t1.input_index, 0ll);
+  EXPECT_EQ(t1.path.size(), 1);
+
+  auto t2 = finder.tensor_allocation_map.at(std::make_pair(op2,0));
+  EXPECT_EQ(t2.tgt, c_conv);
+  EXPECT_EQ(t2.input_index, 1ll);
+  EXPECT_EQ(t2.path.size(), 1);
 }
 
 // Check it goes through Tuple/Detuple pairs
@@ -470,11 +528,16 @@ TEST_F(AllocationFinderTest, CanTraverseTuples) {
   const HloInstruction* dot = dot_inst;
 
   ASSERT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(in,0)),
-        std::make_pair(dot,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(w,0)),
-        std::make_pair(dot,1ll));
 
+  auto t1 = finder.tensor_allocation_map.at(std::make_pair(in,0));
+  EXPECT_EQ(t1.tgt, dot);
+  EXPECT_EQ(t1.input_index, 0ll);
+  EXPECT_EQ(t1.path.size(), 3);
+
+  auto t2 = finder.tensor_allocation_map.at(std::make_pair(w,0));
+  EXPECT_EQ(t2.tgt, dot);
+  EXPECT_EQ(t2.input_index, 1ll);
+  EXPECT_EQ(t2.path.size(), 3);
 }
 
 // Check it can start from tuple subshapes
@@ -508,11 +571,16 @@ TEST_F(AllocationFinderTest, CanStartOnTuples) {
   const HloInstruction* dot = dot_inst;
 
   ASSERT_EQ(finder.tensor_allocation_map.size(), 2);
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(in,0)),
-        std::make_pair(dot,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(in,1)),
-        std::make_pair(dot,1ll));
 
+  auto t1 = finder.tensor_allocation_map.at(std::make_pair(in,0));
+  EXPECT_EQ(t1.tgt, dot);
+  EXPECT_EQ(t1.input_index, 0ll);
+  EXPECT_EQ(t1.path.size(), 2);
+
+  auto t2 = finder.tensor_allocation_map.at(std::make_pair(in,1));
+  EXPECT_EQ(t2.tgt, dot);
+  EXPECT_EQ(t2.input_index, 1ll);
+  EXPECT_EQ(t2.path.size(), 2);
 }
 
 // Check it goes through while instructions
@@ -602,14 +670,77 @@ TEST_F(AllocationFinderTest, FindWhileTensorAllocations) {
   TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
 
   ASSERT_EQ(finder.tensor_allocation_map.size(), 4);
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(in,0)),
-          std::make_pair(dot_inst,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(w,0)),
-          std::make_pair(dot_inst,1ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(body_param,1)),
-          std::make_pair(dot_inst,0ll));
-  EXPECT_EQ(finder.tensor_allocation_map.at(std::make_pair(body_param,2)),
-          std::make_pair(dot_inst,1ll));
+
+  auto t1 = finder.tensor_allocation_map.at(std::make_pair(in,0));
+  EXPECT_EQ(t1.tgt, dot_inst);
+  EXPECT_EQ(t1.input_index, 0ll);
+  EXPECT_EQ(t1.path.size(), 4);
+
+  auto t2 = finder.tensor_allocation_map.at(std::make_pair(w,0));
+  EXPECT_EQ(t2.tgt, dot_inst);
+  EXPECT_EQ(t2.input_index, 1ll);
+  EXPECT_EQ(t2.path.size(), 4);
+
+  auto t3 = finder.tensor_allocation_map.at(std::make_pair(body_param,1));
+  EXPECT_EQ(t3.tgt, dot_inst);
+  EXPECT_EQ(t3.input_index, 0ll);
+  EXPECT_EQ(t3.path.size(), 2);
+
+  auto t4 = finder.tensor_allocation_map.at(std::make_pair(body_param,2));
+  EXPECT_EQ(t4.tgt, dot_inst);
+  EXPECT_EQ(t4.input_index, 1ll);
+  EXPECT_EQ(t4.path.size(), 2);
+}
+
+// Check basic parameter matching
+TEST_F(AllocationFinderTest, TraverseDimShuffleAndReshapeAllocations) {
+  Shape arg_shape = ShapeUtil::MakeShape(F32, {1, 2, 100});
+  Shape reshape_shape = ShapeUtil::MakeShape(F32, {1, 2, 10, 10});
+  Shape input_shape = ShapeUtil::MakeShape(F32, {1, 10, 10, 2});
+  Shape weight_shape = ShapeUtil::MakeShape(F32, {3, 3, 2, 1});
+
+  Shape conv_shape = ShapeInference::InferConvolveShape(
+      input_shape, weight_shape,
+      GetConv1Window(), GetConvDimensions()).ConsumeValueOrDie();
+
+  auto builder = HloComputation::Builder(TestName());
+  auto op0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, arg_shape, "op0"));
+  auto rs0 = builder.AddInstruction(
+      HloInstruction::CreateReshape(reshape_shape, op0));
+  auto ds0 = builder.AddInstruction(
+      HloInstruction::CreateTranspose(input_shape, rs0, {0, 2, 3, 1}));
+  auto op1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, weight_shape, "op1"));
+
+  auto conv = builder.AddInstruction(
+      HloInstruction::CreateConvolve(conv_shape, ds0, op1,
+                                     GetConv1Window(), GetConvDimensions()));
+
+  builder.AddInstruction(
+      HloInstruction::CreateTuple({conv}));
+
+  auto computation = builder.Build();
+
+  auto hlo_module = MakeUnique<HloModule>("test_module");
+  hlo_module->AddEntryComputation(std::move(computation));
+
+  AllocationFinder finder;
+  TF_EXPECT_OK(finder.CreateAllocationMap(hlo_module.get()));
+
+  const HloInstruction* c_conv = conv;
+
+  ASSERT_EQ(finder.tensor_allocation_map.size(), 2);
+
+  auto t1 = finder.tensor_allocation_map.at(std::make_pair(op0,0));
+  EXPECT_EQ(t1.tgt, c_conv);
+  EXPECT_EQ(t1.input_index, 0ll);
+  EXPECT_EQ(t1.path.size(), 3);
+
+  auto t2 = finder.tensor_allocation_map.at(std::make_pair(op1,0));
+  EXPECT_EQ(t2.tgt, c_conv);
+  EXPECT_EQ(t2.input_index, 1ll);
+  EXPECT_EQ(t2.path.size(), 1);
 }
 
 }
