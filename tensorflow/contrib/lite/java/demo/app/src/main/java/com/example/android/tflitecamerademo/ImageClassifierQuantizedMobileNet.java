@@ -27,7 +27,7 @@ public class ImageClassifierQuantizedMobileNet extends ImageClassifier {
      * An array to hold inference results, to be feed into Tensorflow Lite as outputs.
      * This isn't part of the super class, because we need a primitive array here.
      */
-    protected byte[][] labelProbArray = null;
+    private byte[][] labelProbArray = null;
 
     /**
      * Initializes an {@code ImageClassifier}.
@@ -76,12 +76,17 @@ public class ImageClassifierQuantizedMobileNet extends ImageClassifier {
 
     @Override
     protected float getProbability(int labelIndex) {
-        return ((labelProbArray[0][labelIndex] & 0xff) / 255.0f);
+        return labelProbArray[0][labelIndex];
     }
 
     @Override
     protected void setProbability(int labelIndex, Number value) {
         labelProbArray[0][labelIndex] = value.byteValue();
+    }
+
+    @Override
+    protected float getNormalizedProbability(int labelIndex) {
+        return (labelProbArray[0][labelIndex] & 0xff) / 255.0f;
     }
 
     @Override

@@ -91,7 +91,7 @@ public abstract class ImageClassifier {
                 DIM_BATCH_SIZE * getImageSizeX() * getImageSizeY() * DIM_PIXEL_SIZE *
                         getNumBytesPerChannel());
     imgData.order(ByteOrder.nativeOrder());
-    filterLabelProbArray = new float[FILTER_STAGES][labelList.size()];
+    filterLabelProbArray = new float[FILTER_STAGES][getNumLabels()];
     Log.d(TAG, "Created a Tensorflow Lite Image Classifier.");
   }
 
@@ -190,9 +190,9 @@ public abstract class ImageClassifier {
 
   /** Prints top-K labels, to be shown in UI as the results. */
   private String printTopKLabels() {
-    for (int i = 0; i < labelList.size(); ++i) {
+    for (int i = 0; i < getNumLabels(); ++i) {
       sortedLabels.add(
-          new AbstractMap.SimpleEntry<>(labelList.get(i), getProbability(i)));
+          new AbstractMap.SimpleEntry<>(labelList.get(i), getNormalizedProbability(i)));
       if (sortedLabels.size() > RESULTS_TO_SHOW) {
         sortedLabels.poll();
       }
@@ -243,7 +243,9 @@ public abstract class ImageClassifier {
   protected abstract void addPixelValue(int pixelValue);
 
   /**
-   * Read the probability value for the specified label from the saved inference result.
+   * Read the probability value for the specified label
+   * This is either the original value as it was read from the net's output or the updated value
+   * after the filter was applied.
    * @param labelIndex
    * @return
    */
@@ -255,6 +257,13 @@ public abstract class ImageClassifier {
    * @param value
    */
   protected abstract void setProbability(int labelIndex, Number value);
+
+  /**
+   * Get the normalized probability value for the specified label.
+   * This is the final value as it will be shown to the user.
+   * @return
+   */
+  protected abstract float getNormalizedProbability(int labelIndex);
 
   /**
    * Run inference using the prepared input in this.imgData.

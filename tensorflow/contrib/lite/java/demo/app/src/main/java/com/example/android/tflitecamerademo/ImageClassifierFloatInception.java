@@ -33,7 +33,7 @@ public class ImageClassifierFloatInception extends ImageClassifier {
      * An array to hold inference results, to be feed into Tensorflow Lite as outputs.
      * This isn't part of the super class, because we need a primitive array here.
      */
-    protected float[][] labelProbArray = null;
+    private float[][] labelProbArray = null;
 
     /**
      * Initializes an {@code ImageClassifier}.
@@ -88,6 +88,12 @@ public class ImageClassifierFloatInception extends ImageClassifier {
     @Override
     protected void setProbability(int labelIndex, Number value) {
         labelProbArray[0][labelIndex] = value.floatValue();
+    }
+
+    @Override
+    protected float getNormalizedProbability(int labelIndex) {
+        // nothing to do here
+        return getProbability(labelIndex);
     }
 
     @Override
