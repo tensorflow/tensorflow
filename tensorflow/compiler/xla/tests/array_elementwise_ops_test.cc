@@ -2048,7 +2048,7 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
   // This is like the test ArrayElementwiseOpTest.TanhF32s above, except that
   // the input tensor is large enough to exercise the vectorized tanh
-  // implementation.
+  // implementation on XLA CPU.
   ComputationBuilder builder(client_, TestName());
   auto input_literal = Literal::CreateR2<float>(
       {{1.02, -0.32, 0.85, 0.90, 1.23, -0.91, -0.49, 0.80},
@@ -2087,6 +2087,42 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
       // The error spec is unusually high here to account for the fact that we
       // use a rational interpolant to approximate tanh.
       ErrorSpec(0.004, 0.004));
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
+  // The input tensor is large enough to exercise the vectorized exp
+  // implementation on XLA CPU.
+  ComputationBuilder builder(client_, TestName());
+
+  // Just to help make sense of the scales here -- exp(89) saturates float32 and
+  // exp(-10) is smaller than our error spec.
+  std::unique_ptr<Literal> input_literal = Literal::CreateR2<float>(
+      {{1.02, -0.32, 0.85, 0.9, 1.23, -0.91, -0.49, 0.8},
+       {-1.31, -1.44, -0.13, -1.31, -0.79, 1.41, 1.21, 1.05},
+       {-195.6, -194.5, -193.4, -192.3, -191.2, -190.1, -189.0, -187.9},
+       {-19.6, -18.5, -17.4, -16.3, -15.2, -14.1, -13.0, -11.9},
+       {-10.8, -9.7, -8.6, -7.5, -6.4, -5.3, -4.2, -3.1},
+       {-2.0, -0.9, 0.2, 1.3, 2.4, 3.5, 4.6, 5.7},
+       {6.8, 7.9, 9.0, 10.1, 11.2, 12.3, 13.4, 14.5},
+       {15.6, 16.7, 17.8, 18.9, 20.0, 21.1, 22.2, 23.3},
+       {24.4, 25.5, 26.6, 27.7, 28.8, 29.9, 31.0, 32.1},
+       {68.4, 69.5, 70.6, 71.7, 72.8, 73.9, 75.0, 76.1},
+       {77.2, 78.3, 79.4, 80.5, 81.6, 82.7, 83.8, 84.9},
+       {85.2, 86.3, 86.4, 86.5, 87.6, 87.7, 87.8, 87.9}});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
+
+  auto input = builder.Parameter(0, input_literal->shape(), "input");
+  builder.Exp(input);
+
+  Array2D<float> expected_result(input_literal->shape().dimensions(0),
+                                 input_literal->shape().dimensions(1));
+  expected_result.Each([&](int64 r, int64 c, float* result) {
+    *result = std::exp(input_literal->Get<float>({r, c}));
+  });
+
+  ComputeAndCompareR2<float>(&builder, expected_result, {input_data.get()},
+                             error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AddChainFoldLeft) {

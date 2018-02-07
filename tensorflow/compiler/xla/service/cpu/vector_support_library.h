@@ -41,6 +41,9 @@ class VectorSupportLibrary {
   llvm::Value* Mul(int64 lhs, llvm::Value* rhs) {
     return Mul(ir_builder()->getInt64(lhs), rhs);
   }
+  llvm::Value* Mul(double lhs, llvm::Value* rhs) {
+    return Mul(llvm::ConstantFP::get(rhs->getType(), lhs), rhs);
+  }
 
   llvm::Value* Add(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* Add(int64 lhs, llvm::Value* rhs) {
@@ -50,6 +53,8 @@ class VectorSupportLibrary {
     return Add(llvm::ConstantFP::get(vector_type(), lhs), rhs);
   }
 
+  llvm::Value* Sub(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* Max(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* Div(llvm::Value* lhs, llvm::Value* rhs);
 
   llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, llvm::Value* c) {
@@ -59,6 +64,13 @@ class VectorSupportLibrary {
   llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, double c) {
     return Add(llvm::ConstantFP::get(vector_type(), c), Mul(a, b));
   }
+
+  llvm::Value* MulAdd(llvm::Value* a, double b, double c) {
+    return Add(llvm::ConstantFP::get(a->getType(), c),
+               Mul(a, llvm::ConstantFP::get(a->getType(), b)));
+  }
+
+  llvm::Value* Floor(llvm::Value* a);
 
   llvm::Value* Clamp(llvm::Value* a, double low, double high);
   llvm::Value* SplatFloat(double d) {

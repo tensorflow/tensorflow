@@ -54,6 +54,26 @@ llvm::Value* VectorSupportLibrary::Add(llvm::Value* lhs, llvm::Value* rhs) {
   return AddInternal(lhs, rhs);
 }
 
+llvm::Value* VectorSupportLibrary::Sub(llvm::Value* lhs, llvm::Value* rhs) {
+  CHECK(lhs->getType() == scalar_type() || lhs->getType() == vector_type());
+  return ir_builder()->CreateFSub(lhs, rhs);
+}
+
+llvm::Value* VectorSupportLibrary::Max(llvm::Value* lhs, llvm::Value* rhs) {
+  CHECK(lhs->getType() == scalar_type() || lhs->getType() == vector_type());
+  if (scalar_type_->isFloatingPointTy()) {
+    return llvm_ir::EmitFloatMax(lhs, rhs, ir_builder_);
+  } else {
+    LOG(FATAL) << "Max for integers is unimplemented";
+  }
+}
+
+llvm::Value* VectorSupportLibrary::Floor(llvm::Value* a) {
+  CHECK(a->getType() == scalar_type() || a->getType() == vector_type());
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::floor, {a},
+                                      {a->getType()}, ir_builder());
+}
+
 llvm::Value* VectorSupportLibrary::Div(llvm::Value* lhs, llvm::Value* rhs) {
   CHECK(lhs->getType() == scalar_type() || lhs->getType() == vector_type());
   if (scalar_type_->isFloatingPointTy()) {
