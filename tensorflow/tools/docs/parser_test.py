@@ -523,10 +523,6 @@ class TestParseFunctionDetails(googletest.TestCase):
 class TestGenerateSignature(googletest.TestCase):
 
   def test_known_object(self):
-    if sys.version_info >= (3, 0):
-      print('Warning: Doc generation is not supported from python3.')
-      return
-
     known_object = object()
     reverse_index = {id(known_object): 'location.of.object.in.api'}
 
