@@ -41,7 +41,7 @@ def run_while(cond_fn, body_fn, init_args):
     raise ValueError(
         'init_args must be a non-empty list or tuple, found %s' % init_args)
 
-  if is_tensor(init_args):
+  if is_tensor(*init_args):
     return control_flow_ops.while_loop(cond_fn, body_fn, init_args)
   else:
     return py_while_loop(cond_fn, body_fn, init_args)
@@ -49,6 +49,6 @@ def run_while(cond_fn, body_fn, init_args):
 
 def py_while_loop(cond_fn, body_fn, init_args):
   state = init_args
-  while cond_fn(state):
-    state = body_fn(state)
+  while cond_fn(*state):
+    state = body_fn(*state)
   return state

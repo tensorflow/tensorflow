@@ -19,9 +19,7 @@ from __future__ import division
 from __future__ import print_function
 from tensorflow.contrib.py2tf.utils import multiple_dispatch
 from tensorflow.python.client.session import Session
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework.constant_op import constant
-from tensorflow.python.ops.control_flow_ops import cond
 from tensorflow.python.platform import test
 
 
@@ -38,11 +36,33 @@ class MultipleDispatchTest(test.TestCase):
     true_fn = lambda: constant([2.0])
     false_fn = lambda: constant([3.0])
     with Session() as sess:
-
-      out = cond(constant(True), true_fn, false_fn)
+      out = multiple_dispatch.run_cond(constant(True), true_fn, false_fn)
       self.assertEqual(sess.run(out), 2.0)
-      out = cond(constant(False, dtype=dtypes.bool), true_fn, false_fn)
+      out = multiple_dispatch.run_cond(constant(False), true_fn, false_fn)
       self.assertEqual(sess.run(out), 3.0)
+
+  def test_run_while_python(self):
+    cond_fn = lambda x, t, s: x > t
+    body_fn = lambda x, t, s: (x * s, t, s)
+
+    x, _, _ = multiple_dispatch.run_while(cond_fn, body_fn, [3.0, 1.0, 0.5])
+    self.assertEqual(x, 0.75)
+
+    x, _, _ = multiple_dispatch.run_while(cond_fn, body_fn, [3.0, 4.0, 0.5])
+    self.assertEqual(x, 3.0)
+
+  def test_run_while_tf(self):
+    cond_fn = lambda x, t, s: x > t
+    body_fn = lambda x, t, s: (x * s, t, s)
+
+    with Session() as sess:
+      x, _, _ = multiple_dispatch.run_while(cond_fn, body_fn,
+                                            [constant(3.0), 1.0, 0.5])
+      self.assertEqual(sess.run(x), 0.75)
+
+      x, _, _ = multiple_dispatch.run_while(cond_fn, body_fn,
+                                            [constant(3.0), 4.0, 0.5])
+      self.assertEqual(sess.run(x), 3.0)
 
 
 if __name__ == '__main__':
