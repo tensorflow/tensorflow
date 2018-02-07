@@ -728,9 +728,8 @@ void ProcessResizeBilinearOperator(Model* model, ResizeBilinearOperator* op) {
 }
 
 void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
-  // I/O arrays should be allocated on creation of op.
-  QCHECK_EQ(op->inputs.size(), LstmCellOperator::NUM_INPUTS);
-  QCHECK_EQ(op->outputs.size(), LstmCellOperator::NUM_OUTPUTS);
+  // Only required for compact LstmCell with default NUM_INPUTS of inputs.
+  if (op->inputs.size() != LstmCellOperator::NUM_INPUTS) return;
 
   const auto& input_array =
       model->GetArray(op->inputs[LstmCellOperator::DATA_INPUT]);

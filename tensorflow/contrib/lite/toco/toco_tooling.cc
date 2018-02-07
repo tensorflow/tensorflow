@@ -107,7 +107,8 @@ bool SupportsFusedActivationFunction(FileFormat format) {
 }
 
 bool SupportsLstmCell(FileFormat format) {
-  return (format == TENSORFLOW_GRAPHDEF || format == GRAPHVIZ_DOT);
+  return (format == TENSORFLOW_GRAPHDEF || format == GRAPHVIZ_DOT ||
+          format == TFLITE);
 }
 
 bool SupportsPreallocatedWorkspace(FileFormat format) {
@@ -225,9 +226,13 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     }
   }
   transformations.Add(new ConvertPureConvToDepthwise);
-  // TFLite export does not yet support fused LSTM cell.
   if (SupportsLstmCell(output_format)) {
     transformations.Add(new IdentifyLstmCell);
+    if (output_format == TFLITE) {
+      transformations.Add(new toco::SplitLstmCellInputs);
+    } else {
+      transformations.Add(new toco::MergeLstmCellInputs);
+    }
   }
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",

@@ -188,7 +188,10 @@ cc_library(
         "graph_transformations/identify_l2_normalization.cc",
         "graph_transformations/identify_l2_pool.cc",
         "graph_transformations/identify_lstm.cc",
+        "graph_transformations/identify_lstm_merge_inputs.cc",
+        "graph_transformations/identify_lstm_split_inputs.cc",
         "graph_transformations/identify_relu1.cc",
+        "graph_transformations/lstm_utils.cc",
         "graph_transformations/make_initial_dequantize_operator.cc",
         "graph_transformations/propagate_array_data_types.cc",
         "graph_transformations/propagate_fixed_sizes.cc",
@@ -235,6 +238,7 @@ cc_library(
     ],
     hdrs = [
         "graph_transformations/graph_transformations.h",
+        "graph_transformations/lstm_utils.h",
     ],
     visibility = ["//visibility:public"],
     deps = [
@@ -245,6 +249,7 @@ cc_library(
         ":tooling_util",
         ":types_proto_cc",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/strings",
     ],
 )
