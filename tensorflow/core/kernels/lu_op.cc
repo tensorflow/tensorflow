@@ -59,8 +59,8 @@ class LuOp : public LinearAlgebraOp<Scalar> {
         Eigen::Matrix<Scalar, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
         lu_decomposition(input);
 
-    OP_REQUIRES(context, lu_decomposition.isInvertible() == true,
-                errors::InvalidArgument(kErrMsg));
+    //OP_REQUIRES(context, lu_decomposition.isInvertible() == true,
+    //            errors::InvalidArgument(kErrMsg));
     // Output the lower triangular in a dense form.
     outputs->at(0) =
         lu_decomposition.matrixLU().template triangularView<Eigen::UnitLower>();

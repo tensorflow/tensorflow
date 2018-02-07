@@ -141,8 +141,8 @@ Status QrShapeFn(InferenceContext* c) {
 
 
 // Input is [...,M,M].
-// First and second outputs are:
-//   [...,M,M]; [...,M,M]; [...,M,M]; [...,M,M]
+// First, second, and third outputs are:
+//   [...,M,M]; [...,M,M]; [...,M,M];
 Status LuShapeFn(InferenceContext* c) {
   /*
   ShapeHandler input;
@@ -534,7 +534,6 @@ REGISTER_OP("Lu")
     .Output("l: T")
     .Output("u: T")
     .Output("p: T")
-    .Output("q: T")
     .Attr("T: {double, float, complex64, complex128}")
     .SetShapeFn(LuShapeFn)
     .Doc(R"doc(
@@ -547,10 +546,9 @@ form square matrices.
 ```python
 # l is a tensor of lower triangular matrices.
 # u is a tensor of upper triangular matrices.
-# p is a tensor.
-# q is a tensor.
-# a = p.inverse()*l*u*q.inverse()
-l, u, p, q = lu(a) 
+# p is a tensor of permutation matrix.
+# a = p.inverse()*l*u
+l, u, p= lu(a) 
 ```
 
 The input has to be square matrix. 
@@ -562,7 +560,6 @@ input: Shape is `[..., M, M]`.
 l: Shape is `[..., M, M]`.
 u: Shape is `[..., M, M]`.
 p: Shape is `[..., M, M]`.
-q: Shape is `[..., M, M]`.
 )doc");
 
 REGISTER_OP("Svd")

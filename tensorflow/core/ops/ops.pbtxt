@@ -11851,7 +11851,6 @@ op {
   summary: "Forwards the input to the output."
   description: "This operator represents the loop termination condition used by the\n\"pivot\" switches of a loop."
 }
-
 op {
   name: "Lu"
   input_arg {

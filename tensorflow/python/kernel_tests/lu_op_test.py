@@ -49,7 +49,7 @@ class LuOpTest(test.TestCase):
       pl = math_ops.matmul(pinv, l)
       plu = math_ops.matmul(pl, u)
       with self.test_session() as sess:
-        out = pluq.eval()
+        out = plu.eval()
       self.assertEqual(a.shape, out.shape)
       self.assertAllClose(a, out, atol=tol, rtol=tol)
 
