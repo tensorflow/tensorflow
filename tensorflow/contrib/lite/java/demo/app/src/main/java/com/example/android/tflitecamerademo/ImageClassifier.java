@@ -58,19 +58,13 @@ public abstract class ImageClassifier {
   private int[] intValues = new int[getImageSizeX() * getImageSizeY()];
 
   /** An instance of the driver class to run model inference with Tensorflow Lite. */
-  private Interpreter tflite;
+  protected Interpreter tflite;
 
   /** Labels corresponding to the output of the vision model. */
   private List<String> labelList;
 
   /** A ByteBuffer to hold image data, to be feed into Tensorflow Lite as inputs. */
-  private ByteBuffer imgData = null;
-
-  /**
-   * An array to hold inference results, to be feed into Tensorflow Lite as outputs.
-   * For production, you may want to replace the boxed datatype with a primitive one.
-   */
-  protected Number[][] labelProbArray = null;
+  protected ByteBuffer imgData = null;
 
   /** multi-stage low pass filter * */
   private float[][] filterLabelProbArray = null;
@@ -97,7 +91,6 @@ public abstract class ImageClassifier {
                 DIM_BATCH_SIZE * getImageSizeX() * getImageSizeY() * DIM_PIXEL_SIZE *
                         getNumBytesPerChannel());
     imgData.order(ByteOrder.nativeOrder());
-    labelProbArray = createLabelProbArray(labelList.size());
     filterLabelProbArray = new float[FILTER_STAGES][labelList.size()];
     Log.d(TAG, "Created a Tensorflow Lite Image Classifier.");
   }
@@ -111,7 +104,7 @@ public abstract class ImageClassifier {
     convertBitmapToByteBuffer(bitmap);
     // Here's where the magic happens!!!
     long startTime = SystemClock.uptimeMillis();
-    tflite.run(imgData, labelProbArray);
+    runInference();
     long endTime = SystemClock.uptimeMillis();
     Log.d(TAG, "Timecost to run model inference: " + Long.toString(endTime - startTime));
 
@@ -125,13 +118,12 @@ public abstract class ImageClassifier {
   }
 
   void applyFilter() {
-    int numLabels = labelList.size();
+    int numLabels = getNumLabels();
 
     // Low pass filter `labelProbArray` into the first stage of the filter.
-    // TODO labelProbArray[0][j].floatValue()
     for (int j = 0; j < numLabels; ++j) {
       filterLabelProbArray[0][j] +=
-          FILTER_FACTOR * (labelProbArray[0][j].floatValue() - filterLabelProbArray[0][j]);
+          FILTER_FACTOR * (getProbability(j) - filterLabelProbArray[0][j]);
     }
     // Low pass filter each stage into the next.
     for (int i = 1; i < FILTER_STAGES; ++i) {
@@ -143,7 +135,7 @@ public abstract class ImageClassifier {
 
     // Copy the last stage filter output back to `labelProbArray`.
     for (int j = 0; j < numLabels; ++j) {
-      labelProbArray[0][j] = filterLabelProbArray[FILTER_STAGES - 1][j];
+      setProbability(j, filterLabelProbArray[FILTER_STAGES - 1][j]);
     }
   }
 
@@ -189,7 +181,7 @@ public abstract class ImageClassifier {
     for (int i = 0; i < getImageSizeX(); ++i) {
       for (int j = 0; j < getImageSizeY(); ++j) {
         final int val = intValues[pixel++];
-        addPixelValue(val, imgData);
+        addPixelValue(val);
       }
     }
     long endTime = SystemClock.uptimeMillis();
@@ -239,13 +231,6 @@ public abstract class ImageClassifier {
   protected abstract int getImageSizeY();
 
   /**
-   * Initialize a new value for this.labelProbArray
-   * @param numLabels The total number of used labels.
-   * @return
-   */
-  protected abstract Number[][] createLabelProbArray(int numLabels);
-
-  /**
    * Get the number of bytes that is used to store a single color channel value.
    * @return
    */
@@ -254,9 +239,8 @@ public abstract class ImageClassifier {
   /**
    * Add pixelValue to byteBuffer.
    * @param pixelValue
-   * @param imgData
    */
-  protected abstract void addPixelValue(int pixelValue, ByteBuffer imgData);
+  protected abstract void addPixelValue(int pixelValue);
 
   /**
    * Read the probability value for the specified label from the saved inference result.
@@ -264,4 +248,28 @@ public abstract class ImageClassifier {
    * @return
    */
   protected abstract float getProbability(int labelIndex);
+
+  /**
+   * Set the probability value for the specified label.
+   * @param labelIndex
+   * @param value
+   */
+  protected abstract void setProbability(int labelIndex, Number value);
+
+  /**
+   * Run inference using the prepared input in this.imgData.
+   * The result will be saved in this.labelPropArray.
+   *
+   * This additional method is necessary, because we don't have a common base for different
+   * primitive data types.
+   */
+  protected abstract void runInference();
+
+  /**
+   * Get the total number of labels.
+   * @return
+   */
+  protected int getNumLabels() {
+    return labelList.size();
+  }
 }

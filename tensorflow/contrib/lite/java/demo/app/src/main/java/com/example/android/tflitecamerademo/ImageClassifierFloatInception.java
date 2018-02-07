@@ -30,12 +30,19 @@ public class ImageClassifierFloatInception extends ImageClassifier {
     private static final float IMAGE_STD = 128.0f;
 
     /**
+     * An array to hold inference results, to be feed into Tensorflow Lite as outputs.
+     * This isn't part of the super class, because we need a primitive array here.
+     */
+    protected float[][] labelProbArray = null;
+
+    /**
      * Initializes an {@code ImageClassifier}.
      *
      * @param activity
      */
     ImageClassifierFloatInception(Activity activity) throws IOException {
         super(activity);
+        labelProbArray = new float[1][getNumLabels()];
     }
 
     @Override
@@ -61,18 +68,13 @@ public class ImageClassifierFloatInception extends ImageClassifier {
     }
 
     @Override
-    protected Float[][] createLabelProbArray(int numLabels) {
-        return new Float[1][numLabels];
-    }
-
-    @Override
     protected int getNumBytesPerChannel() {
         // a 32bit float value requires 4 bytes
         return 4;
     }
 
     @Override
-    protected void addPixelValue(int pixelValue, ByteBuffer imgData) {
+    protected void addPixelValue(int pixelValue) {
         imgData.putFloat((((pixelValue >> 16) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
         imgData.putFloat((((pixelValue >> 8) & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
         imgData.putFloat(((pixelValue & 0xFF) - IMAGE_MEAN) / IMAGE_STD);
@@ -80,6 +82,16 @@ public class ImageClassifierFloatInception extends ImageClassifier {
 
     @Override
     protected float getProbability(int labelIndex) {
-        return (float) labelProbArray[0][labelIndex];
+        return labelProbArray[0][labelIndex];
+    }
+
+    @Override
+    protected void setProbability(int labelIndex, Number value) {
+        labelProbArray[0][labelIndex] = value.floatValue();
+    }
+
+    @Override
+    protected void runInference() {
+        tflite.run(imgData, labelProbArray);
     }
 }

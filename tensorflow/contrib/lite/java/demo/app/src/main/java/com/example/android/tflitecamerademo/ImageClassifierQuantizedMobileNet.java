@@ -24,12 +24,19 @@ import java.nio.ByteBuffer;
 public class ImageClassifierQuantizedMobileNet extends ImageClassifier {
 
     /**
+     * An array to hold inference results, to be feed into Tensorflow Lite as outputs.
+     * This isn't part of the super class, because we need a primitive array here.
+     */
+    protected byte[][] labelProbArray = null;
+
+    /**
      * Initializes an {@code ImageClassifier}.
      *
      * @param activity
      */
     ImageClassifierQuantizedMobileNet(Activity activity) throws IOException {
         super(activity);
+        labelProbArray = new byte[1][getNumLabels()];
     }
 
     @Override
@@ -55,18 +62,13 @@ public class ImageClassifierQuantizedMobileNet extends ImageClassifier {
     }
 
     @Override
-    protected Byte[][] createLabelProbArray(int numLabels) {
-        return new Byte[0][numLabels];
-    }
-
-    @Override
     protected int getNumBytesPerChannel() {
         // the quantized model uses a single byte only
         return 1;
     }
 
     @Override
-    protected void addPixelValue(int pixelValue, ByteBuffer imgData) {
+    protected void addPixelValue(int pixelValue) {
         imgData.put((byte) ((pixelValue >> 16) & 0xFF));
         imgData.put((byte) ((pixelValue >> 8) & 0xFF));
         imgData.put((byte) (pixelValue & 0xFF));
@@ -74,6 +76,16 @@ public class ImageClassifierQuantizedMobileNet extends ImageClassifier {
 
     @Override
     protected float getProbability(int labelIndex) {
-        return (((byte)labelProbArray[0][labelIndex] & 0xff) / 255.0f);
+        return ((labelProbArray[0][labelIndex] & 0xff) / 255.0f);
+    }
+
+    @Override
+    protected void setProbability(int labelIndex, Number value) {
+        labelProbArray[0][labelIndex] = value.byteValue();
+    }
+
+    @Override
+    protected void runInference() {
+        tflite.run(imgData, labelProbArray);
     }
 }
