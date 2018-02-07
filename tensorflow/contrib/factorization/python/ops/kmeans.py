@@ -143,7 +143,7 @@ class _ModelFn(object):
   def model_fn(self, features, mode, config):
     """Model function for the estimator.
 
-    Note that this does not take a `1abels` arg. This works, but `input_fn` must
+    Note that this does not take a `labels` arg. This works, but `input_fn` must
     return either `features` or, equivalently, `(features, None)`.
 
     Args:

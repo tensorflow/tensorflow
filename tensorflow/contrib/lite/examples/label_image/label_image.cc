@@ -151,14 +151,14 @@ void RunInference(Settings* s) {
   switch (interpreter->tensor(input)->type) {
     case kTfLiteFloat32:
       s->input_floating = true;
-      downsize<float>(interpreter->typed_tensor<float>(input), in,
-                      image_height, image_width, image_channels,
-                      wanted_height, wanted_width, wanted_channels, s);
+      resize<float>(interpreter->typed_tensor<float>(input), in,
+                    image_height, image_width, image_channels,
+                    wanted_height, wanted_width, wanted_channels, s);
       break;
     case kTfLiteUInt8:
-      downsize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in,
-                        image_height, image_width, image_channels,
-                        wanted_height, wanted_width, wanted_channels, s);
+      resize<uint8_t>(interpreter->typed_tensor<uint8_t>(input), in,
+                      image_height, image_width, image_channels,
+                      wanted_height, wanted_width, wanted_channels, s);
       break;
     default:
       LOG(FATAL) << "cannot handle input type "

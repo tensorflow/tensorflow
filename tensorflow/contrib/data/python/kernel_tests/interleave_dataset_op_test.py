@@ -252,6 +252,22 @@ class InterleaveDatasetSeriazationTest(
         None, num_outputs)
     # pylint: enable=g-long-lambda
 
+  def testSparseCore(self):
+
+    def _map_fn(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=[[0, 0], [1, 1]], values=(i * [1, -1]), dense_shape=[2, 2])
+
+    def _interleave_fn(x):
+      return dataset_ops.Dataset.from_tensor_slices(
+          sparse_ops.sparse_to_dense(x.indices, x.dense_shape, x.values))
+
+    def _build_dataset():
+      return dataset_ops.Dataset.range(10).map(_map_fn).interleave(
+          _interleave_fn, cycle_length=1)
+
+    self.run_core_tests(_build_dataset, None, 20)
+
 
 class ParallelInterleaveDatasetTest(test.TestCase):
 

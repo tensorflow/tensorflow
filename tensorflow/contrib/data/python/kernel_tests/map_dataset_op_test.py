@@ -805,6 +805,21 @@ class MapDatasetSerializationTest(
 
     self.run_core_tests(_build_ds, None, num_outputs)
 
+  def testSparseCore(self):
+
+    def _sparse(i):
+      return sparse_tensor.SparseTensorValue(
+          indices=np.array([[0, 0]]),
+          values=(i * np.array([1])),
+          dense_shape=np.array([1, 1]))
+
+    def _build_ds(num_outputs):
+      return contrib_dataset_ops.Dataset.range(num_outputs).map(_sparse)
+
+    num_outputs = 10
+    self.run_core_tests(lambda: _build_ds(num_outputs),
+                        lambda: _build_ds(int(num_outputs / 2)), num_outputs)
+
 
 class ParallelMapDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
@@ -851,7 +866,8 @@ class ParallelMapDatasetSerializationTest(
         return random_ops.random_uniform(
             (), 0, 10, dtype=dtypes.int32) * math_ops.to_int32(x)
 
-      return contrib_dataset_ops.Dataset.range(100).map(_map_fn)
+      return contrib_dataset_ops.Dataset.range(100).map(
+          _map_fn, num_parallel_calls=2).prefetch(2)
 
     self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
 
@@ -861,7 +877,8 @@ class ParallelMapDatasetSerializationTest(
       counter_var = variable_scope.get_variable(
           "counter", (), dtypes.int32, use_resource=True)
       return (contrib_dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda _: counter_var.assign_add(1)))
+          lambda _: counter_var.assign_add(1),
+          num_parallel_calls=2).prefetch(2))
 
     self.verify_error_on_save(_build_ds, 15, errors.InvalidArgumentError)
 
@@ -870,7 +887,7 @@ class ParallelMapDatasetSerializationTest(
     def _build_ds():
       constant_var = constant_op.constant(5)
       return (contrib_dataset_ops.Dataset.from_tensors(0).repeat(10).map(
-          lambda x: x + constant_var))
+          lambda x: x + constant_var, num_parallel_calls=2).prefetch(2))
 
     self.run_core_tests(_build_ds, None, 10)
 
@@ -883,7 +900,8 @@ class ParallelMapDatasetSerializationTest(
       def defun_fn(x):
         return constant_op.constant(1000) + math_ops.to_int32(x)
 
-      return contrib_dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+      return contrib_dataset_ops.Dataset.range(num_outputs).map(
+          defun_fn, num_parallel_calls=2).prefetch(2)
 
     self.run_core_tests(_build_ds, None, num_outputs)
 
@@ -901,7 +919,8 @@ class ParallelMapDatasetSerializationTest(
 
         return constant_op.constant(11000) + defun_fn_deep(math_ops.to_int32(x))
 
-      return contrib_dataset_ops.Dataset.range(num_outputs).map(defun_fn)
+      return contrib_dataset_ops.Dataset.range(num_outputs).map(
+          defun_fn, num_parallel_calls=2).prefetch(2)
 
     self.run_core_tests(_build_ds, None, num_outputs)
 

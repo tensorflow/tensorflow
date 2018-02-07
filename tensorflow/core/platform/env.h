@@ -286,7 +286,7 @@ class Env {
   // "version" should be the version of the library or NULL
   // returns the name that LoadLibrary() can use
   virtual string FormatLibraryFileName(const string& name,
-      const string& version) = 0;
+                                       const string& version) = 0;
 
  private:
   // Returns a possible list of local temporary directories.
@@ -353,6 +353,7 @@ class EnvWrapper : public Env {
                                const string& version) override {
     return target_->FormatLibraryFileName(name, version);
   }
+
  private:
   Env* target_;
 };

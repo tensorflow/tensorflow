@@ -18,13 +18,15 @@ limitations under the License.
 
 #include <stdio.h>
 
+#include "tensorflow/contrib/lite/error_reporter.h"
+
 namespace tflite {
 
 // Verifies the integrity of a Tensorflow Lite flatbuffer model file.
 // Currently, it verifies:
 // * The file is following a legit flatbuffer schema.
 // * The model is in supported version.
-bool Verify(const void* buf, size_t len);
+bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter);
 
 }  // namespace tflite
 

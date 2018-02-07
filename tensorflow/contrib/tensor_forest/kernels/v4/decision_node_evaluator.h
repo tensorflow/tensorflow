@@ -22,7 +22,6 @@
 namespace tensorflow {
 namespace tensorforest {
 
-
 // Base class for evaluators of decision nodes that effectively copy proto
 // contents into C++ structures for faster execution.
 class DecisionNodeEvaluator {

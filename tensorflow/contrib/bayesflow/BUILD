@@ -217,6 +217,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_seed",
     ],
+    tags = ["notsan"],
 )
 
 cuda_py_test(

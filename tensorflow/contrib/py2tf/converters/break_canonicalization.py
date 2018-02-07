@@ -22,13 +22,15 @@ import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import templates
+from tensorflow.contrib.py2tf.pyct import transformer
+from tensorflow.contrib.py2tf.pyct.static_analysis.annos import NodeAnno
 
 
-class BreakCanonicalizationTransformer(gast.NodeTransformer):
+class BreakCanonicalizationTransformer(transformer.Base):
   """Canonicalizes continue statements into additional conditionals."""
 
-  def __init__(self, namer):
-    self.namer = namer
+  def __init__(self, context):
+    super(BreakCanonicalizationTransformer, self).__init__(context)
     # This is a stack structure, to correctly process nested loops.
     self.break_uses = []
 
@@ -67,9 +69,10 @@ class BreakCanonicalizationTransformer(gast.NodeTransformer):
 
   def visit_While(self, node):
     self.generic_visit(node.test)
-    scope = anno.getanno(node, 'body_scope')
+    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
 
-    break_var = self.namer.new_symbol('break_requested', scope.referenced)
+    break_var = self.context.namer.new_symbol('break_requested',
+                                              scope.referenced)
     self.break_uses.append([False, break_var])
     node.body = self._manual_visit_list(node.body)
     if self.break_uses[-1][0]:
@@ -89,9 +92,10 @@ class BreakCanonicalizationTransformer(gast.NodeTransformer):
   def visit_For(self, node):
     self.generic_visit(node.target)
     self.generic_visit(node.iter)
-    scope = anno.getanno(node, 'body_scope')
+    scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
 
-    break_var = self.namer.new_symbol('break_requested', scope.referenced)
+    break_var = self.context.namer.new_symbol('break_requested',
+                                              scope.referenced)
     self.break_uses.append([False, break_var])
     node.body = self._manual_visit_list(node.body)
     if self.break_uses[-1][0]:
@@ -112,7 +116,5 @@ class BreakCanonicalizationTransformer(gast.NodeTransformer):
     return self._create_break_trigger()
 
 
-def transform(node, namer):
-  transformer = BreakCanonicalizationTransformer(namer)
-  node = transformer.visit(node)
-  return node
+def transform(node, context):
+  return BreakCanonicalizationTransformer(context).visit(node)

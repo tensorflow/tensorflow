@@ -13,7 +13,7 @@ works. The units are as follows:
 ## Low Level APIs
 
   * @{$programmers_guide/low_level_intro}, which introduces the
-    basics of how you can to use TensorFlow outside of the high Level APIs.
+    basics of how you can use TensorFlow outside of the high Level APIs.
   * @{$programmers_guide/tensors}, which explains how to create,
     manipulate, and access Tensors--the fundamental object in TensorFlow.
   * @{$programmers_guide/variables}, which details how

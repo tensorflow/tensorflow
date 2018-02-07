@@ -20,30 +20,15 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/platform/test.h"
-#include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
 namespace grappler {
 namespace {
 
-class ConstantFoldingTest : public ::testing::Test {
- protected:
-  std::vector<Tensor> EvaluateNodes(const GraphDef& graph,
-                                    const std::vector<string>& fetch) {
-    SessionOptions options;
-    std::unique_ptr<tensorflow::Session> session(NewSession(options));
-    TF_CHECK_OK(session->Create(graph));
-    RunOptions run_options;
-    std::vector<Tensor> output_tensors;
-    TF_CHECK_OK(
-        session->Run(run_options, {}, fetch, fetch, &output_tensors, nullptr));
-    TF_CHECK_OK(session->Close());
-    return output_tensors;
-  }
-};
+class ConstantFoldingTest : public GrapplerTest {};
 
 TEST_F(ConstantFoldingTest, SimpleFolding) {
   // Build a simple graph with a few trivially prunable ops.

@@ -25,8 +25,8 @@ namespace boosted_trees {
 namespace utils {
 namespace {
 
-using test::AsTensor;
 using errors::InvalidArgument;
+using test::AsTensor;
 
 class BatchFeaturesTest : public ::testing::Test {};
 

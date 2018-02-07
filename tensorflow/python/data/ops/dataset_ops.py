@@ -41,8 +41,10 @@ from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("data.Dataset")
 class Dataset(object):
   """Represents a potentially large set of elements.
 
@@ -556,6 +558,8 @@ class Dataset(object):
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
+    NOTE: The order of the file names returned can be non-deterministic.
+
     Args:
       file_pattern: A string or scalar string `tf.Tensor`, representing
         the filename pattern that will be matched.
@@ -899,10 +903,11 @@ class Dataset(object):
 
     Args:
       transformation_func: A function that takes one `Dataset` argument and
-        returns a `Dataset`.
+          returns a `Dataset`.
 
     Returns:
-      Dataset: The `Dataset` returned by applying `transformation_func` to this dataset.
+      Dataset: The `Dataset` returned by applying `transformation_func` to this
+          dataset.
     """
     dataset = transformation_func(self)
     if not isinstance(dataset, Dataset):
@@ -1454,6 +1459,19 @@ def _padding_value_to_tensor(value, output_type):
   return value
 
 
+def _default_padding(input_dataset):
+
+  def make_zero(t):
+    if t.base_dtype == dtypes.string:
+      return ""
+    elif t.base_dtype == dtypes.variant:
+      raise TypeError("Unable to create padding for field of type 'variant'")
+    else:
+      return np.zeros_like(t.as_numpy_dtype())
+
+  return nest.map_structure(make_zero, input_dataset.output_types)
+
+
 class PaddedBatchDataset(Dataset):
   """A `Dataset` that batches and pads contiguous elements from its input."""
 
@@ -1469,22 +1487,12 @@ class PaddedBatchDataset(Dataset):
         batch_size, dtype=dtypes.int64, name="batch_size")
     padding_values = (
         padding_values
-        if padding_values is not None else self._default_padding(input_dataset))
+        if padding_values is not None else _default_padding(input_dataset))
     self._padded_shapes = nest.map_structure_up_to(
         input_dataset.output_shapes, _partial_shape_to_tensor, padded_shapes)
     self._padding_values = nest.map_structure_up_to(
         input_dataset.output_shapes, _padding_value_to_tensor, padding_values,
         input_dataset.output_types)
-
-  def _default_padding(self, input_dataset):
-
-    def make_zero(t):
-      if t.base_dtype == dtypes.string:
-        return ""
-      else:
-        return np.zeros_like(t.as_numpy_dtype())
-
-    return nest.map_structure(make_zero, input_dataset.output_types)
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.padded_batch_dataset(

@@ -177,9 +177,10 @@ TEST_F(UtilsTest, ExecuteWithTimeout) {
 }
 
 TEST_F(UtilsTest, NumOutputs) {
-  EXPECT_EQ(2, NumOutputs(CreateConcatOffsetNode()));
-  EXPECT_EQ(5, NumOutputs(CreateFusedBatchNormNode()));
-  EXPECT_EQ(1, NumOutputs(CreateDequeueNode()));
+  GraphDef graph;
+  EXPECT_EQ(2, NumOutputs(CreateConcatOffsetNode(), &graph));
+  EXPECT_EQ(5, NumOutputs(CreateFusedBatchNormNode(), &graph));
+  EXPECT_EQ(1, NumOutputs(CreateDequeueNode(), &graph));
 }
 
 TEST_F(UtilsTest, AsControlDependency) {

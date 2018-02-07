@@ -210,31 +210,32 @@ class MklShape {
     CHECK_EQ(dnnDelete_F32(convert), E_SUCCESS);
   }
 
-// The following methods are used for serializing and de-serializing the
-// contents of the mklshape object.
-// The data is serialized in this order
-// isMklTensor_
-// dimension_
-// sizes_
-// strides_
-// mklLayout_
-// tfLayout_
-// tf_to_mkl_dim_map_
+  // The following methods are used for serializing and de-serializing the
+  // contents of the mklshape object.
+  // The data is serialized in this order
+  // isMklTensor_
+  // dimension_
+  // sizes_
+  // strides_
+  // mklLayout_
+  // tfLayout_
+  // tf_to_mkl_dim_map_
 
 #define SIZE_OF_MKL_DNN_BUF \
   (dnnLayoutSerializationBufferSize_F32())  // Size of buffer needed to
                                             // serialize dnn_layout pointer
 
-// Size of buffer to hold the serialized object, the size is computed as follows
-// sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) + sizeof(strides_)
-// + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
-// + sizeof(tf_to_mkl_dim_map_)
+  // Size of buffer to hold the serialized object, the size is computed as
+  // follows sizeof(isMklTensor_) + sizeof(dimension_) + sizeof(sizes_) +
+  // sizeof(strides_)
+  // + sizeof(mklLayout_ buffer) + sizeof(tfLayout_ buffer)
+  // + sizeof(tf_to_mkl_dim_map_)
 
 #define SIZE_OF_MKL_SERIAL_DATA(dims) \
   (2 * sizeof(size_t) + 3 * dims * sizeof(size_t) + 2 * SIZE_OF_MKL_DNN_BUF)
 
-// First we need to define some macro for offsets into the serial buffer where
-// different elements of Mklshape is written/read from
+  // First we need to define some macro for offsets into the serial buffer where
+  // different elements of Mklshape is written/read from
 
 #define IS_MKL_TENSOR_OFFSET 0
 // Location from start of buffer where isMklTensor_ is serialized
@@ -388,7 +389,7 @@ class MklDnnShape {
 
   /// Equality function for MklDnnShape objects
   /// @return true if both are equal; false otherwise.
-  inline bool operator == (const MklDnnShape& input_shape) const {
+  inline bool operator==(const MklDnnShape& input_shape) const {
     if (this->IsMklTensor() != input_shape.IsMklTensor()) {
       return false;
     }
@@ -406,7 +407,7 @@ class MklDnnShape {
 
   /// Equality operator for MklDnnShape and TFShape.
   /// Returns: true if TF shapes for both are the same, false otherwise
-  inline bool operator == (const TensorShape& input_shape) const {
+  inline bool operator==(const TensorShape& input_shape) const {
     if (!this->IsMklTensor()) {
       return false;
     }
@@ -425,7 +426,7 @@ class MklDnnShape {
   inline size_t GetDimension(char dimension) const {
     int index = GetMklDnnTensorDimIndex(dimension);
     CHECK(index >= 0 && index < this->GetDimension())
-      << "Invalid index from the dimension: " << index << ", " << dimension;
+        << "Invalid index from the dimension: " << index << ", " << dimension;
     return this->DimSize(index);
   }
 
@@ -705,8 +706,8 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
   Tensor output_tensor;
   TensorShape output_shape;
 
-  TF_CHECK_OK(Status(error::Code::UNIMPLEMENTED,
-                     "Unimplemented conversion function"));
+  TF_CHECK_OK(
+      Status(error::Code::UNIMPLEMENTED, "Unimplemented conversion function"));
 
   return output_tensor;
 }
@@ -973,8 +974,8 @@ inline int64 GetMklTensorDim(const MklShape& mkl_shape, char dimension) {
   return mkl_shape.dim_size(index);
 }
 
-inline void CopyMklTensorInToOut(OpKernelContext* context,
-                                 int idx_in, int idx_out) {
+inline void CopyMklTensorInToOut(OpKernelContext* context, int idx_in,
+                                 int idx_out) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
@@ -995,8 +996,8 @@ inline void CopyMklTensorInToOut(OpKernelContext* context,
 }
 
 #ifdef INTEL_MKL_ML
-inline void CopyTfTensorInToOutWithShape(OpKernelContext* context,
-                                         int idx_in, int idx_out,
+inline void CopyTfTensorInToOutWithShape(OpKernelContext* context, int idx_in,
+                                         int idx_out,
                                          const TensorShape& shape) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
@@ -1013,8 +1014,8 @@ inline void CopyTfTensorInToOutWithShape(OpKernelContext* context,
   context->set_output(idx_data_out, output);
 }
 #else
-inline void CopyTfTensorInToOutWithShape(OpKernelContext* context,
-                                         int idx_in, int idx_out,
+inline void CopyTfTensorInToOutWithShape(OpKernelContext* context, int idx_in,
+                                         int idx_out,
                                          const TensorShape& shape) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
@@ -1034,8 +1035,8 @@ inline void CopyTfTensorInToOutWithShape(OpKernelContext* context,
 
 #ifdef INTEL_MKL_ML
 
-inline void ForwardTfTensorInToOut(OpKernelContext* context,
-                                  int idx_in, int idx_out) {
+inline void ForwardTfTensorInToOut(OpKernelContext* context, int idx_in,
+                                   int idx_out) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
@@ -1053,8 +1054,8 @@ inline void ForwardTfTensorInToOut(OpKernelContext* context,
 
 #else
 
-inline void ForwardTfTensorInToOut(OpKernelContext* context,
-                                  int idx_in, int idx_out) {
+inline void ForwardTfTensorInToOut(OpKernelContext* context, int idx_in,
+                                   int idx_out) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
@@ -1072,8 +1073,8 @@ inline void ForwardTfTensorInToOut(OpKernelContext* context,
 
 #endif
 
-inline void ForwardMklTensorInToOut(OpKernelContext* context,
-                                   int idx_in, int idx_out) {
+inline void ForwardMklTensorInToOut(OpKernelContext* context, int idx_in,
+                                    int idx_out) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
@@ -1092,8 +1093,8 @@ inline void ForwardMklTensorInToOut(OpKernelContext* context,
 
 #ifndef INTEL_MKL_ML
 inline void ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
-                                             int idx_in, int idx_out,
-                                             const MklDnnShape& mkl_shape) {
+                                                int idx_in, int idx_out,
+                                                const MklDnnShape& mkl_shape) {
   int num_inputs = context->num_inputs();
   int num_outputs = context->num_outputs();
   int idx_data_in = GetTensorDataIndex(idx_in, num_inputs);
@@ -1216,11 +1217,11 @@ inline void MklNHWCToNCHW(const Tensor& input, Tensor** output) {
   int64 H = input.dim_size(1);
   int64 W = input.dim_size(2);
   int64 C = input.dim_size(3);
-  int64 stride_n = H*W*C;
-# pragma omp parallel for num_threads(16)
+  int64 stride_n = H * W * C;
+#pragma omp parallel for num_threads(16)
   for (int64 n = 0; n < N; ++n) {
-    mkl_somatcopy('R', 'T', H*W, C, 1, buf_in + n*stride_n, C,
-        buf_out + n*stride_n, H*W);
+    mkl_somatcopy('R', 'T', H * W, C, 1, buf_in + n * stride_n, C,
+                  buf_out + n * stride_n, H * W);
   }
 }
 
@@ -1232,11 +1233,11 @@ inline void MklNCHWToNHWC(const Tensor& input, Tensor** output) {
   int64 H = (*output)->dim_size(1);
   int64 W = (*output)->dim_size(2);
   int64 C = (*output)->dim_size(3);
-  int64 stride_n = H*W*C;
-# pragma omp parallel for num_threads(16)
+  int64 stride_n = H * W * C;
+#pragma omp parallel for num_threads(16)
   for (int64 n = 0; n < N; ++n) {
-    mkl_somatcopy('R', 'T', C, H*W, 1, buf_in + n*stride_n, H*W,
-        buf_out + n*stride_n, C);
+    mkl_somatcopy('R', 'T', C, H * W, 1, buf_in + n * stride_n, H * W,
+                  buf_out + n * stride_n, C);
   }
 }
 
@@ -1279,10 +1280,11 @@ inline memory::format TFDataFormatToMklDnnDataFormat(TensorFormat format) {
 /// @return: Tensorflow data format corresponding to memory::format
 ///          Fails with an error if invalid data format.
 inline TensorFormat MklDnnDataFormatToTFDataFormat(memory::format format) {
-  if (format == memory::format::nhwc) return FORMAT_NHWC;
-  else if (format == memory::format::nchw) return FORMAT_NCHW;
-  TF_CHECK_OK(Status(error::Code::INVALID_ARGUMENT,
-                     "Unsupported data format"));
+  if (format == memory::format::nhwc)
+    return FORMAT_NHWC;
+  else if (format == memory::format::nchw)
+    return FORMAT_NCHW;
+  TF_CHECK_OK(Status(error::Code::INVALID_ARGUMENT, "Unsupported data format"));
 
   // Return to prevent compiler warnings, otherwise TF_CHECK_OK will ensure
   // that we don't come here.
@@ -1425,7 +1427,6 @@ inline memory::desc CreateBlockedMemDescHelper(const memory::dims& dim,
   return memory::desc(md);
 }
 
-
 /*
  * Class to represent all the resources corresponding to a tensor in TensorFlow
  * that are required to execute an operation (such as Convolution).
@@ -1494,7 +1495,7 @@ class MklDnnData {
   /// @return: memory::desc object corresponding to blocked memory format
   ///          for given dimensions and strides.
   static inline memory::desc CreateBlockedMemDesc(const memory::dims& dim,
-                                                 const memory::dims& strides) {
+                                                  const memory::dims& strides) {
     return CreateBlockedMemDescHelper(dim, strides, MklDnnType<T>());
   }
 
@@ -1562,7 +1563,6 @@ class MklDnnData {
     CHECK_NOTNULL(user_memory_);
     return user_memory_->get_primitive_desc();
   }
-
 
   /// Get function for descriptor of user memory.
   inline memory::desc GetUsrMemDesc() {
@@ -1634,7 +1634,8 @@ class MklDnnData {
   /// @return: true in case reorder of input is needed; false, otherwise.
   inline bool IsReorderNeeded(const memory::format& target_format) const {
     CHECK_NOTNULL(user_memory_);
-    return target_format != user_memory_->get_primitive_desc().desc().data.format;
+    return target_format !=
+           user_memory_->get_primitive_desc().desc().data.format;
   }
 
   /// Function to create a reorder from memory pointed by from to memory pointed

@@ -335,6 +335,13 @@ REGISTER_OP("Unpack")
       return Status::OK();
     });
 
+REGISTER_OP("UnravelIndex")
+    .Input("indices: Tidx")
+    .Input("dims: Tidx")
+    .Output("output: Tidx")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn([](InferenceContext* c) { return Status::OK(); });
+
 // --------------------------------------------------------------------------
 // TODO(josh11b): Remove the >= 2 constraint, once we can rewrite the graph
 // in the N == 1 case to remove the node.
@@ -701,10 +708,11 @@ REGISTER_OP("MatrixDiagPart")
 // --------------------------------------------------------------------------
 REGISTER_OP("MatrixBandPart")
     .Input("input: T")
-    .Input("num_lower: int64")
-    .Input("num_upper: int64")
+    .Input("num_lower: Tindex")
+    .Input("num_upper: Tindex")
     .Output("band: T")
     .Attr("T: type")
+    .Attr("Tindex: {int32, int64} = DT_INT64")
     .SetShapeFn(shape_inference::UnchangedShape);
 
 // --------------------------------------------------------------------------

@@ -61,7 +61,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
-
 namespace tensorflow {
 
 namespace {
@@ -472,9 +471,9 @@ Status DirectSession::Run(const RunOptions& run_options,
   Executor::Args args;
   args.step_id = step_id_counter_.fetch_add(1);
 
-  TF_RETURN_IF_ERROR(
-      GetOrCreateExecutors(input_tensor_names, output_names, target_nodes,
-                           &executors_and_keys, &run_state_args));
+  TF_RETURN_IF_ERROR(GetOrCreateExecutors(input_tensor_names, output_names,
+                                          target_nodes, &executors_and_keys,
+                                          &run_state_args));
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;

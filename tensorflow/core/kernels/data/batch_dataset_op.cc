@@ -92,7 +92,6 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
     }
 
    private:
-
     class Iterator : public DatasetIterator<Dataset> {
      public:
       explicit Iterator(const Params& params)
@@ -145,7 +144,7 @@ class BatchDatasetOp : public UnaryDatasetOpKernel {
           const Tensor& first_element = batch_elements[0][component_index];
           TensorShape batch_component_shape({num_batch_elements});
           batch_component_shape.AppendShape(first_element.shape());
-          Tensor batch_component(cpu_allocator(), first_element.dtype(),
+          Tensor batch_component(ctx->allocator({}), first_element.dtype(),
                                  batch_component_shape);
           // Build the output tuple component by copying one slice
           // from each input element in the batch.

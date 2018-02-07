@@ -744,6 +744,23 @@ class BatchDatasetSerializationTest(
                         lambda: self._build_dataset_dense_to_sparse(diff_comp),
                         num_outputs)
 
+  def _sparse(self, i):
+    return sparse_tensor.SparseTensorValue(
+        indices=[[0]], values=(i * [1]), dense_shape=[1])
+
+  def _build_dataset_sparse(self, batch_size=5):
+    return dataset_ops.Dataset.range(10).map(self._sparse).batch(batch_size)
+
+  def testSparseCore(self):
+    self.run_core_tests(self._build_dataset_sparse,
+                        lambda: self._build_dataset_sparse(2), 2)
+
+  def _build_dataset_nested_sparse(self):
+    return dataset_ops.Dataset.range(10).map(self._sparse).batch(5).batch(2)
+
+  def testNestedSparseCore(self):
+    self.run_core_tests(self._build_dataset_nested_sparse, None, 1)
+
 
 class PaddedBatchDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):

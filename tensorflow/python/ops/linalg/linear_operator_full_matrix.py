@@ -114,7 +114,8 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
 
     Args:
       matrix:  Shape `[B1,...,Bb, M, N]` with `b >= 0`, `M, N >= 0`.
-        Allowed dtypes: `float32`, `float64`, `complex64`, `complex128`.
+        Allowed dtypes: `float16`, `float32`, `float64`, `complex64`,
+        `complex128`.
       is_non_singular:  Expect that this operator is non-singular.
       is_self_adjoint:  Expect that this operator is equal to its hermitian
         transpose.
@@ -147,7 +148,12 @@ class LinearOperatorFullMatrix(linear_operator.LinearOperator):
   def _check_matrix(self, matrix):
     """Static check of the `matrix` argument."""
     allowed_dtypes = [
-        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128]
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+        dtypes.complex64,
+        dtypes.complex128,
+    ]
 
     matrix = ops.convert_to_tensor(matrix, name="matrix")
 

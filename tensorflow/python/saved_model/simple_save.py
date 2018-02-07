@@ -40,17 +40,20 @@ def simple_save(session, export_dir, inputs, outputs, legacy_init_op=None):
     - It will be treated as a graph for inference / serving (i.e. uses the tag
       `tag_constants.SERVING`)
     - The SavedModel will load in TensorFlow Serving and supports the
-      [Predict API](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/predict.proto).
+      [Predict
+      API](https://github.com/tensorflow/serving/blob/master/tensorflow_serving/apis/predict.proto).
       To use the Classify, Regress, or MultiInference APIs, please
       use either
       [tf.Estimator](https://www.tensorflow.org/api_docs/python/tf/estimator/Estimator)
       or the lower level
-      [SavedModel APIs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
+      [SavedModel
+      APIs](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
     - Some TensorFlow ops depend on information on disk or other information
       called "assets". These are generally handled automatically by adding the
       assets to the `GraphKeys.ASSET_FILEPATHS` collection. Only assets in that
       collection are exported; if you need more custom behavior, you'll need to
-      use the [SavedModelBuilder](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/builder.py).
+      use the
+      [SavedModelBuilder](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/builder.py).
 
   More information about SavedModel and signatures can be found here:
   https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md.

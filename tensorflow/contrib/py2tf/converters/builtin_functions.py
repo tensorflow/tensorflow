@@ -21,12 +21,14 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.py2tf.pyct import templates
+from tensorflow.contrib.py2tf.pyct import transformer
 
 
-class BuiltinFunctionTransformer(gast.NodeTransformer):
+class BuiltinFunctionTransformer(transformer.Base):
   """Transforms Print nodes to Call so they can be handled as functions."""
 
-  # TODO(mdan): Bring print_functions in here.
+  def __init__(self, context):
+    super(BuiltinFunctionTransformer, self).__init__(context)
 
   def _convert_len(self, node):
     template = """
@@ -44,10 +46,15 @@ class BuiltinFunctionTransformer(gast.NodeTransformer):
       return self._convert_len(node)
     return node
 
+  def visit_Print(self, node):
+    self.generic_visit(node)
+    template = """
+      fname(args)
+    """
+    return templates.replace(template, fname='print', args=node.values)
+
   # pylint:enable=invalid-name
 
 
-def transform(node):
-  transformer = BuiltinFunctionTransformer()
-  node = transformer.visit(node)
-  return node
+def transform(node, context):
+  return BuiltinFunctionTransformer(context).visit(node)

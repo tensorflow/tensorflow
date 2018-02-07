@@ -154,8 +154,9 @@ TEST(GPUBFCAllocatorTest, ExerciseCoalescing) {
     a.DeallocateRaw(t3);
     a.DeallocateRaw(t4);
   }
-  CheckStats(&a, 4097, 0, 1024 * sizeof(float) + 1048576 * sizeof(int64) +
-                              2048 * sizeof(double) + 10485760 * sizeof(float),
+  CheckStats(&a, 4097, 0,
+             1024 * sizeof(float) + 1048576 * sizeof(int64) +
+                 2048 * sizeof(double) + 10485760 * sizeof(float),
              10485760 * sizeof(float));
 
   // At the end, we should have coalesced all memory into one region

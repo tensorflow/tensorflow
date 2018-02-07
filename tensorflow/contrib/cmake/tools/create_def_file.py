@@ -31,6 +31,7 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
+import codecs
 import io
 import os
 import re
@@ -103,7 +104,7 @@ def main():
   for lib_path in args.input:
     proc = subprocess.Popen([DUMPBIN, "/nologo", "/linkermember:1", lib_path],
                             stdout=subprocess.PIPE)
-    for line in io.TextIOWrapper(proc.stdout, encoding="utf-8"):
+    for line in codecs.getreader("utf-8")(proc.stdout):
       cols = line.split()
       if len(cols) < 2:
         continue
@@ -131,7 +132,7 @@ def main():
     # We compare on undname but use the decorated name from candidates.
     dupes = 0
     proc = subprocess.Popen([UNDNAME, tmpfile.name], stdout=subprocess.PIPE)
-    for idx, line in enumerate(io.TextIOWrapper(proc.stdout, encoding="utf-8")):
+    for idx, line in enumerate(codecs.getreader("utf-8")(proc.stdout)):
       decorated = candidates[idx]
       if decorated in taken:
         # Symbol is already in output, done.

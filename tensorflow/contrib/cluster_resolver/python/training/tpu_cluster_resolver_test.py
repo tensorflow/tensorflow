@@ -105,7 +105,8 @@ class TPUClusterResolverTest(test.TestCase):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
             'ipAddress': '10.1.2.3',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         }
     }
 
@@ -126,7 +127,8 @@ class TPUClusterResolverTest(test.TestCase):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
             'ipAddress': '10.1.2.3',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         }
     }
 
@@ -147,11 +149,13 @@ class TPUClusterResolverTest(test.TestCase):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
             'ipAddress': '10.1.2.3',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         },
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-2': {
             'ipAddress': '10.4.5.6',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         }
     }
 
@@ -169,15 +173,54 @@ class TPUClusterResolverTest(test.TestCase):
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
+  def testHealthyTpuNodeRetrieval(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'health': 'HEALTHY'
+        },
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-2': {
+            'ipAddress': '10.4.5.6',
+            'port': '8470',
+        },
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-3': {
+            'ipAddress': '10.7.8.9',
+            'port': '8470',
+            'health': 'UNHEALTHY'
+        }
+    }
+
+    tpu_cluster_resolver = TPUClusterResolver(
+        project='test-project',
+        zone='us-central1-c',
+        tpu_names=['test-tpu-2', 'test-tpu-1', 'test-tpu-3'],
+        credentials=None,
+        service=self.mock_service_client(tpu_map=tpu_map))
+
+    actual_cluster_spec = tpu_cluster_resolver.cluster_spec()
+    expected_proto = """
+    job {
+      name: 'tpu_worker'
+      tasks {
+        key: 0
+        value: '10.1.2.3:8470'
+      }
+    }
+    """
+    self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
+
   def testGetMasterMultipleEntries(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
             'ipAddress': '10.1.2.3',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         },
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-2': {
             'ipAddress': '10.4.5.6',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         }
     }
 
