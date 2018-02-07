@@ -46,9 +46,23 @@ class VectorSupportLibrary {
   llvm::Value* Add(int64 lhs, llvm::Value* rhs) {
     return Add(ir_builder()->getInt64(lhs), rhs);
   }
+  llvm::Value* Add(double lhs, llvm::Value* rhs) {
+    return Add(llvm::ConstantFP::get(vector_type(), lhs), rhs);
+  }
+
+  llvm::Value* Div(llvm::Value* lhs, llvm::Value* rhs);
 
   llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, llvm::Value* c) {
     return Add(c, Mul(a, b));
+  }
+
+  llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, double c) {
+    return Add(llvm::ConstantFP::get(vector_type(), c), Mul(a, b));
+  }
+
+  llvm::Value* Clamp(llvm::Value* a, double low, double high);
+  llvm::Value* SplatFloat(double d) {
+    return llvm::ConstantFP::get(vector_type(), d);
   }
 
   llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,

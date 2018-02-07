@@ -54,6 +54,26 @@ llvm::Value* VectorSupportLibrary::Add(llvm::Value* lhs, llvm::Value* rhs) {
   return AddInternal(lhs, rhs);
 }
 
+llvm::Value* VectorSupportLibrary::Div(llvm::Value* lhs, llvm::Value* rhs) {
+  CHECK(lhs->getType() == scalar_type() || lhs->getType() == vector_type());
+  if (scalar_type_->isFloatingPointTy()) {
+    return ir_builder()->CreateFDiv(lhs, rhs, name());
+  } else {
+    LOG(FATAL) << "Division for integers is unimplemented";
+  }
+}
+
+llvm::Value* VectorSupportLibrary::Clamp(llvm::Value* a, double low,
+                                         double high) {
+  CHECK_LT(low, high);
+  CHECK(scalar_type_->isFloatingPointTy());
+  llvm::Type* type = a->getType();
+  CHECK(type == vector_type() || type == scalar_type());
+  return llvm_ir::EmitFloatMin(
+      llvm_ir::EmitFloatMax(a, llvm::ConstantFP::get(type, low), ir_builder_),
+      llvm::ConstantFP::get(type, high), ir_builder_);
+}
+
 llvm::Value* VectorSupportLibrary::AddInternal(llvm::Value* lhs,
                                                llvm::Value* rhs) {
   if (scalar_type_->isFloatingPointTy()) {

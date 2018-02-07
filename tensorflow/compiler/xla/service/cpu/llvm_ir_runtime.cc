@@ -20,6 +20,7 @@ limitations under the License.
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/Cloning.h"
+#include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -42,27 +43,22 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
   }
 
   llvm::LLVMContext* context = &module->getContext();
-  llvm::Type* float_type = llvm::Type::getFloatTy(*context);
-  llvm::VectorType* vector_type =
-      llvm::VectorType::get(float_type, vector_width);
 
   llvm::BasicBlock* vector_tanh_body =
       llvm::BasicBlock::Create(*context, "body", vector_tanh_function);
 
   llvm::IRBuilder<> ir_builder(vector_tanh_body);
-
   llvm::FastMathFlags fast_math_flags;
   fast_math_flags.setFast();
   ir_builder.setFastMathFlags(fast_math_flags);
 
+  VectorSupportLibrary vsl(F32, vector_width, &ir_builder, "tanh_f32");
+
   llvm::Value* input = &*vector_tanh_function->arg_begin();
-  CHECK_EQ(input->getType(), vector_type);
+  CHECK_EQ(input->getType(), vsl.vector_type());
 
   // This implements the same rational interpolant as implemented in Eigen3.
-  llvm::Value* input_clamped = llvm_ir::EmitFloatMin(
-      llvm_ir::EmitFloatMax(input, llvm::ConstantFP::get(vector_type, -9.0),
-                            &ir_builder),
-      llvm::ConstantFP::get(vector_type, 9.0), &ir_builder);
+  llvm::Value* input_clamped = vsl.Clamp(input, /*low=*/-9.0, /*high=*/9.0);
 
   std::array<float, 7> numerator_coeffs{
       -2.76076847742355e-16f, 2.00018790482477e-13f, -8.60467152213735e-11f,
@@ -73,26 +69,20 @@ llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
       1.19825839466702e-06f, 1.18534705686654e-04f, 2.26843463243900e-03f,
       4.89352518554385e-03f};
 
-  llvm::Value* input_squared =
-      ir_builder.CreateFMul(input_clamped, input_clamped);
-  llvm::Value* numerator =
-      llvm::ConstantFP::get(vector_type, numerator_coeffs[0]);
+  llvm::Value* input_squared = vsl.Mul(input_clamped, input_clamped);
+  llvm::Value* numerator = vsl.SplatFloat(numerator_coeffs[0]);
   for (int i = 1; i < numerator_coeffs.size(); i++) {
-    numerator = ir_builder.CreateFAdd(
-        ir_builder.CreateFMul(input_squared, numerator),
-        llvm::ConstantFP::get(vector_type, numerator_coeffs[i]));
+    numerator = vsl.MulAdd(input_squared, numerator, numerator_coeffs[i]);
   }
-  numerator = ir_builder.CreateFMul(input_clamped, numerator);
 
-  llvm::Value* denominator =
-      llvm::ConstantFP::get(vector_type, denominator_coeffs[0]);
+  numerator = vsl.Mul(input_clamped, numerator);
+
+  llvm::Value* denominator = vsl.SplatFloat(denominator_coeffs[0]);
   for (int i = 1; i < denominator_coeffs.size(); i++) {
-    denominator = ir_builder.CreateFAdd(
-        ir_builder.CreateFMul(input_squared, denominator),
-        llvm::ConstantFP::get(vector_type, denominator_coeffs[i]));
+    denominator = vsl.MulAdd(input_squared, denominator, denominator_coeffs[i]);
   }
 
-  llvm::Value* result = ir_builder.CreateFDiv(numerator, denominator);
+  llvm::Value* result = vsl.Div(numerator, denominator);
   ir_builder.CreateRet(result);
 
   DCHECK(!llvm::verifyFunction(*vector_tanh_function));
