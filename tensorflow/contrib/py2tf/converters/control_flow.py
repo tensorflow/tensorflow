@@ -21,6 +21,7 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import ast_util
 from tensorflow.contrib.py2tf.pyct import templates
 from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.contrib.py2tf.pyct.static_analysis.annos import NodeAnno
@@ -40,25 +41,6 @@ class SymbolNamer(object):
       String.
     """
     raise NotImplementedError()
-
-
-class SymbolRenamer(gast.NodeTransformer):
-  """Transformer that can rename symbols to a simple names."""
-
-  def __init__(self, name_map):
-    self.name_map = name_map
-
-  def _process(self, node):
-    qn = anno.getanno(node, anno.Basic.QN)
-    if qn in self.name_map:
-      return gast.Name(self.name_map[qn], node.ctx, None)
-    return node
-
-  def visit_Name(self, node):
-    return self._process(node)
-
-  def visit_Attribute(self, node):
-    return self._process(node)
 
 
 class ControlFlowTransformer(transformer.Base):
@@ -99,10 +81,8 @@ class ControlFlowTransformer(transformer.Base):
         self.context.namer.new_symbol(s.ssf(), all_referenced)
         for s in aliased_orig_names)
     alias_map = dict(zip(aliased_orig_names, aliased_new_names))
-    node_body = node.body
-    node_body = [SymbolRenamer(alias_map).visit(n) for n in node_body]
-    node_orelse = node.orelse
-    node_orelse = [SymbolRenamer(alias_map).visit(n) for n in node_orelse]
+    node_body = ast_util.rename_symbols(node.body, alias_map)
+    node_orelse = ast_util.rename_symbols(node.orelse, alias_map)
 
     if len(all_modified) == 1:
       results = all_modified[0]
@@ -179,11 +159,8 @@ class ControlFlowTransformer(transformer.Base):
     else:
       state_ast_tuple = gast.Tuple([n.ast() for n in state], None)
 
-    node_body = node.body
-    node_body = [SymbolRenamer(ssf_map).visit(n) for n in node_body]
-
-    test = node.test
-    test = SymbolRenamer(ssf_map).visit(test)
+    node_body = ast_util.rename_symbols(node.body, ssf_map)
+    test = ast_util.rename_symbols(node.test, ssf_map)
 
     template = """
       def test_name(state_ssf):

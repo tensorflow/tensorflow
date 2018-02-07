@@ -26,9 +26,11 @@ from tensorflow.contrib.bayesflow.python.ops import custom_grad
 from tensorflow.contrib.bayesflow.python.ops import halton_sequence
 from tensorflow.contrib.bayesflow.python.ops import hmc
 from tensorflow.contrib.bayesflow.python.ops import layers
+from tensorflow.contrib.bayesflow.python.ops import mcmc_diagnostics
 from tensorflow.contrib.bayesflow.python.ops import metropolis_hastings
 from tensorflow.contrib.bayesflow.python.ops import monte_carlo
 from tensorflow.contrib.bayesflow.python.ops import optimizers
+from tensorflow.contrib.bayesflow.python.ops import variable_utils
 # pylint: enable=unused-import,line-too-long
 
 from tensorflow.python.util.all_util import remove_undocumented
@@ -42,10 +44,12 @@ _allowed_symbols = [
     'hmc',
     'layers',
     'metropolis_hastings',
+    'mcmc_diagnostics',
     'monte_carlo',
     'optimizers',
     'special_math',
     'stochastic_variables',
+    'variable_utils',
     'variational_inference',
 ]
 

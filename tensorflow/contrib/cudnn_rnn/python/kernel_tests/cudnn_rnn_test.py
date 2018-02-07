@@ -51,7 +51,11 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import googletest
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import adagrad
+from tensorflow.python.training import adam
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.training import momentum
+from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver as saver_lib
 
 
@@ -316,6 +320,55 @@ class CudnnRNNTestBasic(TensorFlowTestCase):
       self.assertEqual(0, total_sum2_v)
       self.assertEqual(0, total_sum3_v)
 
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
+  def testOptimizersSupport(self):
+    for opt in ("adagrad", "adam", "rmsprop", "momentum", "sgd"):
+      self._TestOptimizerSupportHelper(opt)
+
+  def _GetOptimizer(self, opt):
+    if opt == "adagrad":
+      return adagrad.AdagradOptimizer(learning_rate=1e-2)
+    elif opt == "adam":
+      return adam.AdamOptimizer(learning_rate=1e-2)
+    elif opt == "rmsprop":
+      return rmsprop.RMSPropOptimizer(learning_rate=1e-2)
+    elif opt == "momentum":
+      return momentum.MomentumOptimizer(learning_rate=1e-2, momentum=0.9)
+    elif opt == "sgd":
+      return gradient_descent.GradientDescentOptimizer(learning_rate=1e-2)
+    else:
+      raise ValueError("Unsupported optimizer: %s" % opt)
+
+  def _TestOptimizerSupportHelper(self, opt):
+    num_layers = 4
+    num_units = 2
+    batch_size = 8
+    direction = CUDNN_RNN_UNIDIRECTION
+    dir_count = 1
+
+    with ops.Graph().as_default() as g:
+      kernel_initializer = init_ops.constant_initializer(0.)
+      bias_initializer = init_ops.constant_initializer(0.)
+      inputs = random_ops.random_uniform([
+          num_layers * dir_count, batch_size, num_units], dtype=dtypes.float32)
+
+      lstm = cudnn_rnn.CudnnLSTM(num_layers, num_units,
+                                 direction=direction,
+                                 kernel_initializer=kernel_initializer,
+                                 bias_initializer=bias_initializer,
+                                 name="awesome_lstm")
+      outputs, _ = lstm(inputs)
+      loss = math_ops.reduce_sum(outputs)
+      optimizer = self._GetOptimizer(opt)
+      train_op = optimizer.minimize(loss)
+
+    with self.test_session(use_gpu=True, graph=g) as sess:
+      sess.run(variables.global_variables_initializer())
+      sess.run(train_op)
+
+  @unittest.skipUnless(test.is_built_with_cuda(),
+                       "Test only applicable when running on GPUs")
   def testSaveableGraphDeviceAssignment(self):
     num_layers = 4
     num_units = 2

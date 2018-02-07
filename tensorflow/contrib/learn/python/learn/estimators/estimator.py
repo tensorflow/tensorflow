@@ -211,7 +211,7 @@ def _get_replica_device_setter(config):
       'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
       'MutableHashTableV2', 'MutableHashTableOfTensors',
       'MutableHashTableOfTensorsV2', 'MutableDenseHashTable',
-      'MutableDenseHashTableV2'
+      'MutableDenseHashTableV2', 'VarHandleOp'
   ]
 
   if config.task_type:
