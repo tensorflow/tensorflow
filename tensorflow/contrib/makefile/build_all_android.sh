@@ -52,7 +52,7 @@ shift $((OPTIND - 1))
 
 if [ "$ARCH" == "tegra" ]; then
     if [[ -z "${JETPACK}" ]]; then
-        export JETPACK="$HOME/JetPack_Android_3.0"
+        export JETPACK="$HOME/JetPack_Android_3.2"
     fi
     if [ ! -d ${JETPACK} ]; then
         echo "Can't find Jetpack at ${JETPACK}"
