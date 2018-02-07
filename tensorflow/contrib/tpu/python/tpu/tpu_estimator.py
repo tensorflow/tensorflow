@@ -660,7 +660,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
       # for TPU computation waits for the infeed enqueue forever. Close the
       # Session to cancel the main thread Session.run execution.
       #
-      # However, sleep for 2 minutes before explicit closing to give some time
+      # We sleep for a few seconds before closing to give some time
       # for the TPU compilation error, if any, propagating, from TPU to CPU
       # host. Compilation errors should be reported by the main thread so that
       # the program can be interrupted and users can take action.  Due to a race
@@ -673,7 +673,7 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
 
       # If the main session is still running, the infeed/outfeed errors are
       # legitimate, and should be logged.
-      if not self._finished:
+      if not self._finished and self._feed_error:
         logging.error('Feed error: %s', self._feed_error)
         logging.error('Closing session.  A RuntimeError should follow.')
         session.close()
@@ -731,10 +731,12 @@ class TPUInfeedOutfeedSessionHook(session_run_hook.SessionRunHook):
         name='OutfeedController', target=self._run_outfeed, args=(session,))
 
   def before_run(self, run_context):
-    if self._feed_error:
-      logging.warning('Feed error occurred, terminating session.')
-      run_context.request_stop()
-      return
+    self._feed_error = None
+
+    # Wait for the cancellation timer to complete before continuing.
+    if self._session_cancel_timer:
+      self._session_cancel_timer.join()
+      self._session_cancel_timer = None
 
     iterations = run_context.session.run(self._iterations_per_loop_var)
 
