@@ -63,10 +63,7 @@ port::Status SetVertexField(poplar::Graph &graph,
                             const Literal &literal);
 
 port::StatusOr<popconv::ConvParams>
-GetConvolutionParameters(const HloInstruction* inst);
-
-port::StatusOr<popconv::ConvParams>
-GetDepthConvolutionParameters(const HloInstruction* inst);
+GetConvolutionParameters(const HloInstruction* inst, bool depthwise);
 
 port::StatusOr<poplar::Tensor>
 ShuffleConvolutionInputToTensorflow(const HloInstruction* inst,

@@ -167,7 +167,7 @@ AddConvolutionInput(poplar::Graph& graph,
                     const HloInstruction* target,
                     CompilerResources& resources) {
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, false));
 
   popconv::ConvOptions opts;
   opts.cache = &resources.convolution_cache;
@@ -183,7 +183,7 @@ AddConvolutionWeights(poplar::Graph& graph,
                       const HloInstruction* target,
                       CompilerResources& resources) {
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, false));
 
   popconv::ConvOptions opts;
   opts.cache = &resources.convolution_cache;

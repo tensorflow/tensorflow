@@ -24,7 +24,7 @@ namespace xla {
 namespace poplarplugin {
 
 port::StatusOr<popconv::ConvParams>
-GetConvolutionParameters(const HloInstruction* inst) {
+GetConvolutionParameters(const HloInstruction* inst, bool depthwise) {
 
   const Shape& input = inst->operand(0)->shape();
   const Shape& kernel = inst->operand(1)->shape();
@@ -41,6 +41,7 @@ GetConvolutionParameters(const HloInstruction* inst) {
   unsigned int n_b = input_dims[dims.input_batch_dimension()];
   unsigned int n_i = input_dims[dims.input_feature_dimension()];
   unsigned int n_o = kernel_dims[dims.kernel_output_feature_dimension()];
+  unsigned int n_g = 1;
 
   std::vector<std::size_t> n_s;
   std::vector<std::size_t> f_s;
@@ -86,80 +87,13 @@ GetConvolutionParameters(const HloInstruction* inst) {
     zeros.push_back(0);
   }
 
-  popconv::ConvParams params(dtype, n_b, n_s, f_s, n_i, n_o, 1,
-                             t_l, t_u, d_i, p_l, p_u, falses,
-                             zeros, zeros, d_w, zeros, zeros, falses,
-                             zeros, zeros, w_s, zeros, zeros);
-
-  return params;
-}
-
-port::StatusOr<popconv::ConvParams>
-GetDepthConvolutionParameters(const HloInstruction* inst) {
-
-  const Shape& input = inst->operand(0)->shape();
-  const Shape& kernel = inst->operand(1)->shape();
-
-  const Window& window(inst->window());
-
-  poplar::Type dtype;
-  TF_ASSIGN_OR_RETURN(dtype, PoplarDataType(input));
-
-  std::vector<size_t> input_dims = PoplarShapeFromXlaShape(input);
-  std::vector<size_t> kernel_dims = PoplarShapeFromXlaShape(kernel);
-
-  const ConvolutionDimensionNumbers& dims(inst->convolution_dimension_numbers());
-  unsigned int n_b = input_dims[dims.input_batch_dimension()];
-  unsigned int n_i = input_dims[dims.input_feature_dimension()];
-  unsigned int n_o = kernel_dims[dims.kernel_output_feature_dimension()];
-
-  std::vector<std::size_t> n_s;
-  std::vector<std::size_t> f_s;
-  std::vector<unsigned int> w_s;
-  std::vector<unsigned int> p_l;
-  std::vector<unsigned int> p_u;
-  std::vector<unsigned int> t_l;
-  std::vector<unsigned int> t_u;
-  std::vector<unsigned int> d_i;
-  std::vector<unsigned int> d_w;
-  std::vector<unsigned int> zeros;
-  std::vector<bool> falses;
-
-  for (int64 i=0; i < window.dimensions().size(); i++) {
-    n_s.push_back(input_dims[dims.input_spatial_dimensions(i)]);
-    f_s.push_back(kernel_dims[dims.kernel_spatial_dimensions(i)]);
-    w_s.push_back(window.dimensions(i).stride());
-    if (window.dimensions(i).padding_low() < 0) {
-      unsigned int p = -window.dimensions(i).padding_low();
-      unsigned int d = window.dimensions(i).base_dilation();
-      unsigned int trunc = (p + d-1) / d;
-      unsigned int pad = p % d;
-      t_l.push_back(trunc);
-      p_l.push_back(pad);
-    } else {
-      p_l.push_back(window.dimensions(i).padding_low());
-      t_l.push_back(0);
-    }
-    if (window.dimensions(i).padding_high() < 0) {
-      unsigned int p = -window.dimensions(i).padding_high();
-      unsigned int d = window.dimensions(i).base_dilation();
-      unsigned int trunc = (p + d-1) / d;
-      unsigned int pad = p % d;
-      t_u.push_back(trunc);
-      p_u.push_back(pad);
-    } else {
-      p_u.push_back(window.dimensions(i).padding_high());
-      t_u.push_back(0);
-    }
-    d_i.push_back(window.dimensions(i).base_dilation());
-    d_w.push_back(window.dimensions(i).window_dilation());
-    falses.push_back(false);
-    zeros.push_back(0);
+  if (depthwise) {
+    n_g = n_i;
+    n_o = n_o / n_i;
+    n_i = 1;
   }
 
-  n_o = n_o / n_i;
-
-  popconv::ConvParams params(dtype, n_b, n_s, f_s, 1, n_o, n_i,
+  popconv::ConvParams params(dtype, n_b, n_s, f_s, n_i, n_o, n_g,
                              t_l, t_u, d_i, p_l, p_u, falses,
                              zeros, zeros, d_w, zeros, zeros, falses,
                              zeros, zeros, w_s, zeros, zeros);
@@ -305,7 +239,7 @@ CreateConv2D(poplar::Graph &graph,
   opts.pass = GetConvolutionPass(inst);
 
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(inst, false));
 
   poplar::program::Sequence prog;
 
@@ -428,7 +362,7 @@ CreateDepthwiseConvolutionOp(poplar::Graph &graph,
   opts.pass = GetConvolutionPass(root);
 
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetDepthConvolutionParameters(root));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(root, true));
 
   poplar::program::Sequence prog;
 
@@ -478,7 +412,7 @@ Create2DConvWithReverse(poplar::Graph &graph,
   opts.pass = GetConvolutionPass(inst);
 
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(conv));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(conv, false));
 
   poplar::program::Sequence prog;
 
