@@ -170,6 +170,11 @@ class VectorSupportLibrary {
 
   llvm::Value* AddReduce(llvm::Value* vector);
 
+  // Checks that each value in `values` is either of type scalar_type() or
+  // vector_type().  This LOG(FATAL)'s so it should only be called in cases
+  // where a mismatching type is a programmer bug.
+  void AssertCorrectTypes(std::initializer_list<llvm::Value*> values);
+
   // Perform an X86 AVX style horizontal add between `lhs` and `rhs`.  The
   // resulting IR for an 8-float wide vector is expected to lower to a single
   // vhaddps instruction on a CPU that supports vhaddps, and not be too bad in
