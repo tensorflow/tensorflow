@@ -20,6 +20,9 @@ import android.content.res.AssetFileDescriptor;
 import android.graphics.Bitmap;
 import android.os.SystemClock;
 import android.util.Log;
+
+import org.tensorflow.lite.Interpreter;
+
 import java.io.BufferedReader;
 import java.io.FileInputStream;
 import java.io.IOException;
@@ -34,19 +37,14 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.PriorityQueue;
-import org.tensorflow.lite.Interpreter;
 
-/** Classifies images with Tensorflow Lite. */
-public class ImageClassifier {
+/**
+ * Classifies images with Tensorflow Lite.
+ */
+public abstract class ImageClassifier {
 
   /** Tag for the {@link Log}. */
   private static final String TAG = "TfLiteCameraDemo";
-
-  /** Name of the model file stored in Assets. */
-  private static final String MODEL_PATH = "mobilenet_quant_v1_224.tflite";
-
-  /** Name of the label file stored in Assets. */
-  private static final String LABEL_PATH = "labels.txt";
 
   /** Number of results to show in the UI. */
   private static final int RESULTS_TO_SHOW = 3;
@@ -56,11 +54,8 @@ public class ImageClassifier {
 
   private static final int DIM_PIXEL_SIZE = 3;
 
-  static final int DIM_IMG_SIZE_X = 224;
-  static final int DIM_IMG_SIZE_Y = 224;
-
   /* Preallocated buffers for storing image data in. */
-  private int[] intValues = new int[DIM_IMG_SIZE_X * DIM_IMG_SIZE_Y];
+  private int[] intValues = new int[getImageSizeX() * getImageSizeY()];
 
   /** An instance of the driver class to run model inference with Tensorflow Lite. */
   private Interpreter tflite;
@@ -71,8 +66,12 @@ public class ImageClassifier {
   /** A ByteBuffer to hold image data, to be feed into Tensorflow Lite as inputs. */
   private ByteBuffer imgData = null;
 
-  /** An array to hold inference results, to be feed into Tensorflow Lite as outputs. */
-  private byte[][] labelProbArray = null;
+  /**
+   * An array to hold inference results, to be feed into Tensorflow Lite as outputs.
+   * For production, you may want to replace the boxed datatype with a primitive one.
+   */
+  protected Number[][] labelProbArray = null;
+
   /** multi-stage low pass filter * */
   private float[][] filterLabelProbArray = null;
 
@@ -95,9 +94,10 @@ public class ImageClassifier {
     labelList = loadLabelList(activity);
     imgData =
         ByteBuffer.allocateDirect(
-            DIM_BATCH_SIZE * DIM_IMG_SIZE_X * DIM_IMG_SIZE_Y * DIM_PIXEL_SIZE);
+                DIM_BATCH_SIZE * getImageSizeX() * getImageSizeY() * DIM_PIXEL_SIZE *
+                        getNumBytesPerChannel());
     imgData.order(ByteOrder.nativeOrder());
-    labelProbArray = new byte[1][labelList.size()];
+    labelProbArray = createLabelProbArray(labelList.size());
     filterLabelProbArray = new float[FILTER_STAGES][labelList.size()];
     Log.d(TAG, "Created a Tensorflow Lite Image Classifier.");
   }
@@ -128,9 +128,10 @@ public class ImageClassifier {
     int numLabels = labelList.size();
 
     // Low pass filter `labelProbArray` into the first stage of the filter.
+    // TODO labelProbArray[0][j].floatValue()
     for (int j = 0; j < numLabels; ++j) {
       filterLabelProbArray[0][j] +=
-          FILTER_FACTOR * (labelProbArray[0][j] - filterLabelProbArray[0][j]);
+          FILTER_FACTOR * (labelProbArray[0][j].floatValue() - filterLabelProbArray[0][j]);
     }
     // Low pass filter each stage into the next.
     for (int i = 1; i < FILTER_STAGES; ++i) {
@@ -142,7 +143,7 @@ public class ImageClassifier {
 
     // Copy the last stage filter output back to `labelProbArray`.
     for (int j = 0; j < numLabels; ++j) {
-      labelProbArray[0][j] = (byte)filterLabelProbArray[FILTER_STAGES - 1][j];
+      labelProbArray[0][j] = filterLabelProbArray[FILTER_STAGES - 1][j];
     }
   }
 
@@ -156,7 +157,7 @@ public class ImageClassifier {
   private List<String> loadLabelList(Activity activity) throws IOException {
     List<String> labelList = new ArrayList<String>();
     BufferedReader reader =
-        new BufferedReader(new InputStreamReader(activity.getAssets().open(LABEL_PATH)));
+        new BufferedReader(new InputStreamReader(activity.getAssets().open(getLabelPath())));
     String line;
     while ((line = reader.readLine()) != null) {
       labelList.add(line);
@@ -167,7 +168,7 @@ public class ImageClassifier {
 
   /** Memory-map the model file in Assets. */
   private MappedByteBuffer loadModelFile(Activity activity) throws IOException {
-    AssetFileDescriptor fileDescriptor = activity.getAssets().openFd(MODEL_PATH);
+    AssetFileDescriptor fileDescriptor = activity.getAssets().openFd(getModelPath());
     FileInputStream inputStream = new FileInputStream(fileDescriptor.getFileDescriptor());
     FileChannel fileChannel = inputStream.getChannel();
     long startOffset = fileDescriptor.getStartOffset();
@@ -185,12 +186,10 @@ public class ImageClassifier {
     // Convert the image to floating point.
     int pixel = 0;
     long startTime = SystemClock.uptimeMillis();
-    for (int i = 0; i < DIM_IMG_SIZE_X; ++i) {
-      for (int j = 0; j < DIM_IMG_SIZE_Y; ++j) {
+    for (int i = 0; i < getImageSizeX(); ++i) {
+      for (int j = 0; j < getImageSizeY(); ++j) {
         final int val = intValues[pixel++];
-        imgData.put((byte) ((val >> 16) & 0xFF));
-        imgData.put((byte) ((val >> 8) & 0xFF));
-        imgData.put((byte) (val & 0xFF));
+        addPixelValue(val, imgData);
       }
     }
     long endTime = SystemClock.uptimeMillis();
@@ -201,7 +200,7 @@ public class ImageClassifier {
   private String printTopKLabels() {
     for (int i = 0; i < labelList.size(); ++i) {
       sortedLabels.add(
-          new AbstractMap.SimpleEntry<>(labelList.get(i), (labelProbArray[0][i] & 0xff) / 255.0f));
+          new AbstractMap.SimpleEntry<>(labelList.get(i), getProbability(i)));
       if (sortedLabels.size() > RESULTS_TO_SHOW) {
         sortedLabels.poll();
       }
@@ -214,4 +213,55 @@ public class ImageClassifier {
     }
     return textToShow;
   }
+
+  /**
+   * Get the name of the model file stored in Assets.
+   * @return
+   */
+  protected abstract String getModelPath();
+
+  /**
+   * Get the name of the label file stored in Assets.
+   * @return
+   */
+  protected abstract String getLabelPath();
+
+  /**
+   * Get the image size along the x axis.
+   * @return
+   */
+  protected abstract int getImageSizeX();
+
+  /**
+   * Get the image size along the y axis.
+   * @return
+   */
+  protected abstract int getImageSizeY();
+
+  /**
+   * Initialize a new value for this.labelProbArray
+   * @param numLabels The total number of used labels.
+   * @return
+   */
+  protected abstract Number[][] createLabelProbArray(int numLabels);
+
+  /**
+   * Get the number of bytes that is used to store a single color channel value.
+   * @return
+   */
+  protected abstract int getNumBytesPerChannel();
+
+  /**
+   * Add pixelValue to byteBuffer.
+   * @param pixelValue
+   * @param imgData
+   */
+  protected abstract void addPixelValue(int pixelValue, ByteBuffer imgData);
+
+  /**
+   * Read the probability value for the specified label from the saved inference result.
+   * @param labelIndex
+   * @return
+   */
+  protected abstract float getProbability(int labelIndex);
 }
