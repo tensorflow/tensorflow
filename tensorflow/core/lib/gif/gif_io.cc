@@ -16,6 +16,7 @@ limitations under the License.
 // Functions to read images in GIF format.
 
 #include "tensorflow/core/lib/gif/gif_io.h"
+#include <algorithm>
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/gif.h"
