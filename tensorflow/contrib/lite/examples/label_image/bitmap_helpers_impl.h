@@ -33,7 +33,9 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
             int wanted_channels, Settings* s) {
 
   int number_of_pixels = image_height * image_width * image_channels;
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  // Interpreter will won't need delete anymore, so cannot use
+  // std::unique_ptr<>, otherwise there will be double free
+  Interpreter *interpreter = new Interpreter();
 
   int base_index = 0;
 
