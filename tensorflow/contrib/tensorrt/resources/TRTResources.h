@@ -6,6 +6,8 @@
 
 #define TENSORFLOW_CONTRIB_TENSORRT_RESOURCES_TRTRESOURCES_H_
 
+#include <string>
+#include <sstream>
 #include <NvInfer.h>
 #include <thread>
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
@@ -24,7 +26,19 @@ struct TRTCalibrationResource : public tensorflow::ResourceBase {
         logger(nullptr),
         thr(nullptr) {}
   string DebugString() override {
-    return "";
+    std::stringstream oss;
+#define VALID_OR_NULL(ptr) (!ptr ? "nullptr" : std::hex<<(void)ptr<<std::dec<<std::endl)
+    oss<<" Calibrator = "<<std::hex<<calibrator<<std::dec<<std::endl
+       <<" Builder    = "<<std::hex<<builder<<std::dec<<std::endl
+       <<" Network    = "<<std::hex<<network<<std::dec<<std::endl
+       <<" Engine     = "<<std::hex<<engine<<std::dec<<std::endl
+       <<" Logger     = "<<std::hex<<logger<<std::dec<<std::endl
+       <<" Thread     = "<<std::hex<<thr<<std::dec<<std::endl;
+    return oss.str();
+#undef VALID_OR_NULL
+  }
+  ~TRTCalibrationResource(){
+    VLOG(0)<<"Destroying Calibration Resource "<<std::endl<<DebugString();
   }
   TRTInt8Calibrator* calibrator;
   nvinfer1::IBuilder* builder;

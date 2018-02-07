@@ -44,11 +44,23 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   // TODO(samikama) runtime should be taken from a resourcemanager as well.
   //  Only engine should be in the op and context and runtime should be taken
   //  from resourcemanager
+
+  // TODO(jie): cudaSetDevice make sure trt engine is allocated on the same
+  //  gpu where the input/output is also located.
+  int gpu_id = context->device()->tensorflow_gpu_device_info()->gpu_id;
+  cudaSetDevice(gpu_id);
+  int device;
+  cudaGetDevice(&device);
+  if (gpu_id != device)
+    LOG(FATAL) << "set device failed!";
+
   IRuntime* infer = nvinfer1::createInferRuntime(gLogger);
   trt_engine_ptr_.reset(infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(), nullptr));
 
   trt_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
+
+  // trt_context_ptr_.reset(nullptr);
   // runtime is safe to delete after engine creation
   infer->destroy();
   std::stringstream oss;
@@ -103,12 +115,16 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
     const TensorShape& input_shape = input_tensor.shape();
     if (i == 0) {
       nbBatch = input_shape.dim_size(0);
+      if (nbBatch > trt_engine_ptr_->getMaxBatchSize())
+        LOG(FATAL) << "input tensor batch larger than max_batch_size: "
+                   << trt_engine_ptr_->getMaxBatchSize(); 
     } else if (nbBatch != input_shape.dim_size(0)) {
       valid = false;
       break;
     }
     // int64 input_shape.dim_size(int d)
     // int input_shape.dims()
+    LOG(INFO) << "INPUT BINDING index: " << bindingIndex << " with name: " << input_nodes_[i];
     switch (trt_engine_ptr_->getBindingDataType(bindingIndex)) {
       case nvinfer1::DataType::kFLOAT:
         LOG(INFO) << "float";
@@ -125,7 +141,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
     }
   }
 
-  if (!valid) LOG(WARNING) << "input data inconsistent batch size";
+  if (!valid) LOG(FATAL) << "input data inconsistent batch size";
 
   for (int i = 0; i < static_cast<int>(output_nodes_.size()); i++) {
     // This is bad that we have to reallocate output buffer every run.
@@ -135,7 +151,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
 
     TensorShape output_shape;
     if (bindingIndex != -1) {
-      LOG(INFO) << "got binding " << bindingIndex;
+      LOG(INFO) << "got binding " << bindingIndex << " with name: " << output_nodes_[i];
       auto dims = trt_engine_ptr_->getBindingDimensions(bindingIndex);
       std::vector<int> trt_shape(dims.nbDims + 1);
       trt_shape[0] = nbBatch;
@@ -167,6 +183,7 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
         break;
     }
   }
+  LOG(INFO) << "getting stream";
   // copied from cuda_kernel_helper since it seems only valid in *.cu.cc files
   const cudaStream_t* stream = CHECK_NOTNULL(
       reinterpret_cast<const cudaStream_t*>(context->op_device_context()
@@ -174,9 +191,11 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
                                                 ->implementation()
                                                 ->CudaStreamMemberHack()));
 
-  trt_context_ptr_->enqueue(nbBatch, &buffers[0], *stream, nullptr);
+  // TODO(jie): trt enqueue does not return error
+  LOG(INFO) << "enqueue returns: " << trt_context_ptr_->enqueue(nbBatch, &buffers[0], *stream, nullptr);
+  LOG(INFO) << "all good";
   // sync should be done by TF.
-  //cudaStreamSynchronize(*stream);
+  // cudaStreamSynchronize(*stream);
 }
 
 REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);

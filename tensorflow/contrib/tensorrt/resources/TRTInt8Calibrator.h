@@ -14,7 +14,7 @@
 namespace tensorflow {
 namespace trt {
 
-struct TRTInt8Calibrator : public nvinfer1::IInt8Calibrator {
+struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
  public:
   TRTInt8Calibrator(const std::unordered_map<
                         std::string, std::pair<void*, size_t>>& dev_buffers,
@@ -27,6 +27,8 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8Calibrator {
   bool getBatch(void* bindings[], const char* names[], int nbBindings) override;
   bool setBatch(const std::unordered_map<std::string, void*> &data);
   void setDone(){done_=true;}
+  const void *readCalibrationCache(std::size_t &length) override;
+  void writeCalibrationCache(const void *ptr, std::size_t length) override;
  private:
   int batch_size_;
   tensorflow::mutex cond_mtx_;

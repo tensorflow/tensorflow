@@ -24,17 +24,15 @@ load(
 tf_custom_op_library(
     name = "python/ops/_trt_engine_op.so",
     srcs = [
-        "kernels/trt_engine_op.cc",
+        "ops/trt_calib_op.cc",
         "ops/trt_engine_op.cc",
-        "kernels/trt_engine_op.h",
     ],
     gpu_srcs = [],
     deps = [
         "@local_config_tensorrt//:tensorrt",
         ":trt_shape_function",
+        ":trt_engine_op_kernel",
         "//tensorflow/core:lib_proto_parsing",
-        "//tensorflow/core/kernels:bounds_check_lib",
-        "//tensorflow/core/kernels:ops_util_hdrs",
     ],
 )
 
@@ -56,23 +54,23 @@ cc_library(
 )
 
 
-tf_kernel_library(
+cc_library(
     name = "trt_engine_op_kernel",
     srcs = [
         "kernels/trt_engine_op.cc",
         "kernels/trt_calib_op.cc",
     ],
-    hdrs=[
+    hdrs = [
         "kernels/trt_engine_op.h",
         "kernels/trt_calib_op.h",
     ],
-    gpu_srcs = [
-    ],
+    copts = tf_copts(),
     deps = [
         ":trt_logging",
         ":trt_shape_function",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        ":trt_resources",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:stream_executor_headers_lib",
         "//third_party/eigen3",
         "//tensorflow/core:gpu_headers_lib",
         "@local_config_tensorrt//:tensorrt",
@@ -187,7 +185,7 @@ cc_library(
         "@local_config_tensorrt//:tensorrt",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:framework_lite",
-        "//tensorflow/core:core_cpu_base",
+        "//tensorflow/core:lib_proto_parsing",
 
     ],
 )
