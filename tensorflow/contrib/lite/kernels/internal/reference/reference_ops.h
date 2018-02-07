@@ -2279,6 +2279,7 @@ inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
                  int32 input_zero_point, int32 input_range_radius,
                  int32 input_multiplier, int input_left_shift,
                  uint8* output_data, const Dims<4>& output_dims) {
+  const int32 output_zero_point = 128;
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
   const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
@@ -2307,11 +2308,9 @@ inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
 
             using gemmlowp::RoundingDivideByPOT;
             int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
-            // TODO(mjmatthews): properly wire through this zero offset
-            output_val_s32 += 127;
-            if (output_val_s32 == -1) {
-              // May underflow since we cannot properly represent -1.0f
-              output_val_s32 = 0;
+            output_val_s32 += output_zero_point;
+            if (output_val_s32 == 256) {
+              output_val_s32 = 255;
             }
             TFLITE_DCHECK_GE(output_val_s32, 0);
             TFLITE_DCHECK_LE(output_val_s32, 255);

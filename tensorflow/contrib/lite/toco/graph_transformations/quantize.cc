@@ -294,7 +294,7 @@ bool ChooseHardcodedQuantizationForOperatorOutput(
   if (op.type == OperatorType::kTanh) {
     // Tanh has the range: [-1, 1].
     *quantized_data_type = ArrayDataType::kUint8;
-    quantization_params->zero_point = 127;
+    quantization_params->zero_point = 128;
     quantization_params->scale = 1. / 128.;
     // 0 should be exactly representable, as values will typically be centered
     // around 0, with many values near 0.
