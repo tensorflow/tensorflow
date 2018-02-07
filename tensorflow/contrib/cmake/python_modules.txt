@@ -175,6 +175,9 @@ tensorflow/contrib/factorization/kernels
 tensorflow/contrib/factorization/ops
 tensorflow/contrib/factorization/python
 tensorflow/contrib/factorization/python/ops
+tensorflow/contrib/feature_column
+tensorflow/contrib/feature_column/python
+tensorflow/contrib/feature_column/python/feature_column
 tensorflow/contrib/ffmpeg
 tensorflow/contrib/ffmpeg/default
 tensorflow/contrib/framework

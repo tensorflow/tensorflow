@@ -24,6 +24,7 @@ from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import special_math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 # Linear algebra ops.
 band_part = array_ops.matrix_band_part
@@ -54,6 +55,7 @@ transpose = array_ops.matrix_transpose
 triangular_solve = linalg_ops.matrix_triangular_solve
 
 
+@tf_export('linalg.logdet')
 def logdet(matrix, name=None):
   """Computes log of the determinant of a hermitian positive definite matrix.
 
@@ -86,6 +88,7 @@ def logdet(matrix, name=None):
         reduction_indices=[-1])
 
 
+@tf_export('linalg.adjoint')
 def adjoint(matrix, name=None):
   """Transposes the last two dimensions of and conjugates tensor `matrix`.
 

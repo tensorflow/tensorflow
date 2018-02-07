@@ -28,11 +28,14 @@ from __future__ import print_function
 import time
 
 import numpy as np
+import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
+from tensorflow.python.eager import core
+from tensorflow.python.eager import execute
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
@@ -41,24 +44,31 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 
 CPU = "/device:CPU:0"
 GPU = "/device:GPU:0"
 
 
-def record_gradient_callback(inputs, attrs, results):
-  return backprop._record_gradient("MatMul", inputs, attrs, results, None)
-
-
-def c_tfe_py_fastpath_execute(a, b, transpose_a=False, transpose_b=False):
+def c_tfe_py_fastpath_execute(a,
+                              b,
+                              transpose_a=False,
+                              transpose_b=False,
+                              name=None):
   ctx = context.context()
   assert not ctx.in_graph_mode(
   ), "The prototype doesn't contain C code for graph construction"
-  ctx_handle = ctx._handle  # pylint: disable=protected-access
-
-  return pywrap_tensorflow.TFE_Py_FastPathExecute(
-      ctx_handle, None, "MatMul", record_gradient_callback, a, b,
-      "transpose_a", transpose_a, "transpose_b", transpose_b)[0]
+  try:
+    return pywrap_tensorflow.TFE_Py_FastPathExecute(
+        ctx._handle, ctx.device_name, "MatMul", execute.record_gradient, name,
+        ctx._post_execution_callbacks, a, b, "transpose_a", transpose_a,
+        "transpose_b", transpose_b)
+  except core._NotOkStatusException as e:
+    if name is not None:
+      message = e.message + " name: " + name
+    else:
+      message = e.message
+    six.raise_from(core._status_to_exception(e.code, message), None)
 
 
 class MicroBenchmarks(test.Benchmark):
@@ -262,6 +272,14 @@ class MicroBenchmarks(test.Benchmark):
     func = lambda: f(m, m, transpose_b)
     self._run(func, num_iters)
 
+  def _benchmark_read_variable(self, m, num_iters):
+    self._run(m.value, num_iters)
+
+  def _benchmark_read_variable_with_tape(self, m, num_iters):
+    with backprop.GradientTape() as tape:
+      tape.watch(m)
+      self._run(m.value, num_iters)
+
   # Benchmarks for A^2, A of dimension 2 by 2.
   def benchmark_np_matmul_2_by_2(self):
     self._benchmark_np_matmul(
@@ -397,6 +415,32 @@ class MicroBenchmarks(test.Benchmark):
       m = self._m_100_by_784.gpu()
       self._benchmark_defun_matmul(
           m, transpose_b=True, num_iters=self._num_iters_100_by_784)
+
+  def benchmark_read_variable_op_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_read_variable(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_read_variable_op_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_read_variable(m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_read_variable_op_with_tape_2_by_2_CPU(self):
+    with context.device(CPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_read_variable_with_tape(
+          m, num_iters=self._num_iters_2_by_2)
+
+  def benchmark_read_variable_op_with_tape_2_by_2_GPU(self):
+    if not context.num_gpus():
+      return
+    with context.device(GPU):
+      m = resource_variable_ops.ResourceVariable(self._m_2_by_2)
+      self._benchmark_read_variable_with_tape(
+          m, num_iters=self._num_iters_2_by_2)
 
 
 if __name__ == "__main__":

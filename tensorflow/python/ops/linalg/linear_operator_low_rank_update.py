@@ -27,12 +27,14 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_diag
 from tensorflow.python.ops.linalg import linear_operator_identity
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
     "LinearOperatorLowRankUpdate",
 ]
 
 
+@tf_export("linalg.LinearOperatorLowRankUpdate")
 class LinearOperatorLowRankUpdate(linear_operator.LinearOperator):
   """Perturb a `LinearOperator` with a rank `K` update.
 

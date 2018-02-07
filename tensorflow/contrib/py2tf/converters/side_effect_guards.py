@@ -39,6 +39,8 @@ from contextlib import contextmanager
 import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import ast_util
+from tensorflow.contrib.py2tf.pyct import qual_names
 from tensorflow.contrib.py2tf.pyct import templates
 from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.contrib.py2tf.pyct.static_analysis.annos import NodeAnno
@@ -64,45 +66,56 @@ class SideEffectGuardTransformer(transformer.Base):
 
   def __init__(self, context):
     super(SideEffectGuardTransformer, self).__init__(context)
-    self.indent_next = False
-    self.next_indent_owner = None
 
   # pylint:disable=invalid-name
 
   def _visit_and_reindent(self, nodes):
     new_nodes = []
     current_dest = new_nodes
+    alias_map = {}
+    reindent_requested = False
     for n in nodes:
       n = self.visit(n)
+      # NOTE: the order in which these statements execute is important; in
+      # particular, watch out for ending up with cycles in the AST.
+      if alias_map:
+        n = ast_util.rename_symbols(n, alias_map)
       if isinstance(n, (list, tuple)):
         current_dest.extend(n)
       else:
         current_dest.append(n)
-      if self.indent_next:
-        assert self.next_indent_owner is not None
-        current_dest.append(self.next_indent_owner)
-        current_dest = self.next_indent_owner.body
-        self.next_indent_owner = None
-        self.indent_next = False
-    if not current_dest:
+      if anno.hasanno(n, anno.Basic.INDENT_BLOCK_REMAINDER):
+        reindent_requested = True
+        new_dest, new_alias_map = anno.getanno(
+            n, anno.Basic.INDENT_BLOCK_REMAINDER)
+        anno.delanno(n, anno.Basic.INDENT_BLOCK_REMAINDER)
+        new_alias_map.update(alias_map)
+        alias_map = new_alias_map
+        current_dest = new_dest
+    if reindent_requested and not current_dest:
       # TODO(mdan): There may still be something that could be done.
       raise ValueError('Unable to insert statement into the computation flow: '
-                       'it is not followed by any computation that can we can '
-                       'condition on the statement.')
+                       'it is not followed by any computation which '
+                       'the statement could gate.')
     return new_nodes
 
   def visit_FunctionDef(self, node):
     node.body = self._visit_and_reindent(node.body)
     return node
 
-  def _gate_symbols(self, guard_statement, guarded_args):
-    # TODO(mdan): This won't work for variables.
-    template = """
-      (args,) = (tf.identity(a) for a in (args,))
-    """
-    guards = templates.replace(template, args=tuple(guarded_args))
-    guard_statement.body.extend(guards)
-    return guard_statement
+  def visit_With(self, node):
+    node.body = self._visit_and_reindent(node.body)
+    return node
+
+  def visit_If(self, node):
+    node.body = self._visit_and_reindent(node.body)
+    node.orelse = self._visit_and_reindent(node.orelse)
+    return node
+
+  def visit_While(self, node):
+    node.body = self._visit_and_reindent(node.body)
+    node.orelse = self._visit_and_reindent(node.orelse)
+    return node
 
   def visit_Expr(self, node):
     self.generic_visit(node)
@@ -111,30 +124,62 @@ class SideEffectGuardTransformer(transformer.Base):
       #   opt.minimize(loss)
       # or:
       #   tf.py_func(...)
-      template = """
-        with py2tf_utils.control_dependency_on_returns(tf, call):
-          # TODO(mdan): Also insert ops to re-fetch if variables are involved?
-          pass  # Will be removed below.
-      """
-      # TODO(mdan): This is brittle. Reorganize the mechanism.
-      statements = templates.replace(template, call=node.value)
-      control_deps_guard = statements[-1]
-      control_deps_guard.body = []
 
       # First, attempt to gate future evaluation of args. If that's not
       # possible, gate all remaining statements (and that may fail too, see
       # _visit_and_reindent.
       args_scope = anno.getanno(node.value, NodeAnno.ARGS_SCOPE)
-      guarded_args = tuple(args_scope.used & (args_scope.parent.modified
-                                              | args_scope.parent.returned))
+      # NOTE: We can't guard object attributes because they may not be writable.
+      guarded_args = tuple(
+          s for s in args_scope.used if not s.is_composite())
+
+      # TODO(mdan): Include all arguments which depended on guarded_args too.
+      # For example, the following will still cause a race:
+      #   tf.assign(a, a + 1)
+      #   b = a + 1
+      #   tf.assign(a, a + 1)  # Control deps here should include `b`
+      #   c = b + 1
+      # Or maybe we should just raise an "unsafe assign" error?
+
       if guarded_args:
-        node = tuple(statements[:-1]) + (
-            self._gate_symbols(control_deps_guard, guarded_args),)
+        # The aliases may need new names to avoid incorrectly making them local.
+        # TODO(mdan): This is brutal. It will even rename modules - any fix?
+        need_alias = tuple(
+            s for s in guarded_args if s not in args_scope.parent.modified)
+        aliased_new_names = tuple(
+            qual_names.QN(
+                self.context.namer.new_symbol(
+                    s.ssf(), args_scope.parent.referenced)) for s in need_alias)
+        alias_map = dict(zip(need_alias, aliased_new_names))
+        if len(guarded_args) == 1:
+          s, = guarded_args
+          aliased_guarded_args = alias_map.get(s, s)
+        else:
+          aliased_guarded_args = gast.Tuple(
+              [alias_map.get(s, s).ast() for s in guarded_args], None)
+
+        template = """
+          with py2tf_utils.control_dependency_on_returns(tf, call):
+            aliased_guarded_args = py2tf_utils.alias_tensors(tf, guarded_args)
+        """
+        control_deps_guard = templates.replace(
+            template,
+            call=node.value,
+            aliased_guarded_args=aliased_guarded_args,
+            guarded_args=guarded_args)[-1]
       else:
-        node = tuple(statements[:-1])
-        # The mechanism will insert the guard statement later.
-        self.indent_next = True
-        self.next_indent_owner = control_deps_guard
+        alias_map = {}
+
+        template = """
+          with py2tf_utils.control_dependency_on_returns(tf, call):
+            pass
+        """
+        control_deps_guard = templates.replace(template, call=node.value)[-1]
+        control_deps_guard.body = []
+
+      node = control_deps_guard
+      anno.setanno(node, anno.Basic.INDENT_BLOCK_REMAINDER,
+                   (node.body, alias_map))
     return node
 
   # pylint:enable=invalid-name
