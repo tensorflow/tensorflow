@@ -348,6 +348,82 @@ class HMCTest(test.TestCase):
   def testAIS12(self):
     self._ais_gets_correct_log_normalizer_wrapper([1, 2])
 
+  def _skip_metropolis_step_correct(self, initial_draws, event_dims,
+                                    sess, feed_dict=None):
+    def log_gamma_log_prob(x):
+      return self._log_gamma_log_prob(x, event_dims)
+
+    step_size = array_ops.placeholder(np.float32, [], name='step_size')
+
+    if feed_dict is None:
+      feed_dict = {}
+
+    feed_dict[step_size] = 0.4
+
+    sample, acceptance_probs, _, _ = hmc.kernel(step_size, 5, initial_draws,
+                                                log_gamma_log_prob, event_dims)
+    skip_sample, skip_acceptance_probs, _, _ = hmc.kernel(
+      step_size, 5, initial_draws, log_gamma_log_prob, event_dims,
+      skip_metropolis_step=True)
+
+    # Need to set the same seed to make the velocity samples same
+    seed = np.random.randint(0, np.iinfo(np.uint32).max)
+    random_seed.set_random_seed(seed)
+    (acceptance_probs_val,  updated_draws_val) = sess.run([acceptance_probs,
+                                                           sample], feed_dict)
+    random_seed.set_random_seed(seed)
+    (skip_acceptance_probs_val, initial_draws_val, skip_draws_val) = sess.run(
+        [skip_acceptance_probs, initial_draws, skip_sample], feed_dict)
+
+    # Confirm step size is small enough that we usually accept.
+    self.assertGreater(acceptance_probs_val.mean(), 0.5)
+    # Confirm step size is large enough that we sometimes reject.
+    self.assertLess(acceptance_probs_val.mean(), 0.99)
+
+    # Confirm that the acceptance probability is the same
+    self.assertAllClose(acceptance_probs_val, skip_acceptance_probs_val)
+
+    # Confirm none of the skip samples is equal to the initial draws
+    check = np.all(np.isclose(initial_draws_val, skip_draws_val), axis=event_dims)
+    self.assertFalse(check)
+
+  def _skip_metropolis_step_correct_wrapper(self, event_dims):
+    """Tests that the kernel works correctly when skipping the
+    Metropolis-Hasting step is true.
+
+    Draws some independent samples from the target distribution,
+    applies an iteration of the MCMC kernel, with and without the
+    `skip_metropolis_step` flag, then checks that the acceptance
+    probabilities are identical and that when the flag is on all
+    drawn samples are different from the initial ones.
+
+    Args:
+      event_dims: A tuple of dimensions that should not be treated as
+        independent. This allows for multiple chains to be run independently
+        in parallel. Default is (), i.e., all dimensions are independent.
+    """
+    with self.test_session() as sess:
+      initial_draws = np.log(np.random.gamma(self._shape_param,
+                                             size=[50000, 2, 2]))
+      initial_draws -= np.log(self._rate_param)
+      x_ph = array_ops.placeholder(np.float32, name='x_ph')
+
+      feed_dict = {x_ph: initial_draws}
+
+      self._skip_metropolis_step_correct(x_ph, event_dims, sess, feed_dict)
+
+  def testSkipMetropolisStepCorrectNullShape(self):
+    self._skip_metropolis_step_correct_wrapper([])
+
+  def testSkipMetropolisStepCorrect1(self):
+    self._skip_metropolis_step_correct_wrapper([1])
+
+  def testSkipMetropolisStepCorrect2(self):
+    self._skip_metropolis_step_correct_wrapper([2])
+
+  def testSkipMetropolisStepCorrect12(self):
+    self._skip_metropolis_step_correct_wrapper([1, 2])
+
   def testNanRejection(self):
     """Tests that an update that yields NaN potentials gets rejected.
 
