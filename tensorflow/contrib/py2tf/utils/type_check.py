@@ -12,14 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utility module that contains APIs usable in the generated code."""
+"""Utilities used in py2tf-generated code."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf.utils.context_managers import control_dependency_on_returns
-from tensorflow.contrib.py2tf.utils.misc import alias_tensors
-from tensorflow.contrib.py2tf.utils.multiple_dispatch import run_cond
-from tensorflow.contrib.py2tf.utils.multiple_dispatch import run_while
-from tensorflow.contrib.py2tf.utils.type_check import is_tensor
+from tensorflow.python.framework import tensor_util
+
+
+def is_tensor(*args):
+  """Check if all arguments are tensors.
+
+  Args:
+    *args: Python objects that may or may not be tensors.
+
+  Returns:
+    True if all *args are TensorFlow types, False if one or more are not.
+  """
+  return any([tensor_util.is_tensor(a) for a in args])
