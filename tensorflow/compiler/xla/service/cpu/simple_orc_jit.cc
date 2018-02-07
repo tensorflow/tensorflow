@@ -270,15 +270,15 @@ bool RegisterKnownJITSymbols() {
   REGISTER_LIBM_SYMBOL(ilogb, int (*)(double));
   REGISTER_LIBM_SYMBOL(ldexp, double (*)(double, int));
   REGISTER_LIBM_SYMBOL(lgamma, double (*)(double));
-  REGISTER_LIBM_SYMBOL(llrint, long long (*)(double));
-  REGISTER_LIBM_SYMBOL(llround, long long (*)(double));
+  REGISTER_LIBM_SYMBOL(llrint, long long (*)(double));   // NOLINT(runtime/int)
+  REGISTER_LIBM_SYMBOL(llround, long long (*)(double));  // NOLINT(runtime/int)
   REGISTER_LIBM_SYMBOL(log, double (*)(double));
   REGISTER_LIBM_SYMBOL(log10, double (*)(double));
   REGISTER_LIBM_SYMBOL(log1p, double (*)(double));
   REGISTER_LIBM_SYMBOL(log2, double (*)(double));
   REGISTER_LIBM_SYMBOL(logb, double (*)(double));
-  REGISTER_LIBM_SYMBOL(lrint, long (*)(double));
-  REGISTER_LIBM_SYMBOL(lround, long (*)(double));
+  REGISTER_LIBM_SYMBOL(lrint, long (*)(double));   // NOLINT(runtime/int)
+  REGISTER_LIBM_SYMBOL(lround, long (*)(double));  // NOLINT(runtime/int)
   REGISTER_LIBM_SYMBOL(modf, double (*)(double, double*));
   REGISTER_LIBM_SYMBOL(nan, double (*)(const char*));
   REGISTER_LIBM_SYMBOL(nearbyint, double (*)(double));
@@ -289,7 +289,8 @@ bool RegisterKnownJITSymbols() {
   REGISTER_LIBM_SYMBOL(remquo, double (*)(double, double, int*));
   REGISTER_LIBM_SYMBOL(rint, double (*)(double));
   REGISTER_LIBM_SYMBOL(round, double (*)(double));
-  REGISTER_LIBM_SYMBOL(scalbln, double (*)(double, long));
+  REGISTER_LIBM_SYMBOL(scalbln,
+                       double (*)(double, long));  // NOLINT(runtime/int)
   REGISTER_LIBM_SYMBOL(scalbn, double (*)(double, int));
   REGISTER_LIBM_SYMBOL(sin, double (*)(double));
 #ifdef __APPLE__
