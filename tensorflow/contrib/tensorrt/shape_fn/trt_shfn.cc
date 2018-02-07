@@ -21,6 +21,7 @@ limitations under the License.
 #if GOOGLE_CUDA
 #if GOOGLE_TENSORRT
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorrt/include/NvInfer.h"
 
 namespace tensorflow {
@@ -29,14 +30,14 @@ namespace shape_inference {
 tensorflow::Status TRTEngineOpShapeInference(InferenceContext* context) {
   tensorflow::tensorrt::Logger logger;
   string serialized_engine;
-  context->GetAttr("serialized_engine", &serialized_engine);
+  TF_RETURN_IF_ERROR(context->GetAttr("serialized_engine", &serialized_engine));
   nvinfer1::IRuntime* infer = nvinfer1::createInferRuntime(logger);
   nvinfer1::ICudaEngine* trt_engine = infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(), nullptr);
 
   int num_batch = -1;
   std::vector<::tensorflow::DataType> input_type;
-  context->GetAttr("InT", &input_type);
+  TF_RETURN_IF_ERROR(context->GetAttr("InT", &input_type));
   for (size_t i = 0; i < context->num_inputs(); i++) {
     // Check if input shape is legit
     auto input_shape = context->input(i);
@@ -56,11 +57,11 @@ tensorflow::Status TRTEngineOpShapeInference(InferenceContext* context) {
 
   // Arrange input here
   std::vector<string> input_nodes;
-  context->GetAttr("input_nodes", &input_nodes);
+  TF_RETURN_IF_ERROR(context->GetAttr("input_nodes", &input_nodes));
 
   // Arrange output here
   std::vector<string> output_nodes;
-  context->GetAttr("output_nodes", &output_nodes);
+  TF_RETURN_IF_ERROR(context->GetAttr("output_nodes", &output_nodes));
   for (size_t i = 0; i < output_nodes.size(); i++) {
     int binding_index = trt_engine->getBindingIndex(output_nodes[i].c_str());
     ShapeHandle output_shape;

@@ -37,7 +37,7 @@ REGISTER_OP("TRTEngineOp")
     .Output("out_tensor: OutT")
     .SetShapeFn(shape_inference::TRTEngineOpShapeInference);
 
+}  // namespace tensorflow
+
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
-
-}  // namespace tensorflow
