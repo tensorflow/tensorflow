@@ -60,6 +60,12 @@ bool TRTInt8Calibrator::getBatch(void** bindings, const char** names,
   }
   return true;
 }
+const void *TRTInt8Calibrator::readCalibrationCache(std::size_t &length) {
+  return nullptr;
+}
+void TRTInt8Calibrator::writeCalibrationCache(const void *ptr, std::size_t length) {
+
+}
 
 }  // namespace trt
 }  // namespace tensorflow

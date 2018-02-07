@@ -23,6 +23,7 @@ public:
   void Compute(OpKernelContext* context) override;
 
  private:
+  std::string repo_name;
   std::vector<std::string> segment_nodes_;
   std::vector<std::string> input_names_;
   std::vector<tensorflow::TensorShape> shapes_;

@@ -215,12 +215,14 @@ tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
 
   TF_RETURN_IF_ERROR(status);
 
-  for (auto inp_port :
-       params->subgraph_inputs) {  // loop over incoming edges and attach them
-                                   // to calib node
-    tensorflow::Node* in_node = params->graph.FindNodeId(inp_port.first);
-    params->graph.UpdateEdge(trt_node, inp_port.second, in_node,
-                             inp_port.second);
+  for (auto in_edge: params->subgraph_incoming_edges) {  // loop over incoming edges and attach them to calib node
+    tensorflow::Node* src_node = in_edge->src();
+    auto src_output=in_edge->src_output();
+    auto dst_node=in_edge->dst();
+    auto dst_input=in_edge->dst_input();
+    VLOG(0)<<" update edge "<<trt_node->name()<<":"<<src_output<<" -> "<<dst_node->name()<<":"<<dst_input;
+    params->graph.UpdateEdge(trt_node, src_output, dst_node,
+                             dst_input);
   }
   return tensorflow::Status::OK();
 }

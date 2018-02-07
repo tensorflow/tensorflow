@@ -1964,6 +1964,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   auto trt_rmgr = tensorflow::trt::TRTResourceManager::instance();
   auto op_rmgr = trt_rmgr->getManager("TRTCalibOps");
   auto op_res = new tensorflow::trt::TRTCalibrationResource();
+  VLOG(0)<<"SAMI Creating calibresource "<<calib_op_name<<" @ "<<op_res;
   TF_CHECK_OK(op_rmgr->Create(calib_op_name, calib_op_name, op_res));
   op_res->logger = new tensorflow::tensorrt::Logger();
   op_res->builder = nvinfer1::createInferBuilder(*(op_res->logger));
@@ -2108,6 +2109,9 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     //  ConvertSubGraphToTensorRT(convert_graph.cc)
     auto incoming_edge = tensorflow::NodeDefBuilder::NodeOut(
         input_names.at(i), output_idx, input_dtypes.at(i));
+    VLOG(0) << calib_op_name << " input " << i << " = " << input_names.at(i)
+            << ":" << output_idx
+            <<" dType= "<< tensorflow::DataTypeString(input_dtypes.at(i));
     income_edges.push_back(incoming_edge);
   }
   tensorflow::gtl::ArraySlice<tensorflow::NodeDefBuilder::NodeOut> input_list(
@@ -2121,8 +2125,10 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   }
   LOG(INFO) << "finished op preparation";
 
-  auto status = op_builder.Attr("segment_names", segment_names)
+  auto status = op_builder.Attr("segment_nodes", segment_names)
+                    .Attr("input_names",input_names)
                     .Attr("segment_output_names", output_names)
+                    .Attr("resource_name",calib_op_name)
                     .Finalize(s.trt_node);
 
   LOG(INFO) << status.ToString();
@@ -2346,7 +2352,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   // engine_out << engine_plan_string;
   // engine_out.close();
 
-  LOG(INFO) << "finished engine" << engine_name;
+  LOG(INFO) << "finished engine " << engine_name;
 
   // Build the TRT op
   tensorflow::NodeDefBuilder op_builder(engine_name, "TRTEngineOp");
