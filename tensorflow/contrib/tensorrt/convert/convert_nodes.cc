@@ -119,26 +119,29 @@ static std::vector<std::pair<int, int>> CreateSamePadding(
 class TRT_ShapedWeights {
  public:
   TRT_ShapedWeights(tensorflow::DataType type, const void* values,
-                    nvinfer1::Dims shape, bool owned_values = false)
+                    nvinfer1::Dims shape,
+                    const std::vector<char>* owned_values = nullptr)
       : shape_(shape),
         type_(type),
         values_(values),
-        owned_values_(owned_values),
+        owned_values_(owned_values ? *owned_values : std::vector<char>({})),
         dummy_flag_(false) {
     // Note: this->shape.type[] is not used
   }
 
   explicit TRT_ShapedWeights(tensorflow::DataType type)
-      : type_(type),
+      : shape_(),
+        type_(type),
         values_(nullptr),
-        owned_values_(false),
+        owned_values_(),
         dummy_flag_(true) {}
 
-  ~TRT_ShapedWeights() {
-    if (values_ && owned_values_) delete static_cast<const char*>(values_);
-  }
-
-  TRT_ShapedWeights(const TRT_ShapedWeights&) = default;
+  TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
+      : shape_(rhs.shape_),
+        type_(rhs.type_),
+        values_(rhs.values_),
+        owned_values_(rhs.owned_values_),
+        dummy_flag_(rhs.dummy_flag_) {}
 
   int64_t count() const {
     int64_t c = 1;
@@ -152,7 +155,18 @@ class TRT_ShapedWeights {
     if (dummy_flag_) return nvinfer1::Weights{trt_type, nullptr, 0};
 
     // Note: this->shape.type[] is not used
-    return nvinfer1::Weights{trt_type, values_, GetShapeSize(shape_)};
+    return nvinfer1::Weights{trt_type, GetValues(), GetShapeSize(shape_)};
+  }
+
+  const void* GetValues() const {
+    if (values_) return values_;
+    if (owned_values_.size()) return owned_values_.data();
+    return nullptr;
+  }
+
+  void SetValues(const void* values) {
+    values_ = values;
+    owned_values_.clear();
   }
 
   size_t size_bytes() const {
@@ -165,51 +179,55 @@ class TRT_ShapedWeights {
 
   nvinfer1::Dims shape_;
   tensorflow::DataType type_;
+
+ private:
   const void* values_;
-  bool owned_values_;
+  std::vector<char> owned_values_;
   bool dummy_flag_;
 };
 
 class TRT_TensorOrWeights {
  public:
   explicit TRT_TensorOrWeights(nvinfer1::ITensor* tensor)
-      : _tensor_(tensor), _variant_(TRT_NODE_TENSOR) {}
-  TRT_TensorOrWeights(const TRT_ShapedWeights& weights)
-      : _weights_(weights), _variant_(TRT_NODE_WEIGHTS) {}
+      : _tensor_(tensor), _weights_(DT_FLOAT), _variant_(TRT_NODE_TENSOR) {}
+  explicit TRT_TensorOrWeights(const TRT_ShapedWeights& weights)
+      : _tensor_(nullptr), _weights_(weights), _variant_(TRT_NODE_WEIGHTS) {}
+  TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs)
+      : _tensor_(rhs._tensor_),
+        _weights_(rhs._weights_),
+        _variant_(rhs._variant_) {}
   ~TRT_TensorOrWeights() {}
 
   bool is_tensor() const { return _variant_ == TRT_NODE_TENSOR; }
   bool is_weights() const { return _variant_ == TRT_NODE_WEIGHTS; }
 
   nvinfer1::ITensor* tensor() {
-    CHECK_EQ(this->is_tensor(), true);
+    CHECK_EQ(is_tensor(), true);
     return _tensor_;
   }
-  nvinfer1::ITensor const* tensor() const {
-    CHECK_EQ(this->is_tensor(), true);
+  const nvinfer1::ITensor* tensor() const {
+    CHECK_EQ(is_tensor(), true);
     return _tensor_;
   }
   TRT_ShapedWeights& weights() {
-    CHECK_EQ(this->is_weights(), true);
+    CHECK_EQ(is_weights(), true);
     return _weights_;
   }
   const TRT_ShapedWeights& weights() const {
-    CHECK_EQ(this->is_weights(), true);
+    CHECK_EQ(is_weights(), true);
     return _weights_;
   }
   nvinfer1::Dims shape() const {
-    if (this->is_tensor()) {
-      return this->tensor()->getDimensions();
+    if (is_tensor()) {
+      return tensor()->getDimensions();
     } else {
-      return this->weights().shape_;
+      return weights().shape_;
     }
   }
 
  private:
-  union {
-    nvinfer1::ITensor* _tensor_;
-    TRT_ShapedWeights _weights_;
-  };
+  nvinfer1::ITensor* _tensor_;
+  TRT_ShapedWeights _weights_;
   enum { TRT_NODE_TENSOR, TRT_NODE_WEIGHTS } _variant_;
 };
 
@@ -307,7 +325,7 @@ tensorflow::DataType TFAttrs::get<tensorflow::DataType>(string key) const {
 }
 
 template <typename T>
-void Reorder4(nvinfer1::DimsNCHW shape, T const* idata,
+void Reorder4(nvinfer1::DimsNCHW shape, const T* idata,
               nvinfer1::DimsNCHW istrides, T* odata,
               nvinfer1::DimsNCHW ostrides) {
   for (int n = 0; n < shape.n(); ++n) {
@@ -339,9 +357,10 @@ void ReorderRSCKToKCRS(const TRT_ShapedWeights& iweights,
   nvinfer1::DimsNCHW ostrides = {c * r * s, r * s, s, 1};
   switch (iweights.type_) {
     case tensorflow::DataType::DT_FLOAT:
-      Reorder4(
-          {k, c, r, s}, static_cast<float const*>(iweights.values_), istrides,
-          static_cast<float*>(const_cast<void*>(oweights->values_)), ostrides);
+      Reorder4({k, c, r, s}, static_cast<float const*>(iweights.GetValues()),
+               istrides,
+               static_cast<float*>(const_cast<void*>(oweights->GetValues())),
+               ostrides);
       break;
     default:
       LOG(FATAL) << "!!!!!!!!!!!!!!!!!!!!!!!!broke!!!!!!!!!!!!";
@@ -399,7 +418,7 @@ class Converter {
     TRT_ShapedWeights weights(type, nullptr, shape);
     // TODO(jie): check weights size_bytes. 0 means type error
     _temp_bufs.push_back(std::vector<uint8_t>(weights.size_bytes()));
-    weights.values_ = _temp_bufs.back().data();
+    weights.SetValues(_temp_bufs.back().data());
     return weights;
   }
 
@@ -579,8 +598,8 @@ tensorflow::Status UnaryCompute(const TRT_ShapedWeights& iweights,
   CHECK_EQ(iweights.type_, oweights->type_);
   switch (iweights.type_) {
     case tensorflow::DataType::DT_FLOAT: {
-      auto inp = static_cast<float const*>(iweights.values_);
-      auto oup = static_cast<float*>(const_cast<void*>(oweights->values_));
+      auto inp = static_cast<float const*>(iweights.GetValues());
+      auto oup = static_cast<float*>(const_cast<void*>(oweights->GetValues()));
       std::transform(inp, inp + iweights.count(), oup, unary_op.unary<float>());
       break;
     }
@@ -603,9 +622,9 @@ tensorflow::Status BinaryCompute(const TRT_ShapedWeights& iweights_l,
 
   switch (iweights_l.type_) {
     case tensorflow::DataType::DT_FLOAT: {
-      auto inp_l = static_cast<float const*>(iweights_l.values_);
-      auto inp_r = static_cast<float const*>(iweights_r.values_);
-      auto oup = static_cast<float*>(const_cast<void*>(oweights->values_));
+      auto inp_l = static_cast<const float*>(iweights_l.GetValues());
+      auto inp_r = static_cast<const float*>(iweights_r.GetValues());
+      auto oup = static_cast<float*>(const_cast<void*>(oweights->GetValues()));
 
       if (iweights_l.count() != iweights_r.count()) {
         // We only supports broadcast of RankZero
@@ -1117,7 +1136,7 @@ tensorflow::Status ConvertConst(Converter& ctx,
 
   // Get trt type & shape
   TFAttrs attrs(node_def);
-  tensorflow::DataType dtype = attrs.get<tensorflow::DataType>("dtype");
+  const tensorflow::DataType dtype = attrs.get<tensorflow::DataType>("dtype");
 
   // Create shaped weights as output
   tensorflow::Tensor tensor;
@@ -1148,11 +1167,18 @@ tensorflow::Status ConvertConst(Converter& ctx,
   } else if (!weights_tensor.tensor_content().empty()) {
     VLOG(2) << "TENSOR!!!" << node_def.name();
     const auto& content = weights_tensor.tensor_content();
-    char* buf = new char[content.size() + 1];
-    buf[content.size()] = 0;
-    port::CopyToArray(content, buf);
-    weights = TRT_ShapedWeights(dtype, buf, GetTensorShape(tensor),
-                                /*owned_values=*/true);
+
+    std::vector<char> values;
+    if (content.size() > 0) {
+      const int dtype_size = tensorflow::DataTypeSize(dtype);
+      CHECK_EQ(0, content.size() % dtype_size)
+          << "Tensor content size (" << content.size()
+          << ") is not a multiple of " << dtype_size;
+      values.resize(content.size());
+      port::CopyToArray(content, values.data());
+    }
+    weights =
+        TRT_ShapedWeights(dtype, nullptr, GetTensorShape(tensor), &values);
   } else {
     return tensorflow::errors::Unimplemented(
         "Not supported constant type, at " + node_def.name());
@@ -1242,7 +1268,7 @@ tensorflow::Status ConvertReduce(Converter& ctx,
   if (index_type != tensorflow::DataType::DT_INT32)
     return tensorflow::errors::Unimplemented("Tidx supports only DT_INT32");
   auto index_list_data =
-      static_cast<int*>(const_cast<void*>(index_list.values_));
+      static_cast<int*>(const_cast<void*>(index_list.GetValues()));
 
   // Hack warning: have to fall back to pool layer since reduce is not in public
   // TRT yet.
@@ -1340,7 +1366,7 @@ tensorflow::Status ConvertPad(Converter& ctx,
   if (padding_type != tensorflow::DataType::DT_INT32)
     return tensorflow::errors::Unimplemented(
         "Tpaddings supports only DT_INT32");
-  auto pad_data = static_cast<int*>(const_cast<void*>(pads.values_));
+  auto pad_data = static_cast<int*>(const_cast<void*>(pads.GetValues()));
 
   std::vector<int32_t> pad_index;
   for (int i = 0; i < nb_dims; i++) {
