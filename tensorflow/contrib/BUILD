@@ -33,6 +33,7 @@ py_library(
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_py",
         "//tensorflow/contrib/data",
         "//tensorflow/contrib/deprecated:deprecated_py",
+        "//tensorflow/contrib/warpctc:ctc_py",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/eager/python:tfe",
         "//tensorflow/contrib/estimator:estimator_py",

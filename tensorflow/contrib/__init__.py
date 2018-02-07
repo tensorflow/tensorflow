@@ -30,6 +30,7 @@ from tensorflow.contrib import crf
 from tensorflow.contrib import cudnn_rnn
 from tensorflow.contrib import data
 from tensorflow.contrib import deprecated
+from tensorflow.contrib import warpctc
 from tensorflow.contrib import distributions
 from tensorflow.contrib import estimator
 from tensorflow.contrib import factorization

@@ -1,0 +1,14 @@
+taskcluster:
+  github_events:
+    pull_request:
+      env: true
+      events:
+        - pull_request.opened
+        - pull_request.synchronize
+        - pull_request.reopened
+    merge:
+      env: true
+      events:
+        - push
+      branches:
+        - master

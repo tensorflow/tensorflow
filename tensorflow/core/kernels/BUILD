@@ -28,6 +28,7 @@ package_group(
 load(
     "//tensorflow:tensorflow.bzl",
     "if_android",
+    "if_cuda",
     "tf_cc_test",
     "tf_cc_tests",
     "tf_cc_binary",
@@ -1522,6 +1523,27 @@ tf_kernel_library(
         "//tensorflow/core/util/ctc:ctc_beam_search_lib",
         "//tensorflow/core/util/ctc:ctc_loss_calculator_lib",
     ],
+)
+
+tf_kernel_library(
+    name = "warpctc_ops",
+    prefix = "warpctc",
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:warpctc_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+    ] + if_cuda([
+            "//tensorflow/core/kernels/warp-ctc/tests:ctc_gpu",
+            "//tensorflow/core/kernels/warp-ctc/include:libgpu",
+            "//tensorflow/core/kernels/warp-ctc/include/detail:libgpu",
+        ], [
+            "//tensorflow/core/kernels/warp-ctc/tests:ctc_cpu",
+            "//tensorflow/core/kernels/warp-ctc/include:libcpu",
+            "//tensorflow/core/kernels/warp-ctc/include/detail:libcpu",
+        ]),
+    alwayslink = 1,
 )
 
 tf_cc_test(

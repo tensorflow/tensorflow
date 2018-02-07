@@ -1,0 +1,532 @@
+major_version: "local"
+minor_version: ""
+default_target_cpu: "same_as_host"
+
+default_toolchain {
+  cpu: "linaro-armeabi"
+  toolchain_identifier: "linaro_gcc_linux_armhf"
+}
+
+default_toolchain {
+  cpu: "linaro64-armeabi"
+  toolchain_identifier: "linaro64_gcc_linux_armhf"
+}
+
+default_toolchain {
+  cpu: "rpi-armeabi"
+  toolchain_identifier: "gcc_rpi_linux_armhf"
+}
+
+toolchain {
+  abi_version: "armeabi"
+  abi_libc_version: "glibc_2.13"
+  builtin_sysroot: ""
+  compiler: "gcc"
+  host_system_name: "armeabi"
+  needsPic: true
+  supports_gold_linker: false
+  supports_incremental_linker: false
+  supports_fission: false
+  supports_interface_shared_objects: false
+  supports_normalizing_ar: false
+  supports_start_end_lib: false
+  supports_thin_archives: false
+  target_libc: "glibc_2.13"
+  target_cpu: "linaro-armeabi"
+  target_system_name: "arm_a15"
+  toolchain_identifier: "linaro_gcc_linux_armhf"
+
+  tool_path { name: "ar" path: "linaro_raspbian/arm-linux-gnueabihf-ar" }
+  tool_path { name: "compat-ld" path: "linaro_raspbian/arm-linux-gnueabihf-ld" }
+  tool_path { name: "cpp" path: "linaro_raspbian/arm-linux-gnueabihf-cpp" }
+  tool_path { name: "dwp" path: "linaro_raspbian/arm-linux-gnueabihf-dwp" }
+  tool_path { name: "gcc" path: "linaro_raspbian/arm-linux-gnueabihf-gcc" }
+  tool_path { name: "gcov" path: "linaro_raspbian/arm-linux-gnueabihf-gcov" }
+  # C(++) compiles invoke the compiler (as that is the one knowing where
+  # to find libraries), but we provide LD so other rules can invoke the linker.
+  tool_path { name: "ld" path: "linaro_raspbian/arm-linux-gnueabihf-ld" }
+  tool_path { name: "gold" path: "linaro_raspbian/arm-linux-gnueabihf-ld.gold" }
+  tool_path { name: "nm" path: "linaro_raspbian/arm-linux-gnueabihf-nm" }
+  tool_path { name: "objcopy" path: "linaro_raspbian/arm-linux-gnueabihf-objcopy" }
+  objcopy_embed_flag: "-I"
+  objcopy_embed_flag: "binary"
+  tool_path { name: "objdump" path: "linaro_raspbian/arm-linux-gnueabihf-objdump" }
+  tool_path { name: "strip" path: "linaro_raspbian/arm-linux-gnueabihf-strip" }
+
+  # compiler_flag: "-target"
+  # compiler_flag: "armv7a-arm-linux-gnueabif"
+  compiler_flag: "-march=armv6"
+  compiler_flag: "--sysroot=external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc"
+  compiler_flag: "-mfloat-abi=hard"
+
+  # Local change to disable IS_MOBILE_PLATFORM
+  compiler_flag: "-DRASPBERRY_PI"
+
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1"
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2"
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4"
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8"
+
+  compiler_flag: "-nostdinc"
+  # compiler_flag: "-isystem"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/lib/gcc/arm-linux-gnueabihf/4.8.3/include"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc/usr/include"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/lib/gcc/arm-linux-gnueabihf/4.8.3/include-fixed"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc/usr/include"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc/usr/include/arm-linux-gnueabihf"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/lib/gcc/arm-linux-gnueabihf/4.8.3/include"
+
+  cxx_flag: "-std=c++11"
+  cxx_flag: "-isystem"
+  cxx_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/include/c++/4.8.3/arm-linux-gnueabihf"
+  cxx_flag: "-isystem"
+  cxx_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/include/c++/4.8.3"
+  cxx_flag: "-isystem"
+  cxx_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/include/c++/4.8.3/arm-linux-gnueabihf"
+  cxx_flag: "-isystem"
+  cxx_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/include/c++/4.8.3"
+
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc/usr/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc/usr/lib/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc/lib/gcc/arm-linux-gnueabihf/4.8.3/include-fixed)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/include)%/c++/4.8.3"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc/lib/gcc/arm-linux-gnueabihf/4.8.3/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc/lib/gcc/arm-linux-gnueabihf/4.8.3/include-fixed)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/lib/gcc/arm-linux-gnueabihf/4.8.3/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/lib/gcc/arm-linux-gnueabihf/4.8.3/include-fixed)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/include)%/c++/4.8.3"
+
+  # linker_flag: "-target"
+  # linker_flag: "arm-linux-gnueabihf"
+  # linker_flag: "-fuse-ld=gold"
+  # linker_flag: "--no-map-whole-files"
+  # linker_flag: "--no-keep-memory"
+  # linker_flag: "--no-keep-files-mapped"
+  linker_flag: "--sysroot=external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc"
+  linker_flag: "-lstdc++"
+  # linker_flag: "-lm"
+  linker_flag: "-Wl,-no-as-needed"
+  # linker_flag: "-pass-exit-codes"
+  linker_flag: "-Lexternal/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/lib"
+  linker_flag: "-Lexternal/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc/lib"
+  linker_flag: "-Lexternal/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/libc/usr/lib"
+  linker_flag: "-Bexternal/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/arm-linux-gnueabihf/bin"
+  linker_flag: "-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3"
+
+  # Anticipated future default.
+  # This makes GCC and Clang do what we want when called through symlinks.
+  unfiltered_cxx_flag: "-no-canonical-prefixes"
+  linker_flag: "-no-canonical-prefixes"
+
+  # Make C++ compilation deterministic. Use linkstamping instead of these
+  # compiler symbols.
+  unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"
+  unfiltered_cxx_flag: "-D__DATE__=\"redacted\""
+  unfiltered_cxx_flag: "-D__TIMESTAMP__=\"redacted\""
+  unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
+
+  # Security hardening on by default.
+  compiler_flag: "-fstack-protector"
+  compiler_flag: "-fPIE"
+  linker_flag: "-pie"
+  linker_flag: "-Wl,-z,relro,-z,now"
+
+  # Enable coloring even if there's no attached terminal. Bazel removes the
+  # escape sequences if --nocolor is specified.
+  # compiler_flag: "-fdiagnostics-color=always"
+
+    # All warnings are enabled. Maybe enable -Werror as well?
+  compiler_flag: "-Wall"
+  # Enable a few more warnings that aren't part of -Wall.
+  compiler_flag: "-Wunused-but-set-parameter"
+  # But disable some that are problematic.
+  compiler_flag: "-Wno-free-nonheap-object" # has false positives
+
+  # Keep stack frames for debugging, even in opt mode.
+  compiler_flag: "-fno-omit-frame-pointer"
+
+  # Stamp the binary with a unique identifier.
+  linker_flag: "-Wl,--build-id=md5"
+  linker_flag: "-Wl,--hash-style=gnu"
+
+  compilation_mode_flags {
+    mode: DBG
+    # Enable debug symbols.
+    compiler_flag: "-g"
+  }
+  compilation_mode_flags {
+    mode: OPT
+
+    # No debug symbols.
+    # Maybe we should enable https://gcc.gnu.org/wiki/DebugFission for opt or
+    # even generally? However, that can't happen here, as it requires special
+    # handling in Bazel.
+    compiler_flag: "-g0"
+
+    # Conservative choice for -O
+    # -O3 can increase binary size and even slow down the resulting binaries.
+    # Profile first and / or use FDO if you need better performance than this.
+    compiler_flag: "-O2"
+
+    # Disable assertions
+    compiler_flag: "-DNDEBUG"
+
+    # Removal of unused code and data at link time (can this increase binary size in some cases?).
+    compiler_flag: "-ffunction-sections"
+    compiler_flag: "-fdata-sections"
+    linker_flag: "-Wl,--gc-sections"
+  }
+}
+
+toolchain {
+  abi_version: "armeabi"
+  abi_libc_version: "glibc_2.13"
+  builtin_sysroot: ""
+  compiler: "gcc"
+  host_system_name: "armeabi"
+  needsPic: true
+  supports_gold_linker: false
+  supports_incremental_linker: false
+  supports_fission: false
+  supports_interface_shared_objects: false
+  supports_normalizing_ar: false
+  supports_start_end_lib: false
+  supports_thin_archives: false
+  target_libc: "glibc_2.13"
+  target_cpu: "linaro64-armeabi"
+  target_system_name: "arm_a15"
+  toolchain_identifier: "linaro64_gcc_linux_armhf"
+
+  tool_path { name: "ar" path: "linaro64_raspbian/arm-linux-gnueabihf-ar" }
+  tool_path { name: "compat-ld" path: "linaro64_raspbian/arm-linux-gnueabihf-ld" }
+  tool_path { name: "cpp" path: "linaro64_raspbian/arm-linux-gnueabihf-cpp" }
+  tool_path { name: "dwp" path: "linaro64_raspbian/arm-linux-gnueabihf-dwp" }
+  tool_path { name: "gcc" path: "linaro64_raspbian/arm-linux-gnueabihf-gcc" }
+  tool_path { name: "gcov" path: "linaro64_raspbian/arm-linux-gnueabihf-gcov" }
+  # C(++) compiles invoke the compiler (as that is the one knowing where
+  # to find libraries), but we provide LD so other rules can invoke the linker.
+  tool_path { name: "ld" path: "linaro64_raspbian/arm-linux-gnueabihf-ld" }
+  tool_path { name: "gold" path: "linaro64_raspbian/arm-linux-gnueabihf-ld.gold" }
+  tool_path { name: "nm" path: "linaro64_raspbian/arm-linux-gnueabihf-nm" }
+  tool_path { name: "objcopy" path: "linaro64_raspbian/arm-linux-gnueabihf-objcopy" }
+  objcopy_embed_flag: "-I"
+  objcopy_embed_flag: "binary"
+  tool_path { name: "objdump" path: "linaro64_raspbian/arm-linux-gnueabihf-objdump" }
+  tool_path { name: "strip" path: "linaro64_raspbian/arm-linux-gnueabihf-strip" }
+
+  
+  # compiler_flag: "armv7a-arm-linux-gnueabif"
+  compiler_flag: "-march=armv6"
+  compiler_flag: "--sysroot=external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc"
+  compiler_flag: "-mfloat-abi=hard"
+
+  # Local change to disable IS_MOBILE_PLATFORM
+  compiler_flag: "-DRASPBERRY_PI"
+
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1"
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2"
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4"
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8"
+
+  compiler_flag: "-nostdinc"
+  # compiler_flag: "-isystem"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/lib/gcc/arm-linux-gnueabihf/4.8.3/include"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc/usr/include"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/lib/gcc/arm-linux-gnueabihf/4.8.3/include-fixed"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc/usr/include"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc/usr/include/arm-linux-gnueabihf"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/lib/gcc/arm-linux-gnueabihf/4.8.3/include"
+
+  cxx_flag: "-std=c++11"
+  cxx_flag: "-isystem"
+  cxx_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/include/c++/4.8.3/arm-linux-gnueabihf"
+  cxx_flag: "-isystem"
+  cxx_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/include/c++/4.8.3"
+  cxx_flag: "-isystem"
+  cxx_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/include/c++/4.8.3/arm-linux-gnueabihf"
+  cxx_flag: "-isystem"
+  cxx_flag: "external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/include/c++/4.8.3"
+
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc/usr/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc/usr/lib/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc/lib/gcc/arm-linux-gnueabihf/4.8.3/include-fixed)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/include)%/c++/4.8.3"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc/lib/gcc/arm-linux-gnueabihf/4.8.3/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc/lib/gcc/arm-linux-gnueabihf/4.8.3/include-fixed)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/lib/gcc/arm-linux-gnueabihf/4.8.3/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/lib/gcc/arm-linux-gnueabihf/4.8.3/include-fixed)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/include)%/c++/4.8.3"
+
+  # linker_flag: "-target"
+  # linker_flag: "arm-linux-gnueabihf"
+  # linker_flag: "-fuse-ld=gold"
+  # linker_flag: "--no-map-whole-files"
+  # linker_flag: "--no-keep-memory"
+  # linker_flag: "--no-keep-files-mapped"
+  linker_flag: "--sysroot=external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc"
+  linker_flag: "-lstdc++"
+  # linker_flag: "-lm"
+  linker_flag: "-Wl,-no-as-needed"
+  # linker_flag: "-pass-exit-codes"
+  linker_flag: "-Lexternal/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/lib"
+  linker_flag: "-Lexternal/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc/lib"
+  linker_flag: "-Lexternal/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/libc/usr/lib"
+  linker_flag: "-Bexternal/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian-x64/arm-linux-gnueabihf/bin"
+  linker_flag: "-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3"
+
+  # Anticipated future default.
+  # This makes GCC and Clang do what we want when called through symlinks.
+  unfiltered_cxx_flag: "-no-canonical-prefixes"
+  linker_flag: "-no-canonical-prefixes"
+
+  # Make C++ compilation deterministic. Use linkstamping instead of these
+  # compiler symbols.
+  unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"
+  unfiltered_cxx_flag: "-D__DATE__=\"redacted\""
+  unfiltered_cxx_flag: "-D__TIMESTAMP__=\"redacted\""
+  unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
+
+  # Security hardening on by default.
+  compiler_flag: "-fstack-protector"
+  compiler_flag: "-fPIE"
+  linker_flag: "-pie"
+  linker_flag: "-Wl,-z,relro,-z,now"
+
+  # Enable coloring even if there's no attached terminal. Bazel removes the
+  # escape sequences if --nocolor is specified.
+  # compiler_flag: "-fdiagnostics-color=always"
+
+    # All warnings are enabled. Maybe enable -Werror as well?
+  compiler_flag: "-Wall"
+  # Enable a few more warnings that aren't part of -Wall.
+  compiler_flag: "-Wunused-but-set-parameter"
+  # But disable some that are problematic.
+  compiler_flag: "-Wno-free-nonheap-object" # has false positives
+
+  # Keep stack frames for debugging, even in opt mode.
+  compiler_flag: "-fno-omit-frame-pointer"
+
+  # Stamp the binary with a unique identifier.
+  linker_flag: "-Wl,--build-id=md5"
+  linker_flag: "-Wl,--hash-style=gnu"
+
+  compilation_mode_flags {
+    mode: DBG
+    # Enable debug symbols.
+    compiler_flag: "-g"
+  }
+  compilation_mode_flags {
+    mode: OPT
+
+    # No debug symbols.
+    # Maybe we should enable https://gcc.gnu.org/wiki/DebugFission for opt or
+    # even generally? However, that can't happen here, as it requires special
+    # handling in Bazel.
+    compiler_flag: "-g0"
+
+    # Conservative choice for -O
+    # -O3 can increase binary size and even slow down the resulting binaries.
+    # Profile first and / or use FDO if you need better performance than this.
+    compiler_flag: "-O2"
+
+    # Disable assertions
+    compiler_flag: "-DNDEBUG"
+
+    # Removal of unused code and data at link time (can this increase binary size in some cases?).
+    compiler_flag: "-ffunction-sections"
+    compiler_flag: "-fdata-sections"
+    linker_flag: "-Wl,--gc-sections"
+  }
+}
+
+
+toolchain {
+  abi_version: "armeabi"
+  abi_libc_version: "glibc_2.19"
+  builtin_sysroot: ""
+  compiler: "gcc"
+  host_system_name: "armeabi"
+  needsPic: true
+  supports_gold_linker: false
+  supports_incremental_linker: false
+  supports_fission: false
+  supports_interface_shared_objects: false
+  supports_normalizing_ar: false
+  supports_start_end_lib: false
+  supports_thin_archives: false
+  target_libc: "glibc_2.19"
+  target_cpu: "rpi-armeabi"
+  target_system_name: "armeabi-v7a"
+  toolchain_identifier: "gcc_rpi_linux_armhf"
+
+  tool_path { name: "ar" path: "gcc_arm_rpi/arm-linux-gnueabihf-ar" }
+  tool_path { name: "compat-ld" path: "gcc_arm_rpi/arm-linux-gnueabihf-ld" }
+  tool_path { name: "cpp" path: "gcc_arm_rpi/arm-linux-gnueabihf-cpp" }
+  tool_path { name: "dwp" path: "gcc_arm_rpi/arm-linux-gnueabihf-dwp" }
+  tool_path { name: "gcc" path: "gcc_arm_rpi/arm-linux-gnueabihf-gcc" }
+  tool_path { name: "gcov" path: "arm-frc-linux-gnueabi/arm-frc-linux-gnueabi-gcov-4.9" }
+  # C(++) compiles invoke the compiler (as that is the one knowing where
+  # to find libraries), but we provide LD so other rules can invoke the linker.
+  tool_path { name: "ld" path: "gcc_arm_rpi/arm-linux-gnueabihf-ld" }
+  tool_path { name: "nm" path: "gcc_arm_rpi/arm-linux-gnueabihf-nm" }
+  tool_path { name: "objcopy" path: "gcc_arm_rpi/arm-linux-gnueabihf-objcopy" }
+  objcopy_embed_flag: "-I"
+  objcopy_embed_flag: "binary"
+  tool_path { name: "objdump" path: "gcc_arm_rpi/arm-linux-gnueabihf-objdump" }
+  tool_path { name: "strip" path: "gcc_arm_rpi/arm-linux-gnueabihf-strip" }
+
+  # compiler_flag: "-target"
+  # compiler_flag: "armv7a-arm-linux-gnueabif"
+  compiler_flag: "-march=armv6"
+  compiler_flag: "--sysroot=external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot"
+  compiler_flag: "-mfloat-abi=hard"
+
+  # Local change to disable IS_MOBILE_PLATFORM
+  compiler_flag: "-DRASPBERRY_PI"
+
+  compiler_flag: "-nostdinc"
+  # compiler_flag: "-isystem"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/lib/gcc/arm-linux-gnueabihf/4.9.3/include"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/include"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/lib/gcc/arm-linux-gnueabihf/4.9.3/include-fixed"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/include"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/include/arm-linux-gnueabihf"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/lib/gcc/arm-linux-gnueabihf/4.9.3/include"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/include/c++/4.9.3/arm-linux-gnueabihf"
+  compiler_flag: "-isystem"
+  compiler_flag: "external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/include/c++/4.9.3"
+
+  cxx_flag: "-std=c++11"
+  cxx_flag: "-isystem"
+  cxx_flag: "external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/include/c++/4.9.3/arm-linux-gnueabihf"
+  cxx_flag: "-isystem"
+  cxx_flag: "external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/include/c++/4.9.3"
+
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/lib/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/lib/gcc/arm-linux-gnueabihf/4.9.3/include-fixed)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/include)%/c++/4.9.3"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/lib/gcc/arm-linux-gnueabihf/4.9.3/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/lib/gcc/arm-linux-gnueabihf/4.9.3/include-fixed)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/lib/gcc/arm-linux-gnueabihf/4.9.3/include)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/lib/gcc/arm-linux-gnueabihf/4.9.3/include-fixed)%"
+  cxx_builtin_include_directory: "%package(@GccArmRpi//arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/include)%/c++/4.9.3"
+
+  # Anticipated future default.
+  # This makes GCC and Clang do what we want when called through symlinks.
+  unfiltered_cxx_flag: "-no-canonical-prefixes"
+
+  # Make C++ compilation deterministic. Use linkstamping instead of these
+  # compiler symbols.
+  unfiltered_cxx_flag: "-Wno-builtin-macro-redefined"
+  unfiltered_cxx_flag: "-D__DATE__=\"redacted\""
+  unfiltered_cxx_flag: "-D__TIMESTAMP__=\"redacted\""
+  unfiltered_cxx_flag: "-D__TIME__=\"redacted\""
+
+  # Security hardening on by default.
+  compiler_flag: "-fstack-protector"
+  compiler_flag: "-fPIE"
+  # All warnings are enabled. Maybe enable -Werror as well?
+  compiler_flag: "-Wall"
+  # Enable a few more warnings that aren't part of -Wall.
+  compiler_flag: "-Wunused-but-set-parameter"
+  # But disable some that are problematic.
+  compiler_flag: "-Wno-free-nonheap-object" # has false positives
+  # Keep stack frames for debugging, even in opt mode.
+  compiler_flag: "-fno-omit-frame-pointer"
+  # Enable coloring even if there's no attached terminal. Bazel removes the
+  # escape sequences if --nocolor is specified.
+  compiler_flag: "-fdiagnostics-color=always"
+
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_1"
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_2"
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_4"
+  # compiler_flag: "-D__GCC_HAVE_SYNC_COMPARE_AND_SWAP_8"
+
+  # linker_flag: "-target"
+  # linker_flag: "arm-linux-gnueabihf"
+  linker_flag: "--sysroot=external/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot"
+  linker_flag: "-pass-exit-codes"
+  linker_flag: "-Lexternal/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/lib"
+  linker_flag: "-Lexternal/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/lib"
+  linker_flag: "-Lexternal/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/sysroot/usr/lib"
+  linker_flag: "-Bexternal/GccArmRpi/arm-bcm2708/arm-rpi-4.9.3-linux-gnueabihf/arm-linux-gnueabihf/bin"
+  linker_flag: "-pie"
+  linker_flag: "-lstdc++"
+  # linker_flag: "-lm"
+  # linker_flag: "-lpthread"
+  linker_flag: "-Wl,--dynamic-linker=/lib/ld-linux-armhf.so.3"
+  linker_flag: "-Wl,-no-as-needed"
+  linker_flag: "-Wl,-z,relro,-z,now"
+  linker_flag: "-no-canonical-prefixes"
+  # Stamp the binary with a unique identifier.
+  linker_flag: "-Wl,--build-id=md5"
+  linker_flag: "-Wl,--hash-style=gnu"
+
+  compilation_mode_flags {
+    mode: DBG
+    # Enable debug symbols.
+    compiler_flag: "-g"
+  }
+  compilation_mode_flags {
+    mode: OPT
+
+    # No debug symbols.
+    # Maybe we should enable https://gcc.gnu.org/wiki/DebugFission for opt or
+    # even generally? However, that can't happen here, as it requires special
+    # handling in Bazel.
+    compiler_flag: "-g0"
+
+    # Disable assertions
+    compiler_flag: "-DNDEBUG"
+
+    # Removal of unused code and data at link time (can this increase binary size in some cases?).
+    compiler_flag: "-ffunction-sections"
+    compiler_flag: "-fdata-sections"
+    linker_flag: "-Wl,--gc-sections"
+
+    # Conservative choice for -O
+    # -O3 can increase binary size and even slow down the resulting binaries.
+    # Profile first and / or use FDO if you need better performance than this.
+    compiler_flag: "-O2"
+
+    # Conservative choice; -D_FORTIFY_SOURCE=2 may be unsafe in some cases.
+    # We need to undef it before redefining it as some distributions now have
+    # it enabled by default.
+    # Also depends on -O.
+    compiler_flag: "-U_FORTIFY_SOURCE"
+    compiler_flag: "-D_FORTIFY_SOURCE=1"
+
+    # Basic optims for RPi3, from Gentoo/ArchLinux Wiki
+    compiler_flag: "-mtune=cortex-a53"
+    # Inference time on small frozen LDC93S1 model goes from 30s to 20s with
+    # that flag, but generates instructions that valgrind chokes on.
+    compiler_flag: "-mfpu=neon-fp-armv8"
+    compiler_flag: "-funsafe-math-optimizations"
+    compiler_flag: "-ftree-vectorize"
+    compiler_flag: "-pipe"
+  }
+  linking_mode_flags { mode: DYNAMIC }
+}

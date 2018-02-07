@@ -1,0 +1,61 @@
+taskId: ${taskcluster.taskId}
+provisionerId: ${taskcluster.docker.provisionerId}
+workerType: ${taskcluster.docker.workerType}
+taskGroupId: ${taskcluster.taskGroupId}
+schedulerId: ${taskcluster.schedulerId}
+dependencies:
+  $map: { $eval: build.dependencies }
+  each(b):
+    $eval: as_slugid(b)
+created: { $fromNow: '0 sec' }
+deadline: { $fromNow: '1 day' }
+expires:
+  $if: 'event.event == "push"'
+  then: { $fromNow: '6 months' }
+  else: { $fromNow: '7 days' }
+
+extra:
+  github:
+    $if: 'event.event == "push"'
+    then: { $eval: taskcluster.github_events.merge }
+    else: { $eval: taskcluster.github_events.pull_request }
+
+routes:
+  $if: 'event.event == "push"'
+  then:
+    { $eval: build.routes }
+
+payload:
+  maxRunTime: { $eval: to_int(build.maxRunTime) }
+  image: "ubuntu:14.04"
+
+  command:
+    - "/bin/bash"
+    - "--login"
+    - "-cxe"
+    - >
+      apt-get -qq update && apt-get -qq -y install git &&
+      apt-get -qq -y install make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev curl llvm libncurses5-dev libncursesw5-dev xz-utils tk-dev &&
+      adduser --system --home /home/build-user build-user &&
+      cd /home/build-user/ &&
+      echo -e "#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet ${event.head.repo.url} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet ${event.head.sha}" > /tmp/clone.sh && chmod +x /tmp/clone.sh &&
+      sudo -H -u build-user /bin/bash /tmp/clone.sh &&
+      /home/build-user/DeepSpeech/tf/tc-apt.sh &&
+      sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-setup.sh ${build.args.tcsetup} &&
+      sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-build.sh ${build.args.tcbuild} &&
+      sudo -H -u build-user /bin/bash /home/build-user/DeepSpeech/tf/tc-package.sh
+
+  artifacts:
+    "public":
+      type: "directory"
+      path: "/tmp/artifacts/"
+      expires:
+        $if: 'event.event == "push"'
+        then: { $fromNow: '6 months' }
+        else: { $fromNow: '7 days' }
+
+metadata:
+  name: ${build.metadata.name}
+  description: ${build.metadata.description}
+  owner: ${event.head.user.email}
+  source: ${event.head.repo.url}

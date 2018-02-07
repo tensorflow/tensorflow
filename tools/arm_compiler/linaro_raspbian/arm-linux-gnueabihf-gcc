@@ -1,0 +1,6 @@
+#!/bin/bash --norc
+
+PATH="external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/libexec/gcc/arm-linux-gnueabihf/4.8.3/:$PATH" \
+    exec \
+    external/GccArmRpi/arm-bcm2708/gcc-linaro-arm-linux-gnueabihf-raspbian/bin/arm-linux-gnueabihf-gcc \
+    "$@"

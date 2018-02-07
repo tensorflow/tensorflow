@@ -1,0 +1,55 @@
+# The version is always required
+version: 0
+# Top level metadata is always required
+metadata:
+  name: "TensorFlow"
+  description: "TensorFlow builds"
+  owner: "{{ event.head.user.email }}" # the user who sent the pr/push e-mail will be inserted here
+  source: "{{ event.head.repo.url }}"  # the repo where the pr came from will be inserted here
+tasks:
+  - provisionerId: "{{ taskcluster.docker.provisionerId }}"
+    workerType: "deepspeech-worker"
+    extra:
+      github:
+        env: true
+        events:
+          - pull_request.opened
+          - pull_request.synchronize
+          - pull_request.reopened
+          - push
+        branches:
+          - master
+
+    scopes: [
+      "queue:create-task:lowest:{{ taskcluster.docker.provisionerId }}/deepspeech-worker",
+      "queue:create-task:lowest:deepspeech-provisioner/ds-macos-heavy",
+      "queue:route:index.project.deepspeech.*",
+      "queue:scheduler-id:taskcluster-github"
+    ]
+    payload:
+      maxRunTime: 600
+      image: "ubuntu:14.04"
+      features:
+        taskclusterProxy: true
+      command:
+        - "/bin/bash"
+        - "--login"
+        - "-cxe"
+        - >
+          apt-get -qq update && apt-get -qq -y install git python3-pip curl &&
+          adduser --system --home /home/build-user build-user &&
+          cd /home/build-user/ &&
+          echo -e "#!/bin/bash\nset -xe\nenv && id && mkdir ~/DeepSpeech/ && git clone --quiet {{event.head.repo.url}} ~/DeepSpeech/tf/ && cd ~/DeepSpeech/tf && git checkout --quiet {{event.head.sha}}" > /tmp/clone.sh && chmod +x /tmp/clone.sh &&
+          sudo -H -u build-user /bin/bash /tmp/clone.sh &&
+          sudo -H -u build-user --preserve-env /bin/bash /home/build-user/DeepSpeech/tf/tc-schedule.sh
+      artifacts:
+        "public":
+          type: "directory"
+          path: "/tmp/artifacts/"
+          expires: "{{ '7 days' | $fromNow }}"
+    # Each task also requires explicit metadata
+    metadata:
+      name: "TensorFlow Decision Task"
+      description: "TensorFlow Decision Task: triggers everything."
+      owner: "{{ event.head.user.email }}"
+      source: "{{ event.head.repo.url }}"

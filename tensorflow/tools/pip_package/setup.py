@@ -50,6 +50,8 @@ if '--project_name' in sys.argv:
   sys.argv.remove('--project_name')
   sys.argv.pop(project_name_idx)
 
+project_name += '_warpctc'
+
 # python3 requires wheel 0.26
 if sys.version_info.major == 3:
   REQUIRED_PACKAGES.append('wheel >= 0.26')

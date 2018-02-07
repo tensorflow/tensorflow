@@ -1,0 +1,68 @@
+taskId: ${taskcluster.taskId}
+provisionerId: ${taskcluster.generic.provisionerId}
+workerType: ${taskcluster.generic.workerType}
+taskGroupId: ${taskcluster.taskGroupId}
+schedulerId: ${taskcluster.schedulerId}
+dependencies:
+  $map: { $eval: build.dependencies }
+  each(b):
+    $eval: as_slugid(b)
+created: { $fromNow: '0 sec' }
+deadline: { $fromNow: '1 day' }
+expires:
+  $if: 'event.event == "push"'
+  then: { $fromNow: '6 months' }
+  else: { $fromNow: '7 days' }
+
+extra:
+  github:
+    $if: 'event.event == "push"'
+    then: { $eval: taskcluster.github_events.merge }
+    else: { $eval: taskcluster.github_events.pull_request }
+
+routes:
+  $if: 'event.event == "push"'
+  then:
+    { $eval: build.routes }
+
+payload:
+  maxRunTime: { $eval: to_int(build.maxRunTime) }
+  # There is no VM yet running tasks on OSX
+  # so one should install by hand:
+  # - brew
+  # - xcode (brew would install)
+  # - brew install git
+  # - brew install pixz
+  # - brew cask install java
+  # - sudo easy_install pip
+
+  command:
+    - - "/bin/bash"
+      - "--login"
+      - "-cxe"
+      - >
+        export TASKCLUSTER_ARTIFACTS="$(pwd)/public/" &&
+        export TASKCLUSTER_TASK_DIR="$(pwd)" &&
+        mkdir -p $TASKCLUSTER_TASK_DIR/DeepSpeech/ &&
+        env &&
+        git clone --quiet ${event.head.repo.url} $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/ &&
+        cd $TASKCLUSTER_TASK_DIR/DeepSpeech/tf && git checkout --quiet ${event.head.sha} && cd $TASKCLUSTER_TASK_DIR &&
+        $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-brew.sh &&
+        $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-setup.sh &&
+        $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-build.sh &&
+        $TASKCLUSTER_TASK_DIR/DeepSpeech/tf/tc-package.sh
+
+  artifacts:
+    - type: "directory"
+      path: "public/"
+      expires:
+        $if: 'event.event == "push"'
+        then: { $fromNow: '6 months' }
+        else: { $fromNow: '7 days' }
+
+# Each task also requires explicit metadata
+metadata:
+  name: ${build.metadata.name}
+  description: ${build.metadata.description}
+  owner: ${event.head.user.email}
+  source: ${event.head.repo.url}

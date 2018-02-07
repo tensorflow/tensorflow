@@ -64,6 +64,16 @@ config_setting(
 )
 
 config_setting(
+    name = "rpi3",
+    values = {
+        "host_crosstool_top": "@bazel_tools//tools/cpp:toolchain",
+        "crosstool_top": "//tools/arm_compiler:toolchain",
+        "cpu": "rpi-armeabi",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "android_arm",
     values = {
         "crosstool_top": "//external:android/crosstool",

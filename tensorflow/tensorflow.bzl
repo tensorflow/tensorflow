@@ -128,6 +128,12 @@ def if_not_mobile(a):
       "//conditions:default": a,
   })
 
+def if_rpi3(a):
+  return select({
+      "//tensorflow:rpi3": a,
+      "//conditions:default": [],
+  })
+
 def if_not_windows(a):
   return select({
       clean_dep("//tensorflow:windows"): [],
@@ -848,6 +854,21 @@ def tf_gpu_kernel_library(srcs,
                           deps=[],
                           hdrs=[],
                           **kwargs):
+## warp-ctc changed:
+## diff --git a/tensorflow/tensorflow.bzl b/tensorflow/tensorflow.bzl
+## index 8c92443..e18f9c9 100644
+## --- a/tensorflow/tensorflow.bzl
+## +++ b/tensorflow/tensorflow.bzl
+## @@ -283,7 +283,7 @@ def tf_cuda_cc_tests(tests, deps, tags=[], size="medium", linkstatic=0, args=Non
+##  def tf_gpu_kernel_library(srcs, copts=[], cuda_copts=[], deps=[], hdrs=[],
+##                            **kwargs):
+##    cuda_copts = ["-x", "cuda", "-DGOOGLE_CUDA=1",
+## -                "-nvcc_options=relaxed-constexpr", "-nvcc_options=ftz=true",
+## +                "-nvcc_options=ftz=true",
+##                  "--gcudacc_flag=-ftz=true"] + cuda_copts
+##    native.cc_library(
+##        srcs = srcs,
+
   copts = copts + _cuda_copts() + if_cuda(cuda_copts) + tf_copts()
 
   native.cc_library(
