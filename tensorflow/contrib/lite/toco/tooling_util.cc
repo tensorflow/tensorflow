@@ -1305,12 +1305,23 @@ int ElementSize(ArrayDataType data_type) {
   switch (data_type) {
     case ArrayDataType::kFloat:
       return 4;
-    case ArrayDataType::kInt32:
-      return 4;
+    case ArrayDataType::kInt8:
+      return 1;
     case ArrayDataType::kUint8:
       return 1;
+    case ArrayDataType::kInt16:
+      return 2;
+    case ArrayDataType::kUint16:
+      return 2;
+    case ArrayDataType::kInt32:
+      return 4;
+    case ArrayDataType::kUint32:
+      return 4;
     case ArrayDataType::kInt64:
       return 8;
+    case ArrayDataType::kUint64:
+      return 8;
+
     // Usually not critical limitation because strings are only input and/or
     // output.
     case ArrayDataType::kString:
@@ -1767,24 +1778,6 @@ void UseArraysExtraInfo(Model* model) {
     minmax.min = entry.min();
     minmax.max = entry.max();
   }
-}
-
-bool IsRnnSourceArray(const toco::Model& model, const string& array_name) {
-  for (const auto& rnn_state : model.flags.rnn_states()) {
-    if (array_name == rnn_state.back_edge_source_array()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool IsRnnStateArray(const toco::Model& model, const string& array_name) {
-  for (const auto& rnn_state : model.flags.rnn_states()) {
-    if (array_name == rnn_state.state_array()) {
-      return true;
-    }
-  }
-  return false;
 }
 
 }  // namespace toco
