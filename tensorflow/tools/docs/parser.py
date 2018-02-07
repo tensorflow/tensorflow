@@ -26,7 +26,7 @@ import os
 import re
 import sys
 
-import codegen
+import astor
 import six
 
 from google.protobuf.message import Message as ProtoMessage
@@ -705,7 +705,7 @@ def _generate_signature(func, reverse_index):
       if id(default) in reverse_index:
         default_text = reverse_index[id(default)]
       elif ast_default is not None:
-        default_text = codegen.to_source(ast_default)
+        default_text = astor.to_source(ast_default)
         if default_text != repr(default):
           # This may be an internal name. If so, handle the ones we know about.
           # TODO(wicke): This should be replaced with a lookup in the index.
