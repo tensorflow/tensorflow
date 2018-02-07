@@ -1624,6 +1624,30 @@ void ExportTensorFlowGraphDefImplementation(const Model& model,
 }
 }  // namespace
 
+void EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(Model* model) {
+  for (const auto& array_kv : model->GetArrayMap()) {
+    const string& array_name = array_kv.first;
+    Array& array = *array_kv.second;
+    if (!array.buffer || !array.minmax) {
+      continue;
+    }
+    const string& wrapped_array_name =
+        AvailableArrayName(*model, array_name + "/data");
+    Array& wrapped_array = model->GetOrCreateArray(wrapped_array_name);
+    wrapped_array.data_type = array.data_type;
+    wrapped_array.copy_shape(array.shape());
+    wrapped_array.buffer = std::move(array.buffer);
+    FakeQuantOperator* fakequant_op = new FakeQuantOperator;
+    fakequant_op->inputs = {wrapped_array_name};
+    fakequant_op->outputs = {array_name};
+    fakequant_op->minmax.reset(new MinMax);
+    *fakequant_op->minmax = *array.minmax;
+    const auto& it = FindOpWithInput(*model, array_name);
+    model->operators.emplace(it, fakequant_op);
+  }
+  CheckInvariants(*model);
+}
+
 void ExportTensorFlowGraphDef(const Model& model,
                               string* output_file_contents) {
   CHECK(output_file_contents->empty());

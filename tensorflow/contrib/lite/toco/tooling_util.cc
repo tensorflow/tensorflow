@@ -159,6 +159,18 @@ std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithInput(
   return model.operators.end();
 }
 
+std::vector<std::unique_ptr<Operator>>::iterator FindOpWithInput(
+    Model& model, const string& array_name) {
+  for (auto it = model.operators.begin(); it != model.operators.end(); ++it) {
+    for (auto& input : it->get()->inputs) {
+      if (input == array_name) {
+        return it;
+      }
+    }
+  }
+  return model.operators.end();
+}
+
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOp(
     const Model& model, const Operator* op) {
   for (auto it = model.operators.begin(); it != model.operators.end(); ++it) {
@@ -406,7 +418,7 @@ void LogArray(int log_level, const Model& model, const string& name) {
   }
   if (array.quantization_params) {
     VLOG(log_level) << "  QuantizationParams: zero_point="
-                    << array.quantization_params->zero_point
+                    << static_cast<int>(array.quantization_params->zero_point)
                     << ", scale=" << array.quantization_params->scale;
   }
 }

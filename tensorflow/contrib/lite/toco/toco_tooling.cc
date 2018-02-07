@@ -95,6 +95,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTransposeAttributes);
   transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
+  transformations->Add(new ResolveConstantFakeQuant);
 }
 
 bool SupportsQuantization(FileFormat format) {
@@ -212,9 +213,6 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   } else {
     transformations.Add(new UnfuseActivationFunctions);
   }
-  if (output_format != TENSORFLOW_GRAPHDEF) {
-    transformations.Add(new ResolveConstantFakeQuant);
-  }
   if (toco_flags.drop_fake_quant()) {
     transformations.Add(new DropFakeQuant);
   } else {
@@ -265,6 +263,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
 
     RunGraphTransformations(model, "dequantization graph transformations",
                             dequantization_transformations);
+  }
+
+  if (output_format == TENSORFLOW_GRAPHDEF) {
+    EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
   }
 
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);

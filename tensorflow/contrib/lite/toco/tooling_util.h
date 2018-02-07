@@ -67,10 +67,15 @@ Operator* GetOpWithOutput(const Model& model, const string& array_name);
 
 std::vector<std::unique_ptr<Operator>>::iterator FindOpWithOutput(
     Model& model, const string& array_name);
+
 Operator* GetOpWithOutput(const Model& model, const string& array_name);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithInput(
     const Model& model, const string& array_name);
+
+std::vector<std::unique_ptr<Operator>>::iterator FindOpWithInput(
+    Model& model, const string& array_name);
+
 Operator* GetOpWithInput(const Model& model, const string& array_name);
 Operator* GetFirstOpWithInput(const Model& model, const string& array_name);
 
