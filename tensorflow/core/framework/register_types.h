@@ -53,7 +53,7 @@ limitations under the License.
 */
 
 #if !defined(IS_MOBILE_PLATFORM) || defined(SUPPORT_SELECTIVE_REGISTRATION) || \
-    defined(NVIDIA_TEGRA)
+    defined(ANDROID_TEGRA)
 
 // All types are supported, so all macros are invoked.
 //

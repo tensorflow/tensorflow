@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/protobuf/tensorflow_server.pb.h"
+#include "tensorflow/core/protobuf/worker.pb.h"
 
 namespace tensorflow {
 
@@ -56,6 +57,12 @@ class SessionMgr {
 
   static string WorkerNameFromServerDef(const ServerDef& server_def);
 
+  void SetLogging(bool active);
+
+  void RetrieveLogs(tensorflow::int64 step_id, LoggingResponse* response);
+
+  void ClearLogs();
+
  private:
   const WorkerEnv* const worker_env_;  // Not owned.
 
@@ -74,6 +81,8 @@ class SessionMgr {
 
   std::unique_ptr<WorkerCacheInterface> default_worker_cache_;
   std::shared_ptr<WorkerSession> legacy_session_;
+
+  bool is_logging_active_ = false;
 
   const WorkerCacheFactory worker_cache_factory_;
 

@@ -322,7 +322,7 @@ do_external_licenses_check(){
   EXTRA_LICENSES_FILE="$(mktemp)_extra_licenses.log"
 
   echo "Getting external dependencies for ${BUILD_TARGET}"
- bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --no_implicit_deps --no_host_deps --keep_going \
+ bazel query "attr('licenses', 'notice', deps(${BUILD_TARGET}))" --keep_going \
   | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
@@ -331,7 +331,7 @@ do_external_licenses_check(){
 
   echo
   echo "Getting list of external licenses mentioned in ${LICENSES_TARGET}."
-  bazel query "deps(${LICENSES_TARGET})" --no_implicit_deps --no_host_deps --keep_going \
+  bazel query "deps(${LICENSES_TARGET})" --keep_going \
   | grep -E -v "^//tensorflow" \
   | sed -e 's|:.*||' \
   | sort \
@@ -344,6 +344,18 @@ do_external_licenses_check(){
   comm -2 -3 ${EXTERNAL_DEPENDENCIES_FILE}  ${LICENSES_FILE} 2>&1 | tee ${MISSING_LICENSES_FILE}
 
   EXTERNAL_LICENSES_CHECK_END_TIME=$(date +'%s')
+
+  # Blacklist
+  echo ${MISSING_LICENSES_FILE}
+  grep -e "@bazel_tools//third_party/" -e "@com_google_absl//absl" -e "@org_tensorflow//" -v ${MISSING_LICENSES_FILE} > temp.txt
+  mv temp.txt ${MISSING_LICENSES_FILE}
+
+  # Whitelist
+  echo ${EXTRA_LICENSE_FILE}
+  grep -e "@bazel_tools//src/" -e "@bazel_tools//tools/" -e "@com_google_absl//" -e "//external" -e "@local" -v ${EXTRA_LICENSES_FILE} > temp.txt
+  mv temp.txt ${EXTRA_LICENSES_FILE}
+
+
 
   echo
   echo "do_external_licenses_check took $((EXTERNAL_LICENSES_CHECK_END_TIME - EXTERNAL_LICENSES_CHECK_START_TIME)) s"

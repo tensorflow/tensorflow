@@ -58,6 +58,8 @@ _restore_sparse = sparse_ops._take_many_sparse_from_tensors_map
 def match_filenames_once(pattern, name=None):
   """Save the list of files matching pattern, so it is only computed once.
 
+  NOTE: The order of the files returned can be non-deterministic.
+
   Args:
     pattern: A file pattern (glob), or 1D tensor of file patterns.
     name: A name for the operations (optional).

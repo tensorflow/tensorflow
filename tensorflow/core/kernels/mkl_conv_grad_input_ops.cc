@@ -44,7 +44,7 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
 using mkldnn::convolution_backward_data;
@@ -56,7 +56,7 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 template <typename Device, class T>
 class MklConv2DCustomBackpropInputOp : public OpKernel {
@@ -493,7 +493,7 @@ class MklConv2DCustomBackpropInputOp
   }
 };
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
 #define REGISTER_MKL_CPU_KERNELS(T)                                 \
   REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropInput")           \

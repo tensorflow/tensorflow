@@ -1094,7 +1094,7 @@ class SeparableConv1D(_SeparableConv):
       strides = (1, 1, 1) + self.strides
       spatial_start_dim = 2
 
-    # Explictly broadcast inputs and kernels to 4D.
+    # Explicitly broadcast inputs and kernels to 4D.
     # TODO(fchollet): refactor when a native separable_conv1d op is available.
     inputs = array_ops.expand_dims(inputs, spatial_start_dim)
     depthwise_kernel = array_ops.expand_dims(self.depthwise_kernel, 0)
@@ -1904,6 +1904,7 @@ class Conv3DTranspose(Conv3D):
           dtype=self.dtype)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -1974,6 +1975,8 @@ class Conv3DTranspose(Conv3D):
 
     if self.use_bias:
       outputs_shape = outputs.shape.as_list()
+      if outputs_shape[0] is None:
+        outputs_shape[0] = -1
       if self.data_format == 'channels_first':
         outputs_4d = array_ops.reshape(outputs, [
             outputs_shape[0], outputs_shape[1],
@@ -2007,11 +2010,11 @@ class Conv3DTranspose(Conv3D):
 
     output_shape[c_axis] = self.filters
     output_shape[d_axis] = utils.deconv_output_length(
-        output_shape[d_axis], stride_d, kernel_d, self.padding)
+        output_shape[d_axis], kernel_d, self.padding, stride_d)
     output_shape[h_axis] = utils.deconv_output_length(
-        output_shape[h_axis], stride_h, kernel_h, self.padding)
+        output_shape[h_axis], kernel_h, self.padding, stride_h)
     output_shape[w_axis] = utils.deconv_output_length(
-        output_shape[w_axis], stride_w, kernel_w, self.padding)
+        output_shape[w_axis], kernel_w, self.padding, stride_w)
     return tensor_shape.TensorShape(output_shape)
 
 

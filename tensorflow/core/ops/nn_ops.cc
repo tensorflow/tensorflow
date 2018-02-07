@@ -1818,7 +1818,7 @@ REGISTER_OP("_MklMaxPool")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Output("workspace: T")
 #else
     .Output("workspace: uint8")
@@ -1844,7 +1844,7 @@ REGISTER_OP("_MklMaxPoolGrad")
     .Input("orig_input: T")
     .Input("orig_output: T")
     .Input("grad: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Input("workspace: T")
 #else
     .Input("workspace: uint8")
@@ -1916,7 +1916,7 @@ REGISTER_OP("_MklLRN")
     .Input("input: T")
     .Input("mkl_input: uint8")
     .Output("output: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Output("workspace: T")
 #else
     .Output("workspace: uint8")
@@ -1944,7 +1944,7 @@ REGISTER_OP("_MklLRNGrad")
     .Input("input_grads: T")
     .Input("input_image: T")
     .Input("output_image: T")
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
     .Input("workspace: T")
 #else
     .Input("workspace: uint8")

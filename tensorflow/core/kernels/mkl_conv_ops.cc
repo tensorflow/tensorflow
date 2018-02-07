@@ -41,7 +41,8 @@ limitations under the License.
 
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
+
 #include "mkldnn.hpp"
 
 using mkldnn::prop_kind;
@@ -58,8 +59,8 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-// For now, MKL-ML is default. So making MKL-DNN not a default choice.
-#ifndef INTEL_MKL_DNN
+// MKL-DNN is now default. MKL-ML must be specified explicitly.
+#ifdef INTEL_MKL_ML
 
 template <typename Device, typename T, bool biasEnabled>
 class MklConv2DOp : public OpKernel {

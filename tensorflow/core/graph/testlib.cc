@@ -273,6 +273,16 @@ Node* Reverse(Graph* g, Node* tensor, Node* axis) {
   return Binary(g, "ReverseV2", tensor, axis);
 }
 
+Node* Roll(Graph* g, Node* input, Node* shift, Node* axis) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Roll", g->op_registry())
+                  .Input(input)
+                  .Input(shift)
+                  .Input(axis)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Error(Graph* g, Node* input, const string& errmsg) {
   Node* ret;
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Error")

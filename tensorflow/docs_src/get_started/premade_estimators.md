@@ -372,7 +372,7 @@ Test set accuracy: 0.967
 
 We now have a trained model that produces good evaluation results.
 We can now use the trained model to predict the species of an Iris flower
-based on some unlabeled measurments. As with training and evaluation, we make
+based on some unlabeled measurements. As with training and evaluation, we make
 predictions using a single function call:
 
 ```python

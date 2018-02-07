@@ -35,6 +35,7 @@ See the @{$python/array_ops} guide.
 @@reshape
 @@squeeze
 @@expand_dims
+@@unravel_index
 @@meshgrid
 @@slice
 @@strided_slice
@@ -1589,9 +1590,9 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
 
   Args:
     tensor: A `Tensor`.
-    dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
-      `int8`, `uint8`, `int16`, `uint16`, int32`, `int64`,
-      `complex64`, `complex128` or `bool`.
+    dtype: A type for the returned `Tensor`. Must be `float16`, `float32`,
+      `float64`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `int64`,
+      `complex64`, `complex128`, `bool` or `string`.
     name: A name for the operation (optional).
     optimize: if true, attempt to statically determine the shape of 'tensor'
     and encode it as a constant.

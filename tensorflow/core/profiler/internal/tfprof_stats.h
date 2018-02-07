@@ -83,7 +83,7 @@ class TFStats {
   const MultiGraphNodeProto& ShowMultiGraphNode(const string& cmd,
                                                 const Options& opts) const;
 
-  // A a (partial) graph to existing graph.
+  // Add a (partial) graph to existing graph.
   void AddGraph(std::unique_ptr<GraphDef> graph);
 
   // Add a step of run time meta data.
@@ -118,7 +118,7 @@ class TFStats {
   MultiGraphNodeProto empty_multi_graph_node_;
 
   std::map<int64, string> id_to_string_;
-  // Graph nodes covered by RunMetdata, that is traced with run time stats.
+  // Graph nodes covered by RunMetadata, that is traced with run time stats.
   std::set<int64> covered_nodes_;
 };
 
