@@ -485,7 +485,7 @@ class TPUEstimatorSpec(
     if self.eval_metrics is not None:
       host_calls['eval_metrics'] = self.eval_metrics
     if self.host_call is not None:
-      host_calls['host_call'] = wrap_hostcall_with_global_step(self.host_call)
+      host_calls['host_call'] = self.host_call
     host_call_ret = _OutfeedHostCall.create_cpu_hostcall(host_calls)
     eval_metric_ops = None
     if self.eval_metrics is not None:
@@ -1303,19 +1303,21 @@ class _ModelFnWrapper(object):
           self._call_model_fn(features, labels))
       loss, train_op = estimator_spec.loss, estimator_spec.train_op
 
-      host_call_outfeed_ops = []
       if isinstance(estimator_spec, TPUEstimatorSpec):
         captured_scaffold_fn.capture(estimator_spec.scaffold_fn)
-        if estimator_spec.host_call is not None:
-          host_call.record({
-              'host_call': wrap_hostcall_with_global_step(
-                  estimator_spec.host_call)})
-          host_call_outfeed_ops = host_call.create_enqueue_op()
       else:
         captured_scaffold_fn.capture(None)
 
-      with ops.control_dependencies([train_op] + host_call_outfeed_ops):
-        return array_ops.identity(loss)
+      # We must run train_op to update the variables prior to running the
+      # outfeed.
+      with ops.control_dependencies([train_op]):
+        host_call_outfeed_ops = []
+        if (isinstance(estimator_spec, TPUEstimatorSpec) and
+            estimator_spec.host_call is not None):
+          host_call.record({'host_call': estimator_spec.host_call})
+          host_call_outfeed_ops = host_call.create_enqueue_op()
+        with ops.control_dependencies(host_call_outfeed_ops):
+          return array_ops.identity(loss)
 
     return train_step, host_call, captured_scaffold_fn
 
@@ -1655,38 +1657,6 @@ class _OutfeedHostCall(object):
           ret[name] = self._host_fns[name](*dequeue_ops)
 
     return ret
-
-
-def wrap_hostcall_with_global_step(hostcall):
-  """Wrap the hostcall so that we update the global step upon every call."""
-  if hostcall is None:
-    return None
-  host_fn, tensors = hostcall
-
-  def global_step_host_fn(_global_step, *args, **kwargs):  # pylint: disable=invalid-name
-    # Note that we don't have any ordering here, so the graph may see a
-    # global_step that's off by 1.
-    state_ops.assign(
-        training.get_global_step(),
-        math_ops.cast(_global_step[0], dtypes.int64))
-    return host_fn(*args, **kwargs)
-  # Give the global step tensor a batch dimension. Reshape is not supported for
-  # int64, so we cast it to int32.
-  # TODO(jhseu): Remove the cast once int64 is supported.
-  global_step_tensor = array_ops.reshape(
-      math_ops.cast(training.get_global_step(), dtypes.int32), [1])
-  if isinstance(tensors, dict):
-    outfeed_tensors = {'_global_step': global_step_tensor}
-    outfeed_tensors.update(tensors)
-    return global_step_host_fn, outfeed_tensors
-  else:
-    fn_args = util.fn_args(host_fn)
-    if len(tensors) != len(fn_args):
-      raise RuntimeError(
-          'In TPUEstimatorSpec.host_call, length of tensors {} does not match '
-          'method args of the function, which takes {}.'.format(
-              len(tensors), len(fn_args)))
-    return global_step_host_fn, [global_step_tensor] + list(tensors)
 
 
 class _OutfeedHostCallHook(session_run_hook.SessionRunHook):
