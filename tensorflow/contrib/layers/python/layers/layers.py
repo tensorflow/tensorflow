@@ -59,11 +59,12 @@ __all__ = [
     'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv2d', 'conv3d',
     'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
     'convolution2d', 'convolution2d_in_plane', 'convolution2d_transpose',
-    'convolution3d', 'convolution3d_transpose', 'dense_to_sparse', 'dropout',
-    'elu', 'flatten', 'fully_connected', 'GDN', 'gdn', 'layer_norm', 'linear',
-    'pool', 'max_pool2d', 'max_pool3d', 'one_hot_encoding', 'relu', 'relu6',
-    'repeat', 'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
-    'softmax', 'spatial_softmax', 'stack', 'unit_norm',
+    'convolution3d', 'convolution3d_transpose', 'dense_to_sparse',
+    'dropout', 'elu', 'flatten', 'fully_connected', 'GDN', 'gdn',
+    'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
+    'max_pool3d', 'one_hot_encoding', 'relu', 'relu6', 'repeat',
+    'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
+    'sequence_to_images', 'softmax', 'spatial_softmax', 'stack', 'unit_norm',
     'legacy_fully_connected', 'legacy_linear', 'legacy_relu', 'maxout'
 ]
 
@@ -2186,6 +2187,34 @@ def layer_norm(inputs,
 
 
 @add_arg_scope
+def images_to_sequence(inputs, data_format=DATA_FORMAT_NHWC,
+                       outputs_collections=None, scope=None):
+  """Convert a batch of images into a batch of sequences.
+  Args:
+    inputs: a (num_images, height, width, depth) tensor
+    data_format: A string. `NHWC` (default) and `NCHW` are supported.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+  Returns:
+    (width, num_images*height, depth) sequence tensor
+  """
+  if data_format not in (DATA_FORMAT_NCHW, DATA_FORMAT_NHWC):
+    raise ValueError('data_format has to be either NCHW or NHWC.')
+  with ops.name_scope(scope, 'ImagesToSequence', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    df = ('channels_first'
+          if data_format and data_format.startswith('NC') else 'channels_last')
+    if df == 'channels_first':
+      inputs = array_ops.transpose(inputs, [0, 2, 3, 1])
+    _, _, width, depth = inputs.get_shape().as_list()
+    s = array_ops.shape(inputs)
+    batch_size, height = s[0], s[1]
+    transposed = array_ops.transpose(inputs, [2, 0, 1, 3])
+    outputs = array_ops.reshape(transposed, [width, batch_size * height, depth])
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
+
+
+@add_arg_scope
 def max_pool2d(inputs,
                kernel_size,
                stride=2,
@@ -2662,6 +2691,36 @@ def separable_convolution2d(
     if activation_fn is not None:
       outputs = activation_fn(outputs)
     return utils.collect_named_outputs(outputs_collections, sc.name, outputs)
+
+
+@add_arg_scope
+def sequence_to_images(inputs, height, output_data_format='channels_last',
+                       outputs_collections=None, scope=None):
+  """Convert a batch of sequences into a batch of images.
+  Args:
+    inputs: (num_steps, num_batches, depth) sequence tensor
+    height: the height of the images
+    output_data_format: Format of output tensor.
+      Currently supports `'channels_first'` and `'channels_last'`.
+    outputs_collections: The collections to which the outputs are added.
+    scope: Optional scope for name_scope.
+  Returns:
+    A tensor representing the output of the operation.
+  """
+  with ops.name_scope(scope, 'SequenceToImages', [inputs]) as sc:
+    inputs = ops.convert_to_tensor(inputs)
+    width, num_batches, depth = inputs.get_shape().as_list()
+    if num_batches is None:
+      num_batches = -1
+    else:
+      num_batches = num_batches // height
+    reshaped = array_ops.reshape(inputs,
+                                 [width, num_batches, height, depth])
+    if output_data_format == 'channels_first':
+      outputs = array_ops.transpose(reshaped, [1, 3, 2, 0])
+    else:
+      outputs = array_ops.transpose(reshaped, [1, 2, 0, 3])
+    return utils.collect_named_outputs(outputs_collections, sc, outputs)
 
 
 @add_arg_scope

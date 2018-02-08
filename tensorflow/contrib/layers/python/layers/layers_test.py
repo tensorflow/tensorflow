@@ -708,7 +708,7 @@ class Convolution2dTransposeTests(test.TestCase):
         _layers.convolution2d_transpose(images, 32, 3, data_format='CHWN')
 
   def testOutputSizeWithStrideOneSamePaddingNCHW(self):
-    # `NCHW` data fomat is only supported for `GPU` device.
+    # `NCHW` data format is only supported for `GPU` device.
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
@@ -2196,7 +2196,7 @@ class BatchNormTest(test.TestCase):
       # After initialization moving_mean == 0 and moving_variance == 1.
       self.assertAllClose(mean, [0] * 3)
       self.assertAllClose(variance, [1] * 3)
-      # Simulate assigment from saver restore.
+      # Simulate assignment from saver restore.
       init_assigns = [
           state_ops.assign(moving_mean, expected_mean),
           state_ops.assign(moving_variance, expected_var)
@@ -2950,6 +2950,28 @@ class GDNTest(test.TestCase):
     self.assertAllClose(y, x * np.sqrt(1 + .1 * (x**2)), rtol=0, atol=1e-6)
 
 
+class ImagesToSequenceTest(test.TestCase):
+
+  def testInvalidDataFormat(self):
+    height, width = 7, 11
+    images = np.random.uniform(size=(5, height, width, 2))
+    with self.assertRaisesRegexp(ValueError,
+                                 'data_format has to be either NCHW or NHWC.'):
+      _layers.images_to_sequence(images, data_format='CHWN')
+
+  def testImagesToSequenceDims(self):
+    height, width = 7, 11
+    images = np.random.uniform(size=(2, height, width, 5)).astype(np.float32)
+    output = _layers.images_to_sequence(images)
+    self.assertListEqual(output.get_shape().as_list(), [11, 14, 5])
+
+  def testImagesToSequenceNCHW(self):
+    height, width = 7, 11
+    images = np.random.uniform(size=(2, 5, height, width)).astype(np.float32)
+    output = _layers.images_to_sequence(images, data_format='NCHW')
+    self.assertListEqual(output.get_shape().as_list(), [11, 14, 5])
+
+
 class MaxPool2DTest(test.TestCase):
 
   def testInvalidDataFormat(self):
@@ -3416,6 +3438,33 @@ class ScaleGradientTests(test.TestCase):
       np.testing.assert_array_equal(x.eval(), y.eval())
       g_x, = gradients_impl.gradients(y, [x], [np.array([3], np.float32)])
       np.testing.assert_array_equal([3 * 2], g_x.eval())
+
+
+class SequenceToImagesTest(test.TestCase):
+
+  def testImagesToSequenceDims(self):
+    num_batches = 14
+    num_time_steps = 11
+    num_channels = 5
+    desired_height = 7
+    sequence = np.random.uniform(size=(num_time_steps,
+                                       num_batches,
+                                       num_channels)).astype(np.float32)
+    output = _layers.sequence_to_images(sequence, desired_height)
+    self.assertListEqual(output.get_shape().as_list(), [2, 7, 11, 5])
+
+  def testImagesToSequenceNCHW(self):
+    num_batches = 14
+    num_time_steps = 11
+    num_channels = 5
+    desired_height = 7
+    sequence = np.random.uniform(size=(num_time_steps,
+                                       num_batches,
+                                       num_channels)).astype(np.float32)
+    output = _layers.sequence_to_images(sequence,
+                                        desired_height,
+                                        output_data_format='channels_first')
+    self.assertListEqual(output.get_shape().as_list(), [2, 5, 7, 11])
 
 
 class SoftmaxTests(test.TestCase):
