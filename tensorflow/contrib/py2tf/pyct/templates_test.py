@@ -27,6 +27,16 @@ from tensorflow.python.platform import test
 
 class TemplatesTest(test.TestCase):
 
+  def test_replace_tuple(self):
+    template = """
+      def test_fn(a, c):
+        return b,
+    """
+
+    node = templates.replace(template, b=('a', 'c'))[0]
+    result = compiler.ast_to_object(node)
+    self.assertEquals((2, 3), result.test_fn(2, 3))
+
   def test_replace_variable(self):
     template = """
       def test_fn(a):

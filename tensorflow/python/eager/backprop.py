@@ -157,6 +157,8 @@ _ops_which_dont_need_outputs = set([
     "SegmentMax",
     "UnsortedSegmentSum",
     "UnsortedSegmentMax",
+    "UnsortedSegmentMin",
+    "UnsortedSegmentProd",
     "Abs",
     "Neg",
     "ReciprocalGrad",

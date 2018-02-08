@@ -2626,28 +2626,36 @@ flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(
 
 struct ResizeBilinearOptionsT : public flatbuffers::NativeTable {
   typedef ResizeBilinearOptions TableType;
-  ResizeBilinearOptionsT() {}
+  bool align_corners;
+  ResizeBilinearOptionsT()
+      : align_corners(false) {
+  }
 };
 
-struct ResizeBilinearOptions FLATBUFFERS_FINAL_CLASS
-    : private flatbuffers::Table {
+struct ResizeBilinearOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   typedef ResizeBilinearOptionsT NativeTableType;
-  bool Verify(flatbuffers::Verifier &verifier) const {
-    return VerifyTableStart(verifier) && verifier.EndTable();
+  enum {
+    VT_ALIGN_CORNERS = 8
+  };
+  bool align_corners() const {
+    return GetField<uint8_t>(VT_ALIGN_CORNERS, 0) != 0;
   }
-  ResizeBilinearOptionsT *UnPack(
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(
-      ResizeBilinearOptionsT *_o,
-      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<ResizeBilinearOptions> Pack(
-      flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT *_o,
-      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS) &&
+           verifier.EndTable();
+  }
+  ResizeBilinearOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ResizeBilinearOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ResizeBilinearOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct ResizeBilinearOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
+  void add_align_corners(bool align_corners) {
+    fbb_.AddElement<uint8_t>(ResizeBilinearOptions::VT_ALIGN_CORNERS, static_cast<uint8_t>(align_corners), 0);
+  }
   explicit ResizeBilinearOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
       : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -2661,14 +2669,14 @@ struct ResizeBilinearOptionsBuilder {
 };
 
 inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(
-    flatbuffers::FlatBufferBuilder &_fbb) {
+    flatbuffers::FlatBufferBuilder &_fbb,
+    bool align_corners = false) {
   ResizeBilinearOptionsBuilder builder_(_fbb);
+  builder_.add_align_corners(align_corners);
   return builder_.Finish();
 }
 
-flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(
-    flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT *_o,
-    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct CallOptionsT : public flatbuffers::NativeTable {
   typedef CallOptions TableType;

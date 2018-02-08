@@ -459,7 +459,7 @@ class IteratorHandleOp : public OpKernel {
     {
       mutex_lock l(mu_);
       if (resource_ == nullptr) {
-        FunctionLibraryRuntime* lib = context->function_library();
+        FunctionLibraryRuntime* lib;
         std::unique_ptr<DeviceMgr> device_mgr(nullptr);
         std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
         std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
@@ -469,6 +469,9 @@ class IteratorHandleOp : public OpKernel {
         // is sufficient demand, but it will require a significant refactoring.
         if (!name_.empty()) {
           lib = CreatePrivateFLR(context, &device_mgr, &flib_def, &pflr);
+        } else {
+          OP_REQUIRES_OK(context, context->function_library()->Clone(
+                                      &flib_def, &pflr, &lib));
         }
 
         ResourceMgr* mgr = context->resource_manager();
@@ -538,7 +541,7 @@ class IteratorHandleOp : public OpKernel {
     // Wrap the existing device in order to see any captured resources
     // in its resource manager. The existing device will outlive the
     // IteratorResource, because we are storing the IteratorResource
-    // in that device's resourc manager.
+    // in that device's resource manager.
     Device* wrapped_device = RenamedDevice::NewRenamedDevice(
         ctx->device()->name(), down_cast<Device*>(ctx->device()),
         false /* owns_underlying */, false /* isolate_session_state */);
@@ -722,18 +725,23 @@ class OneShotIteratorOp : public AsyncOpKernel {
   Status TryInit(OpKernelContext* ctx, IteratorResource** iterator,
                  ContainerInfo* cinfo) {
     TF_RETURN_IF_ERROR(cinfo->Init(ctx->resource_manager(), def()));
-    FunctionLibraryRuntime* lib = ctx->function_library();
+
+    FunctionLibraryRuntime* lib;
+    std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
+    TF_RETURN_IF_ERROR(ctx->function_library()->Clone(&flib_def, &pflr, &lib));
 
     // Create an IteratorResource that will hold the iterator for this op.
     TF_RETURN_IF_ERROR(
         ctx->resource_manager()->LookupOrCreate<IteratorResource>(
             cinfo->container(), cinfo->name(), iterator,
-            [lib, this](IteratorResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-              *ret = new IteratorResource(output_dtypes_, output_shapes_,
-                                          graph_def_version_, nullptr, nullptr,
-                                          nullptr, lib);
-              return Status::OK();
-            }));
+            [lib, this, &flib_def, &pflr](IteratorResource** ret)
+                EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                  *ret = new IteratorResource(
+                      output_dtypes_, output_shapes_, graph_def_version_,
+                      nullptr, std::move(flib_def), std::move(pflr), lib);
+                  return Status::OK();
+                }));
 
     core::ScopedUnref unref_iterator(*iterator);
 

@@ -193,8 +193,8 @@ TEST_F(ArenaPlannerTest, GraphWithNoOps) {
   EXPECT_EQ(GetOffset(10), GetOffsetAfter(0));
   // The outputs are never allocated because they are not connected to any
   // inputs.
-  EXPECT_EQ(GetOffset(5), 0);
-  EXPECT_EQ(GetOffset(11), 0);
+  EXPECT_TRUE((*graph.tensors())[5].data.raw == nullptr);
+  EXPECT_TRUE((*graph.tensors())[11].data.raw == nullptr);
 }
 
 TEST_F(ArenaPlannerTest, GraphWithOneOp) {
@@ -373,11 +373,7 @@ TEST_F(ArenaPlannerTest, LargerGraphAndStepwiseAllocation) {
   SetGraph(&graph);
 
   auto is_unallocated = [&](int tensor_index) {
-    // TODO(ahentz): We'd to use nullptr to represent unallocated tensors, but
-    // the current code still points them all to the beginning fo the alloc
-    // (that is, zero offset).
-    // return (*graph.tensors())[tensor_index].data.raw == nullptr;
-    return GetOffset(tensor_index) == 0;
+    return (*graph.tensors())[tensor_index].data.raw == nullptr;
   };
 
   // The allocation plan is made at the beginning and is independent of

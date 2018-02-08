@@ -41,10 +41,14 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kConcatenation ||
          type == OperatorType::kL2Normalization || type == OperatorType::kAdd ||
          type == OperatorType::kAveragePool || type == OperatorType::kMaxPool ||
+         type == OperatorType::kTensorFlowMinimum ||
+         type == OperatorType::kTensorFlowMaximum ||
          type == OperatorType::kLogistic || type == OperatorType::kSoftmax ||
+         type == OperatorType::kTensorFlowSplit || type == OperatorType::kSub ||
          type == OperatorType::kSqueeze || type == OperatorType::kPad ||
          type == OperatorType::kTensorFlowReshape ||
-         type == OperatorType::kMul || type == OperatorType::kSpaceToDepth ||
+         type == OperatorType::kTanh || type == OperatorType::kMul ||
+         type == OperatorType::kSpaceToDepth ||
          type == OperatorType::kDepthToSpace;
 }
 
@@ -258,6 +262,17 @@ bool ChooseHardcodedQuantizationForOperatorOutput(
                                  *quantization_params));
     return true;
   }
+  if (op.type == OperatorType::kTanh) {
+    // Tanh has the range: [-1, 1].
+    *quantized_data_type = ArrayDataType::kUint8;
+    quantization_params->zero_point = 127;
+    quantization_params->scale = 1. / 128.;
+    // 0 should be exactly representable, as values will typically be centered
+    // around 0, with many values near 0.
+    CHECK(
+        IsExactlyRepresentable(0., *quantized_data_type, *quantization_params));
+    return true;
+  }
   return false;
 }
 
@@ -395,11 +410,22 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
       if (IsConstantParameterArray(*model, input)) {
         QuantizeArray(this, model, input, quantized_data_type,
                       quantization_params);
+      } else if (toco::IsRnnStateArray(*model, input)) {
+        // Simply Quantize the Array
+        auto& array = model->GetArray(op.inputs[input_index]);
+        array.GetOrCreateQuantizationParams() = quantization_params;
+        array.data_type = quantized_data_type;
       } else {
         auto dequantize_it = FindOpWithOutput(*model, input);
-        CHECK(dequantize_it != model->operators.end());
+        CHECK(dequantize_it != model->operators.end())
+            << "Cannot quantize input \"" << input
+            << "\" on operator with output \"" << op.outputs[0]
+            << "\". Nothing feeding input.";
         auto* dequantize_op = dequantize_it->get();
-        CHECK(dequantize_op->type == OperatorType::kDequantize);
+        CHECK(dequantize_op->type == OperatorType::kDequantize)
+            << "Cannot quantize input \"" << input
+            << "\" on operator with output \"" << op.outputs[0]
+            << "\". Input is not fed by a Dequantize operator.";
         op.inputs[input_index] = dequantize_op->inputs[0];
         // Check if the output of that Dequantize op was not used by any
         // other operator. We will then erase that Dequantize op.

@@ -808,20 +808,26 @@ NodeDef ConstantFolding::CreateNodeDef(const string& name,
   // Use the packed representation whenever possible to avoid generating large
   // graphdefs. Moreover, avoid repeating the last values if they're equal.
   if (tensor->NumElements() > 4) {
-#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, NAME)         \
-  optimized = true;                                          \
-  TYPE last = tensor->flat<TYPE>()(0);                       \
-  int last_index = 0;                                        \
-  for (int i = 0; i < tensor->NumElements(); ++i) {          \
-    TYPE cur = tensor->flat<TYPE>()(i);                      \
-    t->add_##NAME##_val(cur);                                \
-    if (cur != last) {                                       \
-      last = cur;                                            \
-      last_index = i;                                        \
-    }                                                        \
-  }                                                          \
-  /* Remove all identical trailing values to save memory. */ \
-  t->mutable_##NAME##_val()->Truncate(last_index + 1);
+#define POPULATE_TENSOR_PROTO(tensor, t, TYPE, NAME)                \
+  const TYPE* val_ptr = tensor->flat<TYPE>().data();                \
+  TYPE last = *val_ptr;                                             \
+  int64 last_index = 0;                                             \
+  for (int64 i = 0; i < tensor->NumElements(); ++i) {               \
+    TYPE cur = *val_ptr++;                                          \
+    if (cur != last) {                                              \
+      last = cur;                                                   \
+      last_index = i;                                               \
+    }                                                               \
+  }                                                                 \
+  if (last_index < kint32max) {                                     \
+    optimized = true;                                               \
+    t->mutable_##NAME##_val()->Reserve(last_index + 1);             \
+    t->mutable_##NAME##_val()->AddNAlreadyReserved(last_index + 1); \
+    val_ptr = tensor->flat<TYPE>().data();                          \
+    for (int64 i = 0; i <= last_index; ++i) {                       \
+      t->set_##NAME##_val(i, *val_ptr++);                           \
+    }                                                               \
+  }
 
     if (tensor->dtype() == DT_FLOAT) {
       POPULATE_TENSOR_PROTO(tensor, t, float, float)
@@ -1658,7 +1664,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   // more with the original node name.
   for (const auto& fetch : item.fetch) {
     const NodeDef* fetch_node = node_map_->GetNode(fetch);
-    if (fetch_node && NumOutputs(*fetch_node) == 1) {
+    if (fetch_node && NumOutputs(*fetch_node, graph_) == 1) {
       nodes_whitelist_.insert(fetch_node->name());
     }
   }
