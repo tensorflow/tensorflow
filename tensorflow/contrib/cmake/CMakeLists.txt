@@ -286,7 +286,21 @@ if (tensorflow_ENABLE_GPU)
     list(APPEND CMAKE_LIBRARY_PATH "${tensorflow_CUDA_LIBRARY_PATH}/stubs")
   endif (NOT WIN32)
 
-  find_package(CUDA ${tensorflow_CUDA_VERSION} REQUIRED)
+  # later command will make use of the value in tensorflow_CUDA_VERSION
+  find_package(CUDA ${tensorflow_CUDA_VERSION} REQUIRED EXACT)
+
+  # Test compatibility of compiler on CUDA
+  try_compile(CUDA_TEST_COMPILE_C
+    ${CMAKE_CURRENT_BINARY_DIR}/tests/cuda
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/cuda/compatibility_test.c
+    CMAKE_FLAGS -DINCLUDE_DIRECTORIES=${CUDA_INCLUDE_DIRS})
+  try_compile(CUDA_TEST_COMPILE_CXX
+    ${CMAKE_CURRENT_BINARY_DIR}/tests/cuda
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/cuda/compatibility_test.cc
+    CMAKE_FLAGS -DINCLUDE_DIRECTORIES=${CUDA_INCLUDE_DIRS})
+  if(NOT (CUDA_TEST_COMPILE_C AND CUDA_TEST_COMPILE_CXX))
+    message(FATAL_ERROR "Selected compiler (or version) is not supported for CUDA")
+  endif()
 
   # by default we assume compute cabability 3.5 and 5.2. If you change this change it in
   # CUDA_NVCC_FLAGS and cuda_config.h below
