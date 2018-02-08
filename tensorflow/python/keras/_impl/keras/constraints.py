@@ -64,8 +64,7 @@ class MaxNorm(Constraint):
   def __call__(self, w):
     norms = K.sqrt(K.sum(K.square(w), axis=self.axis, keepdims=True))
     desired = K.clip(norms, 0, self.max_value)
-    w *= (desired / (K.epsilon() + norms))
-    return w
+    return w * (desired / (K.epsilon() + norms))
 
   def get_config(self):
     return {'max_value': self.max_value, 'axis': self.axis}
@@ -76,8 +75,7 @@ class NonNeg(Constraint):
   """
 
   def __call__(self, w):
-    w *= K.cast(K.greater_equal(w, 0.), K.floatx())
-    return w
+    return w * K.cast(K.greater_equal(w, 0.), K.floatx())
 
 
 class UnitNorm(Constraint):
@@ -148,8 +146,7 @@ class MinMaxNorm(Constraint):
     desired = (
         self.rate * K.clip(norms, self.min_value, self.max_value) +
         (1 - self.rate) * norms)
-    w *= (desired / (K.epsilon() + norms))
-    return w
+    return w * (desired / (K.epsilon() + norms))
 
   def get_config(self):
     return {

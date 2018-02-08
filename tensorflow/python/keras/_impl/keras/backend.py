@@ -48,6 +48,7 @@ from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-import
@@ -589,7 +590,7 @@ def variable(value, dtype=None, name=None, constraint=None):
     v._keras_shape = sparse_coo.shape
     v._uses_learning_phase = False
     return v
-  v = variables_module.Variable(
+  v = resource_variable_ops.ResourceVariable(
       value,
       dtype=dtypes_module.as_dtype(dtype),
       name=name,
@@ -3195,7 +3196,7 @@ def categorical_crossentropy(target, output, from_logits=False):
   # expects logits, Keras expects probabilities.
   if not from_logits:
     # scale preds so that the class probas of each sample sum to 1
-    output /= math_ops.reduce_sum(
+    output = output / math_ops.reduce_sum(  # pylint: disable=g-no-augmented-assignment
         output, len(output.get_shape()) - 1, True)
     # manual computation of crossentropy
     epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
@@ -4099,44 +4100,46 @@ def bias_add(x, bias, data_format=None):
     raise ValueError(
         'Unexpected bias dimensions %d, expect to be 1 or %d dimensions' %
         (len(bias_shape), ndim(x)))
+  # pylint: disable=g-no-augmented-assignment
   if ndim(x) == 5:
     if data_format == 'channels_first':
       if len(bias_shape) == 1:
-        x += reshape(bias, (1, bias_shape[0], 1, 1, 1))
+        x = x + reshape(bias, (1, bias_shape[0], 1, 1, 1))
       else:
-        x += reshape(bias, (1, bias_shape[3]) + bias_shape[:3])
+        x = x + reshape(bias, (1, bias_shape[3]) + bias_shape[:3])
     elif data_format == 'channels_last':
       if len(bias_shape) == 1:
-        x += reshape(bias, (1, 1, 1, bias_shape[0]))
+        x = x + reshape(bias, (1, 1, 1, bias_shape[0]))
       else:
-        x += reshape(bias, (1,) + bias_shape)
+        x = x + reshape(bias, (1,) + bias_shape)
   elif ndim(x) == 4:
     if data_format == 'channels_first':
       if len(bias_shape) == 1:
         if _has_nchw_support():
           x = nn.bias_add(x, bias, data_format='NCHW')
         else:
-          x += reshape(bias, (1, bias_shape[0], 1, 1))
+          x = x + reshape(bias, (1, bias_shape[0], 1, 1))
       else:
-        x += reshape(bias, (1, bias_shape[2]) + bias_shape[:2])
+        x = x + reshape(bias, (1, bias_shape[2]) + bias_shape[:2])
     elif data_format == 'channels_last':
       if len(bias_shape) == 1:
         x = nn.bias_add(x, bias, data_format='NHWC')
       else:
-        x += reshape(bias, (1,) + bias_shape)
+        x = x + reshape(bias, (1,) + bias_shape)
   elif ndim(x) == 3:
     if data_format == 'channels_first':
       if len(bias_shape) == 1:
-        x += reshape(bias, (1, bias_shape[0], 1))
+        x = x + reshape(bias, (1, bias_shape[0], 1))
       else:
-        x += reshape(bias, (1, bias_shape[1], bias_shape[0]))
+        x = x + reshape(bias, (1, bias_shape[1], bias_shape[0]))
     elif data_format == 'channels_last':
       if len(bias_shape) == 1:
-        x += reshape(bias, (1, 1, bias_shape[0]))
+        x = x + reshape(bias, (1, 1, bias_shape[0]))
       else:
-        x += reshape(bias, (1,) + bias_shape)
+        x = x + reshape(bias, (1,) + bias_shape)
   else:
     x = nn.bias_add(x, bias)
+  # pylint: enable=g-no-augmented-assignment
   return x
 
 

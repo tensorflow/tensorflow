@@ -24,7 +24,6 @@ import copy
 import six
 from six.moves import zip  # pylint: disable=redefined-builtin
 
-from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes as dtypes_module
 from tensorflow.python.framework import ops
 from tensorflow.python.keras._impl.keras import backend as K
@@ -180,8 +179,9 @@ class SGD(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr *= (1. /
-             (1. + self.decay * K.cast(self.iterations, K.dtype(self.decay))))
+      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
+                 (1. + self.decay * K.cast(self.iterations,
+                                           K.dtype(self.decay))))
     # momentum
     shapes = [K.int_shape(p) for p in params]
     moments = [K.zeros(shape) for shape in shapes]
@@ -251,8 +251,9 @@ class RMSprop(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr *= (1. /
-             (1. + self.decay * K.cast(self.iterations, K.dtype(self.decay))))
+      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
+                 (1. + self.decay * K.cast(self.iterations,
+                                           K.dtype(self.decay))))
 
     for p, g, a in zip(params, grads, accumulators):
       # update accumulator
@@ -311,8 +312,9 @@ class Adagrad(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr *= (1. /
-             (1. + self.decay * K.cast(self.iterations, K.dtype(self.decay))))
+      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
+                 (1. + self.decay * K.cast(self.iterations,
+                                           K.dtype(self.decay))))
 
     for p, g, a in zip(params, grads, accumulators):
       new_a = a + K.square(g)  # update accumulator
@@ -373,8 +375,9 @@ class Adadelta(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr *= (1. /
-             (1. + self.decay * K.cast(self.iterations, K.dtype(self.decay))))
+      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
+                 (1. + self.decay * K.cast(self.iterations,
+                                           K.dtype(self.decay))))
 
     for p, g, a, d_a in zip(params, grads, accumulators, delta_accumulators):
       # update accumulator
@@ -451,8 +454,9 @@ class Adam(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr *= (1. /
-             (1. + self.decay * K.cast(self.iterations, K.dtype(self.decay))))
+      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
+                 (1. + self.decay * K.cast(self.iterations,
+                                           K.dtype(self.decay))))
 
     t = K.cast(self.iterations, K.floatx()) + 1
     lr_t = lr * (
@@ -539,8 +543,9 @@ class Adamax(Optimizer):
 
     lr = self.lr
     if self.initial_decay > 0:
-      lr *= (1. /
-             (1. + self.decay * K.cast(self.iterations, K.dtype(self.decay))))
+      lr = lr * (1. /  # pylint: disable=g-no-augmented-assignment
+                 (1. + self.decay * K.cast(self.iterations,
+                                           K.dtype(self.decay))))
 
     t = K.cast(self.iterations, K.floatx()) + 1
     lr_t = lr / (1. - K.pow(self.beta_1, t))
@@ -681,8 +686,7 @@ class TFOptimizer(Optimizer):
   def __init__(self, optimizer):  # pylint: disable=super-init-not-called
     self.optimizer = optimizer
     with K.name_scope(self.__class__.__name__):
-      if context.in_graph_mode():
-        self.iterations = K.variable(0, dtype='int64', name='iterations')
+      self.iterations = K.variable(0, dtype='int64', name='iterations')
 
   def apply_gradients(self, grads):
     self.optimizer.apply_gradients(grads)
