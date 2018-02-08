@@ -44,6 +44,7 @@ ExternalProject_Add(nsync
     BUILD_IN_SOURCE 1
     PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/nsync/CMakeLists.txt ${nsync_BUILD}
     INSTALL_DIR ${nsync_INSTALL}
+    CMAKE_GENERATOR ${CMAKE_GENERATOR}
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF

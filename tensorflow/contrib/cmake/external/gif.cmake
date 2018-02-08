@@ -35,6 +35,7 @@ if(WIN32)
       URL_HASH ${gif_HASH}
       PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/patches/gif/CMakeLists.txt ${gif_BUILD}
       INSTALL_DIR ${gif_INSTALL}
+      CMAKE_GENERATOR ${CMAKE_GENERATOR}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
       CMAKE_CACHE_ARGS
           -DCMAKE_BUILD_TYPE:STRING=Release
@@ -62,6 +63,7 @@ else()
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
       BUILD_COMMAND $(MAKE)
       INSTALL_COMMAND $(MAKE) install
+      CMAKE_GENERATOR ${CMAKE_GENERATOR}
       CONFIGURE_COMMAND
           ${CMAKE_CURRENT_BINARY_DIR}/gif/src/gif/configure
           --with-pic
