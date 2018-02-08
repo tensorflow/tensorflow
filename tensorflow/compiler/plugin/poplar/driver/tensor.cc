@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/util/bcast.h"
@@ -165,9 +166,10 @@ static port::StatusOr<poplar::Tensor>
 AddConvolutionInput(poplar::Graph& graph,
                     const HloInstruction* inst,
                     const HloInstruction* target,
-                    CompilerResources& resources) {
+                    CompilerResources& resources,
+                    bool depthwise) {
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, false));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, depthwise));
 
   popconv::ConvOptions opts;
   opts.cache = &resources.convolution_cache;
@@ -181,9 +183,10 @@ static port::StatusOr<poplar::Tensor>
 AddConvolutionWeights(poplar::Graph& graph,
                       const HloInstruction* inst,
                       const HloInstruction* target,
-                      CompilerResources& resources) {
+                      CompilerResources& resources,
+                      bool depthwise) {
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, false));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, depthwise));
 
   popconv::ConvOptions opts;
   opts.cache = &resources.convolution_cache;
@@ -191,7 +194,7 @@ AddConvolutionWeights(poplar::Graph& graph,
   auto name = port::StrCat(inst->name(), "_weights");
   poplar::Tensor out = popconv::createWeights(graph, params, name, opts);
 
-  out = RemoveGroupsDimensionFromWeights(out);
+  out = RemoveGroupsDimensionFromWeights(out, depthwise);
   return ShuffleConvolutionWeightsToTensorflow(target, out);
 }
 
@@ -243,14 +246,14 @@ AddTensor(poplar::Graph& graph,
           {
             TF_ASSIGN_OR_RETURN(out, AddConvolutionInput(graph, src.first,
                                                          target->second.tgt,
-                                                         resources));
+                                                         resources, false));
             break;
           }
           case 1:
           {
             TF_ASSIGN_OR_RETURN(out, AddConvolutionWeights(graph, src.first,
                                                            target->second.tgt,
-                                                           resources));
+                                                           resources, false));
             break;
           }
           default:
@@ -310,10 +313,75 @@ AddTensor(poplar::Graph& graph,
         }
         break;
       }
+      case HloOpcode::kCall:
+      {
+        const HloComputation* comp = target->second.tgt->to_apply();
+        if (comp->name().substr(0, 8) == "_pop_op_") {
+          auto end = comp->name().find('.');
+          std::string name = comp->name().substr(8, end - 8);
+          if (name == "conv_with_reverse") {
+            const HloInstruction* conv_inst = comp->root_instruction();
+            switch (target->second.input_index) {
+              case 0:
+              {
+                TF_ASSIGN_OR_RETURN(out,
+                                    AddConvolutionWeights(graph, src.first,
+                                                          conv_inst,
+                                                          resources, false));
+                break;
+              }
+              case 1:
+              {
+                TF_ASSIGN_OR_RETURN(out,
+                                    AddConvolutionInput(graph, src.first,
+                                                        conv_inst,
+                                                        resources, false));
+                break;
+              }
+              default:
+                return tensorflow::errors::FailedPrecondition(
+                    port::StrCat("invalid operand for tensor allocation on ",
+                                 src.first->name()));
+            }
+
+          } else if (name == "depthwise_conv") {
+            const HloInstruction* conv_inst = comp->root_instruction();
+            switch (target->second.input_index) {
+              case 0:
+              {
+                TF_ASSIGN_OR_RETURN(out,
+                                    AddConvolutionWeights(graph, src.first,
+                                                          conv_inst,
+                                                          resources, true));
+                break;
+              }
+              case 1:
+              {
+                TF_ASSIGN_OR_RETURN(out,
+                                    AddConvolutionInput(graph, src.first,
+                                                        conv_inst,
+                                                        resources, true));
+                break;
+              }
+              default:
+                return tensorflow::errors::FailedPrecondition(
+                    port::StrCat("invalid operand for tensor allocation on ",
+                                 src.first->name()));
+            }
+          } else {
+            return tensorflow::errors::FailedPrecondition(
+                port::StrCat("Unknown poplibs fusion for tensor ",
+                             src.first->name(), ": ", name));
+          }
+        } else {
+          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+        }
+        break;
+      }
       default:
         return tensorflow::errors::FailedPrecondition(
-                port::StrCat("unknown special tensor target on ",
-                             src.first->name()));
+                port::StrCat("Unknown tensor target for ", src.first->name(),
+                             ": ", target->second.tgt->name()));
     }
 
     // Now apply any transformations required by the path from the source to

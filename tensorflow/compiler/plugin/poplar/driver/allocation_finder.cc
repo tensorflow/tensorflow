@@ -150,6 +150,10 @@ AllocationFinder::FindConsumers(const TensorSource& src,
         {
           if (op_index == 0) {
             auto t = TensorTarget(user, op_index, path);
+            auto i = tensor_allocation_map.find(src);
+            if (i != tensor_allocation_map.end()) {
+              tensor_allocation_map.erase(src);
+            }
             tensor_allocation_map.insert(std::make_pair(src, t));
           }
           break;
@@ -158,6 +162,10 @@ AllocationFinder::FindConsumers(const TensorSource& src,
         {
           if (op_index == 0 || op_index==1) {
             auto t = TensorTarget(user, op_index, path);
+            auto i = tensor_allocation_map.find(src);
+            if (i != tensor_allocation_map.end()) {
+              tensor_allocation_map.erase(src);
+            }
             tensor_allocation_map.insert(std::make_pair(src, t));
           }
           break;
@@ -165,8 +173,22 @@ AllocationFinder::FindConsumers(const TensorSource& src,
         case HloOpcode::kCall:
         {
           HloComputation* comp = user->to_apply();
-          HloInstruction* param = comp->parameter_instruction(op_index);
-          FindConsumers(src, param, index);
+          if (comp->name().substr(0, 8) != "_pop_op_") {
+            HloInstruction *param = comp->parameter_instruction(op_index);
+            FindConsumers(src, param, index);
+          } else {
+            auto end = comp->name().find('.');
+            std::string name = comp->name().substr(8, end - 8);
+            if (name == "conv_with_reverse" ||
+                name == "depthwise_conv") {
+              auto t = TensorTarget(user, op_index, path);
+              auto i = tensor_allocation_map.find(src);
+              if (i != tensor_allocation_map.end()) {
+                tensor_allocation_map.erase(src);
+              }
+              tensor_allocation_map.insert(std::make_pair(src, t));
+            }
+          }
           break;
         }
         case HloOpcode::kWhile:

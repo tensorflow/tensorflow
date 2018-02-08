@@ -202,21 +202,48 @@ ShuffleConvolutionOutputToTensorflow(const HloInstruction* inst,
   return is_identity_shuffle(shuffle) ? tensor : tensor.dimShuffle(shuffle);
 }
 
-poplar::Tensor RemoveGroupsDimensionFromWeights(const poplar::Tensor& t) {
-  std::vector<std::size_t> shape;
-  for (int64 i = 1; i < t.rank(); i++) {
-    shape.push_back(t.dim(i));
+poplar::Tensor RemoveGroupsDimensionFromWeights(const poplar::Tensor& t,
+                                                bool depthwise) {
+  poplar::Tensor out = t;
+
+  if (depthwise) {
+    // Swap in channels and groups
+    std::vector<unsigned int> shuffle(out.rank());
+    std::iota(shuffle.begin(), shuffle.end(), 0);
+    shuffle[0] = 2;
+    shuffle[2] = 0;
+    out = out.dimShuffle(shuffle);
   }
-  return t.reshape(shape);
+
+  std::vector<std::size_t> shape;
+  for (int64 i = 1; i < out.rank(); i++) {
+    shape.push_back(out.dim(i));
+  }
+
+  return out.reshape(shape);
 }
 
-poplar::Tensor AddGroupsDimensionToWeights(const poplar::Tensor& t) {
+poplar::Tensor AddGroupsDimensionToWeights(const poplar::Tensor& t,
+                                           bool depthwise) {
+  poplar::Tensor out = t;
+
   std::vector<std::size_t> shape;
   shape.push_back(1);
-  for (int64 i = 0; i < t.rank(); i++) {
-    shape.push_back(t.dim(i));
+  for (int64 i = 0; i < out.rank(); i++) {
+    shape.push_back(out.dim(i));
   }
-  return t.reshape(shape);
+  out = out.reshape(shape);
+
+  if (depthwise) {
+    // Swap in channels and groups
+    std::vector<unsigned int> shuffle(out.rank());
+    std::iota(shuffle.begin(), shuffle.end(), 0);
+    shuffle[0] = 2;
+    shuffle[2] = 0;
+    out = out.dimShuffle(shuffle);
+  }
+
+  return out;
 }
 
 port::StatusOr <poplar::program::Program>
@@ -248,7 +275,7 @@ CreateConv2D(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(inst, kernel,
                                                                 false));
 
-  kernel = AddGroupsDimensionToWeights(kernel);
+  kernel = AddGroupsDimensionToWeights(kernel, false);
 
   // Add the convolution
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
@@ -371,15 +398,8 @@ CreateDepthwiseConvolutionOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(root, kernel,
                                                                 false));
 
-  kernel = AddGroupsDimensionToWeights(kernel);
+  kernel = AddGroupsDimensionToWeights(kernel, true);
 
-  // Swap IN and GROUPS
-  std::vector<unsigned int> shuffle(kernel.rank());
-  std::iota(shuffle.begin(), shuffle.end(), 0);
-  shuffle[0] = 2;
-  shuffle[2] = 0;
-  kernel = kernel.dimShuffle(shuffle);
-  
   auto out = popconv::convolution(graph, in, kernel, params, false, prog,
                                   inst->name(), opts);
 
@@ -421,7 +441,7 @@ Create2DConvWithReverse(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(kernel, ShuffleConvolutionWeightsToPoplar(conv, kernel,
                                                                 true));
 
-  kernel = AddGroupsDimensionToWeights(kernel);
+  kernel = AddGroupsDimensionToWeights(kernel, false);
 
   poplar::Tensor out = popconv::convolution(graph, in, kernel, params,
                                             true, prog, conv->name(), opts);

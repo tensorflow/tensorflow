@@ -73,9 +73,9 @@ port::StatusOr<poplar::Tensor>
 ShuffleConvolutionWeightsToTensorflow(const HloInstruction* inst,
                                       const poplar::Tensor& tensor);
 
-poplar::Tensor RemoveGroupsDimensionFromWeights(const poplar::Tensor& t);
+poplar::Tensor RemoveGroupsDimensionFromWeights(const poplar::Tensor& t, bool);
 
-poplar::Tensor AddGroupsDimensionToWeights(const poplar::Tensor& t);
+poplar::Tensor AddGroupsDimensionToWeights(const poplar::Tensor& t, bool);
 
 port::Status
 AddOutputTensor(TensorMap& map,
