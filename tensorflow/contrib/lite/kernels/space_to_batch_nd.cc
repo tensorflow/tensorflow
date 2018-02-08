@@ -111,7 +111,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // Resize the output tensor if the output tensor is dynamic.
   if (IsDynamicTensor(op_context.output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
-    TfLiteTensorRealloc(op_context.output->bytes, op_context.output);
   }
 
 #define TF_LITE_SPACE_TO_BATCH_ND(type, scalar)                        \

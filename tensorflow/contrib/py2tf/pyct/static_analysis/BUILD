@@ -17,7 +17,8 @@ filegroup(
 py_library(
     name = "static_analysis",
     srcs = [
-        "access.py",
+        "activity.py",
+        "annos.py",
         "live_values.py",
         "type_info.py",
     ],
@@ -30,8 +31,8 @@ py_library(
 )
 
 py_test(
-    name = "access_test",
-    srcs = ["access_test.py"],
+    name = "activity_test",
+    srcs = ["activity_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":static_analysis",

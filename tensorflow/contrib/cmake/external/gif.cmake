@@ -33,6 +33,7 @@ if(WIN32)
       PREFIX gif
       URL ${gif_URL}
       URL_HASH ${gif_HASH}
+      BUILD_BYPRODUCTS ${gif_STATIC_LIBRARIES}
       PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_SOURCE_DIR}/patches/gif/CMakeLists.txt ${gif_BUILD}
       INSTALL_DIR ${gif_INSTALL}
       DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"

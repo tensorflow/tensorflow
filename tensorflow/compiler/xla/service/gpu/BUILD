@@ -129,6 +129,8 @@ cc_library(
     hdrs = [
         "ir_emitter.h",
         "ir_emitter_context.h",
+        "ir_emitter_nested.h",
+        "ir_emitter_unnested.h",
     ],
     deps = [
         ":cudnn_convolution_runner",

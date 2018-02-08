@@ -181,7 +181,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (IsDynamicTensor(op_context.output)) {
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
-    TfLiteTensorRealloc(op_context.output->bytes, op_context.output);
   }
 
   std::vector<int32_t> starts;

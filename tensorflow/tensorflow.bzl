@@ -219,6 +219,13 @@ def tf_copts(android_optimization_level_override="-O2", is_external=False):
             "//conditions:default": ["-pthread"]
       }))
 
+
+def tfe_xla_copts():
+  return select({
+      "//tensorflow:with_xla_support": ["-DTENSORFLOW_EAGER_USE_XLA"],
+      "//conditions:default": [],
+  })
+
 def tf_opts_nortti_if_android():
   return if_android([
       "-fno-rtti",
@@ -671,6 +678,7 @@ def tf_cuda_cc_test(name,
                     tags=[],
                     data=[],
                     size="medium",
+                    extra_copts=[],
                     linkstatic=0,
                     args=[],
                     linkopts=[]):
@@ -681,6 +689,7 @@ def tf_cuda_cc_test(name,
       tags=tags + ["manual"],
       data=data,
       size=size,
+      extra_copts=extra_copts,
       linkstatic=linkstatic,
       linkopts=linkopts,
       args=args)
@@ -701,6 +710,7 @@ def tf_cuda_cc_test(name,
       tags=tags + tf_cuda_tests_tags(),
       data=data,
       size=size,
+      extra_copts=extra_copts,
       linkopts=linkopts,
       args=args)
 

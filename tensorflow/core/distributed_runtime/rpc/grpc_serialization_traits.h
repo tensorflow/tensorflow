@@ -66,7 +66,7 @@ class GrpcBufferWriter final
     }
     // It's dangerous to keep an inlined grpc_slice as the backup slice, since
     // on a following Next() call, a reference will be returned to this slice
-    // via GRPC_SLICE_START_PTR, which will not be an adddress held by
+    // via GRPC_SLICE_START_PTR, which will not be an address held by
     // slice_buffer_.
     have_backup_ = backup_slice_.refcount != NULL;
     byte_count_ -= count;

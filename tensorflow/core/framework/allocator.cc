@@ -113,7 +113,7 @@ class CPUAllocator : public Allocator {
     stats_.max_alloc_size = 0;
   }
 
-  size_t AllocatedSizeSlow(void* ptr) override {
+  size_t AllocatedSizeSlow(const void* ptr) override {
     return port::MallocExtension_GetAllocatedSize(ptr);
   }
 

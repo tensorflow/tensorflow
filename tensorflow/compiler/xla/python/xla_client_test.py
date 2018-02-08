@@ -1219,6 +1219,28 @@ class EmbeddedComputationsTest(LocalComputationTest):
     c.While(cond, body, init)
     self._ExecuteAndCompareClose(c, expected=16.)
 
+  def testConditionalTrue(self):
+    c = self._NewComputation()
+    pred = c.ConstantPredScalar(True)
+    true_operand = c.ConstantF32Scalar(3.)
+    true_computation = self._CreateMulF32By2Computation()
+    false_operand = c.ConstantF32Scalar(2.)
+    false_computation = self._CreateConstantF32Computation()
+    c.Conditional(pred, true_operand, true_computation, false_operand,
+                  false_computation)
+    self._ExecuteAndCompareClose(c, expected=6.)
+
+  def testConditionalFalse(self):
+    c = self._NewComputation()
+    pred = c.ConstantPredScalar(False)
+    true_operand = c.ConstantF32Scalar(3.)
+    true_computation = self._CreateMulF32By2Computation()
+    false_operand = c.ConstantF32Scalar(2.)
+    false_computation = self._CreateConstantF32Computation()
+    c.Conditional(pred, true_operand, true_computation, false_operand,
+                  false_computation)
+    self._ExecuteAndCompareClose(c, expected=1.)
+
   def testInfeedS32Values(self):
     to_infeed = NumpyArrayS32([1, 2, 3, 4])
     c = self._NewComputation()

@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
@@ -108,4 +109,3 @@ def _AddNGrad(op, grad):
   """Same as gradient for AddN. Copies the gradient to all inputs."""
   # Not broadcasting.
   return [grad] * len(op.inputs)
-
