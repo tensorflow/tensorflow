@@ -28,6 +28,7 @@ from six.moves import range  # pylint: disable=redefined-builtin
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 if sys.version_info < (3,):
@@ -36,6 +37,7 @@ else:
   maketrans = str.maketrans
 
 
+@tf_export('keras.preprocessing.text.text_to_word_sequence')
 def text_to_word_sequence(text,
                           filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
                           lower=True,
@@ -64,6 +66,7 @@ def text_to_word_sequence(text,
   return [i for i in seq if i]
 
 
+@tf_export('keras.preprocessing.text.one_hot')
 def one_hot(text,
             n,
             filters='!"#$%&()*+,-./:;<=>?@[\\]^_`{|}~\t\n',
@@ -129,6 +132,7 @@ def hashing_trick(text,
   return [(hash_function(w) % (n - 1) + 1) for w in seq]
 
 
+@tf_export('keras.preprocessing.text.Tokenizer')
 class Tokenizer(object):
   """Text tokenization utility class.
 
