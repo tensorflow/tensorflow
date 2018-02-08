@@ -28,17 +28,32 @@ static const char* names[] = {
   "pop_convolution",
 };
 
+static bool
+IsPoplibsFusion(const HloInstruction* inst, const std::string& type) {
+  const HloComputation* comp = inst->to_apply();
+  if (comp->name().substr(0, 8) == "_pop_op_") {
+    auto end = comp->name().find('.');
+    std::string name = comp->name().substr(8, end - 8);
+    return name == type;
+  }
+  return false;
+}
+
+static bool IsPoplibsBackpropInputConv(const HloInstruction* inst) {
+  return IsPoplibsFusion(inst, "conv_with_reverse");
+}
+
+static bool IsPoplibsDepthwiseConv(const HloInstruction* inst) {
+  return IsPoplibsFusion(inst, "depthwise_conv");
+}
+
 static const std::vector<HloMatcherPattern> patterns = {
 
   // Backprop input convolution
-  {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
-   {HloOpcode::kReverse, true, nullptr, {-2}}},
+  {{HloOpcode::kCall, true, IsPoplibsBackpropInputConv, {-1, -2}}},
 
   // Depthwise convolution (forward pass)
-  {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
-   {HloOpcode::kReshape, true, nullptr, {2}},
-   {HloOpcode::kPad, true, IsDepthwisePadding, {-2, 3}},
-   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+  {{HloOpcode::kCall, true, IsPoplibsDepthwiseConv, {-1, -2}}},
 
   // Stand-alone convolution
   {{HloOpcode::kConvolution, true, nullptr, {-1, -2}}},

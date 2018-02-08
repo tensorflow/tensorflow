@@ -186,9 +186,19 @@ static const std::vector<HloMatcherPattern> patterns = {
 
   // Depthwise convolution (forward pass)
   {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
-   {HloOpcode::kReshape, true, nullptr, {2}},
-   {HloOpcode::kPad, true, IsDepthwisePadding, {-2, 3}},
-   {HloOpcode::kConstant, true, IsConstantZero, {}}},
+   {HloOpcode::kSelect, true, nullptr, {6, 4, 2}},
+   {HloOpcode::kBroadcast, true, nullptr, {3}},
+   {HloOpcode::kConstant, true, IsConstantZero, {}},
+   {HloOpcode::kBroadcast, true, nullptr, {5}},
+   {HloOpcode::kReshape, true, nullptr, {-2}},
+   {HloOpcode::kEq, true, nullptr, {9, 7}},
+   {HloOpcode::kBroadcast, true, nullptr, {8}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kBroadcast, true, nullptr, {10}},
+   {HloOpcode::kDivide, true, nullptr, {13, 11}},
+   {HloOpcode::kBroadcast, true, nullptr, {12}},
+   {HloOpcode::kConstant, true, nullptr, {}},
+   {HloOpcode::kConstant, true, nullptr, {}}},
 
   // Backprop input convolution
   {{HloOpcode::kConvolution, true, nullptr, {-1, 1}},
