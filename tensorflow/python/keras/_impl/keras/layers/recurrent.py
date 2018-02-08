@@ -32,8 +32,10 @@ from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.StackedRNNCells')
 class StackedRNNCells(Layer):
   """Wrapper allowing a stack of RNN cells to behave as a single cell.
 
@@ -213,6 +215,7 @@ class StackedRNNCells(Layer):
     return losses
 
 
+@tf_export('keras.layers.RNN')
 class RNN(Layer):
   """Base class for recurrent layers.
 
@@ -785,6 +788,7 @@ class RNN(Layer):
     return super(RNN, self).get_losses_for(inputs)
 
 
+@tf_export('keras.layers.SimpleRNNCell')
 class SimpleRNNCell(Layer):
   """Cell class for SimpleRNN.
 
@@ -954,6 +958,7 @@ class SimpleRNNCell(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.SimpleRNN')
 class SimpleRNN(RNN):
   """Fully-connected RNN where the output is to be fed back to input.
 
@@ -1163,6 +1168,7 @@ class SimpleRNN(RNN):
     return cls(**config)
 
 
+@tf_export('keras.layers.GRUCell')
 class GRUCell(Layer):
   """Cell class for the GRU layer.
 
@@ -1411,6 +1417,7 @@ class GRUCell(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.GRU')
 class GRU(RNN):
   """Gated Recurrent Unit - Cho et al.
 
@@ -1646,6 +1653,7 @@ class GRU(RNN):
     return cls(**config)
 
 
+@tf_export('keras.layers.LSTMCell')
 class LSTMCell(Layer):
   """Cell class for the LSTM layer.
 
@@ -1927,6 +1935,7 @@ class LSTMCell(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.LSTM')
 class LSTM(RNN):
   """Long-Short Term Memory layer - Hochreiter 1997.
 

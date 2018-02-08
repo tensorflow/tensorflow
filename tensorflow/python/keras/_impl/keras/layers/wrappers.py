@@ -28,8 +28,10 @@ from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.layers import utils as tf_layers_util
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.Wrapper')
 class Wrapper(Layer):
   """Abstract wrapper base class.
 
@@ -122,6 +124,7 @@ class Wrapper(Layer):
     return cls(layer, **config)
 
 
+@tf_export('keras.layers.TimeDistributed')
 class TimeDistributed(Wrapper):
   """This wrapper allows to apply a layer to every temporal slice of an input.
 
@@ -246,6 +249,7 @@ class TimeDistributed(Wrapper):
     return y
 
 
+@tf_export('keras.layers.Bidirectional')
 class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
