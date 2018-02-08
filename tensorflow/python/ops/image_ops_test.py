@@ -2821,20 +2821,9 @@ class PngTest(test_util.TensorFlowTestCase):
 
 class GifTest(test_util.TensorFlowTestCase):
 
-  def testOptimizedGifErrorString(self):
-    filename = "tensorflow/core/lib/gif/testdata/optimized.gif"
-
-    with self.test_session(use_gpu=True) as sess:
-      gif = io_ops.read_file(filename)
-      image = image_ops.decode_gif(gif)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "can't process optimized gif"):
-        gif, image = sess.run([gif, image])
-
-  def testValid(self):
+  def _testValid(self, filename):
     # Read some real GIFs
     prefix = "tensorflow/core/lib/gif/testdata/"
-    filename = "scan.gif"
     WIDTH = 20
     HEIGHT = 40
     STRIDE = 5
@@ -2861,16 +2850,9 @@ class GifTest(test_util.TensorFlowTestCase):
 
         self.assertAllClose(frame, gt)
 
-  def testInValid(self):
-    # Read some real GIFs
-    prefix = "tensorflow/core/lib/gif/testdata/"
-    filename = "optimized.gif"
-
-    with self.test_session(use_gpu=True) as sess:
-      gif0 = io_ops.read_file(prefix + filename)
-      image0 = image_ops.decode_gif(gif0)
-      with self.assertRaises(errors.InvalidArgumentError):
-        gif0, image0 = sess.run([gif0, image0])
+  def testValid(self):
+    self._testValid("scan.gif")
+    self._testValid("optimized.gif")
 
   def testShape(self):
     with self.test_session(use_gpu=True) as sess:
