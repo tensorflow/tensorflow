@@ -188,9 +188,7 @@ class TRT_TensorOrWeights {
   explicit TRT_TensorOrWeights(const TRT_ShapedWeights& weights)
       : tensor_(nullptr), weights_(weights), variant_(TRT_NODE_WEIGHTS) {}
   TRT_TensorOrWeights(const TRT_TensorOrWeights& rhs)
-      : tensor_(rhs.tensor_),
-        weights_(rhs.weights_),
-        variant_(rhs.variant_) {}
+      : tensor_(rhs.tensor_), weights_(rhs.weights_), variant_(rhs.variant_) {}
   ~TRT_TensorOrWeights() {}
 
   bool is_tensor() const { return variant_ == TRT_NODE_TENSOR; }
@@ -828,9 +826,9 @@ tensorflow::Status BinaryTensorOpTensor(
   CHECK_EQ_TYPE(tensor_r->getType(), dtype);
   auto op_pair = ops.find(node_def.op());
   if (op_pair == ops.end())
-    return tensorflow::errors::Unimplemented(
-        "binary op: " + node_def.op() +
-        " not supported at: " + node_def.name());
+    return tensorflow::errors::Unimplemented("binary op: " + node_def.op() +
+                                             " not supported at: " +
+                                             node_def.name());
 
   nvinfer1::IElementWiseLayer* layer = ctx.network()->addElementWise(
       *const_cast<nvinfer1::ITensor*>(tensor_l),
@@ -1135,7 +1133,8 @@ tensorflow::Status ConvertConst(Converter& ctx,
       CHECK_EQ(0, content.size() % dtype_size)
           << "Tensor content size (" << content.size()
           << ") is not a multiple of " << dtype_size;
-      port::CopyToArray(content, static_cast<char*>(const_cast<void*>(weights.GetValues())));
+      port::CopyToArray(
+          content, static_cast<char*>(const_cast<void*>(weights.GetValues())));
     }
   } else {
     return tensorflow::errors::Unimplemented(
