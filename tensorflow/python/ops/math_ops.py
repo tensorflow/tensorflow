@@ -2557,7 +2557,7 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
                        num_segments=None):
   r"""Computes the sum along sparse segments of a tensor.
 
-  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  Read @{$math_ops#Segmentation$the section on segmentation} for an explanation
   of segments.
 
   Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
@@ -2632,7 +2632,7 @@ def sparse_segment_mean(data, indices, segment_ids, name=None,
                         num_segments=None):
   r"""Computes the mean along sparse segments of a tensor.
 
-  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  Read @{$math_ops#Segmentation$the section on segmentation} for an explanation
   of segments.
 
   Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
