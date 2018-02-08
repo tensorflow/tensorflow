@@ -144,6 +144,7 @@ cuda_py_test(
     additional_deps = [
         ":bayesflow_py",
         "//third_party/py/numpy",
+        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/python/ops/distributions",
         "//tensorflow/python:client_testlib",
