@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.contrib.py2tf.pyct import compiler
@@ -53,6 +54,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = control_flow.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
+    setattr(result, 'py2tf_utils', utils)
 
     with self.test_session() as sess:
       self.assertEqual((10, 5, 5),
@@ -69,6 +71,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = control_flow.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
+    setattr(result, 'py2tf_utils', utils)
 
     with self.test_session() as sess:
       self.assertEqual(0, sess.run(result.test_fn(constant_op.constant(5))))
@@ -88,6 +91,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = control_flow.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
+    setattr(result, 'py2tf_utils', utils)
 
     with self.test_session() as sess:
       self.assertEqual((-1, 0), sess.run(
@@ -106,6 +110,7 @@ class ControlFlowTest(converter_test_base.TestCase):
     node = control_flow.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', control_flow_ops)
+    setattr(result, 'py2tf_utils', utils)
 
     with self.test_session() as sess:
       self.assertEqual(-1, sess.run(result.test_fn(constant_op.constant(1))))

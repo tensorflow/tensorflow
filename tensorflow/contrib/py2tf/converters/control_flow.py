@@ -99,7 +99,7 @@ class ControlFlowTransformer(transformer.Base):
           aliased_new_names, = aliased_orig_names,
           orelse
           return (all_results,)
-        results = tf.cond(test, body_name, orelse_name)
+        results = py2tf_utils.run_cond(test, body_name, orelse_name)
       """
       body_name = self.context.namer.new_symbol('if_true', all_referenced)
       return templates.replace(
@@ -122,7 +122,7 @@ class ControlFlowTransformer(transformer.Base):
         def orelse_name():
           orelse
           return (all_results,)
-        results = tf.cond(test, body_name, orelse_name)
+        results = py2tf_utils.run_cond(test, body_name, orelse_name)
       """
       body_name = self.context.namer.new_symbol('if_true', all_referenced)
       return templates.replace(
@@ -168,7 +168,7 @@ class ControlFlowTransformer(transformer.Base):
       def body_name(state_ssf):
         body
         return state_ssf,
-      state_ast_tuple = tf.while_loop(test_name, body_name, [state])
+      state_ast_tuple = py2tf_utils.run_while(test_name, body_name, [state])
     """
     node = templates.replace(
         template,
