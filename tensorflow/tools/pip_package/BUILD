@@ -70,7 +70,6 @@ py_binary(
         "//tensorflow/python/eager:eager_pip",
         "//tensorflow/contrib/summary:summary_test_util",
         # These targets don't build on Windows yet. Exclude them for now.
-        # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
         # "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
         # "//tensorflow/contrib/specs",
@@ -159,7 +158,6 @@ sh_binary(
             "//tensorflow/contrib/lite/toco:toco",
             "//tensorflow/contrib/lite/toco/python:toco_wrapper",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",
-            "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",
             "//tensorflow/contrib/predictor:predictor_pip",
             "//tensorflow/contrib/py2tf:py2tf",

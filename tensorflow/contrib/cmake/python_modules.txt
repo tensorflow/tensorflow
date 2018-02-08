@@ -329,8 +329,6 @@ tensorflow/contrib/nccl/kernels
 tensorflow/contrib/nccl/ops
 tensorflow/contrib/nccl/python
 tensorflow/contrib/nccl/python/ops
-tensorflow/contrib/ndlstm
-tensorflow/contrib/ndlstm/python
 tensorflow/contrib/nearest_neighbor/kernels
 tensorflow/contrib/nearest_neighbor/ops
 tensorflow/contrib/nearest_neighbor/python

@@ -177,10 +177,10 @@ class UnaryVariantOpRegistry {
     Op op_type_;
     StringPiece device_, typename_;
   };
-  //friend declaration for operator==
+  // friend declaration for operator==
   // needed for clang
   template <typename Op>
-    friend bool operator==(const FuncTuple<Op> &l, const FuncTuple<Op> &r);
+  friend bool operator==(const FuncTuple<Op>& l, const FuncTuple<Op>& r);
   struct TupleHash {
     template <typename Op>
     std::size_t operator()(
@@ -208,7 +208,8 @@ class UnaryVariantOpRegistry {
       binary_op_fns;
 
   // Find or insert a string into a persistent string storage
-  // container; return the StringPiece pointing to the permanent string location.
+  // container; return the StringPiece pointing to the permanent string
+  // location.
   static StringPiece GetPersistentStringPiece(const string& str) {
     const auto string_storage = PersistentStringStorage();
     auto found = string_storage->find(str);

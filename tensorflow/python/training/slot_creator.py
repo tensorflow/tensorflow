@@ -111,7 +111,8 @@ def create_slot(primary, val, name, colocate_with_primary=True):
   # and the same name has been previously used, the scope name will add '_N'
   # as suffix for unique identifications.
   validate_shape = val.get_shape().is_fully_defined()
-  with variable_scope.variable_scope(None, primary.op.name + "/" + name):
+  prefix = primary.op.name if context.in_graph_mode() else primary._shared_name  # pylint: disable=protected-access
+  with variable_scope.variable_scope(None, prefix + "/" + name):
     if colocate_with_primary:
       with ops.colocate_with(primary):
         return _create_slot_var(primary, val, "", validate_shape, None, None)

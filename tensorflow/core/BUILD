@@ -193,6 +193,7 @@ CORE_PROTO_SRCS = [
     "protobuf/rewriter_config.proto",
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
+    "util/event.proto",
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
 ]
@@ -211,7 +212,6 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "protobuf/named_tensor.proto",
     "protobuf/saved_model.proto",
     "protobuf/tensorflow_server.proto",
-    "util/event.proto",
     "util/test_log.proto",
 ]
 
@@ -377,6 +377,17 @@ cc_library(
 )
 
 cc_library(
+    name = "session_message",
+    srcs = ["util/session_message.cc"],
+    hdrs = ["util/session_message.h"],
+    deps = [
+        ":framework",
+        ":lib",
+        ":protos_all_cc",
+    ],
+)
+
+cc_library(
     name = "stacktrace_handler",
     srcs = ["platform/stacktrace_handler.cc"],
     hdrs = ["platform/stacktrace_handler.h"],
@@ -454,6 +465,7 @@ tf_cuda_library(
         "framework/reader_interface.h",
         "framework/reader_op_kernel.h",
         "framework/register_types.h",
+        "framework/register_types_traits.h",
         "framework/resource_mgr.h",
         "framework/resource_op_kernel.h",
         "framework/selective_registration.h",
@@ -786,6 +798,7 @@ tf_cuda_library(
         "graph/graph.h",
         "graph/graph_constructor.h",
         "graph/graph_def_builder.h",
+        "graph/graph_def_builder_util.h",
         "graph/node_builder.h",
         "graph/validate.h",
         "graph/while_context.h",
@@ -1722,6 +1735,9 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
     "platform/variant_coding.h",
     "graph/edgeset.h",
     "graph/graph.h",
+    "graph/graph_def_builder.h",
+    "graph/node_builder.h",
+    "graph/tensor_id.h",
 ] + glob(
     [
         "example/**/*.h",
@@ -1739,6 +1755,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
         "framework/reader_base.*",
         "util/memmapped_file_system.*",
         "util/memmapped_file_system_writer.*",
+        "util/session_message.*",
         "util/version_info.cc",
     ],
 ) + select({
@@ -1808,6 +1825,9 @@ tf_cuda_library(
         ] + [
             "graph/edgeset.cc",
             "graph/graph.cc",
+            "graph/graph_def_builder.cc",
+            "graph/node_builder.cc",
+            "graph/tensor_id.cc",
             "graph/while_context.h",
             "graph/while_context.cc",
         ],
@@ -1822,6 +1842,7 @@ tf_cuda_library(
             "framework/resource_handle.cc",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
+            "util/session_message.cc",
             "util/version_info.cc",
         ],
     ) + select({
@@ -1936,6 +1957,7 @@ GRAPH_HDRS = [
     "graph/graph.h",
     "graph/graph_constructor.h",  # NOTE(mrry): Don't include the .cc since it depends on common_runtime.
     "graph/graph_def_builder.h",
+    "graph/graph_def_builder_util.h",
     "graph/graph_partition.h",
     "graph/mkl_layout_pass.h",
     "graph/mkl_tfconversion_pass.h",
@@ -1956,12 +1978,9 @@ tf_cuda_library(
         "graph/colors.cc",
         "graph/control_flow.cc",
         "graph/costmodel.cc",
-        "graph/graph_def_builder.cc",
         "graph/graph_partition.cc",
-        "graph/node_builder.cc",
         "graph/optimizer_cse.cc",
         "graph/subgraph.cc",
-        "graph/tensor_id.cc",
         "graph/validate.cc",
     ],
     hdrs = GRAPH_HDRS,
@@ -1990,6 +2009,7 @@ tf_cuda_library(
         "common_runtime/shape_refiner.h",
         "framework/versions.h",
         "graph/graph_constructor.cc",  # Depends on common_runtime.
+        "graph/graph_def_builder_util.cc",  # Depends on common_runtime.
         "public/session.h",
         "public/session_options.h",
         "public/version.h",

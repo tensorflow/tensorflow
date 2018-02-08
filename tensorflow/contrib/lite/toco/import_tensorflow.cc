@@ -839,6 +839,7 @@ void ConvertSwitchOperator(const NodeDef& node,
   op->outputs.push_back(node.name() + ":1");
   model->operators.emplace_back(op);
 }
+
 void ConvertSoftmaxOperator(const NodeDef& node,
                             const TensorFlowImportFlags& tf_import_flags,
                             Model* model) {
@@ -852,6 +853,18 @@ void ConvertSoftmaxOperator(const NodeDef& node,
   CHECK(!node.attr().count("beta"));  // Stab in the dark, just in case.
   softmax->beta = 1.f;
   model->operators.emplace_back(softmax);
+}
+
+void ConvertLogSoftmaxOperator(const NodeDef& node,
+                               const TensorFlowImportFlags& tf_import_flags,
+                               Model* model) {
+  CHECK_EQ(node.op(), "LogSoftmax");
+  CheckInputsCount(node, tf_import_flags, 1);
+  const auto& input_name = node.input(0);
+  auto* log_softmax = new LogSoftmaxOperator;
+  log_softmax->inputs.push_back(input_name);
+  log_softmax->outputs.push_back(node.name());
+  model->operators.emplace_back(log_softmax);
 }
 
 void ConvertLRNOperator(const NodeDef& node,
@@ -962,49 +975,37 @@ void ConvertReshapeOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertBatchMatMulOperator(const NodeDef& node,
+                                const TensorFlowImportFlags& tf_import_flags,
+                                Model* model) {
+  CheckInputsCount(node, tf_import_flags, 2);
+
+  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
+  CHECK(!HasAttr(node, "adj_a") || (GetBoolAttr(node, "adj_a") == false));
+  CHECK(!HasAttr(node, "adj_b") || (GetBoolAttr(node, "adj_b") == false));
+
+  auto* batch_matmul = new BatchMatMulOperator;
+  batch_matmul->inputs = {node.input(0), node.input(1)};
+  batch_matmul->outputs = {node.name()};
+  model->operators.emplace_back(batch_matmul);
+}
+
 void ConvertMatMulOperator(const NodeDef& node,
                            const TensorFlowImportFlags& tf_import_flags,
                            Model* model) {
   CheckInputsCount(node, tf_import_flags, 2);
-  if (node.op() == "MatMul") {
-    // Transpose flags should be easy to support, but we don't have a
-    // GraphDef with them to test on at the moment.
-    CHECK_EQ(GetBoolAttr(node, "transpose_a"), false);
-    CHECK_EQ(GetBoolAttr(node, "transpose_b"), false);
-    CHECK(!HasAttr(node, "adjoint_a") ||
-          (GetBoolAttr(node, "adjoint_a") == false));
-    CHECK(!HasAttr(node, "adjoint_b") ||
-          (GetBoolAttr(node, "adjoint_b") == false));
-  } else if (node.op() == "BatchMatMul") {
-    // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
-    CHECK(!HasAttr(node, "adj_a") || (GetBoolAttr(node, "adj_a") == false));
-    CHECK(!HasAttr(node, "adj_b") || (GetBoolAttr(node, "adj_b") == false));
-  } else {
-    LOG(FATAL) << "op must be 'MatMul' or 'BatchMatMul'";
-  }
 
-  const auto& input_name = node.input(0);
-  const auto& weights_name = node.input(1);
-  const auto& reordered_weights_name = weights_name + "_reordered";
-  // Check if a ReorderAxesOperator was already created for these weights
-  // (that happens when multiple layers share the same weights).
-  const Operator* existing_reorder =
-      GetOpWithOutput(*model, reordered_weights_name);
-  if (existing_reorder) {
-    // Check that it is safe to rely on the _reordered naming of the output
-    // array!
-    CHECK(existing_reorder->type == OperatorType::kReorderAxes);
-  } else {
-    // Create a new ReorderAxesOperator
-    auto* reorder = new ReorderAxesOperator;
-    reorder->inputs = {weights_name};
-    reorder->outputs = {reordered_weights_name};
-    reorder->input_axes_order = AxesOrder::kRC;
-    reorder->output_axes_order = AxesOrder::kCR;
-    model->operators.emplace_back(reorder);
-  }
+  // Transpose flags should be easy to support, but we don't have a
+  // GraphDef with them to test on at the moment.
+  CHECK_EQ(GetBoolAttr(node, "transpose_a"), false);
+  CHECK_EQ(GetBoolAttr(node, "transpose_b"), false);
+  CHECK(!HasAttr(node, "adjoint_a") ||
+        (GetBoolAttr(node, "adjoint_a") == false));
+  CHECK(!HasAttr(node, "adjoint_b") ||
+        (GetBoolAttr(node, "adjoint_b") == false));
+
   auto* matmul = new TensorFlowMatMulOperator;
-  matmul->inputs = {input_name, reordered_weights_name};
+  matmul->inputs = {node.input(0), node.input(1)};
   matmul->outputs = {node.name()};
   model->operators.emplace_back(matmul);
 }
@@ -1859,7 +1860,9 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertAvgPoolOperator(node, tf_import_flags, model);
     } else if (node.op() == "Reshape") {
       ConvertReshapeOperator(node, tf_import_flags, model);
-    } else if (node.op() == "MatMul" || node.op() == "BatchMatMul") {
+    } else if (node.op() == "BatchMatMul") {
+      ConvertBatchMatMulOperator(node, tf_import_flags, model);
+    } else if (node.op() == "MatMul") {
       ConvertMatMulOperator(node, tf_import_flags, model);
     } else if (node.op() == "Div" || node.op() == "RealDiv") {
       ConvertDivOperator(node, tf_import_flags, model);
@@ -1898,6 +1901,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertLRNOperator(node, tf_import_flags, model);
     } else if (node.op() == "Softmax") {
       ConvertSoftmaxOperator(node, tf_import_flags, model);
+    } else if (node.op() == "LogSoftmax") {
+      ConvertLogSoftmaxOperator(node, tf_import_flags, model);
     } else if (node.op() == "All") {
       ConvertAllOperator(node, tf_import_flags, model);
     } else if (node.op() == "Assert") {

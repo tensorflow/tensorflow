@@ -368,10 +368,7 @@ void MklReluGradOp<Device, T>::Compute(OpKernelContext* context) {
   mkl_context.MklCleanup();
 }
 
-
-
 #else  // INTEL_MKL_ML
-
 
 template <typename Device, typename T, algorithm alg_kind>
 class MklReluOpBase : public OpKernel {

@@ -59,13 +59,12 @@ __all__ = [
     'avg_pool2d', 'avg_pool3d', 'batch_norm', 'bias_add', 'conv2d', 'conv3d',
     'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
     'convolution2d', 'convolution2d_in_plane', 'convolution2d_transpose',
-    'convolution3d', 'convolution3d_transpose', 'dense_to_sparse',
-    'dropout', 'elu', 'flatten', 'fully_connected', 'GDN', 'gdn', 'layer_norm',
-    'linear', 'pool', 'max_pool2d', 'max_pool3d', 'one_hot_encoding', 'relu',
-    'relu6', 'repeat', 'scale_gradient', 'separable_conv2d',
-    'separable_convolution2d', 'softmax', 'spatial_softmax', 'stack',
-    'unit_norm', 'legacy_fully_connected', 'legacy_linear', 'legacy_relu',
-    'maxout'
+    'convolution3d', 'convolution3d_transpose', 'dense_to_sparse', 'dropout',
+    'elu', 'flatten', 'fully_connected', 'GDN', 'gdn', 'layer_norm', 'linear',
+    'pool', 'max_pool2d', 'max_pool3d', 'one_hot_encoding', 'relu', 'relu6',
+    'repeat', 'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
+    'softmax', 'spatial_softmax', 'stack', 'unit_norm',
+    'legacy_fully_connected', 'legacy_linear', 'legacy_relu', 'maxout'
 ]
 
 DATA_FORMAT_NCHW = 'NCHW'
@@ -1415,12 +1414,11 @@ def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
      outputs_collections: Collection to add the outputs.
      scope: Optional scope for name_scope.
   """
-  with variable_scope.variable_scope(
-      scope, 'dense_to_sparse', [tensor]) as sc:
+  with variable_scope.variable_scope(scope, 'dense_to_sparse', [tensor]) as sc:
     tensor = ops.convert_to_tensor(tensor)
     indices = array_ops.where(
-        math_ops.not_equal(
-            tensor, constant_op.constant(eos_token, tensor.dtype)))
+        math_ops.not_equal(tensor, constant_op.constant(eos_token,
+                                                        tensor.dtype)))
     values = array_ops.gather_nd(tensor, indices)
     shape = array_ops.shape(tensor, out_type=dtypes.int64)
     outputs = sparse_tensor.SparseTensor(indices, values, shape)

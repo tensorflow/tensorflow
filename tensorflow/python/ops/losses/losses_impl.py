@@ -547,13 +547,13 @@ def mean_pairwise_squared_error(
       num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
       term1 = 2.0 * _safe_div(sum_squares_diff_per_batch,
-                              num_present_per_batch-1)
+                              num_present_per_batch - 1)
 
       sum_diff = math_ops.reduce_sum(
           diffs, reduction_indices=reduction_indices, keep_dims=True)
       term2 = 2.0 * _safe_div(
           math_ops.square(sum_diff),
-          math_ops.multiply(num_present_per_batch, num_present_per_batch-1))
+          math_ops.multiply(num_present_per_batch, num_present_per_batch - 1))
 
       weighted_losses = math_ops.multiply(term1 - term2, weights)
       loss = math_ops.reduce_sum(weighted_losses)

@@ -18,20 +18,22 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.kafka.python.ops import gen_kafka_ops
-from tensorflow.contrib.util import loader
 from tensorflow.python.data.ops.readers import Dataset
-from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.platform import resource_loader
+
 
 class KafkaDataset(Dataset):
   """A Kafka Dataset that consumes the message.
   """
 
-  def __init__(
-      self, topics, servers="localhost", group="", eof=False, timeout=1000):
+  def __init__(self,
+               topics,
+               servers="localhost",
+               group="",
+               eof=False,
+               timeout=1000):
     """Create a KafkaReader.
 
     Args:
@@ -51,14 +53,13 @@ class KafkaDataset(Dataset):
         servers, dtype=dtypes.string, name="servers")
     self._group = ops.convert_to_tensor(
         group, dtype=dtypes.string, name="group")
-    self._eof = ops.convert_to_tensor(
-        eof, dtype=dtypes.bool, name="eof")
+    self._eof = ops.convert_to_tensor(eof, dtype=dtypes.bool, name="eof")
     self._timeout = ops.convert_to_tensor(
         timeout, dtype=dtypes.int64, name="timeout")
 
   def _as_variant_tensor(self):
-    return gen_kafka_ops.kafka_dataset(
-        self._topics, self._servers, self._group, self._eof, self._timeout)
+    return gen_kafka_ops.kafka_dataset(self._topics, self._servers, self._group,
+                                       self._eof, self._timeout)
 
   @property
   def output_classes(self):

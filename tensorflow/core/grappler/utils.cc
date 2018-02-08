@@ -312,6 +312,20 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
   }
 }
 
+void DedupControlInputs(NodeDef* node) {
+  std::unordered_set<string> inputs;
+  int pos = 0;
+  while (pos < node->input_size()) {
+    const string& input = node->input(pos);
+    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
+      node->mutable_input()->SwapElements(pos, node->input_size() - 1);
+      node->mutable_input()->RemoveLast();
+    } else {
+      ++pos;
+    }
+  }
+}
+
 namespace {
 template <typename T>
 inline void STLSortAndRemoveDuplicates(T* v) {
