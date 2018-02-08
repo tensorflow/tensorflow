@@ -12,10 +12,32 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+"""Tests for type_check."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.ndlstm.python import lstm2d
-from tensorflow.contrib.ndlstm.python import lstm1d
+import numpy
+
+from tensorflow.contrib.py2tf.utils import type_check
+from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import test_util
+from tensorflow.python.platform import test
+
+
+class TypeCheckTest(test.TestCase):
+
+  def test_checks(self):
+    self.assertTrue(type_check.is_tensor(constant_op.constant([1, 2, 3])))
+    self.assertTrue(
+        type_check.is_tensor(test_util.variables.Variable([1, 2, 3])))
+    self.assertTrue(
+        type_check.is_tensor(
+            test_util.array_ops.placeholder(test_util.dtypes.float32)))
+    self.assertFalse(type_check.is_tensor(3))
+    self.assertFalse(type_check.is_tensor(numpy.eye(3)))
+
+
+if __name__ == '__main__':
+  test.main()

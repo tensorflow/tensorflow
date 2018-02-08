@@ -22,7 +22,6 @@ import numpy as np
 
 from tensorflow.contrib.framework.python.ops import accumulate_n_v2 as av2
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util

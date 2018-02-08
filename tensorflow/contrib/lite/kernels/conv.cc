@@ -463,9 +463,7 @@ TfLiteRegistration* Register_CONVOLUTION_CBLAS_OPT() {
 }
 
 TfLiteRegistration* Register_CONV_2D() {
-// TODO(ycling): Define a compilation flag and use CBLAS kernel when a
-// fast CBLAS implementatino is available.
-#ifdef TFLITE_USE_CBLAS_CONVOLUTION_KERNEL
+#ifdef TFLITE_USE_APPLE_ACCELERATE_FOR_CONV
   return Register_CONVOLUTION_CBLAS_OPT();
 #else
   return Register_CONVOLUTION_MULTITHREADED_OPT();

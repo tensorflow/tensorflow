@@ -159,6 +159,18 @@ std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithInput(
   return model.operators.end();
 }
 
+std::vector<std::unique_ptr<Operator>>::iterator FindOpWithInput(
+    Model& model, const string& array_name) {
+  for (auto it = model.operators.begin(); it != model.operators.end(); ++it) {
+    for (auto& input : it->get()->inputs) {
+      if (input == array_name) {
+        return it;
+      }
+    }
+  }
+  return model.operators.end();
+}
+
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOp(
     const Model& model, const Operator* op) {
   for (auto it = model.operators.begin(); it != model.operators.end(); ++it) {
@@ -217,6 +229,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Add)
     HANDLE_OPERATORTYPENAME_CASE(AddN)
     HANDLE_OPERATORTYPENAME_CASE(AveragePool)
+    HANDLE_OPERATORTYPENAME_CASE(BatchMatMul)
     HANDLE_OPERATORTYPENAME_CASE(BatchNormalization)
     HANDLE_OPERATORTYPENAME_CASE(Conv)
     HANDLE_OPERATORTYPENAME_CASE(Concatenation)
@@ -238,6 +251,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Relu6)
     HANDLE_OPERATORTYPENAME_CASE(ReorderAxes)
     HANDLE_OPERATORTYPENAME_CASE(Softmax)
+    HANDLE_OPERATORTYPENAME_CASE(LogSoftmax)
     HANDLE_OPERATORTYPENAME_CASE(Div)
     HANDLE_OPERATORTYPENAME_CASE(Tanh)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowAll)
@@ -406,7 +420,7 @@ void LogArray(int log_level, const Model& model, const string& name) {
   }
   if (array.quantization_params) {
     VLOG(log_level) << "  QuantizationParams: zero_point="
-                    << array.quantization_params->zero_point
+                    << static_cast<int>(array.quantization_params->zero_point)
                     << ", scale=" << array.quantization_params->scale;
   }
 }
@@ -685,12 +699,10 @@ void CheckNoMissingArray(const Model& model) {
   for (const auto& op : model.operators) {
     for (const auto& input : op->inputs) {
       CHECK(model.HasArray(input) || model.optional_arrays.count(input))
-       << "Input: " << input << " missing for op: " 
-       << op->outputs[0] << ".";
+          << "Input: " << input << " missing for op: " << op->outputs[0] << ".";
     }
     for (const auto& output : op->outputs) {
-      CHECK(model.HasArray(output)) << "Output: " << output 
-        << " missing.";
+      CHECK(model.HasArray(output)) << "Output: " << output << " missing.";
     }
   }
   CheckNonExistentIOArrays(model);
@@ -1296,12 +1308,23 @@ int ElementSize(ArrayDataType data_type) {
   switch (data_type) {
     case ArrayDataType::kFloat:
       return 4;
-    case ArrayDataType::kInt32:
-      return 4;
+    case ArrayDataType::kInt8:
+      return 1;
     case ArrayDataType::kUint8:
       return 1;
+    case ArrayDataType::kInt16:
+      return 2;
+    case ArrayDataType::kUint16:
+      return 2;
+    case ArrayDataType::kInt32:
+      return 4;
+    case ArrayDataType::kUint32:
+      return 4;
     case ArrayDataType::kInt64:
       return 8;
+    case ArrayDataType::kUint64:
+      return 8;
+
     // Usually not critical limitation because strings are only input and/or
     // output.
     case ArrayDataType::kString:
@@ -1399,6 +1422,21 @@ bool IsArrayFullyConnectedWeights(const Model& model, const string& name) {
   return is_fc_weights;
 }
 
+string CreateInt32Array(Model* model, const string& param_name,
+                        const std::vector<int>& value) {
+  auto param_array_name = AvailableArrayName(*model, param_name);
+  auto& param_array = model->GetOrCreateArray(param_array_name);
+  param_array.mutable_shape()->ReplaceDims({static_cast<int>(value.size())});
+  param_array.data_type = ArrayDataType::kInt32;
+  auto& param_array_data =
+      param_array.GetMutableBuffer<ArrayDataType::kInt32>().data;
+  param_array_data.resize(RequiredBufferSizeForShape(param_array.shape()));
+  for (int i = 0; i < value.size(); ++i) {
+    param_array_data[i] = value[i];
+  }
+  return param_array_name;
+}
+
 bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
   int64 total = 0;
   for (const auto& op : model.operators) {
@@ -1446,6 +1484,7 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
       }
       case OperatorType::kLogistic:
       case OperatorType::kSoftmax:
+      case OperatorType::kLogSoftmax:
       case OperatorType::kTanh: {
         const auto& output_array = model.GetArray(op->outputs[0]);
         if (!output_array.has_shape()) {
@@ -1545,10 +1584,6 @@ void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
   }
 }
 
-namespace {
-
-// Extend shuffle is designed to match ExtendShape, which pads the shape with
-// unit dimensions at the beginning.
 void ExtendShuffle(const std::vector<int>& input_shuffle, int newdim,
                    std::vector<int>* extended_shuffle) {
   *extended_shuffle = input_shuffle;
@@ -1562,8 +1597,6 @@ void ExtendShuffle(const std::vector<int>& input_shuffle, int newdim,
     (*extended_shuffle)[i] = input_shuffle[i - pad_size] + pad_size;
   }
 }
-
-}  // end anonymous namespace
 
 void ShuffleDims(const Shape& input_shape, AxesOrder input_axes_order,
                  AxesOrder output_axes_order, Shape* output_shape) {
@@ -1758,24 +1791,6 @@ void UseArraysExtraInfo(Model* model) {
     minmax.min = entry.min();
     minmax.max = entry.max();
   }
-}
-
-bool IsRnnSourceArray(const toco::Model& model, const string& array_name) {
-  for (const auto& rnn_state : model.flags.rnn_states()) {
-    if (array_name == rnn_state.back_edge_source_array()) {
-      return true;
-    }
-  }
-  return false;
-}
-
-bool IsRnnStateArray(const toco::Model& model, const string& array_name) {
-  for (const auto& rnn_state : model.flags.rnn_states()) {
-    if (array_name == rnn_state.state_array()) {
-      return true;
-    }
-  }
-  return false;
 }
 
 }  // namespace toco

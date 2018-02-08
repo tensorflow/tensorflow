@@ -49,7 +49,7 @@ from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import tape  # pylint: disable=unused-import
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -1146,13 +1146,19 @@ class TensorFlowTestCase(googletest.TestCase):
           del path[-1]
     # a and b are ndarray like objects
     else:
-      self._assertArrayLikeAllClose(
-          a,
-          b,
-          rtol=rtol,
-          atol=atol,
-          msg="Mismatched value: a%s is different from b%s." % (path_str,
-                                                                path_str))
+      try:
+        self._assertArrayLikeAllClose(
+            a,
+            b,
+            rtol=rtol,
+            atol=atol,
+            msg="Mismatched value: a%s is different from b%s." % (path_str,
+                                                                  path_str))
+      except TypeError as e:
+        msg = "Error: a%s has %s, but b%s has %s" % (
+            path_str, type(a), path_str, type(b))
+        e.args = ((e.args[0] + ' : ' + msg,) + e.args[1:])
+        raise
 
   def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
     """Asserts that two structures of numpy arrays, have near values.

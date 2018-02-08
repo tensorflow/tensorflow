@@ -291,7 +291,7 @@ cc_library(
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
         "@arm_neon_2_x86_sse",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )
 
@@ -325,7 +325,7 @@ cc_library(
         "//tensorflow/contrib/lite/kernels:activation_functor",
         "//tensorflow/contrib/lite:builtin_op_data",
         "@arm_neon_2_x86_sse",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ] + select({
         ":arm": [
             ":neon_tensor_utils",

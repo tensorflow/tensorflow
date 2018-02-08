@@ -71,7 +71,6 @@ py_library(
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/model_pruning",
         "//tensorflow/contrib/nccl:nccl_py",
-        "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_py",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",

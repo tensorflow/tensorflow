@@ -72,6 +72,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":c_api",
+        "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",

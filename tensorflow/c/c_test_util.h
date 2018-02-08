@@ -69,6 +69,9 @@ TF_Operation* AddWithCtrlDependency(TF_Operation* l, TF_Operation* r,
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
                   const char* name = "add");
 
+TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                  TF_Status* s, const char* name = "min");
+
 TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
                   const char* name = "neg");
 

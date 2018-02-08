@@ -14,7 +14,8 @@ message CheckpointableObjectGraph {
       // An index into `CheckpointableObjectGraph.nodes`, indicating the object
       // being referenced.
       int32 node_id = 1;
-      // A numeric identifier for this object within its parent.
+      // A numeric identifier for this object within its parent. Zero means
+      // unset, in which case there should be a local_name.
       int32 local_uid = 2;
       // A user-provided name for the edge. May be blank/omitted, in which case
       // there is no explicitly provided local name; fall back on local_uid.
@@ -28,6 +29,8 @@ message CheckpointableObjectGraph {
       // The full name of the variable. Used to allow name-based loading of
       // checkpoints which were saved using an object-based API.
       string full_name = 2;
+      // The generated name of the variable in the checkpoint.
+      string checkpoint_key = 3;
     }
 
     message SlotVariableReference {
@@ -42,6 +45,8 @@ message CheckpointableObjectGraph {
       // The full name of the slot variable. Used to allow name-based loading of
       // checkpoints which were saved using an object-based API.
       string full_name = 4;
+      // The generated name of the variable in the checkpoint.
+      string checkpoint_key = 5;
     }
 
     // Objects which this object depends on.

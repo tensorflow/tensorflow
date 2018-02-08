@@ -27,7 +27,6 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
-from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
 
 
