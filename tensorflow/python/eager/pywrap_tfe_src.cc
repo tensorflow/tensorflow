@@ -1332,8 +1332,7 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
     }
     return py_result;
   }
-  Py_INCREF(Py_None);
-  return Py_None;
+  return PyList_New(0);
 }
 
 namespace {
