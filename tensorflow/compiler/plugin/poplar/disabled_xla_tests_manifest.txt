@@ -82,6 +82,7 @@ ArrayElementwiseOpTest.ShiftRightArithmeticU32      POPLAR // U32
 ArrayElementwiseOpTest.ShiftLeftU32      POPLAR // U32
 ArrayElementwiseOpTest.ShiftRightLogicalU32      POPLAR // U32
 ArrayElementwiseOpTest.ClampU32Vector POPLAR // U32
+ArrayElementwiseOpTest.ClampU32ScalarVector POPLAR // U32
 VecOpsSimpleTest.NegateUint32Values      POPLAR // U32
 PrngTest.HundredValuesB10p5      POPLAR // U32
 PrngTest.HundredValuesB10p1      POPLAR // U32

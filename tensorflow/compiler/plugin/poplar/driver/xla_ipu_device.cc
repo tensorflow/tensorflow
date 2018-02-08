@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 
-#include "tensorflow/compiler/tf2xla/kernels/gather_op.h"
 #include "tensorflow/compiler/tf2xla/kernels/index_ops.h"
 
 #include "tensorflow/core/kernels/no_op.h"
