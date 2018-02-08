@@ -46,7 +46,7 @@ if [ "${OS}" = "Linux" ]; then
     export LD_LIBRARY_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/:${DS_ROOT_TASK}/DeepSpeech/CUDA/lib64/stubs/:$LD_LIBRARY_PATH
 fi;
 
-export TF_ENABLE_XLA=1
+export TF_ENABLE_XLA=0
 if [ "${OS}" = "Linux" ]; then
     TF_NEED_JEMALLOC=1
 elif [ "${OS}" = "Darwin" ]; then
