@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
+#include "tensorflow/core/platform/mem.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -47,6 +48,11 @@ DeviceProperties GetLocalCPUInfo() {
   device.set_l1_cache_size(Eigen::l1CacheSize());
   device.set_l2_cache_size(Eigen::l2CacheSize());
   device.set_l3_cache_size(Eigen::l3CacheSize());
+
+  int64 free_mem = port::AvailableRam();
+  if (free_mem < INT64_MAX) {
+    device.set_memory_size(free_mem);
+  }
 
   (*device.mutable_environment())["cpu_instruction_set"] =
       Eigen::SimdInstructionSetsInUse();

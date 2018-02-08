@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.py2tf.pyct import qual_names
+
 
 class Namer(object):
   """Implementation of the namer interfaces required by various converters.
@@ -103,11 +105,20 @@ class Namer(object):
 
   def new_symbol(self, name_root, reserved_locals):
     """See control_flow.SymbolNamer.new_symbol."""
+    # reserved_locals may contain QNs.
+    all_reserved_locals = set()
+    for s in reserved_locals:
+      if isinstance(s, qual_names.QN):
+        all_reserved_locals.update(s.qn)
+      elif isinstance(s, str):
+        all_reserved_locals.add(s)
+      else:
+        raise ValueError('Unexpected symbol type "%s"' % type(s))
+
     new_name = name_root
     n = 0
-    while (new_name in self.global_namespace
-           or new_name in reserved_locals
-           or new_name in self.generated_names):
+    while (new_name in self.global_namespace or
+           new_name in all_reserved_locals or new_name in self.generated_names):
       n += 1
       new_name = '%s_%d' % (name_root, n)
 

@@ -180,6 +180,18 @@ TEST(GPUDeviceTest, MultipleVirtualDevices) {
   EXPECT_EQ(2, devices.size());
   EXPECT_EQ(123 << 20, devices[0]->attributes().memory_limit());
   EXPECT_EQ(456 << 20, devices[1]->attributes().memory_limit());
+  ASSERT_EQ(1, devices[0]->attributes().locality().links().link_size());
+  ASSERT_EQ(1, devices[1]->attributes().locality().links().link_size());
+  EXPECT_EQ(1, devices[0]->attributes().locality().links().link(0).device_id());
+  EXPECT_EQ("SAME_DEVICE",
+            devices[0]->attributes().locality().links().link(0).type());
+  EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
+            devices[0]->attributes().locality().links().link(0).strength());
+  EXPECT_EQ(0, devices[1]->attributes().locality().links().link(0).device_id());
+  EXPECT_EQ("SAME_DEVICE",
+            devices[1]->attributes().locality().links().link(0).type());
+  EXPECT_EQ(BaseGPUDeviceFactory::InterconnectMap::kSameDeviceStrength,
+            devices[1]->attributes().locality().links().link(0).strength());
   for (auto d : devices) delete d;
 }
 

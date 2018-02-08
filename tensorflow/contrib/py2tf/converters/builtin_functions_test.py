@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import gast
+
 from tensorflow.contrib.py2tf.converters import builtin_functions
 from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.contrib.py2tf.pyct import compiler
@@ -34,7 +36,7 @@ class BuiltinFunctionsTest(converter_test_base.TestCase):
       return len(a)
 
     node = self.parse_and_analyze(test_fn, {'len': len})
-    node = builtin_functions.transform(node)
+    node = builtin_functions.transform(node, self.ctx)
     result = compiler.ast_to_object(node)
     setattr(result, 'tf', array_ops)
 
@@ -42,6 +44,18 @@ class BuiltinFunctionsTest(converter_test_base.TestCase):
       self.assertEqual(3,
                        sess.run(
                            result.test_fn(constant_op.constant([0, 0, 0]))))
+
+  def test_print(self):
+
+    def test_fn(a):
+      print(a)
+
+    node = self.parse_and_analyze(test_fn, {'print': print})
+    node = builtin_functions.transform(node, self.ctx)
+    result = compiler.ast_to_object(node)
+
+    result.test_fn('a')
+    self.assertTrue(isinstance(node.body[0].body[0].value, gast.Call))
 
 
 if __name__ == '__main__':

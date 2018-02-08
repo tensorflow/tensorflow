@@ -459,6 +459,9 @@ TfLiteStatus Interpreter::ResizeTensorImpl(TfLiteTensor* tensor,
         TfLiteIntArrayFree(new_size);
         return kTfLiteError;
       }
+
+      // Realloc space for kTfLiteDynamic tensors.
+      TfLiteTensorRealloc(bytesRequired, tensor);
       tensor->bytes = bytesRequired;
     }
     if (tensor->dims) TfLiteIntArrayFree(tensor->dims);

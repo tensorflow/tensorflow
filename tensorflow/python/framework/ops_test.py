@@ -916,7 +916,6 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
 
     op = g.get_operation_by_name("myloop/myop")
     self.assertIsNotNone(op)
-    self.assertEqual(len(op.control_inputs), 1)
     # External control dep is removed and replaced with internal control dep
     self.assertNotEqual(op.control_inputs[0], c.op)
     self.assertIsNotNone(op.control_inputs[0]._get_control_flow_context())

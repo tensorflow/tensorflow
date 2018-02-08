@@ -25,24 +25,30 @@ import termcolor
 class PrettyPrinter(gast.NodeVisitor):
   """Print AST nodes."""
 
-  def __init__(self):
+  def __init__(self, color):
     self.indent_lvl = 0
     self.result = ''
+    self.color = color
+
+  def _color(self, string, color, attrs=None):
+    if self.color:
+      return termcolor.colored(string, color, attrs=attrs)
+    return string
 
   def _type(self, node):
-    return termcolor.colored(node.__class__.__name__, None, attrs=['bold'])
+    return self._color(node.__class__.__name__, None, ['bold'])
 
   def _field(self, name):
-    return termcolor.colored(name, 'blue')
+    return self._color(name, 'blue')
 
   def _value(self, name):
-    return termcolor.colored(name, 'magenta')
+    return self._color(name, 'magenta')
 
   def _warning(self, name):
-    return termcolor.colored(name, 'red')
+    return self._color(name, 'red')
 
   def _indent(self):
-    return termcolor.colored('| ' * self.indent_lvl, None, attrs=['dark'])
+    return self._color('| ' * self.indent_lvl, None, ['dark'])
 
   def _print(self, s):
     self.result += s
@@ -76,6 +82,16 @@ class PrettyPrinter(gast.NodeVisitor):
           self._print('%s]' % (self._indent()))
         else:
           self._print('%s%s=[]' % (self._indent(), self._field(f)))
+      elif isinstance(v, tuple):
+        if v:
+          self._print('%s%s=(' % (self._indent(), self._field(f)))
+          self.indent_lvl += 1
+          for n in v:
+            self.generic_visit(n)
+          self.indent_lvl -= 1
+          self._print('%s)' % (self._indent()))
+        else:
+          self._print('%s%s=()' % (self._indent(), self._field(f)))
       elif isinstance(v, gast.AST):
         self.generic_visit(v, f)
       elif isinstance(v, str):
@@ -87,8 +103,8 @@ class PrettyPrinter(gast.NodeVisitor):
     self.indent_lvl -= 1
 
 
-def fmt(node):
-  printer = PrettyPrinter()
+def fmt(node, color=True):
+  printer = PrettyPrinter(color)
   if isinstance(node, (list, tuple)):
     for n in node:
       printer.visit(n)

@@ -1312,6 +1312,12 @@ void ConvertResizeBilinearOperator(const NodeDef& node,
   CHECK_EQ(node.op(), "ResizeBilinear");
   CheckInputsCount(node, tf_import_flags, 2);
   auto* op = new ResizeBilinearOperator;
+
+  op->align_corners = false;
+  if (HasAttr(node, "align_corners")) {
+    op->align_corners = GetBoolAttr(node, "align_corners");
+  }
+
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());

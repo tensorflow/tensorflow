@@ -315,7 +315,7 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
       allocator_pair.second->GetRecordsAndUnRef();
     }
     auto* ms = stats->mutable_memory_stats();
-    ms->set_temp_memory_size(context.temp_memory_size());
+    ms->set_temp_memory_size(context.temp_memory_allocated());
     for (const auto& alloc_id : context.persistent_alloc_ids()) {
       ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
     }
