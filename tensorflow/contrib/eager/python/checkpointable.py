@@ -23,8 +23,12 @@ import weakref
 
 from tensorflow.contrib.eager.proto import checkpointable_object_graph_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import optimizer as optimizer_lib
@@ -75,6 +79,40 @@ def _assign_existing_variable(variable_to_restore, value_pointer):
       value_pointer.session.run(initializer_op)
 
 
+def _default_getter(name, shape, dtype, initializer=None,
+                    partition_info=None, **kwargs):
+  """A pared-down version of get_variable which does not reuse variables."""
+  dtype = dtypes.as_dtype(dtype)
+  shape_object = tensor_shape.as_shape(shape)
+  with ops.init_scope():
+    if initializer is None:
+      initializer, initializing_from_value = (
+          variable_scope._get_default_variable_store()._get_default_initializer(  # pylint: disable=protected-access
+              name=name, shape=shape_object, dtype=dtype))
+    else:
+      initializing_from_value = not callable(initializer)
+    # Same logic as get_variable
+    if initializing_from_value:
+      if shape is not None:
+        raise ValueError("If initializer is a constant, do not specify shape.")
+      initial_value = initializer
+      variable_dtype = None
+    else:
+      # Instantiate initializer if provided initializer is a type object.
+      if isinstance(initializer, type(init_ops.Initializer)):
+        initializer = initializer(dtype=dtype)
+      def initial_value():
+        return initializer(
+            shape_object.as_list(), dtype=dtype, partition_info=partition_info)
+      variable_dtype = dtype.base_dtype
+    return resource_variable_ops.ResourceVariable(
+        initial_value=initial_value,
+        name=name,
+        dtype=variable_dtype,
+        **kwargs
+    )
+
+
 class Checkpointable(object):
   """Manages variables and dependencies on other objects.
 
@@ -117,7 +155,8 @@ class Checkpointable(object):
         and value not in self._already_tracked):
       self.track_checkpointable(value, name=name)
 
-  def add_variable(self, name, shape, dtype=None, initializer=None, **kwargs):
+  def add_variable(self, name, shape=None, dtype=dtypes.float32,
+                   initializer=None, **kwargs):
     """Create a new variable object to be saved with this `Checkpointable`.
 
     If the user has requested that this object or another `Checkpointable` which
@@ -131,14 +170,18 @@ class Checkpointable(object):
       dtype: The data type of the variable.
       initializer: The initializer to use. Ignored if deferred loading has been
         requested.
-      **kwargs: Passed to get_variable.
+      **kwargs: Passed to the ResourceVariable constructor.
 
     Returns:
       The new variable object.
 
     Raises:
       ValueError: If the variable name is not unique.
+      RuntimeError: If __init__ has not been called.
     """
+    if not hasattr(self, "_owned_variables"):
+      raise RuntimeError("Need to call Checkpointable.__init__ before adding "
+                         "variables.")
     if name in self._owned_variables:
       raise ValueError(
           ("A variable named '%s' already exists in this Checkpointable, but "
@@ -151,18 +194,19 @@ class Checkpointable(object):
       # be relatively uncommon in user code.
       getter = kwargs.pop("getter")
     else:
-      getter = variable_scope.get_variable
+      getter = _default_getter
     deferred_restoration = self._deferred_restorations.pop(name, None)
     if deferred_restoration is not None:
       dtype = deferred_restoration.value_pointer.dtype
       base_type = dtype.base_dtype
       # TODO(allenl): Handle partitioned variables here too
-      initializer, = io_ops.restore_v2(
-          prefix=deferred_restoration.value_pointer.save_path,
-          tensor_names=[deferred_restoration.value_pointer.checkpoint_key],
-          shape_and_slices=[""],
-          dtypes=[base_type],
-          name="checkpoint_initializer")
+      with ops.init_scope():
+        initializer, = io_ops.restore_v2(
+            prefix=deferred_restoration.value_pointer.save_path,
+            tensor_names=[deferred_restoration.value_pointer.checkpoint_key],
+            shape_and_slices=[""],
+            dtypes=[base_type],
+            name="checkpoint_initializer")
       # We need to un-set the shape so get_variable doesn't complain, but we
       # also need to set the static shape information on the initializer if
       # possible so we don't get a variable with an unknown shape.

@@ -31,6 +31,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import base
 from tensorflow.python.layers import core
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
@@ -119,15 +120,7 @@ class NonLayerCheckpointable(checkpointable.Checkpointable):
 
   def __init__(self):
     super(NonLayerCheckpointable, self).__init__()
-    with variable_scope.variable_scope(None, default_name="non_layer"):
-      # Unfortunately using tf.get_variable to implement self.add_variable
-      # (necessary for backwards compatibile naming with Layers) we can still
-      # run into duplicate variable errors (when building a graph, not when
-      # executing eagerly), thus the variable scope.
-      #
-      # TODO(allenl): Consider creating a ResourceVariable directly by
-      # default so that variable reuse isn't an issue.
-      self._a_variable = self.add_variable("a_variable", shape=[])
+    self.a_variable = self.add_variable(name="a_variable", shape=[])
 
 
 class MyNetwork(CheckpointableNetwork):
@@ -158,17 +151,92 @@ class Root(checkpointable.Checkpointable):
   def global_step(self):
     if self._global_step is None:
       # Get the default create_global_step utility to actually call
-      # self.add_variable, by setting a custom getter.
-      def _owned_variable_as_custom_getter(getter, *args, **kwargs):
-        return self.add_variable(*args, getter=getter, **kwargs)
+      # self.add_variable, by setting a custom creator.
+      def _owned_variable_as_creator(
+          next_creator, initial_value, **kwargs):
+        def _creator_as_getter(initializer, **kwargs):
+          return next_creator(initial_value=initializer, **kwargs)
+        return self.add_variable(
+            getter=_creator_as_getter, initializer=initial_value, shape=[],
+            **kwargs)
 
-      with variable_scope.variable_scope(
-          "", custom_getter=_owned_variable_as_custom_getter):
+      with variable_scope.variable_creator_scope(
+          _owned_variable_as_creator):
         self._global_step = training_util.create_global_step()
     return self._global_step
 
 
-class CheckpointNamingTests(test.TestCase):
+class InterfaceTests(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testAddVariable(self):
+    obj = NonLayerCheckpointable()
+    with self.assertRaisesRegexp(ValueError, "do not specify shape"):
+      obj.add_variable(
+          name="shape_specified_twice", shape=[], initializer=1)
+    constant_initializer = obj.add_variable(
+        name="constant_initializer", initializer=1)
+    with variable_scope.variable_scope("some_variable_scope"):
+      ones_initializer = obj.add_variable(
+          name="ones_initializer",
+          shape=[2],
+          initializer=init_ops.ones_initializer(dtype=dtypes.float32))
+    bare_initializer = obj.add_variable(
+        name="bare_initializer",
+        shape=[2, 2],
+        dtype=dtypes.float64,
+        initializer=init_ops.zeros_initializer)
+
+    # Even in graph mode, there are no naming conflicts between objects, only
+    # naming conflicts within an object.
+    other_duplicate = resource_variable_ops.ResourceVariable(
+        name="duplicate", initial_value=1.)
+    duplicate = obj.add_variable(name="duplicate", shape=[])
+    with self.assertRaisesRegexp(ValueError, "'duplicate' already exists"):
+      obj.add_variable(name="duplicate", shape=[])
+
+    if context.in_graph_mode():
+      self.evaluate(variables.global_variables_initializer())
+    self.assertEqual("constant_initializer:0", constant_initializer.name)
+    self.assertEqual(1, self.evaluate(constant_initializer))
+    self.assertEqual("some_variable_scope/ones_initializer:0",
+                     ones_initializer.name)
+    self.assertAllEqual([1, 1], self.evaluate(ones_initializer))
+    self.assertAllEqual([[0., 0.],
+                         [0., 0.]], self.evaluate(bare_initializer))
+    self.assertEqual("a_variable:0", obj.a_variable.name)
+    self.assertEqual("duplicate:0", other_duplicate.name)
+    if context.in_graph_mode():
+      # The .name attribute may be globally influenced, but the checkpoint name
+      # won't be (tested below).
+      self.assertEqual("duplicate_1:0", duplicate.name)
+    else:
+      # When executing eagerly, there's no uniquification of variable names. The
+      # checkpoint name will be the same.
+      self.assertEqual("duplicate:0", duplicate.name)
+    named_variables, _ = checkpointable._serialize_object_graph(obj)
+    expected_checkpoint_names = (
+        "a_variable",
+        "bare_initializer",
+        "constant_initializer",
+        "duplicate",
+        "ones_initializer",
+    )
+    six.assertCountEqual(
+        self, expected_checkpoint_names, named_variables.keys())
+
+  def testInitNotCalled(self):
+
+    class NoInit(checkpointable.Checkpointable):
+
+      def __init__(self):
+        pass
+
+    with self.assertRaisesRegexp(RuntimeError, "__init__"):
+      NoInit().add_variable("var", shape=[])
+
+
+class CheckpointingTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNamingWithOptimizer(self):
@@ -391,12 +459,7 @@ class CheckpointNamingTests(test.TestCase):
 
   def _get_checkpoint_name(self, name):
     root = checkpointable.Checkpointable()
-    with variable_scope.variable_scope("get_checkpoint_name"):
-      # Create the variable in a variable scope so that we get more relaxed
-      # naming rules (variables outside a scope may not start with "_", "/" or
-      # "-"). Since we don't use the scope part of the name, these cases are
-      # somewhat annoying.
-      root.add_variable(name=name, shape=[1, 2], dtype=dtypes.float64)
+    root.add_variable(name=name, shape=[1, 2], dtype=dtypes.float64)
     named_variables, _ = checkpointable._serialize_object_graph(root)
     checkpoint_name, = named_variables.keys()
     with ops.name_scope("root/" + checkpoint_name):
@@ -406,9 +469,9 @@ class CheckpointNamingTests(test.TestCase):
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testVariableNameEscaping(self):
     self.assertEqual(r"a_S__b_S__c", self._get_checkpoint_name(r"a/b/c"))
-    self.assertEqual(r"", self._get_checkpoint_name(r""))
-    self.assertEqual(r"_S__", self._get_checkpoint_name(r"/"))
-    self.assertEqual(r"_S___S_._", self._get_checkpoint_name(r"/_S__"))
+    self.assertEqual(r"b", self._get_checkpoint_name(r"b"))
+    self.assertEqual(r"c_S__", self._get_checkpoint_name(r"c/"))
+    self.assertEqual(r"d_S___S_._", self._get_checkpoint_name(r"d/_S__"))
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNumberedPath(self):
