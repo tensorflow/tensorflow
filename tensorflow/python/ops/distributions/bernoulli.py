@@ -167,26 +167,6 @@ class Bernoulli(distribution.Distribution):
     return math_ops.cast(self.probs > 0.5, self.dtype)
 
 
-class BernoulliWithSigmoidProbs(Bernoulli):
-  """Bernoulli with `probs = nn.sigmoid(logits)`."""
-
-  def __init__(self,
-               logits=None,
-               dtype=dtypes.int32,
-               validate_args=False,
-               allow_nan_stats=True,
-               name="BernoulliWithSigmoidProbs"):
-    parameters = locals()
-    with ops.name_scope(name):
-      super(BernoulliWithSigmoidProbs, self).__init__(
-          probs=nn.sigmoid(logits, name="sigmoid_probs"),
-          dtype=dtype,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=name)
-    self._parameters = parameters
-
-
 @kullback_leibler.RegisterKL(Bernoulli, Bernoulli)
 def _kl_bernoulli_bernoulli(a, b, name=None):
   """Calculate the batched KL divergence KL(a || b) with a and b Bernoulli.
