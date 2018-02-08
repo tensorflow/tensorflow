@@ -2341,6 +2341,7 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
     (c_prev, m_prev) = state
 
     self._batch_size = inputs.shape[0].value or array_ops.shape(inputs)[0]
+    input_size = inputs.shape[-1].value or array_ops.shape(inputs)[-1]
     dtype = inputs.dtype
     scope = vs.get_variable_scope()
     with vs.variable_scope(scope, initializer=self._initializer):
@@ -2354,9 +2355,9 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
           x_g_id = array_ops.concat(
               [
                   self._get_input_for_group(inputs, group_id,
-                                            self._group_shape[0]),
+                                            int(input_size / self._number_of_groups)),
                   self._get_input_for_group(m_prev, group_id,
-                                            self._group_shape[0])
+                                            int(self._output_size / self._number_of_groups))
               ],
               axis=1)
           linear = self._linear1[group_id]
