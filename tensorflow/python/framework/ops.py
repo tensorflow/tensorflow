@@ -2775,6 +2775,8 @@ class Graph(object):
     else:
       self._scoped_c_graph = None
     self._variable_creator_stack = []
+    # Global flag to enable checking of validity of inputs to distributions
+    self._validate_args_default = False
 
   # TODO(apassos) remove once the C API is used by default.
   def _use_c_api_hack(self):
@@ -2955,6 +2957,14 @@ class Graph(object):
   @seed.setter
   def seed(self, seed):
     self._seed = seed
+
+  @property
+  def validate_args_default(self):
+    return self._validate_args_default
+
+  @validate_args_default.setter
+  def validate_args_default(self, validate_args_default):
+    self._validate_args_default = validate_args_default
 
   @property
   def finalized(self):
