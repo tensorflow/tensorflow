@@ -22,7 +22,6 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 
 @@Dataset
 @@Counter
-@@Iterator
 
 @@batch_and_drop_remainder
 @@dense_to_sparse_batch
@@ -68,7 +67,6 @@ from tensorflow.contrib.data.python.ops.readers import SqlDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.scan_ops import scan
 from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
-from tensorflow.python.data.ops.iterator_ops import Iterator
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented
