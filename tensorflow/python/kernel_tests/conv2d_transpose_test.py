@@ -175,7 +175,7 @@ class Conv2DTransposeTest(test.TestCase):
     self.assertLess(err, err_tolerance)
 
   def testConv2DTransposeSingleStrideNCHW(self):
-    # `NCHW` data fomat is only supported for CUDA device.
+    # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
         strides = [1, 1, 1, 1]
@@ -210,7 +210,7 @@ class Conv2DTransposeTest(test.TestCase):
                 self.assertAllClose(target, value[n, k, h, w])
 
   def testConv2DTransposeSameNCHW(self):
-    # `NCHW` data fomat is only supported for CUDA device.
+    # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
         strides = [1, 1, 2, 2]
@@ -246,7 +246,7 @@ class Conv2DTransposeTest(test.TestCase):
                 self.assertAllClose(target, value[n, k, h, w])
 
   def testConv2DTransposeValidNCHW(self):
-    # `NCHW` data fomat is only supported for CUDA device.
+    # `NCHW` data format is only supported for CUDA device.
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True):
         strides = [1, 1, 2, 2]
