@@ -24,6 +24,7 @@ import numbers
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.contrib.factorization.python.ops import gen_factorization_ops
+from tensorflow.contrib.factorization.python.ops import constants
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -189,8 +190,8 @@ class WALSModel(object):
                n_components,
                unobserved_weight=0.1,
                regularization=None,
-               row_init="random",
-               col_init="random",
+               row_init=constants.RANDOM_INIT,
+               col_init=constants.RANDOM_INIT,
                num_row_shards=1,
                num_col_shards=1,
                row_weights=1,
@@ -313,7 +314,7 @@ class WALSModel(object):
       init = init()
     if isinstance(init, list):
       assert len(init) == num_shards
-    elif isinstance(init, str) and init == "random":
+    elif isinstance(init, str) and init == constants.RANDOM_INIT:
       pass
     elif num_shards == 1:
       init = [init]
@@ -324,7 +325,7 @@ class WALSModel(object):
     def make_initializer(i, size):
 
       def initializer():
-        if init == "random":
+        if init == constants.RANDOM_INIT:
           return random_ops.random_normal([size, cols])
         else:
           return init[i]
@@ -362,13 +363,13 @@ class WALSModel(object):
     if wt_init is None:
       return None
 
-    init_mode = "list"
+    init_mode = constants.LIST_INIT
     if isinstance(wt_init, collections.Iterable):
       if num_shards == 1 and len(wt_init) == num_wts:
         wt_init = [wt_init]
       assert len(wt_init) == num_shards
     elif isinstance(wt_init, numbers.Real) and wt_init >= 0:
-      init_mode = "scalar"
+      init_mode = constants.SCALAR_INIT
     else:
       raise ValueError(
           "Invalid weight initialization argument. Must be one of these: "
@@ -382,7 +383,7 @@ class WALSModel(object):
     def make_wt_initializer(i, size):
 
       def initializer():
-        if init_mode == "scalar":
+        if init_mode == constants.SCALAR_INIT:
           return wt_init * array_ops.ones([size])
         else:
           return wt_init[i]
@@ -554,9 +555,9 @@ class WALSModel(object):
     if self._row_wt_cache is not None:
       assert self._col_wt_cache is not None
       self._worker_init = control_flow_ops.group(
-          row_wt_cache_init, col_wt_cache_init, name="worker_init")
+          row_wt_cache_init, col_wt_cache_init, name=constants.WORKER_INIT)
     else:
-      self._worker_init = control_flow_ops.no_op(name="worker_init")
+      self._worker_init = control_flow_ops.no_op(name=constants.WORKER_INIT)
 
   @property
   def worker_init(self):

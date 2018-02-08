@@ -23,6 +23,7 @@ from __future__ import print_function
 import time
 
 from tensorflow.contrib.factorization.python.ops import clustering_ops
+from tensorflow.contrib.factorization.python.ops import constants
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator.export import export_output
@@ -236,12 +237,12 @@ class KMeansClustering(estimator.Estimator):
   """An Estimator for K-Means clustering."""
 
   # Valid values for the distance_metric constructor argument.
-  SQUARED_EUCLIDEAN_DISTANCE = clustering_ops.SQUARED_EUCLIDEAN_DISTANCE
-  COSINE_DISTANCE = clustering_ops.COSINE_DISTANCE
+  SQUARED_EUCLIDEAN_DISTANCE = constants.SQUARED_EUCLIDEAN_DISTANCE
+  COSINE_DISTANCE = constants.COSINE_DISTANCE
 
   # Values for initial_clusters constructor argument.
-  RANDOM_INIT = clustering_ops.RANDOM_INIT
-  KMEANS_PLUS_PLUS_INIT = clustering_ops.KMEANS_PLUS_PLUS_INIT
+  RANDOM_INIT = constants.RANDOM_INIT
+  KMEANS_PLUS_PLUS_INIT = constants.KMEANS_PLUS_PLUS_INIT
 
   # Metric returned by evaluate(): The sum of the squared distances from each
   # input point to its closest center.
@@ -336,13 +337,13 @@ class KMeansClustering(estimator.Estimator):
         `distance_metric`.
     """
     if isinstance(initial_clusters, str) and initial_clusters not in [
-        KMeansClustering.RANDOM_INIT, KMeansClustering.KMEANS_PLUS_PLUS_INIT
+        constants.RANDOM_INIT, constants.KMEANS_PLUS_PLUS_INIT
     ]:
       raise ValueError(
           "Unsupported initialization algorithm '%s'" % initial_clusters)
     if distance_metric not in [
-        KMeansClustering.SQUARED_EUCLIDEAN_DISTANCE,
-        KMeansClustering.COSINE_DISTANCE
+        constants.SQUARED_EUCLIDEAN_DISTANCE,
+        constants.COSINE_DISTANCE
     ]:
       raise ValueError("Unsupported distance metric '%s'" % distance_metric)
     super(KMeansClustering, self).__init__(
@@ -406,4 +407,4 @@ class KMeansClustering(estimator.Estimator):
 
   def cluster_centers(self):
     """Returns the cluster centers."""
-    return self.get_variable_value(clustering_ops.CLUSTERS_VAR_NAME)
+    return self.get_variable_value(constants.CLUSTERS_VAR_NAME)
