@@ -32,6 +32,7 @@ from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_ke
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer as tf_optimizer_module
+from tensorflow.python.util.tf_export import tf_export
 
 
 def clip_norm(g, c, n):
@@ -65,6 +66,7 @@ def clip_norm(g, c, n):
   return g
 
 
+@tf_export('keras.optimizers.Optimizer')
 class Optimizer(object):
   """Abstract optimizer base class.
 
@@ -149,6 +151,7 @@ class Optimizer(object):
     return cls(**config)
 
 
+@tf_export('keras.optimizers.SGD')
 class SGD(Optimizer):
   """Stochastic gradient descent optimizer.
 
@@ -213,6 +216,7 @@ class SGD(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.optimizers.RMSprop')
 class RMSprop(Optimizer):
   """RMSProp optimizer.
 
@@ -279,6 +283,7 @@ class RMSprop(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.optimizers.Adagrad')
 class Adagrad(Optimizer):
   """Adagrad optimizer.
 
@@ -338,6 +343,7 @@ class Adagrad(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.optimizers.Adadelta')
 class Adadelta(Optimizer):
   """Adadelta optimizer.
 
@@ -410,6 +416,7 @@ class Adadelta(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.optimizers.Adam')
 class Adam(Optimizer):
   """Adam optimizer.
 
@@ -504,6 +511,7 @@ class Adam(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.optimizers.Adamax')
 class Adamax(Optimizer):
   """Adamax optimizer from Adam paper's Section 7.
 
@@ -586,6 +594,7 @@ class Adamax(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.optimizers.Nadam')
 class Nadam(Optimizer):
   """Nesterov Adam optimizer.
 
@@ -724,10 +733,12 @@ adamax = Adamax
 nadam = Nadam
 
 
+@tf_export('keras.optimizers.serialize')
 def serialize(optimizer):
   return serialize_keras_object(optimizer)
 
 
+@tf_export('keras.optimizers.deserialize')
 def deserialize(config, custom_objects=None):
   """Inverse of the `serialize` function.
 
@@ -761,6 +772,7 @@ def deserialize(config, custom_objects=None):
       printable_module_name='optimizer')
 
 
+@tf_export('keras.optimizers.get')
 def get(identifier):
   """Retrieves a Keras Optimizer instance.
 

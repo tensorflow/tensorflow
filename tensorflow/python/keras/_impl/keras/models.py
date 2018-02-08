@@ -38,6 +38,7 @@ from tensorflow.python.keras._impl.keras.engine.training import Model
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.keras._impl.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=g-import-not-at-top
@@ -53,6 +54,7 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
+@tf_export('keras.models.save_model')
 def save_model(model, filepath, overwrite=True, include_optimizer=True):
   """Save a model to a HDF5 file.
 
@@ -183,6 +185,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
     f.flush()
 
 
+@tf_export('keras.models.load_model')
 def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
   """Loads a model saved via `save_model`.
 
@@ -302,6 +305,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
   return model
 
 
+@tf_export('keras.models.model_from_config')
 def model_from_config(config, custom_objects=None):
   """Instantiates a Keras model from its config.
 
@@ -324,6 +328,7 @@ def model_from_config(config, custom_objects=None):
   return layer_module.deserialize(config, custom_objects=custom_objects)
 
 
+@tf_export('keras.models.model_from_yaml')
 def model_from_yaml(yaml_string, custom_objects=None):
   """Parses a yaml model configuration file and returns a model instance.
 
@@ -345,6 +350,7 @@ def model_from_yaml(yaml_string, custom_objects=None):
   return layer_module.deserialize(config, custom_objects=custom_objects)
 
 
+@tf_export('keras.models.model_from_json')
 def model_from_json(json_string, custom_objects=None):
   """Parses a JSON model configuration file and returns a model instance.
 
@@ -361,6 +367,7 @@ def model_from_json(json_string, custom_objects=None):
   return layer_module.deserialize(config, custom_objects=custom_objects)
 
 
+@tf_export('keras.models.Sequential', 'keras.Sequential')
 class Sequential(Model):
   """Linear stack of layers.
 

@@ -24,8 +24,10 @@ import six
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.constraints.Constraint')
 class Constraint(object):
 
   def __call__(self, w):
@@ -35,6 +37,7 @@ class Constraint(object):
     return {}
 
 
+@tf_export('keras.constraints.MaxNorm', 'keras.constraints.max_norm')
 class MaxNorm(Constraint):
   """MaxNorm weight constraint.
 
@@ -70,6 +73,7 @@ class MaxNorm(Constraint):
     return {'max_value': self.max_value, 'axis': self.axis}
 
 
+@tf_export('keras.constraints.NonNeg', 'keras.constraints.non_neg')
 class NonNeg(Constraint):
   """Constrains the weights to be non-negative.
   """
@@ -78,6 +82,7 @@ class NonNeg(Constraint):
     return w * K.cast(K.greater_equal(w, 0.), K.floatx())
 
 
+@tf_export('keras.constraints.UnitNorm', 'keras.constraints.unit_norm')
 class UnitNorm(Constraint):
   """Constrains the weights incident to each hidden unit to have unit norm.
 
@@ -106,6 +111,7 @@ class UnitNorm(Constraint):
     return {'axis': self.axis}
 
 
+@tf_export('keras.constraints.MinMaxNorm', 'keras.constraints.min_max_norm')
 class MinMaxNorm(Constraint):
   """MinMaxNorm weight constraint.
 
@@ -170,10 +176,12 @@ nonneg = non_neg
 unitnorm = unit_norm
 
 
+@tf_export('keras.constraints.serialize')
 def serialize(constraint):
   return serialize_keras_object(constraint)
 
 
+@tf_export('keras.constraints.deserialize')
 def deserialize(config, custom_objects=None):
   return deserialize_keras_object(
       config,
@@ -182,6 +190,7 @@ def deserialize(config, custom_objects=None):
       printable_module_name='constraint')
 
 
+@tf_export('keras.constraints.get')
 def get(identifier):
   if identifier is None:
     return None
