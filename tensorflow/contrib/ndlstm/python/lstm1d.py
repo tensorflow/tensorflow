@@ -51,8 +51,8 @@ def ndlstm_base_unrolled(inputs, noutput, scope=None, reverse=False):
   """
   with variable_scope.variable_scope(scope, "SeqLstmUnrolled", [inputs]):
     length, batch_size, _ = _shape(inputs)
-    lstm_cell = rnn_cell.BasicLSTMCell(noutput, state_is_tuple=False)
-    state = array_ops.zeros([batch_size, lstm_cell.state_size])
+    lstm_cell = rnn_cell.BasicLSTMCell(noutput)
+    state = lstm_cell.zero_state(batch_size, inputs.dtype)
     output_u = []
     inputs_u = array_ops.unstack(inputs)
     if reverse:
