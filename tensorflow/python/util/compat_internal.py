@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.util.compat import as_str_any
+
 
 def path_to_str(path):
   """Returns the file system path representation of a `PathLike` object, else as it is.
