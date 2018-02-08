@@ -134,7 +134,7 @@ def format_tensor(tensor,
 
   if include_metadata:
     lines.append("  dtype: %s" % str(tensor.dtype))
-    lines.append("  shape: %s" % str(tensor.shape))
+    lines.append("  shape: %s" % str(tensor.shape).replace("L", ""))
 
   if lines:
     lines.append("")
