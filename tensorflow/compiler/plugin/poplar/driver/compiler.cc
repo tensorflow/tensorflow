@@ -223,9 +223,9 @@ StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(
   pipeline.AddPass<HloConstantFolding>();
   pipeline.AddPass<HloCSE>(true);
   pipeline.AddPass<WideConstFinder>();
+  pipeline.AddPass<FuseOps>();
   pipeline.AddPass<Outliner>();
   pipeline.AddPass<HloSubcomputationUnification>();
-  pipeline.AddPass<FuseOps>();
   pipeline.AddPass<HloDCE>();
 
   bool ok;

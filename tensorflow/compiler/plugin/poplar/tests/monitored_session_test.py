@@ -66,5 +66,28 @@ class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
                                        feed_dict={x: image_data, l: label_data})
             self.assertTrue(measured_loss < 2.0)
 
+    def testMonitoredSessionStopAtStepHook(self):
+      with tf.device("/device:XLA_IPU:0"):
+        pa = tf.placeholder(tf.float32, [2,2], name="a")
+        pb = tf.placeholder(tf.float32, [2,2], name="b")
+        output = pa + pb
+
+        with tf.variable_scope('gs', use_resource=True):
+          tf.train.create_global_step()
+
+      hook = tf.train.StopAtStepHook(num_steps=2)
+
+      with ms.MonitoredSession(
+              session_creator=ms.ChiefSessionCreator(),
+              hooks=[hook]) as sess:
+
+        fd = {pa: [[1.,1.],[2.,3.]], pb: [[0.,1.],[4.,5.]]}
+        result = sess.run(output, fd)
+        self.assertAllClose(result, [[1.,2.],[6.,8.]])
+
+        fd = {pa: [[0.,0.],[1.,1.]], pb: [[2.,1.],[4.,5.]]}
+        result = sess.run(output, fd)
+        self.assertAllClose(result, [[2.,1.],[5.,6.]])
+
 if __name__ == "__main__":
     googletest.main()

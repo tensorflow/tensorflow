@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_ALLOCATION_FINDER_H_
 
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
+#include <vector>
 
 namespace xla {
 
@@ -25,8 +26,19 @@ class HloInstruction;
 
 namespace poplarplugin {
 
+struct TensorTarget {
+  const HloInstruction* tgt;
+  int64 input_index;
+  std::vector<const HloInstruction*> path;
+  TensorTarget(const HloInstruction* tgt,
+               int64 input_index,
+               const std::vector<const HloInstruction*>& path)  :
+      tgt(tgt),
+      input_index(input_index),
+      path(path) {}
+};
+
 using TensorSource = std::pair<const HloInstruction*,int64>;
-using TensorTarget = std::pair<const HloInstruction*,int64>;
 using TensorAllocationMap = std::map<TensorSource, TensorTarget>;
 
 /**
@@ -53,6 +65,7 @@ private:
   bool CompareDotTargets(const TensorTarget& a, const TensorTarget& b);
 
   std::set<HloInstruction*> visited;
+  std::vector<const HloInstruction*> path;
 };
 
 }

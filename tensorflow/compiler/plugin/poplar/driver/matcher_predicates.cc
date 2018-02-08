@@ -66,29 +66,6 @@ bool IsScalarConstant(const HloInstruction *inst) {
   return ShapeUtil::IsScalar(inst->shape());
 }
 
-bool IsDepthwisePadding(const HloInstruction *inst) {
-  if (inst->users().size() != 1) return false;
-  HloInstruction *conv = inst->users()[0];
-  const Shape &conv_shape(conv->shape());
-  if (conv_shape.dimensions().size() != 4) return false;
-  int64 conv_c = conv->shape().dimensions(2);
-
-  const PaddingConfig &cfg(inst->padding_config());
-  if (cfg.dimensions().size() != 4) return false;
-
-  for (unsigned int i = 0; i < 4; i++) {
-    if (cfg.dimensions(i).edge_padding_low() != 0) return false;
-    if (cfg.dimensions(i).edge_padding_high() != 0) return false;
-  }
-
-  if (cfg.dimensions(0).interior_padding() != 0) return false;
-  if (cfg.dimensions(1).interior_padding() != 0) return false;
-  if (cfg.dimensions(2).interior_padding() != conv_c) return false;
-  if (cfg.dimensions(3).interior_padding() != 0) return false;
-
-  return true;
-}
-
 bool IsConvFilterSpatialReverse(const HloInstruction *inst) {
   // If this reverse feeds a convolution and it is reversing the
   // spatial dimensions of the convolution, then we can use the

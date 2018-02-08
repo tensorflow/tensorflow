@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/util/bcast.h"
@@ -165,9 +166,10 @@ static port::StatusOr<poplar::Tensor>
 AddConvolutionInput(poplar::Graph& graph,
                     const HloInstruction* inst,
                     const HloInstruction* target,
-                    CompilerResources& resources) {
+                    CompilerResources& resources,
+                    bool depthwise) {
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, depthwise));
 
   popconv::ConvOptions opts;
   opts.cache = &resources.convolution_cache;
@@ -181,9 +183,10 @@ static port::StatusOr<poplar::Tensor>
 AddConvolutionWeights(poplar::Graph& graph,
                       const HloInstruction* inst,
                       const HloInstruction* target,
-                      CompilerResources& resources) {
+                      CompilerResources& resources,
+                      bool depthwise) {
   popconv::ConvParams params;
-  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target));
+  TF_ASSIGN_OR_RETURN(params, GetConvolutionParameters(target, depthwise));
 
   popconv::ConvOptions opts;
   opts.cache = &resources.convolution_cache;
@@ -191,7 +194,7 @@ AddConvolutionWeights(poplar::Graph& graph,
   auto name = port::StrCat(inst->name(), "_weights");
   poplar::Tensor out = popconv::createWeights(graph, params, name, opts);
 
-  out = RemoveGroupsDimensionFromWeights(out);
+  out = RemoveGroupsDimensionFromWeights(out, depthwise);
   return ShuffleConvolutionWeightsToTensorflow(target, out);
 }
 
@@ -235,22 +238,22 @@ AddTensor(poplar::Graph& graph,
 
   auto target = resources.tensor_allocation_map.find(src);
   if (target != resources.tensor_allocation_map.end()) {
-    switch (target->second.first->opcode()) {
+    switch (target->second.tgt->opcode()) {
       case HloOpcode::kConvolution:
       {
-        switch (target->second.second) {
+        switch (target->second.input_index) {
           case 0:
           {
             TF_ASSIGN_OR_RETURN(out, AddConvolutionInput(graph, src.first,
-                                                         target->second.first,
-                                                         resources));
+                                                         target->second.tgt,
+                                                         resources, false));
             break;
           }
           case 1:
           {
             TF_ASSIGN_OR_RETURN(out, AddConvolutionWeights(graph, src.first,
-                                                           target->second.first,
-                                                           resources));
+                                                           target->second.tgt,
+                                                           resources, false));
             break;
           }
           default:
@@ -262,18 +265,18 @@ AddTensor(poplar::Graph& graph,
       }
       case HloOpcode::kDot:
       {
-        switch (target->second.second) {
+        switch (target->second.input_index) {
           case 0:
           {
             TF_ASSIGN_OR_RETURN(out, AddLeftMatMul(graph, src.first,
-                                                   target->second.first,
+                                                   target->second.tgt,
                                                    resources));
             break;
           }
           case 1:
           {
             TF_ASSIGN_OR_RETURN(out, AddRightMatMul(graph, src.first,
-                                                    target->second.first,
+                                                    target->second.tgt,
                                                     resources));
             break;
           }
@@ -285,10 +288,91 @@ AddTensor(poplar::Graph& graph,
         break;
       }
       case HloOpcode::kDynamicSlice:
+      {
+        if (target->second.input_index == 0) {
+          if (ShapeUtil::Rank(shape) == 3) {
+            TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
+          } else {
+            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+          }
+        } else {
+            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+        }
+        break;
+      }
       case HloOpcode::kDynamicUpdateSlice:
       {
-        if (ShapeUtil::Rank(shape) == 3) {
-          TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
+        if (target->second.input_index == 0) {
+          if (ShapeUtil::Rank(shape) == 3) {
+            TF_ASSIGN_OR_RETURN(out, AddRnnSequence(graph, src.first, shape));
+          } else {
+            TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+          }
+        } else {
+          TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
+        }
+        break;
+      }
+      case HloOpcode::kCall:
+      {
+        const HloComputation* comp = target->second.tgt->to_apply();
+        if (comp->name().substr(0, 8) == "_pop_op_") {
+          auto end = comp->name().find('.');
+          std::string name = comp->name().substr(8, end - 8);
+          if (name == "conv_with_reverse") {
+            const HloInstruction* conv_inst = comp->root_instruction();
+            switch (target->second.input_index) {
+              case 0:
+              {
+                TF_ASSIGN_OR_RETURN(out,
+                                    AddConvolutionWeights(graph, src.first,
+                                                          conv_inst,
+                                                          resources, false));
+                break;
+              }
+              case 1:
+              {
+                TF_ASSIGN_OR_RETURN(out,
+                                    AddConvolutionInput(graph, src.first,
+                                                        conv_inst,
+                                                        resources, false));
+                break;
+              }
+              default:
+                return tensorflow::errors::FailedPrecondition(
+                    port::StrCat("invalid operand for tensor allocation on ",
+                                 src.first->name()));
+            }
+
+          } else if (name == "depthwise_conv") {
+            const HloInstruction* conv_inst = comp->root_instruction();
+            switch (target->second.input_index) {
+              case 0:
+              {
+                TF_ASSIGN_OR_RETURN(out,
+                                    AddConvolutionWeights(graph, src.first,
+                                                          conv_inst,
+                                                          resources, true));
+                break;
+              }
+              case 1:
+              {
+                TF_ASSIGN_OR_RETURN(out,
+                                    AddConvolutionInput(graph, src.first,
+                                                        conv_inst,
+                                                        resources, true));
+                break;
+              }
+              default:
+                return tensorflow::errors::FailedPrecondition(
+                    port::StrCat("invalid operand for tensor allocation on ",
+                                 src.first->name()));
+            }
+          } else {
+            return tensorflow::errors::FailedPrecondition(
+                port::StrCat("Unknown poplibs fusion for tensor ",
+                             src.first->name(), ": ", name));
+          }
         } else {
           TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
         }
@@ -296,8 +380,37 @@ AddTensor(poplar::Graph& graph,
       }
       default:
         return tensorflow::errors::FailedPrecondition(
-                port::StrCat("unknown special tensor target on ",
-                             src.first->name()));
+                port::StrCat("Unknown tensor target for ", src.first->name(),
+                             ": ", target->second.tgt->name()));
+    }
+
+    // Now apply any transformations required by the path from the source to
+    // the target
+    const std::vector<const HloInstruction*>& path = target->second.path;
+    for (auto i = path.rbegin(); i != path.rend(); ++i) {
+      auto& inst = *i;
+      switch (inst->opcode()) {
+        case HloOpcode::kTranspose:
+        {
+          std::vector<unsigned> permutation(
+              convert_array<std::vector<unsigned>>(inst->dimensions()));
+          std::vector<unsigned> shuffle(permutation.size());
+          for (int d=0; d<permutation.size(); d++) {
+            shuffle[permutation[d]] = d;
+          }
+          out = out.dimShuffle(shuffle);
+          break;
+        }
+        case HloOpcode::kReshape:
+        {
+          std::vector<size_t> dims(PoplarShapeFromXlaShape(
+              inst->operand(0)->shape()));
+          out = out.reshape(dims);
+          break;
+        }
+        default:
+          break;
+      }
     }
   } else {
     TF_ASSIGN_OR_RETURN(out, AddPlainTensor(graph, src.first, shape));
