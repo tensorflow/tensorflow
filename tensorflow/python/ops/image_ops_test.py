@@ -1869,8 +1869,8 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       image_size = constant_op.constant(
           [40, 50, 1], shape=[3], dtype=dtypes.int32)
       bounding_box = constant_op.constant(
-          [0.0, 0.0, 1.0, 1.0],
-          shape=[4],
+          [[[0.0, 0.0, 1.0, 1.0]]],
+          shape=[1, 1, 4],
           dtype=dtypes.float32,
       )
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
@@ -1884,6 +1884,10 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], begin.get_shape().as_list())
       self.assertAllEqual([3], end.get_shape().as_list())
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+      # Actual run to make sure shape is correct inside Compute().
+      begin = begin.eval()
+      end = end.eval()
+      bbox_for_drawing = bbox_for_drawing.eval()
 
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
           image_size=image_size,
@@ -1903,8 +1907,8 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       image_size = constant_op.constant(
           [40, 50, 1], shape=[3], dtype=dtypes.int32)
       bounding_box = constant_op.constant(
-          [0.0, 0.0, 1.0, 1.0],
-          shape=[4],
+          [[[0.0, 0.0, 1.0, 1.0]]],
+          shape=[1, 1, 4],
           dtype=dtypes.float32,)
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
           image_size=image_size,
@@ -1915,7 +1919,10 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], begin.get_shape().as_list())
       self.assertAllEqual([3], end.get_shape().as_list())
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
-
+      # Actual run to make sure shape is correct inside Compute().
+      begin = begin.eval()
+      end = end.eval()
+      bbox_for_drawing = bbox_for_drawing.eval()
 
 class ResizeImagesTest(test_util.TensorFlowTestCase):
 
