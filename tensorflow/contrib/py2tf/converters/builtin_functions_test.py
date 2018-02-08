@@ -18,11 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gast
+import sys
+
+import six
 
 from tensorflow.contrib.py2tf.converters import builtin_functions
 from tensorflow.contrib.py2tf.converters import converter_test_base
-from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
@@ -37,13 +38,12 @@ class BuiltinFunctionsTest(converter_test_base.TestCase):
 
     node = self.parse_and_analyze(test_fn, {'len': len})
     node = builtin_functions.transform(node, self.ctx)
-    result = compiler.ast_to_object(node)
-    setattr(result, 'tf', array_ops)
 
-    with self.test_session() as sess:
-      self.assertEqual(3,
-                       sess.run(
-                           result.test_fn(constant_op.constant([0, 0, 0]))))
+    with self.compiled(node, array_ops.shape) as result:
+      with self.test_session() as sess:
+        self.assertEqual(3,
+                         sess.run(
+                             result.test_fn(constant_op.constant([0, 0, 0]))))
 
   def test_print(self):
 
@@ -52,10 +52,36 @@ class BuiltinFunctionsTest(converter_test_base.TestCase):
 
     node = self.parse_and_analyze(test_fn, {'print': print})
     node = builtin_functions.transform(node, self.ctx)
-    result = compiler.ast_to_object(node)
 
-    result.test_fn('a')
-    self.assertTrue(isinstance(node.body[0].body[0].value, gast.Call))
+    with self.compiled(node) as result:
+      try:
+        out_capturer = six.StringIO()
+        sys.stdout = out_capturer
+        result.test_fn('a')
+        self.assertEqual(out_capturer.getvalue(), 'a\n')
+      finally:
+        sys.stdout = sys.__stdout__
+
+  def test_print_tuple(self):
+
+    def test_fn(a, b, c):
+      print(a, b, c)
+
+    node = self.parse_and_analyze(test_fn, {'print': print})
+    node = builtin_functions.transform(node, self.ctx)
+
+    with self.compiled(node) as result:
+      try:
+        out_capturer = six.StringIO()
+        sys.stdout = out_capturer
+        result.test_fn('a', 1, [2, 3])
+        # It appears that the print output looks odd only under Python 2.
+        if six.PY2:
+          self.assertEqual(out_capturer.getvalue(), "('a', 1, [2, 3])\n")
+        else:
+          self.assertEqual(out_capturer.getvalue(), 'a 1 [2, 3]\n')
+      finally:
+        sys.stdout = sys.__stdout__
 
 
 if __name__ == '__main__':
