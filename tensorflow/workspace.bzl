@@ -670,6 +670,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "20a1a39fd97e5da7f40f5f2e7fd73fd2ea59f9dc4bb8a6c5f228aa543e727e31",
       strip_prefix = "cub-1.7.4",
       build_file = str(Label("//third_party:cub.BUILD")),
+      # TODO: remove the patch when upstream fix is accepted and released.
+      #       PR with a fix: https://github.com/NVlabs/cub/pull/125
+      patch_file = str(Label("//third_party/cub:fix_compilation_in_clang.patch")),
   )
 
   tf_http_archive(
