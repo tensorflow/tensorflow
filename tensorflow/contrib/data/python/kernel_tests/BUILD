@@ -535,7 +535,7 @@ py_test(
         "no_oss",  # b/68785503
     ],
     deps = [
-        "//tensorflow/contrib/data/python/ops:prefetching_py",
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",

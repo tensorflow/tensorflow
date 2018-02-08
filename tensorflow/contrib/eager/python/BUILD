@@ -52,7 +52,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/contrib/data/python/ops:prefetching_py",
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:errors",
