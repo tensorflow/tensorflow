@@ -44,7 +44,7 @@ TensorFlow coding style.
   a) prove that your code works correctly, and b) guard against future breaking
   changes to lower the maintenance cost.
 * Bug fixes also generally require unit tests, because the presence of bugs
-  usually indicate insufficient test coverage.
+  usually indicates insufficient test coverage.
 * Keep API compatibility in mind when you change code in core TensorFlow,
   e.g., code in [tensorflow/core](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core) and  [tensorflow/python](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/python).
   TensorFlow has reached version 1 and hence cannot make
