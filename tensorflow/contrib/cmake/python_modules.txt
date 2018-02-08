@@ -299,7 +299,9 @@ tensorflow/contrib/linear_optimizer/kernels/g3doc
 tensorflow/contrib/linear_optimizer/python
 tensorflow/contrib/linear_optimizer/python/ops
 # TODO(drpngx): Fix failing imports
+# tensorflow/contrib/lite
 # tensorflow/contrib/lite/python
+# tensorflow/contrib/lite/toco
 # tensorflow/contrib/lite/toco/python
 tensorflow/contrib/lookup
 tensorflow/contrib/losses
@@ -360,6 +362,7 @@ tensorflow/contrib/reduce_slice_ops/kernels
 tensorflow/contrib/reduce_slice_ops/ops
 tensorflow/contrib/reduce_slice_ops/python
 tensorflow/contrib/reduce_slice_ops/python/ops
+tensorflow/contrib/remote_fused_graph
 tensorflow/contrib/remote_fused_graph/pylib
 tensorflow/contrib/remote_fused_graph/pylib/python
 tensorflow/contrib/remote_fused_graph/pylib/python/ops
@@ -409,6 +412,7 @@ tensorflow/contrib/summary
 tensorflow/contrib/tensorboard
 tensorflow/contrib/tensorboard/plugins
 tensorflow/contrib/tensorboard/plugins/projector
+tensorflow/contrib/tensorboard/plugins/trace
 tensorflow/contrib/tensor_forest
 tensorflow/contrib/tensor_forest/client
 tensorflow/contrib/tensor_forest/hybrid
@@ -419,6 +423,7 @@ tensorflow/contrib/tensor_forest/hybrid/python/layers
 tensorflow/contrib/tensor_forest/hybrid/python/models
 tensorflow/contrib/tensor_forest/hybrid/python/ops
 tensorflow/contrib/tensor_forest/kernels
+tensorflow/contrib/tensor_forest/proto
 tensorflow/contrib/tensor_forest/python
 tensorflow/contrib/tensor_forest/python/ops
 tensorflow/contrib/testing
@@ -439,6 +444,7 @@ tensorflow/contrib/timeseries/python/timeseries/state_space_models
 tensorflow/contrib/tpu
 tensorflow/contrib/tpu/ops
 tensorflow/contrib/tpu/profiler
+tensorflow/contrib/tpu/proto
 tensorflow/contrib/tpu/python
 tensorflow/contrib/tpu/python/ops
 tensorflow/contrib/tpu/python/profiler
