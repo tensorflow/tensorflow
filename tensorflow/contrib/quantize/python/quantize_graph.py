@@ -23,8 +23,13 @@ from tensorflow.contrib.quantize.python import quantize
 from tensorflow.python.framework import ops
 
 
-def _create_graph(input_graph=None, is_training=True):
-  """Rewrites input_graph in place for simulated quantization.
+def _create_graph(input_graph=None,
+                  is_training=True,
+                  weight_bits=8,
+                  activation_bits=8,
+                  quant_delay=None,
+                  freeze_bn_delay=None):
+  """Returns a transformed training input_graph for simulated quantization.
 
   The graph has fake quantization ops inserted to simulate the error
   introduced by quantization. Since the graph is transformed in place,
@@ -35,29 +40,37 @@ def _create_graph(input_graph=None, is_training=True):
     input_graph: The tf.Graph to be transformed, if None then defaults to the
       default graph.
     is_training: Whether quantizing training or eval graph.
+    weight_bits: Number of bits to use for quantizing weights.
+    activation_bits: Number of bits to use for quantizing activations.
+    quant_delay: Number of steps after which weights and activations are
+                 quantized during training.
+    freeze_bn_delay: Number of steps after which moving mean and variance are
+                     frozen and used instead of batch statistics during
+                     training. freeze_bn_delay should be greater than
+                     quant_delay and should correspond to the number of steps
+                     when training has almost converged
 
   Raises:
     ValueError: If elements contains an element that isn't a tf.Tensor or
         tf.Operation.
   """
-  if is_training:
-    # TODO(raghuramank): Need to make freeze_batch_norm_delay
-    # a function of the batch size. For now setting this to 250 epochs
-    # This corresponds to 5 million steps at a batch size of 64.
-    freeze_batch_norm_delay = 5000000
-  else:
-    freeze_batch_norm_delay = None
+
   if input_graph is None:
     input_graph = ops.get_default_graph()
   with input_graph.as_default():
     fold_batch_norms.FoldBatchNorms(
         input_graph,
-        freeze_batch_norm_delay=freeze_batch_norm_delay,
+        freeze_batch_norm_delay=freeze_bn_delay,
         is_training=is_training)
-    quantize.Quantize(input_graph, is_training=is_training)
+    quantize.Quantize(
+        input_graph,
+        is_training=is_training,
+        quant_delay=quant_delay,
+        weight_bits=weight_bits,
+        activation_bits=activation_bits)
 
 
-def create_training_graph(input_graph=None):
+def create_training_graph(input_graph=None, quant_delay=250000):
   """Rewrites a training input_graph in place for simulated quantization.
 
   The graph has fake quantization ops inserted to simulate the error
@@ -67,12 +80,32 @@ def create_training_graph(input_graph=None):
 
   Args:
     input_graph: The tf.Graph to be transformed.
+    quant_delay: Number of steps after which weights and activations are
+                 quantized during training.
 
   Raises:
     ValueError: If elements contains an element that isn't a tf.Tensor or
         tf.Operation.
   """
-  _create_graph(input_graph=input_graph, is_training=True)
+  # TODO(raghuramank) Need to have freeze_bn_delay be a function of batch size
+  # Currently the values below are hardcoded for mobilenetV1 on imagenet
+  # Please use the experimental API if you need to tune these values.
+  if quant_delay == 0:
+    # Corresponds to case of restoring from a floating point checkpoint
+    # In this case, we can freeze the moving mean and variance early on and
+    # switch to using them during training. Therefore, freeze_bn_delay is set to
+    # 200000
+    freeze_bn_delay = 200000
+  else:
+    # If training from scratch, set freeze_bn_delay to 100 epochs after quant
+    # delay. With a batch size of 64, this corresponds to 20000*100=2M steps.
+    freeze_bn_delay = quant_delay + 2000000
+
+  _create_graph(
+      input_graph=input_graph,
+      is_training=True,
+      quant_delay=quant_delay,
+      freeze_bn_delay=freeze_bn_delay)
 
 
 def create_eval_graph(input_graph=None):
@@ -95,8 +128,50 @@ def create_eval_graph(input_graph=None):
   _create_graph(input_graph=input_graph, is_training=False)
 
 
-def experimental_create_training_graph(input_graph=None):
-  """Rewrites a training input_graph in place for simulated quantization.
+def experimental_create_training_graph(input_graph=None,
+                                       weight_bits=8,
+                                       activation_bits=8,
+                                       quant_delay=250000,
+                                       freeze_bn_delay=500000):
+  """Returns a transformed training input_graph for simulated quantization.
+
+  The graph has fake quantization ops inserted to simulate the error
+  introduced by quantization. Since the graph is transformed in place,
+  the expected behavior of previously held references to nodes and tensors may
+  change.
+
+  Args:
+    input_graph: The tf.Graph to be transformed,if None then defaults to the
+      default graph.
+    weight_bits:     Number of bits to use for quantizing weights.
+    activation_bits: Number of bits to use for quantizing activations.
+    quant_delay:     Number of steps after which weights and
+                     activations are quantized during training.
+    freeze_bn_delay: Number of steps after which moving mean and variance are
+                     frozen and used instead of batch statistics during
+                     training. freeze_bn_delay should be greater than
+                     quant_delay and should correspond to when training
+                     has almost converged
+
+
+  Raises:
+    ValueError: If elements contains an element that isn't a tf.Tensor or
+        tf.Operation.
+  """
+
+  _create_graph(
+      input_graph=input_graph,
+      is_training=True,
+      weight_bits=weight_bits,
+      activation_bits=activation_bits,
+      quant_delay=quant_delay,
+      freeze_bn_delay=freeze_bn_delay)
+
+
+def experimental_create_eval_graph(input_graph=None,
+                                   weight_bits=8,
+                                   activation_bits=8):
+  """Returns a transformed eval input_graph for simulated quantization.
 
   The graph has fake quantization ops inserted to simulate the error
   introduced by quantization. Since the graph is transformed in place,
@@ -106,28 +181,17 @@ def experimental_create_training_graph(input_graph=None):
   Args:
     input_graph: The tf.Graph to be transformed, if None then defaults to the
       default graph.
+    weight_bits: Number of bits to use for quantizing weights.
+    activation_bits: Number of bits to use for quantizing activations.
+
+
 
   Raises:
     ValueError: If elements contains an element that isn't a tf.Tensor or
         tf.Operation.
   """
-  _create_graph(input_graph=input_graph, is_training=True)
-
-
-def experimental_create_eval_graph(input_graph=None):
-  """Rewrites an eval input_graph in place for simulated quantization.
-
-  The graph has fake quantization ops inserted to simulate the error
-  introduced by quantization. Since the graph is transformed in place,
-  the expected behavior of previously held references to nodes and tensors may
-  change.
-
-  Args:
-    input_graph: The tf.Graph to be transformed, if None then defaults to the
-      default graph.
-
-  Raises:
-    ValueError: If elements contains an element that isn't a tf.Tensor or
-        tf.Operation.
-  """
-  _create_graph(input_graph=input_graph, is_training=False)
+  _create_graph(
+      input_graph=input_graph,
+      is_training=False,
+      weight_bits=weight_bits,
+      activation_bits=activation_bits)

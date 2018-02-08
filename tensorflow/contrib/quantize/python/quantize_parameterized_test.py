@@ -101,9 +101,11 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         scope + '/weights_quant/AssignMaxLast', scope + '/weights/read'
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
-    output_op_name = (
-        scope + '/weights_quant/delayed_quant/Switch_1'
-        if delay else scope + '/Conv2D')
+    if delay and delay > 0:
+      output_op_name = scope + '/weights_quant/delayed_quant/Switch_1'
+    else:
+      output_op_name = scope + '/Conv2D'
+
     self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
 
     if with_bypass:
@@ -178,9 +180,10 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         scope + '/weights_quant/AssignMaxLast', scope + '/weights/read'
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
-    output_op_name = (
-        scope + '/weights_quant/delayed_quant/Switch_1'
-        if delay else scope + '/MatMul')
+    if delay and delay > 0:
+      output_op_name = scope + '/weights_quant/delayed_quant/Switch_1'
+    else:
+      output_op_name = scope + '/MatMul'
     self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
 
     if with_bypass:
@@ -256,9 +259,10 @@ class QuantizeTest(test_util.TensorFlowTestCase):
         scope + '/depthwise_weights/read'
     ]
     self._AssertInputOpsAre(weights_quant, expected_inputs)
-    output_op_name = (
-        scope + '/weights_quant/delayed_quant/Switch_1'
-        if delay else scope + '/depthwise')
+    if delay and delay > 0:
+      output_op_name = scope + '/weights_quant/delayed_quant/Switch_1'
+    else:
+      output_op_name = scope + '/depthwise'
     self._AssertOutputGoesToOps(weights_quant, graph, [output_op_name])
 
     if with_bypass:

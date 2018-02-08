@@ -28,6 +28,8 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
 
 
+# TODO(suharshs): Add tests for testing experimental APIs and additional
+# input arguments
 class QuantizeGraphTest(test_util.TensorFlowTestCase):
   # We have a lot of other tests that test the details of the rewrite, here we
   # just the specific features of the quantize_graph API.
