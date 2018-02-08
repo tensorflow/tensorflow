@@ -2956,7 +2956,7 @@ class ImagesToSequenceTest(test.TestCase):
     images = np.random.uniform(size=(5, height, width, 2))
     with self.assertRaisesRegexp(ValueError,
                                  'data_format has to be either NCHW or NHWC.'):
-      _layers.images_to_sequence(images, [3, 3], data_format='CHWN')
+      _layers.images_to_sequence(images, data_format='CHWN')
 
   def testImagesToSequenceDims(self):
     height, width = 7, 11
