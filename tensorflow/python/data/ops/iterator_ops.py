@@ -152,15 +152,8 @@ class Iterator(object):
       TypeError: If the structures of `output_shapes` and `output_types` are
         not the same.
     """
-    output_types = nest.map_structure(dtypes.as_dtype, output_types)
-    if output_shapes is None:
-      output_shapes = nest.map_structure(
-          lambda _: tensor_shape.TensorShape(None), output_types)
-    else:
-      output_shapes = nest.map_structure_up_to(
-          output_types, tensor_shape.as_shape, output_shapes)
-    if output_classes is None:
-      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+    output_classes, output_shapes, output_types = Iterator._map_output_structures(output_classes, output_shapes,
+                                                                                  output_types)
     nest.assert_same_structure(output_types, output_shapes)
     if shared_name is None:
       shared_name = ""
@@ -173,6 +166,19 @@ class Iterator(object):
             sparse.as_dense_shapes(output_shapes, output_classes)))
     return Iterator(iterator_resource, None, output_types, output_shapes,
                     output_classes)
+
+  @staticmethod
+  def _map_output_structures(output_classes, output_shapes, output_types):
+    output_types = nest.map_structure(dtypes.as_dtype, output_types)
+    if output_shapes is None:
+      output_shapes = nest.map_structure(
+        lambda _: tensor_shape.TensorShape(None), output_types)
+    else:
+      output_shapes = nest.map_structure_up_to(
+        output_types, tensor_shape.as_shape, output_shapes)
+    if output_classes is None:
+      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+    return output_classes, output_shapes, output_types
 
   @staticmethod
   def from_string_handle(string_handle,
@@ -223,15 +229,8 @@ class Iterator(object):
     Returns:
       An `Iterator`.
     """
-    output_types = nest.map_structure(dtypes.as_dtype, output_types)
-    if output_shapes is None:
-      output_shapes = nest.map_structure(
-          lambda _: tensor_shape.TensorShape(None), output_types)
-    else:
-      output_shapes = nest.map_structure_up_to(
-          output_types, tensor_shape.as_shape, output_shapes)
-    if output_classes is None:
-      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
+    output_classes, output_shapes, output_types = Iterator._map_output_structures(output_classes, output_shapes,
+                                                                                  output_types)
     nest.assert_same_structure(output_types, output_shapes)
     string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
     iterator_resource = gen_dataset_ops.iterator_from_string_handle(

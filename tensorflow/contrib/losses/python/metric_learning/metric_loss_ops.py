@@ -269,14 +269,7 @@ def npairs_loss(labels, embeddings_anchor, embeddings_positive,
   Returns:
     npairs_loss: tf.float32 scalar.
   """
-  # pylint: enable=line-too-long
-  # Add the regularizer on the embedding.
-  reg_anchor = math_ops.reduce_mean(
-      math_ops.reduce_sum(math_ops.square(embeddings_anchor), 1))
-  reg_positive = math_ops.reduce_mean(
-      math_ops.reduce_sum(math_ops.square(embeddings_positive), 1))
-  l2loss = math_ops.multiply(
-      0.25 * reg_lambda, reg_anchor + reg_positive, name='l2loss')
+  l2loss = _initialize_l2loss(embeddings_anchor, embeddings_positive, reg_lambda)
 
   # Get per pair similarities.
   similarity_matrix = math_ops.matmul(
@@ -302,6 +295,18 @@ def npairs_loss(labels, embeddings_anchor, embeddings_positive,
         xent_loss, ['cross entropy:', xent_loss, 'l2loss:', l2loss])
 
   return l2loss + xent_loss
+
+
+def _initialize_l2loss(embeddings_anchor, embeddings_positive, reg_lambda):
+  # pylint: enable=line-too-long
+  # Add the regularizer on the embedding.
+  reg_anchor = math_ops.reduce_mean(
+    math_ops.reduce_sum(math_ops.square(embeddings_anchor), 1))
+  reg_positive = math_ops.reduce_mean(
+    math_ops.reduce_sum(math_ops.square(embeddings_positive), 1))
+  l2loss = math_ops.multiply(
+    0.25 * reg_lambda, reg_anchor + reg_positive, name='l2loss')
+  return l2loss
 
 
 def _build_multilabel_adjacency(sparse_labels):
@@ -377,13 +382,7 @@ def npairs_loss_multilabel(sparse_labels, embeddings_anchor,
             sparse_labels))
 
   with ops.name_scope('NpairsLossMultiLabel'):
-    # Add the regularizer on the embedding.
-    reg_anchor = math_ops.reduce_mean(
-        math_ops.reduce_sum(math_ops.square(embeddings_anchor), 1))
-    reg_positive = math_ops.reduce_mean(
-        math_ops.reduce_sum(math_ops.square(embeddings_positive), 1))
-    l2loss = math_ops.multiply(0.25 * reg_lambda,
-                               reg_anchor + reg_positive, name='l2loss')
+    l2loss = _initialize_l2loss(embeddings_anchor, embeddings_positive, reg_lambda)
 
     # Get per pair similarities.
     similarity_matrix = math_ops.matmul(

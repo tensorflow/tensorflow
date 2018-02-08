@@ -2494,14 +2494,19 @@ def recall_at_top_k(labels,
         class_id=class_id,
         weights=weights)
 
-    metric = math_ops.div(tp, math_ops.add(tp, fn), name=scope)
-    update = math_ops.div(
-        tp_update, math_ops.add(tp_update, fn_update), name='update')
-    if metrics_collections:
-      ops.add_to_collections(metrics_collections, metric)
-    if updates_collections:
-      ops.add_to_collections(updates_collections, update)
-    return metric, update
+    return _div_metric_and_update(fn, fn_update, metrics_collections, scope, tp, tp_update, updates_collections)
+
+
+def _div_metric_and_update(false_parameter, false_parameter_update, metrics_collections, scope, tp, tp_update,
+                           updates_collections):
+  metric = math_ops.div(tp, math_ops.add(tp, false_parameter), name=scope)
+  update = math_ops.div(
+    tp_update, math_ops.add(tp_update, false_parameter_update), name='update')
+  if metrics_collections:
+    ops.add_to_collections(metrics_collections, metric)
+  if updates_collections:
+    ops.add_to_collections(updates_collections, update)
+  return metric, update
 
 
 @tf_export('metrics.recall_at_thresholds')
@@ -3293,14 +3298,7 @@ def precision_at_top_k(labels,
         class_id=class_id,
         weights=weights)
 
-    metric = math_ops.div(tp, math_ops.add(tp, fp), name=scope)
-    update = math_ops.div(
-        tp_update, math_ops.add(tp_update, fp_update), name='update')
-    if metrics_collections:
-      ops.add_to_collections(metrics_collections, metric)
-    if updates_collections:
-      ops.add_to_collections(updates_collections, update)
-    return metric, update
+    return _div_metric_and_update(fp, fp_update, metrics_collections, scope, tp, tp_update, updates_collections)
 
 
 @tf_export('metrics.sparse_precision_at_k')

@@ -60,19 +60,7 @@ def rotate(images, angles, interpolation="NEAREST", name=None):
     TypeError: If `image` is an invalid type.
   """
   with ops.name_scope(name, "rotate"):
-    image_or_images = ops.convert_to_tensor(images)
-    if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
-      raise TypeError("Invalid dtype %s." % image_or_images.dtype)
-    elif image_or_images.get_shape().ndims is None:
-      raise TypeError("image_or_images rank must be statically known")
-    elif len(image_or_images.get_shape()) == 2:
-      images = image_or_images[None, :, :, None]
-    elif len(image_or_images.get_shape()) == 3:
-      images = image_or_images[None, :, :, :]
-    elif len(image_or_images.get_shape()) == 4:
-      images = image_or_images
-    else:
-      raise TypeError("Images should have rank between 2 and 4.")
+    image_or_images, images = _set_image_or_images(images)
 
     image_height = math_ops.cast(array_ops.shape(images)[1],
                                  dtypes.float32)[None]
@@ -90,6 +78,24 @@ def rotate(images, angles, interpolation="NEAREST", name=None):
       return output[0, :, :, :]
     else:
       return output
+
+
+def _set_image_or_images(images):
+  # TODO: think of a better name for this
+  image_or_images = ops.convert_to_tensor(images)
+  if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
+    raise TypeError("Invalid dtype %s." % image_or_images.dtype)
+  elif image_or_images.get_shape().ndims is None:
+    raise TypeError("image_or_images rank must be statically known")
+  elif len(image_or_images.get_shape()) == 2:
+    images = image_or_images[None, :, :, None]
+  elif len(image_or_images.get_shape()) == 3:
+    images = image_or_images[None, :, :, :]
+  elif len(image_or_images.get_shape()) == 4:
+    images = image_or_images
+  else:
+    raise TypeError("Images should have rank between 2 and 4.")
+  return image_or_images, images
 
 
 def translate(images, translations, interpolation="NEAREST", name=None):
@@ -239,21 +245,9 @@ def transform(images, transforms, interpolation="NEAREST", name=None):
     TypeError: If `image` is an invalid type.
   """
   with ops.name_scope(name, "transform"):
-    image_or_images = ops.convert_to_tensor(images, name="images")
     transform_or_transforms = ops.convert_to_tensor(
         transforms, name="transforms", dtype=dtypes.float32)
-    if image_or_images.dtype.base_dtype not in _IMAGE_DTYPES:
-      raise TypeError("Invalid dtype %s." % image_or_images.dtype)
-    elif image_or_images.get_shape().ndims is None:
-      raise TypeError("image_or_images rank must be statically known")
-    elif len(image_or_images.get_shape()) == 2:
-      images = image_or_images[None, :, :, None]
-    elif len(image_or_images.get_shape()) == 3:
-      images = image_or_images[None, :, :, :]
-    elif len(image_or_images.get_shape()) == 4:
-      images = image_or_images
-    else:
-      raise TypeError("Images should have rank between 2 and 4.")
+    image_or_images, images = _set_image_or_images(images)
 
     if len(transform_or_transforms.get_shape()) == 1:
       transforms = transform_or_transforms[None]

@@ -230,6 +230,19 @@ def _skip_common_stack_elements(stacktrace, base_case):
   return stacktrace[-1:]
 
 
+def _reraise_exception(args, exc, stacktrace):
+  if not args:
+    arg0 = ""
+  else:
+    arg0 = args[0]
+  trace = "".join(_skip_common_stack_elements(stacktrace,
+                                              traceback.format_stack()))
+  arg0 = "%s\n\noriginally defined at:\n%s" % (arg0, trace)
+  new_args = [arg0]
+  new_args.extend(args[1:])
+  exc.args = tuple(new_args)
+
+
 class Template(object):
   """Wrap a function to aid in variable sharing.
 
@@ -328,19 +341,9 @@ class Template(object):
         self._variables_created = True
       return result
     except Exception as exc:
-      # Reraise the exception, but append the original definition to the
-      # trace.
       args = exc.args
-      if not args:
-        arg0 = ""
-      else:
-        arg0 = args[0]
-      trace = "".join(_skip_common_stack_elements(self._stacktrace,
-                                                  traceback.format_stack()))
-      arg0 = "%s\n\noriginally defined at:\n%s" % (arg0, trace)
-      new_args = [arg0]
-      new_args.extend(args[1:])
-      exc.args = tuple(new_args)
+      stacktrace = self._stacktrace
+      _reraise_exception(args, exc, stacktrace)
       raise
 
   def __call__(self, *args, **kwargs):
@@ -591,19 +594,9 @@ class EagerTemplate(Template):
         self._variables_created = True
       return result
     except Exception as exc:
-      # Reraise the exception, but append the original definition to the
-      # trace.
       args = exc.args
-      if not args:
-        arg0 = ""
-      else:
-        arg0 = args[0]
-      trace = "".join(_skip_common_stack_elements(self._stacktrace,
-                                                  traceback.format_stack()))
-      arg0 = "%s\n\noriginally defined at:\n%s" % (arg0, trace)
-      new_args = [arg0]
-      new_args.extend(args[1:])
-      exc.args = tuple(new_args)
+      stacktrace = self._stacktrace
+      _reraise_exception(args, exc, stacktrace)
       raise
 
   def __call__(self, *args, **kwargs):

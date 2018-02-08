@@ -411,14 +411,7 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
         swap_memory=swap_memory)
-    results_flat = [r.stack() for r in r_a]
-
-    n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
-    for elem in elems_flat[1:]:
-      n_static.merge_with(elem.get_shape().with_rank_at_least(1)[0])
-    for r in results_flat:
-      r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
-          r.get_shape()[1:]))
+    results_flat = _concatenate_results(elems_flat, r_a)
 
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -426,6 +419,18 @@ def map_fn(fn, elems, dtype=None, parallel_iterations=10, back_prop=True,
       varscope.set_caching_device(None)
 
     return output_pack(results_flat)
+
+
+def _concatenate_results(elems_flat, r_a):
+  results_flat = [r.stack() for r in r_a]
+  n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
+  for elem in elems_flat[1:]:
+    n_static.merge_with(elem.get_shape().with_rank_at_least(1)[0])
+  for r in results_flat:
+    r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
+      r.get_shape()[1:]))
+
+  return results_flat
 
 
 @tf_export("scan")
@@ -617,14 +622,7 @@ def scan(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
         parallel_iterations=parallel_iterations,
         back_prop=back_prop, swap_memory=swap_memory)
 
-    results_flat = [r.stack() for r in r_a]
-
-    n_static = elems_flat[0].get_shape().with_rank_at_least(1)[0]
-    for elem in elems_flat[1:]:
-      n_static.merge_with(elem.get_shape().with_rank_at_least(1)[0])
-    for r in results_flat:
-      r.set_shape(tensor_shape.TensorShape(n_static).concatenate(
-          r.get_shape()[1:]))
+    results_flat = _concatenate_results(elems_flat, r_a)
 
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager

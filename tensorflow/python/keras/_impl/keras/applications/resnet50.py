@@ -77,20 +77,23 @@ def identity_block(input_tensor, kernel_size, filters, stage, block):
   bn_name_base = 'bn' + str(stage) + block + '_branch'
 
   x = Conv2D(filters1, (1, 1), name=conv_name_base + '2a')(input_tensor)
-  x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(x)
-  x = Activation('relu')(x)
-
-  x = Conv2D(
-      filters2, kernel_size, padding='same', name=conv_name_base + '2b')(
-          x)
-  x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
-  x = Activation('relu')(x)
-
-  x = Conv2D(filters3, (1, 1), name=conv_name_base + '2c')(x)
-  x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+  x = _set_common_resnet50_layers(bn_axis, bn_name_base, conv_name_base, filters2, filters3, kernel_size, x)
 
   x = layers.add([x, input_tensor])
   x = Activation('relu')(x)
+  return x
+
+
+def _set_common_resnet50_layers(bn_axis, bn_name_base, conv_name_base, filters2, filters3, kernel_size, x):
+  x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(x)
+  x = Activation('relu')(x)
+  x = Conv2D(
+    filters2, kernel_size, padding='same', name=conv_name_base + '2b')(
+    x)
+  x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
+  x = Activation('relu')(x)
+  x = Conv2D(filters3, (1, 1), name=conv_name_base + '2c')(x)
+  x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
   return x
 
 
@@ -124,17 +127,7 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2,
   x = Conv2D(
       filters1, (1, 1), strides=strides, name=conv_name_base + '2a')(
           input_tensor)
-  x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2a')(x)
-  x = Activation('relu')(x)
-
-  x = Conv2D(
-      filters2, kernel_size, padding='same', name=conv_name_base + '2b')(
-          x)
-  x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2b')(x)
-  x = Activation('relu')(x)
-
-  x = Conv2D(filters3, (1, 1), name=conv_name_base + '2c')(x)
-  x = BatchNormalization(axis=bn_axis, name=bn_name_base + '2c')(x)
+  x = _set_common_resnet50_layers(bn_axis, bn_name_base, conv_name_base, filters2, filters3, kernel_size, x)
 
   shortcut = Conv2D(
       filters3, (1, 1), strides=strides, name=conv_name_base + '1')(
