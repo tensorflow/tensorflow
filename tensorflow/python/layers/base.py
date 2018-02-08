@@ -37,8 +37,10 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('layers.Layer')
 class Layer(object):
   """Base layer class.
 
@@ -1228,6 +1230,7 @@ class Layer(object):
                                  ', found shape=' + str(shape))
 
 
+@tf_export('keras.layers.InputSpec', 'layers.InputSpec')
 class InputSpec(object):
   """Specifies the ndim, dtype and shape of every input to a layer.
 

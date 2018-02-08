@@ -57,12 +57,14 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'self', 'config'])
 
 
+@tf_export('estimator.Estimator')
 class Estimator(object):
   """Estimator class to train and evaluate TensorFlow models.
 
@@ -502,9 +504,11 @@ class Estimator(object):
 
   def _assert_members_are_not_overridden(self):
     """Asserts members of `Estimator` are not overridden."""
-    allowed_overrides = set(['_call_input_fn', '_create_global_step',
-                             '_convert_train_steps_to_hooks',
-                             '_convert_eval_steps_to_hooks'])
+    allowed_overrides = set([
+        '_call_input_fn', '_create_global_step',
+        '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
+        '_tf_api_names'
+    ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
     subclass_members = set(self.__class__.__dict__.keys())

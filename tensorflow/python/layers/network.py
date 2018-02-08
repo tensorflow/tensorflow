@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 class InputLayer(base.Layer):
@@ -117,6 +118,7 @@ class InputLayer(base.Layer):
         output_tensors=[input_tensor])
 
 
+@tf_export('layers.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,

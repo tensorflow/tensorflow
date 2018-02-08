@@ -80,6 +80,7 @@ genrule(
         "api/keras/utils/__init__.py",
         "api/keras/wrappers/__init__.py",
         "api/keras/wrappers/scikit_learn/__init__.py",
+        "api/layers/__init__.py",
         "api/linalg/__init__.py",
         "api/logging/__init__.py",
         "api/losses/__init__.py",

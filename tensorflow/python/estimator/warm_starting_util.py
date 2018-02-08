@@ -30,8 +30,10 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_ops
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("estimator.VocabInfo")
 class VocabInfo(
     collections.namedtuple("VocabInfo", [
         "new_vocab",
@@ -81,6 +83,7 @@ class VocabInfo(
     )
 
 
+@tf_export("estimator.WarmStartSettings")
 class WarmStartSettings(
     collections.namedtuple("WarmStartSettings", [
         "ckpt_to_initialize_from",
