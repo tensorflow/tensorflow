@@ -21,8 +21,10 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/ADT/Triple.h"
+#include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
+#include "llvm/ExecutionEngine/Orc/SymbolStringPool.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/cpu/compiler_functor.h"
@@ -100,6 +102,9 @@ class SimpleOrcJIT {
   std::unique_ptr<llvm::TargetMachine> target_machine_;
   const Disassembler disassembler_;
   const llvm::DataLayout data_layout_;
+  llvm::orc::SymbolStringPool string_pool_;
+  llvm::orc::ExecutionSession execution_session_;
+  std::shared_ptr<llvm::orc::SymbolResolver> symbol_resolver_;
   ObjLayerT object_layer_;
   CompileLayerT compile_layer_;
   ExternalConstantPool external_constant_pool_;

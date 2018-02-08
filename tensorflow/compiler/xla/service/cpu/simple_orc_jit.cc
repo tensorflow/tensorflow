@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/CodeGen.h"
@@ -139,10 +140,35 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                                 /*MAttrs=*/DetectMachineAttributes()))),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
-      object_layer_([] {
-        return std::make_shared<llvm::SectionMemoryManager>(
-            orc_jit_memory_mapper::GetInstance());
-      }),
+      execution_session_(string_pool_),
+      symbol_resolver_(llvm::orc::createLegacyLookupResolver(
+          [this](const std::string& name) -> llvm::JITSymbol {
+            if (const uint8* from_constant_pool =
+                    external_constant_pool_.Find(string(name))) {
+              return llvm::JITEvaluatedSymbol(
+                  reinterpret_cast<uint64_t>(from_constant_pool),
+                  llvm::JITSymbolFlags::None);
+            }
+
+            void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+            if (func_addr == nullptr) {
+              return nullptr;
+            }
+            llvm::JITEvaluatedSymbol symbol_info(
+                reinterpret_cast<uint64_t>(func_addr),
+                llvm::JITSymbolFlags::None);
+            return symbol_info;
+          },
+          [](llvm::Error Err) {
+            cantFail(std::move(Err), "lookupFlags failed");
+          })),
+      object_layer_(
+          execution_session_,
+          [](llvm::orc::VModuleKey) {
+            return std::make_shared<llvm::SectionMemoryManager>(
+                orc_jit_memory_mapper::GetInstance());
+          },
+          [this](llvm::orc::VModuleKey K) { return symbol_resolver_; }),
       compile_layer_(
           object_layer_,
           CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
@@ -157,7 +183,7 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
 SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
   auto handle = cantFail(compile_layer_.addModule(
-      std::move(module), MakeUnique<SimpleResolver>(external_constant_pool())));
+      execution_session_.allocateVModule(), std::move(module)));
   module_handles_.push_back(handle);
   return handle;
 }
