@@ -1128,8 +1128,15 @@ tensorflow::Status ConvertConst(Converter& ctx,
   } else if (!weights_tensor.tensor_content().empty()) {
     VLOG(2) << "TENSOR!!!" << node_def.name();
     const auto& content = weights_tensor.tensor_content();
-      weights = TRT_ShapedWeights(dtype, weights_tensor.tensor_content().data(),
-                                  GetTensorShape(tensor));
+
+    weights = ctx.get_temp_weights(dtype, GetTensorShape(tensor));
+    if (content.size() > 0) {
+      const int dtype_size = tensorflow::DataTypeSize(dtype);
+      CHECK_EQ(0, content.size() % dtype_size)
+          << "Tensor content size (" << content.size()
+          << ") is not a multiple of " << dtype_size;
+      port::CopyToArray(content, static_cast<char*>(const_cast<void*>(weights.GetValues())));
+    }
   } else {
     return tensorflow::errors::Unimplemented(
         "Not supported constant type, at " + node_def.name());
