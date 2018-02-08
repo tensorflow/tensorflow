@@ -309,7 +309,7 @@ class Beta(distribution.Distribution):
             message="sample must be positive"),
         check_ops.assert_less(
             x, array_ops.ones([], self.dtype),
-            message="sample must be no larger than `1`."),
+            message="sample must be less than `1`."),
     ], x)
 
 
