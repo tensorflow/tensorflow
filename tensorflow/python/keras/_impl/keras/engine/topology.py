@@ -784,8 +784,8 @@ class Network(tf_network.GraphNetwork, Layer):
       masks = [None for _ in range(len(inputs))]
     else:
       masks = _to_list(mask)
-    cache_key = ','.join([str(id(x)) for x in inputs])
-    cache_key += '_' + ','.join([str(id(x)) for x in masks])
+    cache_key = (tf_layers_util.object_list_uid(inputs)
+                 + '_' + tf_layers_util.object_list_uid(masks))
     if cache_key in self._output_mask_cache:
       return self._output_mask_cache[cache_key]
     else:

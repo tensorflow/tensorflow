@@ -340,6 +340,7 @@ class TopologyConstructionTest(test.TestCase):
       e = keras.layers.Input(shape=(32,), name='input_e')
       f = keras.layers.Input(shape=(32,), name='input_f')
       g, h = model([e, f])
+      self.assertEqual(g.name, 'model_1/dense_2/BiasAdd:0')
 
       self.assertListEqual(g.get_shape().as_list(), c.get_shape().as_list())
       self.assertListEqual(h.get_shape().as_list(), d.get_shape().as_list())

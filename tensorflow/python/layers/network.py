@@ -955,8 +955,7 @@ class GraphNetwork(base.Layer):
       cache_key = (layers_util.object_list_uid(inputs)
                    + '_' + layers_util.object_list_uid(masks))
       self._output_tensor_cache[cache_key] = output_tensors
-      if output_masks is not None:
-        self._output_mask_cache[cache_key] = output_masks
+      self._output_mask_cache[cache_key] = output_masks
       if output_shapes is not None:
         input_shapes = [layers_util.static_shape(x) for x in inputs]
         cache_key = layers_util.object_list_uid(input_shapes)
