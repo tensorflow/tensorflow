@@ -63,6 +63,17 @@ PARSE_VALUE(ParseInt64LongValue, int64_t, PyLong_Check, PyLong_AsLong)
 PARSE_VALUE(ParseFloatValue, float, PyFloat_Check, PyFloat_AsDouble)
 #undef PARSE_VALUE
 
+Py_ssize_t TensorShapeNumDims(PyObject* value) {
+  const auto size = PySequence_Size(value);
+  if (size == -1) {
+    // TensorShape.__len__ raises an error in the scenario where the shape is an
+    // unknown, which needs to be cleared.
+    // TODO(nareshmodi): ensure that this is actually a TensorShape.
+    PyErr_Clear();
+  }
+  return size;
+}
+
 bool ParseStringValue(const string& key, PyObject* py_value, TF_Status* status,
                       const char** value) {
   if (PyBytes_Check(py_value)) {
@@ -174,8 +185,10 @@ bool SetOpAttrList(
                   .c_str());
           return false;
         }
-        const auto size = PySequence_Size(py_value);
-        total_dims += size;
+        const auto size = TensorShapeNumDims(py_value);
+        if (size >= 0) {
+          total_dims += size;
+        }
       }
     }
     // Allocate a buffer that can fit all of the dims together.
@@ -191,7 +204,12 @@ bool SetOpAttrList(
         dims[i] = nullptr;
         num_dims[i] = -1;
       } else {
-        const auto size = PySequence_Size(py_value);
+        const auto size = TensorShapeNumDims(py_value);
+        if (size == -1) {
+          dims[i] = nullptr;
+          num_dims[i] = -1;
+          continue;
+        }
         dims[i] = offset;
         num_dims[i] = size;
         for (int j = 0; j < size; ++j) {
@@ -314,7 +332,11 @@ bool SetOpAttrScalar(
                          .c_str());
         return false;
       }
-      const auto num_dims = PySequence_Size(py_value);
+      const auto num_dims = TensorShapeNumDims(py_value);
+      if (num_dims == -1) {
+        TFE_OpSetAttrShape(op, key, nullptr, -1, status);
+        return true;
+      }
       std::unique_ptr<int64_t[]> dims(new int64_t[num_dims]);
       for (int i = 0; i < num_dims; ++i) {
         auto inner_py_value = PySequence_ITEM(py_value, i);
