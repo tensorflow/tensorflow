@@ -25,7 +25,6 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bernoulli
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
