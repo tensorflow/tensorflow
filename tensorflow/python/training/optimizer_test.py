@@ -221,6 +221,22 @@ class OptimizerTest(test.TestCase):
       self.assertAllClose([-14., -13.], self.evaluate(var0))
       self.assertAllClose([-6., -5.], self.evaluate(var1))
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testComputeGradientsWithTensors(self):
+    def f(x):
+      return x * x
+    x = ops.convert_to_tensor(1.0)
+    y = f if context.in_eager_mode() else f(x)
+    sgd_op = gradient_descent.GradientDescentOptimizer(3.0)
+    grads_and_vars = sgd_op.compute_gradients(y, [x])
+    self.assertEqual(1, len(grads_and_vars))
+    grad, x_as_var = grads_and_vars[0]
+    self.assertIs(x, x_as_var)
+    self.assertEqual(2.0, self.evaluate(grad))
+
+    with self.assertRaises(NotImplementedError):
+      sgd_op.apply_gradients(grads_and_vars)
+
   def testTrainOp(self):
     with self.test_session():
       var0 = variables.Variable([1.0, 2.0])
