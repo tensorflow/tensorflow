@@ -193,6 +193,7 @@ CORE_PROTO_SRCS = [
     "protobuf/rewriter_config.proto",
     "protobuf/tensor_bundle.proto",
     "protobuf/saver.proto",
+    "util/event.proto",
     "util/memmapped_file_system.proto",
     "util/saved_tensor_slice.proto",
 ]
@@ -211,7 +212,6 @@ ADDITIONAL_CORE_PROTO_SRCS = [
     "protobuf/named_tensor.proto",
     "protobuf/saved_model.proto",
     "protobuf/tensorflow_server.proto",
-    "util/event.proto",
     "util/test_log.proto",
 ]
 
@@ -374,6 +374,17 @@ cc_library(
     name = "abi",
     srcs = ["platform/abi.cc"],
     hdrs = ["platform/abi.h"],
+)
+
+cc_library(
+    name = "session_message",
+    srcs = ["util/session_message.cc"],
+    hdrs = ["util/session_message.h"],
+    deps = [
+        ":framework",
+        ":lib",
+        ":protos_all_cc",
+    ],
 )
 
 cc_library(
@@ -1744,6 +1755,7 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
         "framework/reader_base.*",
         "util/memmapped_file_system.*",
         "util/memmapped_file_system_writer.*",
+        "util/session_message.*",
         "util/version_info.cc",
     ],
 ) + select({
@@ -1830,6 +1842,7 @@ tf_cuda_library(
             "framework/resource_handle.cc",
             "util/memmapped_file_system.*",
             "util/memmapped_file_system_writer.*",
+            "util/session_message.cc",
             "util/version_info.cc",
         ],
     ) + select({
