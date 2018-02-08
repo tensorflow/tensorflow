@@ -758,7 +758,7 @@ def _build_nccl_hybrid(input_tensors, red_op, upper_level_f):
 
 
 def _reduce_non_singleton(input_tensors, red_f, un_op):
-  """If input_tenors has more than one element apply red_f, else apply un_op."""
+  """If input_tensors has more than one element apply red_f, else apply un_op."""
   if len(input_tensors) > 1:
     return red_f(input_tensors)
   else:

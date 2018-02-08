@@ -708,7 +708,7 @@ class Convolution2dTransposeTests(test.TestCase):
         _layers.convolution2d_transpose(images, 32, 3, data_format='CHWN')
 
   def testOutputSizeWithStrideOneSamePaddingNCHW(self):
-    # `NCHW` data fomat is only supported for `GPU` device.
+    # `NCHW` data format is only supported for `GPU` device.
     if test.is_gpu_available(cuda_only=True):
       with self.test_session(use_gpu=True) as sess:
         num_filters = 32
@@ -2195,7 +2195,7 @@ class BatchNormTest(test.TestCase):
       # After initialization moving_mean == 0 and moving_variance == 1.
       self.assertAllClose(mean, [0] * 3)
       self.assertAllClose(variance, [1] * 3)
-      # Simulate assigment from saver restore.
+      # Simulate assignment from saver restore.
       init_assigns = [
           state_ops.assign(moving_mean, expected_mean),
           state_ops.assign(moving_variance, expected_var)
