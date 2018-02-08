@@ -3446,7 +3446,9 @@ class SequenceToImagesTest(test.TestCase):
     num_time_steps = 11
     num_channels = 5
     desired_height = 7
-    sequence = np.random.uniform(size=(num_time_steps, num_batches, num_channels)).astype(np.float32)
+    sequence = np.random.uniform(size=(num_time_steps,
+                                       num_batches,
+                                       num_channels)).astype(np.float32)
     output = _layers.sequence_to_images(sequence, desired_height)
     self.assertListEqual(output.get_shape().as_list(), [2, 7, 11, 5])
 
@@ -3455,8 +3457,12 @@ class SequenceToImagesTest(test.TestCase):
     num_time_steps = 11
     num_channels = 5
     desired_height = 7
-    sequence = np.random.uniform(size=(num_time_steps, num_batches, num_channels)).astype(np.float32)
-    output = _layers.sequence_to_images(sequence, desired_height, output_data_format='channels_first')
+    sequence = np.random.uniform(size=(num_time_steps,
+                                       num_batches,
+                                       num_channels)).astype(np.float32)
+    output = _layers.sequence_to_images(sequence,
+                                        desired_height,
+                                        output_data_format='channels_first')
     self.assertListEqual(output.get_shape().as_list(), [2, 5, 7, 11])
 
 

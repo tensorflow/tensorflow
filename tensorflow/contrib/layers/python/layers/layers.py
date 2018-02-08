@@ -60,12 +60,12 @@ __all__ = [
     'conv2d_in_plane', 'conv2d_transpose', 'conv3d_transpose', 'convolution',
     'convolution2d', 'convolution2d_in_plane', 'convolution2d_transpose',
     'convolution3d', 'convolution3d_transpose', 'dense_to_sparse',
-    'dropout', 'elu', 'flatten', 'fully_connected', 'GDN', 'gdn', 'images_to_sequence',
-    'layer_norm', 'linear', 'pool', 'max_pool2d', 'max_pool3d', 'one_hot_encoding', 'relu',
-    'relu6', 'repeat', 'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
-    'sequence_to_images', 'softmax', 'spatial_softmax', 'stack',
-    'unit_norm', 'legacy_fully_connected', 'legacy_linear', 'legacy_relu',
-    'maxout'
+    'dropout', 'elu', 'flatten', 'fully_connected', 'GDN', 'gdn',
+    'images_to_sequence', 'layer_norm', 'linear', 'pool', 'max_pool2d',
+    'max_pool3d', 'one_hot_encoding', 'relu', 'relu6', 'repeat',
+    'scale_gradient', 'separable_conv2d', 'separable_convolution2d',
+    'sequence_to_images', 'softmax', 'spatial_softmax', 'stack', 'unit_norm',
+    'legacy_fully_connected', 'legacy_linear', 'legacy_relu', 'maxout'
 ]
 
 DATA_FORMAT_NCHW = 'NCHW'
@@ -2188,7 +2188,8 @@ def layer_norm(inputs,
 
 
 @add_arg_scope
-def images_to_sequence(inputs, data_format=DATA_FORMAT_NHWC, outputs_collections=None, scope=None):
+def images_to_sequence(inputs, data_format=DATA_FORMAT_NHWC,
+                       outputs_collections=None, scope=None):
   """Convert a batch of images into a batch of sequences.
   Args:
     inputs: a (num_images, height, width, depth) tensor
@@ -2700,8 +2701,8 @@ def sequence_to_images(inputs, height, output_data_format='channels_last',
   Args:
     inputs: (num_steps, num_batches, depth) sequence tensor
     height: the height of the images
-    output_data_format: Format of output tensor. Currently supports `'channels_first'`
-      and `'channels_last'`.
+    output_data_format: Format of output tensor.
+      Currently supports `'channels_first'` and `'channels_last'`.
     outputs_collections: The collections to which the outputs are added.
     scope: Optional scope for name_scope.
   Returns:
