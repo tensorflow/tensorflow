@@ -114,28 +114,18 @@ static std::vector<std::pair<int, int>> CreateSamePadding(
 class TRT_ShapedWeights {
  public:
   TRT_ShapedWeights(tensorflow::DataType type, const void* values,
-                    nvinfer1::Dims shape,
-                    const std::vector<char>* owned_values = nullptr)
-      : shape_(shape),
-        type_(type),
-        values_(values),
-        owned_values_(owned_values ? *owned_values : std::vector<char>({})),
-        empty_weight_flag_(false) {
+                    nvinfer1::Dims shape)
+      : shape_(shape), type_(type), values_(values), empty_weight_flag_(false) {
     // Note: this->shape.type[] is not used
   }
 
   explicit TRT_ShapedWeights(tensorflow::DataType type)
-      : shape_(),
-        type_(type),
-        values_(nullptr),
-        owned_values_(),
-        empty_weight_flag_(true) {}
+      : shape_(), type_(type), values_(nullptr), empty_weight_flag_(true) {}
 
   TRT_ShapedWeights(const TRT_ShapedWeights& rhs)
       : shape_(rhs.shape_),
         type_(rhs.type_),
         values_(rhs.values_),
-        owned_values_(rhs.owned_values_),
         empty_weight_flag_(rhs.empty_weight_flag_) {}
 
   int64_t count() const {
@@ -153,16 +143,9 @@ class TRT_ShapedWeights {
     return nvinfer1::Weights{trt_type, GetValues(), GetShapeSize(shape_)};
   }
 
-  const void* GetValues() const {
-    if (values_) return values_;
-    if (owned_values_.size()) return owned_values_.data();
-    return nullptr;
-  }
+  const void* GetValues() const { return values_; }
 
-  void SetValues(const void* values) {
-    values_ = values;
-    owned_values_.clear();
-  }
+  void SetValues(const void* values) { values_ = values; }
 
   size_t size_bytes() const {
     int type_size = tensorflow::DataTypeSize(this->type_);
@@ -177,7 +160,6 @@ class TRT_ShapedWeights {
 
  private:
   const void* values_;
-  std::vector<char> owned_values_;
   bool empty_weight_flag_;
 };
 
