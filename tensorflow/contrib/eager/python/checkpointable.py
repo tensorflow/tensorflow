@@ -46,9 +46,10 @@ _CheckpointableReference = collections.namedtuple(
     ])
 
 # Validation regular expression for the local names of Checkpointable
-# objects. In particular, disallows "/" in names, and reserves
-# underscore-prefixed names.
-_VALID_LOCAL_NAME = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.-]*$")
+# objects. In particular, disallows "/" in names, and reserves dash-prefixed
+# names (which are not valid Python identifiers, so we're not restricting the
+# __setattr__ syntax that way).
+_VALID_LOCAL_NAME = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_.-]*$")
 
 # Keyword for identifying that the next bit of a checkpoint variable name is a
 # slot name. May not be the local name of a checkpointable. Checkpoint names for
@@ -58,7 +59,7 @@ _VALID_LOCAL_NAME = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.-]*$")
 #
 # Where <path to variable> is a full path from the checkpoint root to the
 # variable being slotted for.
-_OPTIMIZER_SLOTS_NAME = "_OPTIMIZER_SLOT"
+_OPTIMIZER_SLOTS_NAME = "-OPTIMIZER_SLOT"
 
 
 def _assign_existing_variable(variable_to_restore, value_pointer):
@@ -89,18 +90,39 @@ class Checkpointable(object):
   """
 
   def __init__(self):
-    # Basically a less useful OrderedDict but without the reference cycles.
-    # TODO(allenl): Switch this to OrderedDict once TensorFlow supports only
-    # Python 3.6+.
     # A list of _CheckpointableReference objects.
     self._checkpoint_dependencies = []
-    self._dependency_names = set()
+    # Maps names -> Checkpointable objects for named dependencies
+    self._dependency_names = {}
+    # Set of all tracked Checkpointables
+    self._already_tracked = set()
     # Start numbering at 1, since an un-set protocol buffer integer is
     # indistinguishable from 0.
     self._next_unnamed_checkpoint_dependency_uid = 1
     self._owned_variables = {}  # local name -> variable object
     self._deferred_restorations = {}  # local name -> _VariableRestoration
                                       # object
+
+  def __setattr__(self, name, value):
+    """Support self.foo = checkpointable syntax.
+
+    `self.foo = checkpointable` is equivalent to
+    `self.foo = self.track_checkpointable(checkpointable, name='foo')`.
+
+    No new tracking if `value` is not a `Checkpointable`, or if `value` is
+    already being tracked (either because of an explicit `track_checkpointable`
+    or a previous `__setattr__`).
+
+    Args:
+      name: The name of the property being set.
+      value: The new value for the property.
+    """
+    # Give child classes (e.g. Network) priority, then track only if the object
+    # hasn't been added to _already_tracked.
+    super(Checkpointable, self).__setattr__(name, value)
+    if (isinstance(value, Checkpointable)
+        and value not in self._already_tracked):
+      self.track_checkpointable(value, name=name)
 
   def add_variable(self, name, shape, dtype=None, initializer=None, **kwargs):
     """Create a new variable object to be saved with this `Checkpointable`.
@@ -217,12 +239,13 @@ class Checkpointable(object):
             ("Checkpointable names must match the regular expression '%s', but "
              "got an invalid name '%s' instead.") % (_VALID_LOCAL_NAME.pattern,
                                                      name))
-      if name in self._dependency_names:
+      if (name in self._dependency_names
+          and self._dependency_names[name] is not checkpointable):
         raise ValueError(
             ("Called Checkpointable.track_checkpointable() with name='%s', but "
              "a Checkpointable with this name is already declared as a "
              "dependency. If provided, names must be unique.") % (name,))
-      self._dependency_names.add(name)
+      self._dependency_names[name] = checkpointable
       local_uid = None
     else:
       # TODO(allenl): Should this be exposed to allow users to stop depending on
@@ -232,6 +255,7 @@ class Checkpointable(object):
     self._checkpoint_dependencies.append(
         _CheckpointableReference(
             name=name, ref=checkpointable, local_uid=local_uid))
+    self._already_tracked.add(checkpointable)
     return checkpointable
 
   def _process_restoration(self, restoration):
@@ -305,8 +329,10 @@ def _breadth_first_checkpointable_traversal(root_checkpointable):
 
 
 def _object_prefix_from_path(path_to_root):
-  return "/".join((checkpointable.name if checkpointable.name else "_%d" % (
-      checkpointable.local_uid,)) for checkpointable in path_to_root)
+  return "/".join(
+      (checkpointable.name if checkpointable.name
+       else "-unnamed_%d" % (checkpointable.local_uid,))
+      for checkpointable in path_to_root)
 
 
 def _escape_variable_name(variable_name):
