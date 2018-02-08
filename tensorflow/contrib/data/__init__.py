@@ -23,9 +23,6 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@Dataset
 @@Counter
 @@Iterator
-@@TFRecordDataset
-@@FixedLengthRecordDataset
-@@TextLineDataset
 
 @@batch_and_drop_remainder
 @@dense_to_sparse_batch
@@ -66,11 +63,8 @@ from tensorflow.contrib.data.python.ops.grouping import group_by_window
 from tensorflow.contrib.data.python.ops.interleave_ops import parallel_interleave
 from tensorflow.contrib.data.python.ops.interleave_ops import sloppy_interleave
 from tensorflow.contrib.data.python.ops.iterator_ops import make_saveable_from_iterator
-from tensorflow.contrib.data.python.ops.readers import FixedLengthRecordDataset
 from tensorflow.contrib.data.python.ops.readers import read_batch_features
 from tensorflow.contrib.data.python.ops.readers import SqlDataset
-from tensorflow.contrib.data.python.ops.readers import TextLineDataset
-from tensorflow.contrib.data.python.ops.readers import TFRecordDataset
 from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.scan_ops import scan
 from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
