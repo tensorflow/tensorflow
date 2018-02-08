@@ -72,7 +72,7 @@ class CheckpointableNetwork(network_lib.Network, checkpointable.Checkpointable):
     # Checkpointable objects which aren't Layers.
     super(CheckpointableNetwork, self).__setattr__(name, value)
 
-  def track_layer(self, layer, name=None):
+  def track_layer(self, layer, name):
     self.track_checkpointable(layer, name=name)
     return super(CheckpointableNetwork, self).track_layer(layer)
 
@@ -136,13 +136,13 @@ class MyNetwork(CheckpointableNetwork):
   def __init__(self):
     super(MyNetwork, self).__init__()
     self._named_dense = CheckpointableDenseLayer(1, use_bias=True)
-    self._unnamed = self.track_layer(
-        CheckpointableDenseLayer(1, use_bias=False))
+    self._via_track_layer = self.track_layer(
+        CheckpointableDenseLayer(1, use_bias=False), name="via_track_layer")
     # We can still track Checkpointables which aren't Layers.
     self._non_layer = NonLayerCheckpointable()
 
   def call(self, values):
-    return self._unnamed(self._named_dense(values))
+    return self._via_track_layer(self._named_dense(values))
 
 
 class Root(checkpointable.Checkpointable):
@@ -201,7 +201,7 @@ class CheckpointNamingTests(test.TestCase):
         "global_step",
         # No name provided to track_checkpointable(), so the position is used
         # instead (one-based).
-        "network/-unnamed_1/kernel",
+        "network/via_track_layer/kernel",
         # track_checkpointable() with a name provided, so that's used
         "network/_named_dense/kernel",
         "network/_named_dense/bias",
@@ -211,8 +211,8 @@ class CheckpointNamingTests(test.TestCase):
         "_optimizer/beta1_power",
         "_optimizer/beta2_power",
         # Slot variables
-        "network/-unnamed_1/kernel/-OPTIMIZER_SLOT/_optimizer/m",
-        "network/-unnamed_1/kernel/-OPTIMIZER_SLOT/_optimizer/v",
+        "network/via_track_layer/kernel/-OPTIMIZER_SLOT/_optimizer/m",
+        "network/via_track_layer/kernel/-OPTIMIZER_SLOT/_optimizer/v",
         "network/_named_dense/kernel/-OPTIMIZER_SLOT/_optimizer/m",
         "network/_named_dense/kernel/-OPTIMIZER_SLOT/_optimizer/v",
         "network/_named_dense/bias/-OPTIMIZER_SLOT/_optimizer/m",
@@ -223,7 +223,7 @@ class CheckpointNamingTests(test.TestCase):
     # Check that we've mapped to the right variable objects (not exhaustive)
     self.assertEqual("global_step:0", named_variables["global_step"].name)
     self.assertEqual("my_network/checkpointable_dense_layer_1/kernel:0",
-                     named_variables["network/-unnamed_1/kernel"].name)
+                     named_variables["network/via_track_layer/kernel"].name)
     self.assertEqual("my_network/checkpointable_dense_layer/kernel:0",
                      named_variables["network/_named_dense/kernel"].name)
     self.assertEqual("beta1_power:0",
@@ -231,7 +231,6 @@ class CheckpointNamingTests(test.TestCase):
     self.assertEqual("beta2_power:0",
                      named_variables["_optimizer/beta2_power"].name)
     # Spot check the generated protocol buffers.
-    self.assertEqual(0, serialized_graph.nodes[0].children[0].local_uid)
     self.assertEqual("_optimizer",
                      serialized_graph.nodes[0].children[0].local_name)
     optimizer_node = serialized_graph.nodes[serialized_graph.nodes[0].children[
@@ -415,11 +414,11 @@ class CheckpointNamingTests(test.TestCase):
   def testNumberedPath(self):
     root = checkpointable.Checkpointable()
     leaf = checkpointable.Checkpointable()
-    root.track_checkpointable(leaf)
+    root.track_checkpointable(leaf, name="leaf")
     leaf.add_variable(name="v", shape=[])
     named_variables, _ = checkpointable._serialize_object_graph(root)
     variable_name, = named_variables.keys()
-    self.assertEqual(r"-unnamed_1/v", variable_name)
+    self.assertEqual(r"leaf/v", variable_name)
 
   @test_util.run_in_graph_and_eager_modes()
   def testLocalNameValidation(self):
