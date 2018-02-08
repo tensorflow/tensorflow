@@ -2764,6 +2764,13 @@ op {
     type: "int"
   }
   attr {
+    name: "max_enqueued_batches"
+    type: "int"
+    default_value {
+      i: 10
+    }
+  }
+  attr {
     name: "batch_timeout_micros"
     type: "int"
   }
