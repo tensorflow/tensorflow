@@ -2289,9 +2289,9 @@ def max_pool3d(inputs,
 
 @add_arg_scope
 def unpool_2d(pool, 
-           ind, 
-           stride=[1, 2, 2, 1], 
-           scope='unpool_2d'):
+              ind, 
+              stride=[1, 2, 2, 1], 
+              scope='unpool_2d'):
   """Adds a 2D unpooling op.
   https://arxiv.org/abs/1505.04366
 
