@@ -641,6 +641,7 @@ void GenEagerPythonOp::AddEagerFunctionTeardown(
 bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
     const string& parameters, const std::vector<string>& output_sizes,
     const string& eager_not_allowed_error) {
+  AddExport();
   AddDefLine(function_name_, parameters);
   AddDocStringDescription();
   AddDocStringArgs();
