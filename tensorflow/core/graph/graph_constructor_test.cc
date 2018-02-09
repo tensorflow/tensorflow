@@ -160,9 +160,7 @@ class GraphConstructorTest : public ::testing::Test {
   }
 
   string GraphDebugString() const {
-    GraphDef def;
-    graph_.ToGraphDef(&def);
-    return def.DebugString();
+    return graph_.ToGraphDefDebug().DebugString();
   }
 
   Graph graph_;

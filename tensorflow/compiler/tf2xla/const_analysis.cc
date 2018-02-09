@@ -64,7 +64,7 @@ Status BackwardsConstAnalysis(const Graph& g,
     // Mark any compile-time constant operator arguments as const.
     const std::unordered_set<string>* const_inputs =
         XlaOpRegistry::CompileTimeConstantInputs(node->type_string());
-    if (!const_inputs) return;
+    if (!const_inputs || const_inputs->empty()) return;
 
     NameRangeMap input_name_ranges;
     status =
