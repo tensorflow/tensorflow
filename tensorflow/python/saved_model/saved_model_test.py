@@ -873,8 +873,6 @@ class SavedModelTest(test.TestCase):
           42, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)[0].eval())
 
   def testStripDefaultAttrs(self):
-    if ops._USE_C_API: return  # TODO(skyewm): get this working
-
     export_dir = self._get_export_dir("test_strip_default_attrs")
     builder = saved_model_builder.SavedModelBuilder(export_dir)
 
