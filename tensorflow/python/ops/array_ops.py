@@ -2455,8 +2455,8 @@ def _all_dimensions(x):
   return range(0, rank(x))
 
 
-  def multi_one_hot(indices, depth_list, on_values_list=None,
-                    off_values_list=None, name=None):
+def multi_one_hot(indices, depth_list, on_values_list=None,
+                  off_values_list=None, name=None):
   """Creates one-hot-encodings for multiple features (columns in a matrix)
   and concatenates the resulting encodings
 
@@ -2470,9 +2470,9 @@ def _all_dimensions(x):
 
   ```python
     indices =
-    [1.0, 2.0]
-    [0.0, 1.0]
-    [1.0, 0.0]
+    [1, 2]
+    [0, 1]
+    [1, 0]
 
     depth_list = [2, 3]
     on_values_list = [5.0, 10.0]
