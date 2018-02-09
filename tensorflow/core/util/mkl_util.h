@@ -749,7 +749,6 @@ inline void GetMklInputList(OpKernelContext* ctext, StringPiece name,
   ctext->input_list(name, input_tensors);
 }
 
-
 #ifdef INTEL_MKL_ML
 
 inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,

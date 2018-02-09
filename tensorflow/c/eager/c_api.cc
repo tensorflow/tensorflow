@@ -37,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/refcount.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -47,19 +48,23 @@ using tensorflow::int64;
 using tensorflow::string;
 
 namespace {
-bool IsCPU(tensorflow::Device* d) {
+bool IsCPU(const tensorflow::Device* d) {
   return d == nullptr || d->tensorflow_gpu_device_info() == nullptr;
 }
 
-bool IsXLA(tensorflow::Device* d) {
+bool IsXLA(const tensorflow::Device* d) {
   if (d == nullptr) return false;
   const auto& device_type = d->attributes().device_type();
   return device_type.find("XLA") != std::string::npos;
 }
 
-string DeviceName(tensorflow::Device* d) {
+string DeviceName(const tensorflow::Device* d) {
   return (d == nullptr) ? "cpu:0" : d->name();
 }
+
+#ifdef TENSORFLOW_EAGER_USE_XLA
+std::atomic_int_fast64_t func_id_generator(0);
+#endif  // TENSORFLOW_EAGER_USE_XLA
 }  // namespace
 
 extern "C" {
@@ -279,6 +284,14 @@ const char* TFE_OpGetDevice(TFE_Op* op, TF_Status* status) {
   tensorflow::Device* device =
       (op->device == nullptr) ? op->ctx->devices()[0] : op->device;
   return device->name().c_str();
+}
+
+void TFE_OpSetXLACompilation(TFE_Op* op, unsigned char enable) {
+  op->use_xla = enable;
+#ifndef TENSORFLOW_EAGER_USE_XLA
+  LOG(WARNING) << "This call is a no-op, as the TensorFlow library is not "
+                  "built with XLA support.";
+#endif  // TENSORFLOW_EAGER_USE_XLA
 }
 
 void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h, TF_Status* status) {
@@ -523,6 +536,228 @@ tensorflow::Status ValidateInputTypeAndPlacement(
   }
   return tensorflow::Status::OK();
 }
+
+#ifdef TENSORFLOW_EAGER_USE_XLA
+// Synthesizes and returns a wrapper function over `op`, which must be a
+// primitive op (e.g. matmul).
+//
+// The wrapper function conforms to the function signature expected by
+// _XlaLaunchOp, with input params ordered by <constants, (variable) args and
+// resources>. For example, if the op has input params <Const1, Arg2, Const3,
+// Resource4, Arg5>, they will be reordered to <Const1, Const3, Arg2, Arg5,
+// Resource4> as the input params to the synthesized function.
+//
+// It populates `const_input_types`, `arg_input_types` and
+// `op_input_to_func_input` based on the reordering results, that the caller can
+// use them to build an _XlaLaunchOp. On error, it returns NULL, and sets
+// `status` accordingly.
+const tensorflow::FunctionDef* OpToFunction(
+    TFE_Op* op, std::vector<TF_DataType>* const_input_types,
+    std::vector<TF_DataType>* arg_input_types,
+    tensorflow::gtl::FlatMap<int, int>* op_input_to_func_input,
+    TF_Status* status) {
+  DCHECK(!op->is_function());
+
+  tensorflow::FunctionDef fdef;
+
+  // Get the OpDef of the op we are trying to encapsulate.
+  TFE_Context* ctx = op->ctx;
+  const tensorflow::OpRegistrationData* op_data;
+  {
+    tensorflow::tf_shared_lock l(ctx->functions_mu);
+    status->status = ctx->func_lib_def.LookUp(op->name, &op_data);
+    if (!status->status.ok()) {
+      return nullptr;
+    }
+  }
+  const tensorflow::OpDef& op_def = op_data->op_def;
+
+  tensorflow::OpDef* signature = fdef.mutable_signature();
+
+  // Handle constant inputs.
+  const std::unordered_set<string> const_inputs(
+      *tensorflow::XlaOpRegistry::CompileTimeConstantInputs(op->name));
+
+  // First add place holders for the input args, so that we can refer to them by
+  // position in the next loop. Also tally up the resource inputs.
+  int num_resource_inputs = 0;
+  for (int i = 0; i < op_def.input_arg_size(); ++i) {
+    if (op_def.input_arg(i).type() == tensorflow::DT_RESOURCE) {
+      ++num_resource_inputs;
+    }
+    signature->add_input_arg();
+  }
+
+  // Now we map the input params from `op_def` to `signature`, where the param
+  // ordering for `signature` is: <constants, args, resources>.
+  int const_index = 0;
+  int arg_index = const_inputs.size();
+  int resource_index = op_def.input_arg_size() - num_resource_inputs;
+  for (int i = 0; i < op_def.input_arg_size(); ++i) {
+    const tensorflow::OpDef::ArgDef& op_input_arg = op_def.input_arg(i);
+    tensorflow::OpDef::ArgDef* func_input_arg = nullptr;
+    if (const_inputs.find(op_input_arg.name()) != const_inputs.end()) {
+      VLOG(1) << "For const input, mapping op input " << i << " to func input "
+              << const_index;
+      (*op_input_to_func_input)[i] = const_index;
+      func_input_arg = signature->mutable_input_arg(const_index++);
+      const_input_types->push_back(
+          static_cast<TF_DataType>(op->inputs[i].dtype()));
+    } else if (op_input_arg.type() == tensorflow::DT_RESOURCE) {
+      VLOG(1) << "For resource input, mapping op input " << i
+              << " to func input " << resource_index;
+      (*op_input_to_func_input)[i] = resource_index;
+      func_input_arg = signature->mutable_input_arg(resource_index++);
+    } else {
+      VLOG(1) << "For arg input, mapping op input " << i << " to func input "
+              << arg_index;
+      (*op_input_to_func_input)[i] = arg_index;
+      func_input_arg = signature->mutable_input_arg(arg_index++);
+      arg_input_types->push_back(
+          static_cast<TF_DataType>(op->inputs[i].dtype()));
+    }
+
+    func_input_arg->set_name(op_input_arg.name());
+    func_input_arg->set_type(op->inputs[i].dtype());
+  }
+  VLOG(1) << "Added OpDef Inputs: " << fdef.DebugString();
+
+  // Resources args are at the end of the function input params, and we should
+  // have iterated over all of them.
+  DCHECK_EQ(signature->input_arg_size(), resource_index);
+
+  // Make the synthesized function's name unique.
+  signature->set_name(tensorflow::strings::StrCat(
+      op_def.name(), func_id_generator.fetch_add(1)));
+
+  // Add the node def and set its input names to match op_def's names.
+  const tensorflow::NodeDef& ndef = op->attrs.BuildNodeDef();
+  DCHECK_EQ(signature->input_arg_size(), ndef.input_size());
+  *fdef.add_node_def() = ndef;
+  for (int i = 0; i < op_def.input_arg_size(); ++i) {
+    fdef.mutable_node_def(0)->set_input(i, op_def.input_arg(i).name());
+  }
+  VLOG(1) << "Added NodeDef: " << fdef.DebugString();
+
+  // Fix the output names and set output types.
+  for (int i = 0; i < op_def.output_arg_size(); ++i) {
+    tensorflow::OpDef::ArgDef* arg = signature->add_output_arg();
+    const tensorflow::OpDef::ArgDef& op_def_arg = op_def.output_arg(i);
+    const string& out_tensor_name = tensorflow::strings::StrCat(
+        ndef.name(), ":", op_def_arg.name(), ":", 0);
+    arg->set_name(op_def_arg.name());
+    (*fdef.mutable_ret())[op_def_arg.name()] = out_tensor_name;
+    const string& type_attr = op_def_arg.type_attr();
+    if (!type_attr.empty()) {
+      auto i = ndef.attr().find(type_attr);
+      if (i == ndef.attr().end()) {
+        status->status = tensorflow::errors::InvalidArgument(
+            tensorflow::strings::StrCat("Could not find attr ", type_attr,
+                                        " in NodeDef ", ndef.DebugString()));
+        return nullptr;
+      }
+      arg->set_type(i->second.type());
+    }
+  }
+  VLOG(1) << "Fixed Output names and all types: " << fdef.DebugString();
+
+  tensorflow::mutex_lock l(ctx->functions_mu);
+  status->status = ctx->func_lib_def.AddFunctionDef(fdef);
+  if (!status->status.ok()) return nullptr;
+  const auto ret = ctx->func_lib_def.Find(signature->name());
+  DCHECK(ret != nullptr);
+  return ret;
+}
+
+// Builds an _XLALaunchOp as a wrapper over 'op', so that 'op' can be executed
+// via XLA.
+std::unique_ptr<TFE_Op> BuildXlaLaunch(TFE_Op* op, TF_Status* status) {
+  VLOG(1) << "Creating _XlaLaunchOp for TFE_Op " << op->name;
+  auto launch_op =
+      std::unique_ptr<TFE_Op>(TFE_NewOp(op->ctx, "_XlaLaunch", status));
+  if (TF_GetCode(status) != TF_OK) return nullptr;
+  if (op->device) {
+    TFE_OpSetDevice(launch_op.get(), op->device->name().c_str(), status);
+    if (TF_GetCode(status) != TF_OK) return nullptr;
+  }
+
+  const tensorflow::FunctionDef* fdef;
+  {
+    tensorflow::tf_shared_lock l(op->ctx->functions_mu);
+    fdef = op->ctx->func_lib_def.Find(op->name);
+  }
+  std::vector<TF_DataType> const_input_types;
+  std::vector<TF_DataType> arg_input_types;
+  tensorflow::gtl::FlatMap<int, int> op_input_to_func_input;
+  if (fdef == nullptr) {
+    // See if this is a primitive op, and if so create a function for it, so
+    // that _XlaLaunchOp can access it.
+    fdef = OpToFunction(op, &const_input_types, &arg_input_types,
+                        &op_input_to_func_input, status);
+    if (!status->status.ok()) return nullptr;
+  } else {
+    // TODO(hongm): XlaOpRegistry::CompileTimeConstantInputs() does not work for
+    // functions, so we need to find another way to handle constant inputs.
+    for (int i = const_input_types.size();
+         i < fdef->signature().input_arg_size(); ++i) {
+      VLOG(1) << "Adding Targs from input arg " << i;
+      const tensorflow::OpDef::ArgDef& arg = fdef->signature().input_arg(i);
+      arg_input_types.push_back(static_cast<TF_DataType>(arg.type()));
+    }
+  }
+  DCHECK(fdef != nullptr);
+
+  // Copy inputs and their devices.
+  // Since input param reordering may have occurred between `op` and `launch_op`
+  // via `op_input_to_func_input`, adjust the actual inputs accordingly.
+  launch_op->inputs = op->inputs;
+  launch_op->input_devices = op->input_devices;
+  if (!op_input_to_func_input.empty()) {
+    DCHECK_EQ(op->inputs.size(), op_input_to_func_input.size());
+    if (!op->input_devices.empty()) {
+      DCHECK_EQ(op->input_devices.size(), op_input_to_func_input.size());
+    }
+    for (int i = 0; i < op_input_to_func_input.size(); ++i) {
+      VLOG(1) << "mapping op input " << i << " to func input "
+              << op_input_to_func_input[i];
+
+      launch_op->inputs[op_input_to_func_input[i]] = op->inputs[i];
+      if (!op->input_devices.empty()) {
+        launch_op->input_devices[op_input_to_func_input[i]] =
+            op->input_devices[i];
+      }
+    }
+  }
+  launch_op->attrs.NumInputs(op->inputs.size());
+
+  TFE_OpSetAttrTypeList(launch_op.get(), "Tconstants", const_input_types.data(),
+                        const_input_types.size());
+
+  // Set Targs and Nresources attrs.
+  TFE_OpSetAttrTypeList(launch_op.get(), "Targs", arg_input_types.data(),
+                        arg_input_types.size());
+  const int num_resource_inputs = fdef->signature().input_arg_size() -
+                                  const_input_types.size() -
+                                  arg_input_types.size();
+  TFE_OpSetAttrInt(launch_op.get(), "Nresources", num_resource_inputs);
+
+  // Set Tresults attr.
+  std::vector<TF_DataType> tresults;
+  for (const tensorflow::OpDef::ArgDef& arg : fdef->signature().output_arg()) {
+    tresults.push_back(static_cast<TF_DataType>(arg.type()));
+  }
+  TFE_OpSetAttrTypeList(launch_op.get(), "Tresults", tresults.data(),
+                        tresults.size());
+
+  // Set function attr.
+  tensorflow::AttrValue attr_value;
+  tensorflow::NameAttrList* func = attr_value.mutable_func();
+  func->set_name(fdef->signature().name());
+  launch_op->attrs.Set("function", attr_value);
+
+  return launch_op;
+}
+#endif  // TENSORFLOW_EAGER_USE_XLA
 }  // namespace
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
@@ -531,6 +766,18 @@ void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
   // TODO(ashankar): ASSUMPTION: ctx->devices()[0] is always CPU
   tensorflow::Device* device =
       (op->device == nullptr) ? ctx->devices()[0] : op->device;
+
+#ifdef TENSORFLOW_EAGER_USE_XLA
+  std::unique_ptr<TFE_Op> xla_launch_op;
+  if (op->use_xla && op->name != "_XlaLaunch") {
+    xla_launch_op = BuildXlaLaunch(op, status);
+    if (!status->status.ok()) {
+      return;
+    }
+    op = xla_launch_op.get();
+  }
+#endif  // TENSORFLOW_EAGER_USE_XLA
+
   std::vector<tensorflow::Tensor> outputs(1);
   const tensorflow::MemoryTypeVector* output_memory_types = nullptr;
   tensorflow::Fprint128 cache_key = op->attrs.CacheKey(device->name());

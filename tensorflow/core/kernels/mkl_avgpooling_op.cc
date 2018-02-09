@@ -428,10 +428,7 @@ class MklAvgPoolingGradOp : public OpKernel {
   TensorFormat data_format_;
 };  // MklAvgPoolingGradOp
 
-
-
 #else
-
 
 template <typename Device, typename T>
 class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
@@ -485,7 +482,7 @@ class MklAvgPoolingOp : public MklPoolingForwardOpBase<T> {
         }
         const int kOutputIndex = 0;
         AllocateOutputSetMklShape(context, kOutputIndex, &output_tensor,
-                                    output_tf_shape, output_mkl_shape);
+                                  output_tf_shape, output_mkl_shape);
         CHECK_NOTNULL(output_tensor);
         return;
       }
@@ -702,11 +699,7 @@ class MklAvgPoolingGradOp : public MklPoolingBackwardOpBase<T> {
   }
 };  // MklAvgPoolingGradOp
 
-
-
-
 #endif  // INTEL_MKL_ML
-
 
 REGISTER_KERNEL_BUILDER(Name("_MklAvgPool")
                             .Device(DEVICE_CPU)

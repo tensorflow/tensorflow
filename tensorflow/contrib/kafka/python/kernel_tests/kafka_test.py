@@ -18,21 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
-import os
-
 from tensorflow.contrib.kafka.python.ops import kafka_dataset_ops
 from tensorflow.python.data.ops import iterator_ops
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_shape
-from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
-from tensorflow.python.util import compat
+
 
 class KafkaDatasetTest(test.TestCase):
 
@@ -64,52 +56,58 @@ class KafkaDatasetTest(test.TestCase):
 
     with self.test_session() as sess:
       # Basic test: read from topic 0.
-      sess.run(
-          init_op, feed_dict={topics: ["test:0:0:4"],
-                              num_epochs: 1})
+      sess.run(init_op, feed_dict={topics: ["test:0:0:4"], num_epochs: 1})
       for i in range(5):
-        self.assertEqual("D"+str(i), sess.run(get_next))
+        self.assertEqual("D" + str(i), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
       # Basic test: read from topic 1.
-      sess.run(
-          init_op, feed_dict={topics: ["test:0:5:-1"],
-                              num_epochs: 1})
+      sess.run(init_op, feed_dict={topics: ["test:0:5:-1"], num_epochs: 1})
       for i in range(5):
-        self.assertEqual("D"+str(i + 5), sess.run(get_next))
+        self.assertEqual("D" + str(i + 5), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
       # Basic test: read from both topics.
-      sess.run(init_op, feed_dict={topics: ["test:0:0:4", "test:0:5:-1"],
-                                   num_epochs: 1})
+      sess.run(
+          init_op,
+          feed_dict={
+              topics: ["test:0:0:4", "test:0:5:-1"],
+              num_epochs: 1
+          })
       for j in range(2):
         for i in range(5):
-          self.assertEqual("D"+str(i + j * 5), sess.run(get_next))
+          self.assertEqual("D" + str(i + j * 5), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
       # Test repeated iteration through both files.
-      sess.run(init_op, feed_dict={topics: ["test:0:0:4", "test:0:5:-1"],
-                                   num_epochs: 10})
+      sess.run(
+          init_op,
+          feed_dict={
+              topics: ["test:0:0:4", "test:0:5:-1"],
+              num_epochs: 10
+          })
       for _ in range(10):
         for j in range(2):
           for i in range(5):
-            self.assertEqual("D"+str(i + j * 5), sess.run(get_next))
+            self.assertEqual("D" + str(i + j * 5), sess.run(get_next))
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
       # Test batched and repeated iteration through both files.
       sess.run(
           init_batch_op,
-          feed_dict={topics: ["test:0:0:4", "test:0:5:-1"],
-                     num_epochs: 10,
-                     batch_size: 5})
+          feed_dict={
+              topics: ["test:0:0:4", "test:0:5:-1"],
+              num_epochs: 10,
+              batch_size: 5
+          })
       for _ in range(10):
-        self.assertAllEqual(["D"+str(i) for i in range(5)],
+        self.assertAllEqual(["D" + str(i) for i in range(5)],
                             sess.run(get_next))
-        self.assertAllEqual(["D"+str(i + 5) for i in range(5)],
+        self.assertAllEqual(["D" + str(i + 5) for i in range(5)],
                             sess.run(get_next))
 
 

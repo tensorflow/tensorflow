@@ -61,23 +61,42 @@ void ComputeConvSizes(const Shape& input_shape, int output_depth, int kwidth,
   output_shape->ReplaceDims({batch, output_height, output_width, output_depth});
 }
 
-void ComputeBinaryOperatorOutputSize(const Shape& input_shape1,
-                                     const Shape& input_shape2,
+void ComputeBinaryOperatorOutputSize(const Shape& input_shape_x,
+                                     const Shape& input_shape_y,
                                      Array* output_array) {
-  const int size1 = RequiredBufferSizeForShape(input_shape1);
-  const int size2 = RequiredBufferSizeForShape(input_shape2);
-  if (size1 > size2) {
-    output_array->copy_shape(input_shape1);
-  } else if (size2 > size1) {
-    output_array->copy_shape(input_shape2);
-  } else {
-    CHECK_EQ(size1, size2);
-    const int dims1 = input_shape1.dimensions_count();
-    const int dims2 = input_shape2.dimensions_count();
-    if (dims1 >= dims2) {
-      output_array->copy_shape(input_shape1);
+  // This matches the code in BroadcastBinaryOpShapeFn from tensorflow.
+  // It zips together the two input shapes and pads with 1 to make them the
+  // same length. For each dimension we broadcast if either dimension is 1 and
+  // otherwise expect them to match.
+  int rank_x = input_shape_x.dimensions_count();
+  int rank_y = input_shape_y.dimensions_count();
+  int rank_out = std::max(rank_x, rank_y);
+  std::vector<int>* dims_out = output_array->mutable_shape()->mutable_dims();
+  dims_out->clear();
+  dims_out->reserve(rank_out);
+  for (int i = 0; i < rank_out; ++i) {
+    int dim_x = i < (rank_out - rank_x)
+                    ? 1
+                    : input_shape_x.dims(i - (rank_out - rank_x));
+    bool dim_y_is_one = i < (rank_out - rank_y);
+    int dim_y = dim_y_is_one ? 1 : input_shape_y.dims(i - (rank_out - rank_y));
+    if (dim_x == -1 || dim_y == -1) {
+      // One or both dimensions is unknown.
+      QCHECK(false) << "Shapes must be specified";
+    } else if (dim_x == 1 || dim_y == 1) {
+      // Broadcast one dimension to the other that is 1.
+      if (dim_x == 1 && !dim_y_is_one) {
+        // Broadcast dim_y to dim_x (1).
+        dims_out->push_back(dim_y);
+      } else {
+        // Broadcast dim_x to dim_y (1).
+        DCHECK_EQ(dim_y, 1);
+        dims_out->push_back(dim_x);
+      }
     } else {
-      output_array->copy_shape(input_shape2);
+      // Expect the dimensions to match.
+      CHECK_EQ(dim_x, dim_y) << "Dimensions must match";
+      dims_out->push_back(dim_x);
     }
   }
   CHECK(output_array->has_shape());
@@ -728,9 +747,8 @@ void ProcessResizeBilinearOperator(Model* model, ResizeBilinearOperator* op) {
 }
 
 void ProcessLstmCellOperator(Model* model, LstmCellOperator* op) {
-  // I/O arrays should be allocated on creation of op.
-  QCHECK_EQ(op->inputs.size(), LstmCellOperator::NUM_INPUTS);
-  QCHECK_EQ(op->outputs.size(), LstmCellOperator::NUM_OUTPUTS);
+  // Only required for compact LstmCell with default NUM_INPUTS of inputs.
+  if (op->inputs.size() != LstmCellOperator::NUM_INPUTS) return;
 
   const auto& input_array =
       model->GetArray(op->inputs[LstmCellOperator::DATA_INPUT]);
@@ -1218,7 +1236,8 @@ void ProcessTransposeOperator(Model* model, TransposeOperator* op) {
   std::vector<int32> const& perm =
       perm_array.GetBuffer<ArrayDataType::kInt32>().data;
   CHECK_EQ(perm.size(), input_shape.dimensions_count())
-      << "Transpose permutation input must be same length as input dimensions";
+      << "Transpose permutation input " << op->inputs[0]
+      << " must be same length as input dimensions";
   std::vector<int>* output_dims = output_array.mutable_shape()->mutable_dims();
   for (int i = 0; i < perm.size(); i++) {
     int axis = perm[i];
@@ -1275,6 +1294,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
     case OperatorType::kSoftmax:
+    case OperatorType::kLogSoftmax:
     case OperatorType::kLogistic:
     case OperatorType::kTanh:
     case OperatorType::kLocalResponseNormalization:
@@ -1424,6 +1444,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kLstmCell:
       ProcessLstmCellOperator(model, static_cast<LstmCellOperator*>(op));
       break;
+    case OperatorType::kBatchMatMul:
     case OperatorType::kTensorFlowMatMul:
       // MatMul operators are converted to FullyConnected, after which their
       // shapes are propagated.

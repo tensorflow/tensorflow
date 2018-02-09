@@ -19,9 +19,12 @@ limitations under the License.
 // The Conv implementation based on CBLAS interface. This is only used on iOS
 // for now, utilizing Apple's Accelerate framework.
 
-// TODO(ycling): Update the BUILD file and integrate with Apple Accelerate
-// Famework when it's available.
+#if TFLITE_USE_APPLE_ACCELERATE_FOR_CONV
+#include <Accelerate/Accelerate.h>
+#else
 #include "tensorflow/contrib/lite/kernels/internal/optimized/cblas_reference.h"
+#endif
+
 #include "tensorflow/contrib/lite/kernels/internal/optimized/multithreaded_conv.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 

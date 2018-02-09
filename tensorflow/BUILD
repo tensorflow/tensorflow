@@ -543,7 +543,6 @@ filegroup(
         "//tensorflow/contrib/model_pruning:all_files",
         "//tensorflow/contrib/model_pruning/examples/cifar10:all_files",
         "//tensorflow/contrib/nccl:all_files",
-        "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/nearest_neighbor:all_files",
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",

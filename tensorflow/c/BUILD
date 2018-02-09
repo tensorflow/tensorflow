@@ -135,6 +135,10 @@ tf_cuda_library(
     testonly = 1,
     srcs = ["c_test_util.cc"],
     hdrs = ["c_test_util.h"],
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/core:lib",

@@ -45,13 +45,10 @@ class QuantizeTest(test_util.TensorFlowTestCase):
                     activation_fn=None, scope='test')
       relu = nn_ops.relu6(inputs)
 
-    context = quantize._QuantizeContext(graph=graph, weight_bits=8,
-                                        weight_narrow_range=True,
-                                        activation_bits=8)
     # Inserting a quantization op between two unconnected ops should fail with
     # ValueError.
     with self.assertRaises(ValueError) as err:
-      context._InsertQuantOp('test', conv.op, [relu.op], 'FailingQuantOp')
+      quantize._InsertQuantOp('test', conv.op, [relu.op], 'FailingQuantOp')
     self.assertEqual(
         str(err.exception), 'Some inputs not quantized for ops: [Relu6]')
 
@@ -70,8 +67,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
 
-    quantize.Quantize(graph=graph, weight_bits=8, weight_narrow_range=True,
-                      activation_bits=8)
+    quantize.Quantize(graph=graph, weight_bits=8, activation_bits=8)
 
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     add_quant = graph.get_operation_by_name('test/add_quant/' +
@@ -94,8 +90,7 @@ class QuantizeTest(test_util.TensorFlowTestCase):
       with ops.control_dependencies([update_barrier]):
         array_ops.identity(node, name='control_dependency')
 
-    quantize.Quantize(graph=graph, weight_bits=8, weight_narrow_range=True,
-                      activation_bits=8)
+    quantize.Quantize(graph=graph, weight_bits=8, activation_bits=8)
 
     quantization_node_name = 'FakeQuantWithMinMaxVars'
     add_quant = graph.get_operation_by_name('test/add_quant/' +

@@ -44,9 +44,10 @@ tf_kernel_library(
     ],
 )
 
+# TODO(mrry): Remove this empty forwarding library.
 cc_library(
     name = "dataset",
-    srcs = ["dataset.cc"],
+    srcs = [],
     hdrs = ["dataset.h"],
     deps = [
         "//tensorflow/core:core_cpu",

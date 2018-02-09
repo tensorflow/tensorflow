@@ -1358,6 +1358,238 @@ inline void LstmCell(const float* input_data, const Dims<4>& input_dims,
   }
 }
 
+// Quantized LSTM cell implementation.
+// The quantization of the input, output arrays is as follows:
+//  - The input activations are quantized as uint8 on the interval
+//    [-1, 127/128].
+//    The rationale for that is that that is the natural interval for output
+//    activations (see next point) and these need to be concatenated together.
+//    We could accommodate different ranges by re-scaling, but we empirically
+//    found that setting the input activations range to be [-1, 127/128] in the
+//    first place, removing the need for re-scaling, greatly improves accuracy.
+//  - The output activations are quantized as uint8 on the interval
+//    [-1, 127/128].
+//    The rationale for that is that the definition of a LSTM cell makes them
+//    intrinsically constrained in [-1, 1]; tweaking that to [-1, 127/128]
+//    makes for simpler, more accurate fixed-point arithmetic.
+//  - The output-at-previous-timestep state array is obviously quantized as
+//    the output activations.
+//  - The internal LSTM memory (not the output-at-previous-timestep, the other
+//    internal state array) is int16-quantized and may use any power-of-two,
+//    symmetric range i.e. [-2^N, 2^N * 32767/32768] for any N, which we call
+//    StateIntegerBits below, see the below discussion of that template
+//    parameter ("The StateIntegerBits template parameter").
+//  - The output of the internal fully-connected node is int16-quantized
+//    on the interval [-8, 8 * 32767/32768], the rationale for which is
+//    explained just below ("Why [-8, 8] for fully-connected output?").
+//
+//
+// === The StateIntegerBits template parameter ===
+//
+// The StateIntegerBits template parameter controls the fixed-point format used
+// to represent the internal memory of the LSTM cell (not the
+// output-at-previous-timestep, the other internal state array). It's currently
+// a template parameter so that the model can control that. The most typical
+// value for StateIntegerBits is 4. Other plausible values are anywhere between
+// 3 and 5. We might eventually standardize on a single supported value, e.g. 4,
+// and drop that template parameter. The reason why it can't be a runtime
+// parameter is that this controls the fixed-point format used, i.e. we need to
+// generate actually different code based on it. In particular, we generate code
+// for a fixed-point tanh() implementation for that format, which internally
+// uses a fixed-point exp() implementation, which internally uses a
+// barrel-shifter with a number of steps that depends on StateIntegerBits.
+// Another consequence of that is that a higher value of StateIntegerBits
+// results in a more expensive implementation (more barrel shifter steps
+// needed).
+//
+//
+// === Why [-8, 8] for fully-connected output? ===
+//
+// This array is only fed to Logistic and Tanh functions, for which
+// the quantized implementation will want to use fixed-point arithmetic,
+// requiring a power-of-two representation interval. Thus, we should right
+// away quantize this array to a power-of-two interval; otherwise,
+// implementation will need to rescale that, losing any benefit that a tighter
+// representation interval might otherwise yield, while introducting some
+// numerical error and computational overhead.
+//
+// Now, Logistic and Tanh
+// are nearly constant (nearly equal to their horizontal asymptotes)
+// outside of a small bounded interval around 0:
+//
+//   Logistic(4) = 1 - 1.8e-2     Tanh(4) = 1 - 6.7e-4
+//   Logistic(8) = 1 - 3.4e-4     Tanh(8) = 1 - 2.3e-7
+//   Logistic(16) = 1 - 1.1e-7    Tanh(16) = 1 - 2.5e-14
+//
+// From this, we see that clamping to [-4, 4] would be too inaccurate
+// (the error of 1.8e-2 on Logistic would be felt even in 8bit precision)
+// while clamping to [-16, 16] would make no difference even in float32.
+// However, for a fixed-point implementation in 16-bit integers, using 5
+// integer bits to represent the [-16, 16] range would leave only 11
+// fractional bits, giving an increment of 2^-11 = 4.9e-4 between consecutive
+// representable values. Notice that that is higher than the
+// worst-case clamping error with clamping to [-8, 8]: 3.4e-4 for Logistic.
+// Using [-8, 8] thus seems like the better compromise overall, enjoying
+// an increment of 2.4e-4 between representable values and a worst-case
+// clamping error of 3.4e-4, both better than the increment of 4.9e-4 with
+// [-16, 16].
+//
+// Moreover, all other things being equal, it is nice to choose the narrower
+// representation range, as that makes the implementation of fixed-point
+// math functions a little cheaper (each integer bit requires an additional
+// barrel-shifter atep in the implementation of exp(-x)). That is further
+// reason to prefer [-8, 8] over [-16, 16]. The choice of [-16, 16] would make
+// sense for 32-bit float or 32-bit fixed-point quantization, but we are
+// aiming for 16-bit fixed-point quantization of these internal nodes here.
+//
+template <int StateIntegerBits>
+void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
+              const uint8* prev_activ_data_uint8,
+              const Dims<4>& prev_activ_dims, const uint8* weights_data_uint8,
+              const Dims<4>& weights_dims, const int32* bias_data_int32,
+              const Dims<4>& bias_dims, const int16* prev_state_data_int16,
+              const Dims<4>& prev_state_dims, int16* output_state_data_int16,
+              const Dims<4>& output_state_dims, uint8* output_activ_data_uint8,
+              const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
+              const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
+              const Dims<4>& activ_temp_dims, int32 weights_zero_point,
+              int32 accum_multiplier, int accum_shift) {
+  // Gather dimensions information, and perform consistency checks.
+  const int batches =
+      MatchingArraySize(input_dims, 3, prev_activ_dims, 3, prev_state_dims, 3,
+                        output_state_dims, 3, output_activ_dims, 3);
+  const int height =
+      MatchingArraySize(input_dims, 2, prev_activ_dims, 2, prev_state_dims, 2,
+                        output_state_dims, 2, output_activ_dims, 2);
+  const int width =
+      MatchingArraySize(input_dims, 1, prev_activ_dims, 1, prev_state_dims, 1,
+                        output_state_dims, 1, output_activ_dims, 1);
+  TFLITE_CHECK_EQ(ArraySize(weights_dims, 2), 1);
+  TFLITE_CHECK_EQ(ArraySize(weights_dims, 3), 1);
+  const int input_depth = ArraySize(input_dims, 0);
+  const int prev_activ_depth = ArraySize(prev_activ_dims, 0);
+  const int total_input_depth = prev_activ_depth + input_depth;
+  TFLITE_CHECK_EQ(ArraySize(weights_dims, 0), total_input_depth);
+  TFLITE_CHECK_EQ(MatchingArraySize(bias_dims, 1, bias_dims, 2, bias_dims, 3),
+                  1);
+  const int intern_activ_depth =
+      MatchingArraySize(weights_dims, 1, bias_dims, 0);
+  TFLITE_CHECK_EQ(intern_activ_depth % 4, 0);
+  const int output_depth =
+      MatchingArraySize(prev_state_dims, 0, prev_activ_dims, 0,
+                        output_state_dims, 0, output_activ_dims, 0);
+  TFLITE_CHECK_EQ(output_depth, intern_activ_depth / 4);
+  const int fc_batches = ArraySize(activ_temp_dims, 1) *
+                         ArraySize(activ_temp_dims, 2) *
+                         ArraySize(activ_temp_dims, 3);
+  const int fc_output_depth =
+      MatchingArraySize(weights_dims, 1, activ_temp_dims, 0);
+  const int fc_accum_depth = ArraySize(weights_dims, 0);
+  TFLITE_CHECK_EQ(fc_output_depth, 4 * output_depth);
+
+  // Depth-concatenate prev_activ and input data together.
+  uint8 const* concat_input_arrays_data[2] = {input_data_uint8,
+                                              prev_activ_data_uint8};
+  Dims<4> const* concat_input_arrays_dims[2] = {&input_dims, &prev_activ_dims};
+  Concatenation<FusedActivationFunctionType::kNone, uint8>(
+      0, concat_input_arrays_data, concat_input_arrays_dims, 2,
+      concat_temp_data_uint8, concat_temp_dims);
+
+  // Implementation of the fully connected node inside the LSTM cell.
+  // The operands are 8-bit integers, the accumulators are internally 32bit
+  // integers, and the output is 16-bit fixed-point with 3 integer bits so
+  // the output range is [-2^3, 2^3] == [-8, 8]. The rationale for that
+  // is explained in the function comment above.
+  for (int b = 0; b < fc_batches; ++b) {
+    for (int out_c = 0; out_c < fc_output_depth; ++out_c) {
+      // Internal accumulation.
+      // Initialize accumulator with the bias-value.
+      int32 accum = bias_data_int32[out_c];
+      // Accumulation loop.
+      for (int d = 0; d < fc_accum_depth; ++d) {
+        int16 input_val = concat_temp_data_uint8[b * fc_accum_depth + d] - 128;
+        int16 weights_val =
+            weights_data_uint8[out_c * fc_accum_depth + d] - weights_zero_point;
+        accum += input_val * weights_val;
+      }
+      // Down-scale the final int32 accumulator to the scale used by our
+      // (16-bit, using 3 integer bits) fixed-point format. The quantized
+      // multiplier and shift here have been pre-computed offline
+      // (e.g. by toco).
+      accum =
+          MultiplyByQuantizedMultiplier(accum, accum_multiplier, accum_shift);
+      // Saturate, cast to int16, and store to the temporary activations array.
+      accum = std::max(-32768, std::min(32767, accum));
+      activ_temp_data_int16[out_c + fc_output_depth * b] = accum;
+    }
+  }
+
+  // Rest of the LSTM cell: tanh and logistic math functions, and some adds
+  // and muls, all done in 16-bit fixed-point.
+  const int outer_size = batches * width * height;
+  for (int b = 0; b < outer_size; ++b) {
+    for (int c = 0; c < output_depth; ++c) {
+      // Define the fixed-point data types that we will use here. All use
+      // int16 as the underlying integer type i.e. all are 16-bit fixed-point.
+      // They only differ by the number of integral vs. fractional bits,
+      // determining the range of values that they can represent.
+      //
+      // F0 uses 0 integer bits, range [-1, 1].
+      // This is the return type of math functions such as tanh, logistic,
+      // whose range is in [-1, 1].
+      using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+      // F3 uses 3 integer bits, range [-8, 8].
+      // This is the range of the previous fully-connected node's output,
+      // which is our input here.
+      using F3 = gemmlowp::FixedPoint<std::int16_t, 3>;
+      // FS uses StateIntegerBits integer bits, range [-2^StateIntegerBits,
+      // 2^StateIntegerBits]. It's used to represent the internal state, whose
+      // number of integer bits is currently dictated by the model. See comment
+      // on the StateIntegerBits template parameter above.
+      using FS = gemmlowp::FixedPoint<std::int16_t, StateIntegerBits>;
+      // Implementation of input gate, using fixed-point logistic function.
+      F3 input_gate_input = F3::FromRaw(
+          activ_temp_data_int16[b * fc_output_depth + 0 * output_depth + c]);
+      F0 input_gate_output = gemmlowp::logistic(input_gate_input);
+      // Implementation of input modulation gate, using fixed-point tanh
+      // function.
+      F3 input_modulation_gate_input = F3::FromRaw(
+          activ_temp_data_int16[b * fc_output_depth + 1 * output_depth + c]);
+      F0 input_modulation_gate_output =
+          gemmlowp::tanh(input_modulation_gate_input);
+      // Implementation of forget gate, using fixed-point logistic function.
+      F3 forget_gate_input = F3::FromRaw(
+          activ_temp_data_int16[b * fc_output_depth + 2 * output_depth + c]);
+      F0 forget_gate_output = gemmlowp::logistic(forget_gate_input);
+      // Implementation of output gate, using fixed-point logistic function.
+      F3 output_gate_input = F3::FromRaw(
+          activ_temp_data_int16[b * fc_output_depth + 3 * output_depth + c]);
+      F0 output_gate_output = gemmlowp::logistic(output_gate_input);
+      // Implementation of internal multiplication nodes, still in fixed-point.
+      F0 input_times_input_modulation =
+          input_gate_output * input_modulation_gate_output;
+      FS prev_state = FS::FromRaw(prev_state_data_int16[b * output_depth + c]);
+      FS prev_state_times_forget_state = forget_gate_output * prev_state;
+      // Implementation of internal addition node, saturating.
+      FS new_state = gemmlowp::SaturatingAdd(
+          gemmlowp::Rescale<StateIntegerBits>(input_times_input_modulation),
+          prev_state_times_forget_state);
+      // Implementation of last internal tanh node, still in fixed-point.
+      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state);
+      // Store the new internal state back to memory, as 16-bit integers.
+      output_state_data_int16[b * output_depth + c] = new_state.raw();
+      // Down-scale the output activations to 8-bit integers, saturating,
+      // and store back to memory.
+      int16 rescaled_output_activ =
+          gemmlowp::RoundingDivideByPOT(output_activ_int16.raw(), 8);
+      int16 clamped_output_activ =
+          std::max<int16>(-128, std::min<int16>(127, rescaled_output_activ));
+      output_activ_data_uint8[b * output_depth + c] =
+          128 + clamped_output_activ;
+    }
+  }
+}
+
 template <FusedActivationFunctionType Ac, typename Scalar>
 void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
                      int outputs_count, Scalar* const* output_data,
@@ -2047,6 +2279,7 @@ inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
                  int32 input_zero_point, int32 input_range_radius,
                  int32 input_multiplier, int input_left_shift,
                  uint8* output_data, const Dims<4>& output_dims) {
+  const int32 output_zero_point = 128;
   const int batches = MatchingArraySize(input_dims, 3, output_dims, 3);
   const int height = MatchingArraySize(input_dims, 2, output_dims, 2);
   const int width = MatchingArraySize(input_dims, 1, output_dims, 1);
@@ -2075,11 +2308,9 @@ inline void Tanh(const uint8* input_data, const Dims<4>& input_dims,
 
             using gemmlowp::RoundingDivideByPOT;
             int32 output_val_s32 = RoundingDivideByPOT(output_val_f0.raw(), 24);
-            // TODO(mjmatthews): properly wire through this zero offset
-            output_val_s32 += 127;
-            if (output_val_s32 == -1) {
-              // May underflow since we cannot properly represent -1.0f
-              output_val_s32 = 0;
+            output_val_s32 += output_zero_point;
+            if (output_val_s32 == 256) {
+              output_val_s32 = 255;
             }
             TFLITE_DCHECK_GE(output_val_s32, 0);
             TFLITE_DCHECK_LE(output_val_s32, 255);

@@ -296,9 +296,9 @@ class MklInputConversionOp : public OpKernel {
       if (tf_shapes_are_same) {
         auto input0_md = input_shape_0.GetMklLayout();
         auto input1_md = input_shape_1.GetMklLayout();
-        
+
         // If both have the same shape and same format, pass them through
-        if ( input0_md.data.format == input1_md.data.format) {
+        if (input0_md.data.format == input1_md.data.format) {
           VLOG(1) << "MklInputConversionOp: No conversion needed, "
                   << "copying MKL inputs with identical shapes to output";
 
@@ -306,9 +306,10 @@ class MklInputConversionOp : public OpKernel {
           ForwardMklTensorInToOut(context, 1, 1);
           return;
         } else {
-          VLOG(1) << "MklInputConversionOp: Shape is same, but format is different, "
+          VLOG(1) << "MklInputConversionOp: Shape is same, but format is "
+                     "different, "
                   << "need to convert to same format";
-          
+
           // Convert input0, and keep input1 unchanged
           // Create MklDnnShape for output mkl tensor based on input0
           Tensor* tensor_out;
@@ -324,7 +325,8 @@ class MklInputConversionOp : public OpKernel {
 
           // Create output Mkl tensor for index 0
           AllocateOutputSetMklShape(context, 0, &tensor_out,
-                                    input_tensor_0.shape(), mkl_output_mkl_shape);
+                                    input_tensor_0.shape(),
+                                    mkl_output_mkl_shape);
 
           // Create MklDnnData object for input0 tesnsor
           auto cpu_engine = engine(engine::cpu, 0);
@@ -333,15 +335,15 @@ class MklInputConversionOp : public OpKernel {
 
           // Create reorder from input0's layout to input1's layout
           std::vector<primitive> net;
-          CHECK_EQ(input.CheckReorderToOpMem(memory::primitive_desc(
-                                             input1_md, cpu_engine),
-                                             tensor_out, &net),
-                                             true);
+          CHECK_EQ(input.CheckReorderToOpMem(
+                       memory::primitive_desc(input1_md, cpu_engine),
+                       tensor_out, &net),
+                   true);
           stream(stream::kind::eager).submit(net).wait();
 
           // Input1 will be passed through
           ForwardMklTensorInToOut(context, 1, 1);
-          return;         
+          return;
         }
       }
 

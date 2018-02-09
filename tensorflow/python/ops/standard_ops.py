@@ -25,6 +25,7 @@ import sys as _sys
 # Imports the following modules so that @RegisterGradient get executed.
 from tensorflow.python.ops import array_grad
 from tensorflow.python.ops import data_flow_grad
+from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import math_grad
 from tensorflow.python.ops import manip_grad
 from tensorflow.python.ops import sparse_grad
@@ -43,11 +44,13 @@ from tensorflow.python.ops.special_math_ops import *
 # TODO(vrv): Switch to import * once we're okay with exposing the module.
 from tensorflow.python.ops.confusion_matrix import confusion_matrix
 from tensorflow.python.ops.control_flow_ops import Assert
+from tensorflow.python.ops.control_flow_ops import case
+from tensorflow.python.ops.control_flow_ops import cond
 from tensorflow.python.ops.control_flow_ops import group
 from tensorflow.python.ops.control_flow_ops import no_op
+# pylint: disable=redefined-builtin
 from tensorflow.python.ops.control_flow_ops import tuple
-from tensorflow.python.ops.control_flow_ops import cond
-from tensorflow.python.ops.control_flow_ops import case
+# pylint: enable=redefined-builtin
 from tensorflow.python.ops.control_flow_ops import while_loop
 from tensorflow.python.ops.data_flow_ops import *
 from tensorflow.python.ops.functional_ops import *
@@ -267,35 +270,36 @@ _allowed_symbols = (_allowed_symbols_array_ops +
                     _allowed_symbols_misc +
                     _allowed_symbols_partitioned_variables)
 
-remove_undocumented(__name__, _allowed_symbols,
-                    [_sys.modules[__name__],
-                     _array_ops,
-                     _check_ops,
-                     _clip_ops,
-                     _confusion_matrix,
-                     _control_flow_ops,
-                     _constant_op,
-                     _data_flow_ops,
-                     _functional_ops,
-                     _gradients,
-                     _histogram_ops,
-                     _init_ops,
-                     _io_ops,
-                     _linalg_ops,
-                     _logging_ops,
-                     _manip_ops,
-                     _math_ops,
-                     _numerics,
-                     _parsing_ops,
-                     _partitioned_variables,
-                     _random_ops,
-                     _script_ops,
-                     _session_ops,
-                     _sparse_ops,
-                     _special_math_ops,
-                     _state_ops,
-                     _string_ops,
-                     _template,
-                     _tensor_array_ops,
-                     _variable_scope,
-                     _variables,])
+remove_undocumented(__name__, _allowed_symbols, [
+    _sys.modules[__name__],
+    _array_ops,
+    _check_ops,
+    _clip_ops,
+    _confusion_matrix,
+    _control_flow_ops,
+    _constant_op,
+    _data_flow_ops,
+    _functional_ops,
+    _gradients,
+    _histogram_ops,
+    _init_ops,
+    _io_ops,
+    _linalg_ops,
+    _logging_ops,
+    _manip_ops,
+    _math_ops,
+    _numerics,
+    _parsing_ops,
+    _partitioned_variables,
+    _random_ops,
+    _script_ops,
+    _session_ops,
+    _sparse_ops,
+    _special_math_ops,
+    _state_ops,
+    _string_ops,
+    _template,
+    _tensor_array_ops,
+    _variable_scope,
+    _variables,
+])

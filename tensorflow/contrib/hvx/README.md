@@ -141,16 +141,16 @@ Configuring the installer for this system's environment...
 
 Launching installer...
 
-An internal LaunchAnywhere application error has occured and this application cannot proceed. (LAX)
+An internal LaunchAnywhere application error has occurred and this application cannot proceed. (LAX)
 
 Stack Trace:
 java.lang.IllegalArgumentException: Malformed \uxxxx encoding.
-	at java.util.Properties.loadConvert(Properties.java:574)
-	at java.util.Properties.load0(Properties.java:391)
-	at java.util.Properties.load(Properties.java:317)
-	at com.zerog.common.java.util.PropertiesUtil.loadProperties(Unknown Source)
-	at com.zerog.lax.LAX.<init>(Unknown Source)
-	at com.zerog.lax.LAX.main(Unknown Source)
+  at java.util.Properties.loadConvert(Properties.java:574)
+  at java.util.Properties.load0(Properties.java:391)
+  at java.util.Properties.load(Properties.java:317)
+  at com.zerog.common.java.util.PropertiesUtil.loadProperties(Unknown Source)
+  at com.zerog.lax.LAX.<init>(Unknown Source)
+  at com.zerog.lax.LAX.main(Unknown Source)
 ```
 
 It can be solved by temporarily assigning the `PS1` environment variable to something simple, such as '$'.

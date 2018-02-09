@@ -85,9 +85,11 @@ class UtilTest(test.TestCase):
           op_shape_val, ax_val, aty_val = sess.run([op_shape, ax, aty])
         else:
           op_shape_val, ax_val, aty_val = sess.run(
-              [op_shape, ax, aty], feed_dict={a: a_np,
-                                              x: x_np,
-                                              y: y_np})
+              [op_shape, ax, aty], feed_dict={
+                  a: a_np,
+                  x: x_np,
+                  y: y_np
+              })
       self.assertAllEqual(op_shape_val, [3, 2])
       self.assertAllClose(ax_val, x_np)
       self.assertAllClose(aty_val, y_np)

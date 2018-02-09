@@ -629,6 +629,77 @@ func LookupTableImportV2(scope *Scope, table_handle tf.Output, keys tf.Output, v
 	return scope.AddOperation(opspec)
 }
 
+// MapPeekAttr is an optional argument to MapPeek.
+type MapPeekAttr func(optionalAttr)
+
+// MapPeekCapacity sets the optional capacity attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func MapPeekCapacity(value int64) MapPeekAttr {
+	return func(m optionalAttr) {
+		m["capacity"] = value
+	}
+}
+
+// MapPeekMemoryLimit sets the optional memory_limit attribute to value.
+// If not specified, defaults to 0
+//
+// REQUIRES: value >= 0
+func MapPeekMemoryLimit(value int64) MapPeekAttr {
+	return func(m optionalAttr) {
+		m["memory_limit"] = value
+	}
+}
+
+// MapPeekContainer sets the optional container attribute to value.
+// If not specified, defaults to ""
+func MapPeekContainer(value string) MapPeekAttr {
+	return func(m optionalAttr) {
+		m["container"] = value
+	}
+}
+
+// MapPeekSharedName sets the optional shared_name attribute to value.
+// If not specified, defaults to ""
+func MapPeekSharedName(value string) MapPeekAttr {
+	return func(m optionalAttr) {
+		m["shared_name"] = value
+	}
+}
+
+// Op peeks at the values at the specified key.  If the
+//
+// underlying container does not contain this key
+// this op will block until it does.
+func MapPeek(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.DataType, optional ...MapPeekAttr) (values []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"dtypes": dtypes}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "MapPeek",
+		Input: []tf.Input{
+			key, indices,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
+		scope.UpdateErr("MapPeek", err)
+		return
+	}
+	return values
+}
+
 // Returns (x - y)(x - y) element-wise.
 //
 // *NOTE*: `SquaredDifference` supports broadcasting. More about broadcasting
@@ -4503,6 +4574,68 @@ func CriticalSectionOp(scope *Scope, optional ...CriticalSectionOpAttr) (resourc
 	opspec := tf.OpSpec{
 		Type: "CriticalSectionOp",
 
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// FakeQuantWithMinMaxArgsGradientAttr is an optional argument to FakeQuantWithMinMaxArgsGradient.
+type FakeQuantWithMinMaxArgsGradientAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxArgsGradientMin sets the optional min attribute to value.
+// If not specified, defaults to -6
+func FakeQuantWithMinMaxArgsGradientMin(value float32) FakeQuantWithMinMaxArgsGradientAttr {
+	return func(m optionalAttr) {
+		m["min"] = value
+	}
+}
+
+// FakeQuantWithMinMaxArgsGradientMax sets the optional max attribute to value.
+// If not specified, defaults to 6
+func FakeQuantWithMinMaxArgsGradientMax(value float32) FakeQuantWithMinMaxArgsGradientAttr {
+	return func(m optionalAttr) {
+		m["max"] = value
+	}
+}
+
+// FakeQuantWithMinMaxArgsGradientNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxArgsGradientNumBits(value int64) FakeQuantWithMinMaxArgsGradientAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
+// FakeQuantWithMinMaxArgsGradientNarrowRange sets the optional narrow_range attribute to value.
+// If not specified, defaults to false
+func FakeQuantWithMinMaxArgsGradientNarrowRange(value bool) FakeQuantWithMinMaxArgsGradientAttr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
+// Compute gradients for a FakeQuantWithMinMaxArgs operation.
+//
+// Arguments:
+//	gradients: Backpropagated gradients above the FakeQuantWithMinMaxArgs operation.
+//	inputs: Values passed as inputs to the FakeQuantWithMinMaxArgs operation.
+//
+// Returns Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
+// `gradients * (inputs >= min && inputs <= max)`.
+func FakeQuantWithMinMaxArgsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsGradientAttr) (backprops tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FakeQuantWithMinMaxArgsGradient",
+		Input: []tf.Input{
+			gradients, inputs,
+		},
 		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
@@ -20680,68 +20813,6 @@ func TFRecordDataset(scope *Scope, filenames tf.Output, compression_type tf.Outp
 	return op.Output(0)
 }
 
-// FakeQuantWithMinMaxArgsGradientAttr is an optional argument to FakeQuantWithMinMaxArgsGradient.
-type FakeQuantWithMinMaxArgsGradientAttr func(optionalAttr)
-
-// FakeQuantWithMinMaxArgsGradientMin sets the optional min attribute to value.
-// If not specified, defaults to -6
-func FakeQuantWithMinMaxArgsGradientMin(value float32) FakeQuantWithMinMaxArgsGradientAttr {
-	return func(m optionalAttr) {
-		m["min"] = value
-	}
-}
-
-// FakeQuantWithMinMaxArgsGradientMax sets the optional max attribute to value.
-// If not specified, defaults to 6
-func FakeQuantWithMinMaxArgsGradientMax(value float32) FakeQuantWithMinMaxArgsGradientAttr {
-	return func(m optionalAttr) {
-		m["max"] = value
-	}
-}
-
-// FakeQuantWithMinMaxArgsGradientNumBits sets the optional num_bits attribute to value.
-// If not specified, defaults to 8
-func FakeQuantWithMinMaxArgsGradientNumBits(value int64) FakeQuantWithMinMaxArgsGradientAttr {
-	return func(m optionalAttr) {
-		m["num_bits"] = value
-	}
-}
-
-// FakeQuantWithMinMaxArgsGradientNarrowRange sets the optional narrow_range attribute to value.
-// If not specified, defaults to false
-func FakeQuantWithMinMaxArgsGradientNarrowRange(value bool) FakeQuantWithMinMaxArgsGradientAttr {
-	return func(m optionalAttr) {
-		m["narrow_range"] = value
-	}
-}
-
-// Compute gradients for a FakeQuantWithMinMaxArgs operation.
-//
-// Arguments:
-//	gradients: Backpropagated gradients above the FakeQuantWithMinMaxArgs operation.
-//	inputs: Values passed as inputs to the FakeQuantWithMinMaxArgs operation.
-//
-// Returns Backpropagated gradients below the FakeQuantWithMinMaxArgs operation:
-// `gradients * (inputs >= min && inputs <= max)`.
-func FakeQuantWithMinMaxArgsGradient(scope *Scope, gradients tf.Output, inputs tf.Output, optional ...FakeQuantWithMinMaxArgsGradientAttr) (backprops tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "FakeQuantWithMinMaxArgsGradient",
-		Input: []tf.Input{
-			gradients, inputs,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // BatchToSpace for 4-D tensors of type T.
 //
 // This is a legacy version of the more general BatchToSpaceND.
@@ -22250,6 +22321,76 @@ func TensorArrayCloseV2(scope *Scope, handle tf.Output) (o *tf.Operation) {
 		Input: []tf.Input{
 			handle,
 		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Forwards the value of an available tensor from `inputs` to `output`.
+//
+// `Merge` waits for at least one of the tensors in `inputs` to become available.
+// It is usually combined with `Switch` to implement branching.
+//
+// `Merge` forwards the first tensor to become available to `output`, and sets
+// `value_index` to its index in `inputs`.
+//
+// Arguments:
+//	inputs: The input tensors, exactly one of which will become available.
+//
+// Returns Will be set to the available input tensor.The index of the chosen input tensor in `inputs`.
+func Merge(scope *Scope, inputs []tf.Output) (output tf.Output, value_index tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "Merge",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1)
+}
+
+// QueueCloseV2Attr is an optional argument to QueueCloseV2.
+type QueueCloseV2Attr func(optionalAttr)
+
+// QueueCloseV2CancelPendingEnqueues sets the optional cancel_pending_enqueues attribute to value.
+//
+// value: If true, all pending enqueue requests that are
+// blocked on the given queue will be canceled.
+// If not specified, defaults to false
+func QueueCloseV2CancelPendingEnqueues(value bool) QueueCloseV2Attr {
+	return func(m optionalAttr) {
+		m["cancel_pending_enqueues"] = value
+	}
+}
+
+// Closes the given queue.
+//
+// This operation signals that no more elements will be enqueued in the
+// given queue. Subsequent Enqueue(Many) operations will fail.
+// Subsequent Dequeue(Many) operations will continue to succeed if
+// sufficient elements remain in the queue. Subsequent Dequeue(Many)
+// operations that would block will fail immediately.
+//
+// Arguments:
+//	handle: The handle to a queue.
+//
+// Returns the created operation.
+func QueueCloseV2(scope *Scope, handle tf.Output, optional ...QueueCloseV2Attr) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "QueueCloseV2",
+		Input: []tf.Input{
+			handle,
+		},
+		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
 }
@@ -24201,147 +24342,6 @@ func MapStage(scope *Scope, key tf.Output, indices tf.Output, values []tf.Output
 		Attrs: attrs,
 	}
 	return scope.AddOperation(opspec)
-}
-
-// MapPeekAttr is an optional argument to MapPeek.
-type MapPeekAttr func(optionalAttr)
-
-// MapPeekCapacity sets the optional capacity attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func MapPeekCapacity(value int64) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["capacity"] = value
-	}
-}
-
-// MapPeekMemoryLimit sets the optional memory_limit attribute to value.
-// If not specified, defaults to 0
-//
-// REQUIRES: value >= 0
-func MapPeekMemoryLimit(value int64) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["memory_limit"] = value
-	}
-}
-
-// MapPeekContainer sets the optional container attribute to value.
-// If not specified, defaults to ""
-func MapPeekContainer(value string) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["container"] = value
-	}
-}
-
-// MapPeekSharedName sets the optional shared_name attribute to value.
-// If not specified, defaults to ""
-func MapPeekSharedName(value string) MapPeekAttr {
-	return func(m optionalAttr) {
-		m["shared_name"] = value
-	}
-}
-
-// Op peeks at the values at the specified key.  If the
-//
-// underlying container does not contain this key
-// this op will block until it does.
-func MapPeek(scope *Scope, key tf.Output, indices tf.Output, dtypes []tf.DataType, optional ...MapPeekAttr) (values []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"dtypes": dtypes}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "MapPeek",
-		Input: []tf.Input{
-			key, indices,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
-		scope.UpdateErr("MapPeek", err)
-		return
-	}
-	return values
-}
-
-// QueueCloseV2Attr is an optional argument to QueueCloseV2.
-type QueueCloseV2Attr func(optionalAttr)
-
-// QueueCloseV2CancelPendingEnqueues sets the optional cancel_pending_enqueues attribute to value.
-//
-// value: If true, all pending enqueue requests that are
-// blocked on the given queue will be canceled.
-// If not specified, defaults to false
-func QueueCloseV2CancelPendingEnqueues(value bool) QueueCloseV2Attr {
-	return func(m optionalAttr) {
-		m["cancel_pending_enqueues"] = value
-	}
-}
-
-// Closes the given queue.
-//
-// This operation signals that no more elements will be enqueued in the
-// given queue. Subsequent Enqueue(Many) operations will fail.
-// Subsequent Dequeue(Many) operations will continue to succeed if
-// sufficient elements remain in the queue. Subsequent Dequeue(Many)
-// operations that would block will fail immediately.
-//
-// Arguments:
-//	handle: The handle to a queue.
-//
-// Returns the created operation.
-func QueueCloseV2(scope *Scope, handle tf.Output, optional ...QueueCloseV2Attr) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "QueueCloseV2",
-		Input: []tf.Input{
-			handle,
-		},
-		Attrs: attrs,
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Forwards the value of an available tensor from `inputs` to `output`.
-//
-// `Merge` waits for at least one of the tensors in `inputs` to become available.
-// It is usually combined with `Switch` to implement branching.
-//
-// `Merge` forwards the first tensor to become available to `output`, and sets
-// `value_index` to its index in `inputs`.
-//
-// Arguments:
-//	inputs: The input tensors, exactly one of which will become available.
-//
-// Returns Will be set to the available input tensor.The index of the chosen input tensor in `inputs`.
-func Merge(scope *Scope, inputs []tf.Output) (output tf.Output, value_index tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "Merge",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1)
 }
 
 // MapUnstageAttr is an optional argument to MapUnstage.
