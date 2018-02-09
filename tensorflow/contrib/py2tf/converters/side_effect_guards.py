@@ -160,8 +160,8 @@ class SideEffectGuardTransformer(transformer.Base):
               [alias_map.get(s, s).ast() for s in guarded_args], None)
 
         template = """
-          with py2tf_utils.control_dependency_on_returns(tf, call):
-            aliased_guarded_args = py2tf_utils.alias_tensors(tf, guarded_args)
+          with py2tf_utils.control_dependency_on_returns(call):
+            aliased_guarded_args = py2tf_utils.alias_tensors(guarded_args)
         """
         control_deps_guard = templates.replace(
             template,
@@ -172,7 +172,7 @@ class SideEffectGuardTransformer(transformer.Base):
         alias_map = {}
 
         template = """
-          with py2tf_utils.control_dependency_on_returns(tf, call):
+          with py2tf_utils.control_dependency_on_returns(call):
             pass
         """
         control_deps_guard = templates.replace(template, call=node.value)[-1]

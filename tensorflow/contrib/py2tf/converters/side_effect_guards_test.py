@@ -23,7 +23,6 @@ from tensorflow.contrib.py2tf.converters import side_effect_guards
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -43,8 +42,7 @@ class SideEffectGuardsTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = side_effect_guards.transform(node, self.ctx)
 
-    with self.compiled(node, state_ops.assign, ops.control_dependencies,
-                       ops.Tensor) as result:
+    with self.compiled(node, state_ops.assign) as result:
       self.assertEqual(len(node.body[0].body), 1)
       with self.test_session() as sess:
         v = variables.Variable(2)
@@ -64,8 +62,7 @@ class SideEffectGuardsTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = side_effect_guards.transform(node, self.ctx)
 
-    with self.compiled(node, state_ops.assign, ops.control_dependencies,
-                       ops.Tensor) as result:
+    with self.compiled(node, state_ops.assign) as result:
       self.assertEqual(len(node.body[0].body), 1)
       with self.test_session() as sess:
         v = variables.Variable(2)
@@ -86,8 +83,7 @@ class SideEffectGuardsTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = side_effect_guards.transform(node, self.ctx)
 
-    with self.compiled(node, array_ops.identity, control_flow_ops.Assert,
-                       ops.control_dependencies, ops.Tensor) as result:
+    with self.compiled(node, control_flow_ops.Assert) as result:
       self.assertEqual(len(node.body[0].body), 1)
       with self.test_session() as sess:
         # NOTE: In this case we can also capture the side effect because the
@@ -111,8 +107,7 @@ class SideEffectGuardsTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = side_effect_guards.transform(node, self.ctx)
 
-    with self.compiled(node, array_ops.identity, state_ops.assign,
-                       ops.control_dependencies, ops.Tensor) as result:
+    with self.compiled(node, state_ops.assign) as result:
       self.assertEqual(len(node.body[0].body), 1)
       with self.test_session() as sess:
         v = variables.Variable(2)
@@ -134,9 +129,7 @@ class SideEffectGuardsTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = side_effect_guards.transform(node, self.ctx)
 
-    with self.compiled(node, array_ops.identity, state_ops.assign,
-                       ops.control_dependencies, ops.name_scope,
-                       ops.Tensor) as result:
+    with self.compiled(node, state_ops.assign, ops.name_scope) as result:
       self.assertEqual(len(node.body[0].body[0].body), 1)
       with self.test_session() as sess:
         v = variables.Variable(2)
@@ -158,8 +151,7 @@ class SideEffectGuardsTest(converter_test_base.TestCase):
     node = self.parse_and_analyze(test_fn, {})
     node = side_effect_guards.transform(node, self.ctx)
 
-    with self.compiled(node, array_ops.identity, state_ops.assign,
-                       ops.control_dependencies, ops.Tensor) as result:
+    with self.compiled(node, state_ops.assign) as result:
       self.assertEqual(len(node.body[0].body), 1)
       with self.test_session() as sess:
         v = variables.Variable(2)
