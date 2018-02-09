@@ -13,6 +13,20 @@ py_library(
     deps = [],
 )
 
+py_test(
+    name = "common_test",
+    size = "small",
+    srcs = ["python/common_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":common",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:session",
+    ],
+)
+
 py_library(
     name = "graph_matcher",
     srcs = [
@@ -198,7 +212,6 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:training",
     ],
 )
 

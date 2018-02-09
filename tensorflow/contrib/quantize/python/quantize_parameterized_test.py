@@ -29,7 +29,6 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.platform import googletest
-from tensorflow.python.training import training
 
 batch_norm = layers.batch_norm
 conv2d = layers.conv2d
@@ -73,8 +72,6 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     """
     graph = ops.Graph()
     with graph.as_default():
-      training.create_global_step(graph)
-
       batch_size, height, width, depth = 5, 128, 128, 3
       inputs = array_ops.zeros((batch_size, height, width, depth))
       stride = 1 if with_bypass else 2
@@ -152,8 +149,6 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     """
     graph = ops.Graph()
     with graph.as_default():
-      training.create_global_step(graph)
-
       batch_size, depth = 5, 256
       inputs = array_ops.zeros((batch_size, depth))
       out_depth = 256 if with_bypass else 128
@@ -229,8 +224,6 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     """
     graph = ops.Graph()
     with graph.as_default():
-      training.create_global_step(graph)
-
       batch_size, height, width, depth = 5, 128, 128, 3
       inputs = array_ops.zeros((batch_size, height, width, depth))
       stride = 1 if with_bypass else 2
@@ -344,8 +337,6 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     """
     graph = ops.Graph()
     with graph.as_default():
-      training.create_global_step(graph)
-
       batch_size, height, width, depth = 5, 128, 128, 3
       inputs = array_ops.zeros((batch_size, height, width, depth))
       stride = 1 if with_bypass else 2
@@ -432,8 +423,6 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     """
     graph = ops.Graph()
     with graph.as_default():
-      training.create_global_step(graph)
-
       batch_size, depth = 5, 256
       inputs = array_ops.zeros((batch_size, depth))
       out_depth = 256 if with_bypass else 128
@@ -519,8 +508,6 @@ class QuantizeTest(test_util.TensorFlowTestCase):
     """
     graph = ops.Graph()
     with graph.as_default():
-      training.create_global_step(graph)
-
       batch_size, height, width, depth = 5, 128, 128, 3
       inputs = array_ops.zeros((batch_size, height, width, depth))
       stride = 1 if with_bypass else 2
