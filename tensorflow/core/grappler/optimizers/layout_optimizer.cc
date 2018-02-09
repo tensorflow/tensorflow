@@ -1400,7 +1400,24 @@ class HistogramSummaryProcessor : public AgnosticNodeProcessor {
 class IdentityNProcessor : public AgnosticNodeProcessor {
  public:
   explicit IdentityNProcessor(const OptimizeContext& opt_cxt)
-      : AgnosticNodeProcessor(opt_cxt) {}
+      : AgnosticNodeProcessor(opt_cxt) {
+    std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
+    for (int i = 0; i < node_->input_size(); i++) {
+      auto input = node_map_->GetNode(node_->input(i));
+      int port;
+      ParseNodeName(node_->input(i), &port);
+      // Skip control input.
+      if (port != -1) {
+        bool is_agnostic =
+            ops_format_agnostic.find(input->op()) != ops_format_agnostic.end();
+        if (IsPortDimsFour(*input, port) &&
+            ((IsNodeAfterNCHWToNHWC(*input) && is_agnostic) ||
+             IsTransposeNCHWToNHWC(input->name()))) {
+          input_pos_.push_back(i);
+        }
+      }
+    }
+  }
 
  protected:
   bool ShouldProcess() const override {
@@ -1408,31 +1425,19 @@ class IdentityNProcessor : public AgnosticNodeProcessor {
            IsOnGPU();
   }
 
-  std::vector<int> GetInputPos() const override {
-    std::vector<int> input_pos;
-    for (int i = 0; i < node_->input_size(); i++) {
-      auto input = node_map_->GetNode(node_->input(i));
-      int port;
-      ParseNodeName(node_->input(i), &port);
-      // Skip control input.
-      if (port != -1) {
-        if (IsPortDimsFour(*input, port) &&
-            (IsNodeAfterNCHWToNHWC(*input) ||
-             IsTransposeNCHWToNHWC(input->name()))) {
-          input_pos.push_back(i);
-        }
-      }
-    }
-    return input_pos;
-  }
+  std::vector<int> GetInputPos() const override { return input_pos_; }
 
   std::set<int> GetOutputPos() const override {
+    std::vector<int> input_poses;
     std::set<int> output_pos{};
-    for (const auto& input_pos : GetInputPos()) {
+    for (const auto& input_pos : input_pos_) {
       output_pos.insert(input_pos);
     }
     return output_pos;
   }
+
+ private:
+  std::vector<int> input_pos_;
 };
 
 class ShapeProcessor : public IdentityNProcessor {
@@ -1471,10 +1476,16 @@ class MergeProcessor : public AgnosticNodeProcessor {
 
  private:
   bool IsEveryInputAfterNCHWToNHWC() const {
+    std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
     for (const auto& input : node_->input()) {
       auto input_node = node_map_->GetNode(input);
-      if (IsNodeAfterNCHWToNHWC(*input_node) ||
-          IsTransposeNCHWToNHWC(input_node->name())) {
+      int port;
+      ParseNodeName(input, &port);
+      bool is_agnostic = ops_format_agnostic.find(input_node->op()) !=
+                         ops_format_agnostic.end();
+      if (IsPortDimsFour(*input_node, port) &&
+          ((IsNodeAfterNCHWToNHWC(*input_node) && is_agnostic) ||
+           IsTransposeNCHWToNHWC(input_node->name()))) {
         continue;
       }
       return false;
