@@ -1020,10 +1020,13 @@ class Model(Network):
 
       with K.name_scope('training'):
         with K.name_scope(self.optimizer.__class__.__name__):
-          training_updates = self.optimizer.get_updates(
+          # Training updates
+          updates = self.optimizer.get_updates(
               params=self._collected_trainable_weights, loss=self.total_loss)
-
-        updates = self.updates + training_updates
+        # Unconditional updates
+        updates += self.get_updates_for(None)
+        # Conditional updates relevant to this model
+        updates += self.get_updates_for(self._feed_inputs)
         # Gets loss and metrics. Updates weights at each call.
         self.train_function = K.function(
             inputs, [self.total_loss] + self.metrics_tensors,

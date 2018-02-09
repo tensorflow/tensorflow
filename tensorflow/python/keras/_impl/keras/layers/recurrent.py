@@ -202,17 +202,16 @@ class StackedRNNCells(Layer):
     losses = []
     for cell in self.cells:
       if isinstance(cell, Layer):
-        cell_losses = cell.losses
-        losses += cell_losses
-    return losses
+        losses += cell.losses
+    return losses + self._losses
 
-  def get_losses_for(self, inputs=None):
-    losses = []
+  @property
+  def updates(self):
+    updates = []
     for cell in self.cells:
       if isinstance(cell, Layer):
-        cell_losses = cell.get_losses_for(inputs)
-        losses += cell_losses
-    return losses
+        updates += cell.updates
+    return updates + self._updates
 
 
 @tf_export('keras.layers.RNN')
@@ -617,7 +616,7 @@ class RNN(Layer):
     if self.stateful:
       updates = []
       for i in range(len(states)):
-        updates.append((self.states[i], states[i]))
+        updates.append(K.update(self.states[i], states[i]))
       self.add_update(updates, inputs)
 
     if self.return_sequences:
@@ -777,15 +776,17 @@ class RNN(Layer):
 
   @property
   def losses(self):
+    losses = []
     if isinstance(self.cell, Layer):
-      return self.cell.losses
-    return []
+      losses += self.cell.losses
+    return losses + self._losses
 
-  def get_losses_for(self, inputs=None):
+  @property
+  def updates(self):
+    updates = []
     if isinstance(self.cell, Layer):
-      cell_losses = self.cell.get_losses_for(inputs)
-      return cell_losses + super(RNN, self).get_losses_for(inputs)
-    return super(RNN, self).get_losses_for(inputs)
+      updates += self.cell.updates
+    return updates + self._updates
 
 
 @tf_export('keras.layers.SimpleRNNCell')
@@ -2463,7 +2464,7 @@ class Recurrent(Layer):
     if self.stateful:
       updates = []
       for i in range(len(states)):
-        updates.append((self.states[i], states[i]))
+        updates.append(K.update(self.states[i], states[i]))
       self.add_update(updates, inputs)
 
     # Properly set learning phase

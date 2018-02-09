@@ -428,8 +428,6 @@ class Sequential(Model):
     # Used by Layer base class.
     self._dtype = None
     self._activity_regularizer = None
-    self._per_input_losses = {}
-    self._per_input_updates = {}
 
     # The following properties are not actually used by Keras;
     # they exist for compatibility with TF's variable scoping mechanism.
@@ -642,34 +640,6 @@ class Sequential(Model):
       trainable_weights = self._gather_list_attr('trainable_weights')
       return trainable_weights + weights
     return weights
-
-  @property
-  def updates(self):
-    if not self.built:
-      self.build()
-    return self.model.updates
-
-  @property
-  def state_updates(self):
-    if not self.built:
-      self.build()
-    return self.model.state_updates
-
-  def get_updates_for(self, inputs):
-    if not self.built:
-      self.build()
-    return self.model.get_updates_for(inputs)
-
-  @property
-  def losses(self):
-    if not self.built:
-      self.build()
-    return self.model.losses
-
-  def get_losses_for(self, inputs):
-    if not self.built:
-      self.build()
-    return self.model.get_losses_for(inputs)
 
   @property
   def regularizers(self):

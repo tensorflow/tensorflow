@@ -71,34 +71,11 @@ class Wrapper(Layer):
 
   @property
   def updates(self):
-    if hasattr(self.layer, 'updates'):
-      return self.layer.updates
-    return []
-
-  def get_updates_for(self, inputs=None):
-    # If the wrapper modifies the inputs, use the modified inputs to
-    # get the updates from the inner layer.
-    inner_inputs = inputs
-    if inputs is not None:
-      uid = tf_layers_util.object_list_uid(inputs)
-      if uid in self._input_map:
-        inner_inputs = self._input_map[uid]
-
-    updates = self.layer.get_updates_for(inner_inputs)
-    updates += super(Wrapper, self).get_updates_for(inputs)
-    return updates
+    return self.layer.updates + self._updates
 
   @property
   def losses(self):
-    if hasattr(self.layer, 'losses'):
-      return self.layer.losses
-    return []
-
-  def get_losses_for(self, inputs=None):
-    if inputs is None:
-      losses = self.layer.get_losses_for(None)
-      return losses + super(Wrapper, self).get_losses_for(None)
-    return super(Wrapper, self).get_losses_for(inputs)
+    return self.layer.losses + self._losses
 
   def get_weights(self):
     return self.layer.get_weights()
