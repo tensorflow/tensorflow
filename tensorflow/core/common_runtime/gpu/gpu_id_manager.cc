@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 
 #include <unordered_map>
 
@@ -24,10 +24,10 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 // Manages the map between TfGpuId and CUDA GPU id.
-class GpuIdManager {
+class TfToCudaGpuIdMap {
  public:
-  static GpuIdManager* singleton() {
-    static auto* manager = new GpuIdManager;
+  static TfToCudaGpuIdMap* singleton() {
+    static auto* manager = new TfToCudaGpuIdMap;
     return manager;
   }
 
@@ -62,13 +62,13 @@ class GpuIdManager {
 };
 }  // namespace
 
-void GpuIdUtil::InsertTfCudaGpuIdPair(TfGpuId tf_gpu_id,
-                                      CudaGpuId cuda_gpu_id) {
-  GpuIdManager::singleton()->InsertOrDie(tf_gpu_id, cuda_gpu_id);
+void GpuIdManager::InsertTfCudaGpuIdPair(TfGpuId tf_gpu_id,
+                                         CudaGpuId cuda_gpu_id) {
+  TfToCudaGpuIdMap::singleton()->InsertOrDie(tf_gpu_id, cuda_gpu_id);
 }
 
-CudaGpuId GpuIdUtil::TfToCudaGpuId(TfGpuId tf_gpu_id) {
-  return CudaGpuId(GpuIdManager::singleton()->FindOrDie(tf_gpu_id));
+CudaGpuId GpuIdManager::TfToCudaGpuId(TfGpuId tf_gpu_id) {
+  return CudaGpuId(TfToCudaGpuIdMap::singleton()->FindOrDie(tf_gpu_id));
 }
 
 }  // namespace tensorflow
