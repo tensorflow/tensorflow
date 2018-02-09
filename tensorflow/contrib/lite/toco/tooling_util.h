@@ -285,6 +285,9 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 
 void UseArraysExtraInfo(Model* model);
 
+bool IsRnnSourceArray(const toco::Model& model, const string& array_name);
+bool IsRnnStateArray(const toco::Model& model, const string& array_name);
+
 }  // namespace toco
 
 #endif  // TENSORFLOW_CONTRIB_LITE_TOCO_TOOLING_UTIL_H_

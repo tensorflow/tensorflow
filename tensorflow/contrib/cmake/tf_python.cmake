@@ -541,7 +541,11 @@ if(WIN32)
 	${nsync_STATIC_LIBRARIES}
     )
 
-    set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+        set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/pywrap_tensorflow.def")
+    else()
+        set(pywrap_tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow.def")
+    endif()
     set_source_files_properties(${pywrap_tensorflow_deffile} PROPERTIES GENERATED TRUE)
 
     add_custom_command(TARGET pywrap_tensorflow_internal_static POST_BUILD
@@ -549,6 +553,7 @@ if(WIN32)
             --input "${pywrap_tensorflow_internal_static_dependencies}"
             --output "${pywrap_tensorflow_deffile}"
             --target _pywrap_tensorflow_internal.pyd
+        BYPRODUCTS ${pywrap_tensorflow_deffile} # Required for Ninja
     )
 endif(WIN32)
 
@@ -702,11 +707,19 @@ add_custom_command(TARGET tf_python_copy_scripts_to_destination PRE_BUILD
                                    ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/contrib/testing/python/framework/)
 
 if(WIN32)
-  add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.dll
-                                     ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.pyd
-    COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.lib
-                                     ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/)
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.dll
+                                       ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.pyd
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/$(Configuration)/pywrap_tensorflow_internal.lib
+                                       ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/)
+  else()
+    add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.dll
+                                       ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/_pywrap_tensorflow_internal.pyd
+      COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/pywrap_tensorflow_internal.lib
+                                       ${CMAKE_CURRENT_BINARY_DIR}/tf_python/tensorflow/python/)
+  endif()
 else()
   add_custom_command(TARGET tf_python_build_pip_package POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy ${CMAKE_CURRENT_BINARY_DIR}/libpywrap_tensorflow_internal.so

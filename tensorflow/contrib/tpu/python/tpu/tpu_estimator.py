@@ -37,10 +37,10 @@ from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
-
+from tensorflow.contrib.tpu.python.tpu.device_assignment import device_assignment as tpu_device_assignment
 from tensorflow.core.framework.summary_pb2 import Summary
 from tensorflow.core.protobuf import config_pb2
-
+from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.estimator import estimator as estimator_lib
 from tensorflow.python.estimator import model_fn as model_fn_lib
@@ -71,6 +71,7 @@ _TPU_ESTIMATOR = 'tpu_estimator'
 _ITERATIONS_PER_LOOP_VAR = 'iterations_per_loop'
 _BATCH_SIZE_KEY = 'batch_size'
 _CROSS_REPLICA_SUM_OP = 'CrossReplicaSum'
+_PINGING_MASTER_TIMEOUT_IN_MS = 300 * 1000  # 5 minutes
 _RESERVED_PARAMS_KEYS = [_BATCH_SIZE_KEY]
 
 
@@ -173,14 +174,15 @@ class _TPUContext(object):
   """
 
   def __init__(self, config, train_batch_size, eval_batch_size,
-               predict_batch_size, use_tpu):
+               predict_batch_size, use_tpu, device_assignment):
     self._config = config
     self._train_batch_size = train_batch_size
     self._eval_batch_size = eval_batch_size
     self._predict_batch_size = predict_batch_size
     self._use_tpu = use_tpu
-    self._num_shards_or_none = self._config.tpu_config.num_shards
     self._mode = None
+    self._device_assignment = device_assignment
+    self._max_cores_per_host = 8
 
   def _assert_mode(self):
     if self._mode is None:
@@ -191,7 +193,18 @@ class _TPUContext(object):
   @property
   def num_of_cores_per_host(self):
     num_cores = self.num_cores
-    return min(num_cores, 8)
+    return min(num_cores, self._max_cores_per_host)
+
+  @property
+  def num_of_shards_per_host(self):
+    if self._device_assignment:
+      maximum_shards_per_host = (
+          self._max_cores_per_host //
+          self._device_assignment.num_cores_per_replica)
+      return min(self.num_shards, maximum_shards_per_host)
+    else:
+      num_cores = self.num_cores
+      return min(num_cores, self._max_cores_per_host)
 
   @contextmanager
   def with_mode(self, mode):
@@ -206,7 +219,14 @@ class _TPUContext(object):
   @property
   def num_cores(self):
     # TODO(xiejw): Adds lazy num_shards initialization.
-    return self._num_shards_or_none
+    if self._device_assignment:
+      return self._device_assignment.num_cores_per_replica * self.num_shards
+    else:
+      return self.num_shards
+
+  @property
+  def num_shards(self):
+    return self._config.tpu_config.num_shards
 
   @property
   def num_hosts(self):
@@ -284,6 +304,8 @@ class _TPUContext(object):
 
     # On TPU
     if self.is_input_sharded_per_core():
+      # We prohibit per core input sharding for the model parallelism case,
+      # therefore it is safe to use num_cores here.
       return global_batch_size // self.num_cores
     else:
       return global_batch_size // self.num_hosts
@@ -296,8 +318,7 @@ class _TPUContext(object):
     if self.is_running_on_cpu():
       return global_batch_size
 
-    # On TPU. always sharded per core.
-    return global_batch_size // self.num_cores
+    return global_batch_size // self.num_shards
 
   @property
   def master_job(self):
@@ -368,11 +389,15 @@ class _TPUContext(object):
 
   @property
   def tpu_device_placement_function(self):
+    """Returns the TPU device place function."""
     master = self.master_job
     job_device = '' if master is None else ('/job:%s' % master)
 
     def _placement_function(i):
-      return '%s/task:%d/device:TPU:%d' % (job_device, i / 8, i % 8)
+      if self._device_assignment:
+        return self._device_assignment.tpu_device(replica=i, job=master)
+      else:
+        return '%s/task:%d/device:TPU:%d' % (job_device, i / 8, i % 8)
 
     return _placement_function
 
@@ -391,9 +416,16 @@ class _TPUContext(object):
       Returns:
         The ordinal of the TPU device the shard's infeed should be placed on.
       """
-      return index % 8
+      if self._device_assignment:
+        return self._device_assignment.tpu_ordinal(replica=index)
+      else:
+        return index % 8
 
     return _tpu_ordinal_function
+
+  @property
+  def device_assignment(self):
+    return self._device_assignment
 
 
 class _SIGNAL(object):
@@ -908,7 +940,7 @@ def generate_per_core_enqueue_ops_fn_for_host(ctx, input_fn,
 
 
 def generate_per_host_enqueue_ops_fn_for_host(
-    ctx, input_fn, inputs_structure_recorder, batch_axis, device):
+    ctx, input_fn, inputs_structure_recorder, batch_axis, device, host_id):
   """Generates infeed enqueue ops for per-host input_fn on a single host."""
   captured_infeed_queue = _CapturedObject()
 
@@ -929,9 +961,20 @@ def generate_per_host_enqueue_ops_fn_for_host(
     if is_dataset:
       hooks.append(inputs.dataset_initializer_hook())
 
+  def _tpu_ordinal_function_impl(shard_index_in_host):
+    # We put both enqueue/dequeue op at tpu.core(0) in each replica.
+    replica = ctx.device_assignment.lookup_replicas(
+        host_id, (0, 0, 0))[shard_index_in_host]
+    return ctx.device_assignment.tpu_ordinal(replica=replica)
+
+  if ctx.device_assignment:
+    tpu_ordinal_function = _tpu_ordinal_function_impl
+  else:
+    tpu_ordinal_function = None
+
   def enqueue_ops_fn():
     with ops.device(device):
-      num_cores_per_host = ctx.num_of_cores_per_host
+      num_of_shards_per_host = ctx.num_of_shards_per_host
       # Convert user input to features and labels.  If the user returns a
       # dataset, it is initialized and the features and labels extracted via
       # `dataset.iterator.get_next()`
@@ -949,11 +992,12 @@ def generate_per_host_enqueue_ops_fn_for_host(
           tuple_shapes=[t.shape for t in unsharded_tensor_list],
           shard_dimensions=batch_axis)
       captured_infeed_queue.capture(infeed_queue)
-      infeed_queue.set_number_of_shards(num_cores_per_host)
-
+      infeed_queue.set_number_of_shards(num_of_shards_per_host)
       per_host_enqueue_ops = (
           infeed_queue.split_inputs_and_generate_enqueue_ops(
-              unsharded_tensor_list, placement_function=lambda x: device))
+              unsharded_tensor_list,
+              placement_function=lambda x: device,
+              tpu_ordinal_function=tpu_ordinal_function))
       if signals is None:
         return per_host_enqueue_ops
       else:
@@ -1152,7 +1196,11 @@ class _InputPipeline(object):
 
     def dequeue_fn():
       """dequeue_fn is used by TPU to retrieve the tensors."""
-      values = self._infeed_queue.generate_dequeue_op()
+      # In the model-parallel case, both the host-side and device-side
+      # computations must agree on the core on which infeed takes place. We
+      # choose to perform infeed on logical core 0 of each replica.
+      with ops.device(tpu.core(0)):
+        values = self._infeed_queue.generate_dequeue_op()
       # The unflatten process uses the structure information recorded above.
       return self._inputs_structure_recorder.unflatten_features_and_labels(
           values)
@@ -1199,7 +1247,7 @@ class _InputPipeline(object):
             enqueue_ops_fn, captured_infeed_queue, hooks, is_dataset = (
                 generate_per_host_enqueue_ops_fn_for_host(
                     self._ctx, self._input_fn, self._inputs_structure_recorder,
-                    self._batch_axis, host_device))
+                    self._batch_axis, host_device, host_id))
             all_hooks.extend(hooks)
 
             # NOTE(xiejw): We dispatch here based on the return type of the
@@ -1574,7 +1622,9 @@ class _OutfeedHostCall(object):
     # TODO(jhseu): Consider deduping tensors.
     for name in self._names:
       tensors.extend(self._tensors[name])
-    return [tpu_ops.outfeed_enqueue_tuple(tensors)]
+
+    with ops.device(tpu.core(0)):
+      return [tpu_ops.outfeed_enqueue_tuple(tensors)]
 
   def create_tpu_hostcall(self):
     """Sends the tensors through outfeed and runs the host_fn on CPU.
@@ -1607,10 +1657,11 @@ class _OutfeedHostCall(object):
       for shape in self._tensor_shapes[name]:
         tensor_shapes.append(shape)
 
-    # Outfeed ops execute on each JF node. Note: we must constraint it such that
-    # we have at most one outfeed dequeue and enqueue.
+    # Outfeed ops execute on each replica's first logical core. Note: we must
+    # constraint it such that we have at most one outfeed dequeue and enqueue
+    # per replica.
     tpu_device_placement_fn = self._ctx.tpu_device_placement_function
-    for i in xrange(self._ctx.num_cores):
+    for i in xrange(self._ctx.num_shards):
       with ops.device(tpu_device_placement_fn(i)):
         outfeed_tensors = tpu_ops.outfeed_dequeue_tuple(
             dtypes=tensor_dtypes, shapes=tensor_shapes)
@@ -1911,6 +1962,11 @@ class TPUEstimator(estimator_lib.Estimator):
             'train batch size {} must be divisible by number of shards {}'
             .format(train_batch_size, config.tpu_config.num_shards))
 
+      if (not config.tpu_config.per_host_input_for_training and
+          config.tpu_config.computation_shape):
+        raise ValueError(
+            'Model parallelism only supports per host input for training.')
+
       if eval_batch_size is not None:
         if not isinstance(eval_batch_size, int):
           raise ValueError('`eval_batch_size` must be an int')
@@ -1948,9 +2004,35 @@ class TPUEstimator(estimator_lib.Estimator):
     self._iterations_per_training_loop = (
         self._config.tpu_config.iterations_per_loop)
 
+    if use_tpu and self._config.tpu_config.computation_shape:
+      try:
+        with tf_session.Session(
+            self._config.master,
+            config=config_pb2.ConfigProto(
+                operation_timeout_in_ms=_PINGING_MASTER_TIMEOUT_IN_MS)) as sess:
+          logging.info('Initializing TPU system to fetch topology for model '
+                       'parallelism.')
+          topology = sess.run(tpu.initialize_system())
+          device_assignment = tpu_device_assignment(
+              topology,
+              computation_shape=self._config.tpu_config.computation_shape,
+              num_replicas=self._config.tpu_config.num_shards)
+          logging.info('computation_shape: %s',
+                       str(self._config.tpu_config.computation_shape))
+          logging.info('num_replicas: %d', self._config.tpu_config.num_shards)
+          logging.info('device_assignment.topology.device_coordinates: %s',
+                       str(device_assignment.topology.device_coordinates))
+          logging.info('device_assignment.core_assignment: %s',
+                       str(device_assignment.core_assignment))
+      except errors.DeadlineExceededError:
+        raise ValueError(
+            'Fail to connect master (%s). Please double check %s is '
+            'correct.' % (self._config.master, self._config.master))
+    else:
+      device_assignment = None
     # All properties passed to _TPUContext are immutable.
     self._ctx = _TPUContext(self._config, train_batch_size, eval_batch_size,
-                            predict_batch_size, use_tpu)
+                            predict_batch_size, use_tpu, device_assignment)
 
   def _create_global_step(self, graph):
     """Creates a global step suitable for TPUs.
@@ -1997,6 +2079,13 @@ class TPUEstimator(estimator_lib.Estimator):
       raise ValueError('Evaluate `steps` must be set on TPU. Cannot be `None`.')
 
     util_lib.check_positive_integer(steps, 'Eval steps')
+
+    # TODO(ylc): Support evaluating with model parallelism in different cluster.
+    if ctx.device_assignment and (self._config.evaluation_master !=
+                                  self._config.master):
+      raise ValueError(
+          'In the model-parallel case, both training and evaluation must run '
+          'in the same cluster.')
 
     if self._config.tpu_config.num_shards > 8:
       raise NotImplementedError(
@@ -2245,7 +2334,6 @@ class TPUEstimator(estimator_lib.Estimator):
 
 def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   """Executes `model_fn_wrapper` multiple times on all TPU shards."""
-  num_cores = ctx.num_cores
   iterations_per_loop_var = _create_or_get_iterations_per_loop()
 
   single_tpu_eval_step, host_calls, captured_scaffold_fn = (
@@ -2260,8 +2348,9 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   (loss,) = tpu.shard(
       multi_tpu_eval_steps_on_single_shard,
       inputs=[],
-      num_shards=num_cores,
-      outputs_from_all_shards=False)
+      num_shards=ctx.num_shards,
+      outputs_from_all_shards=False,
+      device_assignment=ctx.device_assignment)
 
   scaffold = _get_scaffold(captured_scaffold_fn)
   return loss, host_calls, scaffold
@@ -2269,7 +2358,6 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
 
 def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   """Executes `model_fn_wrapper` multiple times on all TPU shards."""
-  num_cores = ctx.num_cores
   iterations_per_loop_var = _create_or_get_iterations_per_loop()
 
   single_tpu_train_step, host_call, captured_scaffold_fn = (
@@ -2284,8 +2372,9 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   (loss,) = tpu.shard(
       multi_tpu_train_steps_on_single_shard,
       inputs=[],
-      num_shards=num_cores,
-      outputs_from_all_shards=False)
+      num_shards=ctx.num_shards,
+      outputs_from_all_shards=False,
+      device_assignment=ctx.device_assignment)
 
   scaffold = _get_scaffold(captured_scaffold_fn)
   return loss, host_call, scaffold

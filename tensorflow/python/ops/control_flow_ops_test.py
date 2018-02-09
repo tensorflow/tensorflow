@@ -483,8 +483,8 @@ class ContextTest(test_util.TensorFlowTestCase):
       c._values = ["a", "b"]
       c._external_values = {"a": b1}
 
-      c_with_scope = control_flow_ops.ControlFlowContext._from_proto(
-          c._to_proto(), import_scope="test_scope")
+      c_with_scope = control_flow_ops.ControlFlowContext(
+          values_def=c._to_values_def(), import_scope="test_scope")
 
       # _values and _external_values should be have scope prepended.
       self.assertEquals(
@@ -494,8 +494,8 @@ class ContextTest(test_util.TensorFlowTestCase):
 
       # Calling _to_proto() with export_scope should remove "test_scope".
       self.assertProtoEquals(
-          c._to_proto(),
-          c_with_scope._to_proto(export_scope="test_scope"))
+          c._to_values_def(),
+          c_with_scope._to_values_def(export_scope="test_scope"))
 
 
 def _GetNestedShape(nested):

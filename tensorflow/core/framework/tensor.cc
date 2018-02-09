@@ -886,8 +886,9 @@ bool Tensor::CanUseDMA() const {
 namespace {
 // Print from left dim to right dim recursively.
 template <typename T>
-void PrintOneDim(int dim_index, gtl::InlinedVector<int64, 4> shape, int64 limit,
-                 int shape_size, T* data, int64* data_index, string* result) {
+void PrintOneDim(int dim_index, const gtl::InlinedVector<int64, 4>& shape,
+                 int64 limit, int shape_size, const T* data, int64* data_index,
+                 string* result) {
   if (*data_index >= limit) return;
   int64 element_count = shape[dim_index];
   // We have reached the right-most dimension of the tensor.

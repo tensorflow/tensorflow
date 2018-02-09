@@ -21,9 +21,19 @@ set(ZLIB_INSTALL ${CMAKE_CURRENT_BINARY_DIR}/zlib/install)
 set(ZLIB_TAG 50893291621658f355bc5b4d450a8d06a563053d)
 
 if(WIN32)
-  set(zlib_STATIC_LIBRARIES
-      debug ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/zlibstaticd.lib
-      optimized ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/zlibstatic.lib)
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set(zlib_STATIC_LIBRARIES
+        debug ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/zlibstaticd.lib
+        optimized ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/zlibstatic.lib)
+  else()
+    if(CMAKE_BUILD_TYPE EQUAL Debug)
+      set(zlib_STATIC_LIBRARIES
+          ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/zlibstaticd.lib)
+    else()
+      set(zlib_STATIC_LIBRARIES
+          ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/zlibstatic.lib)
+    endif()
+  endif()
 else()
   set(zlib_STATIC_LIBRARIES
       ${CMAKE_CURRENT_BINARY_DIR}/zlib/install/lib/libz.a)
@@ -40,6 +50,7 @@ ExternalProject_Add(zlib
     GIT_TAG ${ZLIB_TAG}
     INSTALL_DIR ${ZLIB_INSTALL}
     BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS ${zlib_STATIC_LIBRARIES}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     CMAKE_CACHE_ARGS
         -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=${tensorflow_ENABLE_POSITION_INDEPENDENT_CODE}

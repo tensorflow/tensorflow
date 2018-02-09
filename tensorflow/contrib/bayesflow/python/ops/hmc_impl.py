@@ -107,6 +107,8 @@ def sample_chain(
   `Tensors` which collectively represent the current state. When specifying a
   `list`, one must also specify a list of `step_size`s.
 
+  Note: `target_log_prob_fn` is called exactly twice.
+
   Only one out of every `num_steps_between_samples + 1` steps is included in the
   returned results. This "thinning" comes at a cost of reduced statistical
   power, while reducing memory requirements and autocorrelation. For more
@@ -259,9 +261,29 @@ def sample_chain(
           current_target_log_prob,
           current_grads_target_log_prob,
       ] = _prepare_args(
-          target_log_prob_fn, current_state, step_size,
-          current_target_log_prob, current_grads_target_log_prob)
-    def _run_chain(num_steps, current_state, seed, kernel_results):
+          target_log_prob_fn,
+          current_state,
+          step_size,
+          current_target_log_prob,
+          current_grads_target_log_prob)
+      num_results = ops.convert_to_tensor(
+          num_results,
+          dtype=dtypes.int32,
+          name="num_results")
+      num_leapfrog_steps = ops.convert_to_tensor(
+          num_leapfrog_steps,
+          dtype=dtypes.int32,
+          name="num_leapfrog_steps")
+      num_burnin_steps = ops.convert_to_tensor(
+          num_burnin_steps,
+          dtype=dtypes.int32,
+          name="num_burnin_steps")
+      num_steps_between_results = ops.convert_to_tensor(
+          num_steps_between_results,
+          dtype=dtypes.int32,
+          name="num_steps_between_results")
+
+    def _run_chain(num_steps, current_state, kernel_results):
       """Runs the chain(s) for `num_steps`."""
       def _loop_body(iter_, current_state, kernel_results):
         return [iter_ + 1] + list(kernel(
@@ -272,31 +294,43 @@ def sample_chain(
             seed,
             kernel_results.current_target_log_prob,
             kernel_results.current_grads_target_log_prob))
-      return control_flow_ops.while_loop(
+      while_loop_kwargs = dict(
           cond=lambda iter_, *args: iter_ < num_steps,
           body=_loop_body,
-          loop_vars=[0, current_state, kernel_results])[1:]  # Lop-off "iter_".
+          loop_vars=[
+              np.int32(0),
+              current_state,
+              kernel_results,
+          ],
+      )
+      if seed is not None:
+        while_loop_kwargs["parallel_iterations"] = 1
+      return control_flow_ops.while_loop(
+          **while_loop_kwargs)[1:]  # Lop-off "iter_".
 
-    def _scan_body(args_list, _):
+    def _scan_body(args_list, iter_):
       """Closure which implements `tf.scan` body."""
       current_state, kernel_results = args_list
-      return _run_chain(num_steps_between_results + 1, current_state, seed,
-                        kernel_results)
+      return _run_chain(
+          1 + array_ops.where(math_ops.equal(iter_, 0),
+                              num_burnin_steps,
+                              num_steps_between_results),
+          current_state,
+          kernel_results)
 
-    current_state, kernel_results = _run_chain(
-        num_burnin_steps,
-        current_state,
-        distributions_util.gen_new_seed(
-            seed, salt="hmc_sample_chain_burnin"),
-        _make_dummy_kernel_results(
-            current_state,
-            current_target_log_prob,
-            current_grads_target_log_prob))
-
-    return functional_ops.scan(
+    scan_kwargs = dict(
         fn=_scan_body,
-        elems=array_ops.zeros(num_results, dtype=dtypes.bool),  # Dummy arg.
-        initializer=[current_state, kernel_results])
+        elems=math_ops.range(num_results),  # iter_: used to choose burnin.
+        initializer=[
+            current_state,
+            _make_dummy_kernel_results(
+                current_state,
+                current_target_log_prob,
+                current_grads_target_log_prob),
+        ])
+    if seed is not None:
+      scan_kwargs["parallel_iterations"] = 1
+    return functional_ops.scan(**scan_kwargs)
 
 
 def sample_annealed_importance_chain(
@@ -326,6 +360,9 @@ def sample_annealed_importance_chain(
   distribution:
 
   `E[exp(ais_weights)] = exp(target_log_normalizer - proposal_log_normalizer)`.
+
+  Note: `proposal_log_prob_fn` and `target_log_prob_fn` are called exactly three
+  times (although this may be reduced to two times, in the future).
 
   #### Examples:
 
@@ -437,6 +474,8 @@ def sample_annealed_importance_chain(
       input `current_state`.
     ais_weights: Tensor with the estimated weight(s). Has shape matching
       `target_log_prob_fn(current_state)`.
+    kernel_results: `collections.namedtuple` of internal calculations used to
+      advance the chain.
   """
   def make_convex_combined_log_prob_fn(iter_):
     def _fn(*args):
@@ -462,11 +501,21 @@ def sample_annealed_importance_chain(
           current_state,
           step_size,
           description="convex_combined_log_prob")
+      num_steps = ops.convert_to_tensor(
+          num_steps,
+          dtype=dtypes.int32,
+          name="num_steps")
+      num_leapfrog_steps = ops.convert_to_tensor(
+          num_leapfrog_steps,
+          dtype=dtypes.int32,
+          name="num_leapfrog_steps")
     def _loop_body(iter_, ais_weights, current_state, kernel_results):
       """Closure which implements `tf.while_loop` body."""
       current_state_parts = (list(current_state)
                              if _is_list_like(current_state)
                              else [current_state])
+      # TODO(b/72994218): Consider refactoring things to avoid this unecessary
+      # call.
       ais_weights += ((target_log_prob_fn(*current_state_parts)
                        - proposal_log_prob_fn(*current_state_parts))
                       / math_ops.cast(num_steps, ais_weights.dtype))
@@ -479,17 +528,22 @@ def sample_annealed_importance_chain(
           kernel_results.current_target_log_prob,
           kernel_results.current_grads_target_log_prob))
 
-    [ais_weights, current_state, kernel_results] = control_flow_ops.while_loop(
+    while_loop_kwargs = dict(
         cond=lambda iter_, *args: iter_ < num_steps,
         body=_loop_body,
         loop_vars=[
-            0,  # iter_
+            np.int32(0),  # iter_
             array_ops.zeros_like(current_log_prob),  # ais_weights
             current_state,
             _make_dummy_kernel_results(current_state,
                                        current_log_prob,
                                        current_grads_log_prob),
-        ])[1:]  # Lop-off "iter_".
+        ])
+    if seed is not None:
+      while_loop_kwargs["parallel_iterations"] = 1
+
+    [ais_weights, current_state, kernel_results] = control_flow_ops.while_loop(
+        **while_loop_kwargs)[1:]  # Lop-off "iter_".
 
     return [current_state, ais_weights, kernel_results]
 
@@ -701,12 +755,8 @@ def kernel(target_log_prob_fn,
     accepted_state: Tensor or Python list of `Tensor`s representing the state(s)
       of the Markov chain(s) at each result step. Has same shape as
       `current_state`.
-    acceptance_probs: Tensor with the acceptance probabilities for each
-      iteration. Has shape matching `target_log_prob_fn(current_state)`.
-    accepted_target_log_prob: `Tensor` representing the value of
-      `target_log_prob_fn` at `accepted_state`.
-    accepted_grads_target_log_prob: Python `list` of `Tensor`s representing the
-      gradient of `accepted_target_log_prob` wrt each `accepted_state`.
+    kernel_results: `collections.namedtuple` of internal calculations used to
+      advance the chain.
 
   Raises:
     ValueError: if there isn't one `step_size` or a list with same length as
@@ -724,14 +774,19 @@ def kernel(target_log_prob_fn,
            maybe_expand=True)
       independent_chain_ndims = distributions_util.prefer_static_rank(
           current_target_log_prob)
-      def init_momentum(s):
-        return random_ops.random_normal(
+      current_momentums = []
+      for s in current_state_parts:
+        current_momentums.append(random_ops.random_normal(
             shape=array_ops.shape(s),
             dtype=s.dtype.base_dtype,
-            seed=distributions_util.gen_new_seed(
-                seed, salt="hmc_kernel_momentums"))
-      current_momentums = [init_momentum(s) for s in current_state_parts]
+            seed=seed))
+        seed = distributions_util.gen_new_seed(
+            seed, salt="hmc_kernel_momentums")
 
+      num_leapfrog_steps = ops.convert_to_tensor(
+          num_leapfrog_steps,
+          dtype=dtypes.int32,
+          name="num_leapfrog_steps")
     [
         proposed_momentums,
         proposed_state_parts,
@@ -928,7 +983,7 @@ def _leapfrog_integrator(current_momentums,
         cond=lambda iter_, *args: iter_ < num_leapfrog_steps,
         body=_loop_body,
         loop_vars=[
-            0,  # iter_
+            np.int32(0),  # iter_
             current_momentums,
             current_state_parts,
             current_target_log_prob,
@@ -1111,10 +1166,7 @@ def _prepare_args(target_log_prob_fn, state, step_size,
   if len(state_parts) != len(step_sizes):
     raise ValueError("There should be exactly one `step_size` or it should "
                      "have same length as `current_state`.")
-  if maybe_expand:
-    maybe_flatten = lambda x: x
-  else:
-    maybe_flatten = lambda x: x if _is_list_like(state) else x[0]
+  maybe_flatten = lambda x: x if maybe_expand or _is_list_like(state) else x[0]
   return [
       maybe_flatten(state_parts),
       maybe_flatten(step_sizes),

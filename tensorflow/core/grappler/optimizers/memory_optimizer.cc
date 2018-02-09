@@ -641,6 +641,8 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     initialize->set_op("Assign");
     initialize->set_device(device);
     (*initialize->mutable_attr())["T"].set_type(dtype);
+    (*initialize->mutable_attr())["use_locking"].set_b(false);
+    (*initialize->mutable_attr())["validate_shape"].set_b(false);
     *initialize->add_input() = tmp_var->name();
     *initialize->add_input() = zeros->name();
 
@@ -655,6 +657,7 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
         accumulate->set_op("AssignAdd");
         accumulate->set_device(device);
         (*accumulate->mutable_attr())["T"].set_type(dtype);
+        (*accumulate->mutable_attr())["use_locking"].set_b(true);
         *accumulate->add_input() = initialize->name();
         *accumulate->add_input() = input;
         accumulates.push_back(accumulate);

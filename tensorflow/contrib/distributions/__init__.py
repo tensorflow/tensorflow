@@ -97,7 +97,6 @@ _allowed_symbols = [
     'Autoregressive',
     'Binomial',
     'Bernoulli',
-    'BernoulliWithSigmoidProbs',
     'Beta',
     'BetaWithSoftplusConcentration',
     'Categorical',

@@ -151,6 +151,7 @@ typedef struct {
 } TfLiteLSTMParams;
 
 typedef struct {
+  bool align_corners;
 } TfLiteResizeBilinearParams;
 
 typedef struct {

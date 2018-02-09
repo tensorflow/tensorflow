@@ -400,7 +400,9 @@ class ExponentialMovingAverage(object):
           avg = slot_creator.create_zeros_slot(
               var,
               self._name,
-              colocate_with_primary=(var.op.type in ["Variable", "VariableV2"]))
+              colocate_with_primary=(var.op.type in ["Variable",
+                                                     "VariableV2",
+                                                     "VarHandleOp"]))
           if self._zero_debias:
             zero_debias_true.add(avg)
       self._averages[var] = avg

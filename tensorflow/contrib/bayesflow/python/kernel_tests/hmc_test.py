@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
 import numpy as np
 from scipy import stats
 
@@ -29,6 +31,7 @@ from tensorflow.contrib.distributions.python.ops import independent as independe
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import gradients_impl as gradients_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -120,7 +123,7 @@ class HMCTest(test.TestCase):
       independent_chain_ndims: Python `int` scalar representing the number of
         dims associated with independent chains.
     """
-    with self.test_session() as sess:
+    with self.test_session(graph=ops.Graph()) as sess:
       x_ph = array_ops.placeholder(np.float32, name="x_ph")
       feed_dict = {x_ph: np.random.rand(50, 10, 2)}
       self._integrator_conserves_energy(x_ph, independent_chain_ndims,
@@ -138,9 +141,56 @@ class HMCTest(test.TestCase):
   def testIntegratorEnergyConservation3(self):
     self._integrator_conserves_energy_wrapper(3)
 
+  def testSampleChainSeedReproducibleWorksCorrectly(self):
+    with self.test_session(graph=ops.Graph()) as sess:
+      num_results = 10
+      independent_chain_ndims = 1
+
+      def log_gamma_log_prob(x):
+        event_dims = math_ops.range(independent_chain_ndims,
+                                    array_ops.rank(x))
+        return self._log_gamma_log_prob(x, event_dims)
+
+      kwargs = dict(
+          target_log_prob_fn=log_gamma_log_prob,
+          current_state=np.random.rand(4, 3, 2),
+          step_size=0.1,
+          num_leapfrog_steps=2,
+          num_burnin_steps=150,
+          seed=52,
+      )
+
+      samples0, kernel_results0 = hmc.sample_chain(
+          **dict(list(kwargs.items()) + list(dict(
+              num_results=2 * num_results,
+              num_steps_between_results=0).items())))
+
+      samples1, kernel_results1 = hmc.sample_chain(
+          **dict(list(kwargs.items()) + list(dict(
+              num_results=num_results,
+              num_steps_between_results=1).items())))
+
+      [
+          samples0_,
+          samples1_,
+          target_log_prob0_,
+          target_log_prob1_,
+      ] = sess.run([
+          samples0,
+          samples1,
+          kernel_results0.current_target_log_prob,
+          kernel_results1.current_target_log_prob,
+      ])
+      self.assertAllClose(samples0_[::2], samples1_,
+                          atol=1e-5, rtol=1e-5)
+      self.assertAllClose(target_log_prob0_[::2], target_log_prob1_,
+                          atol=1e-5, rtol=1e-5)
+
   def _chain_gets_correct_expectations(self, x, independent_chain_ndims,
                                        sess, feed_dict=None):
+    counter = collections.Counter()
     def log_gamma_log_prob(x):
+      counter["target_calls"] += 1
       event_dims = math_ops.range(independent_chain_ndims,
                                   array_ops.rank(x))
       return self._log_gamma_log_prob(x, event_dims)
@@ -155,7 +205,7 @@ class HMCTest(test.TestCase):
     if feed_dict is None:
       feed_dict = {}
     feed_dict.update({num_results: 150,
-                      step_size: 0.1,
+                      step_size: 0.05,
                       num_leapfrog_steps: 2})
 
     samples, kernel_results = hmc.sample_chain(
@@ -166,6 +216,8 @@ class HMCTest(test.TestCase):
         num_leapfrog_steps=num_leapfrog_steps,
         num_burnin_steps=150,
         seed=42)
+
+    self.assertAllEqual(dict(target_calls=2), counter)
 
     expected_x = (math_ops.digamma(self._shape_param)
                   - np.log(self._rate_param))
@@ -185,11 +237,13 @@ class HMCTest(test.TestCase):
         actual_x, actual_exp_x))
     self.assertNear(actual_x, expected_x_, 2e-2)
     self.assertNear(actual_exp_x, expected_exp_x, 2e-2)
-    self.assertTrue((acceptance_probs_ > 0.5).all())
-    self.assertTrue((acceptance_probs_ <= 1.0).all())
+    self.assertAllEqual(np.ones_like(acceptance_probs_, np.bool),
+                        acceptance_probs_ > 0.5)
+    self.assertAllEqual(np.ones_like(acceptance_probs_, np.bool),
+                        acceptance_probs_ <= 1.)
 
   def _chain_gets_correct_expectations_wrapper(self, independent_chain_ndims):
-    with self.test_session() as sess:
+    with self.test_session(graph=ops.Graph()) as sess:
       x_ph = array_ops.placeholder(np.float32, name="x_ph")
       feed_dict = {x_ph: np.random.rand(50, 10, 2)}
       self._chain_gets_correct_expectations(x_ph, independent_chain_ndims,
@@ -292,7 +346,7 @@ class HMCTest(test.TestCase):
       independent_chain_ndims: Python `int` scalar representing the number of
         dims associated with independent chains.
     """
-    with self.test_session() as sess:
+    with self.test_session(graph=ops.Graph()) as sess:
       initial_draws = np.log(np.random.gamma(self._shape_param,
                                              size=[50000, 2, 2]))
       initial_draws -= np.log(self._rate_param)
@@ -314,12 +368,16 @@ class HMCTest(test.TestCase):
 
   def _ais_gets_correct_log_normalizer(self, init, independent_chain_ndims,
                                        sess, feed_dict=None):
+    counter = collections.Counter()
+
     def proposal_log_prob(x):
+      counter["proposal_calls"] += 1
       event_dims = math_ops.range(independent_chain_ndims, array_ops.rank(x))
       return -0.5 * math_ops.reduce_sum(x**2. + np.log(2 * np.pi),
                                         axis=event_dims)
 
     def target_log_prob(x):
+      counter["target_calls"] += 1
       event_dims = math_ops.range(independent_chain_ndims, array_ops.rank(x))
       return self._log_gamma_log_prob(x, event_dims)
 
@@ -336,6 +394,11 @@ class HMCTest(test.TestCase):
         current_state=init,
         num_leapfrog_steps=2,
         seed=45)
+
+    # We have three calls because the calculation of `ais_weights` entails
+    # another call to the `convex_combined_log_prob_fn`. We could refactor
+    # things to avoid this, if needed (eg, b/72994218).
+    self.assertAllEqual(dict(target_calls=3, proposal_calls=3), counter)
 
     event_shape = array_ops.shape(init)[independent_chain_ndims:]
     event_size = math_ops.reduce_prod(event_shape)
@@ -382,7 +445,7 @@ class HMCTest(test.TestCase):
 
   def _ais_gets_correct_log_normalizer_wrapper(self, independent_chain_ndims):
     """Tests that AIS yields reasonable estimates of normalizers."""
-    with self.test_session() as sess:
+    with self.test_session(graph=ops.Graph()) as sess:
       x_ph = array_ops.placeholder(np.float32, name="x_ph")
       initial_draws = np.random.normal(size=[30, 2, 1])
       self._ais_gets_correct_log_normalizer(
@@ -399,6 +462,41 @@ class HMCTest(test.TestCase):
 
   def testAIS3(self):
     self._ais_gets_correct_log_normalizer_wrapper(3)
+
+  def testSampleAIChainSeedReproducibleWorksCorrectly(self):
+    with self.test_session(graph=ops.Graph()) as sess:
+      independent_chain_ndims = 1
+      x = np.random.rand(4, 3, 2)
+
+      def proposal_log_prob(x):
+        event_dims = math_ops.range(independent_chain_ndims, array_ops.rank(x))
+        return -0.5 * math_ops.reduce_sum(x**2. + np.log(2 * np.pi),
+                                          axis=event_dims)
+
+      def target_log_prob(x):
+        event_dims = math_ops.range(independent_chain_ndims, array_ops.rank(x))
+        return self._log_gamma_log_prob(x, event_dims)
+
+      ais_kwargs = dict(
+          proposal_log_prob_fn=proposal_log_prob,
+          num_steps=200,
+          target_log_prob_fn=target_log_prob,
+          step_size=0.5,
+          current_state=x,
+          num_leapfrog_steps=2,
+          seed=53)
+
+      _, ais_weights0, _ = hmc.sample_annealed_importance_chain(
+          **ais_kwargs)
+
+      _, ais_weights1, _ = hmc.sample_annealed_importance_chain(
+          **ais_kwargs)
+
+      [ais_weights0_, ais_weights1_] = sess.run([
+          ais_weights0, ais_weights1])
+
+      self.assertAllClose(ais_weights0_, ais_weights1_,
+                          atol=1e-5, rtol=1e-5)
 
   def testNanRejection(self):
     """Tests that an update that yields NaN potentials gets rejected.
@@ -417,7 +515,7 @@ class HMCTest(test.TestCase):
           -x)
       return math_ops.reduce_sum(per_element_potentials)
 
-    with self.test_session() as sess:
+    with self.test_session(graph=ops.Graph()) as sess:
       initial_x = math_ops.linspace(0.01, 5, 10)
       updated_x, kernel_results = hmc.kernel(
           target_log_prob_fn=_unbounded_exponential_log_prob,
@@ -440,7 +538,7 @@ class HMCTest(test.TestCase):
     def _nan_log_prob_with_nan_gradient(x):
       return np.nan * math_ops.reduce_sum(x)
 
-    with self.test_session() as sess:
+    with self.test_session(graph=ops.Graph()) as sess:
       initial_x = math_ops.linspace(0.01, 5, 10)
       updated_x, kernel_results = hmc.kernel(
           target_log_prob_fn=_nan_log_prob_with_nan_gradient,
@@ -473,18 +571,18 @@ class HMCTest(test.TestCase):
       #     gradients_ops.gradients(new_log_prob, initial_x)[0].eval())
 
   def _testChainWorksDtype(self, dtype):
-    states, kernel_results = hmc.sample_chain(
-        num_results=10,
-        target_log_prob_fn=lambda x: -math_ops.reduce_sum(x**2., axis=-1),
-        current_state=np.zeros(5).astype(dtype),
-        step_size=0.01,
-        num_leapfrog_steps=10,
-        seed=48)
-    with self.test_session() as sess:
+    with self.test_session(graph=ops.Graph()) as sess:
+      states, kernel_results = hmc.sample_chain(
+          num_results=10,
+          target_log_prob_fn=lambda x: -math_ops.reduce_sum(x**2., axis=-1),
+          current_state=np.zeros(5).astype(dtype),
+          step_size=0.01,
+          num_leapfrog_steps=10,
+          seed=48)
       states_, acceptance_probs_ = sess.run(
           [states, kernel_results.acceptance_probs])
-    self.assertEqual(dtype, states_.dtype)
-    self.assertEqual(dtype, acceptance_probs_.dtype)
+      self.assertEqual(dtype, states_.dtype)
+      self.assertEqual(dtype, acceptance_probs_.dtype)
 
   def testChainWorksIn64Bit(self):
     self._testChainWorksDtype(np.float64)
@@ -492,11 +590,52 @@ class HMCTest(test.TestCase):
   def testChainWorksIn16Bit(self):
     self._testChainWorksDtype(np.float16)
 
+  def testChainWorksCorrelatedMultivariate(self):
+    dtype = np.float32
+    true_mean = dtype([0, 0])
+    true_cov = dtype([[1, 0.5],
+                      [0.5, 1]])
+    num_results = 2000
+    counter = collections.Counter()
+    with self.test_session(graph=ops.Graph()) as sess:
+      def target_log_prob(x, y):
+        counter["target_calls"] += 1
+        # Corresponds to unnormalized MVN.
+        # z = matmul(inv(chol(true_cov)), [x, y] - true_mean)
+        z = array_ops.stack([x, y], axis=-1) - true_mean
+        z = array_ops.squeeze(
+            gen_linalg_ops.matrix_triangular_solve(
+                np.linalg.cholesky(true_cov),
+                z[..., array_ops.newaxis]),
+            axis=-1)
+        return -0.5 * math_ops.reduce_sum(z**2., axis=-1)
+      states, _ = hmc.sample_chain(
+          num_results=num_results,
+          target_log_prob_fn=target_log_prob,
+          current_state=[dtype(-2), dtype(2)],
+          step_size=[0.5, 0.5],
+          num_leapfrog_steps=2,
+          num_burnin_steps=200,
+          num_steps_between_results=1,
+          seed=54)
+      self.assertAllEqual(dict(target_calls=2), counter)
+      states = array_ops.stack(states, axis=-1)
+      self.assertEqual(num_results, states.shape[0].value)
+      sample_mean = math_ops.reduce_mean(states, axis=0)
+      x = states - sample_mean
+      sample_cov = math_ops.matmul(x, x, transpose_a=True) / dtype(num_results)
+      [sample_mean_, sample_cov_] = sess.run([
+          sample_mean, sample_cov])
+      self.assertAllClose(true_mean, sample_mean_,
+                          atol=0.05, rtol=0.)
+      self.assertAllClose(true_cov, sample_cov_,
+                          atol=0., rtol=0.1)
+
 
 class _EnergyComputationTest(object):
 
   def testHandlesNanFromPotential(self):
-    with self.test_session() as sess:
+    with self.test_session(graph=ops.Graph()) as sess:
       x = [1, np.inf, -np.inf, np.nan]
       target_log_prob, proposed_target_log_prob = [
           self.dtype(x.flatten()) for x in np.meshgrid(x, x)]
@@ -530,7 +669,7 @@ class _EnergyComputationTest(object):
                           np.isfinite(grads_))
 
   def testHandlesNanFromKinetic(self):
-    with self.test_session() as sess:
+    with self.test_session(graph=ops.Graph()) as sess:
       x = [1, np.inf, -np.inf, np.nan]
       momentums, proposed_momentums = [
           [np.reshape(self.dtype(x), [-1, 1])]
@@ -584,7 +723,7 @@ class EnergyComputationTest64(test.TestCase, _EnergyComputationTest):
 class _HMCHandlesLists(object):
 
   def testStateParts(self):
-    with self.test_session() as sess:
+    with self.test_session(graph=ops.Graph()) as sess:
       dist_x = normal_lib.Normal(loc=self.dtype(0), scale=self.dtype(1))
       dist_y = independent_lib.Independent(
           gamma_lib.Gamma(concentration=self.dtype([1, 2]),
@@ -617,11 +756,7 @@ class _HMCHandlesLists(object):
           expected_vars,
       ])
       self.assertAllClose(expected_means_, actual_means_, atol=0.05, rtol=0.16)
-      self.assertAllClose(expected_vars_, actual_vars_, atol=0., rtol=0.40)
-
-
-class HMCHandlesLists16(_HMCHandlesLists, test.TestCase):
-  dtype = np.float16
+      self.assertAllClose(expected_vars_, actual_vars_, atol=0., rtol=0.25)
 
 
 class HMCHandlesLists32(_HMCHandlesLists, test.TestCase):
