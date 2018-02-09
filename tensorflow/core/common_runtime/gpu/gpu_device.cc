@@ -66,6 +66,10 @@ limitations under the License.
 #include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/stream_executor_util.h"
 
+#if !defined(PLATFORM_GOOGLE)
+#include "cuda/cuda_config.h"
+#endif
+
 namespace tensorflow {
 
 // Eigen Ops directly allocate memory only for temporary buffers used
