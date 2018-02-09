@@ -741,6 +741,12 @@ class Dataset(object):
     Returns:
       Dataset: A `Dataset`.
     """
+    if isinstance(batch_size, ops.Tensor):
+      if not batch_size.shape.is_compatible_with(tensor_shape.scalar()):
+        raise ValueError("batch_size value should be a scalar, but is not: %s" % value)
+    elif not isinstance(batch_size, (int)):
+      raise ValueError('Unexpectedly found a batch_size of type `' + str(type(batch_size)) + '`. '
+                       'Expected an integer or a scalar symbolic Tensor instance.')
     return BatchDataset(self, batch_size)
 
   def padded_batch(self, batch_size, padded_shapes, padding_values=None):
