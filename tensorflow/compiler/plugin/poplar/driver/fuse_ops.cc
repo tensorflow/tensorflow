@@ -31,6 +31,8 @@ static const char* names[] = {
   "sigmoid",
   "relugrad",
   "biasadd_broadcast",
+  "biasadd_broadcast",
+  "biasadd",
   "biasadd",
   "zero_pad",
   "trunc_norm_scale_add",
@@ -106,9 +108,18 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kBroadcast, true, nullptr, {-1}},
    {HloOpcode::kCall, false, IsPoplarConvolution, {-2, -3}}},
 
+  // BiasAdd on convolution (explicit broadcast)
+  {{HloOpcode::kAdd, true, nullptr, {2, 1}},
+   {HloOpcode::kBroadcast, true, nullptr, {-1}},
+   {HloOpcode::kConvolution, false, nullptr, {-2, -3}}},
+
   // BiasAdd on convolution (implicit broadcast)
   {{HloOpcode::kAdd, true, nullptr, {1, -1}},
    {HloOpcode::kCall, false, IsPoplarConvolution, {-2, -3}}},
+
+  // BiasAdd on convolution (implicit broadcast)
+  {{HloOpcode::kAdd, true, nullptr, {1, -1}},
+   {HloOpcode::kConvolution, false, nullptr, {-2, -3}}},
 
   // External padding with constant zero
   {{HloOpcode::kPad, true, IsExternalPadding, {-1, 1}},
