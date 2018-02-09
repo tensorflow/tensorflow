@@ -617,7 +617,6 @@ class Estimator(object):
             sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
 
-        # TODO(b/36111876): replace legacy_init_op with main_op mechanism
         # pylint: disable=protected-access
         local_init_op = (
             estimator_spec.scaffold.local_init_op or
