@@ -15,7 +15,7 @@ py_library(
     name = "dataset_ops",
     srcs = [
         "counter.py",
-        "dataset_ops.py",
+        "get_single_element.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
