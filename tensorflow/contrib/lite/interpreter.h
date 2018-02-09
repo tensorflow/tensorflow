@@ -80,6 +80,12 @@ class NNAPIDelegate;
 // foo.Invoke();
 //
 
+struct TfLiteIntArrayDeleter {
+  void operator()(TfLiteIntArray* a) {
+    if (a) TfLiteIntArrayFree(a);
+  }
+};
+
 class Interpreter {
  public:
   // Instantiate an interpreter. All errors associated with reading and
@@ -247,6 +253,11 @@ class Interpreter {
   // Set the number of threads available to the interpreter.
   void SetNumThreads(int num_threads);
 
+  // Allow a delegate to look at the graph and modify the graph to handle
+  // parts of the graph themselves. After this is called, the graph may
+  // contain new nodes that replace 1 more nodes.
+  TfLiteStatus ModifyGraphWithDelegate(TfLiteDelegate* delegate);
+
  private:
   // Give 'op_reg' a chance to initialize itself using the contents of
   // 'buffer'.
@@ -325,6 +336,40 @@ class Interpreter {
   static TfLiteStatus AddTensors(TfLiteContext* context, int tensors_to_add,
                                  int* first_new_tensor_index);
 
+  // WARNING: This is an experimental API and subject to change.
+  // Entry point for C API ReplaceSubgraphsWithDelegateKernels
+  static TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
+      TfLiteContext* context, TfLiteRegistration registration,
+      const TfLiteIntArray* nodes_to_replace);
+
+  // Update the execution graph to replace some of the nodes with stub
+  // nodes. Specifically any node index that has `nodes[index]==1` will be
+  // slated for replacement with a delegate kernel specified by registration.
+  // WARNING: This is an experimental interface that is subject to change.
+  TfLiteStatus ReplaceSubgraphsWithDelegateKernels(
+      TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace);
+
+  // WARNING: This is an experimental interface that is subject to change.
+  // Gets the internal pointer to a TensorFlow lite node by node_index.
+  TfLiteStatus GetNodeAndRegistration(int node_index, TfLiteNode** node,
+                                      TfLiteRegistration** registration);
+
+  // WARNING: This is an experimental interface that is subject to change.
+  // Entry point for C node plugin API to get a node by index.
+  static TfLiteStatus GetNodeAndRegistration(struct TfLiteContext*,
+                                             int node_index, TfLiteNode** node,
+                                             TfLiteRegistration** registration);
+
+  // WARNING: This is an experimental interface that is subject to change.
+  // Gets an TfLiteIntArray* representing the execution plan. The caller owns
+  // this memory and must free it with TfLiteIntArrayFree().
+  TfLiteStatus GetExecutionPlan(TfLiteIntArray** execution_plan);
+
+  // WARNING: This is an experimental interface that is subject to change.
+  // Entry point for C node plugin API to get the execution plan
+  static TfLiteStatus GetExecutionPlan(struct TfLiteContext* context,
+                                       TfLiteIntArray** execution_plan);
+
   // A pure C data structure used to communicate with the pure C plugin
   // interface. To avoid copying tensor metadata, this is also the definitive
   // structure to store tensors.
@@ -371,6 +416,10 @@ class Interpreter {
   // plan. In particular, it is valid for this ordering to contain only a
   // subset of the node indices.
   std::vector<int> execution_plan_;
+
+  // In the future, we'd like a TfLiteIntArray compatible representation.
+  // TODO(aselle): replace execution_plan_ with this.
+  std::unique_ptr<TfLiteIntArray, TfLiteIntArrayDeleter> plan_cache_;
 
   // Whether to delegate to NN API
   std::unique_ptr<NNAPIDelegate> nnapi_delegate_;
