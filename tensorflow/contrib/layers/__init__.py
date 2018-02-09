@@ -37,6 +37,7 @@ See the @{$python/contrib.layers} guide.
 @@gdn
 @@layer_norm
 @@linear
+@@unpool_2d
 @@max_pool2d
 @@max_pool3d
 @@one_hot_encoding
