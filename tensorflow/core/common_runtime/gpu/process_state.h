@@ -155,8 +155,8 @@ class RecordingAllocator : public Allocator {
     a_->DeallocateRaw(p);
   }
   bool TracksAllocationSizes() override { return a_->TracksAllocationSizes(); }
-  size_t RequestedSize(void* p) override { return a_->RequestedSize(p); }
-  size_t AllocatedSize(void* p) override { return a_->AllocatedSize(p); }
+  size_t RequestedSize(const void* p) override { return a_->RequestedSize(p); }
+  size_t AllocatedSize(const void* p) override { return a_->AllocatedSize(p); }
   void GetStats(AllocatorStats* stats) override { a_->GetStats(stats); }
   void ClearStats() override { a_->ClearStats(); }
   ProcessState::MDMap* mm_;  // not owned

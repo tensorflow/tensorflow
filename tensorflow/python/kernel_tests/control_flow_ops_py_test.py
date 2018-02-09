@@ -704,6 +704,36 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual(10000, r.eval())
 
+  def testWhileExternalControlDependencies(self):
+    with self.test_session():
+      v = variables.Variable(0.0)
+      v.initializer.run()
+      increment = v.assign_add(1.0)
+
+      def body_fn(i):
+        with ops.control_dependencies([increment]):
+          return i + i
+
+      result = control_flow_ops.while_loop(cond=lambda i: i < 1,
+                                           body=body_fn, loop_vars=[1])
+      result.eval()
+      self.assertAllEqual(v.eval(), 1.0)
+
+  def testWhileExternalControlDependenciesNoInput(self):
+    with self.test_session():
+      v = variables.Variable(0.0)
+      v.initializer.run()
+      increment = v.assign_add(1.0)
+
+      def body_fn(unused_i):
+        with ops.control_dependencies([increment]):
+          return constant_op.constant(5, name="five")
+
+      result = control_flow_ops.while_loop(cond=lambda i: i < 5,
+                                           body=body_fn, loop_vars=[0])
+      result.eval()
+      self.assertAllEqual(v.eval(), 1.0)
+
   def testWhileWithRefs_1(self):
     with self.test_session() as sess:
       x = variables.Variable(0)._ref()  # pylint: disable=protected-access

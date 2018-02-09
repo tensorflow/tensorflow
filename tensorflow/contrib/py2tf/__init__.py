@@ -26,8 +26,11 @@ from tensorflow.contrib.py2tf.impl.api import convert
 from tensorflow.contrib.py2tf.impl.api import graph_ready
 from tensorflow.contrib.py2tf.impl.api import to_code
 from tensorflow.contrib.py2tf.impl.api import to_graph
+from tensorflow.contrib.py2tf.pyct.transformer import PyFlowParseError
 from tensorflow.python.util.all_util import remove_undocumented
 
-_allowed_symbols = ['to_graph', 'to_code', 'convert', 'graph_ready', 'utils']
+_allowed_symbols = [
+    'to_graph', 'to_code', 'convert', 'graph_ready', 'utils', 'PyFlowParseError'
+]
 
 remove_undocumented(__name__, _allowed_symbols)

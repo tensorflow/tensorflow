@@ -49,6 +49,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // dimensions except 'axis' must be equal.
   TfLiteTensor* t0 = &context->tensors[node->inputs->data[0]];
   TfLiteType input_type = t0->type;
+  if (axis < 0) axis += t0->dims->size;
   TF_LITE_ENSURE(context, axis >= 0);
   TF_LITE_ENSURE(context, axis < t0->dims->size);
 
@@ -131,8 +132,9 @@ template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data);
-
+  int axis = params->axis;
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
+  if (axis < 0) axis += output->dims->size;
 
 // TODO(ahentz): Creating 'all_inputs' below is not very efficient. We should
 // allocate and populate these during Prepare().
@@ -141,7 +143,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 #define TF_LITE_CONCATENATION(type, scalar)                                 \
   VectorOfInputs<scalar> all_inputs(*context, *node->inputs);               \
   type::Concatenation<FusedActivationFunctionType::kNone, scalar>(          \
-      RemapDim(NumDimensions(output), params->axis), all_inputs.data(),     \
+      RemapDim(NumDimensions(output), axis), all_inputs.data(),             \
       all_inputs.dims(), node->inputs->size, GetTensorData<scalar>(output), \
       GetTensorDims(output))
 

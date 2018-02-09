@@ -1273,6 +1273,8 @@ struct ArgMaxOperator : Operator {
 // TensorFlow equivalent: ResizeBilinear
 struct ResizeBilinearOperator : Operator {
   ResizeBilinearOperator() : Operator(OperatorType::kResizeBilinear) {}
+
+  bool align_corners = false;
 };
 
 // SpaceToBatchND operator. It divides spatial dimensions into a grid of

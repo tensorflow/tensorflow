@@ -879,6 +879,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::RngUniform;
 %unignore xla::swig::LocalComputationBuilder::RngBernoulli;
 %unignore xla::swig::LocalComputationBuilder::While;
+%unignore xla::swig::LocalComputationBuilder::Conditional;
 %unignore xla::swig::LocalComputationBuilder::Eq;
 %unignore xla::swig::LocalComputationBuilder::Ne;
 %unignore xla::swig::LocalComputationBuilder::Ge;

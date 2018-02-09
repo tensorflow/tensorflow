@@ -183,8 +183,6 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     TF_LITE_ENSURE_OK(context,
                       ResizeTempAxis(context, &op_context, resolved_axis));
     TF_LITE_ENSURE_OK(context, ResizeOutputTensor(context, &op_context));
-    TfLiteTensorRealloc(resolved_axis->bytes, resolved_axis);
-    TfLiteTensorRealloc(op_context.output->bytes, op_context.output);
   }
 
 #define TF_LITE_MEAN(kernel_type, data_type)                        \

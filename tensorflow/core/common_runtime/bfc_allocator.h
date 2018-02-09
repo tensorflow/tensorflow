@@ -62,11 +62,11 @@ class BFCAllocator : public VisitableAllocator {
 
   bool TracksAllocationSizes() override;
 
-  size_t RequestedSize(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
 
-  size_t AllocatedSize(void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
 
-  int64 AllocationId(void* ptr) override;
+  int64 AllocationId(const void* ptr) override;
 
   void GetStats(AllocatorStats* stats) override;
 

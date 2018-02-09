@@ -483,6 +483,7 @@ filegroup(
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/examples:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",
+        "//tensorflow/contrib/feature_column:all_files",
         "//tensorflow/contrib/ffmpeg:all_files",
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",

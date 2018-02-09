@@ -18,15 +18,29 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import imp
+
 from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
+from tensorflow.contrib.py2tf.pyct import qual_names
+from tensorflow.contrib.py2tf.pyct.static_analysis import activity
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.platform import test
 
 
 class TestCase(test.TestCase):
+  """Base class for unit tests in this module. Contains relevant utilities."""
+
+  def make_fake_tf(self, *symbols):
+    fake_tf = imp.new_module('fake_tf')
+    for s in symbols:
+      setattr(fake_tf, s.__name__, s)
+    return fake_tf
+
+  def attach_namespace(self, module, **ns):
+    for k, v in ns.items():
+      setattr(module, k, v)
 
   def parse_and_analyze(self,
                         test_fn,
@@ -44,7 +58,8 @@ class TestCase(test.TestCase):
         arg_values=None,
         arg_types=arg_types,
         recursive=recursive)
-    node = access.resolve(node, ctx)
+    node = qual_names.resolve(node)
+    node = activity.resolve(node, ctx)
     node = live_values.resolve(node, ctx, {})
     if include_type_analysis:
       node = type_info.resolve(node, ctx)

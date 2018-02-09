@@ -37,7 +37,7 @@ class IndexUtil {
   static int64 MultidimensionalIndexToLinearIndex(
       const Shape& shape, tensorflow::gtl::ArraySlice<int64> multi_index);
 
-  // Coverts a linear index into multidimensional index (eg {x, y, z}) based on
+  // Converts a linear index into multidimensional index (eg {x, y, z}) based on
   // the shape and its layout. The first index in the returned multidimensional
   // index is dimension 0.
   static std::vector<int64> LinearIndexToMultidimensionalIndex(
