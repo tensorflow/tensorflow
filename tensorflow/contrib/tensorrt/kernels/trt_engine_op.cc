@@ -96,8 +96,9 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
       std::vector<int> trt_shape(dims.nbDims + 1);
       trt_shape[0] = num_batch;
       for (int j = 0; j < dims.nbDims; j++) trt_shape[j + 1] = dims.d[j];
-      TensorShapeUtils::MakeShape(trt_shape.data(), trt_shape.size(),
-                                  &output_shape);
+      OP_REQUIRES_OK(context,
+                     TensorShapeUtils::MakeShape(
+                         trt_shape.data(), trt_shape.size(), &output_shape));
     } else {
       LOG(FATAL) << "output node not found, at " << output_nodes_[i];
       break;

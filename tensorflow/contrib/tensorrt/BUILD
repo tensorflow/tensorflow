@@ -52,8 +52,9 @@ tf_custom_op_library(
         ":trt_engine_op_kernel",
         ":trt_shape_function",
         "//tensorflow/core:lib_proto_parsing",
+    ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
-    ],
+    ]),
 )
 
 tf_cuda_library(
@@ -63,8 +64,9 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         ":trt_logging",
+    ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
-    ] + tf_custom_op_library_additional_deps(),
+    ]) + tf_custom_op_library_additional_deps(),
 )
 
 cc_library(
@@ -77,16 +79,17 @@ cc_library(
         "//tensorflow/core:gpu_headers_lib",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core:stream_executor_headers_lib",
+    ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
-    ] + tf_custom_op_library_additional_deps(),
+    ]) + tf_custom_op_library_additional_deps(),
     alwayslink = 1,
 )
 
 tf_gen_op_libs(
     op_lib_names = ["trt_engine_op"],
-    deps = [
+    deps = if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
-    ],
+    ]),
 )
 
 tf_cuda_library(
@@ -96,8 +99,9 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/core:lib_proto_parsing",
+    ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
-    ],
+    ]),
 )
 
 tf_gen_op_wrapper_py(
@@ -114,8 +118,9 @@ tf_custom_op_py_library(
     srcs = ["python/ops/trt_engine_op.py"],
     dso = [
         ":python/ops/_trt_engine_op.so",
+    ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
-    ],
+    ]),
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework_for_generated_wrappers",
@@ -187,8 +192,9 @@ tf_cuda_library(
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/optimizers:constant_folding",
         "//tensorflow/core/grappler/optimizers:layout_optimizer",
+    ] + if_tensorrt([
         "@local_config_tensorrt//:nv_infer",
-    ] + tf_custom_op_library_additional_deps(),
+    ]) + tf_custom_op_library_additional_deps(),
 )
 
 # Library for the segmenting portion of TensorRT operation creation
