@@ -421,5 +421,138 @@ class OneHotTest(test.TestCase):
         raises=TypeError)
 
 
+class MultiOneHotTest(test.TestCase):
+
+  def _testMultiOneHot(self, truth, use_gpu=False, raises=None, **inputs):
+    with self.test_session(use_gpu=use_gpu):
+      if raises is not None:
+        with self.assertRaises(raises):
+          array_ops.multi_one_hot(**inputs)
+      else:
+        ans = array_ops.multi_one_hot(**inputs)
+        tf_ans = ans.eval()
+        self.assertAllEqual(tf_ans, truth.eval())
+        self.assertEqual(tf_ans.shape, ans.get_shape())
+
+  def _testBothMultiOneHot(self, truth, raises=None, **inputs):
+    self._testMultiOneHot(truth, True, raises, **inputs)
+    self._testMultiOneHot(truth, False, raises, **inputs)
+
+  def testSimpleCases(self):
+    indices = constant_op.constant([[1, 2], [0, 1], [1, 0]],
+                                   dtype=dtypes.int64)
+    depth_list = [2, 3]
+    on_values_list = [1.0, 1.0]
+    off_values_list = [0.0, 0.0]
+
+    truth = constant_op.constant([[0.0, 1.0, 0.0, 0.0, 1.0],
+                                  [1.0, 0.0, 0.0, 1.0, 0.0],
+                                  [0.0, 1.0, 1.0, 0.0, 0.0]],
+                                 dtype=dtypes.float32)
+
+    self._testBothMultiOneHot(indices=indices,
+                              depth_list=depth_list,
+                              on_values_list=on_values_list,
+                              off_values_list=off_values_list,
+                              truth=truth)
+
+  def testEmpty(self):
+    indices = constant_op.constant(np.zeros((0, 3)), dtype=dtypes.int64)
+    depth_list = [3, 2, 1]
+    truth = constant_op.constant(np.zeros((0, 3+2+1)),
+                                 dtype=dtypes.float32)
+
+    self._testBothMultiOneHot(indices=indices,
+                              depth_list=depth_list,
+                              truth=truth)
+
+  def testOnLegthMismatchValueError(self):
+    indices = constant_op.constant([[1, 2], [0, 1], [1, 0]], dtype=dtypes.int64)
+    depth_list_too_short = [2]
+    depth_list_too_long = [2, 3, 2]
+
+    # too short
+    self._testBothMultiOneHot(indices=indices,
+                              depth_list=depth_list_too_short,
+                              truth=None,
+                              raises=ValueError)
+
+     # too long
+    self._testBothMultiOneHot(indices=indices,
+                              depth_list=depth_list_too_long,
+                              truth=None,
+                              raises=ValueError)
+
+  def testDefaultValuesLists(self):
+    indices = constant_op.constant([[1, 2], [0, 1], [1, 0]], dtype=dtypes.int64)
+    on_values_list = [5.0, 10.0]
+    off_values_list = [-5.0, -10.0]
+    depth_list = [2, 3]
+
+    # Case 1: on/off to default values
+    truth = constant_op.constant([[0.0, 1.0, 0.0, 0.0, 1.0],
+                                  [1.0, 0.0, 0.0, 1.0, 0.0],
+                                  [0.0, 1.0, 1.0, 0.0, 0.0]],
+                                 dtype=dtypes.float32)
+
+    self._testBothMultiOneHot(indices=indices,
+                              depth_list=depth_list,
+                              on_values_list=None,
+                              off_values_list=None,
+                              truth=truth)
+
+    # Case 2: on to given / off to default value
+    truth = constant_op.constant([[0.0, 5.0,  0.0,  0.0, 10.0],
+                                  [5.0, 0.0,  0.0, 10.0,  0.0],
+                                  [0.0, 5.0, 10.0,  0.0,  0.0]],
+                                 dtype=dtypes.float32)
+
+    self._testBothMultiOneHot(indices=indices,
+                              depth_list=depth_list,
+                              on_values_list=on_values_list,
+                              off_values_list=None,
+                              truth=truth)
+
+    # Case 3: on to default / off to given value
+    truth = constant_op.constant([[-5.0,  1.0, -10.0, -10.0,   1.0],
+                                  [ 1.0, -5.0, -10.0,   1.0, -10.0],
+                                  [-5.0,  1.0,   1.0, -10.0, -10.0]],
+                                 dtype=dtypes.float32)
+
+    self._testBothMultiOneHot(indices=indices,
+                              depth_list=depth_list,
+                              on_values_list=None,
+                              off_values_list=off_values_list,
+                              truth=truth)
+
+    # Case 4: on/off to given values
+    truth = constant_op.constant([[-5.0, 5.0, -10.0, -10.0,  10.0],
+                                  [5.0, -5.0, -10.0,  10.0, -10.0],
+                                  [-5.0, 5.0,  10.0, -10.0, -10.0]],
+                                 dtype=dtypes.float32)
+
+    self._testBothMultiOneHot(indices=indices,
+                              depth_list=depth_list,
+                              on_values_list=on_values_list,
+                              off_values_list=off_values_list,
+                              truth=truth)
+
+  def testSingleOneHot(self):
+    indices = constant_op.constant([[1], [0], [1]], dtype=dtypes.int64)
+    on_values_list = [5.0]
+    off_values_list = [-5.0]
+    depth_list = [2]
+
+    truth = constant_op.constant([[-5.0,  5.0],
+                                  [ 5.0, -5.0],
+                                  [-5.0,  5.0]],
+                                 dtype=dtypes.float32)
+
+    self._testBothMultiOneHot(indices=indices,
+                              depth_list=depth_list,
+                              on_values_list=on_values_list,
+                              off_values_list=off_values_list,
+                              truth=truth)
+
 if __name__ == "__main__":
   test.main()
