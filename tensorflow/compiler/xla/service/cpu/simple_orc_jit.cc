@@ -180,19 +180,18 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
           << " features: " << target_machine_->getTargetFeatureString().str();
 }
 
-SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
+SimpleOrcJIT::VModuleKeyT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
-  auto handle = cantFail(compile_layer_.addModule(
-      execution_session_.allocateVModule(), std::move(module)));
-  module_handles_.push_back(handle);
-  return handle;
+  auto key = execution_session_.allocateVModule();
+  cantFail(compile_layer_.addModule(key, std::move(module)));
+  module_keys_.push_back(key);
+  return key;
 }
 
-void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::ModuleHandleT handle) {
-  module_handles_.erase(
-      std::remove(module_handles_.begin(), module_handles_.end(), handle),
-      module_handles_.end());
-  cantFail(compile_layer_.removeModule(handle));
+void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::VModuleKeyT key) {
+  module_keys_.erase(std::remove(module_keys_.begin(), module_keys_.end(), key),
+                     module_keys_.end());
+  cantFail(compile_layer_.removeModule(key));
 }
 
 llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string& name) {
@@ -204,10 +203,10 @@ llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string& name) {
 
   // Resolve symbol from last module to first, allowing later redefinitions of
   // symbols shadow earlier ones.
-  for (auto& handle :
-       llvm::make_range(module_handles_.rbegin(), module_handles_.rend())) {
+  for (auto& key :
+       llvm::make_range(module_keys_.rbegin(), module_keys_.rend())) {
     if (auto symbol =
-            compile_layer_.findSymbolIn(handle, mangled_name,
+            compile_layer_.findSymbolIn(key, mangled_name,
                                         /*ExportedSymbolsOnly=*/true)) {
       return symbol;
     }
