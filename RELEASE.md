@@ -59,6 +59,10 @@ newcomers.
 
   TensorFlow will print a warning if you use XLA:GPU with a known-bad version of
   CUDA; see e00ba24c4038e7644da417ddc639169b6ea59122.
+* The `tensorboard` command or module may appear to be missing after certain
+  upgrade flows. This is due to pip package conflicts as a result of changing
+  the TensorBoard package name.  See the [TensorBoard 1.6.0 release notes](
+  https://github.com/tensorflow/tensorboard/releases/tag/1.6.0) for a fix.
 
 ## Thanks to our Contributors
 
