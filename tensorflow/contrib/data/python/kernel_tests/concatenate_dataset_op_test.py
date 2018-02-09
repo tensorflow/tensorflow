@@ -19,6 +19,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.data.python.kernel_tests import dataset_serialization_test_base
 from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import errors
@@ -128,6 +129,27 @@ class ConcatenateDatasetTest(test.TestCase):
 
     with self.assertRaisesRegexp(TypeError, "have different types"):
       input_dataset.concatenate(dataset_to_concatenate)
+
+
+class ConcatenateDatasetSerializationTest(
+    dataset_serialization_test_base.DatasetSerializationTestBase):
+
+  def _build_concatenate_dataset(self, var_array):
+    input_components = (np.tile(np.array([[1], [2], [3], [4]]), 20),
+                        np.tile(np.array([[12], [13], [14], [15]]), 4))
+    to_concatenate_components = (np.tile(
+        np.array([[5], [6], [7], [8], [9]]), 20), var_array)
+
+    return dataset_ops.Dataset.from_tensor_slices(input_components).concatenate(
+        dataset_ops.Dataset.from_tensor_slices(to_concatenate_components))
+
+  def testConcatenateCore(self):
+    num_outputs = 9
+    array = np.tile(np.array([[16], [17], [18], [19], [20]]), 15)
+    diff_array = np.array([[1], [2], [3], [4], [5]])
+    self.run_core_tests(lambda: self._build_concatenate_dataset(array),
+                        lambda: self._build_concatenate_dataset(diff_array),
+                        num_outputs)
 
 
 if __name__ == "__main__":

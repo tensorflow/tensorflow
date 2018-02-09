@@ -22,6 +22,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 
@@ -68,26 +69,23 @@ def custom_gradient(f):
       return nest.pack_sequence_as(
           structure=result, flat_sequence=all_tensors[:len(flat_result)])
 
-    input_tensors = [x for x in args
-                     if isinstance(x, tf_ops.Tensor)]
+    input_tensors = [tf_ops.convert_to_tensor(x) for x in args]
 
     with tape.stop_recording():
       result, grad_fn = f(*args, **kwargs)
+      flat_result = nest.flatten(result)
+      # TODO(apassos) consider removing the identity below.
+      flat_result = [gen_array_ops.identity(x) for x in flat_result]
 
-    # TODO(apassos): naive uses of custom_gradient will not get the correct
-    # second derivative this way if they capture any output tensors. Change the
-    # signature of custom_gradient.
     def actual_grad_fn(*outputs):
       return nest.flatten(grad_fn(*outputs))
 
-    flat_result = nest.flatten(result)
     tape.record_operation(
         f.__name__,
         flat_result,
         input_tensors,
-        [],
         actual_grad_fn)
     flat_result = list(flat_result)
-    return result
+    return nest.pack_sequence_as(result, flat_result)
 
   return tf_decorator.make_decorator(f, decorated)

@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
@@ -185,6 +186,75 @@ def _GetSvdOpTest(dtype_, shape_, use_static_shape_, compute_uv_,
   return Test
 
 
+class SvdGradOpTest(test.TestCase):
+  pass  # Filled in below
+
+
+def _GetSvdGradOpTest(dtype_, shape_, compute_uv_, full_matrices_):
+
+  def _NormalizingSvd(tf_a):
+    tf_s, tf_u, tf_v = linalg_ops.svd(
+        tf_a, compute_uv=True, full_matrices=full_matrices_)
+    # Singular vectors are only unique up to an arbitrary phase. We normalize
+    # the vectors such that the first component of u (if m >=n) or v (if n > m)
+    # have phase 0.
+    m = tf_a.shape[-2]
+    n = tf_a.shape[-1]
+    if m >= n:
+      top_rows = tf_u[..., 0:1, :]
+    else:
+      top_rows = tf_v[..., 0:1, :]
+    if tf_u.dtype.is_complex:
+      angle = -math_ops.angle(top_rows)
+      phase = math_ops.complex(math_ops.cos(angle), math_ops.sin(angle))
+    else:
+      phase = math_ops.sign(top_rows)
+    tf_u *= phase[..., :m]
+    tf_v *= phase[..., :n]
+    return tf_s, tf_u, tf_v
+
+  def Test(self):
+    np.random.seed(42)
+    a = np.random.uniform(low=-1.0, high=1.0, size=shape_).astype(dtype_)
+    if dtype_ in [np.complex64, np.complex128]:
+      a += 1j * np.random.uniform(
+          low=-1.0, high=1.0, size=shape_).astype(dtype_)
+    # Optimal stepsize for central difference is O(epsilon^{1/3}).
+    # See Equation (21) in:
+    # http://www.karenkopecky.net/Teaching/eco613614/Notes_NumericalDifferentiation.pdf
+    # TODO(rmlarsen): Move step size control to gradient checker.
+    epsilon = np.finfo(dtype_).eps
+    delta = 0.1 * epsilon**(1.0 / 3.0)
+    if dtype_ in [np.float32, np.complex64]:
+      tol = 3e-2
+    else:
+      tol = 1e-6
+    with self.test_session(use_gpu=True):
+      tf_a = constant_op.constant(a)
+      if compute_uv_:
+        tf_s, tf_u, tf_v = _NormalizingSvd(tf_a)
+        outputs = [tf_s, tf_u, tf_v]
+      else:
+        tf_s = linalg_ops.svd(tf_a, compute_uv=False)
+        outputs = [tf_s]
+      for b in outputs:
+        x_init = np.random.uniform(
+            low=-1.0, high=1.0, size=shape_).astype(dtype_)
+        if dtype_ in [np.complex64, np.complex128]:
+          x_init += 1j * np.random.uniform(
+              low=-1.0, high=1.0, size=shape_).astype(dtype_)
+        theoretical, numerical = gradient_checker.compute_gradient(
+            tf_a,
+            tf_a.get_shape().as_list(),
+            b,
+            b.get_shape().as_list(),
+            x_init_value=x_init,
+            delta=delta)
+        self.assertAllClose(theoretical, numerical, atol=tol, rtol=tol)
+
+  return Test
+
+
 if __name__ == "__main__":
   for compute_uv in False, True:
     for full_matrices in False, True:
@@ -200,4 +270,21 @@ if __name__ == "__main__":
                 _AddTest(SvdOpTest, "Svd", name,
                          _GetSvdOpTest(dtype, shape, use_static_shape,
                                        compute_uv, full_matrices))
+  for compute_uv in False, True:
+    for full_matrices in False, True:
+      dtypes = ([np.float32, np.float64]
+                + [np.complex64, np.complex128] * (not compute_uv))
+      for dtype in dtypes:
+        mat_shapes = [(10, 11), (11, 10), (11, 11)]
+        if not full_matrices or not compute_uv:
+          mat_shapes += [(5, 11), (11, 5)]
+        for mat_shape in mat_shapes:
+          for batch_dims in [(), (3,)]:
+            shape = batch_dims + mat_shape
+            name = "%s_%s_compute_uv_%s_full_%s" % (
+                dtype.__name__, "_".join(map(str, shape)), compute_uv,
+                full_matrices)
+            _AddTest(SvdGradOpTest, "SvdGrad", name,
+                     _GetSvdGradOpTest(dtype, shape, compute_uv, full_matrices))
+
   test.main()

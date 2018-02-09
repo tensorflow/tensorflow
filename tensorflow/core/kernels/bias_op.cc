@@ -109,12 +109,12 @@ class BiasOp : public BinaryOp<T> {
     size_t channel_dim;
     if (data_format_ == FORMAT_NCHW) {
       OP_REQUIRES(context, input.dims() == 4,
-          errors::InvalidArgument(
-              "NCHW format supports only 4D input tensor."));
+                  errors::InvalidArgument(
+                      "NCHW format supports only 4D input tensor."));
       channel_dim = 1;
-    }
-    else
+    } else {
       channel_dim = input.shape().dims() - 1;  // End of code by intel_tf.
+    }
 
     OP_REQUIRES(
         context,
@@ -132,15 +132,15 @@ class BiasOp : public BinaryOp<T> {
     // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
     if (data_format_ == FORMAT_NCHW) {
       int32 batch, height, width, channel;
-      GetBiasValueDims(input, data_format_, &batch, &height, &width,
-                       &channel);
+      GetBiasValueDims(input, data_format_, &batch, &height, &width, &channel);
       Eigen::DSizes<int32, 4> four_dims(1, channel, 1, 1);
       Eigen::DSizes<int32, 4> broad_cast_dims(batch, 1, height, width);
       const Device& d = context->eigen_device<Device>();
-      output->tensor<T, 4>().device(d) = input.tensor<T, 4>() +
+      output->tensor<T, 4>().device(d) =
+          input.tensor<T, 4>() +
           bias.tensor<T, 1>().reshape(four_dims).broadcast(broad_cast_dims);
       return;
-    } // End of code by intel_tf.
+    }  // End of code by intel_tf.
 
     switch (input.shape().dims()) {
       case 2:
@@ -244,14 +244,14 @@ class BiasGradOp : public OpKernel {
       // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
       if (data_format_ == FORMAT_NCHW) {
         OP_REQUIRES(context, output_backprop.dims() == 4,
-            errors::InvalidArgument(
-                "NCHW format supports only 4D input/output tensor."));
+                    errors::InvalidArgument(
+                        "NCHW format supports only 4D input/output tensor."));
         Eigen::DSizes<int, 4> four_dims(batch, channel, height, width);
 #ifdef EIGEN_HAS_INDEX_LIST
         using idx0 = Eigen::type2index<0>;
         using idx2 = Eigen::type2index<2>;
         using idx3 = Eigen::type2index<3>;
-        Eigen::IndexList<idx0, idx2, idx3 > reduction_axes;
+        Eigen::IndexList<idx0, idx2, idx3> reduction_axes;
 #else
         Eigen::array<int, 3> reduction_axes = {0, 2, 3};
 #endif

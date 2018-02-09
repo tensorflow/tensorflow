@@ -456,6 +456,26 @@ TEST_F(ShapeTreeTest, IterateOrder) {
                                         {2, 1}}));
 }
 
+TEST_F(ShapeTreeTest, ReverseIterateOrder) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  std::vector<ShapeIndex> v;
+  for (auto it = t.rbegin(); it != t.rend(); ++it) {
+    v.push_back(it->first);
+  }
+  EXPECT_EQ(v, (std::vector<ShapeIndex>{
+                   {2, 1},
+                   {2, 0, 1},
+                   {2, 0, 0},
+                   {2, 0},
+                   {2},
+                   {1, 1},
+                   {1, 0},
+                   {1},
+                   {0},
+                   {},
+               }));
+}
+
 TEST_F(ShapeTreeTest, IterateOrderLeaves) {
   ShapeTree<int> t(nested_tuple_shape_, 42);
   std::vector<ShapeIndex> v;
@@ -464,6 +484,22 @@ TEST_F(ShapeTreeTest, IterateOrderLeaves) {
   }
   EXPECT_EQ(v, (std::vector<ShapeIndex>{
                    {0}, {1, 0}, {1, 1}, {2, 0, 0}, {2, 0, 1}, {2, 1}}));
+}
+
+TEST_F(ShapeTreeTest, ReverseIterateOrderLeaves) {
+  ShapeTree<int> t(nested_tuple_shape_, 42);
+  std::vector<ShapeIndex> v;
+  for (auto it = t.leaf_rbegin(); it != t.leaf_rend(); ++it) {
+    v.push_back(it->first);
+  }
+  EXPECT_EQ(v, (std::vector<ShapeIndex>{
+                   {2, 1},
+                   {2, 0, 1},
+                   {2, 0, 0},
+                   {1, 1},
+                   {1, 0},
+                   {0},
+               }));
 }
 
 }  // namespace

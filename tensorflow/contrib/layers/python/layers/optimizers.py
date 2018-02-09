@@ -41,7 +41,7 @@ OPTIMIZER_CLS_NAMES = {
     "Adagrad": train.AdagradOptimizer,
     "Adam": train.AdamOptimizer,
     "Ftrl": train.FtrlOptimizer,
-    "Momentum": train.MomentumOptimizer,
+    "Momentum": lambda lr: train.MomentumOptimizer(lr, momentum=0.9),
     "RMSProp": train.RMSPropOptimizer,
     "SGD": train.GradientDescentOptimizer,
 }

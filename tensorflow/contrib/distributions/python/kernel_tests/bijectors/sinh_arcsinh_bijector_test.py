@@ -41,7 +41,7 @@ class SinhArcsinhBijectorTest(test.TestCase):
           tailweight=tailweight,
           event_ndims=1,
           validate_args=True)
-      self.assertEqual("sinh_arcsinh", bijector.name)
+      self.assertEqual("SinhArcsinh", bijector.name)
       x = np.array([[[-2.01], [2.], [1e-4]]]).astype(np.float32)
       y = np.sinh((np.arcsinh(x) + skewness) * tailweight)
       self.assertAllClose(y, bijector.forward(x).eval())
@@ -169,6 +169,12 @@ class SinhArcsinhBijectorTest(test.TestCase):
     with self.test_session():
       with self.assertRaisesOpError("not positive"):
         SinhArcsinh(tailweight=0., validate_args=True).forward(1.0).eval()
+
+  def testDefaultDtypeIsFloat32(self):
+    with self.test_session():
+      bijector = SinhArcsinh()
+      self.assertEqual(bijector.tailweight.dtype, np.float32)
+      self.assertEqual(bijector.skewness.dtype, np.float32)
 
 
 if __name__ == "__main__":

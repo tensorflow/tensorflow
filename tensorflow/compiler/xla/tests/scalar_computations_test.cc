@@ -69,6 +69,13 @@ class ScalarComputationsTest : public ClientLibraryTestBase {
   }
 };
 
+XLA_TEST_F(ScalarComputationsTest, ReturnScalarF32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.ConstantR0<float>(2.1f);
+
+  ComputeAndCompareR0<float>(&builder, 2.1f, {}, error_spec_);
+}
+
 XLA_TEST_F(ScalarComputationsTest, NegateScalarF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Neg(builder.ConstantR0<float>(2.1f));
@@ -459,36 +466,96 @@ XLA_TEST_F(ScalarComputationsTest, RemTwoScalarsU32) {
   ComputeAndCompareR0<uint32>(&builder, 2, {});
 }
 
-XLA_TEST_F(ScalarComputationsTest, LogicalAnd) {
+XLA_TEST_F(ScalarComputationsTest, AndBool) {
   for (bool x : {false, true}) {
     for (bool y : {false, true}) {
       ComputationBuilder builder(client_, TestName());
-      builder.LogicalAnd(builder.ConstantR0<bool>(x),
-                         builder.ConstantR0<bool>(y));
+      builder.And(builder.ConstantR0<bool>(x), builder.ConstantR0<bool>(y));
 
       ComputeAndCompareR0<bool>(&builder, x && y, {});
     }
   }
 }
 
-XLA_TEST_F(ScalarComputationsTest, LogicalOr) {
+XLA_TEST_F(ScalarComputationsTest, AndS32) {
+  for (int32 x : {0, 8}) {
+    for (int32 y : {1, -16}) {
+      ComputationBuilder builder(client_, TestName());
+      builder.And(builder.ConstantR0<int32>(x), builder.ConstantR0<int32>(y));
+
+      ComputeAndCompareR0<int32>(&builder, x & y, {});
+    }
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, AndU32) {
+  for (uint32 x : {0, 8}) {
+    for (uint32 y : {1, 16}) {
+      ComputationBuilder builder(client_, TestName());
+      builder.And(builder.ConstantR0<uint32>(x), builder.ConstantR0<uint32>(y));
+
+      ComputeAndCompareR0<uint32>(&builder, x & y, {});
+    }
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, OrBool) {
   for (bool x : {false, true}) {
     for (bool y : {false, true}) {
       ComputationBuilder builder(client_, TestName());
-      builder.LogicalOr(builder.ConstantR0<bool>(x),
-                        builder.ConstantR0<bool>(y));
+      builder.Or(builder.ConstantR0<bool>(x), builder.ConstantR0<bool>(y));
 
       ComputeAndCompareR0<bool>(&builder, x || y, {});
     }
   }
 }
 
-XLA_TEST_F(ScalarComputationsTest, LogicalNot) {
+XLA_TEST_F(ScalarComputationsTest, OrS32) {
+  for (int32 x : {0, 8}) {
+    for (int32 y : {1, -16}) {
+      ComputationBuilder builder(client_, TestName());
+      builder.Or(builder.ConstantR0<int32>(x), builder.ConstantR0<int32>(y));
+
+      ComputeAndCompareR0<int32>(&builder, x | y, {});
+    }
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, OrU32) {
+  for (uint32 x : {0, 8}) {
+    for (uint32 y : {1, 16}) {
+      ComputationBuilder builder(client_, TestName());
+      builder.Or(builder.ConstantR0<uint32>(x), builder.ConstantR0<uint32>(y));
+
+      ComputeAndCompareR0<uint32>(&builder, x | y, {});
+    }
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, NotBool) {
   for (bool x : {false, true}) {
     ComputationBuilder builder(client_, TestName());
-    builder.LogicalNot(builder.ConstantR0<bool>(x));
+    builder.Not(builder.ConstantR0<bool>(x));
 
     ComputeAndCompareR0<bool>(&builder, !x, {});
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, NotS32) {
+  for (int32 x : {-1, 0, 1}) {
+    ComputationBuilder builder(client_, TestName());
+    builder.Not(builder.ConstantR0<int32>(x));
+
+    ComputeAndCompareR0<int32>(&builder, ~x, {});
+  }
+}
+
+XLA_TEST_F(ScalarComputationsTest, NotU32) {
+  for (uint32 x : {0, 1, 2}) {
+    ComputationBuilder builder(client_, TestName());
+    builder.Not(builder.ConstantR0<uint32>(x));
+
+    ComputeAndCompareR0<uint32>(&builder, ~x, {});
   }
 }
 
@@ -670,7 +737,61 @@ XLA_TEST_F(ScalarComputationsTest, PowScalar) {
   ComputeAndCompareR0<float>(&builder, 8.0, {}, error_spec_);
 }
 
-XLA_TEST_F(ScalarComputationsTest, ClampScalarHigh) {
+XLA_TEST_F(ScalarComputationsTest, ClampScalarHighS32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<int32>(-1),  // The lower bound.
+                builder.ConstantR0<int32>(5),   // The operand to be clamped.
+                builder.ConstantR0<int32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<int32>(&builder, 3, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddleS32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<int32>(-1),  // The lower bound.
+                builder.ConstantR0<int32>(2),   // The operand to be clamped.
+                builder.ConstantR0<int32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<int32>(&builder, 2, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarLowS32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<int32>(-1),  // The lower bound.
+                builder.ConstantR0<int32>(-5),  // The operand to be clamped.
+                builder.ConstantR0<int32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<int32>(&builder, -1, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarHighU32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<uint32>(1),   // The lower bound.
+                builder.ConstantR0<uint32>(5),   // The operand to be clamped.
+                builder.ConstantR0<uint32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<uint32>(&builder, 3, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddleU32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<uint32>(1),   // The lower bound.
+                builder.ConstantR0<uint32>(2),   // The operand to be clamped.
+                builder.ConstantR0<uint32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<uint32>(&builder, 2, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarLowU32) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Clamp(builder.ConstantR0<uint32>(1),   // The lower bound.
+                builder.ConstantR0<uint32>(0),   // The operand to be clamped.
+                builder.ConstantR0<uint32>(3));  // The upper bound.
+
+  ComputeAndCompareR0<uint32>(&builder, 1, {});
+}
+
+XLA_TEST_F(ScalarComputationsTest, ClampScalarHighF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Clamp(builder.ConstantR0<float>(2.0f),   // The lower bound.
                 builder.ConstantR0<float>(5.0f),   // The operand to be clamped.
@@ -679,7 +800,7 @@ XLA_TEST_F(ScalarComputationsTest, ClampScalarHigh) {
   ComputeAndCompareR0<float>(&builder, 3.0, {}, error_spec_);
 }
 
-XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddle) {
+XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddleF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Clamp(builder.ConstantR0<float>(2.0f),   // The lower bound.
                 builder.ConstantR0<float>(2.5f),   // The operand to be clamped.
@@ -688,7 +809,7 @@ XLA_TEST_F(ScalarComputationsTest, ClampScalarMiddle) {
   ComputeAndCompareR0<float>(&builder, 2.5, {}, error_spec_);
 }
 
-XLA_TEST_F(ScalarComputationsTest, ClampScalarLow) {
+XLA_TEST_F(ScalarComputationsTest, ClampScalarLowF32) {
   ComputationBuilder builder(client_, TestName());
   builder.Clamp(builder.ConstantR0<float>(2.0f),   // The lower bound.
                 builder.ConstantR0<float>(-5.0f),  // The operand to be clamped.
@@ -783,6 +904,13 @@ XLA_TEST_F(ScalarComputationsTest, SqrtF320) {
   builder.SqrtF32(zero);
 
   ComputeAndCompareR0<float>(&builder, 0.0f, {zero_data.get()}, error_spec_);
+}
+
+XLA_TEST_F(ScalarComputationsTest, RoundScalar) {
+  ComputationBuilder builder(client_, TestName());
+  builder.Round(builder.ConstantR0<float>(1.4f));
+
+  ComputeAndCompareR0<float>(&builder, 1.0f, {}, error_spec_);
 }
 
 }  // namespace

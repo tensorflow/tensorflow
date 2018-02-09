@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.python.framework import constant_op
@@ -158,8 +159,10 @@ class PoolingTest(test.TestCase):
       elif data_format == "NCHW":
         t = test_util.NCHWToNHWC(t)
       if v2:
-        actual = t.eval(feed_dict={ksize_placeholder: ksize,
-                                   strides_placeholder: strides})
+        actual = t.eval(feed_dict={
+            ksize_placeholder: ksize,
+            strides_placeholder: strides
+        })
       else:
         actual = t.eval()
         self.assertShapeEqual(actual, t)
@@ -194,8 +197,15 @@ class PoolingTest(test.TestCase):
       self._VerifyOneType(pool_func, input_sizes, ksize, strides, padding,
                           data_format, dtypes.float16, expected, use_gpu, v2)
 
-  def _VerifyValues(self, pool_func, input_sizes, ksize, strides, padding,
-                    expected, use_gpu, v2=False):
+  def _VerifyValues(self,
+                    pool_func,
+                    input_sizes,
+                    ksize,
+                    strides,
+                    padding,
+                    expected,
+                    use_gpu,
+                    v2=False):
     """Verifies the output values of the pooling function.
 
     Args:
@@ -360,6 +370,16 @@ class PoolingTest(test.TestCase):
         expected=expected_output,
         use_gpu=use_gpu)
 
+  def _testAvgPoolEmptyInput(self, use_gpu):
+    self._VerifyValues(
+        nn_ops.avg_pool,
+        input_sizes=[0, 8, 8, 8],
+        ksize=[1, 3, 3, 1],
+        strides=[1, 2, 2, 1],
+        padding="SAME",
+        expected=[],
+        use_gpu=use_gpu)
+
   def testAvgPooling(self):
     for use_gpu in True, False:
       self._testAvgPoolValidPadding(use_gpu)
@@ -370,6 +390,7 @@ class PoolingTest(test.TestCase):
       self._testAvgPoolSamePadding4(use_gpu)
       self._testAvgPoolSamePaddingPacket4(use_gpu)
       self._testAvgPoolSamePaddingPacket8(use_gpu)
+      self._testAvgPoolEmptyInput(use_gpu)
 
   def _testMaxPoolValidPadding(self, use_gpu):
     expected_output = [13.0, 14.0, 15.0]
@@ -542,6 +563,16 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu,
           v2=v2)
 
+  def _testMaxPoolEmptyInput(self, use_gpu):
+    self._VerifyValues(
+        gen_nn_ops._max_pool_v2,
+        input_sizes=[0, 8, 8, 8],
+        ksize=[1, 3, 3, 1],
+        strides=[1, 2, 2, 1],
+        padding="SAME",
+        expected=[],
+        use_gpu=use_gpu)
+
   def testMaxPooling(self):
     for use_gpu in True, False:
       self._testMaxPoolValidPadding(use_gpu)
@@ -550,6 +581,7 @@ class PoolingTest(test.TestCase):
       self._testMaxPoolValidPaddingUnevenStride(use_gpu)
       self._testMaxPoolSamePaddingPacket4(use_gpu)
       self._testMaxPoolSamePaddingPacket8(use_gpu)
+      self._testMaxPoolEmptyInput(use_gpu)
 
   # Tests for DepthwiseMaxPooling on CPU only.
   def testDepthwiseMaxPool1x1DepthWindow1(self):
@@ -1125,16 +1157,16 @@ class PoolingTest(test.TestCase):
   def _testMaxPoolGradSamePadding3_1(self, data_format, use_gpu):
     for pool_func in [gen_nn_ops._max_pool_v2, nn_ops.max_pool]:
       self._ConstructAndTestGradient(
-        pool_func,
-        input_sizes=[1, 7, 7, 1],
-        output_sizes=[1, 7, 7, 1],
-        window_rows=3,
-        window_cols=3,
-        row_stride=1,
-        col_stride=1,
-        padding="SAME",
-        data_format=data_format,
-        use_gpu=use_gpu)
+          pool_func,
+          input_sizes=[1, 7, 7, 1],
+          output_sizes=[1, 7, 7, 1],
+          window_rows=3,
+          window_cols=3,
+          row_stride=1,
+          col_stride=1,
+          padding="SAME",
+          data_format=data_format,
+          use_gpu=use_gpu)
 
   def testMaxPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
@@ -1179,17 +1211,14 @@ class PoolingTest(test.TestCase):
     pool_func = gen_nn_ops._max_pool_v2 if v2 else nn_ops.max_pool
     with self.test_session(use_gpu=use_gpu):
       input_tensor = constant_op.constant(input_data, shape=input_sizes)
-      output_tensor = pool_func(input_tensor,
-                                [1, window_rows, window_cols, 1],
+      output_tensor = pool_func(input_tensor, [1, window_rows, window_cols, 1],
                                 [1, row_stride, col_stride, 1], padding)
       output_backprop_tensor = constant_op.constant(
           output_backprop, shape=output_sizes)
 
-      input_backprop_tensor = self._MaxPoolGrad(input_tensor, output_tensor,
-                                                output_backprop_tensor,
-                                                window_rows, window_cols,
-                                                row_stride, col_stride,
-                                                padding, v2)
+      input_backprop_tensor = self._MaxPoolGrad(
+          input_tensor, output_tensor, output_backprop_tensor, window_rows,
+          window_cols, row_stride, col_stride, padding, v2)
 
       actual_input_backprop = input_backprop_tensor.eval()
       self.assertShapeEqual(actual_input_backprop, input_backprop_tensor)
@@ -1341,11 +1370,14 @@ class PoolingTest(test.TestCase):
       return
 
     # Test the GPU implementation that uses cudnn for now.
-    # It does not propagate the diff in cases of NaNs
+    saved_nanprop = os.environ.get("TF_ENABLE_MAXPOOL_NANPROP")
+    # Do not propagate the diff in cases of NaNs
+    os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "0"
     expected_input_backprop_cudnn = [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.0
     ]
+
     for v2 in [True, False]:
       self._testMaxPoolGradDirect(
           input_data,
@@ -1361,16 +1393,42 @@ class PoolingTest(test.TestCase):
           use_gpu=True,
           v2=v2)
 
+    # Propagate the diff in cases of NaNs
+    os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "1"
+    expected_input_backprop_cudnn = expected_input_backprop_tf_cpu
+
+    for v2 in [True, False]:
+      self._testMaxPoolGradDirect(
+          input_data,
+          output_backprop,
+          expected_input_backprop_cudnn,
+          input_sizes=[1, 4, 4, 1],
+          output_sizes=[1, 3, 3, 1],
+          window_rows=2,
+          window_cols=2,
+          row_stride=1,
+          col_stride=1,
+          padding="VALID",
+          use_gpu=True,
+          v2=v2)
+
+    if saved_nanprop:
+      os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = saved_nanprop
+    else:
+      del os.environ["TF_ENABLE_MAXPOOL_NANPROP"]
+
   def _testMaxPoolGradDirectWithNans2_2(self):
     input_data = [float("nan")] * 16
     output_backprop = [
-        float("nan"), 12.0, 13.0, 15.0, float("nan"), 17.0, 19.0, 20.0,
+        float("nan"), 12.0, 13.0, 15.0,
+        float("nan"), 17.0, 19.0, 20.0,
         float("nan")
     ]
     # Test the CPU implementation, which propagates diffs in case of NaN
     expected_input_backprop_tf_cpu = [
-        float("nan"), 12.0, 13.0, 0.0, 15.0, float("nan"), 17.0, 0.0, 19.0,
-        20.0, float("nan"), 0.0, 0.0, 0.0, 0.0, 0.0
+        float("nan"), 12.0, 13.0, 0.0, 15.0,
+        float("nan"), 17.0, 0.0, 19.0, 20.0,
+        float("nan"), 0.0, 0.0, 0.0, 0.0, 0.0
     ]
     for v2 in [True, False]:
       self._testMaxPoolGradDirect(
@@ -1391,11 +1449,14 @@ class PoolingTest(test.TestCase):
       return
 
     # Test the GPU implementation that uses cudnn for now.
-    # It does not propagate the diff in cases of NaNs
+    saved_nanprop = os.environ.get("TF_ENABLE_MAXPOOL_NANPROP")
+    # Do not propagate the diff in cases of NaNs
+    os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "0"
     expected_input_backprop_cudnn = [
         0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0,
         0.0, 0.0
     ]
+
     for v2 in [True, False]:
       self._testMaxPoolGradDirect(
           input_data,
@@ -1410,6 +1471,30 @@ class PoolingTest(test.TestCase):
           padding="VALID",
           use_gpu=True,
           v2=v2)
+
+    # Propagate the diff in cases of NaNs
+    os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = "1"
+    expected_input_backprop_cudnn = expected_input_backprop_tf_cpu
+
+    for v2 in [True, False]:
+      self._testMaxPoolGradDirect(
+          input_data,
+          output_backprop,
+          expected_input_backprop_cudnn,
+          input_sizes=[1, 4, 4, 1],
+          output_sizes=[1, 3, 3, 1],
+          window_rows=2,
+          window_cols=2,
+          row_stride=1,
+          col_stride=1,
+          padding="VALID",
+          use_gpu=True,
+          v2=v2)
+
+    if saved_nanprop:
+      os.environ["TF_ENABLE_MAXPOOL_NANPROP"] = saved_nanprop
+    else:
+      del os.environ["TF_ENABLE_MAXPOOL_NANPROP"]
 
   def testMaxPoolGradDirect(self):
     self._testMaxPoolGradDirect1_1()
@@ -1559,10 +1644,9 @@ class PoolingTest(test.TestCase):
     Returns:
       A Tensor.
     """
-    return gen_nn_ops._max_pool_grad_grad(orig_input, orig_output, grad,
-                                          [1, window_rows, window_cols,
-                                           1], [1, row_stride, col_stride,
-                                                1], padding)
+    return gen_nn_ops._max_pool_grad_grad(
+        orig_input, orig_output, grad, [1, window_rows, window_cols, 1],
+        [1, row_stride, col_stride, 1], padding)
 
   def testAvgPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
@@ -1716,42 +1800,40 @@ class PoolingTest(test.TestCase):
     ]:
       with self.assertRaises(ValueError):
         pool_func(
-            array_ops.placeholder(
-                dtypes.float32, shape=[1, 3]),
+            array_ops.placeholder(dtypes.float32, shape=[1, 3]),
             ksize=[1, 1, 1, 1],
             strides=[1, 1, 1, 1],
             padding="SAME")
 
   def testOpEdgeCases(self):
-    with self.test_session() as sess:
+    with self.test_session(use_gpu=test.is_gpu_available()) as sess:
       pool_funcs = [nn_ops.max_pool, nn_ops.avg_pool]
       if test.is_gpu_available():
         pool_funcs.append(nn_ops.max_pool_with_argmax)
       for pool_func in pool_funcs:
-        # Illegal strides.
-        with self.assertRaisesRegexp(
-            errors_impl.UnimplementedError,
-            "Pooling is not yet supported on the batch"):
-          sess.run(
-              pool_func(
-                  array_ops.placeholder(dtypes.float32),
-                  ksize=[1, 1, 1, 1],
-                  strides=[2, 1, 1, 1],
-                  padding="SAME"))
+        if pool_func != nn_ops.max_pool:
+          # Illegal strides.
+          with self.assertRaisesRegexp(
+              errors_impl.UnimplementedError,
+              "Pooling is not yet supported on the batch"):
+            sess.run(
+                pool_func(
+                    array_ops.placeholder(dtypes.float32),
+                    ksize=[1, 1, 1, 1],
+                    strides=[2, 1, 1, 1],
+                    padding="SAME"))
 
         # Filter too large.
         with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
           sess.run(
               pool_func(
-                  array_ops.placeholder(
-                      dtypes.float32, shape=[32, 20, 20, 3]),
+                  array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
                   ksize=[1, 20, 21, 1],
                   strides=[1, 1, 1, 1],
                   padding="VALID"))
         with self.assertRaisesRegexp(ValueError, "Negative dimension size"):
           pool_func(
-              array_ops.placeholder(
-                  dtypes.float32, shape=[32, 20, 20, 3]),
+              array_ops.placeholder(dtypes.float32, shape=[32, 20, 20, 3]),
               ksize=[1, 21, 20, 1],
               strides=[1, 1, 1, 1],
               padding="VALID")

@@ -121,7 +121,9 @@ from tensorflow.python.debug.lib import debug_utils
 from tensorflow.python.debug.lib import stepper
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.platform import tf_logging
 from tensorflow.python.training import monitored_session
+from tensorflow.python.util import nest
 
 
 # Helper function.
@@ -439,7 +441,12 @@ class BaseDebugWrapperSession(session.SessionInterface):
             "callable_runner and fetches/feed_dict are mutually exclusive, but "
             "are used simultaneously.")
 
-    if self._is_disabled_thread():
+    empty_fetches = not nest.flatten(fetches)
+    if empty_fetches:
+      tf_logging.info(
+          "Due to empty fetches, tfdbg Session wrapper is letting a "
+          "Session.run pass through without any debugging actions.")
+    if self._is_disabled_thread() or empty_fetches:
       if callable_runner:
         return callable_runner(*callable_runner_args)
       else:
@@ -550,6 +557,10 @@ class BaseDebugWrapperSession(session.SessionInterface):
     thread_name = threading.current_thread().name or ""
     return (self._thread_name_filter_pattern and
             not self._thread_name_filter_pattern.match(thread_name))
+
+  def run_step_fn(self, step_fn):
+    return step_fn(
+        monitored_session.MonitoredSession.StepContext(self._sess, self.run))
 
   def partial_run_setup(self, fetches, feeds=None):
     """Sets up the feeds and fetches for partial runs in the session."""
@@ -702,7 +713,8 @@ class BaseDebugWrapperSession(session.SessionInterface):
         exec_type, exec_value, exec_tb)
 
   def __del__(self):
-    self._sess.__del__()
+    if hasattr(self._sess, "__del__"):
+      self._sess.__del__()
 
   def close(self):
     self._sess.close()
@@ -792,7 +804,7 @@ class NonInteractiveDebugWrapperSession(BaseDebugWrapperSession):
 
   def __init__(self, sess, watch_fn=None, thread_name_filter=None,
                pass_through_operrors=False):
-    """Constructor of DumpingDebugWrapperSession.
+    """Constructor of NonInteractiveDebugWrapperSession.
 
     Args:
       sess: The TensorFlow `Session` object being wrapped.

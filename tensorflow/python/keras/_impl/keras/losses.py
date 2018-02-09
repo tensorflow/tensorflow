@@ -12,7 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Built-in Keras loss functions.
+# pylint: disable=unused-import
+"""Built-in loss functions.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -22,6 +23,7 @@ import six
 
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
+from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
 
 
 def mean_squared_error(y_true, y_pred):
@@ -33,7 +35,6 @@ def mean_absolute_error(y_true, y_pred):
 
 
 def mean_absolute_percentage_error(y_true, y_pred):
-  # Equivalent to MAE, but sometimes easier to interpret.
   diff = K.abs((y_true - y_pred) / K.clip(K.abs(y_true), K.epsilon(), None))
   return 100. * K.mean(diff, axis=-1)
 
@@ -55,15 +56,29 @@ def hinge(y_true, y_pred):
 def categorical_hinge(y_true, y_pred):
   pos = K.sum(y_true * y_pred, axis=-1)
   neg = K.max((1. - y_true) * y_pred, axis=-1)
-  return K.maximum(neg - pos + 1., 0.)
+  return K.maximum(0., neg - pos + 1.)
 
 
 def logcosh(y_true, y_pred):
+  """Logarithm of the hyperbolic cosine of the prediction error.
 
-  def cosh(x):
-    return (K.exp(x) + K.exp(-x)) / 2
+  `log(cosh(x))` is approximately equal to `(x ** 2) / 2` for small `x` and
+  to `abs(x) - log(2)` for large `x`. This means that 'logcosh' works mostly
+  like the mean squared error, but will not be so strongly affected by the
+  occasional wildly incorrect prediction.
 
-  return K.mean(K.log(cosh(y_pred - y_true)), axis=-1)
+  Arguments:
+      y_true: tensor of true targets.
+      y_pred: tensor of predicted targets.
+
+  Returns:
+      Tensor with one scalar loss entry per sample.
+  """
+
+  def _logcosh(x):
+    return x + K.softplus(-2. * x) - K.log(2.)
+
+  return K.mean(_logcosh(y_pred - y_true), axis=-1)
 
 
 def categorical_crossentropy(y_true, y_pred):
@@ -91,7 +106,7 @@ def poisson(y_true, y_pred):
 def cosine_proximity(y_true, y_pred):
   y_true = K.l2_normalize(y_true, axis=-1)
   y_pred = K.l2_normalize(y_pred, axis=-1)
-  return -K.mean(y_true * y_pred, axis=-1)
+  return -K.sum(y_true * y_pred, axis=-1)
 
 
 # Aliases.
@@ -105,7 +120,7 @@ cosine = cosine_proximity
 
 
 def serialize(loss):
-  return loss.__name__
+  return serialize_keras_object(loss)
 
 
 def deserialize(name, custom_objects=None):
@@ -121,6 +136,8 @@ def get(identifier):
     return None
   if isinstance(identifier, six.string_types):
     identifier = str(identifier)
+    return deserialize(identifier)
+  if isinstance(identifier, dict):
     return deserialize(identifier)
   elif callable(identifier):
     return identifier

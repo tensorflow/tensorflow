@@ -13,14 +13,23 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Utility to retrieve function args.."""
+"""Utility to retrieve function args."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.util import tf_decorator
+import functools
+
 from tensorflow.python.util import tf_inspect
+
+
+def _is_bounded_method(fn):
+  return tf_inspect.ismethod(fn) and (fn.__self__ is not None)
+
+
+def _is_callable_object(obj):
+  return hasattr(obj, '__call__') and tf_inspect.ismethod(obj.__call__)
 
 
 def fn_args(fn):
@@ -35,23 +44,13 @@ def fn_args(fn):
   Raises:
     ValueError: if partial function has positionally bound arguments
   """
-  _, fn = tf_decorator.unwrap(fn)
-
-  # Handle callables.
-  if hasattr(fn, '__call__') and tf_inspect.ismethod(fn.__call__):
-    return tuple(tf_inspect.getargspec(fn.__call__).args)
-
-  # Handle functools.partial and similar objects.
-  if hasattr(fn, 'func') and hasattr(fn, 'keywords') and hasattr(fn, 'args'):
-    # Handle nested partial.
-    original_args = fn_args(fn.func)
-    if not original_args:
-      return tuple()
-
-    return tuple([
-        arg for arg in original_args[len(fn.args):]
-        if arg not in set((fn.keywords or {}).keys())
-    ])
-
-  # Handle function.
-  return tuple(tf_inspect.getargspec(fn).args)
+  if isinstance(fn, functools.partial):
+    args = fn_args(fn.func)
+    args = [a for a in args[len(fn.args):] if a not in (fn.keywords or [])]
+  else:
+    if _is_callable_object(fn):
+      fn = fn.__call__
+    args = tf_inspect.getfullargspec(fn).args
+    if _is_bounded_method(fn):
+      args.remove('self')
+  return tuple(args)

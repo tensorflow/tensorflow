@@ -148,11 +148,8 @@ class SelfAdjointEigV2OpGpu : public AsyncOpKernel {
     if (compute_v_) {
       // Transpose eigenvectors now stored in input_copy in column-major form to
       // output in row-major form.
-      std::vector<int> perm(ndims);
-      std::iota(perm.begin(), perm.end(), 0);
-      std::swap(perm[ndims - 2], perm[ndims - 1]);
       OP_REQUIRES_OK_ASYNC(
-          context, DoTranspose(device, input_copy, perm, eigenvectors), done);
+          context, DoMatrixTranspose(device, input_copy, eigenvectors), done);
     }
 
     // Asynchronously check return status from cuSolver kernels.

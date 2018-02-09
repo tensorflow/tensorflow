@@ -1,0 +1,9 @@
+op {
+  graph_op_name: "SigmoidGrad"
+  visibility: HIDDEN
+  summary: "Computes the gradient of the sigmoid of `x` wrt its input."
+  description: <<END
+Specifically, `grad = dy * y * (1 - y)`, where `y = sigmoid(x)`, and
+`dy` is the corresponding input gradient.
+END
+}

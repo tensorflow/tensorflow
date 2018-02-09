@@ -21,7 +21,12 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:graph_util",
+        "//tensorflow/python:session",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
         "//tensorflow/python/saved_model:constants",
         "//tensorflow/tools/graph_transforms:transform_graph_py",
     ],

@@ -7,7 +7,6 @@ package_group(
     packages = [
         "//tensorflow/compiler/...",
         "//tensorflow/contrib/tpu/...",
-        "//tensorflow/contrib/xla_tf_graph/...",
     ],
 )
 
@@ -21,6 +20,10 @@ package_group(
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library_py",
+)
 
 # Filegroup used to collect source files for dependency checking.
 filegroup(
@@ -33,6 +36,12 @@ filegroup(
 
 xla_proto_library(
     name = "xla_data_proto",
+    srcs = ["xla_data.proto"],
+    visibility = ["//visibility:public"],
+)
+
+tf_proto_library_py(
+    name = "xla_data_proto",  # bzl adds a _py suffix
     srcs = ["xla_data.proto"],
     visibility = ["//visibility:public"],
 )
@@ -78,7 +87,7 @@ cc_library(
     hdrs = ["types.h"],
     visibility = [":friends"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
     ],
 )
@@ -171,9 +180,12 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":status",
+        ":status_macros",
+        ":statusor",
         ":types",
         ":xla_data_proto",
         "//tensorflow/core:lib",
+        "//tensorflow/core:ptr_util",
     ],
 )
 
@@ -248,6 +260,7 @@ tf_cc_test(
     srcs = ["shape_util_test.cc"],
     deps = [
         ":shape_util",
+        ":status_macros",
         ":test",
         ":test_helpers",
         ":types",
@@ -288,7 +301,9 @@ cc_library(
         ":array2d",
         ":array3d",
         ":array4d",
+        ":shape_tree",
         ":shape_util",
+        ":sparse_index_array",
         ":status_macros",
         ":types",
         ":util",
@@ -336,11 +351,32 @@ cc_library(
 )
 
 cc_library(
+    name = "array",
+    hdrs = ["array.h"],
+    deps = [
+        ":status",
+        ":types",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "array_test",
+    srcs = ["array_test.cc"],
+    deps = [
+        ":array",
+        ":test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "array2d",
     srcs = ["array2d.cc"],
     hdrs = ["array2d.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":array",
         ":types",
         ":util",
         "//tensorflow/core:lib",
@@ -362,6 +398,7 @@ cc_library(
     hdrs = ["array3d.h"],
     visibility = [":friends"],
     deps = [
+        ":array",
         ":types",
         "//tensorflow/core:lib",
     ],
@@ -383,6 +420,7 @@ cc_library(
     hdrs = ["array4d.h"],
     visibility = [":friends"],
     deps = [
+        ":array",
         ":array2d",
         ":types",
         "//tensorflow/core:lib",
@@ -588,6 +626,28 @@ tf_cc_test(
         ":xla_data_proto",
         "//tensorflow/compiler/xla/client:padding",
         "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
+    name = "sparse_index_array",
+    srcs = ["sparse_index_array.cc"],
+    hdrs = ["sparse_index_array.h"],
+    deps = [
+        ":array2d",
+        ":shape_util",
+        ":xla_data_proto",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "sparse_index_array_test",
+    srcs = ["sparse_index_array_test.cc"],
+    deps = [
+        ":sparse_index_array",
+        ":test",
         "//tensorflow/core:test_main",
     ],
 )

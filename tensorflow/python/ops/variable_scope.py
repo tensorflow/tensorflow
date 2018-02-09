@@ -23,9 +23,11 @@ import collections as collections_lib
 import copy
 import enum  # pylint: disable=g-bad-import-order
 import functools
+import sys
 import traceback
 
 import six
+from six import iteritems
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
@@ -39,6 +41,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_contextlib
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["AUTO_REUSE", "VariableScope", "get_variable_scope",
            "get_variable", "get_local_variable", "variable_scope",
@@ -185,6 +188,7 @@ class _ReuseMode(enum.Enum):
   # REUSE_TRUE = 3
 
 AUTO_REUSE = _ReuseMode.AUTO_REUSE
+tf_export("AUTO_REUSE").export_constant(__name__, "AUTO_REUSE")
 AUTO_REUSE.__doc__ = """
 When passed in as the value for the `reuse` flag, AUTO_REUSE indicates that
 get_variable() should create the requested variable if it doesn't exist or, if
@@ -208,6 +212,7 @@ class _VariableStore(object):
     self._vars = {}  # A dictionary of the stored TensorFlow variables.
     self._partitioned_vars = {}  # A dict of the stored PartitionedVariables.
     self.variable_scopes_count = {}  # Count re-used variable scopes.
+    self._store_eager_variables = False
 
   def open_variable_scope(self, scope_name):
     if scope_name in self.variable_scopes_count:
@@ -259,8 +264,8 @@ class _VariableStore(object):
         applying it on a newly created variable will be added to the collection
         GraphKeys.REGULARIZATION_LOSSES and can be used for regularization.
       reuse: a Boolean, None, or tf.AUTO_REUSE. Controls reuse or creation
-        of variables. In Eager mode, this argument is always forced to be
-        tf.AUTO_REUSE.
+        of variables. When eager execution is enabled  this argument is always
+        forced to be False.
       trainable: If `True` also add the variable to the graph collection
         `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
       collections: List of graph collections keys to add the `Variable` to.
@@ -279,7 +284,8 @@ class _VariableStore(object):
       use_resource: If False, creates a regular Variable. If True, creates
         instead an experimental ResourceVariable which has well-defined
         semantics. Defaults to False (will later change to True).
-        In Eager mode, this argument is always forced to be true.
+        When eager execution is enabled this argument is always forced to be
+        true.
       custom_getter: Callable that takes as a first argument the true getter,
         and allows overwriting the internal get_variable method.
         The signature of `custom_getter` should match that of this method,
@@ -308,13 +314,21 @@ class _VariableStore(object):
       ValueError: when creating a new variable and shape is not declared,
         when reusing a variable and specifying a conflicting shape,
         or when violating reuse during variable creation.
+      RuntimeError: when eager execution is enabled and not called from an
+        EagerVariableStore.
     """
     if custom_getter is not None and not callable(custom_getter):
       raise ValueError(
           "Passed a custom_getter which is not callable: %s" % custom_getter)
 
     if context.in_eager_mode():
-      reuse = AUTO_REUSE
+      if not self._store_eager_variables and reuse:
+        raise RuntimeError(
+            "When eager execution is enabled variable reuse is only supported"
+            " when an EagerVariableStore is active. See the documentation on"
+            " EagerVariableStore for example usage.")
+      if self._store_eager_variables:
+        reuse = AUTO_REUSE
       use_resource = True
 
     # If a *_ref type is passed in an error would be triggered further down the
@@ -506,7 +520,7 @@ class _VariableStore(object):
     """
     if context.in_eager_mode():
       raise NotImplementedError("Partitioned variables are not yet supported "
-                                "in Eager mode.")
+                                "when eager execution is enabled.")
 
     initializing_from_value = initializer is not None and isinstance(
         initializer, ops.Tensor)
@@ -580,7 +594,7 @@ class _VariableStore(object):
     if reuse is True:
       raise ValueError("PartitionedVariable %s does not exist, or was not "
                        "created with tf.get_variable(). Did you mean to set "
-                       "reuse=None in VarScope?" % name)
+                       "reuse=False or reuse=tf.AUTO_REUSE in VarScope?" % name)
 
     slice_dim, slice_shape = _compute_slice_dim_and_shape(
         shape.as_list(), partitions)
@@ -710,15 +724,6 @@ class _VariableStore(object):
     Raises:
       ValueError: See documentation of get_variable above.
     """
-    # Fast-path for get_variable in eager mode when the variable already
-    # exists. Note this skips error validation code, so mismatched shapes and
-    # dtypes will be caught when the variable is used instead of when the call
-    # to get_variable happens.
-    if context.in_eager_mode():
-      v = self._vars.get(name, None)
-      if v is not None:
-        return v
-
     # Set to true if initializer is a constant.
     initializing_from_value = False
     if initializer is not None and not callable(initializer):
@@ -766,8 +771,8 @@ class _VariableStore(object):
     if initializer is None:
       initializer, initializing_from_value = self._get_default_initializer(
           name=name, shape=shape, dtype=dtype)
-    # Clear control dependencies while creating the initializer.
-    with ops.control_dependencies(None):
+    # Enter an init scope when creating the initializer.
+    with ops.init_scope():
       if initializing_from_value:
         init_val = initializer
         variable_dtype = None
@@ -783,27 +788,20 @@ class _VariableStore(object):
     if use_resource is None:
       # Set the default value if unspecified.
       use_resource = False
-    if use_resource:
-      v = resource_variable_ops.ResourceVariable(
-          initial_value=init_val,
-          name=name,
-          trainable=trainable,
-          collections=collections,
-          caching_device=caching_device,
-          dtype=variable_dtype,
-          validate_shape=validate_shape,
-          constraint=constraint)
-    else:
-      v = variables.Variable(
-          initial_value=init_val,
-          name=name,
-          trainable=trainable,
-          collections=collections,
-          caching_device=caching_device,
-          dtype=variable_dtype,
-          validate_shape=validate_shape,
-          constraint=constraint)
-    self._vars[name] = v
+    v = variable(
+        initial_value=init_val,
+        name=name,
+        trainable=trainable,
+        collections=collections,
+        caching_device=caching_device,
+        dtype=variable_dtype,
+        validate_shape=validate_shape,
+        constraint=constraint,
+        use_resource=use_resource)
+    if context.in_graph_mode() or self._store_eager_variables:
+      # In eager mode we do not want to keep default references to Variable
+      # objects as this will prevent their memory from being released.
+      self._vars[name] = v
     logging.vlog(1, "Created variable %s with shape %s and init %s", v.name,
                  format(shape), initializer)
 
@@ -839,6 +837,7 @@ class _VariableStore(object):
     Raises:
       ValueError: When giving unsupported dtype.
     """
+    del shape
     # If dtype is DT_FLOAT, provide a uniform unit scaling initializer
     if dtype.is_floating:
       initializer = init_ops.glorot_uniform_initializer()
@@ -846,9 +845,8 @@ class _VariableStore(object):
     # If dtype is DT_INT/DT_UINT, provide a default value `zero`
     # If dtype is DT_BOOL, provide a default value `FALSE`
     elif dtype.is_integer or dtype.is_unsigned or dtype.is_bool:
-      initializer = init_ops.zeros_initializer()(
-          shape=shape, dtype=dtype.base_dtype)
-      initializing_from_value = True
+      initializer = init_ops.zeros_initializer()
+      initializing_from_value = False
     # NOTES:Do we need to support for handling DT_STRING and DT_COMPLEX here?
     else:
       raise ValueError("An initializer for variable %s of %s is required"
@@ -858,12 +856,14 @@ class _VariableStore(object):
 
 
 # To stop regularization, use this regularizer
+@tf_export("no_regularizer")
 def no_regularizer(_):
   """Use this function to prevent regularization of variables."""
   return None
 
 
 # TODO(alive): support caching devices and partitioned variables in Eager mode.
+@tf_export("VariableScope")
 class VariableScope(object):
   """Variable scope object to carry defaults to provide to `get_variable`.
 
@@ -875,8 +875,8 @@ class VariableScope(object):
     initializer: default initializer passed to get_variable.
     regularizer: default regularizer passed to get_variable.
     reuse: Boolean, None, or tf.AUTO_REUSE, setting the reuse in
-      get_variable. In Eager mode, this argument is always forced to be
-      tf.AUTO_REUSE.
+      get_variable. When eager execution is enabled this argument is always
+      forced to be False.
     caching_device: string, callable, or None: the caching device passed to
       get_variable.
     partitioner: callable or `None`: the partitioner passed to `get_variable`.
@@ -885,8 +885,8 @@ class VariableScope(object):
     dtype: default type passed to get_variable (defaults to DT_FLOAT).
     use_resource: if False, create a normal Variable; if True create an
       experimental ResourceVariable with well-defined semantics. Defaults
-      to False (will later change to True). In Eager mode, this argument is
-      always forced to be True.
+      to False (will later change to True). When eager execution is enabled
+      this argument is always forced to be True.
     constraint: An optional projection function to be applied to the variable
       after being updated by an `Optimizer` (e.g. used to implement norm
       constraints or value constraints for layer weights). The function must
@@ -923,10 +923,10 @@ class VariableScope(object):
     if context.in_eager_mode():
       if self._caching_device is not None:
         raise NotImplementedError("Caching devices is not yet supported "
-                                  "in Eager mode.")
+                                  "when eager execution is enabled.")
       if self._partitioner is not None:
         raise NotImplementedError("Partitioned variables are not yet supported "
-                                  "in Eager mode.")
+                                  "when eager execution is enabled.")
       self._reuse = AUTO_REUSE
       self._use_resource = True
 
@@ -989,7 +989,8 @@ class VariableScope(object):
   def set_use_resource(self, use_resource):
     """Sets whether to use ResourceVariables for this scope."""
     if context.in_eager_mode() and not use_resource:
-      raise ValueError("In eager mode, use_resource cannot be set to false.")
+      raise ValueError("When eager execution is enabled, "
+                       "use_resource cannot be set to false.")
     self._use_resource = use_resource
 
   def set_regularizer(self, regularizer):
@@ -999,15 +1000,15 @@ class VariableScope(object):
   def set_caching_device(self, caching_device):
     """Set caching_device for this scope."""
     if context.in_eager_mode():
-      raise NotImplementedError("Partitioned variables are not yet supported "
-                                "in Eager mode.")
+      raise NotImplementedError("Caching devices are not yet supported "
+                                "when eager execution is enabled.")
     self._caching_device = caching_device
 
   def set_partitioner(self, partitioner):
     """Set partitioner for this scope."""
     if partitioner and context.in_eager_mode():
       raise NotImplementedError("Partitioned variables are not yet supported "
-                                "in Eager mode.")
+                                "when eager execution is enabled.")
     self._partitioner = partitioner
 
   def set_custom_getter(self, custom_getter):
@@ -1062,7 +1063,7 @@ class VariableScope(object):
       if use_resource is None:
         use_resource = self._use_resource
     else:
-      reuse = AUTO_REUSE
+      reuse = False
       use_resource = True
 
     full_name = self.name + "/" + name if self.name else name
@@ -1108,7 +1109,7 @@ class VariableScope(object):
     """Gets an existing variable with this name or create a new one."""
     if context.in_eager_mode():
       raise NotImplementedError("Partitioned variables are not yet supported "
-                                "in Eager mode.")
+                                "when eager execution is enabled.")
     if initializer is None:
       initializer = self._initializer
     if regularizer is None:
@@ -1162,6 +1163,7 @@ _VARSTORE_KEY = ("__variable_store",)
 _VARSCOPE_KEY = ("__varscope",)
 
 
+@tf_export("get_variable_scope")
 def get_variable_scope():
   """Returns the current variable scope."""
   scope = ops.get_collection(_VARSCOPE_KEY)
@@ -1181,6 +1183,98 @@ def _get_default_variable_store():
   return store
 
 
+@tf_contextlib.contextmanager
+def with_variable_store(store):
+  store_collection = ops.get_collection_ref(_VARSTORE_KEY)
+  old = list(store_collection)
+  store_collection[:] = [store]
+  try:
+    yield
+  finally:
+    store_collection[:] = old
+
+
+class EagerVariableStore(object):
+  """Wrapper allowing functional layers to be used with eager execution.
+
+  When eager execution is enabled Variables get deleted when they go out of
+  scope, and are not stored in global collections by default. A lot of code
+  (mostly the functional layers in tf.layers) assumes that variables are kept in
+  a global list.
+
+  EagerVariableStore can be used in conjunction with this code to make it
+  eager-friendly. For example, to create a dense layer, use:
+
+  ```
+    container = tfe.EagerVariableStore()
+    for input in dataset_iterator:
+      with container.as_default():
+        x = tf.layers.dense(input, name="l1")
+    print(container.variables)  # Should print the variables used in the layer.
+  ```
+  """
+
+  def __init__(self, store=None):
+    if store is not None:
+      if not store._store_eager_variables:  # pylint: disable=protected-access
+        raise ValueError("Cannot construct EagerVariableStore from a "
+                         "VariableStore object that does not hold eager "
+                         "variables.")
+      self._store = store
+    else:
+      self._store = _VariableStore()
+    self._store._store_eager_variables = True  # pylint: disable=protected-access
+
+  def as_default(self):
+    return with_variable_store(self._store)
+
+  def variables(self):
+    return sorted(self._store._vars.values(), key=lambda x: x.name)  # pylint: disable=protected-access
+
+  def trainable_variables(self):
+    # pylint: disable=protected-access
+    return sorted([x for x in self._store._vars.values() if x._trainable],
+                  key=lambda x: x.name)
+    # pylint: enable=protected-access
+
+  def non_trainable_variables(self):
+    # pylint: disable=protected-access
+    return sorted([x for x in self._store._vars.values() if not x._trainable],
+                  key=lambda x: x.name)
+    # pylint: enable=protected-access
+
+  def copy(self):
+    """Copy this variable store and all of its contents.
+
+    Variables contained in this store will be copied over to the new variable
+    store, meaning that they can be modified without affecting the variables in
+    this store.
+
+    Returns:
+      A new EagerVariableStore instance containing copied variables.
+    """
+    # pylint: disable=protected-access
+    new_store = EagerVariableStore()
+    for key, var in iteritems(self._store._vars):
+      # Strip device out of variable name.
+      try:
+        index = var.name.index(":")
+      except ValueError:
+        stripped_var_name = var.name
+      else:
+        stripped_var_name = var.name[:index]
+
+      # Create new variable with same value, name, and "trainable" flag.
+      new_var = resource_variable_ops.ResourceVariable(
+          var.read_value(),
+          name=stripped_var_name,
+          trainable=var._trainable)
+      new_store._store._vars[key] = new_var
+    return new_store
+    # pylint: enable=protected-access
+
+
+@tf_export("get_variable")
 def get_variable(name,
                  shape=None,
                  dtype=None,
@@ -1259,8 +1353,8 @@ Args:
       must be known.
   use_resource: If False, creates a regular Variable. If true, creates an
     experimental ResourceVariable instead with well-defined semantics.
-    Defaults to False (will later change to True). In Eager mode, this argument
-    is always forced to be True.
+    Defaults to False (will later change to True). When eager execution is
+    enabled this argument is always forced to be True.
   custom_getter: Callable that takes as a first argument the true getter, and
     allows overwriting the internal get_variable method.
     The signature of `custom_getter` should match that of this method,
@@ -1292,6 +1386,7 @@ get_variable.__doc__ = get_variable_or_local_docstring % (
 
 
 @functools.wraps(get_variable)
+@tf_export("get_local_variable")
 def get_local_variable(*args, **kwargs):
   kwargs["trainable"] = False
   if "collections" in kwargs:
@@ -1460,37 +1555,18 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
     self._dtype = dtype
     self._use_resource = use_resource
     self._constraint = constraint
-
-  def __enter__(self):
-    """Begins the scope block.
-
-    Returns:
-      A VariableScope.
-    Raises:
-      ValueError: when trying to reuse within a create scope, or create within
-        a reuse scope, or if reuse is not `None` or `True`.
-      TypeError: when the types of some arguments are not appropriate.
-    """
     get_variable_scope()  # Ensure that a default exists, then get a pointer.
     # Get the reference to the collection as we want to modify it in place.
     self._default_varscope = ops.get_collection_ref(_VARSCOPE_KEY)
-    self._old = self._default_varscope[0]
     self._var_store = _get_default_variable_store()
     if isinstance(self._name_or_scope, VariableScope):
       self._new_name = self._name_or_scope.name
-    else:
-      self._new_name = (
-          self._old.name + "/" + self._name_or_scope if self._old.name
-          else self._name_or_scope)
-    self._var_store.open_variable_scope(self._new_name)
-    if isinstance(self._name_or_scope, VariableScope):
-      self._old_subscopes = copy.copy(self._var_store.variable_scopes_count)
       name_scope = self._name_or_scope._name_scope  # pylint: disable=protected-access
       # Handler for the case when we jump to a shared scope.  We create a new
-      #   VariableScope (self._default_varscope[0]) that contains a copy of the
+      #   VariableScope (self._var_scope_object) that contains a copy of the
       #   provided shared scope, possibly with changed reuse and initializer, if
       #   the user requested this.
-      self._default_varscope[0] = VariableScope(
+      variable_scope_object = VariableScope(
           self._name_or_scope.reuse if not self._reuse else self._reuse,
           name=self._new_name,
           initializer=self._name_or_scope.initializer,
@@ -1503,29 +1579,52 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
           use_resource=self._name_or_scope.use_resource,
           constraint=self._constraint)
       if self._initializer is not None:
-        self._default_varscope[0].set_initializer(self._initializer)
+        variable_scope_object.set_initializer(self._initializer)
       if self._regularizer is not None:
-        self._default_varscope[0].set_regularizer(self._regularizer)
+        variable_scope_object.set_regularizer(self._regularizer)
       if self._caching_device is not None:
-        self._default_varscope[0].set_caching_device(self._caching_device)
+        variable_scope_object.set_caching_device(self._caching_device)
       if self._partitioner is not None:
-        self._default_varscope[0].set_partitioner(self._partitioner)
+        variable_scope_object.set_partitioner(self._partitioner)
       if self._custom_getter is not None:
-        self._default_varscope[0].set_custom_getter(
+        variable_scope_object.set_custom_getter(
             _maybe_wrap_custom_getter(
                 self._custom_getter, self._name_or_scope.custom_getter))
       if self._dtype is not None:
-        self._default_varscope[0].set_dtype(self._dtype)
+        variable_scope_object.set_dtype(self._dtype)
       if self._use_resource is not None:
-        self._default_varscope[0].set_use_resource(self._use_resource)
-      return self._default_varscope[0]
+        variable_scope_object.set_use_resource(self._use_resource)
+      self._cached_variable_scope_object = variable_scope_object
+
+  def __enter__(self):
+    """Begins the scope block.
+
+    Returns:
+      A VariableScope.
+    Raises:
+      ValueError: when trying to reuse within a create scope, or create within
+        a reuse scope, or if reuse is not `None` or `True`.
+      TypeError: when the types of some arguments are not appropriate.
+    """
+    self._old = self._default_varscope[0]
+    if isinstance(self._name_or_scope, VariableScope):
+      self._var_store.open_variable_scope(self._new_name)
+      self._old_subscopes = copy.copy(self._var_store.variable_scopes_count)
+      variable_scope_object = self._cached_variable_scope_object
     else:
       # Handler for the case when we just prolong current variable scope.
       #   VariableScope with name extended by the provided one, and inherited
       #   reuse and initializer (except if the user provided values to set).
+      self._new_name = (
+          self._old.name + "/" + self._name_or_scope if self._old.name
+          else self._name_or_scope)
       self._reuse = (self._reuse
                      or self._old.reuse)  # Re-using is inherited by sub-scopes.
-      self._default_varscope[0] = VariableScope(
+      if self._old_name_scope is None:
+        name_scope = self._name_or_scope
+      else:
+        name_scope = self._old_name_scope
+      variable_scope_object = VariableScope(
           self._reuse,
           name=self._new_name,
           initializer=self._old.initializer,
@@ -1535,25 +1634,27 @@ class _pure_variable_scope(object):  # pylint: disable=invalid-name
           dtype=self._old.dtype,
           use_resource=self._old.use_resource,
           custom_getter=self._old.custom_getter,
-          name_scope=self._old_name_scope or self._name_or_scope,
+          name_scope=name_scope,
           constraint=self._constraint)
       if self._initializer is not None:
-        self._default_varscope[0].set_initializer(self._initializer)
+        variable_scope_object.set_initializer(self._initializer)
       if self._regularizer is not None:
-        self._default_varscope[0].set_regularizer(self._regularizer)
+        variable_scope_object.set_regularizer(self._regularizer)
       if self._caching_device is not None:
-        self._default_varscope[0].set_caching_device(self._caching_device)
+        variable_scope_object.set_caching_device(self._caching_device)
       if self._partitioner is not None:
-        self._default_varscope[0].set_partitioner(self._partitioner)
+        variable_scope_object.set_partitioner(self._partitioner)
       if self._custom_getter is not None:
-        self._default_varscope[0].set_custom_getter(
+        variable_scope_object.set_custom_getter(
             _maybe_wrap_custom_getter(self._custom_getter,
                                       self._old.custom_getter))
       if self._dtype is not None:
-        self._default_varscope[0].set_dtype(self._dtype)
+        variable_scope_object.set_dtype(self._dtype)
       if self._use_resource is not None:
-        self._default_varscope[0].set_use_resource(self._use_resource)
-      return self._default_varscope[0]
+        variable_scope_object.set_use_resource(self._use_resource)
+      self._var_store.open_variable_scope(self._new_name)
+    self._default_varscope[0] = variable_scope_object
+    return variable_scope_object
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
     # If jumping out from a non-prolonged scope, restore counts.
@@ -1600,7 +1701,8 @@ def _get_unique_variable_scope(prefix):
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
-class variable_scope(object):  # pylint: disable=invalid-name
+@tf_export("variable_scope")  # pylint: disable=invalid-name
+class variable_scope(object):
   """A context manager for defining ops that creates variables (layers).
 
   This context manager validates that the (optional) `values` are from the same
@@ -1636,7 +1738,7 @@ class variable_scope(object):  # pylint: disable=invalid-name
   v1 = foo()  # Creates v.
   v2 = foo()  # Gets the same, existing v.
   assert v1 == v2
-
+  ```
 
   Basic example of sharing a variable with reuse=True:
 
@@ -1702,7 +1804,8 @@ class variable_scope(object):  # pylint: disable=invalid-name
                reuse=None,
                dtype=None,
                use_resource=None,
-               constraint=None):
+               constraint=None,
+               auxiliary_name_scope=True):
     """Initialize the context manager.
 
     Args:
@@ -1719,14 +1822,14 @@ class variable_scope(object):  # pylint: disable=invalid-name
       reuse: `True`, None, or tf.AUTO_REUSE; if `True`, we go into reuse mode
         for this scope as well as all sub-scopes; if tf.AUTO_REUSE, we create
         variables if they do not exist, and return them otherwise; if None, we
-        inherit the parent scope's reuse flag. In Eager mode, this argument is
-        always forced to be tf.AUTO_REUSE.
+        inherit the parent scope's reuse flag. When eager execution is enabled,
+        this argument is always forced to be tf.AUTO_REUSE.
       dtype: type of variables created in this scope (defaults to the type
         in the passed scope, or inherited from parent scope).
       use_resource: If False, all variables will be regular Variables. If True,
         experimental ResourceVariables with well-defined semantics will be used
-        instead. Defaults to False (will later change to True). In Eager mode,
-        this argument is always forced to be True.
+        instead. Defaults to False (will later change to True). When eager
+        execution is enabled this argument is always forced to be True.
       constraint: An optional projection function to be applied to the variable
         after being updated by an `Optimizer` (e.g. used to implement norm
         constraints or value constraints for layer weights). The function must
@@ -1734,6 +1837,8 @@ class variable_scope(object):  # pylint: disable=invalid-name
         variable and return the Tensor for the projected value
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
+      auxiliary_name_scope: If `True`, we create an auxiliary name scope with
+        the scope. If `False`, we don't touch name scope.
 
     Returns:
       A scope that can be captured and reused.
@@ -1769,11 +1874,64 @@ class variable_scope(object):  # pylint: disable=invalid-name
     self._in_graph_mode = not context.in_eager_mode()
     if self._in_graph_mode:
       self._graph = ops._get_graph_from_inputs(self._values)  # pylint: disable=protected-access
+    self._cached_pure_variable_scope = None
+    self._current_name_scope = None
+    if not isinstance(auxiliary_name_scope, bool):
+      raise TypeError("The auxiliary_name_scope must be `True` or `False`, "
+                      "while get {}".format(auxiliary_name_scope))
+    self._auxiliary_name_scope = auxiliary_name_scope
 
   def __enter__(self):
-    if self._in_graph_mode:
+    # If the default graph is building a function, then we should not replace it
+    # with the cached graph.
+    if ops.get_default_graph().building_function:
+      self._building_function = True
+    else:
+      self._building_function = False
+    if self._in_graph_mode and not self._building_function:
       self._graph_context_manager = self._graph.as_default()
       self._graph_context_manager.__enter__()
+    if self._cached_pure_variable_scope is not None:
+      # Fast path for re-entering variable_scopes. We've held on to the pure
+      # variable scope from a previous successful __enter__, so we avoid some
+      # overhead by re-using that object.
+      if self._current_name_scope is not None:
+        self._current_name_scope.__enter__()
+      return self._cached_pure_variable_scope.__enter__()
+
+    try:
+      return self._enter_scope_uncached()
+    except:
+      if self._graph_context_manager is not None:
+        self._graph_context_manager.__exit__(*sys.exc_info())
+      raise
+
+  def _enter_scope_uncached(self):
+    """Enters the context manager when there is no cached scope yet.
+
+    Returns:
+      The entered variable scope.
+
+    Raises:
+      TypeError: A wrong type is passed as `scope` at __init__().
+      ValueError: `reuse` is incorrectly set at __init__().
+    """
+    if self._auxiliary_name_scope:
+      # Create a new name scope later
+      current_name_scope = None
+    else:
+      # Reenter the current name scope
+      name_scope = ops.get_name_scope()
+      if name_scope:
+        # Hack to reenter
+        name_scope += "/"
+        current_name_scope = ops.name_scope(name_scope)
+      else:
+        # Root scope
+        current_name_scope = ops.name_scope(name_scope)
+
+    # IMPORTANT: Only assign to self._cached_pure_variable_scope and
+    # self._current_name_scope after successful __enter__() calls.
     if self._name_or_scope is not None:
       if not isinstance(self._name_or_scope,
                         (VariableScope,) + six.string_types):
@@ -1783,14 +1941,19 @@ class variable_scope(object):  # pylint: disable=invalid-name
         name_scope = self._name_or_scope
       else:
         name_scope = self._name_or_scope.name.split("/")[-1]
-      if name_scope:
-        self._current_name_scope = ops.name_scope(name_scope)
-        current_name_scope_name = self._current_name_scope.__enter__()
+      if name_scope or current_name_scope:
+        current_name_scope = current_name_scope or ops.name_scope(name_scope)
+        try:
+          current_name_scope_name = current_name_scope.__enter__()
+        except:
+          current_name_scope.__exit__(*sys.exc_info())
+          raise
+        self._current_name_scope = current_name_scope
         if isinstance(self._name_or_scope, six.string_types):
           old_name_scope = current_name_scope_name
         else:
           old_name_scope = self._name_or_scope.original_name_scope
-        self._pure_variable_scope = _pure_variable_scope(
+        pure_variable_scope = _pure_variable_scope(
             self._name_or_scope,
             reuse=self._reuse,
             initializer=self._initializer,
@@ -1802,11 +1965,17 @@ class variable_scope(object):  # pylint: disable=invalid-name
             dtype=self._dtype,
             use_resource=self._use_resource,
             constraint=self._constraint)
-        return self._pure_variable_scope.__enter__()
+        try:
+          entered_pure_variable_scope = pure_variable_scope.__enter__()
+        except:
+          pure_variable_scope.__exit__(*sys.exc_info())
+          raise
+        self._cached_pure_variable_scope = pure_variable_scope
+        return entered_pure_variable_scope
       else:
         self._current_name_scope = None
         # This can only happen if someone is entering the root variable scope.
-        self._pure_variable_scope = _pure_variable_scope(
+        pure_variable_scope = _pure_variable_scope(
             self._name_or_scope,
             reuse=self._reuse,
             initializer=self._initializer,
@@ -1817,15 +1986,27 @@ class variable_scope(object):  # pylint: disable=invalid-name
             dtype=self._dtype,
             use_resource=self._use_resource,
             constraint=self._constraint)
-        return self._pure_variable_scope.__enter__()
+        try:
+          entered_pure_variable_scope = pure_variable_scope.__enter__()
+        except:
+          pure_variable_scope.__exit__(*sys.exc_info())
+          raise
+        self._cached_pure_variable_scope = pure_variable_scope
+        return entered_pure_variable_scope
 
     else:  # Here name_or_scope is None. Using default name, but made unique.
       if self._reuse:
         raise ValueError("reuse=True cannot be used without a name_or_scope")
-      self._current_name_scope = ops.name_scope(self._default_name)
-      current_name_scope_name = self._current_name_scope.__enter__()
+      current_name_scope = current_name_scope or ops.name_scope(
+          self._default_name)
+      try:
+        current_name_scope_name = current_name_scope.__enter__()
+      except:
+        current_name_scope.__exit__(*sys.exc_info())
+        raise
+      self._current_name_scope = current_name_scope
       unique_default_name = _get_unique_variable_scope(self._default_name)
-      self._pure_variable_scope = _pure_variable_scope(
+      pure_variable_scope = _pure_variable_scope(
           unique_default_name,
           initializer=self._initializer,
           regularizer=self._regularizer,
@@ -1836,17 +2017,25 @@ class variable_scope(object):  # pylint: disable=invalid-name
           dtype=self._dtype,
           use_resource=self._use_resource,
           constraint=self._constraint)
-      return self._pure_variable_scope.__enter__()
+      try:
+        entered_pure_variable_scope = pure_variable_scope.__enter__()
+      except:
+        pure_variable_scope.__exit__(*sys.exc_info())
+        raise
+      self._cached_pure_variable_scope = pure_variable_scope
+      return entered_pure_variable_scope
 
   def __exit__(self, type_arg, value_arg, traceback_arg):
-    self._pure_variable_scope.__exit__(type_arg, value_arg, traceback_arg)
+    self._cached_pure_variable_scope.__exit__(
+        type_arg, value_arg, traceback_arg)
     if self._current_name_scope:
       self._current_name_scope.__exit__(type_arg, value_arg, traceback_arg)
-    if self._in_graph_mode:
+    if self._in_graph_mode and not self._building_function:
       self._graph_context_manager.__exit__(type_arg, value_arg, traceback_arg)
 
 
 # pylint: disable=g-doc-return-or-yield
+@tf_export("variable_op_scope")
 @tf_contextlib.contextmanager
 def variable_op_scope(values,
                       name_or_scope,
@@ -1908,20 +2097,124 @@ def _compute_slice_dim_and_shape(full_shape, slicing):
   return slice_dim, slice_shape
 
 
+def default_variable_creator(next_creator=None, **kwargs):
+  """Default variable creator."""
+  assert next_creator is None
+  initial_value = kwargs.get("initial_value", None)
+  trainable = kwargs.get("trainable", True)
+  collections = kwargs.get("collections", None)
+  validate_shape = kwargs.get("validate_shape", True)
+  caching_device = kwargs.get("caching_device", None)
+  name = kwargs.get("name", None)
+  dtype = kwargs.get("dtype", None)
+  constraint = kwargs.get("constraint", None)
+  use_resource = kwargs.get("use_resource", None)
+  if use_resource is None:
+    use_resource = get_variable_scope().use_resource
+  if use_resource or (use_resource is None and context.in_eager_mode()):
+    return resource_variable_ops.ResourceVariable(
+        initial_value=initial_value, trainable=trainable,
+        collections=collections, validate_shape=validate_shape,
+        caching_device=caching_device, name=name, dtype=dtype,
+        constraint=constraint)
+  elif not use_resource and context.in_eager_mode():
+    raise RuntimeError(
+        "VariableScope should use resource variable when eager execution is"
+        " enabled, but use_resource is False."
+    )
+  else:
+    return variables.Variable(
+        initial_value=initial_value, trainable=trainable,
+        collections=collections, validate_shape=validate_shape,
+        caching_device=caching_device, name=name, dtype=dtype,
+        constraint=constraint)
+
+
+def _make_getter(captured_getter, captured_previous):
+  """Gets around capturing loop variables in python being broken."""
+  return lambda **kwargs: captured_getter(captured_previous, **kwargs)
+
+
 def variable(initial_value=None,
              trainable=True,
              collections=None,
              validate_shape=True,
              caching_device=None,
              name=None,
-             dtype=None):
-  if get_variable_scope().use_resource:
-    return resource_variable_ops.ResourceVariable(
-        initial_value=initial_value, trainable=trainable,
-        collections=collections, validate_shape=validate_shape,
-        caching_device=caching_device, name=name, dtype=dtype)
-  else:
-    return variables.Variable(
-        initial_value=initial_value, trainable=trainable,
-        collections=collections, validate_shape=validate_shape,
-        caching_device=caching_device, name=name, dtype=dtype)
+             dtype=None,
+             constraint=None,
+             use_resource=None):
+  previous_getter = lambda **kwargs: default_variable_creator(None, **kwargs)
+  for getter in ops.get_default_graph()._get_variable_creator_stack():  # pylint: disable=protected-access
+    previous_getter = _make_getter(getter, previous_getter)
+  return previous_getter(initial_value=initial_value,
+                         trainable=trainable,
+                         collections=collections,
+                         validate_shape=validate_shape,
+                         caching_device=caching_device,
+                         name=name, dtype=dtype,
+                         constraint=constraint,
+                         use_resource=use_resource)
+
+
+@tf_contextlib.contextmanager
+def variable_creator_scope(variable_creator):
+  """Scope which defines a variable creation function to be used by variable().
+
+  variable_creator is expected to be a function with the following signature:
+
+  ```
+    def variable_creator(next_creator, **kwargs)
+  ```
+
+  The creator is supposed to eventually call the next_creator to create a
+  variable if it does want to create a variable and not call Variable or
+  ResourceVariable directly. This helps make creators composable. A creator may
+  choose to create multiple variables, return already existing variables, or
+  simply register that a variable was created and defer to the next creators in
+  line. Creators can also modify the keyword arguments seen by the next
+  creators.
+
+  Custom getters in the variable scope will eventually resolve down to these
+  custom creators when they do create variables.
+
+  The valid keyword arguments in kwds are:
+      initial_value: A `Tensor`, or Python object convertible to a `Tensor`,
+        which is the initial value for the Variable. The initial value must have
+        a shape specified unless `validate_shape` is set to False. Can also be a
+        callable with no argument that returns the initial value when called. In
+        that case, `dtype` must be specified. (Note that initializer functions
+        from init_ops.py must first be bound to a shape before being used here.)
+      trainable: If `True`, the default, also adds the variable to the graph
+        collection `GraphKeys.TRAINABLE_VARIABLES`. This collection is used as
+        the default list of variables to use by the `Optimizer` classes.
+      collections: List of graph collections keys. The new variable is added to
+        these collections. Defaults to `[GraphKeys.GLOBAL_VARIABLES]`.
+      validate_shape: If `False`, allows the variable to be initialized with a
+        value of unknown shape. If `True`, the default, the shape of
+        `initial_value` must be known.
+      caching_device: Optional device string describing where the Variable
+        should be cached for reading.  Defaults to the Variable's device.
+        If not `None`, caches on another device.  Typical use is to cache
+        on the device where the Ops using the Variable reside, to deduplicate
+        copying through `Switch` and other conditional statements.
+      name: Optional name for the variable. Defaults to `'Variable'` and gets
+        uniquified automatically.
+      dtype: If set, initial_value will be converted to the given type.
+        If `None`, either the datatype will be kept (if `initial_value` is
+        a Tensor), or `convert_to_tensor` will decide.
+      constraint: A constraint function to be applied to the variable after
+        updates by some algorithms.
+      use_resource: if True, a ResourceVariable is always created.
+
+  This set may grow over time, so it's important the signature of creators is as
+  mentioned above.
+
+  Args:
+    variable_creator: the passed creator
+
+  Yields:
+    A scope in which the creator is active
+  """
+  with ops.get_default_graph()._variable_creator_scope(variable_creator):  # pylint: disable=protected-access
+    yield

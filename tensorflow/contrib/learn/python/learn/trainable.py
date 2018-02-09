@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """`Trainable` interface."""
 
 from __future__ import absolute_import
@@ -28,18 +27,31 @@ class Trainable(object):
   __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
-  def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+  def fit(self,
+          x=None,
+          y=None,
+          input_fn=None,
+          steps=None,
+          batch_size=None,
+          monitors=None,
+          max_steps=None):
     """Trains a model given training data `x` predictions and `y` labels.
 
     Args:
-      x: Matrix of shape [n_samples, n_features...] or the dictionary of Matrices.
-         Can be iterator that returns arrays of features or dictionary of arrays of features.
-         The training input samples for fitting the model. If set, `input_fn` must be `None`.
-      y: Vector or matrix [n_samples] or [n_samples, n_outputs] or the dictionary of same.
-         Can be iterator that returns array of labels or dictionary of array of labels.
-         The training label values (class labels in classification, real numbers in regression).
-         If set, `input_fn` must be `None`. Note: For classification, label values must
+      x: Matrix of shape [n_samples, n_features...] or the dictionary of
+        Matrices.
+         Can be iterator that returns arrays of features or dictionary of arrays
+           of features.
+         The training input samples for fitting the model. If set, `input_fn`
+           must be `None`.
+      y: Vector or matrix [n_samples] or [n_samples, n_outputs] or the
+        dictionary of same.
+         Can be iterator that returns array of labels or dictionary of array of
+           labels.
+         The training label values (class labels in classification, real numbers
+           in regression).
+         If set, `input_fn` must be `None`. Note: For classification, label
+           values must
          be integers representing the class index (i.e. values from 0 to
          n_classes-1).
       input_fn: Input function returning a tuple of:

@@ -32,7 +32,10 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import monitored_session
@@ -79,9 +82,13 @@ def _sigmoid(logits):
 
 
 def _sigmoid_cross_entropy(labels, logits):
+  """Returns sigmoid cross entropy averaged over classes."""
   sigmoid_logits = _sigmoid(logits)
-  return (-labels * np.log(sigmoid_logits)
-          -(1 - labels) * np.log(1 - sigmoid_logits))
+  unreduced_result = (
+      -labels * np.log(sigmoid_logits)
+      -(1 - labels) * np.log(1 - sigmoid_logits))
+  # Mean over classes
+  return np.mean(unreduced_result, axis=-1, keepdims=True)
 
 
 class MultiLabelHead(test.TestCase):
@@ -126,6 +133,47 @@ class MultiLabelHead(test.TestCase):
         r'Length of label_vocabulary must be n_classes \(3\). Given: 2'):
       head_lib.multi_label_head(n_classes=3, label_vocabulary=['foo', 'bar'])
 
+  def test_invalid_loss_reduction(self):
+    with self.assertRaisesRegexp(
+        ValueError, r'Invalid loss_reduction: invalid_loss_reduction'):
+      head_lib.multi_label_head(
+          n_classes=3, loss_reduction='invalid_loss_reduction')
+    with self.assertRaisesRegexp(
+        ValueError, r'Invalid loss_reduction: none'):
+      head_lib.multi_label_head(
+          n_classes=3, loss_reduction=losses.Reduction.NONE)
+
+  def test_loss_fn_arg_labels_missing(self):
+    def _loss_fn(logits):
+      del logits  # Unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn must contain argument: labels\. '
+        r'Given arguments: \(\'logits\',\)'):
+      head_lib.multi_label_head(n_classes=3, loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_logits_missing(self):
+    def _loss_fn(labels):
+      del labels  # unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn must contain argument: logits\. '
+        r'Given arguments: \(\'labels\',\)'):
+      head_lib.multi_label_head(n_classes=3, loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_features_ok(self):
+    def _loss_fn(labels, logits, features):
+      del labels, logits, features  # Unused
+    head_lib.multi_label_head(n_classes=3, loss_fn=_loss_fn)
+
+  def test_loss_fn_arg_invalid(self):
+    def _loss_fn(labels, logits, name=None):
+      del labels, logits, name  # Unused
+    with self.assertRaisesRegexp(
+        ValueError,
+        r'loss_fn has unexpected args: \[\'name\'\]'):
+      head_lib.multi_label_head(n_classes=3, loss_fn=_loss_fn)
+
   def test_name(self):
     head = head_lib.multi_label_head(n_classes=4, name='foo')
     self.assertEqual('foo', head.name)
@@ -138,6 +186,7 @@ class MultiLabelHead(test.TestCase):
     logits = np.array(
         [[0., 1., 2., -1.], [-1., -2., -3., 1.]], dtype=np.float32)
     expected_probabilities = _sigmoid(logits)
+    expected_export_classes = [[b'0', b'1', b'2', b'3']] * 2
 
     spec = head.create_estimator_spec(
         features={'x': np.array(((42,),), dtype=np.int32)},
@@ -145,7 +194,8 @@ class MultiLabelHead(test.TestCase):
         logits=logits)
 
     self.assertItemsEqual(
-        ('', _DEFAULT_SERVING_KEY), spec.export_outputs.keys())
+        (_DEFAULT_SERVING_KEY, 'predict', 'classification'),
+        spec.export_outputs.keys())
 
     # Assert predictions and export_outputs.
     with self.test_session() as sess:
@@ -161,10 +211,33 @@ class MultiLabelHead(test.TestCase):
       self.assertAllClose(
           expected_probabilities,
           sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].scores))
+      self.assertAllEqual(
+          expected_export_classes,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
+
+  def test_predict_with_label_vocabulary(self):
+    n_classes = 4
+    head = head_lib.multi_label_head(
+        n_classes, label_vocabulary=['foo', 'bar', 'foobar', 'barfoo'])
+
+    logits = np.array(
+        [[0., 1., 2., -1.], [-1., -2., -3., 1.]], dtype=np.float32)
+    expected_export_classes = [[b'foo', b'bar', b'foobar', b'barfoo']] * 2
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.PREDICT,
+        logits=logits)
+
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertAllEqual(
+          expected_export_classes,
+          sess.run(spec.export_outputs[_DEFAULT_SERVING_KEY].classes))
 
   def test_weight_should_not_impact_prediction(self):
     n_classes = 4
-    head = head_lib.multi_label_head(n_classes, weight_column='label_weights')
+    head = head_lib.multi_label_head(n_classes, weight_column='example_weights')
     self.assertEqual(n_classes, head.logits_dimension)
 
     logits = np.array(
@@ -175,7 +248,7 @@ class MultiLabelHead(test.TestCase):
     spec = head.create_estimator_spec(
         features={
             'x': np.array(((42,),), dtype=np.int32),
-            'label_weights': weights_2x1,
+            'example_weights': weights_2x1,
         },
         mode=model_fn.ModeKeys.PREDICT,
         logits=logits)
@@ -200,17 +273,17 @@ class MultiLabelHead(test.TestCase):
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    expected_unweighted_loss = _sigmoid_cross_entropy(
-        labels=labels, logits=logits)
-    actual_unweighted_loss, _ = head.create_loss(
+    expected_training_loss = np.sum(
+        _sigmoid_cross_entropy(labels=labels, logits=logits))
+    actual_training_loss = head.create_loss(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
-        labels=labels)
+        labels=labels)[0]
     with self.test_session():
       _initialize_variables(self, monitored_session.Scaffold())
-      self.assertAllClose(
-          expected_unweighted_loss, actual_unweighted_loss.eval())
+      self.assertAllClose(expected_training_loss,
+                          actual_training_loss.eval())
 
   def test_eval_create_loss_large_logits(self):
     """Tests head.create_loss for eval mode and large logits."""
@@ -224,17 +297,17 @@ class MultiLabelHead(test.TestCase):
     # For large logits, this is approximated as:
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits
-    expected_unweighted_loss = np.array(
-        [[10., 10.], [15., 0.]], dtype=np.float32)
-    actual_unweighted_loss, _ = head.create_loss(
+    expected_training_loss = np.sum(
+        np.array([[(10. + 10.) / 2.], [(15. + 0.) / 2.]], dtype=np.float32))
+    actual_training_loss = head.create_loss(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
-        labels=labels)
+        labels=labels)[0]
     with self.test_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
-          expected_unweighted_loss, actual_unweighted_loss.eval(), atol=1e-4)
+          expected_training_loss, actual_training_loss.eval(), atol=1e-4)
 
   def test_eval_create_loss_labels_wrong_shape(self):
     """Tests head.create_loss for eval mode when labels has the wrong shape."""
@@ -243,30 +316,96 @@ class MultiLabelHead(test.TestCase):
 
     logits = np.array([[-1., 1.], [-1.5, 1.]], dtype=np.float32)
     labels_placeholder = array_ops.placeholder(dtype=dtypes.int64)
-    actual_unweighted_loss, _ = head.create_loss(
+    actual_training_loss = head.create_loss(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
-        labels=labels_placeholder)
+        labels=labels_placeholder)[0]
     with self.test_session():
       _initialize_variables(self, monitored_session.Scaffold())
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
-          r'labels shape must be \[batch_size, 2\]\. Given: \] \[2 1\]'):
-        actual_unweighted_loss.eval(
-            {labels_placeholder: np.array([[1], [1]], dtype=np.int64)})
+          r'\[expected_labels_shape: \] \[2 2\] \[labels_shape: \] \[2 1\]'):
+        actual_training_loss.eval({
+            labels_placeholder: np.array([[1], [1]], dtype=np.int64)
+        })
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,
-          r'labels shape must be \[batch_size, 2\]\. Given: \] \[2\]'):
-        actual_unweighted_loss.eval(
-            {labels_placeholder: np.array([1, 1], dtype=np.int64)})
+          r'labels shape must be \[D0, D1, ... DN, 2\]\..*'
+          r'\[Received shape: \] \[2\]'):
+        actual_training_loss.eval({
+            labels_placeholder: np.array([1, 1], dtype=np.int64)
+        })
 
-  def _test_eval(self, head, logits, labels, expected_loss, expected_metrics):
-    spec = head.create_estimator_spec(
+  def test_eval_create_loss_loss_fn(self):
+    """Tests head.create_loss for eval mode and custom loss_fn."""
+    loss = np.array([[1.], [2.]], dtype=np.float32)
+    logits_input = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    labels_input = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    def _loss_fn(labels, logits):
+      check_labels = control_flow_ops.Assert(
+          math_ops.reduce_all(math_ops.equal(labels, labels_input)),
+          data=[labels])
+      check_logits = control_flow_ops.Assert(
+          math_ops.reduce_all(math_ops.equal(logits, logits_input)),
+          data=[logits])
+      with ops.control_dependencies([check_labels, check_logits]):
+        return constant_op.constant(loss)
+    head = head_lib.multi_label_head(n_classes=2, loss_fn=_loss_fn)
+
+    actual_training_loss = head.create_loss(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits_input,
+        labels=labels_input)[0]
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      self.assertAllClose(np.sum(loss), actual_training_loss.eval())
+
+  def test_eval_create_loss_loss_fn_wrong_shape(self):
+    """Tests custom loss_fn that returns Tensor of unexpected shape."""
+    loss = np.array([1., 2.], dtype=np.float32)
+    def _loss_fn(labels, logits):
+      del labels, logits  # Unused
+      return constant_op.constant(loss)
+    head = head_lib.multi_label_head(n_classes=2, loss_fn=_loss_fn)
+
+    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    actual_training_loss = head.create_loss(
         features={'x': np.array(((42,),), dtype=np.int32)},
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
-        labels=labels)
+        labels=labels)[0]
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[loss_fn must return Tensor of shape \[D0, D1, ... DN, 1\]\. \] '
+          r'\[logits_shape: \] \[2 2\] \[loss_shape: \] \[2\]'):
+        actual_training_loss.eval()
+
+  def test_eval_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib.multi_label_head(n_classes=2)
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.EVAL,
+          logits=np.array([[-10., 10.], [-15., 10.]], dtype=np.float32),
+          labels=None)
+
+  def _test_eval(
+      self, head, logits, labels, expected_loss, expected_metrics,
+      features=None, regularization_losses=None):
+    spec = head.create_estimator_spec(
+        features=features or {},
+        mode=model_fn.ModeKeys.EVAL,
+        logits=logits,
+        labels=labels,
+        regularization_losses=regularization_losses)
 
     # Assert spec contains expected tensors.
     self.assertIsNotNone(spec.loss)
@@ -298,10 +437,8 @@ class MultiLabelHead(test.TestCase):
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
-    expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits)) / n_classes
-    )
+    # Sum over examples.
+    expected_loss = np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits))
     keys = metric_keys.MetricKeys
     expected_metrics = {
         # Average loss over examples.
@@ -330,10 +467,9 @@ class MultiLabelHead(test.TestCase):
     labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
+    # Sum over examples.
     expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits)) /
-        n_classes
+        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
     )
     keys = metric_keys.MetricKeys
     expected_metrics = {
@@ -351,6 +487,38 @@ class MultiLabelHead(test.TestCase):
         expected_loss=expected_loss,
         expected_metrics=expected_metrics)
 
+  def test_eval_with_regularization_losses(self):
+    n_classes = 2
+    head = head_lib.multi_label_head(
+        n_classes, loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
+    logits = np.array([[-1., 1.], [-1.5, 1.5]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    regularization_losses = [1.5, 0.5]
+    expected_regularization_loss = 2.
+    # unregularized_loss = sum(
+    #     labels * -log(sigmoid(logits)) +
+    #     (1 - labels) * -log(1 - sigmoid(logits))) / batch_size
+    expected_unregularized_loss = np.sum(
+        _sigmoid_cross_entropy(labels=labels, logits=logits)) / 2.
+    expected_regularized_loss = (
+        expected_unregularized_loss + expected_regularization_loss)
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        keys.LOSS_MEAN: expected_unregularized_loss,
+        keys.LOSS_REGULARIZATION: expected_regularization_loss,
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.3333,
+        keys.AUC_PR: 0.7639,
+    }
+    self._test_eval(
+        head=head,
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_regularized_loss,
+        expected_metrics=expected_metrics,
+        regularization_losses=regularization_losses)
+
   def test_eval_with_label_vocabulary(self):
     n_classes = 2
     head = head_lib.multi_label_head(
@@ -364,10 +532,9 @@ class MultiLabelHead(test.TestCase):
     labels_multi_hot = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
+    # Sum over examples.
     expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits)) /
-        n_classes
+        np.sum(_sigmoid_cross_entropy(labels=labels_multi_hot, logits=logits))
     )
     keys = metric_keys.MetricKeys
     expected_metrics = {
@@ -394,9 +561,9 @@ class MultiLabelHead(test.TestCase):
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
-    # Average over classes, and sum over examples.
+    # Sum over examples.
     expected_loss = (
-        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits)) / n_classes
+        np.sum(_sigmoid_cross_entropy(labels=labels, logits=logits))
     )
 
     keys = metric_keys.MetricKeys
@@ -427,7 +594,7 @@ class MultiLabelHead(test.TestCase):
 
   def test_eval_with_weights(self):
     n_classes = 2
-    head = head_lib.multi_label_head(n_classes, weight_column='label_weights')
+    head = head_lib.multi_label_head(n_classes, weight_column='example_weights')
 
     logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
@@ -441,7 +608,7 @@ class MultiLabelHead(test.TestCase):
     spec = head.create_estimator_spec(
         features={
             'x': np.array([[41], [42]], dtype=np.int32),
-            'label_weights': np.array([[1.], [2.]], dtype=np.float32),
+            'example_weights': np.array([[1.], [2.]], dtype=np.float32),
         },
         mode=model_fn.ModeKeys.EVAL,
         logits=logits,
@@ -483,26 +650,132 @@ class MultiLabelHead(test.TestCase):
   def test_train_create_loss_large_logits(self):
     """Tests head.create_loss for train mode and large logits."""
     n_classes = 2
-    head = head_lib.multi_label_head(n_classes)
+    head = head_lib.multi_label_head(n_classes, weight_column='example_weights')
 
     logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    weights = np.array([[1.], [2.]], dtype=np.float32)
     # loss = labels * -log(sigmoid(logits)) +
     #        (1 - labels) * -log(1 - sigmoid(logits))
     # For large logits, this is approximated as:
     # loss = labels * (logits < 0) * (-logits) +
     #        (1 - labels) * (logits > 0) * logits
-    expected_unweighted_loss = np.array(
-        [[10., 10.], [15., 0.]], dtype=np.float32)
-    actual_unweighted_loss, _ = head.create_loss(
-        features={'x': np.array(((42,),), dtype=np.int32)},
+    expected_unreduced_loss = [[(10. + 10.) / 2.], [(15. + 0.) / 2.]]
+    expected_weights = [[1.], [2.]]
+    expected_training_loss = 1. * (10. + 10.) / 2. + 2. * (15. + 0.) / 2.
+    training_loss, unreduced_loss, actual_weights, _ = head.create_loss(
+        features={
+            'x': np.array(((42,),), dtype=np.int32),
+            'example_weights': weights
+        },
         mode=model_fn.ModeKeys.TRAIN,
         logits=logits,
         labels=labels)
     with self.test_session():
       _initialize_variables(self, monitored_session.Scaffold())
       self.assertAllClose(
-          expected_unweighted_loss, actual_unweighted_loss.eval(), atol=1e-4)
+          expected_training_loss, training_loss.eval(), atol=1e-4)
+      self.assertAllClose(
+          expected_unreduced_loss, unreduced_loss.eval(), atol=1e-4)
+      self.assertAllClose(expected_weights, actual_weights.eval())
+
+  def test_train_create_loss_loss_reduction(self):
+    """Tests head.create_loss with loss_reduction."""
+    n_classes = 2
+    head = head_lib.multi_label_head(
+        n_classes, weight_column='example_weights',
+        loss_reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS)
+
+    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    weights = np.array([[1.], [2.]], dtype=np.float32)
+    # loss = labels * -log(sigmoid(logits)) +
+    #        (1 - labels) * -log(1 - sigmoid(logits))
+    # For large logits, this is approximated as:
+    # loss = labels * (logits < 0) * (-logits) +
+    #        (1 - labels) * (logits > 0) * logits
+    expected_unreduced_loss = [[(10. + 10.) / 2.], [(15. + 0.) / 2.]]
+    expected_weights = [[1.], [2.]]
+    expected_training_loss = (1. * (10. + 10.) / 2. + 2. * (15. + 0.) / 2.) / 2.
+    training_loss, unreduced_loss, actual_weights, _ = head.create_loss(
+        features={
+            'x': np.array(((42,),), dtype=np.int32),
+            'example_weights': weights
+        },
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels)
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      self.assertAllClose(
+          expected_training_loss, training_loss.eval(), atol=1e-4)
+      self.assertAllClose(
+          expected_unreduced_loss, unreduced_loss.eval(), atol=1e-4)
+      self.assertAllClose(expected_weights, actual_weights.eval())
+
+  def test_train_labels_none(self):
+    """Tests that error is raised when labels is None."""
+    head = head_lib.multi_label_head(n_classes=2)
+    def _no_op_train_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    with self.assertRaisesRegexp(
+        ValueError, r'You must provide a labels Tensor\. Given: None\.'):
+      head.create_estimator_spec(
+          features={'x': np.array(((42,),), dtype=np.int32)},
+          mode=model_fn.ModeKeys.TRAIN,
+          logits=np.array([[-10., 10.], [-15., 10.]], dtype=np.float32),
+          labels=None,
+          train_op_fn=_no_op_train_fn)
+
+  def test_train_invalid_indicator_labels(self):
+    head = head_lib.multi_label_head(n_classes=2)
+    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    # The value 2 is outside the allowed range.
+    labels = np.array([[2, 0], [1, 1]], dtype=np.int64)
+    def _train_op_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    spec = head.create_estimator_spec(
+        features={},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'labels must be an integer indicator Tensor with values in '
+          r'\[0, 1\]'):
+        sess.run(spec.loss)
+
+  def test_train_invalid_sparse_labels(self):
+    head = head_lib.multi_label_head(n_classes=2)
+    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    # The value 2 is outside the allowed range.
+    labels = sparse_tensor.SparseTensor(
+        values=[2, 0, 1],
+        indices=[[0, 0], [1, 0], [1, 1]],
+        dense_shape=[2, 2])
+    def _train_op_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    spec = head.create_estimator_spec(
+        features={},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'labels must be an integer SparseTensor with values in \[0, 2\)'):
+        sess.run(spec.loss)
 
   def _test_train(self, head, logits, labels, expected_loss):
     expected_train_result = 'my_train_op'
@@ -589,9 +862,52 @@ class MultiLabelHead(test.TestCase):
     self._test_train(
         head=head, logits=logits, labels=labels, expected_loss=expected_loss)
 
+  def test_train_with_regularization_losses(self):
+    head = head_lib.multi_label_head(
+        n_classes=2, loss_reduction=losses.Reduction.SUM_OVER_BATCH_SIZE)
+    logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
+    labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
+    regularization_losses = [1.5, 0.5]
+    # For large logits, sigmoid cross entropy loss is approximated as:
+    # loss = labels * (logits < 0) * (-logits) +
+    #        (1 - labels) * (logits > 0) * logits =>
+    # expected_unweighted_loss = [[10., 10.], [15., 0.]]
+    # Average over classes and over batch and add regularization loss.
+    expected_loss = 35. / 4. + 2.
+    expected_summaries = {
+        metric_keys.MetricKeys.LOSS: expected_loss,
+        metric_keys.MetricKeys.LOSS_REGULARIZATION: 2.,
+    }
+    expected_train_result = 'my_train_op'
+    def _train_op_fn(loss):
+      return string_ops.string_join(
+          [constant_op.constant(expected_train_result),
+           string_ops.as_string(loss, precision=3)])
+
+    spec = head.create_estimator_spec(
+        features={'x': np.array(((42,),), dtype=np.int32)},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn,
+        regularization_losses=regularization_losses)
+
+    # Assert predictions, loss, train_op, and summaries.
+    tol = 1e-3
+    with self.test_session() as sess:
+      _initialize_variables(self, spec.scaffold)
+      self.assertIsNotNone(spec.scaffold.summary_op)
+      loss, train_result, summary_str = sess.run((spec.loss, spec.train_op,
+                                                  spec.scaffold.summary_op))
+      self.assertAllClose(expected_loss, loss, rtol=tol, atol=tol)
+      self.assertEqual(
+          six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
+          train_result)
+      _assert_simple_summaries(self, expected_summaries, summary_str, tol)
+
   def test_train_with_weights(self):
     n_classes = 2
-    head = head_lib.multi_label_head(n_classes, weight_column='label_weights')
+    head = head_lib.multi_label_head(n_classes, weight_column='example_weights')
 
     logits = np.array([[-10., 10.], [-15., 10.]], dtype=np.float32)
     labels = np.array([[1, 0], [1, 1]], dtype=np.int64)
@@ -610,7 +926,7 @@ class MultiLabelHead(test.TestCase):
     spec = head.create_estimator_spec(
         features={
             'x': np.array([[41], [42]], dtype=np.int32),
-            'label_weights': np.array([[1.], [2.]], dtype=np.float32),
+            'example_weights': np.array([[1.], [2.]], dtype=np.float32),
         },
         mode=model_fn.ModeKeys.TRAIN,
         logits=logits,
@@ -639,6 +955,155 @@ class MultiLabelHead(test.TestCase):
           # Average loss over weighted examples.
           metric_keys.MetricKeys.LOSS_MEAN: expected_loss / 3,
       }, summary_str, tol)
+
+  def test_multi_dim_weighted_train_create_loss(self):
+    """Logits and labels of shape [2, 2, 3], weights [2, 2]."""
+    head = head_lib.multi_label_head(n_classes=3, weight_column='weights')
+
+    logits = np.array([[[-10., 10., -10.], [10., -10., 10.]],
+                       [[-12., 12., -12.], [12., -12., 12.]]], dtype=np.float32)
+    labels = np.array([[[1, 0, 0], [1, 0, 0]],
+                       [[0, 1, 1], [0, 1, 1]]], dtype=np.int64)
+    weights = np.array([[1., 1.5], [2., 2.5]], dtype=np.float32)
+    # unreduced_loss =
+    #     [[10 + 10 + 0, 0 + 0 + 10], [0 + 0 + 12, 12 + 12 + 0]] / 3
+    #   = [[20/3, 10/3], [4, 8]]
+    expected_unreduced_loss = [[[20./3.], [10./3.]], [[4.], [8.]]]
+    # weights are reshaped to [2, 2, 1] to match logits.
+    expected_weights = [[[1.], [1.5]], [[2.], [2.5]]]
+    # weighted_sum_loss = 1*20/3 + 1.5*10/3 + 2*4 + 2.5*8 = 39.6667
+    expected_training_loss = 39.6667
+    training_loss, unreduced_loss, actual_weights, _ = head.create_loss(
+        features={'weights': weights},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels)
+    atol = 1.e-3
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      self.assertAllClose(
+          expected_training_loss, training_loss.eval(), atol=atol)
+      self.assertAllClose(
+          expected_unreduced_loss, unreduced_loss.eval(), atol=atol)
+      self.assertAllClose(expected_weights, actual_weights.eval())
+
+  def test_multi_dim_weighted_train(self):
+    """Logits and labels of shape [2, 2, 3], weights [2, 2]."""
+    head = head_lib.multi_label_head(n_classes=3, weight_column='weights')
+
+    logits = np.array([[[-10., 10., -10.], [10., -10., 10.]],
+                       [[-12., 12., -12.], [12., -12., 12.]]], dtype=np.float32)
+    labels = np.array([[[1, 0, 0], [1, 0, 0]],
+                       [[0, 1, 1], [0, 1, 1]]], dtype=np.int64)
+    weights = np.array([[1., 1.5], [2., 2.5]], dtype=np.float32)
+    # loss = [[10 + 10 + 0, 0 + 0 + 10], [0 + 0 + 12, 12 + 12 + 0]] / 3
+    #      = [[20/3, 10/3], [4, 8]]
+    # weighted_sum_loss = 1*20/3 + 1.5*10/3 + 2*4 + 2.5*8 = 39.6667
+    expected_loss = 39.6667
+    expected_train_result = 'my_train_op'
+    def _train_op_fn(loss):
+      return string_ops.string_join(
+          [constant_op.constant(expected_train_result),
+           string_ops.as_string(loss, precision=3)])
+
+    spec = head.create_estimator_spec(
+        features={'weights': weights},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+
+    atol = 1.e-3
+    with self.test_session() as sess:
+      _initialize_variables(self, monitored_session.Scaffold())
+      loss, train_result = sess.run((spec.loss, spec.train_op))
+      self.assertAllClose(expected_loss, loss, atol=atol)
+      self.assertEqual(
+          six.b('{0:s}{1:.3f}'.format(expected_train_result, expected_loss)),
+          train_result)
+
+  def test_multi_dim_weights_wrong_inner_dim(self):
+    """Logits and labels of shape [2, 2, 3], weights [2, 1]."""
+    head = head_lib.multi_label_head(n_classes=3, weight_column='weights')
+
+    logits = np.array([[[-10., 10., -10.], [10., -10., 10.]],
+                       [[-12., 12., -12.], [12., -12., 12.]]], dtype=np.float32)
+    labels = np.array([[[1, 0, 0], [1, 0, 0]],
+                       [[0, 1, 1], [0, 1, 1]]], dtype=np.int64)
+    weights = np.array([[1.], [2.]], dtype=np.float32)
+    def _train_op_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    spec = head.create_estimator_spec(
+        features={'weights': weights},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[logits_shape: \] \[2 2 3\] \[weights_shape: \] \[2 1\]'):
+        spec.loss.eval()
+
+  def test_multi_dim_weights_wrong_outer_dim(self):
+    """Logits and labels of shape [2, 2, 3], weights [2, 2, 3]."""
+    head = head_lib.multi_label_head(n_classes=3, weight_column='weights')
+
+    logits = np.array([[[-10., 10., -10.], [10., -10., 10.]],
+                       [[-12., 12., -12.], [12., -12., 12.]]], dtype=np.float32)
+    labels = np.array([[[1, 0, 0], [1, 0, 0]],
+                       [[0, 1, 1], [0, 1, 1]]], dtype=np.int64)
+    weights = np.array([[[1., 1., 1.], [1.5, 1.5, 1.5]],
+                        [[2., 2., 2.], [2.5, 2.5, 2.5]]], dtype=np.float32)
+    weights_placeholder = array_ops.placeholder(dtype=dtypes.float32)
+    def _train_op_fn(loss):
+      del loss
+      return control_flow_ops.no_op()
+
+    spec = head.create_estimator_spec(
+        features={'weights': weights_placeholder},
+        mode=model_fn.ModeKeys.TRAIN,
+        logits=logits,
+        labels=labels,
+        train_op_fn=_train_op_fn)
+    with self.test_session():
+      _initialize_variables(self, monitored_session.Scaffold())
+      with self.assertRaisesRegexp(
+          errors.InvalidArgumentError,
+          r'\[logits_shape: \] \[2 2 3\] \[weights_shape: \] \[2 2 3\]'):
+        spec.loss.eval({weights_placeholder: weights})
+
+  def test_multi_dim_weighted_eval(self):
+    """Logits and labels of shape [2, 2, 3], weights [2, 2]."""
+    head = head_lib.multi_label_head(n_classes=3, weight_column='weights')
+
+    logits = np.array([[[-10., 10., -10.], [10., -10., 10.]],
+                       [[-12., 12., -12.], [12., -12., 12.]]], dtype=np.float32)
+    labels = np.array([[[1, 0, 0], [1, 0, 0]],
+                       [[0, 1, 1], [0, 1, 1]]], dtype=np.int64)
+    weights = np.array([[1., 1.5], [2., 2.5]], dtype=np.float32)
+    # loss = [[10 + 10 + 0, 0 + 0 + 10], [0 + 0 + 12, 12 + 12 + 0]] / 3
+    #      = [[20/3, 10/3], [4, 8]]
+    # weighted_sum_loss = 1*20/3 + 1.5*10/3 + 2*4 + 2.5*8 = 39.6667
+    expected_loss = 39.6667
+    keys = metric_keys.MetricKeys
+    expected_metrics = {
+        keys.LOSS_MEAN: expected_loss / np.sum(weights),
+        # auc and auc_pr cannot be reliably calculated for only 4 samples, but
+        # this assert tests that the algorithm remains consistent.
+        keys.AUC: 0.4977,
+        keys.AUC_PR: 0.6645,
+    }
+    self._test_eval(
+        head=head,
+        features={'weights': weights},
+        logits=logits,
+        labels=labels,
+        expected_loss=expected_loss,
+        expected_metrics=expected_metrics)
 
 
 if __name__ == '__main__':

@@ -17,18 +17,43 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import warnings
+
 from tensorflow.python.data.util import nest
+from tensorflow.python.data.util import sparse
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+# NOTE(mrry): It is legitimate to call `Iterator.get_next()` multiple
+# times, e.g. when you are distributing different elements to multiple
+# devices in a single step. However, a common pitfall arises when
+# users call `Iterator.get_next()` in each iteration of their training
+# loop. `Iterator.get_next()` adds ops to the graph, and executing
+# each op allocates resources (including threads); as a consequence,
+# invoking it in every iteration of a training loop causes slowdown
+# and eventual resource exhaustion. To guard against this outcome, we
+# log a warning when the number of uses crosses a threshold of suspicion.
+GET_NEXT_CALL_WARNING_THRESHOLD = 32
+
+GET_NEXT_CALL_WARNING_MESSAGE = (
+    "An unusually high number of `Iterator.get_next()` calls was detected. "
+    "This often indicates that `Iterator.get_next()` is being called inside "
+    "a training loop, which will cause gradual slowdown and eventual resource "
+    "exhaustion. If this is the case, restructure your code to call "
+    "`next_element = iterator.get_next() once outside the loop, and use "
+    "`next_element` inside the loop.")
+
+
+@tf_export("data.Iterator")
 class Iterator(object):
   """Represents the state of iterating through a `Dataset`."""
 
   def __init__(self, iterator_resource, initializer, output_types,
-               output_shapes):
+               output_shapes, output_classes):
     """Creates a new iterator from the given iterator resource.
 
     Note: Most users will not call this initializer directly, and will
@@ -41,17 +66,27 @@ class Iterator(object):
       initializer: A `tf.Operation` that should be run to initialize this
         iterator.
       output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of an element of this iterator.
+        each component of an element of this dataset.
       output_shapes: A nested structure of `tf.TensorShape` objects
         corresponding to each component of an element of this dataset.
+      output_classes: A nested structure of Python `type` object corresponding
+        to each
+        component of an element of this iterator.
     """
     self._iterator_resource = iterator_resource
     self._initializer = initializer
+    self._output_classes = output_classes
     self._output_types = output_types
     self._output_shapes = output_shapes
+    self._string_handle = gen_dataset_ops.iterator_to_string_handle(
+        self._iterator_resource)
+    self._get_next_call_count = 0
 
   @staticmethod
-  def from_structure(output_types, output_shapes=None, shared_name=None):
+  def from_structure(output_types,
+                     output_shapes=None,
+                     shared_name=None,
+                     output_classes=None):
     """Creates a new, uninitialized `Iterator` with the given structure.
 
     This iterator-constructing method can be used to create an iterator that
@@ -99,13 +134,16 @@ class Iterator(object):
 
     Args:
       output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of an element of this iterator.
+        each component of an element of this dataset.
       output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
         corresponding to each component of an element of this dataset. If
         omitted, each component will have an unconstrainted shape.
       shared_name: (Optional.) If non-empty, this iterator will be shared under
         the given name across multiple sessions that share the same devices
         (e.g. when using a remote server).
+      output_classes: (Optional.) A nested structure of Python `type` objects
+        corresponding to each component of an element of this iterator. If
+        omitted, each component is assumed to be of type `tf.Tensor`.
 
     Returns:
       An `Iterator`.
@@ -121,18 +159,26 @@ class Iterator(object):
     else:
       output_shapes = nest.map_structure_up_to(
           output_types, tensor_shape.as_shape, output_shapes)
+    if output_classes is None:
+      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     if shared_name is None:
       shared_name = ""
     iterator_resource = gen_dataset_ops.iterator(
         container="",
         shared_name=shared_name,
-        output_types=nest.flatten(output_types),
-        output_shapes=nest.flatten(output_shapes))
-    return Iterator(iterator_resource, None, output_types, output_shapes)
+        output_types=nest.flatten(
+            sparse.as_dense_types(output_types, output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(output_shapes, output_classes)))
+    return Iterator(iterator_resource, None, output_types, output_shapes,
+                    output_classes)
 
   @staticmethod
-  def from_string_handle(string_handle, output_types, output_shapes=None):
+  def from_string_handle(string_handle,
+                         output_types,
+                         output_shapes=None,
+                         output_classes=None):
     """Creates a new, uninitialized `Iterator` based on the given handle.
 
     This method allows you to define a "feedable" iterator where you can choose
@@ -166,10 +212,13 @@ class Iterator(object):
       string_handle: A scalar `tf.Tensor` of type `tf.string` that evaluates
         to a handle produced by the `Iterator.string_handle()` method.
       output_types: A nested structure of `tf.DType` objects corresponding to
-        each component of an element of this iterator.
+        each component of an element of this dataset.
       output_shapes: (Optional.) A nested structure of `tf.TensorShape` objects
         corresponding to each component of an element of this dataset. If
         omitted, each component will have an unconstrainted shape.
+      output_classes: (Optional.) A nested structure of Python `type` objects
+        corresponding to each component of an element of this iterator. If
+        omitted, each component is assumed to be of type `tf.Tensor`.
 
     Returns:
       An `Iterator`.
@@ -181,13 +230,18 @@ class Iterator(object):
     else:
       output_shapes = nest.map_structure_up_to(
           output_types, tensor_shape.as_shape, output_shapes)
+    if output_classes is None:
+      output_classes = nest.map_structure(lambda _: ops.Tensor, output_types)
     nest.assert_same_structure(output_types, output_shapes)
     string_handle = ops.convert_to_tensor(string_handle, dtype=dtypes.string)
     iterator_resource = gen_dataset_ops.iterator_from_string_handle(
         string_handle,
-        output_types=nest.flatten(output_types),
-        output_shapes=nest.flatten(output_shapes))
-    return Iterator(iterator_resource, None, output_types, output_shapes)
+        output_types=nest.flatten(
+            sparse.as_dense_types(output_types, output_classes)),
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(output_shapes, output_classes)))
+    return Iterator(iterator_resource, None, output_types, output_shapes,
+                    output_classes)
 
   @property
   def initializer(self):
@@ -224,6 +278,13 @@ class Iterator(object):
     with ops.name_scope(name, "make_initializer") as name:
       nest.assert_same_structure(self._output_types, dataset.output_types)
       nest.assert_same_structure(self._output_shapes, dataset.output_shapes)
+      for iterator_class, dataset_class in zip(
+          nest.flatten(self._output_classes),
+          nest.flatten(dataset.output_classes)):
+        if iterator_class is not dataset_class:
+          raise TypeError(
+              "Expected output classes %r but got dataset with output class %r."
+              % (self._output_classes, dataset.output_classes))
       for iterator_dtype, dataset_dtype in zip(
           nest.flatten(self._output_types), nest.flatten(dataset.output_types)):
         if iterator_dtype != dataset_dtype:
@@ -231,8 +292,8 @@ class Iterator(object):
               "Expected output types %r but got dataset with output types %r." %
               (self._output_types, dataset.output_types))
       for iterator_shape, dataset_shape in zip(
-          nest.flatten(self._output_shapes),
-          nest.flatten(dataset.output_shapes)):
+          nest.flatten(self._output_shapes), nest.flatten(
+              dataset.output_shapes)):
         if not iterator_shape.is_compatible_with(dataset_shape):
           raise TypeError("Expected output shapes compatible with %r but got "
                           "dataset with output shapes %r." %
@@ -250,13 +311,24 @@ class Iterator(object):
     Returns:
       A nested structure of `tf.Tensor` objects.
     """
-    return nest.pack_sequence_as(
-        self._output_types,
-        gen_dataset_ops.iterator_get_next(
-            self._iterator_resource,
-            output_types=nest.flatten(self._output_types),
-            output_shapes=nest.flatten(self._output_shapes),
-            name=name))
+    self._get_next_call_count += 1
+    if self._get_next_call_count > GET_NEXT_CALL_WARNING_THRESHOLD:
+      warnings.warn(GET_NEXT_CALL_WARNING_MESSAGE)
+
+    return sparse.deserialize_sparse_tensors(
+        nest.pack_sequence_as(self._output_types,
+                              gen_dataset_ops.iterator_get_next(
+                                  self._iterator_resource,
+                                  output_types=nest.flatten(
+                                      sparse.as_dense_types(
+                                          self._output_types,
+                                          self._output_classes)),
+                                  output_shapes=nest.flatten(
+                                      sparse.as_dense_shapes(
+                                          self._output_shapes,
+                                          self._output_classes)),
+                                  name=name)), self._output_types,
+        self._output_shapes, self._output_classes)
 
   def string_handle(self, name=None):
     """Returns a string-valued `tf.Tensor` that represents this iterator.
@@ -267,8 +339,23 @@ class Iterator(object):
     Returns:
       A scalar `tf.Tensor` of type `tf.string`.
     """
-    return gen_dataset_ops.iterator_to_string_handle(
-        self._iterator_resource, name=name)
+    if name is None:
+      return self._string_handle
+    else:
+      return gen_dataset_ops.iterator_to_string_handle(
+          self._iterator_resource, name=name)
+
+  @property
+  def output_classes(self):
+    """Returns the class of each component of an element of this iterator.
+
+    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+
+    Returns:
+      A nested structure of Python `type` objects corresponding to each
+      component of an element of this dataset.
+    """
+    return self._output_classes
 
   @property
   def output_shapes(self):
@@ -276,7 +363,7 @@ class Iterator(object):
 
     Returns:
       A nested structure of `tf.TensorShape` objects corresponding to each
-      component of an element of this iterator.
+      component of an element of this dataset.
     """
     return self._output_shapes
 
@@ -286,6 +373,6 @@ class Iterator(object):
 
     Returns:
       A nested structure of `tf.DType` objects corresponding to each component
-      of an element of this iterator.
+      of an element of this dataset.
     """
     return self._output_types

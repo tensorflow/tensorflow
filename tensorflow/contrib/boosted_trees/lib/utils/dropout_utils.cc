@@ -23,10 +23,10 @@
 #include "tensorflow/core/lib/random/simple_philox.h"
 #include "tensorflow/core/platform/logging.h"
 
+using tensorflow::Status;
 using tensorflow::boosted_trees::learner::LearningRateDropoutDrivenConfig;
 using tensorflow::random::PhiloxRandom;
 using tensorflow::random::SimplePhilox;
-using tensorflow::Status;
 
 namespace tensorflow {
 namespace boosted_trees {

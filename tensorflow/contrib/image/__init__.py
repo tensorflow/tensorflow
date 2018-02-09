@@ -20,27 +20,43 @@ This module provides functions for image manipulation; currently, chrominance
 transformas (including changing saturation and hue) in YIQ space and
 projective transforms (including rotation) are supported.
 
+## Image Transformation `Ops`
+
 @@angles_to_projective_transforms
 @@compose_transforms
 @@adjust_yiq_hsv
 @@random_yiq_hsv
 @@rotate
 @@transform
+@@translate
+@@translations_to_projective_transforms
+
+## Image Segmentation `Ops`
+
+@@connected_components
+
+## Matching `Ops`
+
 @@bipartite_match
+
+## Random Dot Stereogram `Ops`
+
 @@single_image_random_dot_stereograms
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=line-too-long
 from tensorflow.contrib.image.python.ops.distort_image_ops import adjust_hsv_in_yiq
 from tensorflow.contrib.image.python.ops.distort_image_ops import random_hsv_in_yiq
 
 from tensorflow.contrib.image.python.ops.image_ops import angles_to_projective_transforms
 from tensorflow.contrib.image.python.ops.image_ops import compose_transforms
+from tensorflow.contrib.image.python.ops.image_ops import connected_components
 from tensorflow.contrib.image.python.ops.image_ops import rotate
 from tensorflow.contrib.image.python.ops.image_ops import transform
+from tensorflow.contrib.image.python.ops.image_ops import translate
+from tensorflow.contrib.image.python.ops.image_ops import translations_to_projective_transforms
 from tensorflow.contrib.image.python.ops.single_image_random_dot_stereograms import single_image_random_dot_stereograms
 
 from tensorflow.python.util.all_util import remove_undocumented

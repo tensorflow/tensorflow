@@ -27,7 +27,6 @@ limitations under the License.
 #include "cuda/include/cusolverDn.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/stream_executor.h"
 
@@ -408,37 +407,6 @@ class DeviceLapackInfo : public ScratchSpace<int> {
   }
 };
 
-namespace functor {
-// Helper functor to transpose and conjugate all matrices in a flattened batch.
-template <typename Device, typename Scalar>
-struct AdjointBatchFunctor {
-  // We assume that the tensor sizes are correct.
-  void operator()(const Device& device,
-                  typename TTypes<Scalar, 3>::ConstTensor input,
-                  typename TTypes<Scalar, 3>::Tensor output);
-};
-
-// Helper functor to compute the product of diagonal elements in all matrices
-// in a flattened batch.
-template <typename Device, typename Scalar>
-struct DeterminantFromPivotedLUFunctor {
-  void operator()(const Device& device,
-                  typename TTypes<Scalar, 3>::ConstTensor lu_factor,
-                  const int* pivots, typename TTypes<Scalar, 1>::Tensor output,
-                  int* info);
-};
-
-// Helper functor to set a batch of matrices to the identity.
-// TODO(rmlarsen): Use this kernel to replace the horribly inefficient tf.eye
-// op.
-template <typename Device, typename Scalar>
-struct EyeFunctor {
-  void operator()(const Device& device,
-                  typename TTypes<Scalar, 3>::Tensor matrix_batch);
-};
-
-}  // namespace functor
-
 template <typename Scalar>
 ScratchSpace<Scalar> CudaSolver::GetScratchSpace(const TensorShape& shape,
                                                  const string& debug_info,
@@ -459,7 +427,7 @@ inline DeviceLapackInfo CudaSolver::GetDeviceLapackInfo(
     int64 size, const string& debug_info) {
   DeviceLapackInfo new_dev_info(context_, size, debug_info);
   scratch_tensor_refs_.emplace_back(new_dev_info.tensor());
-  return std::move(new_dev_info);
+  return new_dev_info;
 }
 
 }  // namespace tensorflow

@@ -210,15 +210,15 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
           validate_args=True)
 
       self.run_test_sample_consistent_log_prob(
-          sess, sasnorm, radius=1.0, center=0., rtol=0.1)
+          sess.run, sasnorm, radius=1.0, center=0., rtol=0.1)
       self.run_test_sample_consistent_log_prob(
-          sess,
+          sess.run,
           sasnorm,
           radius=1.0,
           center=-0.15,
           rtol=0.1)
       self.run_test_sample_consistent_log_prob(
-          sess,
+          sess.run,
           sasnorm,
           radius=1.0,
           center=0.15,
@@ -237,19 +237,35 @@ class VectorSinhArcsinhDiagTest(test_util.VectorDistributionTestHelpers,
           validate_args=True)
 
       self.run_test_sample_consistent_log_prob(
-          sess, sasnorm, radius=1.0, center=0., rtol=0.1)
+          sess.run, sasnorm, radius=1.0, center=0., rtol=0.1)
       self.run_test_sample_consistent_log_prob(
-          sess,
+          sess.run,
           sasnorm,
           radius=1.0,
           center=-0.15,
           rtol=0.1)
       self.run_test_sample_consistent_log_prob(
-          sess,
+          sess.run,
           sasnorm,
           radius=1.0,
           center=0.15,
           rtol=0.1)
+
+  def test_pdf_reflected_for_negative_skewness(self):
+    with self.test_session() as sess:
+      sas_pos_skew = ds.VectorSinhArcsinhDiag(
+          loc=[0.],
+          scale_identity_multiplier=1.,
+          skewness=2.,
+          validate_args=True)
+      sas_neg_skew = ds.VectorSinhArcsinhDiag(
+          loc=[0.],
+          scale_identity_multiplier=1.,
+          skewness=-2.,
+          validate_args=True)
+      x = np.linspace(-2, 2, num=5).astype(np.float32).reshape(5, 1)
+      self.assertAllClose(
+          *sess.run([sas_pos_skew.prob(x), sas_neg_skew.prob(x[::-1])]))
 
 
 if __name__ == "__main__":

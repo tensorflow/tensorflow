@@ -510,7 +510,8 @@ toolchain {
     # Conservative choice for -O
     # -O3 can increase binary size and even slow down the resulting binaries.
     # Profile first and / or use FDO if you need better performance than this.
-    compiler_flag: "-O2"
+    # -O2 triggers compiler error: https://github.com/tensorflow/tensorflow/pull/15244
+    compiler_flag: "-O3"
 
     # Conservative choice; -D_FORTIFY_SOURCE=2 may be unsafe in some cases.
     # We need to undef it before redefining it as some distributions now have

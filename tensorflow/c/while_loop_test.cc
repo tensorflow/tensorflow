@@ -318,7 +318,7 @@ TEST_F(CApiWhileLoopTest, InvalidCondOutputNode) {
   // TODO(skyewm): this error message could be more informative. Add explicit
   // checks for this case in the while loop implementation?
   ExpectError(TF_INVALID_ARGUMENT,
-              "Requested return node 'p0' not found in graph def");
+              "Requested return tensor 'p0:0' not found in graph def");
 }
 
 TEST_F(CApiWhileLoopTest, InvalidCondOutputIndex) {
@@ -358,7 +358,7 @@ TEST_F(CApiWhileLoopTest, InvalidBodyOutputNode) {
   // TODO(skyewm): this error message could be more informative. Add explicit
   // checks for this case in the while loop implementation?
   ExpectError(TF_INVALID_ARGUMENT,
-              "Requested return node 'p0' not found in graph def");
+              "Requested return tensor 'p0:0' not found in graph def");
 }
 
 // TODO(skyewm): enable this when it works (currently segfaults!)
@@ -389,7 +389,7 @@ TEST_F(CApiWhileLoopTest, WrongGraph) {
   params_->body_outputs[0] = inputs_[0];
   // TODO(skyewm): improve error message
   ExpectError(TF_INVALID_ARGUMENT,
-              "Requested return node 'p0' not found in graph def");
+              "Requested return tensor 'p0:0' not found in graph def");
 }
 
 TEST_F(CApiWhileLoopTest, BadTypes) {

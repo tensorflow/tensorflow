@@ -191,14 +191,14 @@ class TransformTest(test.TestCase):
     # Extract the operations.
     replacement_ts = {w.value(): g}
     original_mul1_grad = (ops.get_default_graph().
-                          get_operation_by_name("grad/mul1_grad/mul_1"))
+                          get_operation_by_name("grad/mul1_grad/Mul_1"))
 
     # Should not raise exception.
     res = ge.graph_replace(g, replacement_ts, dst_scope="res")
 
     # Extract the operations after graph_replace.
     result_mul1_grad = (ops.get_default_graph().
-                        get_operation_by_name("res/grad/mul1_grad/mul_1"))
+                        get_operation_by_name("res/grad/mul1_grad/Mul_1"))
 
     # Make sure _original_ops are as expected.
     self.assertEquals(original_mul1_grad._original_op.name, u"mul1")

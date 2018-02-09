@@ -16,12 +16,13 @@ limitations under the License.
 #include <memory>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
+
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -52,9 +53,9 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
     io_hlos->push_back(param);
     const Shape& param_shape = param->shape();
     argument_types.push_back(
-        llvm_ir::ShapeToIrType(param_shape, &ir_builder_)->getPointerTo());
-    int64 param_size = llvm_ir::ByteSizeOf(
-        param_shape, ir_emitter_context_->llvm_module()->getDataLayout());
+        llvm_ir::ShapeToIrType(param_shape, module_)->getPointerTo());
+    int64 param_size =
+        llvm_ir::ByteSizeOf(param_shape, module_->getDataLayout());
     argument_dereferenceable_bytes.push_back(param_size);
   }
   {
@@ -62,7 +63,7 @@ llvm::Function* IrEmitterNested::EmitBasePointersForNestedComputation(
     io_hlos->push_back(root);
     const Shape& root_shape = root->shape();
     argument_types.push_back(
-        llvm_ir::ShapeToIrType(root_shape, &ir_builder_)->getPointerTo());
+        llvm_ir::ShapeToIrType(root_shape, module_)->getPointerTo());
     int64 root_size = llvm_ir::ByteSizeOf(
         root_shape, ir_emitter_context_->llvm_module()->getDataLayout());
     argument_dereferenceable_bytes.push_back(root_size);
@@ -115,7 +116,8 @@ Status IrEmitterNested::HandleParameter(HloInstruction* parameter) {
 Status IrEmitterNested::EmitTargetElementLoop(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator) {
-  return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo), &ir_builder_)
+  return llvm_ir::LoopEmitter(element_generator, GetIrArray(hlo, hlo),
+                              &ir_builder_)
       .EmitLoop();
 }
 

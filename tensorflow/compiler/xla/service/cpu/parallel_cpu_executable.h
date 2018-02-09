@@ -51,28 +51,22 @@ class ParallelCpuExecutable : public Executable {
       std::unique_ptr<SimpleOrcJIT> jit,
       std::unique_ptr<const BufferAssignment> assignment,
       std::unique_ptr<const HloModule> hlo_module,
-      std::unique_ptr<const std::map<HloInstruction*, string>> function_names,
-      std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx,
+      std::unique_ptr<const HloInstructionMap<string>> function_names,
       std::unordered_map<const HloInstruction*,
                          std::unique_ptr<unsigned char[]>>
-          aligned_constants);
+          aligned_constants,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map);
   ~ParallelCpuExecutable() override {}
-
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      HloExecutionProfile* hlo_execution_profile) override;
 
   StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
       HloExecutionProfile* hlo_execution_profile) override;
 
-  StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
+  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) override;
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) override;
 
   // This should be called after set_ir_module_string.
   const string& ir_module_string() const { return ir_module_string_; }
@@ -95,8 +89,6 @@ class ParallelCpuExecutable : public Executable {
         "Equality test on CPU parallel executable is not implemented.");
   }
 
-  std::unique_ptr<HloCostAnalysis> CreateCostAnalysis() const override;
-
  private:
   // Allocate buffers required for execution and assign them to the elements of
   // "buffers". "buffers" should be sized to the number of buffers in buffer
@@ -109,13 +101,6 @@ class ParallelCpuExecutable : public Executable {
 
   // Calls the generated functions in 'function_names_', performing the
   // computation with the given arguments using the supplied buffers.
-  Status ExecuteComputeFunctions(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          buffers,
-      HloExecutionProfile* hlo_execution_profile);
   Status ExecuteComputeFunctions(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
@@ -141,11 +126,7 @@ class ParallelCpuExecutable : public Executable {
   string ir_module_string_;
 
   // Map containing the JITted function names for each HLO instruction.
-  const std::unique_ptr<const std::map<HloInstruction*, string>>
-      function_names_;
-
-  // Maps HLOs to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, size_t> hlo_to_profile_idx_;
+  const std::unique_ptr<const HloInstructionMap<string>> function_names_;
 
   // Map from HLO Constant instructions to a pointer to their literal data.
   // The data stored in the protocol buffer might be insufficiently aligned,

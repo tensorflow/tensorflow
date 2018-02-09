@@ -42,11 +42,11 @@ using ::tensorflow::io::JoinPath;
 using ::tensorflow::protobuf::util::JsonOptions;
 using ::tensorflow::protobuf::util::MessageToJsonString;
 
-constexpr char kProfilePluginDirectory[] = "plugins/profile/";
-constexpr char kJsonOpProfileFileName[] = "op_profile.json";
-constexpr char kProtoTraceFileName[] = "trace";
-constexpr char kJsonTraceFileName[] = "trace.json.gz";
 constexpr char kGraphRunPrefix[] = "tpu_profiler.hlo_graph.";
+constexpr char kJsonOpProfileFileName[] = "op_profile.json";
+constexpr char kJsonTraceFileName[] = "trace.json.gz";
+constexpr char kProfilePluginDirectory[] = "plugins/profile/";
+constexpr char kProtoTraceFileName[] = "trace";
 
 Status WriteGzippedDataToFile(const string& filename, const string& data) {
   std::unique_ptr<WritableFile> file;
@@ -97,6 +97,15 @@ Status DumpOpProfileToLogDirectory(StringPiece run_dir,
   return Status::OK();
 }
 
+Status DumpToolDataToLogDirectory(StringPiece run_dir,
+                                  const tensorflow::ProfileToolData& tool,
+                                  std::ostream* os) {
+  string path = JoinPath(run_dir, tool.name());
+  TF_RETURN_IF_ERROR(WriteStringToFile(Env::Default(), path, tool.data()));
+  *os << "Dumped tool data for " << tool.name() << " to " << path << std::endl;
+  return Status::OK();
+}
+
 Status DumpGraphEvents(const string& logdir, const string& run,
                        const ProfileResponse& response, std::ostream* os) {
   int num_graphs = response.computation_graph_size();
@@ -140,10 +149,9 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
   // Dumps profile data to <logdir>/plugins/profile/<run>/.
   string profile_run_dir = JoinPath(logdir, kProfilePluginDirectory, run);
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(profile_run_dir));
+
   // Ignore computation_graph for now.
-  if (response.encoded_trace().empty()) {
-    *os << "No trace event is collected." << std::endl;
-  } else {
+  if (!response.encoded_trace().empty()) {
     LOG(INFO) << "Converting trace events to TraceViewer JSON.";
     TF_RETURN_IF_ERROR(
         DumpTraceToLogDirectory(profile_run_dir, response.encoded_trace(), os));
@@ -154,8 +162,10 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
     TF_RETURN_IF_ERROR(DumpOpProfileToLogDirectory(profile_run_dir,
                                                    response.op_profile(), os));
   }
-
-  TF_RETURN_IF_ERROR(DumpGraphEvents(logdir, run, response, os));
+  for (const auto& tool_data : response.tool_data()) {
+    TF_RETURN_IF_ERROR(
+        DumpToolDataToLogDirectory(profile_run_dir, tool_data, os));
+  }
 
   return Status::OK();
 }

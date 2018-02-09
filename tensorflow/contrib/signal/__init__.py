@@ -20,6 +20,7 @@ See the @{$python/contrib.signal} guide.
 @@hamming_window
 @@hann_window
 @@inverse_stft
+@@inverse_stft_window_fn
 @@mfccs_from_log_mel_spectrograms
 @@linear_to_mel_weight_matrix
 @@overlap_and_add
@@ -44,6 +45,7 @@ from tensorflow.contrib.signal.python.ops.shape_ops import frame
 # Keep an alias to `frames` for backwards compatibility.
 from tensorflow.contrib.signal.python.ops.shape_ops import frame as frames
 from tensorflow.contrib.signal.python.ops.spectral_ops import inverse_stft
+from tensorflow.contrib.signal.python.ops.spectral_ops import inverse_stft_window_fn
 from tensorflow.contrib.signal.python.ops.spectral_ops import stft
 from tensorflow.contrib.signal.python.ops.window_ops import hamming_window
 from tensorflow.contrib.signal.python.ops.window_ops import hann_window

@@ -95,9 +95,9 @@ transforms to modify the graph with. The transforms are given as a list of
 names, and can each have arguments themselves. These transforms define the
 pipeline of modifications that are applied in order to produce the output.
 Sometimes you need some transforms to happen before others, and the ordering
-within the list lets you specify which happen first. 
-Note that the optimization 
-`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control 
+within the list lets you specify which happen first.
+Note that the optimization
+`remove_nodes(op=Identity, op=CheckNumerics)` will break the model with control
 flow operations, such as `tf.cond`, `tf.map_fn`, and `tf.while`.
 
 ## Inspecting Graphs
@@ -385,7 +385,12 @@ input is collapsed down into a simple constant.
 
 ### fold_constants
 
-Args: None \
+Args:
+
+*   clear_output_shapes: Clears tensor shape information saved as attributes.
+    Some older graphs containes out-of-date information and may cause import
+    errors. Defaults to true.
+
 Prerequisites: None
 
 Looks for any sub-graphs within the model that always evaluate to constant

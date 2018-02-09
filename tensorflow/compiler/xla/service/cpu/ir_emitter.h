@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stddef.h>
 #include <map>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -29,6 +30,9 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "llvm/Target/TargetMachine.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
+#include "tensorflow/compiler/xla/service/cpu/external_constant_pool.h"
+#include "tensorflow/compiler/xla/service/cpu/ir_function.h"
+#include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor_with_default.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -48,49 +52,6 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
-
-// Wraps an llvm::TargetMachine and parses out some information that feeds into
-// code LLVM IR generation decisions.
-//
-// Ideally we'd be able to use llvm::TargetTransformInfo here (since its
-// interface is pretty much a perfect fit for our use case), but obtaining an
-// instance of llvm::TargetTransformInfo outside an LLVM pass pipeline without
-// super-ugly hacks is difficult.
-//
-// TODO(b/66049221): See if the LLVM community will be receptive to exposing an
-// API that lets us directly create and use llvm::TargetTransformInfo instances
-// outside of a pass manager.
-class TargetMachineFeatures {
- public:
-  TargetMachineFeatures(llvm::TargetMachine* target_machine)
-      : target_machine_(target_machine) {}
-
-  // Return the vectorization factor, which is the number of bytes of data
-  // explicitly vectorized routines will try to process at once.
-  int vectorization_factor_in_bytes() const {
-    // Ideally this should be a function of the cache line size (which we can
-    // get from llvm::TargetTransformInfo::getCacheLineSize) of the target
-    // machine.  Guess a value of 128 bytes for now.
-    return 128;
-  }
-
-  // Return the size of the largest register size in bytes.  We need to pass in
-  // "function" since llvm functions can contain annotations for specializing
-  // them to specific micro-architectures (though currently XLA does not use
-  // this functionality).
-  //
-  // Ideally we should have been able to use
-  // llvm::TargetTransformInfo::getRegisterBitWidth(true) here.
-  unsigned largest_register_size_in_bytes(llvm::Function* function);
-
- private:
-  unsigned largest_register_size_in_bytes_impl(llvm::Function* function) const;
-
-  tensorflow::gtl::FlatMap<llvm::Function*, int>
-      largest_register_size_in_bytes_;
-  llvm::TargetMachine* target_machine_;
-};
-
 // This class is the top-level API for the XLA HLO --> LLVM IR compiler.  It
 // implements the DfsHloVisitor interface and emits HLO computations as LLVM IR
 // functions.
@@ -102,13 +63,21 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // assignment: a BufferAssignment from which we know which temporary buffers
   //             are used by the HLO nodes.
   // llvm_module: the LLVM module to emit IR into.
-  // hlo_to_profile_idx: the mapping from HLO to its index in the profiling
-  //                     array.
+  // instruction_to_profile_idx: the mapping from HLO instructions to their
+  //              index in the profiling array.
+  // computation_to_profile_idx: the mapping from HLO computations to their
+  //              index in the profiling array.
+  // external_constant_pool: if non-null, points to an ExternalConstantPool
+  //                         instance into which the Ir emitter can spill
+  //                         constants.
   IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
             llvm::Module* llvm_module,
-            const std::unordered_map<const HloInstruction*, size_t>*
-                hlo_to_profile_idx,
-            llvm::TargetMachine* target_machine);
+            std::unordered_map<const HloInstruction*, int64>
+                instruction_to_profile_idx,
+            std::unordered_map<const HloComputation*, int64>
+                computation_to_profile_idx,
+            llvm::TargetMachine* target_machine,
+            ExternalConstantPool* external_constant_pool);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -149,62 +118,38 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status DefaultAction(HloInstruction* hlo) override;
 
   Status HandleBitcast(HloInstruction* bitcast) override;
-  Status HandleConstant(HloInstruction* constant,
-                        const Literal& literal) override;
+  Status HandleConstant(HloInstruction* constant) override;
   Status HandleCopy(HloInstruction* copy) override;
-  Status HandleGetTupleElement(HloInstruction* get_tuple_element,
-                               HloInstruction* operand) override;
-  Status HandleSelect(HloInstruction* select, HloInstruction* pred,
-                      HloInstruction* on_true,
-                      HloInstruction* on_false) override;
-  Status HandleDot(HloInstruction* dot, HloInstruction* lhs,
-                   HloInstruction* rhs) override;
-  Status HandleConvolution(HloInstruction* convolution, HloInstruction* lhs,
-                           HloInstruction* rhs, const Window& window) override;
-  Status HandleBatchNormTraining(HloInstruction* batch_norm_training) override;
-  Status HandleBatchNormGrad(HloInstruction* batch_norm_grad) override;
+  Status HandleGetTupleElement(HloInstruction* get_tuple_element) override;
+  Status HandleSelect(HloInstruction* select) override;
+  Status HandleDot(HloInstruction* dot) override;
+  Status HandleConvolution(HloInstruction* convolution) override;
+  Status HandleFft(HloInstruction* fft) override;
   Status HandleCrossReplicaSum(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
-  Status HandleSort(HloInstruction* sort, HloInstruction* operand) override;
+  Status HandleSort(HloInstruction* sort) override;
   Status HandleParameter(HloInstruction* parameter) override;
-  Status HandleReduce(HloInstruction* reduce, HloInstruction* arg,
-                      HloInstruction* init_value,
-                      tensorflow::gtl::ArraySlice<int64> dimensions,
-                      HloComputation* function) override;
-  Status HandleReduceWindow(HloInstruction* reduce_window,
-                            HloInstruction* operand, const Window& window,
-                            HloComputation* function) override;
+  Status HandleReduce(HloInstruction* reduce) override;
+  Status HandleReduceWindow(HloInstruction* reduce_window) override;
   Status HandleSelectAndScatter(HloInstruction* select_and_scatter) override;
   Status HandleSend(HloInstruction* send) override;
-  Status HandleSlice(HloInstruction* slice,
-                     HloInstruction* /*operand*/) override;
-  Status HandleDynamicSlice(HloInstruction* dynamic_slice,
-                            HloInstruction* /*operand*/,
-                            HloInstruction* /*start_indices*/) override;
-  Status HandleDynamicUpdateSlice(HloInstruction* dynamic_update_slice,
-                                  HloInstruction* /*operand*/,
-                                  HloInstruction* /*update*/,
-                                  HloInstruction* /*start_indices*/) override;
+  Status HandleSendDone(HloInstruction* send_done) override;
+  Status HandleSlice(HloInstruction* slice) override;
+  Status HandleDynamicSlice(HloInstruction* dynamic_slice) override;
+  Status HandleDynamicUpdateSlice(
+      HloInstruction* dynamic_update_slice) override;
   Status HandleRecv(HloInstruction* recv) override;
+  Status HandleRecvDone(HloInstruction* recv_done) override;
   Status HandlePad(HloInstruction* pad) override;
-  Status HandleTuple(
-      HloInstruction* tuple,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
-  Status HandleMap(
-      HloInstruction* map,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-      HloComputation* function,
-      tensorflow::gtl::ArraySlice<HloInstruction*> static_operands) override;
+  Status HandleTuple(HloInstruction* tuple) override;
+  Status HandleMap(HloInstruction* map) override;
   Status HandleFusion(HloInstruction* fusion) override;
   Status HandleCall(HloInstruction* call) override;
-  Status HandleCustomCall(HloInstruction* custom_call,
-                          tensorflow::gtl::ArraySlice<HloInstruction*> operands,
-                          tensorflow::StringPiece custom_call_target) override;
+  Status HandleCustomCall(HloInstruction* custom_call) override;
   Status HandleWhile(HloInstruction* xla_while) override;
-  Status HandleConcatenate(
-      HloInstruction* concatenate,
-      tensorflow::gtl::ArraySlice<HloInstruction*> operands) override;
+  Status HandleConcatenate(HloInstruction* concatenate) override;
+  Status HandleConditional(HloInstruction* conditional) override;
   Status FinishVisit(HloInstruction* root) override;
 
   Status Preprocess(HloInstruction* hlo) override;
@@ -214,14 +159,28 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Private helper to initialize an IR function for the computation.
   void InitializeIrFunction(const string& function_name);
 
-  // Convenience function to generate a GEP into the profile counter parameter
-  // which would correspond to the index for a given HLO.
-  llvm::Value* GetProfileCounterFor(const HloInstruction* hlo);
+  template <typename T>
+  llvm::Value* GetProfileCounterCommon(
+      const T& hlo,
+      const std::unordered_map<const T*, int64>& profile_index_map);
+
+  // Convenience functions to generate a GEP into the profile counter parameter
+  // which would correspond to the index for a given HLO instruction or
+  // computation.
+  llvm::Value* GetProfileCounterFor(const HloInstruction& instruction) {
+    return GetProfileCounterCommon<HloInstruction>(instruction,
+                                                   instruction_to_profile_idx_);
+  }
+
+  llvm::Value* GetProfileCounterFor(const HloComputation& computation) {
+    return GetProfileCounterCommon<HloComputation>(computation,
+                                                   computation_to_profile_idx_);
+  }
 
   // Gets the IR Value emitted previously for the given hlo.
   //
-  // Prefer calling GetIrArrayForOp if the value you're reading is a buffer,
-  // because GetIrArrayForOp annotates buffer's loads/stores with noalias
+  // Prefer calling GetIrArrayFor if the value you're reading is a buffer,
+  // because GetIrArrayFor annotates buffer's loads/stores with noalias
   // metadata.
   //
   // Make sure to call this only when you're certain a value *was* emitted - if
@@ -229,7 +188,11 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::Value* GetEmittedValueFor(const HloInstruction* hlo);
 
   // Gets an IrArray representing the given hlo.
-  llvm_ir::IrArray GetIrArrayForOp(const HloInstruction* hlo);
+  llvm_ir::IrArray GetIrArrayFor(const HloInstruction* hlo);
+
+  // Gets a list of IrArrays, one for each of hlo's operands.
+  std::vector<llvm_ir::IrArray> GetIrArraysForOperandsOf(
+      const HloInstruction* hlo);
 
   // Augments IrArray with aliasing information.
   void AddAliasingInformationToIrArray(const HloInstruction& hlo,
@@ -240,13 +203,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Convenience function to get the IR type matching the given shape.
   llvm::Type* IrShapeType(const Shape& shape);
 
-  // Get the llvm::Value* that represents the "retval" argument of the
-  // computation function being emitted by this emitter.
-  llvm::Argument* GetResultArgument();
-
   // Get the llvm::Value* that represents the "prof_counters" argument of the
   // computation function being emitted by this emitter.
-  llvm::Argument* GetProfileCountersArgument();
+  llvm::Value* GetProfileCountersArgument();
 
   // Get the xla::ExecutableRunOptions that represents the "run_options"
   // argument of the computation function being emitted by this emitter.
@@ -255,11 +214,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Get the llvm::Value* that represents the "temps" argument of the
   // computation function being emitted by this emitter.
   llvm::Value* GetTempBuffersArgument();
-
-  // Emit ir to read and return the ir value for the dynamic loop bound at
-  // 'offset' from the "dynamic_loop_bounds" argument of the computation
-  // function being emitted by this emitter.
-  llvm::Value* GetDynamicLoopBound(const int64 offset);
 
   // Emits code that computes the address of the given temporary buffer to the
   // function. target_shape is the shape of this temporary buffer.
@@ -338,26 +292,16 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       HloInstruction* target_op, tensorflow::StringPiece desc,
       const llvm_ir::ElementGenerator& element_generator);
 
-  // Emit IR to perform a computation for every element in a partition/slice of
-  // 'target_shape'. The loop bounds for the outer-dimension partitions are
-  // passed into the compute function as a runtime argument (accessible from
-  // GetDynamicLoopBound).
-  Status EmitParallelTargetElementLoop(
-      const Shape& target_shape,
-      const llvm_ir::ElementGenerator& element_generator,
-      tensorflow::StringPiece loop_name, llvm_ir::IrArray* target_array);
-
   // Emits a memcpy from the source instruction's result value to the
   // destination's.  Both source and destination must have an entry in the
   // emitted_value_ table.
   Status EmitMemcpy(const HloInstruction& source,
                     const HloInstruction& destination);
 
-  // Emit IR to compute the target address of the buffer for the given op.
-  // The returned Value is a pointer to a IR type that represents the op's
-  // element type.
-  StatusOr<llvm::Value*> EmitTargetAddressForOp(
-      const HloInstruction* op, const ShapeIndex& shape_index = {});
+  // Emits IR to compute the target address of the buffer for the given op.
+  // After calling this function, you can get a pointer to this buffer by
+  // calling GetIrArrayForOp or GetEmittedValueFor.
+  Status EmitTargetAddressForOp(const HloInstruction* op);
 
   // Structurizes "array_elements" into an MD array that represents "shape".
   // This is a recursive function, and "dimension_index" indicates the index of
@@ -469,12 +413,19 @@ class IrEmitter : public DfsHloVisitorWithDefault {
       thread_local_buffers_;
 
   // The following fields track the IR emission state. According to LLVM memory
-  // management rules, their memory is owned by the module.
-  llvm::Function* compute_function_;
+  // management rules, their memory is owned by the module (Note that IrFunction
+  // creates the encapsulated llvm::Function s.t. it is added to the llvm
+  // module's function list).
+  std::unique_ptr<IrFunction> compute_function_;
   llvm::IRBuilder<> ir_builder_;
 
-  // Maps HLOs to their index into the profile counter array.
-  const std::unordered_map<const HloInstruction*, size_t>* hlo_to_profile_idx_;
+  // Maps HLO instructions to their index into the profile counter array.
+  const std::unordered_map<const HloInstruction*, int64>
+      instruction_to_profile_idx_;
+
+  // Maps HLO computations to their index into the profile counter array.
+  const std::unordered_map<const HloComputation*, int64>
+      computation_to_profile_idx_;
 
   // Maps HLOs to Values emitted for them.
   std::unordered_map<const HloInstruction*, llvm::Value*> emitted_value_;
@@ -482,7 +433,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm_ir::AliasAnalysis alias_analysis_;
 
   // The number of root instruction outer dimensions used in parallel loop
-  // emission (EmitParallelTargetElementLoop).
+  // emission (ParallelLoopEmitter).
   int64 num_dynamic_loop_bounds_ = 0;
 
   // Returns whether the given instruction should be emitted as a parallel loop.
@@ -497,15 +448,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // profiling a computation.
   class ProfilingState {
    public:
-    ProfilingState()
-        : is_top_level_computation_(false),
-          use_rdtscp_(false),
-          prof_counters_(nullptr) {}
-    ProfilingState(bool is_top_level_computation, bool use_rdtscp,
-                   llvm::Argument* prof_counters)
-        : is_top_level_computation_(is_top_level_computation),
-          use_rdtscp_(use_rdtscp),
-          prof_counters_(prof_counters) {}
+    ProfilingState() : use_rdtscp_(false), prof_counters_(nullptr) {}
+    ProfilingState(bool use_rdtscp, llvm::Value* prof_counters)
+        : use_rdtscp_(use_rdtscp), prof_counters_(prof_counters) {}
 
     // Record the cycle counter before an HLO executes.
     void RecordCycleStart(llvm::IRBuilder<>* ir_builder, HloInstruction* hlo);
@@ -527,15 +472,12 @@ class IrEmitter : public DfsHloVisitorWithDefault {
                               llvm::Value* cycle_start);
 
    private:
-    // Is this IrEmitter for a top-level computation?
-    bool is_top_level_computation_;
-
     // Should we use the x86-specific rdtscp or the generic readcyclecounter
     // intrinsic?
     bool use_rdtscp_;
 
     // The argument which corresponds to the profile counter buffer.
-    llvm::Argument* prof_counters_;
+    llvm::Value* prof_counters_;
 
     // The first read cycle counter in the program.
     llvm::Value* first_read_cycle_start_ = nullptr;
@@ -588,12 +530,6 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status EmitXfeedTransfer(XfeedKind kind, const Shape& shape,
                            llvm::Value* program_buffer_address);
 
-  // Returns true if the current function being emitted is called in a
-  // parallel context (returns false otherwise).
-  bool IsParallelContext() {
-    return parallel_cpu_backend_ && is_top_level_computation_;
-  }
-
   const HloModuleConfig& hlo_module_config_;
 
   const bool parallel_cpu_backend_;
@@ -601,6 +537,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   bool is_top_level_computation_;
 
   TargetMachineFeatures target_machine_features_;
+
+  int64 external_global_constant_counter_ = 0;
+  ExternalConstantPool* external_constant_pool_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };

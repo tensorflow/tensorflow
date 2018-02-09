@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras built-in activation functions.
+"""Built-in activation functions.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -21,8 +21,8 @@ from __future__ import print_function
 import six
 
 from tensorflow.python.keras._impl.keras import backend as K
-from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
+from tensorflow.python.layers.base import Layer
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -61,10 +61,12 @@ def selu(x):
       x: A tensor or variable to compute the activation function for.
 
   Returns:
-    Tensor with the same shape and dtype as `x`.
+      Tensor with the same shape and dtype as `x`.
 
-  References:
-      - [Self-Normalizing Neural Networks](https://arxiv.org/abs/1706.02515)
+  # Note
+      - To be used together with the initialization "lecun_normal".
+      - To be used together with the dropout variant "AlphaDropout".
+
   """
   alpha = 1.6732632423543772848170429916717
   scale = 1.0507009873554804934193349852946

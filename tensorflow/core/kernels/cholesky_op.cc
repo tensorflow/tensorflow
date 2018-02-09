@@ -112,6 +112,14 @@ class CholeskyOpGpu : public AsyncOpKernel {
                                 input.dim_size(ndims - 2), " != ", n),
         done);
 
+    if (input.NumElements() == 0) {
+      // If X is an empty matrix (0 rows, 0 col), X * X' == X.
+      // Therefore, we return X.
+      context->set_output(0, input);
+      done();
+      return;
+    }
+
     // Allocate output.
     // TODO(rmlarsen): Convert to std::make_unique when available.
     std::unique_ptr<CudaSolver> solver(new CudaSolver(context));
@@ -120,13 +128,6 @@ class CholeskyOpGpu : public AsyncOpKernel {
                          context->forward_input_or_allocate_output(
                              {0}, 0, input.shape(), &output),
                          done);
-
-    if (n == 0) {
-      // If X is an empty matrix (0 rows, 0 col), X * X' == X.
-      // Therefore, we return X.
-      done();
-      return;
-    }
 
     // Copy the lower triangular part of the input matrices to the output and
     // set the strictly upper triangular part to zero. We use a pre-existing

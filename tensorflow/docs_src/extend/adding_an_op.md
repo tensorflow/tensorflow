@@ -1,5 +1,12 @@
 # Adding a New Op
 
+Note: By default [www.tensorflow.org](https://www.tensorflow.org) shows docs for the
+most recent stable version. The instructions in this doc require building from
+source. You will probably want to build from the `master` version of tensorflow.
+You should, as a result, be sure you are following the
+[`master` version of this doc](https://www.tensorflow.org/versions/master/extend/adding_an_op),
+in case there have been any changes.
+
 If you'd like to create an op that isn't covered by the existing TensorFlow
 library, we recommend that you first try writing the op in Python as
 a composition of existing Python ops or functions. If that isn't possible, you
@@ -334,9 +341,9 @@ Assuming you have `g++` installed, here is the sequence of commands you can use
 to compile your op into a dynamic library.
 
 ```bash
-TF_INC=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_include())')
-TF_LIB=$(python -c 'import tensorflow as tf; print(tf.sysconfig.get_lib())')
-g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC -I$TF_INC -I$TF_INC/external/nsync/public -L$TF_LIB -ltensorflow_framework -O2
+TF_CFLAGS=( $(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_compile_flags()))') )
+TF_LFLAGS=( $(python -c 'import tensorflow as tf; print(" ".join(tf.sysconfig.get_link_flags()))') )
+g++ -std=c++11 -shared zero_out.cc -o zero_out.so -fPIC ${TF_CFLAGS[@]} ${TF_LFLAGS[@]} -O2
 ```
 
 On Mac OS X, the additional flag "-undefined dynamic_lookup" is required when
@@ -444,17 +451,17 @@ Now that you know how to build a basic (and somewhat restricted) op and
 implementation, we'll look at some of the more complicated things you will
 typically need to build into your op. This includes:
 
-*   [Conditional checks and validation](#conditional_checks_and_validation)
-*   [Op registration](#op_registration)
+*   [Conditional checks and validation](#conditional-checks-and-validation)
+*   [Op registration](#op-registration)
     *   [Attrs](#attrs)
-    *   [Attr types](#attr_types)
+    *   [Attr types](#attr-types)
     *   [Polymorphism](#polymorphism)
-    *   [Inputs and outputs](#inputs_and_outputs)
-    *   [Backwards compatibility](#backwards_compatibility)
-*   [GPU support](#gpu_support)
-    *   [Compiling the kernel for the GPU device](#compiling_the_kernel_for_the_gpu_device)
-*   [Implement the gradient in Python](#implement_the_gradient_in_python)
-*   [Shape functions in C++](#shape_functions_in_c)
+    *   [Inputs and outputs](#inputs-and-outputs)
+    *   [Backwards compatibility](#backwards-compatibility)
+*   [GPU support](#gpu-support)
+    *   [Compiling the kernel for the GPU device](#compiling-the-kernel-for-the-gpu-device)
+*   [Implement the gradient in Python](#implement-the-gradient-in-python)
+*   [Shape functions in C++](#shape-functions-in-c)
 
 ### Conditional checks and validation
 
@@ -1221,10 +1228,10 @@ into a single dynamically loadable library:
 
 ```bash
 nvcc -std=c++11 -c -o cuda_op_kernel.cu.o cuda_op_kernel.cu.cc \
--I $TF_INC -I$TF_INC/external/nsync/public -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
+  ${TF_CFLAGS[@]} -D GOOGLE_CUDA=1 -x cu -Xcompiler -fPIC
 
 g++ -std=c++11 -shared -o cuda_op_kernel.so cuda_op_kernel.cc \
-cuda_op_kernel.cu.o -I $TF_INC -I$TF_INC/external/nsync/public -fPIC -lcudart -L$TF_LIB -ltensorflow_framework
+  cuda_op_kernel.cu.o ${TF_CFLAGS[@]} -fPIC -lcudart ${TF_LFLAGS[@]}
 ```
 
 `cuda_op_kernel.so` produced above can be loaded as usual in Python, using the

@@ -67,6 +67,7 @@ __all__ = [
     'wasserstein_gradient_penalty',
     'mutual_information_penalty',
     'combine_adversarial_loss',
+    'cycle_consistency_loss',
 ]
 
 
@@ -217,21 +218,25 @@ def acgan_discriminator_loss(
   Raises:
     TypeError: If the discriminator does not output a tuple.
   """
-  loss_on_generated = losses.softmax_cross_entropy(
-      one_hot_labels, discriminator_gen_classification_logits,
-      weights=generated_weights, scope=scope, loss_collection=None,
-      reduction=reduction)
-  loss_on_real = losses.softmax_cross_entropy(
-      one_hot_labels, discriminator_real_classification_logits,
-      weights=real_weights, label_smoothing=label_smoothing, scope=scope,
-      loss_collection=None, reduction=reduction)
-  loss = loss_on_generated + loss_on_real
-  util.add_loss(loss, loss_collection)
+  with ops.name_scope(
+      scope, 'acgan_discriminator_loss',
+      (discriminator_real_classification_logits,
+       discriminator_gen_classification_logits, one_hot_labels)) as scope:
+    loss_on_generated = losses.softmax_cross_entropy(
+        one_hot_labels, discriminator_gen_classification_logits,
+        weights=generated_weights, scope=scope, loss_collection=None,
+        reduction=reduction)
+    loss_on_real = losses.softmax_cross_entropy(
+        one_hot_labels, discriminator_real_classification_logits,
+        weights=real_weights, label_smoothing=label_smoothing, scope=scope,
+        loss_collection=None, reduction=reduction)
+    loss = loss_on_generated + loss_on_real
+    util.add_loss(loss, loss_collection)
 
-  if add_summaries:
-    summary.scalar('discriminator_gen_ac_loss', loss_on_generated)
-    summary.scalar('discriminator_real_ac_loss', loss_on_real)
-    summary.scalar('discriminator_ac_loss', loss)
+    if add_summaries:
+      summary.scalar('discriminator_gen_ac_loss', loss_on_generated)
+      summary.scalar('discriminator_real_ac_loss', loss_on_real)
+      summary.scalar('discriminator_ac_loss', loss)
 
   return loss
 
@@ -275,12 +280,16 @@ def acgan_generator_loss(
     ValueError: if arg module not either `generator` or `discriminator`
     TypeError: if the discriminator does not output a tuple.
   """
-  loss = losses.softmax_cross_entropy(
-      one_hot_labels, discriminator_gen_classification_logits, weights=weights,
-      scope=scope, loss_collection=loss_collection, reduction=reduction)
+  with ops.name_scope(
+      scope, 'acgan_generator_loss',
+      (discriminator_gen_classification_logits, one_hot_labels)) as scope:
+    loss = losses.softmax_cross_entropy(
+        one_hot_labels, discriminator_gen_classification_logits,
+        weights=weights, scope=scope, loss_collection=loss_collection,
+        reduction=reduction)
 
-  if add_summaries:
-    summary.scalar('generator_ac_loss', loss)
+    if add_summaries:
+      summary.scalar('generator_ac_loss', loss)
 
   return loss
 
@@ -289,7 +298,6 @@ def acgan_generator_loss(
 # GANs` (https://arxiv.org/abs/1704.00028).
 
 
-# TODO(joelshor): Figure out why this function can't be inside a name scope.
 def wasserstein_gradient_penalty(
     real_data,
     generated_data,
@@ -331,48 +339,50 @@ def wasserstein_gradient_penalty(
   Raises:
     ValueError: If the rank of data Tensors is unknown.
   """
-  real_data = ops.convert_to_tensor(real_data)
-  generated_data = ops.convert_to_tensor(generated_data)
-  if real_data.shape.ndims is None:
-    raise ValueError('`real_data` can\'t have unknown rank.')
-  if generated_data.shape.ndims is None:
-    raise ValueError('`generated_data` can\'t have unknown rank.')
+  with ops.name_scope(scope, 'wasserstein_gradient_penalty',
+                      (real_data, generated_data)) as scope:
+    real_data = ops.convert_to_tensor(real_data)
+    generated_data = ops.convert_to_tensor(generated_data)
+    if real_data.shape.ndims is None:
+      raise ValueError('`real_data` can\'t have unknown rank.')
+    if generated_data.shape.ndims is None:
+      raise ValueError('`generated_data` can\'t have unknown rank.')
 
-  differences = generated_data - real_data
-  batch_size = differences.shape[0].value or array_ops.shape(differences)[0]
-  alpha_shape = [batch_size] + [1] * (differences.shape.ndims - 1)
-  alpha = random_ops.random_uniform(shape=alpha_shape)
-  interpolates = real_data + (alpha * differences)
+    differences = generated_data - real_data
+    batch_size = differences.shape[0].value or array_ops.shape(differences)[0]
+    alpha_shape = [batch_size] + [1] * (differences.shape.ndims - 1)
+    alpha = random_ops.random_uniform(shape=alpha_shape)
+    interpolates = real_data + (alpha * differences)
 
-  # Reuse variables if a discriminator scope already exists.
-  reuse = False if discriminator_scope is None else True
-  with variable_scope.variable_scope(discriminator_scope, 'gpenalty_dscope',
-                                     reuse=reuse):
-    disc_interpolates = discriminator_fn(interpolates, generator_inputs)
+    with ops.name_scope(None):  # Clear scope so update ops are added properly.
+      # Reuse variables if variables already exists.
+      with variable_scope.variable_scope(discriminator_scope, 'gpenalty_dscope',
+                                         reuse=variable_scope.AUTO_REUSE):
+        disc_interpolates = discriminator_fn(interpolates, generator_inputs)
 
-  if isinstance(disc_interpolates, tuple):
-    # ACGAN case: disc outputs more than one tensor
-    disc_interpolates = disc_interpolates[0]
+    if isinstance(disc_interpolates, tuple):
+      # ACGAN case: disc outputs more than one tensor
+      disc_interpolates = disc_interpolates[0]
 
-  gradients = gradients_impl.gradients(disc_interpolates, interpolates)[0]
-  gradient_squares = math_ops.reduce_sum(
-      math_ops.square(gradients), axis=list(range(1, gradients.shape.ndims)))
-  # Propagate shape information, if possible.
-  if isinstance(batch_size, int):
-    gradient_squares.set_shape([
-        batch_size] + gradient_squares.shape.as_list()[1:])
-  # For numerical stability, add epsilon to the sum before taking the square
-  # root. Note tf.norm does not add epsilon.
-  slopes = math_ops.sqrt(gradient_squares + epsilon)
-  penalties = math_ops.square(slopes - 1.0)
-  penalty = losses.compute_weighted_loss(
-      penalties, weights, scope=scope, loss_collection=loss_collection,
-      reduction=reduction)
+    gradients = gradients_impl.gradients(disc_interpolates, interpolates)[0]
+    gradient_squares = math_ops.reduce_sum(
+        math_ops.square(gradients), axis=list(range(1, gradients.shape.ndims)))
+    # Propagate shape information, if possible.
+    if isinstance(batch_size, int):
+      gradient_squares.set_shape([
+          batch_size] + gradient_squares.shape.as_list()[1:])
+    # For numerical stability, add epsilon to the sum before taking the square
+    # root. Note tf.norm does not add epsilon.
+    slopes = math_ops.sqrt(gradient_squares + epsilon)
+    penalties = math_ops.square(slopes - 1.0)
+    penalty = losses.compute_weighted_loss(
+        penalties, weights, scope=scope, loss_collection=loss_collection,
+        reduction=reduction)
 
-  if add_summaries:
-    summary.scalar('gradient_penalty_loss', penalty)
+    if add_summaries:
+      summary.scalar('gradient_penalty_loss', penalty)
 
-  return penalty
+    return penalty
 
 
 # Original losses from `Generative Adversarial Nets`
@@ -546,7 +556,7 @@ def modified_generator_loss(
     discriminator_gen_outputs,
     label_smoothing=0.0,
     weights=1.0,
-    scope='generator_modified_loss',
+    scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
     add_summaries=False):
@@ -576,12 +586,15 @@ def modified_generator_loss(
   Returns:
     A loss Tensor. The shape depends on `reduction`.
   """
-  loss = losses.sigmoid_cross_entropy(
-      array_ops.ones_like(discriminator_gen_outputs), discriminator_gen_outputs,
-      weights, label_smoothing, scope, loss_collection, reduction)
+  with ops.name_scope(scope, 'generator_modified_loss',
+                      [discriminator_gen_outputs]) as scope:
+    loss = losses.sigmoid_cross_entropy(
+        array_ops.ones_like(discriminator_gen_outputs),
+        discriminator_gen_outputs, weights, label_smoothing, scope,
+        loss_collection, reduction)
 
-  if add_summaries:
-    summary.scalar('generator_modified_loss', loss)
+    if add_summaries:
+      summary.scalar('generator_modified_loss', loss)
 
   return loss
 
@@ -739,7 +752,7 @@ def mutual_information_penalty(
     structured_generator_inputs,
     predicted_distributions,
     weights=1.0,
-    scope='generator_modified_loss',
+    scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
     add_summaries=False):
@@ -767,15 +780,16 @@ def mutual_information_penalty(
   _validate_information_penalty_inputs(
       structured_generator_inputs, predicted_distributions)
 
-  # Calculate the negative log-likelihood of the reconstructed noise.
-  log_probs = [math_ops.reduce_mean(dist.log_prob(noise)) for dist, noise in
-               zip(predicted_distributions, structured_generator_inputs)]
-  loss = -1 * losses.compute_weighted_loss(
-      log_probs, weights, scope, loss_collection=loss_collection,
-      reduction=reduction)
+  with ops.name_scope(scope, 'mutual_information_loss') as scope:
+    # Calculate the negative log-likelihood of the reconstructed noise.
+    log_probs = [math_ops.reduce_mean(dist.log_prob(noise)) for dist, noise in
+                 zip(predicted_distributions, structured_generator_inputs)]
+    loss = -1 * losses.compute_weighted_loss(
+        log_probs, weights, scope, loss_collection=loss_collection,
+        reduction=reduction)
 
-  if add_summaries:
-    summary.scalar('mutual_information_penalty', loss)
+    if add_summaries:
+      summary.scalar('mutual_information_penalty', loss)
 
   return loss
 
@@ -902,3 +916,63 @@ def combine_adversarial_loss(main_loss,
                     array_ops.stop_gradient(adv_coeff) * adversarial_loss)
 
   return final_loss
+
+
+def cycle_consistency_loss(data_x,
+                           reconstructed_data_x,
+                           data_y,
+                           reconstructed_data_y,
+                           scope=None,
+                           add_summaries=False):
+  """Defines the cycle consistency loss.
+
+  The cyclegan model has two partial models where `model_x2y` generator F maps
+  data set X to Y, `model_y2x` generator G maps data set Y to X. For a `data_x`
+  in data set X, we could reconstruct it by
+  * reconstructed_data_x = G(F(data_x))
+  Similarly
+  * reconstructed_data_y = F(G(data_y))
+
+  The cycle consistency loss is about the difference between data and
+  reconstructed data, namely
+  * loss_x2x = |data_x - G(F(data_x))| (L1-norm)
+  * loss_y2y = |data_y - F(G(data_y))| (L1-norm)
+  * loss = (loss_x2x + loss_y2y) / 2
+  where `loss` is the final result.
+
+  See https://arxiv.org/abs/1703.10593 for more details.
+
+  Args:
+    data_x: A `Tensor` of data X.
+    reconstructed_data_x: A `Tensor` of reconstructed data X.
+    data_y: A `Tensor` of data Y.
+    reconstructed_data_y: A `Tensor` of reconstructed data Y.
+    scope: The scope for the operations performed in computing the loss.
+      Defaults to None.
+    add_summaries: Whether or not to add detailed summaries for the loss.
+      Defaults to False.
+
+  Returns:
+    A scalar `Tensor` of cycle consistency loss.
+  """
+
+  def _partial_cycle_consistency_loss(data, reconstructed_data):
+    # Following the original implementation
+    # https://github.com/junyanz/CycleGAN/blob/master/models/cycle_gan_model.lua
+    # use L1-norm of pixel-wise error normalized by data size so that
+    # `cycle_loss_weight` can be specified independent of image size.
+    return math_ops.reduce_mean(math_ops.abs(data - reconstructed_data))
+
+  with ops.name_scope(
+      scope,
+      'cycle_consistency_loss',
+      values=[data_x, reconstructed_data_x, data_y, reconstructed_data_y]):
+    loss_x2x = _partial_cycle_consistency_loss(data_x, reconstructed_data_x)
+    loss_y2y = _partial_cycle_consistency_loss(data_y, reconstructed_data_y)
+    loss = (loss_x2x + loss_y2y) / 2.0
+    if add_summaries:
+      summary.scalar('cycle_consistency_loss_x2x', loss_x2x)
+      summary.scalar('cycle_consistency_loss_y2y', loss_y2y)
+      summary.scalar('cycle_consistency_loss', loss)
+
+  return loss

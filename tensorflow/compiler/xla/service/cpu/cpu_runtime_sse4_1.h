@@ -24,6 +24,13 @@ limitations under the License.
 
 #include "tensorflow/core/platform/macros.h"
 
+// MSVC does not have __SSE4_1__ macro. Eigen enables EIGEN_VECTORIZE_SSE4_1
+// when __AVX__ is defined, we should do the same.
+#if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
+#include <smmintrin.h>
+#define TF_XLA_HAS_SSE4_1
+#endif
+
 namespace xla {
 namespace cpu {
 namespace runtime {
@@ -31,7 +38,9 @@ namespace runtime {
 extern const char *const kExpV4F32SSESymbolName;
 extern const char *const kLogV4F32SSESymbolName;
 
-typedef float V4F32SSE __attribute__((__vector_size__(16)));
+#ifdef TF_XLA_HAS_SSE4_1
+typedef __m128 V4F32SSE;
+#endif
 
 }  // namespace runtime
 }  // namespace cpu
@@ -39,14 +48,16 @@ typedef float V4F32SSE __attribute__((__vector_size__(16)));
 
 extern "C" {
 
+#ifdef TF_XLA_HAS_SSE4_1
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
 xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_ExpV4F32SSE(
-    xla::cpu::runtime::V4F32SSE x) TF_ATTRIBUTE_WEAK;
+    xla::cpu::runtime::V4F32SSE x);
 
 xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_LogV4F32SSE(
-    xla::cpu::runtime::V4F32SSE x) TF_ATTRIBUTE_WEAK;
+    xla::cpu::runtime::V4F32SSE x);
+#endif
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_SSE4_1_H_

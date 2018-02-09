@@ -37,6 +37,9 @@ DIR %REPO_ROOT%\%BUILD_DIR%\tf_python\dist\ /S /B > wheel_filename_file
 set /p WHEEL_FILENAME=<wheel_filename_file
 del wheel_filename_file
 
+:: Install absl-py.
+%PIP_EXE% install --upgrade absl-py
+
 :: Install the pip package.
 echo Installing PIP package...
 %PIP_EXE% install --upgrade --no-deps %WHEEL_FILENAME% -v -v

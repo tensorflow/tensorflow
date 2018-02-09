@@ -68,7 +68,9 @@ static void ExpectHasError(const Status& s, const string& substr) {
 }
 
 TEST_F(ShapeOpTest, Simple) {
-  Scope root = Scope::NewRootScope();
+  // Ensure the ops run on CPU, as we have no device copy registration
+  // for NoKnownShape and KnownVecSize objects.
+  Scope root = Scope::NewRootScope().WithDevice("/cpu:0");
 
   // Use a placeholder so the graph optimizer doesn't optimize away
   // the shape function.

@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
-
 // The XlaCompiler class is responsible for compilation of a self-contained
 // subgraph of a TensorFlow computation using the XLA linear algebra runtime.
 // It does a symbolic execution of the graph starting from specific input
@@ -55,8 +54,6 @@ namespace tensorflow {
 //   +---------------------+-----------------------------------------+
 // Within each block, the arguments are arranged by the _Arg index from which
 // they were derived.
-// If `Options::requires_runtime_context` is true, then an additional runtime
-// context argument is passed as a final argument.
 //
 // The run-time outputs of the XLA computation are arranged in the following
 // order:
@@ -107,9 +104,17 @@ class XlaCompiler {
     // is the type of the variable's value, not DT_RESOURCE.
     DataType type;
 
-    // The shape of the argument. If the argument is a resource, this is the
-    // shape of the resource's value.
-    xla::Shape shape;
+    // The shape of the argument. For:
+    // * a parameter: the shape of the parameter.
+    // * a constant: ignored; the shape given by constant_value is used
+    //     instead.
+    // * an uninitialized resource: ignored. We don't yet know the shape of an
+    //     uninitialized resource (otherwise we would have initialized it!)
+    // * an initialized variable: the shape of the variable's value.
+    // * an initialized TensorArray or Stack resource: the shape of an entry in
+    //   the TensorArray/Stack. Note this is the size of a single entry, not the
+    //   XLA data structure that represents the complete stack/array.
+    TensorShape shape;
 
     // The value of the argument, if it is a compile-time constant. Must be a
     // host-memory tensor.
@@ -136,6 +141,31 @@ class XlaCompiler {
     bool operator==(const Argument& other) const;
   };
 
+  // Options pertaining to an individual call to CompileGraph() or
+  // CompileFunction().
+  struct CompileOptions {
+    // If `use_tuple_arg` is true, a single tuple parameter will be used for all
+    // arguments; if false, each argument gets its own parameter.
+    bool use_tuple_arg = false;
+
+    // If 'return_updated_values_for_all_resources' is true, then updated
+    // values of all resource arguments will be included in the
+    // 'resource_updates' of the computation, even if the resource was not
+    // modified by the computation. Used when compiling loop bodies to ensure
+    // the input and output signatures match.
+    bool return_updated_values_for_all_resources = false;
+
+    // If 'resolve_compile_time_constants' is true, then outputs of a
+    // computation that are known to be compile-time constants will be returned
+    // as Tensors at compile-time, rather than as run-time outputs of the
+    // computation.
+    bool resolve_compile_time_constants = true;
+
+    // True when compiling the entry computation, false for subcomputations
+    // (while, call, etc.)
+    bool is_entry_computation = true;
+  };
+
   struct OutputDescription {
     // Type and shape of the output.
     DataType type;
@@ -153,8 +183,9 @@ class XlaCompiler {
     int input_index;
 
     // Type and shape of the tensor to be written back.
+    // The `shape` field has the same meaning as the Argument::shape field.
     DataType type;
-    xla::Shape shape;
+    TensorShape shape;
 
     // Was the value of the variable modified by the computation?
     // (Always true, unless `return_updated_values_for_all_resources` is true.)
@@ -171,15 +202,8 @@ class XlaCompiler {
     // original arguments, and are not necessarily in the same order.)
     std::vector<int> input_mapping;
 
-    // Does the computation require the local runtime context to be passed as
-    // the last argument?
-    bool requires_runtime_context = false;
-
     // Input shapes of the computation.
     std::vector<xla::Shape> xla_input_shapes;
-
-    // Should the arguments be packed into a single tuple?
-    bool tuple_arg;
 
     // Output shape in XLA format. The output shape is always a tuple.
     xla::Shape xla_output_shape;
@@ -212,61 +236,36 @@ class XlaCompiler {
     int graph_def_version = TF_GRAPH_DEF_VERSION;
 
     // If 'allow_cpu_custom_calls' is true, kernels may make use of CustomCall()
-    // for CPU; additionally, an optional XlaLocalRuntimeContext* may be passed
-    // to the computation.
+    // for CPU.
     bool allow_cpu_custom_calls = false;
-
-    // If 'local_executable_has_hybrid_result', the top-level pointers of the
-    // result tuple of compiled programs are stored in host memory and the
-    // nested buffers in device memory, otherwise the whole result tuple is
-    // stored in device memory.
-    bool local_executable_has_hybrid_result = false;
 
     // If not nullptr, populate_resource_manager is called with the
     // compilation device's resource manager when the compilation
     // device is created, and can be used to create metadata objects
     // that can be accessed by XLA op kernels.
     std::function<Status(ResourceMgr*)>* populate_resource_manager = nullptr;
+
+    // If not nullptr, this memory allocator can be used by the compiler for
+    // temporary allocations it might want to make during compilation.
+    //
+    // For example, the compiler may want to try out different algorithms and
+    // choose the fastest one, and it might run those algorithms over buffers
+    // created using this allocator.
+    //
+    // The compiler can function correctly without an explicit allocator given
+    // here, but on some devices (notably, GPUs), TensorFlow tends to eagerly
+    // allocate most or all available memory on the device, leaving none for the
+    // compiler to access, unless it can use TensorFlow's allocator.
+    xla::DeviceMemoryAllocator* device_allocator = nullptr;
   };
 
   explicit XlaCompiler(Options options);
+
   ~XlaCompiler();
 
-  // Options pertaining to an individual call to CompileGraph() or
-  // CompileFunction().
-  struct CompileOptions {
-    // If `use_tuple_arg` is true, a single tuple parameter will be used for all
-    // arguments; if false, each argument gets its own parameter.
-    bool use_tuple_arg = false;
-
-    // If 'return_updated_values_for_all_resources' is true, then updated
-    // values of all resource resources arguments will be included in the
-    // 'resource_updates' of the computation, even if the resource was not
-    // modified by the computation. Used when compiling loop bodies to ensure
-    // the input and output signatures match.
-    bool return_updated_values_for_all_resources = false;
-
-    // If 'resolve_compile_time_constants' is true, then outputs of a
-    // computation that are known to be compile-time constants will be returned
-    // as Tensors at compile-time, rather than as run-time outputs of the
-    // computation.
-    bool resolve_compile_time_constants = true;
-  };
-
-  // Compiles a Tensorflow function `fn_name_attrs` into an XLA computation.
-  // `args` describes the arguments to the function, each of which must either
-  // be a runtime-parameter to the XLA computation, a compile-time constant, or
-  // a resource variable. Writes the compiled output to `result`.
-  //
-  // The generated XLA computation returns a tuple containing only the
-  // non-constant outputs as a function of the input arguments. Constant
-  // arguments are returned as host memory tensors in the output list and are
-  // not included in the XLA computation's outputs. The XLA computation is
-  // null if there are no data-dependent outputs and no side effects.
   Status CompileFunction(const CompileOptions& options,
                          const NameAttrList& fn_name_attrs,
-                         const std::vector<Argument>& args,
-                         CompilationResult* result);
+                         std::vector<Argument> args, CompilationResult* result);
 
   // Compiles a tensorflow::Graph into an xla::Computation.
   // Similar to CompileFunction, but takes a Graph as input rather than a
@@ -276,10 +275,16 @@ class XlaCompiler {
                       const std::vector<Argument>& args,
                       CompilationResult* result);
 
+  // Returns the shape of the XLA parameter for an argument 'arg'.
+  // See the class comment for more details about the argument passing
+  // convention.
+  static Status XLAShapeForArgument(const Argument& arg, xla::Shape* xla_shape);
+
   // Retrieves the channel handle associated with `key`. Allocates
   // a new channel handle if none exists.
-  // Channel handles can be used to communicate between different computations.
-  // Computations that communicate should be compiled with the same XlaCompiler.
+  // Channel handles can be used to communicate between different
+  // computations. Computations that communicate should be compiled with the
+  // same XlaCompiler.
   Status GetChannelHandle(const string& key, xla::ChannelHandle* channel);
 
   const Options& options() const { return options_; }
@@ -287,6 +292,18 @@ class XlaCompiler {
   FunctionLibraryRuntime* flib_runtime() const { return flib_runtime_; }
 
  private:
+  // Sets the function body `fbody` to the one registered as `function`.
+  Status FindFunctionBody(const NameAttrList& function,
+                          const FunctionBody** fbody);
+
+  // Returns the optimized graph object in this function body.
+  std::unique_ptr<Graph> GetGraph(const FunctionBody* fbody);
+
+  // Graph compiler needs to know how to get an optimized graph from a function
+  // body.
+  friend class GraphCompiler;
+  friend class XlaCompilerTest;
+
   Options options_;
 
   // Status set to non-OK in the constructor if initialization fails.

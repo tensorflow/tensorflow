@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -41,6 +42,7 @@ __all__ = [
 ]
 
 
+@tf_export("distributions.StudentT")
 class StudentT(distribution.Distribution):
   """Student's t-distribution.
 

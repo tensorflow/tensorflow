@@ -3,7 +3,7 @@
 Note: In versions of TensorFlow before 1.2, we recommended using multi-threaded,
 queue-based input pipelines for performance. Beginning with TensorFlow 1.4,
 however, we recommend using the `tf.data` module instead. (See
-[Datasets](datasets) for details. In TensorFlow 1.2 and 1.3, the module was
+@{$datasets$Datasets} for details. In TensorFlow 1.2 and 1.3, the module was
 called `tf.contrib.data`.) The `tf.data` module offers an easier-to-use
 interface for constructing efficient input pipelines. Furthermore, we've stopped
 developing the old multi-threaded, queue-based input pipelines.  We've retained

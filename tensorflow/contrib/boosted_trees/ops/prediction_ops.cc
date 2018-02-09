@@ -36,7 +36,7 @@ static Status ApplyGradientTreesPredictionShapeFn(InferenceContext* c) {
   c->set_output(0, {c->Matrix(InferenceContext::kUnknownDim,
                               reduce_dim ? learner_config.num_classes() - 1
                                          : learner_config.num_classes())});
-  c->set_output(1, {c->Vector(InferenceContext::kUnknownDim)});
+  c->set_output(1, {c->UnknownShape()});
   return Status::OK();
 }
 

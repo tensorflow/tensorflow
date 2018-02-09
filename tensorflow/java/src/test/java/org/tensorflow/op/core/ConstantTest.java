@@ -47,7 +47,8 @@ public class ConstantTest {
         Session sess = new Session(g)) {
       Scope scope = new Scope(g);
       Constant<Integer> op = Constant.create(scope, shape, IntBuffer.wrap(ints));
-      Tensor<Integer> result = sess.runner().fetch(op.asOutput()).run().get(0).expect(Integer.class);
+      Tensor<Integer> result = sess.runner().fetch(op.asOutput())
+          .run().get(0).expect(Integer.class);
       int[] actual = new int[ints.length];
       assertArrayEquals(ints, result.copyTo(actual));
     }

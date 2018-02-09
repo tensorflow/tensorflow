@@ -22,8 +22,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 
 namespace tensorflow {
-using namespace ops;  // NOLINT(build/namespaces)
-
+namespace ops {
 namespace {
 
 Output Linear(const Scope& scope, Input x, Input w, Input b) {
@@ -38,8 +37,6 @@ void GetColocationConstraints(const Output& tensor,
   TF_EXPECT_OK(GetNodeAttr(tensor.op().node()->attrs(), kColocationAttrName,
                            constraints));
 }
-
-}  // namespace
 
 TEST(CCOpTest, Basic) {
   Scope root = Scope::NewRootScope();
@@ -249,4 +246,6 @@ TEST(CCOpTest, InvalidFinalize) {
             string::npos);
 }
 
+}  // namespace
+}  // namespace ops
 }  // namespace tensorflow

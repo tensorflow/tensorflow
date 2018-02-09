@@ -44,14 +44,22 @@ void Worker::CreateWorkerSessionAsync(const CreateWorkerSessionRequest* request,
                                       CreateWorkerSessionResponse* response,
                                       StatusCallback done) {
   Status s = env_->session_mgr->CreateSession(request->session_handle(),
-                                              request->server_def());
+                                              request->server_def(),
+                                              request->isolate_session_state());
+  done(s);
+}
+
+void Worker::DeleteWorkerSessionAsync(const DeleteWorkerSessionRequest* request,
+                                      DeleteWorkerSessionResponse* response,
+                                      StatusCallback done) {
+  Status s = env_->session_mgr->DeleteSession(request->session_handle());
   done(s);
 }
 
 void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
                                 RegisterGraphResponse* response,
                                 StatusCallback done) {
-  WorkerSession* session =
+  auto session =
       env_->session_mgr->WorkerSessionForSession(request->session_handle());
   Status s = session->graph_mgr->Register(
       request->session_handle(), request->graph_def(), request->graph_options(),
@@ -63,7 +71,7 @@ void Worker::RegisterGraphAsync(const RegisterGraphRequest* request,
 void Worker::DeregisterGraphAsync(const DeregisterGraphRequest* request,
                                   DeregisterGraphResponse* response,
                                   StatusCallback done) {
-  WorkerSession* session =
+  auto session =
       env_->session_mgr->WorkerSessionForSession(request->session_handle());
   Status s = session->graph_mgr->Deregister(request->graph_handle());
 
@@ -101,6 +109,12 @@ Status Worker::PrepareRunGraph(RunGraphRequestWrapper* req,
 void Worker::RunGraphAsync(CallOptions* opts, RunGraphRequestWrapper* request,
                            MutableRunGraphResponseWrapper* response,
                            StatusCallback done) {
+  if (request->store_errors_in_response_body()) {
+    done = [response, done](const Status& status) {
+      response->set_status(status);
+      done(Status::OK());
+    };
+  }
   if (request->is_partial()) {
     DoPartialRunGraph(opts, request, response, std::move(done));
   } else {
@@ -121,7 +135,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
                         StatusCallback done) {
   const int64 step_id = request->step_id();
   TRACEPRINTF("RunGraph: %lld", step_id);
-  WorkerSession* session =
+  auto session =
       env_->session_mgr->WorkerSessionForSession(request->session_handle());
   GraphMgr::NamedTensors in;
   GraphMgr::NamedTensors* out = new GraphMgr::NamedTensors;
@@ -132,7 +146,8 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     return;
   }
   StepStatsCollector* collector = nullptr;
-  if (request->exec_opts().record_timeline() ||
+  if (request->exec_opts().report_tensor_allocations_upon_oom() ||
+      request->exec_opts().record_timeline() ||
       request->exec_opts().record_costs()) {
     collector = new StepStatsCollector(response->mutable_step_stats());
     // TODO(mrry,pbar): GPU tracing for distributed steps.
@@ -158,7 +173,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
     }
   }
   session->graph_mgr->ExecuteAsync(
-      request->graph_handle(), step_id, session, request->exec_opts(),
+      request->graph_handle(), step_id, session.get(), request->exec_opts(),
       collector, response, cm, in,
       [this, step_id, response, session, cm, out, token, collector, opts,
        done](Status s) {
@@ -179,6 +194,7 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
             response->AddRecv(key, val);
           }
         }
+        if (collector) collector->Finalize();
         delete collector;
         delete out;
         done(s);
@@ -193,7 +209,7 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
   const int64 step_id = request->step_id();
   const string& graph_handle = request->graph_handle();
   TRACEPRINTF("PartialRunGraph: %lld", step_id);
-  WorkerSession* session =
+  auto session =
       env_->session_mgr->WorkerSessionForSession(request->session_handle());
 
   GraphMgr::NamedTensors in;
@@ -229,9 +245,9 @@ void Worker::DoPartialRunGraph(CallOptions* opts,
                                               [cm]() { cm->StartCancel(); });
     }
     session->graph_mgr->ExecuteAsync(
-        graph_handle, step_id, session, request->exec_opts(),
+        graph_handle, step_id, session.get(), request->exec_opts(),
         nullptr /* collector */, nullptr /* response */, cm, in,
-        [this, token, step_id, cm](Status s) {
+        [this, token, step_id, session, cm](Status s) {
           {
             mutex_lock l(mu_);
             cancellation_manager_->DeregisterCallback(token);

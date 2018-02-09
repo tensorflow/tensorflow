@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/function_testlib.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/graph/graph.h"
@@ -36,6 +38,37 @@ limitations under the License.
 #include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
+
+class XlaCompilerTest : public ::testing::Test {
+ protected:
+  XlaCompilerTest() : cpu_device_type_(DEVICE_CPU_XLA_JIT) {}
+
+  void SetUp() override {
+    client_ = xla::ClientLibrary::LocalClientOrDie();
+
+    XlaOpRegistry::RegisterCompilationKernels();
+
+    FunctionDefLibrary flib;
+    flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
+  }
+
+  XlaCompiler::Options DefaultOptions() {
+    XlaCompiler::Options options;
+    options.device_type = &cpu_device_type_;
+    options.client = client_;
+    options.flib_def = flib_def_.get();
+    return options;
+  }
+
+  FunctionLibraryDefinition* LocalFlibDef(XlaCompiler* compiler) {
+    return compiler->local_flib_def_.get();
+  }
+
+  DeviceType cpu_device_type_;
+  xla::Client* client_;
+  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
+};
+
 namespace {
 
 // Helper class to test the ability to pass resources through to XLA
@@ -63,6 +96,7 @@ class DummyReadResourceOp : public XlaOpKernel {
     dummy->Unref();
 
     ctx->SetOutput(0, ctx->Input(0));
+    ctx->SetOutput(1, ctx->Input(0));
   }
 };
 
@@ -80,22 +114,25 @@ class DummyReadResourceCC {
     if (!scope.ok()) return;
     scope.UpdateStatus(scope.DoShapeInference(ret));
     if (!scope.ok()) return;
-    this->output_ = Output(ret, 0);
+    this->output1_ = Output(ret, 0);
+    this->output2_ = Output(ret, 1);
   }
-  Node* node() const { return output_.node(); }
 
-  Output output_;
+  Output output1_;
+  Output output2_;
 };
 
 REGISTER_OP("DummyReadResource")
     .Input("input: int32")
-    .Output("output: int32")
+    .Output("output1: int32")
+    .Output("output2: int32")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
 A dummy Op.
 
 input: dummy input.
-output: dummy output.
+output1: dummy output.
+output2: dummy output.
 )doc");
 
 REGISTER_XLA_OP(Name("DummyReadResource"), DummyReadResourceOp);
@@ -125,31 +162,6 @@ REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_CPU_XLA_JIT),
 REGISTER_XLA_OP(Name("DummyDuplicateOp").Device(DEVICE_GPU_XLA_JIT),
                 DummyDuplicateOp);
 
-class XlaCompilerTest : public ::testing::Test {
- protected:
-  XlaCompilerTest() : cpu_device_type_(DEVICE_CPU_XLA_JIT) {}
-
-  void SetUp() override {
-    client_ = xla::ClientLibrary::LocalClientOrDie();
-
-    XlaOpRegistry::RegisterCompilationKernels();
-
-    FunctionDefLibrary flib;
-    flib_def_.reset(new FunctionLibraryDefinition(OpRegistry::Global(), flib));
-  }
-
-  XlaCompiler::Options DefaultOptions() {
-    XlaCompiler::Options options;
-    options.device_type = &cpu_device_type_;
-    options.client = client_;
-    options.flib_def = flib_def_.get();
-    return options;
-  }
-
-  DeviceType cpu_device_type_;
-  xla::Client* client_;
-  std::unique_ptr<FunctionLibraryDefinition> flib_def_;
-};
 
 // Tests compilation and execution of an empty graph.
 TEST_F(XlaCompilerTest, EmptyReturnValues) {
@@ -179,10 +191,10 @@ TEST_F(XlaCompilerTest, Simple) {
   std::vector<XlaCompiler::Argument> args(2);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[0].shape = TensorShape({2});
   args[1].kind = XlaCompiler::Argument::kParameter;
   args[1].type = DT_INT32;
-  args[1].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[1].shape = TensorShape({2});
 
   // Compiles the graph.
   XlaCompiler compiler(DefaultOptions());
@@ -215,6 +227,42 @@ TEST_F(XlaCompilerTest, Simple) {
   xla::LiteralTestUtil::ExpectEqual(*expected_literal, *actual_literal);
 }
 
+TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
+  // Builds a graph that adds reshapes a tensor, but with the shape not
+  // statically known.
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+  auto b = ops::_Arg(scope.WithOpName("B"), DT_INT32, 1);
+  auto c = ops::Reshape(scope.WithOpName("C"), a, b);
+  auto d = ops::_Retval(scope.WithOpName("D"), c, 0);
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the arguments.
+  std::vector<XlaCompiler::Argument> args(2);
+  args[0].kind = XlaCompiler::Argument::kParameter;
+  args[0].type = DT_INT32;
+  args[0].shape = TensorShape({2});
+  args[1].kind = XlaCompiler::Argument::kParameter;
+  args[1].type = DT_INT32;
+  args[1].shape = TensorShape({2});
+
+  // Compiles the graph.
+  XlaCompiler compiler(DefaultOptions());
+
+  XlaCompiler::CompilationResult result;
+  Status status =
+      compiler.CompileGraph(XlaCompiler::CompileOptions(), "reshape",
+                            std::move(graph), args, &result);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(
+      StringPiece(status.error_message()).contains("depends on a parameter"))
+      << status.error_message();
+  EXPECT_TRUE(
+      StringPiece(status.error_message()).contains("[[Node: C = Reshape"))
+      << status.error_message();
+}
+
 // Tests handling of compile-time constant outputs.
 TEST_F(XlaCompilerTest, ConstantOutputs) {
   // Builds a graph with one compile-time constant output and one data-dependent
@@ -233,7 +281,7 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
   std::vector<XlaCompiler::Argument> args(1);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[0].shape = TensorShape({2});
 
   XlaCompiler::Options options = DefaultOptions();
   XlaCompiler compiler(options);
@@ -316,7 +364,8 @@ TEST_F(XlaCompilerTest, ResourceManager) {
   Scope scope = Scope::NewRootScope().ExitOnError();
   auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
   auto b = DummyReadResourceCC(scope.WithOpName("B"), a);
-  auto c = ops::_Retval(scope.WithOpName("C"), b.output_, 0);
+  auto c = ops::Add(scope.WithOpName("C"), b.output2_, b.output1_);
+  auto d = ops::_Retval(scope.WithOpName("D"), c, 0);
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   TF_ASSERT_OK(scope.ToGraph(graph.get()));
 
@@ -324,7 +373,7 @@ TEST_F(XlaCompilerTest, ResourceManager) {
   std::vector<XlaCompiler::Argument> args(1);
   args[0].kind = XlaCompiler::Argument::kParameter;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeShape(xla::S32, {2});
+  args[0].shape = TensorShape({2});
 
   DummyResourceForTest* resource = new DummyResourceForTest();
 
@@ -349,6 +398,58 @@ TEST_F(XlaCompilerTest, ResourceManager) {
   resource->Unref();
 }
 
+// Tests compilation and execution of a graph that adds two tensors.
+TEST_F(XlaCompilerTest, DeterministicCompilation) {
+  // Builds a graph that contains a node with two output edges. The compiler
+  // should always traverse them in the same order.
+  const int64 test_count = 2;
+
+  std::vector<XlaCompiler::CompilationResult> results(test_count);
+
+  for (int64 i = 0; i < test_count; ++i) {
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto a = ops::_Arg(scope.WithOpName("A"), DT_INT32, 0);
+    auto b = ops::Neg(scope.WithOpName("B"), a);
+    auto c = ops::Neg(scope.WithOpName("C"), a);
+    auto d = ops::Add(scope.WithOpName("D"), b, c);
+    auto e = ops::_Retval(scope.WithOpName("E"), d, 0);
+    std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+    TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+    // Builds a description of the argument.
+    std::vector<XlaCompiler::Argument> args(1);
+    args[0].kind = XlaCompiler::Argument::kParameter;
+    args[0].type = DT_INT32;
+    args[0].shape = TensorShape({2});
+
+    // Compiles the graph.
+    auto options = DefaultOptions();
+    XlaCompiler compiler(options);
+
+    TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "dummy",
+                                       std::move(graph), args, &results[i]));
+  }
+
+  for (int64 i = 1; i < test_count; ++i) {
+    auto m1 =
+        results[i - 1].computation->Snapshot().ValueOrDie()->entry().requests();
+    auto m2 =
+        results[i].computation->Snapshot().ValueOrDie()->entry().requests();
+    // Check if every entry is the same.
+    for (auto& entry1 : m1) {
+      int64 key = entry1.first;
+      auto value1 = entry1.second;
+      auto entry2 = m2.find(key);
+      auto value2 = entry2->second;
+      EXPECT_TRUE(entry2 != m2.end());
+      string str1, str2;
+      value1.AppendToString(&str1);
+      value2.AppendToString(&str2);
+      EXPECT_EQ(str1, str2);
+    }
+  }
+}
+
 // Tests a computation that receives a TensorArray resource as input and
 // updates it.
 TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
@@ -371,9 +472,7 @@ TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
   args[0].resource_kind = XlaResource::kTensorArray;
   args[0].initialized = true;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::S32, {2}),
-       xla::ShapeUtil::MakeShape(xla::S32, {2})});
+  args[0].shape = TensorShape({});
   args[0].tensor_array_size = 2;
   args[0].tensor_array_gradients = {"grad2"};
 
@@ -439,9 +538,7 @@ TEST_F(XlaCompilerTest, UnwrittenTensorArrayGradientsAreNotComputationOutputs) {
   args[0].resource_kind = XlaResource::kTensorArray;
   args[0].initialized = true;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::S32, {2}),
-       xla::ShapeUtil::MakeShape(xla::S32, {2})});
+  args[0].shape = TensorShape({});
   args[0].tensor_array_size = 2;
   args[0].tensor_array_gradients = {"grad1"};
 
@@ -473,9 +570,7 @@ TEST_F(XlaCompilerTest, NewTensorArrayGradientsAreComputationOutputs) {
   args[0].resource_kind = XlaResource::kTensorArray;
   args[0].initialized = true;
   args[0].type = DT_INT32;
-  args[0].shape = xla::ShapeUtil::MakeTupleShape(
-      {xla::ShapeUtil::MakeShape(xla::S32, {2}),
-       xla::ShapeUtil::MakeShape(xla::S32, {2})});
+  args[0].shape = TensorShape({});
   args[0].tensor_array_size = 2;
   args[0].tensor_array_gradients = {"grad1"};
 
@@ -487,6 +582,105 @@ TEST_F(XlaCompilerTest, NewTensorArrayGradientsAreComputationOutputs) {
                                      std::move(graph), args, &result));
 
   EXPECT_EQ(1, result.resource_updates.size());
+}
+
+// Tests CompileFunction with undefined function fails.
+TEST_F(XlaCompilerTest, UndefinedFunctionFails) {
+  XlaCompiler compiler(DefaultOptions());
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  XlaCompiler::CompilationResult result;
+  NameAttrList name_attr;
+  name_attr.set_name("Function_NotDefined_");
+  Status status =
+      compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
+                               /*args=*/{}, &result);
+  EXPECT_FALSE(status.ok());
+  EXPECT_TRUE(StringPiece(status.error_message()).contains("is not defined."))
+      << status.error_message();
+}
+
+FunctionDef FillFn() {
+  return FunctionDefHelper::Define(
+      // Name
+      "FillFn",
+      // Args
+      {"x: T", "dims: int32"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double, int32, int64}"},
+      // Nodes
+      {{{"y"}, "Fill", {"dims", "x"}, {{"T", "$T"}}}});
+}
+
+TEST_F(XlaCompilerTest, FunctionCallWithConstants) {
+  // Certain operations in a function, "Fill" for example, requires the
+  // operator's argument to be a compile-time constant instead of a parameter.
+  // This testcase tests if XlaCompiler can handle such operators inside
+  // function calls.
+  XlaCompiler compiler(DefaultOptions());
+
+  FunctionDefLibrary flib;
+  *flib.add_function() = FillFn();
+
+  TF_ASSERT_OK(flib_def_->AddFunctionDef(FillFn()));
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto value = ops::Const<int32>(scope.WithOpName("value"), 1, {});
+  auto shape = ops::Const<int32>(scope.WithOpName("shape"), {5}, {1});
+  TF_EXPECT_OK(scope.graph()->AddFunctionLibrary(flib));
+
+  NodeDef def;
+  TF_ASSERT_OK(NodeDefBuilder("fill", "FillFn", flib_def_.get())
+                   .Input(value.name(), 0, DT_INT32)
+                   .Input(shape.name(), 1, DT_INT32)
+                   .Finalize(&def));
+  Status status;
+  Node* fill = scope.graph()->AddNode(def, &status);
+  TF_ASSERT_OK(status);
+  TF_ASSERT_OK(scope.DoShapeInference(fill));
+  scope.graph()->AddEdge(value.node(), 0, fill, 0);
+  scope.graph()->AddEdge(shape.node(), 0, fill, 1);
+
+  auto retval = ops::_Retval(scope.WithOpName("retval"), Output(fill), 0);
+
+  TF_ASSERT_OK(scope.ToGraph(graph.get()));
+
+  // Builds a description of the argument.
+  std::vector<XlaCompiler::Argument> args;
+
+  XlaCompiler::CompilationResult result;
+  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "fill",
+                                     std::move(graph), args, &result));
+}
+
+// Tests CompileFunction with a local function lookup failing, fails with
+// informative error about both lookups.
+TEST_F(XlaCompilerTest, LocalFunctionWithWrongArgumentsFail) {
+  XlaCompiler compiler(DefaultOptions());
+
+  auto local_flib_def = LocalFlibDef(&compiler);
+  TF_ASSERT_OK(local_flib_def->AddFunctionDef(test::function::XTimesTwo()));
+
+  std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
+  XlaCompiler::CompilationResult result;
+  NameAttrList name_attr;
+  name_attr.set_name("XTimesTwo");
+  Status status =
+      compiler.CompileFunction(XlaCompiler::CompileOptions(), name_attr,
+                               /*args=*/{}, &result);
+
+  ASSERT_FALSE(status.ok());
+  // Flib lookup failure.
+  EXPECT_TRUE(StringPiece(status.error_message()).contains("is not defined."))
+      << status.error_message();
+  // Local flib lookup failure.
+  EXPECT_TRUE(
+      StringPiece(status.error_message()).contains("Attr T is not found"))
+      << status.error_message();
 }
 
 }  // namespace

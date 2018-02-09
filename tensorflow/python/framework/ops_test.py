@@ -26,14 +26,17 @@ from tensorflow.core.framework import types_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
+from tensorflow.python.eager import function as eager_function
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
@@ -41,6 +44,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import resources
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -51,6 +55,7 @@ from tensorflow.python.util import compat
 ops._set_call_cpp_shape_fn(common_shapes.call_cpp_shape_fn)
 
 
+@test_util.with_c_api
 class ResourceTest(test_util.TensorFlowTestCase):
 
   def testBuildGraph(self):
@@ -76,11 +81,12 @@ class ResourceTest(test_util.TensorFlowTestCase):
                   resources.shared_resources()).eval()), 0)
 
 
-class TensorTest(test_util.TensorFlowTestCase):
+@test_util.with_c_api
+class TensorAndShapeTest(test_util.TensorFlowTestCase):
 
   def testShape(self):
     op = ops.Operation(
-        ops._NodeDef("noop", "myop"), ops.Graph(), [], [dtypes.float32])
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
     self.assertEqual(tensor_shape.unknown_shape(), t.get_shape())
     t.set_shape([1, 2, 3])
@@ -88,14 +94,53 @@ class TensorTest(test_util.TensorFlowTestCase):
 
   def testIterable(self):
     op = ops.Operation(
-        ops._NodeDef("noop", "myop"), ops.Graph(), [], [dtypes.float32])
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
     self.assertTrue(isinstance(t, ops.Tensor))
-    with self.assertRaisesRegexp(TypeError, "not iterable"):
+    with self.assertRaisesRegexp(TypeError, "iter"):
       for _ in t:
         pass
 
+  def testAddShape(self):
+    with self.test_session():
+      a = array_ops.zeros([2, 3])
+      b = array_ops.ones([1, 3])
+      c = a + b
+      self.assertEqual([2, 3], c.shape)
 
+  def testUnknownDim(self):
+    with self.test_session():
+      a = array_ops.placeholder(dtype=dtypes.float32, shape=[2, None, 3])
+      b = array_ops.placeholder(dtype=dtypes.float32, shape=[2, None, 3])
+      c = a + b
+      self.assertEqual([2, None, 3], c.shape.as_list())
+
+  def testUnknownShape(self):
+    with self.test_session():
+      a = array_ops.placeholder(dtype=dtypes.float32, shape=None)
+      b = array_ops.ones([1, 3])
+      c = a + b
+      self.assertEqual(tensor_shape.unknown_shape(), c.shape)
+
+  def testScalarShape(self):
+    with self.test_session():
+      a = array_ops.placeholder(dtype=dtypes.float32, shape=[])
+      b = array_ops.ones([])
+      c = a + b
+      self.assertEqual(tensor_shape.scalar(), c.shape)
+
+  def testShapeFunctionError(self):
+    with self.test_session():
+      a = array_ops.ones([1, 2, 3])
+      b = array_ops.ones([4, 5, 6])
+      with self.assertRaisesRegexp(
+          ValueError,
+          r"Dimensions must be equal, but are 2 and 5 for 'add' \(op: 'Add'\) "
+          r"with input shapes: \[1,2,3\], \[4,5,6\]."):
+        _ = a + b
+
+
+@test_util.with_c_api
 class IndexedSlicesTest(test_util.TensorFlowTestCase):
 
   def testToTensor(self):
@@ -124,11 +169,12 @@ class IndexedSlicesTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(x.indices.eval(), [0, 2])
 
 
+@test_util.with_c_api
 class NodeDefConstructorTest(test_util.TensorFlowTestCase):
 
   def testNoArgs(self):
-    nodedef = ops._NodeDef("noop", "bar")
-    self.assertProtoEquals("op: 'noop' name: 'bar'", nodedef)
+    nodedef = ops._NodeDef("None", "bar")
+    self.assertProtoEquals("op: 'None' name: 'bar'", nodedef)
 
   def testArgs(self):
     nodedef = ops._NodeDef("foo", "bar", device="/device:baz:*")
@@ -136,23 +182,6 @@ class NodeDefConstructorTest(test_util.TensorFlowTestCase):
                            nodedef)
     nodedef = ops._NodeDef("foo", "bar", device=pydev.DeviceSpec(job="j"))
     self.assertProtoEquals("op:'foo' name:'bar' device:'/job:j'", nodedef)
-
-
-# NOTE(mrry): Dummy shape registrations for ops used in the tests, since they
-# don't have C++ op registrations on which to attach C++ shape fns.
-ops.RegisterShape("a")(common_shapes.unknown_shape)
-ops.RegisterShape("b")(common_shapes.unknown_shape)
-ops.RegisterShape("c")(common_shapes.unknown_shape)
-ops.RegisterShape("add")(common_shapes.unknown_shape)
-ops.RegisterShape("an_op")(common_shapes.unknown_shape)
-ops.RegisterShape("const")(common_shapes.unknown_shape)
-ops.RegisterShape("copy")(common_shapes.unknown_shape)
-ops.RegisterShape("foo")(common_shapes.unknown_shape)
-ops.RegisterShape("identity")(common_shapes.unknown_shape)
-ops.RegisterShape("mul")(common_shapes.unknown_shape)
-ops.RegisterShape("nonrefop")(common_shapes.unknown_shape)
-ops.RegisterShape("noop")(common_shapes.unknown_shape)
-ops.RegisterShape("refop")(common_shapes.unknown_shape)
 
 
 def _apply_op(g, *args, **kwargs):
@@ -163,12 +192,11 @@ def _apply_op(g, *args, **kwargs):
     return op.outputs
 
 
+@test_util.with_c_api
 class OperationTest(test_util.TensorFlowTestCase):
 
   def testNoInputs(self):
-    op = ops.Operation(
-        ops._NodeDef("noop", "myop"),
-        ops.Graph(), [], [dtypes.float32, dtypes.string])
+    op = test_ops.float_output_string_output(name="myop").a.op
     self.assertEqual(2, len(op.values()))
     self.assertEqual(0, len(op.inputs))
     self.assertEqual("myop", op.name)
@@ -177,93 +205,97 @@ class OperationTest(test_util.TensorFlowTestCase):
     self.assertEqual(dtypes.float32, float_t.dtype)
     self.assertEqual(op, float_t.op)
     self.assertEqual(0, float_t._value_index)
-    self.assertEqual(0, len(float_t._consumers))
+    self.assertEqual(0, len(float_t.consumers()))
     self.assertEqual("myop", float_t._as_node_def_input())
 
     self.assertEqual(dtypes.string, label_str_t.dtype)
     self.assertEqual(op, label_str_t.op)
     self.assertEqual(1, label_str_t._value_index)
-    self.assertEqual(0, len(label_str_t._consumers))
+    self.assertEqual(0, len(label_str_t.consumers()))
     self.assertEqual("myop:1", label_str_t._as_node_def_input())
 
-    self.assertProtoEquals("op:'noop' name:'myop'", op.node_def)
+    self.assertProtoEquals("op:'FloatOutputStringOutput' name:'myop'",
+                           op.node_def)
 
   def testNoOutputs(self):
-    g = ops.Graph()
-    op1 = ops.Operation(ops._NodeDef("noop", "myop1"), g, [], [dtypes.float32])
+    op1 = test_ops.float_output(name="myop1").op
     float_t, = op1.values()
-    op2 = ops.Operation(ops._NodeDef("reop", "myop2"), g, [float_t], [])
+    op2 = test_ops.float_input(float_t, name="myop2")
     self.assertEqual(0, len(op2.values()))
     self.assertEqual(1, len(op2.inputs))
     self.assertIs(float_t, op2.inputs[0])
 
-    self.assertEqual(1, len(float_t._consumers))
-    self.assertEqual(op2, float_t._consumers[0])
+    self.assertEqual(1, len(float_t.consumers()))
+    self.assertEqual(op2, float_t.consumers()[0])
 
-    self.assertProtoEquals("op:'noop' name:'myop1'", op1.node_def)
-    self.assertProtoEquals("op:'reop' name:'myop2' input:'myop1'", op2.node_def)
+    self.assertProtoEquals("op:'FloatOutput' name:'myop1'", op1.node_def)
+    self.assertProtoEquals("op:'FloatInput' name:'myop2' input:'myop1'",
+                           op2.node_def)
 
   def testInputsAndOutputs(self):
-    g = ops.Graph()
-    op1 = ops.Operation(ops._NodeDef("noop", "myop1"), g, [], [dtypes.float32])
+    op1 = test_ops.float_output(name="myop1").op
     self.assertEqual(1, len(op1.values()))
     float1_t, = op1.values()
 
-    op2 = ops.Operation(
-        ops._NodeDef("reop", "myop2"), g, [], [dtypes.float32, dtypes.string])
+    op2 = test_ops.float_output_string_output(name="myop2").a.op
     self.assertEqual(2, len(op2.values()))
     float2_t, label2_str_t = op2.values()
 
     # Note that we consume label2_str_t twice here.
-    op3 = ops.Operation(
-        ops._NodeDef("add", "myop3"), g, [float1_t, label2_str_t, label2_str_t],
-        [dtypes.float32, dtypes.int32])
+    op3 = test_ops.foo2(float1_t, label2_str_t, label2_str_t, name="myop3").d.op
     self.assertEqual(2, len(op3.values()))
 
-    self.assertEqual(1, len(float1_t._consumers))
-    self.assertEqual(op3, float1_t._consumers[0])
+    self.assertEqual(1, len(float1_t.consumers()))
+    self.assertEqual(op3, float1_t.consumers()[0])
 
-    self.assertEqual(0, len(float2_t._consumers))
+    self.assertEqual(0, len(float2_t.consumers()))
 
-    self.assertEqual(2, len(label2_str_t._consumers))
-    self.assertEqual(op3, label2_str_t._consumers[0])
-    self.assertEqual(op3, label2_str_t._consumers[1])
+    self.assertEqual(2, len(label2_str_t.consumers()))
+    self.assertEqual(op3, label2_str_t.consumers()[0])
+    self.assertEqual(op3, label2_str_t.consumers()[1])
 
     self.assertProtoEquals("""
-    op:'add' name:'myop3'
+    op:'Foo2' name:'myop3'
     input:'myop1' input:'myop2:1' input:'myop2:1'
     """, op3.node_def)
 
   def testDeviceObject(self):
-    op = ops.Operation(ops._NodeDef("noop", "myop"), ops.Graph(), [], [])
+    op = ops.Operation(ops._NodeDef("None", "myop"), ops.Graph(), [], [])
     op._set_device("/job:goo/device:GPU:0")
     self.assertProtoEquals(
-        "op:'noop' name:'myop' device:'/job:goo/device:GPU:0' ", op.node_def)
-    op = ops.Operation(ops._NodeDef("noop", "op2"), ops.Graph(), [], [])
+        "op:'None' name:'myop' device:'/job:goo/device:GPU:0' ", op.node_def)
+    op = ops.Operation(ops._NodeDef("None", "op2"), ops.Graph(), [], [])
     op._set_device(
         pydev.DeviceSpec(
             job="muu", device_type="CPU", device_index=0))
     self.assertProtoEquals(
-        "op:'noop' name:'op2' device:'/job:muu/device:CPU:0'", op.node_def)
+        "op:'None' name:'op2' device:'/job:muu/device:CPU:0'", op.node_def)
 
   def testReferenceInput(self):
     g = ops.Graph()
     op1 = ops.Operation(
-        ops._NodeDef("noop", "op1"), g, [],
+        ops._NodeDef("RefOutputFloatOutput", "op1"), g, [],
         [dtypes.float32_ref, dtypes.float32])
-    self.assertProtoEquals("op:'noop' name:'op1'", op1.node_def)
+    g._add_op(op1)
+    self.assertProtoEquals("op:'RefOutputFloatOutput' name:'op1'", op1.node_def)
+    self.assertEquals([], list(op1.inputs))
     ref_t, nonref_t = op1.values()
     # NOTE(mrry): Must specify input_types to preserve ref-typed input.
     op2 = ops.Operation(
-        ops._NodeDef("refop", "op2"),
+        ops._NodeDef("RefInputFloatInput", "op2"),
         g, [ref_t, nonref_t], [],
         input_types=[dtypes.float32_ref, dtypes.float32])
-    self.assertProtoEquals("op:'refop' name:'op2' input:'op1' input:'op1:1'",
-                           op2.node_def)
+    g._add_op(op2)
+    self.assertProtoEquals(
+        "op:'RefInputFloatInput' name:'op2' input:'op1' input:'op1:1'",
+        op2.node_def)
+    self.assertEquals([ref_t, nonref_t], list(op2.inputs))
     op3 = ops.Operation(
-        ops._NodeDef("nonrefop", "op3"), g, [ref_t, nonref_t], [])
-    self.assertProtoEquals("op:'nonrefop' name:'op3' input:'op1' input:'op1:1'",
-                           op3.node_def)
+        ops._NodeDef("TwoFloatInputs", "op3"), g, [ref_t, nonref_t], [])
+    g._add_op(op3)
+    self.assertProtoEquals(
+        "op:'TwoFloatInputs' name:'op3' input:'op1' input:'op1:1'",
+        op3.node_def)
 
   def testInvalidNames(self):
     g = ops.Graph()
@@ -279,10 +311,8 @@ class OperationTest(test_util.TensorFlowTestCase):
       ops.Operation(ops._NodeDef("op", "invalid:0"), g)
 
   def testNoShapeFunction(self):
-    g = ops.Graph()
-    ops.Operation(ops._NodeDef("op", "an_op"), g, output_types=[dtypes.float32])
-    self.assertEqual(tensor_shape.unknown_shape(),
-                     _apply_op(g, "an_op", [], [dtypes.float32]).get_shape())
+    op = test_ops.a()
+    self.assertEqual(tensor_shape.unknown_shape(), op.get_shape())
 
   def testConvertToTensorNestedArray(self):
     with self.test_session():
@@ -364,55 +394,126 @@ class OperationTest(test_util.TensorFlowTestCase):
       ops.convert_to_tensor(op)
 
   def testStr(self):
-    node_def = ops._NodeDef("noop", "op1")
+    node_def = ops._NodeDef("None", "op1")
     op = ops.Operation(node_def, ops.Graph(), [], [dtypes.float32])
     self.assertEqual(str(node_def), str(op))
 
   def testRepr(self):
     op = ops.Operation(
-        ops._NodeDef("noop", "op1"), ops.Graph(), [], [dtypes.float32])
-    self.assertEqual("<tf.Operation 'op1' type=noop>", repr(op))
+        ops._NodeDef("None", "op1"), ops.Graph(), [], [dtypes.float32])
+    self.assertEqual("<tf.Operation 'op1' type=None>", repr(op))
 
   def testGetAttr(self):
-    list_value = attr_value_pb2.AttrValue.ListValue()
-    list_value.type.append(types_pb2.DT_STRING)
-    list_value.type.append(types_pb2.DT_DOUBLE)
-    op = ops.Operation(
-        ops._NodeDef(
-            "noop",
-            "op1",
-            attrs={
-                "value": attr_value_pb2.AttrValue(i=32),
-                "dtype": attr_value_pb2.AttrValue(type=types_pb2.DT_INT32),
-                "list": attr_value_pb2.AttrValue(list=list_value),
-                "func": attr_value_pb2.AttrValue(
-                    func=attr_value_pb2.NameAttrList())
-            }), ops.Graph(), [], [dtypes.int32])
-    self.assertEqual(32, op.get_attr("value"))
-    self.assertEqual("", op.get_attr("func").name)
+    op = test_ops.default_attrs()
+    self.assertEqual(op.get_attr("string_val"), b"abc")
+    self.assertEqual(op.get_attr("string_list_val"), [b"abc", b""])
+    self.assertEqual(op.get_attr("int_val"), 123)
+    self.assertEqual(op.get_attr("int_list_val"), [1, 2, 3])
+    self.assertEqual(op.get_attr("float_val"), 10.0)
+    self.assertEqual(op.get_attr("float_list_val"), [10.0])
+    self.assertEqual(op.get_attr("bool_val"), True)
+    self.assertEqual(op.get_attr("bool_list_val"), [True, False])
+    self.assertEqual(op.get_attr("shape_val"),
+                     tensor_shape.as_shape([2, 1]).as_proto())
+    self.assertEqual(op.get_attr("shape_list_val"),
+                     [tensor_shape.as_shape([]).as_proto(),
+                      tensor_shape.as_shape([1]).as_proto()])
+    self.assertEqual(op.get_attr("tensor_val"),
+                     tensor_util.make_tensor_proto(1, dtypes.int32))
+    self.assertEqual(op.get_attr("tensor_list_val"),
+                     [tensor_util.make_tensor_proto(1, dtypes.int32)])
 
-    d = op.get_attr("dtype")
-    # First check that d is a DType, because the assertEquals will
-    # work no matter what since DType overrides __eq__
-    self.assertIsInstance(d, dtypes.DType)
-    self.assertEqual(dtypes.int32, d)
+    type_val = op.get_attr("type_val")
+    # First check that type_val is a DType, because the assertEquals will work
+    # no matter what since DType overrides __eq__
+    self.assertIsInstance(type_val, dtypes.DType)
+    self.assertEqual(type_val, dtypes.int32)
 
-    l = op.get_attr("list")
-    for x in l:
-      self.assertIsInstance(x, dtypes.DType)
-    self.assertEqual([dtypes.string, dtypes.double], l)
+    type_list_val = op.get_attr("type_list_val")
+    self.assertTrue(all(isinstance(x, dtypes.DType) for x in type_list_val))
+    self.assertEqual(type_list_val, [dtypes.int32, dtypes.float32])
+
+    @function.Defun(dtypes.float32, func_name="MyFunc")
+    def func(x):
+      return x
+
+    op = test_ops.func_attr(func)
+    self.assertEqual(op.get_attr("f"),
+                     attr_value_pb2.NameAttrList(name="MyFunc"))
+
+    # Try fetching missing attr
+    if ops._USE_C_API:
+      error_msg = "Operation 'FuncAttr' has no attr named 'FakeAttr'."
+    else:
+      error_msg = "No attr named 'FakeAttr' in name: \"FuncAttr\""
+
+    with self.assertRaisesRegexp(ValueError, error_msg):
+      op.get_attr("FakeAttr")
+
+  # TODO(b/65162920): remove this test when users who are directly mutating the
+  # node_def have been updated to proper usage.
+  def testSetAttr(self):
+    op = test_ops.int_attr().op
+    op._set_attr("foo", attr_value_pb2.AttrValue(i=2))
+    # TODO(skyewm): add node_def check
+    self.assertEqual(op.get_attr("foo"), 2)
 
   # TODO(nolivia): test all error cases
-  @test_util.enable_c_api
   def testAddControlInput(self):
+    # The C API dedups redundant control edges, pure Python does not
+    if ops._USE_C_API: return
     with ops.Graph().as_default():
       x = constant_op.constant(1).op
       y = constant_op.constant(2).op
-    y._add_control_input(x)  # pylint: disable=protected-access
-    self.assertEqual(y.control_inputs, [x])
+      z = constant_op.constant(3).op
+    z._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x])
+    z._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x, x])
+    z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x, x, x, y, y])
 
-  @test_util.enable_c_api
+  def testAddControlInputC(self):
+    # The C API dedups redundant control edges, pure Python does not
+    if not ops._USE_C_API: return
+    with ops.Graph().as_default():
+      x = constant_op.constant(1).op
+      y = constant_op.constant(2).op
+      z = constant_op.constant(3).op
+    z._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x])
+    z._add_control_input(x)  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x])
+    z._add_control_inputs([x, y, y])  # pylint: disable=protected-access
+    self.assertEqual(z.control_inputs, [x, y])
+
+  def testRemoveAllControlInputs(self):
+    a = constant_op.constant(1)
+    with ops.control_dependencies([a]):
+      b = constant_op.constant(2)
+    c = constant_op.constant(3)
+    d = constant_op.constant(4)
+    e = constant_op.constant(5)
+    with ops.control_dependencies([a, c]):
+      f = d + e
+
+    self.assertEqual(a.op.control_inputs, [])
+    self.assertEqual(b.op.control_inputs, [a.op])
+    self.assertEqual(f.op.control_inputs, [a.op, c.op])
+
+    a.op._remove_all_control_inputs()  # pylint: disable=protected-access
+    self.assertEqual(a.op.control_inputs, [])
+
+    b.op._remove_all_control_inputs()  # pylint: disable=protected-access
+    self.assertEqual(b.op.control_inputs, [])
+
+    f.op._remove_all_control_inputs()  # pylint: disable=protected-access
+    self.assertEqual(f.op.control_inputs, [])
+    self.assertEqual(list(f.op.inputs), [d, e])
+
   def testControlInputCycle(self):
+    # Non-C API path has a different error message
+    if not ops._USE_C_API: return
     graph = ops.Graph()
     with graph.as_default():
       z = constant_op.constant(0)
@@ -427,7 +528,6 @@ class OperationTest(test_util.TensorFlowTestCase):
           "Graph is invalid, contains a cycle with 2 nodes"):
         sess.run(x)
 
-  @test_util.enable_c_api
   def testUpdateInput(self):
     g = ops.Graph()
     with g.as_default():
@@ -436,21 +536,26 @@ class OperationTest(test_util.TensorFlowTestCase):
       z = x + y
 
     z.op._update_input(0, y)  # pylint: disable=protected-access
-    self.assertEquals(z.op.inputs, [y, y])
+    self.assertEquals(list(z.op.inputs), [y, y])
+    self.assertEquals(x.consumers(), [])
+    self.assertEquals(y.consumers(), [z.op, z.op])
     with session.Session(graph=g) as sess:
       self.assertEquals(sess.run(z), 4)
 
     z.op._update_input(0, x)  # pylint: disable=protected-access
-    self.assertEquals(z.op.inputs, [x, y])
+    self.assertEquals(list(z.op.inputs), [x, y])
+    self.assertEquals(x.consumers(), [z.op])
+    self.assertEquals(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
       self.assertEquals(sess.run(z), 3)
 
     z.op._update_input(1, y)  # pylint: disable=protected-access
-    self.assertEquals(z.op.inputs, [x, y])
+    self.assertEquals(list(z.op.inputs), [x, y])
+    self.assertEquals(x.consumers(), [z.op])
+    self.assertEquals(y.consumers(), [z.op])
     with session.Session(graph=g) as sess:
       self.assertEquals(sess.run(z), 3)
 
-  @test_util.enable_c_api
   def testUpdateInputGraphError(self):
     g_0 = ops.Graph()
     g_1 = ops.Graph()
@@ -462,9 +567,6 @@ class OperationTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
         z.op._update_input(0, x)  # pylint: disable=protected-access
 
-  # TODO(nolivia): check the shape/type in _update_input() instead of depending
-  # on run to do that.
-  @test_util.enable_c_api
   def testUpdateInputTypeError(self):
     g = ops.Graph()
     with g.as_default():
@@ -480,34 +582,106 @@ class OperationTest(test_util.TensorFlowTestCase):
           "with expected int32"):
         sess.run(z)
 
-  # C-API throws the error differently.
+  def testUpdateInputShapeError(self):
+    # C-API throws the error differently.
+    if ops._USE_C_API:
+      return
+    g = ops.Graph()
+    with g.as_default():
+      w = constant_op.constant(2, shape=[3, 1])
+      x = constant_op.constant(0, shape=[3, 1])
+      y = constant_op.constant(1, shape=[2, 2])
+      z = w + x
+      z.op._update_input(0, y)  # pylint: disable=protected-access
+
+    with session.Session(graph=g) as sess:
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   r"Incompatible shapes: \[2,2\] vs. \[3,1\]"):
+        sess.run(z)
+
+  def testUpdateInputShapeErrorC(self):
+    if not ops._USE_C_API:
+      return
+    g = ops.Graph()
+    with g.as_default():
+      w = constant_op.constant(2, shape=[3, 1])
+      x = constant_op.constant(0, shape=[3, 1])
+      y = constant_op.constant(1, shape=[2, 2])
+      z = w + x
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError,
+        r"Cannot update edge, incompatible shapes: \[2,2\] and \[3,1\]"):
+      z.op._update_input(0, y)  # pylint: disable=protected-access
+
   def testUpdateInputOutOfRange(self):
+    # C-API throws the error differently.
+    if ops._USE_C_API: return
     g = ops.Graph()
     with g.as_default():
       x = constant_op.constant(1)
-    with self.assertRaises(IndexError):
+    with self.assertRaisesRegexp(IndexError, "list index out of range"):
       x.op._update_input(1, x)  # pylint: disable=protected-access
 
-  @test_util.enable_c_api
   def testUpdateInputOutOfRangeC(self):
+    # C-API throws the error differently.
+    if not ops._USE_C_API: return
     g = ops.Graph()
     with g.as_default():
       x = constant_op.constant(1)
-    with self.assertRaisesRegexp(errors.OutOfRangeError,
-                                 "does not have input 1"):
+    with self.assertRaisesRegexp(
+        errors.OutOfRangeError,
+        r"Cannot update edge. Input index \[1\] is greater than the number of "
+        r"total inputs \[0\]."
+    ):
       x.op._update_input(1, x)  # pylint: disable=protected-access
 
+  def testOpDef(self):
+    x = constant_op.constant(0)
+    y = constant_op.constant(1)
+    z = x + y
 
+    # Pure Python mode doesn't create OpDefs for constants
+    if ops._USE_C_API:
+      self.assertEqual(x.op.op_def.name, "Const")
+      self.assertEqual(len(x.op.op_def.input_arg), 0)
+      self.assertEqual(len(x.op.op_def.output_arg), 1)
+
+    self.assertEqual(z.op.op_def.name, "Add")
+    self.assertEqual(len(z.op.op_def.input_arg), 2)
+    self.assertEqual(len(z.op.op_def.output_arg), 1)
+
+  def testInputFromDifferentGraphError(self):
+    g_0 = ops.Graph()
+    g_1 = ops.Graph()
+    with g_0.as_default():
+      x = constant_op.constant(1)
+    with g_1.as_default():
+      y = constant_op.constant(2)
+      with self.assertRaisesRegexp(ValueError, "must be from the same graph"):
+        y * x  # pylint: disable=pointless-statement
+
+  def testInputsAreImmutable(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+      op = test_ops.int_input_int_output(x, name="myop").op
+    with self.assertRaisesRegexp(
+        AttributeError, "'_InputList' object has no attribute 'append'"):
+      op.inputs.append(None)
+
+
+@test_util.with_c_api
 class CreateOpTest(test_util.TensorFlowTestCase):
 
   def testNodeDefArgs(self):
     g = ops.Graph()
-    op1 = g.create_op("const", [], [dtypes.float32], None, name="myop1")
+    op1 = g.create_op("FloatOutput", [], [dtypes.float32], None, name="myop1")
     with g.device("/device:GPU:0"):
       op2 = g.create_op(
-          "add", [], [dtypes.float32, dtypes.string], None, name="myop2")
+          "FloatOutputStringOutput", [], [dtypes.float32, dtypes.string], None,
+          name="myop2")
     op3 = g.create_op(
-        "foo",
+        "Foo3",
         [list(op1.values())[0], list(op2.values())[1], list(op2.values())[0]],
         [dtypes.float32, dtypes.int32],
         None,
@@ -515,52 +689,250 @@ class CreateOpTest(test_util.TensorFlowTestCase):
     self.assertDeviceEqual(None, op1.device)
     self.assertDeviceEqual("/device:GPU:0", op2.device)
     self.assertDeviceEqual(None, op3.device)
-    self.assertProtoEquals("name:'myop1' op:'const'", op1.node_def)
-    self.assertProtoEquals("name:'myop2' op:'add' device:'/device:GPU:0'",
-                           op2.node_def)
+    self.assertProtoEquals("name:'myop1' op:'FloatOutput'", op1.node_def)
     self.assertProtoEquals(
-        "name:'myop3' input:'myop1' input:'myop2:1' input:'myop2' op:'foo'",
+        "name:'myop2' op:'FloatOutputStringOutput' device:'/device:GPU:0'",
+        op2.node_def)
+    self.assertProtoEquals(
+        "name:'myop3' input:'myop1' input:'myop2:1' input:'myop2' op:'Foo3'",
         op3.node_def)
 
   def testReferenceInput(self):
     g = ops.Graph()
     op1 = g.create_op(
-        "noop", [], [dtypes.float32_ref, dtypes.float32], name="op1")
-    self.assertProtoEquals("op:'noop' name:'op1'", op1.node_def)
+        "RefOutputFloatOutput", [], [dtypes.float32_ref, dtypes.float32],
+        name="op1")
+    self.assertProtoEquals("op:'RefOutputFloatOutput' name:'op1'", op1.node_def)
     ref_t, nonref_t = op1.values()
     # NOTE(mrry): Must specify input_types to preserve ref-typed input.
     op2 = g.create_op(
-        "refop", [ref_t, nonref_t], [],
+        "RefInputFloatInput", [ref_t, nonref_t], [],
         input_types=[dtypes.float32_ref, dtypes.float32],
         name="op2")
-    self.assertProtoEquals("op:'refop' name:'op2' input:'op1' input:'op1:1'",
-                           op2.node_def)
-    op3 = g.create_op("nonrefop", [ref_t, nonref_t], [], name="op3")
-    self.assertProtoEquals("op:'nonrefop' name:'op3' input:'op1' input:'op1:1'",
-                           op3.node_def)
+    self.assertProtoEquals(
+        "op:'RefInputFloatInput' name:'op2' input:'op1' input:'op1:1'",
+        op2.node_def)
+    op3 = g.create_op("TwoFloatInputs", [ref_t, nonref_t], [], name="op3")
+    self.assertProtoEquals(
+        "op:'TwoFloatInputs' name:'op3' input:'op1' input:'op1:1'",
+        op3.node_def)
 
   def testFinalized(self):
     g = ops.Graph()
     g.finalize()
     with self.assertRaises(RuntimeError):
-      g.create_op("const", [], [dtypes.float32], None, name="myop1")
+      g.create_op("FloatOutput", [], [dtypes.float32], None, name="myop1")
 
     # Test unfinalize.
     g._unsafe_unfinalize()
-    g.create_op("const", [], [dtypes.float32], None, name="myop1")
+    g.create_op("FloatOutput", [], [dtypes.float32], None, name="myop1")
 
 
+# NOTE(skyewm): these cases test the private Graph._create_op_from_tf_operation
+# method. Arguably we should only test the public APIs that depend on this
+# method. However, this logic is complex and tricky, and it can be difficult to
+# ascertain if we have adequate coverage (e.g. a graph may run successfully if
+# the control flow context isn't set properly, but a more complicated use case
+# that might not be obvious to test will fail). Thus we instead explicitly test
+# the low-level behavior.
+@test_util.with_c_api
+class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
+
+  def testBasic(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+      if ops._USE_C_API:
+        c_op = ops._create_c_op(
+            g, ops._NodeDef("IntInputIntOutput", "myop"), [x], [])
+        op = g._create_op_from_tf_operation(c_op)
+      else:
+        # Test pure-Python version to make sure C API has same behavior.
+        op = test_ops.int_input_int_output(x, name="myop").op
+
+    self.assertEqual(op.name, "myop")
+    self.assertEqual(op.type, "IntInputIntOutput")
+    self.assertEqual(len(op.outputs), 1)
+    self.assertEqual(op.outputs[0].shape, tensor_shape.unknown_shape())
+    self.assertEqual(list(op.inputs), [x])
+    self.assertEqual(op.control_inputs, [])
+    self.assertEqual(op.graph, g)
+    self.assertEqual(x.consumers(), [op])
+    self.assertIsNotNone(op.traceback)
+    self.assertEqual(g.get_operation_by_name("myop"), op)
+    self.assertEqual(g.get_tensor_by_name("myop:0"), op.outputs[0])
+
+  def testShape(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant([[1, 2, 3], [4, 5, 6]])
+      if ops._USE_C_API:
+        c_op = ops._create_c_op(g, ops._NodeDef("Identity", "myop"), [x], [])
+        op = g._create_op_from_tf_operation(c_op)
+      else:
+        # Test pure-Python version to make sure C API has same behavior.
+        op = array_ops.identity(x, name="myop").op
+
+    self.assertEqual(op.name, "myop")
+    self.assertEqual(op.type, "Identity")
+    self.assertEqual(len(op.outputs), 1)
+    self.assertEqual(op.outputs[0].shape, tensor_shape.matrix(2, 3))
+
+  def testUniqueName(self):
+    g = ops.Graph()
+    with g.as_default():
+      if ops._USE_C_API:
+        c_op = ops._create_c_op(g, ops._NodeDef("IntOutput", "myop"), [], [])
+        c_op2 = ops._create_c_op(g, ops._NodeDef("IntOutput", "myop_1"), [], [])
+        op = g._create_op_from_tf_operation(c_op)
+        op2 = g._create_op_from_tf_operation(c_op2)
+      else:
+        # Test pure-Python version to make sure C API has same behavior.
+        op = test_ops.int_output(name="myop").op
+        op2 = test_ops.int_output(name="myop_1").op
+
+      # Create ops with same names as op1 and op2. We expect the new names to be
+      # uniquified.
+      op3 = test_ops.int_output(name="myop").op
+      op4 = test_ops.int_output(name="myop_1").op
+
+    self.assertEqual(op.name, "myop")
+    self.assertEqual(op2.name, "myop_1")
+    self.assertEqual(op3.name, "myop_2")
+    self.assertEqual(op4.name, "myop_1_1")
+
+  def testCond(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+
+      def true_fn():
+        if ops._USE_C_API:
+          ops._create_c_op(ops.get_default_graph(),
+                           ops._NodeDef("IntInput", "cond/myop"), [x], [])
+          new_ops = g._add_new_tf_operations()
+          self.assertEqual(len(new_ops), 1)
+        else:
+          # Test pure-Python version to make sure C API has same behavior.
+          test_ops.int_input(x, name="myop")
+        return x
+
+      control_flow_ops.cond(x < 10, true_fn, lambda: x)
+
+    op = g.get_operation_by_name("cond/myop")
+    self.assertIsNotNone(op)
+    self.assertEqual(op.name, "cond/myop")
+    self.assertEqual(op.type, "IntInput")
+    self.assertEqual(op.outputs, [])
+    op_input = op.inputs[0].op
+    self.assertEqual(op_input.type, "Switch")
+    self.assertEqual(op_input.inputs[0], x)
+    self.assertEqual(op.graph, g)
+    # pylint: disable=protected-access
+    self.assertIsNotNone(op._get_control_flow_context())
+    self.assertEqual(op._get_control_flow_context().name,
+                     "cond/cond_text")
+    # pylint: enable=protected-access
+
+  def testWhileLoop(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+
+      def body(i):
+        if ops._USE_C_API:
+          ops._create_c_op(ops.get_default_graph(),
+                           ops._NodeDef("IntInput", "myloop/myop"), [x], [])
+          new_ops = g._add_new_tf_operations()
+          self.assertEqual(len(new_ops), 1)
+        else:
+          # Test pure-Python version to make sure C API has same behavior.
+          test_ops.int_input(x, name="myop")
+        return i
+
+      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+
+    op = g.get_operation_by_name("myloop/myop")
+    self.assertIsNotNone(op)
+    self.assertEqual(op.name, "myloop/myop")
+    self.assertEqual(op.type, "IntInput")
+    self.assertEqual(op.outputs, [])
+    op_input = op.inputs[0].op
+    self.assertEqual(op_input.type, "Enter")
+    self.assertEqual(list(op_input.inputs), [x])
+    self.assertEqual(op.graph, g)
+    # pylint: disable=protected-access
+    self.assertIsNotNone(op._get_control_flow_context())
+    self.assertEqual(op._get_control_flow_context().name,
+                     "myloop/while_context")
+    # pylint: enable=protected-access
+
+  def testWhileLoopWithInternalControlDep(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+
+      def body(i):
+        c = constant_op.constant(1.0, name="c")
+        if ops._USE_C_API:
+          ops._create_c_op(ops.get_default_graph(),
+                           ops._NodeDef("IntInput", "myloop/myop"), [x], [])
+          with ops.control_dependencies([c]):
+            new_ops = g._add_new_tf_operations()
+            self.assertEqual(len(new_ops), 1)
+        else:
+          with ops.control_dependencies([c]):
+            test_ops.int_input(x, name="myop")
+        return i
+
+      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+
+    op = g.get_operation_by_name("myloop/myop")
+    self.assertIsNotNone(op)
+    c = g.get_operation_by_name("myloop/c")
+    self.assertIsNotNone(c)
+    # Internal control dep is preserved
+    self.assertEqual(op.control_inputs, [c])
+
+  def testWhileLoopWithExternalControlDep(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = test_ops.int_output()
+      c = constant_op.constant(1.0)
+
+      def body(i):
+        if ops._USE_C_API:
+          ops._create_c_op(ops.get_default_graph(),
+                           ops._NodeDef("IntInput", "myloop/myop"), [x], [])
+          with ops.control_dependencies([c]):
+            new_ops = g._add_new_tf_operations()
+            self.assertEqual(len(new_ops), 1)
+        else:
+          with ops.control_dependencies([c]):
+            test_ops.int_input(x, name="myop")
+        return i
+
+      control_flow_ops.while_loop(lambda i: i < 10, body, [0], name="myloop")
+
+    op = g.get_operation_by_name("myloop/myop")
+    self.assertIsNotNone(op)
+    # External control dep is removed and replaced with internal control dep
+    self.assertNotEqual(op.control_inputs[0], c.op)
+    self.assertIsNotNone(op.control_inputs[0]._get_control_flow_context())
+
+
+@test_util.with_c_api
 class ApplyOpTest(test_util.TensorFlowTestCase):
 
   def testNodeDefArgs(self):
     g = ops.Graph()
-    t1 = _apply_op(g, "const", [], [dtypes.float32], name="myop1")
+    t1 = _apply_op(g, "FloatOutput", [], [dtypes.float32], name="myop1")
     with g.device("/device:GPU:0"):
       t2 = _apply_op(
-          g, "add", [], [dtypes.float32, dtypes.string], name="myop2")
+          g, "TwoIntOutputs", [], [dtypes.int32, dtypes.int32], name="myop2")
     t3 = _apply_op(
         g,
-        "foo", [t1, t2[1], t2[0]], [dtypes.float32, dtypes.int32],
+        "Foo1", [t1, t2[1], t2[0]], [dtypes.float32, dtypes.int32],
         name="myop3")
     self.assertTrue(isinstance(t1, ops.Tensor))
     self.assertTrue(isinstance(t2, list))
@@ -571,32 +943,39 @@ class ApplyOpTest(test_util.TensorFlowTestCase):
     self.assertEqual("myop2:1", t2[1]._as_node_def_input())
     self.assertEqual("myop3", t3[0]._as_node_def_input())
     # Validate that we got the right ops as well
-    self.assertProtoEquals("name:'myop1' op:'const'", t1.op.node_def)
-    self.assertProtoEquals("name:'myop2' op:'add' device:'/device:GPU:0'",
-                           t2[0].op.node_def)
+    self.assertProtoEquals("name:'myop1' op:'FloatOutput'", t1.op.node_def)
     self.assertProtoEquals(
-        "name:'myop3' input:'myop1' input:'myop2:1' input:'myop2' op:'foo'",
+        "name:'myop2' op:'TwoIntOutputs' device:'/device:GPU:0'",
+        t2[0].op.node_def)
+    self.assertProtoEquals(
+        "name:'myop3' input:'myop1' input:'myop2:1' input:'myop2' op:'Foo1'",
         t3[0].op.node_def)
 
   def testReferenceInput(self):
     g = ops.Graph()
     ref_t, nonref_t = _apply_op(
-        g, "noop", [], [dtypes.float32_ref, dtypes.float32], name="op1")
-    self.assertProtoEquals("op:'noop' name:'op1'", ref_t.op.node_def)
+        g, "RefOutputFloatOutput", [], [dtypes.float32_ref, dtypes.float32],
+        name="op1")
+    self.assertProtoEquals("op:'RefOutputFloatOutput' name:'op1'",
+                           ref_t.op.node_def)
     # NOTE(mrry): Must specify input_types to preserve ref-typed input.
     out_2 = _apply_op(
         g,
-        "refop", [ref_t, nonref_t], [dtypes.int32],
+        "RefInputFloatInputIntOutput", [ref_t, nonref_t], [dtypes.int32],
         input_types=[dtypes.float32_ref, dtypes.float32],
         name="op2")
-    self.assertProtoEquals("op:'refop' name:'op2' input:'op1' input:'op1:1'",
-                           out_2.op.node_def)
+    self.assertProtoEquals(
+        "op:'RefInputFloatInputIntOutput' name:'op2' input:'op1' input:'op1:1'",
+        out_2.op.node_def)
     out_3 = _apply_op(
-        g, "nonrefop", [ref_t, nonref_t], [dtypes.int32], name="op3")
-    self.assertProtoEquals("op:'nonrefop' name:'op3' input:'op1' input:'op1:1'",
-                           out_3.op.node_def)
+        g, "TwoFloatInputsIntOutput", [ref_t, nonref_t], [dtypes.int32],
+        name="op3")
+    self.assertProtoEquals(
+        "op:'TwoFloatInputsIntOutput' name:'op3' input:'op1' input:'op1:1'",
+        out_3.op.node_def)
 
 
+@test_util.with_c_api
 class NameStackTest(test_util.TensorFlowTestCase):
 
   def testBasics(self):
@@ -695,22 +1074,27 @@ class NameStackTest(test_util.TensorFlowTestCase):
         pass
 
 
+@test_util.with_c_api
 class NameTest(test_util.TensorFlowTestCase):
 
   def testGenerateName(self):
     g = ops.Graph()
-    op0 = g.create_op("const", [], [dtypes.float32, dtypes.float32])
-    self.assertEqual("const", op0.name)
-    self.assertEqual("const:0", op0.outputs[0].name)
-    self.assertEqual("const:1", op0.outputs[1].name)
+    op0 = g.create_op("TwoFloatOutputs", [], [dtypes.float32, dtypes.float32])
+    self.assertEqual("TwoFloatOutputs", op0.name)
+    self.assertEqual("TwoFloatOutputs:0", op0.outputs[0].name)
+    self.assertEqual("TwoFloatOutputs:1", op0.outputs[1].name)
 
-    op1 = g.create_op("const", [], [dtypes.float32])
-    self.assertEqual("const_1", op1.name)
-    self.assertEqual("const_1:0", op1.outputs[0].name)
+    op1 = g.create_op("FloatOutput", [], [dtypes.float32])
+    self.assertEqual("FloatOutput", op1.name)
+    self.assertEqual("FloatOutput:0", op1.outputs[0].name)
 
-    op2 = g.create_op("const", [], [dtypes.float32], name="my_op")
-    self.assertEqual("my_op", op2.name)
-    self.assertEqual("my_op:0", op2.outputs[0].name)
+    op2 = g.create_op("FloatOutput", [], [dtypes.float32])
+    self.assertEqual("FloatOutput_1", op2.name)
+    self.assertEqual("FloatOutput_1:0", op2.outputs[0].name)
+
+    op3 = g.create_op("FloatOutput", [], [dtypes.float32], name="my_op")
+    self.assertEqual("my_op", op3.name)
+    self.assertEqual("my_op:0", op3.outputs[0].name)
 
   def testNameScope(self):
     g = ops.Graph()
@@ -726,57 +1110,60 @@ class NameTest(test_util.TensorFlowTestCase):
       with g.name_scope("") as empty2:
         self.assertEqual("", empty2)
 
-    self.assertEqual("const", g.create_op("const", [], [dtypes.float32]).name)
+    self.assertEqual("FloatOutput",
+                     g.create_op("FloatOutput", [], [dtypes.float32]).name)
     with g.name_scope("bar") as scope:
-      self.assertEqual("bar/const",
-                       g.create_op("const", [], [dtypes.float32]).name)
-      self.assertEqual("bar/const_1",
-                       g.create_op("const", [], [dtypes.float32]).name)
+      self.assertEqual("bar/FloatOutput",
+                       g.create_op("FloatOutput", [], [dtypes.float32]).name)
+      self.assertEqual("bar/FloatOutput_1",
+                       g.create_op("FloatOutput", [], [dtypes.float32]).name)
       # If you use the value from "with .. as", that values is used as-is.
       self.assertEqual(
           "bar", g.create_op(
-              "const", [], [dtypes.float32], name=scope).name)
+              "FloatOutput", [], [dtypes.float32], name=scope).name)
     with g.name_scope("baz") as scope:
       with g.name_scope("quux"):
-        self.assertEqual("baz/quux/const",
-                         g.create_op("const", [], [dtypes.float32]).name)
+        self.assertEqual("baz/quux/FloatOutput",
+                         g.create_op("FloatOutput", [], [dtypes.float32]).name)
       # If you use the value from the enclosing "with .. as", nothing is pushed.
       with g.name_scope(scope):
-        self.assertEqual("baz/const",
-                         g.create_op("const", [], [dtypes.float32]).name)
+        self.assertEqual("baz/FloatOutput",
+                         g.create_op("FloatOutput", [], [dtypes.float32]).name)
         self.assertEqual(
             "baz", g.create_op(
-                "const", [], [dtypes.float32], name=scope).name)
+                "FloatOutput", [], [dtypes.float32], name=scope).name)
         self.assertEqual(
             "trailing",
             g.create_op(
-                "const", [], [dtypes.float32], name="trailing/").name)
+                "FloatOutput", [], [dtypes.float32], name="trailing/").name)
     with g.name_scope("bar"):
-      self.assertEqual("bar_1/const",
-                       g.create_op("const", [], [dtypes.float32]).name)
+      self.assertEqual("bar_1/FloatOutput",
+                       g.create_op("FloatOutput", [], [dtypes.float32]).name)
     with g.name_scope("bar/"):
-      self.assertEqual("bar/const_2",
-                       g.create_op("const", [], [dtypes.float32]).name)
+      self.assertEqual("bar/FloatOutput_2",
+                       g.create_op("FloatOutput", [], [dtypes.float32]).name)
 
 
+@test_util.with_c_api
 class DeviceTest(test_util.TensorFlowTestCase):
 
   def testNoDevice(self):
     g = ops.Graph()
-    op = g.create_op("an_op", [], [dtypes.float32])
+    op = g.create_op("FloatOutput", [], [dtypes.float32])
     self.assertDeviceEqual(None, op.device)
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op" }
+      node { name: "FloatOutput" op: "FloatOutput" }
     """, gd)
 
   def testDevicePartialString(self):
     g = ops.Graph()
     with g.device("/job:worker/replica:2"):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op" device: "/job:worker/replica:2" }
+      node { name: "FloatOutput" op: "FloatOutput"
+             device: "/job:worker/replica:2" }
     """, gd)
 
   def testDeviceFull(self):
@@ -785,61 +1172,61 @@ class DeviceTest(test_util.TensorFlowTestCase):
         pydev.DeviceSpec(
             job="worker", replica=2, task=0, device_type="CPU",
             device_index=3)):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FloatOutput" op: "FloatOutput"
              device: "/job:worker/replica:2/task:0/device:CPU:3" }
     """, gd)
 
   def testNesting(self):
     g = ops.Graph()
     with g.device("/job:worker/replica:2"):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device("/job:worker/replica:3/task:0"):
-        g.create_op("an_op", [], [dtypes.float32])
-      g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FloatOutput" op: "FloatOutput"
              device: "/job:worker/replica:2" }
-      node { name: "an_op_1" op: "an_op"
+      node { name: "FloatOutput_1" op: "FloatOutput"
              device: "/job:worker/replica:3/task:0" }
-      node { name: "an_op_2" op: "an_op"
+      node { name: "FloatOutput_2" op: "FloatOutput"
              device: "/job:worker/replica:2" }
     """, gd)
 
   def testNestingString(self):
     g = ops.Graph()
     with g.device("/job:worker/replica:2"):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device("/job:worker/replica:3/task:0"):
-        g.create_op("an_op", [], [dtypes.float32])
-      g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FloatOutput" op: "FloatOutput"
              device: "/job:worker/replica:2" }
-      node { name: "an_op_1" op: "an_op"
+      node { name: "FloatOutput_1" op: "FloatOutput"
              device: "/job:worker/replica:3/task:0" }
-      node { name: "an_op_2" op: "an_op"
+      node { name: "FloatOutput_2" op: "FloatOutput"
              device: "/job:worker/replica:2" }
     """, gd)
 
   def testNestingOverrideGpuCpu(self):
     g = ops.Graph()
     with g.device("/job:worker/replica:2/device:CPU:1"):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device("/job:worker/replica:2/device:GPU:2"):
-        g.create_op("an_op", [], [dtypes.float32])
-      g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FloatOutput" op: "FloatOutput"
              device: "/job:worker/replica:2/device:CPU:1"  }
-      node { name: "an_op_1" op: "an_op"
+      node { name: "FloatOutput_1" op: "FloatOutput"
              device: "/job:worker/replica:2/device:GPU:2" }
-      node { name: "an_op_2" op: "an_op"
+      node { name: "FloatOutput_2" op: "FloatOutput"
              device: "/job:worker/replica:2/device:CPU:1" }
     """, gd)
 
@@ -847,27 +1234,27 @@ class DeviceTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
 
     with g.device(pydev.merge_device("/device:GPU:0")):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device(pydev.merge_device("/job:worker")):
-        g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
         with g.device(pydev.merge_device("/device:CPU:0")):
-          g.create_op("an_op", [], [dtypes.float32])
+          g.create_op("FloatOutput", [], [dtypes.float32])
           with g.device(pydev.merge_device("/job:ps")):
-            g.create_op("an_op", [], [dtypes.float32])
+            g.create_op("FloatOutput", [], [dtypes.float32])
             with g.device(pydev.merge_device(None)):
-              g.create_op("an_op", [], [dtypes.float32])
+              g.create_op("FloatOutput", [], [dtypes.float32])
 
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FloatOutput" op: "FloatOutput"
              device: "/device:GPU:0" }
-      node { name: "an_op_1" op: "an_op"
+      node { name: "FloatOutput_1" op: "FloatOutput"
              device: "/job:worker/device:GPU:0" }
-      node { name: "an_op_2" op: "an_op"
+      node { name: "FloatOutput_2" op: "FloatOutput"
              device: "/job:worker/device:CPU:0" }
-      node { name: "an_op_3" op: "an_op"
+      node { name: "FloatOutput_3" op: "FloatOutput"
              device: "/job:ps/device:CPU:0" }
-      node { name: "an_op_4" op: "an_op"
+      node { name: "FloatOutput_4" op: "FloatOutput"
              device: "/job:ps/device:CPU:0" }
     """, gd)
 
@@ -875,27 +1262,27 @@ class DeviceTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
 
     with g.device("/device:GPU:0"):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device("/job:worker"):
-        g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
         with g.device("/device:CPU:0"):
-          g.create_op("an_op", [], [dtypes.float32])
+          g.create_op("FloatOutput", [], [dtypes.float32])
           with g.device("/job:ps"):
-            g.create_op("an_op", [], [dtypes.float32])
+            g.create_op("FloatOutput", [], [dtypes.float32])
             with g.device(""):
-              g.create_op("an_op", [], [dtypes.float32])
+              g.create_op("FloatOutput", [], [dtypes.float32])
 
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FloatOutput" op: "FloatOutput"
              device: "/device:GPU:0" }
-      node { name: "an_op_1" op: "an_op"
+      node { name: "FloatOutput_1" op: "FloatOutput"
              device: "/job:worker/device:GPU:0" }
-      node { name: "an_op_2" op: "an_op"
+      node { name: "FloatOutput_2" op: "FloatOutput"
              device: "/job:worker/device:CPU:0" }
-      node { name: "an_op_3" op: "an_op"
+      node { name: "FloatOutput_3" op: "FloatOutput"
              device: "/job:ps/device:CPU:0" }
-      node { name: "an_op_4" op: "an_op"
+      node { name: "FloatOutput_4" op: "FloatOutput"
              device: "/job:ps/device:CPU:0" }
     """, gd)
 
@@ -903,56 +1290,56 @@ class DeviceTest(test_util.TensorFlowTestCase):
     g = ops.Graph()
 
     with g.device("/device:GPU:7"):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device("/device:GPU:*"):
-        g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
 
     with g.device("/device:CPU:*"):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device("/device:CPU:5"):
-        g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
 
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FloatOutput" op: "FloatOutput"
              device: "/device:GPU:7" }
-      node { name: "an_op_1" op: "an_op"
+      node { name: "FloatOutput_1" op: "FloatOutput"
              device: "/device:GPU:7" }
-      node { name: "an_op_2" op: "an_op"
+      node { name: "FloatOutput_2" op: "FloatOutput"
              device: "/device:CPU:*" }
-      node { name: "an_op_3" op: "an_op"
+      node { name: "FloatOutput_3" op: "FloatOutput"
              device: "/device:CPU:5" }
     """, gd)
 
   def testNoneClearsDefault(self):
     g = ops.Graph()
     with g.device("/job:worker/replica:2/device:CPU:1"):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device(None):
-        g.create_op("an_op", [], [dtypes.float32])
-      g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FloatOutput" op: "FloatOutput"
              device: "/job:worker/replica:2/device:CPU:1" }
-      node { name: "an_op_1" op: "an_op" }
-      node { name: "an_op_2" op: "an_op"
+      node { name: "FloatOutput_1" op: "FloatOutput" }
+      node { name: "FloatOutput_2" op: "FloatOutput"
              device: "/job:worker/replica:2/device:CPU:1" }
     """, gd)
 
   def testNoneIgnoresOuterDeviceFunction(self):
     g = ops.Graph()
     with g.device(lambda op: "/job:worker/replica:2/device:CPU:1"):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device(None):
-        g.create_op("an_op", [], [dtypes.float32])
-      g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FloatOutput" op: "FloatOutput"
              device: "/job:worker/replica:2/device:CPU:1" }
-      node { name: "an_op_1" op: "an_op" }
-      node { name: "an_op_2" op: "an_op"
+      node { name: "FloatOutput_1" op: "FloatOutput" }
+      node { name: "FloatOutput_2" op: "FloatOutput"
              device: "/job:worker/replica:2/device:CPU:1" }
     """, gd)
 
@@ -968,32 +1355,33 @@ class DeviceTest(test_util.TensorFlowTestCase):
   def testOverwritingBehavior(self):
     g = ops.Graph()
     with g.device(self._overwritingDeviceFunction):
-      g.create_op("an_op", [], [dtypes.float32])
+      g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device("/job:ps"):  # Will be overwritten.
-        g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device(pydev.merge_device("/job:ps")):  # Will be overwritten.
-        g.create_op("an_op", [], [dtypes.float32])
+        g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device(None):  # Disables overwriting device function
         with g.device("/job:ps"):
-          g.create_op("an_op", [], [dtypes.float32])
+          g.create_op("FloatOutput", [], [dtypes.float32])
       with g.device(None):  # Disables overwriting device function
         with g.device(pydev.merge_device("/job:ps")):
-          g.create_op("an_op", [], [dtypes.float32])
+          g.create_op("FloatOutput", [], [dtypes.float32])
     gd = g.as_graph_def()
     self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FloatOutput" op: "FloatOutput"
              device: "/job:overwrite" }
-      node { name: "an_op_1" op: "an_op"
+      node { name: "FloatOutput_1" op: "FloatOutput"
              device: "/job:overwrite" }
-      node { name: "an_op_2" op: "an_op"
+      node { name: "FloatOutput_2" op: "FloatOutput"
              device: "/job:overwrite" }
-      node { name: "an_op_3" op: "an_op"
+      node { name: "FloatOutput_3" op: "FloatOutput"
              device: "/job:ps" }
-      node { name: "an_op_4" op: "an_op"
+      node { name: "FloatOutput_4" op: "FloatOutput"
              device: "/job:ps" }
     """, gd)
 
 
+@test_util.with_c_api
 class ObjectWithName(object):
 
   def __init__(self, name):
@@ -1004,6 +1392,7 @@ class ObjectWithName(object):
     return self._name
 
 
+@test_util.with_c_api
 class CollectionTest(test_util.TensorFlowTestCase):
 
   def test_get_collections(self):
@@ -1112,18 +1501,10 @@ class CollectionTest(test_util.TensorFlowTestCase):
       self.assertEqual([90, 100], ops.get_collection("key"))
 
 
-def an_op(g):
-  return _apply_op(g, "an_op", [], [dtypes.float32])
+ops.NotDifferentiable("FloatOutput")
 
 
-ops.NotDifferentiable("an_op")
-
-
-def copy_op(x):
-  return _apply_op(x.graph, "copy", [x], [x.dtype])
-
-
-@ops.RegisterGradient("copy")
+@ops.RegisterGradient("CopyOp")
 def _CopyGrad(op, x_grad):  # pylint: disable=invalid-name
   _ = op
   return x_grad
@@ -1135,44 +1516,48 @@ def _CopyOverrideGrad(op, x_grad):  # pylint: disable=invalid-name
   return x_grad
 
 
+@test_util.with_c_api
 class RegistrationTest(test_util.TensorFlowTestCase):
 
   def testRegisterGradients(self):
-    g = ops.Graph()
-    x = an_op(g)
-    y = copy_op(x)
+    x = test_ops.float_output()
+    y = test_ops.copy_op(x)
     fn = ops.get_gradient_function(y.op)
     self.assertEqual(_CopyGrad, fn)
 
   def testOverrideGradients(self):
     g = ops.Graph()
-    x = an_op(g)
-    with g.gradient_override_map({"copy": "copy_override"}):
-      y = copy_op(x)
-    fn = ops.get_gradient_function(y.op)
-    self.assertEqual(_CopyOverrideGrad, fn)
+    with g.as_default():
+      x = test_ops.float_output()
+      with g.gradient_override_map({"CopyOp": "copy_override"}):
+        y = test_ops.copy_op(x)
+      fn = ops.get_gradient_function(y.op)
+      self.assertEqual(_CopyOverrideGrad, fn)
 
   def testNonExistentOverride(self):
     g = ops.Graph()
-    x = an_op(g)
-    with g.gradient_override_map({"copy": "unknown_override"}):
-      y = copy_op(x)
-    with self.assertRaisesRegexp(LookupError, "unknown_override"):
-      ops.get_gradient_function(y.op)
+    with g.as_default():
+      x = test_ops.float_output()
+      with g.gradient_override_map({"CopyOp": "unknown_override"}):
+        y = test_ops.copy_op(x)
+      with self.assertRaisesRegexp(LookupError, "unknown_override"):
+        ops.get_gradient_function(y.op)
 
 
+@test_util.with_c_api
 class ComparisonTest(test_util.TensorFlowTestCase):
 
   def testMembershipAllowed(self):
     g = ops.Graph()
-    t1 = _apply_op(g, "const", [], [dtypes.float32], name="myop1")
-    t2 = _apply_op(g, "const", [], [dtypes.float32], name="myop2")
+    t1 = _apply_op(g, "FloatOutput", [], [dtypes.float32], name="myop1")
+    t2 = _apply_op(g, "FloatOutput", [], [dtypes.float32], name="myop2")
     self.assertTrue(isinstance(t1, ops.Tensor))
     self.assertTrue(isinstance(t2, ops.Tensor))
     self.assertTrue(t1 in [t1])
     self.assertTrue(t1 not in [t2])
 
 
+@test_util.with_c_api
 class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
   @test_util.enable_c_api
@@ -1196,9 +1581,32 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
     # e should be dominated by c.
     self.assertEqual(e.op.control_inputs, [])
 
+  @test_util.run_in_graph_and_eager_modes()
+  def testEager(self):
+    def future():
+      future.calls += 1
+      return constant_op.constant(2.0)
+    future.calls = 0
+
+    if context.in_graph_mode():
+      g = ops.Graph()
+      with g.as_default():
+        a = constant_op.constant(1.0)
+        b = future()
+        with g.control_dependencies([a, b]):
+          c = constant_op.constant(3.0)
+      self.assertEqual(c.op.control_inputs, [a.op, b.op])
+      self.assertEqual(future.calls, 1)
+    else:
+      a = constant_op.constant(1.0)
+      b = future()
+      with ops.control_dependencies([a, b]):
+        c = constant_op.constant(3.0)
+      self.assertEqual(future.calls, 1)
+
   def testBasicWithConversion(self):
     g = ops.Graph()
-    a = _apply_op(g, "const", [], [dtypes.float32])
+    a = _apply_op(g, "FloatOutput", [], [dtypes.float32])
 
     class ConvertibleObj(object):
 
@@ -1206,25 +1614,25 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
         return a
 
     with g.control_dependencies([ConvertibleObj()]):
-      c = _apply_op(g, "const", [], [dtypes.float32])
+      c = _apply_op(g, "FloatOutput", [], [dtypes.float32])
 
     self.assertEqual(c.op.control_inputs, [a.op])
 
   def testNested(self):
     g = ops.Graph()
-    a_1 = _apply_op(g, "const", [], [dtypes.float32])
-    a_2 = _apply_op(g, "const", [], [dtypes.float32])
-    a_3 = _apply_op(g, "const", [], [dtypes.float32])
-    a_4 = _apply_op(g, "const", [], [dtypes.float32])
+    a_1 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_2 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_3 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_4 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
 
     with g.control_dependencies([a_1, a_2, a_3, a_4]):
-      b_1 = _apply_op(g, "const", [], [dtypes.float32])
+      b_1 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
 
     with g.control_dependencies([a_1]):
       with g.control_dependencies([a_2]):
         with g.control_dependencies([a_3]):
           with g.control_dependencies([a_4]):
-            b_2 = _apply_op(g, "const", [], [dtypes.float32])
+            b_2 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
 
     self.assertItemsEqual([a_1.op, a_2.op, a_3.op, a_4.op],
                           b_1.op.control_inputs)
@@ -1232,10 +1640,10 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
   def testClear(self):
     g = ops.Graph()
-    a_1 = _apply_op(g, "const", [], [dtypes.float32])
-    a_2 = _apply_op(g, "const", [], [dtypes.float32])
-    a_3 = _apply_op(g, "const", [], [dtypes.float32])
-    a_4 = _apply_op(g, "const", [], [dtypes.float32])
+    a_1 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_2 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_3 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_4 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
 
     with g.control_dependencies([a_1]):
       with g.control_dependencies([a_2]):
@@ -1243,18 +1651,18 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
           with g.control_dependencies([a_3]):
             with g.control_dependencies([a_4]):
               # deps [a_3, a_4]
-              b_3_4 = _apply_op(g, "const", [], [dtypes.float32])
+              b_3_4 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
             # deps = [a_3]
-            b_3 = _apply_op(g, "const", [], [dtypes.float32])
+            b_3 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
           # deps back to None
-          b_none = _apply_op(g, "const", [], [dtypes.float32])
+          b_none = _apply_op(g, "FloatOutput", [], [dtypes.float32])
         # deps back to [a_1, a_2]
-        b_1_2 = _apply_op(g, "const", [], [dtypes.float32])
+        b_1_2 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
       # deps back to [a_1]
-      b_1 = _apply_op(g, "const", [], [dtypes.float32])
+      b_1 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
       with g.control_dependencies(None):
         # deps are None again
-        b_none2 = _apply_op(g, "const", [], [dtypes.float32])
+        b_none2 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
 
     self.assertItemsEqual([a_3.op, a_4.op], b_3_4.op.control_inputs)
     self.assertItemsEqual([a_3.op], b_3.op.control_inputs)
@@ -1274,31 +1682,46 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
     # * Nodes d_i are defined as Mul(b_i, c_i) at each scope.
     # * Nodes e_i are defined as Mul(e_i-1, e_i-1) at each scope i > 1.
 
-    a_1 = _apply_op(g, "const", [], [dtypes.float32])
-    a_2 = _apply_op(g, "const", [], [dtypes.float32])
-    a_3 = _apply_op(g, "const", [], [dtypes.float32])
-    a_4 = _apply_op(g, "const", [], [dtypes.float32])
+    a_1 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_2 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_3 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_4 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
 
     with g.control_dependencies([a_1]):
-      b_1 = _apply_op(g, "mul", [a_3, a_4], [dtypes.float32])
-      c_1 = _apply_op(g, "mul", [a_1, b_1], [dtypes.float32])
-      d_1 = _apply_op(g, "mul", [b_1, c_1], [dtypes.float32])
-      e_1 = _apply_op(g, "const", [], [dtypes.float32])
+      b_1 = _apply_op(g, "TwoFloatInputsFloatOutput", [a_3, a_4],
+                      [dtypes.float32])
+      c_1 = _apply_op(g, "TwoFloatInputsFloatOutput", [a_1, b_1],
+                      [dtypes.float32])
+      d_1 = _apply_op(g, "TwoFloatInputsFloatOutput", [b_1, c_1],
+                      [dtypes.float32])
+      e_1 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
       with g.control_dependencies([a_2]):
-        b_2 = _apply_op(g, "mul", [a_3, a_4], [dtypes.float32])
-        c_2 = _apply_op(g, "mul", [a_1, b_1], [dtypes.float32])
-        d_2 = _apply_op(g, "mul", [b_2, c_2], [dtypes.float32])
-        e_2 = _apply_op(g, "mul", [e_1, e_1], [dtypes.float32])
+        b_2 = _apply_op(g, "TwoFloatInputsFloatOutput", [a_3, a_4],
+                        [dtypes.float32])
+        c_2 = _apply_op(g, "TwoFloatInputsFloatOutput", [a_1, b_1],
+                        [dtypes.float32])
+        d_2 = _apply_op(g, "TwoFloatInputsFloatOutput", [b_2, c_2],
+                        [dtypes.float32])
+        e_2 = _apply_op(g, "TwoFloatInputsFloatOutput", [e_1, e_1],
+                        [dtypes.float32])
         with g.control_dependencies([a_3]):
-          b_3 = _apply_op(g, "mul", [a_3, a_4], [dtypes.float32])
-          c_3 = _apply_op(g, "mul", [a_1, b_1], [dtypes.float32])
-          d_3 = _apply_op(g, "mul", [b_3, c_3], [dtypes.float32])
-          e_3 = _apply_op(g, "mul", [e_2, e_2], [dtypes.float32])
+          b_3 = _apply_op(g, "TwoFloatInputsFloatOutput", [a_3, a_4],
+                          [dtypes.float32])
+          c_3 = _apply_op(g, "TwoFloatInputsFloatOutput", [a_1, b_1],
+                          [dtypes.float32])
+          d_3 = _apply_op(g, "TwoFloatInputsFloatOutput", [b_3, c_3],
+                          [dtypes.float32])
+          e_3 = _apply_op(g, "TwoFloatInputsFloatOutput", [e_2, e_2],
+                          [dtypes.float32])
           with g.control_dependencies([a_4]):
-            b_4 = _apply_op(g, "mul", [a_3, a_4], [dtypes.float32])
-            c_4 = _apply_op(g, "mul", [a_1, b_1], [dtypes.float32])
-            d_4 = _apply_op(g, "mul", [b_4, c_4], [dtypes.float32])
-            e_4 = _apply_op(g, "mul", [e_3, e_3], [dtypes.float32])
+            b_4 = _apply_op(g, "TwoFloatInputsFloatOutput", [a_3, a_4],
+                            [dtypes.float32])
+            c_4 = _apply_op(g, "TwoFloatInputsFloatOutput", [a_1, b_1],
+                            [dtypes.float32])
+            d_4 = _apply_op(g, "TwoFloatInputsFloatOutput", [b_4, c_4],
+                            [dtypes.float32])
+            e_4 = _apply_op(g, "TwoFloatInputsFloatOutput", [e_3, e_3],
+                            [dtypes.float32])
 
     self.assertItemsEqual([a_1.op], b_1.op.control_inputs)
     self.assertItemsEqual([a_1.op, a_2.op], b_2.op.control_inputs)
@@ -1322,26 +1745,58 @@ class ControlDependenciesTest(test_util.TensorFlowTestCase):
 
   def testRepeatedDependency(self):
     g = ops.Graph()
-    a = g.create_op("foo", [], [dtypes.float32, dtypes.float32])
+    a = g.create_op("TwoFloatOutputs", [], [dtypes.float32, dtypes.float32])
     a_0, a_1 = a.outputs
     with g.control_dependencies([a_0]):
-      b = _apply_op(g, "const", [], [dtypes.float32])
+      b = _apply_op(g, "FloatOutput", [], [dtypes.float32])
       with g.control_dependencies([a_1]):
-        c = _apply_op(g, "const", [], [dtypes.float32])
+        c = _apply_op(g, "FloatOutput", [], [dtypes.float32])
 
     self.assertEqual(b.op.control_inputs, [a])
     self.assertEqual(c.op.control_inputs, [a])
 
   def testNoControlDependencyWithDataDependency(self):
     g = ops.Graph()
-    a = _apply_op(g, "const", [], [dtypes.float32])
+    a = _apply_op(g, "FloatOutput", [], [dtypes.float32])
     with g.control_dependencies([a]):
-      b = _apply_op(g, "identity", [a], [dtypes.float32])
+      b = _apply_op(g, "Identity", [a], [dtypes.float32])
 
     self.assertEqual(b.op.control_inputs, [])
 
 
+@test_util.with_c_api
 class OpScopeTest(test_util.TensorFlowTestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testNames(self):
+    with ops.name_scope("foo") as foo:
+      self.assertEqual("foo/", foo)
+      with ops.name_scope("foo2") as foo2:
+        self.assertEqual("foo/foo2/", foo2)
+      with ops.name_scope(None) as empty1:
+        self.assertEqual("", empty1)
+        with ops.name_scope("foo3") as foo3:
+          self.assertEqual("foo3/", foo3)
+      with ops.name_scope("") as empty2:
+        self.assertEqual("", empty2)
+    with ops.name_scope("foo/") as outer_foo:
+      self.assertEqual("foo/", outer_foo)
+      with ops.name_scope("") as empty3:
+        self.assertEqual("", empty3)
+      with ops.name_scope("foo4") as foo4:
+        self.assertEqual("foo/foo4/", foo4)
+      with ops.name_scope("foo5//") as foo5:
+        self.assertEqual("foo5//", foo5)
+        with ops.name_scope("foo6") as foo6:
+          self.assertEqual("foo5//foo6/", foo6)
+      with ops.name_scope("/") as foo7:
+        self.assertEqual("/", foo7)
+      with ops.name_scope("//") as foo8:
+        self.assertEqual("//", foo8)
+      with ops.name_scope("a//b/c") as foo9:
+        self.assertEqual("foo/a//b/c/", foo9)
+    with ops.name_scope("a//b/c") as foo10:
+      self.assertEqual("a//b/c/", foo10)
 
   @test_util.run_in_graph_and_eager_modes()
   def testEagerDefaultScopeName(self):
@@ -1353,8 +1808,8 @@ class OpScopeTest(test_util.TensorFlowTestCase):
   def testNoScopeName(self):
     g0 = ops.Graph()
     values = [
-        g0.create_op("a", [], [dtypes.float32]),
-        g0.create_op("b", [], [dtypes.float32])
+        g0.create_op("A", [], [dtypes.float32]),
+        g0.create_op("B", [], [dtypes.float32])
     ]
     with self.assertRaises(ValueError):
       with ops.name_scope(None, values=values):
@@ -1365,8 +1820,8 @@ class OpScopeTest(test_util.TensorFlowTestCase):
 
   def testEmptyScopeName(self):
     g0 = ops.Graph()
-    a = g0.create_op("a", [], [dtypes.float32])
-    b = g0.create_op("b", [], [dtypes.float32])
+    a = g0.create_op("A", [], [dtypes.float32])
+    b = g0.create_op("B", [], [dtypes.float32])
     with ops.name_scope("", values=[a, b]) as scope:
       self.assertEqual("", scope)
       self.assertEqual(g0, ops.get_default_graph())
@@ -1376,8 +1831,8 @@ class OpScopeTest(test_util.TensorFlowTestCase):
 
   def testDefaultScopeName(self):
     g0 = ops.Graph()
-    a = g0.create_op("a", [], [dtypes.float32])
-    b = g0.create_op("b", [], [dtypes.float32])
+    a = g0.create_op("A", [], [dtypes.float32])
+    b = g0.create_op("B", [], [dtypes.float32])
     scope_name = "my_scope"
     default_scope_name = "my_default_scope"
     with ops.name_scope(scope_name, default_scope_name, [a, b]) as scope:
@@ -1393,36 +1848,259 @@ class OpScopeTest(test_util.TensorFlowTestCase):
       self.assertEqual("%s/" % scope_name, scope)
       self.assertEqual(graph_elements[0].graph, ops.get_default_graph())
     g1 = ops.Graph()
-    c = g1.create_op("c", [], [dtypes.float32])
+    a = g1.create_op("A", [], [dtypes.float32])
     with self.assertRaises(ValueError):
-      with ops.name_scope(scope_name, values=graph_elements + [c]):
+      with ops.name_scope(scope_name, values=graph_elements + [a]):
         pass
 
   def testTensor(self):
     g0 = ops.Graph()
-    a = g0.create_op("a", [], [dtypes.float32])
-    b = g0.create_op("b", [], [dtypes.float32])
+    a = g0.create_op("A", [], [dtypes.float32])
+    b = g0.create_op("B", [], [dtypes.float32])
     self._testGraphElements([a, b])
 
   def testSparseTensor(self):
     g0 = ops.Graph()
-    a = g0.create_op("a", [], [dtypes.float32])
-    b = g0.create_op("b", [], [dtypes.float32])
+    a = g0.create_op("A", [], [dtypes.float32])
+    b = g0.create_op("B", [], [dtypes.float32])
     sparse = sparse_tensor.SparseTensor(
-        _apply_op(g0, "const", [], [dtypes.int64]),
-        _apply_op(g0, "const", [], [dtypes.float32]),
-        _apply_op(g0, "const", [], [dtypes.int64]))
+        _apply_op(g0, "Int64Output", [], [dtypes.int64]),
+        _apply_op(g0, "FloatOutput", [], [dtypes.float32]),
+        _apply_op(g0, "Int64Output", [], [dtypes.int64]))
     self._testGraphElements([a, sparse, b])
 
   def testVariable(self):
     g0 = ops.Graph()
     with g0.as_default():
       variable = variables.Variable([1.0])
-    a = g0.create_op("a", [], [dtypes.float32])
-    b = g0.create_op("b", [], [dtypes.float32])
+    a = g0.create_op("A", [], [dtypes.float32])
+    b = g0.create_op("B", [], [dtypes.float32])
     self._testGraphElements([a, variable, b])
 
 
+class InitScopeTest(test_util.TensorFlowTestCase):
+
+  def testClearsControlDependencies(self):
+    g = ops.Graph()
+    a_1 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_2 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_3 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+    a_4 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+
+    with g.as_default():
+      with g.control_dependencies([a_1]):
+        with g.control_dependencies([a_2]):
+          with ops.init_scope():
+            with g.control_dependencies([a_3]):
+              with g.control_dependencies([a_4]):
+                # deps [a_3, a_4]
+                b_3_4 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+              # deps = [a_3]
+              b_3 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+            # deps back to None
+            b_none = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+          # deps back to [a_1, a_2]
+          b_1_2 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+        # deps back to [a_1]
+        b_1 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+        with ops.init_scope():
+          # deps are None again
+          b_none2 = _apply_op(g, "FloatOutput", [], [dtypes.float32])
+
+    self.assertItemsEqual([a_3.op, a_4.op], b_3_4.op.control_inputs)
+    self.assertItemsEqual([a_3.op], b_3.op.control_inputs)
+    self.assertItemsEqual([], b_none.op.control_inputs)
+    self.assertItemsEqual([a_1.op, a_2.op], b_1_2.op.control_inputs)
+    self.assertItemsEqual([a_1.op], b_1.op.control_inputs)
+    self.assertItemsEqual([], b_none2.op.control_inputs)
+
+  def testLiftsOpsFromFunctions(self):
+    g0 = ops.Graph()
+    g1 = ops.Graph()
+    g1._building_function = True  # pylint: disable=protected-access
+    g2 = ops.Graph()
+    g2._building_function = True  # pylint: disable=protected-access
+
+    with g0.as_default():
+      with g1.as_default():
+        with g2.as_default():
+          with ops.init_scope():
+            _ = constant_op.constant(1.0)
+
+    self.assertEqual(len(g2.get_operations()), 0)
+    self.assertEqual(len(g1.get_operations()), 0)
+    self.assertEqual(len(g0.get_operations()), 1)
+
+  def testComposes(self):
+    g0 = ops.Graph()
+    g1 = ops.Graph()
+    g1._building_function = True  # pylint: disable=protected-access
+    g2 = ops.Graph()
+    g2._building_function = True  # pylint: disable=protected-access
+    g3 = ops.Graph()
+    g3._building_function = False  # pylint: disable=protected-access
+
+    with g0.as_default():
+      with g1.as_default():
+        with ops.init_scope():
+          # This op should be lifted into g0.
+          _ = constant_op.constant(1.0)
+          self.assertIs(g0, ops.get_default_graph())
+          self.assertEqual(len(g2.get_operations()), 0)
+          self.assertEqual(len(g1.get_operations()), 0)
+          self.assertEqual(len(g0.get_operations()), 1)
+        with g2.as_default():
+          with ops.init_scope():
+            # This op should be lifted into g0.
+            _ = constant_op.constant(1.0)
+            self.assertIs(g0, ops.get_default_graph())
+            with g3.as_default():
+              with ops.init_scope():
+                # This op should be lifted into g3, because g3 is not building a
+                # function.
+                _ = constant_op.constant(1.0)
+                self.assertIs(g3, ops.get_default_graph())
+
+    self.assertEqual(len(g3.get_operations()), 1)
+    self.assertEqual(len(g2.get_operations()), 0)
+    self.assertEqual(len(g1.get_operations()), 0)
+    self.assertEqual(len(g0.get_operations()), 2)
+
+  def testEscapesToEagerContext(self):
+    g = ops.Graph()
+    g._building_function = True  # pylint: disable=protected-access
+    with context.eager_mode():
+      with context.graph_mode():
+        with g.as_default():
+          with ops.init_scope():
+            # Because g is building a function, init_scope should
+            # escape out to the eager context.
+            self.assertTrue(context.in_eager_mode())
+          # g should be reinstated as the default graph, and the
+          # graph context should be re-entered.
+          self.assertIs(g, ops.get_default_graph())
+          self.assertTrue(context.in_graph_mode())
+
+  def testAllGraphsBuildingFunctionsRaisesError(self):
+    g = ops.Graph()
+    g._building_function = True  # pylint: disable=protected-access
+    with g.as_default():
+      with self.assertRaises(AssertionError):
+        with ops.init_scope():
+          pass
+
+  def testStaysInEagerWhenOnlyEagerContextActive(self):
+    with context.eager_mode():
+      with ops.init_scope():
+        self.assertTrue(context.eager_mode())
+      self.assertTrue(context.eager_mode())
+
+  def testEscapesDefunWhenInEagerMode(self):
+
+    def function_with_variables():
+      with ops.init_scope():
+        v = resource_variable_ops.ResourceVariable(3)
+      return v.assign_add(1)
+
+    with context.eager_mode():
+      # Each invocation of function_with_variables recreates a variable.
+      self.assertEqual(4, int(function_with_variables()))
+      self.assertEqual(4, int(function_with_variables()))
+
+      compiled = eager_function.defun(function_with_variables)
+      # The init_scope in function_with_variables lifts the variable out
+      # of the graph function constructed by defun; hence,
+      # compiled now appears to be stateful.
+      self.assertEqual(4, int(compiled()))
+      self.assertEqual(5, int(compiled()))
+
+  def testEscapesDefunWhenInGraphMode(self):
+    def function_with_variables(name):
+      with ops.init_scope():
+        _ = variable_scope.get_variable(name, shape=(1,))
+
+    g = ops.Graph()
+    with g.as_default():
+      with self.test_session():
+        # First ensure that graphs that are not building functions are
+        # not escaped.
+        function_with_variables("foo")
+        with self.assertRaisesRegexp(ValueError,
+                                     r"Variable foo already exists.*"):
+          # This will fail because reuse is not set to True.
+          function_with_variables("foo")
+
+        compiled = eager_function.defun(function_with_variables)
+        compiled("bar")
+        self.assertEqual(
+            len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)), 2)
+
+        # The second call to `compiled` should not create variables: the
+        # init_scope has lifted the variable creation code out of the defun.
+        compiled("bar")
+        self.assertEqual(
+            len(ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)), 2)
+
+  def testEscapesNestedDefun(self):
+
+    def inner_function():
+      with ops.init_scope():
+        v = resource_variable_ops.ResourceVariable(1)
+      return v.assign_add(2)
+
+    def outer_function(inner=None):
+      with ops.init_scope():
+        v0 = resource_variable_ops.ResourceVariable(0)
+      return v0.assign_add(1) + inner()
+
+    with context.eager_mode():
+      # Each invocation of outer_function recreates variables.
+      self.assertEqual(4, int(outer_function(inner=inner_function)))
+      self.assertEqual(4, int(outer_function(inner=inner_function)))
+
+      compiled_inner = eager_function.defun(inner_function)
+      compiled_outer = eager_function.defun(outer_function)
+      # The init_scope lifts variables out of the graph functions
+      # constructed by defun; hence, compiled_outer should now appear to be
+      # stateful.
+      self.assertEqual(4, int(compiled_outer(inner=compiled_inner)))
+      self.assertEqual(7, int(compiled_outer(inner=compiled_inner)))
+
+  def testInstallsDefaultGraphWhenGraphStackIsEmptyInGraphMode(self):
+    with context.graph_mode():
+      # pylint: disable=protected-access
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      with ops.init_scope():
+        self.assertGreater(len(ops._default_graph_stack.stack), 0)
+      self.assertEqual(len(ops._default_graph_stack.stack), 0)
+      # pylint: enable=protected-access
+
+  def testPreservesNameScopeInGraphConstruction(self):
+    with ops.Graph().as_default():
+      function_graph = ops.Graph()
+      with function_graph.as_default():
+        with ops.name_scope("inner"), ops.init_scope():
+          self.assertEqual(ops.get_name_scope(), "inner")
+      self.assertEqual(ops.get_name_scope(), "")
+
+  def testPreservesNameScopeInEagerExecution(self):
+    with context.eager_mode():
+      def foo():
+        with ops.name_scope("inner"), ops.init_scope():
+          if context.in_graph_mode():
+            self.assertEqual(ops.get_name_scope(), "inner")
+          else:
+            # A trailing slash is always appended when eager execution is
+            # enabled.
+            self.assertEqual(context.context().scope_name, "inner/")
+      foo()
+      self.assertEqual(ops.get_name_scope(), "")
+      foo_compiled = eager_function.defun(foo)
+      foo_compiled()
+      self.assertEqual(ops.get_name_scope(), "")
+
+
+@test_util.with_c_api
 class GraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
@@ -1456,19 +2134,33 @@ class GraphTest(test_util.TensorFlowTestCase):
       self._AssertDefault(g0)
     self._AssertDefault(orig)
 
+  def testPreventFeeding(self):
+    g = ops.Graph()
+    a = constant_op.constant(2.0)
+    self.assertTrue(g.is_feedable(a))
+    g.prevent_feeding(a)
+    self.assertFalse(g.is_feedable(a))
+
+  def testPreventFetching(self):
+    g = ops.Graph()
+    a = constant_op.constant(2.0)
+    self.assertTrue(g.is_fetchable(a))
+    g.prevent_fetching(a.op)
+    self.assertFalse(g.is_fetchable(a))
+
   def testAsGraphElementConversions(self):
 
     class ConvertibleObj(object):
 
       def _as_graph_element(self):
-        return "const:0"
+        return "FloatOutput:0"
 
     class NonConvertibleObj(object):
 
       pass
 
     g = ops.Graph()
-    a = _apply_op(g, "const", [], [dtypes.float32])
+    a = _apply_op(g, "FloatOutput", [], [dtypes.float32])
     self.assertEqual(a, g.as_graph_element(ConvertibleObj()))
     with self.assertRaises(TypeError):
       g.as_graph_element(NonConvertibleObj())
@@ -1499,7 +2191,26 @@ class GraphTest(test_util.TensorFlowTestCase):
     gc.collect()
     self.assertIsNone(g_ref())
 
+  def testRunnableAfterInvalidShape(self):
+    with ops.Graph().as_default():
+      with self.assertRaises(ValueError):
+        math_ops.add([1, 2], [1, 2, 3])
+      a = constant_op.constant(1)
+      with session.Session() as sess:
+        sess.run(a)
 
+  def testRunnableAfterInvalidShapeWithKernelLabelMap(self):
+    g = ops.Graph()
+    with g.as_default():
+      with g._kernel_label_map({"KernelLabelRequired": "overload_1"}):
+        with self.assertRaises(ValueError):
+          test_ops.kernel_label_required(1)
+      a = constant_op.constant(1)
+      with session.Session() as sess:
+        sess.run(a)
+
+
+@test_util.with_c_api
 class AttrScopeTest(test_util.TensorFlowTestCase):
 
   def _get_test_attrs(self):
@@ -1512,7 +2223,6 @@ class AttrScopeTest(test_util.TensorFlowTestCase):
       b = compat.as_text(x.get_attr("_B"))
     except ValueError:
       b = None
-    print(a, b)
     return (a, b)
 
   def testNoLabel(self):
@@ -1551,8 +2261,10 @@ class AttrScopeTest(test_util.TensorFlowTestCase):
 ops.RegisterShape("KernelLabel")(common_shapes.scalar_shape)
 
 
+@test_util.with_c_api
 class KernelLabelTest(test_util.TensorFlowTestCase):
 
+  @test_util.enable_c_api
   def testNoLabel(self):
     with self.test_session():
       self.assertAllEqual(b"My label is: default",
@@ -1580,30 +2292,32 @@ class KernelLabelTest(test_util.TensorFlowTestCase):
       self.assertAllEqual(b"My label is: overload_2", overload_2.eval())
 
 
+@test_util.with_c_api
 class AsGraphDefTest(test_util.TensorFlowTestCase):
 
   def testGraphDefVersion(self):
     """Test that the graphdef version is plumbed through to kernels."""
-    for version in range(versions.GRAPH_DEF_VERSION_MIN_PRODUCER,
-                         versions.GRAPH_DEF_VERSION + 2):
-      with ops.Graph().as_default() as g:
-        g.graph_def_versions.producer = version
-        with self.test_session(graph=g):
-          v = test_ops.graph_def_version().eval()
-          self.assertEqual(version, v)
+    with ops.Graph().as_default() as g:
+      version = g.graph_def_versions.producer
+      with self.test_session(graph=g):
+        v = test_ops.graph_def_version().eval()
+        self.assertEqual(version, v)
 
   def testAddShapes(self):
     with ops.Graph().as_default() as g:
-      t1, t2, t3, t4, t5 = _apply_op(g, "an_op", [], [dtypes.float32] * 5)
+      t1, t2, t3, t4, t5 = _apply_op(g, "FiveFloatOutputs", [],
+                                     [dtypes.float32] * 5)
       t1.set_shape(None)
       t2.set_shape([])
       t3.set_shape([None])
       t4.set_shape([43, 37])
       t5.set_shape([43, None])
 
+      b = constant_op.constant(1.0)  # pylint: disable=unused-variable
+
       gd = g.as_graph_def(add_shapes=True)
       self.assertProtoEqualsVersion("""
-      node { name: "an_op" op: "an_op"
+      node { name: "FiveFloatOutputs" op: "FiveFloatOutputs"
         attr {
           key: "_output_shapes"
           value {
@@ -1617,6 +2331,26 @@ class AsGraphDefTest(test_util.TensorFlowTestCase):
           }
         }
       }
+    node { name: "Const" op: "Const"
+      attr {
+        key: "_output_shapes"
+        value {
+          list {
+            shape { }
+          }
+        }
+      }
+      attr {
+        key: "dtype"
+        value { type: DT_FLOAT }
+      }
+      attr {
+        key: "value"
+        value {
+          tensor {
+            dtype: DT_FLOAT
+            tensor_shape { }
+         float_val: 1.0  } } } }
       """, gd)
 
 
@@ -1625,6 +2359,7 @@ def _calc_a_forward_flops(unused_graph, unused_node):
   return ops.OpStats("flops", 20)
 
 
+@test_util.with_c_api
 class StatisticsTest(test_util.TensorFlowTestCase):
 
   def testRegisteredNode(self):
@@ -1649,6 +2384,7 @@ class StatisticsTest(test_util.TensorFlowTestCase):
     self.assertEqual(3, flops_total.value)
 
 
+@test_util.with_c_api
 class ColocationGroupTest(test_util.TensorFlowTestCase):
 
   def testBasic(self):
@@ -1773,9 +2509,13 @@ class ColocationGroupTest(test_util.TensorFlowTestCase):
     self.assertEqual("/device:CPU:0", b.device)
 
 
+@test_util.with_c_api
 class DeprecatedTest(test_util.TensorFlowTestCase):
 
   def testSuccess(self):
+    # TODO(skyewm): make g.graph_def_versions work with the C API enabled
+    if ops._USE_C_API: return
+
     with ops.Graph().as_default() as g:
       g.graph_def_versions.producer = 7
       old = test_ops.old()
@@ -1793,6 +2533,9 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
         test_ops.old()
 
   def testGraphExecutionFail(self):
+    # TODO(skyewm): make g.graph_def_versions work with the C API enabled
+    if ops._USE_C_API: return
+
     with ops.Graph().as_default() as g:
       g.graph_def_versions.producer = 7
       old = test_ops.old()
@@ -1802,11 +2545,12 @@ class DeprecatedTest(test_util.TensorFlowTestCase):
           old.run()
 
 
+@test_util.with_c_api
 class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
 
   def testSuccess(self):
     op = ops.Operation(
-        ops._NodeDef("noop", "myop"), ops.Graph(), [], [dtypes.float32])
+        ops._NodeDef("FloatOutput", "myop"), ops.Graph(), [], [dtypes.float32])
     t = op.outputs[0]
     self.assertTrue(ops.is_dense_tensor_like(t))
 
@@ -1851,6 +2595,7 @@ class DenseTensorLikeTypeTest(test_util.TensorFlowTestCase):
           DenseTensorLikeTypeTest.BadClassBadDtype)
 
 
+@test_util.with_c_api
 class NameScopeTest(test_util.TensorFlowTestCase):
 
   def testStripAndPrependScope(self):
@@ -1888,7 +2633,20 @@ class NameScopeTest(test_util.TensorFlowTestCase):
         self.assertEqual("scope1", g.get_name_scope())
       self.assertEqual("", g.get_name_scope())
 
+  def testTwoGraphs(self):
 
+    def f():
+      g1 = ops.Graph()
+      g2 = ops.Graph()
+      with g1.as_default():
+        with g2.as_default():
+          with ops.name_scope("_"):
+            pass
+
+    self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
+
+
+@test_util.with_c_api
 class TracebackTest(test_util.TensorFlowTestCase):
 
   def testTracebackWithStartLines(self):
@@ -1910,6 +2668,7 @@ class TracebackTest(test_util.TensorFlowTestCase):
           self.assertEquals(frame, frame_with_start_line[:-1])
 
 
+@test_util.with_c_api
 class OutputTypesTest(test_util.TensorFlowTestCase):
   """Tests Operation._output_types property.
 
@@ -1943,7 +2702,7 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
     with g.as_default():
       x = constant_op.constant([1, 1, 2, 4, 4, 4, 7, 8, 8],
                                dtype=dtypes.double)
-      y, _ = gen_array_ops.unique(x)
+      y, _ = gen_array_ops._unique(x)
       self.assertEqual([types_pb2.DT_DOUBLE, types_pb2.DT_INT32],
                        y.op._output_types)  # pylint: disable=protected-access
 
@@ -1959,47 +2718,15 @@ class OutputTypesTest(test_util.TensorFlowTestCase):
       # pylint: enable=protected-access
 
 
-class InputTypesTest(test_util.TensorFlowTestCase):
-  """Tests Operation._input_dtypes and Operation._input_types properties.
+@test_util.with_c_api
+class EnableEagerExecutionTest(test_util.TensorFlowTestCase):
 
-  This test should not exist as _input_types is a private property.
-  This property is used by many tests that would normally cover its
-  behavior. However, we can't yet run these tests in C
-  API mode because they use _set_device method. This test will be deleted
-  once we port _set_device.
-  """
-  # TODO(iga): Remove this test
-
-  def setUp(self):
-    self.prev_use_c_api = ops._USE_C_API  # pylint: disable=protected-access
-    ops._USE_C_API = True  # pylint: disable=protected-access
-
-  def tearDown(self):
-    ops._USE_C_API = self.prev_use_c_api  # pylint: disable=protected-access
-
-  def testZeroInputs(self):
-    g = ops.Graph()
-    with g.as_default():
-      # Using a constant because creating unregistered ops
-      # doesn't work with the C API.
-      op = constant_op.constant(12, dtype=dtypes.uint16).op
-      # pylint: disable=protected-access
-      self.assertEqual([], op._input_types)
-      self.assertEqual([], op._input_dtypes)
-      # pylint: enable=protected-access
-
-  def testTwoInputs(self):
-    g = ops.Graph()
-    with g.as_default():
-      x = constant_op.constant(1.0, dtype=dtypes.double)
-      y = constant_op.constant(2.0, dtype=dtypes.double)
-      z = math_ops.multiply(x, y)
-      # pylint: disable=protected-access
-      self.assertTrue(isinstance(z.op._input_types[0], dtypes.DType))
-      self.assertTrue(isinstance(z.op._input_types[1], dtypes.DType))
-      self.assertEqual([dtypes.double, dtypes.double], z.op._input_types)
-      self.assertEqual([dtypes.double, dtypes.double], z.op._input_dtypes)
-      # pylint: enable=protected-access
+  def testBadArgumentsToEnableEagerExecution(self):
+    with self.assertRaisesRegexp(TypeError, "config must be a tf.ConfigProto"):
+      ops.enable_eager_execution(context.DEVICE_PLACEMENT_SILENT)
+    with self.assertRaisesRegexp(ValueError, "device_policy must be one of"):
+      c = config_pb2.ConfigProto()
+      ops.enable_eager_execution(c, c)
 
 
 if __name__ == "__main__":

@@ -24,12 +24,11 @@ import tempfile
 
 import numpy as np
 import six
-import six
-from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.estimator import model_fn
+from tensorflow.python.estimator import warm_starting_util
 from tensorflow.python.estimator.canned import head as head_lib
 from tensorflow.python.estimator.canned import metric_keys
 from tensorflow.python.estimator.canned import prediction_keys
@@ -41,6 +40,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import partitioned_variables
@@ -51,6 +51,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.summary import summary as summary_lib
 from tensorflow.python.summary.writer import writer_cache
 from tensorflow.python.training import checkpoint_utils
+from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import monitored_session
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import saver
@@ -66,6 +67,10 @@ HIDDEN_WEIGHTS_NAME_PATTERN = 'dnn/hiddenlayer_%d/kernel'
 HIDDEN_BIASES_NAME_PATTERN = 'dnn/hiddenlayer_%d/bias'
 LOGITS_WEIGHTS_NAME = 'dnn/logits/kernel'
 LOGITS_BIASES_NAME = 'dnn/logits/bias'
+OCCUPATION_EMBEDDING_NAME = ('dnn/input_from_feature_columns/input_layer/'
+                             'occupation_embedding/embedding_weights')
+CITY_EMBEDDING_NAME = ('dnn/input_from_feature_columns/input_layer/'
+                       'city_embedding/embedding_weights')
 
 
 def assert_close(expected, actual, rtol=1e-04, message='', name='assert_close'):
@@ -84,37 +89,25 @@ def assert_close(expected, actual, rtol=1e-04, message='', name='assert_close'):
         name=scope)
 
 
-def create_checkpoint(weights_and_biases, global_step, model_dir, num_logits=1):
+def create_checkpoint(weights_and_biases, global_step, model_dir):
   """Create checkpoint file with provided model weights.
 
   Args:
     weights_and_biases: Iterable of tuples of weight and bias values.
     global_step: Initial global step to save in checkpoint.
     model_dir: Directory into which checkpoint is saved.
-    num_logits: Number of logits trailing in weights_and_biases.
   """
   weights, biases = zip(*weights_and_biases)
   model_weights = {}
 
   # Hidden layer weights.
-  for i in range(0, len(weights) - num_logits):
+  for i in range(0, len(weights) - 1):
     model_weights[HIDDEN_WEIGHTS_NAME_PATTERN % i] = weights[i]
     model_weights[HIDDEN_BIASES_NAME_PATTERN % i] = biases[i]
 
   # Output layer weights.
-  for logit_ind in xrange(num_logits):
-    # Iteration is reversed.
-    reverse_logit_ind = num_logits - logit_ind - 1
-    logits_weight_name = (
-        LOGITS_WEIGHTS_NAME if num_logits == 1
-        else LOGITS_WEIGHTS_NAME.replace(
-            'logits', 'logits_head_{}'.format(reverse_logit_ind)))
-    logits_bias_name = (
-        LOGITS_BIASES_NAME if num_logits == 1
-        else LOGITS_BIASES_NAME.replace(
-            'logits', 'logits_head_{}'.format(reverse_logit_ind)))
-    model_weights[logits_weight_name] = weights[-(logit_ind + 1)]
-    model_weights[logits_bias_name] = biases[-(logit_ind + 1)]
+  model_weights[LOGITS_WEIGHTS_NAME] = weights[-1]
+  model_weights[LOGITS_BIASES_NAME] = biases[-1]
 
   with ops.Graph().as_default():
     # Create model variables.
@@ -496,7 +489,7 @@ class BaseDNNLogitFnTest(object):
       shutil.rmtree(self._model_dir)
 
   def _test_logits(self, mode, hidden_units, logits_dimension, inputs,
-                   expected_logits, multi_logit=False):
+                   expected_logits):
     """Tests that the expected logits are calculated."""
     with ops.Graph().as_default():
       # Global step needed for MonitoredSession, which is in turn used to
@@ -522,12 +515,7 @@ class BaseDNNLogitFnTest(object):
             features={'age': constant_op.constant(inputs)}, mode=mode)
         with monitored_session.MonitoredTrainingSession(
             checkpoint_dir=self._model_dir) as sess:
-          if multi_logit:
-            for expected_logit, obtained_logit in zip(expected_logits,
-                                                      sess.run(logits)):
-              self.assertAllClose(expected_logit, obtained_logit)
-          else:
-            self.assertAllClose(expected_logits, sess.run(logits))
+          self.assertAllClose(expected_logits, sess.run(logits))
 
   def test_one_dim_logits(self):
     """Tests one-dimensional logits.
@@ -552,35 +540,6 @@ class BaseDNNLogitFnTest(object):
           logits_dimension=1,
           inputs=[[10.]],
           expected_logits=[[-2.08]])
-
-  def test_multihead_logits(self):
-    """Tests returning list of logits for MultiHead case.
-
-    input_layer = [[10]]
-    hidden_layer_0 = [[relu(0.6*10 +0.1), relu(0.5*10 -0.1)]] = [[6.1, 4.9]]
-    hidden_layer_1 = [[relu(1*6.1 -0.8*4.9 +0.2), relu(0.8*6.1 -1*4.9 -0.1)]]
-                   = [[relu(2.38), relu(-0.12)]] = [[2.38, 0]]
-    logits_1 = [[-1*2.38 + 1*0 + 0.3]] = [[-2.08]]
-    logits_2 = [[-1*2.38 + 1*0 + 0.3, -2*2.38 + 2*0 + 0.5]] = [[-2.08, -4.26]]
-    """
-    base_global_step = 100
-    create_checkpoint(
-        (([[.6, .5]], [.1, -.1]), ([[1., .8], [-.8, -1.]], [.2, -.2]),
-         ([[-1.], [1.]], [.3]),  # First logit weights (1d head).
-         ([[-1., -2.], [1., 2.]], [.3, .5])),  # Second logit weights (2d head).
-        base_global_step,
-        self._model_dir, num_logits=2)
-    for mode in [
-        model_fn.ModeKeys.TRAIN, model_fn.ModeKeys.EVAL,
-        model_fn.ModeKeys.PREDICT
-    ]:
-      self._test_logits(
-          mode,
-          hidden_units=(2, 2),
-          logits_dimension=[1, 2],
-          inputs=[[10.]],
-          expected_logits=[[[-2.08]], [[-2.08, -4.26]]],
-          multi_logit=True)
 
   def test_multi_dim_logits(self):
     """Tests multi-dimensional logits.
@@ -742,6 +701,301 @@ class BaseDNNLogitFnTest(object):
           with monitored_session.MonitoredTrainingSession(
               checkpoint_dir=self._model_dir) as sess:
             self.assertAllClose(expected_logits, sess.run(logits))
+
+
+class BaseDNNWarmStartingTest(object):
+
+  def __init__(self, _dnn_classifier_fn, _dnn_regressor_fn):
+    self._dnn_classifier_fn = _dnn_classifier_fn
+    self._dnn_regressor_fn = _dnn_regressor_fn
+
+  def setUp(self):
+    # Create a directory to save our old checkpoint and vocabularies to.
+    self._ckpt_and_vocab_dir = tempfile.mkdtemp()
+
+    # Make a dummy input_fn.
+    def _input_fn():
+      features = {
+          'city': [['Palo Alto'], ['Mountain View']],
+          'locality': [['Palo Alto'], ['Mountain View']],
+          'occupation': [['doctor'], ['consultant']]
+      }
+      return features, [0, 1]
+
+    self._input_fn = _input_fn
+
+  def tearDown(self):
+    # Clean up checkpoint / vocab dir.
+    writer_cache.FileWriterCache.clear()
+    shutil.rmtree(self._ckpt_and_vocab_dir)
+
+  def assertAllNotClose(self, t1, t2):
+    """Helper assert for arrays."""
+    sum_of_abs_diff = 0.0
+    for x, y in zip(t1, t2):
+      try:
+        for a, b in zip(x, y):
+          sum_of_abs_diff += abs(b - a)
+      except TypeError:
+        sum_of_abs_diff += abs(y - x)
+    self.assertGreater(sum_of_abs_diff, 0)
+
+  def test_classifier_basic_warm_starting(self):
+    """Tests correctness of DNNClassifier default warm-start."""
+    city = feature_column.embedding_column(
+        feature_column.categorical_column_with_vocabulary_list(
+            'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+        dimension=5)
+
+    # Create a DNNClassifier and train to save a checkpoint.
+    dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=[256, 128],
+        feature_columns=[city],
+        model_dir=self._ckpt_and_vocab_dir,
+        n_classes=4,
+        optimizer='SGD')
+    dnn_classifier.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second DNNClassifier, warm-started from the first.  Use a
+    # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
+    # accumulator values that change).
+    warm_started_dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=[256, 128],
+        feature_columns=[city],
+        n_classes=4,
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
+        warm_start_from=dnn_classifier.model_dir)
+
+    warm_started_dnn_classifier.train(input_fn=self._input_fn, max_steps=1)
+    for variable_name in warm_started_dnn_classifier.get_variable_names():
+      self.assertAllClose(
+          dnn_classifier.get_variable_value(variable_name),
+          warm_started_dnn_classifier.get_variable_value(variable_name))
+
+  def test_regressor_basic_warm_starting(self):
+    """Tests correctness of DNNRegressor default warm-start."""
+    city = feature_column.embedding_column(
+        feature_column.categorical_column_with_vocabulary_list(
+            'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+        dimension=5)
+
+    # Create a DNNRegressor and train to save a checkpoint.
+    dnn_regressor = self._dnn_regressor_fn(
+        hidden_units=[256, 128],
+        feature_columns=[city],
+        model_dir=self._ckpt_and_vocab_dir,
+        optimizer='SGD')
+    dnn_regressor.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second DNNRegressor, warm-started from the first.  Use a
+    # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
+    # accumulator values that change).
+    warm_started_dnn_regressor = self._dnn_regressor_fn(
+        hidden_units=[256, 128],
+        feature_columns=[city],
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
+        warm_start_from=dnn_regressor.model_dir)
+
+    warm_started_dnn_regressor.train(input_fn=self._input_fn, max_steps=1)
+    for variable_name in warm_started_dnn_regressor.get_variable_names():
+      self.assertAllClose(
+          dnn_regressor.get_variable_value(variable_name),
+          warm_started_dnn_regressor.get_variable_value(variable_name))
+
+  def test_warm_starting_selective_variables(self):
+    """Tests selecting variables to warm-start."""
+    city = feature_column.embedding_column(
+        feature_column.categorical_column_with_vocabulary_list(
+            'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+        dimension=5)
+
+    # Create a DNNClassifier and train to save a checkpoint.
+    dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=[256, 128],
+        feature_columns=[city],
+        model_dir=self._ckpt_and_vocab_dir,
+        n_classes=4,
+        optimizer='SGD')
+    dnn_classifier.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second DNNClassifier, warm-started from the first.  Use a
+    # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
+    # accumulator values that change).
+    warm_started_dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=[256, 128],
+        feature_columns=[city],
+        n_classes=4,
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
+        # The provided regular expression will only warm-start the city
+        # embedding, not the kernels and biases of the hidden weights.
+        warm_start_from=warm_starting_util.WarmStartSettings(
+            ckpt_to_initialize_from=dnn_classifier.model_dir,
+            vars_to_warm_start='.*(city).*'))
+
+    warm_started_dnn_classifier.train(input_fn=self._input_fn, max_steps=1)
+    for variable_name in warm_started_dnn_classifier.get_variable_names():
+      if 'city' in variable_name:
+        self.assertAllClose(
+            dnn_classifier.get_variable_value(variable_name),
+            warm_started_dnn_classifier.get_variable_value(variable_name))
+      elif 'bias' in variable_name:
+        # Hidden layer biases are zero-initialized.
+        bias_values = warm_started_dnn_classifier.get_variable_value(
+            variable_name)
+        self.assertAllClose(np.zeros_like(bias_values), bias_values)
+      elif 'kernel' in variable_name:
+        # We can't override the glorot uniform initializer used for the kernels
+        # in the dense layers, so just make sure we're not getting the same
+        # values from the old checkpoint.
+        self.assertAllNotClose(
+            dnn_classifier.get_variable_value(variable_name),
+            warm_started_dnn_classifier.get_variable_value(variable_name))
+
+  def test_warm_starting_with_vocab_remapping_and_partitioning(self):
+    """Tests warm-starting with vocab remapping and partitioning."""
+    vocab_list = ['doctor', 'lawyer', 'consultant']
+    vocab_file = os.path.join(self._ckpt_and_vocab_dir, 'occupation_vocab')
+    with open(vocab_file, 'w') as f:
+      f.write('\n'.join(vocab_list))
+    occupation = feature_column.embedding_column(
+        feature_column.categorical_column_with_vocabulary_file(
+            'occupation',
+            vocabulary_file=vocab_file,
+            vocabulary_size=len(vocab_list)),
+        dimension=2)
+
+    # Create a DNNClassifier and train to save a checkpoint.
+    partitioner = partitioned_variables.fixed_size_partitioner(num_shards=2)
+    dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=[256, 128],
+        feature_columns=[occupation],
+        model_dir=self._ckpt_and_vocab_dir,
+        n_classes=4,
+        optimizer='SGD',
+        input_layer_partitioner=partitioner)
+    dnn_classifier.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second DNNClassifier, warm-started from the first.  Use a
+    # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
+    # accumulator values that change).  Use a new FeatureColumn with a
+    # different vocabulary for occupation.
+    new_vocab_list = ['doctor', 'consultant', 'engineer']
+    new_vocab_file = os.path.join(self._ckpt_and_vocab_dir,
+                                  'new_occupation_vocab')
+    with open(new_vocab_file, 'w') as f:
+      f.write('\n'.join(new_vocab_list))
+    new_occupation = feature_column.embedding_column(
+        feature_column.categorical_column_with_vocabulary_file(
+            'occupation',
+            vocabulary_file=new_vocab_file,
+            vocabulary_size=len(new_vocab_list)),
+        dimension=2)
+    # We can create our VocabInfo object from the new and old occupation
+    # FeatureColumn's.
+    occupation_vocab_info = warm_starting_util.VocabInfo(
+        new_vocab=new_occupation.categorical_column.vocabulary_file,
+        new_vocab_size=new_occupation.categorical_column.vocabulary_size,
+        num_oov_buckets=new_occupation.categorical_column.num_oov_buckets,
+        old_vocab=occupation.categorical_column.vocabulary_file,
+        old_vocab_size=occupation.categorical_column.vocabulary_size,
+        # Can't use constant_initializer with load_and_remap.  In practice,
+        # use a truncated normal initializer.
+        backup_initializer=init_ops.random_uniform_initializer(
+            minval=0.39, maxval=0.39))
+    warm_started_dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=[256, 128],
+        feature_columns=[occupation],
+        n_classes=4,
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
+        warm_start_from=warm_starting_util.WarmStartSettings(
+            ckpt_to_initialize_from=dnn_classifier.model_dir,
+            var_name_to_vocab_info={
+                OCCUPATION_EMBEDDING_NAME: occupation_vocab_info
+            },
+            # Explicitly providing None here will only warm-start variables
+            # referenced in var_name_to_vocab_info (no hidden weights will be
+            # warmstarted).
+            vars_to_warm_start=None),
+        input_layer_partitioner=partitioner)
+
+    warm_started_dnn_classifier.train(input_fn=self._input_fn, max_steps=1)
+    # 'doctor' was ID-0 and still ID-0.
+    self.assertAllClose(
+        dnn_classifier.get_variable_value(OCCUPATION_EMBEDDING_NAME)[0, :],
+        warm_started_dnn_classifier.get_variable_value(
+            OCCUPATION_EMBEDDING_NAME)[0, :])
+    # 'consultant' was ID-2 and now ID-1.
+    self.assertAllClose(
+        dnn_classifier.get_variable_value(OCCUPATION_EMBEDDING_NAME)[2, :],
+        warm_started_dnn_classifier.get_variable_value(
+            OCCUPATION_EMBEDDING_NAME)[1, :])
+    # 'engineer' is a new entry and should be initialized with the
+    # backup_initializer in VocabInfo.
+    self.assertAllClose([0.39] * 2,
+                        warm_started_dnn_classifier.get_variable_value(
+                            OCCUPATION_EMBEDDING_NAME)[2, :])
+    for variable_name in warm_started_dnn_classifier.get_variable_names():
+      if 'bias' in variable_name:
+        # Hidden layer biases are zero-initialized.
+        bias_values = warm_started_dnn_classifier.get_variable_value(
+            variable_name)
+        self.assertAllClose(np.zeros_like(bias_values), bias_values)
+      elif 'kernel' in variable_name:
+        # We can't override the glorot uniform initializer used for the kernels
+        # in the dense layers, so just make sure we're not getting the same
+        # values from the old checkpoint.
+        self.assertAllNotClose(
+            dnn_classifier.get_variable_value(variable_name),
+            warm_started_dnn_classifier.get_variable_value(variable_name))
+
+  def test_warm_starting_with_naming_change(self):
+    """Tests warm-starting with a Tensor name remapping."""
+    locality = feature_column.embedding_column(
+        feature_column.categorical_column_with_vocabulary_list(
+            'locality', vocabulary_list=['Mountain View', 'Palo Alto']),
+        dimension=5)
+
+    # Create a DNNClassifier and train to save a checkpoint.
+    dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=[256, 128],
+        feature_columns=[locality],
+        model_dir=self._ckpt_and_vocab_dir,
+        n_classes=4,
+        optimizer='SGD')
+    dnn_classifier.train(input_fn=self._input_fn, max_steps=1)
+
+    # Create a second DNNClassifier, warm-started from the first.  Use a
+    # learning_rate = 0.0 optimizer to check values (use SGD so we don't have
+    # accumulator values that change).
+    city = feature_column.embedding_column(
+        feature_column.categorical_column_with_vocabulary_list(
+            'city', vocabulary_list=['Mountain View', 'Palo Alto']),
+        dimension=5)
+    warm_started_dnn_classifier = self._dnn_classifier_fn(
+        hidden_units=[256, 128],
+        feature_columns=[city],
+        n_classes=4,
+        optimizer=gradient_descent.GradientDescentOptimizer(learning_rate=0.0),
+        # The 'city' variable correspond to the 'locality' variable in the
+        # previous model.
+        warm_start_from=warm_starting_util.WarmStartSettings(
+            ckpt_to_initialize_from=dnn_classifier.model_dir,
+            var_name_to_prev_var_name={
+                CITY_EMBEDDING_NAME:
+                    CITY_EMBEDDING_NAME.replace('city', 'locality')
+            }))
+
+    warm_started_dnn_classifier.train(input_fn=self._input_fn, max_steps=1)
+    for variable_name in warm_started_dnn_classifier.get_variable_names():
+      if 'city' in variable_name:
+        self.assertAllClose(
+            dnn_classifier.get_variable_value(
+                CITY_EMBEDDING_NAME.replace('city', 'locality')),
+            warm_started_dnn_classifier.get_variable_value(CITY_EMBEDDING_NAME))
+      else:
+        self.assertAllClose(
+            dnn_classifier.get_variable_value(variable_name),
+            warm_started_dnn_classifier.get_variable_value(variable_name))
 
 
 class BaseDNNClassifierEvaluateTest(object):

@@ -1,6 +1,7 @@
 path: "tensorflow.keras.layers.Conv3DTranspose"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras._impl.keras.layers.convolutional.Conv3DTranspose\'>"
+  is_instance: "<class \'tensorflow.python.layers.convolutional.Conv3DTranspose\'>"
   is_instance: "<class \'tensorflow.python.layers.convolutional.Conv3D\'>"
   is_instance: "<class \'tensorflow.python.layers.convolutional._Conv\'>"
   is_instance: "<class \'tensorflow.python.keras._impl.keras.engine.topology.Layer\'>"
@@ -104,7 +105,7 @@ tf_class {
   }
   member_method {
     name: "add_variable"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\', \'None\', \'None\'], "
   }
   member_method {
     name: "add_weight"
@@ -125,6 +126,10 @@ tf_class {
   member_method {
     name: "compute_mask"
     argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"

@@ -58,7 +58,7 @@ class TopKTest(test.TestCase):
         # Do some special casing of equality of indices: if indices
         # are not the same, but values are floating type, ensure that
         # the values are within epsilon of each other.
-        if not np.issubdtype(np_expected_values.dtype, np.float):
+        if not np.issubdtype(np_expected_values.dtype, np.floating):
           # Values are not floating point type; check indices exactly
           self.assertAllEqual(np_expected_indices, indices)
         else:
@@ -99,6 +99,13 @@ class TopKTest(test.TestCase):
   def testTop2(self):
     inputs = [[0.1, 0.3, 0.2, 0.4], [0.1, 0.3, 0.4, 0.2]]
     self._validateTopK(inputs, 2, [[0.4, 0.3], [0.4, 0.3]], [[3, 1], [2, 1]])
+
+  def testTop3(self):
+    k = 5
+    inputs = np.random.permutation(np.linspace(0, 100, 6140, dtype=np.float64))
+    indices = np.argsort(-inputs)[:k]
+    values = -np.sort(-inputs)[:k]
+    self._validateTopK(inputs, k, values, indices)
 
   def _testLargeSort(self, dtype):
     b = 10

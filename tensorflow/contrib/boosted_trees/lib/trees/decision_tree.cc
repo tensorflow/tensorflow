@@ -50,8 +50,13 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
             current_node.sparse_float_binary_split_default_left().split();
         auto sparse_feature =
             example.sparse_float_features[split.feature_column()];
-        node_id = !sparse_feature.has_value() ||
-                          sparse_feature.get_value() <= split.threshold()
+        // Feature id for the split when multivalent sparse float column, or 0
+        // by default.
+        const int32 dimension_id = split.dimension_id();
+
+        node_id = !sparse_feature[dimension_id].has_value() ||
+                          sparse_feature[dimension_id].get_value() <=
+                              split.threshold()
                       ? split.left_id()
                       : split.right_id();
         break;
@@ -61,8 +66,12 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
             current_node.sparse_float_binary_split_default_right().split();
         auto sparse_feature =
             example.sparse_float_features[split.feature_column()];
-        node_id = sparse_feature.has_value() &&
-                          sparse_feature.get_value() <= split.threshold()
+        // Feature id for the split when multivalent sparse float column, or 0
+        // by default.
+        const int32 dimension_id = split.dimension_id();
+        node_id = sparse_feature[dimension_id].has_value() &&
+                          sparse_feature[dimension_id].get_value() <=
+                              split.threshold()
                       ? split.left_id()
                       : split.right_id();
         break;

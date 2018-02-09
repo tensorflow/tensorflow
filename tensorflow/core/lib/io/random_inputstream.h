@@ -34,6 +34,8 @@ class RandomAccessInputStream : public InputStreamInterface {
 
   Status ReadNBytes(int64 bytes_to_read, string* result) override;
 
+  Status SkipNBytes(int64 bytes_to_skip) override;
+
   int64 Tell() const override;
 
   Status Seek(int64 position) {

@@ -13,7 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=protected-access
-"""Base layer code and base model (Container) code.
+"""Base layer code and base model (Network) code.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -26,12 +26,18 @@ import os
 import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
+from tensorflow.python.keras._impl.keras import constraints
+from tensorflow.python.keras._impl.keras import initializers
+from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.keras._impl.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.keras._impl.keras.utils.layer_utils import print_summary as print_layer_summary
 from tensorflow.python.layers import base as tf_base_layers
+from tensorflow.python.layers import network as tf_network
+from tensorflow.python.layers import utils as tf_layers_util
 from tensorflow.python.platform import tf_logging as logging
 
 
@@ -103,7 +109,7 @@ class Layer(tf_base_layers.Layer):
       set_weights(weights)
       get_config()
       count_params()
-      _compute_output_shape(input_shape)
+      compute_output_shape(input_shape)
       compute_mask(x, mask)
       get_input_at(node_index)
       get_output_at(node_index)
@@ -208,9 +214,9 @@ class Layer(tf_base_layers.Layer):
       dtype = K.floatx()
     weight = self.add_variable(name, shape,
                                dtype=dtype,
-                               initializer=initializer,
-                               regularizer=regularizer,
-                               constraint=constraint,
+                               initializer=initializers.get(initializer),
+                               regularizer=regularizers.get(regularizer),
+                               constraint=constraints.get(constraint),
                                trainable=trainable)
     return weight
 
@@ -250,6 +256,8 @@ class Layer(tf_base_layers.Layer):
     """
     # Actually call the layer (optionally building it).
     output = super(Layer, self).__call__(inputs, **kwargs)
+    if context.in_eager_mode():
+      return output
 
     # Update learning phase info.
     output_tensors = _to_list(output)
@@ -266,7 +274,7 @@ class Layer(tf_base_layers.Layer):
       del self._initial_weights
     return output
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     """Computes the output shape of the layer.
 
     Assumes that the layer will be built
@@ -281,10 +289,13 @@ class Layer(tf_base_layers.Layer):
     Returns:
         An input shape tuple.
     """
-    if isinstance(input_shape, list):
-      return [tensor_shape.TensorShape(shape) for shape in input_shape]
-    else:
-      return tensor_shape.TensorShape(input_shape)
+    logging.warning(
+        'All custom layers should implement the '
+        '`compute_output_shape` method. This layer (' + self.name + ') '
+        'is relying on the base `Layer.compute_output_shape` implementation, '
+        'which will start raising a `NotImplementedError` '
+        'as of July 1st, 2018.')
+    return input_shape
 
   def compute_mask(self, inputs, mask=None):  # pylint: disable=unused-argument
     """Computes an output mask tensor.
@@ -444,7 +455,7 @@ class Layer(tf_base_layers.Layer):
 
     The config of a layer does not include connectivity
     information, nor the layer class name. These are handled
-    by `Container` (one layer of abstraction above).
+    by `Network` (one layer of abstraction above).
 
     Returns:
         Python dictionary.
@@ -463,7 +474,7 @@ class Layer(tf_base_layers.Layer):
     This method is the reverse of `get_config`,
     capable of instantiating the same layer from the config
     dictionary. It does not handle layer connectivity
-    (handled by Container), nor weights (handled by `set_weights`).
+    (handled by Network), nor weights (handled by `set_weights`).
 
     Arguments:
         config: A Python dictionary, typically the
@@ -479,7 +490,7 @@ class Layer(tf_base_layers.Layer):
     self._activity_regularizer = activity_regularizer
 
 
-class InputLayer(tf_base_layers.InputLayer, Layer):
+class InputLayer(tf_network.InputLayer, Layer):
   """Layer to be used as an entry point into a graph.
 
   It can either wrap an existing tensor (pass an `input_tensor` argument)
@@ -630,11 +641,11 @@ def Input(  # pylint: disable=invalid-name
     return outputs
 
 
-class Network(tf_base_layers.Network, Layer):
-  """A Container is a directed acyclic graph of layers.
+class Network(tf_network.GraphNetwork, Layer):
+  """A Network is a directed acyclic graph of layers.
 
   It is the topological form of a "model". A Model
-  is simply a Container with added training routines.
+  is simply a Network with added training routines.
 
   # Properties
       name
@@ -675,8 +686,8 @@ class Network(tf_base_layers.Network, Layer):
     for x in self.inputs:
       mask = x._keras_mask if hasattr(x, '_keras_mask') else None
       masks.append(mask)
-    mask_cache_key = (tf_base_layers._object_list_uid(self.inputs) + '_' +
-                      tf_base_layers._object_list_uid(masks))
+    mask_cache_key = (tf_layers_util.object_list_uid(self.inputs) + '_' +
+                      tf_layers_util.object_list_uid(masks))
     masks = []
     for x in self.outputs:
       mask = x._keras_mask if hasattr(x, '_keras_mask') else None
@@ -697,13 +708,15 @@ class Network(tf_base_layers.Network, Layer):
       self.input_names.append(layer.name)
       if layer.is_placeholder:
         self._feed_input_names.append(layer.name)
-        self._feed_inputs.append(layer.input)
         self._feed_input_shapes.append(K.int_shape(self.inputs[i]))
+        # layer.input gives an error in eager mode
+        if context.in_graph_mode():
+          self._feed_inputs.append(layer.input)
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 
-    self.internal_input_shapes = [K.int_shape(x) for x in self.inputs]
-    self.internal_output_shapes = [K.int_shape(x) for x in self.outputs]
+    self._internal_input_shapes = [K.int_shape(x) for x in self.inputs]
+    self._internal_output_shapes = [K.int_shape(x) for x in self.outputs]
 
   @property
   def uses_learning_phase(self):
@@ -776,7 +789,7 @@ class Network(tf_base_layers.Network, Layer):
     if cache_key in self._output_mask_cache:
       return self._output_mask_cache[cache_key]
     else:
-      _, output_masks, _ = self._run_internal_graph(inputs, masks)
+      _, output_masks = self._run_internal_graph(inputs, masks)
       return output_masks
 
   def get_config(self):
@@ -786,14 +799,14 @@ class Network(tf_base_layers.Network, Layer):
     node_conversion_map = {}
     for layer in self.layers:
       if issubclass(layer.__class__, Network):
-        # Containers start with a pre-existing node
+        # Networks start with a pre-existing node
         # linking their input to output.
         kept_nodes = 1
       else:
         kept_nodes = 0
       for original_node_index, node in enumerate(layer._inbound_nodes):
-        node_key = tf_base_layers._make_node_key(layer.name,
-                                                 original_node_index)
+        node_key = tf_network._make_node_key(layer.name,
+                                             original_node_index)
         if node_key in self._network_nodes:
           node_conversion_map[node_key] = kept_nodes
           kept_nodes += 1
@@ -803,8 +816,8 @@ class Network(tf_base_layers.Network, Layer):
       layer_config = layer.get_config()
       filtered_inbound_nodes = []
       for original_node_index, node in enumerate(layer._inbound_nodes):
-        node_key = tf_base_layers._make_node_key(layer.name,
-                                                 original_node_index)
+        node_key = tf_network._make_node_key(layer.name,
+                                             original_node_index)
         if node_key in self._network_nodes:
           # The node is relevant to the model:
           # add to filtered_inbound_nodes.
@@ -828,8 +841,8 @@ class Network(tf_base_layers.Network, Layer):
               inbound_layer = node.inbound_layers[i]
               node_index = node.node_indices[i]
               tensor_index = node.tensor_indices[i]
-              node_key = tf_base_layers._make_node_key(inbound_layer.name,
-                                                       node_index)
+              node_key = tf_network._make_node_key(inbound_layer.name,
+                                                   node_index)
               new_node_index = node_conversion_map.get(node_key, 0)
               node_data.append(
                   [inbound_layer.name, new_node_index, tensor_index, kwargs])
@@ -846,8 +859,8 @@ class Network(tf_base_layers.Network, Layer):
     model_inputs = []
     for i in range(len(self._input_layers)):
       layer, node_index, tensor_index = self._input_coordinates[i]
-      node_key = tf_base_layers._make_node_key(layer.name,
-                                               node_index)
+      node_key = tf_network._make_node_key(layer.name,
+                                           node_index)
       if node_key not in self._network_nodes:
         continue
       new_node_index = node_conversion_map[node_key]
@@ -856,8 +869,8 @@ class Network(tf_base_layers.Network, Layer):
     model_outputs = []
     for i in range(len(self._output_layers)):
       layer, node_index, tensor_index = self._output_coordinates[i]
-      node_key = tf_base_layers._make_node_key(layer.name,
-                                               node_index)
+      node_key = tf_network._make_node_key(layer.name,
+                                           node_index)
       if node_key not in self._network_nodes:
         continue
       new_node_index = node_conversion_map[node_key]
@@ -1191,10 +1204,6 @@ class Network(tf_base_layers.Network, Layer):
                         print_fn=print_fn)
 
 
-# Alias for legacy support.
-Container = Network
-
-
 def get_source_inputs(tensor, layer=None, node_index=None):
   """Returns the list of input tensors necessary to compute `tensor`.
 
@@ -1297,18 +1306,17 @@ def preprocess_weights_for_loading(layer,
   Returns:
       A list of weights values (Numpy arrays).
   """
+  if layer.__class__.__name__ == 'Bidirectional':
+    num_weights_per_layer = len(weights) // 2
+    forward_weights = preprocess_weights_for_loading(
+        layer.forward_layer, weights[:num_weights_per_layer],
+        original_keras_version, original_backend)
+    backward_weights = preprocess_weights_for_loading(
+        layer.backward_layer, weights[num_weights_per_layer:],
+        original_keras_version, original_backend)
+    weights = forward_weights + backward_weights
+
   if original_keras_version == '1':
-    if layer.__class__.__name__ == 'Bidirectional':
-      num_weights_per_layer = len(weights) // 2
-
-      forward_weights = preprocess_weights_for_loading(
-          layer.forward_layer, weights[:num_weights_per_layer],
-          original_keras_version, original_backend)
-      backward_weights = preprocess_weights_for_loading(
-          layer.backward_layer, weights[num_weights_per_layer:],
-          original_keras_version, original_backend)
-      weights = forward_weights + backward_weights
-
     if layer.__class__.__name__ == 'TimeDistributed':
       weights = preprocess_weights_for_loading(
           layer.layer, weights, original_keras_version, original_backend)
@@ -1412,7 +1420,7 @@ def preprocess_weights_for_loading(layer,
 
   conv_layers = ['Conv1D', 'Conv2D', 'Conv3D', 'Conv2DTranspose', 'ConvLSTM2D']
   if layer.__class__.__name__ in conv_layers:
-    if original_backend and K.backend() != original_backend:
+    if original_backend == 'theano':
       weights[0] = conv_utils.convert_kernel(weights[0])
       if layer.__class__.__name__ == 'ConvLSTM2D':
         weights[1] = conv_utils.convert_kernel(weights[1])
@@ -1420,6 +1428,31 @@ def preprocess_weights_for_loading(layer,
       weights[0] = np.transpose(weights[0], (3, 2, 0, 1))
       if layer.__class__.__name__ == 'ConvLSTM2D':
         weights[1] = np.transpose(weights[1], (3, 2, 0, 1))
+
+  # Convert the weights of CuDNNLSTM so that they could be loaded into LSTM
+  if layer.__class__.__name__ == 'LSTM' and len(weights) == 3:
+    # Determine if loading a CuDNNLSTM layer from the number of bias weights:
+    # CuDNNLSTM has (units * 8) weights; while LSTM has (units * 4)
+    # if there's no bias weight in the file, skip this conversion
+    units = weights[1].shape[0]
+    bias = weights[2]
+    if len(bias) == units * 8:
+      # reshape the kernels
+      kernels = np.split(weights[0], 4, axis=1)
+      kernels = [
+          kernel.reshape(-1).reshape(kernel.shape, order='F')
+          for kernel in kernels
+      ]
+      weights[0] = np.concatenate(kernels, axis=1)
+
+      # transpose the recurrent kernels
+      recurrent_kernels = np.split(weights[1], 4, axis=1)
+      recurrent_kernels = [kernel.T for kernel in recurrent_kernels]
+      weights[1] = np.concatenate(recurrent_kernels, axis=1)
+
+      # split the bias into half and merge
+      weights[2] = bias[:units * 4] + bias[units * 4:]
+
   return weights
 
 
@@ -1540,3 +1573,31 @@ def load_weights_from_hdf5_group_by_name(f, layers):
       for i in range(len(weight_values)):
         weight_value_tuples.append((symbolic_weights[i], weight_values[i]))
   K.batch_set_value(weight_value_tuples)
+
+
+def shape_type_conversion(fn):
+  """Decorator that handles tuple/TensorShape conversion.
+
+  Used in `compute_output_shape` and `build`.
+
+  Arguments:
+    fn: function to wrap.
+
+  Returns:
+    Wrapped function.
+  """
+
+  def wrapper(instance, input_shape):
+    if input_shape is not None:
+      if isinstance(input_shape, list):
+        input_shape = [
+            tuple(tensor_shape.TensorShape(x).as_list()) for x in input_shape]
+      else:
+        input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
+    output_shape = fn(instance, input_shape)
+    if output_shape is not None:
+      if isinstance(output_shape, list):
+        return [tensor_shape.TensorShape(x) for x in output_shape]
+      return tensor_shape.TensorShape(output_shape)
+
+  return wrapper

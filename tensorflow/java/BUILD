@@ -14,6 +14,7 @@ load(
     "tf_copts",
     "tf_custom_op_library",
     "tf_java_test",
+    "tf_cc_test",
 )
 
 java_library(
@@ -24,6 +25,7 @@ java_library(
     ],
     data = [":libtensorflow_jni"],
     javacopts = JAVACOPTS,
+    plugins = [":processor"],
     visibility = ["//visibility:public"],
 )
 
@@ -39,6 +41,21 @@ filegroup(
         "//tensorflow/contrib/android:__pkg__",
         "//tensorflow/java:__pkg__",
     ],
+)
+
+java_plugin(
+    name = "processor",
+    generates_api = True,
+    processor_class = "org.tensorflow.processor.OperatorProcessor",
+    visibility = ["//visibility:public"],
+    deps = [":processor_library"],
+)
+
+java_library(
+    name = "processor_library",
+    srcs = glob(["src/gen/java/org/tensorflow/processor/**/*.java"]),
+    javacopts = JAVACOPTS,
+    resources = glob(["src/gen/resources/META-INF/services/javax.annotation.processing.Processor"]),
 )
 
 filegroup(
@@ -81,10 +98,26 @@ tf_java_op_gen_srcjar(
 # file before making it an executable. See tf_java_op_gen_srcjar().
 cc_library(
     name = "java_op_gen_tool",
-    srcs = glob([
-        "src/gen/cc/*.h",
-        "src/gen/cc/*.cc",
-    ]),
+    srcs = [
+        "src/gen/cc/op_gen_main.cc",
+    ],
+    copts = tf_copts(),
+    deps = [
+        ":java_op_gen_lib",
+    ],
+)
+
+cc_library(
+    name = "java_op_gen_lib",
+    srcs = [
+        "src/gen/cc/op_generator.cc",
+        "src/gen/cc/source_writer.cc",
+    ],
+    hdrs = [
+        "src/gen/cc/java_defs.h",
+        "src/gen/cc/op_generator.h",
+        "src/gen/cc/source_writer.h",
+    ],
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
@@ -261,6 +294,28 @@ tf_java_test(
         ":tensorflow",
         ":testutil",
         "@junit",
+    ],
+)
+
+filegroup(
+    name = "processor_test_resources",
+    srcs = glob([
+        "src/test/resources/org/tensorflow/**/*.java",
+        "src/main/java/org/tensorflow/op/annotation/Operator.java",
+    ]),
+)
+
+tf_cc_test(
+    name = "source_writer_test",
+    size = "small",
+    srcs = [
+        "src/gen/cc/source_writer_test.cc",
+    ],
+    deps = [
+        ":java_op_gen_lib",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 

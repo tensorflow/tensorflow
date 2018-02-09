@@ -36,6 +36,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/inputs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
+#include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/protobuf_internal.h"
@@ -74,7 +75,7 @@ void InitializeTensor(DataType type, Tensor* tensor) {
 // of the cluster type (E.g: single cpu, multiple gpu, etc)  being simulated in
 // order to get the correct session options and environment, and performing the
 // correct optimizations.
-Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
+Status OptimizeGraph(const GraphDef& graph_def_arg, GraphDef* output_graph_def,
                      const ItemConfig& cfg) {
   if (!cfg.apply_optimizations && !cfg.inline_functions) {
     return Status::OK();
@@ -83,8 +84,16 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
   // Create a session option for a single GPU device.
   SessionOptions options;
 
-  // Inline all functions.
-  GraphDef inlined_graph_def(graph_def);
+  // Make a local copy of graph def, because we need to change some things.
+  GraphDef graph_def(graph_def_arg);
+
+  if (cfg.inline_functions && cfg.erase_noinline_attributes) {
+    // TF optimizer doesn't inline functions with "_noinline" attribute,
+    // so let's go over the function library and erase it.
+    for (auto& func : *graph_def.mutable_library()->mutable_function()) {
+      func.mutable_attr()->erase("_noinline");
+    }
+  }
 
   // Instantiate all variables for function library runtime creation.
   std::vector<Device*> devices;
@@ -92,7 +101,7 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
       options, "/job:localhost/replica:0/task:0", &devices));
   std::unique_ptr<DeviceMgr> dvc_mgr(new DeviceMgr(devices));
   FunctionLibraryDefinition function_library(OpRegistry::Global(),
-                                             inlined_graph_def.library());
+                                             graph_def.library());
   Env* env = Env::Default();
 
   // Optimizer options: L1 and inlining. L1 is default.
@@ -108,7 +117,7 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
   // Create the function library runtime.
   std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
       new ProcessFunctionLibraryRuntime(dvc_mgr.get(), env,
-                                        inlined_graph_def.versions().producer(),
+                                        graph_def.versions().producer(),
                                         &function_library, *optimizer_opts));
   FunctionLibraryRuntime* flr = pflr->GetFLR(devices[0]->name());
 
@@ -117,20 +126,32 @@ Status OptimizeGraph(const GraphDef& graph_def, GraphDef* output_graph_def,
   graph_ctor_opts.allow_internal_ops = true;
   graph_ctor_opts.expect_device_spec = false;
   std::unique_ptr<Graph> graphptr(new Graph(function_library));
-  // Populate default attrs to the NodeDefs in the GraphDef.
-  TF_RETURN_IF_ERROR(AddDefaultAttrsToGraphDef(&inlined_graph_def,
-                                               *graphptr->op_registry(), 0));
 
-  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph(graph_ctor_opts, inlined_graph_def,
-                                            graphptr.get()));
+  TF_RETURN_IF_ERROR(
+      ConvertGraphDefToGraph(graph_ctor_opts, graph_def, graphptr.get()));
 
   // Optimize the graph.
-  GraphOptimizer optimizer(*optimizer_opts);
+  ::tensorflow::GraphOptimizer optimizer(*optimizer_opts);
   optimizer.Optimize(flr, env, devices[0], &graphptr, /*shape_map=*/nullptr);
   graphptr->ToGraphDef(output_graph_def);
 
+  // The default values of attributes might have been stripped by the optimizer.
+  // Add them back.
+  return AddDefaultAttrsToGraphDef(output_graph_def, *graphptr->op_registry(),
+                                   0);
+}
+
+// Applies the same graph pruning logic to the graph as Session.Run in TF.
+// If the returned status is not OK, item state may be inconsistent.
+Status PruneGraph(GrapplerItem* item) {
+  ModelPruner pruner;
+  GraphDef pruned_graph;
+  Cluster* cluster = nullptr;  // ModelPruner doesn't check cluster.
+  TF_RETURN_IF_ERROR(pruner.Optimize(cluster, *item, &pruned_graph));
+  item->graph = std::move(pruned_graph);
   return Status::OK();
 }
+
 }  // namespace
 
 // static
@@ -144,6 +165,18 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   new_item->id = id;
   new_item->graph = meta_graph.graph_def();
 
+  // Fill in feed nodes from config, if any provided.
+  for (const auto& feed_node : cfg.feed_nodes) {
+    const string feed_name = NodeName(feed_node);
+    if (feed_name.empty()) {
+      LOG(ERROR) << "Invalid feed node name " << feed_node
+                 << ", skipping this input.";
+      return nullptr;
+    }
+    VLOG(1) << "Will use feed node " << feed_name;
+    new_item->feed.emplace_back(feed_name, Tensor());
+  }
+
   // Attempt to detect the fetch node(s).
   if (meta_graph.collection_def().count("train_op") > 0) {
     const CollectionDef& nodes = meta_graph.collection_def().at("train_op");
@@ -155,7 +188,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
                      << ", skipping this input";
           return nullptr;
         }
-        LOG(INFO) << "Will use fetch node " << name;
+        VLOG(1) << "Will use fetch node " << name;
         new_item->fetch.push_back(name);
       }
     }
@@ -264,7 +297,7 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
   }
 
   for (auto& node : *new_item->graph.mutable_node()) {
-    if (IsPlaceholder(node)) {
+    if (IsPlaceholder(node) && node.op() != "PlaceholderWithDefault") {
       if (node.attr().count("dtype") == 0) {
         LOG(ERROR) << "Unknown type for placeholder " << node.name()
                    << ", skipping this input";
@@ -331,9 +364,23 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
           }
         }
       }
+
       Tensor fake_input(type, shape);
       InitializeTensor(type, &fake_input);
-      new_item->feed.emplace_back(node.name(), fake_input);
+
+      if (cfg.feed_nodes.empty()) {
+        // No specific feed nodes were given. Assume all placeholders are fed.
+        new_item->feed.emplace_back(node.name(), fake_input);
+      } else if (cfg.feed_nodes.count(node.name()) > 0) {
+        // If specific feed nodes were given, only update their tensors.
+        auto it = find_if(new_item->feed.begin(), new_item->feed.end(),
+                          [&node](std::pair<string, Tensor>& f) {
+                            return f.first == node.name();
+                          });
+        QCHECK(it != new_item->feed.end());
+        it->second = fake_input;
+      }
+
       // Set the shape of the node in the graph. This is needed for statically
       // inferring shapes and is a no-op when dynamically inferring shapes as
       // the Placeholder shape will match the shape passed from new_item->feed.
@@ -402,12 +449,39 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
     new_item->save_restore_loc_tensor = saver.filename_tensor_name();
   }
 
+  // Instantiate all the missing attributes with their default values.
+  Status attr_status = AddDefaultAttrsToGraphDef(
+      &new_item->graph,
+      FunctionLibraryDefinition(OpRegistry::Global(),
+                                new_item->graph.library()),
+      0);
+  if (!attr_status.ok()) {
+    LOG(ERROR) << "Failed to instantiate default attribute values: "
+               << attr_status.error_message();
+    return nullptr;
+  }
+
   // Optimize the graph (function inlining, l1 optimizations, etc).
+  VLOG(1) << "Number of nodes in graph before OptimizeGraph: "
+          << new_item->graph.node_size();
   Status optimize_status =
       OptimizeGraph(new_item->graph, &new_item->graph, cfg);
   if (!optimize_status.ok()) {
     LOG(ERROR) << "Graph preprocessing failed: " << optimize_status;
     return nullptr;
+  }
+  VLOG(1) << "Number of nodes in graph after OptimizeGraph: "
+          << new_item->graph.node_size();
+
+  if (cfg.prune_graph) {
+    VLOG(1) << "Pruning graph...";
+    auto status = PruneGraph(new_item.get());
+    if (!status.ok()) {
+      LOG(ERROR) << "Pruning failed: " << status.error_message();
+      return nullptr;
+    }
+    VLOG(1) << "Number of nodes in graph after pruning: "
+            << new_item->graph.node_size();
   }
 
   // Validate feed, fetch and init nodes
@@ -433,6 +507,114 @@ std::unique_ptr<GrapplerItem> GrapplerItemFromMetaGraphDef(
       return nullptr;
     }
   }
+  return new_item;
+}
+
+std::unique_ptr<GrapplerItem> GrapplerItemFromFunctionDef(
+    const FunctionDef& func,
+    const std::unordered_map<string, AttrValue>& func_attr,
+    const FunctionDefLibrary& library) {
+  if (func.signature().name().empty()) {
+    LOG(ERROR) << "function name must be specified.";
+    return nullptr;
+  }
+  std::unique_ptr<GrapplerItem> new_item(new GrapplerItem());
+  new_item->id = func.signature().name();
+
+  std::unordered_map<string, string> port_map;
+
+  // Add the function inputs as placeholder
+  for (const auto& inp : func.signature().input_arg()) {
+    NodeDef* ph = new_item->graph.add_node();
+    ph->set_name(inp.name());
+    ph->set_op("Placeholder");
+    if (inp.type() != DT_INVALID) {
+      (*ph->mutable_attr())["T"].set_type(inp.type());
+    } else {
+      auto it = func_attr.find(inp.type_attr());
+      if (it == func_attr.end()) {
+        LOG(ERROR) << "Unknown type attribute " << inp.type_attr()
+                   << " for function input " << inp.name();
+        return nullptr;
+      } else {
+        (*ph->mutable_attr())["T"] = it->second;
+      }
+    }
+    port_map[inp.name()] = inp.name();
+  }
+
+  // Add the function body to the graph.
+  FunctionLibraryDefinition func_def(OpRegistry::Global(), library);
+
+  for (const NodeDef& node : func.node_def()) {
+    NodeDef* new_node = new_item->graph.add_node();
+    *new_node = node;
+    // Replace the placeholder attribute values with the specified value.
+    for (auto& attr : *new_node->mutable_attr()) {
+      const string& ph_name = attr.second.placeholder();
+      auto it = func_attr.find(ph_name);
+      if (it != func_attr.end()) {
+        attr.second = it->second;
+      }
+    }
+
+    // Functions use a custom format to encode connectivity. Map these custom
+    // strings to regular ones.
+    const OpRegistrationData* registration;
+    Status status = func_def.LookUp(node.op(), &registration);
+    if (!status.ok()) {
+      LOG(ERROR) << "Op " << node.op() << " not registered: " << status;
+      return nullptr;
+    }
+
+    tensorflow::NameRangeMap inputs;
+    tensorflow::NameRangeMap outputs;
+    status = tensorflow::NameRangesForNode(node, registration->op_def, &inputs,
+                                           &outputs);
+    if (!status.ok()) {
+      LOG(ERROR) << "Op " << node.op() << " invalid: " << status;
+      return nullptr;
+    }
+    for (const auto& name_range : outputs) {
+      string port_prefix =
+          strings::StrCat(node.name(), ":", name_range.first, ":");
+      int index_start = name_range.second.first;
+      int index_end = name_range.second.second;
+      for (int i = index_start; i < index_end; ++i) {
+        string port_id = strings::StrCat(port_prefix, i - index_start);
+        string port_name = strings::StrCat(node.name(), ":", i);
+        port_map[port_id] = port_name;
+      }
+    }
+  }
+
+  for (auto& node : *new_item->graph.mutable_node()) {
+    // Rewrite the inputs to use the normal naming convention.
+    for (int i = 0; i < node.input_size(); ++i) {
+      const string& input = node.input(i);
+      if (IsControlInput(input)) {
+        // No need to remap control dependencies.
+        continue;
+      } else {
+        auto it = port_map.find(input);
+        if (it == port_map.end()) {
+          LOG(ERROR) << "Unknown input: " << input;
+          return nullptr;
+        }
+        node.set_input(i, it->second);
+      }
+    }
+  }
+
+  // Add the function outputs to the list of fetch nodes.
+  for (const auto& out : func.signature().output_arg()) {
+    new_item->fetch.emplace_back(out.name());
+  }
+  // Add the function inputs to the list of feeds.
+  for (const auto& inp : func.signature().input_arg()) {
+    new_item->feed.emplace_back(inp.name(), Tensor());
+  }
+
   return new_item;
 }
 

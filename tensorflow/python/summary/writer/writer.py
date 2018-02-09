@@ -25,12 +25,14 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.util import event_pb2
+from tensorflow.python.eager import context
 from tensorflow.python.framework import meta_graph
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import plugin_asset
 from tensorflow.python.summary.writer.event_file_writer import EventFileWriter
+from tensorflow.python.util.tf_export import tf_export
 
 _PLUGINS_DIR = "plugins"
 
@@ -275,6 +277,7 @@ class SummaryToEventTransformer(object):
     self.event_writer.add_event(event)
 
 
+@tf_export("summary.FileWriter")
 class FileWriter(SummaryToEventTransformer):
   """Writes `Summary` protocol buffers to event files.
 
@@ -331,7 +334,20 @@ class FileWriter(SummaryToEventTransformer):
       graph_def: DEPRECATED: Use the `graph` argument instead.
       filename_suffix: A string. Every event file's name is suffixed with
         `suffix`.
+
+    Raises:
+      RuntimeError: If called with eager execution enabled.
+
+    @compatibility(eager)
+    `FileWriter` is not compatible with eager execution. To write TensorBoard
+    summaries under eager execution, use `tf.contrib.summary` instead.
+    @end_compatbility
     """
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "tf.summary.FileWriter is not compatible with eager execution. "
+          "Use tf.contrib.summary instead.")
+
     event_writer = EventFileWriter(logdir, max_queue, flush_secs,
                                    filename_suffix)
     super(FileWriter, self).__init__(event_writer, graph, graph_def)

@@ -82,8 +82,8 @@ class Defun(object):
     return x + y, x - y
 
   # Building the graph.
-  a = tf.Constant([1.0])
-  b = tf.Constant([2.0])
+  a = tf.constant([1.0])
+  b = tf.constant([2.0])
   c, d = MyFunc(a, b, name='mycall')
   ```
   """
@@ -100,7 +100,7 @@ class Defun(object):
          grad_func - (optional).  A function implementing the gradient
            of the function-to-register.  This is must be a
            `_DefinedFunction` object. The gradient
-           function must satisify the criterion defined in
+           function must satisfy the criterion defined in
            function.proto:GradientDef.
 
          python_grad_func - (optional).  A function implementing the
@@ -417,7 +417,7 @@ class _DefinedFunction(object):
       if self._func_name:
         assert self._func_name == self._op_def.name
       else:
-        self._func_name = self._op_def.name
+        self._func_name = compat.as_str(self._op_def.name)
 
   def _set_c_attrs(self, attrs):
     """Sets `attrs` as attributes of self._c_func.
@@ -682,7 +682,7 @@ class _FuncGraph(ops.Graph):
 
   def create_op(self, op_type, inputs, data_types, **kwargs):
     for i, x in enumerate(inputs):
-      if x.graph is not self:
+      if isinstance(x, ops.EagerTensor) or x.graph is not self:
         # Referring to a tensor from other graph.
         if x in self._captured:
           # Captured already.
@@ -692,7 +692,10 @@ class _FuncGraph(ops.Graph):
         else:
           # Substitute with a placeholder.
           self.extra_inputs.append(x)
-          ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
+          # Hoist the new input placeholder out of any control flow context
+          # we're currently in.
+          with ops.control_dependencies(None):
+            ph = array_ops.placeholder(x.dtype, shape=x.get_shape())
           # pylint: disable=protected-access
           ph._handle_data = x._handle_data
           # pylint: enable=protected-access
@@ -1002,6 +1005,8 @@ _DTYPE_TO_STR = {
     dtypes.int32: "i32",
     dtypes.uint8: "i8",
     dtypes.uint16: "u16",
+    dtypes.uint32: "u32",
+    dtypes.uint64: "u64",
     dtypes.int16: "i16",
     dtypes.int8: "i8",
     dtypes.string: "s",

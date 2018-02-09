@@ -21,12 +21,11 @@ from __future__ import division
 from __future__ import print_function
 
 import time
-import numpy as np
 
 from tensorflow.contrib.factorization.python.ops import clustering_ops
 from tensorflow.python.estimator import estimator
 from tensorflow.python.estimator import model_fn as model_fn_lib
-from tensorflow.python.framework import constant_op
+from tensorflow.python.estimator.export import export_output
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -34,6 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.summary import summary
 from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
@@ -143,7 +143,7 @@ class _ModelFn(object):
   def model_fn(self, features, mode, config):
     """Model function for the estimator.
 
-    Note that this does not take a `1abels` arg. This works, but `input_fn` must
+    Note that this does not take a `labels` arg. This works, but `input_fn` must
     return either `features` or, equivalently, `(features, None)`.
 
     Args:
@@ -161,8 +161,7 @@ class _ModelFn(object):
         * `eval_metric_ops`: Maps `SCORE` to `loss`.
         * `predictions`: Maps `ALL_DISTANCES` to the distance from each input
              point to each cluster center; maps `CLUSTER_INDEX` to the index of
-             the closest cluster center for each input point; maps `CLUSTERS` to
-             the cluster centers (which ignores the input points).
+             the closest cluster center for each input point.
     """
     # input_points is a single Tensor. Therefore, the sharding functionality
     # in clustering_ops is unused, and some of the values below are lists of a
@@ -184,8 +183,8 @@ class _ModelFn(object):
     # training_op: an op that runs an iteration of training, either an entire
     #   Lloyd iteration or a mini-batch of a Lloyd iteration. Multiple workers
     #   may execute this op, but only after is_initialized becomes True.
-    (all_distances, model_predictions, losses, is_initialized,
-     cluster_centers_var, init_op, training_op) = clustering_ops.KMeans(
+    (all_distances, model_predictions, losses, is_initialized, init_op,
+     training_op) = clustering_ops.KMeans(
          inputs=input_points,
          num_clusters=self._num_clusters,
          initial_clusters=self._initial_clusters,
@@ -210,17 +209,26 @@ class _ModelFn(object):
       training_hooks.append(
           _LossRelativeChangeHook(loss, self._relative_tolerance))
 
+    export_outputs = {
+        KMeansClustering.ALL_DISTANCES:
+            export_output.PredictOutput(all_distances[0]),
+        KMeansClustering.CLUSTER_INDEX:
+            export_output.PredictOutput(model_predictions[0]),
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY:
+            export_output.PredictOutput(model_predictions[0])
+    }
+
     return model_fn_lib.EstimatorSpec(
         mode=mode,
         predictions={
             KMeansClustering.ALL_DISTANCES: all_distances[0],
             KMeansClustering.CLUSTER_INDEX: model_predictions[0],
-            KMeansClustering.CLUSTERS: cluster_centers_var.value(),
         },
         loss=loss,
         train_op=training_op,
         eval_metric_ops={KMeansClustering.SCORE: metrics.mean(loss)},
-        training_hooks=training_hooks)
+        training_hooks=training_hooks,
+        export_outputs=export_outputs)
 
 
 # TODO(agarwal,ands): support sharded input.
@@ -242,9 +250,7 @@ class KMeansClustering(estimator.Estimator):
   # Keys returned by predict().
   # ALL_DISTANCES: The distance from each input  point to each cluster center.
   # CLUSTER_INDEX: The index of the closest cluster center for each input point.
-  # CLUSTERS: The cluster centers (which ignores the input points).
   CLUSTER_INDEX = 'cluster_index'
-  CLUSTERS = 'clusters'
   ALL_DISTANCES = 'all_distances'
 
   def __init__(self,
@@ -400,18 +406,4 @@ class KMeansClustering(estimator.Estimator):
 
   def cluster_centers(self):
     """Returns the cluster centers."""
-
-    # TODO(ccolby): Fix this clunky code once cl/168262087 is submitted.
-    # Discussion: go/estimator-get-variable-value
-    class RunOnceHook(session_run_hook.SessionRunHook):
-      """Stops after a single run."""
-
-      def after_run(self, run_context, run_values):
-        del run_values  # unused
-        run_context.request_stop()
-
-    result = self.predict(
-        input_fn=lambda: (constant_op.constant([], shape=[0, 1]), None),
-        predict_keys=[KMeansClustering.CLUSTERS],
-        hooks=[RunOnceHook()])
-    return np.array([r[KMeansClustering.CLUSTERS] for r in result])
+    return self.get_variable_value(clustering_ops.CLUSTERS_VAR_NAME)

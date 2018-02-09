@@ -4,7 +4,7 @@
 
 Metrics are used in evaluation to assess the quality of a model. Most are
 "streaming" ops, meaning they create variables to accumulate a running total,
-and return an update tensor to update these variables, and a value tensor to 
+and return an update tensor to update these variables, and a value tensor to
 read the accumulated value. Example:
 
 value, update_op = metrics.streaming_mean_squared_error(

@@ -21,10 +21,11 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import linalg_ns as linalg
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
 
 
@@ -118,6 +119,20 @@ class SlogdetTest(test.TestCase):
         sign_tf, log_abs_det_tf = linalg.slogdet(matrix)
         self.assertAllClose(log_abs_det_np, log_abs_det_tf.eval(), atol=atol)
         self.assertAllClose(sign_np, sign_tf.eval(), atol=atol)
+
+
+class AdjointTest(test.TestCase):
+
+  def test_compare_to_numpy(self):
+    for dtype in np.float64, np.float64, np.complex64, np.complex128:
+      matrix_np = np.array([[1 + 1j, 2 + 2j, 3 + 3j], [4 + 4j, 5 + 5j,
+                                                       6 + 6j]]).astype(dtype)
+      expected_transposed = np.conj(matrix_np.T)
+      with self.test_session():
+        matrix = ops.convert_to_tensor(matrix_np)
+        transposed = linalg.adjoint(matrix)
+        self.assertEqual((3, 2), transposed.get_shape())
+        self.assertAllEqual(expected_transposed, transposed.eval())
 
 
 class EyeTest(test.TestCase):

@@ -137,6 +137,26 @@ class DecodeCSVOp : public OpKernel {
             }
             break;
           }
+          case DT_DOUBLE: {
+            // If this field is empty or NA value, check if default is given:
+            // If yes, use default value; Otherwise report error.
+            if (fields[f].empty() || fields[f] == na_value_) {
+              OP_REQUIRES(ctx, record_defaults[f].NumElements() == 1,
+                          errors::InvalidArgument(
+                              "Field ", f,
+                              " is required but missing in record ", i, "!"));
+              output[f]->flat<double>()(i) =
+                  record_defaults[f].flat<double>()(0);
+            } else {
+              double value;
+              OP_REQUIRES(ctx, strings::safe_strtod(fields[f].c_str(), &value),
+                          errors::InvalidArgument(
+                              "Field ", f, " in record ", i,
+                              " is not a valid double: ", fields[f]));
+              output[f]->flat<double>()(i) = value;
+            }
+            break;
+          }
           case DT_STRING: {
             // If this field is empty or NA value, check if default is given:
             // If yes, use default value; Otherwise report error.

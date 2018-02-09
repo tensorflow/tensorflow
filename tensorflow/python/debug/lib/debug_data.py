@@ -222,7 +222,7 @@ def has_inf_or_nan(datum, tensor):
     # Also return False for data types that cannot be represented as numpy
     # arrays.
     return False
-  elif (np.issubdtype(tensor.dtype, np.float) or
+  elif (np.issubdtype(tensor.dtype, np.floating) or
         np.issubdtype(tensor.dtype, np.complex) or
         np.issubdtype(tensor.dtype, np.integer)):
     return np.any(np.isnan(tensor)) or np.any(np.isinf(tensor))
@@ -558,8 +558,7 @@ class DebugDumpDir(object):
     for root, _, files in gfile.Walk(device_root):
       for f in files:
         if _is_graph_file(f):
-          self._dump_graph_file_paths[device_name] = os.path.join(
-              device_root, root, f)
+          self._dump_graph_file_paths[device_name] = os.path.join(root, f)
         else:
           datum = self._dump_file_name_to_datum(root, f)
           self._dump_tensor_data[device_name].append(datum)

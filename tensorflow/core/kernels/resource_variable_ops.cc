@@ -55,6 +55,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/resource_mgr.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/framework/variant_op_registry.h"
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/gather_functor.h"
@@ -82,10 +83,10 @@ class ReadVariableOp : public OpKernel {
     ResourceHandle handle = HandleFromInput(ctx, 0);
     const auto status = LookupResource(ctx, handle, &variable);
     OP_REQUIRES(ctx, status.ok(),
-                errors::NotFound(
+                errors::FailedPrecondition(
                     "Error while reading resource variable ", handle.name(),
                     " from Container: ", handle.container(),
-                    ". This could mean that the variable was not initialized. ",
+                    ". This could mean that the variable was uninitialized. ",
                     status.ToString()));
 
     core::ScopedUnref s(variable);
@@ -110,7 +111,6 @@ REGISTER_KERNEL_BUILDER(Name("ReadVariableOp").Device(DEVICE_CPU),
                         ReadVariableOp);
 
 #if GOOGLE_CUDA
-
 REGISTER_KERNEL_BUILDER(
     Name("ReadVariableOp").Device(DEVICE_GPU).HostMemory("resource"),
     ReadVariableOp);
@@ -127,9 +127,10 @@ REGISTER_KERNEL_BUILDER(
                               .Device(DEVICE_GPU)              \
                               .HostMemory("resource")          \
                               .TypeConstraint<type>("dtype"),  \
-                          ResourceHandleOp<Var>)               \
+                          ResourceHandleOp<Var>)
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
@@ -200,6 +201,9 @@ class DestroyResourceOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("DestroyResourceOp").Device(DEVICE_CPU),
                         DestroyResourceOp);
+REGISTER_KERNEL_BUILDER(
+    Name("DestroyResourceOp").Device(DEVICE_GPU).HostMemory("resource"),
+    DestroyResourceOp);
 
 template <typename Device, typename T>
 class AssignVariableOp : public OpKernel {
@@ -272,6 +276,109 @@ class AssignVariableOp : public OpKernel {
   DataType dtype_;
 };
 
+template <typename Device>
+Status VariantCopyFn(OpKernelContext* context, const Tensor& from, Tensor* to);
+
+#define CPU_DENSE_COPY(T)                                                \
+  case DataTypeToEnum<T>::value: {                                       \
+    functor::DenseUpdate<CPUDevice, T, ASSIGN> copy_functor_;            \
+    copy_functor_(context->eigen_device<CPUDevice>(), tensor->flat<T>(), \
+                  from.flat<T>());                                       \
+    break;                                                               \
+  }
+
+#define INSTANTIATE_GET_VARIANT_COPY_FN(Device, TYPE_CALLER, TYPE_DENSE_COPY) \
+  template <>                                                                 \
+  Status VariantCopyFn<Device>(OpKernelContext * context, const Tensor& from, \
+                               Tensor* to) {                                  \
+    PersistentTensor tmp;                                                     \
+    Tensor* tensor;                                                           \
+    AllocatorAttributes attr;                                                 \
+    attr.set_gpu_compatible(true);                                            \
+    attr.set_nic_compatible(true);                                            \
+    TF_RETURN_IF_ERROR(context->allocate_persistent(                          \
+        from.dtype(), from.shape(), &tmp, &tensor, attr));                    \
+    switch (from.dtype()) {                                                   \
+      TYPE_CALLER(TYPE_DENSE_COPY);                                           \
+      default:                                                                \
+        return errors::InvalidArgument(                                       \
+            "VariantCopyFn: Could not perform a deep copy of variant "        \
+            "element of type: ",                                              \
+            DataTypeString(from.dtype()),                                     \
+            " using device: ", context->device()->name());                    \
+    }                                                                         \
+    *to = *tensor;                                                            \
+    return Status::OK();                                                      \
+  }
+
+INSTANTIATE_GET_VARIANT_COPY_FN(CPUDevice, TF_CALL_ALL_TYPES, CPU_DENSE_COPY);
+
+#if GOOGLE_CUDA
+#define GPU_DENSE_COPY(T)                                                \
+  case DataTypeToEnum<T>::value: {                                       \
+    functor::DenseUpdate<GPUDevice, T, ASSIGN> copy_functor_;            \
+    copy_functor_(context->eigen_device<GPUDevice>(), tensor->flat<T>(), \
+                  from.flat<T>());                                       \
+    break;                                                               \
+  }
+#define TF_CALL_GPU_AND_ADDITIONAL_TYPES(T) \
+  TF_CALL_GPU_ALL_TYPES(T);                 \
+  TF_CALL_int32(T);                         \
+  TF_CALL_int64(T);
+INSTANTIATE_GET_VARIANT_COPY_FN(GPUDevice, TF_CALL_GPU_AND_ADDITIONAL_TYPES,
+                                GPU_DENSE_COPY);
+#undef TF_CALL_GPU_AND_ADDITIONAL_TYPES
+#undef GPU_DENSE_COPY
+#endif  // GOOGLE_CUDA
+
+#undef CPU_DENSE_COPY
+#undef INSTANTIATE_GET_VARIANT_COPY_FN
+
+template <typename Device>
+class AssignVariableOp<Device, Variant> : public OpKernel {
+ public:
+  explicit AssignVariableOp(OpKernelConstruction* c) : OpKernel(c) {
+    OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
+    OP_REQUIRES(c, dtype_ == DT_VARIANT,
+                errors::Internal("Variant kernel called with dtype: ",
+                                 DataTypeString(dtype_)));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    const Tensor& value = context->input(1);
+    Var* variable = nullptr;
+    OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
+                                context, HandleFromInput(context, 0), &variable,
+                                [this, context](Var** ptr) {
+                                  // Created on host.
+                                  *ptr = new Var(DT_VARIANT);
+                                  return Status::OK();
+                                }));
+    core::ScopedUnref s(variable);
+    OP_REQUIRES(context, variable->tensor()->dtype() == DT_VARIANT,
+                errors::InvalidArgument(
+                    "Trying to assign variable with wrong dtype. Expected ",
+                    DataTypeString(variable->tensor()->dtype()), " got ",
+                    DataTypeString(DT_VARIANT)));
+
+    mutex_lock ml(*variable->mu());
+
+    *variable->tensor() = Tensor(DT_VARIANT, value.shape());
+    const auto elements_in = value.flat<Variant>();
+    auto elements_out = variable->tensor()->flat<Variant>();
+    auto copy_fn = std::bind(&VariantCopyFn<Device>, context,
+                             std::placeholders::_1, std::placeholders::_2);
+    for (int64 i = 0; i < elements_in.size(); ++i) {
+      OP_REQUIRES_OK(context, VariantDeviceCopy(
+                                  VariantDeviceCopyDirection::DEVICE_TO_DEVICE,
+                                  elements_in(i), &elements_out(i), copy_fn));
+    };
+  }
+
+ private:
+  DataType dtype_;
+};
+
 #define REGISTER_KERNELS(type)                                \
   REGISTER_KERNEL_BUILDER(Name("AssignVariableOp")            \
                               .Device(DEVICE_CPU)             \
@@ -291,6 +398,7 @@ TF_CALL_QUANTIZED_TYPES(REGISTER_KERNELS);
                           AssignVariableOp<GPUDevice, type>);
 
 TF_CALL_GPU_ALL_TYPES(REGISTER_GPU_KERNELS);
+TF_CALL_variant(REGISTER_GPU_KERNELS);
 #undef REGISTER_GPU_KERNELS
 #endif  // GOOGLE_CUDA
 
@@ -410,8 +518,7 @@ class ResourceGatherOp : public OpKernel {
       auto out_flat = out->shaped<T, 3>({1, N, out->NumElements() / N});
 
       functor::GatherFunctor<Device, T, Index> functor;
-      int64 bad_i = functor(c->eigen_device<Device>(), params_flat,
-                            indices_flat, out_flat);
+      int64 bad_i = functor(c, params_flat, indices_flat, out_flat);
 
       OP_REQUIRES(
           c, bad_i < 0,
@@ -515,15 +622,20 @@ class ResourceScatterUpdateOp : public OpKernel {
   REGISTER_SCATTER_KERNEL_INDEX(type, int64, dev, name, op);
 
 // TODO(apassos) add the other types here.
-#define REGISTER_SCATTER_ARITHEMTIC(type, dev)             \
-  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterAdd", \
-                          scatter_op::UpdateOp::ADD);
+#define REGISTER_SCATTER_ARITHEMTIC(type, dev)                \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterAdd",    \
+                          scatter_op::UpdateOp::ADD);         \
+  REGISTER_SCATTER_KERNEL(type, dev, "ResourceScatterUpdate", \
+                          scatter_op::UpdateOp::ASSIGN);
 
 // Registers CPU kernels.
 #define REGISTER_SCATTER_ARITHEMTIC_CPU(type) \
   REGISTER_SCATTER_ARITHEMTIC(type, CPU);
 
 TF_CALL_NUMBER_TYPES(REGISTER_SCATTER_ARITHEMTIC_CPU);
+
+REGISTER_SCATTER_KERNEL(string, CPU, "ResourceScatterUpdate",
+                        scatter_op::UpdateOp::ASSIGN);
 
 // Registers GPU kernels.
 #if GOOGLE_CUDA

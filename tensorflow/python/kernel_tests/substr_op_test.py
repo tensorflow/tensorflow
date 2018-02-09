@@ -38,6 +38,17 @@ class SubstrOpTest(test.TestCase):
       substr = substr_op.eval()
       self.assertAllEqual(substr, expected_value)
 
+    # position is equal to the length of string.
+    test_string = b""
+    position = np.array(0, dtype)
+    length = np.array(2, dtype)
+    expected_value = b""
+
+    substr_op = string_ops.substr(test_string, position, length)
+    with self.test_session():
+      substr = substr_op.eval()
+      self.assertAllEqual(substr, expected_value)
+
   def _testVectorStrings(self, dtype):
     test_string = [b"Hello", b"World"]
     position = np.array(1, dtype)
@@ -136,7 +147,7 @@ class SubstrOpTest(test.TestCase):
 
     # Vector/Scalar
     test_string = [b"good", b"good", b"bad", b"good"]
-    position = np.array(3, dtype)
+    position = np.array(4, dtype)
     length = np.array(1, dtype)
     substr_op = string_ops.substr(test_string, position, length)
     with self.test_session():
@@ -155,7 +166,7 @@ class SubstrOpTest(test.TestCase):
     # Matrix/Matrix
     test_string = [[b"good", b"good", b"good"], [b"good", b"good", b"bad"],
                    [b"good", b"good", b"good"]]
-    position = np.array([[1, 2, 3], [1, 2, 3], [1, 2, 3]], dtype)
+    position = np.array([[1, 2, 3], [1, 2, 4], [1, 2, 3]], dtype)
     length = np.array([[3, 2, 1], [1, 2, 3], [2, 2, 2]], dtype)
     substr_op = string_ops.substr(test_string, position, length)
     with self.test_session():
@@ -164,7 +175,7 @@ class SubstrOpTest(test.TestCase):
 
     # Broadcast
     test_string = [[b"good", b"good", b"good"], [b"good", b"good", b"bad"]]
-    position = np.array([1, 2, 3], dtype)
+    position = np.array([1, 2, 4], dtype)
     length = np.array([1, 2, 3], dtype)
     substr_op = string_ops.substr(test_string, position, length)
     with self.test_session():

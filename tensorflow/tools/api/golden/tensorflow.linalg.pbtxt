@@ -1,5 +1,41 @@
 path: "tensorflow.linalg"
 tf_module {
+  member {
+    name: "LinearOperator"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorComposition"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorDiag"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorFullMatrix"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorIdentity"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorLowRankUpdate"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorLowerTriangular"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member {
+    name: "LinearOperatorScaledIdentity"
+    mtype: "<class \'abc.ABCMeta\'>"
+  }
+  member_method {
+    name: "adjoint"
+    argspec: "args=[\'matrix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
   member_method {
     name: "band_part"
     argspec: "args=[\'input\', \'num_lower\', \'num_upper\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
@@ -37,6 +73,10 @@ tf_module {
     argspec: "args=[\'equation\'], varargs=inputs, keywords=kwargs, defaults=None"
   }
   member_method {
+    name: "expm"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "eye"
     argspec: "args=[\'num_rows\', \'num_columns\', \'batch_shape\', \'dtype\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \"<dtype: \'float32\'>\", \'None\'], "
   }
@@ -49,12 +89,16 @@ tf_module {
     argspec: "args=[\'matrix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "logm"
+    argspec: "args=[\'input\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "lstsq"
     argspec: "args=[\'matrix\', \'rhs\', \'l2_regularizer\', \'fast\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'True\', \'None\'], "
   }
   member_method {
     name: "norm"
-    argspec: "args=[\'tensor\', \'ord\', \'axis\', \'keep_dims\', \'name\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'False\', \'None\'], "
+    argspec: "args=[\'tensor\', \'ord\', \'axis\', \'keepdims\', \'name\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "qr"
@@ -86,7 +130,7 @@ tf_module {
   }
   member_method {
     name: "transpose"
-    argspec: "args=[\'a\', \'name\'], varargs=None, keywords=None, defaults=[\'matrix_transpose\'], "
+    argspec: "args=[\'a\', \'name\', \'conjugate\'], varargs=None, keywords=None, defaults=[\'matrix_transpose\', \'False\'], "
   }
   member_method {
     name: "triangular_solve"

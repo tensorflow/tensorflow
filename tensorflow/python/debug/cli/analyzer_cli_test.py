@@ -28,7 +28,9 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.debug.cli import analyzer_cli
+from tensorflow.python.debug.cli import cli_config
 from tensorflow.python.debug.cli import cli_shared
+from tensorflow.python.debug.cli import cli_test_utils
 from tensorflow.python.debug.cli import command_parser
 from tensorflow.python.debug.cli import debugger_cli_common
 from tensorflow.python.debug.lib import debug_data
@@ -45,10 +47,18 @@ from tensorflow.python.platform import test
 from tensorflow.python.util import tf_inspect
 
 
+def _cli_config_from_temp_file():
+  return cli_config.CLIConfig(
+      config_file_path=os.path.join(tempfile.mkdtemp(), ".tfdbg_config"))
+
+
 def no_rewrite_session_config():
   rewriter_config = rewriter_config_pb2.RewriterConfig(
       disable_model_pruning=True,
-      constant_folding=rewriter_config_pb2.RewriterConfig.OFF)
+      constant_folding=rewriter_config_pb2.RewriterConfig.OFF,
+      arithmetic_optimization=rewriter_config_pb2.RewriterConfig.OFF,
+      dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
+
   graph_options = config_pb2.GraphOptions(rewrite_options=rewriter_config)
   return config_pb2.ConfigProto(graph_options=graph_options)
 
@@ -512,7 +522,7 @@ def create_analyzer_cli(dump):
        and has the common tfdbg commands, e.g., lt, ni, li, lo, registered.
   """
   # Construct the analyzer.
-  analyzer = analyzer_cli.DebugAnalyzer(dump)
+  analyzer = analyzer_cli.DebugAnalyzer(dump, _cli_config_from_temp_file())
 
   # Construct the handler registry.
   registry = debugger_cli_common.CommandHandlerRegistry()
@@ -1009,6 +1019,24 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         list_inputs_node_name=node_name,
         list_outputs_node_name=node_name)
 
+  def testPrintTensorAndWriteToNpyFile(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    npy_path = os.path.join(self._dump_root, "matmul.npy")
+    out = self._registry.dispatch_command(
+        "print_tensor", [tensor_name, "-w", npy_path],
+        screen_info={"cols": 80})
+
+    self.assertEqual([
+        "Tensor \"%s:DebugIdentity\":" % tensor_name,
+        "  dtype: float64",
+        "  shape: (2, 1)",
+        "",
+    ], out.lines[:4])
+    self.assertTrue(out.lines[4].startswith("Saved value to: %s (" % npy_path))
+    # Load the numpy file and verify its contents.
+    self.assertAllClose([[7.0], [-2.0]], np.load(npy_path))
+
   def testPrintTensorHighlightingRanges(self):
     node_name = "simple_mul_add/matmul"
     tensor_name = node_name + ":0"
@@ -1199,29 +1227,54 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
         "eval", ["np.matmul(`%s`, `%s`.T)" % (tensor_name, tensor_name)],
         screen_info={"cols": 80})
 
+    cli_test_utils.assert_lines_equal_ignoring_whitespace(
+        self,
+        ["Tensor \"from eval of expression "
+         "'np.matmul(`simple_mul_add/matmul:0`, "
+         "`simple_mul_add/matmul:0`.T)'\":",
+         "  dtype: float64",
+         "  shape: (2, 2)",
+         "",
+         "Numeric summary:",
+         "| - + | total |",
+         "| 2 2 |     4 |",
+         "|           min           max          mean           std |"],
+        out.lines[:8])
+    cli_test_utils.assert_array_lines_close(
+        self, [-14.0, 49.0, 6.25, 25.7524270701], out.lines[8:9])
+    cli_test_utils.assert_array_lines_close(
+        self, [[49.0, -14.0], [-14.0, 4.0]], out.lines[10:])
+
+  def testEvalExpressionAndWriteToNpyFile(self):
+    node_name = "simple_mul_add/matmul"
+    tensor_name = node_name + ":0"
+    npy_path = os.path.join(self._dump_root, "matmul_eval.npy")
+    out = self._registry.dispatch_command(
+        "eval",
+        ["np.matmul(`%s`, `%s`.T)" % (tensor_name, tensor_name), "-w",
+         npy_path], screen_info={"cols": 80})
+
     self.assertEqual([
         "Tensor \"from eval of expression "
         "'np.matmul(`simple_mul_add/matmul:0`, "
         "`simple_mul_add/matmul:0`.T)'\":",
         "  dtype: float64",
         "  shape: (2, 2)",
-        "",
-        "Numeric summary:",
-        "| - + | total |",
-        "| 2 2 |     4 |",
-        "|           min           max          mean           std |",
-        "|         -14.0          49.0          6.25 25.7524270701 |",
-        "",
-        "array([[ 49., -14.],",
-        "       [-14.,   4.]])"], out.lines)
+        ""], out.lines[:4])
+
+    self.assertTrue(out.lines[4].startswith("Saved value to: %s (" % npy_path))
+    # Load the numpy file and verify its contents.
+    self.assertAllClose([[49.0, -14.0], [-14.0, 4.0]], np.load(npy_path))
 
   def testAddGetTensorFilterLambda(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
     analyzer.add_tensor_filter("foo_filter", lambda x, y: True)
     self.assertTrue(analyzer.get_tensor_filter("foo_filter")(None, None))
 
   def testAddGetTensorFilterNestedFunction(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
 
     def foo_filter(unused_arg_0, unused_arg_1):
       return True
@@ -1230,14 +1283,16 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
     self.assertTrue(analyzer.get_tensor_filter("foo_filter")(None, None))
 
   def testAddTensorFilterEmptyName(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
 
     with self.assertRaisesRegexp(ValueError,
                                  "Input argument filter_name cannot be empty."):
       analyzer.add_tensor_filter("", lambda datum, tensor: True)
 
   def testAddTensorFilterNonStrName(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
 
     with self.assertRaisesRegexp(
         TypeError,
@@ -1245,7 +1300,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       analyzer.add_tensor_filter(1, lambda datum, tensor: True)
 
   def testAddGetTensorFilterNonCallable(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
 
     with self.assertRaisesRegexp(
         TypeError, "Input argument filter_callable is expected to be callable, "
@@ -1253,7 +1309,8 @@ class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
       analyzer.add_tensor_filter("foo_filter", "bar")
 
   def testGetNonexistentTensorFilter(self):
-    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump)
+    analyzer = analyzer_cli.DebugAnalyzer(self._debug_dump,
+                                          _cli_config_from_temp_file())
 
     analyzer.add_tensor_filter("foo_filter", lambda datum, tensor: True)
     with self.assertRaisesRegexp(ValueError,

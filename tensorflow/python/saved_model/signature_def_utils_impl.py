@@ -26,8 +26,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import utils
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('saved_model.signature_def_utils.build_signature_def')
 def build_signature_def(inputs=None, outputs=None, method_name=None):
   """Utility function to build a SignatureDef protocol buffer.
 
@@ -53,12 +55,17 @@ def build_signature_def(inputs=None, outputs=None, method_name=None):
   return signature_def
 
 
+@tf_export('saved_model.signature_def_utils.regression_signature_def')
 def regression_signature_def(examples, predictions):
   """Creates regression signature from given examples and predictions.
 
+  This function produces signatures intended for use with the TensorFlow Serving
+  Regress API (tensorflow_serving/apis/prediction_service.proto), and so
+  constrains the input and output types to those allowed by TensorFlow Serving.
+
   Args:
-    examples: `Tensor`.
-    predictions: `Tensor`.
+    examples: A string `Tensor`, expected to accept serialized tf.Examples.
+    predictions: A float `Tensor`.
 
   Returns:
     A regression-flavored signature_def.
@@ -90,13 +97,19 @@ def regression_signature_def(examples, predictions):
   return signature_def
 
 
+@tf_export('saved_model.signature_def_utils.classification_signature_def')
 def classification_signature_def(examples, classes, scores):
   """Creates classification signature from given examples and predictions.
 
+  This function produces signatures intended for use with the TensorFlow Serving
+  Classify API (tensorflow_serving/apis/prediction_service.proto), and so
+  constrains the input and output types to those allowed by TensorFlow Serving.
+
   Args:
-    examples: `Tensor`.
-    classes: `Tensor`.
-    scores: `Tensor`.
+    examples: A string `Tensor`, expected to accept serialized tf.Examples.
+    classes: A string `Tensor`.  Note that the ClassificationResponse message
+      requires that class labels are strings, not integers or anything else.
+    scores: a float `Tensor`.
 
   Returns:
     A classification-flavored signature_def.
@@ -137,8 +150,13 @@ def classification_signature_def(examples, classes, scores):
   return signature_def
 
 
+@tf_export('saved_model.signature_def_utils.predict_signature_def')
 def predict_signature_def(inputs, outputs):
   """Creates prediction signature from given inputs and outputs.
+
+  This function produces signatures intended for use with the TensorFlow Serving
+  Predict API (tensorflow_serving/apis/prediction_service.proto). This API
+  imposes no constraints on the input and output types.
 
   Args:
     inputs: dict of string to `Tensor`.
@@ -167,6 +185,7 @@ def predict_signature_def(inputs, outputs):
   return signature_def
 
 
+@tf_export('saved_model.signature_def_utils.is_valid_signature')
 def is_valid_signature(signature_def):
   """Determine whether a SignatureDef can be served by TensorFlow Serving."""
   if signature_def is None:

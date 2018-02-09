@@ -26,18 +26,20 @@ _sirds_ops = loader.load_op_library(
     resource_loader.get_path_to_datafile(
         "_single_image_random_dot_stereograms.so"))
 
-def single_image_random_dot_stereograms(
-    depth_values,
-    hidden_surface_removal=None,
-    convergence_dots_size=None,
-    dots_per_inch=None,
-    eye_separation=None, mu=None,
-    normalize=None, normalize_max=None,
-    normalize_min=None,
-    border_level=None,
-    number_colors=None,
-    output_image_shape=None,
-    output_data_window=None):
+
+def single_image_random_dot_stereograms(depth_values,
+                                        hidden_surface_removal=None,
+                                        convergence_dots_size=None,
+                                        dots_per_inch=None,
+                                        eye_separation=None,
+                                        mu=None,
+                                        normalize=None,
+                                        normalize_max=None,
+                                        normalize_min=None,
+                                        border_level=None,
+                                        number_colors=None,
+                                        output_image_shape=None,
+                                        output_data_window=None):
   """Output a RandomDotStereogram Tensor for export via encode_PNG/JPG OP.
 
   Given the 2-D tensor 'depth_values' with encoded Z values, this operation
@@ -45,7 +47,8 @@ def single_image_random_dot_stereograms(
   for the encode_PNG/JPG ops.  Be careful with image compression as this may
   corrupt the encode 3-D data witin the image.
 
-  Based upon [this paper](http://www.learningace.com/doc/4331582/b6ab058d1e206d68ab60e4e1ead2fe6e/sirds-paper).
+  Based upon [this
+  paper](http://www.learningace.com/doc/4331582/b6ab058d1e206d68ab60e4e1ead2fe6e/sirds-paper).
 
   This outputs a SIRDS image as picture_out.png:
 
@@ -68,7 +71,7 @@ def single_image_random_dot_stereograms(
   ```
 
   Args:
-    depth_values: A `Tensor`. Must be one of the following types: 
+    depth_values: A `Tensor`. Must be one of the following types:
       `float64`, `float32`, `int64`, `int32`.  Z values of data to encode
       into 'output_data_window' window, lower further away {0.0 floor(far),
       1.0 ceiling(near) after norm}, must be 2-D tensor
@@ -84,17 +87,17 @@ def single_image_random_dot_stereograms(
     mu: An optional `float`. Defaults to `0.3333`.
       Depth of field, Fraction of viewing distance (eg. 1/3 = 0.3333)
     normalize: An optional `bool`. Defaults to `True`.
-      Normalize input data to [0.0, 1.0] 
+      Normalize input data to [0.0, 1.0]
     normalize_max: An optional `float`. Defaults to `-100`.
       Fix MAX value for Normalization (0.0) - if < MIN, autoscale
     normalize_min: An optional `float`. Defaults to `100`.
       Fix MIN value for Normalization (0.0) - if > MAX, autoscale
     border_level: An optional `float`. Defaults to `0`.
-      Value of bord in depth 0.0 {far} to 1.0 {near} 
+      Value of bord in depth 0.0 {far} to 1.0 {near}
     number_colors: An optional `int`. Defaults to `256`. 2 (Black &
       White), 256 (grayscale), and Numbers > 256 (Full Color) are
       supported
-    output_image_shape: An optional `tf.TensorShape` or list of `ints`. 
+    output_image_shape: An optional `tf.TensorShape` or list of `ints`.
       Defaults to shape `[1024, 768, 1]`. Defines output shape of returned
       image in '[X,Y, Channels]' 1-grayscale, 3 color; channels will be
       updated to 3 if number_colors > 256
@@ -113,7 +116,8 @@ def single_image_random_dot_stereograms(
       hidden_surface_removal=hidden_surface_removal,
       convergence_dots_size=convergence_dots_size,
       dots_per_inch=dots_per_inch,
-      eye_separation=eye_separation, mu=mu,
+      eye_separation=eye_separation,
+      mu=mu,
       normalize=normalize,
       normalize_max=normalize_max,
       normalize_min=normalize_min,
@@ -122,5 +126,6 @@ def single_image_random_dot_stereograms(
       output_image_shape=output_image_shape,
       output_data_window=output_data_window)
   return result
+
 
 ops.NotDifferentiable("SingleImageRandomDotStereograms")

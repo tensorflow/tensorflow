@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 # Add projects here, they will show up under tf.contrib.
+from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
 from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
+from tensorflow.contrib import coder
 from tensorflow.contrib import compiler
 from tensorflow.contrib import copy_graph
 from tensorflow.contrib import crf
@@ -32,6 +34,7 @@ from tensorflow.contrib import warpctc
 from tensorflow.contrib import distributions
 from tensorflow.contrib import estimator
 from tensorflow.contrib import factorization
+from tensorflow.contrib import feature_column
 from tensorflow.contrib import framework
 from tensorflow.contrib import gan
 from tensorflow.contrib import graph_editor
@@ -52,9 +55,11 @@ from tensorflow.contrib import lookup
 from tensorflow.contrib import losses
 from tensorflow.contrib import memory_stats
 from tensorflow.contrib import metrics
+from tensorflow.contrib import model_pruning
 from tensorflow.contrib import nccl
 from tensorflow.contrib import nn
 from tensorflow.contrib import opt
+from tensorflow.contrib import periodic_resample
 from tensorflow.contrib import predictor
 from tensorflow.contrib import quantization
 from tensorflow.contrib import quantize
@@ -78,13 +83,17 @@ from tensorflow.contrib import timeseries
 from tensorflow.contrib import tpu
 from tensorflow.contrib import training
 from tensorflow.contrib import util
+from tensorflow.contrib.eager.python import tfe as eager
+from tensorflow.contrib.lite.python import lite
 from tensorflow.contrib.ndlstm import python as ndlstm
+from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs
+from tensorflow.contrib.summary import summary
 
 from tensorflow.python.util.lazy_loader import LazyLoader
-ffmpeg = LazyLoader("ffmpeg",
-                    globals(), "tensorflow.contrib.ffmpeg")
+ffmpeg = LazyLoader("ffmpeg", globals(),
+                    "tensorflow.contrib.ffmpeg")
 del LazyLoader
 
 del absolute_import

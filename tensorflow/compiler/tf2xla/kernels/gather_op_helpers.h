@@ -28,11 +28,18 @@ namespace tensorflow {
 
 // Adds to builder an XLA computation that performs a gather on input (of
 // shape input_shape) keyed on indices (of shape indices_shape).
-xla::ComputationDataHandle XlaComputeGatherDynamicSlice(
-    XlaOpKernelContext* ctx, const xla::ComputationDataHandle& input,
-    const TensorShape& input_shape, const xla::ComputationDataHandle& indices,
-    const TensorShape& indices_shape, int64 axis, DataType dtype,
-    xla::ComputationBuilder* builder);
+//
+// index_type must be must be DT_INT32 or DT_INT64.
+// If `indices_are_nd` is true, the last dimension of `indices` are treated as
+// a multidimensional index values. Otherwise, `indices` is treated as a tensor
+// of scalar indices.
+Status XlaGather(const xla::ComputationDataHandle& input,
+                 const TensorShape& input_shape,
+                 const xla::ComputationDataHandle& indices,
+                 TensorShape indices_shape, int64 axis, bool indices_are_nd,
+                 DataType dtype, DataType index_type,
+                 xla::ComputationBuilder* builder,
+                 xla::ComputationDataHandle* gather_output);
 
 }  // namespace tensorflow
 

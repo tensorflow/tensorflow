@@ -14,11 +14,14 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
+#include "tensorflow/cc/framework/scope.h"
+#include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/cost_graph.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -37,17 +40,25 @@ class VirtualClusterTest : public ::testing::Test {
     cpu_device.set_l1_cache_size(32 * 1024);
     cpu_device.set_l2_cache_size(256 * 1024);
     cpu_device.set_l3_cache_size(4 * 1024 * 1024);
+    cpu_device.set_memory_size(1024 * 1024);
     std::unordered_map<string, DeviceProperties> devices;
     devices["/job:localhost/replica:0/task:0/cpu:0"] = cpu_device;
     cluster_.reset(new VirtualCluster(devices));
     TF_CHECK_OK(cluster_->Provision());
   }
 
-  void TearDown() override { cluster_.reset(); }
+  void TearDown() override {
+    TF_CHECK_OK(cluster_->Shutdown());
+    cluster_.reset();
+  }
 
  protected:
   std::unique_ptr<VirtualCluster> cluster_;
 };
+
+TEST_F(VirtualClusterTest, ClusterType) {
+  CHECK_EQ("virtual", cluster_->type());
+}
 
 TEST_F(VirtualClusterTest, CostModel) {
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false,
@@ -89,6 +100,21 @@ TEST_F(VirtualClusterTest, CostModel) {
       }
     }
   }
+}
+
+TEST_F(VirtualClusterTest, OutOfMemory) {
+  tensorflow::Scope root = tensorflow::Scope::NewRootScope();
+  // Create a large variable that can't fit in memory.
+  auto zero = ops::Variable(root.WithOpName("zero"), {1024, 1024}, DT_FLOAT);
+  auto identity = ops::Identity(root.WithOpName("i"), zero);
+  auto identity2 = ops::Identity(root.WithOpName("i2"), identity);
+  GrapplerItem item;
+  TF_CHECK_OK(root.ToGraphDef(&item.graph));
+  item.fetch.push_back("i2");
+
+  TF_CHECK_OK(cluster_->Initialize(item));
+  Status s = cluster_->Run(item.graph, item.feed, item.fetch, nullptr);
+  EXPECT_EQ(error::RESOURCE_EXHAUSTED, s.code());
 }
 
 }  // namespace

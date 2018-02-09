@@ -109,8 +109,8 @@ TEST(FunctionalizeControlFlow, Conditional) {
     auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
     auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
     auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
-    auto if_op = ops::XlaIf(scope.WithOpName("cond/Merge_If"), less,
-                            std::initializer_list<Input>{x, y, less}, then_fn,
+    auto if_op = ops::XlaIf(scope.WithOpName("cond/Less_If"), less,
+                            std::initializer_list<Input>{less, y, x}, then_fn,
                             else_fn, {DT_INT32});
     GraphDef expected;
     TF_EXPECT_OK(scope.ToGraphDef(&expected));
@@ -120,10 +120,10 @@ TEST(FunctionalizeControlFlow, Conditional) {
   // then body.
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
-    auto arg_0 = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+    auto arg_0 = ops::_Arg(scope.WithOpName("_arg0"), DT_BOOL, 0);
     auto arg_1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
-    auto arg_2 = ops::_Arg(scope.WithOpName("_arg2"), DT_BOOL, 2);
-    auto identity = ops::Identity(scope.WithOpName("cond/Identity"), arg_2);
+    auto arg_2 = ops::_Arg(scope.WithOpName("_arg2"), DT_INT32, 2);
+    auto identity = ops::Identity(scope.WithOpName("cond/Identity"), arg_0);
     auto cond = ops::Const(
         scope.WithOpName("cond").WithControlDependencies(identity), 17);
     auto mul = ops::Mul(scope.WithOpName("cond/Mul"), arg_1, cond);
@@ -136,20 +136,20 @@ TEST(FunctionalizeControlFlow, Conditional) {
     TF_EXPECT_OK(InstantiateFunctionForTest(then_fn.name(), library, &result));
 
     EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
-    EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_BOOL}), result.arg_types);
+    EXPECT_EQ((DataTypeVector{DT_BOOL, DT_INT32, DT_INT32}), result.arg_types);
     TF_EXPECT_GRAPH_EQ(expected, result.gdef);
   }
 
   // else body.
   {
     Scope scope = Scope::NewRootScope().ExitOnError();
-    auto arg_0 = ops::_Arg(scope.WithOpName("_arg0"), DT_INT32, 0);
+    auto arg_0 = ops::_Arg(scope.WithOpName("_arg0"), DT_BOOL, 0);
     auto arg_1 = ops::_Arg(scope.WithOpName("_arg1"), DT_INT32, 1);
-    auto arg_2 = ops::_Arg(scope.WithOpName("_arg2"), DT_BOOL, 2);
-    auto identity = ops::Identity(scope.WithOpName("cond/Identity_1"), arg_2);
+    auto arg_2 = ops::_Arg(scope.WithOpName("_arg2"), DT_INT32, 2);
+    auto identity = ops::Identity(scope.WithOpName("cond/Identity_1"), arg_0);
     auto cond_1 = ops::Const(
         scope.WithOpName("cond_1").WithControlDependencies(identity), 23);
-    auto add = ops::Add(scope.WithOpName("cond/false/add"), arg_0, cond_1);
+    auto add = ops::Add(scope.WithOpName("cond/false/add"), arg_2, cond_1);
     auto retval0 = ops::_Retval(scope.WithOpName("_retval0_RetVal"), add, 0);
 
     GraphDef expected;
@@ -159,7 +159,7 @@ TEST(FunctionalizeControlFlow, Conditional) {
     TF_EXPECT_OK(InstantiateFunctionForTest(else_fn.name(), library, &result));
 
     EXPECT_EQ(DataTypeVector{DT_INT32}, result.ret_types);
-    EXPECT_EQ((DataTypeVector{DT_INT32, DT_INT32, DT_BOOL}), result.arg_types);
+    EXPECT_EQ((DataTypeVector{DT_BOOL, DT_INT32, DT_INT32}), result.arg_types);
     TF_EXPECT_GRAPH_EQ(expected, result.gdef);
   }
 }

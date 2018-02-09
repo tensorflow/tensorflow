@@ -1,0 +1,7 @@
+path: "tensorflow.manip"
+tf_module {
+  member_method {
+    name: "roll"
+    argspec: "args=[\'input\', \'shift\', \'axis\'], varargs=None, keywords=None, defaults=None"
+  }
+}

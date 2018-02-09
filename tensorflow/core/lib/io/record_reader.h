@@ -74,6 +74,10 @@ class RecordReader {
   // sequential.
   Status ReadRecord(uint64* offset, string* record);
 
+  // Skip the records till "offset". Returns OK on success,
+  // OUT_OF_RANGE for end of file, or something else for an error.
+  Status SkipNBytes(uint64 offset);
+
  private:
   Status ReadChecksummed(uint64 offset, size_t n, StringPiece* result,
                          string* storage);
@@ -105,6 +109,21 @@ class SequentialRecordReader {
   // OUT_OF_RANGE for end of file, or something else for an error.
   Status ReadRecord(string* record) {
     return underlying_.ReadRecord(&offset_, record);
+  }
+
+  // Returns the current offset in the file.
+  uint64 TellOffset() { return offset_; }
+
+  // Seek to this offset within the file and set this offset as the current
+  // offset. Trying to seek backward will throw error.
+  Status SeekOffset(uint64 offset) {
+    if (offset < offset_)
+      return errors::InvalidArgument(
+          "Trying to seek offset: ", offset,
+          " which is less than the current offset: ", offset_);
+    TF_RETURN_IF_ERROR(underlying_.SkipNBytes(offset - offset_));
+    offset_ = offset;
+    return Status::OK();
   }
 
  private:

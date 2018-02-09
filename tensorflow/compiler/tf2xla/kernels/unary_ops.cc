@@ -41,8 +41,23 @@ namespace {
   };                                                                   \
   REGISTER_XLA_OP(Name(#NAME), NAME##Op);
 
+XLAJIT_MAKE_UNARY(ComplexAbs, b->Abs(x));
+
+XLAJIT_MAKE_UNARY(Angle, b->Atan2(b->Imag(x), b->Real(x)));
+
+XLAJIT_MAKE_UNARY(Conj, b->Conj(x));
+
 // Return x if x>0, otherwise -x.
 XLAJIT_MAKE_UNARY(Abs, b->Abs(x));
+
+// acos(x) = 2 * atan(sqrt(1 - x^2) / (1 + x))
+XLAJIT_MAKE_UNARY(
+    Acos,
+    b->Mul(XlaHelpers::FloatLiteral(b, input_type(0), 2.0),
+           b->Atan2(b->Pow(b->Sub(XlaHelpers::One(b, input_type(0)),
+                                  b->Mul(x, x)),
+                           XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
+                    b->Add(XlaHelpers::One(b, input_type(0)), x))));
 
 // acosh(x) = log(x + sqrt(x^2 - 1))
 XLAJIT_MAKE_UNARY(
@@ -50,12 +65,26 @@ XLAJIT_MAKE_UNARY(
     b->Log(b->Add(x, b->Pow(b->Sub(b->Mul(x, x),
                                    XlaHelpers::One(b, input_type(0))),
                             XlaHelpers::FloatLiteral(b, input_type(0), 0.5)))));
+
+// asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
+XLAJIT_MAKE_UNARY(
+    Asin,
+    b->Mul(XlaHelpers::FloatLiteral(b, input_type(0), 2.0),
+           b->Atan2(x, b->Add(XlaHelpers::One(b, input_type(0)),
+                              b->Pow(b->Sub(XlaHelpers::One(b, input_type(0)),
+                                            b->Mul(x, x)),
+                                     XlaHelpers::FloatLiteral(b, input_type(0),
+                                                              0.5))))));
+
 // asinh(x) = log(x + sqrt(x^2 + 1))
 XLAJIT_MAKE_UNARY(
     Asinh,
     b->Log(b->Add(x, b->Pow(b->Add(b->Mul(x, x),
                                    XlaHelpers::One(b, input_type(0))),
                             XlaHelpers::FloatLiteral(b, input_type(0), 0.5)))));
+
+XLAJIT_MAKE_UNARY(Atan, b->Atan2(x, XlaHelpers::One(b, input_type(0))));
+
 // atanh(x) = 0.5 * log((1 + x) / (1 - x))
 XLAJIT_MAKE_UNARY(
     Atanh, b->Mul(b->Log(b->Div(b->Add(XlaHelpers::One(b, input_type(0)), x),
@@ -87,7 +116,8 @@ XLAJIT_MAKE_UNARY(Log, b->Log(x));
 // TODO(b/34703906): use a more accurate implementation of log1p.
 XLAJIT_MAKE_UNARY(Log1p, b->Log(b->Add(XlaHelpers::One(b, input_type(0)), x)));
 
-XLAJIT_MAKE_UNARY(LogicalNot, b->LogicalNot(x));
+XLAJIT_MAKE_UNARY(Invert, b->Not(x));
+XLAJIT_MAKE_UNARY(LogicalNot, b->Not(x));
 XLAJIT_MAKE_UNARY(Neg, b->Neg(x));
 
 // Implements Banker's rounding: numbers that are equidistant between two
@@ -104,9 +134,9 @@ static xla::ComputationDataHandle Round(xla::ComputationBuilder* b,
   auto nearest_even_int =
       b->Sub(round_val, b->Mul(two, b->Floor(b->Mul(half, x))));
   auto is_odd = b->Eq(nearest_even_int, one);
-  return b->Select(b->LogicalOr(b->Gt(fraction, half),
-                                b->LogicalAnd(b->Eq(fraction, half), is_odd)),
-                   b->Add(round_val, one), round_val);
+  return b->Select(
+      b->Or(b->Gt(fraction, half), b->And(b->Eq(fraction, half), is_odd)),
+      b->Add(round_val, one), round_val);
 }
 
 XLAJIT_MAKE_UNARY(Rint, Round(b, input_type(0), x));
@@ -160,6 +190,9 @@ XLAJIT_MAKE_UNARY(Sqrt,
 XLAJIT_MAKE_UNARY(Square, b->Mul(x, x));
 XLAJIT_MAKE_UNARY(Tan, b->Div(b->Sin(x), b->Cos(x)));
 XLAJIT_MAKE_UNARY(Tanh, b->Tanh(x));
+
+XLAJIT_MAKE_UNARY(Real, b->Real(x));
+XLAJIT_MAKE_UNARY(Imag, b->Imag(x));
 
 #undef XLAJIT_MAKE_UNARY
 

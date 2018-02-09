@@ -1,0 +1,57 @@
+op {
+  graph_op_name: "MatrixTriangularSolve"
+  in_arg {
+    name: "matrix"
+    description: <<END
+Shape is `[..., M, M]`.
+END
+  }
+  in_arg {
+    name: "rhs"
+    description: <<END
+Shape is `[..., M, K]`.
+END
+  }
+  out_arg {
+    name: "output"
+    description: <<END
+Shape is `[..., M, K]`.
+END
+  }
+  attr {
+    name: "lower"
+    description: <<END
+Boolean indicating whether the innermost matrices in `matrix` are
+lower or upper triangular.
+END
+  }
+  attr {
+    name: "adjoint"
+    description: <<END
+Boolean indicating whether to solve with `matrix` or its (block-wise)
+         adjoint.
+
+@compatibility(numpy)
+Equivalent to np.linalg.triangular_solve
+@end_compatibility
+END
+  }
+  summary: "Solves systems of linear equations with upper or lower triangular matrices by"
+  description: <<END
+backsubstitution.
+
+`matrix` is a tensor of shape `[..., M, M]` whose inner-most 2 dimensions form
+square matrices. If `lower` is `True` then the strictly upper triangular part
+of each inner-most matrix is assumed to be zero and not accessed.
+If `lower` is False then the strictly lower triangular part of each inner-most
+matrix is assumed to be zero and not accessed.
+`rhs` is a tensor of shape `[..., M, K]`.
+
+The output is a tensor of shape `[..., M, K]`. If `adjoint` is
+`True` then the innermost matrices in `output` satisfy matrix equations
+`matrix[..., :, :] * output[..., :, :] = rhs[..., :, :]`.
+If `adjoint` is `False` then the strictly then the  innermost matrices in
+`output` satisfy matrix equations
+`adjoint(matrix[..., i, k]) * output[..., k, j] = rhs[..., i, j]`.
+END
+}

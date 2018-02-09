@@ -15,20 +15,21 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 
+#include <cstddef>
 #include <vector>
+
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/platform/stream_executor.h"
-
-namespace gpu = ::perftools::gputools;
-
-namespace tensorflow {
 
 #define MASK_WORDS 2
 #define MASK_BYTES (MASK_WORDS * sizeof(int64))
 
+namespace tensorflow {
 namespace {
 
-static int64* NewMask(int64 word) {
+int64* NewMask(int64 word) {
   int64* m = new int64[MASK_WORDS];
   for (int i = 0; i < MASK_WORDS; ++i) {
     m[i] = word;
@@ -36,8 +37,8 @@ static int64* NewMask(int64 word) {
   return m;
 }
 
-static int64* before_mask = NewMask(0xabababababababab);
-static int64* after_mask = NewMask(0xcdcdcdcdcdcdcdcd);
+int64* before_mask = NewMask(0xabababababababab);
+int64* after_mask = NewMask(0xcdcdcdcdcdcdcdcd);
 
 bool CheckMask(perftools::gputools::StreamExecutor* exec, void* ptr,
                int64* mask) {
@@ -75,9 +76,9 @@ void InitMask(perftools::gputools::StreamExecutor* exec, void* ptr,
 // GPUDebugAllocator
 // -----------------------------------------------------------------------------
 GPUDebugAllocator::GPUDebugAllocator(VisitableAllocator* allocator,
-                                     int device_id)
+                                     CudaGpuId cuda_gpu_id)
     : base_allocator_(allocator) {
-  stream_exec_ = GPUMachineManager()->ExecutorForDevice(device_id).ValueOrDie();
+  stream_exec_ = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
 }
 
 GPUDebugAllocator::~GPUDebugAllocator() { delete base_allocator_; }
@@ -120,23 +121,27 @@ void GPUDebugAllocator::AddFreeVisitor(Visitor visitor) {
 
 bool GPUDebugAllocator::TracksAllocationSizes() { return true; }
 
-size_t GPUDebugAllocator::RequestedSize(void* ptr) {
-  auto req_size =
-      base_allocator_->RequestedSize(static_cast<char*>(ptr) - MASK_BYTES);
+size_t GPUDebugAllocator::RequestedSize(const void* ptr) {
+  auto req_size = base_allocator_->RequestedSize(static_cast<const char*>(ptr) -
+                                                 MASK_BYTES);
   return req_size - 2 * MASK_BYTES;
 }
 
-size_t GPUDebugAllocator::AllocatedSize(void* ptr) {
-  return base_allocator_->AllocatedSize(static_cast<char*>(ptr) - MASK_BYTES);
+size_t GPUDebugAllocator::AllocatedSize(const void* ptr) {
+  return base_allocator_->AllocatedSize(static_cast<const char*>(ptr) -
+                                        MASK_BYTES);
 }
 
-int64 GPUDebugAllocator::AllocationId(void* ptr) {
-  return base_allocator_->AllocationId(static_cast<char*>(ptr) - MASK_BYTES);
+int64 GPUDebugAllocator::AllocationId(const void* ptr) {
+  return base_allocator_->AllocationId(static_cast<const char*>(ptr) -
+                                       MASK_BYTES);
 }
 
 void GPUDebugAllocator::GetStats(AllocatorStats* stats) {
   base_allocator_->GetStats(stats);
 }
+
+void GPUDebugAllocator::ClearStats() { base_allocator_->ClearStats(); }
 
 bool GPUDebugAllocator::CheckHeader(void* ptr) {
   return CheckMask(stream_exec_, static_cast<char*>(ptr) - MASK_BYTES,
@@ -154,9 +159,9 @@ bool GPUDebugAllocator::CheckFooter(void* ptr) {
 // GPUNanResetAllocator
 // -----------------------------------------------------------------------------
 GPUNanResetAllocator::GPUNanResetAllocator(VisitableAllocator* allocator,
-                                           int device_id)
+                                           CudaGpuId cuda_gpu_id)
     : base_allocator_(allocator) {
-  stream_exec_ = GPUMachineManager()->ExecutorForDevice(device_id).ValueOrDie();
+  stream_exec_ = GpuIdUtil::ExecutorForCudaGpuId(cuda_gpu_id).ValueOrDie();
 }
 
 GPUNanResetAllocator::~GPUNanResetAllocator() { delete base_allocator_; }
@@ -198,16 +203,18 @@ void GPUNanResetAllocator::AddFreeVisitor(Visitor visitor) {
   return base_allocator_->AddFreeVisitor(visitor);
 }
 
-size_t GPUNanResetAllocator::RequestedSize(void* ptr) {
+size_t GPUNanResetAllocator::RequestedSize(const void* ptr) {
   return base_allocator_->RequestedSize(ptr);
 }
 
-size_t GPUNanResetAllocator::AllocatedSize(void* ptr) {
+size_t GPUNanResetAllocator::AllocatedSize(const void* ptr) {
   return base_allocator_->AllocatedSize(ptr);
 }
 
 void GPUNanResetAllocator::GetStats(AllocatorStats* stats) {
   base_allocator_->GetStats(stats);
 }
+
+void GPUNanResetAllocator::ClearStats() { base_allocator_->ClearStats(); }
 
 }  // namespace tensorflow

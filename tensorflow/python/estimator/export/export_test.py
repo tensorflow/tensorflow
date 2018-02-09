@@ -358,7 +358,8 @@ class ExportTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError) as e:
       export.build_all_signature_defs(receiver_tensor, None)
 
-    self.assertEqual("export_outputs must be a dict.", str(e.exception))
+    self.assertTrue(str(e.exception).startswith(
+        "export_outputs must be a dict"))
 
   def test_get_timestamped_export_dir(self):
     export_dir_base = tempfile.mkdtemp() + "export/"

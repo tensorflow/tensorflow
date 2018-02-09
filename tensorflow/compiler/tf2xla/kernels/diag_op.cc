@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/compiler/tf2xla/lib/util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -22,6 +24,62 @@ limitations under the License.
 namespace tensorflow {
 namespace {
 
+// Create a diagonal / batch diagonal matrix with 'input' on the diagonal.
+xla::StatusOr<xla::ComputationDataHandle> CreateDiagonal(
+    const xla::ComputationDataHandle& input, int64 last_dim_size,
+    tensorflow::gtl::ArraySlice<int64> other_dims, XlaOpKernelContext* ctx,
+    xla::ComputationBuilder* builder) {
+  // Create two matrices that have the following forms, and compare them:
+  //
+  // [[0, 0, 0, 0]            [[0, 1, 2, 3]
+  //  [1, 1, 1, 1]             [0, 1, 2, 3]
+  //  [2, 2, 2, 2]             [0, 1, 2, 3]
+  //  [3, 3, 3, 3]]            [0, 1, 2, 3]]
+  //
+  // This produces a predicate matrix of the right size, with "true" on the
+  // diagonal.
+  xla::ComputationDataHandle iota;
+  TF_RETURN_IF_ERROR(
+      XlaHelpers::Iota(builder, DataType::DT_INT32, last_dim_size, &iota));
+  xla::ComputationDataHandle iota_broadcast =
+      builder->Broadcast(iota, {last_dim_size});
+  xla::ComputationDataHandle mask = builder->Eq(iota_broadcast, iota, {0});
+
+  // If this is a batched diagonal, broadcast the mask across the other
+  // dimensions.
+  if (!other_dims.empty()) {
+    mask = builder->Broadcast(mask, other_dims);
+  }
+
+  // Broadcast the input, and then use the mask computed above to select the
+  // diagonal:
+  // e.g, in 2D:
+  //         [[t, f, f]    [[1, 1, 1]    [[0, 0, 0]      [[1, 0, 0]
+  // select(  [f, t, f]  ,  [4, 4, 4]  ,  [0, 0, 0]  ) =  [0, 4, 0]
+  //          [f, f, t]]    [9, 9, 9]]    [0, 0, 0]]      [0, 0, 9]]
+  //
+  // Broadcasting the input is less-than-trivial, since we need to broadcast
+  // into a "middle" dimension. We can do this with a reshape + implicit
+  // broadcast.
+  // TODO(b/30112114): Replace with in-dim broadcast when those are supported.
+  std::vector<int64> broadcast_dims(other_dims.begin(), other_dims.end());
+  broadcast_dims.push_back(1LL);
+  broadcast_dims.push_back(last_dim_size);
+  xla::ComputationDataHandle input_broadcast =
+      builder->Reshape(input, broadcast_dims);
+
+  broadcast_dims[broadcast_dims.size() - 2] = last_dim_size;
+  xla::PrimitiveType element_type;
+  TF_RETURN_IF_ERROR(
+      DataTypeToPrimitiveType(ctx->input_type(0), &element_type));
+  auto broadcast_shape =
+      xla::ShapeUtil::MakeShape(element_type, broadcast_dims);
+  xla::ComputationDataHandle zeros = Zeros(builder, broadcast_shape);
+
+  input_broadcast = builder->Add(input_broadcast, zeros);
+  return builder->Select(mask, input_broadcast, zeros);
+}
+
 class DiagOp : public XlaOpKernel {
  public:
   explicit DiagOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
@@ -29,6 +87,8 @@ class DiagOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationBuilder* builder = ctx->builder();
 
+    OP_REQUIRES(ctx, ctx->num_inputs() >= 1,
+                errors::InvalidArgument("Diag op must have at an input"));
     const TensorShape input_shape = ctx->InputShape(0);
 
     auto dims = input_shape.dim_sizes();
@@ -36,7 +96,7 @@ class DiagOp : public XlaOpKernel {
                 errors::InvalidArgument("Expected 1 <= dims, got shape ",
                                         input_shape.DebugString()));
 
-    xla::ComputationDataHandle diag = ctx->Input(0);
+    xla::ComputationDataHandle input = ctx->Input(0);
 
     // Picture:
     // tf.diag([1, 2, 3, 4]) ==> [[1, 0, 0, 0]
@@ -46,13 +106,13 @@ class DiagOp : public XlaOpKernel {
 
     // Flattens the input to 1D.
     int64 size = input_shape.num_elements();
-    diag = builder->Reshape(diag, {size});
+    input = builder->Reshape(input, {size});
 
-    // Adds inter-element padding of 'size'.
-    xla::PaddingConfig config;
-    auto* dim = config.add_dimensions();
-    dim->set_interior_padding(size);
-    diag = builder->Pad(diag, XlaHelpers::Zero(builder, input_type(0)), config);
+    // Create an R2 with the R1 diagonal.
+    auto diag_or_status =
+        CreateDiagonal(input, size, /*other_dims=*/{}, ctx, builder);
+    OP_REQUIRES_OK(ctx, diag_or_status.status());
+    xla::ComputationDataHandle diag = diag_or_status.ValueOrDie();
 
     // Reshapes to the final shape.
     std::vector<int64> new_dims(dims.size() * 2);
@@ -141,6 +201,8 @@ class MatrixDiagOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationBuilder* builder = ctx->builder();
 
+    OP_REQUIRES(ctx, ctx->num_inputs() >= 1,
+                errors::InvalidArgument("MatrixDiag op must have at an input"));
     const TensorShape input_shape = ctx->InputShape(0);
 
     auto dims = input_shape.dim_sizes();
@@ -152,17 +214,13 @@ class MatrixDiagOp : public XlaOpKernel {
 
     int last_dim = dims.size() - 1;
     int64 last_dim_size = input_shape.dim_size(last_dim);
+    tensorflow::gtl::ArraySlice<int64> other_dims(dims);
+    other_dims.pop_back();
 
-    // Adds inter-element padding of 'last_dim_size' to the last dimension.
-    xla::PaddingConfig config = xla::MakeNoPaddingConfig(dims.size());
-    auto* dim = config.mutable_dimensions(last_dim);
-    dim->set_interior_padding(last_dim_size);
-    diag = builder->Pad(diag, XlaHelpers::Zero(builder, input_type(0)), config);
-
-    // Reshapes to the final shape.
-    dims.push_back(last_dim_size);
-    diag = builder->Reshape(diag, dims);
-
+    auto diag_or_status =
+        CreateDiagonal(diag, last_dim_size, other_dims, ctx, builder);
+    OP_REQUIRES_OK(ctx, diag_or_status.status());
+    diag = diag_or_status.ValueOrDie();
     ctx->SetOutput(0, diag);
   }
 };

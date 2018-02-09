@@ -34,7 +34,6 @@ struct CompileResult {
   // Contains object file and meta-info.
   std::unique_ptr<xla::cpu::CpuAotCompilationResult> aot;
   xla::ProgramShape program_shape;  // Static shape of args and results.
-  bool has_context_arg = false;     // Is last arg XlaLocalRuntimeContext?
   string entry_point;               // Name of generated function.
   int pointer_size = 0;             // Size of a pointer in bytes.
 };

@@ -32,6 +32,11 @@ class HParamsTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, 'Unknown hyperparameter'):
       hparams.parse('xyz=123')
 
+  def testContains(self):
+    hparams = hparam.HParams(foo=1)
+    self.assertTrue('foo' in hparams)
+    self.assertFalse('bar' in hparams)
+
   def testSomeValues(self):
     hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6')
     self.assertDictEqual({'aaa': 1, 'b': 2.0, 'c_c': 'relu6'}, hparams.values())
@@ -50,7 +55,7 @@ class HParamsTest(test.TestCase):
     self.assertEqual(12, hparams.aaa)
     self.assertEqual(2.0, hparams.b)
     self.assertEqual('relu6', hparams.c_c)
-    hparams.parse('c_c=relu4,b=-2.0e10')
+    hparams.parse('c_c=relu4, b=-2.0e10')
     self.assertDictEqual({
         'aaa': 12,
         'b': -2.0e10,
@@ -93,11 +98,11 @@ class HParamsTest(test.TestCase):
 
   def testSetFromMap(self):
     hparams = hparam.HParams(a=1, b=2.0, c='tanh')
-    hparams.set_from_map({'a': -2, 'c': 'identity'})
+    hparams.override_from_dict({'a': -2, 'c': 'identity'})
     self.assertDictEqual({'a': -2, 'c': 'identity', 'b': 2.0}, hparams.values())
 
     hparams = hparam.HParams(x=1, b=2.0, d=[0.5])
-    hparams.set_from_map({'d': [0.1, 0.2, 0.3]})
+    hparams.override_from_dict({'d': [0.1, 0.2, 0.3]})
     self.assertDictEqual({'d': [0.1, 0.2, 0.3], 'x': 1, 'b': 2.0},
                          hparams.values())
 
@@ -287,6 +292,16 @@ class HParamsTest(test.TestCase):
     self.assertEqual('relu4', hparams2.c_c)
     self.assertEqual(False, hparams2.d)
 
+    hparams3 = hparam.HParams(aaa=123)
+    self.assertEqual('{"aaa": 123}', hparams3.to_json())
+    self.assertEqual('{\n  "aaa": 123\n}', hparams3.to_json(indent=2))
+    self.assertEqual('{"aaa"=123}', hparams3.to_json(separators=(';', '=')))
+
+    hparams4 = hparam.HParams(aaa=123, b='hello', c_c=False)
+    self.assertEqual(
+        '{"aaa": 123, "b": "hello", "c_c": false}',
+        hparams4.to_json(sort_keys=True))
+
   def testSetHParam(self):
     hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6', d=True)
     self.assertDictEqual({
@@ -313,12 +328,41 @@ class HParamsTest(test.TestCase):
     self.assertEqual(3.0, hparams.b)
     self.assertEqual('relu4', hparams.c_c)
 
-  def testSetHParamTypeMismatch(self):
+  def testSetHParamListNonListMismatch(self):
     hparams = hparam.HParams(a=1, b=[2.0, 3.0])
     with self.assertRaisesRegexp(ValueError, r'Must not pass a list'):
       hparams.set_hparam('a', [1.0])
     with self.assertRaisesRegexp(ValueError, r'Must pass a list'):
       hparams.set_hparam('b', 1.0)
+
+  def testSetHParamTypeMismatch(self):
+    hparams = hparam.HParams(
+        int_=1, str_='str', bool_=True, float_=1.1, list_int=[1, 2], none=None)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('str_', 2.2)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('int_', False)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('bool_', 1)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('int_', 2.2)
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('list_int', [2, 3.3])
+
+    with self.assertRaises(ValueError):
+      hparams.set_hparam('int_', '2')
+
+    # Casting int to float is OK
+    hparams.set_hparam('float_', 1)
+
+    # Getting stuck with NoneType :(
+    hparams.set_hparam('none', '1')
+    self.assertEqual('1', hparams.none)
 
   def testNonProtoFails(self):
     with self.assertRaisesRegexp(AssertionError, ''):
@@ -329,6 +373,49 @@ class HParamsTest(test.TestCase):
       hparam.HParams(hparam_def='hello')
     with self.assertRaisesRegexp(AssertionError, ''):
       hparam.HParams(hparam_def=[1, 2, 3])
+
+  def testGet(self):
+    hparams = hparam.HParams(aaa=1, b=2.0, c_c='relu6', d=True, e=[5.0, 6.0])
+
+    # Existing parameters with default=None.
+    self.assertEqual(1, hparams.get('aaa'))
+    self.assertEqual(2.0, hparams.get('b'))
+    self.assertEqual('relu6', hparams.get('c_c'))
+    self.assertEqual(True, hparams.get('d'))
+    self.assertEqual([5.0, 6.0], hparams.get('e', None))
+
+    # Existing parameters with compatible defaults.
+    self.assertEqual(1, hparams.get('aaa', 2))
+    self.assertEqual(2.0, hparams.get('b', 3.0))
+    self.assertEqual(2.0, hparams.get('b', 3))
+    self.assertEqual('relu6', hparams.get('c_c', 'default'))
+    self.assertEqual(True, hparams.get('d', True))
+    self.assertEqual([5.0, 6.0], hparams.get('e', [1.0, 2.0, 3.0]))
+    self.assertEqual([5.0, 6.0], hparams.get('e', [1, 2, 3]))
+
+    # Existing parameters with incompatible defaults.
+    with self.assertRaises(ValueError):
+      hparams.get('aaa', 2.0)
+
+    with self.assertRaises(ValueError):
+      hparams.get('b', False)
+
+    with self.assertRaises(ValueError):
+      hparams.get('c_c', [1, 2, 3])
+
+    with self.assertRaises(ValueError):
+      hparams.get('d', 'relu')
+
+    with self.assertRaises(ValueError):
+      hparams.get('e', 123.0)
+
+    with self.assertRaises(ValueError):
+      hparams.get('e', ['a', 'b', 'c'])
+
+    # Nonexistent parameters.
+    self.assertEqual(None, hparams.get('unknown'))
+    self.assertEqual(123, hparams.get('unknown', 123))
+    self.assertEqual([1, 2, 3], hparams.get('unknown', [1, 2, 3]))
 
 
 if __name__ == '__main__':
