@@ -56,8 +56,7 @@ static bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
       "Identity", "Const", "Conv2D", "MaxPool", "BiasAdd", "Relu",
       "Add",      "Mul",   "Sub",    "Rsqrt",   "Pad"  // "Placeholder" ,"Mean"
   };
-  // LINT.ThenChange(
-  //    https://www.tensorflow.org/code/tensorflow/contrib/tensorrt/convert/convert_nodes.h)
+  // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)
   return candidate_ops.count(node_def.op());
 }
 
