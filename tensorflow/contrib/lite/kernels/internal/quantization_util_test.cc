@@ -31,7 +31,7 @@ TEST(QuantizationUtilTest, QuantizeMultiplierSmallerThanOne) {
   };
 
   EXPECT_DEATH(quantize(-0.1), "");
-  EXPECT_THAT(quantize(0.0), Pair(0, 0));
+  EXPECT_DEATH(quantize(0.0), "");
   EXPECT_THAT(quantize(0.25), Pair(1073741824, 1));
 
   // Around 0.5 we can see the change in exponent and how we try hard to

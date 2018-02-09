@@ -140,6 +140,7 @@ static GCluster TF_NewCluster(bool allow_soft_placement,
           timeout_s, num_cpu_cores, num_gpus);
   cluster_->DisableDetailedStats(disable_detailed_stats);
   cluster_->AllowSoftPlacement(allow_soft_placement);
+  cluster_->SetNumWarmupSteps(10);
   tensorflow::Status status = cluster_->Provision();
   tensorflow::Set_TF_Status_from_Status(out_status, status);
   return GCluster(cluster_);

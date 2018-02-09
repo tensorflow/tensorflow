@@ -1415,12 +1415,11 @@ def dense_to_sparse(tensor, eos_token=0, outputs_collections=None, scope=None):
      outputs_collections: Collection to add the outputs.
      scope: Optional scope for name_scope.
   """
-  with variable_scope.variable_scope(
-      scope, 'dense_to_sparse', [tensor]) as sc:
+  with variable_scope.variable_scope(scope, 'dense_to_sparse', [tensor]) as sc:
     tensor = ops.convert_to_tensor(tensor)
     indices = array_ops.where(
-        math_ops.not_equal(
-            tensor, constant_op.constant(eos_token, tensor.dtype)))
+        math_ops.not_equal(tensor, constant_op.constant(eos_token,
+                                                        tensor.dtype)))
     values = array_ops.gather_nd(tensor, indices)
     shape = array_ops.shape(tensor, out_type=dtypes.int64)
     outputs = sparse_tensor.SparseTensor(indices, values, shape)

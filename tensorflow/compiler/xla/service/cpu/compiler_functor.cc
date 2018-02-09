@@ -200,25 +200,16 @@ std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl(
   std::vector<llvm::VecDesc> vector_functions;
 
   const llvm::VecDesc four_wide_vector_functions_neon[] = {
-      {"expf", runtime::kExpV4F32NEONSymbolName, 4},
-      {"llvm.exp.f32", runtime::kExpV4F32NEONSymbolName, 4},
-
       {"logf", runtime::kLogV4F32NEONSymbolName, 4},
       {"llvm.log.f32", runtime::kLogV4F32NEONSymbolName, 4},
   };
 
   const llvm::VecDesc four_wide_vector_functions_sse[] = {
-      {"expf", runtime::kExpV4F32SSESymbolName, 4},
-      {"llvm.exp.f32", runtime::kExpV4F32SSESymbolName, 4},
-
       {"logf", runtime::kLogV4F32SSESymbolName, 4},
       {"llvm.log.f32", runtime::kLogV4F32SSESymbolName, 4},
   };
 
   const llvm::VecDesc eight_wide_vector_functions_avx[] = {
-      {"expf", runtime::kExpV8F32AVXSymbolName, 8},
-      {"llvm.exp.f32", runtime::kExpV8F32AVXSymbolName, 8},
-
       {"logf", runtime::kLogV8F32AVXSymbolName, 8},
       {"llvm.log.f32", runtime::kLogV8F32AVXSymbolName, 8},
   };
@@ -231,6 +222,12 @@ std::vector<llvm::VecDesc> VectorFunctionsForTargetLibraryInfoImpl(
 
       {"tanhf", runtime::kTanhV8F32SymbolName, 8},
       {"llvm.tanh.f32", runtime::kTanhV8F32SymbolName, 8},
+
+      {"expf", runtime::kExpV4F32SymbolName, 4},
+      {"llvm.exp.f32", runtime::kExpV4F32SymbolName, 4},
+
+      {"expf", runtime::kExpV8F32SymbolName, 8},
+      {"llvm.exp.f32", runtime::kExpV8F32SymbolName, 8},
   };
 
   llvm::SmallVector<llvm::StringRef, 32> features;

@@ -52,21 +52,14 @@ bool RemoveInput(NodeDef* node, const string& input, NodeMap* node_map) {
   return removed_input;
 }
 
-// Remove duplicate control inputs.
-void PruneControlInputs(NodeDef* node) {
-  std::unordered_set<string> inputs;
-  int pos = 0;
-  while (pos < node->input_size()) {
-    const string& input = node->input(pos);
-    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
-      VLOG(1) << "**** Removing duplicate control input: " << input
-              << " from node " << node->DebugString();
-      node->mutable_input()->SwapElements(pos, node->input_size() - 1);
-      node->mutable_input()->RemoveLast();
-    } else {
-      ++pos;
-    }
+void DeleteNodes(const std::set<int>& nodes_to_delete, GraphDef* graph) {
+  int last = graph->node_size() - 1;
+  for (auto it = nodes_to_delete.rbegin(); it != nodes_to_delete.rend(); ++it) {
+    const int index = *it;
+    graph->mutable_node()->SwapElements(index, last);
+    last--;
   }
+  graph->mutable_node()->DeleteSubrange(last + 1, nodes_to_delete.size());
 }
 
 }  // namespace
@@ -75,6 +68,7 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) {
   if (!IsIdentity(node)) {
     return true;
   }
+
   if (nodes_to_preserve_.find(node.name()) != nodes_to_preserve_.end()) {
     return false;
   }
@@ -397,22 +391,8 @@ void DependencyOptimizer::OptimizeNode(int node_idx,
 
 void DependencyOptimizer::CleanControlInputs() {
   for (int i = 0; i < optimized_graph_->node_size(); ++i) {
-    PruneControlInputs(optimized_graph_->mutable_node(i));
+    DedupControlInputs(optimized_graph_->mutable_node(i));
   }
-}
-
-void DependencyOptimizer::DeleteNodes(const std::set<int>& nodes_to_delete) {
-  int last = optimized_graph_->node_size() - 1;
-  for (auto it = nodes_to_delete.rbegin(); it != nodes_to_delete.rend(); ++it) {
-    const int index = *it;
-    optimized_graph_->mutable_node()->SwapElements(index, last);
-    last--;
-  }
-  optimized_graph_->mutable_node()->DeleteSubrange(last + 1,
-                                                   nodes_to_delete.size());
-  // Rebuild the NodeMap which was invalidated by the node swapping above.
-  node_map_.reset(new NodeMap(optimized_graph_));
-  BuildNodeToIdx();
 }
 
 Status DependencyOptimizer::OptimizeDependencies() {
@@ -437,7 +417,9 @@ Status DependencyOptimizer::OptimizeDependencies() {
   if (fetch_nodes_known_) {
     VLOG(1) << "Deleted " << nodes_to_delete.size() << " out of "
             << optimized_graph_->node_size() << " nodes.";
-    DeleteNodes(nodes_to_delete);
+    DeleteNodes(nodes_to_delete, optimized_graph_);
+    node_map_.reset(new NodeMap(optimized_graph_));
+    BuildNodeToIdx();
   }
   return Status::OK();
 }
@@ -576,7 +558,6 @@ Status DependencyOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     Status topo_sort_status;
     // Perform topological sort to prepare the graph for transitive reduction.
     topo_sort_status = TopologicalSort(optimized_graph_);
-
     // Set up index-based graph datastructures to speed up analysis steps below.
     node_map_.reset(new NodeMap(optimized_graph_));
     BuildNodeToIdx();

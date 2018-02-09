@@ -74,7 +74,10 @@ tf_library(
     # compile but the others in this directory succeed, you may need to
     # expand the "required by all tf_library targets" list in tfcompile.bzl.
     include_standard_runtime_deps = False,
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 tf_library(
@@ -84,7 +87,10 @@ tf_library(
     cpp_class = "AddWithCkptComp",
     freeze_checkpoint = "test_graph_tfadd_with_ckpt.ckpt",
     graph = "test_graph_tfadd_with_ckpt.pb",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 tf_library(
@@ -95,7 +101,10 @@ tf_library(
     freeze_checkpoint = "test_graph_tfadd_with_ckpt_saver.ckpt",
     freeze_saver = "test_graph_tfadd_with_ckpt_saver.saver",
     graph = "test_graph_tfadd_with_ckpt_saver.pb",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 tf_library(
@@ -104,7 +113,10 @@ tf_library(
     config = "test_graph_tffunction.config.pbtxt",
     cpp_class = "FunctionComp",
     graph = "test_graph_tffunction.pb",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 tf_library(
@@ -113,7 +125,10 @@ tf_library(
     config = "test_graph_tfgather.config.pbtxt",
     cpp_class = "GatherComp",
     graph = "test_graph_tfgather.pb",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 tf_library(
@@ -122,7 +137,10 @@ tf_library(
     config = "test_graph_tfmatmul.config.pbtxt",
     cpp_class = "foo::bar::MatMulComp",
     graph = "test_graph_tfmatmul.pb",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 tf_library(
@@ -131,7 +149,10 @@ tf_library(
     config = "test_graph_tfmatmulandadd.config.pbtxt",
     cpp_class = "MatMulAndAddComp",
     graph = "test_graph_tfmatmulandadd.pb",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     tfcompile_flags = "--gen_name_to_index --gen_program_shape",
 )
 
@@ -141,13 +162,19 @@ tf_library(
     config = "test_graph_tfsplits.config.pbtxt",
     cpp_class = "SplitsComp",
     graph = "test_graph_tfsplits.pb",
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",
+    ],
 )
 
 tf_cc_test(
     name = "tfcompile_test",
     srcs = ["tfcompile_test.cc"],
-    tags = ["manual"],
+    tags = [
+        "manual",
+        "notap",
+    ],
     deps = [
         ":test_graph_tfadd",
         ":test_graph_tfadd_with_ckpt",
