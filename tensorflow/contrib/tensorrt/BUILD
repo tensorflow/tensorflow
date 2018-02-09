@@ -184,8 +184,13 @@ tf_cuda_library(
     deps = [
         ":segment",
         ":trt_logging",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:devices",
         "//tensorflow/core/grappler/clusters:virtual_cluster",
@@ -208,6 +213,8 @@ cc_library(
     linkstatic = 1,
     deps = [
         "//tensorflow/core:graph",
+        "//tensorflow/core:lib_proto_parsing",
+        "//tensorflow/core:protos_all_cc",
         "@protobuf_archive//:protobuf_headers",
     ],
 )
@@ -219,6 +226,8 @@ tf_cc_test(
     deps = [
         ":segment",
         "//tensorflow/c:c_api",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
