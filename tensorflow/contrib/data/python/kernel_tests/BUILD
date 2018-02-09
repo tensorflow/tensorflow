@@ -386,6 +386,21 @@ py_test(
 )
 
 py_test(
+    name = "serialization_integration_test",
+    size = "small",
+    srcs = ["serialization_integration_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "shard_dataset_op_test",
     size = "small",
     srcs = ["shard_dataset_op_test.py"],
