@@ -36,7 +36,7 @@ class Reduction(object):
   """Types of loss reduction.
 
   Contains the following values:
-  
+
   - `NONE`: Un-reduced weighted losses with the same shape as input.
   - `SUM`: Scalar sum of weighted losses.
   - `MEAN`: Scalar `SUM` divided by sum of weights.
