@@ -1,19 +1,47 @@
+@echo off
+REM # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+REM #
+REM # Licensed under the Apache License, Version 2.0 (the "License");
+REM # you may not use this file except in compliance with the License.
+REM # You may obtain a copy of the License at
+REM #
+REM #     http://www.apache.org/licenses/LICENSE-2.0
+REM #
+REM # Unless required by applicable law or agreed to in writing, software
+REM # distributed under the License is distributed on an "AS IS" BASIS,
+REM # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+REM # See the License for the specific language governing permissions and
+REM # limitations under the License.
+REM # ==============================================================================
+
 REM make script on Windows platform
 REM usage: make [vs_project_name.vcxproj]
 
-@echo off
 REM OPTION LISTs, please modify this as your own environment
 REM If these executables are in %PATH%, they can be kept empty.
 set SWIG_EXECUTABLE=D:\Tools\swigwin-3.0.12\swig.exe
 set PYTHON_EXE=
+set SHARED_LIB=ON
 set GPU=OFF
-set CMAKE_GENERATOR="Visual Studio 15 2017 Win64"
+set WIN_CPU_SIMD=OFF
 set MKL_HOME=d:\Tools\IntelSWTools\compilers_and_libraries\windows\
+set OTHER_CMAKE_ARGS=-Dtensorflow_BUILD_PYTHON_BINDINGS=ON ^
+                     -Dtensorflow_DISABLE_EIGEN_FORCEINLINE=ON ^
+                     -Dtensorflow_ENABLE_GRPC_SUPPORT=OFF ^
+                     -Dtensorflow_ENABLE_SSL_SUPPORT=OFF ^
+                     -Dtensorflow_ENABLE_SNAPPY_SUPPORT=ON
 REM END OPTION LISTS
 set PARENT_DIR=%~dp0
-cl
-if errorlevel 9009 (
-  echo "Use in VS prompt"
+for /F "skip=2 tokens=1 delims=." %%i in ('msbuild /version') do set MSVC_VERSION=%%i
+if not errorlevel 0 (
+  echo "msbuild is not in PATH, please use me in VS prompt"
+  goto EXIT
+) else if %MSVC_VERSION%==15 (
+  set CMAKE_GENERATOR="Visual Studio 15 2017 Win64"
+) else if %MSVC_VERSION%==14 (
+  set CMAKE_GENERATOR="Visual Studio 14 2015 Win64"
+) else (
+  echo "Visual Studio version too low!"
   goto EXIT
 )
 if not exist "%SWIG_EXECUTABLE%" (
@@ -55,12 +83,9 @@ if not "%1"=="" goto Build
 cmake .. -G %CMAKE_GENERATOR% -DCMAKE_BUILD_TYPE=Release ^
 -DSWIG_EXECUTABLE=%SWIG_EXECUTABLE% -DPYTHON_EXECUTABLE=%PYTHON_EXE% -DPYTHON_LIBRARIES=%PYTHON_LIB% ^
 -Dtensorflow_ENABLE_GPU=%GPU% -DCUDNN_HOME=%CUDA_HOME% ^
--Dtensorflow_BUILD_PYTHON_BINDINGS=ON ^
--Dtensorflow_DISABLE_EIGEN_FORCEINLINE=ON ^
--Dtensorflow_ENABLE_GRPC_SUPPORT=OFF ^
--Dtensorflow_ENABLE_SSL_SUPPORT=OFF ^
--Dtensorflow_WIN_CPU_SIMD_OPTIONS=OFF -DMKL_HOME= %MKL_HOME% ^
--Dtensorflow_ENABLE_SNAPPY_SUPPORT=ON
+-Dtensorflow_BUILD_SHARED_LIB=%SHARED_LIB% ^
+-Dtensorflow_WIN_CPU_SIMD_OPTIONS=%WIN_CPU_SIMD% -DMKL_HOME=%MKL_HOME% ^
+%OTHER_CMAKE_ARGS%
 
 if errorlevel 1 (
   goto EXIT
