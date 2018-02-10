@@ -36,13 +36,14 @@ class Reduction(object):
   """Types of loss reduction.
 
   Contains the following values:
-  `NONE`: Un-reduced weighted losses with the same shape as input.
-  `SUM`: Scalar sum of weighted losses.
-  `MEAN`: Scalar `SUM` divided by sum of weights.
-  `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
-  `SUM_OVER_NONZERO_WEIGHTS`: Scalar `SUM` divided by number of non-zero
-     weights.
-  `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`.
+  
+  - `NONE`: Un-reduced weighted losses with the same shape as input.
+  - `SUM`: Scalar sum of weighted losses.
+  - `MEAN`: Scalar `SUM` divided by sum of weights.
+  - `SUM_OVER_BATCH_SIZE`: Scalar `SUM` divided by number of elements in losses.
+  - `SUM_OVER_NONZERO_WEIGHTS`: Scalar `SUM` divided by number of non-zero
+       weights.
+  - `SUM_BY_NONZERO_WEIGHTS`: Same as `SUM_OVER_NONZERO_WEIGHTS`.
   """
 
   NONE = "none"
@@ -434,9 +435,9 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
   """Adds a Log Loss term to the training procedure.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
-  the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
-  by the corresponding element in the `weights` vector. If the shape of
+  the loss is simply scaled by the given value. If `weights` is a `Tensor` of
+  shape `[batch_size]`, then the total loss for each sample of the batch is
+  rescaled by the corresponding element in the `weights` vector. If the shape of
   `weights` matches the shape of `predictions`, then the loss of each
   measurable element of `predictions` is scaled by the corresponding value of
   `weights`.
@@ -478,32 +479,34 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
-# TODO(b/37208492): Add reduction arg.
 @tf_export("losses.mean_pairwise_squared_error")
 def mean_pairwise_squared_error(
     labels, predictions, weights=1.0, scope=None,
-    loss_collection=ops.GraphKeys.LOSSES):
+    loss_collection=ops.GraphKeys.LOSSES,
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
   """Adds a pairwise-errors-squared loss to the training procedure.
 
   Unlike `mean_squared_error`, which is a measure of the differences between
   corresponding elements of `predictions` and `labels`,
-  `mean_pairwise_squared_error` is a measure of the differences between pairs of
-  corresponding elements of `predictions` and `labels`.
+  `mean_pairwise_squared_error` is a measure of the differences between
+  corresponding pairs of elements of `predictions` and `labels`.
 
-  For example, if `labels`=[a, b, c] and `predictions`=[x, y, z], there are
-  three pairs of differences are summed to compute the loss:
-    loss = [ ((a-b) - (x-y)).^2 + ((a-c) - (x-z)).^2 + ((b-c) - (y-z)).^2 ] / 3
+  Note that the inputs have shape `[batch_size, d0, ... dN]`, and corresponding
+  pairs are computed within each batch sample but not across samples within a
+  batch. For example, if `predictions` is a `Tensor` with shape
+  `[batch_size, width, height]` representing a batch of grayscale images, then
+  the set of pairs is drawn from each image, but not across images.
 
-  Note that since the inputs are of shape `[batch_size, d0, ... dN]`, the
-  corresponding pairs are computed within each batch sample but not across
-  samples within a batch. For example, if `predictions` represents a batch of
-  16 grayscale images of dimension [batch_size, 100, 200], then the set of pairs
-  is drawn from each image, but not across images.
+  If the label for a particular sample is \\( [y_1, ..., y_n] \\) and the
+  prediction for that sample is \\( [x_1, ..., x_n] \\), then the loss for that
+  sample is
+  $$ \frac{1}{n \choose x} \sum_{i=1}^{n-1} \sum_{j=i+1}^{n}
+  [(y_i-y_j)-(x_i-x_j)]^2. $$
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
-  the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
-  by the corresponding element in the `weights` vector.
+  the loss is simply scaled by the given value. If `weights` is a `Tensor` of
+  shape `[batch_size]`, then the total loss for each sample of the batch is
+  rescaled by the corresponding element in the `weights` vector.
 
   Args:
     labels: The ground truth output tensor, whose shape must match the shape of
@@ -515,9 +518,11 @@ def mean_pairwise_squared_error(
       `[batch_size]` or a tensor whose shape matches `predictions`.
     scope: The scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
+    reduction: Type of reduction to apply to loss.
 
   Returns:
-    A scalar `Tensor` that returns the weighted loss.
+    Weighted loss float `Tensor`. If `reduction` is `NONE`, this has the same
+    shape as `labels`; otherwise, it is scalar.
 
   Raises:
     ValueError: If the shape of `predictions` doesn't match that of `labels` or
@@ -538,33 +543,24 @@ def mean_pairwise_squared_error(
       predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
       diffs = math_ops.subtract(predictions, labels)
-
-      reduction_indices = math_ops.range(1, array_ops.rank(diffs))
+      num_present_per_batch = _num_present(diffs, weights, per_batch=True)
+      reduction_axes = math_ops.range(1, array_ops.rank(diffs))
 
       sum_squares_diff_per_batch = math_ops.reduce_sum(
-          math_ops.square(diffs), reduction_indices=reduction_indices,
+          math_ops.square(diffs), axis=reduction_axes,
           keep_dims=True)
-      num_present_per_batch = _num_present(diffs, weights, per_batch=True)
-
       term1 = 2.0 * _safe_div(sum_squares_diff_per_batch,
                               num_present_per_batch-1)
 
       sum_diff = math_ops.reduce_sum(
-          diffs, reduction_indices=reduction_indices, keep_dims=True)
+          diffs, axis=reduction_axes, keep_dims=True)
       term2 = 2.0 * _safe_div(
           math_ops.square(sum_diff),
           math_ops.multiply(num_present_per_batch, num_present_per_batch-1))
 
-      weighted_losses = math_ops.multiply(term1 - term2, weights)
-      loss = math_ops.reduce_sum(weighted_losses)
-
-      mean_loss = array_ops.where(
-          math_ops.reduce_sum(num_present_per_batch) > 0,
-          loss,
-          array_ops.zeros_like(loss),
-          name="value")
-      util.add_loss(mean_loss, loss_collection)
-      return mean_loss
+      losses = term1 - term2
+      return compute_weighted_loss(
+          losses, weights, scope, loss_collection, reduction=reduction)
 
 
 @tf_export("losses.mean_squared_error")
@@ -687,6 +683,7 @@ def softmax_cross_entropy(
   corresponding sample.
 
   If `label_smoothing` is nonzero, smooth the labels towards 1/num_classes:
+
       new_onehot_labels = onehot_labels * (1 - label_smoothing)
                           + label_smoothing / num_classes
 
