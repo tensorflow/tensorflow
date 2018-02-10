@@ -20,7 +20,7 @@ from __future__ import print_function
 
 from setuptools import setup
 
-_VERSION = '1.6.0-rc0'
+_VERSION = '1.6.0-rc1'
 
 CONSOLE_SCRIPTS = [
     'capture_tpu_profile=cloud_tpu_profiler.main:run_main',

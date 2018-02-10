@@ -29,7 +29,7 @@ from setuptools.dist import Distribution
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.6.0-rc0'
+_VERSION = '1.6.0-rc1'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
