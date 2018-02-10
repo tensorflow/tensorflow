@@ -27,6 +27,8 @@ limitations under the License.
 #include "include/libxsmm.h"
 #endif
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/cpu_info.h"
@@ -66,13 +68,14 @@ DeviceProperties GetLocalCPUInfo() {
   return device;
 }
 
-DeviceProperties GetLocalGPUInfo(int gpu_id) {
+DeviceProperties GetLocalGPUInfo(TfGpuId tf_gpu_id) {
   DeviceProperties device;
   device.set_type("GPU");
 
 #if GOOGLE_CUDA
   cudaDeviceProp properties;
-  cudaError_t error = cudaGetDeviceProperties(&properties, gpu_id);
+  CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
+  cudaError_t error = cudaGetDeviceProperties(&properties, cuda_gpu_id.value());
   if (error == cudaSuccess) {
     device.set_vendor("NVidia");
     device.set_model(properties.name);
@@ -94,6 +97,10 @@ DeviceProperties GetLocalGPUInfo(int gpu_id) {
     // double data rate (DDR).
     device.set_bandwidth(properties.memoryBusWidth / 8 *
                          properties.memoryClockRate * 2);
+  } else {
+    LOG(ERROR) << "Failed to get device properties, error code: " << error;
+    device.set_type("UNKNOWN");
+    return device;
   }
 
   (*device.mutable_environment())["architecture"] =
@@ -110,9 +117,9 @@ DeviceProperties GetDeviceInfo(const DeviceNameUtils::ParsedName& device) {
     return GetLocalCPUInfo();
   } else if (device.type == "GPU") {
     if (device.has_id) {
-      return GetLocalGPUInfo(device.id);
+      return GetLocalGPUInfo(TfGpuId(device.id));
     } else {
-      return GetLocalGPUInfo(0);
+      return GetLocalGPUInfo(TfGpuId(0));
     }
   }
   DeviceProperties result;

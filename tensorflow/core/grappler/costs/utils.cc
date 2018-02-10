@@ -26,6 +26,7 @@ limitations under the License.
 #include "cuda/include/cudnn.h"
 #endif
 
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/framework/allocation_description.pb.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/op.h"
@@ -203,7 +204,7 @@ DeviceProperties GetDeviceInfo(const string& device_str) {
   DeviceNameUtils::ParsedName parsed;
   if (DeviceNameUtils::ParseFullName(device_str, &parsed)) {
     if (parsed.type == "GPU") {
-      return GetLocalGPUInfo(parsed.id);
+      return GetLocalGPUInfo(TfGpuId(parsed.id));
     } else if (parsed.type == "CPU") {
       return GetLocalCPUInfo();
     }

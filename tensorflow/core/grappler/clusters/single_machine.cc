@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/cc/training/queue_runner.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/grappler/clusters/utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/kernels/ops_util.h"
@@ -79,13 +80,17 @@ Status SingleMachine::Provision() {
 
   std::vector<DeviceAttributes> devices;
   TF_RETURN_IF_ERROR(session_->ListDevices(&devices));
-  int gpu_id = 0;
   for (const auto& dev : devices) {
     DeviceProperties attr;
     if (dev.device_type() == "CPU") {
       attr = GetLocalCPUInfo();
     } else if (dev.device_type() == "GPU") {
-      attr = GetLocalGPUInfo(gpu_id++);
+      DeviceNameUtils::ParsedName parsed;
+      if (!DeviceNameUtils::ParseFullName(dev.name(), &parsed)) {
+        return errors::InvalidArgument(
+            strings::StrCat("Not able to parse GPU device name: ", dev.name()));
+      }
+      attr = GetLocalGPUInfo(TfGpuId(parsed.id));
     } else {
       attr.set_type(dev.device_type());
     }
