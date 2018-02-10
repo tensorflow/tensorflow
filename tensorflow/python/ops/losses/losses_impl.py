@@ -422,7 +422,7 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
     # This is necessary to avoid doubling the gradient, since there is already a
     # nonzero contribution to the gradient from the quadratic term.
     linear = (abs_error - quadratic)
-    losses = 0.5 * quadratic**2 + delta * linear
+    losses = 0.5 * quadratic * quadratic + delta * linear
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
