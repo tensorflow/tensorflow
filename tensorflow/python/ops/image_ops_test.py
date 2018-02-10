@@ -3171,6 +3171,15 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
       scores = constant_op.constant([0.9])
       image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
+    # The boxes is of shape [num_boxes, 4], and the scores is
+    # of shape [num_boxes]. So an error will thrown.
+    with self.assertRaisesRegexp(
+        ValueError, 'Dimensions must be equal, but are 1 and 2'):
+      boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
+      scores = constant_op.constant([0.9, 0.75])
+      selected_indices = image_ops.non_max_suppression(
+          boxes, scores, 3, 0.5)
+
     # The scores should be 1D of shape [num_boxes].
     with self.assertRaisesRegexp(ValueError,
                                  "Shape must be rank 1 but is rank 2"):
