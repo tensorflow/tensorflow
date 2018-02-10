@@ -1428,7 +1428,6 @@ class IdentityNProcessor : public AgnosticNodeProcessor {
   std::vector<int> GetInputPos() const override { return input_pos_; }
 
   std::set<int> GetOutputPos() const override {
-    std::vector<int> input_poses;
     std::set<int> output_pos{};
     for (const auto& input_pos : input_pos_) {
       output_pos.insert(input_pos);
@@ -1572,6 +1571,16 @@ class SelectProcessor : public AgnosticNodeProcessor {
       : AgnosticNodeProcessor(opt_cxt) {}
 
  protected:
+  bool ShouldProcess() const override {
+    auto input0 = node_map_->GetNode(node_->input(0));
+    int input0_port;
+    ParseNodeName(node_->input(0), &input0_port);
+    bool is_input0_scalar_vector_4d = IsPortDimsN(*input0, input0_port, 0) ||
+                                      IsPortDimsN(*input0, input0_port, 1) ||
+                                      IsPortDimsN(*input0, input0_port, 4);
+    return AgnosticNodeProcessor::ShouldProcess() && is_input0_scalar_vector_4d;
+  }
+
   std::vector<int> GetInputPos() const override {
     auto input0 = node_map_->GetNode(node_->input(0));
     int input0_port;
