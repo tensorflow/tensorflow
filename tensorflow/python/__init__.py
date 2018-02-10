@@ -60,7 +60,7 @@ from tensorflow.core.protobuf.tensorflow_server_pb2 import *
 from tensorflow.core.util.event_pb2 import *
 
 # Framework
-from tensorflow.python.framework.framework_lib import *
+from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util

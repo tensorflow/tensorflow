@@ -237,7 +237,7 @@ def argmin(input,
 # pylint: disable=anomalous-backslash-in-string,protected-access
 # pylint: disable=g-docstring-has-escape
 @tf_export("abs")
-def abs(x, name=None):
+def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
 
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
@@ -542,7 +542,7 @@ def scalar_mul(scalar, x):
 
 
 @tf_export("pow")
-def pow(x, y, name=None):
+def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the power of one value to another.
 
   Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
@@ -712,7 +712,7 @@ def angle(input, name=None):
 
 
 @tf_export("round")
-def round(x, name=None):
+def round(x, name=None):  # pylint: disable=redefined-builtin
   """Rounds the values of a tensor to the nearest integer, element-wise.
 
   Rounds half to even.  Also known as bankers rounding. If you want to round
@@ -1207,7 +1207,7 @@ ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
 @tf_export("range")
-def range(start, limit=None, delta=1, dtype=None, name="range"):
+def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disable=redefined-builtin
   """Creates a sequence of numbers.
 
   Creates a sequence of numbers that begins at `start` and extends by

@@ -135,7 +135,7 @@ from tensorflow.python.training.queue_runner import *
 
 # For the module level doc.
 from tensorflow.python.training import input as _input
-from tensorflow.python.training.input import *
+from tensorflow.python.training.input import *  # pylint: disable=redefined-builtin
 # pylint: enable=wildcard-import
 
 from tensorflow.python.training.basic_session_run_hooks import SecondOrStepTimer
