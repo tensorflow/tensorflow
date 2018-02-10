@@ -270,7 +270,6 @@ def _PopulateTFImportGraphDefOptions(options, prefix, input_map,
   """Populates the TF_ImportGraphDefOptions `options`."""
   c_api.TF_ImportGraphDefOptionsSetPrefix(options, prefix)
   c_api.TF_ImportGraphDefOptionsSetUniquifyNames(options, True)
-  c_api.TF_ImportGraphDefOptionsSetUniquifyPrefix(options, True)
 
   for input_src, input_dst in input_map.items():
     input_src = compat.as_str(input_src)
