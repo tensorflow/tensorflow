@@ -601,6 +601,9 @@ xla_test(
 xla_test(
     name = "dot_operation_test",
     srcs = ["dot_operation_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+    ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
@@ -623,6 +626,9 @@ xla_test(
 xla_test(
     name = "dot_operation_runtime_test",
     srcs = ["dot_operation_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+    ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
