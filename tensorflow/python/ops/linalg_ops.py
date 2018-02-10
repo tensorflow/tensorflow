@@ -342,7 +342,7 @@ def self_adjoint_eig(tensor, name=None):
     name: string, optional name of the operation.
 
   Returns:
-    e: Eigenvalues. Shape is `[..., N]`.
+    e: Eigenvalues. Shape is `[..., N]`. Sorted in increasing order.
     v: Eigenvectors. Shape is `[..., N, N]`. The columns of the inner most
       matrices contain eigenvectors of the corresponding matrices in `tensor`
   """
