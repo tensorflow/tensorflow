@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
+#include <iostream>
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/shape_inference.h"
 
@@ -381,16 +381,15 @@ REGISTER_OP("ComputeAccidentalHits")
     .Attr("seed: int = 0")
     .Attr("seed2: int = 0")
     .SetShapeFn([](InferenceContext* c) {
-      // int32 num_true = c->input_tensor(2)->scalar<int32>()();
       DimensionHandle num_true;
       TF_RETURN_IF_ERROR(c->MakeDimForScalarInput(2, &num_true));
 
       // Validate true_classes.
       ShapeHandle true_classes;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 2, &true_classes));
-      // DimensionHandle unused;
-      // TF_RETURN_IF_ERROR(
-      //     c->WithValue(c->Dim(true_classes, 1), c->Value(num_true), &unused));
+      DimensionHandle unused;
+      TF_RETURN_IF_ERROR(
+          c->WithValue(c->Dim(true_classes, 1), c->Value(num_true), &unused));
 
       // All three outputs are the same shape.
       ShapeHandle v = c->Vector(InferenceContext::kUnknownDim);
