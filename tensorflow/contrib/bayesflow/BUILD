@@ -195,6 +195,7 @@ cuda_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_mac"],  # b/73192243
 )
 
 cuda_py_test(
