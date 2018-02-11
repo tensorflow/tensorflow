@@ -13,24 +13,26 @@
 # limitations under the License.
 # =============================================================================
 """Exposes the Python wrapper conversion to trt_graph."""
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=unused-import,wildcard-import, line-too-long
+# pylint: disable=unused-import,line-too-long
+import six as _six
+from tensorflow.contrib.tensorrt.wrap_conversion import trt_convert
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl as _impl
-from tensorflow.contrib.tensorrt.wrap_conversion import trt_convert
 from tensorflow.python.framework import ops
-import six as _six
+
 
 # TODO(skama): get outputs from session when implemented as c++
 # optimization pass
-def CreateInferenceGraph(input_graph_def,
-                         outputs,
-                         max_batch_size=1,
-                         max_workspace_size_bytes=2 << 20):
+def create_inference_graph(input_graph_def,
+                           outputs,
+                           max_batch_size=1,
+                           max_workspace_size_bytes=2 << 20):
   """Python wrapper for the TRT transormation.
 
 
@@ -42,11 +44,17 @@ def CreateInferenceGraph(input_graph_def,
 
   Returns:
     New GraphDef with TRTEngineOps placed in graph replacing subgraphs.
+
+  Raises:
+    RuntimeError: if the returned status message is malformed.
   """
+
   def py2bytes(inp):
     return inp
+
   def py3bytes(inp):
-    return inp.encode('utf-8', errors='surrogateescape')
+    return inp.encode("utf-8", errors="surrogateescape")
+
   if _six.PY2:
     to_bytes = py2bytes
   else:
@@ -70,16 +78,18 @@ def CreateInferenceGraph(input_graph_def,
                     max_workspace_size_bytes)
   status = out[0]
   output_graph_def_string = to_bytes(out[1])
-  del input_graph_def_str  #save some memory
+  del input_graph_def_str  # Save some memory
   if len(status) < 2:
     raise _impl.UnknownError(None, None, status)
   if status[:2] != "OK":
     msg = status.split(";")
     if len(msg) == 1:
       raise RuntimeError("Status message is malformed {}".format(status))
+    # pylint: disable=protected-access
     raise _impl._make_specific_exception(None, None, ";".join(msg[1:]),
                                          int(msg[0]))
+    # pylint: enable=protected-access
   output_graph_def = graph_pb2.GraphDef()
   output_graph_def.ParseFromString(output_graph_def_string)
-  del output_graph_def_string  #save some memory
+  del output_graph_def_string  # Save some memory
   return output_graph_def
