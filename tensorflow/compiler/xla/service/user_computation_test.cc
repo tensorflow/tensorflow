@@ -67,7 +67,8 @@ TEST_F(UserComputationTest, SimpleComputation) {
   *outfeed_request.mutable_operand() = constant_handle;
   *outfeed_request.mutable_shape() = kVectorShape;
   outfeed_request.set_outfeed_config("abc");
-  TF_ASSERT_OK(computation.AddOutfeedInstruction(outfeed_request));
+  TF_ASSERT_OK_AND_ASSIGN(ComputationDataHandle outfeed_handle,
+                          computation.AddOutfeedInstruction(outfeed_request));
 
   auto hlo_resolver = [](const VersionedComputationHandle& handle) {
     return nullptr;

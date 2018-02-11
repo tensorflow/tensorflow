@@ -88,7 +88,7 @@ py_test(
 
 py_test(
     name = "dataset_constructor_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["dataset_constructor_op_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -126,6 +126,7 @@ py_library(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lookup_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
@@ -157,7 +158,7 @@ py_test(
 
 tf_py_test(
     name = "flat_map_dataset_op_test",
-    size = "small",
+    size = "medium",
     srcs = ["flat_map_dataset_op_test.py"],
     additional_deps = [
         ":dataset_serialization_test",
@@ -184,6 +185,10 @@ py_test(
     size = "medium",
     srcs = ["interleave_dataset_op_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+    ],
     deps = [
         ":dataset_serialization_test",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
@@ -302,6 +307,7 @@ py_test(
         "//tensorflow/python:string_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
+        "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
     ],
 )
@@ -446,6 +452,7 @@ py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
         "//tensorflow/python/data/ops:dataset_ops",
         "//tensorflow/python/data/ops:iterator_ops",
         "//third_party/py/numpy",
@@ -469,7 +476,7 @@ py_test(
 
 py_test(
     name = "stats_dataset_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["stats_dataset_ops_test.py"],
     srcs_version = "PY2AND3",
     tags = ["no_pip"],

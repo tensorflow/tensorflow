@@ -107,8 +107,10 @@ class BetaTest(test.TestCase):
         dist.prob([-1., 0.1, 0.5]).eval()
       with self.assertRaisesOpError("sample must be positive"):
         dist.prob([0., 0.1, 0.5]).eval()
-      with self.assertRaisesOpError("sample must be no larger than `1`"):
+      with self.assertRaisesOpError("sample must be less than `1`"):
         dist.prob([.1, .2, 1.2]).eval()
+      with self.assertRaisesOpError("sample must be less than `1`"):
+        dist.prob([.1, .2, 1.0]).eval()
 
   def testPdfTwoBatches(self):
     with self.test_session():

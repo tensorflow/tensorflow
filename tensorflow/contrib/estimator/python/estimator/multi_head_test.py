@@ -370,7 +370,7 @@ class MultiHeadTest(test.TestCase):
         'head1': np.array([[1, 0], [1, 1]], dtype=np.int64),
         'head2': np.array([[0, 1, 0], [1, 1, 0]], dtype=np.int64),
     }
-    weighted_sum_loss, example_weight_sum, _ = multi_head.create_loss(
+    training_loss, unreduced_losses, weights, _ = multi_head.create_loss(
         features={
             'x': np.array(((42,),), dtype=np.int32),
             'weights1': weights1,
@@ -383,14 +383,23 @@ class MultiHeadTest(test.TestCase):
     with self.test_session():
       # loss of the first head is [[(10 + 10) / 2], [(15 + 0) / 2]]
       # = [10, 7.5]
-      # weighted_sum_loss = 1 * 10 + 2 * 7.5 = 25
+      # training_loss = 1 * 10 + 2 * 7.5 = 25
+      # head-weighted unreduced_loss = 1 * [10, 7.5]
+      self.assertAllClose(
+          [[10.], [7.5]], unreduced_losses['head1'].eval(), rtol=tol, atol=tol)
       # loss of the second head is [[(20 + 20 + 20) / 3], [(30 + 0 + 0) / 3]]
       # = [20, 10]
-      # weighted_sum_loss = 2 * 20 + 3 * 10 = 70
-      # head-weighted merge = 1 * 25 + 2 * 70 = 165
-      self.assertAllClose(165, weighted_sum_loss.eval(), rtol=tol, atol=tol)
-      # example_weight_sum = 1 * (1 + 2) + 2 * (2 + 3) = 13
-      self.assertAllClose(13., example_weight_sum.eval(), rtol=tol, atol=tol)
+      # training_loss = 2 * 20 + 3 * 10 = 70
+      # head-weighted unreduced_loss = 2 * [20, 10]
+      self.assertAllClose(
+          [[40.], [20.]], unreduced_losses['head2'].eval(), rtol=tol, atol=tol)
+      # head-weighted training_loss = 1 * 25 + 2 * 70 = 165
+      self.assertAllClose(165, training_loss.eval(), rtol=tol, atol=tol)
+      # head-weighted example weights
+      self.assertAllClose(
+          [[1.], [2.]], weights['head1'].eval(), rtol=tol, atol=tol)
+      self.assertAllClose(
+          [[4.], [6.]], weights['head2'].eval(), rtol=tol, atol=tol)
 
   def test_train_create_loss_logits_tensor(self):
     """Tests create_loss with logits Tensor."""
@@ -409,7 +418,7 @@ class MultiHeadTest(test.TestCase):
         'head1': np.array([[1, 0], [1, 1]], dtype=np.int64),
         'head2': np.array([[0, 1, 0], [1, 1, 0]], dtype=np.int64),
     }
-    weighted_sum_loss, example_weight_sum, _ = multi_head.create_loss(
+    training_loss, unreduced_losses, weights, _ = multi_head.create_loss(
         features={
             'x': np.array(((42,),), dtype=np.int32),
             'weights1': weights1,
@@ -422,14 +431,23 @@ class MultiHeadTest(test.TestCase):
     with self.test_session():
       # loss of the first head is [[(10 + 10) / 2], [(15 + 0) / 2]]
       # = [10, 7.5]
-      # weighted_sum_loss = 1 * 10 + 2 * 7.5 = 25
+      # training_loss = 1 * 10 + 2 * 7.5 = 25
+      # head-weighted unreduced_loss = 1 * [10, 7.5]
+      self.assertAllClose(
+          [[10.], [7.5]], unreduced_losses['head1'].eval(), rtol=tol, atol=tol)
       # loss of the second head is [[(20 + 20 + 20) / 3], [(30 + 0 + 0) / 3]]
       # = [20, 10]
-      # weighted_sum_loss = 2 * 20 + 3 * 10 = 70
-      # head-weighted merge = 1 * 25 + 2 * 70 = 165
-      self.assertAllClose(165, weighted_sum_loss.eval(), rtol=tol, atol=tol)
-      # example_weight_sum = 1 * (1 + 2) + 2 * (2 + 3) = 13
-      self.assertAllClose(13., example_weight_sum.eval(), rtol=tol, atol=tol)
+      # training_loss = 2 * 20 + 3 * 10 = 70
+      # head-weighted unreduced_loss = 2 * [20, 10]
+      self.assertAllClose(
+          [[40.], [20.]], unreduced_losses['head2'].eval(), rtol=tol, atol=tol)
+      # head-weighted training_loss = 1 * 25 + 2 * 70 = 165
+      self.assertAllClose(165, training_loss.eval(), rtol=tol, atol=tol)
+      # head-weighted example weights
+      self.assertAllClose(
+          [[1.], [2.]], weights['head1'].eval(), rtol=tol, atol=tol)
+      self.assertAllClose(
+          [[4.], [6.]], weights['head2'].eval(), rtol=tol, atol=tol)
 
   def test_train_create_loss_logits_tensor_multi_dim(self):
     """Tests create_loss with multi-dimensional logits of shape [2, 2, 5]."""
@@ -455,20 +473,17 @@ class MultiHeadTest(test.TestCase):
     # loss2 = (0-2)^2 + (1+2)^2 + (0-2)^2 + (0-2)^2 + (1+2)^2 + (0-2)^2 +
     #         (2+2)^2 + (2-2)^2 + (0+2)^2 + (2+2)^2 + (2-2)^2 + (0+2)^2
     #       = 74
-    expected_weighted_sum_loss = 28. + 74.
+    expected_training_loss = 28. + 74.
 
-    weighted_sum_loss, example_weight_sum, _ = multi_head.create_loss(
+    training_loss = multi_head.create_loss(
         features={},
         mode=model_fn.ModeKeys.TRAIN,
         logits=logits,
-        labels=labels)
+        labels=labels)[0]
     tol = 1e-3
     with self.test_session():
       self.assertAllClose(
-          expected_weighted_sum_loss, weighted_sum_loss.eval(),
-          rtol=tol, atol=tol)
-      self.assertAllClose(
-          2. * 2. * 5., example_weight_sum.eval(), rtol=tol, atol=tol)
+          expected_training_loss, training_loss.eval(), rtol=tol, atol=tol)
 
   def test_train_one_head(self):
     head1 = head_lib.multi_label_head(n_classes=2, name='head1')

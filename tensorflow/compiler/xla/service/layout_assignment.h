@@ -46,7 +46,8 @@ namespace xla {
 // gathered together in LayoutConstraints object.
 class LayoutConstraint {
  public:
-  LayoutConstraint(bool mandatory) : mandatory_(mandatory) {}
+  LayoutConstraint(bool mandatory, bool dfs)
+      : mandatory_(mandatory), dfs_(dfs) {}
   virtual ~LayoutConstraint() = default;
 
   virtual string ToString() const = 0;
@@ -54,8 +55,12 @@ class LayoutConstraint {
   // True if this constraint cannot be overwritten by a different constraint.
   bool mandatory() const { return mandatory_; }
 
+  // When true, propagate in DFS. When false, constraint will propagate in BFS.
+  bool dfs() const { return dfs_; }
+
  private:
   bool mandatory_;
+  bool dfs_;
 };
 
 std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
@@ -65,7 +70,7 @@ std::ostream& operator<<(std::ostream& out, const LayoutConstraint& constraint);
 class BufferLayoutConstraint : public LayoutConstraint {
  public:
   BufferLayoutConstraint(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory);
+                         bool mandatory, bool dfs);
 
   const LogicalBuffer& buffer() const { return *buffer_; }
   const Layout& layout() const { return layout_; }
@@ -86,7 +91,7 @@ class OperandLayoutConstraint : public LayoutConstraint {
  public:
   OperandLayoutConstraint(const ShapeLayout& shape_layout,
                           const HloInstruction* instruction, int64 operand_no,
-                          bool mandatory);
+                          bool mandatory, bool dfs);
 
   const ShapeLayout& shape_layout() const { return shape_layout_; }
   const HloInstruction* instruction() const { return instruction_; }
@@ -106,8 +111,10 @@ class OperandLayoutConstraint : public LayoutConstraint {
 // Constraint on the layout of the result of the entry computation.
 class ResultLayoutConstraint : public LayoutConstraint {
  public:
-  explicit ResultLayoutConstraint(const ShapeLayout& shape_layout)
-      : LayoutConstraint(/*mandatory=*/true), shape_layout_(shape_layout) {}
+  explicit ResultLayoutConstraint(const ShapeLayout& shape_layout,
+                                  bool dfs = false)
+      : LayoutConstraint(/*mandatory=*/true, dfs),
+        shape_layout_(shape_layout) {}
 
   const ShapeLayout& shape_layout() const { return shape_layout_; }
   string ToString() const override;
@@ -157,23 +164,25 @@ class LayoutConstraints {
   // operand of the instruction, or the layout of the result of the computation,
   // respectively.
   Status SetBufferLayout(const Layout& layout, const LogicalBuffer& buffer,
-                         bool mandatory = true);
+                         bool mandatory = true, bool dfs = true);
   Status SetOperandLayout(const Shape& shape_with_layout,
                           const HloInstruction* instruction, int64 operand_no,
-                          bool mandatory = true);
-  Status SetResultLayout(const Shape& shape_with_layout);
+                          bool mandatory = true, bool dfs = true);
+  Status SetResultLayout(const Shape& shape_with_layout, bool dfs = true);
 
   // Convenience wrapper around SetOperandLayout for setting the layout of a
   // operand using a Layout object. The operand must be array-shaped.
   Status SetArrayOperandLayout(const Layout& layout,
                                const HloInstruction* instruction,
-                               int64 operand_no, bool mandatory = true);
+                               int64 operand_no, bool mandatory = true,
+                               bool dfs = true);
 
   // Convenience wrapper around SetBufferLayout. Sets the layouts of all buffers
   // created by the instruction to the layouts in the given shape. The
   // instruction must define every logical buffer in its output.
   Status SetInstructionLayout(const Shape& shape_with_layout,
-                              const HloInstruction* instruction);
+                              const HloInstruction* instruction,
+                              bool mandatory = true, bool dfs = true);
 
   // Returns true if any buffer in the given operand is forwarded to the output
   // of the given instruction. For example, the Tuple instruction forwards the
@@ -296,7 +305,7 @@ class LayoutAssignment : public HloPassInterface {
       const ResultLayoutConstraint& layout_constraint,
       LayoutConstraints* constraints);
 
-  // By default LayoutAssignment ensures that inputs and ouptuts of CustomCalls
+  // By default LayoutAssignment ensures that inputs and outputs of CustomCalls
   // have the "major-first" layout (i.e.  {n, n-1, ..., 0}).
   //
   // If this function returns true, LayoutAssignment does not set a layout for

@@ -34,7 +34,6 @@ namespace xla {
 namespace {
 
 using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrCat;
 
 class SliceTest : public ClientLibraryTestBase {};
 
@@ -383,7 +382,7 @@ struct R4Spec {
 
 string R4SpecToString(const ::testing::TestParamInfo<R4Spec>& data) {
   const R4Spec& spec = data.param;
-  return StrCat(                                   //
+  return tensorflow::strings::StrCat(              //
       "input_", Join(spec.input_dims, "x"),        //
       "__layout_", Join(spec.input_layout, ""),    //
       "__starts_", Join(spec.slice_starts, "x"),   //

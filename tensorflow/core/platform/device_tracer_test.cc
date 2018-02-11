@@ -77,7 +77,8 @@ class DeviceTracerTest : public ::testing::Test {
 
     Node* y_neg = test::graph::Unary(&graph, "Neg", i);
     y_neg_ = y_neg->name();
-    y_neg->set_assigned_device_name("/job:localhost/replica:0/task:0/device:GPU:0");
+    y_neg->set_assigned_device_name(
+        "/job:localhost/replica:0/task:0/device:GPU:0");
 
     test::graph::ToGraphDef(&graph, &def_);
   }

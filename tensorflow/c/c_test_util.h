@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
+#ifndef TENSORFLOW_C_C_TEST_UTIL_H_
+#define TENSORFLOW_C_C_TEST_UTIL_H_
 
 #include "tensorflow/c/c_api.h"
 
@@ -68,6 +68,9 @@ TF_Operation* AddWithCtrlDependency(TF_Operation* l, TF_Operation* r,
 
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
                   const char* name = "add");
+
+TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                  TF_Status* s, const char* name = "min");
 
 TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
                   const char* name = "neg");
@@ -136,4 +139,4 @@ class CSession {
   std::vector<TF_Operation*> targets_;
 };
 
-#endif  // THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
+#endif  // TENSORFLOW_C_C_TEST_UTIL_H_

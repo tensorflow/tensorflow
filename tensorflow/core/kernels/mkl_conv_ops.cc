@@ -18,8 +18,8 @@ limitations under the License.
 
 #include <string.h>
 #include <map>
-#include <vector>
 #include <string>
+#include <vector>
 
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -41,15 +41,15 @@ limitations under the License.
 
 #include "tensorflow/core/util/mkl_util.h"
 
+#ifndef INTEL_MKL_ML
 
-#ifdef INTEL_MKL_DNN
 #include "mkldnn.hpp"
 
-using mkldnn::stream;
 using mkldnn::prop_kind;
+using mkldnn::stream;
 
-using mkldnn::convolution_forward;
 using mkldnn::convolution_direct;
+using mkldnn::convolution_forward;
 #else
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
@@ -59,8 +59,8 @@ namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-// For now, MKL-ML is default. So making MKL-DNN not a default choice.
-#ifndef INTEL_MKL_DNN
+// MKL-DNN is now default. MKL-ML must be specified explicitly.
+#ifdef INTEL_MKL_ML
 
 template <typename Device, typename T, bool biasEnabled>
 class MklConv2DOp : public OpKernel {
@@ -116,18 +116,19 @@ class MklConv2DOp : public OpKernel {
                                         filter.shape().DebugString()));
 
     for (int i = 0; i < 3; i++) {
-      OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
-                                           std::numeric_limits<int>::max()),
-                  errors::InvalidArgument("filter too large"));
+      OP_REQUIRES(
+          context,
+          FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
+          errors::InvalidArgument("filter too large"));
     }
 
     const int64 input_depth =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'C')
                             : GetTensorDim(input, data_format_, 'C');
-    OP_REQUIRES(
-        context, input_depth == filter.dim_size(2),
-        errors::InvalidArgument("input and filter must have the same depth: ",
-                                input_depth, " vs ", filter.dim_size(2)));
+    OP_REQUIRES(context, input_depth == filter.dim_size(2),
+                errors::InvalidArgument(
+                    "input and filter must have the same depth: ", input_depth,
+                    " vs ", filter.dim_size(2)));
     // The last dimension for filter is out_depth.
     const int out_depth = static_cast<int>(filter.dim_size(3));
 
@@ -136,9 +137,10 @@ class MklConv2DOp : public OpKernel {
     const int64 input_rows_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'H')
                             : GetTensorDim(input, data_format_, 'H');
-    OP_REQUIRES(context, FastBoundsCheck(input_rows_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input rows too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_rows_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input rows too large"));
     const int input_rows = static_cast<int>(input_rows_raw);
     const int filter_rows = static_cast<int>(filter.dim_size(0));
 
@@ -147,9 +149,10 @@ class MklConv2DOp : public OpKernel {
     const int64 input_cols_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'W')
                             : GetTensorDim(input, data_format_, 'W');
-    OP_REQUIRES(context, FastBoundsCheck(input_cols_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("Input cols too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_cols_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("Input cols too large"));
     const int input_cols = static_cast<int>(input_cols_raw);
     const int filter_cols = static_cast<int>(filter.dim_size(1));
 
@@ -157,9 +160,10 @@ class MklConv2DOp : public OpKernel {
     const int64 input_batch_raw =
         input_in_mkl_format ? GetMklTensorDim(mkl_context.input_shape, 'N')
                             : GetTensorDim(input, data_format_, 'N');
-    OP_REQUIRES(context, FastBoundsCheck(input_batch_raw,
-                                         std::numeric_limits<int>::max()),
-                errors::InvalidArgument("batch is too large"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input_batch_raw, std::numeric_limits<int>::max()),
+        errors::InvalidArgument("batch is too large"));
     const int batch = static_cast<int>(input_batch_raw);
 
     // For now we take the stride from the second and third dimensions only (we
@@ -313,8 +317,7 @@ class MklConv2DOp : public OpKernel {
     // Temp tensor used to allocate tmp buffers
     Tensor mkl_tmp_input_buf_tensor, mkl_tmp_filter_buf_tensor,
         mkl_tmp_bias_buf_tensor;
-    mkl_context.MklPrepareConvolutionInputs(context,
-                                            &mkl_tmp_input_buf_tensor,
+    mkl_context.MklPrepareConvolutionInputs(context, &mkl_tmp_input_buf_tensor,
                                             &mkl_tmp_filter_buf_tensor,
                                             &mkl_tmp_bias_buf_tensor);
 
@@ -398,8 +401,9 @@ class MklConv2DOp : public OpKernel {
       mkl_convert_input =
           !dnnLayoutCompare_F32(mkl_lt_internal_input, lt_input);
       if (mkl_convert_input) {
-        CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_input,
-                 lt_input, mkl_lt_internal_input), E_SUCCESS);
+        CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_input, lt_input,
+                                         mkl_lt_internal_input),
+                 E_SUCCESS);
         AllocTmpBuffer(context, mkl_tmp_input_buf_tensor, mkl_lt_internal_input,
                        &mkl_buf_convert_input);
         CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_input, mkl_buf_input,
@@ -517,8 +521,8 @@ class MklConv2DOp : public OpKernel {
       GetMklShape(context, kInputIndex_Src, &src_mkl_shape);
       GetMklShape(context, kInputIndex_Filter, &filter_mkl_shape);
       OP_REQUIRES(context, filter_mkl_shape.IsMklTensor() == false,
-            errors::InvalidArgument("Filter should not be in "
-            "Mkl Layout"));
+                  errors::InvalidArgument("Filter should not be in "
+                                          "Mkl Layout"));
 
       MklDnnData<T> src(&cpu_engine);
       MklDnnData<T> filter(&cpu_engine);
@@ -531,11 +535,10 @@ class MklConv2DOp : public OpKernel {
       MklDnnConvUtil conv_utl(context, strides_, padding_, data_format_);
       auto src_tf_shape = GetTfShape(context, kInputIndex_Src);
       auto filter_tf_shape = GetTfShape(context, kInputIndex_Filter);
-      conv_utl.GetConvFwdSizesInMklOrder(src_tf_shape, filter_tf_shape,
-                                         &src_dims, &filter_dims, &strides,
-                                         &output_dims_tf_order,
-                                         &output_dims_mkl_order, &padding_l,
-                                         &padding_r);
+      conv_utl.GetConvFwdSizesInMklOrder(
+          src_tf_shape, filter_tf_shape, &src_dims, &filter_dims, &strides,
+          &output_dims_tf_order, &output_dims_mkl_order, &padding_l,
+          &padding_r);
       if (!context->status().ok()) return;
 
       // Check for corner case - if there is nothing to compute, return.
@@ -543,14 +546,20 @@ class MklConv2DOp : public OpKernel {
 
       // Corner cases: output with 0 elements and 0 batch size.
       Tensor* output_tensor = nullptr;
-      if (output_tf_shape.num_elements() == 0 ||
-          output_dims_tf_order[0] == 0) {
+      if (output_tf_shape.num_elements() == 0 || output_dims_tf_order[0] == 0) {
         // TODO(jbobba): Verify correctness here
         //               Need semantics for Null MKL tensor
         MklDnnShape output_mkl_shape;
         output_mkl_shape.SetMklTensor(false);
         AllocateOutputSetMklShape(context, kOutputIndex_Dst, &output_tensor,
-                                    src_tf_shape, output_mkl_shape);
+                                  src_tf_shape, output_mkl_shape);
+
+        // MklConv2D also outputs converted filter as 2nd output of Conv2D.
+        filter_mkl_shape.SetMklTensor(false);
+        Tensor* output_filter_tensor = nullptr;
+        AllocateOutputSetMklShape(context, kOutputIndex_Filter,
+                                  &output_filter_tensor, filter_tf_shape,
+                                  filter_mkl_shape);
         return;
       }
 
@@ -563,14 +572,15 @@ class MklConv2DOp : public OpKernel {
       // (src_dims) required is in MKL-DNN order, the layout is Tensorflow's
       // layout (NHWC or NCHW depending on data format).
       auto src_md = src_mkl_shape.IsMklTensor()
-                    ? src_mkl_shape.GetMklLayout()
-                    : memory::desc(src_dims, MklDnnType<T>(), tf_fmt);
+                        ? src_mkl_shape.GetMklLayout()
+                        : memory::desc(src_dims, MklDnnType<T>(), tf_fmt);
       src.SetUsrMem(src_md, &src_tensor);
       // Although filter shape (filter_dims) required is in MKL-DNN order,
       // the layout is Tensorflow's layout (HWIO).
       auto filter_md = filter_mkl_shape.IsMklTensor()  // Should NEVER be true
-                    ? filter_mkl_shape.GetMklLayout()
-          : memory::desc(filter_dims, MklDnnType<T>(), memory::format::hwio);
+                           ? filter_mkl_shape.GetMklLayout()
+                           : memory::desc(filter_dims, MklDnnType<T>(),
+                                          memory::format::hwio);
       filter.SetUsrMem(filter_md, &filter_tensor);
 
       // Set output shape (output_dims) required in MKL-DNN order.
@@ -594,34 +604,13 @@ class MklConv2DOp : public OpKernel {
         bias.SetOpMemDesc(bias_size, memory::format::any);
 
         // Create convolution primitive with Bias.
-        auto conv_desc = convolution_forward::desc(prop_kind::forward,
-            convolution_direct, src.GetOpMemDesc(), filter.GetOpMemDesc(),
-            bias.GetOpMemDesc(), output.GetOpMemDesc(), strides,
-            padding_l, padding_r, TFPaddingToMklDnnPadding(padding_));
+        auto conv_desc = convolution_forward::desc(
+            prop_kind::forward, convolution_direct, src.GetOpMemDesc(),
+            filter.GetOpMemDesc(), bias.GetOpMemDesc(), output.GetOpMemDesc(),
+            strides, padding_l, padding_r, TFPaddingToMklDnnPadding(padding_));
 
-        auto conv_prim_desc = convolution_forward::primitive_desc(conv_desc,
-                                                                cpu_engine);
-        AllocateOutputTensor(context, conv_prim_desc,
-                             output_dims_mkl_order, tf_fmt, &output_tensor);
-        // Set data handle for output.
-        output.SetUsrMemDataHandle(output_tensor);
-
-        Tensor* filter_out_tensor = nullptr;
-        AllocateFilterOutputTensor(context, conv_prim_desc,
-                        TFShapeToMklDnnDims(filter_tf_shape),
-                        &filter_out_tensor);
-
-        PrepareAndExecuteNet(conv_prim_desc, &src, &filter,
-                            &bias, &output, filter_out_tensor);
-      } else {
-        // Create convolution primitive without Bias.
-        auto conv_desc = convolution_forward::desc(prop_kind::forward,
-            convolution_direct, src.GetOpMemDesc(), filter.GetOpMemDesc(),
-            output.GetOpMemDesc(), strides, padding_l, padding_r,
-            TFPaddingToMklDnnPadding(padding_));
-
-        auto conv_prim_desc = convolution_forward::primitive_desc(conv_desc,
-                                                                cpu_engine);
+        auto conv_prim_desc =
+            convolution_forward::primitive_desc(conv_desc, cpu_engine);
         AllocateOutputTensor(context, conv_prim_desc, output_dims_mkl_order,
                              tf_fmt, &output_tensor);
         // Set data handle for output.
@@ -629,18 +618,39 @@ class MklConv2DOp : public OpKernel {
 
         Tensor* filter_out_tensor = nullptr;
         AllocateFilterOutputTensor(context, conv_prim_desc,
-                TFShapeToMklDnnDims(filter_tf_shape),
-                &filter_out_tensor);
-        PrepareAndExecuteNet(conv_prim_desc, &src, &filter,
-                            nullptr, &output, filter_out_tensor);
+                                   TFShapeToMklDnnDims(filter_tf_shape),
+                                   &filter_out_tensor);
+
+        PrepareAndExecuteNet(conv_prim_desc, &src, &filter, &bias, &output,
+                             filter_out_tensor);
+      } else {
+        // Create convolution primitive without Bias.
+        auto conv_desc = convolution_forward::desc(
+            prop_kind::forward, convolution_direct, src.GetOpMemDesc(),
+            filter.GetOpMemDesc(), output.GetOpMemDesc(), strides, padding_l,
+            padding_r, TFPaddingToMklDnnPadding(padding_));
+
+        auto conv_prim_desc =
+            convolution_forward::primitive_desc(conv_desc, cpu_engine);
+        AllocateOutputTensor(context, conv_prim_desc, output_dims_mkl_order,
+                             tf_fmt, &output_tensor);
+        // Set data handle for output.
+        output.SetUsrMemDataHandle(output_tensor);
+
+        Tensor* filter_out_tensor = nullptr;
+        AllocateFilterOutputTensor(context, conv_prim_desc,
+                                   TFShapeToMklDnnDims(filter_tf_shape),
+                                   &filter_out_tensor);
+        PrepareAndExecuteNet(conv_prim_desc, &src, &filter, nullptr, &output,
+                             filter_out_tensor);
       }
-    } catch (mkldnn::error &e) {
+    } catch (mkldnn::error& e) {
       string error_msg = "Status: " + std::to_string(e.status) +
-                       ", message: " + std::string(e.message) +
-                       ", in file " + std::string(__FILE__) + ":" +
-                       std::to_string(__LINE__);
-      OP_REQUIRES_OK(context,
-        errors::Aborted("Operation received an exception:", error_msg));
+                         ", message: " + std::string(e.message) + ", in file " +
+                         std::string(__FILE__) + ":" + std::to_string(__LINE__);
+      OP_REQUIRES_OK(
+          context,
+          errors::Aborted("Operation received an exception:", error_msg));
     }
   }
 
@@ -648,71 +658,67 @@ class MklConv2DOp : public OpKernel {
   std::vector<int32> strides_;
   Padding padding_;
   TensorFormat data_format_;
-  const int kInputIndex_Src = 0,
-            kInputIndex_Filter = 1,
-            kInputIndex_Bias = 2;
+  const int kInputIndex_Src = 0, kInputIndex_Filter = 1, kInputIndex_Bias = 2;
   const int kOutputIndex_Dst = 0, kOutputIndex_Filter = 1;
 
   // Allocate output tensor.
   void AllocateOutputTensor(
-                  OpKernelContext* context,
-                  const convolution_forward::primitive_desc& conv_prim_desc,
-                  const memory::dims& output_dims_mkl_order,
-                  memory::format output_tf_format, Tensor** output_tensor) {
-      CHECK_NOTNULL(output_tensor);
-      auto dst_pd = conv_prim_desc.dst_primitive_desc();
+      OpKernelContext* context,
+      const convolution_forward::primitive_desc& conv_prim_desc,
+      const memory::dims& output_dims_mkl_order,
+      memory::format output_tf_format, Tensor** output_tensor) {
+    CHECK_NOTNULL(output_tensor);
+    auto dst_pd = conv_prim_desc.dst_primitive_desc();
 
-      // Allocate shape of Mkl tensor.
-      MklDnnShape output_mkl_shape;
-      output_mkl_shape.SetMklTensor(true);
-      output_mkl_shape.SetMklLayout(&dst_pd);
-      output_mkl_shape.SetElemType(MklDnnType<T>());
-      output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
-              output_dims_mkl_order, output_tf_format);
+    // Allocate shape of Mkl tensor.
+    MklDnnShape output_mkl_shape;
+    output_mkl_shape.SetMklTensor(true);
+    output_mkl_shape.SetMklLayout(&dst_pd);
+    output_mkl_shape.SetElemType(MklDnnType<T>());
+    output_mkl_shape.SetTfLayout(output_dims_mkl_order.size(),
+                                 output_dims_mkl_order, output_tf_format);
 
-      // Allocate shape of TF tensor.
-      TensorShape output_tf_shape;
-      output_tf_shape.AddDim((dst_pd.get_size() / sizeof(T)));
+    // Allocate shape of TF tensor.
+    TensorShape output_tf_shape;
+    output_tf_shape.AddDim((dst_pd.get_size() / sizeof(T)));
 
-      AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
-                                output_tf_shape, output_mkl_shape);
+    AllocateOutputSetMklShape(context, kOutputIndex_Dst, output_tensor,
+                              output_tf_shape, output_mkl_shape);
   }
 
   // Allocate output tensor.
   void AllocateFilterOutputTensor(
-                  OpKernelContext* context,
-                  const convolution_forward::primitive_desc& conv_prim_desc,
-                  const memory::dims& filter_dims_tf_order,
-                  Tensor** filter_tensor) {
-      CHECK_NOTNULL(filter_tensor);
-      auto filter_pd = conv_prim_desc.weights_primitive_desc();
+      OpKernelContext* context,
+      const convolution_forward::primitive_desc& conv_prim_desc,
+      const memory::dims& filter_dims_tf_order, Tensor** filter_tensor) {
+    CHECK_NOTNULL(filter_tensor);
+    auto filter_pd = conv_prim_desc.weights_primitive_desc();
 
-      // Allocate shape of Mkl tensor.
-      MklDnnShape filter_mkl_shape;
-      filter_mkl_shape.SetMklTensor(true);
-      filter_mkl_shape.SetMklLayout(&filter_pd);
-      filter_mkl_shape.SetElemType(MklDnnType<T>());
+    // Allocate shape of Mkl tensor.
+    MklDnnShape filter_mkl_shape;
+    filter_mkl_shape.SetMklTensor(true);
+    filter_mkl_shape.SetMklLayout(&filter_pd);
+    filter_mkl_shape.SetElemType(MklDnnType<T>());
 
-      // The format of the filter is actually OIhw8i8o, but TF doesn't support
-      // this format. Just use format::blocked for now because the layout
-      // is stored in the MKL data.
-      filter_mkl_shape.SetTfLayout(filter_dims_tf_order.size(),
-                  filter_dims_tf_order, memory::format::blocked);
+    // The format of the filter is actually OIhw8i8o, but TF doesn't support
+    // this format. Just use format::blocked for now because the layout
+    // is stored in the MKL data.
+    filter_mkl_shape.SetTfLayout(filter_dims_tf_order.size(),
+                                 filter_dims_tf_order, memory::format::blocked);
 
-      // Allocate the data space for the filter to propagate as TF tensor.
-      TensorShape filter_tf_shape;
-      filter_tf_shape.AddDim((filter_pd.get_size() / sizeof(T)));
+    // Allocate the data space for the filter to propagate as TF tensor.
+    TensorShape filter_tf_shape;
+    filter_tf_shape.AddDim((filter_pd.get_size() / sizeof(T)));
 
-      AllocateOutputSetMklShape(context, kOutputIndex_Filter, filter_tensor,
-              filter_tf_shape, filter_mkl_shape);
+    AllocateOutputSetMklShape(context, kOutputIndex_Filter, filter_tensor,
+                              filter_tf_shape, filter_mkl_shape);
   }
 
   // Prepare and execute net - checks for input and output reorders.
   void PrepareAndExecuteNet(
-                  const convolution_forward::primitive_desc& conv_prim_desc,
-                  MklDnnData<T>* src, MklDnnData<T>* filter,
-                  MklDnnData<T>* bias, MklDnnData<T>* output,
-                  Tensor* filter_out_tensor) {
+      const convolution_forward::primitive_desc& conv_prim_desc,
+      MklDnnData<T>* src, MklDnnData<T>* filter, MklDnnData<T>* bias,
+      MklDnnData<T>* output, Tensor* filter_out_tensor) {
     CHECK_NOTNULL(filter_out_tensor);
 
     // Create reorders between user layout and MKL layout if it is needed and
@@ -724,18 +730,20 @@ class MklConv2DOp : public OpKernel {
     // rather than re-order to a temp buffer, reorder directly to the
     // filter output tensor
     filter->CheckReorderToOpMem(conv_prim_desc.weights_primitive_desc(),
-                    filter->GetTensorBuffer(filter_out_tensor), &net);
+                                filter->GetTensorBuffer(filter_out_tensor),
+                                &net);
 
     // Create convolution primitive and add it to net.
     if (bias) {
       CHECK_EQ(biasEnabled, true);
       net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),
-                                    filter->GetOpMem(), bias->GetOpMem(),
-                                    output->GetOpMem()));
+                                        filter->GetOpMem(), bias->GetOpMem(),
+                                        output->GetOpMem()));
     } else {
       CHECK_EQ(biasEnabled, false);
       net.push_back(convolution_forward(conv_prim_desc, src->GetOpMem(),
-                                    filter->GetOpMem(), output->GetOpMem()));
+                                        filter->GetOpMem(),
+                                        output->GetOpMem()));
     }
 
     stream(stream::kind::eager).submit(net).wait();

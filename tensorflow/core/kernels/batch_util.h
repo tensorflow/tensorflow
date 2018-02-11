@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BATCH_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BATCH_UTIL_H_
+#ifndef TENSORFLOW_CORE_KERNELS_BATCH_UTIL_H_
+#define TENSORFLOW_CORE_KERNELS_BATCH_UTIL_H_
 
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -32,7 +32,17 @@ Status CopyElementToSlice(Tensor element, Tensor* parent, int64 index);
 // Copies the index^th slice of parent (in the 0th dimension) into element.
 Status CopySliceToElement(const Tensor& parent, Tensor* element, int64 index);
 
+// Zero-initializes the tensor `element` using the scalar stored in `padding`.
+// Both `element` and `padding` must have matching `dtype`.
+Status SetElementZero(Tensor* element, const Tensor& padding);
+
+// Copies `element` into a (0th dimension) slice of `parent`, assuming
+// the shape of `element` is strictly not larger along any axis than a
+// slice.
+Status CopyElementToLargerSlice(const Tensor& element, Tensor* parent,
+                                int index);
+
 }  // namespace batch_util
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_BATCH_UTIL_H_
+#endif  // TENSORFLOW_CORE_KERNELS_BATCH_UTIL_H_

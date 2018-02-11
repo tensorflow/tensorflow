@@ -19,13 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import re
-import time
 import sys
+import time
 
 import numpy as np
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -84,6 +85,21 @@ class FunctionTest(test.TestCase):
       self.assertEqual("MyIdentity", call.op.name)
       with session.Session() as sess:
         self.assertAllEqual([18.0], sess.run(call))
+
+  def testIdentityImplicitDeref(self):
+
+    @function.Defun(dtypes.float32, func_name="MyIdentity")
+    def MyIdentityFunc(a):
+      return a
+
+    with ops.Graph().as_default():
+      var = variables.Variable([18.0])
+      call = MyIdentityFunc(var._ref())  # pylint: disable=protected-access
+      self.assertEqual("MyIdentity", call.op.name)
+      for cfg in _OptimizerOptions():
+        with session.Session(config=cfg) as sess:
+          sess.run(var.initializer)
+          self.assertAllEqual([18.0], sess.run(call))
 
   def testIdentityOutputName(self):
 
@@ -451,13 +467,17 @@ class FunctionTest(test.TestCase):
                                          lambda y: AssertFail(y), [x])
       # pylint: enable=unnecessary-lambda
 
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
     # Enables inlining.
-    config = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-        optimizer_options=config_pb2.OptimizerOptions(
-            opt_level=config_pb2.OptimizerOptions.L0,
-            do_common_subexpression_elimination=True,
-            do_function_inlining=True,
-            do_constant_folding=True)))
+    config = config_pb2.ConfigProto(
+        graph_options=config_pb2.GraphOptions(
+            optimizer_options=config_pb2.OptimizerOptions(
+                opt_level=config_pb2.OptimizerOptions.L0,
+                do_common_subexpression_elimination=True,
+                do_function_inlining=True,
+                do_constant_folding=True),
+            rewrite_options=rewriter_config))
 
     with session.Session(config=config) as sess:
       # Since the 'False' branch is not taken, the assertion should not fire.
@@ -766,7 +786,7 @@ class FunctionTest(test.TestCase):
     # We added more randomness to function names in C API.
     # TODO(iga): Remove this if statement when we switch to C API.
     if ops._USE_C_API:  # pylint: disable=protected-access
-      if sys.byteorder == 'big':
+      if sys.byteorder == "big":
         self.assertEqual("Foo_kEdkAG8SJvg",
                          Foo.instantiate([dtypes.float32] * 3).name)
       else:

@@ -38,24 +38,24 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 #include "tensorflow/core/util/work_sharder.h"
 
-#include "tensorflow/core/util/mkl_util.h"
 #include "mkl_dnn.h"
 #include "mkl_dnn_types.h"
+#include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
-using mkldnn::stream;
-using mkldnn::prop_kind;
 using mkldnn::convolution_backward_weights;
 using mkldnn::memory;
+using mkldnn::prop_kind;
+using mkldnn::stream;
 #endif
 
 namespace tensorflow {
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 template <typename Device, class T>
 class MklConv2DCustomBackpropFilterOp : public OpKernel {
@@ -360,8 +360,8 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
           (mkl_convert_input) ? mkl_buf_convert_input : mkl_buf_input;
 
       const Tensor& out_backprop = MklGetInput(context, 2);
-      void* mkl_buf_out_backprop = const_cast<void*>(static_cast<const void*>(
-                                      out_backprop.flat<T>().data()));
+      void* mkl_buf_out_backprop = const_cast<void*>(
+          static_cast<const void*>(out_backprop.flat<T>().data()));
 
       CHECK_EQ(dnnLayoutCreateFromPrimitive_F32(&mkl_lt_internal_out_backprop,
                                                 prim_conv_bwdfilter,
@@ -371,10 +371,11 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
           !dnnLayoutCompare_F32(mkl_lt_internal_out_backprop, lt_out_backprop);
       if (mkl_convert_out_backprop) {
         CHECK_EQ(dnnConversionCreate_F32(&mkl_prim_convert_out_backprop,
-                      lt_out_backprop, mkl_lt_internal_out_backprop),
+                                         lt_out_backprop,
+                                         mkl_lt_internal_out_backprop),
                  E_SUCCESS);
         AllocTmpBuffer(context, mkl_tmp_out_backprop_buf_tensor,
-            lt_out_backprop, &mkl_buf_convert_out_backprop);
+                       lt_out_backprop, &mkl_buf_convert_out_backprop);
         CHECK_EQ(dnnConversionExecute_F32(mkl_prim_convert_out_backprop,
                                           mkl_buf_out_backprop,
                                           mkl_buf_convert_out_backprop),
@@ -428,18 +429,18 @@ class MklConv2DCustomBackpropFilterOp : public OpKernel {
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
                               .Label(mkl_op_registry::kMklOpLabel), \
-              MklConv2DCustomBackpropFilterOp<CPUDevice, T>);
+                          MklConv2DCustomBackpropFilterOp<CPUDevice, T>);
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
 #undef REGISTER_MKL_FILTER_KERNELS
 
 #else
 
 template <typename Device, class T, bool biasEnabled>
-class MklConv2DCustomBackpropFilterOp :
-  public MklConv2DBackpropCommonOp<Device, T> {
+class MklConv2DCustomBackpropFilterOp
+    : public MklConv2DBackpropCommonOp<Device, T> {
  public:
   explicit MklConv2DCustomBackpropFilterOp(OpKernelConstruction* context)
-      : MklConv2DBackpropCommonOp<Device, T>(context) { }
+      : MklConv2DBackpropCommonOp<Device, T>(context) {}
   ~MklConv2DCustomBackpropFilterOp() {}
 
  private:
@@ -447,7 +448,7 @@ class MklConv2DCustomBackpropFilterOp :
                          const MklDnnShape& filter_mkl_shape,
                          const MklDnnShape& obp_mkl_shape) {
     CHECK(!filter_mkl_shape.IsMklTensor())
-      << "Conv2DBackpropFilter: filter should not be in MKL Layout";
+        << "Conv2DBackpropFilter: filter should not be in MKL Layout";
   }
 
   size_t GetInputTensorIndexWithSizes() { return 1; /* filter index */ }
@@ -462,9 +463,18 @@ class MklConv2DCustomBackpropFilterOp :
                                 const Tensor& filter_tensor) {
     TensorShape filter_tf_shape;
     CHECK_EQ(TensorShapeUtils::IsVector(filter_tensor.shape()), true);
-    CHECK_EQ(TensorShapeUtils::MakeShape(
-             filter_tensor.vec<int32>(), &filter_tf_shape).ok(), true);
+    CHECK_EQ(TensorShapeUtils::MakeShape(filter_tensor.vec<int32>(),
+                                         &filter_tf_shape)
+                 .ok(),
+             true);
     return filter_tf_shape;
+  }
+
+  TensorShape GetOutputTfShape(const TensorShape& input_shape,
+                               const TensorShape& filter_shape,
+                               const TensorShape& outbprop_shape) {
+    // Shape of output of Conv2DBackpropFilter is same as shape of filter.
+    return filter_shape;
   }
 
   const memory::dims& GetOutputDims(const memory::dims& fwd_input_dims,
@@ -478,16 +488,13 @@ class MklConv2DCustomBackpropFilterOp :
     return memory::format::hwio;
   }
 
-  void CreatePrimitive(OpKernelContext* context,
-                       const engine& cpu_engine,
+  void CreatePrimitive(OpKernelContext* context, const engine& cpu_engine,
                        const convolution_forward::primitive_desc& conv_fwd_pd,
                        MklDnnData<T>* input, MklDnnData<T>* filter,
                        MklDnnData<T>* outbackprop, MklDnnData<T>* output,
-                       Tensor** output_tensor,
-                       const memory::dims& strides,
+                       Tensor** output_tensor, const memory::dims& strides,
                        const memory::dims& padding_l,
-                       const memory::dims& padding_r,
-                       padding_kind padding,
+                       const memory::dims& padding_r, padding_kind padding,
                        const memory::dims& bwd_output_dims,
                        memory::format bwd_output_format) {
     CHECK_NOTNULL(context);
@@ -501,34 +508,35 @@ class MklConv2DCustomBackpropFilterOp :
     int depth = 0;
     if (biasEnabled) {
       // Data structure for bias_grad
-      bias_grad = new MklDnnData<T> (&cpu_engine);
+      bias_grad = new MklDnnData<T>(&cpu_engine);
       TensorShape obp_tf_shape = GetTfShape(context, 2);
-      depth = (MklConv2DBackpropCommonOp<Device, T>::GetTFDataFormat()
-                == FORMAT_NCHW) ?
-          obp_tf_shape.dim_size(1) : obp_tf_shape.dim_size(3);
+      depth = (MklConv2DBackpropCommonOp<Device, T>::GetTFDataFormat() ==
+               FORMAT_NCHW)
+                  ? obp_tf_shape.dim_size(1)
+                  : obp_tf_shape.dim_size(3);
       memory::dims bias_grad_dims = {depth};
       bias_grad->SetOpMemDesc(bias_grad_dims, memory::format::x);
     }
 
     // Create convolution backward weights primitive.
-    auto bwd_desc = (biasEnabled && (bias_grad != nullptr))?
-        convolution_backward_weights::desc(convolution_direct,
-                                input->GetOpMemDesc(), output->GetOpMemDesc(),
-                                bias_grad->GetOpMemDesc(),
-                                outbackprop->GetOpMemDesc(), strides, padding_l,
-                                padding_r, padding) :
-        convolution_backward_weights::desc(convolution_direct,
-                          input->GetOpMemDesc(), output->GetOpMemDesc(),
-                          outbackprop->GetOpMemDesc(), strides, padding_l,
-                          padding_r, padding);
+    auto bwd_desc =
+        (biasEnabled && (bias_grad != nullptr))
+            ? convolution_backward_weights::desc(
+                  convolution_direct, input->GetOpMemDesc(),
+                  output->GetOpMemDesc(), bias_grad->GetOpMemDesc(),
+                  outbackprop->GetOpMemDesc(), strides, padding_l, padding_r,
+                  padding)
+            : convolution_backward_weights::desc(
+                  convolution_direct, input->GetOpMemDesc(),
+                  output->GetOpMemDesc(), outbackprop->GetOpMemDesc(), strides,
+                  padding_l, padding_r, padding);
 
-    auto bwd_pd = convolution_backward_weights::primitive_desc(bwd_desc,
-                                                            cpu_engine,
-                                                            conv_fwd_pd);
+    auto bwd_pd = convolution_backward_weights::primitive_desc(
+        bwd_desc, cpu_engine, conv_fwd_pd);
 
     // Allocate output tensor.
-    AllocateOutputTensor(context, bwd_pd, bwd_output_dims,
-                         bwd_output_format, output_tensor);
+    AllocateOutputTensor(context, bwd_pd, bwd_output_dims, bwd_output_format,
+                         output_tensor);
 
     CHECK_NOTNULL(*output_tensor);
     // Set buffer handle using allocated output tensor.
@@ -541,8 +549,8 @@ class MklConv2DCustomBackpropFilterOp :
       AllocateBiasGradTensor(context, bias_grad_shape, &bias_grad_tensor);
       memory::dims bias_grad_dims = {depth};
       // Since Bias is 1D, we use format::x from MKLDNN to represent it.
-      auto bias_grad_md = memory::desc({bias_grad_dims}, MklDnnType<T>(),
-                                       memory::format::x);
+      auto bias_grad_md =
+          memory::desc({bias_grad_dims}, MklDnnType<T>(), memory::format::x);
       bias_grad->SetUsrMem(bias_grad_md, bias_grad_tensor);
       bias_grad->SetUsrMemDataHandle(bias_grad_tensor);
     }
@@ -555,28 +563,29 @@ class MklConv2DCustomBackpropFilterOp :
   }
 
   // Allocate output tensor.
-  void AllocateOutputTensor(OpKernelContext* context,
-                  const convolution_backward_weights::primitive_desc& conv_pd,
-                  const memory::dims& output_dims_mkl_order,
-                  memory::format output_tf_format, Tensor** output_tensor) {
-      CHECK_NOTNULL(output_tensor);
+  void AllocateOutputTensor(
+      OpKernelContext* context,
+      const convolution_backward_weights::primitive_desc& conv_pd,
+      const memory::dims& output_dims_mkl_order,
+      memory::format output_tf_format, Tensor** output_tensor) {
+    CHECK_NOTNULL(output_tensor);
 
-      // For BackpropFilter, we convert the output tensor back in Tensorflow
-      // layout. Because typically, BackpropFilter is the last operator in the
-      // graph that emit filter gradient that is provided to ApplyGradient
-      // method to update the filter. But it may be possible to eliminate this
-      // by forwarding filter in MKL layout if we support ApplyGradient method
-      // for MKL layout propagation.
-      MklDnnShape output_mkl_shape;
-      output_mkl_shape.SetMklTensor(false);
-      // output_dims_mkl_order is in OIHW format.
-      // Allocate shape of TF tensor in HWIO format.
-      TensorShape output_tf_shape({output_dims_mkl_order[MklDnnDims::Dim_H],
-                                   output_dims_mkl_order[MklDnnDims::Dim_W],
-                                   output_dims_mkl_order[MklDnnDims::Dim_I],
-                                   output_dims_mkl_order[MklDnnDims::Dim_O]});
-      AllocateOutputSetMklShape(context, 0, output_tensor, output_tf_shape,
-                                output_mkl_shape);
+    // For BackpropFilter, we convert the output tensor back in Tensorflow
+    // layout. Because typically, BackpropFilter is the last operator in the
+    // graph that emit filter gradient that is provided to ApplyGradient
+    // method to update the filter. But it may be possible to eliminate this
+    // by forwarding filter in MKL layout if we support ApplyGradient method
+    // for MKL layout propagation.
+    MklDnnShape output_mkl_shape;
+    output_mkl_shape.SetMklTensor(false);
+    // output_dims_mkl_order is in OIHW format.
+    // Allocate shape of TF tensor in HWIO format.
+    TensorShape output_tf_shape({output_dims_mkl_order[MklDnnDims::Dim_H],
+                                 output_dims_mkl_order[MklDnnDims::Dim_W],
+                                 output_dims_mkl_order[MklDnnDims::Dim_I],
+                                 output_dims_mkl_order[MklDnnDims::Dim_O]});
+    AllocateOutputSetMklShape(context, 0, output_tensor, output_tf_shape,
+                              output_mkl_shape);
   }
 
   // Allocate tensor for bias grad
@@ -593,9 +602,9 @@ class MklConv2DCustomBackpropFilterOp :
 
   // Prepare and execute net - checks for input and output reorders.
   void PrepareAndExecutePrimitive(
-                  const convolution_backward_weights::primitive_desc& conv_pd,
-                  MklDnnData<T>* input, MklDnnData<T>* obp,
-                  MklDnnData<T>* output, MklDnnData<T>* bias_grad = nullptr) {
+      const convolution_backward_weights::primitive_desc& conv_pd,
+      MklDnnData<T>* input, MklDnnData<T>* obp, MklDnnData<T>* output,
+      MklDnnData<T>* bias_grad = nullptr) {
     // Create reorders between user layout and MKL layout if it is needed and
     // add it to the net before convolution.
     std::vector<primitive> net;
@@ -605,15 +614,15 @@ class MklConv2DCustomBackpropFilterOp :
     // For BackpropFilter, we convert the output tensor back in Tensorflow
     // layout.
     bool output_reorder_required = output->PrepareReorderToUserMemIfReq(
-                                      conv_pd.diff_weights_primitive_desc());
+        conv_pd.diff_weights_primitive_desc());
 
     if (biasEnabled && (bias_grad != nullptr)) {
-      net.push_back(convolution_backward_weights(conv_pd, input->GetOpMem(),
-                                      obp->GetOpMem(), output->GetOpMem(),
-                                      bias_grad->GetOpMem()));
+      net.push_back(convolution_backward_weights(
+          conv_pd, input->GetOpMem(), obp->GetOpMem(), output->GetOpMem(),
+          bias_grad->GetOpMem()));
     } else {
-      net.push_back(convolution_backward_weights(conv_pd, input->GetOpMem(),
-                                      obp->GetOpMem(), output->GetOpMem()));
+      net.push_back(convolution_backward_weights(
+          conv_pd, input->GetOpMem(), obp->GetOpMem(), output->GetOpMem()));
     }
 
     if (output_reorder_required) {
@@ -624,27 +633,29 @@ class MklConv2DCustomBackpropFilterOp :
   }
 };
 
-#define REGISTER_MKL_FILTER_KERNELS(T)                              \
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilter")          \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-              MklConv2DCustomBackpropFilterOp<CPUDevice, T, false>);\
-  REGISTER_KERNEL_BUILDER(Name("_MklConv2DBackpropFilterWithBias")  \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-              MklConv2DCustomBackpropFilterOp<CPUDevice, T, true>); \
-  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DBackpropFilterWithBias")  \
-                              .Device(DEVICE_CPU)                   \
-                              .TypeConstraint<T>("T")               \
-                              .Label(mkl_op_registry::kMklOpLabel), \
-              MklDummyOp<CPUDevice, T>);
+#define REGISTER_MKL_FILTER_KERNELS(T)                                   \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklConv2DBackpropFilter")                                   \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklOpLabel),                          \
+      MklConv2DCustomBackpropFilterOp<CPUDevice, T, false>);             \
+  REGISTER_KERNEL_BUILDER(                                               \
+      Name("_MklConv2DBackpropFilterWithBias")                           \
+          .Device(DEVICE_CPU)                                            \
+          .TypeConstraint<T>("T")                                        \
+          .Label(mkl_op_registry::kMklOpLabel),                          \
+      MklConv2DCustomBackpropFilterOp<CPUDevice, T, true>);              \
+  REGISTER_KERNEL_BUILDER(Name("__MklDummyConv2DBackpropFilterWithBias") \
+                              .Device(DEVICE_CPU)                        \
+                              .TypeConstraint<T>("T")                    \
+                              .Label(mkl_op_registry::kMklOpLabel),      \
+                          MklDummyOp<CPUDevice, T>);
 
 TF_CALL_float(REGISTER_MKL_FILTER_KERNELS);
 #undef REGISTER_MKL_FILTER_KERNELS
 
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 
 }  // namespace tensorflow
 

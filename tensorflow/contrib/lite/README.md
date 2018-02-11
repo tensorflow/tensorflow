@@ -172,7 +172,7 @@ Here is a sample command line to convert the frozen Graphdef to '.lite' format f
 ```
 bazel build tensorflow/contrib/lite/toco:toco
 
-bazel-bin/tensorflow/contrib/lite/toco/toco -- \
+bazel-bin/tensorflow/contrib/lite/toco/toco \
   --input_file=$(pwd)/mobilenet_v1_1.0_224/frozen_graph.pb \
   --input_format=TENSORFLOW_GRAPHDEF  --output_format=TFLITE \
   --output_file=/tmp/mobilenet_v1_1.0_224.lite --inference_type=FLOAT \
@@ -188,7 +188,7 @@ bazel-bin/tensorflow/contrib/lite/toco/toco -- \
 Note, it is also possible to use the Tensorflow Optimizing Converter through protos either from Python or from the command line see the
 documentation [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/toco/python/toco_from_protos.py). A developer can then integrate the conversion step into their model design workflow to ensure that a model will be easily convertible to a mobile inference graph. For example,
 
-```
+```python
 import tensorflow as tf
 
 img = tf.placeholder(name="img", dtype=tf.float32, shape=(1, 64, 64, 3))
@@ -202,6 +202,12 @@ with tf.Session() as sess:
 For detailed instructions on how to use the Tensorflow Optimizing Converter, please see [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/toco/g3doc/cmdline_examples.md).
 
 You may refer to the [Ops compatibility guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/g3doc/tf_ops_compatibility.md) for troubleshooting help. If that doesn't help, please file an [issue](https://github.com/tensorflow/tensorflow/issues).
+
+If you would like to see a visual description of your TensorFlow Lite model after conversion, you can use tensorflow/contrib/lite/tools/visualize.py by running
+```sh
+bazel run tensorflow/contrib/lite/tools:visualize -- model.tflite model_viz.html
+```
+and then visualize the resulting HTML file in a browser.
 
 ## Step 3. Use the TensorFlow Lite model for inference in a mobile app
 

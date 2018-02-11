@@ -25,6 +25,7 @@ import shutil
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import function
@@ -34,6 +35,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics
 from tensorflow.python.ops import nn_ops
@@ -59,6 +61,7 @@ def _TestDir(test_name):
 # pylint: enable=invalid-name
 
 
+@test_util.with_c_api
 class SimpleMetaGraphTest(test.TestCase):
 
   def testNoVariables(self):
@@ -103,7 +106,8 @@ class SimpleMetaGraphTest(test.TestCase):
       # Re-exports the current graph state for comparison to the original.
       new_meta_graph_def, _ = meta_graph.export_scoped_meta_graph(filename +
                                                                   "_new")
-      self.assertProtoEquals(meta_graph_def, new_meta_graph_def)
+      test_util.assert_meta_graph_protos_equal(self, meta_graph_def,
+                                               new_meta_graph_def)
 
       # Ensures that we can still get a reference to our graph collections.
       new_input_tensor = ops.get_collection("input_tensor")[0]
@@ -226,7 +230,7 @@ class SimpleMetaGraphTest(test.TestCase):
       double_nested_complex_node_def = None
       for function_def in meta_graph_def.graph_def.library.function:
         for node_def in function_def.node_def:
-          if node_def.name == "double_nested_complex":
+          if node_def.name.startswith("double_nested_complex"):
             double_nested_complex_node_def = node_def
             break
         if double_nested_complex_node_def:
@@ -258,6 +262,7 @@ class SimpleMetaGraphTest(test.TestCase):
       self.assertTrue(meta_graph_def.meta_info_def.stripped_default_attrs)
 
 
+@test_util.with_c_api
 class ScopedMetaGraphTest(test.TestCase):
 
   def _testScopedExport(self, test_dir, exported_filenames):
@@ -435,11 +440,64 @@ class ScopedMetaGraphTest(test.TestCase):
     ]
     orig_meta_graphs = self._testScopedExport(test_dir, filenames)
     new_meta_graphs = self._testScopedImport(test_dir, filenames)
-    # Delete the unbound_inputs to allow directly calling ProtoEqual.
-    del orig_meta_graphs[0].collection_def["unbound_inputs"]
-    del new_meta_graphs[0].collection_def["unbound_inputs"]
     for a, b in zip(orig_meta_graphs, new_meta_graphs):
+      # The unbound input strings are slightly different with the C API enabled
+      # ("images" vs "images:0") due to the original import_graph_def code
+      # vs. ImportGraphDef in C++.
+      # TODO(skyewm): update the pbtxts once _USE_C_API is removed.
+      del a.collection_def["unbound_inputs"]
+      del b.collection_def["unbound_inputs"]
       test_util.assert_meta_graph_protos_equal(self, a, b)
+
+  def testWhileLoopGradients(self):
+    # Create a simple while loop.
+    with ops.Graph().as_default():
+      with ops.name_scope("export"):
+        var = variables.Variable(0)
+        var_name = var.name
+        _, output = control_flow_ops.while_loop(lambda i, x: i < 5,
+                                                lambda i, x: (i + 1, x + i),
+                                                [0, var])
+        output_name = output.name
+
+      # Generate a MetaGraphDef containing the while loop with an export scope.
+      meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
+          export_scope="export")
+
+      # Build and run the gradients of the while loop. We use this below to
+      # verify that the gradients are correct with the imported MetaGraphDef.
+      init_op = variables.global_variables_initializer()
+      grad = gradients_impl.gradients([output], [var])
+      with session.Session() as sess:
+        sess.run(init_op)
+        expected_grad_value = sess.run(grad)
+
+    # Restore the MetaGraphDef into a new Graph with an import scope.
+    with ops.Graph().as_default():
+      meta_graph.import_scoped_meta_graph(meta_graph_def, import_scope="import")
+
+      # Re-export and make sure we get the same MetaGraphDef.
+      new_meta_graph_def, _ = meta_graph.export_scoped_meta_graph(
+          export_scope="import")
+      test_util.assert_meta_graph_protos_equal(
+          self, meta_graph_def, new_meta_graph_def)
+
+      # Make sure we can still build gradients and get the same result.
+
+      def new_name(tensor_name):
+        base_tensor_name = tensor_name.replace("export/", "")
+        return "import/" + base_tensor_name
+
+      var = ops.get_default_graph().get_tensor_by_name(new_name(var_name))
+      output = ops.get_default_graph().get_tensor_by_name(new_name(output_name))
+      grad = gradients_impl.gradients([output], [var])
+
+      init_op = variables.global_variables_initializer()
+
+      with session.Session() as sess:
+        sess.run(init_op)
+        actual_grad_value = sess.run(grad)
+        self.assertEqual(expected_grad_value, actual_grad_value)
 
   def testScopedImportUnderNameScope(self):
     graph = ops.Graph()
@@ -572,7 +630,8 @@ class ScopedMetaGraphTest(test.TestCase):
                                                       "exported_queue1.pbtxt")
     new_meta_graph = self._testScopedImportWithQueue(
         test_dir, "exported_queue1.pbtxt", "exported_new_queue1.pbtxt")
-    self.assertProtoEquals(orig_meta_graph, new_meta_graph)
+    test_util.assert_meta_graph_protos_equal(self, orig_meta_graph,
+                                             new_meta_graph)
 
   # Verifies that we can export a subgraph in a nested name scope containing a
   # "hidden1/hidden2" and import it into "new_hidden1/new_hidden2" in a new
@@ -718,6 +777,7 @@ class ScopedMetaGraphTest(test.TestCase):
     self.assertEqual("", str(graph2.as_graph_element("matmul").device))
 
 
+@test_util.with_c_api
 class MetaGraphWithVariableScopeTest(test.TestCase):
 
   def testMetricsCollection(self):
@@ -775,6 +835,7 @@ class MetaGraphWithVariableScopeTest(test.TestCase):
         initializer = variables.local_variables_initializer()
 
 
+@test_util.with_c_api
 class ExportImportAcrossScopesTest(test.TestCase):
 
   def testPartionedVariables(self):
@@ -845,7 +906,7 @@ class ExportImportAcrossScopesTest(test.TestCase):
             if shared_name_value.s:
               node.attr[shared_name_attr].s = b""
 
-    self.assertProtoEquals(expected, result)
+    test_util.assert_meta_graph_protos_equal(self, expected, result)
 
 
 if __name__ == "__main__":

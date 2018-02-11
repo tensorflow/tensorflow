@@ -44,8 +44,7 @@ class QueueOp : public ResourceOpKernel<QueueInterface> {
   void Compute(OpKernelContext* context) override {
     ResourceOpKernel<QueueInterface>::Compute(context);
     if (resource_ && context->track_allocations()) {
-      context->record_host_persistent_memory_allocation(
-          resource_->MemoryUsed());
+      context->record_persistent_memory_allocation(resource_->MemoryUsed());
     }
   }
 

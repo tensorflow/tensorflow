@@ -20,7 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.bayesflow.python.ops import layers_dense_variational_impl as prob_layers_lib
+from tensorflow.contrib.bayesflow.python.ops import layers_dense_variational as prob_layers_lib
 from tensorflow.contrib.bayesflow.python.ops import layers_util as prob_layers_util
 from tensorflow.contrib.distributions.python.ops import independent as independent_lib
 from tensorflow.python.framework import dtypes

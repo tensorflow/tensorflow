@@ -33,7 +33,6 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-extern const char *const kExpV8F32AVXSymbolName;
 extern const char *const kLogV8F32AVXSymbolName;
 
 #ifdef TF_XLA_HAS_AVX

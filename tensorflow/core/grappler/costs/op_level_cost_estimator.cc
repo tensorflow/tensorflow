@@ -47,6 +47,8 @@ constexpr char kSize[] = "Size";
 constexpr char kStopGradient[] = "StopGradient";
 constexpr char kPreventGradient[] = "PreventGradient";
 
+static const Costs::Duration kMinComputeTime(1);
+
 namespace {
 
 string GetDataFormat(const OpInfo& op_features) {
@@ -163,18 +165,20 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
       {kSparseMatMul, wrap(&OpLevelCostEstimator::PredictMatMul)},
       {kBatchMatMul, wrap(&OpLevelCostEstimator::PredictBatchMatMul)},
 
-      {kPlaceholder, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kRefIdentity, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kStopGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kPreventGradient, wrap(&OpLevelCostEstimator::PredictNoOp)},
       {kNoOp, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kReshape, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kRecv, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kSend, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kConst, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kVariable, wrap(&OpLevelCostEstimator::PredictNoOp)},
-      {kVariableV2, wrap(&OpLevelCostEstimator::PredictNoOp)},
+
+      {kPlaceholder, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kRefIdentity, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kStopGradient, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kPreventGradient, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kReshape, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kRecv, wrap(&OpLevelCostEstimator::PredictIdentity)},
+      {kSend, wrap(&OpLevelCostEstimator::PredictIdentity)},
+
+      {kConst, wrap(&OpLevelCostEstimator::PredictVariable)},
+      {kVariable, wrap(&OpLevelCostEstimator::PredictVariable)},
+      {kVariableV2, wrap(&OpLevelCostEstimator::PredictVariable)},
 
       {kRank, wrap(&OpLevelCostEstimator::PredictMetadata)},
       {kShape, wrap(&OpLevelCostEstimator::PredictMetadata)},
@@ -349,6 +353,9 @@ OpLevelCostEstimator::DeviceInfo OpLevelCostEstimator::GetDeviceInfo(
   VLOG(1) << "Device: " << device.type() << " gflops: " << gflops
           << " gb_per_sec: " << gb_per_sec;
 
+  DCHECK_LT(0, gflops) << device.DebugString();
+  DCHECK_LT(0, gb_per_sec) << device.DebugString();
+
   return {gflops, gb_per_sec};
 }
 
@@ -404,6 +411,12 @@ Costs OpLevelCostEstimator::PredictCostOfAnUnknownOp(
 Costs OpLevelCostEstimator::PredictOpCountBasedCost(
     double operations, const OpInfo& op_features) const {
   DeviceInfo device_perf = GetDeviceInfo(op_features.device());
+  if (device_perf.gigaops <= 0 || device_perf.gb_per_sec <= 0) {
+    VLOG(1) << "BAD DEVICE. Op:" << op_features.op()
+            << " device type:" << op_features.device().type()
+            << " device model:" << op_features.device().model();
+  }
+
   Costs::NanoSeconds compute_cost(std::ceil(operations / device_perf.gigaops));
   VLOG(1) << "Op:" << op_features.op() << " GOps:" << operations / 1e9
           << " Execution Time (ns):" << compute_cost.count();
@@ -429,6 +442,7 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
     costs.execution_time = compute_cost + memory_cost;
   }
   costs.inaccurate = found_unknown_shapes;
+  costs.max_memory = total_output_size;
   return costs;
 }
 
@@ -885,6 +899,30 @@ Costs OpLevelCostEstimator::PredictNoOp(const OpContext& op_context) const {
   return Costs::ZeroCosts();
 }
 
+Costs OpLevelCostEstimator::PredictIdentity(const OpContext& op_context) const {
+  const auto& op_features = op_context.op_info;
+  VLOG(1) << "Op:" << op_features.op() << " Execution Time 0 (ns)";
+  Costs result = Costs::ZeroCosts();
+  result.max_memory = CalculateOutputSize(op_features, &result.inaccurate);
+  // Assign the minimum amount of time we can represent to the identity op since
+  // it tends to be really cheap.
+  result.compute_time = kMinComputeTime;
+  result.execution_time = result.compute_time;
+  return result;
+}
+
+Costs OpLevelCostEstimator::PredictVariable(const OpContext& op_context) const {
+  const auto& op_features = op_context.op_info;
+  VLOG(1) << "Op:" << op_features.op() << " Execution Time 0 (ns)";
+  Costs result = Costs::ZeroCosts();
+  result.persistent_memory =
+      CalculateOutputSize(op_features, &result.inaccurate);
+
+  result.compute_time = kMinComputeTime;
+  result.execution_time = result.execution_time;
+  return result;
+}
+
 Costs OpLevelCostEstimator::PredictBatchMatMul(
     const OpContext& op_context) const {
   const auto& op_features = op_context.op_info;
@@ -898,13 +936,12 @@ Costs OpLevelCostEstimator::PredictBatchMatMul(
 
 Costs OpLevelCostEstimator::PredictMetadata(const OpContext& op_context) const {
   const auto& op_features = op_context.op_info;
-  Costs costs;
+  Costs costs = Costs::ZeroCosts();
   costs.max_memory = CalculateOutputSize(op_features, &costs.inaccurate);
   // Metadata operations are so cheap we assume they take the minimum amount of
   // time we can represent (1 ns).
-  costs.execution_time = 1;
-  costs.compute_time = 1;
-  costs.memory_time = 0;
+  costs.compute_time = kMinComputeTime;
+  costs.execution_time = costs.compute_time;
 
   return costs;
 }

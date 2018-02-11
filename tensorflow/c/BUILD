@@ -26,6 +26,18 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+filegroup(
+    name = "srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = ["*test*"],
+    ),
+    visibility = ["//visibility:public"],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
     srcs = ["c_api.h"],
@@ -123,6 +135,10 @@ tf_cuda_library(
     testonly = 1,
     srcs = ["c_test_util.cc"],
     hdrs = ["c_test_util.h"],
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
     deps = [
         ":c_api",
         "//tensorflow/core:lib",

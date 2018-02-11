@@ -323,8 +323,13 @@ Status VirtualScheduler::Init() {
   }
 
   // Get the nodes that would run to output fetch_nodes.
+  bool ill_formed = false;
   std::vector<const NodeDef*> nodes =
-      ComputeTransitiveFanin(graph, fetch_nodes);
+      ComputeTransitiveFanin(graph, fetch_nodes, &ill_formed);
+  if (ill_formed) {
+    return errors::InvalidArgument(
+        "Ill formed graph or invalid set of fetch nodes specified");
+  }
 
   // TODO(dyoon): this is a bit inefficient as name_to_node is already built in
   // ComputeTransitiveFanin().
@@ -341,7 +346,7 @@ Status VirtualScheduler::Init() {
   // to _Recv as control dependency when creating GrapplerItem.
   std::unordered_map<string, const NodeDef*> name_to_send;
   for (const auto& node : graph.node()) {
-    if (node.op() == "_Send") {
+    if (IsSend(node)) {
       const auto& attr = node.attr();
       name_to_send[attr.at("tensor_name").s()] = &node;
     }
@@ -984,21 +989,12 @@ Costs VirtualScheduler::Summary(RunMetadata* metadata) {
             nodestate.time_scheduled.asMicroSeconds().count());
         auto* mem_stats = node_stats->mutable_memory_stats();
         // VirtualScheduler does not specify scratch pad memory usage.
-        mem_stats->set_host_temp_memory_size(0);
-        mem_stats->set_device_temp_memory_size(0);
-        int64 host_persistent_memory_size = 0;
-        int64 device_persistent_memory_size = 0;
+        mem_stats->set_temp_memory_size(0);
+        int64 persistent_memory_size = 0;
         if (IsPersistentNode(node_def)) {
-          if (device.first.find("cpu") != string::npos ||
-              device.first.find("CPU") != string::npos) {
-            host_persistent_memory_size = total_output_size;
-          } else {
-            device_persistent_memory_size = total_output_size;
-          }
+          persistent_memory_size = total_output_size;
         }
-        mem_stats->set_host_persistent_memory_size(host_persistent_memory_size);
-        mem_stats->set_device_persistent_memory_size(
-            device_persistent_memory_size);
+        mem_stats->set_persistent_memory_size(persistent_memory_size);
         *device_partition_graph->add_node() = *node_def;
       }
     }

@@ -27,16 +27,11 @@ import numpy as np
 from tensorflow.contrib.framework.python.ops import accumulate_n_v2 as av2
 
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context as eager_context
-from tensorflow.python.eager import tape
 
 
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import gradients
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
 

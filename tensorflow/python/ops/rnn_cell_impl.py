@@ -47,6 +47,7 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 _BIAS_VARIABLE_NAME = "bias"
@@ -133,6 +134,7 @@ def _zero_state_tensors(state_size, batch_size, dtype):
   return nest.map_structure(get_state_shape, state_size)
 
 
+@tf_export("nn.rnn_cell.RNNCell")
 class RNNCell(base_layer.Layer):
   """Abstract object representing an RNN cell.
 
@@ -294,6 +296,7 @@ class _LayerRNNCell(RNNCell):
                                      *args, **kwargs)
 
 
+@tf_export("nn.rnn_cell.BasicRNNCell")
 class BasicRNNCell(_LayerRNNCell):
   """The most basic RNN cell.
 
@@ -351,6 +354,7 @@ class BasicRNNCell(_LayerRNNCell):
     return output, output
 
 
+@tf_export("nn.rnn_cell.GRUCell")
 class GRUCell(_LayerRNNCell):
   """Gated Recurrent Unit cell (cf. http://arxiv.org/abs/1406.1078).
 
@@ -448,6 +452,7 @@ class GRUCell(_LayerRNNCell):
 _LSTMStateTuple = collections.namedtuple("LSTMStateTuple", ("c", "h"))
 
 
+@tf_export("nn.rnn_cell.LSTMStateTuple")
 class LSTMStateTuple(_LSTMStateTuple):
   """Tuple used by LSTM Cells for `state_size`, `zero_state`, and output state.
 
@@ -467,6 +472,7 @@ class LSTMStateTuple(_LSTMStateTuple):
     return c.dtype
 
 
+@tf_export("nn.rnn_cell.BasicLSTMCell")
 class BasicLSTMCell(_LayerRNNCell):
   """Basic LSTM recurrent network cell.
 
@@ -591,6 +597,7 @@ class BasicLSTMCell(_LayerRNNCell):
     return new_h, new_state
 
 
+@tf_export("nn.rnn_cell.LSTMCell")
 class LSTMCell(_LayerRNNCell):
   """Long short-term memory unit (LSTM) recurrent network cell.
 
@@ -834,6 +841,7 @@ def _default_dropout_state_filter_visitor(substate):
   return True
 
 
+@tf_export("nn.rnn_cell.DropoutWrapper")
 class DropoutWrapper(RNNCell):
   """Operator adding dropout to inputs and outputs of the given cell."""
 
@@ -981,6 +989,10 @@ class DropoutWrapper(RNNCell):
     return int(hashlib.md5(string).hexdigest()[:8], 16) & 0x7FFFFFFF
 
   @property
+  def wrapped_cell(self):
+    return self._cell
+
+  @property
   def state_size(self):
     return self._cell.state_size
 
@@ -1059,6 +1071,7 @@ class DropoutWrapper(RNNCell):
     return output, new_state
 
 
+@tf_export("nn.rnn_cell.ResidualWrapper")
 class ResidualWrapper(RNNCell):
   """RNNCell wrapper that ensures cell inputs are added to the outputs."""
 
@@ -1114,6 +1127,7 @@ class ResidualWrapper(RNNCell):
     return (res_outputs, new_state)
 
 
+@tf_export("nn.rnn_cell.DeviceWrapper")
 class DeviceWrapper(RNNCell):
   """Operator that ensures an RNNCell runs on a particular device."""
 
@@ -1148,6 +1162,7 @@ class DeviceWrapper(RNNCell):
       return self._cell(inputs, state, scope=scope)
 
 
+@tf_export("nn.rnn_cell.MultiRNNCell")
 class MultiRNNCell(RNNCell):
   """RNN cell composed sequentially of multiple simple cells."""
 

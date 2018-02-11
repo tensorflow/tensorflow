@@ -60,9 +60,8 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
     }
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
-                                                 std::move(other_arguments),
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            func_, std::move(other_arguments), &captured_func));
 
     *output = new Dataset(ctx, input, func_, std::move(initial_state),
                           std::move(captured_func), state_types_, output_types_,
@@ -171,21 +170,11 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         std::copy(next_element.begin(), next_element.end(),
                   std::back_inserter(args));
 
-        FunctionLibraryRuntime::Options opts;
-        opts.step_id = CapturedFunction::generate_step_id();
-        ScopedStepContainer step_container(
-            opts.step_id, [this](const string& name) {
-              dataset()
-                  ->captured_func_->resource_manager()
-                  ->Cleanup(name)
-                  .IgnoreError();
-            });
-        opts.step_container = &step_container;
-        opts.runner = ctx->runner();
         std::vector<Tensor> state_and_output;
         state_and_output.reserve(dataset()->state_types_.size() +
                                  output_dtypes().size());
-        Status s = dataset()->captured_func_->Run(opts, std::move(args),
+
+        Status s = dataset()->captured_func_->Run(ctx, std::move(args),
                                                   &state_and_output);
         if (s.ok()) {
           state_.clear();
@@ -242,7 +231,7 @@ class ScanDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(RestoreParent(ctx, reader, input_impl_));

@@ -17,7 +17,8 @@ filegroup(
 py_library(
     name = "static_analysis",
     srcs = [
-        "access.py",
+        "activity.py",
+        "annos.py",
         "live_values.py",
         "type_info.py",
     ],
@@ -25,25 +26,26 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/contrib/py2tf/pyct",
-        "@astor_archive//:astor",
         "@gast_archive//:gast",
-        "@termcolor_archive//:termcolor",
     ],
 )
 
 py_test(
-    name = "access_test",
-    srcs = ["access_test.py"],
+    name = "activity_test",
+    srcs = ["activity_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":static_analysis",
         "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
+        "@gast_archive//:gast",
     ],
 )
 
 py_test(
     name = "live_values_test",
     srcs = ["live_values_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":static_analysis",
         "//tensorflow/contrib/py2tf/pyct",
@@ -54,6 +56,7 @@ py_test(
 py_test(
     name = "type_info_test",
     srcs = ["type_info_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":static_analysis",
         "//tensorflow/contrib/py2tf/pyct",

@@ -23,6 +23,7 @@ import types as python_types
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import activations
 from tensorflow.python.keras._impl.keras import backend as K
@@ -119,7 +120,8 @@ class Dropout(tf_core_layers.Dropout, Layer):
     if training is None:
       training = K.learning_phase()
     output = super(Dropout, self).call(inputs, training=training)
-    if training is K.learning_phase():
+    # EagerTensor object has no attribute _uses_learning_phase
+    if not context.in_eager_mode() and training is K.learning_phase():
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
 

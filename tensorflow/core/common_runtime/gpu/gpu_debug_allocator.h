@@ -42,9 +42,9 @@ class GPUDebugAllocator : public VisitableAllocator {
   void AddAllocVisitor(Visitor visitor) override;
   void AddFreeVisitor(Visitor visitor) override;
   bool TracksAllocationSizes() override;
-  size_t RequestedSize(void* ptr) override;
-  size_t AllocatedSize(void* ptr) override;
-  int64 AllocationId(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
+  int64 AllocationId(const void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
   void ClearStats() override;
 
@@ -73,8 +73,8 @@ class GPUNanResetAllocator : public VisitableAllocator {
   void DeallocateRaw(void* ptr) override;
   void AddAllocVisitor(Visitor visitor) override;
   void AddFreeVisitor(Visitor visitor) override;
-  size_t RequestedSize(void* ptr) override;
-  size_t AllocatedSize(void* ptr) override;
+  size_t RequestedSize(const void* ptr) override;
+  size_t AllocatedSize(const void* ptr) override;
   void GetStats(AllocatorStats* stats) override;
   void ClearStats() override;
 

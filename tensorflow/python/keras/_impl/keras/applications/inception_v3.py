@@ -13,6 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 # pylint: disable=invalid-name
+# pylint: disable=unused-import
 """Inception V3 model for Keras.
 
 Note that the input image format for this model is different than for
@@ -35,7 +36,7 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import layers
 from tensorflow.python.keras._impl.keras.applications import imagenet_utils
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
-from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions  # pylint: disable=unused-import
+from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
 from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
 from tensorflow.python.keras._impl.keras.layers import Activation
 from tensorflow.python.keras._impl.keras.layers import AveragePooling2D
@@ -48,6 +49,7 @@ from tensorflow.python.keras._impl.keras.layers import Input
 from tensorflow.python.keras._impl.keras.layers import MaxPooling2D
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.platform import tf_logging as logging
 
 
 WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.5/inception_v3_weights_tf_dim_ordering_tf_kernels.h5'
@@ -92,7 +94,8 @@ def conv2d_bn(x,
       strides=strides,
       padding=padding,
       use_bias=False,
-      name=conv_name)(x)
+      name=conv_name)(
+          x)
   x = BatchNormalization(axis=bn_axis, scale=False, name=bn_name)(x)
   x = Activation('relu', name=name)(x)
   return x
@@ -109,7 +112,7 @@ def InceptionV3(include_top=True,
   Optionally loads weights pre-trained
   on ImageNet. Note that when using TensorFlow,
   for best performance you should set
-  `image_data_format="channels_last"` in your Keras config
+  `image_data_format='channels_last'` in your Keras config
   at ~/.keras/keras.json.
   The model and the weights are compatible with both
   TensorFlow and Theano. The data format
@@ -121,15 +124,15 @@ def InceptionV3(include_top=True,
       include_top: whether to include the fully-connected
           layer at the top of the network.
       weights: one of `None` (random initialization),
-          "imagenet" (pre-training on ImageNet),
-          or the path to the weights file to be loaded.
+            'imagenet' (pre-training on ImageNet),
+            or the path to the weights file to be loaded.
       input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)
           to use as image input for the model.
       input_shape: optional shape tuple, only to be specified
           if `include_top` is False (otherwise the input shape
           has to be `(299, 299, 3)` (with `channels_last` data format)
           or `(3, 299, 299)` (with `channels_first` data format).
-          It should have exactly 3 input channels,
+          It should have exactly 3 inputs channels,
           and width and height should be no smaller than 139.
           E.g. `(150, 150, 3)` would be one valid value.
       pooling: Optional pooling mode for feature extraction
@@ -176,7 +179,10 @@ def InceptionV3(include_top=True,
   if input_tensor is None:
     img_input = Input(shape=input_shape)
   else:
-    img_input = Input(tensor=input_tensor, shape=input_shape)
+    if not K.is_keras_tensor(input_tensor):
+      img_input = Input(tensor=input_tensor, shape=input_shape)
+    else:
+      img_input = input_tensor
 
   if K.image_data_format() == 'channels_first':
     channel_axis = 1
@@ -389,6 +395,7 @@ def InceptionV3(include_top=True,
     model.load_weights(weights_path)
   elif weights is not None:
     model.load_weights(weights)
+
   return model
 
 

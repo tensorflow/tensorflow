@@ -22,6 +22,7 @@ import gc
 import tempfile
 import time
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
 import tensorflow.contrib.eager as tfe
@@ -52,14 +53,13 @@ def random_batch(batch_size):
 
 def train_one_step(model, images, labels, optimizer):
 
-  def model_loss():
+  with tfe.GradientTape() as tape:
     logits = model(images, training=True)
     loss = tf.losses.softmax_cross_entropy(
         logits=logits, onehot_labels=labels)
     tf.contrib.summary.scalar(name='loss', tensor=loss)
-    return loss
-
-  optimizer.minimize(model_loss)
+  grads = tape.gradient(loss, model.variables)
+  optimizer.apply_gradients(zip(grads, model.variables))
 
 
 class ResNet50Test(tf.test.TestCase):
@@ -258,7 +258,7 @@ class ResNet50Benchmarks(tf.test.Benchmark):
       return tfe.Iterator(ds)
 
     self._benchmark_eager_train(
-        'eager_train_dataset', make_iterator, defun=True)
+        'eager_train_dataset_with_defun', make_iterator, defun=True)
 
 
 if __name__ == '__main__':

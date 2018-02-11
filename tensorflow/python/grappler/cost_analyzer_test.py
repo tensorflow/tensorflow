@@ -127,7 +127,8 @@ class CostAnalysisTest(test.TestCase):
 
     # Check the report
     self.assertTrue(
-        "Peak usage for device /job:localhost/replica:0/task:0/cpu:0: 16 bytes"
+        "Peak usage for device /job:localhost/replica:0/task:0/device:CPU:0: "
+        "16 bytes"
         in report)
     self.assertTrue("  a:0 uses 4 bytes" in report)
     self.assertTrue("  b:0 uses 4 bytes" in report)

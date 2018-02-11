@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""`tf.contrib.data.Dataset` API for input pipelines.
+"""`tf.contrib.data` API for input pipelines.
+
+This module contains the experimental (less stable) counterpart to the
+`tf.data` API. See @{tf.data.Dataset} and @{tf.data.Iterator} for the
+stable classes.
 
 See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 
@@ -40,8 +44,6 @@ See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 @@unbatch
 
 @@get_single_element
-
-@@parse_single_example
 """
 
 from __future__ import absolute_import
@@ -73,7 +75,6 @@ from tensorflow.contrib.data.python.ops.resampling import rejection_resample
 from tensorflow.contrib.data.python.ops.scan_ops import scan
 from tensorflow.contrib.data.python.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.python.data.ops.iterator_ops import Iterator
-from tensorflow.python.ops.parsing_ops import parse_single_example_v2 as parse_single_example
 # pylint: enable=unused-import
 
 from tensorflow.python.util.all_util import remove_undocumented

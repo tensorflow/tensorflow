@@ -90,6 +90,7 @@ See the @{$python/math_ops} guide.
 @@cholesky
 @@cholesky_solve
 @@matrix_exponential
+@@matrix_logarithm
 @@matrix_solve
 @@matrix_triangular_solve
 @@matrix_solve_ls
@@ -130,6 +131,9 @@ See the @{$python/math_ops} guide.
 @@segment_mean
 @@unsorted_segment_sum
 @@unsorted_segment_max
+@@unsorted_segment_min
+@@unsorted_segment_prod
+@@unsorted_segment_sqrt_n
 @@sparse_segment_sum
 @@sparse_segment_mean
 @@sparse_segment_sqrt_n
@@ -171,6 +175,7 @@ from tensorflow.python.ops.gen_math_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 # Aliases for some automatically-generated names.
 linspace = gen_math_ops.lin_space
@@ -189,6 +194,7 @@ def _set_doc(doc):
 
 
 # pylint: disable=redefined-builtin
+@tf_export("argmax")
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "dimension")
 @_set_doc(
@@ -208,6 +214,7 @@ def argmax(input,
   return gen_math_ops.arg_max(input, axis, name=name, output_type=output_type)
 
 
+@tf_export("argmin")
 @deprecation.deprecated_args(None, "Use the `axis` argument instead",
                              "dimension")
 @_set_doc(
@@ -232,6 +239,7 @@ def argmin(input,
 
 # pylint: disable=anomalous-backslash-in-string,protected-access
 # pylint: disable=g-docstring-has-escape
+@tf_export("abs")
 def abs(x, name=None):
   r"""Computes the absolute value of a tensor.
 
@@ -306,6 +314,7 @@ class DivideDelegateWithName(object):
     return _div_python2(self.x, y, self.name)
 
 
+@tf_export("divide")
 def divide(x, y, name=None):
   """Computes Python style division of `x` by `y`."""
 
@@ -317,6 +326,7 @@ def divide(x, y, name=None):
     return x / y
 
 
+@tf_export("multiply")
 def multiply(x, y, name=None):
   return gen_math_ops._mul(x, y, name)
 
@@ -336,6 +346,7 @@ _mul.__doc__ = (
     gen_math_ops._mul.__doc__ + ("" if _mul.__doc__ is None else _mul.__doc__))
 
 
+@tf_export("subtract")
 def subtract(x, y, name=None):
   return gen_math_ops._sub(x, y, name)
 
@@ -356,6 +367,7 @@ _sub.__doc__ = (
 
 
 # pylint: disable=g-docstring-has-escape
+@tf_export("negative")
 def negative(x, name=None):
   """Computes numerical negative value element-wise.
 
@@ -404,6 +416,7 @@ def _neg(x, name=None):
 # pylint: enable=g-docstring-has-escape
 
 
+@tf_export("sign")
 def sign(x, name=None):
   """Returns an element-wise indication of the sign of a number.
 
@@ -434,6 +447,7 @@ def sign(x, name=None):
       return gen_math_ops.sign(x, name=name)
 
 
+@tf_export("square")
 def square(x, name=None):
   r"""Computes square of x element-wise.
 
@@ -456,6 +470,7 @@ def square(x, name=None):
       return gen_math_ops.square(x, name=name)
 
 
+@tf_export("sqrt")
 def sqrt(x, name=None):
   r"""Computes square root of x element-wise.
 
@@ -478,6 +493,7 @@ def sqrt(x, name=None):
       return gen_math_ops.sqrt(x, name=name)
 
 
+@tf_export("erf")
 def erf(x, name=None):
   """Computes the Gauss error function of `x` element-wise.
 
@@ -498,6 +514,7 @@ def erf(x, name=None):
       return gen_math_ops.erf(x, name=name)
 
 
+@tf_export("scalar_mul")
 def scalar_mul(scalar, x):
   """Multiplies a scalar times a `Tensor` or `IndexedSlices` object.
 
@@ -527,6 +544,7 @@ def scalar_mul(scalar, x):
     raise ValueError("Only scalar multiply works, got shape %s" % shape)
 
 
+@tf_export("pow")
 def pow(x, y, name=None):
   r"""Computes the power of one value to another.
 
@@ -554,6 +572,7 @@ def pow(x, y, name=None):
 
 
 # pylint: disable=redefined-builtin,redefined-outer-name
+@tf_export("complex")
 def complex(real, imag, name=None):
   r"""Converts two real numbers to a complex number.
 
@@ -595,6 +614,7 @@ def complex(real, imag, name=None):
     return gen_math_ops._complex(real, imag, Tout=Tout, name=name)
 
 
+@tf_export("real")
 def real(input, name=None):
   r"""Returns the real part of a complex (or real) tensor.
 
@@ -625,6 +645,7 @@ def real(input, name=None):
       return input
 
 
+@tf_export("imag")
 def imag(input, name=None):
   r"""Returns the imaginary part of a complex (or real) tensor.
 
@@ -654,6 +675,7 @@ def imag(input, name=None):
       return array_ops.zeros_like(input)
 
 
+@tf_export("angle")
 def angle(input, name=None):
   r"""Returns the element-wise argument of a complex (or real) tensor.
 
@@ -692,6 +714,7 @@ def angle(input, name=None):
 # pylint: enable=redefined-outer-name,redefined-builtin
 
 
+@tf_export("round")
 def round(x, name=None):
   """Rounds the values of a tensor to the nearest integer, element-wise.
 
@@ -718,6 +741,7 @@ def round(x, name=None):
     return gen_math_ops.round(x, name=name)
 
 
+@tf_export("cast")
 def cast(x, dtype, name=None):
   """Casts a tensor to a new type.
 
@@ -758,6 +782,7 @@ def cast(x, dtype, name=None):
       return gen_math_ops.cast(x, base_type, name=name)
 
 
+@tf_export("saturate_cast")
 def saturate_cast(value, dtype, name=None):
   """Performs a safe saturating cast of `value` to `dtype`.
 
@@ -791,6 +816,7 @@ def saturate_cast(value, dtype, name=None):
     return cast(value, dtype, name=name)
 
 
+@tf_export("to_float")
 def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
 
@@ -807,6 +833,7 @@ def to_float(x, name="ToFloat"):
   return cast(x, dtypes.float32, name=name)
 
 
+@tf_export("to_double")
 def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
 
@@ -823,6 +850,7 @@ def to_double(x, name="ToDouble"):
   return cast(x, dtypes.float64, name=name)
 
 
+@tf_export("to_int32")
 def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
 
@@ -839,6 +867,7 @@ def to_int32(x, name="ToInt32"):
   return cast(x, dtypes.int32, name=name)
 
 
+@tf_export("to_int64")
 def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
 
@@ -855,6 +884,7 @@ def to_int64(x, name="ToInt64"):
   return cast(x, dtypes.int64, name=name)
 
 
+@tf_export("to_bfloat16")
 def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
 
@@ -1028,6 +1058,7 @@ def _div_python2(x, y, name=None):
       return gen_math_ops._floor_div(x, y, name=name)
 
 
+@tf_export("truediv")
 def truediv(x, y, name=None):
   """Divides x / y elementwise (using Python 3 division operator semantics).
 
@@ -1059,6 +1090,7 @@ def truediv(x, y, name=None):
   return _truediv_python3(x, y, name)
 
 
+@tf_export("div")
 def div(x, y, name=None):
   """Divides x / y elementwise (using Python 2 division operator semantics).
 
@@ -1086,6 +1118,7 @@ mod = gen_math_ops._floor_mod
 
 # TODO(aselle): Deprecate this once all internal functionality uses
 # tf.truncatediv
+@tf_export("floordiv")
 def floordiv(x, y, name=None):
   """Divides `x / y` elementwise, rounding toward the most negative integer.
 
@@ -1156,6 +1189,7 @@ _OverrideBinaryOperatorHelper(gen_math_ops._floor_mod, "mod")
 _OverrideBinaryOperatorHelper(pow, "pow")
 
 
+@tf_export("logical_xor")
 def logical_xor(x, y, name="LogicalXor"):
   """x ^ y = (x | y) & ~(x & y)."""
   # TODO(alemi) Make this a cwise op if people end up relying on it.
@@ -1175,6 +1209,7 @@ ops.Tensor._override_operator("__gt__", gen_math_ops.greater)
 ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
+@tf_export("range")
 def range(start, limit=None, delta=1, dtype=None, name="range"):
   """Creates a sequence of numbers.
 
@@ -1280,6 +1315,7 @@ def _may_reduce_to_scalar(keepdims, axis, reduction_indices, output):
   return output
 
 
+@tf_export("reduce_sum")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_sum(input_tensor,
@@ -1340,6 +1376,7 @@ def reduce_sum(input_tensor,
                                    name=name))
 
 
+@tf_export("count_nonzero")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def count_nonzero(input_tensor,
@@ -1406,6 +1443,7 @@ def count_nonzero(input_tensor,
         dtype=dtype)
 
 
+@tf_export("reduce_mean")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_mean(input_tensor,
@@ -1477,6 +1515,7 @@ def reduce_mean(input_tensor,
                                    name=name))
 
 
+@tf_export("reduce_prod")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_prod(input_tensor,
@@ -1526,6 +1565,7 @@ def reduce_prod(input_tensor,
                                    name=name))
 
 
+@tf_export("reduce_min")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_min(input_tensor,
@@ -1574,6 +1614,7 @@ def reduce_min(input_tensor,
                                    name=name))
 
 
+@tf_export("reduce_max")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_max(input_tensor,
@@ -1622,6 +1663,7 @@ def reduce_max(input_tensor,
                                    name=name))
 
 
+@tf_export("reduce_all")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_all(input_tensor,
@@ -1679,6 +1721,7 @@ def reduce_all(input_tensor,
                                    name=name))
 
 
+@tf_export("reduce_any")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_any(input_tensor,
@@ -1736,6 +1779,7 @@ def reduce_any(input_tensor,
                                    name=name))
 
 
+@tf_export("reduce_logsumexp")
 @deprecation.deprecated_args(
     None, "keep_dims is deprecated, use keepdims instead", "keep_dims")
 def reduce_logsumexp(input_tensor,
@@ -1800,15 +1844,15 @@ def reduce_logsumexp(input_tensor,
         reduce_sum(
             gen_math_ops.exp(input_tensor - my_max),
             axis,
-            keepdims=True,
-            reduction_indices=reduction_indices)) + my_max
+            keepdims=keepdims,
+            reduction_indices=reduction_indices))
     if not keepdims:
-      if isinstance(axis, int):
-        axis = [axis]
-      result = array_ops.squeeze(result, axis)
+      my_max = array_ops.reshape(my_max, array_ops.shape(result))
+    result += my_max
     return _may_reduce_to_scalar(keepdims, axis, reduction_indices, result)
 
 
+@tf_export("trace", "linalg.trace")
 def trace(x, name=None):
   """Compute the trace of a tensor `x`.
 
@@ -1850,6 +1894,7 @@ def trace(x, name=None):
     return reduce_sum(array_ops.matrix_diag_part(x), [-1], name=name)
 
 
+@tf_export("matmul")
 def matmul(a,
            b,
            transpose_a=False,
@@ -2003,7 +2048,7 @@ def matmul(a,
       # matmul currently doesn't handle bfloat16 inputs.
       use_sparse_matmul = True
     if use_sparse_matmul:
-      return sparse_matmul(
+      ret = sparse_matmul(
           a,
           b,
           transpose_a=transpose_a,
@@ -2011,6 +2056,12 @@ def matmul(a,
           a_is_sparse=a_is_sparse,
           b_is_sparse=b_is_sparse,
           name=name)
+      # sparse_matmul always returns float32, even with
+      # bfloat16 inputs. This prevents us from configuring bfloat16 training.
+      # casting to bfloat16 also matches non-sparse matmul behavior better.
+      if a.dtype == dtypes.bfloat16 and b.dtype == dtypes.bfloat16:
+        ret = cast(ret, dtypes.bfloat16)
+      return ret
     else:
       return gen_math_ops._mat_mul(
           a, b, transpose_a=transpose_a, transpose_b=transpose_b, name=name)
@@ -2096,6 +2147,7 @@ def _as_indexed_slices_list(inputs, optimize=True):
   return casted_outputs
 
 
+@tf_export("add_n")
 def add_n(inputs, name=None):
   """Adds all input tensors element-wise.
 
@@ -2125,6 +2177,7 @@ def add_n(inputs, name=None):
   return gen_math_ops._add_n(inputs, name=name)
 
 
+@tf_export("accumulate_n")
 def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
   """Returns the element-wise sum of a list of tensors.
 
@@ -2209,6 +2262,7 @@ def accumulate_n(inputs, shape=None, tensor_dtype=None, name=None):
             ref, var_name=var.op.name, name=name)
 
 
+@tf_export("nn.sigmoid", "sigmoid")
 def sigmoid(x, name=None):
   """Computes sigmoid of `x` element-wise.
 
@@ -2231,6 +2285,7 @@ def sigmoid(x, name=None):
     return gen_math_ops._sigmoid(x, name=name)
 
 
+@tf_export("log_sigmoid")
 def log_sigmoid(x, name=None):
   """Computes log sigmoid of `x` element-wise.
 
@@ -2249,6 +2304,7 @@ def log_sigmoid(x, name=None):
     return gen_math_ops._neg(gen_nn_ops.softplus(-x), name=name)
 
 
+@tf_export("nn.tanh", "tanh")
 def tanh(x, name=None):
   """Computes hyperbolic tangent of `x` element-wise.
 
@@ -2269,6 +2325,7 @@ def tanh(x, name=None):
       return gen_math_ops._tanh(x, name=name)
 
 
+@tf_export("bincount")
 def bincount(arr,
              weights=None,
              minlength=None,
@@ -2315,6 +2372,7 @@ def bincount(arr,
   return gen_math_ops.bincount(arr, output_size, weights)
 
 
+@tf_export("cumsum")
 def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
   """Compute the cumulative sum of the tensor `x` along `axis`.
 
@@ -2366,6 +2424,7 @@ def cumsum(x, axis=0, exclusive=False, reverse=False, name=None):
         x, axis, exclusive=exclusive, reverse=reverse, name=name)
 
 
+@tf_export("cumprod")
 def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
   """Compute the cumulative product of the tensor `x` along `axis`.
 
@@ -2417,6 +2476,7 @@ def cumprod(x, axis=0, exclusive=False, reverse=False, name=None):
         x, axis, exclusive=exclusive, reverse=reverse, name=name)
 
 
+@tf_export("conj")
 def conj(x, name=None):
   r"""Returns the complex conjugate of a complex number.
 
@@ -2495,6 +2555,88 @@ def reduced_shape(input_shape, axes):
       ])  # [1, 1]
 
 
+def _unsorted_segment_N(data, segment_ids, num_segments):
+  """ Helper function for unsorted_segment_mean/_sqrtN. Computes the number
+      of segment entries with 0-entries set to 1 to allow division by N.
+  """
+  # bincount doesn't support negative indices so we use unsorted_segment_sum
+  ones_tensor = array_ops.ones(segment_ids.shape, dtype=data.dtype)
+  N = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
+  # add dimensions for all non-reduced axes
+  ndims_output = data.shape.ndims - segment_ids.shape.ndims
+  broadcast_shape = [num_segments] + [1] * ndims_output
+  N = array_ops.reshape(N, broadcast_shape)
+  return gen_math_ops.maximum(N, 1)
+
+
+@tf_export("unsorted_segment_mean")
+def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
+  r""" Computes the mean along segments of a tensor.
+
+  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  of segments.
+
+  This operator is similar to the unsorted segment sum operator found
+  [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+  Instead of computing the sum over segments, it computes the mean of all
+  entries belonging to a segment such that:
+
+  \\(output_i = 1/N_i \sum data_j\\) where the sum is over `j` such
+  that `segment_ids[j] == i` with \\N_i\\ being the number of occurrences
+  of id \\i\\.
+
+  If there is no entry for a given segment ID `i`, it outputs 0.
+
+  segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+  first dimension.
+
+  output: Has same shape as data, except for dimension 0 which
+  has size `num_segments`.
+  """
+  with ops.name_scope(name, "UnsortedSegmentMean"):
+    data = ops.convert_to_tensor(data)
+    segment_ids = ops.convert_to_tensor(segment_ids)
+    N = _unsorted_segment_N(data, segment_ids, num_segments)
+    summed = gen_math_ops.unsorted_segment_sum(data, segment_ids, num_segments)
+    return summed / N
+
+
+@tf_export("unsorted_segment_sqrt_n")
+def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
+  r"""Computes the sum along segments of a tensor divided by the sqrt(N).
+
+  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  of segments.
+
+  This operator is similar to the unsorted segment sum operator found
+  [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+  Additionally to computing the sum over segments, it divides the results by
+  sqrt(N).
+
+  \\(output_i = 1/sqrt(N_i) \sum data_j\\) where the sum is over `j` such
+  that `segment_ids[j] == i` with \\N_i\\ being the number of occurrences
+  of id \\i\\.
+
+  If there is no entry for a given segment ID `i`, it outputs 0.
+
+  Note that this op only supports floating point and complex dtypes,
+  due to tf.sqrt only supporting these types.
+
+  segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+  first dimension.
+
+  output: Has same shape as data, except for dimension 0 which
+  has size `num_segments`.
+  """
+  with ops.name_scope(name, "UnsortedSegmentSqrtN"):
+    data = ops.convert_to_tensor(data)
+    segment_ids = ops.convert_to_tensor(segment_ids)
+    N = _unsorted_segment_N(data, segment_ids, num_segments)
+    summed = gen_math_ops.unsorted_segment_sum(data, segment_ids, num_segments)
+    return summed / gen_math_ops.sqrt(N)
+
+
+@tf_export("sparse_segment_sum")
 def sparse_segment_sum(data, indices, segment_ids, name=None,
                        num_segments=None):
   r"""Computes the sum along sparse segments of a tensor.
@@ -2569,6 +2711,7 @@ def sparse_segment_sum(data, indices, segment_ids, name=None,
         name=name)
 
 
+@tf_export("sparse_segment_mean")
 def sparse_segment_mean(data, indices, segment_ids, name=None,
                         num_segments=None):
   r"""Computes the mean along sparse segments of a tensor.
@@ -2612,6 +2755,7 @@ def sparse_segment_mean(data, indices, segment_ids, name=None,
         name=name)
 
 
+@tf_export("sparse_segment_sqrt_n")
 def sparse_segment_sqrt_n(data, indices, segment_ids, name=None,
                           num_segments=None):
   r"""Computes the sum along sparse segments of a tensor divided by the sqrt(N).
@@ -2648,6 +2792,7 @@ def sparse_segment_sqrt_n(data, indices, segment_ids, name=None,
         name=name)
 
 
+@tf_export("tensordot", "linalg.tensordot")
 def tensordot(a, b, axes, name=None):
   r"""Tensor contraction of a and b along specified axes.
 
@@ -2765,10 +2910,14 @@ def tensordot(a, b, axes, name=None):
     """Generates two sets of contraction axes for the two tensor arguments."""
     a_shape = a.get_shape()
     if isinstance(axes, compat.integral_types):
-      if axes < 1:
-        raise ValueError("'axes' must be at least 1.")
+      if axes < 0:
+        raise ValueError("'axes' must be at least 0.")
       if a_shape.ndims is not None:
-        return range(a_shape.ndims - axes, a_shape.ndims), range(axes)
+        if axes > a_shape.ndims:
+          raise ValueError("'axes' must not be larger than the number of "
+                           "dimensions of tensor %s." % a)
+        return (list(xrange(a_shape.ndims - axes, a_shape.ndims)),
+                list(xrange(axes)))
       else:
         rank = array_ops.rank(a)
         return (range(rank - axes, rank, dtype=dtypes.int32),

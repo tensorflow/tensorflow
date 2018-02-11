@@ -55,7 +55,7 @@ class HParamsTest(test.TestCase):
     self.assertEqual(12, hparams.aaa)
     self.assertEqual(2.0, hparams.b)
     self.assertEqual('relu6', hparams.c_c)
-    hparams.parse('c_c=relu4,b=-2.0e10')
+    hparams.parse('c_c=relu4, b=-2.0e10')
     self.assertDictEqual({
         'aaa': 12,
         'b': -2.0e10,

@@ -806,6 +806,14 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
     entries.push_back(
         strings::StrCat("_target", "=", str_util::CEscape(options.target)));
   }
+  if (options.overlay_lib) {
+    entries.push_back(strings::StrCat(
+        "_overlay_lib", "=", reinterpret_cast<uintptr_t>(options.overlay_lib)));
+  }
+  if (!options.state_handle.empty()) {
+    entries.push_back(
+        strings::StrCat("_state_handle", "=", options.state_handle));
+  }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
 }
@@ -1056,26 +1064,36 @@ Status FunctionLibraryDefinition::AddLibrary(
   return Status::OK();
 }
 
-void FunctionLibraryDefinition::RemoveFunction(const string& func) {
+Status FunctionLibraryDefinition::RemoveFunction(const string& func) {
   const auto& i = function_defs_.find(func);
-  DCHECK(i != function_defs_.end());
+  if (i == function_defs_.end()) {
+    return errors::InvalidArgument("Tried to remove non-existent function ",
+                                   func);
+  }
   function_defs_.erase(i);
+  return Status::OK();
 }
 
-void FunctionLibraryDefinition::RemoveGradient(const string& func) {
+Status FunctionLibraryDefinition::RemoveGradient(const string& func) {
   const auto& i = func_grad_.find(func);
-  DCHECK(i != func_grad_.end());
+  if (i == func_grad_.end()) {
+    return errors::InvalidArgument("Tried to remove non-existent gradient ",
+                                   func);
+  }
   func_grad_.erase(i);
+  return Status::OK();
 }
 
 void FunctionLibraryDefinition::Remove(
     const std::vector<string>& funcs,
     const std::vector<string>& funcs_with_grads) {
   for (const string& f : funcs) {
-    RemoveFunction(f);
+    Status s = RemoveFunction(f);
+    DCHECK(s.ok());
   }
   for (const string& f : funcs_with_grads) {
-    RemoveGradient(f);
+    Status s = RemoveGradient(f);
+    DCHECK(s.ok());
   }
 }
 
@@ -1256,8 +1274,8 @@ FunctionDef FunctionDefHelper::Define(const string& name,
     }
     for (const string& a : src.arg) {
       const auto iter = ret_index.find(a);
-      CHECK(iter != ret_index.end()) << "Node input '" << a << "' in '"
-                                     << src.ret[0] << "' of " << name;
+      CHECK(iter != ret_index.end())
+          << "Node input '" << a << "' in '" << src.ret[0] << "' of " << name;
       n->add_input(iter->second);
     }
     for (const string& d : src.dep) {

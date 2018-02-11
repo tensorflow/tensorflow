@@ -1,9 +1,12 @@
+# python_sanity_test.py will complain about invalid or missing entries
+# problematic entries can be commented for temporary whitelisting
 tensorflow
 tensorflow/core
 tensorflow/core/example
 tensorflow/core/framework
 tensorflow/core/lib
 tensorflow/core/lib/core
+tensorflow/core/profiler
 tensorflow/core/protobuf
 tensorflow/core/util
 tensorflow/examples
@@ -31,9 +34,11 @@ tensorflow/python/grappler
 tensorflow/python/keras
 tensorflow/python/keras/activations
 tensorflow/python/keras/applications
+tensorflow/python/keras/applications/densenet
 tensorflow/python/keras/applications/inception_resnet_v2
 tensorflow/python/keras/applications/inception_v3
 tensorflow/python/keras/applications/mobilenet
+tensorflow/python/keras/applications/nasnet
 tensorflow/python/keras/applications/resnet50
 tensorflow/python/keras/applications/vgg16
 tensorflow/python/keras/applications/vgg19
@@ -109,7 +114,6 @@ tensorflow/contrib/android/java/org/tensorflow/contrib
 tensorflow/contrib/android/java/org/tensorflow/contrib/android
 tensorflow/contrib/android/jni
 tensorflow/contrib/batching
-tensorflow/contrib/batching/kernels
 tensorflow/contrib/batching/python
 tensorflow/contrib/batching/python/ops
 tensorflow/contrib/bayesflow
@@ -130,6 +134,11 @@ tensorflow/contrib/cloud/python/ops
 tensorflow/contrib/cluster_resolver
 tensorflow/contrib/cluster_resolver/python
 tensorflow/contrib/cluster_resolver/python/training
+tensorflow/contrib/coder
+tensorflow/contrib/coder/kernels
+tensorflow/contrib/coder/ops
+tensorflow/contrib/coder/python
+tensorflow/contrib/coder/python/ops
 tensorflow/contrib/compiler
 tensorflow/contrib/copy_graph
 tensorflow/contrib/copy_graph/python
@@ -166,6 +175,9 @@ tensorflow/contrib/factorization/kernels
 tensorflow/contrib/factorization/ops
 tensorflow/contrib/factorization/python
 tensorflow/contrib/factorization/python/ops
+tensorflow/contrib/feature_column
+tensorflow/contrib/feature_column/python
+tensorflow/contrib/feature_column/python/feature_column
 tensorflow/contrib/ffmpeg
 tensorflow/contrib/ffmpeg/default
 tensorflow/contrib/framework
@@ -208,6 +220,8 @@ tensorflow/contrib/input_pipeline/python/ops
 tensorflow/contrib/integrate
 tensorflow/contrib/integrate/python
 tensorflow/contrib/integrate/python/ops
+tensorflow/contrib/kafka/python
+tensorflow/contrib/kafka/python/ops
 tensorflow/contrib/keras
 tensorflow/contrib/keras/api
 tensorflow/contrib/keras/api/keras
@@ -285,7 +299,9 @@ tensorflow/contrib/linear_optimizer/kernels/g3doc
 tensorflow/contrib/linear_optimizer/python
 tensorflow/contrib/linear_optimizer/python/ops
 # TODO(drpngx): Fix failing imports
+# tensorflow/contrib/lite
 # tensorflow/contrib/lite/python
+# tensorflow/contrib/lite/toco
 # tensorflow/contrib/lite/toco/python
 tensorflow/contrib/lookup
 tensorflow/contrib/losses
@@ -303,6 +319,8 @@ tensorflow/contrib/metrics
 tensorflow/contrib/metrics/python
 tensorflow/contrib/metrics/python/metrics
 tensorflow/contrib/metrics/python/ops
+tensorflow/contrib/mpi_collectives/python
+tensorflow/contrib/mpi_collectives/python/ops
 tensorflow/contrib/model_pruning
 tensorflow/contrib/model_pruning/examples
 tensorflow/contrib/model_pruning/examples/cifar10
@@ -313,8 +331,6 @@ tensorflow/contrib/nccl/kernels
 tensorflow/contrib/nccl/ops
 tensorflow/contrib/nccl/python
 tensorflow/contrib/nccl/python/ops
-tensorflow/contrib/ndlstm
-tensorflow/contrib/ndlstm/python
 tensorflow/contrib/nearest_neighbor/kernels
 tensorflow/contrib/nearest_neighbor/ops
 tensorflow/contrib/nearest_neighbor/python
@@ -339,11 +355,14 @@ tensorflow/contrib/quantize
 tensorflow/contrib/quantize/python
 tensorflow/contrib/receptive_field
 tensorflow/contrib/receptive_field/python
+tensorflow/contrib/receptive_field/python/util
+tensorflow/contrib/receptive_field/python/util/examples
 tensorflow/contrib/reduce_slice_ops
 tensorflow/contrib/reduce_slice_ops/kernels
 tensorflow/contrib/reduce_slice_ops/ops
 tensorflow/contrib/reduce_slice_ops/python
 tensorflow/contrib/reduce_slice_ops/python/ops
+tensorflow/contrib/remote_fused_graph
 tensorflow/contrib/remote_fused_graph/pylib
 tensorflow/contrib/remote_fused_graph/pylib/python
 tensorflow/contrib/remote_fused_graph/pylib/python/ops
@@ -393,6 +412,7 @@ tensorflow/contrib/summary
 tensorflow/contrib/tensorboard
 tensorflow/contrib/tensorboard/plugins
 tensorflow/contrib/tensorboard/plugins/projector
+tensorflow/contrib/tensorboard/plugins/trace
 tensorflow/contrib/tensor_forest
 tensorflow/contrib/tensor_forest/client
 tensorflow/contrib/tensor_forest/hybrid
@@ -403,6 +423,7 @@ tensorflow/contrib/tensor_forest/hybrid/python/layers
 tensorflow/contrib/tensor_forest/hybrid/python/models
 tensorflow/contrib/tensor_forest/hybrid/python/ops
 tensorflow/contrib/tensor_forest/kernels
+tensorflow/contrib/tensor_forest/proto
 tensorflow/contrib/tensor_forest/python
 tensorflow/contrib/tensor_forest/python/ops
 tensorflow/contrib/testing
@@ -423,6 +444,7 @@ tensorflow/contrib/timeseries/python/timeseries/state_space_models
 tensorflow/contrib/tpu
 tensorflow/contrib/tpu/ops
 tensorflow/contrib/tpu/profiler
+tensorflow/contrib/tpu/proto
 tensorflow/contrib/tpu/python
 tensorflow/contrib/tpu/python/ops
 tensorflow/contrib/tpu/python/profiler

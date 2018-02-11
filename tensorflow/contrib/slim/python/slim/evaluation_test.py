@@ -29,7 +29,6 @@ from tensorflow.contrib.framework.python.ops import variables as variables_lib
 from tensorflow.contrib.metrics.python.ops import metric_ops
 from tensorflow.contrib.slim.python.slim import evaluation
 from tensorflow.contrib.training.python.training import evaluation as evaluation_lib
-from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python.debug.lib import debug_data
 from tensorflow.python.debug.wrappers import hooks
 from tensorflow.python.framework import constant_op
@@ -236,7 +235,7 @@ class SingleEvaluationTest(test.TestCase):
   def _prepareCheckpoint(self, checkpoint_path):
     init_op = control_flow_ops.group(variables.global_variables_initializer(),
                                      variables.local_variables_initializer())
-    saver = saver_lib.Saver(write_version=saver_pb2.SaverDef.V1)
+    saver = saver_lib.Saver()
     with self.test_session() as sess:
       sess.run(init_op)
       saver.save(sess, checkpoint_path)

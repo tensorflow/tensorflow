@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/constant_op.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor.pb.h"
@@ -41,8 +42,33 @@ limitations under the License.
 
 namespace tensorflow {
 
+namespace {
+
+std::unique_ptr<const NodeDef> StripTensorDataFromNodeDef(
+    OpKernelConstruction* ctx) {
+#ifndef __ANDROID__
+  DCHECK_EQ(NodeDef::descriptor()->field_count(), 5)
+      << "The NodeDef format has changed, and the attr-stripping code may need "
+      << "to be updated.";
+#endif
+  const NodeDef& original = ctx->def();
+  NodeDef* ret = new NodeDef;
+  ret->set_name(original.name());
+  ret->set_op(original.op());
+  ret->set_device(original.device());
+  // Strip the "value" attr from the returned NodeDef.
+  // NOTE(mrry): The present implementation of `OpKernel::OpKernel()` only uses
+  // attrs that affect the cardinality of list-typed inputs and outputs, so it
+  // is safe to drop other attrs from the NodeDef.
+  AddNodeAttr("dtype", ctx->output_type(0), ret);
+  return std::unique_ptr<const NodeDef>(ret);
+}
+
+}  // namespace
+
 ConstantOp::ConstantOp(OpKernelConstruction* ctx)
-    : OpKernel(ctx), tensor_(ctx->output_type(0)) {
+    : OpKernel(ctx, StripTensorDataFromNodeDef(ctx)),
+      tensor_(ctx->output_type(0)) {
   const TensorProto* proto = nullptr;
   OP_REQUIRES_OK(ctx, ctx->GetAttr("value", &proto));
   OP_REQUIRES_OK(ctx, ctx->device()->MakeTensorFromProto(
@@ -57,12 +83,7 @@ ConstantOp::ConstantOp(OpKernelConstruction* ctx)
 void ConstantOp::Compute(OpKernelContext* ctx) {
   ctx->set_output(0, tensor_);
   if (TF_PREDICT_FALSE(ctx->track_allocations())) {
-    AllocatorAttributes attr;
-    if (ctx->allocate_on_host(attr)) {
-      ctx->record_host_persistent_memory_allocation(tensor_.AllocatedBytes());
-    } else {
-      ctx->record_device_persistent_memory_allocation(tensor_.AllocatedBytes());
-    }
+    ctx->record_persistent_memory_allocation(tensor_.AllocatedBytes());
   }
 }
 
@@ -150,7 +171,6 @@ typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
 #endif  // TENSORFLOW_USE_SYCL
-
 
 template <typename Device, typename T, typename Index>
 class FillOp : public OpKernel {

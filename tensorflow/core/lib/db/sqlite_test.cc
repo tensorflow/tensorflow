@@ -29,10 +29,13 @@ namespace {
 class SqliteTest : public ::testing::Test {
  protected:
   void SetUp() override {
-    db_ = Sqlite::OpenOrDie(":memory:");
+    TF_ASSERT_OK(Sqlite::Open(":memory:", SQLITE_OPEN_READWRITE, &db_));
     db_->PrepareOrDie("CREATE TABLE T (a BLOB, b BLOB)").StepAndResetOrDie();
   }
-  std::shared_ptr<Sqlite> db_;
+
+  void TearDown() override { db_->Unref(); }
+
+  Sqlite* db_;
   bool is_done_;
 };
 
@@ -195,7 +198,8 @@ TEST_F(SqliteTest, Statement_MoveAssignment) {
 
 TEST_F(SqliteTest, PrepareFailed) {
   SqliteLock lock(*db_);
-  Status s = db_->Prepare("SELECT").status();
+  SqliteStatement stmt;
+  Status s = db_->Prepare("SELECT", &stmt);
   ASSERT_FALSE(s.ok());
   EXPECT_NE(string::npos, s.error_message().find("SELECT"));
   EXPECT_EQ(SQLITE_ERROR, db_->errcode());
@@ -226,10 +230,13 @@ TEST_F(SqliteTest, SnappyBinaryCompatibility) {
 }
 
 TEST(SqliteOpenTest, CloseConnectionBeforeStatement_KeepsConnectionOpen) {
-  auto s = Sqlite::OpenOrDie(":memory:")->PrepareOrDie("SELECT ? + ?");
-  s.BindInt(1, 7);
-  s.BindInt(2, 3);
-  EXPECT_EQ(10, s.StepOnceOrDie().ColumnInt(0));
+  Sqlite* db;
+  TF_ASSERT_OK(Sqlite::Open(":memory:", SQLITE_OPEN_READWRITE, &db));
+  SqliteStatement stmt = db->PrepareOrDie("SELECT ? + ?");
+  db->Unref();
+  stmt.BindInt(1, 7);
+  stmt.BindInt(2, 3);
+  EXPECT_EQ(10, stmt.StepOnceOrDie().ColumnInt(0));
 }
 
 TEST_F(SqliteTest, TransactionRollback) {

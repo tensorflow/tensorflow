@@ -19,10 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.py2tf.pyct import anno
+from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct.static_analysis import access
+from tensorflow.contrib.py2tf.pyct import qual_names
+from tensorflow.contrib.py2tf.pyct.static_analysis import activity
 from tensorflow.contrib.py2tf.pyct.static_analysis import live_values
 from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
+from tensorflow.python.client import session
 from tensorflow.python.platform import test
 from tensorflow.python.training import training
 
@@ -53,67 +56,100 @@ class ScopeTest(test.TestCase):
 
 class TypeInfoResolverTest(test.TestCase):
 
+  def _parse_and_analyze(self, test_fn, namespace, arg_types=None):
+    node, source = parser.parse_entity(test_fn)
+    ctx = context.EntityContext(
+        namer=None,
+        source_code=source,
+        source_file=None,
+        namespace=namespace,
+        arg_values=None,
+        arg_types=arg_types,
+        recursive=True)
+    node = qual_names.resolve(node)
+    node = activity.resolve(node, ctx)
+    node = live_values.resolve(node, ctx, {})
+    node = type_info.resolve(node, ctx)
+    node = live_values.resolve(node, ctx, {})
+    return node
+
   def test_constructor_detection(self):
 
     def test_fn():
       opt = training.GradientDescentOptimizer(0.1)
       return opt
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    node = type_info.resolve(node, None)
-
+    node = self._parse_and_analyze(test_fn, {'training': training})
     call_node = node.body[0].body[0].value
     self.assertEquals(training.GradientDescentOptimizer,
                       anno.getanno(call_node, 'type'))
     self.assertEquals((training.__name__, 'GradientDescentOptimizer'),
                       anno.getanno(call_node, 'type_fqn'))
 
-  def test_class_members(self):
+  def test_class_members_of_detected_constructor(self):
 
     def test_fn():
       opt = training.GradientDescentOptimizer(0.1)
       opt.minimize(0)
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    node = type_info.resolve(node, None)
+    node = self._parse_and_analyze(test_fn, {'training': training})
+    method_call = node.body[0].body[1].value.func
+    self.assertEquals(training.GradientDescentOptimizer.minimize,
+                      anno.getanno(method_call, 'live_val'))
 
-    attr_call_node = node.body[0].body[1].value.func
-    self.assertEquals((training.__name__, 'GradientDescentOptimizer'),
-                      anno.getanno(attr_call_node, 'type_fqn'))
+  def test_class_members_in_with_stmt(self):
+
+    def test_fn(x):
+      with session.Session() as sess:
+        sess.run(x)
+
+    node = self._parse_and_analyze(test_fn, {'session': session})
+    constructor_call = node.body[0].body[0].items[0].context_expr
+    self.assertEquals(session.Session, anno.getanno(constructor_call, 'type'))
+    self.assertEquals((session.__name__, 'Session'),
+                      anno.getanno(constructor_call, 'type_fqn'))
+
+    method_call = node.body[0].body[0].body[0].value.func
+    self.assertEquals(session.Session.run, anno.getanno(method_call,
+                                                        'live_val'))
+
+  def test_constructor_data_dependent(self):
+
+    def test_fn(x):
+      if x > 0:
+        opt = training.GradientDescentOptimizer(0.1)
+      else:
+        opt = training.GradientDescentOptimizer(0.01)
+      opt.minimize(0)
+
+    node = self._parse_and_analyze(test_fn, {'training': training})
+    method_call = node.body[0].body[1].value.func
+    self.assertFalse(anno.hasanno(method_call, 'live_val'))
 
   def test_parameter_class_members(self):
 
     def test_fn(opt):
       opt.minimize(0)
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    with self.assertRaises(ValueError):
-      node = type_info.resolve(node, None)
+    node = self._parse_and_analyze(test_fn, {})
+    method_call = node.body[0].body[0].value.func
+    self.assertFalse(anno.hasanno(method_call, 'live_val'))
 
   def test_parameter_class_members_with_value_hints(self):
 
     def test_fn(opt):
       opt.minimize(0)
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    node = type_info.resolve(
-        node, {
-            'opt': (('%s.GradientDescentOptimizer' % training.__name__),
-                    training.GradientDescentOptimizer(0.1))
+    node = self._parse_and_analyze(
+        test_fn, {'training': training},
+        arg_types={
+            'opt': (training.GradientDescentOptimizer.__name__,
+                    training.GradientDescentOptimizer)
         })
 
-    attr_call_node = node.body[0].body[0].value.func
-    self.assertEquals(
-        training.__name__.split('.') + ['GradientDescentOptimizer'],
-        anno.getanno(attr_call_node, 'type_fqn'))
+    method_call = node.body[0].body[0].value.func
+    self.assertEquals(training.GradientDescentOptimizer.minimize,
+                      anno.getanno(method_call, 'live_val'))
 
   def test_function_variables(self):
 
@@ -124,11 +160,9 @@ class TypeInfoResolverTest(test.TestCase):
       foo = bar
       foo()
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'bar': bar}, {})
-    with self.assertRaises(ValueError):
-      node = type_info.resolve(node, None)
+    node = self._parse_and_analyze(test_fn, {'bar': bar})
+    method_call = node.body[0].body[1].value.func
+    self.assertFalse(anno.hasanno(method_call, 'live_val'))
 
   def test_nested_members(self):
 
@@ -136,11 +170,9 @@ class TypeInfoResolverTest(test.TestCase):
       foo = training.GradientDescentOptimizer(0.1)
       foo.bar.baz()
 
-    node = parser.parse_object(test_fn)
-    node = access.resolve(node)
-    node = live_values.resolve(node, {'training': training}, {})
-    with self.assertRaises(ValueError):
-      node = type_info.resolve(node, None)
+    node = self._parse_and_analyze(test_fn, {'training': training})
+    method_call = node.body[0].body[1].value.func
+    self.assertFalse(anno.hasanno(method_call, 'live_val'))
 
 
 if __name__ == '__main__':

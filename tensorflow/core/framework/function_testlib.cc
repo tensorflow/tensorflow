@@ -149,33 +149,25 @@ FunctionDef XTimes16() {
       {{"y", "y:y:0"}});
 }
 
-FunctionDef WXPlusB(){return FDH::Define(
-    // Name
-    "WXPlusB",
-    // Args
-    {"w: T", "x: T", "b: T"},
-    // Return values
-    {"y: T"},
-    // Attr def
-    {"T: {float, double}"},
-    // Nodes
-    {
-      {{"mm"},
-       "MatMul",
-       {"w", "x"},
-       {
-           {"T", "$T"}, {"transpose_a", false}, {"transpose_b", false},
-#ifdef INTEL_MKL
-       }},
-#else
+FunctionDef WXPlusB() {
+  return FDH::Define(
+      // Name
+      "WXPlusB",
+      // Args
+      {"w: T", "x: T", "b: T"},
+      // Return values
+      {"y: T"},
+      // Attr def
+      {"T: {float, double}"},
+      // Nodes
+      {{{"mm"},
+        "MatMul",
+        {"w", "x"},
+        {{"T", "$T"},
+         {"transpose_a", false},
+         {"transpose_b", false},
          {"_kernel", "eigen"}}},
-#endif
-      {
-        {"y"}, "Add", {"mm", "b"}, {
-          { "T", "$T" }
-        }
-      }
-    });
+       {{"y"}, "Add", {"mm", "b"}, {{"T", "$T"}}}});
 }
 
 FunctionDef Swap() {
