@@ -149,3 +149,5 @@ install(DIRECTORY ${tensorflow_source_dir}/third_party/eigen3/
 # unsupported Eigen directory
 install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/eigen/src/eigen/unsupported/Eigen/
         DESTINATION include/unsupported/Eigen)
+# mkldnn binary
+# install(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/mkldnn/src/mkldnn/src/Release)

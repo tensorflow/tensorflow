@@ -31,9 +31,12 @@ option(tensorflow_BUILD_PYTHON_TESTS "Build python unit tests " OFF)
 option(tensorflow_BUILD_MORE_PYTHON_TESTS "Build more python unit tests for contrib packages" OFF)
 option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
-option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
+
+# SIMD, MKL and MKLDNN options
+option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions" OFF)
+option(tensorflow_ENABLE_MKLDNN_SUPPORT "Enable Intel MKLDNN support" OFF)
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
@@ -154,12 +157,19 @@ endif()
 # MSVC SIMD instructions
 if (tensorflow_WIN_CPU_SIMD_OPTIONS)
   include(CheckCXXCompilerFlag)
+  add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
+  if (NOT tensorflow_ENABLE_MKLDNN_SUPPORT)
+    add_definitions(-DINTEL_MKL_ML)
+  endif()
+  CHECK_CXX_COMPILER_FLAG("-fopenmp" COMPILER_OPT_OPENMP_SUPPORT)
+  if (COMPILER_OPT_OPENMP_SUPPORT)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+  endif()
   if (WIN32)
+    # Fix me: check which flags here?
     CHECK_CXX_COMPILER_FLAG("${tensorflow_WIN_CPU_SIMD_OPTIONS}" COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
     if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
-      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
-    else()
-      message(FATAL_ERROR "${tensorflow_WIN_CPU_SIMD_OPTIONS} not supported")
+      # set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
     endif()
   endif()
 endif()
@@ -278,6 +288,43 @@ endif()
 if(HAIKU)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES network)
 endif()
+
+if (tensorflow_WIN_CPU_SIMD_OPTIONS)
+  if (WIN32)
+    find_path(MKL_HOME_PLATFORM mkl
+      PATHS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
+      PATH_SUFFIXES windows)
+    set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
+    set(MKL_LINK_DIRS
+      ${MKL_HOME_PLATFORM}/mkl/lib/intel64
+      ${MKL_HOME_PLATFORM}/tbb/lib/intel64/vc_mt
+      ${MKL_HOME_PLATFORM}/compiler/lib/intel64
+      ${MKL_HOME_PLATFORM}/mkl/tools/builder/lib)
+    set(MKL_REDIST_DLL_DIRS
+      ${MKL_HOME_PLATFORM}/redist/intel64/mkl
+      ${MKL_HOME_PLATFORM}/redist/intel64/tbb/vc_mt
+      ${MKL_HOME_PLATFORM}/redist/intel64/compiler)
+  endif()
+  if (UNIX)
+    # Fix me: complete the path on linux
+    find_path(MKL_HOME_PLATFORM mkl
+      HINTS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
+      PATH_SUFFIXES linux)
+    set(MKL_INCLUDE_DIRS ${MKL_HOME_PLATFORM}/mkl/include)
+    set(MKL_LINK_DIRS) # incompleted
+    set(MKL_REDIST_SO_DIRS) # incompleted
+  endif()
+  include_directories(${MKL_INCLUDE_DIRS})
+  link_directories(${MKL_LINK_DIRS})
+  list(APPEND tensorflow_EXTERNAL_LIBRARIES
+    mkl_intel_lp64_dll mkl_sequential_dll mkl_core_dll mkl_rt mkl_cdll_intel64)
+  if (tensorflow_ENABLE_MKLDNN_SUPPORT)
+    include(mkldnn)
+    list(APPEND tensorflow_EXTERNAL_LIBRARIES ${mkldnn_STATIC_LIBRARIES})
+    list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn)
+    include_directories(${mkldnn_INCLUDE_DIRS})
+  endif()
+endif (tensorflow_WIN_CPU_SIMD_OPTIONS)
 
 if (tensorflow_ENABLE_GPU)
   if (NOT WIN32)

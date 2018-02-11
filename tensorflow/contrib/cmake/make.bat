@@ -23,13 +23,14 @@ set SWIG_EXECUTABLE=D:\Tools\swigwin-3.0.12\swig.exe
 set PYTHON_EXE=
 set SHARED_LIB=ON
 set GPU=OFF
-set WIN_CPU_SIMD=OFF
-set MKL_HOME=d:\Tools\IntelSWTools\compilers_and_libraries\windows\
+set WIN_CPU_SIMD=ON
+set MKL_HOME=d:\softwares\Tools\IntelSWTools\compilers_and_libraries
 set OTHER_CMAKE_ARGS=-Dtensorflow_BUILD_PYTHON_BINDINGS=ON ^
                      -Dtensorflow_DISABLE_EIGEN_FORCEINLINE=ON ^
                      -Dtensorflow_ENABLE_GRPC_SUPPORT=OFF ^
                      -Dtensorflow_ENABLE_SSL_SUPPORT=OFF ^
-                     -Dtensorflow_ENABLE_SNAPPY_SUPPORT=ON
+                     -Dtensorflow_ENABLE_SNAPPY_SUPPORT=ON ^
+                     -Dtensorflow_ENABLE_MKLDNN_SUPPORT=ON
 REM END OPTION LISTS
 set PARENT_DIR=%~dp0
 for /F "skip=2 tokens=1 delims=." %%i in ('msbuild /version') do set MSVC_VERSION=%%i
