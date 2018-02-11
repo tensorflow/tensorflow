@@ -666,8 +666,9 @@ class DropoutWrapperTest(test.TestCase):
   def testProperties(self):
     cell = rnn_cell_impl.BasicRNNCell(4)
     wrapper = rnn_cell_impl.DropoutWrapper(cell)
-    # Github issue: 15810
     self.assertEqual(wrapper.variables, [])
+    v = wrapper.add_variable("new_var", (1, ))
+    self.assertAllEqual(wrapper.variables, [v])
 
   def testDropoutWrapperKeepAllConstantInput(self):
     keep = array_ops.ones([])
