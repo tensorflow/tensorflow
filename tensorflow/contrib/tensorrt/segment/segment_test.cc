@@ -117,6 +117,7 @@ TEST_F(SegmentTest, Empty) {
 
   // Expect no segments/subgraphs.
   EXPECT_TRUE(segments.empty());
+  TF_DeleteGraph(graph);
 }
 
 TEST_F(SegmentTest, Simple) {
@@ -167,6 +168,8 @@ TEST_F(SegmentTest, Simple) {
     EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
         << "Missing expected node " << ex;
   }
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
 }
 
 TEST_F(SegmentTest, AvoidCycle) {
@@ -214,6 +217,8 @@ TEST_F(SegmentTest, AvoidCycle) {
 
   // Expect no subgraphs
   EXPECT_EQ(segments.size(), 0);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
 }
 
 TEST_F(SegmentTest, Multiple) {
@@ -282,6 +287,8 @@ TEST_F(SegmentTest, Multiple) {
     EXPECT_TRUE(segments[1].find(ex) != segments[1].end())
         << "Missing expected node " << ex;
   }
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
 }
 
 TEST_F(SegmentTest, BigIfElse) {
@@ -350,6 +357,8 @@ TEST_F(SegmentTest, BigIfElse) {
     EXPECT_TRUE(segments[1].find(ex) != segments[1].end())
         << "Missing expected node " << ex;
   }
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
 }
 
 }  // namespace test

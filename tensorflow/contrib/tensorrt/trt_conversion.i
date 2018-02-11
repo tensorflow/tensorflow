@@ -21,41 +21,39 @@ limitations under the License.
 %include "tensorflow/python/platform/base.i"
 
 %{
-  PyObject* pair_helper(std::pair<string,string>* in){
-    PyObject *first(nullptr), *second(nullptr), *tuple(nullptr);
-    first = PyBytes_FromStringAndSize(in->first.data(), in->first.length());
-    if(!first){
-      if(!PyErr_Occurred()){
-        PyErr_SetString(PyExc_TypeError,
-                        "Pair conversion first argument failed");
-      }
-      return NULL;
+PyObject* pair_helper(std::pair<string, string>* in) {
+  PyObject *first(nullptr), *second(nullptr), *tuple(nullptr);
+  first = PyBytes_FromStringAndSize(in->first.data(), in->first.length());
+  if (!first) {
+    if (!PyErr_Occurred()) {
+      PyErr_SetString(PyExc_TypeError, "Pair conversion first argument failed");
     }
-    second=PyBytes_FromStringAndSize(in->second.data(), in->second.length());
-    if(!second){
-      if(!PyErr_Occurred()){
-        PyErr_SetString(PyExc_TypeError,
-                        "Pair conversion second argument failed");
-      }
-      return NULL;
-    }
-    tuple=Py_BuildValue("(OO)", first, second);
-    if(!tuple){
-      if(!PyErr_Occurred()){
-        PyErr_SetString(PyExc_TypeError,
-                        "Tuple creation from pair<string,string> failed!");
-      }
-      return NULL;
-    }
-    return tuple;
+    return NULL;
   }
-
+  second = PyBytes_FromStringAndSize(in->second.data(), in->second.length());
+  if (!second) {
+    if (!PyErr_Occurred()) {
+      PyErr_SetString(PyExc_TypeError,
+                      "Pair conversion second argument failed");
+    }
+    return NULL;
+  }
+  tuple = Py_BuildValue("(OO)", first, second);
+  if (!tuple) {
+    if (!PyErr_Occurred()) {
+      PyErr_SetString(PyExc_TypeError,
+                      "Tuple creation from pair<string,string> failed!");
+    }
+    return NULL;
+  }
+  return tuple;
+}
 %}
 %typemap(out) std::pair<string, string> {
   PyObject *tuple = pair_helper(&$1);
-  if(!tuple) SWIG_fail;
+  if (!tuple) SWIG_fail;
   $result = tuple;
- }
+}
 %{
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
