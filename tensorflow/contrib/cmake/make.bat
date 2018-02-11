@@ -34,7 +34,7 @@ set OTHER_CMAKE_ARGS=-Dtensorflow_BUILD_PYTHON_BINDINGS=ON ^
 REM END OPTION LISTS
 set PARENT_DIR=%~dp0
 for /F "skip=2 tokens=1 delims=." %%i in ('msbuild /version') do set MSVC_VERSION=%%i
-if not errorlevel 0 (
+if errorlevel neq 0 (
   echo "msbuild is not in PATH, please use me in VS prompt"
   goto EXIT
 ) else if %MSVC_VERSION%==15 (
