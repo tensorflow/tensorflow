@@ -2750,6 +2750,7 @@ def softmax(logits, scope=None):
 
 @add_arg_scope
 def spatial_softmax(features,
+                    activation_fn=nn.softmax,
                     temperature=None,
                     name=None,
                     variables_collections=None,
@@ -2769,6 +2770,9 @@ def spatial_softmax(features,
   Args:
     features: A `Tensor` of size [batch_size, W, H, num_channels]; the
       convolutional feature map.
+    activation_fn: Activation function. The default value is a softmax function,
+      both softmax and sigmoid are known to work well. Explicitly set it to None
+      to exclude the activation step entirely if customized behavior is needed.
     temperature: Softmax temperature (optional). If None, a learnable
       temperature is created.
     name: A name for this operation (optional).
@@ -2831,14 +2835,17 @@ def spatial_softmax(features,
         features = array_ops.reshape(
             array_ops.transpose(features, [0, 3, 1, 2]), [-1, height * width])
 
-      softmax_attention = nn.softmax(features / temperature)
+      attention = features/temperature
+      if activation_fn is not None:
+        attention = activation_fn(attention)
+
       expected_x = math_ops.reduce_sum(
-          pos_x * softmax_attention, [1], keep_dims=True)
+          pos_x * attention, [1], keep_dims=True)
       expected_y = math_ops.reduce_sum(
-          pos_y * softmax_attention, [1], keep_dims=True)
+          pos_y * attention, [1], keep_dims=True)
       expected_xy = array_ops.concat([expected_x, expected_y], 1)
-      feature_keypoints = array_ops.reshape(expected_xy,
-                                            [-1, num_channels.value * 2])
+      feature_keypoints = array_ops.reshape(
+          expected_xy, [-1, num_channels.value * 2])
       feature_keypoints.set_shape([None, num_channels.value * 2])
   return feature_keypoints
 

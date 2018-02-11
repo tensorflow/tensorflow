@@ -3668,6 +3668,30 @@ class SpatialSoftmaxTests(test.TestCase):
       keypoints = sess.run(spatial_softmax, feed_dict)
       self.assertAllClose(keypoints, np_keypoints)
 
+  def testSpatialSoftmaxSigmoid(self):
+    batch_size, height, width, nchannels = (2, 35, 35, 1)
+    batch_shape = (batch_size, height, width, nchannels)
+
+    # Put high activations on single spatial locations.
+    features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
+    spatial_softmax = _layers.spatial_softmax(
+        features, activation_fn=math_ops.sigmoid)
+    np_features = np.zeros(batch_shape, dtype=np.float32)
+    x_loc = [15, 2]
+    y_loc = [10, 28]
+    for c in range(nchannels):
+      np_features[:, x_loc[c], y_loc[c], c] = 100.
+
+    np_keypoints = self._SpatialSoftmax(
+        x_loc, y_loc, height, width, batch_size, nchannels)
+
+    # Make sure expected location keypoints matches actual location keypoints.
+    with self.test_session() as sess:
+      sess.run(variables_lib.global_variables_initializer())
+      feed_dict = {features: np_features}
+      keypoints = sess.run(spatial_softmax, feed_dict)
+      self.assertAllClose(keypoints, np_keypoints)
+
   def testSpatialSoftmaxNCHW(self):
     batch_size, nchannels, height, width = (2, 2, 35, 35)
     batch_shape = (batch_size, nchannels, height, width)
@@ -3676,8 +3700,8 @@ class SpatialSoftmaxTests(test.TestCase):
     features = array_ops.placeholder(dtypes.float32, shape=batch_shape)
     spatial_softmax = _layers.spatial_softmax(features, data_format='NCHW')
     np_features = np.zeros(batch_shape, dtype=np.float32)
-    x_loc = [15, 2]
-    y_loc = [10, 28]
+    x_loc = [15]
+    y_loc = [10]
     for c in range(nchannels):
       np_features[:, c, x_loc[c], y_loc[c]] = 100.
 
