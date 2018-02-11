@@ -771,7 +771,7 @@ def batch_norm(inputs,
       # Calculate the moments based on the individual batch.
       if batch_weights is None:
         if data_format == DATA_FORMAT_NCHW:
-          mean, variance = nn.moments(inputs, moments_axes, keepdims=True)
+          mean, variance = nn.moments(inputs, moments_axes, keep_dims=True)
           mean = array_ops.reshape(mean, [-1])
           variance = array_ops.reshape(variance, [-1])
         else:
@@ -2171,7 +2171,7 @@ def layer_norm(inputs,
           trainable=trainable)
     # Calculate the moments on the last axis (layer activations).
     norm_axes = list(range(begin_norm_axis, inputs_rank))
-    mean, variance = nn.moments(inputs, norm_axes, keepdims=True)
+    mean, variance = nn.moments(inputs, norm_axes, keep_dims=True)
     # Compute layer normalization using the batch_normalization function.
     variance_epsilon = 1e-12
     outputs = nn.batch_normalization(
