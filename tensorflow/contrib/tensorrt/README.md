@@ -29,7 +29,7 @@ import tensorflow as tf
 import tensorflow.contrib.tensorrt as trt
 #... create and train or load model
 gdef = sess.graph.as_graph_def()
-trt_gdef = trt.CreateInferenceGraph(
+trt_gdef = trt.create_inference_graph(
     gdef, #original graph_def
     ["output"], #name of output node(s)
     max_batch_size, #maximum batch size to run the inference

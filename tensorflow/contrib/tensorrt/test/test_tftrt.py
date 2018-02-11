@@ -63,8 +63,8 @@ if "__main__" in __name__:
   inpDims = (100, 24, 24, 2)
   dummy_input = np.random.random_sample(inpDims)
   gdef = getSimpleGraphDef()
-  trt_graph = trt.CreateInferenceGraph(gdef, ["output"],
-                                       inpDims[0])  # Get optimized graph
+  trt_graph = trt.create_inference_graph(gdef, ["output"],
+                                         inpDims[0])  # Get optimized graph
   o1 = runGraph(gdef, dummy_input)
   o2 = runGraph(trt_graph, dummy_input)
   assert (np.array_equal(o1, o2))
