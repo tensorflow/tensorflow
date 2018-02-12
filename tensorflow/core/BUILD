@@ -838,6 +838,7 @@ cc_library(
         "//tensorflow/core/kernels:dataset_ops",
         "//tensorflow/core/kernels:fake_quant_ops",
         "//tensorflow/core/kernels:function_ops",
+        "//tensorflow/core/kernels:functional_ops",
         "//tensorflow/core/kernels:histogram_op",
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
@@ -2254,12 +2255,23 @@ tf_cuda_library(
     ] + tf_additional_device_tracer_deps(),
 )
 
+cc_library(
+    name = "gpu_id",
+    srcs = ["common_runtime/gpu/gpu_id_manager.cc"],
+    hdrs = [
+        "common_runtime/gpu/gpu_id.h",
+        "common_runtime/gpu/gpu_id_manager.h",
+    ],
+    deps = [
+        ":lib",
+    ],
+)
+
 GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_bfc_allocator.h",
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
     "common_runtime/gpu/gpu_device.h",
-    "common_runtime/gpu/gpu_id.h",
     "common_runtime/gpu/gpu_id_utils.h",
     "common_runtime/gpu/gpu_init.h",
     "common_runtime/gpu/gpu_managed_allocator.h",
@@ -2278,7 +2290,6 @@ tf_cuda_library(
         "common_runtime/gpu/gpu_debug_allocator.cc",
         "common_runtime/gpu/gpu_device.cc",
         "common_runtime/gpu/gpu_device_factory.cc",
-        "common_runtime/gpu/gpu_id_utils.cc",
         "common_runtime/gpu/gpu_managed_allocator.cc",
         "common_runtime/gpu/gpu_stream_util.cc",
         "common_runtime/gpu/gpu_util.cc",
@@ -2293,6 +2304,7 @@ tf_cuda_library(
         ":core_cpu_lib",
         ":framework",
         ":framework_internal",
+        ":gpu_id",
         ":gpu_init_impl",
         ":gpu_lib",
         ":graph",
@@ -2882,6 +2894,7 @@ tf_cc_tests_gpu(
     linkstatic = tf_kernel_tests_linkstatic(),
     deps = [
         ":gpu_headers_lib",
+        ":gpu_id",
         ":gpu_runtime",
         ":test",
     ],
@@ -2893,7 +2906,7 @@ tf_cc_tests_gpu(
     srcs = glob(["user_ops/**/*_test.cc"]) + [
         "common_runtime/gpu/gpu_bfc_allocator_test.cc",
         "common_runtime/gpu/gpu_device_test.cc",
-        "common_runtime/gpu/gpu_id_utils_test.cc",
+        "common_runtime/gpu/gpu_id_manager_test.cc",
         "common_runtime/gpu/gpu_event_mgr_test.cc",
         "common_runtime/gpu/pool_allocator_test.cc",
     ],
@@ -2905,6 +2918,7 @@ tf_cc_tests_gpu(
         ":direct_session",
         ":framework",
         ":framework_internal",
+        ":gpu_id",
         ":gpu_runtime",
         ":lib",
         ":lib_internal",
@@ -3300,6 +3314,7 @@ tf_cc_test_gpu(
         ":direct_session",
         ":framework",
         ":framework_internal",
+        ":gpu_id",
         ":gpu_runtime",
         ":lib",
         ":lib_internal",

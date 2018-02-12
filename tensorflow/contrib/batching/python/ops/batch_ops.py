@@ -53,10 +53,13 @@ def _UnbatchGrad(op, grad):   # pylint: disable=invalid-name
   ]
 
 
-def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
+def batch_function(num_batch_threads,
+                   max_batch_size,
+                   batch_timeout_micros,
                    allowed_batch_sizes=None,
                    grad_timeout_micros=60 * 1000 * 1000,
-                   unbatch_timeout_micros=60 * 1000 * 1000):
+                   unbatch_timeout_micros=60 * 1000 * 1000,
+                   max_enqueued_batches=10):
   """Batches the computation done by the decorated function.
 
   So, for example, in the following code
@@ -94,6 +97,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
      documentation of the unbatch op for more details. Defaults to 60s.
     unbatch_timeout_micros: The timeout to use for unbatching. See the
      documentation of the unbatch op for more details. Defaults to 60s.
+    max_enqueued_batches: The maximum depth of the batch queue. Defaults to 10.
 
   Returns:
     The decorated function will return the unbatched computation output Tensors.
@@ -111,6 +115,7 @@ def batch_function(num_batch_threads, max_batch_size, batch_timeout_micros,
             num_batch_threads=num_batch_threads,
             max_batch_size=max_batch_size,
             batch_timeout_micros=batch_timeout_micros,
+            max_enqueued_batches=max_enqueued_batches,
             allowed_batch_sizes=allowed_batch_sizes,
             grad_timeout_micros=grad_timeout_micros,
             shared_name=name)

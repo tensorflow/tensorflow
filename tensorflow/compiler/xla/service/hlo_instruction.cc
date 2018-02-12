@@ -1661,8 +1661,12 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTuple:
       return true;
 
-    // These opcodes have complex or special behavior so just return false.
     case HloOpcode::kFusion:
+      return fusion_kind() == other.fusion_kind() &&
+             eq_computations(fused_instructions_computation(),
+                             other.fused_instructions_computation());
+
+    // These opcodes have complex or special behavior so just return false.
     case HloOpcode::kRng:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:

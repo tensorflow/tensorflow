@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/ExecutionEngine/JITSymbol.h"
 #include "llvm/ExecutionEngine/SectionMemoryManager.h"
 #include "llvm/IR/Mangler.h"
 #include "llvm/Support/CodeGen.h"
@@ -139,10 +140,35 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
                                 /*MAttrs=*/DetectMachineAttributes()))),
       disassembler_(*target_machine_),
       data_layout_(target_machine_->createDataLayout()),
-      object_layer_([] {
-        return std::make_shared<llvm::SectionMemoryManager>(
-            orc_jit_memory_mapper::GetInstance());
-      }),
+      execution_session_(string_pool_),
+      symbol_resolver_(llvm::orc::createLegacyLookupResolver(
+          [this](const std::string& name) -> llvm::JITSymbol {
+            if (const uint8* from_constant_pool =
+                    external_constant_pool_.Find(string(name))) {
+              return llvm::JITEvaluatedSymbol(
+                  reinterpret_cast<uint64_t>(from_constant_pool),
+                  llvm::JITSymbolFlags::None);
+            }
+
+            void* func_addr = CustomCallTargetRegistry::Global()->Lookup(name);
+            if (func_addr == nullptr) {
+              return nullptr;
+            }
+            llvm::JITEvaluatedSymbol symbol_info(
+                reinterpret_cast<uint64_t>(func_addr),
+                llvm::JITSymbolFlags::None);
+            return symbol_info;
+          },
+          [](llvm::Error Err) {
+            cantFail(std::move(Err), "lookupFlags failed");
+          })),
+      object_layer_(
+          execution_session_,
+          [](llvm::orc::VModuleKey) {
+            return std::make_shared<llvm::SectionMemoryManager>(
+                orc_jit_memory_mapper::GetInstance());
+          },
+          [this](llvm::orc::VModuleKey K) { return symbol_resolver_; }),
       compile_layer_(
           object_layer_,
           CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
@@ -154,19 +180,18 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
           << " features: " << target_machine_->getTargetFeatureString().str();
 }
 
-SimpleOrcJIT::ModuleHandleT SimpleOrcJIT::AddModule(
+SimpleOrcJIT::VModuleKeyT SimpleOrcJIT::AddModule(
     std::unique_ptr<llvm::Module> module) {
-  auto handle = cantFail(compile_layer_.addModule(
-      std::move(module), MakeUnique<SimpleResolver>(external_constant_pool())));
-  module_handles_.push_back(handle);
-  return handle;
+  auto key = execution_session_.allocateVModule();
+  cantFail(compile_layer_.addModule(key, std::move(module)));
+  module_keys_.push_back(key);
+  return key;
 }
 
-void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::ModuleHandleT handle) {
-  module_handles_.erase(
-      std::remove(module_handles_.begin(), module_handles_.end(), handle),
-      module_handles_.end());
-  cantFail(compile_layer_.removeModule(handle));
+void SimpleOrcJIT::RemoveModule(SimpleOrcJIT::VModuleKeyT key) {
+  module_keys_.erase(std::remove(module_keys_.begin(), module_keys_.end(), key),
+                     module_keys_.end());
+  cantFail(compile_layer_.removeModule(key));
 }
 
 llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string& name) {
@@ -178,10 +203,10 @@ llvm::JITSymbol SimpleOrcJIT::FindSymbol(const std::string& name) {
 
   // Resolve symbol from last module to first, allowing later redefinitions of
   // symbols shadow earlier ones.
-  for (auto& handle :
-       llvm::make_range(module_handles_.rbegin(), module_handles_.rend())) {
+  for (auto& key :
+       llvm::make_range(module_keys_.rbegin(), module_keys_.rend())) {
     if (auto symbol =
-            compile_layer_.findSymbolIn(handle, mangled_name,
+            compile_layer_.findSymbolIn(key, mangled_name,
                                         /*ExportedSymbolsOnly=*/true)) {
       return symbol;
     }

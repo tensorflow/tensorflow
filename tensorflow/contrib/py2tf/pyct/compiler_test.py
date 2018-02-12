@@ -41,6 +41,7 @@ class CompilerTest(test.TestCase):
                 targets=[gast.Name('a', gast.Store(), None)],
                 value=gast.Str('c'))
         ])
+
     self.assertEqual(
         textwrap.dedent("""
             if 1:
@@ -70,15 +71,19 @@ class CompilerTest(test.TestCase):
         decorator_list=[],
         returns=None)
 
-    mod = compiler.ast_to_object(node)
+    module, source = compiler.ast_to_object(node)
 
-    self.assertEqual(2, mod.f(1))
-    with open(mod.__file__, 'r') as temp_output:
+    expected_source = """
+      def f(a):
+        return a + 1
+    """
+    self.assertEqual(
+        textwrap.dedent(expected_source).strip(),
+        source.strip())
+    self.assertEqual(2, module.f(1))
+    with open(module.__file__, 'r') as temp_output:
       self.assertEqual(
-          textwrap.dedent("""
-              def f(a):
-                return a + 1
-          """).strip(),
+          textwrap.dedent(expected_source).strip(),
           temp_output.read().strip())
 
 

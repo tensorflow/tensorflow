@@ -63,4 +63,4 @@ def ast_to_object(node, indentation='  ', source_prefix=None):
       f.write(source_prefix)
       f.write('\n')
     f.write(source)
-  return imp.load_source(module_name, f.name)
+  return imp.load_source(module_name, f.name), source

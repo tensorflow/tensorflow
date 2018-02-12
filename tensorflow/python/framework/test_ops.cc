@@ -76,6 +76,11 @@ REGISTER_OP("TestStringOutput")
     .Output("output2: string")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("TestAttr")
+    .Output("out: T")
+    .Attr("T: {float, double}")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 namespace {
 enum KernelLabel { DEFAULT_LABEL, OVERLOAD_1_LABEL, OVERLOAD_2_LABEL };
 }  // namespace
@@ -187,6 +192,20 @@ class ResourceUsingOp : public OpKernel {
 
 REGISTER_KERNEL_BUILDER(Name("ResourceUsingOp").Device(DEVICE_CPU),
                         ResourceUsingOp);
+
+class TestAttrOp : public OpKernel {
+ public:
+  explicit TestAttrOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    Tensor* output;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &output));
+    output->scalar<float>()() = 1.0;
+  }
+};
+
+REGISTER_KERNEL_BUILDER(
+    Name("TestAttr").Device(DEVICE_CPU).TypeConstraint<float>("T"), TestAttrOp);
 
 // Various test ops without kernels. These are used to test graph construction.
 

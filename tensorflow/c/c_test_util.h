@@ -111,7 +111,7 @@ std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def);
 
 class CSession {
  public:
-  CSession(TF_Graph* graph, TF_Status* s);
+  CSession(TF_Graph* graph, TF_Status* s, bool use_XLA = false);
   explicit CSession(TF_Session* session);
 
   ~CSession();

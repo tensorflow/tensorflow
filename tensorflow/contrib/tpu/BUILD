@@ -36,7 +36,9 @@ py_library(
     name = "tpu_estimator",
     srcs = [
         "python/tpu/tpu_config.py",
+        "python/tpu/tpu_context.py",
         "python/tpu/tpu_estimator.py",
+        "python/tpu/tpu_system_metadata.py",
         "python/tpu/util.py",
     ],
     srcs_version = "PY2AND3",

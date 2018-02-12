@@ -93,6 +93,16 @@ py_test(
 )
 
 py_test(
+    name = "qual_names_test",
+    srcs = ["qual_names_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "templates_test",
     srcs = ["templates_test.py"],
     srcs_version = "PY2AND3",

@@ -14,12 +14,8 @@ message CheckpointableObjectGraph {
       // An index into `CheckpointableObjectGraph.nodes`, indicating the object
       // being referenced.
       int32 node_id = 1;
-      // A numeric identifier for this object within its parent. Zero means
-      // unset, in which case there should be a local_name.
-      int32 local_uid = 2;
-      // A user-provided name for the edge. May be blank/omitted, in which case
-      // there is no explicitly provided local name; fall back on local_uid.
-      string local_name = 3;
+      // A user-provided name for the edge.
+      string local_name = 2;
     }
 
     message VariableReference {

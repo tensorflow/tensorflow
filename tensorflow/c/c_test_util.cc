@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/c/c_test_util.h"
 
+#include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/public/session_options.h"
 
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
@@ -390,8 +392,21 @@ std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def) {
   return names;
 }
 
-CSession::CSession(TF_Graph* graph, TF_Status* s) {
+CSession::CSession(TF_Graph* graph, TF_Status* s, bool use_XLA) {
   TF_SessionOptions* opts = TF_NewSessionOptions();
+  tensorflow::legacy_flags::MarkForCompilationPassFlags* flags =
+      tensorflow::legacy_flags::GetMarkForCompilationPassFlags();
+  flags->tf_xla_cpu_global_jit = use_XLA;
+  if (use_XLA) {
+    tensorflow::ConfigProto config;
+    config.mutable_graph_options()
+        ->mutable_optimizer_options()
+        ->set_global_jit_level(tensorflow::OptimizerOptions::ON_1);
+    std::string contents;
+    contents.resize(config.ByteSizeLong());
+    config.SerializeToArray(&contents[0], contents.size());
+    TF_SetConfig(opts, contents.data(), contents.size(), s);
+  }
   session_ = TF_NewSession(graph, opts, s);
   TF_DeleteSessionOptions(opts);
 }

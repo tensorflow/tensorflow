@@ -50,6 +50,7 @@ from tensorflow.python.keras._impl.keras.layers import MaxPooling2D
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.5/inception_v3_weights_tf_dim_ordering_tf_kernels.h5'
@@ -101,6 +102,8 @@ def conv2d_bn(x,
   return x
 
 
+@tf_export('keras.applications.InceptionV3',
+           'keras.applications.inception_v3.InceptionV3')
 def InceptionV3(include_top=True,
                 weights='imagenet',
                 input_tensor=None,
@@ -399,6 +402,8 @@ def InceptionV3(include_top=True,
   return model
 
 
+@tf_export('keras.applications.nasnet.preprocess_input',
+           'keras.applications.inception_v3.preprocess_input')
 def preprocess_input(x):
   """Preprocesses a numpy array encoding a batch of images.
 
