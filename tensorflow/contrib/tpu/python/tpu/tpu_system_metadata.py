@@ -140,7 +140,7 @@ def _obtain_topology(master_address, run_config):
 
 def _get_session_config_with_timeout(timeout_in_secs, run_config):
   cluster_def = None
-  if run_config.session_config and run_config.session_config.cluster_def:
+  if run_config.session_config and run_config.session_config.cluster_def.job:
     cluster_def = run_config.session_config.cluster_def
 
   config = config_pb2.ConfigProto(
