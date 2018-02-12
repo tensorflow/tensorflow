@@ -195,7 +195,7 @@ sh_binary(
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
     }) + if_mkl(["//third_party/mkl:intel_binary_blob"]) + if_tensorrt([
-      "//tensorflow/contrib/tensorrt:init_py",
+        "//tensorflow/contrib/tensorrt:init_py",
     ]),
 )
 
