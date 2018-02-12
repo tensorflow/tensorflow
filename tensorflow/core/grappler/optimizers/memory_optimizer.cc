@@ -490,12 +490,12 @@ void RecomputationRewritingPass(RewriterConfig::MemOptType optimization_level,
 }
 
 bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
-  // Look for AddN nodes and record input names.
+  // Look for AddN nodes (and equivalent) and record input names.
   GraphView view(&item->graph);
 
   std::unordered_map<string, std::unordered_set<NodeDef*>> addn_list;
   for (NodeDef& node : *item->graph.mutable_node()) {
-    if (!IsAddN(node)) {
+    if (!IsAddN(node) && node.op() != "AccumulateNV2") {
       continue;
     }
     // There is nothing to gain by optimizing nodes with 2 or fewer inputs.
