@@ -331,7 +331,7 @@ interpret data is such a rich topic that we devote an entire
 From a code perspective, you build a list of `feature_column` objects by calling
 functions from the @{tf.feature_column} module. Each object describes an input
 to the model. To tell the model to interpret data as a floating-point value,
-call @{tf.feature_column.numeric_column).  In `premade_estimator.py`, all
+call @{tf.feature_column.numeric_column}.  In `premade_estimator.py`, all
 four features should be interpreted as literal floating-point values, so
 the code to create a feature column looks as follows:
 
