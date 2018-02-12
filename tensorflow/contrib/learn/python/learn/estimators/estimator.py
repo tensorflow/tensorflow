@@ -395,7 +395,7 @@ class BaseEstimator(
       ('y', None), ('batch_size', None)
   )
   def fit(self, x=None, y=None, input_fn=None, steps=None, batch_size=None,
-          monitors=None, max_steps=None):
+          monitors=None, max_steps=None, logging_every_n_iter=100):
     # pylint: disable=g-doc-args,g-doc-return-or-yield
     """See `Trainable`.
 
@@ -423,7 +423,8 @@ class BaseEstimator(
     if steps is not None or max_steps is not None:
       hooks.append(basic_session_run_hooks.StopAtStepHook(steps, max_steps))
 
-    loss = self._train_model(input_fn=input_fn, hooks=hooks)
+    loss = self._train_model(input_fn=input_fn, hooks=hooks, 
+                             logging_every_n_iter=logging_every_n_iter)
     logging.info('Loss for final step: %s.', loss)
     return self
 
@@ -923,7 +924,7 @@ class BaseEstimator(
                        'provided %s.' % (existing_keys, outputs))
     return predictions
 
-  def _train_model(self, input_fn, hooks):
+  def _train_model(self, input_fn, hooks, logging_every_n_iter=100):
     all_hooks = []
     self._graph = ops.Graph()
     with self._graph.as_default() as g, g.device(self._device_fn):
@@ -940,7 +941,7 @@ class BaseEstimator(
                   'loss': model_fn_ops.loss,
                   'step': global_step
               },
-              every_n_iter=100)
+              every_n_iter=logging_every_n_iter)
       ])
       all_hooks.extend(hooks)
 
