@@ -12,15 +12,16 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""`tf.contrib.data` API for input pipelines.
+"""Experimental API for building input pipelines.
 
-This module contains the experimental (less stable) counterpart to the
-`tf.data` API. See @{tf.data.Dataset} and @{tf.data.Iterator} for the
-stable classes.
+This module contains experimental `Dataset` sources and transformations that can
+be used in conjunction with the @{tf.data.Dataset} API. Note that the
+`tf.contrib.data` API is not subject to the same backwards compatibility
+guarantees as `tf.data`, but we will provide deprecation advice in advance of
+removing existing functionality.
 
 See the @{$datasets$Importing Data} Programmer's Guide for an overview.
 
-@@Dataset
 @@Counter
 
 @@batch_and_drop_remainder
