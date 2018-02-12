@@ -1717,13 +1717,28 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
 
  protected:
   bool ShouldProcess() const override {
-    return !MustPreserve() && IsPortZeroDimsN(*node_, 2) && HasOutputs() &&
-           IsNodeAfterNCHWToNHWC() && IsInputConvertible() && IsAlongDimHW() &&
-           IsOnGPU();
+    bool is_dims_supported = (IsPortZeroDimsN(*node_, 2) && IsAlongHW()) ||
+                             (IsPortZeroDimsN(*node_, 1) && IsAlongNHW());
+    return !MustPreserve() && HasOutputs() && IsNodeAfterNCHWToNHWC() &&
+           IsInputConvertible() && is_dims_supported && IsOnGPU();
   }
 
   Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
 
+  Status CustomizedProcessing() override {
+    TF_RETURN_IF_ERROR(HasAttribute(*node_, "squeeze_dims"));
+    auto list = node_->mutable_attr()->at("squeeze_dims").mutable_list();
+    if (list->i_size() == 2) {
+      list->set_i(0, 2);
+      list->set_i(1, 3);
+    } else if (list->i_size() == 3) {
+      list->set_i(1, 2);
+      list->set_i(2, 3);
+    }
+    return Status::OK();
+  }
+
+ private:
   bool IsInputConvertible() const {
     int input_port;
     auto input = node_map_->GetNode(node_->input(0));
@@ -1736,33 +1751,31 @@ class SqueezeProcessor : public AgnosticNodeProcessor {
       if (shape.dim(1).size() == 1 && shape.dim(2).size() == 1) {
         return true;
       }
-    }
-    return false;
-  }
-
-  bool IsAlongDimHW() const {
-    if (node_->attr().find("squeeze_dims") != node_->attr().end()) {
-      auto list = node_->attr().at("squeeze_dims").list();
-      // If list is empty, Squeeze op will squeeze all dimensions of size 1.
-      if (list.i_size() == 0) return true;
-      if (list.i_size() == 2) {
-        if (list.i(0) == 1 && list.i(1) == 2) {
-          return true;
-        }
+      if (shape.dim(0).size() == 1 && shape.dim(1).size() == 1 &&
+          shape.dim(2).size() == 1) {
+        return true;
       }
     }
     return false;
   }
 
-  Status CustomizedProcessing() override {
-    TF_RETURN_IF_ERROR(HasAttribute(*node_, "squeeze_dims"));
-    auto list = node_->mutable_attr()->at("squeeze_dims").mutable_list();
-    if (list->i_size() == 2) {
-      list->set_i(0, 2);
-      list->set_i(1, 3);
+  bool IsAlongAxis(const std::vector<int>& axis) const {
+    if (node_->attr().find("squeeze_dims") != node_->attr().end()) {
+      auto list = node_->attr().at("squeeze_dims").list();
+      // If list is empty, Squeeze op will squeeze all dimensions of size 1.
+      if (list.i_size() == 0) return true;
+      if (list.i_size() == axis.size()) {
+        bool along_axis = true;
+        for (int i = 0; i < axis.size(); i++) {
+          along_axis = along_axis && (list.i(i) == axis[i]);
+        }
+        if (along_axis) return true;
+      }
     }
-    return Status::OK();
+    return false;
   }
+  bool IsAlongHW() const { return IsAlongAxis({1, 2}); }
+  bool IsAlongNHW() const { return IsAlongAxis({0, 1, 2}); }
 };
 
 class ReduceProcessor : public AgnosticNodeProcessor {
@@ -1789,12 +1802,18 @@ class ReduceProcessor : public AgnosticNodeProcessor {
     return Status::OK();
   }
 
-  Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
+  Status AddLayoutTransposeToOutputs() override {
+    if (KeepDims()) {
+      return AddTransformToOutputs("Transpose");
+    }
+    return Status::OK();
+  }
 
  private:
   bool IsReduceAxisSupported() const {
-    return IsAlongAllFourDims() || IsAlongHWC() ||
-           ((IsAlongNHW() || IsAlongHW() || IsAlongC()) && !KeepDims());
+    return KeepDims() || ((IsAlongAllFourDims() || IsAlongHWC() ||
+                           IsAlongNHW() || IsAlongHW() || IsAlongC()) &&
+                          !KeepDims());
   }
 
   bool IsAlongAxis(const std::vector<int>& axis) const {
