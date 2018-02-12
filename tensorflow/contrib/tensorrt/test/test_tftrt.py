@@ -19,42 +19,55 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
-import tensorflow as tf
-import tensorflow.contrib.tensorrt as trt
+# normally we should do import tensorflow as tf and then
+# tf.placeholder, tf.constant, tf.nn.conv2d etc but
+# it looks like internal builds don't like it so
+# importing every module individually
+
+from tensorflow.contrib.tensorrt as trt
+from tensorflow.core.protobuf import config_pb2 as cpb2
+from tensorflow.python.client import session as csess
+from tensorflow.python.framework import constant_op as cop
+from tensorflow.python.framework import dtypes as dtypes
+from tensorflow.python.framework import importer as importer
+from tensorflow.python.framework import ops as ops
+from tensorflow.python.ops import array_ops as aops
+from tensorflow.python.ops import nn as nn
+from tensorflow.python.ops import nn_ops as nn_ops
 
 
 def get_simple_graph_def():
   """Create a simple graph and return its graph_def"""
-  g = tf.Graph()
+  g = ops.Graph()
   with g.as_default():
-    a = tf.placeholder(dtype=tf.float32, shape=(None, 24, 24, 2), name="input")
-    e = tf.constant(
+    a = aops.placeholder(dtype=dtypes.float32, shape=(None, 24, 24, 2), name="input")
+    e = cop.constant(
         [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
         name="weights",
-        dtype=tf.float32)
-    conv = tf.nn.conv2d(
+        dtype=dtypes.float32)
+    conv = nn.conv2d(
         input=a, filter=e, strides=[1, 2, 2, 1], padding="SAME", name="conv")
-    b = tf.constant([4., 1.5, 2., 3., 5., 7.], name="bias", dtype=tf.float32)
-    t = tf.nn.bias_add(conv, b, name="biasAdd")
-    relu = tf.nn.relu(t, "relu")
-    idty = tf.identity(relu, "ID")
-    v = tf.nn.max_pool(
+    b = cop.constant([4., 1.5, 2., 3., 5., 7.], name="bias", dtype=dtypes.float32)
+    t = nn.bias_add(conv, b, name="biasAdd")
+    relu = nn.relu(t, "relu")
+    idty = aops.identity(relu, "ID")
+    v = nn_ops.max_pool(
         idty, [1, 2, 2, 1], [1, 2, 2, 1], "VALID", name="max_pool")
-    tf.squeeze(v, name="output")
+    aops.squeeze(v, name="output")
   return g.as_graph_def()
 
 
 def run_graph(gdef, dumm_inp):
-  gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.50)
-  tf.reset_default_graph()
-  g = tf.Graph()
+  gpu_options = cbp2.GPUOptions(per_process_gpu_memory_fraction=0.50)
+  ops.reset_default_graph()
+  g = ops.Graph()
   with g.as_default():
-    inp, out = tf.import_graph_def(
+    inp, out = importer.import_graph_def(
         graph_def=gdef, return_elements=["input", "output"])
     inp = inp.outputs[0]
     out = out.outputs[0]
-  with tf.Session(
-      config=tf.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
+  with csess.Session(
+      config=cbp2.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
     val = sess.run(out, {inp: dumm_inp})
   return val
 
