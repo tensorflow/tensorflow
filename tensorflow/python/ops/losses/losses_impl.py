@@ -144,7 +144,7 @@ def _num_present(losses, weights, per_batch=False):
     if per_batch:
       return math_ops.reduce_sum(
           present, axis=math_ops.range(1, array_ops.rank(present)),
-          keep_dims=True, name=scope)
+          keepdims=True, name=scope)
     return math_ops.reduce_sum(present, name=scope)
 
 
@@ -311,7 +311,7 @@ def cosine_distance(
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     radial_diffs = math_ops.multiply(predictions, labels)
-    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(axis,), keep_dims=True)
+    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(axis,), keepdims=True)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
@@ -543,14 +543,14 @@ def mean_pairwise_squared_error(
 
       sum_squares_diff_per_batch = math_ops.reduce_sum(
           math_ops.square(diffs), reduction_indices=reduction_indices,
-          keep_dims=True)
+          keepdims=True)
       num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
       term1 = 2.0 * _safe_div(sum_squares_diff_per_batch,
                               num_present_per_batch - 1)
 
       sum_diff = math_ops.reduce_sum(
-          diffs, reduction_indices=reduction_indices, keep_dims=True)
+          diffs, reduction_indices=reduction_indices, keepdims=True)
       term2 = 2.0 * _safe_div(
           math_ops.square(sum_diff),
           math_ops.multiply(num_present_per_batch, num_present_per_batch - 1))
