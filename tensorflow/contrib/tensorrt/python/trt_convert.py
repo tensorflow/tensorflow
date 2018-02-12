@@ -55,10 +55,18 @@ def create_inference_graph(input_graph_def,
   def py3bytes(inp):
     return inp.encode("utf-8", errors="surrogateescape")
 
+  def py2string(inp):
+    return inp
+
+  def py3string(inp):
+    return inp.decode("utf-8")
+
   if _six.PY2:
     to_bytes = py2bytes
+    to_string = py2string
   else:
     to_bytes = py3bytes
+    to_string = py3string
 
   out_names = []
   for i in outputs:
@@ -76,8 +84,8 @@ def create_inference_graph(input_graph_def,
   # one is the transformed graphs protobuf string.
   out = trt_convert(input_graph_def_str, out_names, max_batch_size,
                     max_workspace_size_bytes)
-  status = out[0]
-  output_graph_def_string = to_bytes(out[1])
+  status = to_string(out[0])
+  output_graph_def_string = out[1]
   del input_graph_def_str  # Save some memory
   if len(status) < 2:
     raise _impl.UnknownError(None, None, status)

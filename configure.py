@@ -1078,12 +1078,21 @@ def set_tf_tensorrt_install_path(environ_cp):
           break
 
     # Reset and Retry
-    print('Invalid path to TensorRT. None of the following files can be found:')
-    print(trt_install_path)
-    print(os.path.join(trt_install_path, 'lib'))
-    print(os.path.join(trt_install_path, 'lib64'))
-    if search_result:
-      print(libnvinfer_path_from_ldconfig)
+    if len(possible_files):
+      print('TensorRT libraries found in one the following directories',
+            'are not compatible with selected cuda and cudnn installations')
+      print(trt_install_path)
+      print(os.path.join(trt_install_path, 'lib'))
+      print(os.path.join(trt_install_path, 'lib64'))
+      if search_result:
+        print(libnvinfer_path_from_ldconfig)
+    else:
+      print('Invalid path to TensorRT. None of the following files can be found:')
+      print(trt_install_path)
+      print(os.path.join(trt_install_path, 'lib'))
+      print(os.path.join(trt_install_path, 'lib64'))
+      if search_result:
+        print(libnvinfer_path_from_ldconfig)
 
   else:
     raise UserInputError('Invalid TF_TENSORRT setting was provided %d '
