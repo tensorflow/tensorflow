@@ -457,10 +457,15 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
     const TensorShapeProto& original_image_shape,
     const TensorShapeProto& original_filter_shape, const OpInfo& op_features,
     bool* found_unknown_shapes) {
+  VLOG(2) << "op features: " << op_features.DebugString();
+  VLOG(2) << "Original image shape: " << original_image_shape.DebugString();
+  VLOG(2) << "Original filter shape: " << original_filter_shape.DebugString();
   auto image_shape =
       MaybeGetMinimumShape(original_image_shape, 4, found_unknown_shapes);
   auto filter_shape =
       MaybeGetMinimumShape(original_filter_shape, 4, found_unknown_shapes);
+  VLOG(2) << "Image shape: " << image_shape.DebugString();
+  VLOG(2) << "Filter shape: " << filter_shape.DebugString();
 
   int x_index, y_index, channel_index;
   const string& data_format = GetDataFormat(op_features);

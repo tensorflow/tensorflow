@@ -2682,7 +2682,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     return m, new_state
 
 
-class SRUCell(rnn_cell_impl._LayerRNNCell):
+class SRUCell(rnn_cell_impl.LayerRNNCell):
   """SRU, Simple Recurrent Unit
 
      Implementation based on

@@ -19,16 +19,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.py2tf.converters import break_canonicalization
-from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import converter_test_base
-from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.python.platform import test
-
-
-class TestNamer(control_flow.SymbolNamer):
-
-  def new_symbol(self, name_root, _):
-    return name_root
 
 
 class BreakCanonicalizationTest(converter_test_base.TestCase):
@@ -44,15 +36,15 @@ class BreakCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v
 
-    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = self.parse_and_analyze(test_fn, {})
     node = break_canonicalization.transform(node, self.ctx)
-    result = compiler.ast_to_object(node)
 
-    self.assertEqual(test_fn(0), result.test_fn(0))
-    self.assertEqual(test_fn(1), result.test_fn(1))
-    self.assertEqual(test_fn(2), result.test_fn(2))
-    self.assertEqual(test_fn(3), result.test_fn(3))
-    self.assertEqual(test_fn(4), result.test_fn(4))
+    with self.compiled(node) as result:
+      self.assertEqual(test_fn(0), result.test_fn(0))
+      self.assertEqual(test_fn(1), result.test_fn(1))
+      self.assertEqual(test_fn(2), result.test_fn(2))
+      self.assertEqual(test_fn(3), result.test_fn(3))
+      self.assertEqual(test_fn(4), result.test_fn(4))
 
   def test_basic_break_for_loop(self):
 
@@ -76,16 +68,17 @@ class BreakCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v
 
-    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = self.parse_and_analyze(test_fn, {})
     node = break_canonicalization.transform(node, self.ctx)
-    result = compiler.ast_to_object(node)
 
-    # The break is incompletely canonicalized. Everything is in place, but
-    # the loop does not break.
-    self.assertEqual(test_equiv_fn([]), result.test_fn([]))
-    self.assertEqual(test_equiv_fn([1]), result.test_fn([1]))
-    self.assertEqual(test_equiv_fn([2]), result.test_fn([2]))
-    self.assertEqual(test_equiv_fn([1, 2, 3, 4]), result.test_fn([1, 2, 3, 4]))
+    with self.compiled(node) as result:
+      # The break is incompletely canonicalized. Everything is in place, but
+      # the loop does not break.
+      self.assertEqual(test_equiv_fn([]), result.test_fn([]))
+      self.assertEqual(test_equiv_fn([1]), result.test_fn([1]))
+      self.assertEqual(test_equiv_fn([2]), result.test_fn([2]))
+      self.assertEqual(
+          test_equiv_fn([1, 2, 3, 4]), result.test_fn([1, 2, 3, 4]))
 
   def test_continue_deeply_nested(self):
 
@@ -104,15 +97,15 @@ class BreakCanonicalizationTest(converter_test_base.TestCase):
         v.append(x)
       return v, u, w
 
-    node = self.parse_and_analyze(test_fn, {}, namer=TestNamer())
+    node = self.parse_and_analyze(test_fn, {})
     node = break_canonicalization.transform(node, self.ctx)
-    result = compiler.ast_to_object(node)
 
-    self.assertEqual(test_fn(0), result.test_fn(0))
-    self.assertEqual(test_fn(1), result.test_fn(1))
-    self.assertEqual(test_fn(2), result.test_fn(2))
-    self.assertEqual(test_fn(3), result.test_fn(3))
-    self.assertEqual(test_fn(4), result.test_fn(4))
+    with self.compiled(node) as result:
+      self.assertEqual(test_fn(0), result.test_fn(0))
+      self.assertEqual(test_fn(1), result.test_fn(1))
+      self.assertEqual(test_fn(2), result.test_fn(2))
+      self.assertEqual(test_fn(3), result.test_fn(3))
+      self.assertEqual(test_fn(4), result.test_fn(4))
 
 
 if __name__ == '__main__':

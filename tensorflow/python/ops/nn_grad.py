@@ -1010,7 +1010,7 @@ def _NthElementGrad(op, grad):
     A list of two tensors, the first being the gradient w.r.t. the input,
     the second being the gradient w.r.t. the N (None).
   """
-  input = op.inputs[0]
+  input = op.inputs[0]  # pylint: disable=redefined-builtin
   output = op.outputs[0]
 
   # Compute the number of elements which equal to output in each reduction

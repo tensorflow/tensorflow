@@ -27,6 +27,7 @@ from tensorflow.contrib.py2tf.impl import config
 from tensorflow.contrib.py2tf.impl import conversion
 from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.contrib.py2tf.pyct import parser
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import tf_inspect
 
 # TODO(mdan): Properly document the type hints.
@@ -83,7 +84,7 @@ def convert_inline(f, *args, **kwargs):
   return convert(arg_value_hints)(f)(*args, **kwargs)
 
 
-def convert(recursive=False, arg_types=None):
+def convert(recursive=False, verbose=False, arg_types=None):
   """Decorator that compiles a function to graph mode.
 
   The decorator is dynamic - invoking compilation whenever the decorated
@@ -92,6 +93,7 @@ def convert(recursive=False, arg_types=None):
   Args:
     recursive: Whether to recusrively convert any functions that the decorator
         function may call.
+    verbose: Whether to output the compiled code in the logs.
     arg_types: See to_graph.
 
   Returns:
@@ -125,6 +127,7 @@ def convert(recursive=False, arg_types=None):
       wrapped = to_graph(
           f,
           recursive=recursive,
+          verbose=verbose,
           arg_values=arg_values,
           arg_types=arg_types,
           partial_types=partial_types)
@@ -140,6 +143,7 @@ def convert(recursive=False, arg_types=None):
 
 def to_graph(e,
              recursive=True,
+             verbose=False,
              arg_values=None,
              arg_types=None,
              partial_types=None):
@@ -155,6 +159,7 @@ def to_graph(e,
     e: A Python entity.
     recursive: Whether to recusrively convert any functions that the decorator
         function may call.
+    verbose: Whether to output the compiled code in the logs.
     arg_values: A dict containing value hints for symbols like function
         parameters.
     arg_types: A dict containing type hints for symbols like function
@@ -178,14 +183,17 @@ def to_graph(e,
     module.body.append(parser.parse_str(import_line))
   for dep in conversion_map.dependency_cache.values():
     module.body.append(dep)
-  compiled_node = compiler.ast_to_object(module)
+  compiled_node, compiled_src = compiler.ast_to_object(module)
 
   # The compiled code should see everything the entry function saw.
   # TODO(mdan): This might not work well if the call tree spans modules?
   if tf_inspect.isfunction(e):
     compiled_node.__dict__.update(six.get_function_globals(e))
-
   compiled_fn = getattr(compiled_node, name)
+
+  if verbose:
+    logging.info('Compiled output of %s:\n\n%s\n', e, compiled_src)
+
   return compiled_fn
 
 

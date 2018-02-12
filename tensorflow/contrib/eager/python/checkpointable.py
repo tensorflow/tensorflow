@@ -23,8 +23,12 @@ import weakref
 
 from tensorflow.contrib.eager.proto import checkpointable_object_graph_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import optimizer as optimizer_lib
@@ -37,18 +41,15 @@ _CheckpointableReference = collections.namedtuple(
     [
         # The local name if explicitly specified, else None.
         "name",
-        # 1 for the first dependency, 2 for the next, ... Used for routing
-        # checkpointed variables to their correct Checkpointables when "name" is
-        # not set (see docstring of `track_checkpointable`).
-        "local_uid",
         # The Checkpointable object being referenced.
         "ref"
     ])
 
 # Validation regular expression for the local names of Checkpointable
-# objects. In particular, disallows "/" in names, and reserves
-# underscore-prefixed names.
-_VALID_LOCAL_NAME = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.-]*$")
+# objects. In particular, disallows "/" in names, and reserves dash-prefixed
+# names (which are not valid Python identifiers, so we're not restricting the
+# __setattr__ syntax that way).
+_VALID_LOCAL_NAME = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_.-]*$")
 
 # Keyword for identifying that the next bit of a checkpoint variable name is a
 # slot name. May not be the local name of a checkpointable. Checkpoint names for
@@ -58,7 +59,7 @@ _VALID_LOCAL_NAME = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.-]*$")
 #
 # Where <path to variable> is a full path from the checkpoint root to the
 # variable being slotted for.
-_OPTIMIZER_SLOTS_NAME = "_OPTIMIZER_SLOT"
+_OPTIMIZER_SLOTS_NAME = "-OPTIMIZER_SLOT"
 
 
 def _assign_existing_variable(variable_to_restore, value_pointer):
@@ -78,6 +79,40 @@ def _assign_existing_variable(variable_to_restore, value_pointer):
       value_pointer.session.run(initializer_op)
 
 
+def _default_getter(name, shape, dtype, initializer=None,
+                    partition_info=None, **kwargs):
+  """A pared-down version of get_variable which does not reuse variables."""
+  dtype = dtypes.as_dtype(dtype)
+  shape_object = tensor_shape.as_shape(shape)
+  with ops.init_scope():
+    if initializer is None:
+      initializer, initializing_from_value = (
+          variable_scope._get_default_variable_store()._get_default_initializer(  # pylint: disable=protected-access
+              name=name, shape=shape_object, dtype=dtype))
+    else:
+      initializing_from_value = not callable(initializer)
+    # Same logic as get_variable
+    if initializing_from_value:
+      if shape is not None:
+        raise ValueError("If initializer is a constant, do not specify shape.")
+      initial_value = initializer
+      variable_dtype = None
+    else:
+      # Instantiate initializer if provided initializer is a type object.
+      if isinstance(initializer, type(init_ops.Initializer)):
+        initializer = initializer(dtype=dtype)
+      def initial_value():
+        return initializer(
+            shape_object.as_list(), dtype=dtype, partition_info=partition_info)
+      variable_dtype = dtype.base_dtype
+    return resource_variable_ops.ResourceVariable(
+        initial_value=initial_value,
+        name=name,
+        dtype=variable_dtype,
+        **kwargs
+    )
+
+
 class Checkpointable(object):
   """Manages variables and dependencies on other objects.
 
@@ -89,20 +124,39 @@ class Checkpointable(object):
   """
 
   def __init__(self):
-    # Basically a less useful OrderedDict but without the reference cycles.
-    # TODO(allenl): Switch this to OrderedDict once TensorFlow supports only
-    # Python 3.6+.
     # A list of _CheckpointableReference objects.
     self._checkpoint_dependencies = []
-    self._dependency_names = set()
-    # Start numbering at 1, since an un-set protocol buffer integer is
-    # indistinguishable from 0.
-    self._next_unnamed_checkpoint_dependency_uid = 1
+    # Maps names -> Checkpointable objects for named dependencies
+    self._dependency_names = {}
+    # Set of all tracked Checkpointables
+    self._already_tracked = set()
     self._owned_variables = {}  # local name -> variable object
     self._deferred_restorations = {}  # local name -> _VariableRestoration
                                       # object
 
-  def add_variable(self, name, shape, dtype=None, initializer=None, **kwargs):
+  def __setattr__(self, name, value):
+    """Support self.foo = checkpointable syntax.
+
+    `self.foo = checkpointable` is equivalent to
+    `self.foo = self.track_checkpointable(checkpointable, name='foo')`.
+
+    No new tracking if `value` is not a `Checkpointable`, or if `value` is
+    already being tracked (either because of an explicit `track_checkpointable`
+    or a previous `__setattr__`).
+
+    Args:
+      name: The name of the property being set.
+      value: The new value for the property.
+    """
+    # Give child classes (e.g. Network) priority, then track only if the object
+    # hasn't been added to _already_tracked.
+    super(Checkpointable, self).__setattr__(name, value)
+    if (isinstance(value, Checkpointable)
+        and value not in self._already_tracked):
+      self.track_checkpointable(value, name=name)
+
+  def add_variable(self, name, shape=None, dtype=dtypes.float32,
+                   initializer=None, **kwargs):
     """Create a new variable object to be saved with this `Checkpointable`.
 
     If the user has requested that this object or another `Checkpointable` which
@@ -116,14 +170,18 @@ class Checkpointable(object):
       dtype: The data type of the variable.
       initializer: The initializer to use. Ignored if deferred loading has been
         requested.
-      **kwargs: Passed to get_variable.
+      **kwargs: Passed to the ResourceVariable constructor.
 
     Returns:
       The new variable object.
 
     Raises:
       ValueError: If the variable name is not unique.
+      RuntimeError: If __init__ has not been called.
     """
+    if not hasattr(self, "_owned_variables"):
+      raise RuntimeError("Need to call Checkpointable.__init__ before adding "
+                         "variables.")
     if name in self._owned_variables:
       raise ValueError(
           ("A variable named '%s' already exists in this Checkpointable, but "
@@ -136,18 +194,19 @@ class Checkpointable(object):
       # be relatively uncommon in user code.
       getter = kwargs.pop("getter")
     else:
-      getter = variable_scope.get_variable
+      getter = _default_getter
     deferred_restoration = self._deferred_restorations.pop(name, None)
     if deferred_restoration is not None:
       dtype = deferred_restoration.value_pointer.dtype
       base_type = dtype.base_dtype
       # TODO(allenl): Handle partitioned variables here too
-      initializer, = io_ops.restore_v2(
-          prefix=deferred_restoration.value_pointer.save_path,
-          tensor_names=[deferred_restoration.value_pointer.checkpoint_key],
-          shape_and_slices=[""],
-          dtypes=[base_type],
-          name="checkpoint_initializer")
+      with ops.init_scope():
+        initializer, = io_ops.restore_v2(
+            prefix=deferred_restoration.value_pointer.save_path,
+            tensor_names=[deferred_restoration.value_pointer.checkpoint_key],
+            shape_and_slices=[""],
+            dtypes=[base_type],
+            name="checkpoint_initializer")
       # We need to un-set the shape so get_variable doesn't complain, but we
       # also need to set the static shape information on the initializer if
       # possible so we don't get a variable with an unknown shape.
@@ -171,29 +230,24 @@ class Checkpointable(object):
     self._owned_variables[name] = new_variable
     return new_variable
 
-  def track_checkpointable(self, checkpointable, name=None):
+  def track_checkpointable(self, checkpointable, name):
     """Declare a dependency on another `Checkpointable` object.
 
     Indicates that checkpoints for this object should include variables from
     `checkpointable`.
 
-    Variables in a checkpoint are mapped to `Checkpointable`s based on names if
-    provided when the checkpoint was written, but otherwise use the order those
-    `Checkpointable`s were declared as dependencies.
-
-    There are three sufficient conditions to avoid breaking existing checkpoints
-    when modifying a class: (1) New un-named dependencies must be declared after
-    existing un-named dependencies, (2) un-named dependencies which were
-    previously declared may never be removed (a trivial placeholder may be used
-    instead if the dependency is no longer needed), and (3) names may not change
-    (un-named dependencies may not later be named, named dependencies must keep
-    the same name).
+    Variables in a checkpoint are mapped to `Checkpointable`s based on names. To
+    avoid breaking existing checkpoints when modifying a class, neither variable
+    names nor dependency names (the names passed to `track_checkpointable`) may
+    change.
 
     Args:
       checkpointable: A `Checkpointable` which this object depends on.
       name: A local name for `checkpointable`, used for loading checkpoints into
-        the correct objects. If provided, it must be unique within this
-        `Checkpointable`. If None, dependency declaration order is used instead.
+        the correct objects. Python 2 identifiers are valid names, with the
+        addition of leading numerals, periods anywhere, and non-leading dashes.
+        Specifically names must match the regular expression
+        `^[A-Za-z0-9_.][A-Za-z0-9_.-]*$`.
 
     Returns:
       `checkpointable`, for convenience when declaring a dependency and
@@ -211,27 +265,21 @@ class Checkpointable(object):
       raise TypeError(
           ("Checkpointable.track_checkpointable() passed type %s, not a "
            "Checkpointable.") % (type(checkpointable),))
-    if name is not None:
-      if not _VALID_LOCAL_NAME.match(name):
-        raise ValueError(
-            ("Checkpointable names must match the regular expression '%s', but "
-             "got an invalid name '%s' instead.") % (_VALID_LOCAL_NAME.pattern,
-                                                     name))
-      if name in self._dependency_names:
-        raise ValueError(
-            ("Called Checkpointable.track_checkpointable() with name='%s', but "
-             "a Checkpointable with this name is already declared as a "
-             "dependency. If provided, names must be unique.") % (name,))
-      self._dependency_names.add(name)
-      local_uid = None
-    else:
-      # TODO(allenl): Should this be exposed to allow users to stop depending on
-      # things and still load checkpoints when not using names?
-      local_uid = self._next_unnamed_checkpoint_dependency_uid
-      self._next_unnamed_checkpoint_dependency_uid += 1
+    if not _VALID_LOCAL_NAME.match(name):
+      raise ValueError(
+          ("Checkpointable names must match the regular expression '%s', but "
+           "got an invalid name '%s' instead.") % (_VALID_LOCAL_NAME.pattern,
+                                                   name))
+    if (name in self._dependency_names
+        and self._dependency_names[name] is not checkpointable):
+      raise ValueError(
+          ("Called Checkpointable.track_checkpointable() with name='%s', but "
+           "a Checkpointable with this name is already declared as a "
+           "dependency. Names must be unique.") % (name,))
+    self._dependency_names[name] = checkpointable
     self._checkpoint_dependencies.append(
-        _CheckpointableReference(
-            name=name, ref=checkpointable, local_uid=local_uid))
+        _CheckpointableReference(name=name, ref=checkpointable))
+    self._already_tracked.add(checkpointable)
     return checkpointable
 
   def _process_restoration(self, restoration):
@@ -289,7 +337,7 @@ def _breadth_first_checkpointable_traversal(root_checkpointable):
   """Find shortest paths to all variables owned by dependencies of root."""
   bfs_sorted = []
   root_checkpointable_reference = _CheckpointableReference(
-      name=None, local_uid=0, ref=root_checkpointable)
+      name=None, ref=root_checkpointable)
   to_visit = collections.deque([root_checkpointable_reference])
   path_to_root = {root_checkpointable_reference: ()}
   while to_visit:
@@ -305,8 +353,8 @@ def _breadth_first_checkpointable_traversal(root_checkpointable):
 
 
 def _object_prefix_from_path(path_to_root):
-  return "/".join((checkpointable.name if checkpointable.name else "_%d" % (
-      checkpointable.local_uid,)) for checkpointable in path_to_root)
+  return "/".join(
+      (checkpointable.name for checkpointable in path_to_root))
 
 
 def _escape_variable_name(variable_name):
@@ -409,10 +457,7 @@ def _serialize_non_slot_variables(checkpointable_objects, path_to_root,
     for child in checkpointable.ref.checkpoint_dependencies:
       child_proto = object_proto.children.add()
       child_proto.node_id = checkpoint_node_ids[child]
-      if child.local_uid is not None:
-        child_proto.local_uid = child.local_uid
-      if child.name is not None:
-        child_proto.local_name = child.name
+      child_proto.local_name = child.name
   return named_variables, non_slot_variables
 
 
@@ -549,37 +594,22 @@ def _checkpoint_object_id_map(root_checkpointable, object_graph_proto):
     checkpointable, node_id = to_visit.popleft()
     object_proto = node_list[node_id]
     named_children = {}
-    numbered_children = {}
     for child_reference in object_proto.children:
       if child_reference.local_name:
         named_children[child_reference.local_name] = child_reference
       else:
-        if not child_reference.local_uid:
-          raise AssertionError(
-              ("The checkpointed object graph contains a reference with "
-               "neither a name nor a number (corrupted?). The reference was "
-               "from the node %s.") % (object_proto,))
-        numbered_children[child_reference.local_uid] = child_reference
+        raise AssertionError(
+            ("The checkpointed object graph contains a reference without "
+             "a name (corrupted?). The reference was from the node %s.")
+            % (object_proto,))
 
     for checkpointable_reference in checkpointable._checkpoint_dependencies:  # pylint: disable=protected-access
-      if checkpointable_reference.name is not None:
-        child_node_id = _set_reference(
-            reference_proto_table=named_children,
-            key=checkpointable_reference.name,
-            checkpointable=checkpointable_reference.ref,
-            parent=checkpointable,
-            object_id_map=object_id_map)
-      else:
-        if checkpointable_reference.local_uid is None:
-          raise AssertionError(
-              ("A Checkpointable reference was created with no name and no "
-               "number in %s.") % (checkpointable,))
-        child_node_id = _set_reference(
-            reference_proto_table=numbered_children,
-            key=checkpointable_reference.local_uid,
-            checkpointable=checkpointable_reference.ref,
-            parent=checkpointable,
-            object_id_map=object_id_map)
+      child_node_id = _set_reference(
+          reference_proto_table=named_children,
+          key=checkpointable_reference.name,
+          checkpointable=checkpointable_reference.ref,
+          parent=checkpointable,
+          object_id_map=object_id_map)
       if child_node_id not in seen:
         seen.add(child_node_id)
         to_visit.append((checkpointable_reference.ref, child_node_id))
@@ -740,3 +770,4 @@ def restore(save_path, root_checkpointable, object_graph_proto, session=None):
   for restoration, checkpointable in _gather_restorations(
       object_graph_proto, save_path, object_id_map, dtype_map, session=session):
     checkpointable._process_restoration(restoration)  # pylint: disable=protected-access
+

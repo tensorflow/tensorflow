@@ -1,4 +1,4 @@
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,21 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Utility to copy a tf.Graph."""
-
+"""Python helper for loading contrib ops and kernels."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
-from tensorflow.python.training import saver as saver_lib
+from tensorflow.contrib.util import loader
+from tensorflow.python.platform import resource_loader
 
-
-def CopyGraph(graph):
-  """Return a copy of graph."""
-  meta_graph = saver_lib.export_meta_graph(
-      graph=graph, collection_list=graph.get_all_collection_keys())
-  graph_copy = ops.Graph()
-  with graph_copy.as_default():
-    _ = saver_lib.import_meta_graph(meta_graph)
-  return graph_copy
+_dataset_ops = loader.load_op_library(
+    resource_loader.get_path_to_datafile("../../_dataset_ops.so"))

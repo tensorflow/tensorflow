@@ -57,12 +57,15 @@ from tensorflow.python.keras._impl.keras.layers import SeparableConv2D
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 TF_WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.4/xception_weights_tf_dim_ordering_tf_kernels.h5'
 TF_WEIGHTS_PATH_NO_TOP = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.4/xception_weights_tf_dim_ordering_tf_kernels_notop.h5'
 
 
+@tf_export('keras.applications.Xception',
+           'keras.applications.xception.Xception')
 def Xception(include_top=True,
              weights='imagenet',
              input_tensor=None,
@@ -328,6 +331,7 @@ def Xception(include_top=True,
   return model
 
 
+@tf_export('keras.applications.xception.preprocess_input')
 def preprocess_input(x):
   """Preprocesses a numpy array encoding a batch of images.
 
