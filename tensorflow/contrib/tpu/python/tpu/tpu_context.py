@@ -106,7 +106,9 @@ class _TPUContext(object):
     # pylint: disable=protected-access
     tpu_system_metadata = (
         tpu_system_metadata_lib._query_tpu_system_metadata(
-            master, query_topology=self.model_parallelism_enabled))
+            master,
+            run_config=self._config,
+            query_topology=self.model_parallelism_enabled))
 
     self._lazy_tpu_system_metadata_dict[master] = tpu_system_metadata
     return tpu_system_metadata
