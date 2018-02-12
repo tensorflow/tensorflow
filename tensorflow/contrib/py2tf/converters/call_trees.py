@@ -28,6 +28,7 @@ import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import parser
+from tensorflow.contrib.py2tf.pyct import qual_names
 from tensorflow.contrib.py2tf.pyct import templates
 from tensorflow.contrib.py2tf.pyct import transformer
 from tensorflow.contrib.py2tf.pyct.static_analysis.annos import NodeAnno
@@ -197,21 +198,33 @@ class CallTreeTransformer(transformer.Base):
     return node
 
   def _wrap_to_py_func_no_return(self, node):
+    func_qn = anno.getanno(node.func, anno.Basic.QN)
     args_scope = anno.getanno(node, NodeAnno.ARGS_SCOPE)
+    wrapper_name = self.context.namer.new_symbol(func_qn.ssf(),
+                                                 args_scope.referenced)
+    wrapper_args = []
+    for arg in node.args:
+      if anno.hasanno(arg, anno.Basic.QN):
+        arg_qn = anno.getanno(arg, anno.Basic.QN)
+      else:
+        arg_qn = qual_names.QN('arg')
+      wrapper_args.append(
+          self.context.namer.new_symbol(arg_qn.ssf(), args_scope.referenced))
     # TODO(mdan): Properly handle varargs, kwargs, etc.
+    # TODO(mdan): This is best handled as a dynamic dispatch.
+    # That way we can separate tensors from non-tensor args.
     template = """
-      def wrapper(args):
-        call(args)
+      def wrapper(wrapper_args):
+        call(wrapper_args)
         return 1
-      tf.py_func(wrapper, [args], [tf.int64])
+      tf.py_func(wrapper, original_args, [tf.int64])
     """
     wrapper_def, call_expr = templates.replace(
         template,
         call=node.func,
-        wrapper=self.context.namer.compiled_function_name(node.func.id)[0],
-        args=tuple(args_scope.used))
-    anno.setanno(call_expr.value, NodeAnno.ARGS_SCOPE, args_scope)
-    # TODO(mdan): Rename this annotation to 'graph_ready'
+        wrapper=wrapper_name,
+        original_args=gast.List(elts=node.args, ctx=None),
+        wrapper_args=wrapper_args)
     anno.setanno(wrapper_def, anno.Basic.SKIP_PROCESSING, True)
 
     return (wrapper_def, call_expr)

@@ -48,8 +48,7 @@ from tensorflow.python.ops.control_flow_ops import case
 from tensorflow.python.ops.control_flow_ops import cond
 from tensorflow.python.ops.control_flow_ops import group
 from tensorflow.python.ops.control_flow_ops import no_op
-# pylint: disable=redefined-builtin
-from tensorflow.python.ops.control_flow_ops import tuple
+from tensorflow.python.ops.control_flow_ops import tuple  # pylint: disable=redefined-builtin
 # pylint: enable=redefined-builtin
 from tensorflow.python.ops.control_flow_ops import while_loop
 from tensorflow.python.ops.data_flow_ops import *

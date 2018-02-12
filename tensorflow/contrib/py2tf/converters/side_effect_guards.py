@@ -128,8 +128,11 @@ class SideEffectGuardTransformer(transformer.Base):
       # _visit_and_reindent.
       args_scope = anno.getanno(node.value, NodeAnno.ARGS_SCOPE)
       # NOTE: We can't guard object attributes because they may not be writable.
-      guarded_args = tuple(
-          s for s in args_scope.used if not s.is_composite())
+      # In addition, avoid renaming well-known names.
+      # TODO(mdan): Move these names into config.
+      unguarded_names = (qual_names.QN('self'), qual_names.QN('tf'))
+      guarded_args = tuple(s for s in args_scope.used
+                           if not s.is_composite() and s not in unguarded_names)
 
       # TODO(mdan): Include all arguments which depended on guarded_args too.
       # For example, the following will still cause a race:
@@ -157,8 +160,8 @@ class SideEffectGuardTransformer(transformer.Base):
               [alias_map.get(s, s).ast() for s in guarded_args], None)
 
         template = """
-          with py2tf_utils.control_dependency_on_returns(tf, call):
-            aliased_guarded_args = py2tf_utils.alias_tensors(tf, guarded_args)
+          with py2tf_utils.control_dependency_on_returns(call):
+            aliased_guarded_args = py2tf_utils.alias_tensors(guarded_args)
         """
         control_deps_guard = templates.replace(
             template,
@@ -169,7 +172,7 @@ class SideEffectGuardTransformer(transformer.Base):
         alias_map = {}
 
         template = """
-          with py2tf_utils.control_dependency_on_returns(tf, call):
+          with py2tf_utils.control_dependency_on_returns(call):
             pass
         """
         control_deps_guard = templates.replace(template, call=node.value)[-1]

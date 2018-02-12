@@ -28,6 +28,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        "@six_archive//:six",
     ],
 )
 

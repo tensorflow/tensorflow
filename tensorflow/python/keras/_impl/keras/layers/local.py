@@ -27,8 +27,10 @@ from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils import conv_utils
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.LocallyConnected1D')
 class LocallyConnected1D(Layer):
   """Locally-connected layer for 1D inputs.
 
@@ -193,6 +195,7 @@ class LocallyConnected1D(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.LocallyConnected2D')
 class LocallyConnected2D(Layer):
   """Locally-connected layer for 2D inputs.
 

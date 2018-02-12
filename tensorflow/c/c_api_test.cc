@@ -94,6 +94,17 @@ TEST(CAPI, Tensor) {
   EXPECT_TRUE(deallocator_called);
 }
 
+void NoOpDeallocator(void* data, size_t, void*) {}
+
+TEST(CAPI, MalformedTensor) {
+  // See https://github.com/tensorflow/tensorflow/issues/7394
+  // num_dims = 0 implies a scalar, so should be backed by at least 4 bytes of
+  // data.
+  TF_Tensor* t =
+      TF_NewTensor(TF_FLOAT, nullptr, 0, nullptr, 0, &NoOpDeallocator, nullptr);
+  ASSERT_TRUE(t == nullptr);
+}
+
 TEST(CAPI, AllocateTensor) {
   const int num_bytes = 6 * sizeof(float);
   int64_t dims[] = {2, 3};
@@ -904,6 +915,86 @@ TEST(CAPI, Session) {
   ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
   output_contents = static_cast<int32*>(TF_TensorData(out));
   EXPECT_EQ(-(7 + 2), *output_contents);
+
+  // Clean up
+  csession.CloseAndDelete(s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, Session_Min_CPU) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Make a placeholder operation.
+  TF_Operation* feed = Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Make a constant operation with the scalar "0", for axis.
+  TF_Operation* one = ScalarConst(0, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Add operation.
+  TF_Operation* min = Min(feed, one, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Create a session for this graph.
+  CSession csession(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Run the graph.
+  csession.SetInputs({{feed, Int32Tensor({3, 2, 5})}});
+  csession.SetOutputs({min});
+  csession.Run(s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_Tensor* out = csession.output_tensor(0);
+  ASSERT_TRUE(out != nullptr);
+  EXPECT_EQ(TF_INT32, TF_TensorType(out));
+  EXPECT_EQ(0, TF_NumDims(out));  // scalar
+  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
+  int32* output_contents = static_cast<int32*>(TF_TensorData(out));
+  EXPECT_EQ(2, *output_contents);
+
+  // Clean up
+  csession.CloseAndDelete(s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, Session_Min_XLA_CPU) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Make a placeholder operation.
+  TF_Operation* feed = Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Make a constant operation with the scalar "0", for axis.
+  TF_Operation* one = ScalarConst(0, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Add operation.
+  TF_Operation* min = Min(feed, one, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Create a session for this graph.
+  CSession csession(graph, s, /*use_XLA=*/true);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Run the graph.
+  csession.SetInputs({{feed, Int32Tensor({3, 2, 5})}});
+  csession.SetOutputs({min});
+  csession.Run(s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_Tensor* out = csession.output_tensor(0);
+  ASSERT_TRUE(out != nullptr);
+  EXPECT_EQ(TF_INT32, TF_TensorType(out));
+  EXPECT_EQ(0, TF_NumDims(out));  // scalar
+  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
+  int32* output_contents = static_cast<int32*>(TF_TensorData(out));
+  EXPECT_EQ(2, *output_contents);
 
   // Clean up
   csession.CloseAndDelete(s);

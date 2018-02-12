@@ -22,9 +22,163 @@ import numpy as np
 
 from tensorflow.contrib.bayesflow.python.ops import mcmc_diagnostics_impl as mcmc_diagnostics
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import spectral_ops_test_util
 from tensorflow.python.platform import test
 
 rng = np.random.RandomState(42)
+
+
+class _EffectiveSampleSizeTest(object):
+
+  @property
+  def use_static_shape(self):
+    raise NotImplementedError(
+        "Subclass failed to implement `use_static_shape`.")
+
+  def _check_versus_expected_effective_sample_size(self,
+                                                   x_,
+                                                   expected_ess,
+                                                   sess,
+                                                   atol=1e-2,
+                                                   rtol=1e-2,
+                                                   max_lags_threshold=None,
+                                                   max_lags=None):
+    x = array_ops.placeholder_with_default(
+        input=x_, shape=x_.shape if self.use_static_shape else None)
+    ess = mcmc_diagnostics.effective_sample_size(
+        x, max_lags_threshold=max_lags_threshold, max_lags=max_lags)
+    if self.use_static_shape:
+      self.assertAllEqual(x.shape[1:], ess.shape)
+
+    ess_ = sess.run(ess)
+
+    self.assertAllClose(
+        np.ones_like(ess_) * expected_ess, ess_, atol=atol, rtol=rtol)
+
+  def testIidRank1NormalHasFullEssMaxLags10(self):
+    # With a length 5000 iid normal sequence, and max_lags = 10, we should
+    # have a good estimate of ESS, and it should be close to the full sequence
+    # length of 5000.
+    # The choice of max_lags = 10 is a short cutoff, reasonable only since we
+    # know the correlation length should be zero right away.
+    with self.test_session() as sess:
+      with spectral_ops_test_util.fft_kernel_label_map():
+        self._check_versus_expected_effective_sample_size(
+            x_=rng.randn(5000).astype(np.float32),
+            expected_ess=5000,
+            sess=sess,
+            max_lags=10,
+            rtol=0.3)
+
+  def testIidRank2NormalHasFullEssMaxLags10(self):
+    # See similar test for Rank1Normal for reasoning.
+    with self.test_session() as sess:
+      with spectral_ops_test_util.fft_kernel_label_map():
+        self._check_versus_expected_effective_sample_size(
+            x_=rng.randn(5000, 2).astype(np.float32),
+            expected_ess=5000,
+            sess=sess,
+            max_lags=10,
+            rtol=0.3)
+
+  def testIidRank1NormalHasFullEssMaxLagThresholdZero(self):
+    # With a length 5000 iid normal sequence, and max_lags_threshold = 0,
+    # we should have a super-duper estimate of ESS, and it should be very close
+    # to the full sequence length of 5000.
+    # The choice of max_lags_cutoff = 0 means we cutoff as soon as the auto-corr
+    # is below zero.  This should happen very quickly, due to the fact that the
+    # theoretical auto-corr is [1, 0, 0,...]
+    with self.test_session() as sess:
+      with spectral_ops_test_util.fft_kernel_label_map():
+        self._check_versus_expected_effective_sample_size(
+            x_=rng.randn(5000).astype(np.float32),
+            expected_ess=5000,
+            sess=sess,
+            max_lags_threshold=0.,
+            rtol=0.1)
+
+  def testIidRank2NormalHasFullEssMaxLagThresholdZero(self):
+    # See similar test for Rank1Normal for reasoning.
+    with self.test_session() as sess:
+      with spectral_ops_test_util.fft_kernel_label_map():
+        self._check_versus_expected_effective_sample_size(
+            x_=rng.randn(5000, 2).astype(np.float32),
+            expected_ess=5000,
+            sess=sess,
+            max_lags_threshold=0.,
+            rtol=0.1)
+
+  def testLength10CorrelationHasEssOneTenthTotalLengthUsingMaxLags50(self):
+    # Create x_, such that
+    #   x_[i] = iid_x_[0], i = 0,...,9
+    #   x_[i] = iid_x_[1], i = 10,..., 19,
+    #   and so on.
+    iid_x_ = rng.randn(5000, 1).astype(np.float32)
+    x_ = (iid_x_ * np.ones((5000, 10)).astype(np.float32)).reshape((50000,))
+    with self.test_session() as sess:
+      with spectral_ops_test_util.fft_kernel_label_map():
+        self._check_versus_expected_effective_sample_size(
+            x_=x_,
+            expected_ess=50000 // 10,
+            sess=sess,
+            max_lags=50,
+            rtol=0.2)
+
+  def testLength10CorrelationHasEssOneTenthTotalLengthUsingMaxLagsThresholdZero(
+      self):
+    # Create x_, such that
+    #   x_[i] = iid_x_[0], i = 0,...,9
+    #   x_[i] = iid_x_[1], i = 10,..., 19,
+    #   and so on.
+    iid_x_ = rng.randn(5000, 1).astype(np.float32)
+    x_ = (iid_x_ * np.ones((5000, 10)).astype(np.float32)).reshape((50000,))
+    with self.test_session() as sess:
+      with spectral_ops_test_util.fft_kernel_label_map():
+        self._check_versus_expected_effective_sample_size(
+            x_=x_,
+            expected_ess=50000 // 10,
+            sess=sess,
+            max_lags_threshold=0.,
+            rtol=0.1)
+
+  def testListArgs(self):
+    # x_ has correlation length 10 ==> ESS = N / 10
+    # y_ has correlation length 1  ==> ESS = N
+    iid_x_ = rng.randn(5000, 1).astype(np.float32)
+    x_ = (iid_x_ * np.ones((5000, 10)).astype(np.float32)).reshape((50000,))
+    y_ = rng.randn(50000).astype(np.float32)
+    states = [x_, x_, y_, y_]
+    max_lags_threshold = [0., None, 0., None]
+    max_lags = [None, 5, None, 5]
+
+    # See other tests for reasoning on tolerance.
+    with self.test_session() as sess:
+      with spectral_ops_test_util.fft_kernel_label_map():
+        ess = mcmc_diagnostics.effective_sample_size(
+            states,
+            max_lags_threshold=max_lags_threshold,
+            max_lags=max_lags)
+        ess_ = sess.run(ess)
+    self.assertAllEqual(4, len(ess_))
+
+    self.assertAllClose(50000 // 10, ess_[0], rtol=0.3)
+    self.assertAllClose(50000 // 10, ess_[1], rtol=0.3)
+    self.assertAllClose(50000, ess_[2], rtol=0.1)
+    self.assertAllClose(50000, ess_[3], rtol=0.1)
+
+
+class EffectiveSampleSizeStaticTest(test.TestCase, _EffectiveSampleSizeTest):
+
+  @property
+  def use_static_shape(self):
+    return True
+
+
+class EffectiveSampleSizeDynamicTest(test.TestCase, _EffectiveSampleSizeTest):
+
+  @property
+  def use_static_shape(self):
+    return False
 
 
 class _PotentialScaleReductionTest(object):
@@ -48,7 +202,7 @@ class _PotentialScaleReductionTest(object):
     state_1 = rng.randn(n_samples, 3, 4) + offset
 
     rhat = mcmc_diagnostics.potential_scale_reduction(
-        state=[state_0, state_1], independent_chain_ndims=1)
+        chains_states=[state_0, state_1], independent_chain_ndims=1)
 
     self.assertIsInstance(rhat, list)
     with self.test_session() as sess:

@@ -41,7 +41,7 @@ from tensorflow.python.platform import flags
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
 from tensorflow.python.summary import summary_iterator
-from tensorflow.python.training import input
+from tensorflow.python.training import input  # pylint: disable=redefined-builtin
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import session_run_hook
 

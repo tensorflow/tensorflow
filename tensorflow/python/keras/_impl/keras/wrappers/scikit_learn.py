@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python.keras._impl.keras.models import Sequential
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.keras._impl.keras.utils.np_utils import to_categorical
+from tensorflow.python.util.tf_export import tf_export
 
 
 class BaseWrapper(object):
@@ -187,6 +188,7 @@ class BaseWrapper(object):
     return res
 
 
+@tf_export('keras.wrappers.scikit_learn.KerasClassifier')
 class KerasClassifier(BaseWrapper):
   """Implementation of the scikit-learn classifier API for Keras.
   """
@@ -309,6 +311,7 @@ class KerasClassifier(BaseWrapper):
                      'the `model.compile()` method.')
 
 
+@tf_export('keras.wrappers.scikit_learn.KerasRegressor')
 class KerasRegressor(BaseWrapper):
   """Implementation of the scikit-learn regressor API for Keras.
   """

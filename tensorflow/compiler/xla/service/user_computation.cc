@@ -1997,6 +1997,9 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
     default:
       LOG(FATAL) << "Unexpected request type: " << request.request().op_case();
   }
+  if (!*is_functional) {
+    VLOG(1) << "Non-functional: " << request.request().DebugString();
+  }
   visited->insert(handle.handle());
 }
 

@@ -53,24 +53,6 @@ py_test(
 )
 
 py_test(
-    name = "cache_dataset_op_test",
-    size = "small",
-    srcs = ["cache_dataset_op_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data/ops:iterator_ops",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
     name = "concatenate_dataset_op_test",
     size = "small",
     srcs = ["concatenate_dataset_op_test.py"],
@@ -208,73 +190,18 @@ py_test(
 )
 
 tf_py_test(
-    name = "iterator_ops_cluster_test",
+    name = "get_single_element_test",
     size = "small",
-    srcs = ["iterator_ops_cluster_test.py"],
-    additional_deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:function",
-        "//tensorflow/python:functional_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python/data/ops:iterator_ops",
-    ],
-    grpc_enabled = True,
-    tags = [
-        "no_windows",
-        "oss_serial",
-    ],
-)
-
-tf_py_test(
-    name = "iterator_ops_test",
-    size = "small",
-    srcs = ["iterator_ops_test.py"],
+    srcs = ["get_single_element_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
         "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/contrib/data/python/ops:readers",
-        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
-        "//tensorflow/python:dataset_ops_gen",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:function",
-        "//tensorflow/python:functional_ops",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:io_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:parsing_ops",
-        "//tensorflow/python:script_ops",
-        "//tensorflow/python:session",
-        "//tensorflow/python:training",
-        "//tensorflow/python/data/ops:iterator_ops",
-    ],
-    grpc_enabled = True,
-)
-
-py_test(
-    name = "list_files_dataset_op_test",
-    size = "small",
-    srcs = ["list_files_dataset_op_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:util",
     ],
 )
 
@@ -426,14 +353,17 @@ py_test(
 )
 
 py_test(
-    name = "shard_dataset_op_test",
+    name = "serialization_integration_test",
     size = "small",
-    srcs = ["shard_dataset_op_test.py"],
+    srcs = ["serialization_integration_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["no_pip"],
     deps = [
-        "//tensorflow/contrib/data/python/ops:dataset_ops",
+        "//tensorflow/contrib/data/python/ops:iterator_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )
 
@@ -535,7 +465,7 @@ py_test(
         "no_oss",  # b/68785503
     ],
     deps = [
-        "//tensorflow/contrib/data/python/ops:prefetching_py",
+        "//tensorflow/contrib/data/python/ops:prefetching_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
