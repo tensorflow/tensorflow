@@ -40,14 +40,16 @@ def get_simple_graph_def():
   """Create a simple graph and return its graph_def"""
   g = ops.Graph()
   with g.as_default():
-    a = aops.placeholder(dtype=dtypes.float32, shape=(None, 24, 24, 2), name="input")
+    a = aops.placeholder(
+        dtype=dtypes.float32, shape=(None, 24, 24, 2), name="input")
     e = cop.constant(
         [[[[1., 0.5, 4., 6., 0.5, 1.], [1., 0.5, 1., 1., 0.5, 1.]]]],
         name="weights",
         dtype=dtypes.float32)
     conv = nn.conv2d(
         input=a, filter=e, strides=[1, 2, 2, 1], padding="SAME", name="conv")
-    b = cop.constant([4., 1.5, 2., 3., 5., 7.], name="bias", dtype=dtypes.float32)
+    b = cop.constant(
+        [4., 1.5, 2., 3., 5., 7.], name="bias", dtype=dtypes.float32)
     t = nn.bias_add(conv, b, name="biasAdd")
     relu = nn.relu(t, "relu")
     idty = aops.identity(relu, "ID")
