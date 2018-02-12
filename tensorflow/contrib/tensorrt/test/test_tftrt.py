@@ -58,7 +58,7 @@ def get_simple_graph_def():
 
 
 def run_graph(gdef, dumm_inp):
-  gpu_options = cbp2.GPUOptions(per_process_gpu_memory_fraction=0.50)
+  gpu_options = cpb2.GPUOptions(per_process_gpu_memory_fraction=0.50)
   ops.reset_default_graph()
   g = ops.Graph()
   with g.as_default():
