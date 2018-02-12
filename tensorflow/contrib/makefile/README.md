@@ -149,7 +149,9 @@ CC_PREFIX=ccache tensorflow/contrib/makefile/build_all_android.sh -s tensorflow/
 (add -T on subsequent builds to skip protobuf downloading/building)
 
 
-Testing the benchmark (build binaries first):
+### Building and testing the benchmark via adb:
+Build binaries first as above, then run:
+
 ```bash
 adb shell mkdir -p /data/local/tmp/lib64
 adb push $TEGRA_LIBS /data/local/tmp/lib64
@@ -160,44 +162,50 @@ adb push /tmp/tensorflow_demo/assets/*.pb /data/local/tmp
 adb shell "LD_LIBRARY_PATH=/data/local/tmp/lib64 /data/local/tmp/benchmark --graph=/data/local/tmp/tensorflow_inception_graph.pb"
 ```
 
-Building the demo with Bazel (build binaries first as above):
-
-Add Android SDK info to tensorflow/WORKSPACE
-edit tensorflow/examples/android/BUILD and replace: 
+### Building the demo with Bazel:
+Build binaries first as above, then edit tensorflow/examples/android/BUILD and replace: 
+```
     srcs = [
        ":libtensorflow_demo.so",
        "//tensorflow/contrib/android:libtensorflow_inference.so",
     ],
+```
 with:
-   srcs = glob(["libs/arm64-v8a/*.so"]),
+```
+srcs = glob(["libs/arm64-v8a/*.so"]),
+```
 
+Then run:
+```bash
+\# Create dir for native libs
 mkdir -p tensorflow/examples/android/libs/arm64-v8a
 
-# Copy JetPack libs
+\# Copy JetPack libs
 cp $TEGRA_LIBS  tensorflow/examples/android/libs/arm64-v8a
 
-# Copy TF binary
+\# Copy native TensorFlow libraries
 cp tensorflow/contrib/makefile/gen/lib/android_arm64-v8a/libtensorflow_*.so tensorflow/examples/android/libs/arm64-v8a/
 
-# Build APK
-```bash
+\# Build APK
 bazel build -c opt --fat_apk_cpu=arm64-v8a tensorflow/android:tensorflow_demo
+
+\# Install
 adb install -r -f bazel-bin/tensorflow/examples/android/tensorflow_demo.apk 
 ```
 
-Building the demo with gradle/Android Studio:
+### Building the demo with gradle/Android Studio:
 
 Add tensorflow/examples/android as an Android project
 edit build.gradle and:
-set nativeBuildSystem = 'makefile'
-set cpuType = 'arm64-v8a'
-in "buildNativeMake", replace cpuType with 'tegra' (optional speedups like -T and ccache also work) 
-(possibly also set the environment "NDK_ROOT" var to $HOME/JetPack_Android_3.0/android-ndk-r13b if the default doesn't work)
+* set nativeBuildSystem = 'makefile'
+* set cpuType = 'arm64-v8a'
+* in "buildNativeMake", replace cpuType with 'tegra' (optional speedups like -T and ccache also work) 
+* set the environment "NDK_ROOT" var to $JETPACK/android-ndk-r13b
 click "build apk"
 install:
+```bash
 adb install -r -f tensorflow/examples/android/gradleBuild/outputs/apk/debug/android-debug.apk
-
-
+```
 
 ## iOS
 
@@ -337,7 +345,7 @@ selectively register only for the operators used in your graph.
 ```bash
 tensorflow/contrib/makefile/build_all_ios.sh -a arm64 -g $HOME/graphs/inception/tensorflow_inception_graph.pb
 ```
-Please note this is an aggresive optimization of the operators and the resulting library may not work with other graphs but will reduce the size of the final library.
+Please note this is an aggressive optimization of the operators and the resulting library may not work with other graphs but will reduce the size of the final library.
 
 The `compile_ios_tensorflow.sh` script can take optional command-line arguments.
 The first argument will be passed as a C++ optimization flag and defaults to
