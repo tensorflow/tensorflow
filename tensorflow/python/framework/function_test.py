@@ -1458,7 +1458,7 @@ class FunctionInlineControlTest(test.TestCase):
       def Cell(v):
         # If v is a vector [n, 1], x is a big square matrix.
         x = math_ops.tanh(v + array_ops.transpose(v, [1, 0]))
-        return math_ops.reduce_sum(x, 1, keep_dims=True)
+        return math_ops.reduce_sum(x, 1, keepdims=True)
 
       @function.Defun(dtype)
       def Forward(x):

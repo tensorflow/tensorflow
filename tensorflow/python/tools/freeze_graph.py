@@ -101,8 +101,8 @@ def freeze_graph_with_def_protos(input_graph_def,
     _ = importer.import_graph_def(input_graph_def, name="")
   with session.Session() as sess:
     if input_saver_def:
-      saver = saver_lib.Saver(saver_def=input_saver_def,
-                              write_version=checkpoint_version)
+      saver = saver_lib.Saver(
+          saver_def=input_saver_def, write_version=checkpoint_version)
       saver.restore(sess, input_checkpoint)
     elif input_meta_graph_def:
       restorer = saver_lib.import_meta_graph(
@@ -126,8 +126,8 @@ def freeze_graph_with_def_protos(input_graph_def,
           # 'global_step' or a similar housekeeping element) so skip it.
           continue
         var_list[key] = tensor
-      saver = saver_lib.Saver(var_list=var_list,
-                              write_version=checkpoint_version)
+      saver = saver_lib.Saver(
+          var_list=var_list, write_version=checkpoint_version)
       saver.restore(sess, input_checkpoint)
       if initializer_nodes:
         sess.run(initializer_nodes.split(","))
@@ -237,11 +237,21 @@ def freeze_graph(input_graph,
   if input_saver:
     input_saver_def = _parse_input_saver_proto(input_saver, input_binary)
   freeze_graph_with_def_protos(
-      input_graph_def, input_saver_def, input_checkpoint, output_node_names,
-      restore_op_name, filename_tensor_name, output_graph, clear_devices,
-      initializer_nodes, variable_names_whitelist, variable_names_blacklist,
-      input_meta_graph_def, input_saved_model_dir,
-      saved_model_tags.split(","), checkpoint_version=checkpoint_version)
+      input_graph_def,
+      input_saver_def,
+      input_checkpoint,
+      output_node_names,
+      restore_op_name,
+      filename_tensor_name,
+      output_graph,
+      clear_devices,
+      initializer_nodes,
+      variable_names_whitelist,
+      variable_names_blacklist,
+      input_meta_graph_def,
+      input_saved_model_dir,
+      saved_model_tags.split(","),
+      checkpoint_version=checkpoint_version)
 
 
 def main(unused_args):

@@ -181,9 +181,10 @@ def find_files(pattern, root):
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
 
-so_lib_paths = [i for i in os.listdir('.')
-                if os.path.isdir(i) 
-                and fnmatch.fnmatch(i, '_solib_*')]
+so_lib_paths = [
+    i for i in os.listdir('.')
+    if os.path.isdir(i) and fnmatch.fnmatch(i, '_solib_*')
+]
 
 for path in so_lib_paths:
   matches.extend(

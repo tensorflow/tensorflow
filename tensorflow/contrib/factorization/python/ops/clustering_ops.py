@@ -192,11 +192,11 @@ class KMeans(object):
         # Computes Euclidean distance. Note the first and third terms are
         # broadcast additions.
         squared_distance = (
-            math_ops.reduce_sum(math_ops.square(inp), 1, keep_dims=True) -
+            math_ops.reduce_sum(math_ops.square(inp), 1, keepdims=True) -
             2 * math_ops.matmul(inp, clusters, transpose_b=True) +
             array_ops.transpose(
                 math_ops.reduce_sum(
-                    math_ops.square(clusters), 1, keep_dims=True)))
+                    math_ops.square(clusters), 1, keepdims=True)))
         output.append(squared_distance)
 
     return output

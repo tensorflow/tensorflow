@@ -215,7 +215,6 @@ def _get_default_do_not_descend_map():
           # Block contrib.keras to de-clutter the docs
           'keras',
           'labeled_tensor',
-          'ndlstm',
           'quantization',
           'session_bundle',
           'slim',

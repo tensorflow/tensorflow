@@ -35,7 +35,6 @@ namespace xla {
 namespace cpu {
 namespace runtime {
 
-extern const char *const kExpV4F32SSESymbolName;
 extern const char *const kLogV4F32SSESymbolName;
 
 #ifdef TF_XLA_HAS_SSE4_1
@@ -52,9 +51,6 @@ extern "C" {
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
-xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_ExpV4F32SSE(
-    xla::cpu::runtime::V4F32SSE x);
-
 xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_LogV4F32SSE(
     xla::cpu::runtime::V4F32SSE x);
 #endif

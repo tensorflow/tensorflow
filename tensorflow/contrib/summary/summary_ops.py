@@ -154,10 +154,12 @@ def initialize(
       to @{tf.get_default_session}.
 
   Raises:
-    RuntimeError: If in eager mode, or if the current thread has no
-      default @{tf.contrib.summary.SummaryWriter}.
+    RuntimeError: If  the current thread has no default
+      @{tf.contrib.summary.SummaryWriter}.
     ValueError: If session wasn't passed and no default session.
   """
+  if context.in_eager_mode():
+    return
   if context.context().summary_writer_resource is None:
     raise RuntimeError("No default tf.contrib.summary.SummaryWriter found")
   if session is None:
@@ -292,13 +294,9 @@ def all_summary_ops():
 
   Returns:
     The summary ops.
-
-  Raises:
-    RuntimeError: If in Eager mode.
   """
   if context.in_eager_mode():
-    raise RuntimeError(
-        "tf.contrib.summary.all_summary_ops is only supported in graph mode.")
+    return None
   return ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
 
 

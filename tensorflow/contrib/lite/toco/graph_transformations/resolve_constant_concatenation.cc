@@ -190,7 +190,7 @@ bool ResolveConstantConcatenation::Run(Model* model, std::size_t op_index) {
   // Remove all the resolved arrays.
   for (const string& input_name : concat_op->inputs) {
     // Check to prevent removal of shared tensors
-    if(CountOpsWithInput(*model, input_name) == 1) {
+    if (CountOpsWithInput(*model, input_name) == 1) {
       model->EraseArray(input_name);
     }
   }

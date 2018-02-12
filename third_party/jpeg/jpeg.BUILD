@@ -145,9 +145,9 @@ cc_library(
         "jpeglib.h",
         "jsimd.h",
         "jsimddct.h",
-        "simd/jsimd.h",
         "simd/jccolor-altivec.c",
         "simd/jcgray-altivec.c",
+        "simd/jcsample.h",
         "simd/jcsample-altivec.c",
         "simd/jdcolor-altivec.c",
         "simd/jdmerge-altivec.c",
@@ -157,15 +157,15 @@ cc_library(
         "simd/jidctfst-altivec.c",
         "simd/jidctint-altivec.c",
         "simd/jquanti-altivec.c",
-        "simd/jsimd_powerpc.c",
+        "simd/jsimd.h",
         "simd/jsimd_altivec.h",
-        "simd/jcsample.h",
+        "simd/jsimd_powerpc.c",
     ],
     hdrs = [
-      "simd/jdmrgext-altivec.c",  # should have been named .inc
-      "simd/jccolext-altivec.c",  # should have been named .inc
-      "simd/jcgryext-altivec.c",  # should have been named .inc
-      "simd/jdcolext-altivec.c",  # should have been named .inc
+        "simd/jccolext-altivec.c",  # should have been named .inc
+        "simd/jcgryext-altivec.c",  # should have been named .inc
+        "simd/jdcolext-altivec.c",  # should have been named .inc
+        "simd/jdmrgext-altivec.c",  # should have been named .inc
     ],
     copts = libjpegturbo_copts,
     nocopts = libjpegturbo_nocopts,
@@ -545,7 +545,6 @@ config_setting(
 )
 
 config_setting(
-   name = "linux_ppc64le",
-   values = {"cpu": "ppc"},
-
+    name = "linux_ppc64le",
+    values = {"cpu": "ppc"},
 )

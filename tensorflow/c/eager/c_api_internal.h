@@ -121,6 +121,7 @@ struct TFE_Op {
   std::vector<tensorflow::Tensor> inputs;
   std::vector<tensorflow::Device*> input_devices;
   tensorflow::Device* device;
+  bool use_xla = false;
 };
 
 #endif  // TENSORFLOW_C_EAGER_C_API_INTERNAL_H_

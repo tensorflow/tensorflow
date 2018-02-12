@@ -41,7 +41,7 @@ class GrpcWorker : public Worker {
                                    StatusCallback done);
 
   virtual void LoggingAsync(const LoggingRequest* request,
-                    LoggingResponse* response, StatusCallback done);
+                            LoggingResponse* response, StatusCallback done);
 
   WorkerEnv* env();
 
