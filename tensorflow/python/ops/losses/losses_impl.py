@@ -377,7 +377,7 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
   the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
+  `[batch_size]`, then the total loss for each sample of the batch is rescaled
   by the corresponding element in the `weights` vector. If the shape of
   `weights` matches the shape of `predictions`, then the loss of each
   measurable element of `predictions` is scaled by the corresponding value of
@@ -435,7 +435,7 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
   the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
+  `[batch_size]`, then the total loss for each sample of the batch is rescaled
   by the corresponding element in the `weights` vector. If the shape of
   `weights` matches the shape of `predictions`, then the loss of each
   measurable element of `predictions` is scaled by the corresponding value of
@@ -502,7 +502,7 @@ def mean_pairwise_squared_error(
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
   the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
+  `[batch_size]`, then the total loss for each sample of the batch is rescaled
   by the corresponding element in the `weights` vector.
 
   Args:
@@ -576,7 +576,7 @@ def mean_squared_error(
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
   the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
+  `[batch_size]`, then the total loss for each sample of the batch is rescaled
   by the corresponding element in the `weights` vector. If the shape of
   `weights` matches the shape of `predictions`, then the loss of each
   measurable element of `predictions` is scaled by the corresponding value of
@@ -796,7 +796,7 @@ def sparse_softmax_cross_entropy(
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
   then the loss is simply scaled by the given value. If `weights` is a
-  tensor of shape [`batch_size`], then the loss weights apply to each
+  tensor of shape `[batch_size]`, then the loss weights apply to each
   corresponding sample.
 
   Args:
