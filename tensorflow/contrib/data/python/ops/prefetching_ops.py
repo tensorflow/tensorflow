@@ -25,31 +25,31 @@ _prefetching_ops = loader.load_op_library(
     resource_loader.get_path_to_datafile("../../_prefetching_ops.so"))
 
 
-# TODO(rohanj): Add a python class that constructs resource in the __init__
-# method and provides a get_next() that calls the prefetch op.
-def function_buffering_resource(string_arg,
-                                target_device,
-                                shared_name,
-                                f,
-                                buffer_size,
-                                thread_pool_size=1,
-                                container="",
-                                name=None):
-  return gen_prefetching_ops.function_buffering_resource(
-      string_arg=string_arg,
-      target_device=target_device,
-      shared_name=shared_name,
-      f=f,
-      buffer_size=buffer_size,
-      thread_pool_size=thread_pool_size,
-      container=container,
-      name=name)
+class BufferingResource:
+    def __init__(self,
+                string_arg,
+                target_device,
+                shared_name,
+                f,
+                buffer_size,
+                thread_pool_size=1,
+                container="",
+                name=None):
 
+        self._function_buffering_resource = gen_prefetching_ops.function_buffering_resource(
+                string_arg=string_arg,
+                target_device=target_device,
+                shared_name=shared_name,
+                f=f,
+                buffer_size=buffer_size,
+                thread_pool_size=thread_pool_size,
+                container=container,
+                name=name)
 
-def function_buffering_resource_get_next(function_buffer_resource,
-                                         output_types,
-                                         name=None):
-  return gen_prefetching_ops.function_buffering_resource_get_next(
-      function_buffer_resource=function_buffer_resource,
-      output_types=output_types,
-      name=name)
+    def get_next(self, output_types, name=None):
+        self._function_buffering_resource = gen_prefetching_ops.function_buffering_resource_get_next(
+            function_buffer_resource=self._function_buffering_resource,
+            output_types=output_types,
+            name=name)
+
+        return self._function_buffering_resource
