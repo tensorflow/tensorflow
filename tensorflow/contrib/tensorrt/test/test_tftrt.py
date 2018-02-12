@@ -67,7 +67,7 @@ def run_graph(gdef, dumm_inp):
     inp = inp.outputs[0]
     out = out.outputs[0]
   with csess.Session(
-      config=cbp2.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
+      config=cpb2.ConfigProto(gpu_options=gpu_options), graph=g) as sess:
     val = sess.run(out, {inp: dumm_inp})
   return val
 
