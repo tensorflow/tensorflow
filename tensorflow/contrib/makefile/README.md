@@ -177,19 +177,19 @@ srcs = glob(["libs/arm64-v8a/*.so"]),
 
 Then run:
 ```bash
-\# Create dir for native libs
+# Create dir for native libs
 mkdir -p tensorflow/examples/android/libs/arm64-v8a
 
-\# Copy JetPack libs
+# Copy JetPack libs
 cp $TEGRA_LIBS  tensorflow/examples/android/libs/arm64-v8a
 
-\# Copy native TensorFlow libraries
+# Copy native TensorFlow libraries
 cp tensorflow/contrib/makefile/gen/lib/android_arm64-v8a/libtensorflow_*.so tensorflow/examples/android/libs/arm64-v8a/
 
-\# Build APK
+# Build APK
 bazel build -c opt --fat_apk_cpu=arm64-v8a tensorflow/android:tensorflow_demo
 
-\# Install
+# Install
 adb install -r -f bazel-bin/tensorflow/examples/android/tensorflow_demo.apk 
 ```
 
