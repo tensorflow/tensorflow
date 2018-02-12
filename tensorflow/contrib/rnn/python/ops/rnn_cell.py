@@ -3049,7 +3049,7 @@ class NLSTMCell(rnn_cell_impl.RNNCell):
         along the column axis.  The latter behavior will soon be deprecated.
       use_peepholes: `bool`(optional).
       activation: Activation function of the update values,
-        including new inputs and new cell states.  Default: `sigmoid`.
+        including new inputs and new cell states.  Default: `tanh`.
       gate_activation: Activation function of the gates,
         including the input, ouput, and forget gate. Default: `sigmoid`.
       cell_activation: Activation function of the first cell gate. Default: `identity`.
