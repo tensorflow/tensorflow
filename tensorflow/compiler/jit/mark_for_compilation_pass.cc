@@ -514,7 +514,6 @@ Status MarkForCompilationPass::RunImpl(
     // operators.
     if (cluster_sizes[cluster] >= min_cluster_size || marked_for_compilation ||
         registration->requires_compilation) {
-//      cluster = 0;
       string& name = cluster_names[cluster];
 
       if (name.empty()) {
