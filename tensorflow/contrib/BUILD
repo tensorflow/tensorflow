@@ -112,7 +112,6 @@ py_library(
     ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
         "//tensorflow/contrib/tensorrt:init_py",
     ]),
-
 )
 
 cc_library(
