@@ -511,6 +511,10 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
     }
   }
 
+  if (addn_list.empty()) {
+    return false;
+  }
+
   GraphMemory memory(*item);
   const std::unordered_map<string, DeviceProperties>& devices =
       cluster->GetDevices();
@@ -558,6 +562,13 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
   for (NodeDef* node : addn_to_rewrite) {
     if (!properties.HasOutputProperties(node->name())) {
       VLOG(1) << "Missing properties for " << node->name();
+      continue;
+    }
+    const TensorShapeProto& shape =
+        properties.GetOutputProperties(node->name())[0].shape();
+    PartialTensorShape shp(shape);
+    if (!shp.IsFullyDefined()) {
+      VLOG(1) << "Shape not fully known for " << node->name();
       continue;
     }
 
@@ -608,8 +619,6 @@ bool SchedulingPass(Cluster* cluster, GrapplerItem* item) {
       }
     }
 
-    const TensorShapeProto& shape =
-        properties.GetOutputProperties(node->name())[0].shape();
     DataType dtype = node->attr().at("T").type();
     const string& device = node->device();
 
@@ -1223,7 +1232,8 @@ Status MemoryOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool updated_graph = true;
   for (int i = 0; i < 25 && updated_graph; ++i) {
     updated_graph = false;
-    if ((optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
+    if ((optimization_level_ == RewriterConfig::DEFAULT_MEM_OPT ||
+         optimization_level_ == RewriterConfig::SCHEDULING_HEURISTICS ||
          optimization_level_ == RewriterConfig::HEURISTICS) &&
         cluster != nullptr) {
       updated_graph |= SchedulingPass(cluster, &optimized_item);

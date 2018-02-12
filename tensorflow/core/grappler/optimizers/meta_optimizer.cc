@@ -101,7 +101,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       optimizers.push_back(
           std::unique_ptr<GraphOptimizer>(new LayoutOptimizer()));
     }
-    if (cfg_.memory_optimization() > 1) {
+    if (cfg_.memory_optimization() != RewriterConfig::NO_MEM_OPT) {
       if (cfg_.memory_optimizer_target_node_name_prefix().empty()) {
         optimizers.push_back(std::unique_ptr<GraphOptimizer>(
             // Use the default target node name prefix "gradients/"
@@ -136,7 +136,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
   bool already_optimized = false;
   for (const auto& optimizer : optimizers) {
     if (!already_optimized) {
-      auto status = optimizer->Optimize(cluster, item, optimized_graph);
+      Status status = optimizer->Optimize(cluster, item, optimized_graph);
       string result;
       if (!status.ok()) {
         VLOG(1) << "Not able to apply optimizer " << optimizer->name()
@@ -152,7 +152,7 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
               << " return status: " << result;
     } else {
       GrapplerItem optimized_item(item, std::move(*optimized_graph));
-      auto status =
+      Status status =
           optimizer->Optimize(cluster, optimized_item, optimized_graph);
       string result;
       if (!status.ok()) {
@@ -205,7 +205,8 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.constant_folding() != RewriterConfig::OFF ||
          cfg.dependency_optimization() != RewriterConfig::OFF ||
          cfg.arithmetic_optimization() != RewriterConfig::OFF ||
-         cfg.auto_parallel().enable() || cfg.memory_optimization() > 1 ||
+         cfg.auto_parallel().enable() ||
+         cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          !cfg.optimizers().empty();
 }
 

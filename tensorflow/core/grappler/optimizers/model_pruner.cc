@@ -67,7 +67,7 @@ Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
       // let's be conservative and preserve the graph as is.
       return errors::InvalidArgument("Invalid input graph.");
     }
-    // Try to keep the nodes ordored somewhat topologically since this helps
+    // Try to keep the nodes ordered somewhat topologically since this helps
     // further optimizations perform better.
     for (int i = keep.size() - 1; i >= 0; --i) {
       *runnable_item.graph.add_node() = *keep[i];
