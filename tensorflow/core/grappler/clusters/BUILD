@@ -26,12 +26,13 @@ config_setting(
 tf_cuda_library(
     name = "utils",
     srcs = ["utils.cc"],
-    hdrs = ["utils.h"],
+    hdrs = [
+        "utils.h",
+    ],
     visibility = ["//visibility:public"],
     deps = [
         "//third_party/eigen3",
         "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
     ] + select({
@@ -103,7 +104,6 @@ cc_library(
         "//tensorflow/core:core_cpu_lib",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:framework",
-        "//tensorflow/core:gpu_id",
         "//tensorflow/core:lib",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/kernels:ops_util",
