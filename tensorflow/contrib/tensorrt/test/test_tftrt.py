@@ -24,7 +24,7 @@ import numpy as np
 # it looks like internal builds don't like it so
 # importing every module individually
 
-from tensorflow.contrib.tensorrt as trt
+from tensorflow.contrib import tensorrt as trt
 from tensorflow.core.protobuf import config_pb2 as cpb2
 from tensorflow.python.client import session as csess
 from tensorflow.python.framework import constant_op as cop
