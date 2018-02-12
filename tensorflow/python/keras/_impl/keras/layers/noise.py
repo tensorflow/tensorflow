@@ -23,8 +23,10 @@ import numpy as np
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.GaussianNoise')
 class GaussianNoise(Layer):
   """Apply additive zero-centered Gaussian noise.
 
@@ -70,6 +72,7 @@ class GaussianNoise(Layer):
     return input_shape
 
 
+@tf_export('keras.layers.GaussianDropout')
 class GaussianDropout(Layer):
   """Apply multiplicative 1-centered Gaussian noise.
 
@@ -116,6 +119,7 @@ class GaussianDropout(Layer):
     return input_shape
 
 
+@tf_export('keras.layers.AlphaDropout')
 class AlphaDropout(Layer):
   """Applies Alpha Dropout to the input.
 

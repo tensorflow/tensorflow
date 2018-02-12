@@ -42,7 +42,7 @@ class SummaryFileWriter : public SummaryWriterInterface {
       if (is_dir.code() != tensorflow::error::NOT_FOUND) {
         return is_dir;
       }
-      TF_RETURN_IF_ERROR(env_->CreateDir(logdir));
+      TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(logdir));
     }
     mutex_lock ml(mu_);
     events_writer_ =

@@ -53,14 +53,17 @@ class DecoratorsTest(converter_test_base.TestCase):
     node = node.body[0].body[0]
 
     node = decorators.transform(node, remove_decorators=())
-    result = compiler.ast_to_object(
+    # Since the decorator is not removed, we need to include its source
+    # code. We cannot do it after the fact because decorators are executed
+    # on load.
+    result, _ = compiler.ast_to_object(
         node,
         source_prefix=textwrap.dedent(tf_inspect.getsource(function_decorator)))
     self.assertEqual(2, result.test_fn(1))
 
     node = decorators.transform(node, remove_decorators=(function_decorator,))
-    result = compiler.ast_to_object(node)
-    self.assertEqual(1, result.test_fn(1))
+    with self.compiled(node) as result:
+      self.assertEqual(1, result.test_fn(1))
 
   def test_simple_decorator(self):
 
@@ -82,14 +85,17 @@ class DecoratorsTest(converter_test_base.TestCase):
     node = node.body[0].body[0]
 
     node = decorators.transform(node, remove_decorators=())
-    result = compiler.ast_to_object(
+    # Since the decorator is not removed, we need to include its source
+    # code. We cannot do it after the fact because decorators are executed
+    # on load.
+    result, _ = compiler.ast_to_object(
         node,
         source_prefix=textwrap.dedent(tf_inspect.getsource(simple_decorator)))
     self.assertEqual(2, result.test_fn(1))
 
     node = decorators.transform(node, remove_decorators=(simple_decorator,))
-    result = compiler.ast_to_object(node)
-    self.assertEqual(1, result.test_fn(1))
+    with self.compiled(node) as result:
+      self.assertEqual(1, result.test_fn(1))
 
 
 if __name__ == '__main__':

@@ -91,6 +91,12 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
         ],
+    }) + select({
+        "//tensorflow:with_xla_support": [
+            "//tensorflow/compiler/tf2xla:xla_compiler",
+            "//tensorflow/compiler/jit",
+        ],
+        "//conditions:default": [],
     }),
 )
 
@@ -141,8 +147,10 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api",
+        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
         "//tensorflow/core:test",
     ],
 )

@@ -32,8 +32,10 @@ from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('histogram_fixed_width_bins')
 def histogram_fixed_width_bins(values,
                                value_range,
                                nbins=100,

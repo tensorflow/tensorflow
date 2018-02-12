@@ -168,6 +168,8 @@ cc_test(
     deps = [
         ":framework",
         ":string_util",
+        "//tensorflow/contrib/lite/kernels/internal:tensor_utils",
+        "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],
@@ -233,18 +235,18 @@ cc_test(
 
 # Model tests
 
-cc_library(
-    name = "models_test_utils",
-    testonly = 1,
-    hdrs = ["models/test_utils.h"],
-    deps = select({
-        "//tensorflow:android": [],
-        "//conditions:default": [
-            "@com_google_absl//absl/strings",
-            "//tensorflow/core:test",
-        ],
-    }),
-)
+#cc_library(
+#    name = "models_test_utils",
+#    testonly = 1,
+#    hdrs = ["models/test_utils.h"],
+#    deps = select({
+#        "//tensorflow:android": [],
+#        "//conditions:default": [
+#            "@com_google_absl//absl/strings",
+#            "//tensorflow/core:test",
+#        ],
+#    }),
+#)
 
 filegroup(
     name = "all_files",

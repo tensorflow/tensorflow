@@ -860,13 +860,18 @@ class GradientTape(object):
         t = t.handle
       tape.watch(t)
 
-  def gradient(self, target, sources):
+  def watched_variables(self):
+    return self._tape.watched_variables()
+
+  def gradient(self, target, sources, output_gradients=None):
     """Computes the gradient using information traced by the tape.
 
     Args:
       target: the tensor to be differentiated.
       sources: a list of Tensors or Variables, the target will be
        differentiated with respect to the sources.
+      output_gradients: a list of gradients, one for each element of
+       target. Defaults to None.
 
     Returns:
       a list of Tensors (or IndexedSlices, or None), one for each element in
@@ -884,7 +889,8 @@ class GradientTape(object):
                else x
                for x in sources]
     grad = imperative_grad.imperative_grad(
-        _default_vspace, self._tape, [target], sources)
+        _default_vspace, self._tape, [target], sources,
+        output_gradients=output_gradients)
     if not self._persistent:
       self._tape = None
     return grad

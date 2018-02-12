@@ -32,7 +32,9 @@ class ApiTest(test.TestCase):
     config.DEFAULT_UNCOMPILED_MODULES.add((math_ops.__name__,))
     config.COMPILED_IMPORT_STATEMENTS = (
         'from tensorflow.python.ops '
-        'import control_flow_ops as tf',)
+        'import control_flow_ops as tf',
+        'from tensorflow.contrib.py2tf import utils as '
+        'py2tf_utils')
 
   def test_decorator_recurses(self):
 
@@ -183,7 +185,7 @@ class ApiTest(test.TestCase):
     compiled_code = api.to_code(test_fn)
 
     # Just check for some key words and that it is parseable Python code.
-    self.assertRegexpMatches(compiled_code, 'tf\\.while_loop')
+    self.assertRegexpMatches(compiled_code, 'py2tf_utils\\.run_while')
     self.assertIsNotNone(parser.parse_str(compiled_code))
 
 

@@ -7974,6 +7974,83 @@ op {
   }
 }
 op {
+  name: "Batch"
+  input_arg {
+    name: "in_tensors"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "batched_tensors"
+    type_list_attr: "T"
+  }
+  output_arg {
+    name: "batch_index"
+    type: DT_INT64
+  }
+  output_arg {
+    name: "id"
+    type: DT_INT64
+  }
+  attr {
+    name: "num_batch_threads"
+    type: "int"
+  }
+  attr {
+    name: "max_batch_size"
+    type: "int"
+  }
+  attr {
+    name: "max_enqueued_batches"
+    type: "int"
+    default_value {
+      i: 10
+    }
+  }
+  attr {
+    name: "batch_timeout_micros"
+    type: "int"
+  }
+  attr {
+    name: "allowed_batch_sizes"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "grad_timeout_micros"
+    type: "int"
+  }
+  attr {
+    name: "container"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "shared_name"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "batching_queue"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "T"
+    type: "list(type)"
+    has_minimum: true
+    minimum: 1
+  }
+}
+op {
   name: "BatchCholesky"
   input_arg {
     name: "input"
@@ -21549,53 +21626,6 @@ op {
         type: DT_DOUBLE
       }
     }
-  }
-}
-op {
-  name: "IgnoreErrorsDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
-  }
-  is_stateful: true
-}
-op {
-  name: "IgnoreErrorsDataset"
-  input_arg {
-    name: "input_dataset"
-    type: DT_VARIANT
-  }
-  output_arg {
-    name: "handle"
-    type: DT_VARIANT
-  }
-  attr {
-    name: "output_types"
-    type: "list(type)"
-    has_minimum: true
-    minimum: 1
-  }
-  attr {
-    name: "output_shapes"
-    type: "list(shape)"
-    has_minimum: true
-    minimum: 1
   }
 }
 op {

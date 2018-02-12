@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu_device_context.h"
 #include "tensorflow/core/common_runtime/local_device.h"
@@ -88,7 +89,7 @@ class BaseGPUDevice : public LocalDevice {
 
   // Returns the CUDA GPU id of this device within the native driver system;
   // e.g., for CUDA this is the ordinal of the GPU within the system.
-  int gpu_id() const { return GpuIdUtil::TfToCudaGpuId(tf_gpu_id_).value(); }
+  int gpu_id() const { return GpuIdManager::TfToCudaGpuId(tf_gpu_id_).value(); }
 
   // The executor that provides control for the device; e.g., for CUDA this
   // corresponds to the cuda context.

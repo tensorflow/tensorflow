@@ -18,12 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import imp
-
 from tensorflow.contrib.py2tf.utils import misc
 from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import ops
-from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
@@ -32,11 +28,8 @@ class ContextManagersTest(test.TestCase):
 
   def test_alias_single_tensor(self):
     a = constant_op.constant(1)
-    fake_tf = imp.new_module('fake_tf')
-    fake_tf.identity = array_ops.identity
-    fake_tf.Tensor = ops.Tensor
 
-    new_a = misc.alias_tensors(fake_tf, a)
+    new_a = misc.alias_tensors(a)
     self.assertFalse(new_a is a)
     with self.test_session() as sess:
       self.assertEqual(1, sess.run(new_a))
@@ -46,11 +39,8 @@ class ContextManagersTest(test.TestCase):
     v = variables.Variable(2)
     s = 'a'
     l = [1, 2, 3]
-    fake_tf = imp.new_module('fake_tf')
-    fake_tf.identity = array_ops.identity
-    fake_tf.Tensor = ops.Tensor
 
-    new_a, new_v, new_s, new_l = misc.alias_tensors(fake_tf, a, v, s, l)
+    new_a, new_v, new_s, new_l = misc.alias_tensors(a, v, s, l)
 
     self.assertFalse(new_a is a)
     self.assertTrue(new_v is v)

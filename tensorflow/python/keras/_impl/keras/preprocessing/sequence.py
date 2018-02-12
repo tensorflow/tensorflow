@@ -22,8 +22,10 @@ import random
 
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.preprocessing.sequence.pad_sequences')
 def pad_sequences(sequences,
                   maxlen=None,
                   dtype='int32',
@@ -104,6 +106,7 @@ def pad_sequences(sequences,
   return x
 
 
+@tf_export('keras.preprocessing.sequence.make_sampling_table')
 def make_sampling_table(size, sampling_factor=1e-5):
   """Generates a word rank-based probabilistic sampling table.
 
@@ -137,6 +140,7 @@ def make_sampling_table(size, sampling_factor=1e-5):
   return np.minimum(1., f / np.sqrt(f))
 
 
+@tf_export('keras.preprocessing.sequence.skipgrams')
 def skipgrams(sequence,
               vocabulary_size,
               window_size=4,

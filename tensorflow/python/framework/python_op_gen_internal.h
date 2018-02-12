@@ -73,6 +73,7 @@ class GenPythonOp {
 
  protected:
   // Print: def Function(parameters):
+  void AddDefLine(const string& function_name, const string& parameters);
   void AddDefLine(const string& parameters);
 
   // Format the Op's descriptions so that it can be a Python docstring.
