@@ -67,5 +67,7 @@ if "__main__" in __name__:
                                          inpDims[0])  # Get optimized graph
   o1 = runGraph(gdef, dummy_input)
   o2 = runGraph(trt_graph, dummy_input)
+  o3 = runGraph(trt_graph, dummy_input)
   assert (np.array_equal(o1, o2))
+  assert (np.array_equal(o2, o3))
   print("Pass")
