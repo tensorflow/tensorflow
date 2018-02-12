@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -86,7 +87,9 @@ Status SingleMachine::Provision() {
       attr = GetLocalCPUInfo();
     } else if (dev.device_type() == "GPU") {
       attr = GetLocalGPUInfo(gpu_id++);
-    } else {
+    } else if (dev.device_type().find("XLA") == string::npos) {
+      // Filter out the fake XLA devices to avoid double counting the actual
+      // hardware resources that are available.
       attr.set_type(dev.device_type());
     }
     // Overwrite the memory size since users might have requested to use only a
