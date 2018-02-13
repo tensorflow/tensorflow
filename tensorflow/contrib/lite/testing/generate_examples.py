@@ -241,7 +241,7 @@ def create_tensor_data(dtype, shape, min_value=-100, max_value=100):
   if dtype in (tf.float32, tf.float16):
     value = (max_value-min_value)*np.random.random_sample(shape)+min_value
   elif dtype in (tf.int32, tf.uint8, tf.int64):
-    value = np.random.random_integers(min_value, max_value, shape)
+    value = np.random.randint(min_value, max_value+1, shape)
   return value.astype(dtype)
 
 
