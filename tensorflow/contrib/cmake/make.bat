@@ -68,9 +68,9 @@ if not exist %PYTHON_LIB% (
   goto EXIT
 )
 if /I "%GPU%"=="ON" (
-  set CUDA_HOME=%CUDA_PATH_V9_0%\bin
+  set CUDA_HOME=%CUDA_PATH_V9_0%
   if not exist "%CUDA_HOME%" (
-    for /F %%i in ('where cudart64_90.dll') do set CUDA_HOME=%%~dpi
+    for /F %%i in ('where cudart64_90.dll') do set CUDA_HOME=%%~dpi\..\
     if errorlevel 1 (
       echo "cuda runtime is not in PATH environment"
       goto EXIT

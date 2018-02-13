@@ -338,7 +338,7 @@ if (tensorflow_ENABLE_GPU)
 
   # later command will make use of the value in tensorflow_CUDA_VERSION
   find_package(CUDA ${tensorflow_CUDA_VERSION} REQUIRED EXACT)
-  message(${CUDA_INCLUDE_DIRS})
+
   # Test compatibility of compiler on CUDA
   try_compile(CUDA_TEST_COMPILE_C
     ${CMAKE_CURRENT_BINARY_DIR}/tests/cuda
