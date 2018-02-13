@@ -26,69 +26,9 @@ from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import callbacks as cbks
 from tensorflow.python.keras._impl.keras import losses
 from tensorflow.python.keras._impl.keras import metrics as metrics_module
+from tensorflow.python.keras._impl.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
-
-
-def _make_batches(size, batch_size):
-  """Returns a list of batch indices (tuples of indices).
-
-  Arguments:
-      size: Integer, total size of the data to slice into batches.
-      batch_size: Integer, batch size.
-
-  Returns:
-      A list of tuples of array indices.
-  """
-  num_batches = int(np.ceil(size / float(batch_size)))
-  return [(i * batch_size, min(size, (i + 1) * batch_size))
-          for i in range(0, num_batches)]
-
-
-def _slice_arrays(arrays, start=None, stop=None):
-  """Slice an array or list of arrays.
-
-  This takes an array-like, or a list of
-  array-likes, and outputs:
-      - arrays[start:stop] if `arrays` is an array-like
-      - [x[start:stop] for x in arrays] if `arrays` is a list
-
-  Can also work on list/array of indices: `_slice_arrays(x, indices)`
-
-  Arguments:
-      arrays: Single array or list of arrays.
-      start: can be an integer index (start index)
-          or a list/array of indices
-      stop: integer (stop index); should be None if
-          `start` was a list.
-
-  Returns:
-      A slice of the array(s).
-
-  Raises:
-      ValueError: If the value of start is a list and stop is not None.
-  """
-  if arrays is None:
-    return [None]
-  if isinstance(start, list) and stop is not None:
-    raise ValueError('The stop argument has to be None if the value of start is'
-                     'a list.')
-  elif isinstance(arrays, list):
-    if hasattr(start, '__len__'):
-      # hdf5 datasets only support list objects as indices
-      if hasattr(start, 'shape'):
-        start = start.tolist()
-      return [None if x is None else x[start] for x in arrays]
-    else:
-      return [None if x is None else x[start:stop] for x in arrays]
-  else:
-    if hasattr(start, '__len__'):
-      if hasattr(start, 'shape'):
-        start = start.tolist()
-      return arrays[start]
-    elif hasattr(start, '__getitem__'):
-      return arrays[start:stop]
-    else:
-      return [None]
+from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
 
 
 def _get_metrics_info(metric, internal_output_shapes=None, loss_func=None):
@@ -442,16 +382,16 @@ def fit_loop(
     elif shuffle:
       np.random.shuffle(index_array)
 
-    batches = _make_batches(num_train_samples, batch_size)
+    batches = make_batches(num_train_samples, batch_size)
 
     for batch_index, (batch_start, batch_end) in enumerate(batches):
       batch_ids = index_array[batch_start:batch_end]
       try:
         if isinstance(ins[-1], float):
           # Do not slice the training phase flag.
-          ins_batch = _slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+          ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
         else:
-          ins_batch = _slice_arrays(ins, batch_ids)
+          ins_batch = slice_arrays(ins, batch_ids)
       except TypeError:
         raise TypeError('TypeError while preparing batch. '
                         'If using HDF5 input data, '
@@ -554,15 +494,15 @@ def test_loop(model, ins, batch_size=None, verbose=0, steps=None):
   outs = []
   if verbose == 1:
     progbar = Progbar(target=num_samples)
-  batches = _make_batches(num_samples, batch_size)
+  batches = make_batches(num_samples, batch_size)
   index_array = np.arange(num_samples)
   for batch_index, (batch_start, batch_end) in enumerate(batches):
     batch_ids = index_array[batch_start:batch_end]
     if isinstance(ins[-1], float):
       # Do not slice the training phase flag.
-      ins_batch = _slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+      ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
     else:
-      ins_batch = _slice_arrays(ins, batch_ids)
+      ins_batch = slice_arrays(ins, batch_ids)
 
     ins_batch_converted = []
     for ib in ins_batch:
@@ -631,15 +571,15 @@ def predict_loop(model, ins, batch_size=32, verbose=0, steps=None):
       progbar = Progbar(target=num_samples)
 
   outs = []
-  batches = _make_batches(num_samples, batch_size)
+  batches = make_batches(num_samples, batch_size)
   index_array = np.arange(num_samples)
   for batch_index, (batch_start, batch_end) in enumerate(batches):
     batch_ids = index_array[batch_start:batch_end]
     if ins and isinstance(ins[-1], float):
       # Do not slice the training phase flag.
-      ins_batch = _slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+      ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
     else:
-      ins_batch = _slice_arrays(ins, batch_ids)
+      ins_batch = slice_arrays(ins, batch_ids)
 
     ins_batch_converted = []
     for ib in ins_batch:

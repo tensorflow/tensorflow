@@ -35,7 +35,9 @@ from tensorflow.python.keras._impl.keras.engine.topology import Network
 from tensorflow.python.keras._impl.keras.utils.data_utils import GeneratorEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import OrderedEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import Sequence
+from tensorflow.python.keras._impl.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
+from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.layers.base import _DeferredTensor
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
@@ -360,62 +362,6 @@ def _batch_shuffle(index_array, batch_size):
   np.random.shuffle(index_array)
   index_array = index_array.flatten()
   return np.append(index_array, last_batch)
-
-
-def _make_batches(size, batch_size):
-  """Returns a list of batch indices (tuples of indices).
-
-  Arguments:
-      size: Integer, total size of the data to slice into batches.
-      batch_size: Integer, batch size.
-
-  Returns:
-      A list of tuples of array indices.
-  """
-  num_batches = (size + batch_size - 1) // batch_size  # round up
-  return [(i * batch_size, min(size, (i + 1) * batch_size))
-          for i in range(num_batches)]
-
-
-def _slice_arrays(arrays, start=None, stop=None):
-  """Slice an array or list of arrays.
-
-  This takes an array-like, or a list of
-  array-likes, and outputs:
-      - arrays[start:stop] if `arrays` is an array-like
-      - [x[start:stop] for x in arrays] if `arrays` is a list
-
-  Can also work on list/array of indices: `_slice_arrays(x, indices)`
-
-  Arguments:
-      arrays: Single array or list of arrays.
-      start: can be an integer index (start index)
-          or a list/array of indices
-      stop: integer (stop index); should be None if
-          `start` was a list.
-
-  Returns:
-      A slice of the array(s).
-  """
-  if arrays is None:
-    return [None]
-  elif isinstance(arrays, list):
-    if hasattr(start, '__len__'):
-      # hdf5 datasets only support list objects as indices
-      if hasattr(start, 'shape'):
-        start = start.tolist()
-      return [None if x is None else x[start] for x in arrays]
-    else:
-      return [None if x is None else x[start:stop] for x in arrays]
-  else:
-    if hasattr(start, '__len__'):
-      if hasattr(start, 'shape'):
-        start = start.tolist()
-      return arrays[start]
-    elif hasattr(start, '__getitem__'):
-      return arrays[start:stop]
-    else:
-      return [None]
 
 
 def _weighted_masked_objective(fn):
@@ -1277,16 +1223,16 @@ class Model(Network):
         elif shuffle:
           np.random.shuffle(index_array)
 
-        batches = _make_batches(num_train_samples, batch_size)
+        batches = make_batches(num_train_samples, batch_size)
 
         for batch_index, (batch_start, batch_end) in enumerate(batches):
           batch_ids = index_array[batch_start:batch_end]
           try:
             if isinstance(ins[-1], float):
               # Do not slice the training phase flag.
-              ins_batch = _slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+              ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
             else:
-              ins_batch = _slice_arrays(ins, batch_ids)
+              ins_batch = slice_arrays(ins, batch_ids)
           except TypeError:
             raise TypeError('TypeError while preparing batch. '
                             'If using HDF5 input data, '
@@ -1381,15 +1327,15 @@ class Model(Network):
     else:
       # Sample-based predictions.
       outs = []
-      batches = _make_batches(num_samples, batch_size)
+      batches = make_batches(num_samples, batch_size)
       index_array = np.arange(num_samples)
       for batch_index, (batch_start, batch_end) in enumerate(batches):
         batch_ids = index_array[batch_start:batch_end]
         if ins and isinstance(ins[-1], float):
           # Do not slice the training phase flag.
-          ins_batch = _slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+          ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
         else:
-          ins_batch = _slice_arrays(ins, batch_ids)
+          ins_batch = slice_arrays(ins, batch_ids)
         for i in indices_for_conversion_to_dense:
           ins_batch[i] = ins_batch[i].toarray()
 
@@ -1460,15 +1406,15 @@ class Model(Network):
       for i in range(len(outs)):
         outs[i] /= steps
     else:
-      batches = _make_batches(num_samples, batch_size)
+      batches = make_batches(num_samples, batch_size)
       index_array = np.arange(num_samples)
       for batch_index, (batch_start, batch_end) in enumerate(batches):
         batch_ids = index_array[batch_start:batch_end]
         if isinstance(ins[-1], float):
           # Do not slice the training phase flag.
-          ins_batch = _slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
+          ins_batch = slice_arrays(ins[:-1], batch_ids) + [ins[-1]]
         else:
-          ins_batch = _slice_arrays(ins, batch_ids)
+          ins_batch = slice_arrays(ins, batch_ids)
         for i in indices_for_conversion_to_dense:
           ins_batch[i] = ins_batch[i].toarray()
 
@@ -2025,10 +1971,10 @@ class Model(Network):
         split_at = int(x[0].shape[0] * (1. - validation_split))
       else:
         split_at = int(len(x[0]) * (1. - validation_split))
-      x, val_x = (_slice_arrays(x, 0, split_at), _slice_arrays(x, split_at))
-      y, val_y = (_slice_arrays(y, 0, split_at), _slice_arrays(y, split_at))
-      sample_weights, val_sample_weights = (_slice_arrays(
-          sample_weights, 0, split_at), _slice_arrays(sample_weights, split_at))
+      x, val_x = (slice_arrays(x, 0, split_at), slice_arrays(x, split_at))
+      y, val_y = (slice_arrays(y, 0, split_at), slice_arrays(y, split_at))
+      sample_weights, val_sample_weights = (slice_arrays(
+          sample_weights, 0, split_at), slice_arrays(sample_weights, split_at))
       if self.uses_learning_phase and not isinstance(K.learning_phase(), int):
         val_ins = val_x + val_y + val_sample_weights + [0.]
       else:
