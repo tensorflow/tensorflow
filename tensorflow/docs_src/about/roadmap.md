@@ -30,7 +30,9 @@ to create Keras models Eager- style via Model subclassing)
 * Better distribution/multi-GPU support and TPU support (including a smoother model-to-estimator workflow)
 
 #### Official Models:
-* A set of reference models across image recognition, speech, object detection, and 
+* A set of 
+[reference models](https://github.com/tensorflow/models/tree/master/official) 
+across image recognition, speech, object detection, and 
   translation that demonstrate best practices and serve as a starting point for 
   high-performance model development.
 
@@ -73,7 +75,8 @@ to create Keras models Eager- style via Model subclassing)
 ### Community and Partner Engagement
 #### Special Interest Groups: 
 * Mobilizing the community to work together in focused domains
-* tf-distribute: build and packaging of TF
+* [tf-distribute](https://groups.google.com/a/tensorflow.org/forum/#!forum/tf-distribute)
+: build and packaging of TF
 * More to be identified and launched
 
 #### Request-for-Comment (RFC) Process:
