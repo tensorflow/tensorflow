@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/test_helpers.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
+#include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
@@ -225,7 +226,7 @@ class MatOpsDotAddTest_bf16
     : public ClientLibraryTestBase,
       public ::testing::WithParamInterface<std::tuple<bool, bool, bool>> {};
 
-TEST_P(MatOpsDotAddTest_bf16, Dot_Add_2x2_2x2) {
+XLA_TEST_P(MatOpsDotAddTest_bf16, Dot_Add_2x2_2x2) {
   bool row_major = std::get<0>(GetParam());
   bool add_lhs = std::get<1>(GetParam());
   bool transpose = std::get<2>(GetParam());
