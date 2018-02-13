@@ -877,11 +877,13 @@ def _MulGrad(op, grad):
   sx = array_ops.shape(x)
   sy = array_ops.shape(y)
   rx, ry = gen_array_ops._broadcast_gradient_args(sx, sy)
-  # pylint: enable=protected-access
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  return (array_ops.reshape(math_ops.reduce_sum(grad * y, rx), sx),
-          array_ops.reshape(math_ops.reduce_sum(x * grad, ry), sy))
+  return (array_ops.reshape(
+      math_ops.reduce_sum(gen_math_ops._mul(grad, y), rx), sx),
+          array_ops.reshape(
+              math_ops.reduce_sum(gen_math_ops._mul(x, grad), ry), sy))
+  # pylint: enable=protected-access
 
 
 @ops.RegisterGradient("Div")
@@ -1054,18 +1056,20 @@ def _MatMulGrad(op, grad):
   t_b = op.get_attr("transpose_b")
   a = math_ops.conj(op.inputs[0])
   b = math_ops.conj(op.inputs[1])
+  # pylint: disable=protected-access
   if not t_a and not t_b:
-    grad_a = math_ops.matmul(grad, b, transpose_b=True)
-    grad_b = math_ops.matmul(a, grad, transpose_a=True)
+    grad_a = gen_math_ops._mat_mul(grad, b, transpose_b=True)
+    grad_b = gen_math_ops._mat_mul(a, grad, transpose_a=True)
   elif not t_a and t_b:
-    grad_a = math_ops.matmul(grad, b)
-    grad_b = math_ops.matmul(grad, a, transpose_a=True)
+    grad_a = gen_math_ops._mat_mul(grad, b)
+    grad_b = gen_math_ops._mat_mul(grad, a, transpose_a=True)
   elif t_a and not t_b:
-    grad_a = math_ops.matmul(b, grad, transpose_b=True)
-    grad_b = math_ops.matmul(a, grad)
+    grad_a = gen_math_ops._mat_mul(b, grad, transpose_b=True)
+    grad_b = gen_math_ops._mat_mul(a, grad)
   elif t_a and t_b:
-    grad_a = math_ops.matmul(b, grad, transpose_a=True, transpose_b=True)
-    grad_b = math_ops.matmul(grad, a, transpose_a=True, transpose_b=True)
+    grad_a = gen_math_ops._mat_mul(b, grad, transpose_a=True, transpose_b=True)
+    grad_b = gen_math_ops._mat_mul(grad, a, transpose_a=True, transpose_b=True)
+  # pylint: enable=protected-access
   return grad_a, grad_b
 
 

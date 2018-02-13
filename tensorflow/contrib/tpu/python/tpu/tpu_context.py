@@ -106,7 +106,9 @@ class _TPUContext(object):
     # pylint: disable=protected-access
     tpu_system_metadata = (
         tpu_system_metadata_lib._query_tpu_system_metadata(
-            master, query_topology=self.model_parallelism_enabled))
+            master,
+            run_config=self._config,
+            query_topology=self.model_parallelism_enabled))
 
     self._lazy_tpu_system_metadata_dict[master] = tpu_system_metadata
     return tpu_system_metadata
@@ -408,6 +410,29 @@ class _TPUContext(object):
           'Cannot find any TPU cores in the system. Please double check '
           'Tensorflow master address and TPU worker(s). Available devices '
           'are {}.'.format(tpu_system_metadata.devices))
+
+    if self._config.tpu_config.num_shards:
+      user_provided_num_replicas = self._config.tpu_config.num_shards
+      if user_provided_num_replicas != num_replicas:
+        message = (
+            'TPUConfig.num_shards is not set correctly. According to TPU '
+            'system metadata for Tensorflow master ({}): num_replicas should '
+            'be ({}), got ({}). For non-model-parallelism, num_replicas should '
+            'be the total num of TPU cores in the system. For '
+            'model-parallelism, the total number of TPU cores should be '
+            'product(computation_shape) * num_replicas. Please set it '
+            'accordingly or leave it as `None`'.format(
+                self._get_master_address(), num_replicas,
+                user_provided_num_replicas))
+
+        if self.model_parallelism_enabled:
+          raise ValueError(message)
+        else:
+          logging.warning(message)
+          logging.warning(
+              'For non-model-parallelism, TPUEstimator currently '
+              'automatically queries the TPU system information so ignores '
+              'this field.')
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       if self._train_batch_size % num_replicas != 0:

@@ -1472,6 +1472,27 @@ class EstimatorPredictTest(test.TestCase):
                                  'Batch length of predictions should be same'):
       next(est.predict(dummy_input_fn))
 
+  def test_iterate_batches(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions={
+              # First dim is different but the prediction should still work
+              'y1': array_ops.zeros(shape=[3]),
+              'y2': array_ops.zeros(shape=[5, 3])
+          })
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+
+    predictions = next(est.predict(dummy_input_fn, yield_single_examples=False))
+    self.assertAllEqual(predictions['y1'].shape, [3])
+    self.assertAllEqual(predictions['y2'].shape, [5, 3])
+
   def test_predict_keys_defined_for_tensor(self):
 
     def _model_fn(features, labels, mode):

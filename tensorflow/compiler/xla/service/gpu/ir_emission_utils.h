@@ -63,10 +63,11 @@ bool IsCustomCallToDnnBatchNorm(const HloInstruction& hlo);
 // strings.
 //
 // These CustomCalls have window() and convolution_dimension_numbers() set like
-// regular convolution ops.  They have the same LHS and RHS operands, plus one
-// additional int64 operand, representing which cudnn algorithm to run.  This
-// operand must be an HLO constant.  A value of -1 means that the implementation
-// is free to choose the best algorithm it can.
+// regular convolution ops.  They have the same LHS and RHS operands, plus two
+// additional constant operands: an int64 operand for the cudnn algorithm and
+// a bool operand for whether tensor_ops is enabled. A value of -1 for the cudnn
+// algorithm means that the implementation is free to choose the best algorithm
+// it can.
 //
 // These calls output a tuple (conv_result, scratch_memory), where conv_result
 // is the actual result of the convolution, and scratch_memory is temporary
