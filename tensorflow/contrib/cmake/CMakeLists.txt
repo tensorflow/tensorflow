@@ -35,8 +35,9 @@ option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
 
 # SIMD, MKL and MKLDNN options
-option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions" OFF)
-option(tensorflow_ENABLE_MKLDNN_SUPPORT "Enable Intel MKLDNN support" OFF)
+option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
+option(tensorflow_ENABLE_MKL_SUPPORT "Enable Intel MKL support" OFF)
+option(tensorflow_ENABLE_MKLDNN_SUPPORT "Enable Intel MKLDNN support, requires MKL enabled" OFF)
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
@@ -157,24 +158,21 @@ endif()
 # MSVC SIMD instructions
 if (tensorflow_WIN_CPU_SIMD_OPTIONS)
   include(CheckCXXCompilerFlag)
-  add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
-  if (NOT tensorflow_ENABLE_MKLDNN_SUPPORT)
-    add_definitions(-DINTEL_MKL_ML)
+  if (tensorflow_ENABLE_MKL_SUPPORT)
+    add_definitions(-DINTEL_MKL -DEIGEN_USE_VML)
+    if (NOT tensorflow_ENABLE_MKLDNN_SUPPORT)
+      add_definitions(-DINTEL_MKL_ML)
+    endif()
   endif()
   CHECK_CXX_COMPILER_FLAG("-fopenmp" COMPILER_OPT_OPENMP_SUPPORT)
   if (COMPILER_OPT_OPENMP_SUPPORT)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
   endif()
   if (WIN32)
-    set(WIN_SIMD_FLAGS "/arch:AVX2" "/arch:AVX" "/arch:SSE2" "/arch:SSE")
-    foreach(simd_flag ${WIN_SIMD_FLAGS})
-      CHECK_CXX_COMPILER_FLAG(${simd_flag} COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
-      if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${simd_flag}")
-        message(STATUS "Using ${simd_flag} as SIMD flag")
-        break() # Use the former as the priority
-      endif()
-    endforeach()
+    CHECK_CXX_COMPILER_FLAG(${tensorflow_WIN_CPU_SIMD_OPTIONS} COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+    if(COMPILER_OPT_WIN_CPU_SIMD_SUPPORTED)
+      set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${tensorflow_WIN_CPU_SIMD_OPTIONS}")
+    endif()
   endif()
 endif()
 
@@ -293,7 +291,7 @@ if(HAIKU)
   list(APPEND tensorflow_EXTERNAL_LIBRARIES network)
 endif()
 
-if (tensorflow_WIN_CPU_SIMD_OPTIONS)
+if (tensorflow_ENABLE_MKL_SUPPORT)
   if (WIN32)
     find_path(MKL_HOME_PLATFORM mkl
       PATHS ${MKL_HOME} ${MKL_HOME}/../ ${MKL_HOME}/../../
@@ -328,7 +326,7 @@ if (tensorflow_WIN_CPU_SIMD_OPTIONS)
     list(APPEND tensorflow_EXTERNAL_DEPENDENCIES mkldnn)
     include_directories(${mkldnn_INCLUDE_DIRS})
   endif()
-endif (tensorflow_WIN_CPU_SIMD_OPTIONS)
+endif (tensorflow_ENABLE_MKL_SUPPORT)
 
 if (tensorflow_ENABLE_GPU)
   if (NOT WIN32)
@@ -340,7 +338,7 @@ if (tensorflow_ENABLE_GPU)
 
   # later command will make use of the value in tensorflow_CUDA_VERSION
   find_package(CUDA ${tensorflow_CUDA_VERSION} REQUIRED EXACT)
-
+  message(${CUDA_INCLUDE_DIRS})
   # Test compatibility of compiler on CUDA
   try_compile(CUDA_TEST_COMPILE_C
     ${CMAKE_CURRENT_BINARY_DIR}/tests/cuda

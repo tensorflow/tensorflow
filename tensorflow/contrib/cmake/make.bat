@@ -19,18 +19,20 @@ REM usage: make [vs_project_name.vcxproj]
 
 REM OPTION LISTs, please modify this as your own environment
 REM If these executables are in %PATH%, they can be kept empty.
+REM Possible WIN_CPU_SIMD options: /arch:[AVX2, AVX, SSE2, SSE]
 set SWIG_EXECUTABLE=D:\Tools\swigwin-3.0.12\swig.exe
 set PYTHON_EXE=
 set SHARED_LIB=ON
 set GPU=OFF
-set WIN_CPU_SIMD=ON
+set WIN_CPU_SIMD=/arch:AVX2
+set MKL=ON
+set MKL_DNN=ON
 set MKL_HOME=d:\softwares\Tools\IntelSWTools\compilers_and_libraries
 set OTHER_CMAKE_ARGS=-Dtensorflow_BUILD_PYTHON_BINDINGS=ON ^
                      -Dtensorflow_DISABLE_EIGEN_FORCEINLINE=ON ^
                      -Dtensorflow_ENABLE_GRPC_SUPPORT=OFF ^
                      -Dtensorflow_ENABLE_SSL_SUPPORT=OFF ^
-                     -Dtensorflow_ENABLE_SNAPPY_SUPPORT=ON ^
-                     -Dtensorflow_ENABLE_MKLDNN_SUPPORT=ON
+                     -Dtensorflow_ENABLE_SNAPPY_SUPPORT=ON
 REM END OPTION LISTS
 set PARENT_DIR=%~dp0
 for /F "skip=2 tokens=1 delims=." %%i in ('msbuild /version') do set MSVC_VERSION=%%i
@@ -85,7 +87,10 @@ cmake .. -G %CMAKE_GENERATOR% -DCMAKE_BUILD_TYPE=Release ^
 -DSWIG_EXECUTABLE=%SWIG_EXECUTABLE% -DPYTHON_EXECUTABLE=%PYTHON_EXE% -DPYTHON_LIBRARIES=%PYTHON_LIB% ^
 -Dtensorflow_ENABLE_GPU=%GPU% -DCUDNN_HOME=%CUDA_HOME% ^
 -Dtensorflow_BUILD_SHARED_LIB=%SHARED_LIB% ^
--Dtensorflow_WIN_CPU_SIMD_OPTIONS=%WIN_CPU_SIMD% -DMKL_HOME=%MKL_HOME% ^
+-Dtensorflow_WIN_CPU_SIMD_OPTIONS=%WIN_CPU_SIMD% ^
+-Dtensorflow_ENABLE_MKL_SUPPORT=%MKL% ^
+-Dtensorflow_ENABLE_MKLDNN_SUPPORT=%MKL_DNN% ^
+-DMKL_HOME=%MKL_HOME% ^
 %OTHER_CMAKE_ARGS%
 
 if errorlevel 1 (
