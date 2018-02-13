@@ -21,7 +21,7 @@ from __future__ import print_function
 from tensorflow.core.framework import graph_pb2
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import errors_impl as _impl
-from tensorflow.contrib.tensorrt.wrap_conversion import trt_convert
+from tensorflow.contrib.tensorrt.wrap_conversion import trt_convert,calib_convert
 from tensorflow.python.util import compat
 import tensorflow as tf
 from tensorflow.python.grappler import tf_optimizer
@@ -80,6 +80,24 @@ def CreateInferenceGraph(input_graph_def, outputs,max_batch_size=1,max_workspace
   status = out[0]
   output_graph_def_string = out[1]
   del optimized_graph_def_str #save some memory
+  if len(status) < 2:
+    raise _impl.UnknownError(None,None,status)
+  if status[:2] != "OK":
+    msg=status.split(";")
+    if len(msg) == 1:
+      raise RuntimeError("Status message is malformed {}".format(status))
+    raise _impl._make_specific_exception(None,None,";".join(msg[1:]), int(msg[0]))
+  output_graph_def = graph_pb2.GraphDef()
+  output_graph_def.ParseFromString(output_graph_def_string)
+  del output_graph_def_string #save some memory
+  return output_graph_def
+
+def CalibGraphToInferGraph(calibration_graph_def):
+  graph_str=calibration_graph_def.SerializeToString()
+  out=calib_convert(graph_str)
+  status=out[0]
+  output_graph_def_string = out[1]
+  del graph_str #save some memory
   if len(status) < 2:
     raise _impl.UnknownError(None,None,status)
   if status[:2] != "OK":

@@ -40,6 +40,7 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 
 #define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
@@ -297,6 +298,11 @@ template <>
 std::vector<int> TFAttrs::get<std::vector<int>>(std::string key) const {
   auto attr = this->at(key)->list().i();
   return std::vector<int>(attr.begin(), attr.end());
+}
+template <>
+std::vector<std::string> TFAttrs::get<std::vector<std::string>>(std::string key) const {
+  auto attr = this->at(key)->list().s();
+  return std::vector<std::string>(attr.begin(), attr.end());
 }
 template <>
 nvinfer1::Dims TFAttrs::get<nvinfer1::Dims>(std::string key) const {
@@ -1938,6 +1944,125 @@ void Converter::register_op_converters() {
 tensorflow::Status GetTensorRTGraph(tensorrt::convert::SubGraphParams& s) {
   return tensorflow::errors::Unimplemented("Not implemented yet");
 }
+tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph &graph,
+                                                      tensorflow::Node *c_node) {
+  const auto ndef=c_node->def();
+
+  TFAttrs attrs(ndef);
+  std::vector<std::string> segment_nodes(attrs.get<std::vector<std::string>>("segment_nodes"));
+  std::vector<std::string> output_nodes(attrs.get<std::vector<std::string>>("segment_output_names"));
+  std::vector<std::string> input_names(attrs.get<std::vector<std::string>>("input_names"));
+  std::string res_name = attrs.get<std::string>("resource_name");
+  VLOG(1) << "Node name " << c_node->name() << " res_name " << res_name;
+  std::string engine_name="my_trt_op";
+  {
+    const auto node_id=tensorflow::str_util::Split(res_name,"_");
+    engine_name+=node_id.back();
+  }
+  std::map<std::string,tensorflow::Node*> nodeMaps;
+
+  for(auto n: graph.op_nodes()){
+    nodeMaps.insert({n->name(),n});
+  }
+  VLOG(1)<<"Output Nodes:";
+  std::vector<tensorflow::DataType> out_types;
+  std::vector<const tensorflow::Edge*> out_edges;
+  for(auto &i : output_nodes ){
+    auto node_port=tensorflow::str_util::Split(i,":");
+    VLOG(1) << " " << i << " in graph " << nodeMaps.count(i);
+    auto out_node_name = node_port.at(0);
+    if(node_port.size()>1){
+      VLOG(1) << "Multi port output" << node_port.at(0) <<
+              " " << node_port.at(1) << " size=" << node_port.size();
+    }
+    auto nodeIt=nodeMaps.find(out_node_name);
+    if(nodeIt!=nodeMaps.end()){
+      tensorflow::Node* outNode=nodeIt->second;
+      int port=0;
+      if(node_port.size()==2){
+        port=std::strtoul(node_port.at(1).c_str(),nullptr,10);
+        out_types.push_back(outNode->output_type(port));
+      }else{
+        out_types.push_back(outNode->output_type(0));
+      }
+      for(auto outEdge : outNode->out_edges()){
+        if(outEdge->src_output()==port){
+          out_edges.push_back(outEdge);
+          break;
+        }
+      }
+    }else{
+      LOG(WARNING)<<" couldn't find output node "<<out_node_name;
+    }
+  }
+  VLOG(1)<<"Input Nodes:";
+  for(auto &i : input_names){
+    VLOG(1) << " " << i << " in graph " << nodeMaps.count(i);
+  }
+  auto trt_rm = tensorflow::trt::TRTResourceManager::instance();
+  auto resmgr = trt_rm->getManager("TRTCalibOps");
+  tensorflow::trt::TRTCalibrationResource* calibRes = nullptr;
+  auto status = resmgr->Lookup(res_name, res_name, &calibRes);
+  if(!status.ok() || !calibRes->calibrator){
+    return tensorflow::errors::FailedPrecondition("You must run calibration"\
+    " and inference conversion in the same proces");
+  }
+
+  calibRes->calibrator->setDone();
+  VLOG(1)<<"Waiting for calibration thread to join";
+  calibRes->thr->join();
+  delete calibRes->thr;
+  if(!calibRes->engine){
+    LOG(FATAL)<<"Calibration failed!, engine is nullptr";
+  }
+  auto engine_plan_string=calibRes->engine->serialize();
+  calibRes->engine->destroy();
+  calibRes->network->destroy();
+  calibRes->builder->destroy();
+  calibRes->thr= nullptr;
+  calibRes->engine= nullptr;
+  calibRes->builder= nullptr;
+  tensorflow::NodeDefBuilder op_builder(engine_name, "TRTEngineOp");
+  std::vector<tensorflow::NodeDefBuilder::NodeOut> income_edges;
+  for(const auto in_edge : c_node->in_edges()){
+    auto src=in_edge->src();
+    int dest_port=in_edge->dst_input();
+    income_edges.emplace_back(src->name(),in_edge->src_output(),c_node->input_type(dest_port));
+  }
+  tensorflow::gtl::ArraySlice<tensorflow::NodeDefBuilder::NodeOut> input_list(
+      income_edges);
+  op_builder.Input(input_list);
+  tensorflow::NodeDef engine_node;
+  status = op_builder.Attr("serialized_engine", engine_plan_string)
+                    .Attr("input_nodes", input_names)
+                    .Attr("output_nodes", output_nodes)
+                    .Attr("OutT", out_types)
+                    .Finalize(&engine_node);
+  if(!status.ok()){
+    LOG(ERROR)<<"Engine Node creation failed";
+    return status;
+  }
+  auto trt_engine_node=graph.AddNode(engine_node,&status);
+  TF_CHECK_OK(status);
+  for(size_t i=0;i<out_edges.size();i++) {
+
+    VLOG(1)<<"Connecting trt_engine_node output " << i << " with "
+           << out_edges.at(i)->dst()->name() << " port "
+           << out_edges.at(i)->dst_input();
+    TF_RETURN_IF_ERROR(graph.UpdateEdge(trt_engine_node, i,
+                                        out_edges.at(i)->dst(),
+                                        out_edges.at(i)->dst_input()));
+  }
+  VLOG(1) << "Segment nodes:";
+  for (auto &i : segment_nodes){
+    VLOG(1) << " " << i << " in graph " << nodeMaps.count(i);
+    auto it=nodeMaps.find(i);
+    if(it!=nodeMaps.end()){
+      graph.RemoveNode(it->second);
+    }
+  }
+  return tensorflow::Status::OK();
+}
 
 tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   // Visit nodes in reverse topological order and construct the TRT network.
@@ -1958,13 +2083,15 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   LOG(DEBUG) << "BUILDING 1";
   static int static_id = 0;
   std::string calib_op_name =
-      std::string("my_trt_calib_op_") + std::to_string(static_id++);
-
+      std::string("my_trt_calib_op_") + std::to_string(static_id);
+  std::string engine_name =
+      std::string("my_trt_op") + std::to_string(static_id);
+  static_id++;
   LOG(DEBUG) << "BUILDING 2";
   auto trt_rmgr = tensorflow::trt::TRTResourceManager::instance();
   auto op_rmgr = trt_rmgr->getManager("TRTCalibOps");
   auto op_res = new tensorflow::trt::TRTCalibrationResource();
-  VLOG(0)<<"SAMI Creating calibresource "<<calib_op_name<<" @ "<<op_res;
+  VLOG(1)<<"SAMI Creating calibresource "<<calib_op_name<<" @ "<<op_res;
   TF_CHECK_OK(op_rmgr->Create(calib_op_name, calib_op_name, op_res));
   op_res->logger = new tensorflow::tensorrt::Logger();
   op_res->builder = nvinfer1::createInferBuilder(*(op_res->logger));
@@ -2065,15 +2192,23 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   // Gather output metadata
   std::vector<std::string> output_names;
   std::vector<tensorflow::DataType> output_dtypes;
+  int trt_engine_op_output_idx = 0;
   for (std::pair<int, int> const& output : s.output_inds) {
     int node_id = output.first;
     int output_idx = output.second;
     tensorflow::Node* node = s.graph.FindNodeId(node_id);
     std::string op_name = node->name();
     std::string tensor_name = op_name;
+
+    s.output_edge_map->insert(
+        {trt_engine_op_output_idx == 0
+         ? engine_name
+         : engine_name + ":" + std::to_string(trt_engine_op_output_idx),
+         {output_idx, tensor_name}});
+    trt_engine_op_output_idx++;
     if (output_idx != 0)
       tensor_name = tensor_name + ":" + std::to_string(output_idx);
-    LOG(DEBUG) << "output tensor name: " << tensor_name;
+    VLOG(1) << "output tensor name: " << tensor_name;
     output_names.push_back(tensor_name);
     auto tensor_or_weights = converter.get_tensor(tensor_name);
     if (!tensor_or_weights.is_tensor()) {
@@ -2083,7 +2218,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     nvinfer1::ITensor* tensor = tensor_or_weights.tensor();
     if (!tensor) {
       return tensorflow::errors::NotFound("Output tensor not found: " +
-                                          tensor_name);
+          tensor_name);
     }
     converter.network()->markOutput(*tensor);
     tensorflow::DataType tf_dtype = node->output_type(output_idx);
@@ -2109,7 +2244,7 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
     //  ConvertSubGraphToTensorRT(convert_graph.cc)
     auto incoming_edge = tensorflow::NodeDefBuilder::NodeOut(
         input_names.at(i), output_idx, input_dtypes.at(i));
-    VLOG(0) << calib_op_name << " input " << i << " = " << input_names.at(i)
+    VLOG(1) << calib_op_name << " input " << i << " = " << input_names.at(i)
             << ":" << output_idx
             <<" dType= "<< tensorflow::DataTypeString(input_dtypes.at(i));
     income_edges.push_back(incoming_edge);
