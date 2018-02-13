@@ -38,10 +38,11 @@ namespace {
 
 // Returns the names of the "then" and "else" functions for the XlaIf node in a
 // graph.
-Status FindIfThenAndElse(const GraphDef& graph, NameAttrList* then_fn,
-                         NameAttrList* else_fn) {
+Status FindIfThenAndElse(const GraphDef& graph, string* op_name,
+                         NameAttrList* then_fn, NameAttrList* else_fn) {
   for (const NodeDef& node : graph.node()) {
     if (node.op() == "XlaIf") {
+      *op_name = node.name();
       const NameAttrList* result;
       TF_RETURN_IF_ERROR(GetNodeAttr(node, "then_branch", &result));
       *then_fn = *result;
@@ -96,9 +97,10 @@ TEST(FunctionalizeControlFlow, Conditional) {
 
   GraphDef graph_def;
   graph.ToGraphDef(&graph_def);
+  string op_name;
   NameAttrList then_fn;
   NameAttrList else_fn;
-  TF_EXPECT_OK(FindIfThenAndElse(graph_def, &then_fn, &else_fn));
+  TF_EXPECT_OK(FindIfThenAndElse(graph_def, &op_name, &then_fn, &else_fn));
   InstantiationResultForTest else_result;
   TF_EXPECT_OK(
       InstantiateFunctionForTest(else_fn.name(), library, &else_result));
@@ -109,7 +111,7 @@ TEST(FunctionalizeControlFlow, Conditional) {
     auto y = ops::Placeholder(scope.WithOpName("y"), DT_INT32);
     auto x = ops::Placeholder(scope.WithOpName("x"), DT_INT32);
     auto less = ops::Less(scope.WithOpName("cond/Less"), y, x);
-    auto if_op = ops::XlaIf(scope.WithOpName("cond/Less_If"), less,
+    auto if_op = ops::XlaIf(scope.WithOpName(op_name), less,
                             std::initializer_list<Input>{less, y, x}, then_fn,
                             else_fn, {DT_INT32});
     GraphDef expected;
