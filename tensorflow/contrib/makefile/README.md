@@ -134,7 +134,7 @@ For more details, see the [benchmark documentation](../../tools/benchmark).
 
 With the release of TF 1.6 and JetPack for Android 3.2 (currently pending), you can now build a version of TensorFlow for compatible devices according to the following instructions which will receive the full benefits of GPU acceleration.
 
-### Environment setup:
+#### Environment setup:
 
 First, download and install JetPack for Android version 3.2 or greater from [Nvidia](https://developers.nvidia.com). Note that as of the TF 1.6 release the JetPack for Android 3.2 release is still pending, and regular JetPack for L4T will not work.
 
@@ -145,7 +145,7 @@ JETPACK=$HOME/JetPack_Android_3.2
 TEGRA_LIBS="$JETPACK/cuDNN/aarch64/cuda/lib64/libcudnn.so  $JETPACK/cuda-9.0/extras/CUPTI/lib64/libcupti.so $JETPACK/cuda/targets/aarch64-linux-androideabi/lib64/libcufft.so"
 ```
 
-### Building all CUDA-enabled native binaries:
+#### Building all CUDA-enabled native binaries:
 This will build CUDA-enabled versions of libtensorflow_inference.so and the benchmark binary. (libtensorflow_demo.so will also be built incidentally, but it does not support CUDA)
 
 ```bash
@@ -155,7 +155,7 @@ CC_PREFIX=ccache tensorflow/contrib/makefile/build_all_android.sh -s tensorflow/
 (add -T on subsequent builds to skip protobuf downloading/building)
 
 
-### Testing the the CUDA-enabled benchmark via adb:
+#### Testing the the CUDA-enabled benchmark via adb:
 Build binaries first as above, then run:
 
 ```bash
@@ -168,7 +168,7 @@ adb push /tmp/tensorflow_demo/assets/*.pb /data/local/tmp
 adb shell "LD_LIBRARY_PATH=/data/local/tmp/lib64 /data/local/tmp/benchmark --graph=/data/local/tmp/tensorflow_inception_graph.pb"
 ```
 
-### Building the CUDA-enabled TensorFlow AAR with Bazel:
+#### Building the CUDA-enabled TensorFlow AAR with Bazel:
 Build the native binaries first as above. Then, build the aar and package the native libs by executing the following:
 ```bash
 mkdir -p /tmp/tf/jni/arm64-v8a
@@ -181,7 +181,7 @@ chmod +w tensorflow.aar
 zip -ur tensorflow.aar $(find jni -name *.so)
 ```
 
-### Building the CUDA-enabled TensorFlow Android demo with Bazel:
+#### Building the CUDA-enabled TensorFlow Android demo with Bazel:
 Build binaries first as above, then edit tensorflow/examples/android/BUILD and replace: 
 ```
     srcs = [
@@ -212,7 +212,7 @@ bazel build -c opt --fat_apk_cpu=arm64-v8a tensorflow/android:tensorflow_demo
 adb install -r -f bazel-bin/tensorflow/examples/android/tensorflow_demo.apk 
 ```
 
-### Building the CUDA-enabled Android demo with gradle/Android Studio:
+#### Building the CUDA-enabled Android demo with gradle/Android Studio:
 
 Add tensorflow/examples/android as an Android project in Android Studio as normal.
 
