@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/graph_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils/topological_sort.h"
@@ -75,6 +76,9 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::NewOptimizer(
     graph_optimizer.reset(
         new DependencyOptimizer(cfg_.dependency_optimization()));
   }
+  if (optimizer == "loop") {
+    graph_optimizer.reset(new LoopOptimizer(cfg_.loop_optimization()));
+  }
   return graph_optimizer;
 }
 
@@ -96,6 +100,10 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     if (cfg_.dependency_optimization() != RewriterConfig::OFF) {
       optimizers.push_back(std::unique_ptr<GraphOptimizer>(
           new DependencyOptimizer(cfg_.dependency_optimization())));
+    }
+    if (cfg_.loop_optimization() != RewriterConfig::OFF) {
+      optimizers.push_back(std::unique_ptr<GraphOptimizer>(
+          new LoopOptimizer(cfg_.loop_optimization())));
     }
     if (cfg_.layout_optimizer() != RewriterConfig::OFF) {
       optimizers.push_back(
@@ -119,8 +127,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
     }
   } else {
     std::set<string> available_optimizers = {
-        "pruning",      "constfold",  "layout",    "memory",
-        "autoparallel", "arithmetic", "dependency"};
+        "pruning",      "constfold",  "layout",     "memory",
+        "autoparallel", "arithmetic", "dependency", "loop"};
     for (const auto& optimizer : cfg_.optimizers()) {
       if (available_optimizers.find(optimizer) != available_optimizers.end()) {
         optimizers.push_back(NewOptimizer(optimizer));
@@ -204,6 +212,7 @@ bool MetaOptimizerEnabled(const RewriterConfig& cfg) {
          cfg.layout_optimizer() != RewriterConfig::OFF ||
          cfg.constant_folding() != RewriterConfig::OFF ||
          cfg.dependency_optimization() != RewriterConfig::OFF ||
+         cfg.loop_optimization() == RewriterConfig::ON ||
          cfg.arithmetic_optimization() != RewriterConfig::OFF ||
          cfg.auto_parallel().enable() ||
          cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
