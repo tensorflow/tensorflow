@@ -32,8 +32,8 @@ limitations under the License.
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
-
-using namespace ops;  // NOLINT(build/namespaces)
+namespace ops {
+namespace {
 
 TEST(DecodeWavOpTest, DecodeWavTest) {
   Scope root = Scope::NewRootScope();
@@ -121,4 +121,6 @@ TEST(DecodeWavOpTest, DecodeWav_ShapeFn) {
   INFER_ERROR("channels must be non-negative, got -2", op, "[]");
 }
 
+}  // namespace
+}  // namespace ops
 }  // namespace tensorflow

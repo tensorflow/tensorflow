@@ -166,7 +166,7 @@ TokKind HloLexer::LexIdentifier() {
     auto consumable = RegexpStringPieceFromPointers(token_start_, buf_.end());
     // 'consumable' will be advanced iff its prefix matches the pattern.
     static LazyRE2 shape_pattern = {
-        R"(^(\w*\d*)\[([\d,]*)\](?:{([\d,]*)})?)"};
+        R"(^(\w*\d*)\[([\d,]*)\](?:(dense|sparse)?{([\d,]+)})?)"};
     if (RE2::Consume(&consumable, *shape_pattern)) {
       auto status_or_shape = ShapeUtil::ParseShapeString(
           StringPieceFromPointers(token_start_, consumable.begin()));
@@ -257,7 +257,8 @@ TokKind HloLexer::LexPercent() {
 // fp without exp ::= [-]?([0-9]+[.][0-9]*|[0-9]*[.][0-9]+)
 // dim_labels_pattern ::= [0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,}
 // dxd_pattern ::= [0-9]+(x[0-9]+)+
-// pad_pattern ::= [0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*
+// pad_pattern ::=
+//   [-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*
 // int ::=  [-]?[0-9]+
 // negative inf ::= '-inf'
 TokKind HloLexer::LexNumberOrPattern() {
@@ -275,7 +276,7 @@ TokKind HloLexer::LexNumberOrPattern() {
       R"([0-9bf]{2,}_[0-9io]{2,}->[0-9bf]{2,})"};
   static LazyRE2 dxd_pattern = {R"([0-9]+(x[0-9]+)+)"};
   static LazyRE2 pad_pattern = {
-      R"([0-9]+_[0-9]+(_[0-9]+)?(x[0-9]+_[0-9]+(_[0-9]+)?)*)"};
+      R"([-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?(x[-]?[0-9]+_[-]?[0-9]+(_[0-9]+)?)*)"};
 
   if (RE2::Consume(&consumable, *dim_labels_pattern)) {
     current_ptr_ = consumable.begin();

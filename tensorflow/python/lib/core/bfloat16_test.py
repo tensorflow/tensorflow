@@ -25,6 +25,7 @@ import numpy as np
 
 # pylint: disable=unused-import,g-bad-import-order
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import dtypes
 from tensorflow.python.platform import test
 
 
@@ -160,6 +161,24 @@ class Bfloat16Test(test.TestCase):
       for w in self.float_values():
         self.assertEqual(v != w, bfloat16(v) != bfloat16(w))
 
+  def testNan(self):
+    a = np.isnan(bfloat16(float("nan")))
+    self.assertTrue(a)
+    np.testing.assert_allclose(np.array([1.0, a]), np.array([1.0, a]))
+
+    a = np.array(
+        [bfloat16(1.34375),
+         bfloat16(1.4375),
+         bfloat16(float("nan"))],
+        dtype=dtypes.bfloat16.as_numpy_dtype)
+    b = np.array(
+        [bfloat16(1.3359375),
+         bfloat16(1.4375),
+         bfloat16(float("nan"))],
+        dtype=dtypes.bfloat16.as_numpy_dtype)
+    np.testing.assert_allclose(
+        a, b, rtol=0.1, atol=0.1, equal_nan=True, err_msg="", verbose=True)
+
 
 class Bfloat16NumPyTest(test.TestCase):
 
@@ -172,6 +191,24 @@ class Bfloat16NumPyTest(test.TestCase):
     self.assertEqual("[[bfloat16(1) bfloat16(2) bfloat16(3)]]", str(x))
     self.assertAllEqual(x, x)
     self.assertAllClose(x, x)
+    self.assertTrue((x == x).all())
+
+  def testComparisons(self):
+    x = np.array([401408, 7, -32], dtype=np.float32)
+    bx = x.astype(bfloat16)
+    y = np.array([82432, 7, 0], dtype=np.float32)
+    by = y.astype(bfloat16)
+    self.assertAllEqual(x == y, bx == by)
+    self.assertAllEqual(x != y, bx != by)
+    self.assertAllEqual(x < y, bx < by)
+    self.assertAllEqual(x > y, bx > by)
+    self.assertAllEqual(x <= y, bx <= by)
+    self.assertAllEqual(x >= y, bx >= by)
+
+  def testEqual2(self):
+    a = np.array([401408], bfloat16)
+    b = np.array([82432], bfloat16)
+    self.assertFalse(a.__eq__(b))
 
   def testCasts(self):
     for dtype in [

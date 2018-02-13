@@ -150,6 +150,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       // addition to an addition on this type (int16) - this is just the type
       // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
+    case F16:
+      return llvm::Type::getHalfTy(module->getContext());
     case S32:
     case U32:
       return llvm::Type::getInt32Ty(module->getContext());
@@ -207,8 +209,8 @@ llvm::Type* ShapeToIrType(const Shape& shape, llvm::Module* module) {
   if (ShapeUtil::IsTuple(shape)) {
     // A tuple buffer is an array of pointers.
     result_type = llvm::ArrayType::get(result_type, shape.tuple_shapes_size());
-  } else {
-    for (int64 dimension : shape.layout().minor_to_major()) {
+  } else if (ShapeUtil::IsArray(shape)) {
+    for (int64 dimension : LayoutUtil::MinorToMajor(shape)) {
       result_type =
           llvm::ArrayType::get(result_type, shape.dimensions(dimension));
     }
@@ -292,6 +294,11 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
             ir_element_type,
             tensorflow::bit_cast<uint16>(literal.Get<bfloat16>(*multi_index)));
         break;
+      case F16:
+        value = llvm::ConstantFP::get(
+            ir_element_type,
+            static_cast<float>(literal.Get<half>(*multi_index)));
+        break;
       case F64:
         value = llvm::ConstantFP::get(ir_element_type,
                                       literal.Get<double>(*multi_index));
@@ -316,7 +323,7 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
   // decrements with each recursive call. We want to iterate through the
   // dimensions in major-to-minor order as we recurse so just index into
   // minor_to_major to get the dimension number for this level of the recursion.
-  int64 dimension = shape.layout().minor_to_major(dimension_index);
+  int64 dimension = LayoutUtil::Minor(shape.layout(), dimension_index);
 
   // Recursively call LiteralToConstant to construct subarrays for the
   // more-minor dimensions. Gather the subarrays into a vector for bundling into
@@ -332,7 +339,7 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
   if (elements.empty()) {
     element_type = ir_element_type;
     for (int i = 0; i < dimension_index; ++i) {
-      int64 index = shape.layout().minor_to_major(i);
+      int64 index = LayoutUtil::Minor(shape.layout(), i);
       element_type =
           llvm::ArrayType::get(element_type, shape.dimensions(index));
     }
@@ -713,6 +720,32 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
   }
 
   return function;
+}
+
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
+  auto options = config.debug_options().xla_backend_extra_options();
+  if (!options.empty()) {
+    std::vector<string> fake_argv_storage;
+    fake_argv_storage.push_back("");
+    for (const auto& it : options) {
+      // Skip options the XLA backend itself consumes.
+      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
+        if (it.second.empty()) {
+          fake_argv_storage.push_back(it.first);
+        } else {
+          fake_argv_storage.push_back(it.first + "=" + it.second);
+        }
+      }
+    }
+
+    VLOG(2) << "Passing argv to LLVM:";
+    std::vector<const char*> fake_argv;
+    for (const auto& s : fake_argv_storage) {
+      fake_argv.push_back(s.c_str());
+      VLOG(2) << s;
+    }
+    llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
+  }
 }
 
 }  // namespace llvm_ir

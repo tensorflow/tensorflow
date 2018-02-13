@@ -16,15 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SCHEDULER_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_SCHEDULER_H_
 
-#include <functional>
 #include <deque>
+#include <functional>
 #include <map>
 #include <unordered_map>
 #include <vector>
 
-#include "tensorflow/core/graph/costmodel.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/graph/costmodel.h"
 
 namespace tensorflow {
 

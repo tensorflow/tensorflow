@@ -84,7 +84,8 @@ class GraphConstructor {
           return_tensors(in.return_tensors),
           return_nodes(in.return_nodes),
           importing(true),
-          validate_colocation_constraints(in.validate_colocation_constraints) {}
+          validate_colocation_constraints(in.validate_colocation_constraints),
+          validate_shape(in.validate_shape) {}
 
     bool allow_internal_ops;
     bool expect_device_spec;
@@ -108,6 +109,7 @@ class GraphConstructor {
     // remove this.
     bool importing;
     bool validate_colocation_constraints;
+    bool validate_shape = true;
   };
 
   typedef gtl::ArraySlice<const NodeDef*> NodeDefSlice;
@@ -372,15 +374,8 @@ Status GraphConstructor::EnsureNoNameCollisions() {
       return errors::InvalidArgument("Imported node name prefix '", prefix_,
                                      "' would lead to invalid node names");
     }
-    if (NameExistsInGraph(prefix_no_slash)) {
-      if (opts_.uniquify_prefix) {
-        prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
-      } else {
-        return errors::InvalidArgument("Import node name prefix '",
-                                       prefix_no_slash,
-                                       "' conflicts with "
-                                       "name already used in the graph");
-      }
+    if (NameExistsInGraph(prefix_no_slash) && opts_.uniquify_prefix) {
+      prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
     }
   }
   return Status::OK();
@@ -561,7 +556,7 @@ Status GraphConstructor::MakeNode(const NodeDef& node_def, Node** node) {
 }
 
 Status GraphConstructor::ValidateShape(Node* node) {
-  if (!opts_.importing) return Status::OK();
+  if (!opts_.importing || !opts_.validate_shape) return Status::OK();
   TF_RETURN_IF_ERROR(refiner_->AddNode(node));
   // For nodes with the _output_shapes attribute, override the shape.
   std::vector<TensorShapeProto> shape_attrs;
@@ -988,7 +983,10 @@ Status GraphConstructor::Convert() {
     if (opts_.importing) {
       if (!prefix_.empty()) {
         AddPrefixToNodeDef(input_already_exists, &imported_node_def);
-      } else if (opts_.uniquify_names) {
+      }
+      // Note: no need to uniquify names if the prefix already guarantees
+      // uniqueness
+      if (opts_.uniquify_names && (prefix_.empty() || !opts_.uniquify_prefix)) {
         UniquifyNames(input_already_exists, &imported_node_def);
       }
       TF_RETURN_IF_ERROR(ModifyNodeDefForImport(&imported_node_def));

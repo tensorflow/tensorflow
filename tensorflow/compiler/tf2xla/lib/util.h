@@ -25,7 +25,7 @@ namespace tensorflow {
 
 // Returns a zero-filled tensor with shape `shape`.
 xla::ComputationDataHandle Zeros(xla::ComputationBuilder* builder,
-                                 xla::Shape& shape);
+                                 const xla::Shape& shape);
 
 // Returns a floating point scalar constant of 'type' with 'value'.
 // If 'type' is complex, returns a real value with zero imaginary component.
@@ -48,6 +48,10 @@ xla::StatusOr<xla::ComputationDataHandle> UpdateSlice(
 xla::StatusOr<xla::ComputationDataHandle> UpdateSliceInMinorDims(
     xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x,
     const xla::ComputationDataHandle& update, gtl::ArraySlice<int64> start);
+
+// Transposes a stack of matrices `x` by swapping the last two dimensions.
+xla::StatusOr<xla::ComputationDataHandle> TransposeInMinorDims(
+    xla::ComputationBuilder* builder, const xla::ComputationDataHandle& x);
 
 }  // namespace tensorflow
 

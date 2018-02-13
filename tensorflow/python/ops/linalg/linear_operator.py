@@ -32,11 +32,13 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = ["LinearOperator"]
 
 
 # TODO(langmore) Use matrix_solve_ls for singular or non-square matrices.
+@tf_export("linalg.LinearOperator")
 class LinearOperator(object):
   """Base class defining a [batch of] linear operator[s].
 
@@ -478,7 +480,6 @@ class LinearOperator(object):
           cond,
           self._max_condition_number_to_be_non_singular(),
           message="Singular matrix up to precision epsilon.")
-    raise NotImplementedError("assert_non_singular is not implemented.")
 
   def _max_condition_number_to_be_non_singular(self):
     """Return the maximum condition number that we consider nonsingular."""

@@ -15,7 +15,7 @@ py_library(
     name = "dataset_ops",
     srcs = [
         "counter.py",
-        "dataset_ops.py",
+        "get_single_element.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
@@ -105,9 +105,12 @@ py_library(
         "resampling.py",
         "scan_ops.py",
         "stats_ops.py",
+        "unique.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":contrib_op_loader",
+        ":gen_dataset_ops",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dataset_ops_gen",
@@ -121,6 +124,7 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:convert",
         "//tensorflow/python/data/util:nest",
         "//tensorflow/python/data/util:sparse",
         "//third_party/py/numpy",
@@ -128,33 +132,41 @@ py_library(
 )
 
 tf_gen_op_wrapper_py(
-    name = "prefetching_ops",
-    out = "gen_prefetching_ops.py",
-    deps = ["//tensorflow/contrib/data:prefetching_ops_op_lib"],
+    name = "gen_dataset_ops",
+    out = "gen_dataset_ops.py",
+    deps = ["//tensorflow/contrib/data:dataset_ops_op_lib"],
 )
 
 tf_kernel_library(
-    name = "prefetching_ops_kernels",
+    name = "dataset_ops_kernels",
     deps = [
-        "//tensorflow/contrib/data/kernels:prefetching_kernels",
+        "//tensorflow/contrib/data/kernels:dataset_kernels",
         "//tensorflow/core:framework",
     ],
     alwayslink = 1,
 )
 
 tf_custom_op_py_library(
-    name = "prefetching_py",
-    srcs = ["prefetching_ops.py"],
-    dso = ["//tensorflow/contrib/data:_prefetching_ops.so"],
+    name = "contrib_op_loader",
+    srcs = ["contrib_op_loader.py"],
+    dso = ["//tensorflow/contrib/data:_dataset_ops.so"],
     kernels = [
-        ":prefetching_ops_kernels",
-        "//tensorflow/contrib/data:prefetching_ops_op_lib",
+        ":dataset_ops_kernels",
+        "//tensorflow/contrib/data:dataset_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":prefetching_ops",
+        ":gen_dataset_ops",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:platform",
+    ],
+)
+
+py_library(
+    name = "prefetching_ops",
+    srcs = ["prefetching_ops.py"],
+    deps = [
+        ":contrib_op_loader",
     ],
 )
 

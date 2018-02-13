@@ -29,7 +29,6 @@ from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
 from tensorflow.python.estimator.inputs import numpy_io
-from tensorflow.python.feature_column import feature_column as fc_lib
 from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.feature_column.feature_column import _CategoricalColumn
 from tensorflow.python.feature_column.feature_column import _DenseColumn
@@ -1072,6 +1071,7 @@ def get_linear_model_column_var(column):
                             'linear_model/' + column.name)[0]
 
 
+@test_util.with_c_api
 class LinearModelTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -1325,10 +1325,16 @@ class LinearModelTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      predictions = fc.linear_model(features, [price])
-      with _initialized_session():
-        with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-          predictions.eval()
+      if ops._USE_C_API:
+        with self.assertRaisesRegexp(
+            Exception,
+            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+          predictions = fc.linear_model(features, [price])
+      else:
+        predictions = fc.linear_model(features, [price])
+        with _initialized_session():
+          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
+            predictions.eval()
 
   def test_dense_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -1791,6 +1797,7 @@ class InputLayerTest(test.TestCase):
       self.assertAllEqual([[2, 2], [2, 2], [2, 2]], gradient)
 
 
+@test_util.with_c_api
 class FunctionalInputLayerTest(test.TestCase):
 
   def test_raises_if_empty_feature_columns(self):
@@ -1855,10 +1862,16 @@ class FunctionalInputLayerTest(test.TestCase):
     price = fc.numeric_column('price', shape=2)
     with ops.Graph().as_default():
       features = {'price': [[1.], [5.]]}
-      net = fc.input_layer(features, [price])
-      with _initialized_session():
-        with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
-          net.eval()
+      if ops._USE_C_API:
+        with self.assertRaisesRegexp(
+            Exception,
+            r'Cannot reshape a tensor with 2 elements to shape \[2,2\]'):
+          net = fc.input_layer(features, [price])
+      else:
+        net = fc.input_layer(features, [price])
+        with _initialized_session():
+          with self.assertRaisesRegexp(Exception, 'requested shape has 4'):
+            net.eval()
 
   def test_reshaping(self):
     price = fc.numeric_column('price', shape=[1, 2])
@@ -3551,7 +3564,6 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertEqual('mean', embedding_column.combiner)
     self.assertIsNotNone(embedding_column.initializer)
     self.assertIsNone(embedding_column.ckpt_to_load_from)
-    self.assertIsNone(embedding_column.shared_embedding_collection_name)
     self.assertIsNone(embedding_column.tensor_name_in_ckpt)
     self.assertIsNone(embedding_column.max_norm)
     self.assertTrue(embedding_column.trainable)
@@ -3576,7 +3588,6 @@ class EmbeddingColumnTest(test.TestCase):
     self.assertEqual(embedding_dimension, embedding_column.dimension)
     self.assertEqual('my_combiner', embedding_column.combiner)
     self.assertEqual('my_initializer', embedding_column.initializer())
-    self.assertIsNone(embedding_column.shared_embedding_collection_name)
     self.assertEqual('my_ckpt', embedding_column.ckpt_to_load_from)
     self.assertEqual('my_ckpt_tensor', embedding_column.tensor_name_in_ckpt)
     self.assertEqual(42., embedding_column.max_norm)
@@ -3608,7 +3619,6 @@ class EmbeddingColumnTest(test.TestCase):
       self.assertEqual(embedding_dimension, embedding_column.dimension)
       self.assertEqual('my_combiner', embedding_column.combiner)
       self.assertEqual('my_initializer', embedding_column.initializer())
-      self.assertIsNone(embedding_column.shared_embedding_collection_name)
       self.assertEqual('my_ckpt', embedding_column.ckpt_to_load_from)
       self.assertEqual('my_ckpt_tensor', embedding_column.tensor_name_in_ckpt)
       self.assertEqual(42., embedding_column.max_norm)
@@ -4140,7 +4150,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
     categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=3)
     embedding_dimension = 2
-    embedding_column_b, embedding_column_a = fc_lib._shared_embedding_columns(
+    embedding_column_b, embedding_column_a = fc.shared_embedding_columns(
         [categorical_column_b, categorical_column_a],
         dimension=embedding_dimension)
     self.assertIs(categorical_column_a, embedding_column_a.categorical_column)
@@ -4186,7 +4196,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
     categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=3)
     embedding_dimension = 2
-    embedding_column_a, embedding_column_b = fc_lib._shared_embedding_columns(
+    embedding_column_a, embedding_column_b = fc.shared_embedding_columns(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension,
         combiner='my_combiner',
@@ -4239,7 +4249,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
     categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=3)
     embedding_dimension = 2
-    original_a, _ = fc_lib._shared_embedding_columns(
+    original_a, _ = fc.shared_embedding_columns(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension,
         combiner='my_combiner',
@@ -4277,7 +4287,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
     categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=3)
     with self.assertRaisesRegexp(ValueError, 'initializer must be callable'):
-      fc_lib._shared_embedding_columns(
+      fc.shared_embedding_columns(
           [categorical_column_a, categorical_column_b], dimension=2,
           initializer='not_fn')
 
@@ -4292,7 +4302,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         ValueError,
         'all categorical_columns must have the same type.*'
         '_IdentityCategoricalColumn.*_HashedCategoricalColumn'):
-      fc_lib._shared_embedding_columns(
+      fc.shared_embedding_columns(
           [categorical_column_a, categorical_column_b, categorical_column_c],
           dimension=2)
 
@@ -4305,11 +4315,11 @@ class SharedEmbeddingColumnTest(test.TestCase):
         key='bbb', num_buckets=3)
     weighted_categorical_column_b = fc.weighted_categorical_column(
         categorical_column_b, weight_feature_key='bbb_weights')
-    fc_lib._shared_embedding_columns(
+    fc.shared_embedding_columns(
         [weighted_categorical_column_a, categorical_column_b], dimension=2)
-    fc_lib._shared_embedding_columns(
+    fc.shared_embedding_columns(
         [categorical_column_a, weighted_categorical_column_b], dimension=2)
-    fc_lib._shared_embedding_columns(
+    fc.shared_embedding_columns(
         [weighted_categorical_column_a, weighted_categorical_column_b],
         dimension=2)
 
@@ -4318,7 +4328,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         key='aaa', vocabulary_list=('omar', 'stringer', 'marlo'))
     b = fc.categorical_column_with_vocabulary_list(
         key='bbb', vocabulary_list=('omar', 'stringer', 'marlo'))
-    a_embedded, b_embedded = fc_lib._shared_embedding_columns(
+    a_embedded, b_embedded = fc.shared_embedding_columns(
         [a, b], dimension=2)
     data = example_pb2.Example(features=feature_pb2.Features(
         feature={
@@ -4353,7 +4363,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
   def test_transform_feature(self):
     a = fc.categorical_column_with_identity(key='aaa', num_buckets=3)
     b = fc.categorical_column_with_identity(key='bbb', num_buckets=3)
-    a_embedded, b_embedded = fc_lib._shared_embedding_columns(
+    a_embedded, b_embedded = fc.shared_embedding_columns(
         [a, b], dimension=2)
     features = {
         'aaa': sparse_tensor.SparseTensor(
@@ -4423,7 +4433,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    embedding_column_a, embedding_column_b = fc_lib._shared_embedding_columns(
+    embedding_column_a, embedding_column_b = fc.shared_embedding_columns(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension, initializer=_initializer)
 
@@ -4485,7 +4495,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    embedding_column_a, embedding_column_b = fc_lib._shared_embedding_columns(
+    embedding_column_a, embedding_column_b = fc.shared_embedding_columns(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension, initializer=_initializer)
 
@@ -4525,7 +4535,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    embedding_column_a, embedding_column_b = fc_lib._shared_embedding_columns(
+    embedding_column_a, embedding_column_b = fc.shared_embedding_columns(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension, initializer=_initializer)
 
@@ -4534,8 +4544,8 @@ class SharedEmbeddingColumnTest(test.TestCase):
           categorical_column_a.name: input_a,
           categorical_column_b.name: input_b,
       }, (embedding_column_a, embedding_column_b))
-      # Linear weights name should follow the column name.
-      # TODO(roumposg): Fix that.
+      # Linear weights do not follow the column name. But this is a rare use
+      # case, and fixing it would add too much complexity to the code.
       expected_var_names = (
           'linear_model/bias_weights:0',
           'linear_model/aaa_bbb_shared_embedding/weights:0',
@@ -4631,7 +4641,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         key='aaa', num_buckets=vocabulary_size)
     categorical_column_b = fc.categorical_column_with_identity(
         key='bbb', num_buckets=vocabulary_size)
-    embedding_column_a, embedding_column_b = fc_lib._shared_embedding_columns(
+    embedding_column_a, embedding_column_b = fc.shared_embedding_columns(
         [categorical_column_a, categorical_column_b],
         dimension=embedding_dimension, initializer=_initializer,
         trainable=trainable)

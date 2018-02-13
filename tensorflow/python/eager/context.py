@@ -18,14 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import contextlib
 import copy
 import random
 import threading
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.framework import c_api_util
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import errors
+from tensorflow.python.util import compat
+from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 
 GRAPH_MODE = 0
@@ -45,6 +50,8 @@ _MAXINT32 = 2**31 - 1
 DEVICE_PLACEMENT_EXPLICIT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_EXPLICIT
 DEVICE_PLACEMENT_WARN = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_WARN
 DEVICE_PLACEMENT_SILENT = pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT
+DEVICE_PLACEMENT_SILENT_FOR_INT32 = (
+    pywrap_tensorflow.TFE_DEVICE_PLACEMENT_SILENT_FOR_INT32)
 
 
 # TODO(agarwal): better name ?
@@ -60,6 +67,41 @@ class _EagerContext(threading.local):
     self.recording_summaries = False
     self.summary_writer_resource = None
     self.scalar_cache = {}
+
+
+ContextStackEntry = collections.namedtuple(
+    "ContextStackEntry", ["is_building_function", "enter_context_fn"])
+
+
+class ContextStack(threading.local):
+  """A thread-local stack of context switches."""
+
+  def __init__(self):
+    super(ContextStack, self).__init__()
+    self.stack = []
+
+  def push(self, is_building_function, enter_context_fn):
+    """Push metadata about a context switch onto the stack.
+
+    A context switch can take one of two forms: installing a graph as the
+    default graph, or entering the eager context.
+
+    Args:
+      is_building_function: (bool.) Whether the context is building a function.
+      enter_context_fn: (function.) A callable that executes the context switch.
+        For example, `graph.as_default` or `eager_mode`.
+    """
+
+    self.stack.append(
+        ContextStackEntry(is_building_function, enter_context_fn))
+
+  def pop(self):
+    """Pop the stack."""
+
+    self.stack.pop()
+
+
+context_stack = ContextStack()
 
 
 # TODO(agarwal): rename to EagerContext / EagerRuntime ?
@@ -83,6 +125,8 @@ class Context(object):
            right device but raises a warning.
          tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
            hide performance problems.
+         tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
+           raising errors on the other ones.
     """
     self._eager_context = _EagerContext()
     self._context_handle = None
@@ -97,6 +141,9 @@ class Context(object):
     """Set a global eager mode seed for random ops."""
     self._seed = seed
     self._rng = random.Random(self._seed)
+    # Also clear the kernel cache, to reset any existing seeds
+    if self._context_handle is not None:
+      pywrap_tensorflow.TFE_ContextClearCaches(self._context_handle)
 
   def _internal_operation_seed(self):
     """Returns a fake operation seed.
@@ -183,10 +230,14 @@ class Context(object):
     ctx = self._eager_context
     old_mode = ctx.mode
     ctx.mode = mode
+    if mode == EAGER_MODE:
+      context_stack.push(False, eager_mode)
     try:
       yield
     finally:
       ctx.mode = old_mode
+      if mode == EAGER_MODE:
+        context_stack.pop()
 
   def in_graph_mode(self):
     """Returns True if current thread is in GRAPH mode."""
@@ -355,6 +406,56 @@ class Context(object):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
 
+  def enable_run_metadata(self):
+    """Enables tracing of op execution via RunMetadata.
+
+    To retrieve the accumulated metadata call context.export_run_metadata()
+    and to stop tracing call context.disable_run_metadata().
+    """
+    if not self._context_handle:
+      self._initialize_handle_and_devices()
+    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._context_handle)
+
+  @tf_contextlib.contextmanager
+  def device_policy(self, policy):
+    if not self._context_handle:
+      self._initialize_handle_and_devices()
+    old = pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(
+        self._context_handle)
+    pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
+        self._handle, policy)
+    try:
+      yield
+    finally:
+      pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
+          self._handle, old)
+
+  def disable_run_metadata(self):
+    """Disables tracing of op execution via RunMetadata."""
+    if not self._context_handle:
+      return
+    pywrap_tensorflow.TFE_ContextDisableRunMetadata(self._context_handle)
+
+  def export_run_metadata(self):
+    """Returns a RunMetadata proto with accumulated information.
+
+    The returned protocol buffer contains information since the most recent call
+    to either enable_run_metadata or export_run_metadata.
+
+    Returns:
+      A RunMetadata protocol buffer. Or None if not enabled.
+    """
+    if not self._context_handle:
+      return None
+    with c_api_util.tf_buffer() as buffer_:
+      with errors.raise_exception_on_not_ok_status() as status:
+        pywrap_tensorflow.TFE_ContextExportRunMetadata(
+            self._context_handle, buffer_, status)
+      proto_data = pywrap_tensorflow.TF_GetBuffer(buffer_)
+    run_metadata = config_pb2.RunMetadata()
+    run_metadata.ParseFromString(compat.as_bytes(proto_data))
+    return run_metadata
+
 _context = None
 _context_lock = threading.Lock()
 
@@ -473,3 +574,36 @@ def num_gpus():
     The number of available GPU devices.
   """
   return context().num_gpus()
+
+
+def enable_run_metadata():
+  """Enables tracing of op execution via RunMetadata.
+
+  To retrieve the accumulated metadata call context.export_run_metadata()
+  and to stop tracing call context.disable_run_metadata().
+  """
+  context().enable_run_metadata()
+
+
+def disable_run_metadata():
+  """Disables tracing of op execution via RunMetadata."""
+  context().disable_run_metadata()
+
+
+def export_run_metadata():
+  """Returns a RunMetadata proto with accumulated information.
+
+  The returned protocol buffer contains information since the most recent call
+  to either enable_run_metadata or export_run_metadata.
+
+  Returns:
+    A RunMetadata protocol buffer.
+  """
+  return context().export_run_metadata()
+
+
+# Not every user creates a Context via context.context()
+# (for example, enable_eager_execution in python/framework/ops.py),
+# but they do all import this file.  Note that IS_IN_GRAPH_MODE and
+# in_graph_mode are both parameterless functions.
+is_in_graph_mode.IS_IN_GRAPH_MODE = in_graph_mode

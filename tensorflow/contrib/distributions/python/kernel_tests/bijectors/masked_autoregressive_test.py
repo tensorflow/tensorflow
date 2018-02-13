@@ -149,5 +149,17 @@ class MaskedAutoregressiveFlowShiftOnlyTest(MaskedAutoregressiveFlowTest):
     }
 
 
+class MaskedAutoregressiveFlowUnrollLoopTest(MaskedAutoregressiveFlowTest):
+
+  @property
+  def _autoregressive_flow_kwargs(self):
+    return {
+        "shift_and_log_scale_fn": masked_autoregressive_default_template(
+            hidden_layers=[2], shift_only=False),
+        "is_constant_jacobian": False,
+        "unroll_loop": True,
+    }
+
+
 if __name__ == "__main__":
   test.main()

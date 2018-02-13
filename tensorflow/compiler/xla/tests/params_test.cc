@@ -436,8 +436,7 @@ XLA_TEST_F(ParamsTest,
 
 #endif
 
-XLA_TEST_F(ParamsTest,
-           DISABLED_ON_CPU_PARALLEL(TupleOfR1ParametersAddedTogether)) {
+XLA_TEST_F(ParamsTest, TupleOfR1ParametersAddedTogether) {
   ComputationBuilder builder(client_, TestName());
 
   Shape r1f32_3 = ShapeUtil::MakeShape(F32, {3});
@@ -463,10 +462,8 @@ XLA_TEST_F(ParamsTest,
 // Verifies that passing a 2x2 with {0, 1} layout returns the same value back
 // when (transferred to the server and) passed through a parameter.
 XLA_TEST_F(ParamsTest, R2_2x2_Layout_01) {
-  std::unique_ptr<Literal> literal = Literal::CreateR2<float>({
-      {1, 2}, {3, 4},
-  });
-  *literal->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
+  std::unique_ptr<Literal> literal = Literal::CreateR2WithLayout<float>(
+      {{1, 2}, {3, 4}}, LayoutUtil::MakeLayout({0, 1}));
   ComputationBuilder builder(client_, TestName());
   builder.Parameter(0, literal->shape(), "input");
 
@@ -477,10 +474,8 @@ XLA_TEST_F(ParamsTest, R2_2x2_Layout_01) {
 
 // As above, but for {1, 0} layout.
 XLA_TEST_F(ParamsTest, R2_2x2_Layout_10) {
-  std::unique_ptr<Literal> literal = Literal::CreateR2<float>({
-      {1, 3}, {2, 4},
-  });
-  *literal->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({1, 0});
+  std::unique_ptr<Literal> literal = Literal::CreateR2WithLayout<float>(
+      {{1, 3}, {2, 4}}, LayoutUtil::MakeLayout({1, 0}));
   ComputationBuilder builder(client_, TestName());
   builder.Parameter(0, literal->shape(), "input");
 
@@ -501,7 +496,7 @@ XLA_TEST_F(ParamsTest, R2_2x2_TryToPassReverseLayoutToParameter) {
         original.layout().minor_to_major().begin(),
         original.layout().minor_to_major().end());
     std::reverse(original_layout.begin(), original_layout.end());
-    *literal->mutable_shape()->mutable_layout() =
+    *literal->mutable_shape_do_not_use()->mutable_layout() =
         LayoutUtil::MakeLayout(original_layout);
     ASSERT_EQ(2, literal->Get<float>({0, 1}));
   }

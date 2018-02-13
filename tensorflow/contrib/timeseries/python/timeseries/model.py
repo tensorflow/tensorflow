@@ -22,6 +22,7 @@ import abc
 import collections
 
 from tensorflow.contrib import layers
+from tensorflow.contrib.layers import feature_column
 
 from tensorflow.contrib.timeseries.python.timeseries import math_utils
 from tensorflow.contrib.timeseries.python.timeseries.feature_keys import PredictionFeatures
@@ -82,6 +83,11 @@ class TimeSeriesModel(object):
     self._graph_initialized = False
     self._stats_means = None
     self._stats_sigmas = None
+
+  @property
+  def exogenous_feature_columns(self):
+    """`FeatureColumn` objects for features which are not predicted."""
+    return self._exogenous_feature_columns
 
   # TODO(allenl): Move more of the generic machinery for generating and
   # predicting into TimeSeriesModel, and possibly share it between generate()
@@ -249,6 +255,23 @@ class TimeSeriesModel(object):
       return a "predicted_mean" and "predicted_covariance".
     """
     pass
+
+  def _get_exogenous_embedding_shape(self):
+    """Computes the shape of the vector returned by _process_exogenous_features.
+
+    Returns:
+      The shape as a list. Does not include a batch dimension.
+    """
+    if not self._exogenous_feature_columns:
+      return (0,)
+    with ops.Graph().as_default():
+      placeholder_features = (
+          feature_column.make_place_holder_tensors_for_base_features(
+              self._exogenous_feature_columns))
+      embedded = layers.input_from_feature_columns(
+          columns_to_tensors=placeholder_features,
+          feature_columns=self._exogenous_feature_columns)
+      return embedded.get_shape().as_list()[1:]
 
   def _process_exogenous_features(self, times, features):
     """Create a single vector from exogenous features.

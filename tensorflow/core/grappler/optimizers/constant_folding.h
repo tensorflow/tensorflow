@@ -52,7 +52,6 @@ class ConstantFolding : public GraphOptimizer {
 
  private:
   string OptimizedNodeName(const NodeDef& node, StringPiece suffix) const;
-  string OptimizedNodeName(const NodeDef& node) const;
   bool OptimizedNodeExists(const NodeDef& node, StringPiece suffix) const;
 
   bool IsReallyConstant(const NodeDef& node) const;
@@ -78,11 +77,12 @@ class ConstantFolding : public GraphOptimizer {
 
   bool IsOnes(const NodeDef& node) const;
   bool IsZeros(const NodeDef& node) const;
-  void ReplaceOperationWithIdentity(int input_to_forward, NodeDef* node);
+  void ReplaceOperationWithIdentity(int input_to_forward, NodeDef* node,
+                                    GraphDef* graph);
   Status ReplaceOperationWithConstant(double value,
                                       const TensorShapeProto& shape,
-                                      NodeDef* node);
-  void ReplaceDivisionOfOnesByReciprocal(NodeDef* node);
+                                      NodeDef* node, GraphDef* graph);
+  void ReplaceDivisionOfOnesByReciprocal(NodeDef* node, GraphDef* graph);
   Status FoldGraph(GraphDef* output);
 
   bool IsSimplifiableReduction(const NodeDef& node) const;

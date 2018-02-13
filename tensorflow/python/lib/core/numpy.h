@@ -32,6 +32,7 @@ limitations under the License.
 #include <Python.h>
 
 #include "numpy/arrayobject.h"
+#include "numpy/ufuncobject.h"
 
 namespace tensorflow {
 

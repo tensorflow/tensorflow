@@ -37,6 +37,9 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 
+using tensorflow::str_util::Join;
+using tensorflow::strings::Printf;
+
 namespace xla {
 
 namespace {
@@ -934,7 +937,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       "inferring shape for <%s>(%s, %s) with broadcast_dimensions={%s}",
       BinaryOperation_Name(operation).c_str(),
       ShapeUtil::HumanString(lhs).c_str(), ShapeUtil::HumanString(rhs).c_str(),
-      tensorflow::str_util::Join(broadcast_dimensions, ", ").c_str());
+      Join(broadcast_dimensions, ", ").c_str());
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(lhs));
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(rhs));
 
@@ -1097,7 +1100,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "Map operation requires all operands to have the same shape; got: "
         "%s",
-        tensorflow::str_util::Join(pieces, ", ").c_str());
+        Join(pieces, ", ").c_str());
   }
 
   // Check that dimensions.size == arg_shape.dimensions_size() (we currently
@@ -1114,7 +1117,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     if (dimensions[i] != i) {
       return InvalidArgument(
           "Map requires monotonically increasing dimension numbers, found: %s ",
-          tensorflow::str_util::Join(dimensions, ", ").c_str());
+          Join(dimensions, ", ").c_str());
     }
   }
 
@@ -1715,6 +1718,89 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   return ShapeUtil::MakeShape(lhs.element_type(), dimensions);
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferFftShape(
+    const Shape& in, const FftType fft_type,
+    const tensorflow::gtl::ArraySlice<int64> fft_length) {
+  const int64 fft_rank = fft_length.size();
+  if (fft_rank < 1 || fft_rank > 3) {
+    return InvalidArgument("FFT only supports ranks 1-3, but got %lld",
+                           fft_rank);
+  }
+#define RET_CHECK_RANK(x)                              \
+  if (x.dimensions_size() < fft_rank) {                \
+    return InvalidArgument(                            \
+        "FFT of rank %lld requires input of at least " \
+        "same rank; got input of rank %d",             \
+        fft_rank, x.dimensions_size());                \
+  }
+  switch (fft_type) {
+    case FFT:
+    case IFFT:
+      if (in.element_type() != C64) {
+        return InvalidArgument("%s requires C64 input type, found %s",
+                               FftType_Name(fft_type).c_str(),
+                               PrimitiveType_Name(in.element_type()).c_str());
+      }
+      RET_CHECK_RANK(in);
+      return in;
+    case RFFT: {
+      if (in.element_type() != F32) {
+        return InvalidArgument("RFFT requires F32 input type, found %s",
+                               PrimitiveType_Name(in.element_type()).c_str());
+      }
+      RET_CHECK_RANK(in);
+      for (int i = 0; i < fft_rank; i++) {
+        if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
+            fft_length[i]) {
+          return InvalidArgument(
+              "RFFT requires innermost dimensions match fft_length but "
+              "dimension %lld is %lld and should be %lld",
+              in.dimensions_size() - fft_rank + i,
+              in.dimensions(in.dimensions_size() - fft_rank + i),
+              fft_length[i]);
+        }
+      }
+      Shape result = ShapeUtil::ChangeElementType(in, C64);
+      result.set_dimensions(result.dimensions_size() - 1,
+                            fft_length[fft_rank - 1] / 2 + 1);
+      return result;
+    }
+    case IRFFT: {
+      if (in.element_type() != C64) {
+        return InvalidArgument("IRFFT requires C64 input type, found %s",
+                               PrimitiveType_Name(in.element_type()).c_str());
+      }
+      RET_CHECK_RANK(in);
+      Shape result = ShapeUtil::ComplexComponentShape(in);
+      for (int i = 0; i < fft_rank - 1; i++) {
+        if (in.dimensions(in.dimensions_size() - fft_rank + i) !=
+            fft_length[i]) {
+          return InvalidArgument(
+              "IRFFT requires all but one innermost dimensions match "
+              "fft_length, but dimension %lld is %lld and should be %lld",
+              in.dimensions_size() - fft_rank + i,
+              in.dimensions(in.dimensions_size() - fft_rank + i),
+              fft_length[i]);
+        }
+      }
+      if (in.dimensions(in.dimensions_size() - 1) !=
+          fft_length[fft_rank - 1] / 2 + 1) {
+        return InvalidArgument(
+            "IRFFT requires innermost dimension matches fft_length/2+1, but "
+            "dimension %d is %lld and should be %lld",
+            in.dimensions_size() - 1, in.dimensions(in.dimensions_size() - 1),
+            fft_length[fft_rank - 1] / 2 + 1);
+      }
+      result.set_dimensions(result.dimensions_size() - 1,
+                            fft_length[fft_rank - 1]);
+      return result;
+    }
+    default:
+      LOG(FATAL) << "Unexpected fft_type: " << fft_type;
+  }
+#undef RET_CHECK_RANK
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferCrossReplicaSumShape(
     tensorflow::gtl::ArraySlice<const Shape*> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {
@@ -1831,21 +1917,28 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     const Shape& arg, tensorflow::gtl::ArraySlice<int64> starts,
     tensorflow::gtl::ArraySlice<int64> limits,
     tensorflow::gtl::ArraySlice<int64> strides) {
+  auto error = [&](const string& message) {
+    return InvalidArgument(
+        "%s in slice operation; argument shape: %s; starts: {%s}; limits: "
+        "{%s}; strides: {%s}",
+        message.c_str(), ShapeUtil::HumanString(arg).c_str(),
+        Join(starts, ",").c_str(), Join(limits, ",").c_str(),
+        Join(strides, ",").c_str());
+  };
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(arg, "operand of slice"));
   VLOG(2) << tensorflow::strings::Printf(
       "slicing shape %s starts={%s} limits={%s}",
-      ShapeUtil::HumanString(arg).c_str(),
-      tensorflow::str_util::Join(starts, ", ").c_str(),
-      tensorflow::str_util::Join(limits, ", ").c_str());
+      ShapeUtil::HumanString(arg).c_str(), Join(starts, ", ").c_str(),
+      Join(limits, ", ").c_str());
 
   if (starts.size() != limits.size()) {
-    return InvalidArgument("slice start and limit sizes differ: %zu vs %zu",
-                           starts.size(), limits.size());
+    return error(Printf("slice start and limit sizes differ: %zu vs %zu",
+                        starts.size(), limits.size()));
   }
 
   if (starts.size() != strides.size()) {
-    return InvalidArgument("slice start and strides sizes differ: %zu vs %zu",
-                           starts.size(), strides.size());
+    return error(Printf("slice start and strides sizes differ: %zu vs %zu",
+                        starts.size(), strides.size()));
   }
 
   if (starts.size() != ShapeUtil::Rank(arg)) {
@@ -1864,20 +1957,20 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                              start_index);
     }
     if (limit_index > arg.dimensions(dimension)) {
-      return InvalidArgument(
-          "limit index (%lld) must be less than or equal to dimension "
-          "size (%lld)",
-          limit_index, arg.dimensions(dimension));
+      return error(
+          Printf("limit index (%lld) must be less than or equal to dimension "
+                 "size (%lld)",
+                 limit_index, arg.dimensions(dimension)));
     }
     VLOG(2) << tensorflow::strings::Printf("starts[%lld] = %lld", dimension,
                                            start_index);
     VLOG(2) << tensorflow::strings::Printf("limits[%lld] = %lld", dimension,
                                            limit_index);
     if (start_index > limit_index) {
-      return InvalidArgument(
-          "limit index (%lld) must be greater or equal to "
-          "start index (%lld) in slice with positive stride",
-          limit_index, start_index);
+      return error(
+          Printf("limit index (%lld) must be greater or equal to "
+                 "start index (%lld) in slice with positive stride",
+                 limit_index, start_index));
     }
     if (stride <= 0) {
       return InvalidArgument("stride (%lld) must be positive", stride);
@@ -1900,7 +1993,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       "slicing shape %s at dynamic start_indices %s with slice_sizes={%s}",
       ShapeUtil::HumanString(operand_shape).c_str(),
       ShapeUtil::HumanString(start_indices_shape).c_str(),
-      tensorflow::str_util::Join(slice_sizes, ", ").c_str());
+      Join(slice_sizes, ", ").c_str());
 
   if (ShapeUtil::Rank(start_indices_shape) != 1) {
     return InvalidArgument(
@@ -2197,8 +2290,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     return InvalidArgument(
         "Reshape dimensions [%s] are not a permutation of the operand "
         "dimensions (operand shape is %s).",
-        tensorflow::str_util::Join(dimensions, ",").c_str(),
-        ShapeUtil::HumanString(operand).c_str());
+        Join(dimensions, ",").c_str(), ShapeUtil::HumanString(operand).c_str());
   }
 
   return inferred_shape;
@@ -2290,8 +2382,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   // The applied function's arity equals the number of arguments.
   if (arg_shapes.size() != to_apply.parameters_size()) {
     string computation_signature = ShapeUtil::HumanString(to_apply);
-    string argument_shapes = tensorflow::str_util::Join(
-        arg_shapes, ", ", [](string* out, const Shape* shape) {
+    string argument_shapes =
+        Join(arg_shapes, ", ", [](string* out, const Shape* shape) {
           tensorflow::strings::StrAppend(out, ShapeUtil::HumanString(*shape));
         });
     return InvalidArgument(

@@ -99,14 +99,13 @@ class MultiOutputFusionTest : public HloTestBase {
           nullptr);
     }
 
-    Literal input;
-    input.PopulateWithValue<float>(2.5f, {size, size});
-    auto p1 = TransferToDevice(input);
-    auto p0 = TransferToDevice(*Literal::CreateR0<float>(-9.0f));
+    Literal arg1(ShapeUtil::MakeShape(F32, {size, size}));
+    arg1.PopulateWithValue<float>(2.5f);
 
-    Literal expect;
-    expect.PopulateWithValue<float>(size * 1.5f * 3.5f, {size, size});
-    auto actual = ExecuteAndTransfer(std::move(hlo_module), {p0, p1});
+    Literal expect(ShapeUtil::MakeShape(F32, {size, size}));
+    expect.PopulateWithValue<float>(size * 1.5f * 3.5f);
+    auto actual = ExecuteAndTransfer(
+        std::move(hlo_module), {Literal::CreateR0<float>(-9.0f).get(), &arg1});
     LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
   }
 
@@ -160,14 +159,13 @@ class MultiOutputFusionTest : public HloTestBase {
                nullptr);
     }
 
-    Literal input0, input1;
-    input0.PopulateWithValue<float>(2.5f, {size});
-    input1.PopulateWithValue<double>(1, {size});
-    auto p0 = TransferToDevice(input0);
-    auto p1 = TransferToDevice(input1);
+    Literal input0(ShapeUtil::MakeShape(F32, {size}));
+    input0.PopulateWithValue(2.5f);
+    Literal input1(ShapeUtil::MakeShape(F64, {size}));
+    input1.PopulateWithValue(1.);
 
-    Literal expect = *Literal::CreateR1<float>({size * 1.5f * 3.5f});
-    auto actual = ExecuteAndTransfer(std::move(hlo_module), {p0, p1});
+    Literal expect = std::move(*Literal::CreateR1<float>({size * 1.5f * 3.5f}));
+    auto actual = ExecuteAndTransfer(std::move(hlo_module), {&input0, &input1});
     LiteralTestUtil::ExpectNear(expect, *actual, error_spec_);
   }
 };

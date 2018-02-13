@@ -36,6 +36,9 @@ _allowed_symbols = [
     "APPROX_DIAGONAL_NAME",
     "APPROX_FULL_NAME",
     "VARIABLE_SCOPE",
+    "APPROX_KRONECKER_INDEP_NAME",
+    "APPROX_KRONECKER_SERIES_1_NAME",
+    "APPROX_KRONECKER_SERIES_2_NAME"
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

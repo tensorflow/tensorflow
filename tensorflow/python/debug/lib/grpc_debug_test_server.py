@@ -310,7 +310,7 @@ class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
                                              op_log_proto.id_to_string)
     raise ValueError(
         "Op '%s' does not exist in the tracebacks received by the debug "
-        "server.")
+        "server." % op_name)
 
   def query_origin_stack(self):
     """Query the stack of the origin of the execution call.
@@ -348,6 +348,9 @@ class EventListenerTestServicer(grpc_debug_server.EventListenerBaseServicer):
     Raises:
       ValueError: If no source file is found at the given file_path.
     """
+    if not self._source_files:
+      raise ValueError(
+          "This debug server has not received any source file contents yet.")
     for source_file_proto in self._source_files.source_files:
       if source_file_proto.file_path == file_path:
         return source_file_proto.lines[lineno - 1]

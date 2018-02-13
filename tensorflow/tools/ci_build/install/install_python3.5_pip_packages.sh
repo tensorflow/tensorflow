@@ -60,7 +60,7 @@ pip3.5 install --no-binary=:all: --upgrade numpy==1.12.0
 
 pip3.5 install scipy==0.18.1
 
-pip3.5 install scikit-learn==0.18.1
+pip3.5 install scikit-learn==0.19.1
 
 # pandas required by `inflow`
 pip3 install pandas==0.19.2
@@ -73,5 +73,10 @@ pip3.5 install portpicker
 pip3.5 install werkzeug
 
 pip3.5 install grpcio
+
+# Eager-to-graph execution needs astor, gast and termcolor:
+pip3.5 install --upgrade astor
+pip3.5 install --upgrade gast
+pip3.5 install --upgrade termcolor
 
 # LINT.ThenChange(//tensorflow/tools/ci_build/install/install_python3.6_pip_packages.sh)

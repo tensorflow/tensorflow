@@ -106,49 +106,32 @@ Color GetColorForArray(const Model& model, const string& array_name) {
   return Color(0xF5, 0xF5, 0xF5);
 }
 
-bool ArrayIsScalarFloat(Model const* model, const std::string& name,
-                        float* val) {
-  const auto& op_array = model->GetArray(name);
-  if (!op_array.buffer || op_array.buffer->type != ArrayDataType::kFloat ||
-      RequiredBufferSizeForShape(op_array.shape()) != 1) {
-    return false;
-  }
-  const auto& data = op_array.GetBuffer<ArrayDataType::kFloat>().data;
-  if (data.empty()) {
-    return false;
-  }
-  *val = data[0];
-  return true;
-}
-
-bool ArrayIsScalarInt(Model const* model, const std::string& name, int* val) {
-  const auto& op_array = model->GetArray(name);
-  if (!op_array.buffer || RequiredBufferSizeForShape(op_array.shape()) != 1) {
-    return false;
-  }
-
-  if (op_array.buffer->type == ArrayDataType::kUint8) {
-    const auto& data = op_array.GetBuffer<ArrayDataType::kUint8>().data;
-    if (data.empty()) {
-      return false;
+void AppendArrayVal(string* string, Array const& array, int index) {
+  if (array.buffer->type == ArrayDataType::kFloat) {
+    const auto& data = array.GetBuffer<ArrayDataType::kFloat>().data;
+    if (index >= data.size()) {
+      return;
     }
-    *val = data[0];
-  } else if (op_array.buffer->type == ArrayDataType::kInt32) {
-    const auto& data = op_array.GetBuffer<ArrayDataType::kInt32>().data;
-    if (data.empty()) {
-      return false;
+    AppendF(string, "%.3f", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kUint8) {
+    const auto& data = array.GetBuffer<ArrayDataType::kUint8>().data;
+    if (index >= data.size()) {
+      return;
     }
-    *val = data[0];
-  } else if (op_array.buffer->type == ArrayDataType::kInt64) {
-    const auto& data = op_array.GetBuffer<ArrayDataType::kInt64>().data;
-    if (data.empty()) {
-      return false;
+    AppendF(string, "%d", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kInt32) {
+    const auto& data = array.GetBuffer<ArrayDataType::kInt32>().data;
+    if (index >= data.size()) {
+      return;
     }
-    *val = data[0];
-  } else {
-    return false;
+    AppendF(string, "%d", data[index]);
+  } else if (array.buffer->type == ArrayDataType::kInt64) {
+    const auto& data = array.GetBuffer<ArrayDataType::kInt64>().data;
+    if (index >= data.size()) {
+      return;
+    }
+    AppendF(string, "%d", data[index]);
   }
-  return true;
 }
 
 NodeProperties GetPropertiesForArray(const Model& model,
@@ -175,20 +158,46 @@ NodeProperties GetPropertiesForArray(const Model& model,
       if (id == 0) {
         AppendF(&node_properties.label, "%d", array_shape.dims(id));
       } else {
-        // 00D7 is multiplication symbol in unicode
+        // 0x00D7 is the unicode multiplication symbol
         AppendF(&node_properties.label, "\u00D7%d", array_shape.dims(id));
       }
     }
     node_properties.label += "]";
-    float flt_val;
-    if (ArrayIsScalarFloat(&model, array_name, &flt_val)) {
-      AppendF(&node_properties.label, " = %.3f", flt_val);
-    }
-    int int_val;
-    if (ArrayIsScalarInt(&model, array_name, &int_val)) {
-      AppendF(&node_properties.label, " = %d", int_val);
+
+    if (array.buffer) {
+      const auto& array = model.GetArray(array_name);
+      int buffer_size = RequiredBufferSizeForShape(array.shape());
+      if (buffer_size <= 4) {
+        AppendF(&node_properties.label, " = ");
+        if (array.shape().dimensions_count() > 0) {
+          AppendF(&node_properties.label, "{");
+        }
+        for (int i = 0; i < buffer_size; i++) {
+          AppendArrayVal(&node_properties.label, array, i);
+          if (i + 1 < buffer_size) {
+            AppendF(&node_properties.label, ", ");
+          }
+        }
+      } else {
+        AppendF(&node_properties.label, "\\n = ");
+        if (array.shape().dimensions_count() > 0) {
+          AppendF(&node_properties.label, "{");
+        }
+        AppendArrayVal(&node_properties.label, array, 0);
+        AppendF(&node_properties.label, ", ");
+        AppendArrayVal(&node_properties.label, array, 1);
+        // 0x2026 is the unicode ellipsis symbol
+        AppendF(&node_properties.label, " \u2026 ");
+        AppendArrayVal(&node_properties.label, array, buffer_size - 2);
+        AppendF(&node_properties.label, ", ");
+        AppendArrayVal(&node_properties.label, array, buffer_size - 1);
+      }
+      if (array.shape().dimensions_count() > 0) {
+        AppendF(&node_properties.label, "}");
+      }
     }
   }
+
   if (array.minmax) {
     AppendF(&node_properties.label, "\\nMinMax: [%.3g, %.3g]",
             array.minmax->min, array.minmax->max);
@@ -269,8 +278,8 @@ std::vector<const Operator*> OperatorsToDump(const Model& model) {
   if (last_specified) {
     // Return only the part of the graph between graphviz_first_array
     // and graphviz_last_array.
-    CHECK(model.arrays.count(dump_options.graphviz_first_array));
-    CHECK(model.arrays.count(dump_options.graphviz_last_array));
+    CHECK(model.HasArray(dump_options.graphviz_first_array));
+    CHECK(model.HasArray(dump_options.graphviz_last_array));
     std::unordered_set<string> arrays_already_produced;
     std::vector<string> arrays_to_produce;
     arrays_to_produce.push_back(dump_options.graphviz_last_array);
@@ -327,7 +336,7 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
             op_properties.color.TextColorString().c_str());
     // Add nodes and edges for all inputs of the operator.
     for (const auto& input : op.inputs) {
-      if (model.arrays.count(input) == 0) {
+      if (!model.HasArray(input)) {
         // Arrays should _always_ exist. Except, perhaps, during development.
         continue;
       }
@@ -343,7 +352,7 @@ void DumpGraphviz(const Model& model, string* output_file_contents) {
     }
     // Add nodes and edges for all outputs of the operator.
     for (const auto& output : op.outputs) {
-      if (model.arrays.count(output) == 0) {
+      if (!model.HasArray(output)) {
         // Arrays should _always_ exist. Except, perhaps, during development.
         continue;
       }

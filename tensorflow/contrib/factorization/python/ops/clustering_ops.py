@@ -192,11 +192,11 @@ class KMeans(object):
         # Computes Euclidean distance. Note the first and third terms are
         # broadcast additions.
         squared_distance = (
-            math_ops.reduce_sum(math_ops.square(inp), 1, keep_dims=True) -
+            math_ops.reduce_sum(math_ops.square(inp), 1, keepdims=True) -
             2 * math_ops.matmul(inp, clusters, transpose_b=True) +
             array_ops.transpose(
                 math_ops.reduce_sum(
-                    math_ops.square(clusters), 1, keep_dims=True)))
+                    math_ops.square(clusters), 1, keepdims=True)))
         output.append(squared_distance)
 
     return output
@@ -261,8 +261,8 @@ class KMeans(object):
             inp, clusters, 1)
         if self._distance_metric == COSINE_DISTANCE:
           distances *= 0.5
-        output.append((score, array_ops.squeeze(distances),
-                       array_ops.squeeze(indices)))
+        output.append((score, array_ops.squeeze(distances, [-1]),
+                       array_ops.squeeze(indices, [-1])))
     return zip(*output)
 
   def _clusters_l2_normalized(self):

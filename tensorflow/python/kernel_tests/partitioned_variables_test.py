@@ -50,8 +50,7 @@ class PartitionerCreatorsTest(test.TestCase):
     with self.test_session():
       partitioner = partitioned_variables.fixed_size_partitioner(4, axis=0)
       with variable_scope.variable_scope("root", partitioner=partitioner):
-        v0 = variable_scope.get_variable(
-            "v0", dtype=dtypes.int64, shape=[20])
+        v0 = variable_scope.get_variable("v0", dtype=dtypes.int64, shape=[20])
         v0_list = v0._get_variable_list()
         self.assertEqual(len(v0_list), 4)
 
@@ -169,8 +168,10 @@ class PartitionerCreatorsTest(test.TestCase):
           max_shards=2)
 
       # Use the partitioner with strings
-      partitioner_axis3_str = partitioned_variables.variable_axis_size_partitioner(
-          axis=3, max_shard_bytes=32768, bytes_per_string_element=8)
+      partitioner_axis3_str = partitioned_variables.variable_axis_size_partitioner(  # pylint: disable=line-too-long
+          axis=3,
+          max_shard_bytes=32768,
+          bytes_per_string_element=8)
 
       with variable_scope.variable_scope(
           "root", partitioner=partitioner_axis3_str):
@@ -423,8 +424,7 @@ class PartitionedVariablesTestCase(test.TestCase):
   def testRandomInitUnevenPartitions(self):
     with self.test_session():
       rnd = variables.Variable(
-          random_ops.random_uniform(
-              [20, 43], dtype=dtypes.float64))
+          random_ops.random_uniform([20, 43], dtype=dtypes.float64))
       var_lists = [
           partitioned_variables.create_partitioned_variables(
               rnd.get_shape(), [1, i], rnd.initialized_value())

@@ -371,9 +371,15 @@ Status LoadSessionBundleOrSavedModelBundle(
     return LoadSavedModelFromLegacySessionBundlePath(
         session_options, run_options, export_dir, saved_model_bundle);
   }
-  return Status(error::Code::NOT_FOUND,
-                "Session bundle or SavedModel bundle not found at specified "
-                "export location");
+  return Status(
+      error::Code::NOT_FOUND,
+      strings::StrCat(
+          "Specified file path does not appear to contain a:\n"
+          "- Session bundle (should have a file called `export.meta`)\n"
+          "- or, SavedModel bundle (should have a file called "
+          "`saved_model.pb`)\n"
+          "Specified file path: ",
+          export_dir));
 }
 
 }  // namespace serving

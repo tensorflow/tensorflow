@@ -38,6 +38,7 @@ from tensorflow.python.keras._impl.keras.engine.training import Model
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.keras._impl.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=g-import-not-at-top
@@ -53,6 +54,7 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
+@tf_export('keras.models.save_model')
 def save_model(model, filepath, overwrite=True, include_optimizer=True):
   """Save a model to a HDF5 file.
 
@@ -183,6 +185,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
     f.flush()
 
 
+@tf_export('keras.models.load_model')
 def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
   """Loads a model saved via `save_model`.
 
@@ -302,6 +305,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
   return model
 
 
+@tf_export('keras.models.model_from_config')
 def model_from_config(config, custom_objects=None):
   """Instantiates a Keras model from its config.
 
@@ -324,6 +328,7 @@ def model_from_config(config, custom_objects=None):
   return layer_module.deserialize(config, custom_objects=custom_objects)
 
 
+@tf_export('keras.models.model_from_yaml')
 def model_from_yaml(yaml_string, custom_objects=None):
   """Parses a yaml model configuration file and returns a model instance.
 
@@ -345,6 +350,7 @@ def model_from_yaml(yaml_string, custom_objects=None):
   return layer_module.deserialize(config, custom_objects=custom_objects)
 
 
+@tf_export('keras.models.model_from_json')
 def model_from_json(json_string, custom_objects=None):
   """Parses a JSON model configuration file and returns a model instance.
 
@@ -361,6 +367,7 @@ def model_from_json(json_string, custom_objects=None):
   return layer_module.deserialize(config, custom_objects=custom_objects)
 
 
+@tf_export('keras.models.Sequential', 'keras.Sequential')
 class Sequential(Model):
   """Linear stack of layers.
 
@@ -421,8 +428,6 @@ class Sequential(Model):
     # Used by Layer base class.
     self._dtype = None
     self._activity_regularizer = None
-    self._per_input_losses = {}
-    self._per_input_updates = {}
 
     # The following properties are not actually used by Keras;
     # they exist for compatibility with TF's variable scoping mechanism.
@@ -492,13 +497,13 @@ class Sequential(Model):
         # to the input layer we just created.
         layer(x)
 
-      if len(layer.inbound_nodes[-1].output_tensors) != 1:
+      if len(layer._inbound_nodes[-1].output_tensors) != 1:
         raise ValueError('All layers in a Sequential model '
                          'should have a single output tensor. '
                          'For multi-output layers, '
                          'use the functional API.')
 
-      self.outputs = [layer.inbound_nodes[-1].output_tensors[0]]
+      self.outputs = [layer._inbound_nodes[-1].output_tensors[0]]
       self.inputs = topology.get_source_inputs(self.outputs[0])
 
       # We create an input node, which we will keep updated
@@ -635,34 +640,6 @@ class Sequential(Model):
       trainable_weights = self._gather_list_attr('trainable_weights')
       return trainable_weights + weights
     return weights
-
-  @property
-  def updates(self):
-    if not self.built:
-      self.build()
-    return self.model.updates
-
-  @property
-  def state_updates(self):
-    if not self.built:
-      self.build()
-    return self.model.state_updates
-
-  def get_updates_for(self, inputs):
-    if not self.built:
-      self.build()
-    return self.model.get_updates_for(inputs)
-
-  @property
-  def losses(self):
-    if not self.built:
-      self.build()
-    return self.model.losses
-
-  def get_losses_for(self, inputs):
-    if not self.built:
-      self.build()
-    return self.model.get_losses_for(inputs)
 
   @property
   def regularizers(self):
