@@ -131,6 +131,7 @@ cc_library(
     srcs = ["while_loop.cc"],
     hdrs = ["while_loop.h"],
     deps = [
+        ":util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",

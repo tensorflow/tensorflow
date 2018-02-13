@@ -180,10 +180,9 @@ xla::StatusOr<xla::ComputationDataHandle> XlaScatter(
     return std::vector<xla::ComputationDataHandle>{indices, updates, buffer};
   };
 
-  xla::ComputationDataHandle num_indices_value =
-      IntegerLiteral(builder, indices_shape->element_type(), num_indices);
-  TF_ASSIGN_OR_RETURN(auto outputs, XlaForEachIndex(num_indices_value, body_fn,
-                                                    init, "scatter", builder));
+  TF_ASSIGN_OR_RETURN(
+      auto outputs, XlaForEachIndex(num_indices, indices_shape->element_type(),
+                                    body_fn, init, "scatter", builder));
   return outputs[2];
 }
 

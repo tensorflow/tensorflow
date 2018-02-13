@@ -153,9 +153,9 @@ Status XlaGather(const xla::ComputationDataHandle& input,
   };
 
   // Construct the While loop, extract and reshape the output.
-  auto num_indices_value =
-      XlaHelpers::IntegerLiteral(builder, index_type, num_indices);
-  TF_ASSIGN_OR_RETURN(auto outputs, XlaForEachIndex(num_indices_value, body_fn,
+  xla::PrimitiveType ptype;
+  TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(index_type, &ptype));
+  TF_ASSIGN_OR_RETURN(auto outputs, XlaForEachIndex(num_indices, ptype, body_fn,
                                                     init, "gather", builder));
   *gather_output = builder->Reshape(outputs[2], out_shape.dim_sizes());
   return Status::OK();

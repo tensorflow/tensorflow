@@ -64,7 +64,7 @@ typedef std::function<xla::StatusOr<std::vector<xla::ComputationDataHandle>>(
     ForEachIndexBodyFunction;
 
 xla::StatusOr<std::vector<xla::ComputationDataHandle>> XlaForEachIndex(
-    const xla::ComputationDataHandle& num_iterations,
+    int64 num_iterations, xla::PrimitiveType num_iterations_type,
     const ForEachIndexBodyFunction& body_function,
     gtl::ArraySlice<xla::ComputationDataHandle> initial_values,
     StringPiece name, xla::ComputationBuilder* builder);
