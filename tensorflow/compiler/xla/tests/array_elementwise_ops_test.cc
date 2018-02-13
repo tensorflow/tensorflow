@@ -2121,6 +2121,44 @@ XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
+  // The input tensor is large enough to exercise the vectorized exp
+  // implementation on XLA CPU.
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> input_literal = Literal::CreateR1<float>(
+      {-1.29,    -1.41,    -1.25,    -13.5,    -11.7,    -17.9,    -198,
+       -167,     1.29,     1.41,     1.25,     13.5,     11.7,     17.9,
+       198,      167,      1.27e+03, 1.33e+03, 1.74e+03, 1.6e+04,  1.84e+04,
+       1.74e+04, 1.89e+05, 1.9e+05,  1.93e+06, 1.98e+06, 1.65e+06, 1.97e+07,
+       1.66e+07, 1e+07,    1.98e+08, 1.96e+08, 1.64e+09, 1.58e+09, 1.64e+09,
+       1.44e+10, 1.5e+10,  1.99e+10, 1.17e+11, 1.08e+11, 1.08e+12, 1.38e+12,
+       1.4e+12,  1.03e+13, 1.6e+13,  1.99e+13, 1.26e+14, 1.51e+14, 1.33e+15,
+       1.41e+15, 1.63e+15, 1.39e+16, 1.21e+16, 1.27e+16, 1.28e+17, 1.62e+17,
+       2e+18,    1.96e+18, 1.81e+18, 1.99e+19, 1.86e+19, 1.61e+19, 1.71e+20,
+       1.47e+20, 1.83e+21, 1.33e+21, 1.3e+21,  1.35e+22, 1.84e+22, 1.02e+22,
+       1.81e+23, 1.02e+23, 1.89e+24, 1.49e+24, 1.08e+24, 1.95e+25, 1.1e+25,
+       1.62e+25, 1.2e+26,  1.41e+26, 1.93e+27, 1.66e+27, 1.62e+27, 1.05e+28,
+       1.5e+28,  1.79e+28, 1.36e+29, 1.95e+29, 1.5e+30,  1.81e+30, 1.34e+30,
+       1.7e+31,  1.44e+31, 1.1e+31,  1.4e+32,  1.67e+32, 1.96e+33, 1.11e+33,
+       1.19e+33, 1.61e+34, 1.05e+34, 1.88e+34, 1.67e+35, 1.7e+35});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
+
+  auto input = builder.Parameter(0, input_literal->shape(), "input");
+  builder.Log(input);
+
+  std::vector<float> expected_result;
+  int64 input_size = input_literal->shape().dimensions(0);
+  expected_result.reserve(input_size);
+  for (int64 i = 0; i < input_size; i++) {
+    expected_result.push_back(std::log(input_literal->Get<float>({i})));
+  }
+
+  ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
+                             error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, AddChainFoldLeft) {
   // a ------ (add) --------- (add)
   //         /               /

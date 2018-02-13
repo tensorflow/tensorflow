@@ -322,9 +322,10 @@ sess.run(iterator.initializer)
 next1, (next2, next3) = iterator.get_next()
 ```
 
-Note that evaluating *any* of `next1`, `next2`, or `next3` will advance the
-iterator for all components. A typical consumer of an iterator will include all
-components in a single expression.
+Note that `next1`, `next2`, and `next3` are tensors produced by the
+same op/node (created by `Iterator.get_next()`). Therefore,  evaluating *any* of
+these tensors will advance the iterator for all components. A typical consumer
+of an iterator will include all components in a single expression.
 
 ## Reading input data
 
