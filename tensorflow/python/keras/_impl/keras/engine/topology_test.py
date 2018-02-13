@@ -26,6 +26,8 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
 
 try:
@@ -42,22 +44,28 @@ except ImportError:
 class TopologyConstructionTest(test.TestCase):
 
   def test_get_updates_for(self):
-    a = keras.layers.Input(shape=(2,))
+    a = keras.layers.Input(shape=(1,))
     dense_layer = keras.layers.Dense(1)
-    dense_layer.add_update(0, inputs=a)
-    dense_layer.add_update(1, inputs=None)
+    dense_layer.build((None, 1))
+    update_1 = state_ops.assign_add(dense_layer.kernel, a)
+    update_2 = state_ops.assign_add(dense_layer.kernel, [[1.]])
+    dense_layer.add_update(update_1, inputs=a)
+    dense_layer.add_update(update_2, inputs=None)
 
-    self.assertListEqual(dense_layer.get_updates_for(a), [0])
-    self.assertListEqual(dense_layer.get_updates_for(None), [1])
+    self.assertListEqual(dense_layer.get_updates_for(a), [update_1])
+    self.assertListEqual(dense_layer.get_updates_for(None), [update_2])
 
   def test_get_losses_for(self):
-    a = keras.layers.Input(shape=(2,))
+    a = keras.layers.Input(shape=(1,))
     dense_layer = keras.layers.Dense(1)
-    dense_layer.add_loss(0, inputs=a)
-    dense_layer.add_loss(1, inputs=None)
+    dense_layer.build((None, 1))
+    loss_1 = math_ops.reduce_sum(a)
+    loss_2 = math_ops.reduce_sum(dense_layer.kernel)
+    dense_layer.add_loss(loss_1, inputs=a)
+    dense_layer.add_loss(loss_2, inputs=None)
 
-    self.assertListEqual(dense_layer.get_losses_for(a), [0])
-    self.assertListEqual(dense_layer.get_losses_for(None), [1])
+    self.assertListEqual(dense_layer.get_losses_for(a), [loss_1])
+    self.assertListEqual(dense_layer.get_losses_for(None), [loss_2])
 
   def test_trainable_weights(self):
     a = keras.layers.Input(shape=(2,))
@@ -340,6 +348,7 @@ class TopologyConstructionTest(test.TestCase):
       e = keras.layers.Input(shape=(32,), name='input_e')
       f = keras.layers.Input(shape=(32,), name='input_f')
       g, h = model([e, f])
+      self.assertEqual(g.name, 'model_1/dense_2/BiasAdd:0')
 
       self.assertListEqual(g.get_shape().as_list(), c.get_shape().as_list())
       self.assertListEqual(h.get_shape().as_list(), d.get_shape().as_list())

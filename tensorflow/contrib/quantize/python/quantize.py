@@ -20,13 +20,13 @@ from __future__ import print_function
 
 import re
 from tensorflow.contrib import graph_editor
+from tensorflow.contrib.quantize.python import common
 from tensorflow.contrib.quantize.python import graph_matcher
 from tensorflow.contrib.quantize.python import input_to_ops
 from tensorflow.contrib.quantize.python import quant_ops
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.training import training_util
 
 # Quantizable operation types that are supported by the quantization rewrite.
 _QUANTIZABLE_TYPES = {'Conv2D', 'MatMul', 'DepthwiseConv2dNative'}
@@ -270,7 +270,7 @@ def _InsertQuantOp(context,
       quantization interval ends.
     is_training: (Optional) Whether quantizing training graph or eval graph.
     narrow_range: Whether to use the narrow quantization range
-        [1; 2^bits - 1] or wide range [0; 2^bits - 1].
+      [1; 2^bits - 1] or wide range [0; 2^bits - 1].
   Raises:
     ValueError: When producer operation is not directly connected to the
       consumer operation.
@@ -303,7 +303,7 @@ def _InsertQuantOp(context,
 
   if quant_delay and quant_delay > 0:
     activate_quant = math_ops.greater_equal(
-        training_util.get_or_create_global_step(),
+        common.CreateOrGetQuantizationStep(),
         quant_delay,
         name=name_prefix + '/activate_quant')
     quant = control_flow_ops.cond(

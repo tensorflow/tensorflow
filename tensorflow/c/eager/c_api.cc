@@ -455,6 +455,19 @@ void TFE_OpSetAttrShapeList(TFE_Op* op, const char* attr_name,
                     proto.get(), num_values));
 }
 
+void TFE_OpSetAttrFunctionList(TFE_Op* op, const char* attr_name,
+                               const TFE_Op** value, int num_values) {
+  std::unique_ptr<tensorflow::NameAttrList[]> funcs(
+      new tensorflow::NameAttrList[num_values]);
+  for (int i = 0; i < num_values; i++) {
+    funcs[i].set_name(value[i]->name);
+    value[i]->attrs.FillAttrValueMap(funcs[i].mutable_attr());
+  }
+  op->attrs.Set(attr_name,
+                tensorflow::gtl::ArraySlice<const tensorflow::NameAttrList>(
+                    funcs.get(), num_values));
+}
+
 namespace {
 
 tensorflow::Status ValidateInputTypeAndPlacement(

@@ -47,6 +47,7 @@ py_library(
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/contrib/py2tf/utils",
         "@gast_archive//:gast",
+        "@six_archive//:six",
     ],
 )
 
@@ -73,8 +74,8 @@ py_test(
 )
 
 py_test(
-    name = "call_trees_test",
-    srcs = ["call_trees_test.py"],
+    name = "builtin_functions_test",
+    srcs = ["builtin_functions_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
@@ -84,8 +85,8 @@ py_test(
 )
 
 py_test(
-    name = "decorators_test",
-    srcs = ["decorators_test.py"],
+    name = "call_trees_test",
+    srcs = ["call_trees_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
@@ -117,8 +118,8 @@ py_test(
 )
 
 py_test(
-    name = "builtin_functions_test",
-    srcs = ["builtin_functions_test.py"],
+    name = "decorators_test",
+    srcs = ["decorators_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",

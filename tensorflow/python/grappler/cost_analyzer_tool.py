@@ -54,13 +54,15 @@ def main(_):
       metagraph = saver.export_meta_graph(
           graph_def=graph.as_graph_def(), graph=graph)
 
+  rewriter_config = rewriter_config_pb2.RewriterConfig()
   if FLAGS.rewriter_config is not None:
-    rewriter_config = rewriter_config_pb2.RewriterConfig()
     text_format.Merge(FLAGS.rewriter_config, rewriter_config)
-    optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, metagraph)
-    metagraph.graph_def.CopyFrom(optimized_graph)
+  optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, metagraph)
+  metagraph.graph_def.CopyFrom(optimized_graph)
 
   report = cost_analyzer.GenerateCostReport(metagraph, FLAGS.per_node_report)
+  print(report)
+  report = cost_analyzer.GenerateMemoryReport(metagraph)
   print(report)
 
 

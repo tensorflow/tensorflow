@@ -37,6 +37,7 @@ from tensorflow.python.keras._impl.keras.utils.data_utils import Sequence
 from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import optimizer as tf_optimizer_module
+from tensorflow.python.util.tf_export import tf_export
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -563,6 +564,7 @@ def _standardize_weights(y,
       return np.ones((y.shape[0], y.shape[1]), dtype=K.floatx())
 
 
+@tf_export('keras.models.Model', 'keras.Model')
 class Model(Network):
   """The `Model` class adds training & evaluation routines to a `Network`.
   """
@@ -1018,10 +1020,13 @@ class Model(Network):
 
       with K.name_scope('training'):
         with K.name_scope(self.optimizer.__class__.__name__):
-          training_updates = self.optimizer.get_updates(
+          # Training updates
+          updates = self.optimizer.get_updates(
               params=self._collected_trainable_weights, loss=self.total_loss)
-
-        updates = self.updates + training_updates
+        # Unconditional updates
+        updates += self.get_updates_for(None)
+        # Conditional updates relevant to this model
+        updates += self.get_updates_for(self._feed_inputs)
         # Gets loss and metrics. Updates weights at each call.
         self.train_function = K.function(
             inputs, [self.total_loss] + self.metrics_tensors,

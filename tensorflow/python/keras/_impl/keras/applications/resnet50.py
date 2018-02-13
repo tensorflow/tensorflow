@@ -49,6 +49,7 @@ from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils import layer_utils
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 WEIGHTS_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.2/resnet50_weights_tf_dim_ordering_tf_kernels.h5'
@@ -146,6 +147,8 @@ def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2,
   return x
 
 
+@tf_export('keras.applications.ResNet50',
+           'keras.applications.resnet50.ResNet50')
 def ResNet50(include_top=True,
              weights='imagenet',
              input_tensor=None,

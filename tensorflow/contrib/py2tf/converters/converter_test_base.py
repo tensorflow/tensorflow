@@ -18,8 +18,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
 import imp
 
+from tensorflow.contrib.py2tf import utils
+from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.contrib.py2tf.pyct import context
 from tensorflow.contrib.py2tf.pyct import parser
 from tensorflow.contrib.py2tf.pyct import qual_names
@@ -29,8 +32,40 @@ from tensorflow.contrib.py2tf.pyct.static_analysis import type_info
 from tensorflow.python.platform import test
 
 
+class FakeNamer(object):
+
+  def new_symbol(self, name_root, used):
+    i = 0
+    while True:
+      name = '%s%d' % (name_root, i)
+      if name not in used:
+        return name
+      i += 1
+
+  def compiled_function_name(self,
+                             original_fqn,
+                             live_entity=None,
+                             owner_type=None):
+    del live_entity
+    if owner_type is not None:
+      return None, False
+    return ('renamed_%s' % '_'.join(original_fqn)), True
+
+
 class TestCase(test.TestCase):
   """Base class for unit tests in this module. Contains relevant utilities."""
+
+  @contextlib.contextmanager
+  def compiled(self, node, *symbols):
+    source = '<compile failed>'
+    try:
+      result, source = compiler.ast_to_object(node)
+      result.tf = self.make_fake_tf(*symbols)
+      result.py2tf_utils = utils
+      yield result
+    except Exception:  # pylint:disable=broad-except
+      print('Offending compiled code:\n%s' % source)
+      raise
 
   def make_fake_tf(self, *symbols):
     fake_tf = imp.new_module('fake_tf')
@@ -51,7 +86,7 @@ class TestCase(test.TestCase):
                         recursive=True):
     node, source = parser.parse_entity(test_fn)
     ctx = context.EntityContext(
-        namer=namer,
+        namer=namer or FakeNamer(),
         source_code=source,
         source_file=None,
         namespace=namespace,

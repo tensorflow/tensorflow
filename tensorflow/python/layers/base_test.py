@@ -31,6 +31,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
 
@@ -554,6 +555,93 @@ class BaseLayerTest(test.TestCase):
         self.assertEqual(len(layer.variables), 1)
         self.assertEqual(len(layer.trainable_variables), 1)
         self.assertEqual(layer.variables[0].graph, outer_graph)
+
+  def testGetUpdateFor(self):
+
+    class MyLayer(base_layers.Layer):
+
+      def build(self, input_shape):
+        self.a = self.add_variable('a',
+                                   (),
+                                   dtypes.float32,
+                                   trainable=False)
+        self.b = self.add_variable('b',
+                                   (),
+                                   dtypes.float32,
+                                   trainable=False)
+        self.add_update(state_ops.assign_add(self.a, 1., name='b_update'))
+        self.built = True
+
+      def call(self, inputs):
+        self.add_update(state_ops.assign_add(self.a, inputs, name='a_update'),
+                        inputs=True)
+        return inputs + 1
+
+    layer = MyLayer()
+    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+    intermediate_inputs = inputs + 1
+    outputs = layer.apply(intermediate_inputs)
+
+    self.assertEqual(len(layer.updates), 2)
+    self.assertEqual(len(layer.get_updates_for(None)), 1)
+    self.assertEqual(len(layer.get_updates_for([inputs])), 1)
+    self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
+    self.assertEqual(len(layer.get_updates_for([outputs])), 0)
+
+    # Call same layer on new input, creating one more conditional update
+    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+    intermediate_inputs = inputs + 1
+    outputs = layer.apply(intermediate_inputs)
+
+    self.assertEqual(len(layer.updates), 3)
+    self.assertEqual(len(layer.get_updates_for(None)), 1)
+    # Check that we are successfully filtering out irrelevant updates
+    self.assertEqual(len(layer.get_updates_for([inputs])), 1)
+    self.assertEqual(len(layer.get_updates_for([intermediate_inputs])), 1)
+    self.assertEqual(len(layer.get_updates_for([outputs])), 0)
+
+  def testGetLossesFor(self):
+
+    class MyLayer(base_layers.Layer):
+
+      def build(self, input_shape):
+        self.a = self.add_variable('a',
+                                   (),
+                                   dtypes.float32,
+                                   trainable=False)
+        self.b = self.add_variable('b',
+                                   (),
+                                   dtypes.float32,
+                                   trainable=False)
+        self.add_loss(self.a)
+        self.built = True
+
+      def call(self, inputs):
+        self.add_loss(inputs, inputs=True)
+        return inputs + 1
+
+    layer = MyLayer()
+    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+    intermediate_inputs = inputs + 1
+    outputs = layer.apply(intermediate_inputs)
+
+    self.assertEqual(len(layer.losses), 2)
+    self.assertEqual(len(layer.get_losses_for(None)), 1)
+    self.assertEqual(len(layer.get_losses_for([inputs])), 1)
+    self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
+    self.assertEqual(len(layer.get_losses_for([outputs])), 0)
+
+    # Call same layer on new input, creating one more conditional loss
+    inputs = array_ops.placeholder(dtypes.float32, (), 'inputs')
+    intermediate_inputs = inputs + 1
+    outputs = layer.apply(intermediate_inputs)
+
+    self.assertEqual(len(layer.losses), 3)
+    self.assertEqual(len(layer.get_losses_for(None)), 1)
+    # Check that we are successfully filtering out irrelevant losses
+    self.assertEqual(len(layer.get_losses_for([inputs])), 1)
+    self.assertEqual(len(layer.get_losses_for([intermediate_inputs])), 1)
+    self.assertEqual(len(layer.get_losses_for([outputs])), 0)
 
 
 if __name__ == '__main__':

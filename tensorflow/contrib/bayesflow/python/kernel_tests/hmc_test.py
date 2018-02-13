@@ -258,6 +258,98 @@ class HMCTest(test.TestCase):
   def testHMCChainExpectations2(self):
     self._chain_gets_correct_expectations_wrapper(2)
 
+  def testKernelResultsUsingTruncatedDistribution(self):
+    def log_prob(x):
+      return array_ops.where(
+          x >= 0.,
+          -x - x**2,  # Non-constant gradient.
+          array_ops.fill(x.shape, math_ops.cast(-np.inf, x.dtype)))
+    # This log_prob has the property that it is likely to attract
+    # the HMC flow toward, and below, zero...but for x <=0,
+    # log_prob(x) = -inf, which should result in rejection, as well
+    # as a non-finite log_prob.  Thus, this distribution gives us an opportunity
+    # to test out the kernel results ability to correctly capture rejections due
+    # to finite AND non-finite reasons.
+    # Why use a non-constant gradient?  This ensures the leapfrog integrator
+    # will not be exact.
+
+    num_results = 1000
+    # Large step size, will give rejections due to integration error in addition
+    # to rejection due to going into a region of log_prob = -inf.
+    step_size = 0.1
+    num_leapfrog_steps = 5
+    num_chains = 2
+
+    with self.test_session(graph=ops.Graph()) as sess:
+
+      # Start multiple independent chains.
+      initial_state = ops.convert_to_tensor([0.1] * num_chains)
+
+      states, kernel_results = hmc.sample_chain(
+          num_results=num_results,
+          target_log_prob_fn=log_prob,
+          current_state=initial_state,
+          step_size=step_size,
+          num_leapfrog_steps=num_leapfrog_steps,
+          seed=42)
+
+      states_, kernel_results_ = sess.run([states, kernel_results])
+      pstates_ = kernel_results_.proposed_state
+
+      neg_inf_mask = np.isneginf(kernel_results_.proposed_target_log_prob)
+
+      # First:  Test that the mathematical properties of the above log prob
+      # function in conjunction with HMC show up as expected in kernel_results_.
+
+      # We better have log_prob = -inf some of the time.
+      self.assertLess(0, neg_inf_mask.sum())
+      # We better have some rejections due to something other than -inf.
+      self.assertLess(neg_inf_mask.sum(), (~kernel_results_.is_accepted).sum())
+      # We better have been accepted a decent amount, even near the end of the
+      # chain, or else this HMC run just got stuck at some point.
+      self.assertLess(
+          0.1, kernel_results_.is_accepted[int(0.9 * num_results):].mean())
+      # We better not have any NaNs in proposed state or log_prob.
+      # We may have some NaN in grads, which involve multiplication/addition due
+      # to gradient rules.  This is the known "NaN grad issue with tf.where."
+      self.assertAllEqual(np.zeros_like(states_),
+                          np.isnan(kernel_results_.proposed_target_log_prob))
+      self.assertAllEqual(np.zeros_like(states_),
+                          np.isnan(states_))
+      # We better not have any +inf in states, grads, or log_prob.
+      self.assertAllEqual(np.zeros_like(states_),
+                          np.isposinf(kernel_results_.proposed_target_log_prob))
+      self.assertAllEqual(
+          np.zeros_like(states_),
+          np.isposinf(kernel_results_.proposed_grads_target_log_prob[0]))
+      self.assertAllEqual(np.zeros_like(states_),
+                          np.isposinf(states_))
+
+      # Second:  Test that kernel_results is congruent with itself and
+      # acceptance/rejection of states.
+
+      # Proposed state is negative iff proposed target log prob is -inf.
+      np.testing.assert_array_less(pstates_[neg_inf_mask], 0.)
+      np.testing.assert_array_less(0., pstates_[~neg_inf_mask])
+
+      # Acceptance probs are zero whenever proposed state is negative.
+      self.assertAllEqual(
+          np.zeros_like(pstates_[neg_inf_mask]),
+          kernel_results_.acceptance_probs[neg_inf_mask])
+
+      # The move is accepted ==> state = proposed state.
+      self.assertAllEqual(
+          states_[kernel_results_.is_accepted],
+          pstates_[kernel_results_.is_accepted],
+      )
+      # The move was rejected <==> state[t] == state[t - 1].
+      for t in range(1, num_results):
+        for i in range(num_chains):
+          if kernel_results_.is_accepted[t, i]:
+            self.assertNotEqual(states_[t, i], states_[t - 1, i])
+          else:
+            self.assertEqual(states_[t, i], states_[t - 1, i])
+
   def _kernel_leaves_target_invariant(self, initial_draws,
                                       independent_chain_ndims,
                                       sess, feed_dict=None):

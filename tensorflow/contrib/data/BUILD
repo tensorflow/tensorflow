@@ -27,13 +27,13 @@ py_library(
 )
 
 tf_custom_op_library(
-    name = "_prefetching_ops.so",
-    srcs = ["ops/prefetching_ops.cc"],
-    deps = ["//tensorflow/contrib/data/kernels:prefetching_kernels"],
+    name = "_dataset_ops.so",
+    srcs = ["ops/dataset_ops.cc"],
+    deps = ["//tensorflow/contrib/data/kernels:dataset_kernels"],
 )
 
 tf_gen_op_libs(
-    op_lib_names = ["prefetching_ops"],
+    op_lib_names = ["dataset_ops"],
 )
 
 filegroup(

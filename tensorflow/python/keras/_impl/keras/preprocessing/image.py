@@ -32,6 +32,7 @@ import numpy as np
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.data_utils import Sequence
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 try:
   from scipy import linalg
@@ -62,6 +63,7 @@ if pil_image is not None:
     _PIL_INTERPOLATION_METHODS['lanczos'] = pil_image.LANCZOS
 
 
+@tf_export('keras.preprocessing.image.random_rotation')
 def random_rotation(x,
                     rg,
                     row_axis=1,
@@ -96,6 +98,7 @@ def random_rotation(x,
   return x
 
 
+@tf_export('keras.preprocessing.image.random_shift')
 def random_shift(x,
                  wrg,
                  hrg,
@@ -132,6 +135,7 @@ def random_shift(x,
   return x
 
 
+@tf_export('keras.preprocessing.image.random_shear')
 def random_shear(x,
                  intensity,
                  row_axis=1,
@@ -166,6 +170,7 @@ def random_shear(x,
   return x
 
 
+@tf_export('keras.preprocessing.image.random_zoom')
 def random_zoom(x,
                 zoom_range,
                 row_axis=1,
@@ -209,6 +214,7 @@ def random_zoom(x,
   return x
 
 
+@tf_export('keras.preprocessing.image.random_channel_shift')
 def random_channel_shift(x, intensity, channel_axis=0):
   x = np.rollaxis(x, channel_axis, 0)
   min_x, max_x = np.min(x), np.max(x)
@@ -230,6 +236,7 @@ def transform_matrix_offset_center(matrix, x, y):
   return transform_matrix
 
 
+@tf_export('keras.preprocessing.image.apply_transform')
 def apply_transform(x,
                     transform_matrix,
                     channel_axis=0,
@@ -267,6 +274,7 @@ def apply_transform(x,
   return x
 
 
+@tf_export('keras.preprocessing.image.flip_axis')
 def flip_axis(x, axis):
   x = np.asarray(x).swapaxes(axis, 0)
   x = x[::-1, ...]
@@ -274,6 +282,7 @@ def flip_axis(x, axis):
   return x
 
 
+@tf_export('keras.preprocessing.image.array_to_img')
 def array_to_img(x, data_format=None, scale=True):
   """Converts a 3D Numpy array to a PIL Image instance.
 
@@ -324,6 +333,7 @@ def array_to_img(x, data_format=None, scale=True):
     raise ValueError('Unsupported channel number: ', x.shape[2])
 
 
+@tf_export('keras.preprocessing.image.img_to_array')
 def img_to_array(img, data_format=None):
   """Converts a PIL Image instance to a Numpy array.
 
@@ -358,6 +368,7 @@ def img_to_array(img, data_format=None):
   return x
 
 
+@tf_export('keras.preprocessing.image.load_img')
 def load_img(path, grayscale=False, target_size=None, interpolation='nearest'):
   """Loads an image into PIL format.
 
@@ -411,6 +422,7 @@ def list_pictures(directory, ext='jpg|jpeg|bmp|png|ppm'):
   ]
 
 
+@tf_export('keras.preprocessing.image.ImageDataGenerator')
 class ImageDataGenerator(object):
   """Generate minibatches of image data with real-time data augmentation.
 
@@ -824,6 +836,7 @@ class ImageDataGenerator(object):
           vt.T / np.sqrt(s_expand**2 + self.zca_epsilon)).dot(vt)
 
 
+@tf_export('keras.preprocessing.image.Iterator')
 class Iterator(Sequence):
   """Base class for image data iterators.
 
@@ -913,6 +926,7 @@ class Iterator(Sequence):
     raise NotImplementedError
 
 
+@tf_export('keras.preprocessing.image.NumpyArrayIterator')
 class NumpyArrayIterator(Iterator):
   """Iterator yielding data from a Numpy array.
 
@@ -1094,6 +1108,7 @@ def _list_valid_filenames_in_directory(directory, white_list_formats,
   return classes, filenames
 
 
+@tf_export('keras.preprocessing.image.DirectoryIterator')
 class DirectoryIterator(Iterator):
   """Iterator capable of reading images from a directory on disk.
 

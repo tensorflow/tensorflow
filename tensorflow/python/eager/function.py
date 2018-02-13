@@ -756,7 +756,11 @@ def defun(func):
      or more Tensor objects).
   """
   # TODO(apassos): deal with captured global state. Deal with control flow.
-  return tf_decorator.make_decorator(func, named_defun(func, func.__name__))
+  try:
+    name = func.__name__
+  except AttributeError:
+    name = "function"
+  return tf_decorator.make_decorator(func, named_defun(func, name))
 
 
 def make_defun_op(func, *args, **kwds):

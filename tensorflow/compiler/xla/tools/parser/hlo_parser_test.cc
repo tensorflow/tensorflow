@@ -1275,6 +1275,35 @@ ENTRY consts {
                   "one computation should have only one ROOT");
 }
 
+TEST_F(HloParserTest, InstructionExists) {
+  const string original = R"(HloModule comp_exists
+c1 {
+  instr = f32[1]{0} constant({12345})
+}
+c2 {
+  instr = f32[1]{0} constant({67890})
+})";
+
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  R"(was parsing 3:3: error: instruction previously defined here
+  instr = f32[1]{0} constant({12345})
+  ^)");
+}
+
+TEST_F(HloParserTest, ComputationExists) {
+  const string original = R"(HloModule comp_exists
+comp {
+  const1 = f32[1]{0} constant({12345})
+}
+comp {
+  const2 = f32[1]{0} constant({67890})
+})";
+  ExpectHasSubstr(Parse(original).status().error_message(),
+                  R"(was parsing 2:1: error: computation previously defined here
+comp {
+^)");
+}
+
 }  // namespace
 }  // namespace tools
 }  // namespace xla
