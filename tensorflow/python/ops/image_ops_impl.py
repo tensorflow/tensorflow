@@ -1339,6 +1339,26 @@ def adjust_saturation(image, saturation_factor, name=None):
         orig_dtype)
 
 
+@tf_export('image.is_jpeg')
+def is_jpeg(contents, name=None):
+  r"""Convenience function to check if the 'contents' encodes a JPEG image.
+
+  Args:
+    contents: 0-D `string`. The encoded image bytes.
+    name: A name for the operation (optional)
+
+  Returns:
+     A scalar boolean tensor indicating if 'contents' may be a JPEG image.
+     is_jpeg is susceptible to false positives.
+  """
+  # Normal JPEGs start with \xff\xd8\xff\xe0
+  # JPEG with EXIF stats with \xff\xd8\xff\xe1
+  # Use \xff\xd8\xff to cover both.
+  with ops.name_scope(name, 'is_jpeg'):
+    substr = string_ops.substr(contents, 0, 3)
+    return math_ops.equal(substr, b'\xff\xd8\xff', name=name)
+
+
 @tf_export('image.decode_image')
 def decode_image(contents, channels=None, name=None):
   """Convenience function for `decode_bmp`, `decode_gif`, `decode_jpeg`,
@@ -1427,8 +1447,8 @@ def decode_image(contents, channels=None, name=None):
 
     # Decode normal JPEG images (start with \xff\xd8\xff\xe0)
     # as well as JPEG images with EXIF data (start with \xff\xd8\xff\xe1).
-    is_jpeg = math_ops.equal(substr, b'\xff\xd8\xff', name='is_jpeg')
-    return control_flow_ops.cond(is_jpeg, _jpeg, check_png, name='cond_jpeg')
+    return control_flow_ops.cond(
+        is_jpeg(contents), _jpeg, check_png, name='cond_jpeg')
 
 
 @tf_export('image.total_variation')
