@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/framework/attr_value_util.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
@@ -59,9 +60,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
   for (int i = 0; i < args->size(); ++i) {
     XlaCompiler::Argument& arg = (*args)[i];
     arg.type = ctx->input_type(i);
-
-    TF_RETURN_IF_ERROR(
-        TensorShapeToXLAShape(arg.type, ctx->InputShape(i), &arg.shape));
+    arg.shape = ctx->InputShape(i);
 
     if (arg.type == DT_RESOURCE) {
       return errors::InvalidArgument(
@@ -144,7 +143,9 @@ Status GraphCompiler::Compile() {
     } else {
       device_->Compute(CHECK_NOTNULL(params.op_kernel), &op_context);
       Status s = op_context.status();
-      TF_RETURN_IF_ERROR(s);
+      if (!s.ok()) {
+        return AttachDef(s, n->def());
+      }
     }
 
     // Set up outputs. Also check if outputs from the previous computation is

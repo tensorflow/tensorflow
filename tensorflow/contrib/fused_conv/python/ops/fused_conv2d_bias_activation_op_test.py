@@ -659,6 +659,36 @@ def SimulateFusedConv2dBiasActivationInt8(conv_input_scale, conv_input, kernel,
 class FusedConvInt8Tests(test.TestCase):
   _test_params = [
       {
+          "batch_size": 1,
+          "input_channels": 4,
+          "output_channels": 4,
+          "input_height": 8,
+          "input_width": 8,
+          "filter_height": 6,
+          "filter_width": 6,
+          "vertical_stride": 2,
+          "horizontal_stride": 2,
+          "conv_input_scale": 0.002,
+          "side_input_scale": 0.0,
+          "bias_scale": 1,
+          "padding_type": "SAME"
+      },
+      {
+          "batch_size": 1,
+          "input_channels": 4,
+          "output_channels": 4,
+          "input_height": 6,
+          "input_width": 6,
+          "filter_height": 6,
+          "filter_width": 6,
+          "vertical_stride": 2,
+          "horizontal_stride": 2,
+          "conv_input_scale": 0.002,
+          "side_input_scale": 0.0,
+          "bias_scale": 1,
+          "padding_type": "SAME"
+      },
+      {
           "batch_size": 2,
           "input_channels": 8,
           "output_channels": 16,

@@ -24,28 +24,36 @@ limitations under the License.
 
 #include "tensorflow/core/platform/macros.h"
 
+#if defined(__AVX__)
+#include <immintrin.h>
+#define TF_XLA_HAS_AVX
+#endif
+
 namespace xla {
 namespace cpu {
 namespace runtime {
 
-extern const char *const kExpV8F32AVXSymbolName;
 extern const char *const kLogV8F32AVXSymbolName;
 
-typedef float V8F32AVX __attribute__((__vector_size__(32)));
+#ifdef TF_XLA_HAS_AVX
+typedef __m256 V8F32AVX;
+#endif
 }  // namespace runtime
 }  // namespace cpu
 }  // namespace xla
 
 extern "C" {
 
+#ifdef TF_XLA_HAS_AVX
 // The following functions are vectorized versions of a selection of libm
 // library functions.
 // References to these functions are created by the LLVM vectorizer.
 xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_ExpV8F32AVX(
-    xla::cpu::runtime::V8F32AVX x) TF_ATTRIBUTE_WEAK;
+    xla::cpu::runtime::V8F32AVX x);
 
 xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_LogV8F32AVX(
-    xla::cpu::runtime::V8F32AVX x) TF_ATTRIBUTE_WEAK;
+    xla::cpu::runtime::V8F32AVX x);
+#endif
 }
 
 #endif  // TENSORFLOW_COMPILER_XLA_SERVICE_CPU_CPU_RUNTIME_AVX_H_

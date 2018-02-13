@@ -117,8 +117,6 @@ Status MeasuringCostEstimator::PredictCosts(const GraphDef& optimized_graph,
     LOG(ERROR) << "Failed to measure graph performance: "
                << status.error_message();
     costs->execution_time = Costs::Duration::max();
-    costs->max_execution_time = Costs::Duration::max();
-    costs->min_execution_time = 0;
     return status;
   }
 
@@ -126,8 +124,6 @@ Status MeasuringCostEstimator::PredictCosts(const GraphDef& optimized_graph,
   // to filter out outliers.
   RobustStats stats(times);
   costs->execution_time = Costs::Duration(stats.mean());
-  costs->max_execution_time = Costs::Duration(stats.hi());
-  costs->min_execution_time = Costs::Duration(stats.lo());
 
   return Status::OK();
 }

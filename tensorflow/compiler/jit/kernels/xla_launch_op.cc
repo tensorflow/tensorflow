@@ -45,7 +45,7 @@ namespace tensorflow {
 // see comment on `AllowsAsynchronousDeallocation()`.
 class XlaAllocator : public xla::DeviceMemoryAllocator {
  public:
-  XlaAllocator(gpu::Platform* platform, OpKernelContext* op_context);
+  XlaAllocator(const gpu::Platform* platform, OpKernelContext* op_context);
   ~XlaAllocator() override;
   xla::StatusOr<gpu::DeviceMemoryBase> Allocate(int device_ordinal, uint64 size,
                                                 bool retry_on_failure) override;
@@ -79,7 +79,8 @@ class XlaAllocator : public xla::DeviceMemoryAllocator {
   std::unordered_map<void*, Tensor> tensors_;
 };
 
-XlaAllocator::XlaAllocator(gpu::Platform* platform, OpKernelContext* op_context)
+XlaAllocator::XlaAllocator(const gpu::Platform* platform,
+                           OpKernelContext* op_context)
     : xla::DeviceMemoryAllocator(platform), op_context_(op_context) {}
 
 XlaAllocator::~XlaAllocator() = default;
@@ -248,22 +249,25 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   xla::LocalClient* client = static_cast<xla::LocalClient*>(cache->client());
 
+  // Builds an XLA allocator for the device.
+  XlaAllocator xla_allocator(client->platform(), ctx);
+
   XlaCompiler::Options options;
   options.client = client;
   options.device_type = &cache->device_type();
   options.flib_def = ctx->function_library()->GetFunctionLibraryDefinition();
   options.graph_def_version = ctx->function_library()->graph_def_version();
   options.allow_cpu_custom_calls = (platform_id_ == gpu::host::kHostPlatformId);
+  options.device_allocator = &xla_allocator;
 
   const XlaCompiler::CompilationResult* kernel;
   xla::LocalExecutable* executable;
+
   OP_REQUIRES_OK(ctx, cache->Compile(options, function_, num_constant_args_,
-                                     variables, ctx, &kernel, &executable));
+                                     variables, ctx, &kernel, &executable,
+                                     /*compile_options=*/nullptr));
 
   VLOG(1) << "Executing XLA Computation...";
-
-  // Builds an XLA allocator for the device.
-  XlaAllocator xla_allocator(client->platform(), ctx);
 
   std::unique_ptr<xla::ShapedBuffer> output;
   // Build xla::ShapedBuffers that point directly to the Tensor buffers.
@@ -287,10 +291,17 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     gpu::DeviceMemoryBase dmem = gpu::DeviceMemoryBase(
         const_cast<char*>(t->tensor_data().data()), t->tensor_data().size());
 
-    arg_buffers[i] =
-        xla::ShapedBuffer::MakeArrayShapedBuffer(
-            shape, client->platform(), client->default_device_ordinal(), dmem)
-            .ConsumeValueOrDie();
+    const xla::Shape on_device_shape =
+        client->backend().transfer_manager()->HostShapeToDeviceShape(shape);
+    CHECK(xla::ShapeUtil::Equal(shape, on_device_shape))
+        << "On-device shape "
+        << xla::ShapeUtil::HumanStringWithLayout(on_device_shape)
+        << " not the same as on-host shape "
+        << xla::ShapeUtil::HumanStringWithLayout(shape);
+    arg_buffers[i] = xla::MakeUnique<xla::ShapedBuffer>(
+        /*on_host_shape=*/shape, /*on_device_shape=*/shape, client->platform(),
+        client->default_device_ordinal());
+    arg_buffers[i]->set_buffer(dmem, /*index=*/{});
     arg_ptrs[i] = arg_buffers[i].get();
 
     OP_REQUIRES_OK(ctx, xla_allocator.RegisterArgument(t));
@@ -313,7 +324,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
   // Computation output should always be a tuple.
   if (VLOG_IS_ON(2)) {
-    VLOG(2) << "Result tuple shape: " << output->shape().DebugString();
+    VLOG(2) << "Result tuple shape: " << output->on_host_shape().DebugString();
   }
   CHECK_EQ(ctx->num_outputs(), kernel->outputs.size());
 
@@ -365,8 +376,6 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
     OP_REQUIRES(ctx,
                 write.input_index >= 0 && write.input_index < ctx->num_inputs(),
                 errors::Internal("Invalid input index for variable write."));
-    TensorShape write_shape;
-    OP_REQUIRES_OK(ctx, XLAShapeToTensorShape(write.shape, &write_shape));
 
     gpu::DeviceMemoryBase buffer = output->buffer({output_num});
 
@@ -388,7 +397,7 @@ void XlaLocalLaunchOp::Compute(OpKernelContext* ctx) {
 
     // Looks up the owning Tensor by buffer address.
     OP_REQUIRES_OK(
-        ctx, xla_allocator.MakeTensorFromBuffer(buffer, write.type, write_shape,
+        ctx, xla_allocator.MakeTensorFromBuffer(buffer, write.type, write.shape,
                                                 variable->tensor()));
     ++output_num;
   }

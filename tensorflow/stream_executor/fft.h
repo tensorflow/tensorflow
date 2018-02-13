@@ -167,6 +167,15 @@ class FftSupport {
       bool in_place_fft, int batch_count,
       ScratchAllocator *scratch_allocator) = 0;
 
+  // Updates the plan's work area with space allocated by a new scratch
+  // allocator. This facilitates plan reuse with scratch allocators.
+  //
+  // This requires that the plan was originally created using a scratch
+  // allocator, as otherwise scratch space will have been allocated internally
+  // by cuFFT.
+  virtual void UpdatePlanWithScratchAllocator(
+      Stream *stream, Plan *plan, ScratchAllocator *scratch_allocator) = 0;
+
   // Computes complex-to-complex FFT in the transform direction as specified
   // by direction parameter.
   virtual bool DoFft(Stream *stream, Plan *plan,
@@ -232,6 +241,9 @@ class FftSupport {
       uint64 input_stride, uint64 input_distance, uint64 *output_embed,        \
       uint64 output_stride, uint64 output_distance, fft::Type type,            \
       bool in_place_fft, int batch_count, ScratchAllocator *scratch_allocator) \
+      override;                                                                \
+  void UpdatePlanWithScratchAllocator(Stream *stream, fft::Plan *plan,         \
+                                      ScratchAllocator *scratch_allocator)     \
       override;                                                                \
   bool DoFft(Stream *stream, fft::Plan *plan,                                  \
              const DeviceMemory<std::complex<float>> &input,                   \

@@ -35,18 +35,27 @@ from tensorflow.python.platform import test
 
 class MaybeColocateTest(test.TestCase):
 
+  def setUp(self):
+    self._colocate_cov_ops_with_inputs = ff.COLOCATE_COV_OPS_WITH_INPUTS
+
+  def tearDown(self):
+    ff.set_global_constants(
+        colocate_cov_ops_with_inputs=self._colocate_cov_ops_with_inputs)
+
   def testFalse(self):
+    ff.set_global_constants(colocate_cov_ops_with_inputs=False)
     with tf_ops.Graph().as_default():
       a = constant_op.constant([2.0], name='a')
-      with ff._maybe_colocate_with(a, False):
+      with ff.maybe_colocate_with(a):
         b = constant_op.constant(3.0, name='b')
       self.assertEqual([b'loc:@a'], a.op.colocation_groups())
       self.assertEqual([b'loc:@b'], b.op.colocation_groups())
 
   def testTrue(self):
+    ff.set_global_constants(colocate_cov_ops_with_inputs=True)
     with tf_ops.Graph().as_default():
       a = constant_op.constant([2.0], name='a')
-      with ff._maybe_colocate_with(a, True):
+      with ff.maybe_colocate_with(a):
         b = constant_op.constant(3.0, name='b')
       self.assertEqual([b'loc:@a'], a.op.colocation_groups())
       self.assertEqual([b'loc:@a'], b.op.colocation_groups())
@@ -120,7 +129,7 @@ class NumericalUtilsTest(test.TestCase):
       random_seed.set_random_seed(200)
 
       x = npr.randn(100, 3)
-      cov = ff._compute_cov(array_ops.constant(x))
+      cov = ff.compute_cov(array_ops.constant(x))
       np_cov = np.dot(x.T, x) / x.shape[0]
 
       self.assertAllClose(sess.run(cov), np_cov)
@@ -132,7 +141,7 @@ class NumericalUtilsTest(test.TestCase):
 
       normalizer = 10.
       x = npr.randn(100, 3)
-      cov = ff._compute_cov(array_ops.constant(x), normalizer=normalizer)
+      cov = ff.compute_cov(array_ops.constant(x), normalizer=normalizer)
       np_cov = np.dot(x.T, x) / normalizer
 
       self.assertAllClose(sess.run(cov), np_cov)
@@ -143,7 +152,7 @@ class NumericalUtilsTest(test.TestCase):
 
       m, n = 3, 4
       a = npr.randn(m, n)
-      a_homog = ff._append_homog(array_ops.constant(a))
+      a_homog = ff.append_homog(array_ops.constant(a))
       np_result = np.hstack([a, np.ones((m, 1))])
 
       self.assertAllClose(sess.run(a_homog), np_result)

@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -36,9 +36,9 @@ class SGLDOptimizerTest(test.TestCase):
         grads0 = constant_op.constant([0.1, 0.1], dtype=dtype)
         grads1 = constant_op.constant([0.01, 0.01], dtype=dtype)
         decay_rate = 0.53
-        sgd_op = SGLDOptimizer(
-            3.0, preconditioner_decay_rate=decay_rate).apply_gradients(
-                zip([grads0, grads1], [var0, var1]))
+        sgd_optimizer = SGLDOptimizer(3.0, preconditioner_decay_rate=decay_rate)
+        sgd_op = sgd_optimizer.apply_gradients(
+            zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
         self.assertAllCloseAccordingToType([1.1, 2.1], var0.eval())
@@ -54,6 +54,7 @@ class SGLDOptimizerTest(test.TestCase):
             decay_rate + (1 - decay_rate) * 0.01**2 + 1e-8))
         self.assertAllCloseAccordingToType(
             [3.0 - 3.0 * grads_scaled, 4.0 - 3.0 * grads_scaled], var1.eval())
+        self.assertAllCloseAccordingToType(1, sgd_optimizer._counter.eval())
 
   def testBasicMultiInstance(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:
@@ -102,6 +103,8 @@ class SGLDOptimizerTest(test.TestCase):
                             sgd_optimizer2.variable_scope)
         self.assertNotEqual(sgd_optimizer.variable_scope.name,
                             sgd_optimizer2.variable_scope.name)
+        self.assertAllCloseAccordingToType(1, sgd_optimizer._counter.eval())
+        self.assertAllCloseAccordingToType(1, sgd_optimizer2._counter.eval())
 
   def testTensorLearningRate(self):
     for dtype in [dtypes.half, dtypes.float32, dtypes.float64]:

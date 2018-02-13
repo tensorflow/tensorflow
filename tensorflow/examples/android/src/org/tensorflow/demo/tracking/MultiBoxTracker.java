@@ -199,7 +199,7 @@ public class MultiBoxTracker {
       final int w,
       final int h,
       final int rowStride,
-      final int sensorOrienation,
+      final int sensorOrientation,
       final byte[] frame,
       final long timestamp) {
     if (objectTracker == null && !initialized) {
@@ -209,7 +209,7 @@ public class MultiBoxTracker {
       objectTracker = ObjectTracker.getInstance(w, h, rowStride, true);
       frameWidth = w;
       frameHeight = h;
-      this.sensorOrientation = sensorOrienation;
+      this.sensorOrientation = sensorOrientation;
       initialized = true;
 
       if (objectTracker == null) {

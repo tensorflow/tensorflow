@@ -49,7 +49,7 @@ class UtilsTest(test.TestCase):
       right_factor = array_ops.ones([2., 2.])
 
       # pi is the sqrt of the left trace norm divided by the right trace norm
-      pi = fb._compute_pi_tracenorm(left_factor, right_factor)
+      pi = fb.compute_pi_tracenorm(left_factor, right_factor)
 
       pi_val = sess.run(pi)
       self.assertEqual(1., pi_val)

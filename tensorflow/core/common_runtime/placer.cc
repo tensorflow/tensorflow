@@ -369,7 +369,8 @@ class ColocationGraph {
                 "Could not satisfy explicit device specification '",
                 node->requested_device(), "' because no supported kernel for ",
                 specified_device_name.type, " devices is available.",
-                debug_info);
+                debug_info, "\nRegistered kernels:\n",
+                KernelsRegisteredForOp(node->type_string()));
           } else {
             return errors::InvalidArgument(
                 "Could not satisfy explicit device specification '",

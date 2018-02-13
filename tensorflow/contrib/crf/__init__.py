@@ -16,15 +16,15 @@
 
 See the @{$python/contrib.crf} guide.
 
-@@crf_sequence_score
-@@crf_log_norm
-@@crf_log_likelihood
-@@crf_unary_score
 @@crf_binary_score
 @@crf_decode
-@@CrfForwardRnnCell
-@@CrfDecodeForwardRnnCell
+@@crf_log_likelihood
+@@crf_log_norm
+@@crf_sequence_score
+@@crf_unary_score
 @@CrfDecodeBackwardRnnCell
+@@CrfDecodeForwardRnnCell
+@@CrfForwardRnnCell
 @@viterbi_decode
 """
 
@@ -32,16 +32,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.crf.python.ops.crf import _lengths_to_masks
 from tensorflow.contrib.crf.python.ops.crf import crf_binary_score
 from tensorflow.contrib.crf.python.ops.crf import crf_decode
 from tensorflow.contrib.crf.python.ops.crf import crf_log_likelihood
 from tensorflow.contrib.crf.python.ops.crf import crf_log_norm
 from tensorflow.contrib.crf.python.ops.crf import crf_sequence_score
 from tensorflow.contrib.crf.python.ops.crf import crf_unary_score
-from tensorflow.contrib.crf.python.ops.crf import CrfForwardRnnCell
-from tensorflow.contrib.crf.python.ops.crf import CrfDecodeForwardRnnCell
 from tensorflow.contrib.crf.python.ops.crf import CrfDecodeBackwardRnnCell
+from tensorflow.contrib.crf.python.ops.crf import CrfDecodeForwardRnnCell
+from tensorflow.contrib.crf.python.ops.crf import CrfForwardRnnCell
 from tensorflow.contrib.crf.python.ops.crf import viterbi_decode
 
 from tensorflow.python.util.all_util import remove_undocumented

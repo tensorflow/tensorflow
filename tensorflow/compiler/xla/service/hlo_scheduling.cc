@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/hlo_scheduling.h"
 
+#include <queue>
 #include <utility>
 #include <vector>
 
@@ -217,32 +218,26 @@ class ListScheduler {
       }
     }
 
-    std::list<ReadyListEntry> ready_list;
+    auto priority_comparator = [this](const ReadyListEntry& lhs,
+                                      const ReadyListEntry& rhs) {
+      return GetPriority(lhs) < GetPriority(rhs);
+    };
+    std::priority_queue<ReadyListEntry, std::vector<ReadyListEntry>,
+                        decltype(priority_comparator)>
+        ready_queue(priority_comparator);
     for (auto* instruction : computation_.instructions()) {
       // Instruction with no operands or control predecessors will
       // not be in the map.
       if (unscheduled_pred_count.count(instruction) == 0) {
-        ready_list.push_back(MakeReadyListEntry(instruction));
+        ready_queue.emplace(MakeReadyListEntry(instruction));
       }
     }
 
-    while (!ready_list.empty()) {
-      // Select the highest priority HLO instruction from the ready list.
-      auto best_it = ready_list.begin();
-      Priority best_priority = GetPriority(*best_it);
-      for (auto ready_it = std::next(ready_list.begin());
-           ready_it != ready_list.end(); ++ready_it) {
-        Priority priority = GetPriority(*ready_it);
-        if (priority > best_priority) {
-          best_it = ready_it;
-          best_priority = priority;
-        }
-      }
-
+    while (!ready_queue.empty()) {
       // Remove the selected instruction from the ready list and add it to the
       // schedule.
-      const HloInstruction* best = best_it->instruction;
-      ready_list.erase(best_it);
+      const HloInstruction* best = ready_queue.top().instruction;
+      ready_queue.pop();
       schedule.push_back(best);
       scheduled_instructions_.insert(best);
 
@@ -257,7 +252,7 @@ class ListScheduler {
         int64 pred_count = --unscheduled_pred_count.at(inst);
         CHECK_GE(pred_count, 0);
         if (pred_count == 0) {
-          ready_list.push_back(MakeReadyListEntry(inst));
+          ready_queue.emplace(MakeReadyListEntry(inst));
         }
       };
       // TODO(b/34466113): Replace this and above with successors() or
@@ -369,7 +364,17 @@ StatusOr<int64> MinimumMemoryForComputation(
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
     const TuplePointsToAnalysis& points_to_analysis,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function,
+    SchedulerAlgorithm algorithm) {
+  VLOG(2) << "Computation: " << computation.name();
+  if (algorithm == SchedulerAlgorithm::kListSchedule) {
+    return ListScheduler::Run(computation, points_to_analysis, size_function);
+  }
+  if (algorithm == SchedulerAlgorithm::kDfsSchedule) {
+    return RunDFSMemoryScheduler(computation, points_to_analysis,
+                                 size_function);
+  }
+
   // We try both a list-scheduler based ordering and a DFS based ordering, and
   // choose whichever returns a lower min-memory, not accounting for
   // fragmentation.
@@ -377,7 +382,6 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
   // Note that this is just a heuristic. One obvious inaccuracy is that the
   // memory required for sub-computations might be different when considered
   // within the caller's context. But it's good enough for now.
-  VLOG(2) << "Computation: " << computation.name();
   TF_ASSIGN_OR_RETURN(
       std::vector<const HloInstruction*> list_sequence,
       ListScheduler::Run(computation, points_to_analysis, size_function));
@@ -410,27 +414,30 @@ StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
 }  // namespace
 
 StatusOr<SequentialHloOrdering::HloModuleSequence>
-CreateMemoryMinimizingSequence(
-    const HloModule& module, const LogicalBuffer::SizeFunction& size_function) {
+CreateMemoryMinimizingSequence(const HloModule& module,
+                               const LogicalBuffer::SizeFunction& size_function,
+                               SchedulerAlgorithm algorithm) {
   SequentialHloOrdering::HloModuleSequence sequence;
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(&module));
   for (const auto* computation : module.MakeNonfusionComputations()) {
-    TF_ASSIGN_OR_RETURN(sequence[computation],
-                        CreateMemoryMinimizingSequence(
-                            *computation, *points_to_analysis, size_function));
+    TF_ASSIGN_OR_RETURN(
+        sequence[computation],
+        CreateMemoryMinimizingSequence(*computation, *points_to_analysis,
+                                       size_function, algorithm));
   }
   return sequence;
 }
 
 StatusOr<std::vector<const HloInstruction*>> CreateMemoryMinimizingSequence(
     const HloComputation& computation,
-    const LogicalBuffer::SizeFunction& size_function) {
+    const LogicalBuffer::SizeFunction& size_function,
+    SchedulerAlgorithm algorithm) {
   CHECK(!computation.IsFusionComputation());
   TF_ASSIGN_OR_RETURN(std::unique_ptr<TuplePointsToAnalysis> points_to_analysis,
                       TuplePointsToAnalysis::Run(computation.parent()));
   return CreateMemoryMinimizingSequence(computation, *points_to_analysis,
-                                        size_function);
+                                        size_function, algorithm);
 }
 
 }  // namespace xla

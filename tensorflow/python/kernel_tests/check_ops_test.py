@@ -117,7 +117,7 @@ class AssertEqualTest(test.TestCase):
   def test_error_message_eager(self):
     expected_error_msg_full = r"""big does not equal small
 Condition x == y did not hold.
-Indices of first 6 different values:
+Indices of first 3 different values:
 \[\[0 0\]
  \[1 1\]
  \[2 0\]\]
@@ -129,6 +129,21 @@ First 6 elements of x:
 \[2 2 3 3 6 6\]
 First 6 elements of y:
 \[20  2  3 30 60  6\]
+"""
+    expected_error_msg_default = r"""big does not equal small
+Condition x == y did not hold.
+Indices of first 3 different values:
+\[\[0 0\]
+ \[1 1\]
+ \[2 0\]\]
+Corresponding x values:
+\[2 3 6\]
+Corresponding y values:
+\[20 30 60\]
+First 3 elements of x:
+\[2 2 3\]
+First 3 elements of y:
+\[20  2  3\]
 """
     expected_error_msg_short = r"""big does not equal small
 Condition x == y did not hold.
@@ -151,6 +166,9 @@ First 2 elements of y:
                                    expected_error_msg_full):
         check_ops.assert_equal(big, small, message="big does not equal small",
                                summarize=10)
+      with self.assertRaisesRegexp(errors.InvalidArgumentError,
+                                   expected_error_msg_default):
+        check_ops.assert_equal(big, small, message="big does not equal small")
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    expected_error_msg_short):
         check_ops.assert_equal(big, small, message="big does not equal small",
@@ -267,6 +285,118 @@ class AssertNoneEqualTest(test.TestCase):
       t1 = constant_op.constant([1, 2])
       t2 = constant_op.constant([3, 4])
       x = check_ops.assert_none_equal(t1, t2)
+      assert x is None
+
+
+class AssertAllCloseTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_doesnt_raise_when_equal(self):
+    x = constant_op.constant(1., name="x")
+    y = constant_op.constant(1., name="y")
+    with ops.control_dependencies(
+        [check_ops.assert_near(x, y, message="failure message")]):
+      out = array_ops.identity(x)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_doesnt_raise_when_close_enough_32_bit_due_to_default_rtol(self):
+    eps = np.finfo(np.float32).eps
+    # Default rtol/atol is 10*eps
+    x = constant_op.constant(1., name="x")
+    y = constant_op.constant(1. + 2 * eps, name="y", dtype=np.float32)
+    with ops.control_dependencies(
+        [check_ops.assert_near(x, y, atol=0., message="failure message")]):
+      out = array_ops.identity(x)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_doesnt_raise_when_close_enough_32_bit_due_to_default_atol(self):
+    eps = np.finfo(np.float32).eps
+    # Default rtol/atol is 10*eps
+    x = constant_op.constant(0., name="x")
+    y = constant_op.constant(0. + 2 * eps, name="y", dtype=np.float32)
+    with ops.control_dependencies(
+        [check_ops.assert_near(x, y, rtol=0., message="failure message")]):
+      out = array_ops.identity(x)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_doesnt_raise_when_close_enough_64_bit_due_to_default_rtol(self):
+    eps = np.finfo(np.float64).eps
+    # Default rtol/atol is 10*eps
+    x = constant_op.constant(1., name="x", dtype=np.float64)
+    y = constant_op.constant(1. + 2 * eps, name="y", dtype=np.float64)
+    with ops.control_dependencies(
+        [check_ops.assert_near(x, y, atol=0., message="failure message")]):
+      out = array_ops.identity(x)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_doesnt_raise_when_close_enough_64_bit_due_to_default_atol(self):
+    eps = np.finfo(np.float64).eps
+    # Default rtol/atol is 10*eps
+    x = constant_op.constant(0., name="x", dtype=np.float64)
+    y = constant_op.constant(0. + 2 * eps, name="y", dtype=np.float64)
+    with ops.control_dependencies(
+        [check_ops.assert_near(x, y, rtol=0., message="failure message")]):
+      out = array_ops.identity(x)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_doesnt_raise_when_close_enough_due_to_custom_rtol(self):
+    x = constant_op.constant(1., name="x")
+    y = constant_op.constant(1.1, name="y")
+    with ops.control_dependencies(
+        [check_ops.assert_near(x, y, atol=0., rtol=0.5,
+                               message="failure message")]):
+      out = array_ops.identity(x)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_doesnt_raise_when_close_enough_due_to_custom_atol(self):
+    x = constant_op.constant(0., name="x")
+    y = constant_op.constant(0.1, name="y", dtype=np.float32)
+    with ops.control_dependencies(
+        [check_ops.assert_near(x, y, atol=0.5, rtol=0.,
+                               message="failure message")]):
+      out = array_ops.identity(x)
+      self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_doesnt_raise_when_both_empty(self):
+    larry = constant_op.constant([])
+    curly = constant_op.constant([])
+    with ops.control_dependencies([check_ops.assert_near(larry, curly)]):
+      out = array_ops.identity(larry)
+    self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_raises_when_atol_violated(self):
+    x = constant_op.constant(10., name="x")
+    y = constant_op.constant(10.2, name="y")
+    with self.assertRaisesOpError("x and y not equal to tolerance"):
+      with ops.control_dependencies(
+          [check_ops.assert_near(x, y, atol=0.1,
+                                 message="failure message")]):
+        out = array_ops.identity(x)
+        self.evaluate(out)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_raises_when_default_rtol_violated(self):
+    x = constant_op.constant(0.1, name="x")
+    y = constant_op.constant(0.0, name="y")
+    with self.assertRaisesOpError("x and y not equal to tolerance"):
+      with ops.control_dependencies(
+          [check_ops.assert_near(x, y, message="failure message")]):
+        out = array_ops.identity(x)
+        self.evaluate(out)
+
+  def test_returns_none_with_eager(self):
+    with context.eager_mode():
+      t1 = constant_op.constant([1., 2.])
+      t2 = constant_op.constant([1., 2.])
+      x = check_ops.assert_near(t1, t2)
       assert x is None
 
 

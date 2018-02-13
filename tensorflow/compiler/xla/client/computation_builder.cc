@@ -34,25 +34,9 @@ limitations under the License.
 
 namespace xla {
 
-ComputationDataHandle ComputationBuilder::ParseOpResponse(
-    const Status& status, OpResponse* response) {
-  VLOG(2) << "done with op request";
-
-  if (!status.ok()) {
-    NoteError(status);
-    return ComputationDataHandle();
-  }
-
-  if (response->output().handle() == 0) {
-    NoteError(InternalError("No output handle"));
-    return ComputationDataHandle();
-  }
-  return response->output();
-}
-
 ComputationBuilder::ComputationBuilder(Client* client,
                                        const string& computation_name)
-    : name_(computation_name), first_error_(Status::OK()), client_(client) {}
+    : name_(computation_name), client_(client) {}
 
 ComputationBuilder::~ComputationBuilder() {}
 
@@ -76,9 +60,8 @@ std::unique_ptr<ComputationBuilder> ComputationBuilder::CreateSubBuilder(
 }
 
 Status ComputationBuilder::PrepareComputation() {
-  if (!first_error_.ok()) {
-    return first_error_;
-  }
+  TF_RETURN_IF_ERROR(first_error_);
+
   if (!computation_.IsNull()) {
     return Status::OK();
   }
@@ -98,6 +81,49 @@ Status ComputationBuilder::PrepareComputation() {
 
   computation_ = Computation(client_->stub(), response.computation());
   return Status::OK();
+}
+
+Status ComputationBuilder::RunOp(OpRequest* op_request,
+                                 OpResponse* op_response) {
+  TF_RETURN_IF_ERROR(first_error_);
+  TF_RETURN_IF_ERROR(PrepareComputation());
+
+  // Fill in fields that are set on every OpRequest.
+  *op_request->mutable_computation() = computation_.handle();
+  *op_request->mutable_metadata() = metadata_;
+  if (sharding_) {
+    *op_request->mutable_sharding() = *sharding_;
+  }
+
+  const string& op_name =
+      OpRequest::descriptor()->FindFieldByNumber(op_request->op_case())->name();
+  VLOG(2) << "running op request: " << op_name;
+  Status status = client_->stub()->Op(op_request, op_response);
+  VLOG(2) << "done with op request: " << op_name;
+  return status;
+}
+
+void ComputationBuilder::RunOpAndNoteError(OpRequest* op_request) {
+  OpResponse op_response;
+  Status status = RunOp(op_request, &op_response);
+  if (!status.ok()) {
+    NoteError(status);
+  }
+}
+
+ComputationDataHandle ComputationBuilder::RunOpAndParseResponse(
+    OpRequest* op_request) {
+  OpResponse op_response;
+  Status status = RunOp(op_request, &op_response);
+  if (!status.ok()) {
+    NoteError(status);
+    return ComputationDataHandle();
+  }
+  if (op_response.output().handle() == 0) {
+    NoteError(InternalError("No output handle"));
+    return ComputationDataHandle();
+  }
+  return op_response.output();
 }
 
 bool ComputationBuilder::MakeWindow(
@@ -158,79 +184,53 @@ bool ComputationBuilder::MakeWindow(
   return true;
 }
 
-ComputationDataHandle ComputationBuilder::ConstantOp(
-    const PopulateLiteral& populate) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  ConstantRequest request;
-  Literal literal;
-  populate(&literal);
-  *request.mutable_literal() = literal.ToProto();
-  VLOG(3) << "created constant: " << request.literal().ShortDebugString();
-  OpRequest op_request;
-  *op_request.mutable_constant_request() = request;
-  *op_request.mutable_computation() = computation_.handle();
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making constant request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
-}
-
 ComputationDataHandle ComputationBuilder::ConstantLiteral(
     const Literal& literal) {
-  return ConstantOp(
-      [literal](Literal* mutable_literal) { *mutable_literal = literal; });
+  OpRequest op_request;
+  ConstantRequest* request = op_request.mutable_constant_request();
+  *request->mutable_literal() = literal.ToProto();
+  VLOG(3) << "created constant: " << request->literal().ShortDebugString();
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Parameter(int64 parameter_number,
                                                     const Shape& shape,
                                                     const string& name) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  ParameterRequest request;
-  *request.mutable_shape() = shape;
-  request.set_parameter(parameter_number);
-  request.set_name(name);
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_parameter_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making parameter request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  ParameterRequest* request = op_request.mutable_parameter_request();
+  *request->mutable_shape() = shape;
+  request->set_parameter(parameter_number);
+  request->set_name(name);
+  return RunOpAndParseResponse(&op_request);
 }
 
-StatusOr<std::unique_ptr<Shape>> ComputationBuilder::GetShape(
+StatusOr<std::unique_ptr<Shape>> ComputationBuilder::GetShapeWithoutNoteError(
     const ComputationDataHandle& operand) {
-  if (!first_error_.ok()) {
-    return first_error_;
-  }
-
   GetLocalShapeRequest request;
   *request.mutable_computation() = computation_.handle();
   *request.mutable_operand() = operand;
   GetLocalShapeResponse response;
 
   VLOG(2) << "making get-shape request";
-  Status s = client_->stub()->GetLocalShape(&request, &response);
+  TF_RETURN_IF_ERROR(client_->stub()->GetLocalShape(&request, &response));
   VLOG(2) << "done with request";
 
-  if (!s.ok()) {
-    NoteError(s);
-    return first_error_;
-  }
   TF_RET_CHECK(response.has_shape());
   std::unique_ptr<Shape> shape = WrapUnique(response.release_shape());
   TF_RET_CHECK(shape != nullptr);
   return std::move(shape);
+}
+
+StatusOr<std::unique_ptr<Shape>> ComputationBuilder::GetShape(
+    const ComputationDataHandle& operand) {
+  TF_RETURN_IF_ERROR(first_error_);
+
+  auto status_or_shape = GetShapeWithoutNoteError(operand);
+  if (!status_or_shape.ok()) {
+    NoteError(status_or_shape.status());
+    return first_error_;
+  }
+  return status_or_shape;
 }
 
 ComputationDataHandle ComputationBuilder::CheckShape(
@@ -258,30 +258,19 @@ ComputationDataHandle ComputationBuilder::Slice(
     tensorflow::gtl::ArraySlice<int64> start_indices,
     tensorflow::gtl::ArraySlice<int64> limit_indices,
     tensorflow::gtl::ArraySlice<int64> strides) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  SliceRequest request;
-  *request.mutable_operand() = operand;
+  OpRequest op_request;
+  SliceRequest* request = op_request.mutable_slice_request();
+  *request->mutable_operand() = operand;
   for (int64 index : start_indices) {
-    request.add_start_indices(index);
+    request->add_start_indices(index);
   }
   for (int64 index : limit_indices) {
-    request.add_limit_indices(index);
+    request->add_limit_indices(index);
   }
   for (int64 index : strides) {
-    request.add_strides(index);
+    request->add_strides(index);
   }
-  OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_slice_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making slice request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::SliceInDim(
@@ -307,143 +296,78 @@ ComputationDataHandle ComputationBuilder::DynamicSlice(
     const ComputationDataHandle& operand,
     const ComputationDataHandle& start_indices,
     tensorflow::gtl::ArraySlice<int64> slice_sizes) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  DynamicSliceRequest request;
-  *request.mutable_operand() = operand;
-  *request.mutable_start_indices() = start_indices;
-  for (int64 index : slice_sizes) {
-    request.add_slice_sizes(index);
-  }
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_dynamic_slice_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making dynamic slice request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  DynamicSliceRequest* request = op_request.mutable_dynamic_slice_request();
+  *request->mutable_operand() = operand;
+  *request->mutable_start_indices() = start_indices;
+  for (int64 index : slice_sizes) {
+    request->add_slice_sizes(index);
+  }
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::DynamicUpdateSlice(
     const ComputationDataHandle& operand, const ComputationDataHandle& update,
     const ComputationDataHandle& start_indices) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  DynamicUpdateSliceRequest request;
-  *request.mutable_operand() = operand;
-  *request.mutable_update() = update;
-  *request.mutable_start_indices() = start_indices;
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_dynamic_update_slice_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making dynamic update slice request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  DynamicUpdateSliceRequest* request =
+      op_request.mutable_dynamic_update_slice_request();
+  *request->mutable_operand() = operand;
+  *request->mutable_update() = update;
+  *request->mutable_start_indices() = start_indices;
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::ConcatInDim(
     tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
     int64 dimension) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  ConcatenateRequest request;
-  for (const ComputationDataHandle& operand : operands) {
-    *request.add_operands() = operand;
-  }
-  request.set_dimension(dimension);
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_concatenate_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making concatenate request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  ConcatenateRequest* request = op_request.mutable_concatenate_request();
+  for (const ComputationDataHandle& operand : operands) {
+    *request->add_operands() = operand;
+  }
+  request->set_dimension(dimension);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Broadcast(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  BroadcastRequest request;
-  *request.mutable_operand() = operand;
-  for (int64 size : broadcast_sizes) {
-    request.add_broadcast_sizes(size);
-  }
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_broadcast_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making broadcast request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  BroadcastRequest* request = op_request.mutable_broadcast_request();
+  *request->mutable_operand() = operand;
+  for (int64 size : broadcast_sizes) {
+    request->add_broadcast_sizes(size);
+  }
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Pad(
     const ComputationDataHandle& operand,
     const ComputationDataHandle& padding_value,
     const PaddingConfig& padding_config) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  PadRequest request;
-  *request.mutable_operand() = operand;
-  *request.mutable_padding_value() = padding_value;
-  *request.mutable_padding_config() = padding_config;
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_pad_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making pad request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  PadRequest* request = op_request.mutable_pad_request();
+  *request->mutable_operand() = operand;
+  *request->mutable_padding_value() = padding_value;
+  *request->mutable_padding_config() = padding_config;
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Reshape(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> dimensions,
     tensorflow::gtl::ArraySlice<int64> new_sizes) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  ReshapeRequest request;
-  *request.mutable_operand() = operand;
+  OpRequest op_request;
+  ReshapeRequest* request = op_request.mutable_reshape_request();
+  *request->mutable_operand() = operand;
   for (int64 dimension : dimensions) {
-    request.add_dimensions(dimension);
+    request->add_dimensions(dimension);
   }
   for (int64 new_size : new_sizes) {
-    request.add_new_sizes(new_size);
+    request->add_new_sizes(new_size);
   }
-  OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_reshape_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making reshape request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Reshape(
@@ -455,7 +379,6 @@ ComputationDataHandle ComputationBuilder::Reshape(
 
   StatusOr<std::unique_ptr<Shape>> shape = GetShape(operand);
   if (!shape.ok()) {
-    first_error_ = shape.status();
     return ComputationDataHandle();
   }
   std::vector<int64> dimensions(shape.ValueOrDie()->dimensions().size());
@@ -485,7 +408,6 @@ ComputationDataHandle ComputationBuilder::Collapse(
   // dimensions by the product of their sizes.
   StatusOr<std::unique_ptr<Shape>> shape_or_status = GetShape(operand);
   if (!shape_or_status.ok()) {
-    first_error_ = shape_or_status.status();
     return ComputationDataHandle();
   }
   std::unique_ptr<Shape> original_shape = shape_or_status.ConsumeValueOrDie();
@@ -517,26 +439,11 @@ ComputationDataHandle ComputationBuilder::Collapse(
 
 void ComputationBuilder::Trace(const string& tag,
                                const ComputationDataHandle& operand) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return;
-  }
-
-  TraceRequest request;
-  request.set_tag(tag);
-  *request.mutable_operand() = operand;
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_trace_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making trace request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  VLOG(2) << "done with request";
-
-  if (!s.ok()) {
-    NoteError(s);
-  }
+  TraceRequest* request = op_request.mutable_trace_request();
+  request->set_tag(tag);
+  *request->mutable_operand() = operand;
+  RunOpAndNoteError(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Select(
@@ -547,44 +454,23 @@ ComputationDataHandle ComputationBuilder::Select(
 
 ComputationDataHandle ComputationBuilder::Tuple(
     tensorflow::gtl::ArraySlice<ComputationDataHandle> elements) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  VariadicOpRequest request;
-  request.set_varop(VAROP_TUPLE);
-  for (const ComputationDataHandle& operand : elements) {
-    *request.add_operands() = operand;
-  }
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_variadic_op_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making variadic op request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  VariadicOpRequest* request = op_request.mutable_variadic_op_request();
+  request->set_varop(VAROP_TUPLE);
+  for (const ComputationDataHandle& operand : elements) {
+    *request->add_operands() = operand;
+  }
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::GetTupleElement(
     const ComputationDataHandle& tuple_data, int64 index) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  GetTupleElementRequest request;
-  *request.mutable_operand() = tuple_data;
-  request.set_index(index);
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_get_tuple_element_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making get tuple element op request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  GetTupleElementRequest* request =
+      op_request.mutable_get_tuple_element_request();
+  *request->mutable_operand() = tuple_data;
+  request->set_index(index);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Eq(
@@ -627,7 +513,6 @@ ComputationDataHandle ComputationBuilder::Dot(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
   StatusOr<std::unique_ptr<Shape>> lhs_shape_or_status = GetShape(lhs);
   if (!lhs_shape_or_status.ok()) {
-    NoteError(lhs_shape_or_status.status());
     return ComputationDataHandle();
   }
   std::unique_ptr<Shape> lhs_shape = lhs_shape_or_status.ConsumeValueOrDie();
@@ -642,33 +527,17 @@ ComputationDataHandle ComputationBuilder::Dot(
 ComputationDataHandle ComputationBuilder::DotGeneral(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     const DotDimensionNumbers& dimension_numbers) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  DotRequest request;
-  *request.mutable_lhs() = lhs;
-  *request.mutable_rhs() = rhs;
-  *request.mutable_dimension_numbers() = dimension_numbers;
-
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_dot_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making Dot request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  DotRequest* request = op_request.mutable_dot_request();
+  *request->mutable_lhs() = lhs;
+  *request->mutable_rhs() = rhs;
+  *request->mutable_dimension_numbers() = dimension_numbers;
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Conv(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides, Padding padding) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
   return ConvWithGeneralDimensions(
       lhs, rhs, window_strides, padding,
       CreateDefaultConvDimensionNumbers(window_strides.size()));
@@ -678,10 +547,6 @@ ComputationDataHandle ComputationBuilder::ConvWithGeneralPadding(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
   return ConvGeneral(lhs, rhs, window_strides, padding,
                      CreateDefaultConvDimensionNumbers(window_strides.size()));
 }
@@ -749,13 +614,11 @@ ComputationDataHandle ComputationBuilder::ConvWithGeneralDimensions(
 
   StatusOr<std::unique_ptr<Shape>> lhs_shape_or_status = GetShape(lhs);
   if (!lhs_shape_or_status.ok()) {
-    first_error_ = lhs_shape_or_status.status();
     return ComputationDataHandle();
   }
 
   StatusOr<std::unique_ptr<Shape>> rhs_shape_or_status = GetShape(rhs);
   if (!rhs_shape_or_status.ok()) {
-    first_error_ = rhs_shape_or_status.status();
     return ComputationDataHandle();
   }
 
@@ -810,13 +673,11 @@ ComputationDataHandle ComputationBuilder::ConvGeneralDilated(
 
   StatusOr<std::unique_ptr<Shape>> lhs_shape_or_status = GetShape(lhs);
   if (!lhs_shape_or_status.ok()) {
-    first_error_ = lhs_shape_or_status.status();
     return ComputationDataHandle();
   }
 
   StatusOr<std::unique_ptr<Shape>> rhs_shape_or_status = GetShape(rhs);
   if (!rhs_shape_or_status.ok()) {
-    first_error_ = rhs_shape_or_status.status();
     return ComputationDataHandle();
   }
 
@@ -834,122 +695,78 @@ ComputationDataHandle ComputationBuilder::ConvGeneralDilated(
         rhs_shape->dimensions(dimension_numbers.kernel_spatial_dimensions(i));
   }
 
-  ConvolveRequest request;
-  *request.mutable_lhs() = lhs;
-  *request.mutable_rhs() = rhs;
-  *request.mutable_dimension_numbers() = dimension_numbers;
+  OpRequest op_request;
+  ConvolveRequest* request = op_request.mutable_convolve_request();
+  *request->mutable_lhs() = lhs;
+  *request->mutable_rhs() = rhs;
+  *request->mutable_dimension_numbers() = dimension_numbers;
 
   if (!MakeWindow(window_dimensions, window_strides, padding, lhs_dilation,
-                  rhs_dilation, request.mutable_window())) {
+                  rhs_dilation, request->mutable_window())) {
     // Error is recorded in MakeWindow.
     return ComputationDataHandle();
   }
-  OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_convolve_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
 
-  VLOG(2) << "making convolve request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  return RunOpAndParseResponse(&op_request);
+}
+
+ComputationDataHandle ComputationBuilder::Fft(
+    const ComputationDataHandle& operand, const FftType fft_type,
+    const tensorflow::gtl::ArraySlice<int64> fft_length) {
+  OpRequest op_request;
+  FftRequest* request = op_request.mutable_fft_request();
+  *request->mutable_operand() = operand;
+  request->set_fft_type(fft_type);
+  for (int64 dim_len : fft_length) {
+    request->add_fft_length(dim_len);
+  }
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Infeed(const Shape& shape,
                                                  const string& config) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  InfeedRequest request;
-  *request.mutable_shape() = shape;
-  *request.mutable_config() = config;
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_infeed_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making infeed op request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  InfeedRequest* request = op_request.mutable_infeed_request();
+  *request->mutable_shape() = shape;
+  *request->mutable_config() = config;
+  return RunOpAndParseResponse(&op_request);
 }
 
 void ComputationBuilder::Outfeed(const ComputationDataHandle& operand,
                                  const Shape& shape,
                                  const string& outfeed_config) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return;
-  }
-
-  OutfeedRequest request;
-  request.set_outfeed_config(outfeed_config);
-  *request.mutable_operand() = operand;
-  *request.mutable_shape() = shape;
   OpRequest op_request;
-  *op_request.mutable_outfeed_request() = request;
-  *op_request.mutable_computation() = computation_.handle();
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making outfeed op request";
-  tensorflow::Status s = client_->stub()->Op(&op_request, &response);
-
-  if (!s.ok()) {
-    NoteError(s);
-    return;
-  }
+  OutfeedRequest* request = op_request.mutable_outfeed_request();
+  request->set_outfeed_config(outfeed_config);
+  *request->mutable_operand() = operand;
+  *request->mutable_shape() = shape;
+  RunOpAndNoteError(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Call(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<ComputationDataHandle> operands) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  CallRequest request;
-  *request.mutable_to_apply() = computation.handle();
-  for (const ComputationDataHandle& operand : operands) {
-    *request.add_operands() = operand;
-  }
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_call_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making call op request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  CallRequest* request = op_request.mutable_call_request();
+  *request->mutable_to_apply() = computation.handle();
+  for (const ComputationDataHandle& operand : operands) {
+    *request->add_operands() = operand;
+  }
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::CustomCall(
     const string& call_target_name,
     tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
     const Shape& shape) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  CustomCallRequest request;
-  request.set_call_target_name(call_target_name);
-  for (const ComputationDataHandle& operand : operands) {
-    *request.add_operands() = operand;
-  }
-  *request.mutable_shape() = shape;
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_custom_call_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making custom call op request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  CustomCallRequest* request = op_request.mutable_custom_call_request();
+  request->set_call_target_name(call_target_name);
+  for (const ComputationDataHandle& operand : operands) {
+    *request->add_operands() = operand;
+  }
+  *request->mutable_shape() = shape;
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Complex(
@@ -1114,47 +931,25 @@ ComputationDataHandle ComputationBuilder::IsFinite(
 ComputationDataHandle ComputationBuilder::Transpose(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> permutation) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
   TransposeRequest* request = op_request.mutable_transpose_request();
   *request->mutable_operand() = operand;
   for (int64 dimension : permutation) {
     request->add_dimensions(dimension);
   }
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making transpose request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Rev(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> dimensions) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  ReverseRequest request;
-  *request.mutable_operand() = operand;
-  for (int64 dimension : dimensions) {
-    request.add_dimensions(dimension);
-  }
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_reverse_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making reverse op request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  ReverseRequest* request = op_request.mutable_reverse_request();
+  *request->mutable_operand() = operand;
+  for (int64 dimension : dimensions) {
+    request->add_dimensions(dimension);
+  }
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Sort(
@@ -1182,24 +977,15 @@ ComputationDataHandle ComputationBuilder::ConvertElementType(
 
   StatusOr<std::unique_ptr<Shape>> shape_status = GetShape(operand);
   if (!shape_status.ok()) {
-    first_error_ = shape_status.status();
     return ComputationDataHandle();
   }
   std::unique_ptr<Shape> original = shape_status.ConsumeValueOrDie();
 
-  ConvertRequest request;
-  *request.mutable_operand() = operand;
-  request.set_new_element_type(new_element_type);
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_convert_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making convert request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  ConvertRequest* request = op_request.mutable_convert_request();
+  *request->mutable_operand() = operand;
+  request->set_new_element_type(new_element_type);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::BitcastConvertType(
@@ -1210,24 +996,15 @@ ComputationDataHandle ComputationBuilder::BitcastConvertType(
 
   StatusOr<std::unique_ptr<Shape>> shape_status = GetShape(operand);
   if (!shape_status.ok()) {
-    first_error_ = shape_status.status();
     return ComputationDataHandle();
   }
   std::unique_ptr<Shape> original = shape_status.ConsumeValueOrDie();
 
-  ConvertRequest request;
-  *request.mutable_operand() = operand;
-  request.set_new_element_type(new_element_type);
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_bitcast_convert_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making bitcast convert request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  ConvertRequest* request = op_request.mutable_bitcast_convert_request();
+  *request->mutable_operand() = operand;
+  request->set_new_element_type(new_element_type);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::SquareF32(
@@ -1255,107 +1032,57 @@ ComputationDataHandle ComputationBuilder::Clamp(
 
 ComputationDataHandle ComputationBuilder::UnaryOp(
     UnaryOperation unop, const ComputationDataHandle& operand) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  UnaryOpRequest request;
-  request.set_unop(unop);
-  *request.mutable_operand() = operand;
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_unary_op_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making unop request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  UnaryOpRequest* request = op_request.mutable_unary_op_request();
+  request->set_unop(unop);
+  *request->mutable_operand() = operand;
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::BinaryOp(
     BinaryOperation binop, const ComputationDataHandle& lhs,
     const ComputationDataHandle& rhs,
     tensorflow::gtl::ArraySlice<int64> broadcast_dimensions) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  BinaryOpRequest request;
-  request.set_binop(binop);
-  *request.mutable_lhs() = lhs;
-  *request.mutable_rhs() = rhs;
-  for (int64 dimension : broadcast_dimensions) {
-    request.add_broadcast_dimensions(dimension);
-  }
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_binary_op_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making binop request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  BinaryOpRequest* request = op_request.mutable_binary_op_request();
+  request->set_binop(binop);
+  *request->mutable_lhs() = lhs;
+  *request->mutable_rhs() = rhs;
+  for (int64 dimension : broadcast_dimensions) {
+    request->add_broadcast_dimensions(dimension);
+  }
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::RngOp(
     RandomDistribution distribution,
     tensorflow::gtl::ArraySlice<ComputationDataHandle> parameters,
     const Shape& shape) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  RngRequest request;
-  request.set_distribution(distribution);
-  for (const ComputationDataHandle& param : parameters) {
-    *request.add_parameter() = param;
-  }
-  *request.mutable_shape() = shape;
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_rng_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making rngop request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  RngRequest* request = op_request.mutable_rng_request();
+  request->set_distribution(distribution);
+  for (const ComputationDataHandle& param : parameters) {
+    *request->add_parameter() = param;
+  }
+  *request->mutable_shape() = shape;
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::TernaryOp(
     TernaryOperation triop, const ComputationDataHandle& lhs,
     const ComputationDataHandle& rhs, const ComputationDataHandle& ehs) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  TernaryOpRequest request;
-  request.set_triop(triop);
-  *request.mutable_lhs() = lhs;
-  *request.mutable_rhs() = rhs;
-  *request.mutable_ehs() = ehs;
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_ternary_op_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making triop request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  TernaryOpRequest* request = op_request.mutable_ternary_op_request();
+  request->set_triop(triop);
+  *request->mutable_lhs() = lhs;
+  *request->mutable_rhs() = rhs;
+  *request->mutable_ehs() = ehs;
+  return RunOpAndParseResponse(&op_request);
 }
 
 Status ComputationBuilder::SetReturnValue(
     const ComputationDataHandle& operand) {
-  if (!first_error_.ok()) {
-    return first_error_;
-  }
+  TF_RETURN_IF_ERROR(first_error_);
 
   SetReturnValueRequest request;
   *request.mutable_computation() = computation_.handle();
@@ -1377,9 +1104,7 @@ Status ComputationBuilder::SetReturnValue(
 
 StatusOr<bool> ComputationBuilder::IsConstant(
     const ComputationDataHandle& operand, int64 num_parameters) {
-  if (!first_error_.ok()) {
-    return first_error_;
-  }
+  TF_RETURN_IF_ERROR(first_error_);
 
   IsConstantRequest request;
   *request.mutable_computation() = computation_.handle();
@@ -1400,9 +1125,7 @@ StatusOr<bool> ComputationBuilder::IsConstant(
 StatusOr<std::unique_ptr<Literal>> ComputationBuilder::ComputeConstant(
     const ComputationDataHandle& operand, const Layout* output_layout,
     tensorflow::gtl::ArraySlice<Literal> parameters) {
-  if (!first_error_.ok()) {
-    return first_error_;
-  }
+  TF_RETURN_IF_ERROR(first_error_);
 
   ComputeConstantRequest request;
   *request.mutable_computation() = computation_.handle();
@@ -1431,7 +1154,7 @@ StatusOr<std::unique_ptr<Literal>> ComputationBuilder::ComputeConstant(
         "no computed literal in the provided response in ComputeConstant "
         "request");
   }
-  return MakeUnique<Literal>(response.literal());
+  return Literal::CreateFromProto(response.literal());
 }
 
 ComputationDataHandle ComputationBuilder::Map(
@@ -1439,30 +1162,19 @@ ComputationDataHandle ComputationBuilder::Map(
     const Computation& computation,
     tensorflow::gtl::ArraySlice<int64> dimensions,
     tensorflow::gtl::ArraySlice<ComputationDataHandle> static_operands) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  MapRequest request;
+  OpRequest op_request;
+  MapRequest* request = op_request.mutable_map_request();
   for (const ComputationDataHandle& operand : operands) {
-    *request.add_operands() = operand;
+    *request->add_operands() = operand;
   }
-  *request.mutable_to_apply() = computation.handle();
+  *request->mutable_to_apply() = computation.handle();
   for (int64 dimension : dimensions) {
-    request.add_dimensions(dimension);
+    request->add_dimensions(dimension);
   }
   for (const ComputationDataHandle& sop : static_operands) {
-    *request.add_static_operands() = sop;
+    *request->add_static_operands() = sop;
   }
-  OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_map_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making Map request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::RngNormal(
@@ -1477,31 +1189,15 @@ ComputationDataHandle ComputationBuilder::RngUniform(
   return RngOp(RandomDistribution::RNG_UNIFORM, {a, b}, shape);
 }
 
-ComputationDataHandle ComputationBuilder::RngBernoulli(
-    const ComputationDataHandle& mean, const Shape& shape) {
-  return RngOp(RandomDistribution::RNG_BERNOULLI, {mean}, shape);
-}
-
 ComputationDataHandle ComputationBuilder::While(
     const Computation& condition, const Computation& body,
     const ComputationDataHandle& init) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  WhileRequest request;
-  *request.mutable_condition() = condition.handle();
-  *request.mutable_body() = body.handle();
-  *request.mutable_init() = init;
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_while_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making while request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  WhileRequest* request = op_request.mutable_while_request();
+  *request->mutable_condition() = condition.handle();
+  *request->mutable_body() = body.handle();
+  *request->mutable_init() = init;
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Conditional(
@@ -1510,52 +1206,29 @@ ComputationDataHandle ComputationBuilder::Conditional(
     const Computation& true_computation,
     const ComputationDataHandle& false_operand,
     const Computation& false_computation) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  ConditionalRequest request;
-  *request.mutable_predicate() = predicate;
-  *request.mutable_true_operand() = true_operand;
-  *request.mutable_true_computation() = true_computation.handle();
-  *request.mutable_false_operand() = false_operand;
-  *request.mutable_false_computation() = false_computation.handle();
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_conditional_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making conditional op request";
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  ConditionalRequest* request = op_request.mutable_conditional_request();
+  *request->mutable_predicate() = predicate;
+  *request->mutable_true_operand() = true_operand;
+  *request->mutable_true_computation() = true_computation.handle();
+  *request->mutable_false_operand() = false_operand;
+  *request->mutable_false_computation() = false_computation.handle();
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Reduce(
     const ComputationDataHandle& operand,
     const ComputationDataHandle& init_value, const Computation& computation,
     tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  ReduceRequest request;
-  *request.mutable_operand() = operand;
-  *request.mutable_init_value() = init_value;
-  for (int64 dimension : dimensions_to_reduce) {
-    request.add_dimensions(dimension);
-  }
-  *request.mutable_to_apply() = computation.handle();
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_reduce_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making reduce request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  ReduceRequest* request = op_request.mutable_reduce_request();
+  *request->mutable_operand() = operand;
+  *request->mutable_init_value() = init_value;
+  for (int64 dimension : dimensions_to_reduce) {
+    request->add_dimensions(dimension);
+  }
+  *request->mutable_to_apply() = computation.handle();
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::ReduceAll(
@@ -1567,7 +1240,6 @@ ComputationDataHandle ComputationBuilder::ReduceAll(
 
   StatusOr<std::unique_ptr<Shape>> shape = GetShape(operand);
   if (!shape.ok()) {
-    first_error_ = shape.status();
     return ComputationDataHandle();
   }
 
@@ -1587,7 +1259,6 @@ ComputationDataHandle ComputationBuilder::ReduceWindow(
 
   StatusOr<std::unique_ptr<Shape>> shape = GetShape(operand);
   if (!shape.ok()) {
-    first_error_ = shape.status();
     return ComputationDataHandle();
   }
 
@@ -1613,84 +1284,50 @@ ComputationDataHandle ComputationBuilder::ReduceWindowWithGeneralPadding(
     tensorflow::gtl::ArraySlice<int64> window_dimensions,
     tensorflow::gtl::ArraySlice<int64> window_strides,
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  ReduceWindowRequest request;
-  *request.mutable_operand() = operand;
-  *request.mutable_to_apply() = computation.handle();
-  *request.mutable_init_value() = init_value;
+  OpRequest op_request;
+  ReduceWindowRequest* request = op_request.mutable_reduce_window_request();
+  *request->mutable_operand() = operand;
+  *request->mutable_to_apply() = computation.handle();
+  *request->mutable_init_value() = init_value;
 
   if (!MakeWindow(window_dimensions, window_strides, padding, {}, {},
-                  request.mutable_window())) {
+                  request->mutable_window())) {
     NoteError(InternalError("failed to make window"));
     return ComputationDataHandle();
   }
-  OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_reduce_window_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
 
-  VLOG(2) << "making reduce-window request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::BatchNormTraining(
     const ComputationDataHandle& operand, const ComputationDataHandle& scale,
     const ComputationDataHandle& offset, float epsilon, int64 feature_index) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-  BatchNormTrainingRequest request;
-  *request.mutable_operand() = operand;
-  *request.mutable_scale() = scale;
-  *request.mutable_offset() = offset;
-  request.set_epsilon(epsilon);
-  request.set_feature_index(feature_index);
-
   OpRequest op_request;
-  *op_request.mutable_batch_norm_training_request() = request;
-  *op_request.mutable_computation() = computation_.handle();
-  AddCommonFieldsToOpRequest(&op_request);
-
-  OpResponse response;
-
-  VLOG(2) << "making BatchNormTraining request";
-
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  BatchNormTrainingRequest* request =
+      op_request.mutable_batch_norm_training_request();
+  *request->mutable_operand() = operand;
+  *request->mutable_scale() = scale;
+  *request->mutable_offset() = offset;
+  request->set_epsilon(epsilon);
+  request->set_feature_index(feature_index);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::BatchNormInference(
     const ComputationDataHandle& operand, const ComputationDataHandle& scale,
     const ComputationDataHandle& offset, const ComputationDataHandle& mean,
     const ComputationDataHandle& variance, float epsilon, int64 feature_index) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-  BatchNormInferenceRequest request;
-  *request.mutable_operand() = operand;
-  *request.mutable_scale() = scale;
-  *request.mutable_offset() = offset;
-  *request.mutable_mean() = mean;
-  *request.mutable_variance() = variance;
-  request.set_epsilon(epsilon);
-  request.set_feature_index(feature_index);
-
   OpRequest op_request;
-  *op_request.mutable_batch_norm_inference_request() = request;
-  *op_request.mutable_computation() = computation_.handle();
-  AddCommonFieldsToOpRequest(&op_request);
-
-  OpResponse response;
-
-  VLOG(2) << "making BatchNormInference request";
-
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  BatchNormInferenceRequest* request =
+      op_request.mutable_batch_norm_inference_request();
+  *request->mutable_operand() = operand;
+  *request->mutable_scale() = scale;
+  *request->mutable_offset() = offset;
+  *request->mutable_mean() = mean;
+  *request->mutable_variance() = variance;
+  request->set_epsilon(epsilon);
+  request->set_feature_index(feature_index);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::BatchNormGrad(
@@ -1698,49 +1335,25 @@ ComputationDataHandle ComputationBuilder::BatchNormGrad(
     const ComputationDataHandle& mean, const ComputationDataHandle& var,
     const ComputationDataHandle& grad_output, float epsilon,
     int64 feature_index) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-  BatchNormGradRequest request;
-  *request.mutable_operand() = operand;
-  *request.mutable_scale() = scale;
-  *request.mutable_mean() = mean;
-  *request.mutable_variance() = var;
-  *request.mutable_grad_output() = grad_output;
-  request.set_epsilon(epsilon);
-  request.set_feature_index(feature_index);
-
   OpRequest op_request;
-  *op_request.mutable_batch_norm_grad_request() = request;
-  *op_request.mutable_computation() = computation_.handle();
-  AddCommonFieldsToOpRequest(&op_request);
-
-  OpResponse response;
-
-  VLOG(2) << "making BatchNormGrad request";
-
-  Status s = client_->stub()->Op(&op_request, &response);
-
-  return ParseOpResponse(s, &response);
+  BatchNormGradRequest* request = op_request.mutable_batch_norm_grad_request();
+  *request->mutable_operand() = operand;
+  *request->mutable_scale() = scale;
+  *request->mutable_mean() = mean;
+  *request->mutable_variance() = var;
+  *request->mutable_grad_output() = grad_output;
+  request->set_epsilon(epsilon);
+  request->set_feature_index(feature_index);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::CrossReplicaSum(
     const ComputationDataHandle& operand) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  CrossReplicaSumRequest request;
-  *request.mutable_operand() = operand;
   OpRequest op_request;
-  *op_request.mutable_cross_replica_sum_request() = request;
-  *op_request.mutable_computation() = computation_.handle();
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making cross-replica-sum request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  CrossReplicaSumRequest* request =
+      op_request.mutable_cross_replica_sum_request();
+  *request->mutable_operand() = operand;
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::SelectAndScatter(
@@ -1755,7 +1368,6 @@ ComputationDataHandle ComputationBuilder::SelectAndScatter(
 
   StatusOr<std::unique_ptr<Shape>> shape = GetShape(operand);
   if (!shape.ok()) {
-    first_error_ = shape.status();
     return ComputationDataHandle();
   }
   return SelectAndScatterWithGeneralPadding(
@@ -1772,98 +1384,53 @@ ComputationDataHandle ComputationBuilder::SelectAndScatterWithGeneralPadding(
     tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
     const ComputationDataHandle& source,
     const ComputationDataHandle& init_value, const Computation& scatter) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  SelectAndScatterRequest request;
-  *request.mutable_operand() = operand;
-  *request.mutable_select() = select.handle();
-  *request.mutable_source() = source;
-  *request.mutable_init_value() = init_value;
-  *request.mutable_scatter() = scatter.handle();
+  OpRequest op_request;
+  SelectAndScatterRequest* request =
+      op_request.mutable_select_and_scatter_request();
+  *request->mutable_operand() = operand;
+  *request->mutable_select() = select.handle();
+  *request->mutable_source() = source;
+  *request->mutable_init_value() = init_value;
+  *request->mutable_scatter() = scatter.handle();
 
   if (!MakeWindow(window_dimensions, window_strides, padding, {}, {},
-                  request.mutable_window())) {
+                  request->mutable_window())) {
     NoteError(InternalError("failed to make window"));
     return ComputationDataHandle();
   }
-  OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_select_and_scatter_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
 
-  VLOG(2) << "making select-and-scatter request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  return RunOpAndParseResponse(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::ReducePrecision(
     const ComputationDataHandle& operand, const int exponent_bits,
     const int mantissa_bits) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  ReducePrecisionRequest request;
-  *request.mutable_operand() = operand;
-  request.set_exponent_bits(exponent_bits);
-  request.set_mantissa_bits(mantissa_bits);
   OpRequest op_request;
-  *op_request.mutable_computation() = computation_.handle();
-  *op_request.mutable_reduce_precision_request() = request;
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making reduce-precision request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  ReducePrecisionRequest* request =
+      op_request.mutable_reduce_precision_request();
+  *request->mutable_operand() = operand;
+  request->set_exponent_bits(exponent_bits);
+  request->set_mantissa_bits(mantissa_bits);
+  return RunOpAndParseResponse(&op_request);
 }
 
 void ComputationBuilder::Send(const ComputationDataHandle& operand,
                               const ChannelHandle& handle) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return;
-  }
-
-  SendRequest request;
-  *request.mutable_operand() = operand;
-  *request.mutable_channel_handle() = handle;
   OpRequest op_request;
-  *op_request.mutable_send_request() = request;
+  SendRequest* request = op_request.mutable_send_request();
+  *request->mutable_operand() = operand;
+  *request->mutable_channel_handle() = handle;
   *op_request.mutable_computation() = computation_.handle();
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making send request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  VLOG(2) << "done with op request";
-
-  if (!s.ok()) {
-    NoteError(s);
-    return;
-  }
+  RunOpAndNoteError(&op_request);
 }
 
 ComputationDataHandle ComputationBuilder::Recv(const Shape& shape,
                                                const ChannelHandle& handle) {
-  if (!first_error_.ok() || !PrepareComputation().ok()) {
-    return ComputationDataHandle();
-  }
-
-  RecvRequest request;
-  *request.mutable_shape() = shape;
-  *request.mutable_channel_handle() = handle;
   OpRequest op_request;
-  *op_request.mutable_recv_request() = request;
-  *op_request.mutable_computation() = computation_.handle();
-  AddCommonFieldsToOpRequest(&op_request);
-  OpResponse response;
-
-  VLOG(2) << "making recv request";
-  Status s = client_->stub()->Op(&op_request, &response);
-  return ParseOpResponse(s, &response);
+  RecvRequest* request = op_request.mutable_recv_request();
+  *request->mutable_shape() = shape;
+  *request->mutable_channel_handle() = handle;
+  return RunOpAndParseResponse(&op_request);
 }
 
 Computation ComputationBuilder::BuildAndNoteError() {
@@ -1890,13 +1457,6 @@ StatusOr<Computation> ComputationBuilder::Build() {
   }
 
   return {std::move(computation_)};
-}
-
-void ComputationBuilder::AddCommonFieldsToOpRequest(OpRequest* request) const {
-  *request->mutable_metadata() = metadata_;
-  if (sharding_) {
-    *request->mutable_sharding() = *sharding_;
-  }
 }
 
 /* static */ ConvolutionDimensionNumbers

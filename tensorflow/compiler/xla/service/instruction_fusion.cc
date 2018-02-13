@@ -100,6 +100,7 @@ namespace xla {
     case HloOpcode::kDivide:
     case HloOpcode::kDot:
     case HloOpcode::kExp:
+    case HloOpcode::kFft:
     case HloOpcode::kFusion:
     case HloOpcode::kLog:
     case HloOpcode::kMap:

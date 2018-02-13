@@ -83,6 +83,11 @@ XlaOpRegistry::~XlaOpRegistry() = default;
       return false;
     }
   }
+  if (x.compile_time_constant_inputs != y.compile_time_constant_inputs) {
+    LOG(WARNING) << "Registrations of " << x.name
+                 << " have incompatible compile time constant inputs.";
+    return false;
+  }
   return true;
 }
 
@@ -156,7 +161,14 @@ void XlaOpRegistry::RegisterCompilationKernels() {
     const string& op_name = op.first;
     const std::unique_ptr<OpRegistration>& op_registration = op.second;
     const OpDef* op_def;
-    TF_CHECK_OK(op_registry->LookUpOpDef(op_name, &op_def));
+    Status lookup_status = op_registry->LookUpOpDef(op_name, &op_def);
+    if (!lookup_status.ok()) {
+      LOG(ERROR) << lookup_status.error_message();
+      XLA_LOG_LINES(
+          ERROR, "Ops registered: \n" +
+                     dynamic_cast<OpRegistry*>(op_registry)->DebugString(true));
+    }
+    TF_CHECK_OK(lookup_status);
 
     std::unordered_set<string> type_attrs;
     for (const OpDef::AttrDef& attr_def : op_def->attr()) {
@@ -263,6 +275,17 @@ std::vector<const KernelDef*> XlaOpRegistry::DeviceKernels(
   return kernels;
 }
 
+/* static */ const std::unordered_set<string>*
+XlaOpRegistry::CompileTimeConstantInputs(const string& op) {
+  XlaOpRegistry& registry = Instance();
+  mutex_lock lock(registry.mutex_);
+  auto it = registry.ops_.find(op);
+  if (it == registry.ops_.end()) {
+    return nullptr;
+  }
+  return &it->second->compile_time_constant_inputs;
+}
+
 std::vector<string> XlaOpRegistry::BackendNames() {
   std::vector<string> names;
   XlaOpRegistry& registry = Instance();
@@ -334,6 +357,12 @@ XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::TypeConstraint(
   for (DataType t : allowed) {
     types.insert(t);
   }
+  return *this;
+}
+
+XlaOpRegistrationBuilder& XlaOpRegistrationBuilder::CompileTimeConstInput(
+    StringPiece input_name) {
+  registration_->compile_time_constant_inputs.insert(input_name.ToString());
   return *this;
 }
 

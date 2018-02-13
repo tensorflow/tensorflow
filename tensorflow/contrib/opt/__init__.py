@@ -29,6 +29,7 @@ from tensorflow.contrib.opt.python.training.nadam_optimizer import *
 from tensorflow.contrib.opt.python.training.powersign import *
 from tensorflow.contrib.opt.python.training.variable_clipping_optimizer import *
 from tensorflow.contrib.opt.python.training.elastic_average_optimizer import *
+from tensorflow.contrib.opt.python.training.model_average_optimizer import *
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.all_util import remove_undocumented
@@ -36,7 +37,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'PowerSignOptimizer',
-    'AddSignOptimizer'
+    'AddSignOptimizer',
     'DelayCompensatedGradientDescentOptimizer',
     'DropStaleGradientOptimizer',
     'ExternalOptimizerInterface',
@@ -47,8 +48,10 @@ _allowed_symbols = [
     'VariableClippingOptimizer',
     'MultitaskOptimizerWrapper',
     'clip_gradients_by_global_norm',
-    'ElasticAverageOptimizer', 
-    'ElasticAverageCustomGetter'
+    'ElasticAverageOptimizer',
+    'ElasticAverageCustomGetter',
+    'ModelAverageOptimizer',
+    'ModelAverageCustomGetter'
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

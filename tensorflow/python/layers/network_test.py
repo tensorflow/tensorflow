@@ -27,29 +27,137 @@ from tensorflow.python.layers import base as base_layers
 from tensorflow.python.layers import core as core_layers
 from tensorflow.python.layers import network as network_layers
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
 
 
 class BaseLayerCompatibilityTest(test.TestCase):
 
-  def test_get_updates_for(self):
-    a = network_layers.Input(shape=(2,))
-    dense_layer = core_layers.Dense(1)
-    dense_layer.add_update(0, inputs=a)
-    dense_layer.add_update(1, inputs=None)
+  def test_get_updates(self):
 
-    self.assertEqual(dense_layer.get_updates_for(a), [0])
-    self.assertEqual(dense_layer.get_updates_for(None), [1])
+    class MyLayer(base_layers.Layer):
 
-  def test_get_losses_for(self):
-    a = network_layers.Input(shape=(2,))
-    dense_layer = core_layers.Dense(1)
-    dense_layer.add_loss(0, inputs=a)
-    dense_layer.add_loss(1, inputs=None)
+      def build(self, input_shape):
+        self.a = self.add_variable('a',
+                                   (1, 1),
+                                   'float32',
+                                   trainable=False)
+        self.b = self.add_variable('b',
+                                   (1, 1),
+                                   'float32',
+                                   trainable=False)
+        self.add_update(state_ops.assign_add(self.a, [[1.]]))
+        self.built = True
 
-    self.assertEqual(dense_layer.get_losses_for(a), [0])
-    self.assertEqual(dense_layer.get_losses_for(None), [1])
+      def call(self, inputs):
+        self.add_update(state_ops.assign_add(self.a, inputs),
+                        inputs=True)
+        return inputs + 1
+
+    x1 = network_layers.Input(shape=(1,))
+    layer = MyLayer()
+    _ = layer.apply(x1)
+
+    self.assertEqual(len(layer.updates), 2)
+    self.assertEqual(len(layer.get_updates_for(x1)), 1)
+    self.assertEqual(len(layer.get_updates_for(None)), 1)
+
+    x2 = network_layers.Input(shape=(1,))
+    y2 = layer.apply(x2)
+
+    self.assertEqual(len(layer.updates), 3)
+    self.assertEqual(len(layer.get_updates_for(x1)), 1)
+    self.assertEqual(len(layer.get_updates_for(x2)), 1)
+    self.assertEqual(len(layer.get_updates_for(None)), 1)
+
+    network = network_layers.GraphNetwork(x2, y2)
+    self.assertEqual(len(network.updates), 2)
+    self.assertEqual(len(network.get_updates_for(x1)), 0)
+    self.assertEqual(len(network.get_updates_for(x2)), 1)
+    self.assertEqual(len(network.get_updates_for(None)), 1)
+
+    x3 = network_layers.Input(shape=(1,))
+    _ = layer.apply(x3)
+    self.assertEqual(len(network.updates), 2)
+
+    x4 = network_layers.Input(shape=(1,))
+    _ = network(x4)
+    self.assertEqual(len(network.updates), 3)
+    self.assertEqual(len(network.get_updates_for(x2)), 1)
+    self.assertEqual(len(network.get_updates_for(x4)), 1)
+    self.assertEqual(len(network.get_updates_for(None)), 1)
+
+    network.add_update(state_ops.assign_add(layer.a, [[1]]))
+    self.assertEqual(len(network.updates), 4)
+    self.assertEqual(len(network.get_updates_for(None)), 2)
+
+    network.add_update(state_ops.assign_add(layer.a, x4), inputs=True)
+    self.assertEqual(len(network.updates), 5)
+    self.assertEqual(len(network.get_updates_for(x4)), 2)
+
+  def test_get_losses(self):
+
+    class MyLayer(base_layers.Layer):
+
+      def build(self, input_shape):
+        self.a = self.add_variable('a',
+                                   (1, 1),
+                                   'float32',
+                                   trainable=False)
+        self.b = self.add_variable('b',
+                                   (1, 1),
+                                   'float32',
+                                   trainable=False)
+        self.add_loss(math_ops.reduce_sum(self.a))
+        self.built = True
+
+      def call(self, inputs):
+        self.add_loss(math_ops.reduce_sum(inputs),
+                      inputs=True)
+        return inputs + 1
+
+    x1 = network_layers.Input(shape=(1,))
+    layer = MyLayer()
+    _ = layer.apply(x1)
+
+    self.assertEqual(len(layer.losses), 2)
+    self.assertEqual(len(layer.get_losses_for(x1)), 1)
+    self.assertEqual(len(layer.get_losses_for(None)), 1)
+
+    x2 = network_layers.Input(shape=(1,))
+    y2 = layer.apply(x2)
+
+    self.assertEqual(len(layer.losses), 3)
+    self.assertEqual(len(layer.get_losses_for(x1)), 1)
+    self.assertEqual(len(layer.get_losses_for(x2)), 1)
+    self.assertEqual(len(layer.get_losses_for(None)), 1)
+
+    network = network_layers.GraphNetwork(x2, y2)
+    self.assertEqual(len(network.losses), 2)
+    self.assertEqual(len(network.get_losses_for(x1)), 0)
+    self.assertEqual(len(network.get_losses_for(x2)), 1)
+    self.assertEqual(len(network.get_losses_for(None)), 1)
+
+    x3 = network_layers.Input(shape=(1,))
+    _ = layer.apply(x3)
+    self.assertEqual(len(network.losses), 2)
+
+    x4 = network_layers.Input(shape=(1,))
+    _ = network(x4)
+    self.assertEqual(len(network.losses), 3)
+    self.assertEqual(len(network.get_losses_for(x2)), 1)
+    self.assertEqual(len(network.get_losses_for(x4)), 1)
+    self.assertEqual(len(network.get_losses_for(None)), 1)
+
+    network.add_loss(math_ops.reduce_sum(layer.a))
+    self.assertEqual(len(network.losses), 4)
+    self.assertEqual(len(network.get_losses_for(None)), 2)
+
+    network.add_loss(math_ops.reduce_sum(x4), inputs=True)
+    self.assertEqual(len(network.losses), 5)
+    self.assertEqual(len(network.get_losses_for(x4)), 2)
 
   def testTopologicalAttributes(self):
     # test layer attributes / methods related to cross-layer connectivity.
@@ -299,9 +407,10 @@ class NetworkTest(test.TestCase):
 
   def testNetworkAttributes(self):
     x = network_layers.Input(shape=(32,))
-    z = core_layers.Dense(2, kernel_regularizer=lambda x: 0.01 * (x**2))(x)
+    layer = core_layers.Dense(2, kernel_regularizer=lambda x: 0.01 * (x**2))
+    z = layer(x)
     dense = core_layers.Dense(2, name='dense')
-    dense.add_update(1)
+    dense.add_update(state_ops.assign_add(layer.kernel, layer.kernel * 2.))
     y = dense(z)
     net = network_layers.GraphNetwork(x, y)
 
@@ -333,8 +442,8 @@ class NetworkTest(test.TestCase):
     self.assertEqual(net.get_input_at(0), x)
     self.assertEqual(net.get_output_at(0), y)
 
-    # _compute_output_shape
-    self.assertEqual(net._compute_output_shape((3, 32)).as_list(), [3, 2])
+    # compute_output_shape
+    self.assertEqual(net.compute_output_shape((3, 32)).as_list(), [3, 2])
 
   def testInvalidNetworks(self):
     # redundant inputs
@@ -504,7 +613,7 @@ class DeferredModeTest(test.TestCase):
       def call(self, inputs):
         return inputs[0] + inputs[1]
 
-      def _compute_output_shape(self, input_shape):
+      def compute_output_shape(self, input_shape):
         return input_shape[0]
 
     c = AddLayer()([a, input_b])  # pylint: disable=not-callable

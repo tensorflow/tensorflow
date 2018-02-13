@@ -671,6 +671,28 @@ cc_library(
 )
 
 cc_library(
+    name = "aggressive_inst_combine",
+    srcs = glob([
+        "lib/Transforms/AggressiveInstCombine/*.c",
+        "lib/Transforms/AggressiveInstCombine/*.cpp",
+        "lib/Transforms/AggressiveInstCombine/*.inc",
+        "lib/Transforms/AggressiveInstCombine/*.h",
+    ]),
+    hdrs = glob([
+        "include/llvm/Transforms/AggressiveInstCombine/*.h",
+        "include/llvm/Transforms/AggressiveInstCombine/*.def",
+        "include/llvm/Transforms/AggressiveInstCombine/*.inc",
+    ]),
+    deps = [
+        ":analysis",
+        ":config",
+        ":core",
+        ":support",
+        ":transform_utils",
+    ],
+)
+
+cc_library(
     name = "analysis",
     srcs = glob([
         "lib/Analysis/*.c",
@@ -1002,6 +1024,7 @@ cc_library(
     deps = [
         ":arm_desc",
         ":arm_info",
+        ":arm_utils",
         ":config",
         ":mc_disassembler",
         ":support",
@@ -1405,6 +1428,7 @@ cc_library(
         "include/llvm/Transforms/IPO/*.inc",
     ]),
     deps = [
+        ":aggressive_inst_combine",
         ":analysis",
         ":bit_reader",
         ":bit_writer",
@@ -1931,6 +1955,7 @@ cc_library(
         "include/llvm/Transforms/IPO/SCCP.h",
     ]),
     deps = [
+        ":aggressive_inst_combine",
         ":analysis",
         ":config",
         ":core",

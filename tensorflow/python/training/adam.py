@@ -24,11 +24,12 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.AdamOptimizer")
 class AdamOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adam algorithm.
 
@@ -101,19 +102,16 @@ class AdamOptimizer(optimizer.Optimizer):
     self._beta2_t = None
     self._epsilon_t = None
 
-    # Variables to accumulate the powers of the beta parameters.
-    # Created in _create_slots when we know the variables to optimize.
-    self._beta1_power = None
-    self._beta2_power = None
-
     # Created in SparseApply if needed.
     self._updated_lr = None
 
   def _get_beta_accumulators(self):
-    return self._beta1_power, self._beta2_power
-
-  def _non_slot_variables(self):
-    return self._get_beta_accumulators()
+    if context.in_graph_mode():
+      graph = ops.get_default_graph()
+    else:
+      graph = None
+    return (self._get_non_slot_variable("beta1_power", graph=graph),
+            self._get_non_slot_variable("beta2_power", graph=graph))
 
   def _create_slots(self, var_list):
     # Create the beta1 and beta2 accumulators on the same device as the first
@@ -121,19 +119,13 @@ class AdamOptimizer(optimizer.Optimizer):
     # workers (these need to go on the same PS, otherwise some updates are
     # silently ignored).
     first_var = min(var_list, key=lambda x: x.name)
+    self._create_non_slot_variable(initial_value=self._beta1,
+                                   name="beta1_power",
+                                   colocate_with=first_var)
+    self._create_non_slot_variable(initial_value=self._beta2,
+                                   name="beta2_power",
+                                   colocate_with=first_var)
 
-    create_new = self._beta1_power is None
-    if not create_new and context.in_graph_mode():
-      create_new = (self._beta1_power.graph is not first_var.graph)
-
-    if create_new:
-      with ops.colocate_with(first_var):
-        self._beta1_power = variable_scope.variable(self._beta1,
-                                                    name="beta1_power",
-                                                    trainable=False)
-        self._beta2_power = variable_scope.variable(self._beta2,
-                                                    name="beta2_power",
-                                                    trainable=False)
     # Create slots for the first and second moments.
     for v in var_list:
       self._zeros_slot(v, "m", self._name)
@@ -148,10 +140,11 @@ class AdamOptimizer(optimizer.Optimizer):
   def _apply_dense(self, grad, var):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
+    beta1_power, beta2_power = self._get_beta_accumulators()
     return training_ops.apply_adam(
         var, m, v,
-        math_ops.cast(self._beta1_power, var.dtype.base_dtype),
-        math_ops.cast(self._beta2_power, var.dtype.base_dtype),
+        math_ops.cast(beta1_power, var.dtype.base_dtype),
+        math_ops.cast(beta2_power, var.dtype.base_dtype),
         math_ops.cast(self._lr_t, var.dtype.base_dtype),
         math_ops.cast(self._beta1_t, var.dtype.base_dtype),
         math_ops.cast(self._beta2_t, var.dtype.base_dtype),
@@ -161,10 +154,11 @@ class AdamOptimizer(optimizer.Optimizer):
   def _resource_apply_dense(self, grad, var):
     m = self.get_slot(var, "m")
     v = self.get_slot(var, "v")
+    beta1_power, beta2_power = self._get_beta_accumulators()
     return training_ops.resource_apply_adam(
         var.handle, m.handle, v.handle,
-        math_ops.cast(self._beta1_power, grad.dtype.base_dtype),
-        math_ops.cast(self._beta2_power, grad.dtype.base_dtype),
+        math_ops.cast(beta1_power, grad.dtype.base_dtype),
+        math_ops.cast(beta2_power, grad.dtype.base_dtype),
         math_ops.cast(self._lr_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta1_t, grad.dtype.base_dtype),
         math_ops.cast(self._beta2_t, grad.dtype.base_dtype),
@@ -172,8 +166,9 @@ class AdamOptimizer(optimizer.Optimizer):
         grad, use_locking=self._use_locking)
 
   def _apply_sparse_shared(self, grad, var, indices, scatter_add):
-    beta1_power = math_ops.cast(self._beta1_power, var.dtype.base_dtype)
-    beta2_power = math_ops.cast(self._beta2_power, var.dtype.base_dtype)
+    beta1_power, beta2_power = self._get_beta_accumulators()
+    beta1_power = math_ops.cast(beta1_power, var.dtype.base_dtype)
+    beta2_power = math_ops.cast(beta2_power, var.dtype.base_dtype)
     lr_t = math_ops.cast(self._lr_t, var.dtype.base_dtype)
     beta1_t = math_ops.cast(self._beta1_t, var.dtype.base_dtype)
     beta2_t = math_ops.cast(self._beta2_t, var.dtype.base_dtype)
@@ -217,12 +212,11 @@ class AdamOptimizer(optimizer.Optimizer):
   def _finish(self, update_ops, name_scope):
     # Update the power accumulators.
     with ops.control_dependencies(update_ops):
-      with ops.colocate_with(self._beta1_power):
-        update_beta1 = self._beta1_power.assign(
-            self._beta1_power * self._beta1_t,
-            use_locking=self._use_locking)
-        update_beta2 = self._beta2_power.assign(
-            self._beta2_power * self._beta2_t,
-            use_locking=self._use_locking)
+      beta1_power, beta2_power = self._get_beta_accumulators()
+      with ops.colocate_with(beta1_power):
+        update_beta1 = beta1_power.assign(
+            beta1_power * self._beta1_t, use_locking=self._use_locking)
+        update_beta2 = beta2_power.assign(
+            beta2_power * self._beta2_t, use_locking=self._use_locking)
     return control_flow_ops.group(*update_ops + [update_beta1, update_beta2],
                                   name=name_scope)

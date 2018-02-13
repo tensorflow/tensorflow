@@ -57,7 +57,8 @@ struct ImportGraphDefOptions {
   ImportGraphDefOptions()
       : uniquify_names(false),
         uniquify_prefix(false),
-        skip_mapped_nodes(false) {}
+        skip_mapped_nodes(false),
+        validate_shape(true) {}
 
   // Name prefix to use for nodes imported from the GraphDef.  For example, if
   // prefix="animals" and GraphDef contains a node "bunny" then the node will be
@@ -129,6 +130,9 @@ struct ImportGraphDefOptions {
 
   // If true, checks that all colocation constraints are nodes in the GraphDef.
   bool validate_colocation_constraints = true;
+
+  // If false skips shape validation.
+  bool validate_shape;
 
   // TODO(ashankar): Enable handling of GraphDefs produced by newer binaries
   // with ops that are not defined in the binary calling ImportGraphDef.

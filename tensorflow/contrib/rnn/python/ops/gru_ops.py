@@ -26,14 +26,13 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import rnn_cell_impl
-from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.util.deprecation import deprecated_args
 
 _gru_ops_so = loader.load_op_library(
     resource_loader.get_path_to_datafile("_gru_ops.so"))
 
-LayerRNNCell = rnn_cell_impl._LayerRNNCell  # pylint: disable=invalid-name,protected-access
+LayerRNNCell = rnn_cell_impl.LayerRNNCell  # pylint: disable=invalid-name
 
 
 @ops.RegisterGradient("GRUBlockCell")
@@ -181,16 +180,18 @@ class GRUBlockCell(LayerRNNCell):
     if input_size is None:
       raise ValueError("Expecting input_size to be set.")
 
-    self._gate_kernel = vs.get_variable(
+    self._gate_kernel = self.add_variable(
         "w_ru", [input_size + self._cell_size, self._cell_size * 2])
-    self._gate_bias = vs.get_variable(
+    self._gate_bias = self.add_variable(
         "b_ru", [self._cell_size * 2],
         initializer=init_ops.constant_initializer(1.0))
-    self._candidate_kernel = vs.get_variable(
+    self._candidate_kernel = self.add_variable(
         "w_c", [input_size + self._cell_size, self._cell_size])
-    self._candidate_bias = vs.get_variable(
+    self._candidate_bias = self.add_variable(
         "b_c", [self._cell_size],
         initializer=init_ops.constant_initializer(0.0))
+
+    self.built = True
 
   def call(self, inputs, h_prev):
     """GRU cell."""
@@ -224,15 +225,15 @@ class GRUBlockCellV2(GRUBlockCell):
     if input_size is None:
       raise ValueError("Expecting input_size to be set.")
 
-    with vs.variable_scope("gates"):
-      self._gate_kernel = vs.get_variable(
-          "kernel", [input_size + self._cell_size, self._cell_size * 2])
-      self._gate_bias = vs.get_variable(
-          "bias", [self._cell_size * 2],
-          initializer=init_ops.constant_initializer(1.0))
-    with vs.variable_scope("candidate"):
-      self._candidate_kernel = vs.get_variable(
-          "kernel", [input_size + self._cell_size, self._cell_size])
-      self._candidate_bias = vs.get_variable(
-          "bias", [self._cell_size],
-          initializer=init_ops.constant_initializer(0.0))
+    self._gate_kernel = self.add_variable(
+        "gates/kernel", [input_size + self._cell_size, self._cell_size * 2])
+    self._gate_bias = self.add_variable(
+        "gates/bias", [self._cell_size * 2],
+        initializer=init_ops.constant_initializer(1.0))
+    self._candidate_kernel = self.add_variable(
+        "candidate/kernel", [input_size + self._cell_size, self._cell_size])
+    self._candidate_bias = self.add_variable(
+        "candidate/bias", [self._cell_size],
+        initializer=init_ops.constant_initializer(0.0))
+
+    self.built = True

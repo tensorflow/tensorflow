@@ -232,7 +232,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       result = StringToDriverVersion(version);
     }
 #else
-#if !defined(PLATFORM_WINDOWS)
+#if !defined(PLATFORM_WINDOWS) && !defined(ANDROID_TEGRA)
   // Callback used when iterating through DSOs. Looks for the driver-interfacing
   // DSO and yields its version number into the callback data, when found.
   auto iterate_phdr =
@@ -366,8 +366,8 @@ port::StatusOr<DriverVersion> Diagnostician::FindKernelDriverVersion() {
   contents[kContentsSize - 1] = '\0';
 
   if (retcode != 0) {
-    LOG(INFO) << "driver version file contents: \"\"\"" << contents.begin()
-              << "\"\"\"";
+    VLOG(1) << "driver version file contents: \"\"\"" << contents.begin()
+            << "\"\"\"";
     fclose(driver_version_file);
     return FindKernelModuleVersion(contents.begin());
   }
