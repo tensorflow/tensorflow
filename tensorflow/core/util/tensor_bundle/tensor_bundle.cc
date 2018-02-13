@@ -286,7 +286,7 @@ Status WriteVariantTensor(const Tensor& val, FileOutputBuffer* out,
     TF_RETURN_IF_ERROR(out->Append(len));
     *crc32c = crc32c::Extend(*crc32c, reinterpret_cast<const char*>(&elem_size),
                              sizeof(uint64));
-    *bytes_written += sizeof(uint64);
+    *bytes_written += len.size();
 
     // Write the serialized variant.
     TF_RETURN_IF_ERROR(out->Append(elem));

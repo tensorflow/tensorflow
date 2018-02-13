@@ -132,13 +132,19 @@ class NormalizationLayersTest(test.TestCase):
       model.compile('sgd', 'mse')
       model.train_on_batch(x, x)
 
-      assert len(model.updates) == 2
+      self.assertEqual(len(bn.updates), 4)
+      self.assertEqual(len(model.updates), 2)
+      self.assertEqual(len(model.get_updates_for(x1)), 0)
+      self.assertEqual(len(model.get_updates_for(x2)), 2)
 
       # Test model-level reuse
       x3 = keras.layers.Input(shape=(10,))
       y3 = model(x3)
-      new_model = keras.models.Model(x3, y3)
-      assert len(model.updates) == 2
+      new_model = keras.models.Model(x3, y3, name='new_model')
+
+      self.assertEqual(len(new_model.updates), 2)
+      self.assertEqual(len(model.updates), 4)
+      self.assertEqual(len(new_model.get_updates_for(x3)), 2)
       new_model.compile('sgd', 'mse')
       new_model.train_on_batch(x, x)
 

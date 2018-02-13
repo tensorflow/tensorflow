@@ -524,6 +524,28 @@ class Transpose
                    TocoOperator* op) const override {}
 };
 
+class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
+                                    ::tflite::BuiltinOptions_LSTMOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    // Current toco converter only supports tanh, no clip.
+    return ::tflite::CreateLSTMOptions(*builder, /*fused_activation_function=*/
+                                       ::tflite::ActivationFunctionType_TANH,
+                                       /*cell_clip=*/0.0,
+                                       /*proj_clip=*/0.0);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    // Only support tanh activation, so check that tflite type is tanh.
+    CHECK(options.fused_activation_function() ==
+          ::tflite::ActivationFunctionType_TANH);
+  }
+};
+
 class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
                                     ::tflite::BuiltinOptions_MeanOptions> {
  public:
@@ -537,6 +559,24 @@ class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
     op->keep_dims = options.keep_dims();
+  }
+};
+
+class ResizeBilinear
+    : public BuiltinOperator<ResizeBilinearOperator,
+                             ::tflite::ResizeBilinearOptions,
+                             ::tflite::BuiltinOptions_ResizeBilinearOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateResizeBilinearOptions(*builder, op.align_corners);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->align_corners = options.align_corners();
   }
 };
 
@@ -755,10 +795,14 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                  OperatorType::kTranspose));
   ops.emplace_back(
       new Mean(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
+  ops.emplace_back(new ResizeBilinear(::tflite::BuiltinOperator_RESIZE_BILINEAR,
+                                      OperatorType::kResizeBilinear));
   ops.emplace_back(
       new Squeeze(::tflite::BuiltinOperator_SQUEEZE, OperatorType::kSqueeze));
   ops.emplace_back(new StridedSlice(::tflite::BuiltinOperator_STRIDED_SLICE,
                                     OperatorType::kStridedSlice));
+  ops.emplace_back(
+      new Lstm(::tflite::BuiltinOperator_LSTM, OperatorType::kLstmCell));
 
   // Custom Operators.
   ops.emplace_back(new Cast("CAST", OperatorType::kCast));
@@ -787,8 +831,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       new SimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1));
   ops.emplace_back(
       new SimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6));
-  ops.emplace_back(new SimpleOperator<ResizeBilinearOperator>(
-      "RESIZE_BILINEAR", OperatorType::kResizeBilinear));
   ops.emplace_back(new SimpleOperator<LogisticOperator>(
       "LOGISTIC", OperatorType::kLogistic));
   ops.emplace_back(

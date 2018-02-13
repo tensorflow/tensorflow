@@ -41,8 +41,6 @@ limitations under the License.
 
 #include "tensorflow/core/util/mkl_util.h"
 
-
-
 #ifndef INTEL_MKL_ML
 
 #include "mkldnn.hpp"

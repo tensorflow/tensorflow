@@ -35,7 +35,9 @@ tf_export("GIT_VERSION").export_constant(__name__, "GIT_VERSION")
 COMPILER_VERSION = __compiler_version__
 tf_export("COMPILER_VERSION").export_constant(__name__, "COMPILER_VERSION")
 CXX11_ABI_FLAG = __cxx11_abi_flag__
+tf_export("CXX11_ABI_FLAG").export_constant(__name__, "CXX11_ABI_FLAG")
 MONOLITHIC_BUILD = __monolithic_build__
+tf_export("MONOLITHIC_BUILD").export_constant(__name__, "MONOLITHIC_BUILD")
 
 GRAPH_DEF_VERSION = pywrap_tensorflow.GRAPH_DEF_VERSION
 tf_export("GRAPH_DEF_VERSION").export_constant(__name__, "GRAPH_DEF_VERSION")

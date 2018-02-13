@@ -33,6 +33,7 @@ from tensorflow.contrib import deprecated
 from tensorflow.contrib import distributions
 from tensorflow.contrib import estimator
 from tensorflow.contrib import factorization
+from tensorflow.contrib import feature_column
 from tensorflow.contrib import framework
 from tensorflow.contrib import gan
 from tensorflow.contrib import graph_editor
@@ -83,7 +84,6 @@ from tensorflow.contrib import training
 from tensorflow.contrib import util
 from tensorflow.contrib.eager.python import tfe as eager
 from tensorflow.contrib.lite.python import lite
-from tensorflow.contrib.ndlstm import python as ndlstm
 from tensorflow.contrib.receptive_field import receptive_field_api as receptive_field
 from tensorflow.contrib.remote_fused_graph import pylib as remote_fused_graph
 from tensorflow.contrib.specs import python as specs

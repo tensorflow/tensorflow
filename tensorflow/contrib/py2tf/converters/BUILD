@@ -26,7 +26,6 @@ py_library(
         "decorators.py",
         "for_canonicalization.py",
         "logical_expressions.py",
-        "print_functions.py",
         "side_effect_guards.py",
     ],
     srcs_version = "PY2AND3",
@@ -48,6 +47,7 @@ py_library(
         "//tensorflow/contrib/py2tf/pyct/static_analysis",
         "//tensorflow/contrib/py2tf/utils",
         "@gast_archive//:gast",
+        "@six_archive//:six",
     ],
 )
 
@@ -74,8 +74,8 @@ py_test(
 )
 
 py_test(
-    name = "call_trees_test",
-    srcs = ["call_trees_test.py"],
+    name = "builtin_functions_test",
+    srcs = ["builtin_functions_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
@@ -85,8 +85,8 @@ py_test(
 )
 
 py_test(
-    name = "decorators_test",
-    srcs = ["decorators_test.py"],
+    name = "call_trees_test",
+    srcs = ["call_trees_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
@@ -118,8 +118,8 @@ py_test(
 )
 
 py_test(
-    name = "builtin_functions_test",
-    srcs = ["builtin_functions_test.py"],
+    name = "decorators_test",
+    srcs = ["decorators_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
@@ -132,7 +132,6 @@ py_test(
     name = "for_canonicalization_test",
     srcs = ["for_canonicalization_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["nomac"],
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
@@ -148,18 +147,6 @@ py_test(
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
         "//tensorflow/python:client_testlib",
-    ],
-)
-
-py_test(
-    name = "print_functions_test",
-    srcs = ["print_functions_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":test_lib",
-        "//tensorflow/contrib/py2tf/pyct",
-        "//tensorflow/python:client_testlib",
-        "@gast_archive//:gast",
     ],
 )
 

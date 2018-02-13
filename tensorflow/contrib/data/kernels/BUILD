@@ -17,6 +17,28 @@ cc_library(
     alwayslink = 1,
 )
 
+cc_library(
+    name = "ignore_errors_dataset_op",
+    srcs = ["ignore_errors_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+    alwayslink = 1,
+)
+
+cc_library(
+    name = "dataset_kernels",
+    deps = [
+        ":ignore_errors_dataset_op",
+        ":prefetching_kernels",
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
 filegroup(
     name = "all_files",
     srcs = glob(

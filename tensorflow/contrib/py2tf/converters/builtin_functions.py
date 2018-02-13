@@ -21,12 +21,25 @@ from __future__ import print_function
 import gast
 
 from tensorflow.contrib.py2tf.pyct import templates
+from tensorflow.contrib.py2tf.pyct import transformer
 
 
-class BuiltinFunctionTransformer(gast.NodeTransformer):
-  """Transforms Print nodes to Call so they can be handled as functions."""
+class BuiltinFunctionTransformer(transformer.Base):
+  """Handles builtin functions and canonicalizes old-style print statement.
 
-  # TODO(mdan): Bring print_functions in here.
+  This transformer only covers functions that are translated into a
+  TF equivalent, like `len`.
+  Note that the `print` statement is converted to a function call here, but
+  wrapping the print function to a `py_func` is done by `call_trees` as a
+  generic uncompilable function wrap.
+  """
+
+  # TODO(mdan): Handle print entirely in here.
+  # Fully handling print here makes sense especially since we're considering
+  # using tf.Print instead.
+
+  def __init__(self, context):
+    super(BuiltinFunctionTransformer, self).__init__(context)
 
   def _convert_len(self, node):
     template = """
@@ -44,10 +57,19 @@ class BuiltinFunctionTransformer(gast.NodeTransformer):
       return self._convert_len(node)
     return node
 
+  def visit_Print(self, node):
+    self.generic_visit(node)
+    args = node.values
+    # Following is the case when calling print(a, b)
+    if len(args) == 1 and isinstance(args[0], gast.Tuple):
+      args = args[0].elts
+    template = """
+      fname(args)
+    """
+    return templates.replace(template, fname='print', args=args)
+
   # pylint:enable=invalid-name
 
 
-def transform(node):
-  transformer = BuiltinFunctionTransformer()
-  node = transformer.visit(node)
-  return node
+def transform(node, context):
+  return BuiltinFunctionTransformer(context).visit(node)

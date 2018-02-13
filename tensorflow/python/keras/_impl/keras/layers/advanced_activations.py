@@ -26,8 +26,10 @@ from tensorflow.python.keras._impl.keras import regularizers
 from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.LeakyReLU')
 class LeakyReLU(Layer):
   """Leaky version of a Rectified Linear Unit.
 
@@ -66,6 +68,7 @@ class LeakyReLU(Layer):
     return input_shape
 
 
+@tf_export('keras.layers.PReLU')
 class PReLU(Layer):
   """Parametric Rectified Linear Unit.
 
@@ -163,6 +166,7 @@ class PReLU(Layer):
     return input_shape
 
 
+@tf_export('keras.layers.ELU')
 class ELU(Layer):
   """Exponential Linear Unit.
 
@@ -201,6 +205,7 @@ class ELU(Layer):
     return input_shape
 
 
+@tf_export('keras.layers.ThresholdedReLU')
 class ThresholdedReLU(Layer):
   """Thresholded Rectified Linear Unit.
 
@@ -239,6 +244,7 @@ class ThresholdedReLU(Layer):
     return input_shape
 
 
+@tf_export('keras.layers.Softmax')
 class Softmax(Layer):
   """Softmax activation function.
 

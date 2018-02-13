@@ -50,6 +50,7 @@ bool ResolveConstantFakeQuant::Run(Model* model, std::size_t op_index) {
   output_array.data_type = ArrayDataType::kFloat;
   CHECK(!output_array.buffer);
   const auto& input_buffer = input_array.GetBuffer<ArrayDataType::kFloat>();
+  output_array.GetOrCreateMinMax() = *fakequant_op->minmax;
   auto& output_buffer = output_array.GetMutableBuffer<ArrayDataType::kFloat>();
   const int size = input_buffer.data.size();
   output_buffer.data.resize(size);

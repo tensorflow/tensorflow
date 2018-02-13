@@ -1539,8 +1539,22 @@ class Session(BaseSession):
   def __exit__(self, exec_type, exec_value, exec_tb):
     if exec_type is errors.OpError:
       logging.error('Session closing due to OpError: %s', (exec_value,))
-    self._default_session_context_manager.__exit__(exec_type, exec_value,
-                                                   exec_tb)
+    try:
+      self._default_session_context_manager.__exit__(exec_type, exec_value,
+                                                     exec_tb)
+    except RuntimeError as error:
+      if error == exec_value:
+        # NOTE(skyewm): for some reason, in Python3,
+        # _default_session_context_manager.__exit__ will re-raise the "not
+        # re-entrant" exception raised in __enter__ above (note that if we're
+        # here, we're in the outer session context manager, since __exit__ is
+        # not called when __enter__ raises an exception). We still want to
+        # continue cleaning up this context manager before the exception is
+        # further propagated, so we ignore it here (note that it'll continue
+        # being propagated after this method completes).
+        pass
+      else:
+        raise
     self._default_graph_context_manager.__exit__(exec_type, exec_value, exec_tb)
 
     self._default_session_context_manager = None

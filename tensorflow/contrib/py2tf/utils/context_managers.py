@@ -20,14 +20,15 @@ from __future__ import print_function
 
 import contextlib
 
+from tensorflow.python.framework import ops
 
-def control_dependency_on_returns(tf, return_value):
+
+def control_dependency_on_returns(return_value):
   """Create a TF control dependency on the return values of a function.
 
   If the function had no return value, a no-op context is returned.
 
   Args:
-    tf: The TensorFlow module.
     return_value: The return value to set as control dependency.
 
   Returns:
@@ -38,4 +39,4 @@ def control_dependency_on_returns(tf, return_value):
   # TODO(mdan): Filter to tensor objects.
   if not isinstance(return_value, (list, tuple)):
     return_value = (return_value,)
-  return tf.control_dependencies(return_value)
+  return ops.control_dependencies(return_value)

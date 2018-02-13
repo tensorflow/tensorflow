@@ -576,6 +576,26 @@ xla_test(
 )
 
 xla_test(
+    name = "exhaustive_f32_elementwise_op_test",
+    srcs = ["exhaustive_f32_elementwise_op_test.cc"],
+    backends = [
+        "cpu",
+        "gpu",
+    ],
+    shard_count = 48,
+    tags = [
+        "enormous",
+        "manual",
+    ],
+    deps = [
+        ":client_library_test_base",
+        ":literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+    ],
+)
+
+xla_test(
     name = "reduce_precision_test",
     srcs = ["reduce_precision_test.cc"],
     tags = ["enable_for_xla_interpreter"],
@@ -601,6 +621,9 @@ xla_test(
 xla_test(
     name = "dot_operation_test",
     srcs = ["dot_operation_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+    ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
@@ -623,6 +646,9 @@ xla_test(
 xla_test(
     name = "dot_operation_runtime_test",
     srcs = ["dot_operation_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+    ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",

@@ -20,7 +20,6 @@ from __future__ import print_function
 
 from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.contrib.py2tf.converters import logical_expressions
-from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -34,12 +33,11 @@ class GradientsFunctionTest(converter_test_base.TestCase):
 
     node = self.parse_and_analyze(test_fn, {})
     node = logical_expressions.transform(node)
-    result = compiler.ast_to_object(node)
-    setattr(result, 'tf', math_ops)
 
-    with self.test_session() as sess:
-      self.assertTrue(sess.run(result.test_fn(1, 1)))
-      self.assertFalse(sess.run(result.test_fn(1, 2)))
+    with self.compiled(node, math_ops.equal) as result:
+      with self.test_session() as sess:
+        self.assertTrue(sess.run(result.test_fn(1, 1)))
+        self.assertFalse(sess.run(result.test_fn(1, 2)))
 
   def test_bool_ops(self):
 
@@ -48,11 +46,11 @@ class GradientsFunctionTest(converter_test_base.TestCase):
 
     node = self.parse_and_analyze(test_fn, {})
     node = logical_expressions.transform(node)
-    result = compiler.ast_to_object(node)
-    setattr(result, 'tf', math_ops)
 
-    with self.test_session() as sess:
-      self.assertTrue(sess.run(result.test_fn(True, False, True)))
+    with self.compiled(node, math_ops.logical_or,
+                       math_ops.logical_and) as result:
+      with self.test_session() as sess:
+        self.assertTrue(sess.run(result.test_fn(True, False, True)))
 
 
 if __name__ == '__main__':

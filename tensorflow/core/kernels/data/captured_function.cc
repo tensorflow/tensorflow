@@ -32,7 +32,11 @@ Status CapturedFunction::Create(
   return Status::OK();
 }
 
-CapturedFunction::~CapturedFunction() {}
+CapturedFunction::~CapturedFunction() {
+  if (lib_ != nullptr) {
+    lib_->ReleaseHandle(f_handle_).IgnoreError();
+  }
+}
 
 namespace {
 class CallFrameBase : public CallFrameInterface {

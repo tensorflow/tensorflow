@@ -22,7 +22,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:bounds_check_lib",
         "//tensorflow/core/kernels:dataset",
         "//third_party/eigen3",
-        "@kafka//:kafka",
+        "@kafka",
     ],
 )
 
@@ -88,6 +88,7 @@ tf_py_test(
     ],
     tags = [
         "manual",
+        "notap",
     ],
 )
 
