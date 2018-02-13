@@ -20,6 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Target/TargetOptions.h"
@@ -67,6 +68,7 @@ std::unique_ptr<llvm::Module> DropConstantInitializers(
   std::unique_ptr<llvm::Module> cloned_module = CloneModule(&module);
   for (llvm::GlobalVariable& global_var : cloned_module->globals()) {
     global_var.setInitializer(nullptr);
+    global_var.setLinkage(llvm::GlobalValue::LinkageTypes::ExternalLinkage);
   }
   return cloned_module;
 }
