@@ -23,6 +23,7 @@ limitations under the License.
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -59,6 +60,15 @@ string AsString(const std::string& str) {
 
 llvm::StringRef AsStringRef(tensorflow::StringPiece str) {
   return llvm::StringRef(str.data(), str.size());
+}
+
+std::unique_ptr<llvm::Module> DropConstantInitializers(
+    const llvm::Module& module) {
+  std::unique_ptr<llvm::Module> cloned_module = CloneModule(&module);
+  for (llvm::GlobalVariable& global_var : cloned_module->globals()) {
+    global_var.setInitializer(nullptr);
+  }
+  return cloned_module;
 }
 
 string DumpModuleToString(const llvm::Module& module) {
@@ -672,6 +682,19 @@ static string GetProcessUniqueIrFileName(tensorflow::StringPiece prefix) {
   return uniquer->GetUniqueName(prefix);
 }
 
+static Status CreateAndWriteStringToFile(const string& directory_name,
+                                         const string& file_name,
+                                         const string& text) {
+  std::unique_ptr<tensorflow::WritableFile> f;
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
+  TF_RETURN_IF_ERROR(f->Append(text));
+  TF_RETURN_IF_ERROR(f->Close());
+  return Status::OK();
+}
+
 Status DumpIRToDirectory(const string& directory_name,
                          const string& hlo_module_name,
                          const llvm::Module& llvm_module, bool optimized) {
@@ -686,13 +709,17 @@ Status DumpIRToDirectory(const string& directory_name,
       directory_name,
       tensorflow::strings::StrCat(unique_and_safe_file_name, ".ll"));
 
-  std::unique_ptr<tensorflow::WritableFile> f;
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewWritableFile(ir_file_name, &f));
-  TF_RETURN_IF_ERROR(f->Append(DumpModuleToString(llvm_module)));
-  return f->Close();
+  // For some models the embedded constants can be huge, so also dump the module
+  // with the constants stripped to get IR that is easier to manipulate.
+  string ir_no_constant_initializers_file_name = tensorflow::io::JoinPath(
+      directory_name,
+      tensorflow::strings::StrCat(unique_and_safe_file_name, "-noconst.ll"));
+
+  TF_RETURN_IF_ERROR(CreateAndWriteStringToFile(
+      directory_name, ir_file_name, DumpModuleToString(llvm_module)));
+  return CreateAndWriteStringToFile(
+      directory_name, ir_no_constant_initializers_file_name,
+      DumpModuleToString(*DropConstantInitializers(llvm_module)));
 }
 
 llvm::Function* CreateFunction(llvm::FunctionType* function_type,
