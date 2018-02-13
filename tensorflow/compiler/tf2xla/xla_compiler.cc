@@ -153,7 +153,8 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
   CopyGraph(*fbody->graph, graph.get());
   OptimizerOptions opts;
-  opts.set_do_common_subexpression_elimination(true);
+  opts.set_opt_level(OptimizerOptions::L0);
+  opts.set_do_common_subexpression_elimination(false);
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
@@ -184,8 +185,7 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
       CheckSignature(fbody->arg_types, args),
       "Signature check failure while compiling: ", function.name());
 
-  std::unique_ptr<Graph> graph(new Graph(options_.flib_def));
-  CopyGraph(*fbody->graph, graph.get());
+  std::unique_ptr<Graph> graph = GetGraph(fbody);
 
   // _Arg and _Retval nodes don't exist in the stored subgraph for the function;
   // they are added by the function body looked up.  Therefore, they don't have
@@ -212,15 +212,6 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
                    strings::StrCat("xla_compile_function_", function_id),
                    *graph);
   }
-
-  // Optimize the graph before running the compiler.
-  OptimizerOptions opts;
-  opts.set_do_common_subexpression_elimination(true);
-  opts.set_do_function_inlining(true);
-  opts.set_do_constant_folding(true);
-  GraphOptimizer optimizer(opts);
-  optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
-                     /*device=*/nullptr, &graph, /*shape_map=*/nullptr);
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
