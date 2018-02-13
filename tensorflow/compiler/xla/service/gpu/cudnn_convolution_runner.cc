@@ -106,6 +106,9 @@ Status RunCudnnConvolution(
     se::ScratchAllocator* scratch_allocator, const Window& window,
     const ConvolutionDimensionNumbers& dnums, AlgorithmConfig algorithm,
     Stream* stream, ProfileResult* profile_result /*= nullptr*/) {
+  VLOG(3) << "Convolution Algorithm: " << algorithm.algorithm().algo_id();
+  VLOG(3) << "tensor_ops_enabled: "
+          << algorithm.algorithm().tensor_ops_enabled();
   VLOG(3) << "Convolution kind: " << CudnnConvKindToString(kind);
   VLOG(3) << "input shape: { " << ShapeUtil::HumanString(input_shape) << " }";
   VLOG(3) << "filter shape: { " << ShapeUtil::HumanString(filter_shape) << " }";

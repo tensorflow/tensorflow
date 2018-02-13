@@ -73,6 +73,7 @@ import itertools as _itertools
 import uuid as _uuid
 
 from tensorflow.contrib import framework as _framework
+from tensorflow.core.framework import attr_value_pb2 as _attr_value_pb2
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.ops import array_ops as _array_ops
 from tensorflow.python.util.all_util import remove_undocumented
@@ -133,10 +134,17 @@ class OpHint(object):
 
     def augmented_identity(arg):
       identity_op = _array_ops.identity(arg)
-      attr = identity_op.op.node_def.attr
-      attr[OpHint.FUNCTION_NAME_ATTR].s = self._function_name
-      attr[OpHint.FUNCTION_UUID_ATTR].s = self._unique_function_id
-      attr[OpHint.FUNCTION_INPUT_INDEX_ATTR].i = self._curr_input_index
+      # pylint: disable=protected-access
+      identity_op.op._set_attr(
+          OpHint.FUNCTION_NAME_ATTR,
+          _attr_value_pb2.AttrValue(s=self._function_name))
+      identity_op.op._set_attr(
+          OpHint.FUNCTION_UUID_ATTR,
+          _attr_value_pb2.AttrValue(s=self._unique_function_id))
+      identity_op.op._set_attr(
+          OpHint.FUNCTION_INPUT_INDEX_ATTR,
+          _attr_value_pb2.AttrValue(i=self._curr_input_index))
+      # pylint: enable=protected-access
       self._curr_input_index += 1
       return identity_op
 
@@ -154,10 +162,17 @@ class OpHint(object):
 
     def augmented_identity(arg):
       identity_op = _array_ops.identity(arg)
-      attr = identity_op.op.node_def.attr
-      attr[OpHint.FUNCTION_NAME_ATTR].s = self._function_name
-      attr[OpHint.FUNCTION_UUID_ATTR].s = self._unique_function_id
-      attr[OpHint.FUNCTION_OUTPUT_INDEX_ATTR].i = self._curr_output_index
+      # pylint: disable=protected-access
+      identity_op.op._set_attr(
+          OpHint.FUNCTION_NAME_ATTR,
+          _attr_value_pb2.AttrValue(s=self._function_name))
+      identity_op.op._set_attr(
+          OpHint.FUNCTION_UUID_ATTR,
+          _attr_value_pb2.AttrValue(s=self._unique_function_id))
+      identity_op.op._set_attr(
+          OpHint.FUNCTION_OUTPUT_INDEX_ATTR,
+          _attr_value_pb2.AttrValue(i=self._curr_output_index))
+      # pylint: enable=protected-access
       self._curr_output_index += 1
       return identity_op
 

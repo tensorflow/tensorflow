@@ -957,3 +957,9 @@ ops.register_proto_function(
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)
+
+
+def is_resource_variable(var):
+  """"Returns True if `var` is to be considered a ResourceVariable."""
+  return isinstance(var, ResourceVariable) or hasattr(
+      var, "_should_act_as_resource_variable")

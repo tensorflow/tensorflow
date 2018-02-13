@@ -630,6 +630,19 @@ StatusOr<Shape> ParseShapeStringInternal(tensorflow::StringPiece* s) {
   return SameDimensions(lhs, rhs);
 }
 
+/* static */ bool ShapeUtil::CompatibleIgnoringFpPrecision(const Shape& lhs,
+                                                           const Shape& rhs) {
+  if (lhs.element_type() == TUPLE) {
+    return rhs.element_type() == TUPLE &&
+           ContainersEqual(lhs.tuple_shapes(), rhs.tuple_shapes(),
+                           CompatibleIgnoringFpPrecision);
+  }
+  if (SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
+    return CompatibleIgnoringElementType(lhs, rhs);
+  }
+  return false;
+}
+
 /* static */ int64 ShapeUtil::GetDimension(const Shape& shape,
                                            int64 dimension_number) {
   return shape.dimensions(GetDimensionNumber(shape, dimension_number));

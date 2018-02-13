@@ -21,6 +21,7 @@ limitations under the License.
 #include "llvm/IR/Verifier.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
@@ -31,6 +32,8 @@ const char* const kTanhV4F32SymbolName = "__xla_cpu_runtime_TanhV4F32";
 const char* const kTanhV8F32SymbolName = "__xla_cpu_runtime_TanhV8F32";
 const char* const kExpV4F32SymbolName = "__xla_cpu_runtime_ExpV4F32";
 const char* const kExpV8F32SymbolName = "__xla_cpu_runtime_ExpV8F32";
+const char* const kLogV4F32SymbolName = "__xla_cpu_runtime_LogV4F32AVX";
+const char* const kLogV8F32SymbolName = "__xla_cpu_runtime_LogV8F32AVX";
 
 namespace {
 llvm::Function* EmitVectorF32TanhIfNeeded(llvm::Module* module,
@@ -116,19 +119,19 @@ llvm::Function* EmitVectorF32ExpIfNeeded(llvm::Module* module,
 
   // This implements the same polynomial approximation as implemented in Eigen3.
 
-  const double exp_hi = 88.3762626647950;
-  const double exp_lo = -88.3762626647949;
+  const float exp_hi = 88.3762626647950;
+  const float exp_lo = -88.3762626647949;
 
-  const double cephes_LOG2EF = 1.44269504088896341;
-  const double cephes_exp_C1 = 0.693359375;
-  const double cephes_exp_C2 = -2.12194440e-4;
+  const float cephes_LOG2EF = 1.44269504088896341;
+  const float cephes_exp_C1 = 0.693359375;
+  const float cephes_exp_C2 = -2.12194440e-4;
 
-  const double cephes_exp_p0 = 1.9875691500E-4;
-  const double cephes_exp_p1 = 1.3981999507E-3;
-  const double cephes_exp_p2 = 8.3334519073E-3;
-  const double cephes_exp_p3 = 4.1665795894E-2;
-  const double cephes_exp_p4 = 1.6666665459E-1;
-  const double cephes_exp_p5 = 5.0000001201E-1;
+  const float cephes_exp_p0 = 1.9875691500E-4;
+  const float cephes_exp_p1 = 1.3981999507E-3;
+  const float cephes_exp_p2 = 8.3334519073E-3;
+  const float cephes_exp_p3 = 4.1665795894E-2;
+  const float cephes_exp_p4 = 1.6666665459E-1;
+  const float cephes_exp_p5 = 5.0000001201E-1;
 
   llvm::Value* input = &*vector_exp_function->arg_begin();
   llvm::Value* input_clamped =
@@ -146,7 +149,7 @@ llvm::Function* EmitVectorF32ExpIfNeeded(llvm::Module* module,
   y = vsl.MulAdd(y, x, cephes_exp_p4);
   y = vsl.MulAdd(y, x, cephes_exp_p5);
   y = vsl.MulAdd(y, z, x);
-  y = vsl.Add(1.0, y);
+  y = vsl.Add(1.0f, y);
 
   // VectorSupportLibrary (intentionally) can't juggle more than one type at a
   // time so drop down to IRBuilder for this bit.
@@ -167,8 +170,132 @@ llvm::Function* EmitVectorF32ExpIfNeeded(llvm::Module* module,
 
   ir_builder.CreateRet(result);
 
-  CHECK(!llvm::verifyFunction(*vector_exp_function));
+  DCHECK(!llvm::verifyFunction(*vector_exp_function));
   return vector_exp_function;
+}
+
+llvm::Function* EmitVectorF32LogIfNeeded(llvm::Module* module,
+                                         llvm::StringRef function_name,
+                                         int vector_width,
+                                         bool enable_fast_math) {
+  llvm::Function* vector_log_function = module->getFunction(function_name);
+  if (vector_log_function == nullptr) {
+    // If the function declaration is not present in the module, there can't be
+    // any calls to resolve.  Don't emit the function in this case.
+    return nullptr;
+  }
+
+  llvm::LLVMContext* context = &module->getContext();
+
+  llvm::BasicBlock* vector_log_body =
+      llvm::BasicBlock::Create(*context, "body", vector_log_function);
+
+  llvm::IRBuilder<> ir_builder(vector_log_body);
+  llvm::FastMathFlags fast_math_flags;
+  fast_math_flags.setFast();
+  ir_builder.setFastMathFlags(fast_math_flags);
+
+  llvm::Value* input = &*vector_log_function->arg_begin();
+  VectorSupportLibrary vsl(F32, vector_width, &ir_builder, "log_f32");
+
+  const float half = 0.5;
+
+  // This implements the same polynomial approximation as implemented in Eigen3.
+  // Returns NaN for x < 0, -INF for x = 0
+  const float cephes_SQRTHF = 0.707106781186547524;
+  const float cephes_log_p0 = 7.0376836292E-2;
+  const float cephes_log_p1 = -1.1514610310E-1;
+  const float cephes_log_p2 = 1.1676998740E-1;
+  const float cephes_log_p3 = -1.2420140846E-1;
+  const float cephes_log_p4 = +1.4249322787E-1;
+  const float cephes_log_p5 = -1.6668057665E-1;
+  const float cephes_log_p6 = +2.0000714765E-1;
+  const float cephes_log_p7 = -2.4999993993E-1;
+  const float cephes_log_p8 = +3.3333331174E-1;
+  const float cephes_log_q1 = -2.12194440e-4;
+  const float cephes_log_q2 = 0.693359375;
+
+  // The smallest non denormalized float number.
+  const float min_norm_pos = tensorflow::bit_cast<float, int32>(0x00800000);
+  const float minus_inf = tensorflow::bit_cast<float, int32>(0xff800000);
+
+  // NB! This number is denormal and since TF sets the denormals-are-zero flag
+  // (and if TF didn't, -ffast-math would) trying to operate on this float using
+  // C++ operations (including, for instance, implicit conversion to double)
+  // will coerce this to zero.
+  const float inv_mant_mask = tensorflow::bit_cast<float, int32>(~0x7f800000);
+
+  // invalid_mask is set if x is negative or NaN (and therefore output
+  // must be NaN).
+  llvm::Value* invalid_mask = vsl.FCmpULEMask(input, vsl.GetZeroVector());
+  llvm::Value* iszero_mask = vsl.FCmpEQMask(input, vsl.GetZeroVector());
+
+  // Cut off denormalized stuff.
+  input = vsl.Max(min_norm_pos, input);
+
+  // VectorSupportLibrary (intentionally) can't juggle more than one type at a
+  // time so drop down to IRBuilder for this bit.
+  llvm::Value* vector_constant_0x7f =
+      ir_builder.CreateVectorSplat(vector_width, ir_builder.getInt32(0x7f));
+  llvm::Value* vector_constant_23 =
+      ir_builder.CreateVectorSplat(vector_width, ir_builder.getInt32(23));
+  llvm::Type* i32_vector_type =
+      llvm::VectorType::get(ir_builder.getInt32Ty(), vector_width);
+
+  llvm::Value* emm0 = ir_builder.CreateLShr(
+      ir_builder.CreateBitCast(input, i32_vector_type), vector_constant_23);
+
+  // Keep only the fractional part.
+  input = vsl.FloatAnd(input, inv_mant_mask);
+  input = vsl.FloatOr(input, half);
+
+  emm0 = ir_builder.CreateSub(emm0, vector_constant_0x7f);
+  llvm::Value* e =
+      vsl.Add(1.0f, ir_builder.CreateSIToFP(emm0, vsl.vector_type()));
+
+  // part2:
+  //   if( x < SQRTHF ) {
+  //     e -= 1;
+  //     x = x + x - 1.0;
+  //   } else { x = x - 1.0; }
+  llvm::Value* mask = vsl.FCmpOLTMask(input, cephes_SQRTHF);
+  llvm::Value* tmp = vsl.FloatAnd(input, mask);
+  input = vsl.Sub(input, 1.0);
+  e = vsl.Sub(e, vsl.FloatAnd(mask, 1.0));
+  input = vsl.Add(input, tmp);
+
+  llvm::Value* x2 = vsl.Mul(input, input);
+  llvm::Value* x3 = vsl.Mul(x2, input);
+
+  llvm::Value *y, *y1, *y2;
+  y = vsl.MulAdd(input, cephes_log_p0, cephes_log_p1);
+  y1 = vsl.MulAdd(input, cephes_log_p3, cephes_log_p4);
+  y2 = vsl.MulAdd(input, cephes_log_p6, cephes_log_p7);
+  y = vsl.MulAdd(y, input, cephes_log_p2);
+  y1 = vsl.MulAdd(y1, input, cephes_log_p5);
+  y2 = vsl.MulAdd(y2, input, cephes_log_p8);
+  y = vsl.MulAdd(y, x3, y1);
+  y = vsl.MulAdd(y, x3, y2);
+  y = vsl.Mul(y, x3);
+
+  y1 = vsl.Mul(cephes_log_q1, e);
+  tmp = vsl.Mul(half, x2);
+  y = vsl.Add(y, y1);
+  input = vsl.Sub(input, tmp);
+  y2 = vsl.Mul(cephes_log_q2, e);
+  input = vsl.Add(input, y);
+  input = vsl.Add(input, y2);
+
+  // Negative arg will be NAN, 0 will be -INF.
+  llvm::Value* or_lhs =
+      vsl.FloatAndNot(iszero_mask, vsl.FloatOr(input, invalid_mask));
+  llvm::Value* or_rhs = vsl.FloatAnd(iszero_mask, minus_inf);
+  llvm::Value* result = vsl.FloatOr(or_lhs, or_rhs);
+
+  ir_builder.CreateRet(result);
+
+  DCHECK(!llvm::verifyFunction(*vector_log_function));
+  return vector_log_function;
 }
 }  // namespace
 
@@ -187,11 +314,21 @@ void RewriteIRRuntimeFunctions(llvm::Module* module, bool enable_fast_math) {
       EmitVectorF32ExpIfNeeded(module, kExpV8F32SymbolName,
                                /*vector_width=*/8, enable_fast_math);
 
+  auto* log_v4f32 =
+      EmitVectorF32LogIfNeeded(module, kLogV4F32SymbolName,
+                               /*vector_width=*/4, enable_fast_math);
+  auto* log_v8f32 =
+      EmitVectorF32LogIfNeeded(module, kLogV8F32SymbolName,
+                               /*vector_width=*/8, enable_fast_math);
+
   // Gather all the call sites, force inline them and then delete the vector
   // function bodies.
+  //
+  // TODO(b/73081976): Should we avoid inlining these intrinsics in some cases?
 
   std::vector<llvm::CallInst*> calls_to_inline;
-  for (auto* function : {tanh_v4f32, tanh_v8f32, exp_v4f32, exp_v8f32}) {
+  for (auto* function :
+       {tanh_v4f32, tanh_v8f32, exp_v4f32, exp_v8f32, log_v4f32, log_v8f32}) {
     if (function != nullptr) {
       for (auto* user : function->users()) {
         calls_to_inline.push_back(llvm::cast<llvm::CallInst>(user));
@@ -204,7 +341,8 @@ void RewriteIRRuntimeFunctions(llvm::Module* module, bool enable_fast_math) {
     CHECK(llvm::InlineFunction(call_to_inline, inline_function_info));
   }
 
-  for (auto* function : {tanh_v4f32, tanh_v8f32, exp_v4f32, exp_v8f32}) {
+  for (auto* function :
+       {tanh_v4f32, tanh_v8f32, exp_v4f32, exp_v8f32, log_v4f32, log_v8f32}) {
     if (function != nullptr) {
       function->eraseFromParent();
     }

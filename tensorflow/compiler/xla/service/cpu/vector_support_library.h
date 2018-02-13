@@ -41,40 +41,82 @@ class VectorSupportLibrary {
   llvm::Value* Mul(int64 lhs, llvm::Value* rhs) {
     return Mul(ir_builder()->getInt64(lhs), rhs);
   }
-  llvm::Value* Mul(double lhs, llvm::Value* rhs) {
-    return Mul(llvm::ConstantFP::get(rhs->getType(), lhs), rhs);
+  llvm::Value* Mul(float lhs, llvm::Value* rhs) {
+    return Mul(GetConstantFloat(rhs->getType(), lhs), rhs);
   }
 
   llvm::Value* Add(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* Add(int64 lhs, llvm::Value* rhs) {
     return Add(ir_builder()->getInt64(lhs), rhs);
   }
-  llvm::Value* Add(double lhs, llvm::Value* rhs) {
-    return Add(llvm::ConstantFP::get(vector_type(), lhs), rhs);
+  llvm::Value* Add(float lhs, llvm::Value* rhs) {
+    return Add(GetConstantFloat(rhs->getType(), lhs), rhs);
   }
 
   llvm::Value* Sub(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* Sub(llvm::Value* lhs, float rhs) {
+    return Sub(lhs, GetConstantFloat(lhs->getType(), rhs));
+  }
   llvm::Value* Max(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* Max(float lhs, llvm::Value* rhs) {
+    return Max(GetConstantFloat(rhs->getType(), lhs), rhs);
+  }
   llvm::Value* Div(llvm::Value* lhs, llvm::Value* rhs);
 
   llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, llvm::Value* c) {
     return Add(c, Mul(a, b));
   }
 
-  llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, double c) {
-    return Add(llvm::ConstantFP::get(vector_type(), c), Mul(a, b));
+  llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, float c) {
+    return Add(GetConstantFloat(vector_type(), c), Mul(a, b));
   }
 
-  llvm::Value* MulAdd(llvm::Value* a, double b, double c) {
-    return Add(llvm::ConstantFP::get(a->getType(), c),
-               Mul(a, llvm::ConstantFP::get(a->getType(), b)));
+  llvm::Value* MulAdd(llvm::Value* a, float b, float c) {
+    return Add(GetConstantFloat(a->getType(), c),
+               Mul(a, GetConstantFloat(a->getType(), b)));
   }
 
   llvm::Value* Floor(llvm::Value* a);
 
-  llvm::Value* Clamp(llvm::Value* a, double low, double high);
-  llvm::Value* SplatFloat(double d) {
-    return llvm::ConstantFP::get(vector_type(), d);
+  llvm::Value* Clamp(llvm::Value* a, float low, float high);
+  llvm::Value* SplatFloat(float d) {
+    return GetConstantFloat(vector_type(), d);
+  }
+
+  // These compare instructions return a floating point typed mask instead of an
+  // i1.  For instance, on a vector typed input, lanes where the predicate is
+  // true get a float with all ones and other lanes get a float with all zeros.
+  // This is slightly odd from the perspective of LLVM's type system, but it
+  // makes kernel IR generation code written using VectorSupportLibrary (its
+  // raison d'etre) less cluttered.
+
+  llvm::Value* FCmpEQMask(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* FCmpULEMask(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* FCmpOLTMask(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* FCmpOLTMask(llvm::Value* lhs, float rhs) {
+    return FCmpOLTMask(lhs, GetConstantFloat(lhs->getType(), rhs));
+  }
+
+  // These boolean operations operate on the bitwise values of the floating
+  // point inputs.  They return a (vector of) float(s) but like in the mask
+  // generating predicates above this type system oddity makes the kernel IR
+  // generation code less cluttered.
+  llvm::Value* FloatAnd(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* FloatAnd(llvm::Value* lhs, float rhs) {
+    return FloatAnd(lhs, GetConstantFloat(lhs->getType(), rhs));
+  }
+  llvm::Value* FloatOr(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* FloatOr(llvm::Value* lhs, float rhs) {
+    return FloatOr(lhs, GetConstantFloat(lhs->getType(), rhs));
+  }
+  llvm::Value* FloatNot(llvm::Value* lhs);
+  llvm::Value* FloatAndNot(llvm::Value* lhs, llvm::Value* rhs) {
+    return FloatAnd(FloatNot(lhs), rhs);
+  }
+
+  llvm::Value* BroadcastScalar(llvm::Value* x);
+  llvm::Value* BroadcastScalar(float d) {
+    return BroadcastScalar(GetConstantFloat(scalar_type(), d));
   }
 
   llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,
@@ -193,6 +235,17 @@ class VectorSupportLibrary {
 
   std::vector<llvm::Value*> ComputeAvxOptimizedHorizontalSums(
       std::vector<llvm::Value*> vectors, llvm::Value* init_values);
+
+  llvm::Type* IntegerTypeForFloatSize(bool vector);
+  llvm::Value* I1ToFloat(llvm::Value* i1);
+  llvm::Value* GetConstantFloat(llvm::Type* type, float f) {
+    llvm::Constant* scalar_value =
+        llvm::ConstantFP::get(type->getContext(), llvm::APFloat(f));
+    if (llvm::isa<llvm::VectorType>(type)) {
+      return llvm::ConstantVector::getSplat(vector_size(), scalar_value);
+    }
+    return scalar_value;
+  }
 
   int64 vector_size_;
   PrimitiveType primitive_type_;

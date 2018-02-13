@@ -48,11 +48,6 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 
 
-def _is_resource(v):
-  """Returns true if v is something you get from a resource variable."""
-  return isinstance(v, resource_variable_ops.ResourceVariable)
-
-
 def _create_slot_var(primary, val, scope, validate_shape, shape, dtype):
   """Helper function for creating a slot variable."""
 
@@ -65,7 +60,7 @@ def _create_slot_var(primary, val, scope, validate_shape, shape, dtype):
   shape = shape if callable(val) else None
   slot = variable_scope.get_variable(
       scope, initializer=val, trainable=False,
-      use_resource=_is_resource(primary),
+      use_resource=resource_variable_ops.is_resource_variable(primary),
       shape=shape, dtype=dtype,
       validate_shape=validate_shape)
   variable_scope.get_variable_scope().set_partitioner(current_partitioner)
