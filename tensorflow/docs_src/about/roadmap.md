@@ -1,37 +1,89 @@
 # Roadmap
-**Last updated: January 23, 2017**
+**Last updated: Feb 12, 2018**
 
-TensorFlow is a fast moving project. In order for the community to better
-understand what the near future will bring, this document shares what we are
-working on internally. Many of these features were requested by the community,
-and we welcome
-[contributions](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome).
+TensorFlow is a rapidly moving, community supported project. This document is intended 
+to provide guidance about priorities and focus areas of the core set of TensorFlow 
+developers and about functionality that can be expected in the upcoming releases of 
+TensorFlow. Many of these areas are driven by  community use cases, and we welcome 
+further 
+[contributions](https://github.com/tensorflow/tensorflow/blob/master/CONTRIBUTING.md) 
+to TensorFlow.
 
-The features on this list are targeted for the next few months. At this point,
-we do not have timelines for these features.
+The features below do not have concrete release dates. However, the majority can be 
+expected in the next one to two releases. 
 
-### Improve non-Python language support
+### APIs
+#### High Level APIs:
+* Easy multi-GPU utilization with Estimators
+* Easy-to-use high-level pre-made estimators for Gradient Boosted Trees, Time Series, and other models
 
-* Support for adding gradient computation for graphs constructed in other
-  languages (C++, Java, Go etc.)
+#### Eager Execution:
+* Efficient utilization of multiple GPUs
+* Distributed training (multi-machine)
+* Performance improvements
+* Simpler export to a GraphDef/SavedModel 
 
-### Making TensorFlow easier to use
-* High-level APIs
-* Well-maintained models showing best practices
+#### Keras API:
+* Better integration with tf.data (ability to call `model.fit` with data tensors)
+* Full support for Eager execution (both Eager support for the regular Keras API, and ability 
+to create Keras models Eager- style via Model subclassing)
+* Better distribution/multi-GPU support and TPU support (including a smoother model-to-estimator workflow)
 
-### Performance
-* Speed and memory benchmarks
-* Distributed full model benchmarks
-* Performance and memory usage improvements
+#### Official Models:
+* A set of reference models across image recognition, speech, object detection, and 
+  translation that demonstrate best practices and serve as a starting point for 
+  high-performance model development.
 
-### Core Features
-* Automatic op placement ([#2126](https://github.com/tensorflow/tensorflow/issues/2126))
-* Support for graph-level functions
+#### Contrib:
+* Deprecation notices added to parts of tf.contrib where preferred implementations exist outside of tf.contrib.
+* As much as possible, large projects inside tf.contrib moved to separate repositories.
+* The tf.contrib module will eventually be discontinued in its current form, experimental development will in future happen in other repositories.
+
+
+#### Probabilistic Reasoning and Statistical Analysis:
+* Rich set of tools for probabilistic and statistical analysis in tf.distributions 
+  and tf.probability. These include new samplers, layers, optimizers, losses, and structured models
+* Statistical tools for hypothesis testing, convergence diagnostics, and sample statistics
+* Edward 2.0: High-level API for probabilistic programming
 
 ### Platforms
-* OpenCL support ([#22](https://github.com/tensorflow/tensorflow/issues/22))
+#### TFLite:
+* Increased coverage of supported ops in TFLite
+* Easier conversion of a trained TF graph in for use on TFLite
+* Support for GPU acceleration in TFLite (iOS and Andorid)
+* Support for hardware accelerators via Android NeuralNets API 
+* Improved CPU performance by quantization and other network optimizations (eg. pruning, distillation)
+* Increased support for devices beyond Android and iOS (eg. RPi, Cortex-M)
 
-### Community
-* More educational resources
-* Better integration of TensorFlow into the opensource big data ecosystem (e.g.
-[#2655](https://github.com/tensorflow/tensorflow/issues/2655))
+### Performance
+#### Distributed TensorFlow:
+* Multi-GPU support optimized for a variety of GPU topologies
+* Improved mechanisms for distributing computations on several machines
+
+#### Optimizations:
+* Mixed precision training support with initial example model and guide
+* Native TensorRT support
+* Int8 support for SkyLake via MKL
+* Dynamic loading of SIMD-optimized kernels
+
+### Documentation and Usability:
+* Updated documentation, tutorials and Getting Started guides
+* Process to enable external contributions to tutorials, documentation, and blogs showcasing best practice use-cases of TensorFlow and high-impact applications
+
+### Community and Partner Engagement
+#### Special Interest Groups: 
+* Mobilizing the community to work together in focused domains
+* tf-distribute: build and packaging of TF
+* More to be identified and launched
+
+#### Request-for-Comment (RFC) Process:
+* Incorporate public feedback on significant design decisions
+* Formalize process for external contributions to land in TensorFlow and associated projects 
+
+#### Partnerships:
+* Collaborate with partners to co-develop and publish research papers
+
+
+
+
+
