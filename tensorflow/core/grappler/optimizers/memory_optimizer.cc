@@ -730,6 +730,7 @@ Status BuildSwapPair(NodeDef* node, int input_to_swap,
   *swap_in_node->add_input() = swap_out_node->name();
 
   // Colocate the swap_in_ node with the node itself.
+  swap_in_node->set_device(node->device());
   string coloc_group = strings::StrCat("loc@", tensor_to_swap);
   (*swap_in_node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
   (*node->mutable_attr())["_class"].mutable_list()->add_s(coloc_group);
