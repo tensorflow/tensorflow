@@ -8,6 +8,7 @@
 * New Optimizer internal API for non-slot variables. Descendants of AdamOptimizer that access _beta[12]_power will need to be updated.
 * `tf.estimator.{FinalExporter,LatestExporter}` now export stripped SavedModels. This improves forward compatibility of the SavedModel.
 * FFT support added to XLA CPU/GPU.
+* Android TF can now be built with CUDA acceleration on compatible Tegra devices (see [contrib/makefile/README.md](contrib/makefile/README.md) for more information)
 
 ## Bug Fixes and Other Changes
 * Documentation updates:
