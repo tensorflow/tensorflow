@@ -3649,7 +3649,7 @@ class Graph(object):
   def _last_id(self):
     return self._next_id_counter
 
-  def _get_op_def(self, type):
+  def _get_op_def(self, type):  # pylint: disable=redefined-builtin
     """Returns the `OpDef` proto for `type`. `type` is a string."""
     if self._c_graph:
       with c_api_util.tf_buffer() as buf:

@@ -211,9 +211,8 @@ class SdcaModel(object):
             sums.append(
                 math_ops.reduce_sum(
                     math_ops.abs(math_ops.cast(weights, dtypes.float64))))
-      sum = math_ops.add_n(sums)
       # SDCA L1 regularization cost is: l1 * sum(|weights|)
-      return self._options['symmetric_l1_regularization'] * sum
+      return self._options['symmetric_l1_regularization'] * math_ops.add_n(sums)
 
   def _l2_loss(self, l2):
     """Computes the (un-normalized) l2 loss of the model."""
@@ -225,9 +224,8 @@ class SdcaModel(object):
             sums.append(
                 math_ops.reduce_sum(
                     math_ops.square(math_ops.cast(weights, dtypes.float64))))
-      sum = math_ops.add_n(sums)
       # SDCA L2 regularization cost is: l2 * sum(weights^2) / 2
-      return l2 * sum / 2.0
+      return l2 * math_ops.add_n(sums) / 2.0
 
   def _convert_n_to_tensor(self, input_list, as_ref=False):
     """Converts input list to a set of tensors."""

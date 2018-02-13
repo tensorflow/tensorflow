@@ -52,6 +52,7 @@ if (NOT WIN32)
   # for targets that link ${CMAKE_THREAD_LIBS_INIT}.
   find_package (Threads)
 
+  # Options for linking CUDA/CUDNN libraries
   option(tensorflow_PATH_STATIC_LIB "Additional library search path for libcudnn_static.a, libnccl_static.a, libculibos.a" /usr/local/cuda/lib64/)
   option(tensorflow_CUDNN_INCLUDE "cudnn.h header install path" /usr/include/)
   if (NOT tensorflow_CUDNN_INCLUDE)
@@ -73,6 +74,14 @@ if (NOT WIN32)
     # option's default value is OFF. Fill it with real default values
     set(tensorflow_CUDA_LIBRARY_PATH /usr/local/cuda/lib64)
   endif (NOT tensorflow_CUDA_LIBRARY_PATH)
+
+  # Options for linking other libraries
+  option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
+
+  option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
+  if (systemlib_ALL)
+    set (systmelib_ZLIB ON)
+  endif (systemlib_ALL)
 endif()
 
 if (WIN32)
@@ -188,8 +197,10 @@ if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
 
+add_definitions(${ADD_CFLAGS})
+link_directories(${ADD_LINK_DIRECTORY})
+
 set(tensorflow_EXTERNAL_LIBRARIES
-    ${zlib_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
@@ -203,6 +214,15 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${re2_STATIC_LIBRARIES}
     ${sqlite_STATIC_LIBRARIES}
 )
+
+if (systemlib_ZLIB)
+  set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+      ${ZLIB_LIBRARIES})
+else (systemlib_ZLIB)
+  set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+    ${zlib_STATIC_LIBRARIES})
+endif (systemlib_ZLIB)
+
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
     gif_copy_headers_to_destination

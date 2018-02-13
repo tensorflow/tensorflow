@@ -45,14 +45,16 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
                     PyObject* attrs, TFE_OutputTensorHandles* outputs,
                     TF_Status* out_status);
 
+// Registers e as the Exception class for handling not ok Status. Returns
+// Py_None if registration succeeds, else throws a TypeError and returns NULL.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
+
 // Registers e as the Exception to be raised when the conditions of
 // TFE_Py_FastPathExecute_C have not been met. When this exception is set, it
 // is a signal to the calling code that it should fall back to the safer (and
 // more complete) code path.
-PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
-
-// Registers e as the Exception class for handling not ok Status. Returns
-// Py_None if registration succeeds, else throws a TypeError and returns NULL.
 //
 // This function is not thread-safe.
 PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);

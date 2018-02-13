@@ -313,7 +313,7 @@ def _Enter(data,
       return sparse_tensor.SparseTensor(indices, values, dense_shape)
 
 
-def exit(data, name=None):
+def exit(data, name=None):  # pylint: disable=redefined-builtin
   """Exits the current frame to its parent frame.
 
   Exit makes its input `data` available to the parent frame.
@@ -3343,7 +3343,7 @@ def group(*inputs, **kwargs):
 
 
 @tf_export("tuple")
-def tuple(tensors, name=None, control_inputs=None):
+def tuple(tensors, name=None, control_inputs=None):  # pylint: disable=redefined-builtin
   """Group tensors together.
 
   This creates a tuple of tensors with the same values as the `tensors`

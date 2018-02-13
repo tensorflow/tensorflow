@@ -93,6 +93,7 @@ from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils import conv_utils
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 BASE_WEIGHT_PATH = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.6/'
@@ -102,6 +103,7 @@ def relu6(x):
   return K.relu(x, max_value=6)
 
 
+@tf_export('keras.applications.mobilenet.preprocess_input')
 def preprocess_input(x):
   """Preprocesses a numpy array encoding a batch of images.
 
@@ -303,6 +305,8 @@ class DepthwiseConv2D(Conv2D):
     return config
 
 
+@tf_export('keras.applications.MobileNet',
+           'keras.applications.mobilenet.MobileNet')
 def MobileNet(input_shape=None,
               alpha=1.0,
               depth_multiplier=1,

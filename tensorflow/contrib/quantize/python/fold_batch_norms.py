@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 
 
@@ -43,11 +42,10 @@ def FoldBatchNorms(graph, freeze_batch_norm_delay=None, is_training=True):
 
   Args:
     graph: Graph to walk and modify.
-    freeze_batch_norm_delay: How many steps to wait before freezing
-    moving mean and variance and using them for batch normalization. This value
-    is used only when is_training is True.
-    is_training: Bool, true if training
-
+    freeze_batch_norm_delay: How many steps to wait before freezing moving mean
+      and variance and using them for batch normalization. This value is used
+      only when is_training is True.
+    is_training: Bool, true if training.
   Raises:
     ValueError: When batch norm folding fails.
   """
@@ -69,9 +67,9 @@ def _FoldFusedBatchNorms(graph, freeze_batch_norm_delay, is_training):
 
   Args:
     graph: Graph to walk and modify.
-    freeze_batch_norm_delay: How many steps to wait before freezing
-    moving mean and variance and using them for batch normalization
-    is_training: Bool, true if training
+    freeze_batch_norm_delay: How many steps to wait before freezing moving mean
+      and variance and using them for batch normalization.
+    is_training: Bool, true if training.
 
   Raises:
     ValueError: When batch norm folding fails.
@@ -305,10 +303,10 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
   Args:
     context: The scope under which we look for batch norm params
     match: Object containg required batch norm tensors for correction
-      computation
+      computation.
     freeze_batch_norm_delay: Delay in steps at which computation switches
       from regular batch norm to frozen mean and variance.
-    fused_batch_norm: Bool, true if fused batch norm is used
+    fused_batch_norm: Bool, true if fused batch norm is used.
 
   Returns:
     A tuple of correction_scale, correction_recip, correction_offset
@@ -334,7 +332,7 @@ def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
 
     if freeze_batch_norm_delay is not None:
       use_mv_avg = math_ops.greater_equal(
-          training_util.get_or_create_global_step(),
+          common.CreateOrGetQuantizationStep(),
           freeze_batch_norm_delay,
           name='use_moving_average')
     else:
@@ -426,8 +424,8 @@ def _FoldUnfusedBatchNorms(graph, freeze_batch_norm_delay, is_training):
 
   Args:
     graph: Graph to walk and modify.
-    freeze_batch_norm_delay: How many steps to wait before freezing
-    moving mean and variance and using them for batch normalization
+    freeze_batch_norm_delay: How many steps to wait before freezing moving mean
+      and variance and using them for batch normalization.
     is_training: Bool, True if training
 
   Raises:
@@ -472,11 +470,10 @@ def _GetBatchNormParams(graph, context, has_scaling):
   Args:
     graph: Graph to inspect.
     context: The scope under which we look for batch norm params
-    has_scaling: Bool that specifies if scaling is done as part of batch
-    norm
+    has_scaling: Bool that specifies if scaling is done as part of batch norm.
 
   Returns:
-   _BatchNormMatch containing all required batch norm parameters
+    _BatchNormMatch containing all required batch norm parameters.
   """
   gamma_tensor = None
   batch_mean_tensor = None
@@ -554,20 +551,20 @@ def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
   Args:
     graph: Graph to modify.
     context: String, batch norm context, i.e. node into which BatchNorm is
-        nested.
+      nested.
     has_scaling: Whether the batch norm has scaling enabled.
-    freeze_batch_norm_delay: How many steps to wait before freezing
-    moving mean and variance and using them for batch normalization
-    is_training: Bool, true if training
+    freeze_batch_norm_delay: How many steps to wait before freezing moving mean
+      and variance and using them for batch normalization.
+    is_training: Bool, true if training.
 
   Raises:
     ValueError: When operation type is not supported, or input and output tensor
-        shapes mismatch for created operations: mul_fold, add_fold.
+      shapes mismatch for created operations: mul_fold, add_fold.
 
   Returns:
     A pair of Operations, the first is the original consumer node of the batch
-        norm (../BatchNorm/batchnorm/add_1), the second is the consumer node of
-        the folded graph (add_fold).
+      norm (../BatchNorm/batchnorm/add_1), the second is the consumer node of
+      the folded graph (add_fold).
   """
   mul_scale_name = 'mul_1' if has_scaling else 'mul'
   mul_scale = graph.get_operation_by_name(context +
@@ -642,7 +639,7 @@ def _CloneOp(op, new_name, new_inputs):
     op: Operation to modify.
     new_name: String, a new name to set on cloned op.
     new_inputs: A list of tuples (idx, tensor), each input with corresponding
-        index will be replaced by the given Tensor in the cloned op.
+      index will be replaced by the given Tensor in the cloned op.
 
   Returns:
     Operation, the cloned op.

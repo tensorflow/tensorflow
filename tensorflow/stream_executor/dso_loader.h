@@ -28,10 +28,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/mutex.h"
 
-#if !defined(PLATFORM_GOOGLE)
-#include "cuda/cuda_config.h"
-#endif
-
 namespace perftools {
 namespace gputools {
 namespace internal {

@@ -32,12 +32,14 @@ bool IsTrivialOp(const NodeDef& node, const GraphRewriter& rewriter) {
   if (IsStopGradient(node)) {
     return true;
   }
-  if (IsIdentity(node) &&
-      !(rewriter.FeedsMerge(node) &&
-        rewriter.IsDrivenByControlDependency(node)) &&
-      !(rewriter.IsDrivenBySwitch(node) &&
-        rewriter.DrivesControlDependency(node))) {
-    return true;
+  if (IsIdentity(node)) {
+    if (rewriter.FeedsMerge(node) || rewriter.IsDrivenBySwitch(node) ||
+        rewriter.IsDrivenByControlDependency(node) ||
+        rewriter.DrivesControlDependency(node)) {
+      return false;
+    } else {
+      return true;
+    }
   }
   if (IsAddN(node) && NumNonControlInputs(node) <= 1) {
     return true;

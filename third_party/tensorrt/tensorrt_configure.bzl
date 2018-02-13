@@ -19,11 +19,8 @@ load(
 _TENSORRT_INSTALL_PATH = "TENSORRT_INSTALL_PATH"
 _TF_TENSORRT_VERSION = "TF_TENSORRT_VERSION"
 
-_TF_TENSORRT_LIBS = ["nvinfer", "nvinfer_plugin", "nvparsers"]
-_TF_TENSORRT_HEADERS = [
-    "NvInfer.h", "NvInferPlugin.h", "NvCaffeParser.h", "NvUffParser.h",
-    "NvUtils.h"
-]
+_TF_TENSORRT_LIBS = ["nvinfer"]
+_TF_TENSORRT_HEADERS = ["NvInfer.h", "NvUtils.h"]
 
 _DEFINE_TENSORRT_SONAME_MAJOR = "#define NV_TENSORRT_SONAME_MAJOR"
 _DEFINE_TENSORRT_SONAME_MINOR = "#define NV_TENSORRT_SONAME_MINOR"

@@ -33,8 +33,10 @@ from tensorflow.python.keras._impl.keras.engine import Layer
 from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.StackedRNNCells')
 class StackedRNNCells(Layer):
   """Wrapper allowing a stack of RNN cells to behave as a single cell.
 
@@ -201,19 +203,19 @@ class StackedRNNCells(Layer):
     losses = []
     for cell in self.cells:
       if isinstance(cell, Layer):
-        cell_losses = cell.losses
-        losses += cell_losses
-    return losses
+        losses += cell.losses
+    return losses + self._losses
 
-  def get_losses_for(self, inputs=None):
-    losses = []
+  @property
+  def updates(self):
+    updates = []
     for cell in self.cells:
       if isinstance(cell, Layer):
-        cell_losses = cell.get_losses_for(inputs)
-        losses += cell_losses
-    return losses
+        updates += cell.updates
+    return updates + self._updates
 
 
+@tf_export('keras.layers.RNN')
 class RNN(Layer):
   """Base class for recurrent layers.
 
@@ -615,7 +617,7 @@ class RNN(Layer):
     if self.stateful:
       updates = []
       for i in range(len(states)):
-        updates.append((self.states[i], states[i]))
+        updates.append(K.update(self.states[i], states[i]))
       self.add_update(updates, inputs)
 
     if self.return_sequences:
@@ -775,17 +777,20 @@ class RNN(Layer):
 
   @property
   def losses(self):
+    losses = []
     if isinstance(self.cell, Layer):
-      return self.cell.losses
-    return []
+      losses += self.cell.losses
+    return losses + self._losses
 
-  def get_losses_for(self, inputs=None):
+  @property
+  def updates(self):
+    updates = []
     if isinstance(self.cell, Layer):
-      cell_losses = self.cell.get_losses_for(inputs)
-      return cell_losses + super(RNN, self).get_losses_for(inputs)
-    return super(RNN, self).get_losses_for(inputs)
+      updates += self.cell.updates
+    return updates + self._updates
 
 
+@tf_export('keras.layers.SimpleRNNCell')
 class SimpleRNNCell(Layer):
   """Cell class for SimpleRNN.
 
@@ -955,6 +960,7 @@ class SimpleRNNCell(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.SimpleRNN')
 class SimpleRNN(RNN):
   """Fully-connected RNN where the output is to be fed back to input.
 
@@ -1164,6 +1170,7 @@ class SimpleRNN(RNN):
     return cls(**config)
 
 
+@tf_export('keras.layers.GRUCell')
 class GRUCell(Layer):
   """Cell class for the GRU layer.
 
@@ -1412,6 +1419,7 @@ class GRUCell(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.GRU')
 class GRU(RNN):
   """Gated Recurrent Unit - Cho et al.
 
@@ -1647,6 +1655,7 @@ class GRU(RNN):
     return cls(**config)
 
 
+@tf_export('keras.layers.LSTMCell')
 class LSTMCell(Layer):
   """Cell class for the LSTM layer.
 
@@ -1928,6 +1937,7 @@ class LSTMCell(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.LSTM')
 class LSTM(RNN):
   """Long-Short Term Memory layer - Hochreiter 1997.
 
@@ -2455,7 +2465,7 @@ class Recurrent(Layer):
     if self.stateful:
       updates = []
       for i in range(len(states)):
-        updates.append((self.states[i], states[i]))
+        updates.append(K.update(self.states[i], states[i]))
       self.add_update(updates, inputs)
 
     # Properly set learning phase

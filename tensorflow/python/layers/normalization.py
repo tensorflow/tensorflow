@@ -39,8 +39,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import moving_averages
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('layers.BatchNormalization')
 class BatchNormalization(base.Layer):
   """Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -629,6 +631,7 @@ class BatchNormalization(base.Layer):
     return input_shape
 
 
+@tf_export('layers.batch_normalization')
 def batch_normalization(inputs,
                         axis=-1,
                         momentum=0.99,

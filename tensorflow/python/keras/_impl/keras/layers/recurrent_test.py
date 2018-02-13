@@ -353,13 +353,10 @@ class RNNTest(test.TestCase):
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
   def test_stacked_rnn_attributes(self):
-    cells = [keras.layers.LSTMCell(3),
-             keras.layers.LSTMCell(3, kernel_regularizer='l2')]
+    cells = [keras.layers.LSTMCell(1),
+             keras.layers.LSTMCell(1)]
     layer = keras.layers.RNN(cells)
-    layer.build((None, None, 5))
-
-    # Test regularization losses
-    self.assertEqual(len(layer.losses), 1)
+    layer.build((None, None, 1))
 
     # Test weights
     self.assertEqual(len(layer.trainable_weights), 6)
@@ -367,11 +364,32 @@ class RNNTest(test.TestCase):
     self.assertEqual(len(layer.trainable_weights), 3)
     self.assertEqual(len(layer.non_trainable_weights), 3)
 
-    # Test `get_losses_for`
-    x = keras.Input((None, 5))
-    y = keras.backend.sum(x)
-    cells[0].add_loss(y, inputs=x)
-    self.assertEqual(layer.get_losses_for(x), [y])
+    # Test `get_losses_for` and `losses`
+    x = keras.Input((None, 1))
+    loss_1 = keras.backend.sum(x)
+    loss_2 = keras.backend.sum(cells[0].kernel)
+    cells[0].add_loss(loss_1, inputs=x)
+    cells[0].add_loss(loss_2)
+    self.assertEqual(len(layer.losses), 2)
+    self.assertEqual(layer.get_losses_for(None), [loss_2])
+    self.assertEqual(layer.get_losses_for(x), [loss_1])
+
+    # Test `get_updates_for` and `updates`
+    cells = [keras.layers.LSTMCell(1),
+             keras.layers.LSTMCell(1)]
+    layer = keras.layers.RNN(cells)
+    layer.build((None, None, 1))
+
+    x = keras.Input((None, 1))
+    update_1 = keras.backend.update_add(
+        cells[0].kernel, x[0, 0, 0] * cells[0].kernel)
+    update_2 = keras.backend.update_add(
+        cells[0].kernel, keras.backend.ones_like(cells[0].kernel))
+    cells[0].add_update(update_1, inputs=x)
+    cells[0].add_update(update_2)
+    self.assertEqual(len(layer.updates), 2)
+    self.assertEqual(layer.get_updates_for(None), [update_2])
+    self.assertEqual(layer.get_updates_for(x), [update_1])
 
   def test_rnn_dynamic_trainability(self):
     layer_class = keras.layers.SimpleRNN
