@@ -142,7 +142,7 @@ def _eager_metrics_fn(model, outputs, targets):
     output_metrics = model.nested_metrics[i]
     for nested_output_metric in output_metrics:
       metric_name, metric_fn = _get_metrics_info(
-          nested_output_metric, model._internal_output_shapes[i],
+          nested_output_metric, K.int_shape(model.outputs[i]),
           model.loss_functions[i])
 
       if len(model.output_names) > 1:
@@ -173,7 +173,10 @@ def _model_loss(model, inputs, targets):
      applies masking and sample weighting to the loss value.
   """
   total_loss = 0
-  outs = model(inputs)
+  if len(inputs) == 1:
+    outs = model.call(inputs[0])
+  else:
+    outs = model.call(inputs)
   if not isinstance(outs, list):
     outs = [outs]
 
@@ -646,7 +649,10 @@ def predict_loop(model, ins, batch_size=32, verbose=0, steps=None):
     for i in range(len(model.inputs)):
       eager_model_inputs.append(ins_batch_converted[i])
 
-    batch_outs = model(eager_model_inputs)
+    if len(eager_model_inputs) == 1:
+      batch_outs = model.call(eager_model_inputs[0])
+    else:
+      batch_outs = model.call(eager_model_inputs)
 
     if not isinstance(batch_outs, list):
       batch_outs = [batch_outs]

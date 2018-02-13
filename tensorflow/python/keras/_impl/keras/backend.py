@@ -348,7 +348,8 @@ def learning_phase():
   """
   if context.in_eager_mode():
     if 'eager' not in _GRAPH_LEARNING_PHASES:
-      raise ValueError('No learning phase set in Eager mode.')
+      # Fallback to inference mode as default.
+      return 0
     return _GRAPH_LEARNING_PHASES['eager']
 
   graph = ops.get_default_graph()
@@ -2598,6 +2599,8 @@ def get_value(x):
   Returns:
       A Numpy array.
   """
+  if context.in_eager_mode():
+    return x.numpy()
   return x.eval(session=get_session())
 
 
@@ -2611,6 +2614,8 @@ def batch_get_value(tensors):
   Returns:
       A list of Numpy arrays.
   """
+  if context.in_eager_mode():
+    return [x.numpy() for x in tensors]
   if tensors:
     return get_session().run(tensors)
   else:
@@ -2627,16 +2632,19 @@ def set_value(x, value):
           (of the same shape).
   """
   value = np.asarray(value, dtype=dtype(x))
-  tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
-  if hasattr(x, '_assign_placeholder'):
-    assign_placeholder = x._assign_placeholder
-    assign_op = x._assign_op
+  if context.in_eager_mode():
+    x.assign(value)
   else:
-    assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
-    assign_op = x.assign(assign_placeholder)
-    x._assign_placeholder = assign_placeholder
-    x._assign_op = assign_op
-  get_session().run(assign_op, feed_dict={assign_placeholder: value})
+    tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
+    if hasattr(x, '_assign_placeholder'):
+      assign_placeholder = x._assign_placeholder
+      assign_op = x._assign_op
+    else:
+      assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
+      assign_op = x.assign(assign_placeholder)
+      x._assign_placeholder = assign_placeholder
+      x._assign_op = assign_op
+    get_session().run(assign_op, feed_dict={assign_placeholder: value})
 
 
 @tf_export('keras.backend.batch_set_value')
@@ -2647,23 +2655,28 @@ def batch_set_value(tuples):
       tuples: a list of tuples `(tensor, value)`.
           `value` should be a Numpy array.
   """
-  if tuples:
-    assign_ops = []
-    feed_dict = {}
+  if context.in_eager_mode():
     for x, value in tuples:
-      value = np.asarray(value, dtype=dtype(x))
-      tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
-      if hasattr(x, '_assign_placeholder'):
-        assign_placeholder = x._assign_placeholder
-        assign_op = x._assign_op
-      else:
-        assign_placeholder = array_ops.placeholder(tf_dtype, shape=value.shape)
-        assign_op = x.assign(assign_placeholder)
-        x._assign_placeholder = assign_placeholder
-        x._assign_op = assign_op
-      assign_ops.append(assign_op)
-      feed_dict[assign_placeholder] = value
-    get_session().run(assign_ops, feed_dict=feed_dict)
+      x.assign(np.asarray(value, dtype=dtype(x)))
+  else:
+    if tuples:
+      assign_ops = []
+      feed_dict = {}
+      for x, value in tuples:
+        value = np.asarray(value, dtype=dtype(x))
+        tf_dtype = dtypes_module.as_dtype(x.dtype.name.split('_')[0])
+        if hasattr(x, '_assign_placeholder'):
+          assign_placeholder = x._assign_placeholder
+          assign_op = x._assign_op
+        else:
+          assign_placeholder = array_ops.placeholder(tf_dtype,
+                                                     shape=value.shape)
+          assign_op = x.assign(assign_placeholder)
+          x._assign_placeholder = assign_placeholder
+          x._assign_op = assign_op
+        assign_ops.append(assign_op)
+        feed_dict[assign_placeholder] = value
+      get_session().run(assign_ops, feed_dict=feed_dict)
 
 
 @tf_export('keras.backend.print_tensor')
