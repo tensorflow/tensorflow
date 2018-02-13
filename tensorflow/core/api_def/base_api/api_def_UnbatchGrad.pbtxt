@@ -1,0 +1,20 @@
+op {
+  graph_op_name: "UnbatchGrad"
+  summary: "Gradient of Unbatch."
+  description: <<END
+Acts like Batch but using the given batch_index index of batching things as they
+become available. This ensures that the gradients are propagated back in the
+same session which did the forward pass.
+
+original_input: The input to the Unbatch operation this is the gradient of.
+batch_index: The batch_index given to the Unbatch operation this is the gradient
+of.
+grad: The downstream gradient.
+id: The id scalar emitted by Batch.
+batched_grad: The return value, either an empty tensor or the batched gradient.
+container: Container to control resource sharing.
+shared_name: Instances of UnbatchGrad with the same container and shared_name
+ are assumed to possibly belong to the same batch. If left empty, the op name
+ will be used as the shared name.
+END
+}

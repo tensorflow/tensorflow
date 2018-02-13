@@ -25,6 +25,7 @@ import re
 from tensorflow.contrib.framework.python.ops import add_arg_scope as contrib_add_arg_scope
 from tensorflow.contrib.framework.python.ops import gen_variable_ops
 from tensorflow.contrib.util import loader
+from tensorflow.core.protobuf import saver_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
@@ -32,9 +33,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops import gen_state_ops
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.platform import resource_loader
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.training import training_util
 from tensorflow.python.util.deprecation import deprecated
@@ -685,7 +685,8 @@ def assign_from_checkpoint_fn(model_path, var_list, ignore_missing_vars=False,
             'Variable %s missing in checkpoint %s', var, model_path)
     var_list = available_vars
   if var_list:
-    saver = tf_saver.Saver(var_list, reshape=reshape_variables)
+    saver = tf_saver.Saver(var_list, reshape=reshape_variables,
+                           write_version=saver_pb2.SaverDef.V1)
     def callback(session):
       saver.restore(session, model_path)
     return callback

@@ -55,7 +55,7 @@ and continuous columns:
 
 Here's a list of columns available in the Census Income dataset:
 
-| Column Name    | Type        | Description                       | {.sortable}
+| Column Name    | Type        | Description                       |
 | -------------- | ----------- | --------------------------------- |
 | age            | Continuous  | The age of the individual         |
 | workclass      | Categorical | The type of employer the          |

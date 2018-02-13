@@ -34,8 +34,10 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import constants
 from tensorflow.python.training import saver as tf_saver
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("saved_model.builder.SavedModelBuilder")
 class SavedModelBuilder(object):
   """Builds the `SavedModel` protocol buffer and saves variables and assets.
 

@@ -161,6 +161,14 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       augmented_inputs.push_back(next_id++);
     };
 
+    auto duplicate_state_tensor_float32 =
+        [interpreter, &nn_model, &augmented_inputs, &next_id](int tensor_id) {
+          const TfLiteTensor* tensor = interpreter->tensor(tensor_id);
+          CHECK_NN(ANeuralNetworksModel_setOperandValue(
+              nn_model, tensor_id, tensor->data.raw, tensor->bytes));
+          augmented_inputs.push_back(tensor_id);
+        };
+
     auto add_add_params = [&add_scalar_int32]() { add_scalar_int32(0); };
 
     auto add_pooling_params = [&add_scalar_int32](void* data) {
@@ -211,6 +219,14 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
     auto add_space_to_depth_params = [&add_scalar_int32](void* data) {
       auto builtin = reinterpret_cast<TfLiteSpaceToDepthParams*>(data);
       add_scalar_int32(builtin->block_size);
+    };
+
+    auto add_lstm_params = [&add_scalar_int32,
+                            &add_scalar_float32](void* data) {
+      auto builtin = reinterpret_cast<TfLiteLSTMParams*>(data);
+      add_scalar_int32(builtin->activation);
+      add_scalar_float32(builtin->cell_clip);
+      add_scalar_float32(builtin->proj_clip);
     };
 
 #if 0
@@ -289,15 +305,25 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
         add_space_to_depth_params(node.builtin_data);
         nn_op_type = ANEURALNETWORKS_SPACE_TO_DEPTH;
         break;
+      case tflite::BuiltinOperator_LSTM: {
+        duplicate_state_tensor_float32(
+            node.outputs->data[/*kOutputStateTensor*/ 1]);
+        duplicate_state_tensor_float32(
+            node.outputs->data[/*kCellStateTensor*/ 2]);
+        add_lstm_params(node.builtin_data);
+        nn_op_type = ANEURALNETWORKS_LSTM;
+        break;
+      }
       case tflite::BuiltinOperator_CONCAT_EMBEDDINGS:
       case tflite::BuiltinOperator_LSH_PROJECTION:
       case tflite::BuiltinOperator_SVDF:
       case tflite::BuiltinOperator_HASHTABLE_LOOKUP:
       case tflite::BuiltinOperator_RNN:
+      case tflite::BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
       case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN:
       case tflite::BuiltinOperator_EMBEDDING_LOOKUP:
       case tflite::BuiltinOperator_EMBEDDING_LOOKUP_SPARSE:
-      case tflite::BuiltinOperator_LSTM:
+      case tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
       case tflite::BuiltinOperator_L2_NORMALIZATION:
       case tflite::BuiltinOperator_LOCAL_RESPONSE_NORMALIZATION:
       case tflite::BuiltinOperator_MUL:
@@ -305,10 +331,16 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_RESIZE_BILINEAR:
       case tflite::BuiltinOperator_CALL:
       case tflite::BuiltinOperator_SKIP_GRAM:
-      case tflite::BuiltinOperator_RELU1:
+      case tflite::BuiltinOperator_RELU_N1_TO_1:
       case tflite::BuiltinOperator_GATHER:
       case tflite::BuiltinOperator_SPACE_TO_BATCH_ND:
       case tflite::BuiltinOperator_BATCH_TO_SPACE_ND:
+      case tflite::BuiltinOperator_TRANSPOSE:
+      case tflite::BuiltinOperator_MEAN:
+      case tflite::BuiltinOperator_DIV:
+      case tflite::BuiltinOperator_SUB:
+      case tflite::BuiltinOperator_SQUEEZE:
+      case tflite::BuiltinOperator_STRIDED_SLICE:
         FATAL("Op code %d is currently not delegated to NNAPI", builtin);
         nn_op_type = -1;  // set to invalid
         break;

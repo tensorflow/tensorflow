@@ -23,6 +23,12 @@ using ::testing::Eq;
 namespace xla {
 namespace {
 
+string DescribeHloMatcher(const ::testing::Matcher<const HloInstruction*>& m) {
+  std::stringstream ss;
+  m.DescribeTo(&ss);
+  return ss.str();
+}
+
 template <typename M, typename T>
 string Explain(const T& t, const M& m) {
   ::testing::StringMatchResultListener listener;
@@ -65,6 +71,33 @@ TEST(HloMatchersTest, Test) {
          "%param = f32[1]{0} parameter(0)\n"
          "doesn't match expected:\n\t"
          "add"));
+}
+
+TEST(HloMatchersTest, CustomCallMatcher) {
+  auto c1 = HloInstruction::CreateConstant(Literal::CreateR1<float>({1, 2, 3}));
+  auto c2 = HloInstruction::CreateConstant(Literal::CreateR1<int32>({1, 2, 3}));
+  auto call = HloInstruction::CreateCustomCall(
+      ShapeUtil::MakeShape(F32, {1}), {c1.get(), c2.get()}, "foo_target");
+
+  EXPECT_THAT(call.get(), op::CustomCall());
+  EXPECT_THAT(call.get(), op::CustomCall(c1.get(), c2.get()));
+  EXPECT_THAT(call.get(), op::CustomCall("foo_target"));
+  EXPECT_THAT(call.get(), op::CustomCall("foo_target", c1.get(), c2.get()));
+  EXPECT_THAT(call.get(), op::CustomCall(::testing::StartsWith("foo")));
+  EXPECT_THAT(call.get(),
+              op::CustomCall(::testing::Not(::testing::StartsWith("bar"))));
+
+  // Wrong number of operands.
+  EXPECT_THAT(call.get(), ::testing::Not(op::CustomCall(c1.get())));
+
+  // Call target does not match.
+  EXPECT_THAT(call.get(),
+              ::testing::Not(op::CustomCall(::testing::StartsWith("bar"))));
+
+  EXPECT_THAT(Explain(call.get(), op::CustomCall("bar")),
+              R"(custom-call with call target that isn't equal to "bar")");
+  EXPECT_THAT(DescribeHloMatcher(op::CustomCall("foo_target")),
+              R"(custom-call with call target that is equal to "foo_target")");
 }
 
 }  // namespace

@@ -17,12 +17,15 @@ limitations under the License.
 #define TENSORFLOW_CORE_PLATFORM_GCS_FILE_SYSTEM_H_
 
 #include <string>
+#include <utility>
 #include <vector>
+
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cloud/auth_provider.h"
 #include "tensorflow/core/platform/cloud/expiring_lru_cache.h"
 #include "tensorflow/core/platform/cloud/file_block_cache.h"
 #include "tensorflow/core/platform/cloud/gcs_dns_cache.h"
+#include "tensorflow/core/platform/cloud/gcs_throttle.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
 #include "tensorflow/core/platform/cloud/retrying_file_system.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -44,7 +47,8 @@ class GcsFileSystem : public FileSystem {
                 uint64 stat_cache_max_age, size_t stat_cache_max_entries,
                 uint64 matching_paths_cache_max_age,
                 size_t matching_paths_cache_max_entries,
-                int64 initial_retry_delay_usec, TimeoutConfig timeouts);
+                int64 initial_retry_delay_usec, TimeoutConfig timeouts,
+                std::pair<const string, const string>* additional_header);
 
   Status NewRandomAccessFile(
       const string& filename,
@@ -92,6 +96,12 @@ class GcsFileSystem : public FileSystem {
   size_t max_bytes() const { return file_block_cache_->max_bytes(); }
   uint64 max_staleness() const { return file_block_cache_->max_staleness(); }
   TimeoutConfig timeouts() const { return timeouts_; }
+  string additional_header_name() const {
+    return additional_header_ ? additional_header_->first : "";
+  }
+  string additional_header_value() const {
+    return additional_header_ ? additional_header_->second : "";
+  }
 
   uint64 stat_cache_max_age() const { return stat_cache_->max_age(); }
   size_t stat_cache_max_entries() const { return stat_cache_->max_entries(); }
@@ -185,6 +195,7 @@ class GcsFileSystem : public FileSystem {
   std::unique_ptr<HttpRequest::Factory> http_request_factory_;
   std::unique_ptr<FileBlockCache> file_block_cache_;
   std::unique_ptr<GcsDnsCache> dns_cache_;
+  GcsThrottle throttle_;
 
   using StatCache = ExpiringLRUCache<FileStatistics>;
   std::unique_ptr<StatCache> stat_cache_;
@@ -196,6 +207,9 @@ class GcsFileSystem : public FileSystem {
 
   /// The initial delay for exponential backoffs when retrying failed calls.
   const int64 initial_retry_delay_usec_ = 1000000L;
+
+  // Additional header material to be transmitted with all GCS requests
+  std::unique_ptr<std::pair<const string, const string>> additional_header_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(GcsFileSystem);
 };

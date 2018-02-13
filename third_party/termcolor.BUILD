@@ -3,12 +3,13 @@
 
 licenses(["notice"])  # MIT
 
-exports_files(["LICENSE"])
+exports_files(["COPYING.txt"])
 
 py_library(
     name = "termcolor",
     srcs = [
         "termcolor.py",
     ],
+    srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
 )

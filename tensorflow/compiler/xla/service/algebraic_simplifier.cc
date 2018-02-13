@@ -1618,9 +1618,12 @@ Status AlgebraicSimplifierVisitor::HandleReduce(HloInstruction* reduce) {
         reduce,
         HloInstruction::CreateBroadcast(reduce->shape(), init_value, {}));
   }
+
   // A Transpose feeding a reduce can simply permute the reduction dimensions
-  // field.
-  if (arg->opcode() == HloOpcode::kTranspose) {
+  // field if the output of the reduce is a vector or scalar. Higher ranked
+  // result may require a transpose of the output.
+  if (ShapeUtil::Rank(reduce->shape()) <= 1 &&
+      arg->opcode() == HloOpcode::kTranspose) {
     auto transpose_dimensions = arg->dimensions();
     std::vector<int64> new_reduce_dimensions;
     for (auto dim : dimensions) {
@@ -1741,6 +1744,63 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
     }
   }
 
+  // If the pad puts a single non-identity value in each window that we're
+  // reducing, then this is a broadcast.
+  HloInstruction* pad_operand = operand->mutable_operand(0);
+  auto is_effective_broadcast = [&] {
+    if (window_util::HasStride(window)) {
+      VLOG(10) << "Window has stride.";
+      return false;
+    }
+    if (!window_util::HasSymmetricPadding(pad_config)) {
+      VLOG(10) << "Window has uneven padding.";
+      return false;
+    }
+    for (int64 i = 0; i < pad_config.dimensions_size(); ++i) {
+      const auto& pad_dimension = pad_config.dimensions(i);
+      if ((pad_dimension.edge_padding_low() != 0 ||
+           pad_dimension.edge_padding_high() != 0) &&
+          pad_operand->shape().dimensions(i) != 1) {
+        VLOG(10) << "Found non-trivial dimension being padded: " << i;
+        return false;
+      }
+    }
+    VLOG(10) << "Found to be padding trivial dimensions only.";
+
+    for (int64 i = 0; i < window.dimensions_size(); ++i) {
+      const auto& pad_dimension = pad_config.dimensions(i);
+      const WindowDimension& window_dimension = window.dimensions(i);
+      bool dimension_has_padding = (pad_dimension.edge_padding_low() != 0 ||
+                                    pad_dimension.edge_padding_high() != 0);
+      if (dimension_has_padding &&
+          window_dimension.size() < pad_dimension.edge_padding_low() + 1) {
+        VLOG(10) << "Found window did not cover single unpadded element in "
+                    "dimension: "
+                 << i;
+        return false;
+      }
+      if (pad_operand->shape().dimensions(i) != 1 &&
+          window_dimension.size() != 1) {
+        VLOG(10) << "Found window covers more than one element in non-trivial "
+                    "dimension: "
+                 << i;
+        return false;
+      }
+    }
+    VLOG(10) << "Found window covers a single unpadded element.";
+    return true;
+  };
+  if (is_effective_broadcast()) {
+    VLOG(10) << "Replacing pad/reduce-window with (implicit) broadcast.";
+    auto fadd = [this](std::unique_ptr<HloInstruction> x) {
+      return computation_->AddInstruction(std::move(x));
+    };
+    return ReplaceWithNewInstruction(
+        reduce_window, HloInstruction::CreateBroadcastSequence(
+                           /*output_shape=*/reduce_window->shape(),
+                           /*operand=*/pad_operand, fadd));
+  }
+
   // Carry out the folding of the pad into reduce_window.
   VLOG(10) << "Folding pad into reduce-window.";
   Window new_window = window;
@@ -1758,7 +1818,7 @@ Status AlgebraicSimplifierVisitor::HandleReduceWindow(
   return ReplaceWithNewInstruction(
       reduce_window, HloInstruction::CreateReduceWindow(
                          /*shape=*/reduce_window->shape(),
-                         /*operand=*/operand->mutable_operand(0),
+                         /*operand=*/pad_operand,
                          /*init_value=*/reduce_window->mutable_operand(1),
                          /*window=*/new_window,
                          /*reduce_computation=*/function));

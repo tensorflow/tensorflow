@@ -32,6 +32,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 __all__ = [
@@ -111,8 +112,9 @@ class _Mapping(collections.namedtuple(
 
 
 @six.add_metaclass(abc.ABCMeta)
+@tf_export("distributions.bijectors.Bijector")
 class Bijector(object):
-  """Interface for transformations of a `Distribution` sample.
+  r"""Interface for transformations of a `Distribution` sample.
 
   Bijectors can be used to represent any differentiable and injective
   (one to one) function defined on an open subset of `R^n`.  Some non-injective
@@ -120,27 +122,24 @@ class Bijector(object):
 
   #### Mathematical Details
 
-  A `Bijector` implements a
-  [diffeomorphism](https://en.wikipedia.org/wiki/Diffeomorphism), i.e., a
-  bijective, differentiable function. A `Bijector` is used by
-  `TransformedDistribution` but can be generally used for transforming a
-  `Distribution` generated `Tensor`. A `Bijector` is characterized by three
-  operations:
+  A `Bijector` implements a [smooth covering map](
+  https://en.wikipedia.org/wiki/Local_diffeomorphism), i.e., a local
+  diffeomorphism such that every point in the target has a neighborhood evenly
+  covered by a map ([see also](
+  https://en.wikipedia.org/wiki/Covering_space#Covering_of_a_manifold)).
+  A `Bijector` is used by `TransformedDistribution` but can be generally used
+  for transforming a `Distribution` generated `Tensor`. A `Bijector` is
+  characterized by three operations:
 
-  1. Forward Evaluation
-
+  1. Forward\
      Useful for turning one random outcome into another random outcome from a
      different distribution.
-
-  2. Inverse Evaluation
-
+  2. Inverse\
      Useful for "reversing" a transformation to compute one probability in
      terms of another.
-
-  3. (log o det o Jacobian o inverse)(x)
-
+  3. `(log o det o Jacobian o inverse)(x)`\
      "The log of the determinant of the matrix of all first-order partial
-     derivatives of the inverse function."
+     derivatives of the inverse function."\
      Useful for inverting a transformation to compute one probability in terms
      of another. Geometrically, the det(Jacobian) is the volume of the
      transformation and is used to scale the probability.

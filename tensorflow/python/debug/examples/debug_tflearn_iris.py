@@ -110,10 +110,16 @@ def main(_):
       model_dir=model_dir)
 
   hooks = None
+  if FLAGS.debug and FLAGS.tensorboard_debug_address:
+    raise ValueError(
+        "The --debug and --tensorboard_debug_address flags are mutually "
+        "exclusive.")
   if FLAGS.debug:
     debug_hook = tf_debug.LocalCLIDebugHook(ui_type=FLAGS.ui_type,
                                             dump_root=FLAGS.dump_root)
-    hooks = [debug_hook]
+  elif FLAGS.tensorboard_debug_address:
+    debug_hook = tf_debug.TensorBoardDebugHook(FLAGS.tensorboard_debug_address)
+  hooks = [debug_hook]
 
   if not FLAGS.use_experiment:
     # Fit model.
@@ -185,11 +191,19 @@ if __name__ == "__main__":
       nargs="?",
       const=True,
       default=False,
-      help="Use debugger to track down bad values during training")
+      help="Use debugger to track down bad values during training. "
+      "Mutually exclusive with the --tensorboard_debug_address flag.")
   parser.add_argument(
       "--dump_root",
       type=str,
       default="",
       help="Optional custom root directory for temporary debug dump data")
+  parser.add_argument(
+      "--tensorboard_debug_address",
+      type=str,
+      default=None,
+      help="Connect to the TensorBoard Debugger Plugin backend specified by "
+      "the gRPC address (e.g., localhost:1234). Mutually exclusive with the "
+      "--debug flag.")
   FLAGS, unparsed = parser.parse_known_args()
   tf.app.run(main=main, argv=[sys.argv[0]] + unparsed)

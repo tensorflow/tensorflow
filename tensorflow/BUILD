@@ -211,6 +211,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "with_kafka_support",
+    define_values = {"with_kafka_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Crosses between platforms and file system libraries not supported on those
 # platforms due to limitations in nested select() statements.
 config_setting(
@@ -364,12 +370,27 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "override_eigen_strong_inline",
+    values = {"define": "override_eigen_strong_inline=true"},
+    visibility = ["//visibility:public"],
+)
+
+# TODO(laigd): consider removing this option and make TensorRT enabled
+# automatically when CUDA is enabled.
+config_setting(
+    name = "with_tensorrt_support",
+    values = {"define": "with_tensorrt_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = [
         "//learning/meta_rank/...",
         "//tensorflow/...",
         "//tensorflow_fold/llgtm/...",
+        "//third_party/py/tensor2tensor/...",
     ],
 )
 
@@ -402,6 +423,7 @@ filegroup(
         "//tensorflow/cc:all_files",
         "//tensorflow/cc/saved_model:all_files",
         "//tensorflow/cc/saved_model/python:all_files",
+        "//tensorflow/cc/tools:all_files",
         "//tensorflow/compiler/aot:all_files",
         "//tensorflow/compiler/aot/tests:all_files",
         "//tensorflow/compiler/jit:all_files",
@@ -434,9 +456,6 @@ filegroup(
         "//tensorflow/contrib/all_reduce:all_files",
         "//tensorflow/contrib/android:all_files",
         "//tensorflow/contrib/batching:all_files",
-        "//tensorflow/contrib/batching/kernels:all_files",
-        "//tensorflow/contrib/batching/test_util:all_files",
-        "//tensorflow/contrib/batching/util:all_files",
         "//tensorflow/contrib/bayesflow:all_files",
         "//tensorflow/contrib/boosted_trees:all_files",
         "//tensorflow/contrib/boosted_trees/estimator_batch:all_files",
@@ -446,6 +465,7 @@ filegroup(
         "//tensorflow/contrib/cloud:all_files",
         "//tensorflow/contrib/cloud/kernels:all_files",
         "//tensorflow/contrib/cluster_resolver:all_files",
+        "//tensorflow/contrib/coder:all_files",
         "//tensorflow/contrib/compiler:all_files",
         "//tensorflow/contrib/copy_graph:all_files",
         "//tensorflow/contrib/crf:all_files",
@@ -463,6 +483,7 @@ filegroup(
         "//tensorflow/contrib/factorization:all_files",
         "//tensorflow/contrib/factorization/examples:all_files",
         "//tensorflow/contrib/factorization/kernels:all_files",
+        "//tensorflow/contrib/feature_column:all_files",
         "//tensorflow/contrib/ffmpeg:all_files",
         "//tensorflow/contrib/ffmpeg/default:all_files",
         "//tensorflow/contrib/framework:all_files",
@@ -522,15 +543,17 @@ filegroup(
         "//tensorflow/contrib/model_pruning:all_files",
         "//tensorflow/contrib/model_pruning/examples/cifar10:all_files",
         "//tensorflow/contrib/nccl:all_files",
-        "//tensorflow/contrib/ndlstm:all_files",
         "//tensorflow/contrib/nearest_neighbor:all_files",
         "//tensorflow/contrib/nn:all_files",
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/periodic_resample:all_files",
         "//tensorflow/contrib/predictor:all_files",
         "//tensorflow/contrib/py2tf:all_files",
+        "//tensorflow/contrib/py2tf/converters:all_files",
+        "//tensorflow/contrib/py2tf/impl:all_files",
         "//tensorflow/contrib/py2tf/pyct:all_files",
         "//tensorflow/contrib/py2tf/pyct/static_analysis:all_files",
+        "//tensorflow/contrib/py2tf/utils:all_files",
         "//tensorflow/contrib/quantize:all_files",
         "//tensorflow/contrib/receptive_field:all_files",
         "//tensorflow/contrib/reduce_slice_ops:all_files",
@@ -559,6 +582,7 @@ filegroup(
         "//tensorflow/contrib/tensor_forest/proto:all_files",
         "//tensorflow/contrib/tensorboard:all_files",
         "//tensorflow/contrib/tensorboard/db:all_files",
+        "//tensorflow/contrib/tensorrt:all_files",
         "//tensorflow/contrib/testing:all_files",
         "//tensorflow/contrib/text:all_files",
         "//tensorflow/contrib/tfprof:all_files",
@@ -573,6 +597,7 @@ filegroup(
         "//tensorflow/contrib/util:all_files",
         "//tensorflow/contrib/verbs:all_files",
         "//tensorflow/core:all_files",
+        "//tensorflow/core/api_def:all_files",
         "//tensorflow/core/debug:all_files",
         "//tensorflow/core/distributed_runtime:all_files",
         "//tensorflow/core/distributed_runtime/rpc:all_files",
@@ -583,6 +608,7 @@ filegroup(
         "//tensorflow/core/grappler/optimizers:all_files",
         "//tensorflow/core/grappler/utils:all_files",
         "//tensorflow/core/kernels:all_files",
+        "//tensorflow/core/kernels/batching_util:all_files",
         "//tensorflow/core/kernels/data:all_files",
         "//tensorflow/core/kernels/data/sql:all_files",
         "//tensorflow/core/kernels/fuzzing:all_files",
@@ -792,6 +818,7 @@ tf_cc_shared_object(
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:scope",
+        "//tensorflow/cc/profiler",
         "//tensorflow/core:tensorflow",
     ],
 )

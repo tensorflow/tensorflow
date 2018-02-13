@@ -52,6 +52,7 @@ using tensorflow::DT_BOOL;
 using tensorflow::DT_FLOAT;
 using tensorflow::DT_INT32;
 using tensorflow::DT_INT64;
+using tensorflow::DT_QUINT8;
 using tensorflow::DT_STRING;
 using tensorflow::DT_UINT8;
 using tensorflow::GraphDef;
@@ -172,8 +173,13 @@ void ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
   }
   auto& output_float_data =
       output_array->GetMutableBuffer<ArrayDataType::kFloat>().data;
-  output_float_data.resize(input_flat_size);
-  if (input_tensor.float_val_size()) {
+  output_float_data.resize(RequiredBufferSizeForShape(output_array->shape()),
+                           0.f);
+  if (input_tensor.float_val_size() == 1) {
+    for (int i = 0; i < input_flat_size; i++) {
+      output_float_data[i] = input_tensor.float_val(0);
+    }
+  } else if (input_tensor.float_val_size() == input_flat_size) {
     for (int i = 0; i < input_tensor.float_val_size(); i++) {
       output_float_data[i] = input_tensor.float_val(i);
     }
@@ -184,6 +190,32 @@ void ImportFloatArray(const TensorProto& input_tensor, Array* output_array) {
   } else {
     LOG(FATAL) << "Neither input_content nor float_val have the right "
                   "dimensions for this float tensor.";
+  }
+}
+
+void ImportQuint8Array(const TensorProto& input_tensor, Array* output_array) {
+  CHECK_EQ(input_tensor.dtype(), DT_QUINT8);
+  const auto& input_shape = input_tensor.tensor_shape();
+  CHECK_LE(input_shape.dim_size(), 4);
+  ImportShape(input_shape.dim(), output_array->mutable_shape());
+  int input_flat_size = 1;
+  for (int k = 0; k < input_shape.dim_size(); k++) {
+    input_flat_size *= input_shape.dim(k).size();
+  }
+  auto& output_int_data =
+      output_array->GetMutableBuffer<ArrayDataType::kUint8>().data;
+  output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
+  if (input_tensor.int_val_size()) {
+    for (int i = 0; i < input_tensor.int_val_size(); i++) {
+      output_int_data[i] = input_tensor.int_val(i);
+    }
+  } else if (input_tensor.tensor_content().size() ==
+             input_flat_size * sizeof(uint8_t)) {
+    toco::port::CopyToBuffer(input_tensor.tensor_content(),
+                             reinterpret_cast<char*>(output_int_data.data()));
+  } else {
+    LOG(FATAL) << "Neither input_content nor int_val have the right "
+                  "dimensions for this uint8 tensor.";
   }
 }
 
@@ -198,7 +230,7 @@ void ImportInt32Array(const TensorProto& input_tensor, Array* output_array) {
   }
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt32>().data;
-  output_int_data.resize(input_flat_size);
+  output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
   if (input_tensor.int_val_size()) {
     for (int i = 0; i < input_tensor.int_val_size(); i++) {
       output_int_data[i] = input_tensor.int_val(i);
@@ -224,7 +256,7 @@ void ImportInt64Array(const TensorProto& input_tensor, Array* output_array) {
   }
   auto& output_int_data =
       output_array->GetMutableBuffer<ArrayDataType::kInt64>().data;
-  output_int_data.resize(input_flat_size);
+  output_int_data.resize(RequiredBufferSizeForShape(output_array->shape()), 0);
   if (input_tensor.int64_val_size()) {
     for (int i = 0; i < input_tensor.int64_val_size(); i++) {
       output_int_data[i] = input_tensor.int64_val(i);
@@ -250,7 +282,7 @@ void ImportStringArray(const TensorProto& input_tensor, Array* output_array) {
   }
   auto& output_string_data =
       output_array->GetMutableBuffer<ArrayDataType::kString>().data;
-  output_string_data.resize(input_flat_size);
+  output_string_data.resize(RequiredBufferSizeForShape(output_array->shape()));
   if (input_flat_size != input_tensor.string_val_size()) {
     LOG(FATAL) << "Input_content string_val doesn't have the right "
                   "dimensions for this string tensor.";
@@ -301,6 +333,10 @@ void ConvertConstOperator(const NodeDef& node,
     case DT_INT32:
       array.data_type = ArrayDataType::kInt32;
       ImportInt32Array(tensor, &array);
+      break;
+    case DT_QUINT8:
+      array.data_type = ArrayDataType::kUint8;
+      ImportQuint8Array(tensor, &array);
       break;
     case DT_INT64:
       array.data_type = ArrayDataType::kInt64;
@@ -661,6 +697,19 @@ void ConvertAddOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertAddNOperator(const NodeDef& node,
+                         const TensorFlowImportFlags& tf_import_flags,
+                         Model* model) {
+  CHECK_EQ(node.op(), "AddN");
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  auto* op = new AddNOperator;
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertMulOperator(const NodeDef& node,
                         const TensorFlowImportFlags& tf_import_flags,
                         Model* model) {
@@ -790,6 +839,7 @@ void ConvertSwitchOperator(const NodeDef& node,
   op->outputs.push_back(node.name() + ":1");
   model->operators.emplace_back(op);
 }
+
 void ConvertSoftmaxOperator(const NodeDef& node,
                             const TensorFlowImportFlags& tf_import_flags,
                             Model* model) {
@@ -803,6 +853,18 @@ void ConvertSoftmaxOperator(const NodeDef& node,
   CHECK(!node.attr().count("beta"));  // Stab in the dark, just in case.
   softmax->beta = 1.f;
   model->operators.emplace_back(softmax);
+}
+
+void ConvertLogSoftmaxOperator(const NodeDef& node,
+                               const TensorFlowImportFlags& tf_import_flags,
+                               Model* model) {
+  CHECK_EQ(node.op(), "LogSoftmax");
+  CheckInputsCount(node, tf_import_flags, 1);
+  const auto& input_name = node.input(0);
+  auto* log_softmax = new LogSoftmaxOperator;
+  log_softmax->inputs.push_back(input_name);
+  log_softmax->outputs.push_back(node.name());
+  model->operators.emplace_back(log_softmax);
 }
 
 void ConvertLRNOperator(const NodeDef& node,
@@ -913,49 +975,37 @@ void ConvertReshapeOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertBatchMatMulOperator(const NodeDef& node,
+                                const TensorFlowImportFlags& tf_import_flags,
+                                Model* model) {
+  CheckInputsCount(node, tf_import_flags, 2);
+
+  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
+  CHECK(!HasAttr(node, "adj_a") || (GetBoolAttr(node, "adj_a") == false));
+  CHECK(!HasAttr(node, "adj_b") || (GetBoolAttr(node, "adj_b") == false));
+
+  auto* batch_matmul = new BatchMatMulOperator;
+  batch_matmul->inputs = {node.input(0), node.input(1)};
+  batch_matmul->outputs = {node.name()};
+  model->operators.emplace_back(batch_matmul);
+}
+
 void ConvertMatMulOperator(const NodeDef& node,
                            const TensorFlowImportFlags& tf_import_flags,
                            Model* model) {
   CheckInputsCount(node, tf_import_flags, 2);
-  if (node.op() == "MatMul") {
-    // Transpose flags should be easy to support, but we don't have a
-    // GraphDef with them to test on at the moment.
-    CHECK_EQ(GetBoolAttr(node, "transpose_a"), false);
-    CHECK_EQ(GetBoolAttr(node, "transpose_b"), false);
-    CHECK(!HasAttr(node, "adjoint_a") ||
-          (GetBoolAttr(node, "adjoint_a") == false));
-    CHECK(!HasAttr(node, "adjoint_b") ||
-          (GetBoolAttr(node, "adjoint_b") == false));
-  } else if (node.op() == "BatchMatMul") {
-    // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
-    CHECK(!HasAttr(node, "adj_a") || (GetBoolAttr(node, "adj_a") == false));
-    CHECK(!HasAttr(node, "adj_b") || (GetBoolAttr(node, "adj_b") == false));
-  } else {
-    LOG(FATAL) << "op must be 'MatMul' or 'BatchMatMul'";
-  }
 
-  const auto& input_name = node.input(0);
-  const auto& weights_name = node.input(1);
-  const auto& reordered_weights_name = weights_name + "_reordered";
-  // Check if a ReorderAxesOperator was already created for these weights
-  // (that happens when multiple layers share the same weights).
-  const Operator* existing_reorder =
-      GetOpWithOutput(*model, reordered_weights_name);
-  if (existing_reorder) {
-    // Check that it is safe to rely on the _reordered naming of the output
-    // array!
-    CHECK(existing_reorder->type == OperatorType::kReorderAxes);
-  } else {
-    // Create a new ReorderAxesOperator
-    auto* reorder = new ReorderAxesOperator;
-    reorder->inputs = {weights_name};
-    reorder->outputs = {reordered_weights_name};
-    reorder->input_axes_order = AxesOrder::kRC;
-    reorder->output_axes_order = AxesOrder::kCR;
-    model->operators.emplace_back(reorder);
-  }
+  // Transpose flags should be easy to support, but we don't have a
+  // GraphDef with them to test on at the moment.
+  CHECK_EQ(GetBoolAttr(node, "transpose_a"), false);
+  CHECK_EQ(GetBoolAttr(node, "transpose_b"), false);
+  CHECK(!HasAttr(node, "adjoint_a") ||
+        (GetBoolAttr(node, "adjoint_a") == false));
+  CHECK(!HasAttr(node, "adjoint_b") ||
+        (GetBoolAttr(node, "adjoint_b") == false));
+
   auto* matmul = new TensorFlowMatMulOperator;
-  matmul->inputs = {input_name, reordered_weights_name};
+  matmul->inputs = {node.input(0), node.input(1)};
   matmul->outputs = {node.name()};
   model->operators.emplace_back(matmul);
 }
@@ -1144,22 +1194,9 @@ void ConvertStridedSliceOperator(const NodeDef& node,
                                  const TensorFlowImportFlags& tf_import_flags,
                                  Model* model) {
   CHECK_EQ(node.op(), "StridedSlice");
+  // TODO(soroosh): The 4th input (strides) should be e optional, to be
+  // consistent with TF.
   CheckInputsCount(node, tf_import_flags, 4);
-
-  // Only a subset of the full TF op functionality is supported now.
-  if (  // No 64-bit indices.
-      GetDataTypeAttr(node, "Index") != DT_INT32 ||
-      // No dimensionality changes.
-      GetIntAttr(node, "new_axis_mask") != 0 ||
-      GetIntAttr(node, "shrink_axis_mask") != 0 ||
-      // No sparse indices.
-      GetIntAttr(node, "ellipsis_mask") != 0 ||
-      // Only 4D tensors are supported.
-      GetIntAttr(node, "begin_mask") > 15 ||
-      GetIntAttr(node, "end_mask") > 15) {
-    ConvertUnsupportedOperator(node, tf_import_flags, model);
-    return;
-  }
 
   auto* op = new StridedSliceOperator;
   for (const auto& input : node.input()) {
@@ -1276,6 +1313,12 @@ void ConvertResizeBilinearOperator(const NodeDef& node,
   CHECK_EQ(node.op(), "ResizeBilinear");
   CheckInputsCount(node, tf_import_flags, 2);
   auto* op = new ResizeBilinearOperator;
+
+  op->align_corners = false;
+  if (HasAttr(node, "align_corners")) {
+    op->align_corners = GetBoolAttr(node, "align_corners");
+  }
+
   op->inputs.push_back(node.input(0));
   op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
@@ -1632,7 +1675,7 @@ void StripCaretFromArrayNames(Model* model) {
       output = string(absl::StripPrefix(output, "^"));
     }
   }
-  for (auto& array : model->arrays) {
+  for (auto& array : model->GetArrayMap()) {
     if (absl::StartsWith(array.first, "^")) {
       LOG(FATAL) << "What?";
     }
@@ -1817,7 +1860,9 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertAvgPoolOperator(node, tf_import_flags, model);
     } else if (node.op() == "Reshape") {
       ConvertReshapeOperator(node, tf_import_flags, model);
-    } else if (node.op() == "MatMul" || node.op() == "BatchMatMul") {
+    } else if (node.op() == "BatchMatMul") {
+      ConvertBatchMatMulOperator(node, tf_import_flags, model);
+    } else if (node.op() == "MatMul") {
       ConvertMatMulOperator(node, tf_import_flags, model);
     } else if (node.op() == "Div" || node.op() == "RealDiv") {
       ConvertDivOperator(node, tf_import_flags, model);
@@ -1840,6 +1885,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertSquareOperator(node, tf_import_flags, model);
     } else if (node.op() == "Add") {
       ConvertAddOperator(node, tf_import_flags, model);
+    } else if (node.op() == "AddN") {
+      ConvertAddNOperator(node, tf_import_flags, model);
     } else if (node.op() == "Mul") {
       ConvertMulOperator(node, tf_import_flags, model);
     } else if (node.op() == "Sub") {
@@ -1854,6 +1901,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertLRNOperator(node, tf_import_flags, model);
     } else if (node.op() == "Softmax") {
       ConvertSoftmaxOperator(node, tf_import_flags, model);
+    } else if (node.op() == "LogSoftmax") {
+      ConvertLogSoftmaxOperator(node, tf_import_flags, model);
     } else if (node.op() == "All") {
       ConvertAllOperator(node, tf_import_flags, model);
     } else if (node.op() == "Assert") {

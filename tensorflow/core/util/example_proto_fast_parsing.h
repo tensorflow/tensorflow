@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_FAST_PARSING_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_FAST_PARSING_H_
+#ifndef TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_FAST_PARSING_H_
+#define TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_FAST_PARSING_H_
 
 #include <string>
 #include <unordered_map>
@@ -94,4 +94,4 @@ bool TestFastParse(const string& serialized, Example* example);
 }  // namespace example
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_FAST_PARSING_H_
+#endif  // TENSORFLOW_CORE_UTIL_EXAMPLE_PROTO_FAST_PARSING_H_

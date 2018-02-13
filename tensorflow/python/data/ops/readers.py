@@ -23,12 +23,14 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(b/64974358): Increase default buffer size to 256 MB.
 _DEFAULT_READER_BUFFER_SIZE_BYTES = 256 * 1024  # 256 KB
 
 
+@tf_export("data.TextLineDataset")
 class TextLineDataset(Dataset):
   """A `Dataset` comprising lines from one or more text files."""
 
@@ -71,6 +73,7 @@ class TextLineDataset(Dataset):
     return dtypes.string
 
 
+@tf_export("data.TFRecordDataset")
 class TFRecordDataset(Dataset):
   """A `Dataset` comprising records from one or more TFRecord files."""
 
@@ -115,6 +118,7 @@ class TFRecordDataset(Dataset):
     return dtypes.string
 
 
+@tf_export("data.FixedLengthRecordDataset")
 class FixedLengthRecordDataset(Dataset):
   """A `Dataset` of fixed-length records from one or more binary files."""
 

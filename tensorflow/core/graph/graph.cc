@@ -522,6 +522,12 @@ void Graph::ToGraphDef(GraphDef* graph_def) const {
   ToGraphDefSubRange(graph_def, 0);
 }
 
+GraphDef Graph::ToGraphDefDebug() const {
+  GraphDef ret;
+  ToGraphDef(&ret);
+  return ret;
+}
+
 void Graph::ToGraphDefSubRange(GraphDef* graph_def, int from_node_id) const {
   graph_def->Clear();
   *graph_def->mutable_versions() = versions();

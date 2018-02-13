@@ -558,6 +558,13 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     return Status::OK();
   }
 
+  if (target_node->type_string() == "PlaceholderWithDefault") {
+    return Status::OK();
+  }
+
+  // TODO(skyewm): more of the filtering applied in input nodes below should be
+  // applied to target_node here
+
   struct NodeAndRecursed {
     Node* new_node = nullptr;
     bool recursed = false;
@@ -604,6 +611,14 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     // Don't constant fold enter/exit currently either, as it's easy to end
     // up with a partial frame.
     if (IsEnter(current_node) || IsExit(current_node)) {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
+    // Placeholders should never be constant folded because their outputs are
+    // fed by the user. Note that "Placeholder" nodes have no inputs so are
+    // handled below.
+    if (current_node->type_string() == "PlaceholderWithDefault") {
       *is_constant_graph = false;
       return Status::OK();
     }

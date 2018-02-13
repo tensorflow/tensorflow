@@ -18,11 +18,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 
-REGISTER_OP("Fact")
-    .Output("fact: string")
-    .Doc(R"doc(
-Output a fact about factorials.
-)doc");
+REGISTER_OP("Fact").Output("fact: string");
 
 class FactOp : public tensorflow::OpKernel {
  public:

@@ -286,9 +286,11 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
     int64 instruction_count_after = computation_->instruction_count();
     CHECK_EQ(instruction_count_after,
              instruction_count_before + added_instructions.size());
+    HloSharding operand_sharding =
+        batch_norm->sharding().GetAsShapeTree(batch_norm->shape()).element({0});
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), operand_shape)) {
-        inst->set_sharding(batch_norm->sharding());
+        inst->set_sharding(operand_sharding);
       } else {
         inst->set_sharding(HloSharding::Replicate());
       }
@@ -578,9 +580,11 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
     int64 instruction_count_after = computation_->instruction_count();
     CHECK_EQ(instruction_count_after,
              instruction_count_before + added_instructions.size());
+    HloSharding activation_sharding =
+        batch_norm->sharding().GetAsShapeTree(batch_norm->shape()).element({0});
     for (HloInstruction* inst : added_instructions) {
       if (ShapeUtil::Equal(inst->shape(), activation_shape)) {
-        inst->set_sharding(batch_norm->sharding());
+        inst->set_sharding(activation_sharding);
       } else {
         inst->set_sharding(HloSharding::Replicate());
       }

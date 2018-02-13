@@ -26,6 +26,7 @@ from tensorflow.contrib.quantize.python import input_to_ops
 from tensorflow.core.framework import attr_value_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.layers import utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
@@ -33,7 +34,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.util import compat
 
 
-def FoldBatchNorms(graph):
+def FoldBatchNorms(graph, freeze_batch_norm_delay=None, is_training=True):
   """Finds batch norm layers and folds them into preceding layers.
 
   Folding only affects the following layers: Conv2D, fully connected, depthwise
@@ -41,15 +42,24 @@ def FoldBatchNorms(graph):
 
   Args:
     graph: Graph to walk and modify.
-
+    freeze_batch_norm_delay: How many steps to wait before freezing moving mean
+      and variance and using them for batch normalization. This value is used
+      only when is_training is True.
+    is_training: Bool, true if training.
   Raises:
     ValueError: When batch norm folding fails.
   """
-  _FoldFusedBatchNorms(graph)
-  _FoldUnfusedBatchNorms(graph)
+  _FoldFusedBatchNorms(
+      graph,
+      freeze_batch_norm_delay=freeze_batch_norm_delay,
+      is_training=is_training)
+  _FoldUnfusedBatchNorms(
+      graph,
+      freeze_batch_norm_delay=freeze_batch_norm_delay,
+      is_training=is_training)
 
 
-def _FoldFusedBatchNorms(graph):
+def _FoldFusedBatchNorms(graph, freeze_batch_norm_delay, is_training):
   """Finds fused batch norm layers and folds them into preceding layers.
 
   Folding only affects the following layers: Conv2D, fully connected, depthwise
@@ -57,6 +67,9 @@ def _FoldFusedBatchNorms(graph):
 
   Args:
     graph: Graph to walk and modify.
+    freeze_batch_norm_delay: How many steps to wait before freezing moving mean
+      and variance and using them for batch normalization.
+    is_training: Bool, true if training.
 
   Raises:
     ValueError: When batch norm folding fails.
@@ -67,8 +80,7 @@ def _FoldFusedBatchNorms(graph):
     # `bn_op`. The '/' (i.e. `sep`) ensures that we reuse the existing scope
     # named `scope`. Otherwise, TF creates a unique scope whose name starts with
     # `scope`.
-    with graph.as_default(), graph.name_scope(scope + sep), ops.device(
-        match.bn_op.device):
+    with graph.as_default(), graph.name_scope(scope + sep):
       with graph.name_scope(scope + sep + 'BatchNorm_Fold' + sep):
         # new weights = old weights * gamma / sqrt(variance + epsilon)
         # new biases = -mean * gamma / sqrt(variance + epsilon) + beta
@@ -79,9 +91,18 @@ def _FoldFusedBatchNorms(graph):
             match.mean_tensor * multiplier_tensor,
             name='bias')
 
+        correction_scale, correction_recip, correction_offset = None, None, None
+        if is_training:
+          correction_scale, correction_recip, correction_offset = (
+              _ComputeBatchNormCorrections(
+                  context='',
+                  match=match,
+                  freeze_batch_norm_delay=freeze_batch_norm_delay,
+                  fused_batch_norm=True))
         # The shape of depthwise weights is different, so we need to reshape the
         # multiplier_tensor to ensure that the scaled_weight_tensor has the
         # expected shape.
+        weights = match.weight_tensor
         if match.layer_op.type == 'DepthwiseConv2dNative':
           new_shape = [
               match.weight_tensor.get_shape().as_list()[2],
@@ -90,14 +111,24 @@ def _FoldFusedBatchNorms(graph):
           multiplier_tensor = array_ops.reshape(
               multiplier_tensor, new_shape, name='scale_reshape')
 
-      # TODO(suharshs): This naming of the following ops needs to carefully
-      # follow the naming expected by quantize.py. Generalize the quantize code
-      # to not require these delicate naming conventions.
-      scaled_weight_tensor = math_ops.multiply(
-          match.weight_tensor, multiplier_tensor, name='mul_fold')
+          if correction_scale is not None:
+            correction_scale = array_ops.reshape(
+                correction_scale, new_shape, name='correction_reshape')
 
+      if correction_scale is not None:
+        weights = math_ops.multiply(
+            correction_scale, weights, name='correction_mult')
+
+      scaled_weight_tensor = math_ops.multiply(
+          weights, multiplier_tensor, name='mul_fold')
       new_layer_tensor = _CloneWithNewOperands(
           match.layer_op, match.input_tensor, scaled_weight_tensor)
+
+      if correction_recip is not None:
+        new_layer_tensor = math_ops.multiply(
+            correction_recip, new_layer_tensor, name='post_conv_mul')
+        new_layer_tensor = math_ops.add(new_layer_tensor, (correction_offset),
+                                        'correction_add')
 
       bias_add_tensor = math_ops.add(
           new_layer_tensor, bias_tensor, name='add_fold')
@@ -107,6 +138,242 @@ def _FoldFusedBatchNorms(graph):
       if nodes_modified_count != 1:
         raise ValueError(
             'Unexpected inputs to op: %s' % match.output_tensor.name)
+
+
+def _FindFusedBatchNorms(graph):
+  """Finds all ops and tensors related to found FusedBatchNorms.
+
+  Args:
+    graph: Graph to inspect.
+
+  Yields:
+    _FusedBatchNormMatches.
+  """
+  input_pattern = graph_matcher.OpTypePattern('*')
+  weight_pattern = graph_matcher.OpTypePattern('*')
+  gamma_pattern = graph_matcher.OpTypePattern('*')
+  beta_pattern = graph_matcher.OpTypePattern('*')
+  mean_pattern = graph_matcher.OpTypePattern('*')
+  variance_pattern = graph_matcher.OpTypePattern('*')
+
+  moving_average_pattern = graph_matcher.OpTypePattern('*')
+  bn_decay_pattern = graph_matcher.OpTypePattern('*')
+  layer_pattern = graph_matcher.OpTypePattern(
+      'Conv2D|DepthwiseConv2dNative|MatMul',
+      inputs=[input_pattern, weight_pattern])
+  # MatMul has a Reshape between it and FusedBatchNorm.
+  matmul_reshape_pattern = graph_matcher.OpTypePattern(
+      'Reshape', inputs=[layer_pattern,
+                         graph_matcher.OpTypePattern('*')])
+
+  batch_norm_pattern = graph_matcher.OpTypePattern(
+      'FusedBatchNorm',
+      inputs=[
+          graph_matcher.OneofPattern([matmul_reshape_pattern, layer_pattern]),
+          gamma_pattern, beta_pattern, mean_pattern, variance_pattern
+      ])
+  matmul_bn_output_reshape_pattern = graph_matcher.OpTypePattern(
+      'Reshape', inputs=[batch_norm_pattern,
+                         graph_matcher.OpTypePattern('*')])
+
+  bn_matcher = graph_matcher.GraphMatcher(
+      graph_matcher.OneofPattern(
+          [matmul_bn_output_reshape_pattern, batch_norm_pattern]))
+
+  moving_average_sub_pattern = graph_matcher.OpTypePattern(
+      'Sub', inputs=[moving_average_pattern, batch_norm_pattern])
+  moving_average_mul_pattern = graph_matcher.OpTypePattern(
+      'Mul', inputs=[moving_average_sub_pattern, bn_decay_pattern])
+
+  moving_avg_mul_matcher = graph_matcher.GraphMatcher(
+      moving_average_mul_pattern)
+
+  for match_result in bn_matcher.match_graph(graph):
+    moving_mean_tensor = None
+    moving_variance_tensor = None
+    bn_decay_mean_tensor = None
+    bn_decay_var_tensor = None
+    layer_op = match_result.get_op(layer_pattern)
+    layer_tensor = match_result.get_tensor(layer_pattern)
+    bn_op = match_result.get_op(batch_norm_pattern)
+    batch_epsilon_tensor = bn_op.get_attr('epsilon')
+
+    # In the MatMul case, the output of batch norm is reshaped back into a
+    # 2D tensor, so the output_tensor is the output of the Reshape op.
+    output_tensor = bn_op.outputs[0]
+    if layer_op.type == 'MatMul':
+      output_reshape_op = match_result.get_op(matmul_bn_output_reshape_pattern)
+      # If the matcher didn't match matmul_bn_output_reshape, there will be
+      # another match for this 'MatMul' later, so we can skip this one.
+      if output_reshape_op is None:
+        continue
+      output_tensor = output_reshape_op.outputs[0]
+
+    input_tensor = match_result.get_tensor(input_pattern)
+    weight_tensor = match_result.get_tensor(weight_pattern)
+    gamma_tensor = match_result.get_tensor(gamma_pattern)
+    beta_tensor = match_result.get_tensor(beta_pattern)
+    # FusedBatchNorm in training is different from that in inference. It takes
+    # empty 'mean' and empty 'variance', and produces the mean and the variance
+    # of the batch. Therefore, when is_training is true, mean_tensor and
+    # variance_tensor point to 1st and 2nd (0-based) output of bn_op,
+    # respectively; when is_training is false, they point to bn_op's inputs.
+    is_training = bn_op.get_attr('is_training')
+    if is_training:
+      # FusedBatchNormGrad doesn't compute gradients of the batch_mean and
+      # batch_variance outputs, so we need to substitute our own custom
+      # gradient.
+      # TODO(suharshs, raghuramank): Find a way to avoid needing this hack.
+      # pylint: disable=protected-access
+      bn_op._set_attr(
+          '_gradient_op_type',
+          attr_value_pb2.AttrValue(s=compat.as_bytes('FoldFusedBatchNormGrad')))
+      # pylint: enable=protected-access
+      mean_tensor = bn_op.outputs[1]
+      # The batch variance used during forward and backward prop is biased,
+      # i.e it is calculated as: V=sum(x(k)-mu)^2/N. For the moving average
+      # calculation, the variance is corrected by the term N/N-1 (Bessel's
+      # correction). The variance tensor read from FuseBatchNorm has bessel's
+      # correction applied, so we undo it here.
+      scope, sep, _ = bn_op.name.rpartition('/')
+      g = ops.get_default_graph()
+      with g.as_default(), g.name_scope(scope + sep):
+        n = math_ops.cast(
+            array_ops.size(layer_tensor) / array_ops.size(mean_tensor),
+            dtypes.float32)
+        variance_tensor = math_ops.multiply(
+            bn_op.outputs[2], (n - 1) / n, name='Undo_Bessel_Correction')
+      # TODO(suharshs): Find a way to get rid of this inner match.
+      for mul_match_result in moving_avg_mul_matcher.match_graph(graph):
+        sub_op = mul_match_result.get_op(moving_average_sub_pattern)
+        if sub_op.inputs[1].name == bn_op.outputs[1].name:
+          # During training: Batch Mean is bn_op.outputs[1]
+          moving_mean_tensor = sub_op.inputs[0]
+          bn_decay_mean_tensor = mul_match_result.get_tensor(bn_decay_pattern)
+        if sub_op.inputs[1].name == bn_op.outputs[2].name:
+          # During training: Batch Var is bn_op.outputs[2]
+          moving_variance_tensor = sub_op.inputs[0]
+          bn_decay_var_tensor = mul_match_result.get_tensor(bn_decay_pattern)
+    else:
+      mean_tensor = match_result.get_tensor(mean_pattern)
+      variance_tensor = match_result.get_tensor(variance_pattern)
+
+    yield _BatchNormMatch(
+        layer_op=layer_op,
+        bn_op=bn_op,
+        output_tensor=output_tensor,
+        input_tensor=input_tensor,
+        weight_tensor=weight_tensor,
+        gamma_tensor=gamma_tensor,
+        beta_tensor=beta_tensor,
+        mean_tensor=mean_tensor,
+        variance_tensor=variance_tensor,
+        moving_mean_tensor=moving_mean_tensor,
+        moving_variance_tensor=moving_variance_tensor,
+        bn_decay_mean_tensor=bn_decay_mean_tensor,
+        bn_decay_var_tensor=bn_decay_var_tensor,
+        batch_epsilon_tensor=batch_epsilon_tensor)
+
+
+def _ComputeBatchNormCorrections(context, match, freeze_batch_norm_delay,
+                                 fused_batch_norm):
+  """Computes batch norm correction params.
+
+     Before batch normalization is frozen:
+     We use batch statistics for batch norm.
+       correction_scale = sigma_b/sigma_mv
+       correction_recip = 1/correction_scale
+       correction_offset = 0
+
+     After batch normalization is frozen:
+      correction_scale = sigma_b/sigma_mv
+      correction_recip = 1
+      correction_offset =  gamma*(mu_b/sigma_b-mu_mv/sigma_mv).
+
+     Batch norm is frozen if global_step > bn_freeze_delay.
+     The corrections ensure that:
+     a) The weights are quantized after scaling by gamma/sigma_mv. This enables
+     smoother training as the scaling on the weights changes slowly, rather than
+     jump across mini-batches
+     b) Changing the values of the corrections allows for one to switch between
+     using batch statistics to using moving mean and average, without requiring
+     changes to batch_norm
+
+
+  Args:
+    context: The scope under which we look for batch norm params
+    match: Object containg required batch norm tensors for correction
+      computation.
+    freeze_batch_norm_delay: Delay in steps at which computation switches
+      from regular batch norm to frozen mean and variance.
+    fused_batch_norm: Bool, true if fused batch norm is used.
+
+  Returns:
+    A tuple of correction_scale, correction_recip, correction_offset
+  """
+
+  g = ops.get_default_graph()
+  with g.name_scope(context + '/batch_norm_correction'):
+    recip_sigma_mv = math_ops.rsqrt(
+        match.moving_variance_tensor + match.batch_epsilon_tensor)
+    recip_sigma = math_ops.rsqrt(
+        match.variance_tensor + match.batch_epsilon_tensor)
+    correction_scale = math_ops.divide(
+        recip_sigma_mv, recip_sigma, name='scale_compute')
+    correction_scale = array_ops.identity(
+        correction_scale, name='correction_scale')
+    correction_recip = math_ops.reciprocal(
+        correction_scale, name='reciprocal_compute')
+    correction_offset = math_ops.multiply(
+        match.gamma_tensor,
+        match.mean_tensor * recip_sigma -
+        match.moving_mean_tensor * recip_sigma_mv,
+        name='offset_compute')
+
+    if freeze_batch_norm_delay is not None:
+      use_mv_avg = math_ops.greater_equal(
+          common.CreateOrGetQuantizationStep(),
+          freeze_batch_norm_delay,
+          name='use_moving_average')
+    else:
+      use_mv_avg = False
+
+    bn_decay_zero = 0.0
+    bn_decay_mean_consumers = list(match.bn_decay_mean_tensor.consumers())
+    bn_decay_var_consumers = list(match.bn_decay_mean_tensor.consumers())
+
+    bn_decay_mean_out = utils.smart_cond(
+        use_mv_avg,
+        lambda: bn_decay_zero,
+        lambda: match.bn_decay_mean_tensor,
+        name='freeze_moving_mean')
+    graph_editor.reroute_ts(
+        [bn_decay_mean_out], [match.bn_decay_mean_tensor],
+        can_modify=bn_decay_mean_consumers)
+
+    if fused_batch_norm is False:
+      bn_decay_var_consumers = list(match.bn_decay_var_tensor.consumers())
+      bn_decay_var_out = utils.smart_cond(
+          use_mv_avg,
+          lambda: bn_decay_zero,
+          lambda: match.bn_decay_var_tensor,
+          name='freeze_moving_var')
+      graph_editor.reroute_ts(
+          [bn_decay_var_out], [match.bn_decay_var_tensor],
+          can_modify=bn_decay_var_consumers)
+
+    correction_recip = utils.smart_cond(
+        use_mv_avg,
+        lambda: array_ops.ones(correction_scale.shape),
+        lambda: correction_recip,
+        name='correction_recip')
+
+    correction_offset = utils.smart_cond(
+        use_mv_avg,
+        lambda: correction_offset,
+        lambda: array_ops.zeros(correction_offset.shape),
+        name='correction_offset')
+  return correction_scale, correction_recip, correction_offset
 
 
 def _CloneWithNewOperands(layer_op, input_tensor, weight_tensor):
@@ -149,186 +416,7 @@ def _FoldFusedBatchNormGrad(op, unused_grad_y, grad_mean, grad_var, unused_1,
   return (dmean_dx + dvar_dx), None, None, None, None
 
 
-def _FindFusedBatchNorms(graph):
-  """Finds all ops and tensors related to found FusedBatchNorms.
-
-  Args:
-    graph: Graph to inspect.
-
-  Yields:
-    _FusedBatchNormMatches.
-  """
-  input_pattern = graph_matcher.OpTypePattern('*')
-  weight_pattern = graph_matcher.OpTypePattern('*')
-  gamma_pattern = graph_matcher.OpTypePattern('*')
-  beta_pattern = graph_matcher.OpTypePattern('*')
-  mean_pattern = graph_matcher.OpTypePattern('*')
-  variance_pattern = graph_matcher.OpTypePattern('*')
-
-  conv_pattern = graph_matcher.OpTypePattern(
-      'Conv2D|DepthwiseConv2dNative', inputs=[input_pattern, weight_pattern])
-  # MatMul has a Reshape between it and FusedBatchNorm.
-  matmul_pattern = graph_matcher.OpTypePattern(
-      'MatMul', inputs=[input_pattern, weight_pattern])
-  matmul_reshape_pattern = graph_matcher.OpTypePattern(
-      'Reshape', inputs=[matmul_pattern,
-                         graph_matcher.OpTypePattern('*')])
-
-  conv_batch_norm_pattern = graph_matcher.OpTypePattern(
-      'FusedBatchNorm',
-      inputs=[
-          conv_pattern, gamma_pattern, beta_pattern, mean_pattern,
-          variance_pattern
-      ])
-  matmul_batch_norm_pattern = graph_matcher.OpTypePattern(
-      'FusedBatchNorm',
-      inputs=[
-          matmul_reshape_pattern, gamma_pattern, beta_pattern, mean_pattern,
-          variance_pattern
-      ])
-  matmul_bn_output_reshape_pattern = graph_matcher.OpTypePattern(
-      'Reshape',
-      inputs=[matmul_batch_norm_pattern,
-              graph_matcher.OpTypePattern('*')])
-
-  conv_matcher = graph_matcher.GraphMatcher(conv_batch_norm_pattern)
-  matmul_matcher = graph_matcher.GraphMatcher(matmul_bn_output_reshape_pattern)
-
-  def _GetCommonTensors(match_result, bn_op, bn_input_tensor):
-    """Gets tensors needed for FusedBatchNormMatch from match_result."""
-    input_tensor = match_result.get_tensor(input_pattern)
-    weight_tensor = match_result.get_tensor(weight_pattern)
-    gamma_tensor = match_result.get_tensor(gamma_pattern)
-    beta_tensor = match_result.get_tensor(beta_pattern)
-    # FusedBatchNorm in training is different from that in inference. It takes
-    # empty 'mean' and empty 'variance', and produces the mean and the variance
-    # of the batch. Therefore, when is_training is true, mean_tensor and
-    # variance_tensor point to 1st and 2nd (0-based) output of bn_op,
-    # respectively; when is_training is false, they point to bn_op's inputs.
-    is_training = bn_op.get_attr('is_training')
-    if is_training:
-      # FusedBatchNormGrad doesn't compute gradients of the batch_mean and
-      # batch_variance outputs, so we need to substitute our own custom
-      # gradient.
-      # TODO(suharshs, raghuramank): Find a way to avoid needing this hack.
-      # pylint: disable=protected-access
-      bn_op._set_attr(
-          '_gradient_op_type',
-          attr_value_pb2.AttrValue(s=compat.as_bytes('FoldFusedBatchNormGrad')))
-      # pylint: enable=protected-access
-      mean_tensor = bn_op.outputs[1]
-      # The batch variance used during forward and backward prop is biased,
-      # i.e it is calculated as: V=sum(x(k)-mu)^2/N. For the moving average
-      # calculation, the variance is corrected by the term N/N-1 (Bessel's
-      # correction). The variance tensor read from FuseBatchNorm has bessel's
-      # correction applied, so we undo it here.
-      n = math_ops.cast(
-          array_ops.size(bn_input_tensor) / array_ops.size(mean_tensor),
-          dtypes.float32)
-      variance_tensor = bn_op.outputs[2] * (n - 1) / n
-    else:
-      mean_tensor = match_result.get_tensor(mean_pattern)
-      variance_tensor = match_result.get_tensor(variance_pattern)
-    return (input_tensor, weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
-            variance_tensor)
-
-  for match_result in conv_matcher.match_graph(graph):
-    layer_op = match_result.get_op(conv_pattern)
-    layer_tensor = match_result.get_tensor(conv_pattern)
-    bn_op = match_result.get_op(conv_batch_norm_pattern)
-    # In the case of convolution the output_tensor is the output of bn_op.
-    output_tensor = bn_op.outputs[0]
-
-    (input_tensor, weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
-     variance_tensor) = _GetCommonTensors(match_result, bn_op, layer_tensor)
-    yield _FusedBatchNormMatch(
-        layer_op=layer_op,
-        bn_op=bn_op,
-        output_tensor=output_tensor,
-        input_tensor=input_tensor,
-        weight_tensor=weight_tensor,
-        gamma_tensor=gamma_tensor,
-        beta_tensor=beta_tensor,
-        mean_tensor=mean_tensor,
-        variance_tensor=variance_tensor)
-
-  for match_result in matmul_matcher.match_graph(graph):
-    layer_op = match_result.get_op(matmul_pattern)
-    layer_tensor = match_result.get_tensor(matmul_pattern)
-    bn_op = match_result.get_op(matmul_batch_norm_pattern)
-    # In the MatMul case, the output of batch norm is reshaped back into a
-    # 2D tensor, so the output_tensor is the output of the Reshape op.
-    output_reshape_op = match_result.get_op(matmul_bn_output_reshape_pattern)
-    output_tensor = output_reshape_op.outputs[0]
-
-    (input_tensor, weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
-     variance_tensor) = _GetCommonTensors(match_result, bn_op, layer_tensor)
-    yield _FusedBatchNormMatch(
-        layer_op=layer_op,
-        bn_op=bn_op,
-        output_tensor=output_tensor,
-        input_tensor=input_tensor,
-        weight_tensor=weight_tensor,
-        gamma_tensor=gamma_tensor,
-        beta_tensor=beta_tensor,
-        mean_tensor=mean_tensor,
-        variance_tensor=variance_tensor)
-
-
-class _FusedBatchNormMatch(object):
-  """Contains all information related to a found FusedBatchNorm."""
-
-  def __init__(self, layer_op, bn_op, output_tensor, input_tensor,
-               weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
-               variance_tensor):
-    self._layer_op = layer_op
-    self._bn_op = bn_op
-    self._output_tensor = output_tensor
-    self._input_tensor = input_tensor
-    self._weight_tensor = weight_tensor
-    self._gamma_tensor = gamma_tensor
-    self._beta_tensor = beta_tensor
-    self._mean_tensor = mean_tensor
-    self._variance_tensor = variance_tensor
-
-  @property
-  def layer_op(self):
-    return self._layer_op
-
-  @property
-  def bn_op(self):
-    return self._bn_op
-
-  @property
-  def output_tensor(self):
-    return self._output_tensor
-
-  @property
-  def input_tensor(self):
-    return self._input_tensor
-
-  @property
-  def weight_tensor(self):
-    return self._weight_tensor
-
-  @property
-  def gamma_tensor(self):
-    return self._gamma_tensor
-
-  @property
-  def beta_tensor(self):
-    return self._beta_tensor
-
-  @property
-  def mean_tensor(self):
-    return self._mean_tensor
-
-  @property
-  def variance_tensor(self):
-    return self._variance_tensor
-
-
-def _FoldUnfusedBatchNorms(graph):
+def _FoldUnfusedBatchNorms(graph, freeze_batch_norm_delay, is_training):
   """Finds unfused batch norm layers and folds them into preceding layers.
 
   Folding only affects the following layers: Conv2D, fully connected, depthwise
@@ -336,6 +424,9 @@ def _FoldUnfusedBatchNorms(graph):
 
   Args:
     graph: Graph to walk and modify.
+    freeze_batch_norm_delay: How many steps to wait before freezing moving mean
+      and variance and using them for batch normalization.
+    is_training: Bool, True if training
 
   Raises:
     ValueError: When batch norm folding fails.
@@ -346,7 +437,12 @@ def _FoldUnfusedBatchNorms(graph):
     has_scaling = _HasScaling(graph, input_to_ops_map, bn)
 
     # The mangling code intimately depends on BatchNorm node's internals.
-    original_op, folded_op = _CreateFoldedOp(graph, bn, has_scaling=has_scaling)
+    original_op, folded_op = _CreateFoldedOp(
+        graph,
+        bn,
+        has_scaling=has_scaling,
+        freeze_batch_norm_delay=freeze_batch_norm_delay,
+        is_training=is_training)
 
     activation = common.GetEndpointActivationOp(graph, bn)
     if activation:
@@ -368,46 +464,84 @@ def _FoldUnfusedBatchNorms(graph):
       raise ValueError('Unexpected inputs to op: %s' % add_bypass.name)
 
 
-def _HasScaling(graph, input_to_ops_map, bn):
-  r"""Checks if batch norm  has scaling enabled.
-
-  Difference between batch norm with scaling and without is that with scaling:
-
-  Rsqrt -> mul -> mul_1
-              \-> mul_2
-
-  where
-    mul multiplies gamma by inverse square root of EMA of batch variance,
-    mul_1 multiplies output of mul with output from the base operation
-      (convolution, FC or depthwise convolution),
-    mul_2 multiplies output of mul with EMA of batch mean,
-  and without scaling:
-
-  Rsqrt -> mul
-       \-> mul_1
-
-  where
-    mul multiplies the inverse square root of EMA of batch variance with output
-      from the base operation,
-    mul_1 multiplies inverse square root of EMA of batch variance with EMA
-      of batch mean.
+def _GetBatchNormParams(graph, context, has_scaling):
+  """Extracts relevant tensors for folding batch norms.
 
   Args:
     graph: Graph to inspect.
-    input_to_ops_map: InputToOps object containing mapping from tensor's name
-      to ops that take it as input.
-    bn: Batch norm layer prefix string.
+    context: The scope under which we look for batch norm params
+    has_scaling: Bool that specifies if scaling is done as part of batch norm.
 
   Returns:
-    A boolean indicating whether this batch norm layer has scaling enabled.
+    _BatchNormMatch containing all required batch norm parameters.
   """
-  rsqrt_op = graph.get_operation_by_name(bn + '/BatchNorm/batchnorm/Rsqrt')
-  rsqrt_consumers = input_to_ops_map.ConsumerOperations(rsqrt_op)
+  gamma_tensor = None
+  batch_mean_tensor = None
+  batch_variance_tensor = None
+  moving_mean_tensor = None
+  moving_variance_tensor = None
+  batch_epsilon_tensor = None
+  bn_decay_mean_tensor = None
+  bn_decay_var_tensor = None
 
-  return sum(1 for op in rsqrt_consumers if op.type == 'Mul') == 1
+  split_context = context.split('/')
+  base_context = split_context[-1]
+
+  oplist = graph.get_operations()
+  op_suffix_gamma = base_context + '/BatchNorm/gamma'
+  op_suffix_mean = base_context + '/BatchNorm/moments/Squeeze'
+  op_suffix_variance = base_context + '/BatchNorm/moments/Squeeze_1'
+  op_suffix_moving_variance = base_context + '/BatchNorm/moving_variance/read'
+  op_suffix_moving_mean = base_context + '/BatchNorm/moving_mean/read'
+  op_suffix_epsilon = base_context + '/BatchNorm/batchnorm/add/y'
+  op_suffix_bn_decay_mean = base_context + '/BatchNorm/AssignMovingAvg/decay'
+  op_suffix_bn_decay_var = base_context + '/BatchNorm/AssignMovingAvg_1/decay'
+
+  # Parse through list of ops to find relevant ops
+  for op in oplist:
+    if op.name.endswith(op_suffix_mean):
+      # This is an efficient way to check for two things:
+      # Is batch norm present and is it training mode?
+      # Batch statistics are computed only during batch norm in training
+      batch_mean_tensor = graph.get_tensor_by_name(op.name + ':0')
+    if op.name.endswith(op_suffix_variance):
+      batch_variance_tensor = graph.get_tensor_by_name(op.name + ':0')
+    if op.name.endswith(op_suffix_moving_mean):
+      moving_mean_tensor = graph.get_tensor_by_name(op.name + ':0')
+    if op.name.endswith(op_suffix_moving_variance):
+      moving_variance_tensor = graph.get_tensor_by_name(op.name + ':0')
+    if op.name.endswith(op_suffix_epsilon):
+      batch_epsilon_tensor = graph.get_tensor_by_name(op.name + ':0')
+    if op.name.endswith(op_suffix_bn_decay_mean):
+      bn_decay_mean_tensor = graph.get_tensor_by_name(op.name + ':0')
+    if op.name.endswith(op_suffix_bn_decay_var):
+      bn_decay_var_tensor = graph.get_tensor_by_name(op.name + ':0')
+    if has_scaling:
+      if op.name.endswith(op_suffix_gamma):
+        gamma_tensor = graph.get_tensor_by_name(op.name + ':0')
+
+  if not has_scaling:
+    gamma_tensor = array_ops.ones(batch_mean_tensor.shape)
+
+  return _BatchNormMatch(
+      layer_op=None,
+      bn_op=None,
+      output_tensor=None,
+      input_tensor=None,
+      weight_tensor=None,
+      gamma_tensor=gamma_tensor,
+      beta_tensor=None,
+      mean_tensor=batch_mean_tensor,
+      variance_tensor=batch_variance_tensor,
+      moving_mean_tensor=moving_mean_tensor,
+      moving_variance_tensor=moving_variance_tensor,
+      bn_decay_mean_tensor=bn_decay_mean_tensor,
+      bn_decay_var_tensor=bn_decay_var_tensor,
+      batch_epsilon_tensor=batch_epsilon_tensor)
 
 
-def _CreateFoldedOp(graph, context, has_scaling):
+def _CreateFoldedOp(graph, context, has_scaling, freeze_batch_norm_delay,
+                    is_training):
   """Folds in batch norm layer into preceding convolution or FC layer.
 
   Creates 3 new nodes, connects their inputs and adds them to the graph:
@@ -417,17 +551,20 @@ def _CreateFoldedOp(graph, context, has_scaling):
   Args:
     graph: Graph to modify.
     context: String, batch norm context, i.e. node into which BatchNorm is
-        nested.
+      nested.
     has_scaling: Whether the batch norm has scaling enabled.
+    freeze_batch_norm_delay: How many steps to wait before freezing moving mean
+      and variance and using them for batch normalization.
+    is_training: Bool, true if training.
 
   Raises:
     ValueError: When operation type is not supported, or input and output tensor
-        shapes mismatch for created operations: mul_fold, add_fold.
+      shapes mismatch for created operations: mul_fold, add_fold.
 
   Returns:
     A pair of Operations, the first is the original consumer node of the batch
-        norm (../BatchNorm/batchnorm/add_1), the second is the consumer node of
-        the folded graph (add_fold).
+      norm (../BatchNorm/batchnorm/add_1), the second is the consumer node of
+      the folded graph (add_fold).
   """
   mul_scale_name = 'mul_1' if has_scaling else 'mul'
   mul_scale = graph.get_operation_by_name(context +
@@ -435,19 +572,43 @@ def _CreateFoldedOp(graph, context, has_scaling):
                                           mul_scale_name)
   op_below = mul_scale.inputs[0].op
   weights = op_below.inputs[1]
-
+  match = _GetBatchNormParams(
+      graph=graph, context=context, has_scaling=has_scaling)
+  correction_scale, correction_recip, correction_offset = None, None, None
+  if is_training:
+    correction_scale, correction_recip, correction_offset = (
+        _ComputeBatchNormCorrections(
+            context=context,
+            match=match,
+            freeze_batch_norm_delay=freeze_batch_norm_delay,
+            fused_batch_norm=False))
   # Special handling for weights of depthwise convolution.
   if op_below.type == 'DepthwiseConv2dNative':
-    new_shape = [weights.get_shape().as_list()[2],
-                 weights.get_shape().as_list()[3]]
+    new_shape = [
+        weights.get_shape().as_list()[2],
+        weights.get_shape().as_list()[3]
+    ]
     scale_name = 'mul' if has_scaling else 'Rsqrt'
-    scale = graph.get_operation_by_name(context + '/BatchNorm/batchnorm/' +
-                                        scale_name)
+    scale = graph.get_operation_by_name(
+        context + '/BatchNorm/batchnorm/' + scale_name)
     scale = array_ops.reshape(scale.outputs[0], new_shape,
                               context + '/scale_reshape')
-    mul_fold = _CloneOp(mul_scale, context + '/mul_fold',
-                        [(0, weights), (1, scale)])
+
+    if correction_scale is not None:
+      correction_scale = array_ops.reshape(correction_scale, new_shape,
+                                           context + '/correction_reshape')
+      with ops.device(mul_scale.device):
+        weights = math_ops.multiply(correction_scale, weights,
+                                    context + '/correction_mult')
+
+    mul_fold = _CloneOp(mul_scale, context + '/mul_fold', [(0, weights),
+                                                           (1, scale)])
   elif op_below.type in ['Conv2D', 'MatMul']:
+
+    if correction_scale is not None:
+      with ops.device(mul_scale.device):
+        weights = math_ops.multiply(correction_scale, weights,
+                                    context + '/correction_mult')
     mul_fold = _CloneOp(mul_scale, context + '/mul_fold', [(0, weights)])
   else:
     raise ValueError('Cannot handle operation of type: %s' % op_below.op)
@@ -456,10 +617,17 @@ def _CreateFoldedOp(graph, context, has_scaling):
   conv_or_fc_folded = _CloneOp(op_below, op_below.name + '_Fold',
                                [(1, mul_fold.outputs[0])])
 
-  add_shift = graph.get_operation_by_name(context +
-                                          '/BatchNorm/batchnorm/add_1')
-  add_fold = _CloneOp(add_shift, context + '/add_fold',
-                      [(0, conv_or_fc_folded.outputs[0])])
+  add_shift = graph.get_operation_by_name(
+      context + '/BatchNorm/batchnorm/add_1')
+
+  corrected_output = conv_or_fc_folded.outputs[0]
+  if correction_offset is not None:
+    with ops.device(conv_or_fc_folded.device):
+      corrected_output = math_ops.multiply(correction_recip, corrected_output,
+                                           context + '/post_conv_mul')
+      corrected_output = math_ops.add(corrected_output, (correction_offset),
+                                      context + '/correction_add')
+  add_fold = _CloneOp(add_shift, context + '/add_fold', [(0, corrected_output)])
   _AssertShapesMatch('add_fold', add_fold.inputs[0], add_fold.outputs[0])
   return add_shift, add_fold
 
@@ -471,7 +639,7 @@ def _CloneOp(op, new_name, new_inputs):
     op: Operation to modify.
     new_name: String, a new name to set on cloned op.
     new_inputs: A list of tuples (idx, tensor), each input with corresponding
-        index will be replaced by the given Tensor in the cloned op.
+      index will be replaced by the given Tensor in the cloned op.
 
   Returns:
     Operation, the cloned op.
@@ -603,3 +771,121 @@ def _AssertShapesMatch(op_name, in_tensor, out_tensor):
   if not in_shape.is_compatible_with(out_shape):
     raise ValueError('%s should not change tensor shape: input %s, '
                      'output %s' % (op_name, in_shape, out_shape))
+
+
+def _HasScaling(graph, input_to_ops_map, bn):
+  r"""Checks if batch norm  has scaling enabled.
+
+  Difference between batch norm with scaling and without is that with scaling:
+
+  Rsqrt -> mul -> mul_1
+              \-> mul_2
+
+  where
+    mul multiplies gamma by inverse square root of EMA of batch variance,
+    mul_1 multiplies output of mul with output from the base operation
+      (convolution, FC or depthwise convolution),
+    mul_2 multiplies output of mul with EMA of batch mean,
+  and without scaling:
+
+  Rsqrt -> mul
+       \-> mul_1
+
+  where
+    mul multiplies the inverse square root of EMA of batch variance with output
+      from the base operation,
+    mul_1 multiplies inverse square root of EMA of batch variance with EMA
+      of batch mean.
+
+  Args:
+    graph: Graph to inspect.
+    input_to_ops_map: InputToOps object containing mapping from tensor's name
+      to ops that take it as input.
+    bn: Batch norm layer prefix string.
+
+  Returns:
+    A boolean indicating whether this batch norm layer has scaling enabled.
+  """
+  rsqrt_op = graph.get_operation_by_name(bn + '/BatchNorm/batchnorm/Rsqrt')
+  rsqrt_consumers = input_to_ops_map.ConsumerOperations(rsqrt_op)
+
+  return sum(1 for op in rsqrt_consumers if op.type == 'Mul') == 1
+
+
+class _BatchNormMatch(object):
+  """Contains all information related to a found Fused/UnfusedBatchNorm."""
+
+  def __init__(self, layer_op, bn_op, output_tensor, input_tensor,
+               weight_tensor, gamma_tensor, beta_tensor, mean_tensor,
+               variance_tensor, moving_mean_tensor, moving_variance_tensor,
+               bn_decay_mean_tensor, bn_decay_var_tensor, batch_epsilon_tensor):
+    self._layer_op = layer_op
+    self._bn_op = bn_op
+    self._output_tensor = output_tensor
+    self._input_tensor = input_tensor
+    self._weight_tensor = weight_tensor
+    self._gamma_tensor = gamma_tensor
+    self._beta_tensor = beta_tensor
+    self._mean_tensor = mean_tensor
+    self._variance_tensor = variance_tensor
+    self._moving_mean_tensor = moving_mean_tensor
+    self._moving_variance_tensor = moving_variance_tensor
+    self._bn_decay_mean_tensor = bn_decay_mean_tensor
+    self._bn_decay_var_tensor = bn_decay_var_tensor
+    self._batch_epsilon_tensor = batch_epsilon_tensor
+
+  @property
+  def layer_op(self):
+    return self._layer_op
+
+  @property
+  def bn_op(self):
+    return self._bn_op
+
+  @property
+  def output_tensor(self):
+    return self._output_tensor
+
+  @property
+  def input_tensor(self):
+    return self._input_tensor
+
+  @property
+  def weight_tensor(self):
+    return self._weight_tensor
+
+  @property
+  def gamma_tensor(self):
+    return self._gamma_tensor
+
+  @property
+  def beta_tensor(self):
+    return self._beta_tensor
+
+  @property
+  def mean_tensor(self):
+    return self._mean_tensor
+
+  @property
+  def variance_tensor(self):
+    return self._variance_tensor
+
+  @property
+  def moving_mean_tensor(self):
+    return self._moving_mean_tensor
+
+  @property
+  def moving_variance_tensor(self):
+    return self._moving_variance_tensor
+
+  @property
+  def batch_epsilon_tensor(self):
+    return self._batch_epsilon_tensor
+
+  @property
+  def bn_decay_mean_tensor(self):
+    return self._bn_decay_mean_tensor
+
+  @property
+  def bn_decay_var_tensor(self):
+    return self._bn_decay_var_tensor

@@ -69,6 +69,14 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "VocabInfo"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "WarmStartSettings"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "export"
     mtype: "<type \'module\'>"
   }

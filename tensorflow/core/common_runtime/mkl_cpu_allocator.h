@@ -46,7 +46,7 @@ class MklSubAllocator : public SubAllocator {
 
 /// CPU allocator for MKL that wraps BFC allocator and intercepts
 /// and redirects memory allocation calls from MKL.
-class MklCPUAllocator : public Allocator {
+class MklCPUAllocator : public VisitableAllocator {
  public:
   // Constructor and other standard functions
 
@@ -117,7 +117,15 @@ class MklCPUAllocator : public Allocator {
 
   void GetStats(AllocatorStats* stats) override { allocator_->GetStats(stats); }
 
-  void ClearStats() override { a_->ClearStats(); }
+  void ClearStats() override { allocator_->ClearStats(); }
+
+  void AddAllocVisitor(Visitor visitor) override {
+    allocator_->AddAllocVisitor(visitor);
+  }
+
+  void AddFreeVisitor(Visitor visitor) override {
+    allocator_->AddFreeVisitor(visitor);
+  }
 
  private:
   // Hooks provided by this allocator for memory allocation routines from MKL

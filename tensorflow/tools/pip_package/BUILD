@@ -10,6 +10,8 @@ load(
     "transitive_hdrs",
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
+load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -34,7 +36,9 @@ transitive_hdrs(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:stream_executor",
         "//third_party/eigen3",
-    ],
+    ] + if_cuda([
+        "@local_config_cuda//cuda:cuda_headers",
+    ]),
 )
 
 py_binary(
@@ -42,27 +46,6 @@ py_binary(
     srcs = ["simple_console.py"],
     srcs_version = "PY2AND3",
     deps = ["//tensorflow:tensorflow_py"],
-)
-
-py_test(
-    name = "pip_smoke_test",
-    srcs = ["pip_smoke_test.py"],
-    data = [
-        "//tensorflow:all_opensource_files",
-    ],
-    tags = [
-        "manual",
-        "notap",
-    ],
-)
-
-py_binary(
-    name = "check_load_py_test",
-    srcs = ["check_load_py_test.py"],
-    data = [
-        "//tensorflow:all_opensource_files",
-    ],
-    srcs_version = "PY2AND3",
 )
 
 # On Windows, python binary is a zip file of runfiles tree.
@@ -88,7 +71,6 @@ py_binary(
         "//tensorflow/python/eager:eager_pip",
         "//tensorflow/contrib/summary:summary_test_util",
         # These targets don't build on Windows yet. Exclude them for now.
-        # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
         # "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
         # "//tensorflow/contrib/specs",
@@ -106,13 +88,20 @@ filegroup(
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
+        "@absl_py//absl/flags:LICENSE",
+        "@arm_neon_2_x86_sse//:LICENSE",
+        "@astor_archive//:LICENSE",
+        "@aws//:LICENSE",
         "@boringssl//:LICENSE",
+        "@com_google_absl//:LICENSE",
         "@com_googlesource_code_re2//:LICENSE",
         "@cub_archive//:LICENSE.TXT",
         "@curl//:COPYING",
         "@eigen_archive//:COPYING.MPL2",
         "@farmhash_archive//:COPYING",
         "@fft2d//:fft/readme.txt",
+        "@flatbuffers//:LICENSE.txt",
+        "@gast_archive//:PKG-INFO",
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@grpc//:LICENSE",
@@ -123,11 +112,15 @@ filegroup(
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@grpc//third_party/nanopb:LICENSE.txt",
+        "@nasm//:LICENSE",
         "@nsync//:LICENSE",
+        "@pcre//:LICENCE",
         "@png_archive//:LICENSE",
         "@protobuf_archive//:LICENSE",
         "@six_archive//:LICENSE",
         "@snappy//:COPYING",
+        "@swig//:LICENSE",
+        "@termcolor_archive//:COPYING.txt",
         "@zlib_archive//:zlib.h",
         "@org_python_pypi_backports_weakref//:LICENSE",
     ] + if_mkl([
@@ -155,7 +148,7 @@ sh_binary(
             "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
             "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
             "//tensorflow/contrib/data/python/kernel_tests:dataset_serialization_test",
-            "//tensorflow/contrib/data/python/ops:prefetching_py",
+            "//tensorflow/contrib/data/python/ops:contrib_op_loader",
             "//tensorflow/contrib/eager/python/examples:examples_pip",
             "//tensorflow/contrib/eager/python:checkpointable",
             "//tensorflow/contrib/eager/python:evaluator",
@@ -166,9 +159,12 @@ sh_binary(
             "//tensorflow/contrib/lite/toco:toco",
             "//tensorflow/contrib/lite/toco/python:toco_wrapper",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",
-            "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",
             "//tensorflow/contrib/predictor:predictor_pip",
+            "//tensorflow/contrib/py2tf:py2tf",
+            "//tensorflow/contrib/py2tf/converters:converters",
+            "//tensorflow/contrib/py2tf/converters:test_lib",
+            "//tensorflow/contrib/py2tf/impl:impl",
             "//tensorflow/contrib/py2tf/pyct:pyct",
             "//tensorflow/contrib/py2tf/pyct/static_analysis:static_analysis",
             "//tensorflow/contrib/receptive_field:receptive_field_pip",
@@ -196,7 +192,9 @@ sh_binary(
             "//tensorflow/python:test_ops",
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
-    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]) + if_tensorrt([
+        "//tensorflow/contrib/tensorrt:init_py",
+    ]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows

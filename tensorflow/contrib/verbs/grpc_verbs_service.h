@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_GRPC_VERBS_SERVICE_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_GRPC_VERBS_SERVICE_H_
+#ifndef TENSORFLOW_CONTRIB_VERBS_GRPC_VERBS_SERVICE_H_
+#define TENSORFLOW_CONTRIB_VERBS_GRPC_VERBS_SERVICE_H_
 
 #ifdef TENSORFLOW_USE_VERBS
 
@@ -69,4 +69,4 @@ void SetNewVerbsService(GrpcVerbsService** handle, const WorkerEnv* worker_env,
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_USE_VERBS
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_GRPC_VERBS_SERVICE_H_
+#endif  // TENSORFLOW_CONTRIB_VERBS_GRPC_VERBS_SERVICE_H_

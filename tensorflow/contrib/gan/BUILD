@@ -177,6 +177,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":losses_impl",
+        ":namedtuples",
         "//tensorflow/python:util",
     ],
 )
@@ -188,6 +189,9 @@ py_test(
     deps = [
         ":tuple_losses",
         "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:variables",
         "//third_party/py/numpy",
     ],
 )
@@ -395,6 +399,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":eval_utils",
+        ":namedtuples",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:math_ops",

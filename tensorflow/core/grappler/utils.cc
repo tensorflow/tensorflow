@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/types.h"
@@ -131,7 +132,7 @@ string ParseNodeName(const string& name, int* position) {
   strings::Scanner scan(name);
   scan.ZeroOrOneLiteral("^")
       .RestartCapture()
-      .One(strings::Scanner::LETTER_DIGIT_DOT)
+      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
       .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
   StringPiece capture;
   StringPiece remaining;
@@ -207,7 +208,7 @@ string AsControlDependency(const string& node_name) {
              : strings::StrCat("^", node_name);
 }
 
-int NumOutputs(const NodeDef& node) {
+int NumOutputs(const NodeDef& node, GraphDef* graph) {
   int num_outputs = 0;
   const OpDef* op_def = nullptr;
   auto status = OpRegistry::Global()->LookUpOpDef(node.op(), &op_def);
@@ -221,6 +222,12 @@ int NumOutputs(const NodeDef& node) {
       } else {
         num_outputs++;
       }
+    }
+  } else {
+    FunctionLibraryDefinition fdef(OpRegistry::Global(), graph->library());
+    auto status = fdef.LookUpOpDef(node.op(), &op_def);
+    if (status.ok()) {
+      num_outputs = op_def->output_arg_size();
     }
   }
   return num_outputs;
@@ -301,6 +308,20 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
       std::size_t r = (*permutation)[n];
       graph->mutable_node()->SwapElements(n, r);
       std::swap((*permutation)[n], (*permutation)[r]);
+    }
+  }
+}
+
+void DedupControlInputs(NodeDef* node) {
+  std::unordered_set<string> inputs;
+  int pos = 0;
+  while (pos < node->input_size()) {
+    const string& input = node->input(pos);
+    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
+      node->mutable_input()->SwapElements(pos, node->input_size() - 1);
+      node->mutable_input()->RemoveLast();
+    } else {
+      ++pos;
     }
   }
 }

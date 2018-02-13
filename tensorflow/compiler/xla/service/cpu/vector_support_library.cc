@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/vector_support_library.h"
 
+#include "llvm/Support/raw_ostream.h"
 #include "tensorflow/compiler/xla/service/cpu/target_machine_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 
@@ -35,8 +36,27 @@ VectorSupportLibrary::VectorSupportLibrary(PrimitiveType primitive_type,
   vector_pointer_type_ = llvm::PointerType::getUnqual(vector_type_);
 }
 
+static string TypeToString(llvm::Type* type) {
+  std::string o;
+  llvm::raw_string_ostream ostream(o);
+  type->print(ostream);
+  return ostream.str();
+}
+
+void VectorSupportLibrary::AssertCorrectTypes(
+    std::initializer_list<llvm::Value*> values) {
+  for (llvm::Value* v : values) {
+    llvm::Type* type = v->getType();
+    if (type != scalar_type() && type != vector_type()) {
+      LOG(FATAL) << "Expected either " << TypeToString(scalar_type()) << " or "
+                 << TypeToString(vector_type()) << " but got "
+                 << TypeToString(type);
+    }
+  }
+}
+
 llvm::Value* VectorSupportLibrary::Mul(llvm::Value* lhs, llvm::Value* rhs) {
-  CHECK(lhs->getType() == scalar_type() || lhs->getType() == vector_type());
+  AssertCorrectTypes({lhs, rhs});
   return MulInternal(lhs, rhs);
 }
 
@@ -50,8 +70,48 @@ llvm::Value* VectorSupportLibrary::MulInternal(llvm::Value* lhs,
 }
 
 llvm::Value* VectorSupportLibrary::Add(llvm::Value* lhs, llvm::Value* rhs) {
-  CHECK(lhs->getType() == scalar_type() || lhs->getType() == vector_type());
+  AssertCorrectTypes({lhs, rhs});
   return AddInternal(lhs, rhs);
+}
+
+llvm::Value* VectorSupportLibrary::Sub(llvm::Value* lhs, llvm::Value* rhs) {
+  AssertCorrectTypes({lhs, rhs});
+  return ir_builder()->CreateFSub(lhs, rhs);
+}
+
+llvm::Value* VectorSupportLibrary::Max(llvm::Value* lhs, llvm::Value* rhs) {
+  AssertCorrectTypes({lhs, rhs});
+  if (scalar_type_->isFloatingPointTy()) {
+    return llvm_ir::EmitFloatMax(lhs, rhs, ir_builder_);
+  } else {
+    LOG(FATAL) << "Max for integers is unimplemented";
+  }
+}
+
+llvm::Value* VectorSupportLibrary::Floor(llvm::Value* a) {
+  AssertCorrectTypes({a});
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::floor, {a},
+                                      {a->getType()}, ir_builder());
+}
+
+llvm::Value* VectorSupportLibrary::Div(llvm::Value* lhs, llvm::Value* rhs) {
+  AssertCorrectTypes({lhs, rhs});
+  if (scalar_type_->isFloatingPointTy()) {
+    return ir_builder()->CreateFDiv(lhs, rhs, name());
+  } else {
+    LOG(FATAL) << "Division for integers is unimplemented";
+  }
+}
+
+llvm::Value* VectorSupportLibrary::Clamp(llvm::Value* a, double low,
+                                         double high) {
+  AssertCorrectTypes({a});
+  llvm::Type* type = a->getType();
+  CHECK_LT(low, high);
+  CHECK(scalar_type_->isFloatingPointTy());
+  return llvm_ir::EmitFloatMin(
+      llvm_ir::EmitFloatMax(a, llvm::ConstantFP::get(type, low), ir_builder_),
+      llvm::ConstantFP::get(type, high), ir_builder_);
 }
 
 llvm::Value* VectorSupportLibrary::AddInternal(llvm::Value* lhs,
@@ -93,6 +153,7 @@ llvm::Value* VectorSupportLibrary::LoadScalar(llvm::Value* pointer) {
 
 void VectorSupportLibrary::StoreVector(llvm::Value* value,
                                        llvm::Value* pointer) {
+  AssertCorrectTypes({value});
   if (pointer->getType() != vector_pointer_type()) {
     pointer = ir_builder()->CreateBitCast(pointer, vector_pointer_type());
   }
@@ -102,6 +163,7 @@ void VectorSupportLibrary::StoreVector(llvm::Value* value,
 
 void VectorSupportLibrary::StoreScalar(llvm::Value* value,
                                        llvm::Value* pointer) {
+  AssertCorrectTypes({value});
   if (pointer->getType() != scalar_pointer_type()) {
     pointer =
         ir_builder()->CreateBitCast(pointer, scalar_pointer_type(), name());

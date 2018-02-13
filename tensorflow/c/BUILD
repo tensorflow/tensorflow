@@ -26,6 +26,18 @@ filegroup(
     visibility = ["//tensorflow:__subpackages__"],
 )
 
+filegroup(
+    name = "srcs",
+    srcs = glob(
+        [
+            "*.cc",
+            "*.h",
+        ],
+        exclude = ["*test*"],
+    ),
+    visibility = ["//visibility:public"],
+)
+
 tf_cuda_library(
     name = "c_api_internal",
     srcs = ["c_api.h"],
@@ -79,6 +91,12 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
         ],
+    }) + select({
+        "//tensorflow:with_xla_support": [
+            "//tensorflow/compiler/tf2xla:xla_compiler",
+            "//tensorflow/compiler/jit",
+        ],
+        "//conditions:default": [],
     }),
 )
 
@@ -123,10 +141,16 @@ tf_cuda_library(
     testonly = 1,
     srcs = ["c_test_util.cc"],
     hdrs = ["c_test_util.h"],
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+    ],
     deps = [
         ":c_api",
+        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:session_options",
         "//tensorflow/core:test",
     ],
 )

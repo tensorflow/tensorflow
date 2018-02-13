@@ -286,7 +286,7 @@ def minimize_loss_distributed(task_id, num_worker_tasks, num_ps_tasks, master,
         damping=0.001,
         layer_collection=layer_collection,
         momentum=0.9)
-    inv_update_queue = oq.OpQueue(optimizer.inv_updates_dict.values())
+    inv_update_queue = oq.OpQueue(optimizer.inv_update_ops)
     sync_optimizer = tf.train.SyncReplicasOptimizer(
         opt=optimizer,
         replicas_to_aggregate=_num_gradient_tasks(num_worker_tasks))

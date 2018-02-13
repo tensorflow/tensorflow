@@ -23,6 +23,7 @@ import types as python_types
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import activations
 from tensorflow.python.keras._impl.keras import backend as K
@@ -36,8 +37,10 @@ from tensorflow.python.keras._impl.keras.utils.generic_utils import func_dump
 from tensorflow.python.keras._impl.keras.utils.generic_utils import func_load
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.layers import core as tf_core_layers
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.Masking')
 class Masking(Layer):
   """Masks a sequence by using a mask value to skip timesteps.
 
@@ -88,6 +91,7 @@ class Masking(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Dropout')
 class Dropout(tf_core_layers.Dropout, Layer):
   """Applies Dropout to the input.
 
@@ -119,7 +123,8 @@ class Dropout(tf_core_layers.Dropout, Layer):
     if training is None:
       training = K.learning_phase()
     output = super(Dropout, self).call(inputs, training=training)
-    if training is K.learning_phase():
+    # EagerTensor object has no attribute _uses_learning_phase
+    if not context.in_eager_mode() and training is K.learning_phase():
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
 
@@ -133,6 +138,7 @@ class Dropout(tf_core_layers.Dropout, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.SpatialDropout1D')
 class SpatialDropout1D(Dropout):
   """Spatial 1D version of Dropout.
 
@@ -169,6 +175,7 @@ class SpatialDropout1D(Dropout):
     return noise_shape
 
 
+@tf_export('keras.layers.SpatialDropout2D')
 class SpatialDropout2D(Dropout):
   """Spatial 2D version of Dropout.
 
@@ -222,6 +229,7 @@ class SpatialDropout2D(Dropout):
       return (input_shape[0], 1, 1, input_shape[3])
 
 
+@tf_export('keras.layers.SpatialDropout3D')
 class SpatialDropout3D(Dropout):
   """Spatial 3D version of Dropout.
 
@@ -274,6 +282,7 @@ class SpatialDropout3D(Dropout):
       return (input_shape[0], 1, 1, 1, input_shape[4])
 
 
+@tf_export('keras.layers.Activation')
 class Activation(Layer):
   """Applies an activation function to an output.
 
@@ -307,6 +316,7 @@ class Activation(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Reshape')
 class Reshape(Layer):
   """Reshapes an output to a certain shape.
 
@@ -412,6 +422,7 @@ class Reshape(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Permute')
 class Permute(Layer):
   """Permutes the dimensions of the input according to a given pattern.
 
@@ -464,6 +475,7 @@ class Permute(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Flatten')
 class Flatten(tf_core_layers.Flatten, Layer):
   """Flattens the input. Does not affect the batch size.
 
@@ -483,6 +495,7 @@ class Flatten(tf_core_layers.Flatten, Layer):
   pass
 
 
+@tf_export('keras.layers.RepeatVector')
 class RepeatVector(Layer):
   """Repeats the input n times.
 
@@ -526,6 +539,7 @@ class RepeatVector(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Lambda')
 class Lambda(Layer):
   """Wraps arbitrary expression as a `Layer` object.
 
@@ -707,6 +721,7 @@ class Lambda(Layer):
     return cls(**config)
 
 
+@tf_export('keras.layers.Dense')
 class Dense(tf_core_layers.Dense, Layer):
   """Just your regular densely-connected NN layer.
 
@@ -811,6 +826,7 @@ class Dense(tf_core_layers.Dense, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.ActivityRegularization')
 class ActivityRegularization(Layer):
   """Layer that applies an update to the cost function based input activity.
 

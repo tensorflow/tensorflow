@@ -34,6 +34,11 @@
 #     If set to a non-empty string, will use it as the URL from which the
 #     pip wheel file will be downloaded (instead of building the pip locally).
 #
+#   TF_DOCKER_BUILD_CENTRAL_PIP_IS_LOCAL
+#     (Optional)
+#     If set to a non-empty string, we will treat TF_DOCKER_BUILD_CENTRAL_PIP
+#     as a path rather than a url.
+#
 #   TF_DOCKER_BUILD_IMAGE_NAME:
 #     (Optional)
 #     If set to any non-empty value, will use it as the image of the
@@ -234,6 +239,32 @@ if [[ "${TF_DOCKER_BUILD_IS_DEVEL}" == "no" ]]; then
 "COPY ${PIP_WHL} /\n"\
 "RUN pip --no-cache-dir install /${PIP_WHL}" "${ORIG_DOCKERFILE}" \
     > "${DOCKERFILE}"
+
+  # Build from a local whl file path rather than an URL
+  elif [[ ! -z "${TF_DOCKER_BUILD_CENTRAL_PIP_IS_LOCAL}" ]]; then
+    PIP_WHL="${TF_DOCKER_BUILD_CENTRAL_PIP}"
+    if [[ -z "${PIP_WHL}" ]]; then
+      die "ERROR: Cannot locate the specified pip whl file"
+    fi
+    echo "Specified PIP whl file is at: ${PIP_WHL}"
+
+    # Copy the pip file to tmp directory
+    cp "${PIP_WHL}" "${TMP_DIR}/" || \
+        die "ERROR: Failed to copy wheel file: ${PIP_WHL}"
+
+    # Use string replacement to put the correct file name into the Dockerfile
+    PIP_WHL=$(basename "${PIP_WHL}")
+
+    # Modify the non-devel Dockerfile to point to the correct pip whl file
+    # location
+    sed -e "/# --- DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/,"\
+"/# --- ~ DO NOT EDIT OR DELETE BETWEEN THE LINES --- #/c"\
+"COPY ${PIP_WHL} /\n"\
+"RUN pip --no-cache-dir install /${PIP_WHL}" "${ORIG_DOCKERFILE}" \
+    > "${DOCKERFILE}"
+    echo "Using local pip wheel from: ${TF_DOCKER_BUILD_CENTRAL_PIP}"
+    echo
+
   else
     echo "Downloading pip wheel from: ${TF_DOCKER_BUILD_CENTRAL_PIP}"
     echo
@@ -408,14 +439,13 @@ fi
 # Optional: set TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS to push image
 if [[ ! -z "${TF_DOCKER_BUILD_PUSH_WITH_CREDENTIALS}" ]]; then
 
-  docker login --username "${TF_DOCKER_USERNAME}" \
-  --email "${TF_DOCKER_EMAIL}" \
-  --password "${TF_DOCKER_PASSWORD}"
+  docker login -u "${TF_DOCKER_USERNAME}" \
+  -p "${TF_DOCKER_PASSWORD}"
 
   if [[ $? != "0" ]]; then
     die "FAIL: Unable to login. Invalid credentials."
   fi
-  docker push $1
+  docker push "${FINAL_IMG}"
   if [[ $? == "0" ]]; then
     docker logout
     echo "Successfully pushed Docker image ${FINAL_IMG}"

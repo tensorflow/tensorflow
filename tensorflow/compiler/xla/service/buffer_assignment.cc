@@ -73,7 +73,8 @@ void BufferAllocation::AddAssignment(const LogicalBuffer& buffer, int64 offset,
   CHECK_LE(offset, size_) << "LogicalBuffer " << buffer
                           << " offset out of range";
   CHECK_LE(offset + size, size_)
-      << "LogicalBuffer " << buffer << " size out of range";
+      << "LogicalBuffer " << buffer
+      << " size out of range at offset: " << offset << " with size: " << size;
   CHECK_EQ(buffer.color(), color())
       << "Buffer color " << buffer.color() << " for buffer " << buffer
       << " does not match allocation color " << color() << ".";
@@ -845,14 +846,13 @@ Status BufferAssigner::AssignBuffersForComputation(
       continue;
     }
 
-    if (is_thread_local || instruction->opcode() == HloOpcode::kCustomCall) {
-      // Custom call operations never have reusable buffers. Also we do not
-      // reuse thread-local buffers for now, because they are dynamically
-      // allocated and their lifetimes are hard to compute.
+    if (is_thread_local) {
+      // We do not reuse thread-local buffers for now, because they are
+      // dynamically allocated and their lifetimes are hard to compute.
       BufferAllocation* allocation = assignment->NewAllocation(
           *buffer, buffer_size, is_thread_local, /*is_reusable=*/false);
       VLOG(3) << "New allocation #" << allocation->index()
-              << " for thread-local/CustomCall: " << *buffer;
+              << " for thread-local: " << *buffer;
       continue;
     }
 
@@ -997,14 +997,15 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
       auto color = single_colored_set.first;
       VLOG(2) << "Simulating heap for color " << color;
       int64 alignment = assignment->color_alignment_(color);
+      HeapSimulator::Options options;
+      options.buffers_to_assign = &single_colored_set.second;
       TF_ASSIGN_OR_RETURN(
           const HeapSimulator::Result result,
           HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
                                  MakeUnique<LazyBestFitHeap>(alignment)),
                              assignment->module(), module_sequence,
                              assignment->points_to_analysis(),
-                             assignment->buffer_size_,
-                             &single_colored_set.second));
+                             assignment->buffer_size_, options));
       AssignBuffersFromHeapSimulator(result, assignment,
                                      single_colored_set.first);
     }
@@ -1024,14 +1025,15 @@ Status BufferAssigner::AssignBuffersWithSequentialOrdering(
         auto color = single_colored_set.first;
         VLOG(2) << "Simulating heap for color " << color;
         int64 alignment = assignment->color_alignment_(color);
+        HeapSimulator::Options options;
+        options.buffers_to_assign = &single_colored_set.second;
         TF_ASSIGN_OR_RETURN(
             const HeapSimulator::Result result,
             HeapSimulator::Run(MakeUnique<DecreasingSizeRunsHeap>(
                                    MakeUnique<LazyBestFitHeap>(alignment)),
                                *computation, *instruction_sequence,
                                assignment->points_to_analysis(),
-                               assignment->buffer_size_,
-                               &single_colored_set.second));
+                               assignment->buffer_size_, options));
         AssignBuffersFromHeapSimulator(result, assignment,
                                        single_colored_set.first);
       }
@@ -1120,140 +1122,6 @@ void BufferAssigner::AddSetToColocatedBufferSets(
   }
 }
 
-// Conceptually the same as AddSetToColocatedBufferSets, but specific to the
-// colocated buffers for while instructions. 'colocated_set' contains the
-// buffers for a single while instruction that must be colocated. The idea here
-// is to apply a memory-saving heuristic for separate while instructions whose
-// buffers are disjoint in liveness, by using the colocation mechanism to force
-// buffer sharing. This often reduces memory for multi-layer RNNs.
-//
-// TODO(b/32491382): We should be able to remove this heuristic after we
-// implement module-level liveness analysis, which would let us directly detect
-// buffer sharing opportunities between the while instruction buffer and the
-// buffers from the predicate and body computation, as well as sharing across
-// different while instructions.
-void BufferAssigner::AddWhileSetToColocatedBufferSets(
-    const std::vector<const LogicalBuffer*>& colocated_set,
-    const LogicalBuffer* while_init_buffer,
-    const LogicalBuffer* while_result_buffer, const HloInstruction* while_hlo,
-    const HloComputation& computation, const BufferLiveness& buffer_liveness,
-    const LogicalBuffer::SizeFunction& buffer_size,
-    std::vector<ColocatedBufferSet>* colocated_buffer_sets) {
-  CHECK(!colocated_set.empty());
-  const TuplePointsToAnalysis& points_to_analysis =
-      buffer_liveness.points_to_analysis();
-
-  // Parallel while loops cannot safely share colocated buffer sets.
-  if (buffer_liveness.hlo_ordering().SequentialOrder(computation) == nullptr) {
-    AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
-    return;
-  }
-
-  // Scan 'colocated_buffer_sets' in reverse order for locality; colocated sets
-  // are added in postorder over computations and instructions.
-  const int64 init_buffer_size = buffer_size(*while_init_buffer);
-  const bool is_live_out = buffer_liveness.MaybeLiveOut(*while_result_buffer);
-  for (int i = colocated_buffer_sets->size() - 1; i >= 0; --i) {
-    const ColocatedBufferSet& predecessor_set = (*colocated_buffer_sets)[i];
-
-    // Skip predecessor sets not associated with while loops.
-    if (std::all_of(predecessor_set.begin(), predecessor_set.end(),
-                    [](const LogicalBuffer* buffer) {
-                      return buffer->instruction()->opcode() !=
-                             HloOpcode::kWhile;
-                    })) {
-      continue;
-    }
-
-    // Skip predecessor sets already associated with 'while_hlo'.
-    if (std::any_of(predecessor_set.begin(), predecessor_set.end(),
-                    [&while_hlo](const LogicalBuffer* buffer) {
-                      return buffer->instruction() == while_hlo;
-                    })) {
-      continue;
-    }
-
-    // Skip predecessor sets with entry parameter if the while result is live
-    // out.
-    if (is_live_out &&
-        std::any_of(predecessor_set.begin(), predecessor_set.end(),
-                    [](const LogicalBuffer* buffer) {
-                      auto* instruction = buffer->instruction();
-                      auto* computation = instruction->parent();
-                      auto* module = computation->parent();
-                      return instruction->opcode() == HloOpcode::kParameter &&
-                             computation == module->entry_computation();
-                    })) {
-      continue;
-    }
-
-    // Build vector of predecessor while result and init buffers, which are
-    // checked for liveness interference below. We must check both the result
-    // and init buffers because they're aliased together, but
-    // TuplePointsToAnalysis is unaware of this aliasing.
-    std::vector<const LogicalBuffer*> predecessor_while_buffers;
-    for (const LogicalBuffer* buffer : predecessor_set) {
-      const HloInstruction* instruction = buffer->instruction();
-      if (instruction->opcode() == HloOpcode::kWhile &&
-          buffer_size(*buffer) == init_buffer_size &&
-          instruction->parent() == &computation) {
-        predecessor_while_buffers.push_back(buffer);
-        // Add the init buffer at the same index, which must also exist in the
-        // predecessor set, and must be unambiguous.
-        const PointsToSet& init_points_to =
-            points_to_analysis.GetPointsToSet(instruction->operand(0));
-        const auto& init_buffers = init_points_to.element(buffer->index());
-        CHECK_EQ(init_buffers.size(), 1);
-        CHECK_GT(predecessor_set.count(init_buffers[0]), 0);
-        predecessor_while_buffers.push_back(init_buffers[0]);
-      }
-    }
-    if (predecessor_while_buffers.empty()) {
-      continue;
-    }
-
-    // Skip predecessor set if the live range of any predecessor
-    // buffers overlaps with 'while_init_buffer' or
-    // 'while_result_buffer' (we need to check both since they're
-    // aliased together, but the points-to analysis is unaware of this
-    // aliasing). Note that tuple element buffer forwarding can cause
-    // the same buffer to appear on both sides of the interference
-    // comparison below.
-    auto may_interfere_with_init_or_result = [&](const LogicalBuffer* buffer) {
-      if (while_init_buffer->id() != buffer->id() &&
-          buffer_liveness.MayInterfere(*while_init_buffer, *buffer)) {
-        return true;
-      }
-
-      if (while_result_buffer->id() != buffer->id() &&
-          buffer_liveness.MayInterfere(*while_result_buffer, *buffer)) {
-        return true;
-      }
-
-      return false;
-    };
-
-    if (std::any_of(predecessor_while_buffers.begin(),
-                    predecessor_while_buffers.end(),
-                    may_interfere_with_init_or_result)) {
-      continue;
-    }
-
-    // All our checks have passed; merge 'predecessor_set' with 'colocated_set',
-    // and add the merged set to 'colocated_buffer_sets'. This forces the
-    // colocation of buffers across different while instructions.
-    FlatSet<const LogicalBuffer*> unique;
-    unique.insert(predecessor_set.begin(), predecessor_set.end());
-    unique.insert(colocated_set.begin(), colocated_set.end());
-    std::vector<const LogicalBuffer*> merged_set(unique.begin(), unique.end());
-    AddSetToColocatedBufferSets(merged_set, colocated_buffer_sets);
-    return;
-  }
-
-  // Failed to merge into predecessor set; add 'colocated_set' as-is.
-  AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
-}
-
 namespace {
 
 // Checks that points-to set of 'instruction' is unambiguous and distinct
@@ -1270,7 +1138,129 @@ const LogicalBuffer* AddBufferToColocatedSet(
   return colocated_set->back();
 }
 
+// Given the interference map of a graph (the list of interfering node indices
+// for each node), perform graph coloring such that interfering nodes are
+// assigned to different colors. Returns the assigned color of the nodes, where
+// the colors are represented as integer values [0, color_count).
+std::vector<int64> ColorInterferenceGraph(
+    const std::vector<std::vector<int64>>& interference_map) {
+  const int64 node_count = interference_map.size();
+
+  // Sort the nodes such that we assign nodes with more interference first. This
+  // relies on the common heuristic of assigning the most constrained node
+  // first, but it would be good to investigate other ordering heuristics too.
+  std::vector<int64> nodes(node_count);
+  std::iota(nodes.begin(), nodes.end(), 0);
+  std::sort(nodes.begin(), nodes.end(),
+            [&interference_map](const int64 i, const int64 j) {
+              return interference_map[i].size() > interference_map[j].size();
+            });
+
+  const int64 kColorUnassigned = -1;
+  std::vector<int64> assigned_colors(node_count, kColorUnassigned);
+  for (int64 node : nodes) {
+    // Mark the colors that are already assigned to the neighbors.
+    std::vector<bool> available_colors(node_count, true);
+    for (int64 neighbor : interference_map[node]) {
+      int64 color = assigned_colors[neighbor];
+      if (color != kColorUnassigned) {
+        available_colors[color] = false;
+      }
+    }
+
+    // Find the color that is not yet assigned to the neighbors.
+    int64 color = kColorUnassigned;
+    for (color = 0; color < available_colors.size(); ++color) {
+      if (available_colors[color]) {
+        break;
+      }
+    }
+    CHECK_NE(color, kColorUnassigned);
+    assigned_colors[node] = color;
+  }
+  return assigned_colors;
+}
+
 }  // namespace
+
+std::vector<BufferAssigner::ColocatedBufferSet>
+BufferAssigner::MergeColocatedBufferSets(
+    const std::vector<ColocatedBufferSet>& colocated_buffer_sets,
+    const BufferLiveness& buffer_liveness,
+    const LogicalBuffer::SizeFunction& buffer_size) {
+  VLOG(1) << "colocation sets count before coalescing:"
+          << colocated_buffer_sets.size();
+
+  // Returns true if the given buffer is for the entry parameter.
+  auto is_entry_parameter = [](const LogicalBuffer& buffer) {
+    auto* instruction = buffer.instruction();
+    auto* computation = instruction->parent();
+    auto* module = computation->parent();
+    return instruction->opcode() == HloOpcode::kParameter &&
+           computation == module->entry_computation();
+  };
+
+  // Returns true if the two colocated buffer sets (specified by their indices
+  // into the colocated_buffer_sets) can be merged into a single set.
+  auto cannot_merge_buffer_sets = [&colocated_buffer_sets, &buffer_liveness,
+                                   &buffer_size,
+                                   &is_entry_parameter](int64 i, int64 j) {
+    for (auto& buffer_a : colocated_buffer_sets[i]) {
+      for (auto& buffer_b : colocated_buffer_sets[j]) {
+        // Do not merge if the set includes live outs or entry parameters.
+        if ((buffer_liveness.MaybeLiveOut(*buffer_a) &&
+             is_entry_parameter(*buffer_b)) ||
+            (buffer_liveness.MaybeLiveOut(*buffer_b) &&
+             is_entry_parameter(*buffer_a))) {
+          return true;
+        }
+        // Do not merge if the buffers interfere with each other.
+        if (buffer_a->id() != buffer_b->id() &&
+            buffer_liveness.MayInterfere(*buffer_a, *buffer_b)) {
+          return true;
+        }
+        // Do not merge if the buffer sizes are different.
+        if (buffer_size(*buffer_a) != buffer_size(*buffer_b)) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  // Build the interference map among the colocated buffer sets (nodes), by
+  // adding an edge between any two nodes that cannot be merged into a single
+  // colocated buffer set.
+  std::vector<std::vector<int64>> interference_map(
+      colocated_buffer_sets.size());
+  for (int64 i = 0; i < colocated_buffer_sets.size(); ++i) {
+    for (int64 j = i + 1; j < colocated_buffer_sets.size(); ++j) {
+      if (cannot_merge_buffer_sets(i, j)) {
+        interference_map[i].push_back(j);
+        interference_map[j].push_back(i);
+      }
+    }
+  }
+
+  // Assign a color to each colocation set in colocated_buffer_sets, such that
+  // the sets that can be merged are assigned with the same color.
+  auto assigned_colors = ColorInterferenceGraph(interference_map);
+
+  // Merge the buffer sets with the same color.
+  CHECK(!assigned_colors.empty());
+  int64 num_sets =
+      *std::max_element(assigned_colors.begin(), assigned_colors.end()) + 1;
+  std::vector<ColocatedBufferSet> new_colocated_buffer_sets(num_sets);
+  for (int64 i = 0; i < colocated_buffer_sets.size(); ++i) {
+    const auto& buffer_set = colocated_buffer_sets[i];
+    new_colocated_buffer_sets[assigned_colors[i]].insert(buffer_set.begin(),
+                                                         buffer_set.end());
+  }
+
+  VLOG(1) << "colocation sets count after coalescing:"
+          << colocated_buffer_sets.size();
+  return new_colocated_buffer_sets;
+}
 
 // Builds sets of buffers in 'colocated_buffer_sets' which should be colocated
 // in the same allocation (currently just supports kWhile, kCall, and
@@ -1297,12 +1287,11 @@ void BufferAssigner::BuildColocatedBufferSets(
                 const Shape& /*subshape*/, const ShapeIndex& index) {
               std::vector<const LogicalBuffer*> colocated_set;
               // Add while.init.
-              auto* init_buffer =
-                  AddBufferToColocatedSet(while_hlo->operand(0), index,
-                                          points_to_analysis, &colocated_set);
+              AddBufferToColocatedSet(while_hlo->operand(0), index,
+                                      points_to_analysis, &colocated_set);
               // Add while.result.
-              auto* result_buffer = AddBufferToColocatedSet(
-                  while_hlo, index, points_to_analysis, &colocated_set);
+              AddBufferToColocatedSet(while_hlo, index, points_to_analysis,
+                                      &colocated_set);
               // Add while.cond.parameter.
               AddBufferToColocatedSet(
                   while_hlo->while_condition()->parameter_instruction(0), index,
@@ -1315,10 +1304,7 @@ void BufferAssigner::BuildColocatedBufferSets(
               AddBufferToColocatedSet(
                   while_hlo->while_body()->root_instruction(), index,
                   points_to_analysis, &colocated_set);
-              AddWhileSetToColocatedBufferSets(
-                  colocated_set, init_buffer, result_buffer, while_hlo,
-                  *computation, buffer_liveness, buffer_size,
-                  colocated_buffer_sets);
+              AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
             });
       } else if (opcode == HloOpcode::kCall) {
         const HloInstruction* call_hlo = instruction;
@@ -1358,9 +1344,62 @@ void BufferAssigner::BuildColocatedBufferSets(
                   index, points_to_analysis, &colocated_set);
               AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
             });
+
+        // Add true_operand and conditional.true_computation.parameter(0) as a
+        // colocated buffer set. Note that this has to be done for each subshape
+        // in the true_operand of the conditional.
+        ShapeUtil::ForEachSubshape(
+            conditional_hlo->operand(1)->shape(),
+            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
+                const Shape& /*subshape*/, const ShapeIndex& index) {
+              std::vector<const LogicalBuffer*> true_set;
+              // Add conditional.true_operand.
+              AddBufferToColocatedSet(conditional_hlo->operand(1), index,
+                                      points_to_analysis, &true_set);
+              // Add conditional.true_computation.parameter_instruction(0).
+              AddBufferToColocatedSet(
+                  conditional_hlo->true_computation()->parameter_instruction(0),
+                  index, points_to_analysis, &true_set);
+              AddSetToColocatedBufferSets(true_set, colocated_buffer_sets);
+            });
+
+        // Add false_operand and conditional.false_computation.parameter(0) as a
+        // colocated buffer set. Note that this has to be done for each subshape
+        // in the false_operand of the conditional.
+        ShapeUtil::ForEachSubshape(
+            conditional_hlo->operand(2)->shape(),
+            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
+                const Shape& /*subshape*/, const ShapeIndex& index) {
+              std::vector<const LogicalBuffer*> false_set;
+              // Add conditional.false_operand.
+              AddBufferToColocatedSet(conditional_hlo->operand(2), index,
+                                      points_to_analysis, &false_set);
+              // Add conditional.false_computation.parameter_instruction(0).
+              AddBufferToColocatedSet(
+                  conditional_hlo->false_computation()->parameter_instruction(
+                      0),
+                  index, points_to_analysis, &false_set);
+              AddSetToColocatedBufferSets(false_set, colocated_buffer_sets);
+            });
       }
     }
   }
+
+  if (colocated_buffer_sets->empty()) {
+    return;
+  }
+
+  // Try to find more coalescing opportunities among the colocated buffer sets.
+  //
+  // TODO(b/32491382): We should be able to remove this by using the
+  // module-level liveness analysis, which would let us directly detect buffer
+  // sharing opportunities between the while instruction buffer and the buffers
+  // from the predicate and body computation, as well as sharing across
+  // different while instructions.
+  std::vector<ColocatedBufferSet> new_colocated_buffer_sets =
+      MergeColocatedBufferSets(*colocated_buffer_sets, buffer_liveness,
+                               buffer_size);
+  std::swap(*colocated_buffer_sets, new_colocated_buffer_sets);
 }
 
 // Assigns all colocated buffer sets in 'colocated_buffer_sets' to the same
@@ -1385,14 +1424,15 @@ void BufferAssigner::AssignColocatedBufferSets(
     }
 
     for (const LogicalBuffer* buffer : colocated_buffer_set) {
+      const int64 buffer_size = assignment->buffer_size_(*buffer);
       if (allocation == nullptr) {
         // TODO(b/32491382) Avoid current trivial solution of using new
         // allocations for each colocated buffer set. When liveness has
         // module-level scope, we can allow buffers to be shared across
         // computations (in some cases).
-        allocation = assignment->NewAllocation(
-            *buffer, assignment->buffer_size_(*buffer),
-            /*is_thread_local=*/false, /*is_reusable=*/true);
+        allocation = assignment->NewAllocation(*buffer, buffer_size,
+                                               /*is_thread_local=*/false,
+                                               /*is_reusable=*/true);
         if (entry_parameter_number >= 0) {
           // This colocated buffer set contains an entry parameter and other
           // logical buffers which use the parameter as read-only in a while
@@ -1403,8 +1443,11 @@ void BufferAssigner::AssignColocatedBufferSets(
         }
         colocated_allocations->insert(allocation->index());
       } else {
+        CHECK_EQ(buffer_size, allocation->size())
+            << "Buffer: " << *buffer << " size mismatch in colocated buffer "
+            << "allocation: " << *allocation;
         assignment->AddAssignment(allocation, *buffer, /*offset=*/0,
-                                  assignment->buffer_size_(*buffer));
+                                  buffer_size);
       }
       colocated_buffers->insert(buffer);
     }

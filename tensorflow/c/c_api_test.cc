@@ -94,6 +94,17 @@ TEST(CAPI, Tensor) {
   EXPECT_TRUE(deallocator_called);
 }
 
+void NoOpDeallocator(void* data, size_t, void*) {}
+
+TEST(CAPI, MalformedTensor) {
+  // See https://github.com/tensorflow/tensorflow/issues/7394
+  // num_dims = 0 implies a scalar, so should be backed by at least 4 bytes of
+  // data.
+  TF_Tensor* t =
+      TF_NewTensor(TF_FLOAT, nullptr, 0, nullptr, 0, &NoOpDeallocator, nullptr);
+  ASSERT_TRUE(t == nullptr);
+}
+
 TEST(CAPI, AllocateTensor) {
   const int num_bytes = 6 * sizeof(float);
   int64_t dims[] = {2, 3};
@@ -575,7 +586,7 @@ TEST(CAPI, ImportGraphDef) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
 
-  // Create a graph with two nodes: x and 3
+  // Create a simple graph.
   Placeholder(graph, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   ASSERT_TRUE(TF_GraphOperationByName(graph, "feed") != nullptr);
@@ -586,7 +597,7 @@ TEST(CAPI, ImportGraphDef) {
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
   ASSERT_TRUE(TF_GraphOperationByName(graph, "neg") != nullptr);
 
-  // Export to a GraphDef
+  // Export to a GraphDef.
   TF_Buffer* graph_def = TF_NewBuffer();
   TF_GraphToGraphDef(graph, graph_def, s);
   ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
@@ -605,6 +616,31 @@ TEST(CAPI, ImportGraphDef) {
   ASSERT_TRUE(scalar != nullptr);
   ASSERT_TRUE(feed != nullptr);
   ASSERT_TRUE(neg != nullptr);
+
+  // Test basic structure of the imported graph.
+  EXPECT_EQ(0, TF_OperationNumInputs(scalar));
+  EXPECT_EQ(0, TF_OperationNumInputs(feed));
+  ASSERT_EQ(1, TF_OperationNumInputs(neg));
+  TF_Output neg_input = TF_OperationInput({neg, 0});
+  EXPECT_EQ(scalar, neg_input.oper);
+  EXPECT_EQ(0, neg_input.index);
+
+  // Test that we can't see control edges involving the source and sink nodes.
+  TF_Operation* control_ops[100];
+  EXPECT_EQ(0, TF_OperationNumControlInputs(scalar));
+  EXPECT_EQ(0, TF_OperationGetControlInputs(scalar, control_ops, 100));
+  EXPECT_EQ(0, TF_OperationNumControlOutputs(scalar));
+  EXPECT_EQ(0, TF_OperationGetControlOutputs(scalar, control_ops, 100));
+
+  EXPECT_EQ(0, TF_OperationNumControlInputs(feed));
+  EXPECT_EQ(0, TF_OperationGetControlInputs(feed, control_ops, 100));
+  EXPECT_EQ(0, TF_OperationNumControlOutputs(feed));
+  EXPECT_EQ(0, TF_OperationGetControlOutputs(feed, control_ops, 100));
+
+  EXPECT_EQ(0, TF_OperationNumControlInputs(neg));
+  EXPECT_EQ(0, TF_OperationGetControlInputs(neg, control_ops, 100));
+  EXPECT_EQ(0, TF_OperationNumControlOutputs(neg));
+  EXPECT_EQ(0, TF_OperationGetControlOutputs(neg, control_ops, 100));
 
   // Import it again, with an input mapping, return outputs, and a return
   // operation, into the same graph.
@@ -629,7 +665,7 @@ TEST(CAPI, ImportGraphDef) {
   ASSERT_TRUE(neg2 != nullptr);
 
   // Check input mapping
-  TF_Output neg_input = TF_OperationInput({neg, 0});
+  neg_input = TF_OperationInput({neg, 0});
   EXPECT_EQ(scalar, neg_input.oper);
   EXPECT_EQ(0, neg_input.index);
 
@@ -879,6 +915,86 @@ TEST(CAPI, Session) {
   ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
   output_contents = static_cast<int32*>(TF_TensorData(out));
   EXPECT_EQ(-(7 + 2), *output_contents);
+
+  // Clean up
+  csession.CloseAndDelete(s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, Session_Min_CPU) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Make a placeholder operation.
+  TF_Operation* feed = Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Make a constant operation with the scalar "0", for axis.
+  TF_Operation* one = ScalarConst(0, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Add operation.
+  TF_Operation* min = Min(feed, one, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Create a session for this graph.
+  CSession csession(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Run the graph.
+  csession.SetInputs({{feed, Int32Tensor({3, 2, 5})}});
+  csession.SetOutputs({min});
+  csession.Run(s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_Tensor* out = csession.output_tensor(0);
+  ASSERT_TRUE(out != nullptr);
+  EXPECT_EQ(TF_INT32, TF_TensorType(out));
+  EXPECT_EQ(0, TF_NumDims(out));  // scalar
+  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
+  int32* output_contents = static_cast<int32*>(TF_TensorData(out));
+  EXPECT_EQ(2, *output_contents);
+
+  // Clean up
+  csession.CloseAndDelete(s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
+}
+
+TEST(CAPI, Session_Min_XLA_CPU) {
+  TF_Status* s = TF_NewStatus();
+  TF_Graph* graph = TF_NewGraph();
+
+  // Make a placeholder operation.
+  TF_Operation* feed = Placeholder(graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Make a constant operation with the scalar "0", for axis.
+  TF_Operation* one = ScalarConst(0, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Add operation.
+  TF_Operation* min = Min(feed, one, graph, s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Create a session for this graph.
+  CSession csession(graph, s, /*use_XLA=*/true);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+
+  // Run the graph.
+  csession.SetInputs({{feed, Int32Tensor({3, 2, 5})}});
+  csession.SetOutputs({min});
+  csession.Run(s);
+  ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+  TF_Tensor* out = csession.output_tensor(0);
+  ASSERT_TRUE(out != nullptr);
+  EXPECT_EQ(TF_INT32, TF_TensorType(out));
+  EXPECT_EQ(0, TF_NumDims(out));  // scalar
+  ASSERT_EQ(sizeof(int32), TF_TensorByteSize(out));
+  int32* output_contents = static_cast<int32*>(TF_TensorData(out));
+  EXPECT_EQ(2, *output_contents);
 
   // Clean up
   csession.CloseAndDelete(s);
@@ -1931,7 +2047,7 @@ TEST_F(CApiAttributesTest, Tensor) {
 }
 
 TEST_F(CApiAttributesTest, StringTensor) {
-  // Create the string-Tensor "atttribute" value.
+  // Create the string-Tensor "attribute" value.
   char encoded[] = {
       0,   0, 0, 0, 0, 0, 0, 0,  // array[uint64] offsets
       1,                         // varint encoded string length

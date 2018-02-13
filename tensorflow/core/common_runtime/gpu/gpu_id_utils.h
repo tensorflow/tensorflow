@@ -13,10 +13,11 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_UTILS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_UTILS_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_UTILS_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_UTILS_H_
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/lib/gtl/int_type.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -27,9 +28,6 @@ namespace gpu = ::perftools::gputools;
 // Utility methods for translation between Tensorflow GPU ids and CUDA GPU ids.
 class GpuIdUtil {
  public:
-  static void InsertTfCudaGpuIdPair(TfGpuId tf_gpu_id, CudaGpuId cuda_gpu_id);
-  static CudaGpuId TfToCudaGpuId(TfGpuId tf_gpu_id);
-
   // Convenient methods for getting the associated executor given a TfGpuId or
   // CudaGpuId.
   static gpu::port::StatusOr<gpu::StreamExecutor*> ExecutorForCudaGpuId(
@@ -42,12 +40,12 @@ class GpuIdUtil {
   }
   static gpu::port::StatusOr<gpu::StreamExecutor*> ExecutorForTfGpuId(
       TfGpuId tf_gpu_id) {
-    return ExecutorForCudaGpuId(GpuIdUtil::TfToCudaGpuId(tf_gpu_id));
+    return ExecutorForCudaGpuId(GpuIdManager::TfToCudaGpuId(tf_gpu_id));
   }
 
   // Verify that the cuda_gpu_id associated with a TfGpuId is legitimate.
   static void CheckValidTfGpuId(TfGpuId tf_gpu_id) {
-    const CudaGpuId cuda_gpu_id = GpuIdUtil::TfToCudaGpuId(tf_gpu_id);
+    const CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
     const int visible_device_count = GPUMachineManager()->VisibleDeviceCount();
     CHECK_LT(cuda_gpu_id.value(), visible_device_count)
         << "cuda_gpu_id is outside discovered device range."
@@ -58,4 +56,4 @@ class GpuIdUtil {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_UTILS_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_GPU_GPU_ID_UTILS_H_
