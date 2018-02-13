@@ -137,49 +137,6 @@ TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfDotUnfused) {
                    .ValueOrDie());
 }
 
-TEST_F(InstructionFusionTest, PotentialBitcastTransposeOfConvolutionUnfused) {
-  HloComputation::Builder builder(TestName());
-  auto input = builder.AddInstruction(HloInstruction::CreateParameter(
-      0, ShapeUtil::MakeShape(F32, {1, 1, 1, 3}), "input"));
-  auto filter = builder.AddInstruction(HloInstruction::CreateParameter(
-      1, ShapeUtil::MakeShape(F32, {1, 1, 1, 2}), "filter"));
-
-  Window conv_window;
-  WindowDimension* conv_window_row = conv_window.add_dimensions();
-  conv_window_row->set_size(1);
-  WindowDimension* conv_window_col = conv_window.add_dimensions();
-  conv_window_col->set_size(2);
-  conv_window_col->set_padding_high(1);
-
-  ConvolutionDimensionNumbers conv_dnums;
-  conv_dnums.set_input_batch_dimension(0);
-  conv_dnums.set_output_batch_dimension(0);
-  conv_dnums.set_input_feature_dimension(1);
-  conv_dnums.set_output_feature_dimension(1);
-  conv_dnums.add_input_spatial_dimensions(2);
-  conv_dnums.add_output_spatial_dimensions(2);
-  conv_dnums.add_input_spatial_dimensions(3);
-  conv_dnums.add_output_spatial_dimensions(3);
-  conv_dnums.set_kernel_output_feature_dimension(0);
-  conv_dnums.set_kernel_input_feature_dimension(1);
-  conv_dnums.add_kernel_spatial_dimensions(2);
-  conv_dnums.add_kernel_spatial_dimensions(3);
-
-  auto conv = builder.AddInstruction(
-      HloInstruction::CreateConvolve(ShapeUtil::MakeShape(F32, {1, 1, 1, 3}),
-                                     input, filter, conv_window, conv_dnums));
-  auto transpose = builder.AddInstruction(HloInstruction::CreateTranspose(
-      ShapeUtil::MakeShape(F32, {3, 1, 1, 1}), conv, {3, 2, 1, 0}));
-  builder.AddInstruction(
-      HloInstruction::CreateReshape(ShapeUtil::MakeShape(F32, {3}), transpose));
-
-  auto module = CreateNewModule();
-  module->AddEntryComputation(builder.Build());
-  EXPECT_FALSE(GpuInstructionFusion(/*may_duplicate=*/true)
-                   .Run(module.get())
-                   .ValueOrDie());
-}
-
 TEST_F(InstructionFusionTest, GetTupleElementFused) {
   HloComputation::Builder builder(TestName());
   Shape data_shape = ShapeUtil::MakeShape(F32, {8});

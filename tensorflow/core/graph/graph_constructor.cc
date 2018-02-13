@@ -374,15 +374,8 @@ Status GraphConstructor::EnsureNoNameCollisions() {
       return errors::InvalidArgument("Imported node name prefix '", prefix_,
                                      "' would lead to invalid node names");
     }
-    if (NameExistsInGraph(prefix_no_slash)) {
-      if (opts_.uniquify_prefix) {
-        prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
-      } else {
-        return errors::InvalidArgument("Import node name prefix '",
-                                       prefix_no_slash,
-                                       "' conflicts with "
-                                       "name already used in the graph");
-      }
+    if (NameExistsInGraph(prefix_no_slash) && opts_.uniquify_prefix) {
+      prefix_ = strings::StrCat(FindUniqueName(prefix_no_slash), "/");
     }
   }
   return Status::OK();
@@ -990,7 +983,10 @@ Status GraphConstructor::Convert() {
     if (opts_.importing) {
       if (!prefix_.empty()) {
         AddPrefixToNodeDef(input_already_exists, &imported_node_def);
-      } else if (opts_.uniquify_names) {
+      }
+      // Note: no need to uniquify names if the prefix already guarantees
+      // uniqueness
+      if (opts_.uniquify_names && (prefix_.empty() || !opts_.uniquify_prefix)) {
         UniquifyNames(input_already_exists, &imported_node_def);
       }
       TF_RETURN_IF_ERROR(ModifyNodeDefForImport(&imported_node_def));

@@ -483,7 +483,7 @@ class Dataset(dataset_ops.Dataset):
           num_threads=None,
           output_buffer_size=None,
           num_parallel_calls=None):
-    """Maps `map_func` across this datset.
+    """Maps `map_func` across this dataset.
 
     Args:
       map_func: A function mapping a nested structure of tensors (having

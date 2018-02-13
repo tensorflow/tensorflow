@@ -185,23 +185,22 @@ class GrpcMasterService : public AsyncServiceInterface {
     MutableRunStepResponseWrapper* wrapped_response =
         new NonOwnedProtoRunStepResponse(&call->response);
     call->SetCancelCallback([call_opts]() { call_opts->StartCancel(); });
-    master_impl_->RunStep(call_opts, wrapped_request, wrapped_response,
-                          [call, call_opts, wrapped_request, wrapped_response,
-                           trace](const Status& status) {
-                            call->ClearCancelCallback();
-                            delete call_opts;
-                            delete wrapped_request;
-                            delete trace;
-                            if (call->request.store_errors_in_response_body() &&
-                                !status.ok()) {
-                              call->response.set_status_code(status.code());
-                              call->response.set_status_error_message(
-                                  status.error_message());
-                              call->SendResponse(ToGrpcStatus(Status::OK()));
-                            } else {
-                              call->SendResponse(ToGrpcStatus(status));
-                            }
-                          });
+    master_impl_->RunStep(
+        call_opts, wrapped_request, wrapped_response,
+        [call, call_opts, wrapped_request, wrapped_response,
+         trace](const Status& status) {
+          call->ClearCancelCallback();
+          delete call_opts;
+          delete wrapped_request;
+          delete trace;
+          if (call->request.store_errors_in_response_body() && !status.ok()) {
+            call->response.set_status_code(status.code());
+            call->response.set_status_error_message(status.error_message());
+            call->SendResponse(ToGrpcStatus(Status::OK()));
+          } else {
+            call->SendResponse(ToGrpcStatus(status));
+          }
+        });
     ENQUEUE_REQUEST(RunStep, true);
   }
 

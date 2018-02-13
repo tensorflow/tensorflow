@@ -41,7 +41,7 @@ def ast_to_source(node, indentation):
   return astor.source_repr.pretty_source(generator.result).lstrip()
 
 
-def ast_to_object(node, indentation='  '):
+def ast_to_object(node, indentation='  ', source_prefix=None):
   """Return the Python objects represented by given AST.
 
   Compiling the AST code this way ensures that the source code is readable by
@@ -50,6 +50,7 @@ def ast_to_object(node, indentation='  '):
   Args:
     node: The code to compile, as an AST object.
     indentation: The string to use for indentation.
+    source_prefix: Optional string to print as-is into the source file.
 
   Returns:
     A module object containing the compiled source code.
@@ -58,5 +59,8 @@ def ast_to_object(node, indentation='  '):
 
   with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
     module_name = os.path.basename(f.name[:-3])
+    if source_prefix:
+      f.write(source_prefix)
+      f.write('\n')
     f.write(source)
-  return imp.load_source(module_name, f.name)
+  return imp.load_source(module_name, f.name), source

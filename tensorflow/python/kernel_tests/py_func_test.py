@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -212,6 +213,16 @@ class PyFuncTest(test.TestCase):
       value.op.run()
       self.assertAllEqual(np_array, [1.0, 2.0])
 
+  def testReturnUnicodeString(self):
+    with self.test_session():
+      correct = u"你好 世界"
+
+      def unicode_string():
+        return correct
+
+      z, = script_ops.py_func(unicode_string, [], [dtypes.string])
+      self.assertEqual(z.eval(), correct.encode("utf8"))
+
   def testBadNumpyReturnType(self):
     with self.test_session():
 
@@ -396,66 +407,66 @@ class PyFuncTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testEagerSingleOutputFloat32(self):
-    a = array_ops.ones((3, 3), dtype=dtypes.float32)
-    x = array_ops.ones((3, 1), dtype=dtypes.float32)
-    output = script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.float32)
-    with self.test_session():
+    with test_util.device(use_gpu=True):
+      a = array_ops.ones((3, 3), dtype=dtypes.float32)
+      x = array_ops.ones((3, 1), dtype=dtypes.float32)
+      output = script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.float32)
       ret = self.evaluate(output)
       self.assertAllClose(ret, [[3.0], [3.0], [3.0]])
 
   @test_util.run_in_graph_and_eager_modes()
   def testEagerArrayOutput(self):
-    a = array_ops.ones((3, 3), dtype=dtypes.int32)
-    x = array_ops.ones((3, 1), dtype=dtypes.int32)
-    output = script_ops.eager_py_func(
-        lambda a, x: [matmul(a, x)], inp=[a, x], Tout=[dtypes.int32])
-
-    with self.test_session():
+    with test_util.device(use_gpu=True):
+      a = array_ops.ones((3, 3), dtype=dtypes.float32)
+      x = array_ops.ones((3, 1), dtype=dtypes.float32)
+      output = script_ops.eager_py_func(
+          lambda a, x: [matmul(a, x)], inp=[a, x], Tout=[dtypes.float32])
       ret = self.evaluate(output)
-      self.assertAllEqual(ret, [[[3], [3], [3]]])
+      self.assertAllEqual(ret, [[[3.0], [3.0], [3.0]]])
 
   @test_util.run_in_graph_and_eager_modes()
   def testEagerReturnNone(self):
+    with test_util.device(use_gpu=True):
+      def no_return_value():
+        return
 
-    def no_return_value():
-      return
-
-    output = script_ops.eager_py_func(no_return_value, inp=[], Tout=[])
-    ret = self.evaluate(output)
-    if context.in_eager_mode():
-      self.assertEquals(len(ret), 0)
-    else:
-      self.assertIsNone(ret)
+      output = script_ops.eager_py_func(no_return_value, inp=[], Tout=[])
+      ret = self.evaluate(output)
+      if context.in_eager_mode():
+        self.assertEquals(len(ret), 0)
+      else:
+        self.assertIsNone(ret)
 
   @test_util.run_in_graph_and_eager_modes()
   def testEagerPyFuncInDefun(self):
+    with test_util.device(use_gpu=True):
+      def wrapper():
+        a = array_ops.ones((3, 3), dtype=dtypes.float32)
+        x = array_ops.ones((3, 1), dtype=dtypes.float32)
+        return script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.float32)
 
-    def wrapper():
-      a = array_ops.ones((3, 3), dtype=dtypes.int32)
-      x = array_ops.ones((3, 1), dtype=dtypes.int32)
-      return script_ops.eager_py_func(matmul, inp=[a, x], Tout=dtypes.int32)
-
-    wrapped = function.defun(wrapper)
-    ret = self.evaluate(wrapped())
-    self.assertAllEqual(ret, [[3], [3], [3]])
+      wrapped = function.defun(wrapper)
+      ret = self.evaluate(wrapped())
+      self.assertAllEqual(ret, [[3.0], [3.0], [3.0]])
 
   @test_util.run_in_graph_and_eager_modes()
   def testEagerExceptionHandling(self):
-    self._testExceptionHandling(
-        ValueError, errors.InvalidArgumentError, eager=True)
-    self._testExceptionHandling(
-        TypeError, errors.InvalidArgumentError, eager=True)
-    self._testExceptionHandling(
-        StopIteration, errors.OutOfRangeError, eager=True)
-    self._testExceptionHandling(
-        MemoryError, errors.ResourceExhaustedError, eager=True)
-    self._testExceptionHandling(
-        NotImplementedError, errors.UnimplementedError, eager=True)
+    with test_util.device(use_gpu=True):
+      self._testExceptionHandling(
+          ValueError, errors.InvalidArgumentError, eager=True)
+      self._testExceptionHandling(
+          TypeError, errors.InvalidArgumentError, eager=True)
+      self._testExceptionHandling(
+          StopIteration, errors.OutOfRangeError, eager=True)
+      self._testExceptionHandling(
+          MemoryError, errors.ResourceExhaustedError, eager=True)
+      self._testExceptionHandling(
+          NotImplementedError, errors.UnimplementedError, eager=True)
 
-    class WeirdError(Exception):
-      pass
+      class WeirdError(Exception):
+        pass
 
-    self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
+      self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
 
 
 if __name__ == "__main__":

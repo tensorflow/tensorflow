@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_SEGMENT_UNION_FIND_H_
 #define TENSORFLOW_CONTRIB_TENSORRT_SEGMENT_UNION_FIND_H_
 
+namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 
@@ -73,5 +74,6 @@ UnionFind<T>* UnionFind<T>::FindRoot() {
 
 }  // namespace segment
 }  // namespace tensorrt
+}  // namespace tensorflow
 
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_SEGMENT_UNION_FIND_H_

@@ -2,37 +2,39 @@
 # Getting Started with TensorFlow
 
 This document introduces the TensorFlow programming environment and shows you
-how to write the Iris classification problem in TensorFlow.
+how to solve the Iris classification problem in TensorFlow.
 
-Prior to reading this document, do the following:
+## Prerequisites
+
+Prior to using the sample code in this document, you'll need to do the
+following:
 
 * @{$install$Install TensorFlow}.
 * If you installed TensorFlow with virtualenv or Anaconda, activate your
   TensorFlow environment.
-* To keep the data import simple, our Iris example uses Pandas. You can
-  install Pandas with:
+* Install or upgrade pandas by issuing the following command:
 
-      `pip install pandas`
+        pip install pandas
 
 ## Getting the sample code
 
-Take the following steps to get the sample code for this program:
+Take the following steps to get the sample code we'll be going through:
 
-1. Clone the TensorFlow Models repository from github by entering the following
+1. Clone the TensorFlow Models repository from GitHub by entering the following
    command:
 
-       `git clone https://github.com/tensorflow/models`
+        git clone https://github.com/tensorflow/models
 
 1. Change directory within that branch to the location containing the examples
    used in this document:
 
-       `cd models/samples/core/get_started/`
+        cd models/samples/core/get_started/
 
 The program described in this document is
 [`premade_estimator.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/premade_estimator.py).
 This program uses
 [`iris_data.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/iris_data.py)
-To fetch its training data.
+to fetch its training data.
 
 ### Running the program
 
@@ -45,7 +47,7 @@ python premade_estimator.py
 The program should output training logs followed by some predictions against
 the test set. For example, the first line in the following output shows that
 the model thinks there is a 99.6% chance that the first example in the test
-set is a Setosa. Since the test set `expected "Setosa"`, this appears to be
+set is a Setosa. Since the test set expected Setosa, this appears to be
 a good prediction.
 
 ``` None
@@ -61,9 +63,9 @@ If the program generates errors instead of answers, ask yourself the following
 questions:
 
 * Did you install TensorFlow properly?
-* Are you using the correct version of tensorflow?
+* Are you using the correct version of TensorFlow?
 * Did you activate the environment you installed TensorFlow in? (This is
-  only relevant in certain installation environments.)
+  only relevant in certain installation mechanisms.)
 
 ## The programming stack
 
@@ -74,18 +76,15 @@ provides a programming stack consisting of multiple API layers:
 <div style="width:100%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../images/tensorflow_programming_environment.png">
 </div>
-<div style="text-align: center">
-The TensorFlow Programming Environment
-</div>
 
 We strongly recommend writing TensorFlow programs with the following APIs:
 
-* @{tf.estimator$Estimators}, which represent a complete model.
+* @{$programmers_guide/estimators$Estimators}, which represent a complete model.
   The Estimator API provides methods to train the model, to judge the model's
   accuracy, and to generate predictions.
 * @{$get_started/datasets_quickstart$Datasets}, which build a data input
   pipeline. The Dataset API has methods to load and manipulate data, and feed
-  it into your model. The Datasets API meshes well with the Estimators API.
+  it into your model. The Dataset API meshes well with the Estimators API.
 
 ## Classifying irises: an overview
 
@@ -120,7 +119,7 @@ individual Iris flowers:
 * petal length
 * petal width
 
-Our model will represent these features as float32 numerical data.
+Our model will represent these features as `float32` numerical data.
 
 The label identifies the Iris species, which must be one of the following:
 
@@ -154,9 +153,6 @@ The following figure illustrates the features, hidden layers, and predictions
   alt="A diagram of the network architecture: Inputs, 2 hidden layers, and outputs"
   src="../images/custom_estimators/full_network.png">
 </div>
-<div style="text-align: center">
-The Model.
-</div>
 
 ### Inference
 
@@ -174,12 +170,12 @@ example is an Iris Versicolor.
 
 ## Overview of programming with Estimators
 
-An Estimator is TensorFlow's high level representation of a complete model. It
+An Estimator is TensorFlow's high-level representation of a complete model. It
 handles the details of initialization, logging, saving and restoring, and many
 other features so you can concentrate on your model. For more details see
 @{$programmers_guide/estimators}.
 
-An "Estimator" is any class derived from @{tf.estimator.Estimator}. TensorFlow
+An Estimator is any class derived from @{tf.estimator.Estimator}. TensorFlow
 provides a collection of
 [pre-made Estimators](https://developers.google.com/machine-learning/glossary/#pre-made_Estimator)
 (for example, `LinearRegressor`) to implement common ML algorithms. Beyond
@@ -199,7 +195,7 @@ following tasks:
 * Call one or more methods on the Estimator object, passing the appropriate
   input function as the source of the data.
 
-Let's see how those tasks are implemented in Iris.
+Let's see how those tasks are implemented for Iris classification.
 
 ## Create input functions
 
@@ -209,17 +205,30 @@ evaluating, and prediction.
 An **input function** is a function that returns a @{tf.data.Dataset} object
 which outputs the following two-element tuple:
 
-* "features" - A Python dictionary in which:
+* [`features`](https://developers.google.com/machine-learning/glossary/#feature) - A Python dictionary in which:
     * Each key is the name of a feature.
     * Each value is an array containing all of that feature's values.
-* "label" - An array containing the values of the
+* `label` - An array containing the values of the
   [label](https://developers.google.com/machine-learning/glossary/#label) for
   every example.
 
-Your input function may generate the "features" dictionary and "label" list any
-way you like. However, we recommend using TensorFlow's @{tf.data.Dataset} API,
-which can deftly parse all sorts of data. At a high-level,
-the @{tf.data.Dataset} API consists of the following classes:
+Just to demonstrate the format of the input function, here's a simple
+implementation:
+
+```python
+def input_evaluation_set():
+    features = {'SepalLength': np.array([6.4, 5.0]),
+                'SepalWidth':  np.array([2.8, 2.3]),
+                'PetalLength': np.array([5.6, 3.3]),
+                'PetalWidth':  np.array([2.2, 1.0])}
+    labels = np.array([2, 1])
+    return features, labels
+```
+
+Your input function may generate the `features` dictionary and `label` list any
+way you like. However, we recommend using TensorFlow's Dataset API, which can
+parse all sorts of data. At a high level, the Dataset API consists of the
+following classes:
 
 <div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%"
@@ -227,23 +236,23 @@ the @{tf.data.Dataset} API consists of the following classes:
   src="../images/dataset_classes.png">
 </div>
 
+Where the individual members are:
 
-Where:
-
-* Dataset: Base class containing methods to create and transform datasets. Also
-  allows you to initialize a dataset from data in memory, or from a Python
-  generator.
-* TextLineDataset: Reads lines from text files.
-* TFRecordDataset: Reads records from TFRecord files.
-* FixedLengthRecordDataset: Reads fixed size records from binary files.
-* Iterator: Provides a way to access one data set element at a time.
+* `Dataset` - Base class containing methods to create and transform
+  datasets. Also allows you to initialize a dataset from data in memory, or from
+  a Python generator.
+* `TextLineDataset` - Reads lines from text files.
+* `TFRecordDataset` - Reads records from TFRecord files.
+* `FixedLengthRecordDataset` - Reads fixed size records from binary files.
+* `Iterator` - Provides a way to access one data set element at a time.
 
 The Dataset API can handle a lot of common cases for you. For example,
 using the Dataset API, you can easily read in records from a large collection
 of files in parallel and join them into a single stream.
 
-To keep things simple in this example we are going to load the data with pandas,
-and build our input pipeline from this in-memory data.
+To keep things simple in this example we are going to load the data with
+[pandas](https://pandas.pydata.org/), and build our input pipeline from this
+in-memory data.
 
 Here is the input function used for training in this program, which is available
 in [`iris_data.py`](https://github.com/tensorflow/models/blob/master/samples/core/get_started/iris_data.py):
@@ -258,9 +267,9 @@ def train_input_fn(features, labels, batch_size):
     return dataset.shuffle(1000).repeat().batch(batch_size)
 ```
 
-## Define the Feature Columns
+## Define the feature columns
 
-A [**Feature Column**](https://developers.google.com/machine-learning/glossary/#feature_columns)
+A [**feature column**](https://developers.google.com/machine-learning/glossary/#feature_columns)
 is an object describing how the model should use raw input data from the
 features dictionary. When you build an Estimator model, you pass it a list of
 feature columns that describes each of the features you want the model to use.
@@ -270,7 +279,7 @@ to the model.
 For Iris, the 4 raw features are numeric values, so we'll build a list of
 feature columns to tell the Estimator model to represent each of the four
 features as 32-bit floating-point values. Therefore, the code to create the
-Feature Column is simply:
+feature column is:
 
 ```python
 # Feature columns describe how to use the input.
@@ -279,29 +288,29 @@ for key in train_x.keys():
     my_feature_columns.append(tf.feature_column.numeric_column(key=key))
 ```
 
-Feature Columns can be far more sophisticated than those we're showing here.
-We detail feature columns @{$get_started/feature_columns$later on} in
-getting started.
+Feature columns can be far more sophisticated than those we're showing here.  We
+detail feature columns @{$get_started/feature_columns$later on} in our Getting
+Started guide.
 
 Now that we have the description of how we want the model to represent the raw
 features, we can build the estimator.
 
 
-## Instantiate an Estimator
+## Instantiate an estimator
 
 The Iris problem is a classic classification problem. Fortunately, TensorFlow
 provides several pre-made classifier Estimators, including:
 
-* @{tf.estimator.DNNClassifier}—for deep models that perform multi-class
+* @{tf.estimator.DNNClassifier} for deep models that perform multi-class
   classification.
-* @{tf.estimator.DNNLinearCombinedClassifier}—for wide-n-deep models.
-* @{tf.estimator.LinearClassifier}— for classifiers based on linear models.
+* @{tf.estimator.DNNLinearCombinedClassifier} for wide & deep models.
+* @{tf.estimator.LinearClassifier} for classifiers based on linear models.
 
 For the Iris problem, `tf.estimator.DNNClassifier` seems like the best choice.
 Here's how we instantiated this Estimator:
 
 ```python
-# Build 2 hidden layer DNN with 10, 10 units respectively.
+# Build a DNN with 2 hidden layers and 10 nodes in each hidden layer.
 classifier = tf.estimator.DNNClassifier(
     feature_columns=my_feature_columns,
     # Two hidden layers of 10 nodes each.
@@ -363,7 +372,7 @@ Test set accuracy: 0.967
 
 We now have a trained model that produces good evaluation results.
 We can now use the trained model to predict the species of an Iris flower
-based on some unlabeled measurments. As with training and evaluation, we make
+based on some unlabeled measurements. As with training and evaluation, we make
 predictions using a single function call:
 
 ```python

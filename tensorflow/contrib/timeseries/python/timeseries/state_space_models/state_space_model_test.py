@@ -187,9 +187,7 @@ class StateSpaceEquivalenceTests(test.TestCase):
     estimator.train(combined_input_fn, steps=1)
     export_location = estimator.export_savedmodel(
         self.get_temp_dir(),
-        estimator.build_raw_serving_input_receiver_fn(
-            exogenous_features={
-                "exogenous": numpy.zeros((0, 0), dtype=numpy.float32)}))
+        estimator.build_raw_serving_input_receiver_fn())
     with ops.Graph().as_default() as graph:
       random_model.initialize_graph()
       with self.test_session(graph=graph) as session:
@@ -209,7 +207,7 @@ class StateSpaceEquivalenceTests(test.TestCase):
             features={
                 feature_keys.FilteringFeatures.TIMES: [1, 2],
                 feature_keys.FilteringFeatures.VALUES: [1., 2.],
-                "exogenous": [-1., -2.]})
+                "exogenous": [[-1.], [-2.]]})
         second_split_filtering = saved_model_utils.filter_continuation(
             continue_from=first_split_filtering,
             signatures=signatures,
@@ -217,7 +215,7 @@ class StateSpaceEquivalenceTests(test.TestCase):
             features={
                 feature_keys.FilteringFeatures.TIMES: [3, 4],
                 feature_keys.FilteringFeatures.VALUES: [3., 4.],
-                "exogenous": [-3., -4.]
+                "exogenous": [[-3.], [-4.]]
             })
         combined_filtering = saved_model_utils.filter_continuation(
             continue_from={
@@ -227,7 +225,7 @@ class StateSpaceEquivalenceTests(test.TestCase):
             features={
                 feature_keys.FilteringFeatures.TIMES: [1, 2, 3, 4],
                 feature_keys.FilteringFeatures.VALUES: [1., 2., 3., 4.],
-                "exogenous": [-1., -2., -3., -4.]
+                "exogenous": [[-1.], [-2.], [-3.], [-4.]]
             })
         split_predict = saved_model_utils.predict_continuation(
             continue_from=second_split_filtering,
@@ -235,14 +233,14 @@ class StateSpaceEquivalenceTests(test.TestCase):
             session=session,
             steps=1,
             exogenous_features={
-                "exogenous": [[-5.]]})
+                "exogenous": [[[-5.]]]})
         combined_predict = saved_model_utils.predict_continuation(
             continue_from=combined_filtering,
             signatures=signatures,
             session=session,
             steps=1,
             exogenous_features={
-                "exogenous": [[-5.]]})
+                "exogenous": [[[-5.]]]})
     for state_key, combined_state_value in combined_filtering.items():
       if state_key == feature_keys.FilteringResults.TIMES:
         continue

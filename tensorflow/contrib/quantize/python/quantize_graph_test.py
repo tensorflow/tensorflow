@@ -20,77 +20,34 @@ from __future__ import print_function
 
 from tensorflow.contrib.layers.python.layers import layers
 from tensorflow.contrib.quantize.python import quantize_graph
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
+# TODO(suharshs): Add tests for testing experimental APIs and additional
+# input arguments
 class QuantizeGraphTest(test_util.TensorFlowTestCase):
-
   # We have a lot of other tests that test the details of the rewrite, here we
   # just the specific features of the quantize_graph API.
-  def testReturnedElementsTraining(self):
-    self._TestReturnElements(True)
 
-  def testReturnedElementsEval(self):
-    self._TestReturnElements(False)
+  def _RunTestOverParameters(self, test_fn):
+    rewrite_fns = [
+        quantize_graph.create_training_graph,
+        quantize_graph.create_eval_graph,
+        quantize_graph.experimental_create_training_graph,
+        quantize_graph.experimental_create_eval_graph,
+    ]
+    for fn in rewrite_fns:
+      test_fn(fn)
 
-  def _TestReturnElements(self, is_training):
-    graph = ops.Graph()
-    with graph.as_default():
-      a = constant_op.constant(1.0)
-      b = variables.Variable(2.0)
-      c = a + b
-    elements = [a, b, c.op]
-    if is_training:
-      q_graph, returned_elements = quantize_graph.create_training_graph(
-          graph, elements=elements)
-    else:
-      q_graph, returned_elements = quantize_graph.create_eval_graph(
-          graph, elements=elements)
-    # Make sure q_graph is different from graph.
-    self.assertTrue(graph != q_graph)
-    # Check that the returned elements are part of the new graph.
-    for returned_element in returned_elements:
-      self.assertEqual(q_graph, returned_element.graph)
-    # Check that the elements match with the one from the input graph.
-    for element, returned_element in zip(elements, returned_elements):
-      self.assertEqual(element.name, returned_element.name)
+  def testRewrite(self):
+    self._RunTestOverParameters(self._TestRewrite)
 
-  def testNoReturnElementsTraining(self):
-    self._TestNoReturnElements(True)
-
-  def testNoReturnElementsEval(self):
-    self._TestNoReturnElements(False)
-
-  def _TestNoReturnElements(self, is_training):
-    graph = ops.Graph()
-    with graph.as_default():
-      a = constant_op.constant(1.0)
-      b = variables.Variable(2.0)
-      _ = a + b
-    if is_training:
-      q_graph = quantize_graph.create_training_graph(graph)
-    else:
-      q_graph = quantize_graph.create_eval_graph(graph)
-    # Check that quantize_graph didn't return a tuple when elements isn't
-    # provided.
-    self.assertTrue(isinstance(q_graph, ops.Graph))
-    # Make sure q_graph is different from graph.
-    self.assertTrue(graph != q_graph)
-
-  def testDeviceNameTraining(self):
-    self._TestDeviceName(True)
-
-  def testDeviceNameEval(self):
-    self._TestDeviceName(False)
-
-  def _TestDeviceName(self, is_training):
+  def _TestRewrite(self, fn):
     graph = ops.Graph()
     with graph.as_default():
       batch_size, height, width, depth = 5, 128, 128, 3
@@ -105,23 +62,40 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
           scope='test')
       _ = nn_ops.relu6(conv)
 
-    device_name = '/job:oink/task:0/device:CPU:0'
-    if is_training:
-      q_graph = quantize_graph.create_training_graph(
-          graph, device_name_or_function=device_name)
-    else:
-      q_graph = quantize_graph.create_eval_graph(
-          graph, device_name_or_function=device_name)
-
     orig_variable_names = set(
         [v.name for v in graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
-    q_variables = q_graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+
+    fn(graph)
+
+    q_variables = graph.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     # Ensure that variables were added.
     self.assertTrue(len(orig_variable_names) < len(q_variables))
-    # All added variables should have the specified device name.
-    for var in q_variables:
-      if var.name not in orig_variable_names:
-        self.assertEqual(var.device, device_name)
+
+  def testDefaultGraph(self):
+    self._RunTestOverParameters(self._TestRewrite)
+
+  def _TestDefaultGraph(self, fn):
+    with ops.Graph().as_default() as g:
+      batch_size, height, width, depth = 5, 128, 128, 3
+      inputs = array_ops.zeros((batch_size, height, width, depth))
+      conv = layers.conv2d(
+          inputs,
+          32, [5, 5],
+          stride=2,
+          padding='SAME',
+          weights_initializer=self._WeightInit(0.09),
+          activation_fn=None,
+          scope='test')
+      _ = nn_ops.relu6(conv)
+
+      orig_variable_names = set(
+          [v.name for v in g.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)])
+
+      fn()
+
+      q_variables = g.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      # Ensure that variables were added.
+      self.assertTrue(len(orig_variable_names) < len(q_variables))
 
   def _WeightInit(self, stddev):
     """Returns truncated normal variable initializer.

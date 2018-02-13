@@ -12,30 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
-"""Wrapper optimizer for Model Average """
+"""Wrapper optimizer for Model Average."""
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import ops
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import constant_op
-from tensorflow.python.training import optimizer
-from tensorflow.python.training import session_run_hook
-from tensorflow.python.ops import math_ops
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
+from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
-from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import data_flow_ops
+from tensorflow.python.training import optimizer
+from tensorflow.python.training import session_run_hook
 
-GLOBAL_VARIABLE_NAME = 'global_center_variable'
+GLOBAL_VARIABLE_NAME = "global_center_variable"
 
 
 class ModelAverageCustomGetter(object):
-  """Custom_getter class is used to do:
+  """Custom_getter class is used to do.
+
   1. Change trainable variables to local collection and place them at worker
     device
   2. Generate global variables
@@ -73,15 +73,18 @@ class ModelAverageCustomGetter(object):
   def __call__(self, getter, name, trainable, collections, *args, **kwargs):
     if trainable:
       with ops.device(self._worker_device):
-        local_var = getter(name, trainable=True,
-                           collections=[ops.GraphKeys.LOCAL_VARIABLES],
-                           *args, **kwargs)
+        local_var = getter(
+            name,
+            trainable=True,
+            collections=[ops.GraphKeys.LOCAL_VARIABLES],
+            *args,
+            **kwargs)
 
       global_variable = variable_scope.variable(
-        name='%s/%s' % (GLOBAL_VARIABLE_NAME, name),
-        initial_value=local_var.initialized_value(),
-        trainable=False,
-        collections=[ops.GraphKeys.GLOBAL_VARIABLES])
+          name="%s/%s" % (GLOBAL_VARIABLE_NAME, name),
+          initial_value=local_var.initialized_value(),
+          trainable=False,
+          collections=[ops.GraphKeys.GLOBAL_VARIABLES])
 
       self._local_2_global[local_var] = global_variable
       return local_var
@@ -91,6 +94,7 @@ class ModelAverageCustomGetter(object):
 
 class ModelAverageOptimizer(optimizer.Optimizer):
   """Wrapper optimizer that implements the Model Average algorithm.
+
   This is a sync optimizer. During the training, each worker will update
   the local variables and maintains its own local_step, which starts from 0
   and is incremented by 1 after each update of local variables. Whenever the
@@ -99,15 +103,14 @@ class ModelAverageOptimizer(optimizer.Optimizer):
   local variables will be assigned by global center variables.
   """
 
-  def __init__(
-      self,
-      opt,
-      num_worker,
-      is_chief,
-      ma_custom_getter,
-      interval_steps=100,
-      use_locking=True,
-      name="ModelAverageOptimizer"):
+  def __init__(self,
+               opt,
+               num_worker,
+               is_chief,
+               ma_custom_getter,
+               interval_steps=100,
+               use_locking=True,
+               name="ModelAverageOptimizer"):
     """Construct a new model average optimizer.
 
     Args:
@@ -124,18 +127,18 @@ class ModelAverageOptimizer(optimizer.Optimizer):
     self._opt = opt
     self._num_worker = num_worker
     self._is_chief = is_chief
-    self._local_2_global = ma_custom_getter._local_2_global
+    self._local_2_global = ma_custom_getter._local_2_global  # pylint:disable=protected-access
     self._interval_steps = interval_steps
     self._accumulator_list = []
     self._chief_init_op = None
 
     self._local_step = variable_scope.get_variable(
-      initializer=0,
-      trainable=False,
-      collections=[ops.GraphKeys.LOCAL_VARIABLES],
-      name="local_step")
+        initializer=0,
+        trainable=False,
+        collections=[ops.GraphKeys.LOCAL_VARIABLES],
+        name="local_step")
 
-    self._opt._prepare()
+    self._opt._prepare()  # pylint:disable=protected-access
 
   def compute_gradients(self, *args, **kwargs):
     """Compute gradients of "loss" for the variables in "var_list".
@@ -159,10 +162,12 @@ class ModelAverageOptimizer(optimizer.Optimizer):
 
     Returns:
       An update op
+
+    Raises:
+      ValueError: if var_list is empty.
     """
     if not var_list:
-      raise ValueError(
-        'The list of local_variables should not be empty')
+      raise ValueError("The list of local_variables should not be empty")
     update_ops = []
     global_center_vars = [self._local_2_global[var] for var in var_list]
     for lvar, gvar in zip(var_list, global_center_vars):
@@ -204,28 +209,29 @@ class ModelAverageOptimizer(optimizer.Optimizer):
     apply_updates = self._opt.apply_gradients(grads_and_vars)
     with ops.control_dependencies([apply_updates]):
       local_update = state_ops.assign_add(
-        self._local_step, 1, name='local_step_update').op
+          self._local_step, 1, name="local_step_update").op
 
     # update global variables.
-    def _Update_global_variables():
+    def _update_global_variables():  # pylint: disable=missing-docstring
       local_vars = [v for g, v in grads_and_vars if g is not None]
       global_vars = [self._local_2_global[v] for v in local_vars]
       # sync queue
       with ops.colocate_with(global_step):
-        sync_queue = data_flow_ops.FIFOQueue(-1, [dtypes.bool], shapes=[[]],
-                                             shared_name='sync_queue')
+        sync_queue = data_flow_ops.FIFOQueue(
+            -1, [dtypes.bool], shapes=[[]], shared_name="sync_queue")
       train_ops = []
       aggregated_vars = []
-      with ops.name_scope(None, self._name + '/global'):
+      with ops.name_scope(None, self._name + "/global"):
         for var, gvar in zip(local_vars, global_vars):
+          # pylint: disable=protected-access
           with ops.device(gvar.device):
             if isinstance(var._ref(), ops.Tensor):
               var_accum = data_flow_ops.ConditionalAccumulator(
-                var.dtype,
-                shape=var.get_shape(),
-                shared_name=gvar.name + "/var_accum")
+                  var.dtype,
+                  shape=var.get_shape(),
+                  shared_name=gvar.name + "/var_accum")
               train_ops.append(
-                var_accum.apply_grad(var._ref(), local_step=global_step))
+                  var_accum.apply_grad(var._ref(), local_step=global_step))
               aggregated_vars.append(var_accum.take_grad(self._num_worker))
             else:
               raise ValueError("Unknown local variable type!")
@@ -254,24 +260,26 @@ class ModelAverageOptimizer(optimizer.Optimizer):
       return local_update_op
 
     with ops.control_dependencies([local_update]):
-      condition = math_ops.equal(math_ops.mod(
-        self._local_step, self._interval_steps), 0)
+      condition = math_ops.equal(
+          math_ops.mod(self._local_step, self._interval_steps), 0)
       conditional_update = control_flow_ops.cond(
-        condition, _Update_global_variables, control_flow_ops.no_op)
+          condition, _update_global_variables, control_flow_ops.no_op)
 
     chief_init_ops = []
     for accum, dev in self._accumulator_list:
       with ops.device(dev):
         chief_init_ops.append(
-          accum.set_global_step(
-            global_step, name="SetGlobalStep"))
+            accum.set_global_step(global_step, name="SetGlobalStep"))
     self._chief_init_op = control_flow_ops.group(*(chief_init_ops))
 
     return conditional_update
 
   def get_init_op(self):
-    """Returns the op to let all the local variables equal to the global
-     variables before the training begins"""
+    """Returns the op.
+
+    This method lets all the local variables equal to the global
+    variables before the training begins.
+    """
     return self._local_vars_update(variables.trainable_variables())
 
   def make_session_run_hook(self):
@@ -279,12 +287,13 @@ class ModelAverageOptimizer(optimizer.Optimizer):
     return _ModelAverageOptimizerHook(self, self._is_chief)
 
 
-class _ModelAverageOptimizerHook(session_run_hook.SessionRunHook):
+class _ModelAverageOptimizerHook(session_run_hook.SessionRunHook):  # pylint: disable=missing-docstring
+
   def __init__(self, ma_optimizer, is_chief):
     """Creates hook to handle ModelAverageOptimizer initialization ops.
 
     Args:
-      ea_optimizer: `ModelAverageOptimizer` which this hook will initialize.
+      ma_optimizer: `ModelAverageOptimizer` which this hook will initialize.
       is_chief: `Bool`, whether is this a chief replica or not.
     """
     self._ma_optimizer = ma_optimizer
@@ -295,5 +304,5 @@ class _ModelAverageOptimizerHook(session_run_hook.SessionRunHook):
     self._global_init_op = None
     if self._is_chief:
       self._global_init_op = variables.global_variables_initializer()
-      self._chief_init_op = self._ma_optimizer._chief_init_op
+      self._chief_init_op = self._ma_optimizer._chief_init_op  # pylint: disable=protected-access
     self._variable_init_op = self._ma_optimizer.get_init_op()

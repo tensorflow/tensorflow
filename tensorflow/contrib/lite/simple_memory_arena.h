@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
+#define TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
 
 #include <list>
 #include <memory>
@@ -36,9 +36,9 @@ struct ArenaAlloc {
   }
 };
 
-// This small class is responsible for allocating, dealocating and reusing
+// This small class is responsible for allocating, deallocating and reusing
 // dynamic memory from a common underlying buffer. The arena can be used in
-// scenarios when the pattern of memory allocations and dealocations is
+// scenarios when the pattern of memory allocations and deallocations is
 // repetitive, e.g. running NN inference in multiple iterations.
 class SimpleMemoryArena {
  public:
@@ -85,4 +85,4 @@ class SimpleMemoryArena {
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_SIMPLE_MEMORY_ARENA_H_

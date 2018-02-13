@@ -47,7 +47,17 @@ void TFE_Py_Execute(TFE_Context* ctx, const char* device_name,
 
 // Registers e as the Exception class for handling not ok Status. Returns
 // Py_None if registration succeeds, else throws a TypeError and returns NULL.
+//
+// This function is not thread-safe.
 PyObject* TFE_Py_RegisterExceptionClass(PyObject* e);
+
+// Registers e as the Exception to be raised when the conditions of
+// TFE_Py_FastPathExecute_C have not been met. When this exception is set, it
+// is a signal to the calling code that it should fall back to the safer (and
+// more complete) code path.
+//
+// This function is not thread-safe.
+PyObject* TFE_Py_RegisterFallbackExceptionClass(PyObject* e);
 
 // Returns 0 if 'status' is TF_OK. Otherwise, raises an exception (using
 // `exception` if not nullptr, else using the class registered via
@@ -142,10 +152,12 @@ PyObject* TFE_Py_TapeGradient(PyObject* tape, PyObject* vspace,
 //          or NULL for automatic selection.
 //  Item 3: op_name: Name of the TensorFlow op to execute.
 //  Item 4: record_gradient_callback: Callback that records the gradient of the
-//          result.
-//          The callback takes (inputs, attrs, result) - all sequences and
-//          records the gradient.
-//  Item 5 onwards: inputs - This is a list of inputs followed by a list of
+//          result. The callback takes (op_name, inputs, attrs, result, name)
+//          - all sequences and records the gradient.
+//  Item 5: name: An optional name for the operation.
+//  Item 6: List representing all callbacks to execute after successful
+//  op execute.
+//  Item 7 onwards: inputs - This is a list of inputs followed by a list of
 //        attrs. It is not necessary for type attrs to be present.
 //
 // This is named _C since there doesn't seem to be any way to make it visible

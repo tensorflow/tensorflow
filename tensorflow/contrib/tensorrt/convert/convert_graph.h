@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -15,24 +15,35 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_GRAPH_H_
 #define TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_GRAPH_H_
 
-#include <string>
 #include <vector>
 
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
+//#if GOOGLE_CUDA
+//#if GOOGLE_TENSORRT
+
+namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 tensorflow::Status ConvertCalibGraphToInferGraph(
-    const tensorflow::GraphDef& graph_def,
-    tensorflow::GraphDef* new_graph_def
-);
+    const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* new_graph_def);
+
+// max_batch_size: maximum batch size which can be used for inference for
+//                 optimization targets inference run with max batch size.
+// max_workspace_size_bytes: The upper bound of memory allowence for
+//                 engine building.
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
-    const std::vector<std::string>& output_names, size_t max_batch_size,
-    size_t max_workspace_size,
-    tensorflow::GraphDef* new_graph_def,bool int8);
-}
+    const std::vector<string>& output_names, size_t max_batch_size,
+    size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
+    int precision_mode);
+}  // namespace convert
 }  // namespace tensorrt
+}  // namespace tensorflow
+
+//#endif  // GOOGLE_TENSORRT
+//#endif  // GOOGLE_CUDA
 
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_CONVERT_CONVERT_GRAPH_H_

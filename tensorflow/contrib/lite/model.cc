@@ -30,17 +30,6 @@ limitations under the License.
 
 namespace tflite {
 
-namespace {
-inline const tflite::Model* VerifyAndGetModel(const void* buf, size_t len) {
-  ::flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
-  if (VerifyModelBuffer(verifier)) {
-    return ::tflite::GetModel(buf);
-  } else {
-    return nullptr;
-  }
-}
-}  // namespace
-
 const char* kEmptyTensorName = "";
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
@@ -82,7 +71,7 @@ FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
   }
   if (!allocation_->valid() || !CheckModelIdentifier()) return;
 
-  model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
+  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 bool FlatBufferModel::CheckModelIdentifier() const {
@@ -103,7 +92,7 @@ FlatBufferModel::FlatBufferModel(const char* ptr, size_t num_bytes,
   allocation_ = new MemoryAllocation(ptr, num_bytes, error_reporter);
   if (!allocation_->valid()) return;
 
-  model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
+  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 FlatBufferModel::FlatBufferModel(const Model* model,
@@ -339,6 +328,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
     case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
       TfLiteSequenceRNNParams* params = MallocPOD<TfLiteSequenceRNNParams>();
       if (auto* sequence_rnn_params =
@@ -463,6 +453,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
     case BuiltinOperator_LSTM: {
       TfLiteLSTMParams* params = MallocPOD<TfLiteLSTMParams>();
       if (auto* lstm_params = op->builtin_options_as_LSTMOptions()) {
@@ -478,32 +469,12 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto* params = MallocPOD<TfLiteResizeBilinearParams>();
       if (auto* schema_params =
               op->builtin_options_as_ResizeBilinearOptions()) {
-        params->new_height = schema_params->new_height();
-        params->new_width = schema_params->new_width();
+        params->align_corners = schema_params->align_corners();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_PAD: {
-      auto* params = MallocPOD<TfLitePadParams>();
-      if (auto* schema_params = op->builtin_options_as_PadOptions()) {
-        auto* before_padding = schema_params->before_padding();
-        FlatBufferIntVectorToArray(sizeof(params->before_padding),
-                                   before_padding, params->before_padding,
-                                   error_reporter);
-
-        auto* after_padding = schema_params->after_padding();
-        FlatBufferIntVectorToArray(sizeof(params->after_padding), after_padding,
-                                   params->after_padding, error_reporter);
-
-        if (before_padding->Length() != after_padding->Length()) {
-          error_reporter->Report(
-              "Before padding and after padding arrays need to contain the "
-              "same number of dimensions.\n");
-        }
-        params->num_dimensions = after_padding->Length();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_RESHAPE: {
@@ -546,62 +517,18 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       break;
     }
     case BuiltinOperator_SPACE_TO_BATCH_ND: {
-      auto* params = MallocPOD<TfLiteSpaceToBatchNDParams>();
-      if (auto* schema_params =
-              op->builtin_options_as_SpaceToBatchNDOptions()) {
-        const auto& block_shape = schema_params->block_shape();
-        FlatBufferIntVectorToArray(sizeof(params->block_shape), block_shape,
-                                   params->block_shape, error_reporter);
-        const auto& before_paddings = schema_params->before_paddings();
-        FlatBufferIntVectorToArray(sizeof(params->before_paddings),
-                                   before_paddings, params->before_paddings,
-                                   error_reporter);
-        const auto& after_paddings = schema_params->after_paddings();
-        FlatBufferIntVectorToArray(sizeof(params->after_paddings),
-                                   after_paddings, params->after_paddings,
-                                   error_reporter);
-        params->num_spatial_dimensions = block_shape->Length();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_BATCH_TO_SPACE_ND: {
-      auto* params = MallocPOD<TfLiteBatchToSpaceNDParams>();
-      if (auto* schema_params =
-              op->builtin_options_as_BatchToSpaceNDOptions()) {
-        const auto& block_shape = schema_params->block_shape();
-        FlatBufferIntVectorToArray(sizeof(params->block_shape), block_shape,
-                                   params->block_shape, error_reporter);
-        const auto& before_crops = schema_params->before_crops();
-        FlatBufferIntVectorToArray(sizeof(params->before_crops), before_crops,
-                                   params->before_crops, error_reporter);
-        const auto& after_crops = schema_params->after_crops();
-        FlatBufferIntVectorToArray(sizeof(params->after_crops), after_crops,
-                                   params->after_crops, error_reporter);
-        params->num_spatial_dimensions = block_shape->Length();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_TRANSPOSE: {
-      auto* params = MallocPOD<TfLiteTransposeParams>();
-      if (auto* schema_params = op->builtin_options_as_TransposeOptions()) {
-        const auto& perm = schema_params->perm();
-        FlatBufferIntVectorToArray(sizeof(params->perm), perm, params->perm,
-                                   error_reporter);
-        params->num_dimensions = perm->Length();
-      }
-      builtin_data = reinterpret_cast<void*>(params);
       break;
     }
     case BuiltinOperator_MEAN: {
       auto* params = MallocPOD<TfLiteMeanParams>();
       if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
-        const auto& axis = schema_params->axis();
-        FlatBufferIntVectorToArray(sizeof(params->axis), axis, params->axis,
-                                   error_reporter);
         params->keep_dims = schema_params->keep_dims();
-        params->num_axis_dimensions = axis->Length();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -613,6 +540,18 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         FlatBufferIntVectorToArray(sizeof(params->squeeze_dims), squeeze_dims,
                                    params->squeeze_dims, error_reporter);
         params->num_squeeze_dims = squeeze_dims->Length();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_STRIDED_SLICE: {
+      auto* params = MallocPOD<TfLiteStridedSliceParams>();
+      if (auto* schema_params = op->builtin_options_as_StridedSliceOptions()) {
+        params->begin_mask = schema_params->begin_mask();
+        params->end_mask = schema_params->end_mask();
+        params->ellipsis_mask = schema_params->ellipsis_mask();
+        params->new_axis_mask = schema_params->new_axis_mask();
+        params->shrink_axis_mask = schema_params->shrink_axis_mask();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;

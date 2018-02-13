@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_GRAPH_INFO_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_GRAPH_INFO_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_GRAPH_INFO_H_
+#define TENSORFLOW_CONTRIB_LITE_GRAPH_INFO_H_
 
 #include <vector>
 
@@ -48,6 +48,32 @@ class GraphInfo {
   virtual const std::vector<int>& outputs() const = 0;
 };
 
+// Represents a subgraph of a TensorFlow Lite graph.
+struct Subgraph {
+  enum Type {
+    kTfUnexplored = 0,  // temporarily used during creation
+    kTfPartition,
+    kTfNonPartition
+  };
+  Type type = kTfUnexplored;
+  // Nodes within the subgraph
+  std::vector<int> nodes;
+  // Tensors that stride output from another subgraph that this depends on,
+  // or global inputs to the TensorFlow Lite full graph.
+  std::vector<int> input_tensors;
+  // Outputs that are consumed by other subgraphs or are global output tensors.
+  // All output tensors of the nodes in the subgraph that do not appear in this
+  // list are intermediate results that can be potentially elided.
+  std::vector<int> output_tensors;
+};
+
+// Partitions a list of node indices `nodes_to_partition` into subgraphs.
+// Each subgraph is in dependency order (i.e. all members of the subgraph).
+// `subgraphs` is assumed to be empty.
+TfLiteStatus PartitionGraphIntoIndependentSubgraphs(
+    const GraphInfo* info, const TfLiteIntArray* nodes_to_partition,
+    std::vector<Subgraph>* subgraphs);
+
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_GRAPH_INFO_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_GRAPH_INFO_H_

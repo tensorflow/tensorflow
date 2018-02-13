@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,6 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -28,10 +31,13 @@ REGISTER_OP("TRTEngineOp")
     .Attr("serialized_engine: string")
     .Attr("input_nodes: list(string)")
     .Attr("output_nodes: list(string)")
-    .Attr("InT: list({int8, float16, float32})")
-    .Attr("OutT: list({int8, float16, float32})")
+    .Attr("InT: list({float32})")
+    .Attr("OutT: list({float32})")
     .Input("in_tensor: InT")
     .Output("out_tensor: OutT")
     .SetShapeFn(shape_inference::TRTEngineOpShapeInference);
 
 }  // namespace tensorflow
+
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

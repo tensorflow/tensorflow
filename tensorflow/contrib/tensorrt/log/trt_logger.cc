@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -12,22 +12,22 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
-// Use TF logging for TensorRT informations
+
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 #include "tensorflow/core/platform/logging.h"
 
-#define _TF_LOG_DEBUG ::tensorflow::internal::LogMessage(__FILE__, __LINE__, -1)
-//------------------------------------------------------------------------------
 namespace tensorflow {
-
-//------------------------------------------------------------------------------
 namespace tensorrt {
 
+// Use TF logging for TensorRT informations
 void Logger::log(Severity severity, const char* msg) {
-  // suppress info-level messages
+  // Suppress info-level messages
   switch (severity) {
-    case Severity::kINFO: {  // mark TRT info messages as debug!
-      LOG(DEBUG) << msg;
+    case Severity::kINFO: {  // Mark TRT info messages as debug!
+      VLOG(2) << msg;
       break;
     }
     case Severity::kWARNING: {
@@ -50,7 +50,8 @@ void Logger::log(Severity severity, const char* msg) {
     }
   }
 }
-
 }  // namespace tensorrt
-
 }  // namespace tensorflow
+
+#endif  // GOOGLE_CUDA
+#endif  // GOOGLE_TENSORRT

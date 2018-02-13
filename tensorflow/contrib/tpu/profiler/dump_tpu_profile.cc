@@ -151,10 +151,7 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
   TF_RETURN_IF_ERROR(Env::Default()->RecursivelyCreateDir(profile_run_dir));
 
   // Ignore computation_graph for now.
-  const bool empty_trace = response.encoded_trace().empty();
-  if (empty_trace) {
-    *os << "No trace event is collected." << std::endl;
-  } else {
+  if (!response.encoded_trace().empty()) {
     LOG(INFO) << "Converting trace events to TraceViewer JSON.";
     TF_RETURN_IF_ERROR(
         DumpTraceToLogDirectory(profile_run_dir, response.encoded_trace(), os));
@@ -165,13 +162,10 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
     TF_RETURN_IF_ERROR(DumpOpProfileToLogDirectory(profile_run_dir,
                                                    response.op_profile(), os));
   }
-  if (!empty_trace && !response.tool_data().empty()) {
-    for (const auto& tool_data : response.tool_data()) {
-      TF_RETURN_IF_ERROR(
-          DumpToolDataToLogDirectory(profile_run_dir, tool_data, os));
-    }
+  for (const auto& tool_data : response.tool_data()) {
+    TF_RETURN_IF_ERROR(
+        DumpToolDataToLogDirectory(profile_run_dir, tool_data, os));
   }
-  TF_RETURN_IF_ERROR(DumpGraphEvents(logdir, run, response, os));
 
   return Status::OK();
 }

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/util/device_name_utils.h"
@@ -134,4 +134,4 @@ class RenamedDevice : public Device {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_RENAMED_DEVICE_H_

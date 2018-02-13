@@ -18,23 +18,36 @@ EXPERIMENTAL: APIs here are unstable and likely to change without notice.
 
 @@toco_convert
 @@toco_convert_protos
+@@OpHint
+@@convert_op_hints_to_stubs
 
 """
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 import os
 import subprocess
 import tempfile
 
+# pylint: disable=unused-import
+from tensorflow.contrib.lite.python.op_hint import convert_op_hints_to_stubs
+from tensorflow.contrib.lite.python.op_hint import OpHint
+# pylint: enable=unused-import
 from tensorflow.contrib.lite.toco import model_flags_pb2 as _model_flags_pb2
 from tensorflow.contrib.lite.toco import toco_flags_pb2 as _toco_flags_pb2
 from tensorflow.contrib.lite.toco import types_pb2 as _types_pb2
-from tensorflow.contrib.lite.toco.python.tensorflow_wrap_toco import TocoConvert as _toco_convert_protos
 from tensorflow.python.framework import dtypes as _dtypes
 from tensorflow.python.platform import resource_loader as _resource_loader
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.lazy_loader import LazyLoader
+
+# Lazy load since some of the performance benchmark skylark rules
+# break dependencies.
+_toco_python = LazyLoader(
+    "tensorflow_wrap_toco", globals(),
+    "tensorflow.contrib.lite.toco.python."
+    "tensorflow_wrap_toco")
+del LazyLoader
 
 # Enum types from the protobuf promoted to the API
 FLOAT = _types_pb2.FLOAT
@@ -86,7 +99,8 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
   # TODO(aselle): When toco does not use fatal errors for failure, we can
   # switch this on.
   if not _toco_from_proto_bin:
-    return _toco_convert_protos(model_flags_str, toco_flags_str, input_data_str)
+    return _toco_python.TocoConvert(
+        model_flags_str, toco_flags_str, input_data_str)
 
   with tempfile.NamedTemporaryFile() as fp_toco, \
            tempfile.NamedTemporaryFile() as fp_model, \

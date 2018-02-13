@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/notification.h"
 
-
 namespace tensorflow {
 
 /* static */
@@ -33,7 +32,11 @@ Status CapturedFunction::Create(
   return Status::OK();
 }
 
-CapturedFunction::~CapturedFunction() {}
+CapturedFunction::~CapturedFunction() {
+  if (lib_ != nullptr) {
+    lib_->ReleaseHandle(f_handle_).IgnoreError();
+  }
+}
 
 namespace {
 class CallFrameBase : public CallFrameInterface {
@@ -185,8 +188,7 @@ Status CapturedFunction::MaybeInstantiate(
   return Status::OK();
 }
 
-Status CapturedFunction::Run(IteratorContext* ctx,
-                             std::vector<Tensor>&& args,
+Status CapturedFunction::Run(IteratorContext* ctx, std::vector<Tensor>&& args,
                              std::vector<Tensor>* rets) {
   FunctionLibraryRuntime::Handle handle;
   TF_RETURN_IF_ERROR(MaybeInstantiate(ctx, &handle));

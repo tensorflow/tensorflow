@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""CIFAR10 small image classification dataset.
+"""CIFAR10 small images classification dataset.
 """
 from __future__ import absolute_import
 from __future__ import division

@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,10 +20,9 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 
-//------------------------------------------------------------------------------
-using namespace tensorflow;
-
+namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 namespace test {
@@ -37,7 +36,7 @@ class SegmentTest : public ::testing::Test {
                     TF_Status* s, const char* name);
 
   std::function<bool(const NodeDef&)> MakeCandidateFn(
-      const std::set<std::string>& node_names);
+      const std::set<string>& node_names);
 
  protected:
   void PlaceholderHelper(TF_Graph* graph, TF_Status* s, const char* name,
@@ -62,7 +61,7 @@ bool SegmentTest::GetGraphDef(TF_Graph* graph,
 }
 
 std::function<bool(const NodeDef&)> SegmentTest::MakeCandidateFn(
-    const std::set<std::string>& node_names) {
+    const std::set<string>& node_names) {
   return [node_names](const NodeDef& node) -> bool {
     return node_names.find(node.name()) != node_names.end();
   };
@@ -105,7 +104,6 @@ TF_Operation* SegmentTest::Add(TF_Operation* l, TF_Operation* r,
   return op;
 }
 
-//------------------------------------------------------------------------------
 TEST_F(SegmentTest, Empty) {
   TF_Graph* graph = TF_NewGraph();
 
@@ -119,9 +117,9 @@ TEST_F(SegmentTest, Empty) {
 
   // Expect no segments/subgraphs.
   EXPECT_TRUE(segments.empty());
+  TF_DeleteGraph(graph);
 }
 
-//------------------------------------------------------------------------------
 TEST_F(SegmentTest, Simple) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -165,14 +163,15 @@ TEST_F(SegmentTest, Simple) {
 
   // Expect all Add operations to be collapsed into a single segment
   ASSERT_EQ(segments.size(), 1);
-  std::vector<std::string> expected{"add0", "add1", "add2", "add3", "add4"};
+  std::vector<string> expected{"add0", "add1", "add2", "add3", "add4"};
   for (const auto& ex : expected) {
     EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
         << "Missing expected node " << ex;
   }
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
 }
 
-//------------------------------------------------------------------------------
 TEST_F(SegmentTest, AvoidCycle) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -218,9 +217,10 @@ TEST_F(SegmentTest, AvoidCycle) {
 
   // Expect no subgraphs
   EXPECT_EQ(segments.size(), 0);
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
 }
 
-//------------------------------------------------------------------------------
 TEST_F(SegmentTest, Multiple) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -276,20 +276,21 @@ TEST_F(SegmentTest, Multiple) {
   // Expect two subgraphs
   EXPECT_EQ(segments.size(), 2);
 
-  std::vector<std::string> expected0{"add0", "add1", "add2", "add3"};
+  std::vector<string> expected0{"add0", "add1", "add2", "add3"};
   for (const auto& ex : expected0) {
     EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
         << "Missing expected node " << ex;
   }
 
-  std::vector<std::string> expected1{"add6", "add8"};
+  std::vector<string> expected1{"add6", "add8"};
   for (const auto& ex : expected1) {
     EXPECT_TRUE(segments[1].find(ex) != segments[1].end())
         << "Missing expected node " << ex;
   }
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
 }
 
-//------------------------------------------------------------------------------
 TEST_F(SegmentTest, BigIfElse) {
   TF_Status* s = TF_NewStatus();
   TF_Graph* graph = TF_NewGraph();
@@ -345,19 +346,22 @@ TEST_F(SegmentTest, BigIfElse) {
   // Expect 2 subgraphs
   EXPECT_EQ(segments.size(), 2);
 
-  std::vector<std::string> expected0{"add3", "add4", "add5", "add6", "add7"};
+  std::vector<string> expected0{"add3", "add4", "add5", "add6", "add7"};
   for (const auto& ex : expected0) {
     EXPECT_TRUE(segments[0].find(ex) != segments[0].end())
         << "Missing expected node " << ex;
   }
 
-  std::vector<std::string> expected1{"add0", "add1"};
+  std::vector<string> expected1{"add0", "add1"};
   for (const auto& ex : expected1) {
     EXPECT_TRUE(segments[1].find(ex) != segments[1].end())
         << "Missing expected node " << ex;
   }
+  TF_DeleteGraph(graph);
+  TF_DeleteStatus(s);
 }
 
 }  // namespace test
 }  // namespace segment
 }  // namespace tensorrt
+}  // namespace tensorflow

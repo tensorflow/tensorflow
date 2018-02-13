@@ -210,6 +210,9 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//third_party/py/numpy",
     ],
+    tags = [
+        "notap",  # This test launches local server.
+    ],
 )
 
 py_test(

@@ -18,6 +18,42 @@ The operations in this package are safe to use with eager execution turned on or
 off. It has a more flexible API that allows summaries to be written directly
 from ops to places other than event log files, rather than propagating protos
 from @{tf.summary.merge_all} to @{tf.summary.FileWriter}.
+
+To use with eager execution enabled, write your code as follows:
+
+global_step = tf.train.get_or_create_global_step()
+summary_writer = tf.contrib.summary.create_file_writer(
+    train_dir, flush_millis=10000)
+with summary_writer.as_default(), tf.contrib.summary.always_record_summaries():
+  # model code goes here
+  # and in it call
+  tf.contrib.summary.scalar("loss", my_loss)
+  # In this case every call to tf.contrib.summary.scalar will generate a record
+  # ...
+
+To use it with graph execution, write your code as follows:
+
+global_step = tf.train.get_or_create_global_step()
+summary_writer = tf.contrib.summary.create_file_writer(
+    train_dir, flush_millis=10000)
+with summary_writer.as_default(), tf.contrib.summary.always_record_summaries():
+  # model definition code goes here
+  # and in it call
+  tf.contrib.summary.scalar("loss", my_loss)
+  # In this case every call to tf.contrib.summary.scalar will generate an op,
+  # note the need to run tf.contrib.summary.all_summary_ops() to make sure these
+  # ops get executed.
+  # ...
+  train_op = ....
+
+with tf.Session(...) as sess:
+  tf.global_variables_initializer().run()
+  tf.contrib.summary.initialize(graph=tf.get_default_graph())
+  # ...
+  while not_done_training:
+    sess.run([train_op, tf.contrib.summary.all_summary_ops()])
+    # ...
+
 """
 
 from __future__ import absolute_import

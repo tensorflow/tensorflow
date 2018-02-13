@@ -36,13 +36,16 @@ py_library(
     name = "tpu_estimator",
     srcs = [
         "python/tpu/tpu_config.py",
+        "python/tpu/tpu_context.py",
         "python/tpu/tpu_estimator.py",
+        "python/tpu/tpu_system_metadata.py",
         "python/tpu/util.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         ":tpu_lib",
         ":tpu_py",
+        "//tensorflow/contrib/summary:summary_ops",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",

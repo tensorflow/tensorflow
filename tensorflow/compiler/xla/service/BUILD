@@ -29,6 +29,11 @@ xla_proto_library(
     deps = ["//tensorflow/compiler/xla:xla_data_proto"],
 )
 
+xla_proto_library(
+    name = "hlo_profile_printer_data",
+    srcs = ["hlo_profile_printer_data.proto"],
+)
+
 # Filegroup used to collect source files for dependency checking.
 filegroup(
     name = "c_srcs",
@@ -455,6 +460,7 @@ cc_library(
         ":hlo_proto_util",
         ":platform_util",
         ":session_proto",
+        ":source_map_util",
         ":transfer_manager",
         ":user_computation",
         ":versioned_computation_handle",
@@ -503,6 +509,7 @@ cc_library(
         "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:util",
         "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:executable_build_options",
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
     ],
@@ -906,6 +913,7 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
     ],
 )
 
@@ -1103,8 +1111,6 @@ cc_library(
         ":hlo",
         ":hlo_evaluator",
         ":hlo_pass",
-        ":tuple_util",
-        ":while_util",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:lib",
     ],
@@ -1143,6 +1149,34 @@ tf_cc_test(
     deps = [
         ":defuser",
         ":hlo_matchers",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
+    ],
+)
+
+cc_library(
+    name = "implicit_broadcast_remover",
+    srcs = ["implicit_broadcast_remover.cc"],
+    hdrs = ["implicit_broadcast_remover.h"],
+    deps = [
+        ":hlo",
+        ":hlo_dce",
+        ":hlo_pass",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "implicit_broadcast_remover_test",
+    srcs = ["implicit_broadcast_remover_test.cc"],
+    deps = [
+        ":hlo_matchers",
+        ":implicit_broadcast_remover",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
@@ -1818,7 +1852,9 @@ tf_cc_test(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tools/parser:hlo_parser",
         "//tensorflow/core:lib",
+        "//tensorflow/core:test",
     ],
 )
 
@@ -1849,6 +1885,7 @@ cc_library(
         ":hlo",
         ":hlo_graph_dumper",
         ":hlo_pass",
+        ":hlo_proto_util",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla:types",
@@ -1939,6 +1976,16 @@ cc_library(
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:types",
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_cc_test(
+    name = "hlo_element_type_converter_test",
+    srcs = ["hlo_element_type_converter_test.cc"],
+    deps = [
+        ":hlo_element_type_converter",
+        ":hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
     ],
 )
 
@@ -2254,6 +2301,7 @@ cc_library(
     srcs = ["hlo_profile_printer.cc"],
     hdrs = ["hlo_profile_printer.h"],
     deps = [
+        ":hlo_profile_printer_data",
         ":human_readable_profile_builder",
         "//tensorflow/compiler/xla:types",
     ],
@@ -2328,6 +2376,18 @@ tf_cc_test(
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla/tests:hlo_verified_test_base",
         "//tensorflow/core:test",
+    ],
+)
+
+cc_library(
+    name = "source_map_util",
+    srcs = ["source_map_util.cc"],
+    hdrs = ["source_map_util.h"],
+    deps = [
+        ":executable",
+        "//tensorflow/compiler/xla:status",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/core:lib",
     ],
 )
 

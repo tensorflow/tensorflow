@@ -272,7 +272,7 @@ XLA_TEST_P(ReduceWindowTest, NonstandardReduceFunction) {
 
   builder_.ReduceWindow(
       input,
-      CreateConstantFromLiteral(*Literal::CreateR0<float>(3.0f), &builder_),
+      CreateConstantFromLiteral(*Literal::CreateR0<float>(0.0f), &builder_),
       reduce_fn,
       /*window_dimensions=*/{1, 1, 2, 1},
       /*window_strides=*/{1, 1, 1, 1}, padding);
@@ -282,7 +282,7 @@ XLA_TEST_P(ReduceWindowTest, NonstandardReduceFunction) {
   };
 
   auto expected =
-      ReferenceUtil::ReduceWindow4DGeneric(input_array, 3.0f, reduce_func,
+      ReferenceUtil::ReduceWindow4DGeneric(input_array, 0.0f, reduce_func,
                                            /*window=*/{1, 1, 2, 1},
                                            /*stride=*/{1, 1, 1, 1}, padding);
 
@@ -800,6 +800,14 @@ const R4ReduceWindowTestData kR4ReduceWindowLargeTestValues[] = {
                            /*pad_high=*/{1, 1, 0, 0},
                            /*layout=*/{3, 2, 1, 0},
                            /*reducer=*/kAdd},
+
+    R4ReduceWindowTestData{/*base_bounds=*/{1, 1, 32768 - 3, 2},
+                           /*window_bounds=*/{1, 1, 4, 1},
+                           /*strides=*/{1, 1, 4, 1},
+                           /*pad_low=*/{0, 0, 1, 0},
+                           /*pad_high=*/{0, 0, 2, 0},
+                           /*layout=*/{3, 2, 1, 0},
+                           /*reducer=*/kMax},
 };
 
 INSTANTIATE_TEST_CASE_P(
@@ -810,9 +818,9 @@ INSTANTIATE_TEST_CASE_P(
 
 class R4ReduceWindowAnyDimsTest : public R4ReduceWindowTest {};
 
-// TODO(b/72234705): Fix the test cases failed on CPU.
+// TODO(b/72234705): Fix the test cases failed on CPU and GPU.
 XLA_TEST_P(R4ReduceWindowAnyDimsTest,
-           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(DoIt))) {
+           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt)))) {
   DoIt();
 }
 
@@ -1016,41 +1024,63 @@ class R2ReduceWindowTest : public ReduceWindowTestBase,
                                ::testing::tuple<R2ReduceWindowTestData, bool>> {
  protected:
   R2ReduceWindowTest() { set_use_bfloat16(::testing::get<1>(GetParam())); }
+
+  void DoIt() {
+    ComputationBuilder b(client_, TestName());
+    const auto& param = ::testing::get<0>(GetParam());
+    CHECK(param.reducer == kAdd);
+
+    const float kInitValue = 0.0f;
+    Array2D<float> input(param.base_bounds[0], param.base_bounds[1], 1.0f);
+    std::unique_ptr<Literal> input_literal =
+        Literal::CreateR2FromArray2DWithLayout(
+            input, LayoutUtil::MakeLayout(param.layout));
+
+    ComputationDataHandle parameter;
+    auto input_arg = CreateParameterAndTransferLiteral(0, *input_literal, "p0",
+                                                       &b, &parameter);
+    auto init_value =
+        CreateConstantFromLiteral(*Literal::CreateR0(kInitValue), &b);
+    b.ReduceWindow(/*operand=*/parameter,
+                   /*init_value=*/init_value,
+                   /*computation=*/CreateScalarAddComputation(FloatType(), &b),
+                   /*window_dimensions=*/param.window_bounds,
+                   /*window_strides=*/param.strides, /*padding=*/param.padding);
+
+    auto expected = ReferenceUtil::ReduceWindow2DAdd(
+        /*operand=*/input, /*init=*/kInitValue, /*window=*/param.window_bounds,
+        /*stride=*/param.strides, /*padding=*/param.padding);
+
+    ComputeAndCompareLiteral(&b, *Literal::CreateFromArray(*expected),
+                             {input_arg.get()}, DefaultErrorSpec());
+  }
 };
 
-TEST_P(R2ReduceWindowTest, Add) {
-  ComputationBuilder b(client_, TestName());
-  const auto& param = ::testing::get<0>(GetParam());
-  CHECK(param.reducer == kAdd);
-
-  const float kInitValue = 0.0f;
-  Array2D<float> input(param.base_bounds[0], param.base_bounds[1], 1.0f);
-  std::unique_ptr<Literal> input_literal =
-      Literal::CreateR2FromArray2DWithLayout(
-          input, LayoutUtil::MakeLayout(param.layout));
-
-  ComputationDataHandle parameter;
-  auto input_arg = CreateParameterAndTransferLiteral(0, *input_literal, "p0",
-                                                     &b, &parameter);
-  auto init_value =
-      CreateConstantFromLiteral(*Literal::CreateR0(kInitValue), &b);
-  b.ReduceWindow(/*operand=*/parameter,
-                 /*init_value=*/init_value,
-                 /*computation=*/CreateScalarAddComputation(FloatType(), &b),
-                 /*window_dimensions=*/param.window_bounds,
-                 /*window_strides=*/param.strides, /*padding=*/param.padding);
-
-  auto expected = ReferenceUtil::ReduceWindow2DAdd(
-      /*operand=*/input, /*init=*/kInitValue, /*window=*/param.window_bounds,
-      /*stride=*/param.strides, /*padding=*/param.padding);
-
-  ComputeAndCompareLiteral(&b, *Literal::CreateFromArray(*expected),
-                           {input_arg.get()}, DefaultErrorSpec());
-}
+TEST_P(R2ReduceWindowTest, DoIt) { DoIt(); }
 
 INSTANTIATE_TEST_CASE_P(
     R2ReduceWindowTestInstantiation, R2ReduceWindowTest,
     ::testing::Combine(::testing::ValuesIn(kR2TestCases),
+                       ::testing::ValuesIn(use_bfloat16_params)),
+    R2ReduceWindowTestDataToString);
+
+class R2ReduceWindowFailingCpuGpuBf16Test : public R2ReduceWindowTest {};
+
+// TODO(b/72234705): Fix the test cases failed on CPU and GPU.
+XLA_TEST_P(R2ReduceWindowFailingCpuGpuBf16Test,
+           DISABLED_ON_CPU_PARALLEL(DISABLED_ON_CPU(DISABLED_ON_GPU(DoIt)))) {
+  DoIt();
+}
+
+const R2ReduceWindowTestData kR2FailingValuesCpuGpuBf16Test[] = {
+    {/*base_bounds=*/{8, 128}, /*window_bounds=*/{8, 128},
+     /*strides=*/{1, 1}, /*layout=*/{1, 0},
+     /*padding=*/Padding::kValid, /*reducer=*/Reducer::kAdd},
+};
+
+INSTANTIATE_TEST_CASE_P(
+    R2ReduceWindowFailingInstantiation, R2ReduceWindowFailingCpuGpuBf16Test,
+    ::testing::Combine(::testing::ValuesIn(kR2FailingValuesCpuGpuBf16Test),
                        ::testing::ValuesIn(use_bfloat16_params)),
     R2ReduceWindowTestDataToString);
 

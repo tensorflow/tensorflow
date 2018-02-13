@@ -25,10 +25,10 @@ class TRTResourceManager {
   }
   // returns a manager for given op, if it doesn't exists it creates one
   std::shared_ptr<tensorflow::ResourceMgr> getManager(
-      const std::string& op_name);
+      const string& op_name);
 
  private:
-  std::unordered_map<std::string, std::shared_ptr<tensorflow::ResourceMgr>>
+  std::unordered_map<string, std::shared_ptr<tensorflow::ResourceMgr>>
       managers_;
   tensorflow::mutex map_mutex_;
 };

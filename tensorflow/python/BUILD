@@ -1,5 +1,8 @@
 # Description:
 # Python support for TensorFlow.
+#
+# Public targets:
+#  ":platform" - Low-level and platform-specific Python code.
 
 package(
     default_visibility = [
@@ -76,6 +79,7 @@ py_library(
         ":layers",
         ":lib",
         ":list_ops",
+        ":manip_ops",
         ":math_ops",
         ":metrics",
         ":nn",
@@ -131,6 +135,7 @@ py_library(
         ],
     ) + ["platform/build_info.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":lib",
         ":pywrap_tensorflow",
@@ -298,6 +303,7 @@ cc_library(
         ":safe_ptr",
         "//tensorflow/c:tf_status_helper",
         "//tensorflow/c/eager:c_api",
+        "//tensorflow/c/eager:c_api_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -575,6 +581,7 @@ py_library(
         ":pywrap_tensorflow",
         ":random_seed",
         ":sparse_tensor",
+        ":tensor_spec",
         ":tensor_util",
         ":util",
         "//tensorflow/python/eager:context",
@@ -776,6 +783,18 @@ py_library(
     deps = [
         ":util",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "tensor_spec",
+    srcs = ["framework/tensor_spec.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":common_shapes",
+        ":dtypes",
+        ":tensor_shape",
+        "//third_party/py/numpy",
     ],
 )
 
@@ -1148,6 +1167,21 @@ py_test(
 )
 
 py_test(
+    name = "framework_tensor_spec_test",
+    size = "small",
+    srcs = ["framework/tensor_spec_test.py"],
+    main = "framework/tensor_spec_test.py",
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_for_generated_wrappers",
+        ":framework_test_lib",
+        ":platform_test",
+        ":tensor_spec",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "framework_sparse_tensor_test",
     size = "small",
     srcs = ["framework/sparse_tensor_test.py"],
@@ -1383,6 +1417,21 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/contrib/lookup:__pkg__",
+        "//tensorflow/python/kernel_tests:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "batch_ops_gen",
+    visibility = [
+        "//tensorflow:__subpackages__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "manip_ops_gen",
+    visibility = [
+        "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
     ],
 )
@@ -1719,6 +1768,8 @@ py_library(
         ":linalg_grad",
         ":linalg_ops",
         ":logging_ops",
+        ":manip_grad",
+        ":manip_ops",
         ":math_grad",
         ":math_ops",
         ":platform",
@@ -1837,6 +1888,29 @@ py_library(
         ":framework_ops",
         ":linalg_ops_gen",
         ":math_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_library(
+    name = "manip_grad",
+    srcs = ["ops/manip_grad.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":control_flow_ops",
+        ":framework_for_generated_wrappers",
+        ":manip_ops",
+    ],
+)
+
+py_library(
+    name = "manip_ops",
+    srcs = ["ops/manip_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":manip_ops_gen",
         "//third_party/py/numpy",
     ],
 )
@@ -2303,6 +2377,8 @@ py_library(
         ":linalg_ops",
         ":logging_ops",
         ":lookup_ops",
+        ":manip_grad",
+        ":manip_ops",
         ":math_grad",
         ":math_ops",
         ":numerics",
@@ -2661,6 +2737,7 @@ cuda_py_test(
         ":nn_ops_gen",
         "//third_party/py/numpy",
     ],
+    shard_count = 4,
     tags = ["no_windows"],
 )
 
@@ -4218,12 +4295,6 @@ filegroup(
             "**/OWNERS",
         ],
     ),
-    visibility = ["//tensorflow:__subpackages__"],
-)
-
-filegroup(
-    name = "hidden_ops",
-    srcs = ["ops/hidden_ops.txt"],
     visibility = ["//tensorflow:__subpackages__"],
 )
 

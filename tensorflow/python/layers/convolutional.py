@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 class _Conv(base.Layer):
@@ -222,6 +223,7 @@ class _Conv(base.Layer):
                                       new_space)
 
 
+@tf_export('layers.Conv1D')
 class Conv1D(_Conv):
   """1D convolution layer (e.g. temporal convolution).
 
@@ -311,6 +313,7 @@ class Conv1D(_Conv):
         name=name, **kwargs)
 
 
+@tf_export('layers.conv1d')
 def conv1d(inputs,
            filters,
            kernel_size,
@@ -411,6 +414,7 @@ def conv1d(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.Conv2D')
 class Conv2D(_Conv):
   """2D convolution layer (e.g. spatial convolution over images).
 
@@ -507,6 +511,7 @@ class Conv2D(_Conv):
         name=name, **kwargs)
 
 
+@tf_export('layers.conv2d')
 def conv2d(inputs,
            filters,
            kernel_size,
@@ -614,6 +619,7 @@ def conv2d(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.Conv3D')
 class Conv3D(_Conv):
   """3D convolution layer (e.g. spatial convolution over volumes).
 
@@ -711,6 +717,7 @@ class Conv3D(_Conv):
         name=name, **kwargs)
 
 
+@tf_export('layers.conv3d')
 def conv3d(inputs,
            filters,
            kernel_size,
@@ -980,6 +987,7 @@ class _SeparableConv(_Conv):
     raise NotImplementedError
 
 
+@tf_export('layers.SeparableConv1D')
 class SeparableConv1D(_SeparableConv):
   """Depthwise separable 1D convolution.
 
@@ -1094,7 +1102,7 @@ class SeparableConv1D(_SeparableConv):
       strides = (1, 1, 1) + self.strides
       spatial_start_dim = 2
 
-    # Explictly broadcast inputs and kernels to 4D.
+    # Explicitly broadcast inputs and kernels to 4D.
     # TODO(fchollet): refactor when a native separable_conv1d op is available.
     inputs = array_ops.expand_dims(inputs, spatial_start_dim)
     depthwise_kernel = array_ops.expand_dims(self.depthwise_kernel, 0)
@@ -1123,6 +1131,7 @@ class SeparableConv1D(_SeparableConv):
     return outputs
 
 
+@tf_export('layers.SeparableConv2D')
 class SeparableConv2D(_SeparableConv):
   """Depthwise separable 2D convolution.
 
@@ -1260,6 +1269,7 @@ class SeparableConv2D(_SeparableConv):
     return outputs
 
 
+@tf_export('layers.separable_conv1d')
 def separable_conv1d(inputs,
                      filters,
                      kernel_size,
@@ -1376,6 +1386,7 @@ def separable_conv1d(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.separable_conv2d')
 def separable_conv2d(inputs,
                      filters,
                      kernel_size,
@@ -1497,6 +1508,7 @@ def separable_conv2d(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.Conv2DTranspose')
 class Conv2DTranspose(Conv2D):
   """Transposed 2D convolution layer (sometimes called 2D Deconvolution).
 
@@ -1695,6 +1707,7 @@ class Conv2DTranspose(Conv2D):
     return tensor_shape.TensorShape(output_shape)
 
 
+@tf_export('layers.conv2d_transpose')
 def conv2d_transpose(inputs,
                      filters,
                      kernel_size,
@@ -1790,6 +1803,7 @@ def conv2d_transpose(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.Conv3DTranspose')
 class Conv3DTranspose(Conv3D):
   """Transposed 3D convolution layer (sometimes called 3D Deconvolution).
 
@@ -1904,6 +1918,7 @@ class Conv3DTranspose(Conv3D):
           dtype=self.dtype)
     else:
       self.bias = None
+    self.built = True
 
   def call(self, inputs):
     inputs_shape = array_ops.shape(inputs)
@@ -1974,6 +1989,8 @@ class Conv3DTranspose(Conv3D):
 
     if self.use_bias:
       outputs_shape = outputs.shape.as_list()
+      if outputs_shape[0] is None:
+        outputs_shape[0] = -1
       if self.data_format == 'channels_first':
         outputs_4d = array_ops.reshape(outputs, [
             outputs_shape[0], outputs_shape[1],
@@ -2007,14 +2024,15 @@ class Conv3DTranspose(Conv3D):
 
     output_shape[c_axis] = self.filters
     output_shape[d_axis] = utils.deconv_output_length(
-        output_shape[d_axis], stride_d, kernel_d, self.padding)
+        output_shape[d_axis], kernel_d, self.padding, stride_d)
     output_shape[h_axis] = utils.deconv_output_length(
-        output_shape[h_axis], stride_h, kernel_h, self.padding)
+        output_shape[h_axis], kernel_h, self.padding, stride_h)
     output_shape[w_axis] = utils.deconv_output_length(
-        output_shape[w_axis], stride_w, kernel_w, self.padding)
+        output_shape[w_axis], kernel_w, self.padding, stride_w)
     return tensor_shape.TensorShape(output_shape)
 
 
+@tf_export('layers.conv3d_transpose')
 def conv3d_transpose(inputs,
                      filters,
                      kernel_size,

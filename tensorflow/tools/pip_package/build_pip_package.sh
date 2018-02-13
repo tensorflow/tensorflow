@@ -137,8 +137,8 @@ function main() {
         fi
       fi
     fi
-    # Install toco as a binary in aux-bin.
     mkdir "${TMPDIR}/tensorflow/aux-bin"
+    # Install toco as a binary in aux-bin.
     cp bazel-bin/tensorflow/contrib/lite/toco/toco ${TMPDIR}/tensorflow/aux-bin/
   fi
 

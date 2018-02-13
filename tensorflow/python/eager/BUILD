@@ -206,29 +206,6 @@ cc_library(
     ],
 )
 
-cc_library(
-    name = "python_eager_op_gen_main",
-    srcs = [
-        "python_eager_op_gen_main.cc",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":python_eager_op_gen",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-tf_cc_binary(
-    name = "python_eager_op_gen_demo",
-    deps = [
-        ":python_eager_op_gen_main",
-        "//tensorflow/core:ops",
-    ],
-)
-
 py_library(
     name = "custom_gradient",
     srcs = ["custom_gradient.py"],

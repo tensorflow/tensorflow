@@ -49,10 +49,11 @@ from tensorflow.python.client import device_lib
 from tensorflow.python.client import session
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
-from tensorflow.python.eager import tape
+from tensorflow.python.eager import tape  # pylint: disable=unused-import
 from tensorflow.python.framework import device as pydev
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import versions
@@ -65,8 +66,10 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.protobuf import compare
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("test.gpu_device_name")
 def gpu_device_name():
   """Returns the name of a GPU device if available or the empty string."""
   for x in device_lib.list_local_devices():
@@ -101,6 +104,7 @@ def assert_ops_in_graph(expected_ops, graph):
   return actual_ops
 
 
+@tf_export("test.assert_equal_graph_def")
 def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
@@ -119,11 +123,11 @@ def assert_equal_graph_def(actual, expected, checkpoint_v2=False):
     TypeError: If either argument is not a `GraphDef`.
   """
   if not isinstance(actual, graph_pb2.GraphDef):
-    raise TypeError("Expected tf.GraphDef for actual, got %s" %
-                    type(actual).__name__)
+    raise TypeError(
+        "Expected tf.GraphDef for actual, got %s" % type(actual).__name__)
   if not isinstance(expected, graph_pb2.GraphDef):
-    raise TypeError("Expected tf.GraphDef for expected, got %s" %
-                    type(expected).__name__)
+    raise TypeError(
+        "Expected tf.GraphDef for expected, got %s" % type(expected).__name__)
 
   if checkpoint_v2:
     _strip_checkpoint_v2_randomized(actual)
@@ -148,11 +152,10 @@ def assert_meta_graph_protos_equal(tester, a, b):
       a_proto = proto_type()
       b_proto = proto_type()
       # Number of entries in the collections is the same
-      tester.assertEqual(len(a_value.bytes_list.value),
-                         len(b_value.bytes_list.value))
-      for (a_value_item, b_value_item) in zip(
-          a_value.bytes_list.value,
-          b_value.bytes_list.value):
+      tester.assertEqual(
+          len(a_value.bytes_list.value), len(b_value.bytes_list.value))
+      for (a_value_item, b_value_item) in zip(a_value.bytes_list.value,
+                                              b_value.bytes_list.value):
         a_proto.ParseFromString(a_value_item)
         b_proto.ParseFromString(b_value_item)
         tester.assertProtoEquals(a_proto, b_proto)
@@ -216,10 +219,7 @@ def NHWCToNCHW(input_tensor):
     converted tensor or shape array
   """
   # tensor dim -> new axis order
-  new_axes = {
-      4: [0, 3, 1, 2],
-      5: [0, 4, 1, 2, 3]
-  }
+  new_axes = {4: [0, 3, 1, 2], 5: [0, 4, 1, 2, 3]}
   if isinstance(input_tensor, ops.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])
@@ -246,8 +246,9 @@ def NHWCToNCHW_VECT_C(input_shape_or_tensor):
   """
   permutations = {5: [0, 3, 1, 2, 4], 6: [0, 4, 1, 2, 3, 5]}
   is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
-  temp_shape = (input_shape_or_tensor.shape.as_list()
-                if is_tensor else input_shape_or_tensor)
+  temp_shape = (
+      input_shape_or_tensor.shape.as_list()
+      if is_tensor else input_shape_or_tensor)
   if temp_shape[-1] % 4 != 0:
     raise ValueError(
         "Last dimension of input must be evenly divisible by 4 to convert to "
@@ -279,8 +280,9 @@ def NCHW_VECT_CToNHWC(input_shape_or_tensor):
   """
   permutations = {5: [0, 2, 3, 1, 4], 6: [0, 2, 3, 4, 1, 5]}
   is_tensor = isinstance(input_shape_or_tensor, ops.Tensor)
-  input_shape = (input_shape_or_tensor.shape.as_list()
-                 if is_tensor else input_shape_or_tensor)
+  input_shape = (
+      input_shape_or_tensor.shape.as_list()
+      if is_tensor else input_shape_or_tensor)
   if input_shape[-1] != 4:
     raise ValueError("Last dimension of NCHW_VECT_C must be 4.")
   permutation = permutations[len(input_shape)]
@@ -303,10 +305,7 @@ def NCHWToNHWC(input_tensor):
     converted tensor or shape array
   """
   # tensor dim -> new axis order
-  new_axes = {
-      4: [0, 2, 3, 1],
-      5: [0, 2, 3, 4, 1]
-  }
+  new_axes = {4: [0, 2, 3, 1], 5: [0, 2, 3, 4, 1]}
   if isinstance(input_tensor, ops.Tensor):
     ndims = input_tensor.shape.ndims
     return array_ops.transpose(input_tensor, new_axes[ndims])
@@ -321,10 +320,17 @@ def _use_c_api_wrapper(fn, use_c_api, *args, **kwargs):
   prev_value = ops._USE_C_API
   ops._USE_C_API = use_c_api
   try:
-    with ops.Graph().as_default():
-      fn(*args, **kwargs)
+    # Reset the default graph so it has the C API enabled. We call
+    # reset_default_graph() instead of creating a new default Graph context to
+    # make this robust to tests that call reset_default_graph(), which requires
+    # that the current default graph isn't nested.
+    ops.reset_default_graph()
+    fn(*args, **kwargs)
   finally:
     ops._USE_C_API = prev_value
+    # Make sure default graph reflects prev_value in case next test doesn't call
+    # reset_default_graph().
+    ops.reset_default_graph()
 # pylint: disable=protected-access
 
 
@@ -341,7 +347,9 @@ def skip_if(condition):
   Returns:
     The wrapped function
   """
+
   def real_skip_if(fn):
+
     def wrapper(*args, **kwargs):
       if callable(condition):
         skip = condition()
@@ -349,7 +357,9 @@ def skip_if(condition):
         skip = condition
       if not skip:
         fn(*args, **kwargs)
+
     return wrapper
+
   return real_skip_if
 
 
@@ -366,8 +376,10 @@ def disable_c_api(fn):
   Returns:
     The wrapped function
   """
+
   def wrapper(*args, **kwargs):
     _use_c_api_wrapper(fn, False, *args, **kwargs)
+
   return wrapper
 
 
@@ -384,8 +396,10 @@ def enable_c_api(fn):
   Returns:
     The wrapped function
   """
+
   def wrapper(*args, **kwargs):
     _use_c_api_wrapper(fn, True, *args, **kwargs)
+
   return wrapper
 
 
@@ -409,66 +423,6 @@ def with_c_api(cls):
     if callable(value) and name.startswith("test"):
       setattr(cls, name + "WithCApi", enable_c_api(value))
   return cls
-
-
-class IsolateTest(object):
-  """A context manager which isolates resources in its block.
-
-  Provides an Eager-agnostic abstraction for preventing the sharing of
-  variables and other resources.
-
-  In graph mode, resource handle ops are only executed in a particular Session,
-  isolating them from resources with the same name in other Graphs. In Eager,
-  separate Sessions do not exist, so resources (particularly ResourceVariables)
-  would be shared implicitly if a resource of the same name were created
-  anywhere in a Python process. Multiple handles to the same resource would
-  cause several issues, and so this type of sharing will raise an exception.
-
-  Using resources with the same name in a single Python process may be useful
-  (especially for unit tests), so this context manager provides an abstraction
-  for isolating resources. Using a resource created in one Isolation environment
-  in another is an error.
-
-  Example usage in Eager mode:
-
-  ```python
-  import tensorflow as tf
-  # Import subject to change
-  from tensorflow.contrib.eager.python import tfe
-
-  tfe.enable_eager_execution()
-
-  for hyperparameter in [1, 2, 3]:
-    with tfe.IsolateTest():
-      v = tfe.Variable(name="v", initial_value=hyperparameter)
-      # train model, test results ...
-  ```
-
-  IsolateTest is currently exposed through contrib.eager, but it creates a new
-  default Graph and provides equivalent safety in graph mode.
-  """
-
-  def __init__(self):
-    if context.in_eager_mode() and tape.could_possibly_record():
-      raise ValueError("Cannot isolate Eager execution with an active tape.")
-    # In Eager, Graphs set a container which isolates resources, and maintain a
-    # VariableStore which caches ResourceVariable objects created through
-    # get_variable. So setting the default Graph has the side effect of
-    # isolating Eager resources.
-    with context.eager_mode():
-      # Create the graph in Eager mode, as this provides stricter semantics
-      # (i.e. has a unique container prefix). This prevents implicit sharing
-      # when a Graph-mode graph is created and then Eager mode is enabled (an
-      # error through enable_eager_execution, but common with context managers
-      # in unit tests).
-      self._graph_as_default_context_manager = ops.Graph().as_default()
-
-  def __enter__(self):
-    self._graph_as_default_context_manager.__enter__()
-
-  def __exit__(self, type_arg, value_arg, traceback_arg):
-    return self._graph_as_default_context_manager.__exit__(
-        type_arg, value_arg, traceback_arg)
 
 
 def assert_no_new_tensors(f):
@@ -501,12 +455,11 @@ def assert_no_new_tensors(f):
         return False
 
     tensors_before = set(id(obj) for obj in gc.get_objects() if _is_tensor(obj))
-    outside_container_prefix = ops.get_default_graph()._container_prefix
-    with IsolateTest():
+    outside_graph_key = ops.get_default_graph()._graph_key
+    with ops.Graph().as_default():
       # Run the test in a new graph so that collections get cleared when it's
-      # done, but inherit the container prefix so that we can print the values
-      # of variables which get leaked when executing eagerly.
-      ops.get_default_graph()._container_prefix = outside_container_prefix
+      # done, but inherit the graph key so optimizers behave.
+      ops.get_default_graph()._graph_key = outside_graph_key
       f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
@@ -557,13 +510,17 @@ def assert_no_garbage_created(f):
     # not hold on to every object in other tests.
     gc.set_debug(previous_debug_flags)
     gc.enable()
+
   return decorator
 
 
-def run_in_graph_and_eager_modes(
-    __unused__=None, graph=None, config=None,
-    use_gpu=False, force_gpu=False,
-    reset_test=True, assert_no_eager_garbage=False):
+def run_in_graph_and_eager_modes(__unused__=None,
+                                 graph=None,
+                                 config=None,
+                                 use_gpu=False,
+                                 force_gpu=False,
+                                 reset_test=True,
+                                 assert_no_eager_garbage=False):
   """Runs the test in both graph and eager modes.
 
   Args:
@@ -592,6 +549,7 @@ def run_in_graph_and_eager_modes(
 
   def decorator(f):
     """Test method decorator."""
+
     def decorated(self, **kwargs):
       """Decorated the test method."""
       with context.graph_mode():
@@ -623,13 +581,15 @@ def run_in_graph_and_eager_modes(
             assert_no_garbage_created(run_eager_mode))
 
       with context.eager_mode():
-        with IsolateTest():
+        with ops.Graph().as_default():
           run_eager_mode(self, **kwargs)
 
     return decorated
+
   return decorator
 
 
+@tf_export("test.is_gpu_available")
 def is_gpu_available(cuda_only=False, min_cuda_compute_capability=None):
   """Returns whether TensorFlow can access a GPU.
 
@@ -678,6 +638,7 @@ def device(use_gpu):
     yield
 
 
+@tf_export("test.TestCase")
 class TensorFlowTestCase(googletest.TestCase):
   """Base class for tests that need to test TensorFlow.
   """
@@ -731,7 +692,7 @@ class TensorFlowTestCase(googletest.TestCase):
       self._tempdir = tempfile.mkdtemp(dir=googletest.GetTempDir())
     return self._tempdir
 
-  def _AssertProtoEquals(self, a, b):
+  def _AssertProtoEquals(self, a, b, msg=None):
     """Asserts that a and b are the same proto.
 
     Uses ProtoEq() first, as it returns correct results
@@ -741,11 +702,12 @@ class TensorFlowTestCase(googletest.TestCase):
     Args:
       a: a proto.
       b: another proto.
+      msg: Optional message to report on failure.
     """
     if not compare.ProtoEq(a, b):
-      compare.assertProtoEqual(self, a, b, normalize_numbers=True)
+      compare.assertProtoEqual(self, a, b, normalize_numbers=True, msg=msg)
 
-  def assertProtoEquals(self, expected_message_maybe_ascii, message):
+  def assertProtoEquals(self, expected_message_maybe_ascii, message, msg=None):
     """Asserts that message is same as parsed expected_message_ascii.
 
     Creates another prototype of message, reads the ascii message into it and
@@ -754,29 +716,33 @@ class TensorFlowTestCase(googletest.TestCase):
     Args:
       expected_message_maybe_ascii: proto message in original or ascii form.
       message: the message to validate.
+      msg: Optional message to report on failure.
     """
-
+    msg = msg if msg else ""
     if isinstance(expected_message_maybe_ascii, type(message)):
       expected_message = expected_message_maybe_ascii
       self._AssertProtoEquals(expected_message, message)
     elif isinstance(expected_message_maybe_ascii, str):
       expected_message = type(message)()
-      text_format.Merge(expected_message_maybe_ascii, expected_message,
-                        descriptor_pool=descriptor_pool.Default())
-      self._AssertProtoEquals(expected_message, message)
+      text_format.Merge(
+          expected_message_maybe_ascii,
+          expected_message,
+          descriptor_pool=descriptor_pool.Default())
+      self._AssertProtoEquals(expected_message, message, msg=msg)
     else:
-      assert False, ("Can't compare protos of type %s and %s" %
-                     (type(expected_message_maybe_ascii), type(message)))
+      assert False, ("Can't compare protos of type %s and %s. %s" %
+                     (type(expected_message_maybe_ascii), type(message), msg))
 
   def assertProtoEqualsVersion(
       self,
       expected,
       actual,
       producer=versions.GRAPH_DEF_VERSION,
-      min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER):
+      min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER,
+      msg=None):
     expected = "versions { producer: %d min_consumer: %d };\n%s" % (
         producer, min_consumer, expected)
-    self.assertProtoEquals(expected, actual)
+    self.assertProtoEquals(expected, actual, msg=msg)
 
   def assertStartsWith(self, actual, expected_start, msg=None):
     """Assert that actual.startswith(expected_start) is True.
@@ -846,7 +812,8 @@ class TensorFlowTestCase(googletest.TestCase):
     trigger the creation of a new session.
 
     Use the `use_gpu` and `force_gpu` options to control where ops are run. If
-    `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if `use_gpu`
+    `force_gpu` is True, all ops are pinned to `/device:GPU:0`. Otherwise, if
+    `use_gpu`
     is True, TensorFlow tries to run as many ops on the GPU as possible. If both
     `force_gpu and `use_gpu` are False, all ops are pinned to the CPU.
 
@@ -1045,6 +1012,7 @@ class TensorFlowTestCase(googletest.TestCase):
     self._threads.append(ret)
     return ret
 
+
 # pylint: enable=invalid-name
 
   def assertNear(self, f1, f2, err, msg=None):
@@ -1064,7 +1032,7 @@ class TensorFlowTestCase(googletest.TestCase):
                     "%f != %f +/- %f%s" % (f1, f2, err, " (%s)" % msg
                                            if msg is not None else ""))
 
-  def assertArrayNear(self, farray1, farray2, err):
+  def assertArrayNear(self, farray1, farray2, err, msg=None):
     """Asserts that two float arrays are near each other.
 
     Checks that for all elements of farray1 and farray2
@@ -1074,23 +1042,25 @@ class TensorFlowTestCase(googletest.TestCase):
       farray1: a list of float values.
       farray2: a list of float values.
       err: a float value.
+      msg: Optional message to report on failure.
     """
-    self.assertEqual(len(farray1), len(farray2))
+    self.assertEqual(len(farray1), len(farray2), msg=msg)
     for f1, f2 in zip(farray1, farray2):
-      self.assertNear(float(f1), float(f2), err)
+      self.assertNear(float(f1), float(f2), err, msg=msg)
 
   def _NDArrayNear(self, ndarray1, ndarray2, err):
     return np.linalg.norm(ndarray1 - ndarray2) < err
 
-  def assertNDArrayNear(self, ndarray1, ndarray2, err):
+  def assertNDArrayNear(self, ndarray1, ndarray2, err, msg=None):
     """Asserts that two numpy arrays have near values.
 
     Args:
       ndarray1: a numpy ndarray.
       ndarray2: a numpy ndarray.
       err: a float. The maximum absolute difference allowed.
+      msg: Optional message to report on failure.
     """
-    self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err))
+    self.assertTrue(self._NDArrayNear(ndarray1, ndarray2, err), msg=msg)
 
   def _GetNdArray(self, a):
     if not isinstance(a, np.ndarray):
@@ -1112,7 +1082,8 @@ class TensorFlowTestCase(googletest.TestCase):
       # the absolute difference between a and b.  Here, we want to
       # print out which elements violate such conditions.
       cond = np.logical_or(
-          np.abs(a - b) > atol + rtol * np.abs(b), np.isnan(a) != np.isnan(b))
+          np.abs(a - b) > atol + rtol * np.abs(b),
+          np.isnan(a) != np.isnan(b))
       if a.ndim:
         x = a[np.where(cond)]
         y = b[np.where(cond)]
@@ -1125,43 +1096,99 @@ class TensorFlowTestCase(googletest.TestCase):
       print("not close dif = ", np.abs(x - y))
       print("not close tol = ", atol + rtol * np.abs(y))
       print("dtype = %s, shape = %s" % (a.dtype, a.shape))
-      np.testing.assert_allclose(a, b, rtol=rtol, atol=atol, err_msg=msg)
+      # TODO(xpan): There seems to be a bug:
+      # tensorflow/compiler/tests:binary_ops_test pass with float32
+      # nan even though the equal_nan is False by default internally.
+      np.testing.assert_allclose(
+          a, b, rtol=rtol, atol=atol, err_msg=msg, equal_nan=True)
 
-  def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6):
-    """Asserts that two numpy arrays, or dicts of same, have near values.
+  def _assertAllCloseRecursive(self, a, b, rtol=1e-6, atol=1e-6, path=None,
+                               msg=None):
+    path = path or []
+    path_str = (("[" + "][".join([str(p) for p in path]) + "]") if path else "")
+    msg = msg if msg else ""
 
-    This does not support nested dicts. `a` and `b` can be namedtuples too,
-    which are converted to dicts.
-
-    Args:
-      a: The expected numpy ndarray (or anything can be converted to one), or
-        dict of same. Must be a dict iff `b` is a dict.
-      b: The actual numpy ndarray (or anything can be converted to one), or
-        dict of same. Must be a dict iff `a` is a dict.
-      rtol: relative tolerance.
-      atol: absolute tolerance.
-
-    Raises:
-      ValueError: if only one of `a` and `b` is a dict.
-    """
     # Check if a and/or b are namedtuples.
     if hasattr(a, "_asdict"):
       a = a._asdict()
     if hasattr(b, "_asdict"):
       b = b._asdict()
-    is_a_dict = isinstance(a, dict)
-    if is_a_dict != isinstance(b, dict):
-      raise ValueError("Can't compare dict to non-dict, %s vs %s." % (a, b))
-    if is_a_dict:
+    a_is_dict = isinstance(a, dict)
+    if a_is_dict != isinstance(b, dict):
+      raise ValueError("Can't compare dict to non-dict, a%s vs b%s. %s" %
+                       (path_str, path_str, msg))
+    if a_is_dict:
       self.assertItemsEqual(
-          a.keys(), b.keys(),
-          msg="mismatched keys, expected %s, got %s" % (a.keys(), b.keys()))
+          a.keys(),
+          b.keys(),
+          msg="mismatched keys: a%s has keys %s, but b%s has keys %s. %s" %
+          (path_str, a.keys(), path_str, b.keys(), msg))
       for k in a:
+        path.append(k)
+        self._assertAllCloseRecursive(
+            a[k], b[k], rtol=rtol, atol=atol, path=path, msg=msg)
+        del path[-1]
+    elif isinstance(a, (list, tuple)):
+      # Try to directly compare a, b as ndarrays; if not work, then traverse
+      # through the sequence, which is more expensive.
+      try:
+        a_as_ndarray = np.array(a)
+        b_as_ndarray = np.array(b)
         self._assertArrayLikeAllClose(
-            a[k], b[k], rtol=rtol, atol=atol,
-            msg="%s: expected %s, got %s." % (k, a, b))
+            a_as_ndarray,
+            b_as_ndarray,
+            rtol=rtol,
+            atol=atol,
+            msg="Mismatched value: a%s is different from b%s. %s" %
+            (path_str, path_str, msg))
+      except (ValueError, TypeError) as e:
+        if len(a) != len(b):
+          raise ValueError(
+              "Mismatched length: a%s has %d items, but b%s has %d items. %s" %
+              (path_str, len(a), path_str, len(b), msg))
+        for idx, (a_ele, b_ele) in enumerate(zip(a, b)):
+          path.append(str(idx))
+          self._assertAllCloseRecursive(
+              a_ele, b_ele, rtol=rtol, atol=atol, path=path, msg=msg)
+          del path[-1]
+    # a and b are ndarray like objects
     else:
-      self._assertArrayLikeAllClose(a, b, rtol=rtol, atol=atol)
+      try:
+        self._assertArrayLikeAllClose(
+            a,
+            b,
+            rtol=rtol,
+            atol=atol,
+            msg="Mismatched value: a%s is different from b%s." % (path_str,
+                                                                  path_str))
+      except TypeError as e:
+        msg = "Error: a%s has %s, but b%s has %s" % (
+            path_str, type(a), path_str, type(b))
+        e.args = ((e.args[0] + ' : ' + msg,) + e.args[1:])
+        raise
+
+  def assertAllClose(self, a, b, rtol=1e-6, atol=1e-6, msg=None):
+    """Asserts that two structures of numpy arrays, have near values.
+
+    `a` and `b` can be arbitrarily nested structures. A layer of a nested
+    structure can be a `dict`, `namedtuple`, `tuple` or `list`.
+
+    Args:
+      a: The expected numpy `ndarray`, or anything that can be converted into a
+          numpy `ndarray`, or any arbitrarily nested of structure of these.
+      b: The actual numpy `ndarray`, or anything that can be converted into a
+          numpy `ndarray`, or any arbitrarily nested of structure of these.
+      rtol: relative tolerance.
+      atol: absolute tolerance.
+      msg: Optional message to report on failure.
+
+    Raises:
+      ValueError: if only one of `a[p]` and `b[p]` is a dict or
+          `a[p]` and `b[p]` have different length, where `[p]` denotes a path
+          to the nested structure, e.g. given `a = [(1, 1), {'d': (6, 7)}]` and
+          `[p] = [1]['d']`, then `a[p] = (6, 7)`.
+    """
+    self._assertAllCloseRecursive(a, b, rtol=rtol, atol=atol, msg=msg)
 
   def assertAllCloseAccordingToType(self,
                                     a,
@@ -1173,7 +1200,8 @@ class TensorFlowTestCase(googletest.TestCase):
                                     half_rtol=1e-3,
                                     half_atol=1e-3,
                                     bfloat16_rtol=1e-2,
-                                    bfloat16_atol=1e-2):
+                                    bfloat16_atol=1e-2,
+                                    msg=None):
     """Like assertAllClose, but also suitable for comparing fp16 arrays.
 
     In particular, the tolerance is reduced to 1e-3 if at least
@@ -1190,6 +1218,7 @@ class TensorFlowTestCase(googletest.TestCase):
       half_atol: absolute tolerance for float16.
       bfloat16_rtol: relative tolerance for bfloat16.
       bfloat16_atol: absolute tolerance for bfloat16.
+      msg: Optional message to report on failure.
     """
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
@@ -1206,19 +1235,21 @@ class TensorFlowTestCase(googletest.TestCase):
       rtol = max(rtol, bfloat16_rtol)
       atol = max(atol, bfloat16_atol)
 
-    self.assertAllClose(a, b, rtol=rtol, atol=atol)
+    self.assertAllClose(a, b, rtol=rtol, atol=atol, msg=msg)
 
-  def assertAllEqual(self, a, b):
+  def assertAllEqual(self, a, b, msg=None):
     """Asserts that two numpy arrays have the same values.
 
     Args:
       a: the expected numpy ndarray or anything can be converted to one.
       b: the actual numpy ndarray or anything can be converted to one.
+      msg: Optional message to report on failure.
     """
+    msg = msg if msg else ""
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
-    self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s." %
-                     (a.shape, b.shape))
+    self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s."
+                                       " %s" % (a.shape, b.shape, msg))
     same = (a == b)
 
     if a.dtype == np.float32 or a.dtype == np.float64:
@@ -1235,7 +1266,7 @@ class TensorFlowTestCase(googletest.TestCase):
         x, y = a, b
       print("not equal lhs = ", x)
       print("not equal rhs = ", y)
-      np.testing.assert_array_equal(a, b)
+      np.testing.assert_array_equal(a, b, err_msg=msg)
 
   # pylint: disable=g-doc-return-or-yield
   @contextlib.contextmanager
@@ -1285,12 +1316,13 @@ class TensorFlowTestCase(googletest.TestCase):
     return self.assertRaisesWithPredicateMatch(errors.OpError,
                                                expected_err_re_or_predicate)
 
-  def assertShapeEqual(self, np_array, tf_tensor):
+  def assertShapeEqual(self, np_array, tf_tensor, msg=None):
     """Asserts that a Numpy ndarray and a TensorFlow tensor have the same shape.
 
     Args:
       np_array: A Numpy ndarray or Numpy scalar.
       tf_tensor: A Tensor.
+      msg: Optional message to report on failure.
 
     Raises:
       TypeError: If the arguments have the wrong type.
@@ -1299,19 +1331,22 @@ class TensorFlowTestCase(googletest.TestCase):
       raise TypeError("np_array must be a Numpy ndarray or Numpy scalar")
     if not isinstance(tf_tensor, ops.Tensor):
       raise TypeError("tf_tensor must be a Tensor")
-    self.assertAllEqual(np_array.shape, tf_tensor.get_shape().as_list())
+    self.assertAllEqual(np_array.shape, tf_tensor.get_shape().as_list(),
+                        msg=msg)
 
-  def assertDeviceEqual(self, device1, device2):
+  def assertDeviceEqual(self, device1, device2, msg=None):
     """Asserts that the two given devices are the same.
 
     Args:
       device1: A string device name or TensorFlow `DeviceSpec` object.
       device2: A string device name or TensorFlow `DeviceSpec` object.
+      msg: Optional message to report on failure.
     """
     device1 = pydev.canonical_name(device1)
     device2 = pydev.canonical_name(device2)
     self.assertEqual(device1, device2,
-                     "Devices %s and %s are not equal" % (device1, device2))
+                     "Devices %s and %s are not equal. %s" % 
+                     (device1, device2, msg))
 
   # Fix Python 3 compatibility issues
   if six.PY3:
@@ -1326,8 +1361,12 @@ class TensorFlowTestCase(googletest.TestCase):
     # pylint: enable=invalid-name
 
 
-def create_local_cluster(num_workers, num_ps, protocol="grpc",
-                         worker_config=None, ps_config=None):
+@tf_export("test.create_local_cluster")
+def create_local_cluster(num_workers,
+                         num_ps,
+                         protocol="grpc",
+                         worker_config=None,
+                         ps_config=None):
   """Create and start local servers and return the associated `Server` objects.
 
   Example:
@@ -1377,15 +1416,21 @@ def create_local_cluster(num_workers, num_ps, protocol="grpc",
 
   workers = [
       server_lib.Server(
-          cs, job_name="worker", protocol=protocol, task_index=ix,
-          config=worker_config, start=True)
-      for ix in range(num_workers)
+          cs,
+          job_name="worker",
+          protocol=protocol,
+          task_index=ix,
+          config=worker_config,
+          start=True) for ix in range(num_workers)
   ]
   ps_servers = [
       server_lib.Server(
-          cs, job_name="ps", protocol=protocol, task_index=ix,
-          config=ps_config, start=True)
-      for ix in range(num_ps)
+          cs,
+          job_name="ps",
+          protocol=protocol,
+          task_index=ix,
+          config=ps_config,
+          start=True) for ix in range(num_ps)
   ]
 
   return workers, ps_servers
@@ -1407,3 +1452,14 @@ def get_node_def_from_graph(node_name, graph_def):
     if node_def.name == node_name:
       return node_def
   return None
+
+
+def set_producer_version(graph, producer_version):
+  """Sets graph.graph_def_versions.producer to `producer_version`."""
+  # The C API doesn't expose altering GraphDefVersions. We can indirectly set
+  # it via import_graph_def though.
+  graph_def = graph_pb2.GraphDef()
+  graph_def.versions.producer = producer_version
+  with graph.as_default():
+    importer.import_graph_def(graph_def)
+  assert graph.graph_def_versions.producer, producer_version

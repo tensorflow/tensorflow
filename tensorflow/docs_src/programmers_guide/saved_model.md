@@ -285,7 +285,7 @@ with tf.Session(graph=tf.Graph()) as sess:
 ```
 
 
-### Loading a Savedmodel in C++
+### Loading a SavedModel in C++
 
 The C++ version of the SavedModel
 [loader](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/cc/saved_model/loader.h)
@@ -303,6 +303,30 @@ LoadSavedModel(session_options, run_options, export_dir, {kSavedModelTagTrain},
                &bundle);
 ```
 
+### Loading and Serving a SavedModel in TensorFlow Serving
+
+You can easily load and serve a SavedModel with the TensorFlow Serving Model
+Server binary. See [instructions](https://www.tensorflow.org/serving/setup#installing_using_apt-get)
+on how to install the server, or build it if you wish.
+
+Once you have the Model Server, run it with:
+```
+tensorflow_model_server --port=port-numbers --model_name=your-model-name --model_base_path=your_model_base_path
+```
+Set the port and model_name flags to values of your choosing. The
+model_base_path flag expects to be to a base directory, with each version of
+your model residing in a numerically named subdirectory. If you only have a
+single version of your model, simply place it in a subdirectory like so:
+* Place the model in /tmp/model/0001
+* Set model_base_path to /tmp/model
+
+Store different versions of your model in numerically named subdirectories of a
+common base directory. For example, suppose the base directory is `/tmp/model`.
+If you have only one version of your model, store it in `/tmp/model/0001`. If
+you have two versions of your model, store the second version in
+`/tmp/model/0002`, and so on.  Set the `--model-base_path` flag to the base
+directory (`/tmp/model`, in this example).  TensorFlow Model Server will serve
+the model in the highest numbered subdirectory of that base directory.
 
 ### Standard constants
 

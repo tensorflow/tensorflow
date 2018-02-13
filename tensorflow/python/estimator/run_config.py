@@ -27,7 +27,8 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
-from tensorflow.python.util import compat
+from tensorflow.python.util import compat_internal
+from tensorflow.python.util.tf_export import tf_export
 
 
 _USE_DEFAULT = object()
@@ -286,6 +287,7 @@ class TaskType(object):
   EVALUATOR = 'evaluator'
 
 
+@tf_export('estimator.RunConfig')
 class RunConfig(object):
   """This class specifies the configurations for an `Estimator` run."""
 
@@ -444,7 +446,8 @@ class RunConfig(object):
     if tf_config:
       logging.info('TF_CONFIG environment variable: %s', tf_config)
 
-    model_dir = _get_model_dir(tf_config, compat.path_to_str(model_dir))
+    model_dir = _get_model_dir(tf_config,
+                               compat_internal.path_to_str(model_dir))
 
     RunConfig._replace(
         self,
@@ -486,7 +489,7 @@ class RunConfig(object):
         self._num_ps_replicas = _count_ps(self._cluster_spec)
         self._num_worker_replicas = _count_worker(
             self._cluster_spec, chief_task_type=TaskType.CHIEF)
-        self._global_id = _get_global_id_in_cluster(
+        self._global_id_in_cluster = _get_global_id_in_cluster(
             self._cluster_spec,
             self._task_type,
             self._task_id,
@@ -497,14 +500,14 @@ class RunConfig(object):
         self._master = _LOCAL_MASTER
         self._num_ps_replicas = 0
         self._num_worker_replicas = 0
-        self._global_id = None  # undefined
+        self._global_id_in_cluster = None  # undefined
 
       self._is_chief = self._task_type == TaskType.CHIEF
     else:
       # Local mode.
       self._task_type = task_env.get(_TASK_TYPE_KEY, TaskType.WORKER)
       self._task_id = int(task_env.get(_TASK_ID_KEY, 0))
-      self._global_id = 0
+      self._global_id_in_cluster = 0
 
       if self._task_type != TaskType.WORKER:
         raise ValueError(
@@ -539,7 +542,7 @@ class RunConfig(object):
       raise ValueError('If `master` node exists in `cluster`, task_type '
                        '`evaluator` is not supported.')
 
-    self._global_id = _get_global_id_in_cluster(
+    self._global_id_in_cluster = _get_global_id_in_cluster(
         self._cluster_spec,
         self._task_type,
         self._task_id,
@@ -621,7 +624,7 @@ class RunConfig(object):
     Returns:
       An integer id.
     """
-    return self._global_id
+    return self._global_id_in_cluster
 
   @property
   def task_type(self):

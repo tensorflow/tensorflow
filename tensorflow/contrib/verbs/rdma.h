@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_H_
+#ifndef TENSORFLOW_CONTRIB_VERBS_RDMA_H_
+#define TENSORFLOW_CONTRIB_VERBS_RDMA_H_
 
 #ifdef TENSORFLOW_USE_VERBS
 
@@ -73,15 +73,8 @@ struct RemoteMR {
   uint64_t remote_addr;
   uint32_t rkey;
 };
-enum BufferStatus {
-  none,
-  idle,
-  busy
-};
-enum Location {
-  local,
-  remote
-};
+enum BufferStatus { none, idle, busy };
+enum Location { local, remote };
 
 enum RdmaMessageType {
   RDMA_MESSAGE_META_DATA_UPDATE,
@@ -531,4 +524,4 @@ class RdmaMessageBuffer {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_USE_VERBS
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_H_
+#endif  // TENSORFLOW_CONTRIB_VERBS_RDMA_H_

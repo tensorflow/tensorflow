@@ -87,6 +87,8 @@ class HloToIrBindings {
                               const HloInstruction& consumer,
                               const ShapeIndex& shape_index = {});
 
+  string ToString() const;
+
  private:
   // Emits IR to resolve (possibly) recursive GetTupleElement instructions.
   llvm::Value* EmitGetTupleElement(const HloInstruction* gte,

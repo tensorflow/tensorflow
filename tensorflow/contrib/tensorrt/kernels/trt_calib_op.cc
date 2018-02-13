@@ -3,7 +3,7 @@
 //
 
 #include "tensorflow/contrib/tensorrt/kernels/trt_calib_op.h"
-#include <NvInfer.h>
+#include "tensorrt/include/NvInfer.h"
 #include <cuda_runtime_api.h>
 #include "tensorflow/contrib/tensorrt/resources/TRTInt8Calibrator.h"
 #include "tensorflow/contrib/tensorrt/resources/TRTResourceManager.h"
@@ -82,7 +82,7 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
       VLOG(0) << "SAMI initialized calibrator resource";
     }
 
-    std::unordered_map<std::string, void*> input_data;
+    std::unordered_map<string, void*> input_data;
     for (int i = 0; i < numInputs; i++) {
       const Tensor& t = ctx->input(i);
       void* data_address = nullptr;

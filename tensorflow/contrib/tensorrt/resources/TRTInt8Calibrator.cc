@@ -17,7 +17,7 @@ namespace trt {
 int TRTInt8Calibrator::getBatchSize() const { return batch_size_; }
 
 TRTInt8Calibrator::TRTInt8Calibrator(const std::unordered_map<
-    std::string, std::pair<void*, size_t>>& dev_buffers,
+    string, std::pair<void*, size_t>>& dev_buffers,
                   int batch_size)
     : batch_size_(batch_size),
       done_(false),
@@ -38,7 +38,7 @@ TRTInt8Calibrator::TRTInt8Calibrator(const std::unordered_map<
 }
 
 bool TRTInt8Calibrator::setBatch(
-    const std::unordered_map<std::string, void*>& data) {
+    const std::unordered_map<string, void*>& data) {
   VLOG(1)<<"SAMI SAMI Waiting to set new batch";
   if(done_)return false;
   while (calib_running_.load(

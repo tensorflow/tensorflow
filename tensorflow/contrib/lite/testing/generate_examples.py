@@ -94,7 +94,8 @@ KNOWN_BUGS = {
     r"softmax.*input_shape=\[1,3,4,3\]": "67749831",
     # SpaceToDepth only supports float32.
     r"space_to_depth.*(float16|int32|uint8|int64)": "68018134",
-    # BatchToSpaceND doesn't support cropping.
+    # BatchToSpaceND doesn't support cropping. This catches test cases with
+    # const tensors as crops.
     r"batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\]": "70594634",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
@@ -618,7 +619,7 @@ def make_constant_tests(zip_path):
 
   def build_graph(parameters):
     # Since Toco & Tflite can't have a single constant op in the entire graph,
-    # this test adds a zero tesnor with a constant op tensor.
+    # this test adds a zero tensor with a constant op tensor.
     input1 = tf.placeholder(dtype=parameters["dtype"], name="input1",
                             shape=parameters["input_shape"])
     out = tf.ones(parameters["input_shape"], dtype=parameters["dtype"]) + input1
@@ -694,6 +695,7 @@ def make_mean_tests(zip_path):
           [2, 1], [2, 1, 0], [2, 0, 1], -1, -2, -3, [1, -1], [0, -1], [-1, 0],
           [-1, -2, -3], [0, 0, 0], [2, 2, 0], [1, 0, -3, -3]
       ],
+      "const_axis": [True, False],
       "keep_dims": [True, False],
   }, {
       "input_dtype": [tf.float32, tf.int32, tf.int64],
@@ -704,6 +706,7 @@ def make_mean_tests(zip_path):
           -3, -4, [0, -2], [2, 3, -1, 0], [3, 1, 2, -3], [3, -4], [2, 2, 2],
           [2, 2, 3], [-3, -3, -4], [-3, 2, 1]
       ],
+      "const_axis": [True, False],
       "keep_dims": [True, False],
   }]
 
@@ -713,17 +716,31 @@ def make_mean_tests(zip_path):
         dtype=parameters["input_dtype"],
         name="input",
         shape=parameters["input_shape"])
+
+    # Get axis as either a placeholder or constants.
+    if parameters["const_axis"]:
+      axis = parameters["axis"]
+      input_tensors = [input_tensor]
+    else:
+      if isinstance(parameters["axis"], list):
+        shape = [len(parameters["axis"])]
+      else:
+        shape = [0]  # shape for None or integers.
+      axis = tf.placeholder(dtype=tf.int32, name="axis", shape=shape)
+      input_tensors = [input_tensor, axis]
+
     out = tf.reduce_mean(
-        input_tensor,
-        axis=parameters["axis"],
-        keep_dims=parameters["keep_dims"])
-    return [input_tensor], [out]
+        input_tensor, axis=axis, keep_dims=parameters["keep_dims"])
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["input_dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["input_dtype"], parameters["input_shape"])
+    ]
+    if not parameters["const_axis"]:
+      if parameters["axis"]:
+        values.append(np.array(parameters["axis"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -853,34 +870,55 @@ def make_fused_batch_norm_tests(zip_path):
 def make_conv_tests(zip_path):
   """Make a set of tests to do convolution."""
 
-  test_parameters = [{
-      "input_shape": [[1, 3, 4, 3]],
-      "filter_shape": [[1, 1, 3, 2]],
-      "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
-      "padding": ["SAME", "VALID"],
-      "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
-  }, {
-      "input_shape": [[2, 14, 14, 2]],
-      "filter_shape": [[6, 6, 2, 2]],
-      "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
-      "padding": ["SAME", "VALID"],
-      "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
-  }]
+  test_parameters = [
+      {
+          "input_shape": [[1, 3, 4, 3]],
+          "filter_shape": [[1, 1, 3, 2]],
+          "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+          "padding": ["SAME", "VALID"],
+          "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
+          "constant_filter": [True, False],
+      },
+      {
+          "input_shape": [[2, 14, 14, 2]],
+          "filter_shape": [[6, 6, 2, 2]],
+          "strides": [[1, 1, 1, 1], [1, 2, 3, 1]],
+          "padding": ["SAME", "VALID"],
+          "data_format": ["NHWC"],  # TODO(aselle): NCHW  would be good
+          "constant_filter": [True, False],
+      }
+  ]
 
   def build_graph(parameters):
+    """Build a conv graph given `parameters`."""
     input_tensor = tf.placeholder(
         dtype=tf.float32, name="input", shape=parameters["input_shape"])
-    filter_values = create_tensor_data(np.float32, parameters["filter_shape"])
-    out = tf.nn.conv2d(input_tensor, filter_values,
-                       strides=parameters["strides"],
-                       padding=parameters["padding"],
-                       data_format=parameters["data_format"])
-    return [input_tensor], [out]
+
+    # Get filter input either as a placeholder or constants. Also get a list of
+    # the input tensors that are represented as placeholders.
+    if parameters["constant_filter"]:
+      filter_input = create_tensor_data(np.float32, parameters["filter_shape"])
+      input_tensors = [input_tensor]
+    else:
+      filter_input = tf.placeholder(
+          dtype=tf.float32, name="filter", shape=parameters["filter_shape"])
+      input_tensors = [input_tensor, filter_input]
+
+    out = tf.nn.conv2d(
+        input_tensor,
+        filter_input,
+        strides=parameters["strides"],
+        padding=parameters["padding"],
+        data_format=parameters["data_format"])
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(np.float32, parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    # Build list of input values either containing 1 tensor (input) or 2 tensors
+    # (input, filter) based on whether filter is constant or variable input.
+    values = [create_tensor_data(np.float32, parameters["input_shape"])]
+    if not parameters["constant_filter"]:
+      values.append(create_tensor_data(np.float32, parameters["filter_shape"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -889,45 +927,70 @@ def make_depthwiseconv_tests(zip_path):
   """Make a set of tests to do convolution."""
 
   # Tensorflow only supports equal strides
-  test_parameters = [{
-      "input_shape": [[1, 3, 4, 3], [1, 10, 10, 3]],
-      "filter_size": [[1, 1], [1, 2], [3, 3]],
-      "strides": [[1, 1, 1, 1], [1, 3, 3, 1]],
-      "channel_multiplier": [1, 2],
-      "rate": [[1, 1]],
-      "padding": ["SAME", "VALID"],
-      "data_format": ["NHWC"],
-  }, {
-      "input_shape": [[1, 3, 4, 3]],
-      "filter_size": [[1, 1]],
-      "strides": [[1, 1, 2, 1]],  # TF needs [1, x, x, 1]
-      "channel_multiplier": [2],
-      "rate": [[2, 2]],   #  Only [1, 1] is supported
-      "padding": ["SAME"],
-      "data_format": ["NHWC"],
-  }]
+  test_parameters = [
+      {
+          "input_shape": [[1, 3, 4, 3], [1, 10, 10, 3]],
+          "filter_size": [[1, 1], [1, 2], [3, 3]],
+          "strides": [[1, 1, 1, 1], [1, 3, 3, 1]],
+          "channel_multiplier": [1, 2],
+          "rate": [[1, 1]],
+          "padding": ["SAME", "VALID"],
+          "data_format": ["NHWC"],
+          "constant_filter": [True, False],
+      },
+      {
+          "input_shape": [[1, 3, 4, 3]],
+          "filter_size": [[1, 1]],
+          "strides": [[1, 1, 2, 1]],  # TF needs [1, x, x, 1]
+          "channel_multiplier": [2],
+          "rate": [[2, 2]],  #  Only [1, 1] is supported
+          "padding": ["SAME"],
+          "data_format": ["NHWC"],
+          "constant_filter": [True, False],
+      }
+  ]
+
+  def get_tensor_shapes(parameters):
+    input_shape = parameters["input_shape"]
+    filter_size = parameters["filter_size"]
+    filter_shape = filter_size + [
+        input_shape[3], parameters["channel_multiplier"]
+    ]
+    return [input_shape, filter_shape]
 
   def build_graph(parameters):
     """Build a depthwise conv graph given `parameters`."""
-    input_shape = parameters["input_shape"]
-    filter_size = parameters["filter_size"]
+    input_shape, filter_shape = get_tensor_shapes(parameters)
     input_tensor = tf.placeholder(
         dtype=tf.float32, name="input", shape=input_shape)
-    filter_shape = filter_size + [
-        input_shape[3], parameters["channel_multiplier"]]
-    filter_values = create_tensor_data(np.float32, filter_shape)
+
+    # Get filter input either as a placeholder or constants. Also get a list of
+    # the input tensors that are represented as placeholders.
+    if parameters["constant_filter"]:
+      filter_input = create_tensor_data(np.float32, filter_shape)
+      input_tensors = [input_tensor]
+    else:
+      filter_input = tf.placeholder(
+          dtype=tf.float32, name="filter", shape=filter_shape)
+      input_tensors = [input_tensor, filter_input]
+
     out = tf.nn.depthwise_conv2d(
-        input_tensor, filter_values,
+        input_tensor,
+        filter_input,
         strides=parameters["strides"],
         rate=parameters["rate"],
         padding=parameters["padding"],
         data_format=parameters["data_format"])
-    return [input_tensor], [out]
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(np.float32, parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    # Build list of input values either containing 1 tensor (input) or 2 tensors
+    # (input, filter) based on whether filter is constant or variable input.
+    input_shape, filter_shape = get_tensor_shapes(parameters)
+    values = [create_tensor_data(np.float32, input_shape)]
+    if not parameters["constant_filter"]:
+      values.append(create_tensor_data(np.float32, filter_shape))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -938,13 +1001,15 @@ def make_concatenation_tests(zip_path):
   test_parameters = [{
       "base_shape": [[1, 3, 4, 3], [3, 4]],
       "num_tensors": [1, 2, 3, 4, 5, 6],
-      "axis": [0, 1, 2, 3],
+      "axis": [0, 1, 2, 3, -3, -2, -1],
   }]
 
   def get_shape(parameters, delta):
     """Return a tweaked version of 'base_shape'."""
     axis = parameters["axis"]
     shape = parameters["base_shape"][:]
+    if axis < 0:
+      axis += len(shape)
     if axis < len(shape):
       shape[axis] += delta
     return shape
@@ -978,32 +1043,49 @@ def make_fully_connected_tests(zip_path):
       "shape2": [[3, 3]],
       "transpose_a": [True, False],
       "transpose_b": [True, False],
+      "constant_filter": [True, False],
   }, {
       "shape1": [[4, 4], [1, 4], [4]],
       "shape2": [[4, 4], [4, 1], [4]],
       "transpose_a": [False],
       "transpose_b": [False],
+      "constant_filter": [True, False],
   }, {
       "shape1": [[40, 37]],
       "shape2": [[37, 40]],
       "transpose_a": [False],
       "transpose_b": [False],
-
+      "constant_filter": [True, False],
   }]
 
   def build_graph(parameters):
+    """Build a matmul graph given `parameters`."""
     input_tensor1 = tf.placeholder(dtype=tf.float32, name="input1",
                                    shape=parameters["shape1"])
-    input_tensor2 = create_tensor_data(np.float32, parameters["shape2"])
+
+    # Get input_tensor2 either as a placeholder or constants. Also get a list of
+    # the input tensors that are represented as placeholders.
+    if parameters["constant_filter"]:
+      input_tensor2 = create_tensor_data(np.float32, parameters["shape2"])
+      input_tensors = [input_tensor1]
+    else:
+      input_tensor2 = tf.placeholder(
+          dtype=tf.float32, name="input2", shape=parameters["shape2"])
+      input_tensors = [input_tensor1, input_tensor2]
+
     out = tf.matmul(input_tensor1, input_tensor2,
                     transpose_a=parameters["transpose_a"],
                     transpose_b=parameters["transpose_b"])
-    return [input_tensor1], [out]
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values1 = create_tensor_data(np.float32, shape=parameters["shape1"])
-    return [input_values1], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values1])))
+    # Build list of input values either containing 1 tensor (input_values1) or 2
+    # tensors (input_values1, input_values2) based on whether the second input
+    # is a constant or variable input.
+    values = [create_tensor_data(np.float32, shape=parameters["shape1"])]
+    if not parameters["constant_filter"]:
+      values.append(create_tensor_data(np.float32, parameters["shape2"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -1078,28 +1160,43 @@ def make_pad_tests(zip_path):
           "input_shape": [[1, 1, 2, 1], [2, 1, 1, 1]],
           "paddings": [[[0, 0], [0, 1], [2, 3], [0, 0]], [[0, 1], [0, 0],
                                                           [0, 0], [2, 3]]],
+          "constant_paddings": [True, False],
       },
       # Non-4D use case.
       {
           "dtype": [tf.int32, tf.int64, tf.float32],
           "input_shape": [[1, 2], [0, 1, 2]],
           "paddings": [[[0, 1], [2, 3]]],
+          "constant_paddings": [True, False],
       },
   ]
 
   def build_graph(parameters):
+    """Build a pad graph given `parameters`."""
     input_tensor = tf.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.pad(input_tensor, paddings=parameters["paddings"])
-    return [input_tensor], [out]
+
+    # Get paddings as either a placeholder or constants.
+    if parameters["constant_paddings"]:
+      paddings = parameters["paddings"]
+      input_tensors = [input_tensor]
+    else:
+      shape = [len(parameters["paddings"]), 2]
+      paddings = tf.placeholder(dtype=tf.int32, name="padding", shape=shape)
+      input_tensors = [input_tensor, paddings]
+
+    out = tf.pad(input_tensor, paddings=paddings)
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+    ]
+    if not parameters["constant_paddings"]:
+      values.append(np.array(parameters["paddings"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -1240,12 +1337,16 @@ def make_space_to_batch_nd_tests(zip_path):
           "input_shape": [[1, 2, 2, 3], [2, 2, 4, 1]],
           "block_shape": [[1, 3], [2, 2]],
           "paddings": [[[0, 0], [0, 0]], [[0, 0], [2, 0]], [[1, 1], [1, 1]]],
+          "constant_block_shape": [True, False],
+          "constant_paddings": [True, False],
       },
       {
           "dtype": [tf.float32],
           "input_shape": [[2, 3, 7, 3]],
           "block_shape": [[1, 3], [2, 2]],
           "paddings": [[[0, 0], [2, 0]], [[1, 0], [1, 0]]],
+          "constant_block_shape": [True, False],
+          "constant_paddings": [True, False],
       },
       # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
       {
@@ -1253,23 +1354,47 @@ def make_space_to_batch_nd_tests(zip_path):
           "input_shape": [[1, 4, 4, 4, 1, 1]],
           "block_shape": [[2, 2, 2]],
           "paddings": [[[0, 0], [0, 0], [0, 0]]],
+          "constant_block_shape": [True, False],
+          "constant_paddings": [True, False],
       },
   ]
 
   def build_graph(parameters):
+    """Build a space_to_batch graph given `parameters`."""
     input_tensor = tf.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.space_to_batch_nd(input_tensor, parameters["block_shape"],
-                               parameters["paddings"])
-    return [input_tensor], [out]
+    input_tensors = [input_tensor]
+
+    # Get block_shape either as a const or as a placeholder (tensor).
+    if parameters["constant_block_shape"]:
+      block_shape = parameters["block_shape"]
+    else:
+      shape = [len(parameters["block_shape"])]
+      block_shape = tf.placeholder(dtype=tf.int32, name="shape", shape=shape)
+      input_tensors.append(block_shape)
+
+    # Get paddings either as a const or as a placeholder (tensor).
+    if parameters["constant_paddings"]:
+      paddings = parameters["paddings"]
+    else:
+      shape = [len(parameters["paddings"]), 2]
+      paddings = tf.placeholder(dtype=tf.int32, name="paddings", shape=shape)
+      input_tensors.append(paddings)
+
+    out = tf.space_to_batch_nd(input_tensor, block_shape, paddings)
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+    ]
+    if not parameters["constant_block_shape"]:
+      values.append(np.array(parameters["block_shape"]))
+    if not parameters["constant_paddings"]:
+      values.append(np.array(parameters["paddings"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -1283,6 +1408,8 @@ def make_batch_to_space_nd_tests(zip_path):
           "input_shape": [[12, 2, 2, 1]],
           "block_shape": [[1, 4], [2, 2], [3, 4]],
           "crops": [[[0, 0], [0, 0]], [[1, 1], [1, 1]]],
+          "constant_block_shape": [True, False],
+          "constant_crops": [True, False],
       },
       # Non-4D use case: 1 bath dimension, 3 spatial dimensions, 2 others.
       {
@@ -1290,23 +1417,47 @@ def make_batch_to_space_nd_tests(zip_path):
           "input_shape": [[8, 2, 2, 2, 1, 1]],
           "block_shape": [[2, 2, 2]],
           "crops": [[[0, 0], [0, 0], [0, 0]]],
+          "constant_block_shape": [True, False],
+          "constant_crops": [True, False],
       },
   ]
 
   def build_graph(parameters):
+    """Build a batch_to_space graph given `parameters`."""
     input_tensor = tf.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.batch_to_space_nd(input_tensor, parameters["block_shape"],
-                               parameters["crops"])
-    return [input_tensor], [out]
+    input_tensors = [input_tensor]
+
+    # Get block_shape either as a const or as a placeholder (tensor).
+    if parameters["constant_block_shape"]:
+      block_shape = parameters["block_shape"]
+    else:
+      shape = [len(parameters["block_shape"])]
+      block_shape = tf.placeholder(dtype=tf.int32, name="shape", shape=shape)
+      input_tensors.append(block_shape)
+
+    # Get crops either as a const or as a placeholder (tensor).
+    if parameters["constant_crops"]:
+      crops = parameters["crops"]
+    else:
+      shape = [len(parameters["crops"]), 2]
+      crops = tf.placeholder(dtype=tf.int32, name="crops", shape=shape)
+      input_tensors.append(crops)
+
+    out = tf.batch_to_space_nd(input_tensor, block_shape, crops)
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+    ]
+    if not parameters["constant_block_shape"]:
+      values.append(np.array(parameters["block_shape"]))
+    if not parameters["constant_crops"]:
+      values.append(np.array(parameters["crops"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -1319,29 +1470,44 @@ def make_transpose_tests(zip_path):
       "dtype": [tf.int32, tf.int64, tf.float32],
       "input_shape": [[2, 2, 3]],
       "perm": [[0, 1, 2], [0, 2, 1]],
+      "constant_perm": [True, False],
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 2, 3, 4]],
       "perm": [[0, 1, 2, 3], [3, 0, 1, 2]],
+      "constant_perm": [True, False],
   }, {
       "dtype": [tf.float32],
       "input_shape": [[1, 2, 3, 4, 5]],
       "perm": [[0, 1, 2, 3, 4]],
+      "constant_perm": [True, False],
   }]
 
   def build_graph(parameters):
+    """Build a transpose graph given `parameters`."""
     input_tensor = tf.placeholder(
         dtype=parameters["dtype"],
         name="input",
         shape=parameters["input_shape"])
-    out = tf.transpose(input_tensor, perm=parameters["perm"])
-    return [input_tensor], [out]
+
+    if parameters["constant_perm"]:
+      perm = parameters["perm"]
+      input_tensors = [input_tensor]
+    else:
+      shape = [len(parameters["perm"]), 2]
+      perm = tf.placeholder(dtype=tf.int32, name="perm", shape=shape)
+      input_tensors = [input_tensor, perm]
+
+    out = tf.transpose(input_tensor, perm=perm)
+    return input_tensors, [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
-    input_values = create_tensor_data(parameters["dtype"],
-                                      parameters["input_shape"])
-    return [input_values], sess.run(
-        outputs, feed_dict=dict(zip(inputs, [input_values])))
+    values = [
+        create_tensor_data(parameters["dtype"], parameters["input_shape"])
+    ]
+    if not parameters["constant_perm"]:
+      values.append(np.array(parameters["perm"]))
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -1380,6 +1546,112 @@ def make_squeeze_tests(zip_path):
                                       parameters["input_shape"])
     return [input_values], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_strided_slice_tests(zip_path):
+  """Make a set of tests to do strided_slice."""
+
+  # TODO(soroosh): add test/support for uint8.
+  test_parameters = [
+      # 4-D
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "index_type": [tf.int32],
+          "input_shape": [[12, 2, 2, 5]],
+          "begin": [[0, 0, 0, 0], [1, 0, 1, 0]],
+          "end": [[8, 2, 2, 3], [12, 2, 2, 5]],
+          "strides": [None, [2, 1, 3, 1]],
+          "begin_mask": [None, 1, 8],
+          "end_mask": [None, 1, 8],
+          "shrink_axis_mask": [None, 1, 8, 11, 15, -1],
+          "constant_indices": [False, True],
+      },
+      # 2-D
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "index_type": [tf.int32],
+          "input_shape": [[2, 3]],
+          "begin": [[0, 0], [1, 0]],
+          "end": [[2, 3], [2, 2]],
+          "strides": [None, [2, 2]],
+          "begin_mask": [None, 1, 2],
+          "end_mask": [None, 1, 2],
+          "shrink_axis_mask": [None, 1, 2, 3, -1],
+          "constant_indices": [False, True],
+      },
+      # Negative strides
+      {
+          "dtype": [tf.float32, tf.int32, tf.int64],
+          "index_type": [tf.int32],
+          "input_shape": [[2, 3]],
+          "begin": [[0, -1]],
+          "end": [[2, -3]],
+          "strides": [[1, -1]],
+          "begin_mask": [None, 1, 2],
+          "end_mask": [None, 1, 2],
+          "shrink_axis_mask": [None, 1, 2, 3, -1],
+          "constant_indices": [False],
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build graph for stride_slice test."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    if parameters["constant_indices"]:
+      begin = parameters["begin"]
+      end = parameters["end"]
+      strides = parameters["strides"]
+      tensors = [input_tensor]
+    else:
+      begin = tf.placeholder(
+          dtype=parameters["index_type"],
+          name="begin",
+          shape=[len(parameters["input_shape"])])
+      end = tf.placeholder(
+          dtype=parameters["index_type"],
+          name="end",
+          shape=[len(parameters["input_shape"])])
+      strides = (
+          tf.placeholder(
+              dtype=parameters["index_type"],
+              name="strides",
+              shape=[len(parameters["input_shape"])])
+          if parameters["strides"] is not None else None)
+      tensors = [input_tensor, begin, end]
+      if strides is not None:
+        tensors.append(strides)
+    out = tf.strided_slice(
+        input_tensor,
+        begin,
+        end,
+        strides,
+        begin_mask=parameters["begin_mask"],
+        end_mask=parameters["end_mask"])
+    return tensors, [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    """Build inputs for stride_slice test."""
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    index_type = _TF_TYPE_INFO[parameters["index_type"]][0]
+    values = [input_values]
+    if not parameters["constant_indices"]:
+      begin_values = np.array(parameters["begin"]).astype(index_type)
+      end_values = np.array(parameters["end"]).astype(index_type)
+      stride_values = (
+          np.array(parameters["strides"]).astype(index_type)
+          if parameters["strides"] is not None else None)
+      values.append(begin_values)
+      values.append(end_values)
+      if stride_values is not None:
+        values.append(stride_values)
+
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
@@ -1442,6 +1714,7 @@ def main(unused_args):
         "transpose.zip": make_transpose_tests,
         "mean.zip": make_mean_tests,
         "squeeze.zip": make_squeeze_tests,
+        "strided_slice.zip": make_strided_slice_tests,
     }
     out = FLAGS.zip_to_output
     bin_path = FLAGS.toco

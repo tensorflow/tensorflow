@@ -1,5 +1,4 @@
-// -*- c++ -*-
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,25 +16,27 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
 #define TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_
 
-// Use TF logging f
-#include <NvInfer.h>
-#include <string>
+#include "tensorflow/core/platform/types.h"
 
-//------------------------------------------------------------------------------
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+#include "tensorrt/include/NvInfer.h"
+
 namespace tensorflow {
-
-//------------------------------------------------------------------------------
 namespace tensorrt {
 
 // Logger for GIE info/warning/errors
 class Logger : public nvinfer1::ILogger {
+ private:
   void log(nvinfer1::ILogger::Severity severity, const char* msg) override;
 
- private:
-  std::string name_;
+  string name_;
 };
 
 }  // namespace tensorrt
-
 }  // namespace tensorflow
+
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
+
 #endif  // TENSORFLOW_CONTRIB_TENSORRT_LOG_TRT_LOGGER_H_

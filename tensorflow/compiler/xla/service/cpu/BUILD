@@ -497,6 +497,7 @@ cc_library(
         "llvm_ir_runtime.h",
     ],
     deps = [
+        ":vector_support_library",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@llvm//:core",
@@ -852,6 +853,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "@llvm//:core",
+        "@llvm//:support",
     ],
 )
 

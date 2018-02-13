@@ -221,6 +221,7 @@ py_test(
     name = "kmeans_test",
     size = "medium",
     srcs = ["python/ops/kmeans_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = ["notsan"],  # b/67512932
     deps = [

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
-#define THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
+#ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
+#define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
 
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 
@@ -106,10 +106,14 @@ class ShapeVerifier : public DfsHloVisitor {
 class HloVerifier : public HloPassInterface {
  public:
   // Uses standard shape inference.
-  explicit HloVerifier() : shape_verifier_(MakeUnique<ShapeVerifier>()) {}
+  explicit HloVerifier()
+      : shape_verifier_factory_([] { return MakeUnique<ShapeVerifier>(); }) {}
+
   // Uses custom shape verification.
-  explicit HloVerifier(std::unique_ptr<ShapeVerifier> shape_verifier)
-      : shape_verifier_(std::move(shape_verifier)) {}
+  explicit HloVerifier(
+      std::function<std::unique_ptr<ShapeVerifier>()> shape_verifier_factory)
+      : shape_verifier_factory_(std::move(shape_verifier_factory)) {}
+
   ~HloVerifier() override = default;
   tensorflow::StringPiece name() const override { return "verifier"; }
 
@@ -121,10 +125,13 @@ class HloVerifier : public HloPassInterface {
   // CHECKs various invariants of a fusion instruction.
   Status CheckFusionInstruction(HloInstruction* fusion) const;
 
-  // Verifies shapes match inferred expectations.
-  std::unique_ptr<ShapeVerifier> shape_verifier_;
+  // Creates a ShapeVerifier that checks that shapes match inferred
+  // expectations.  This is a factory function because ShapeVerifier,  Note that
+  // ShapeVerifier, being a DfsHloVisitor, is stateful.  We want a clean object
+  // for each run of the verifier.
+  std::function<std::unique_ptr<ShapeVerifier>()> shape_verifier_factory_;
 };
 
 }  // namespace xla
 
-#endif  // THIRD_PARTY_TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_
+#endif  // TENSORFLOW_COMPILER_XLA_SERVICE_HLO_VERIFIER_H_

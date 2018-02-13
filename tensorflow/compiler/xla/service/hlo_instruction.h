@@ -162,17 +162,14 @@ class HloPrintOptions {
 class HloInstruction {
  public:
   enum class FusionKind {
-    kLoop,                // Fused into a loop.
-    kInput,               // Op's input is fused into the op itself.
-    kOutput,              // Op's output is fused into the op itself.
-                          // REQUIRES: At least one operand buffer must be able
-                          // to alias the output buffer.
-    kTransposeDot,        // Fused into a dot with transposed operands.
-    kConvBackwardFilter,  // Fused into a backward filter convolution.
-    kConvBackwardInput,   // Fused into a backward input convolution.
-
-    kCustom,  // Custom category for backend-specific fusions that
-              // do not match any of the more specific ones.
+    kLoop,          // Fused into a loop.
+    kInput,         // Op's input is fused into the op itself.
+    kOutput,        // Op's output is fused into the op itself.
+                    // REQUIRES: At least one operand buffer must be able
+                    // to alias the output buffer.
+    kTransposeDot,  // Fused into a dot with transposed operands.
+    kCustom,        // Custom category for backend-specific fusions that
+                    // do not match any of the more specific ones.
   };
 
   ~HloInstruction();
@@ -466,14 +463,6 @@ class HloInstruction {
       tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       HloComputation* fusion_computation);
 
-  // Creates a fusion instruction that represents backward convolution. This is
-  // similar to CreateFusion, but with extra arguments indicating the window and
-  // dimemsion mapping of the backward convolution.
-  static std::unique_ptr<HloInstruction> CreateFusionForBackwardConvolution(
-      const Shape& shape, FusionKind fusion_kind, const Window& window,
-      const ConvolutionDimensionNumbers& conv_dnums,
-      HloInstruction* fused_root);
-
   // Creates a call instruction that applies the given computation on the given
   // operands. "shape" is the resultant shape.
   static std::unique_ptr<HloInstruction> CreateCall(
@@ -565,27 +554,33 @@ class HloInstruction {
   }
 
   // Returns true if "other" performs the same computation as this instruction.
-  // Layout of the instructions' output array is not considered.
   bool Identical(
       const HloInstruction& other,
       const std::function<bool(const HloInstruction*, const HloInstruction*)>&
           eq_operands = std::equal_to<const HloInstruction*>(),
       const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations = std::equal_to<const HloComputation*>()) const {
+          eq_computations = std::equal_to<const HloComputation*>(),
+      bool layout_sensitive = true) const {
     // An instruction is always identical to itself.
     if (this == &other) {
       return true;
     }
 
-    // Identical instruction must have the same opcode and identical operands.
-    // In general, there is no need to check shape because shape is inferred
-    // from the shape of the operands.
+    // Identical instruction must have the same opcode, shape, and identical
+    // operands.
     if (opcode() != other.opcode()) {
+      return false;
+    }
+    using EqShapeFuncType = bool (*)(const Shape&, const Shape&);
+    EqShapeFuncType eq_shapes =
+        layout_sensitive ? ShapeUtil::Equal : ShapeUtil::Compatible;
+    if (!eq_shapes(shape(), other.shape())) {
       return false;
     }
     if (operands().size() != other.operands().size()) {
       return false;
     }
+
     // Use an explicit loop rather than ContainerEquals, because copying around
     // std::functions may be too expensive in some cases.
     for (size_t i = 0; i < operands().size(); ++i) {
@@ -594,7 +589,7 @@ class HloInstruction {
       }
     }
 
-    return IdenticalSlowPath(other, eq_computations);
+    return IdenticalSlowPath(other, eq_computations, eq_shapes);
   }
 
   // Returns whether the instruction has a constant operand.
@@ -885,8 +880,8 @@ class HloInstruction {
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.
   const bool IsMultiOutputFusion() const {
-    return (opcode() == HloOpcode::kFusion &&
-            fused_expression_root()->opcode() == HloOpcode::kTuple);
+    return opcode() == HloOpcode::kFusion &&
+           fused_expression_root()->opcode() == HloOpcode::kTuple;
   }
 
   FusionKind fusion_kind() const {
@@ -1052,11 +1047,21 @@ class HloInstruction {
     return *padding_config_;
   }
 
-  // Returns data on the dimension numbers used for a convolution
-  // operation.
+  // Returns data on the dimension numbers used for a convolution operation,
+  // which may be a kConvolution instruction or a kCustomCall that implements a
+  // convolution.
   const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
     CHECK(convolution_dimension_numbers_ != nullptr);
     return *convolution_dimension_numbers_;
+  }
+
+  // Sets the convolution dimension numbers on this instruction.  In general you
+  // shouldn't need to call this; instead, specify the convolution dimension
+  // numbers when you create the instruction.
+  void set_convolution_dimension_numbers(
+      const ConvolutionDimensionNumbers& dnums) {
+    convolution_dimension_numbers_ =
+        MakeUnique<ConvolutionDimensionNumbers>(dnums);
   }
 
   FftType fft_type() const {
@@ -1233,10 +1238,14 @@ class HloInstruction {
   class FusionReusesParamElements;
 
   // See comments on Identical().
+  // eq_shapes() is used to check shapes for equality, and would normally be
+  // expected to be ShapeUtil::Equals or ShapeUtil::Compatible, depending on
+  // whether we want a layout-sensitive check or not.
   bool IdenticalSlowPath(
       const HloInstruction& other,
       const std::function<bool(const HloComputation*, const HloComputation*)>&
-          eq_computations) const;
+          eq_computations,
+      const std::function<bool(const Shape&, const Shape&)>& eq_shapes) const;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(

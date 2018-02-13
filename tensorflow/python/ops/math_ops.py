@@ -131,6 +131,9 @@ See the @{$python/math_ops} guide.
 @@segment_mean
 @@unsorted_segment_sum
 @@unsorted_segment_max
+@@unsorted_segment_min
+@@unsorted_segment_prod
+@@unsorted_segment_sqrt_n
 @@sparse_segment_sum
 @@sparse_segment_mean
 @@sparse_segment_sqrt_n
@@ -237,7 +240,7 @@ def argmin(input,
 # pylint: disable=anomalous-backslash-in-string,protected-access
 # pylint: disable=g-docstring-has-escape
 @tf_export("abs")
-def abs(x, name=None):
+def abs(x, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the absolute value of a tensor.
 
   Given a tensor `x` of complex numbers, this operation returns a tensor of type
@@ -542,7 +545,7 @@ def scalar_mul(scalar, x):
 
 
 @tf_export("pow")
-def pow(x, y, name=None):
+def pow(x, y, name=None):  # pylint: disable=redefined-builtin
   r"""Computes the power of one value to another.
 
   Given a tensor `x` and a tensor `y`, this operation computes \\(x^y\\) for
@@ -712,7 +715,7 @@ def angle(input, name=None):
 
 
 @tf_export("round")
-def round(x, name=None):
+def round(x, name=None):  # pylint: disable=redefined-builtin
   """Rounds the values of a tensor to the nearest integer, element-wise.
 
   Rounds half to even.  Also known as bankers rounding. If you want to round
@@ -1207,7 +1210,7 @@ ops.Tensor._override_operator("__ge__", gen_math_ops.greater_equal)
 
 
 @tf_export("range")
-def range(start, limit=None, delta=1, dtype=None, name="range"):
+def range(start, limit=None, delta=1, dtype=None, name="range"):  # pylint: disable=redefined-builtin
   """Creates a sequence of numbers.
 
   Creates a sequence of numbers that begins at `start` and extends by
@@ -1841,12 +1844,11 @@ def reduce_logsumexp(input_tensor,
         reduce_sum(
             gen_math_ops.exp(input_tensor - my_max),
             axis,
-            keepdims=True,
-            reduction_indices=reduction_indices)) + my_max
+            keepdims=keepdims,
+            reduction_indices=reduction_indices))
     if not keepdims:
-      if isinstance(axis, int):
-        axis = [axis]
-      result = array_ops.squeeze(result, axis)
+      my_max = array_ops.reshape(my_max, array_ops.shape(result))
+    result += my_max
     return _may_reduce_to_scalar(keepdims, axis, reduction_indices, result)
 
 
@@ -2553,12 +2555,93 @@ def reduced_shape(input_shape, axes):
       ])  # [1, 1]
 
 
+def _unsorted_segment_N(data, segment_ids, num_segments):
+  """ Helper function for unsorted_segment_mean/_sqrtN. Computes the number
+      of segment entries with 0-entries set to 1 to allow division by N.
+  """
+  # bincount doesn't support negative indices so we use unsorted_segment_sum
+  ones_tensor = array_ops.ones(segment_ids.shape, dtype=data.dtype)
+  N = gen_math_ops.unsorted_segment_sum(ones_tensor, segment_ids, num_segments)
+  # add dimensions for all non-reduced axes
+  ndims_output = data.shape.ndims - segment_ids.shape.ndims
+  broadcast_shape = [num_segments] + [1] * ndims_output
+  N = array_ops.reshape(N, broadcast_shape)
+  return gen_math_ops.maximum(N, 1)
+
+
+@tf_export("unsorted_segment_mean")
+def unsorted_segment_mean(data, segment_ids, num_segments, name=None):
+  r""" Computes the mean along segments of a tensor.
+
+  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  of segments.
+
+  This operator is similar to the unsorted segment sum operator found
+  [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+  Instead of computing the sum over segments, it computes the mean of all
+  entries belonging to a segment such that:
+
+  \\(output_i = 1/N_i \sum data_j\\) where the sum is over `j` such
+  that `segment_ids[j] == i` with \\N_i\\ being the number of occurrences
+  of id \\i\\.
+
+  If there is no entry for a given segment ID `i`, it outputs 0.
+
+  segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+  first dimension.
+
+  output: Has same shape as data, except for dimension 0 which
+  has size `num_segments`.
+  """
+  with ops.name_scope(name, "UnsortedSegmentMean"):
+    data = ops.convert_to_tensor(data)
+    segment_ids = ops.convert_to_tensor(segment_ids)
+    N = _unsorted_segment_N(data, segment_ids, num_segments)
+    summed = gen_math_ops.unsorted_segment_sum(data, segment_ids, num_segments)
+    return summed / N
+
+
+@tf_export("unsorted_segment_sqrt_n")
+def unsorted_segment_sqrt_n(data, segment_ids, num_segments, name=None):
+  r"""Computes the sum along segments of a tensor divided by the sqrt(N).
+
+  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  of segments.
+
+  This operator is similar to the unsorted segment sum operator found
+  [here](../../../api_docs/python/math_ops.md#UnsortedSegmentSum).
+  Additionally to computing the sum over segments, it divides the results by
+  sqrt(N).
+
+  \\(output_i = 1/sqrt(N_i) \sum data_j\\) where the sum is over `j` such
+  that `segment_ids[j] == i` with \\N_i\\ being the number of occurrences
+  of id \\i\\.
+
+  If there is no entry for a given segment ID `i`, it outputs 0.
+
+  Note that this op only supports floating point and complex dtypes,
+  due to tf.sqrt only supporting these types.
+
+  segment_ids: A 1-D tensor whose rank is equal to the rank of `data`'s
+  first dimension.
+
+  output: Has same shape as data, except for dimension 0 which
+  has size `num_segments`.
+  """
+  with ops.name_scope(name, "UnsortedSegmentSqrtN"):
+    data = ops.convert_to_tensor(data)
+    segment_ids = ops.convert_to_tensor(segment_ids)
+    N = _unsorted_segment_N(data, segment_ids, num_segments)
+    summed = gen_math_ops.unsorted_segment_sum(data, segment_ids, num_segments)
+    return summed / gen_math_ops.sqrt(N)
+
+
 @tf_export("sparse_segment_sum")
 def sparse_segment_sum(data, indices, segment_ids, name=None,
                        num_segments=None):
   r"""Computes the sum along sparse segments of a tensor.
 
-  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  Read @{$math_ops#Segmentation$the section on segmentation} for an explanation
   of segments.
 
   Like `SegmentSum`, but `segment_ids` can have rank less than `data`'s first
@@ -2633,7 +2716,7 @@ def sparse_segment_mean(data, indices, segment_ids, name=None,
                         num_segments=None):
   r"""Computes the mean along sparse segments of a tensor.
 
-  Read @{$math_ops#segmentation$the section on segmentation} for an explanation
+  Read @{$math_ops#Segmentation$the section on segmentation} for an explanation
   of segments.
 
   Like `SegmentMean`, but `segment_ids` can have rank less than `data`'s first
@@ -2827,10 +2910,14 @@ def tensordot(a, b, axes, name=None):
     """Generates two sets of contraction axes for the two tensor arguments."""
     a_shape = a.get_shape()
     if isinstance(axes, compat.integral_types):
-      if axes < 1:
-        raise ValueError("'axes' must be at least 1.")
+      if axes < 0:
+        raise ValueError("'axes' must be at least 0.")
       if a_shape.ndims is not None:
-        return range(a_shape.ndims - axes, a_shape.ndims), range(axes)
+        if axes > a_shape.ndims:
+          raise ValueError("'axes' must not be larger than the number of "
+                           "dimensions of tensor %s." % a)
+        return (list(xrange(a_shape.ndims - axes, a_shape.ndims)),
+                list(xrange(axes)))
       else:
         rank = array_ops.rank(a)
         return (range(rank - axes, rank, dtype=dtypes.int32),
