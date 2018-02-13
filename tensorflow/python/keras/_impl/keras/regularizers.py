@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Keras built-in regularizers.
+"""Built-in regularizers.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -23,8 +23,10 @@ import six
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.keras._impl.keras.utils.generic_utils import serialize_keras_object
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.regularizers.Regularizer')
 class Regularizer(object):
   """Regularizer base class.
   """
@@ -37,6 +39,7 @@ class Regularizer(object):
     return cls(**config)
 
 
+@tf_export('keras.regularizers.L1L2')
 class L1L2(Regularizer):
   """Regularizer for L1 and L2 regularization.
 
@@ -64,22 +67,27 @@ class L1L2(Regularizer):
 # Aliases.
 
 
+@tf_export('keras.regularizers.l1')
 def l1(l=0.01):
   return L1L2(l1=l)
 
 
+@tf_export('keras.regularizers.l2')
 def l2(l=0.01):
   return L1L2(l2=l)
 
 
+@tf_export('keras.regularizers.l1_l2')
 def l1_l2(l1=0.01, l2=0.01):  # pylint: disable=redefined-outer-name
   return L1L2(l1=l1, l2=l2)
 
 
+@tf_export('keras.regularizers.serialize')
 def serialize(regularizer):
   return serialize_keras_object(regularizer)
 
 
+@tf_export('keras.regularizers.deserialize')
 def deserialize(config, custom_objects=None):
   return deserialize_keras_object(
       config,
@@ -88,6 +96,7 @@ def deserialize(config, custom_objects=None):
       printable_module_name='regularizer')
 
 
+@tf_export('keras.regularizers.get')
 def get(identifier):
   if identifier is None:
     return None

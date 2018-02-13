@@ -53,12 +53,12 @@ table Tensor {
   type:TensorType;
   // An index that refers to the buffers table at the root of the model. Or,
   // if there is no data buffer associated (i.e. intermediate results), then
-  // this is 0 (which refers to an always existant empty buffer).
+  // this is 0 (which refers to an always existent empty buffer).
   //
   // The data_buffer itself is an opaque container, with the assumption that the
   // target device is little-endian. In addition, all builtin operators assume
   // the memory is ordered such that if `shape` is [4, 3, 2], then index
-  // [i, j, k] maps to data_buffer[i*3*2 + j*3 + k].
+  // [i, j, k] maps to data_buffer[i*3*2 + j*2 + k].
   buffer:uint;
   name:string;  // For debugging and importing back into tensorflow.
   quantization:QuantizationParameters;  // Optional.
@@ -117,6 +117,9 @@ enum BuiltinOperator : byte {
   SUB = 41,
   DIV = 42,
   SQUEEZE = 43,
+  UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
+  STRIDED_SLICE = 45,
+  BIDIRECTIONAL_SEQUENCE_RNN = 46,
 }
 
 // Options for the builtin operators.
@@ -152,6 +155,7 @@ union BuiltinOptions {
   DivOptions,
   SqueezeOptions,
   SequenceRNNOptions,
+  StridedSliceOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -221,6 +225,12 @@ table SequenceRNNOptions {
   fused_activation_function:ActivationFunctionType;
 }
 
+// An implementation of TensorFlow bidrectional_dynamic_rnn with RNNCell.
+table BidirectionalSequenceRNNOptions {
+  time_major:bool;
+  fused_activation_function:ActivationFunctionType;
+}
+
 // An implementation of TensorFlow fully_connected (a.k.a Dense) layer.
 table FullyConnectedOptions {
   fused_activation_function:ActivationFunctionType;
@@ -263,8 +273,9 @@ table LSTMOptions {
 }
 
 table ResizeBilinearOptions {
-  new_height:int;
-  new_width:int;
+  new_height: int (deprecated);
+  new_width: int (deprecated);
+  align_corners: bool;
 }
 
 // A call operation options
@@ -274,8 +285,6 @@ table CallOptions {
 }
 
 table PadOptions {
-  before_padding:[int];
-  after_padding:[int];
 }
 
 table ReshapeOptions {
@@ -283,15 +292,9 @@ table ReshapeOptions {
 }
 
 table SpaceToBatchNDOptions {
-  block_shape:[int];
-  before_paddings:[int];
-  after_paddings:[int];
 }
 
 table BatchToSpaceNDOptions {
-  block_shape:[int];
-  before_crops:[int];
-  after_crops:[int];
 }
 
 table SkipGramOptions {
@@ -327,16 +330,22 @@ table GatherOptions {
 }
 
 table TransposeOptions {
-  perm:[int];
 }
 
 table MeanOptions {
-  axis:[int];
   keep_dims: bool;
 }
 
 table SqueezeOptions {
   squeeze_dims:[int];
+}
+
+table StridedSliceOptions {
+  begin_mask: int;
+  end_mask: int;
+  ellipsis_mask: int;
+  new_axis_mask: int;
+  shrink_axis_mask: int;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a

@@ -36,22 +36,21 @@
 namespace tensorflow {
 
 using ::boosted_trees::QuantileConfig;
-using boosted_trees::utils::TensorUtils;
 using boosted_trees::QuantileStreamResource;
+using boosted_trees::utils::TensorUtils;
 
 namespace {
 const char* const kExampleWeightsName = "example_weights";
 const char* const kMaxElementsName = "max_elements";
-const char* const kHandleName = "handle";
 const char* const kNextStampTokenName = "next_stamp_token";
 const char* const kStampTokenName = "stamp_token";
 const char* const kAreBucketsReadyName = "are_buckets_ready";
+const char* const kGenerateQuantiles = "generate_quantiles";
 // Names for sparse arguments.
 const char* const kNumSparseFeaturesName = "num_sparse_features";
 const char* const kSparseBucketsName = "sparse_buckets";
 const char* const kSparseValuesName = "sparse_values";
 const char* const kSparseIndicesName = "sparse_indices";
-const char* const kSparseStreamsStateName = "sparse_streams_state";
 const char* const kSparseSummariesName = "sparse_summaries";
 const char* const kSparseConfigName = "sparse_config";
 const char* const kSparseOutputTensorName = "sparse_quantiles";
@@ -59,7 +58,6 @@ const char* const kSparseOutputTensorName = "sparse_quantiles";
 const char* const kDenseBucketsName = "dense_buckets";
 const char* const kDenseConfigName = "dense_config";
 const char* const kDenseOutputTensorName = "dense_quantiles";
-const char* const kDenseStreamsStateName = "dense_streams_state";
 const char* const kDenseSummariesName = "dense_summaries";
 const char* const kDenseValuesName = "dense_values";
 const char* const kNumDenseFeaturesName = "num_dense_features";
@@ -182,6 +180,16 @@ std::vector<float> GenerateBoundaries(const QuantileStream& stream,
   return boundaries;
 }
 
+// Generates quantiles on a finalized QuantileStream.
+std::vector<float> GenerateQuantiles(const QuantileStream& stream,
+                                     int num_quantiles) {
+  // Do not de-dup boundaries. Exactly num_quantiles+1 boundary values
+  // will be returned.
+  std::vector<float> boundaries = stream.GenerateQuantiles(num_quantiles);
+  CHECK_EQ(boundaries.size(), num_quantiles + 1);
+  return boundaries;
+}
+
 // Copies quantiles to output list.
 void CopyBoundaries(OpKernelContext* const context,
                     const std::vector<float>& boundaries, const int64 index,
@@ -224,6 +232,8 @@ class CreateQuantileAccumulatorOp : public OpKernel {
     OP_REQUIRES_OK(context,
                    context->GetAttr(kNumQuantilesName, &num_quantiles_));
     OP_REQUIRES_OK(context, context->GetAttr(kMaxElementsName, &max_elements_));
+    OP_REQUIRES_OK(context,
+                   context->GetAttr(kGenerateQuantiles, &generate_quantiles_));
   }
 
   void Compute(OpKernelContext* context) override {
@@ -231,9 +241,9 @@ class CreateQuantileAccumulatorOp : public OpKernel {
     // other exceptions. If one already exists, it unrefs the new one.
     const Tensor* stamp_token_t;
     OP_REQUIRES_OK(context, context->input(kStampTokenName, &stamp_token_t));
-    auto result =
-        new QuantileStreamResource(epsilon_, num_quantiles_, max_elements_,
-                                   stamp_token_t->scalar<int64>()());
+    auto result = new QuantileStreamResource(epsilon_, num_quantiles_,
+                                             max_elements_, generate_quantiles_,
+                                             stamp_token_t->scalar<int64>()());
     auto status = CreateResource(context, HandleFromInput(context, 0), result);
     if (!status.ok() && status.code() != tensorflow::error::ALREADY_EXISTS) {
       OP_REQUIRES(context, false, status);
@@ -246,6 +256,7 @@ class CreateQuantileAccumulatorOp : public OpKernel {
   // An upperbound on the number of enteries that the summaries might have
   // for a feature.
   int64 max_elements_;
+  bool generate_quantiles_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("CreateQuantileAccumulator").Device(DEVICE_CPU),
@@ -373,7 +384,7 @@ class MakeQuantileSummariesOp : public OpKernel {
         protobuf::Arena arena;
         ::boosted_trees::QuantileSummaryState* summary_proto =
             protobuf::Arena::CreateMessage<
-            ::boosted_trees::QuantileSummaryState>(&arena);
+                ::boosted_trees::QuantileSummaryState>(&arena);
         const auto& summary = stream.GetFinalSummary();
         CopySummaryToProto(summary, summary_proto);
         // Output to tensor.
@@ -597,10 +608,15 @@ class QuantileAccumulatorFlushOp : public OpKernel {
         << "Passed stamp token: " << stamp_token << " "
         << "Current token: " << streams_resource->stamp();
     QuantileStream* stream = streams_resource->stream(stamp_token);
+    bool generate_quantiles = streams_resource->generate_quantiles();
     stream->Finalize();
+
     streams_resource->set_boundaries(
         stamp_token,
-        GenerateBoundaries(*stream, streams_resource->num_quantiles()));
+        generate_quantiles
+            ? GenerateQuantiles(*stream, streams_resource->num_quantiles())
+            : GenerateBoundaries(*stream, streams_resource->num_quantiles()));
+
     streams_resource->Reset(next_stamp_token);
   }
 };

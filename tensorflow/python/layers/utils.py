@@ -81,7 +81,7 @@ def normalize_tuple(value, n, name):
     for single_value in value_tuple:
       try:
         int(single_value)
-      except ValueError:
+      except (ValueError, TypeError):
         raise ValueError('The `' + name + '` argument must be a tuple of ' +
                          str(n) + ' integers. Received: ' + str(value) + ' '
                          'including element ' + str(single_value) + ' of type' +
@@ -255,3 +255,45 @@ def static_shape(x):
     return tuple(x.get_shape().as_list())
   except ValueError:
     return None
+
+
+def get_reachable_from_inputs(inputs, targets=None):
+  """Returns the set of tensors reachable from `inputs`.
+
+  Stops if all targets have been found (target is optional).
+
+  Only valid in Symbolic mode, not Eager mode.
+
+  Args:
+    inputs: List of tensors.
+    targets: List of tensors.
+
+  Returns:
+    A set of tensors reachable from the inputs (includes the inputs themselves).
+  """
+  reachable = set(inputs)
+  if targets:
+    targets = set(targets)
+  queue = inputs[:]
+
+  while queue:
+    x = queue.pop()
+    outputs = []
+    try:
+      consumers = x.consumers()
+    except AttributeError:
+      # Case where x is a variable type
+      consumers = [x.op]
+    for z in consumers:
+      consumer_outputs = z.outputs
+      if consumer_outputs:  # May be None
+        outputs += consumer_outputs
+
+    for y in outputs:
+      if y not in reachable:
+        reachable.add(y)
+        queue.insert(0, y)
+
+    if targets and targets.issubset(reachable):
+      return reachable
+  return reachable

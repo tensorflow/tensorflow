@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -16,7 +16,6 @@ limitations under the License.
 #include "tensorflow/contrib/tensorrt/segment/segment.h"
 
 #include <set>
-#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -26,15 +25,14 @@ limitations under the License.
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/types.h"
 
-//------------------------------------------------------------------------------
+namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 
-//------------------------------------------------------------------------------
 namespace {
 
-//------------------------------------------------------------------------------
 bool CanContractEdge(const tensorflow::Edge* edge,
                      const tensorflow::Graph& graph) {
   const tensorflow::Node* src = edge->src();
@@ -70,7 +68,6 @@ bool CanContractEdge(const tensorflow::Edge* edge,
   return !is_cycle;
 }
 
-//------------------------------------------------------------------------------
 void ContractEdge(tensorflow::Edge* edge, tensorflow::Graph* graph,
                   std::vector<const tensorflow::Edge*>* remove_edges) {
   // Transfer all inputs and outputs of 'dst' to 'src' except edges
@@ -119,7 +116,6 @@ void ContractEdge(tensorflow::Edge* edge, tensorflow::Graph* graph,
 
 }  // namespace
 
-//------------------------------------------------------------------------------
 tensorflow::Status SegmentGraph(
     const tensorflow::GraphDef& gdef,
     const std::function<bool(const tensorflow::NodeDef&)>& candidate_fn,
@@ -139,14 +135,21 @@ tensorflow::Status SegmentGraph(
   std::vector<UnionFind<tensorflow::Node*>> node_segments;
   for (int i = 0; i < graph.num_node_ids(); ++i) {
     tensorflow::Node* node = graph.FindNodeId(i);
-    if (!candidate_fn(node->def())) {
+    if (options.exclude_node_list.count(node->name()) != 0 ||
+        !candidate_fn(node->def())) {
       node = nullptr;
     }
     node_segments.emplace_back(node);
   }
 
-  // Visit nodes in reverse topological order and use edge
-  // contraction to merge candidate nodes.
+  // The segmentation algorithm below visits nodes in reverse
+  // topological order and attempts to merge nodes along output
+  // edges. That means that subgraphs grow from the output-side of the
+  // network towards the inputs. In general this is not guaranteed to
+  // produce a globally optimal segmentation. In the future if we have
+  // a measure of how beneficial it is to include a given node in a
+  // TRT subgraph then we can revisit this algorithm to take advantage
+  // of that information.
   std::vector<tensorflow::Node*> order;
   tensorflow::GetPostOrder(graph, &order);
 
@@ -213,7 +216,7 @@ tensorflow::Status SegmentGraph(
 
   // Collect the segments/subgraphs. Each subgraph is represented by a
   // set of the names of the nodes in that subgraph.
-  std::unordered_map<std::string, std::set<std::string>> sg_map;
+  std::unordered_map<string, std::set<string>> sg_map;
   for (auto& u : node_segments) {
     if ((u.Value() != nullptr) && (u.ParentValue() != nullptr)) {
       sg_map[u.ParentValue()->name()].insert(u.Value()->name());
@@ -224,7 +227,7 @@ tensorflow::Status SegmentGraph(
   for (const auto& itr : sg_map) {
     const auto& segment_node_names = itr.second;
     if (VLOG_IS_ON(1)) {
-      std::string s;
+      string s;
       for (const auto& name : segment_node_names) {
         s += " " + name;
       }
@@ -247,3 +250,4 @@ tensorflow::Status SegmentGraph(
 
 }  // namespace segment
 }  // namespace tensorrt
+}  // namespace tensorflow

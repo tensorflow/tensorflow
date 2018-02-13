@@ -157,6 +157,8 @@ _ops_which_dont_need_outputs = set([
     "SegmentMax",
     "UnsortedSegmentSum",
     "UnsortedSegmentMax",
+    "UnsortedSegmentMin",
+    "UnsortedSegmentProd",
     "Abs",
     "Neg",
     "ReciprocalGrad",
@@ -734,7 +736,7 @@ def _num_elements(grad):
   raise ValueError("`grad` not a Tensor or IndexedSlices.")
 
 
-_last_shape_dtype = [None, None]
+_last_zero_shape_dtype = [None, None]
 _last_zero = [None]
 
 
@@ -748,13 +750,15 @@ def _zeros(shape, dtype):
     # TODO(apassos): need to save enough information about variant tensors to do
     # a zeros
     return None
-  if [shape, dtype] != _last_shape_dtype:
-    _last_shape_dtype[:] = [shape, dtype]
+  if [shape, dtype] != _last_zero_shape_dtype:
+    _last_zero_shape_dtype[:] = [shape, dtype]
     _last_zero[0] = _fast_fill(0, shape, dtype)
   return _last_zero[0]
 
 
 def _ones(shape, dtype):
+  if shape == ():  # pylint: disable=g-explicit-bool-comparison
+    return constant_op.constant(1, dtype=dtype)
   return _fast_fill(1, shape, dtype)
 
 
@@ -856,13 +860,18 @@ class GradientTape(object):
         t = t.handle
       tape.watch(t)
 
-  def gradient(self, target, sources):
+  def watched_variables(self):
+    return self._tape.watched_variables()
+
+  def gradient(self, target, sources, output_gradients=None):
     """Computes the gradient using information traced by the tape.
 
     Args:
       target: the tensor to be differentiated.
       sources: a list of Tensors or Variables, the target will be
        differentiated with respect to the sources.
+      output_gradients: a list of gradients, one for each element of
+       target. Defaults to None.
 
     Returns:
       a list of Tensors (or IndexedSlices, or None), one for each element in
@@ -880,7 +889,8 @@ class GradientTape(object):
                else x
                for x in sources]
     grad = imperative_grad.imperative_grad(
-        _default_vspace, self._tape, [target], sources)
+        _default_vspace, self._tape, [target], sources,
+        output_gradients=output_gradients)
     if not self._persistent:
       self._tape = None
     return grad

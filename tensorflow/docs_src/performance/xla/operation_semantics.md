@@ -252,7 +252,7 @@ Clamps an operand to within the range between a minimum and maximum value.
 Given an operand and minimum and maximum values, returns the operand if it is in
 the range between the minimum and maximum, else returns the minimum value if the
 operand is below this range or the maximum value if the operand is above this
-range.  That is, `clamp(a, x, b) =  max(min(a, x), b)`.
+range.  That is, `clamp(a, x, b) =  min(max(a, x), b)`.
 
 All three arrays must be the same shape. Alternately, as a restricted form of
 [broadcasting](broadcasting.md), `min` and/or `max` can be a scalar of type `T`.
@@ -717,6 +717,7 @@ in 'dimension_numbers'.
 Associated contracting dimension numbers from the 'lhs' and 'rhs' do not need
 to be the same, but must be listed in the same order in both
 'lhs/rhs_contracting_dimensions' arrays and have the same dimension sizes.
+There must be exactly one contracting dimension on both 'lhs' and 'rhs'.
 
 Example with contracting dimension numbers:
 
@@ -736,8 +737,9 @@ DotGeneral(lhs, rhs, dnums) -> { {6.0, 12.0},
 ```
 
 Associated batch dimension numbers from the 'lhs' and 'rhs' must have the same
-dimension number, must be listed in the same order in both arrays, and must
-have the same dimension sizes.
+dimension number, must be listed in the same order in both arrays, must
+have the same dimension sizes, and must be ordered before contracting and
+non-contracting/non-batch dimension numbers.
 
 Example with batch dimension numbers (batch size 2, 2x2 matrices):
 
@@ -768,6 +770,10 @@ DotGeneral(lhs, rhs, dnums) -> { { {1.0, 2.0},
 | ----------------------------------- | ----------------- | ---------------- |
 | [b0, m, k] `dot` [b0, k, n]         | [b0, m, n]        |  batch matmul    |
 | [b0, b1, m, k] `dot` [b0, b1, k, n] | [b0, b1, m, n]    |  batch matmul    |
+
+It follows that the resulting dimension number starts with the batch dimension,
+then the 'lhs' non-contracting/non-batch dimension, and finally the 'rhs'
+non-contracting/non-batch dimension.
 
 ## DynamicSlice
 

@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite SVDF op.
 
-#include <vector>
 #include <iomanip>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>

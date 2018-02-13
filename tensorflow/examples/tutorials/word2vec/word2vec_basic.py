@@ -40,10 +40,10 @@ current_path = os.path.dirname(os.path.realpath(sys.argv[0]))
 
 parser = argparse.ArgumentParser()
 parser.add_argument(
-      '--log_dir',
-      type=str,
-      default=os.path.join(current_path, 'log'),
-      help='The log directory for TensorBoard summaries.')
+    '--log_dir',
+    type=str,
+    default=os.path.join(current_path, 'log'),
+    help='The log directory for TensorBoard summaries.')
 FLAGS, unparsed = parser.parse_known_args()
 
 # Create the directory for TensorBoard variables if there is not.
@@ -81,6 +81,7 @@ def read_data(filename):
     data = tf.compat.as_str(f.read(f.namelist()[0])).split()
   return data
 
+
 vocabulary = read_data(filename)
 print('Data size', len(vocabulary))
 
@@ -106,19 +107,21 @@ def build_dataset(words, n_words):
   reversed_dictionary = dict(zip(dictionary.values(), dictionary.keys()))
   return data, count, dictionary, reversed_dictionary
 
+
 # Filling 4 global variables:
 # data - list of codes (integers from 0 to vocabulary_size-1).
 #   This is the original text but words are replaced by their codes
 # count - map of words(strings) to count of occurrences
 # dictionary - map of words(strings) to their codes(integers)
 # reverse_dictionary - maps codes(integers) to words(strings)
-data, count, dictionary, reverse_dictionary = build_dataset(vocabulary,
-                                                            vocabulary_size)
+data, count, dictionary, reverse_dictionary = build_dataset(
+    vocabulary, vocabulary_size)
 del vocabulary  # Hint to reduce memory.
 print('Most common words (+UNK)', count[:5])
 print('Sample data', data[:10], [reverse_dictionary[i] for i in data[:10]])
 
 data_index = 0
+
 
 # Step 3: Function to generate a training batch for the skip-gram model.
 def generate_batch(batch_size, num_skips, skip_window):
@@ -128,7 +131,7 @@ def generate_batch(batch_size, num_skips, skip_window):
   batch = np.ndarray(shape=(batch_size), dtype=np.int32)
   labels = np.ndarray(shape=(batch_size, 1), dtype=np.int32)
   span = 2 * skip_window + 1  # [ skip_window target skip_window ]
-  buffer = collections.deque(maxlen=span)
+  buffer = collections.deque(maxlen=span)  # pylint: disable=redefined-builtin
   if data_index + span > len(data):
     data_index = 0
   buffer.extend(data[data_index:data_index + span])
@@ -149,27 +152,27 @@ def generate_batch(batch_size, num_skips, skip_window):
   data_index = (data_index + len(data) - span) % len(data)
   return batch, labels
 
+
 batch, labels = generate_batch(batch_size=8, num_skips=2, skip_window=1)
 for i in range(8):
-  print(batch[i], reverse_dictionary[batch[i]],
-        '->', labels[i, 0], reverse_dictionary[labels[i, 0]])
+  print(batch[i], reverse_dictionary[batch[i]], '->', labels[i, 0],
+        reverse_dictionary[labels[i, 0]])
 
 # Step 4: Build and train a skip-gram model.
 
 batch_size = 128
 embedding_size = 128  # Dimension of the embedding vector.
-skip_window = 1       # How many words to consider left and right.
-num_skips = 2         # How many times to reuse an input to generate a label.
-num_sampled = 64      # Number of negative examples to sample.
+skip_window = 1  # How many words to consider left and right.
+num_skips = 2  # How many times to reuse an input to generate a label.
+num_sampled = 64  # Number of negative examples to sample.
 
 # We pick a random validation set to sample nearest neighbors. Here we limit the
 # validation samples to the words that have a low numeric ID, which by
 # construction are also the most frequent. These 3 variables are used only for
 # displaying model accuracy, they don't affect calculation.
-valid_size = 16     # Random set of words to evaluate similarity on.
+valid_size = 16  # Random set of words to evaluate similarity on.
 valid_window = 100  # Only pick dev samples in the head of the distribution.
 valid_examples = np.random.choice(valid_window, valid_size, replace=False)
-
 
 graph = tf.Graph()
 
@@ -192,8 +195,9 @@ with graph.as_default():
     # Construct the variables for the NCE loss
     with tf.name_scope('weights'):
       nce_weights = tf.Variable(
-          tf.truncated_normal([vocabulary_size, embedding_size],
-                              stddev=1.0 / math.sqrt(embedding_size)))
+          tf.truncated_normal(
+              [vocabulary_size, embedding_size],
+              stddev=1.0 / math.sqrt(embedding_size)))
     with tf.name_scope('biases'):
       nce_biases = tf.Variable(tf.zeros([vocabulary_size]))
 
@@ -204,12 +208,13 @@ with graph.as_default():
   #   http://mccormickml.com/2016/04/19/word2vec-tutorial-the-skip-gram-model/
   with tf.name_scope('loss'):
     loss = tf.reduce_mean(
-        tf.nn.nce_loss(weights=nce_weights,
-                       biases=nce_biases,
-                       labels=train_labels,
-                       inputs=embed,
-                       num_sampled=num_sampled,
-                       num_classes=vocabulary_size))
+        tf.nn.nce_loss(
+            weights=nce_weights,
+            biases=nce_biases,
+            labels=train_labels,
+            inputs=embed,
+            num_sampled=num_sampled,
+            num_classes=vocabulary_size))
 
   # Add the loss value as a scalar to summary.
   tf.summary.scalar('loss', loss)
@@ -221,8 +226,8 @@ with graph.as_default():
   # Compute the cosine similarity between minibatch examples and all embeddings.
   norm = tf.sqrt(tf.reduce_sum(tf.square(embeddings), 1, keep_dims=True))
   normalized_embeddings = embeddings / norm
-  valid_embeddings = tf.nn.embedding_lookup(
-      normalized_embeddings, valid_dataset)
+  valid_embeddings = tf.nn.embedding_lookup(normalized_embeddings,
+                                            valid_dataset)
   similarity = tf.matmul(
       valid_embeddings, normalized_embeddings, transpose_b=True)
 
@@ -248,8 +253,8 @@ with tf.Session(graph=graph) as session:
 
   average_loss = 0
   for step in xrange(num_steps):
-    batch_inputs, batch_labels = generate_batch(
-        batch_size, num_skips, skip_window)
+    batch_inputs, batch_labels = generate_batch(batch_size, num_skips,
+                                                skip_window)
     feed_dict = {train_inputs: batch_inputs, train_labels: batch_labels}
 
     # Define metadata variable.
@@ -259,9 +264,12 @@ with tf.Session(graph=graph) as session:
     # in the list of returned values for session.run()
     # Also, evaluate the merged op to get all summaries from the returned "summary" variable.
     # Feed metadata variable to session for visualizing the graph in TensorBoard.
-    _, summary, loss_val = session.run([optimizer, merged, loss], feed_dict=feed_dict, run_metadata=run_metadata)
+    _, summary, loss_val = session.run(
+        [optimizer, merged, loss],
+        feed_dict=feed_dict,
+        run_metadata=run_metadata)
     average_loss += loss_val
-    
+
     # Add returned summaries to writer in each step.
     writer.add_summary(summary, step)
     # Add metadata to visualize the graph for the last run.
@@ -295,7 +303,7 @@ with tf.Session(graph=graph) as session:
       f.write(reverse_dictionary[i] + '\n')
 
   # Save the model for checkpoints.
-  saver.save(session, os.path.join(FLAGS.log_dir, "model.ckpt"))
+  saver.save(session, os.path.join(FLAGS.log_dir, 'model.ckpt'))
 
   # Create a configuration for visualizing embeddings with the labels in TensorBoard.
   config = projector.ProjectorConfig()
@@ -317,21 +325,24 @@ def plot_with_labels(low_dim_embs, labels, filename):
   for i, label in enumerate(labels):
     x, y = low_dim_embs[i, :]
     plt.scatter(x, y)
-    plt.annotate(label,
-                 xy=(x, y),
-                 xytext=(5, 2),
-                 textcoords='offset points',
-                 ha='right',
-                 va='bottom')
+    plt.annotate(
+        label,
+        xy=(x, y),
+        xytext=(5, 2),
+        textcoords='offset points',
+        ha='right',
+        va='bottom')
 
   plt.savefig(filename)
+
 
 try:
   # pylint: disable=g-import-not-at-top
   from sklearn.manifold import TSNE
   import matplotlib.pyplot as plt
 
-  tsne = TSNE(perplexity=30, n_components=2, init='pca', n_iter=5000, method='exact')
+  tsne = TSNE(
+      perplexity=30, n_components=2, init='pca', n_iter=5000, method='exact')
   plot_only = 500
   low_dim_embs = tsne.fit_transform(final_embeddings[:plot_only, :])
   labels = [reverse_dictionary[i] for i in xrange(plot_only)]

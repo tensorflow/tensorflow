@@ -134,7 +134,7 @@ def format_tensor(tensor,
 
   if include_metadata:
     lines.append("  dtype: %s" % str(tensor.dtype))
-    lines.append("  shape: %s" % str(tensor.shape))
+    lines.append("  shape: %s" % str(tensor.shape).replace("L", ""))
 
   if lines:
     lines.append("")
@@ -535,7 +535,7 @@ def numeric_summary(tensor):
   if not isinstance(tensor, np.ndarray) or not np.size(tensor):
     return debugger_cli_common.RichTextLines([
         "No numeric summary available due to empty tensor."])
-  elif (np.issubdtype(tensor.dtype, np.float) or
+  elif (np.issubdtype(tensor.dtype, np.floating) or
         np.issubdtype(tensor.dtype, np.complex) or
         np.issubdtype(tensor.dtype, np.integer)):
     counts = [

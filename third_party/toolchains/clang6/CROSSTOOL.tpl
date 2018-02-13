@@ -82,7 +82,7 @@ toolchain {
   # Folks who do maintenance work on TF Bazel Clang should consider
   # commenting out these lines, while doing that work, to gain a better
   # understanding of what the intersection of support looks like between GCC
-  # and Clang. Please note that, unlike Blaze, Bazel does not support
+  # and Clang. Please note that,  Bazel does not support
   # -Xclang-only / -Xgcc-only.
   compiler_flag: "-Wno-unknown-warning-option"
   compiler_flag: "-Wno-unused-command-line-argument"
@@ -187,7 +187,7 @@ toolchain {
   }
 
   # Features indicating whether this is a host compile or not. Exactly one of
-  # these will be implicitly provided by blaze.
+  # these will be implicitly provided by bazel.
   feature { name: "host" }
   feature { name: "nonhost" }
 
@@ -199,7 +199,7 @@ toolchain {
   }
 
   # Features for compilation modes. Exactly one of these will be implicitly
-  # provided by blaze.
+  # provided by bazel.
   feature { name: "fastbuild" }
   feature { name: "dbg" }
   feature { name: "opt" }
@@ -355,11 +355,11 @@ toolchain {
     }
   }
 
-  # Pic must appear after pie, because pic may need to override pie, and blaze
+  # Pic must appear after pie, because pic may need to override pie, and bazel
   # turns it on selectively. These don't interact with other options.
   #
   # TODO: In practice, normal vs pic vs pie is a ternary mode. We should
-  # implement it that way. This will require changes to blaze, which only
+  # implement it that way. This will require changes to bazel, which only
   # calculates whether or not pic is needed, not pie.
   #
   # NOTE: Bazel might make this all a moot point.

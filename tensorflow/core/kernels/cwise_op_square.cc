@@ -42,5 +42,5 @@ REGISTER_KERNEL_BUILDER(Name("Square")
                             .HostMemory("y")
                             .TypeConstraint<int32>("T"),
                         UnaryOp<CPUDevice, functor::square<int32>>);
-#endif // TENSORFLOW_USE_SYC
+#endif  // TENSORFLOW_USE_SYC
 }  // namespace tensorflow

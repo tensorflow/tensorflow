@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/gemm_support.h"
+#include "tensorflow/contrib/lite/kernels/internal/optimized/cblas_conv.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/multithreaded_conv.h"
 #include "tensorflow/contrib/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/contrib/lite/kernels/internal/quantization_util.h"
@@ -38,11 +39,16 @@ namespace ops {
 namespace builtin {
 namespace conv {
 
-// This file has three implementation of Conv.
+// This file has 4 implementation of Conv.
 enum KernelType {
   kReference,
   kGenericOptimized,  // Neon-free
-  kNeonOptimized,
+  kMultithreadOptimized,
+  // The kernel uses use CBLAS interface for matrix multiplication.
+  // It's fast when an optimized CBLAS implementation is available (e.g. Apple
+  // Accelerate Framework), and it's slow when falling back to naive
+  // implementation.
+  kCblasOptimized,
 };
 
 struct OpData {
@@ -265,10 +271,13 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
       free(hwcn_weights->data.raw);
       hwcn_weights->data.raw = nullptr;
     }
+
+    // Note that hwcn_weights_status is a kTfLiteDynamic tensor, and
+    // ResizeTensor will actually allocate space for it. The would be more
+    // efficient if we placed hwcn_weights_status in the persistent arena.
     auto hwcn_weights_status =
         context->ResizeTensor(context, hwcn_weights, hwcn_weights_size);
     if (hwcn_weights_status != kTfLiteOk) return hwcn_weights_status;
-    hwcn_weights->data.raw = static_cast<char*>(malloc(hwcn_weights->bytes));
 
     // TODO(petewarden): If Resize() is called when the size hasn't actually
     // changed, this will do extra redundant work.
@@ -290,26 +299,34 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
   auto filter_offset = -filter->params.zero_point;
   auto output_offset = output->params.zero_point;
 
-  if (kernel_type == kReference) {
-    reference_ops::Conv(
-        GetTensorData<uint8_t>(input), GetTensorDims(input), input_offset,
-        GetTensorData<uint8_t>(filter), GetTensorDims(filter), filter_offset,
-        GetTensorData<int32_t>(bias), GetTensorDims(bias), params->stride_width,
-        params->stride_height, data->padding.width, data->padding.height,
-        output_offset, data->output_multiplier, data->output_shift,
-        data->output_activation_min, data->output_activation_max,
-        GetTensorData<uint8_t>(output), GetTensorDims(output),
-        GetTensorData<uint8_t>(im2col), GetTensorDims(im2col), gemm_context);
-  } else {
-    optimized_ops::Conv(
-        GetTensorData<uint8_t>(input), GetTensorDims(input), input_offset,
-        GetTensorData<uint8_t>(filter), GetTensorDims(filter), filter_offset,
-        GetTensorData<int32_t>(bias), GetTensorDims(bias), params->stride_width,
-        params->stride_height, data->padding.width, data->padding.height,
-        output_offset, data->output_multiplier, data->output_shift,
-        data->output_activation_min, data->output_activation_max,
-        GetTensorData<uint8_t>(output), GetTensorDims(output),
-        GetTensorData<uint8_t>(im2col), GetTensorDims(im2col), gemm_context);
+  switch (kernel_type) {
+    case kReference:
+      reference_ops::Conv(
+          GetTensorData<uint8_t>(input), GetTensorDims(input), input_offset,
+          GetTensorData<uint8_t>(filter), GetTensorDims(filter), filter_offset,
+          GetTensorData<int32_t>(bias), GetTensorDims(bias),
+          params->stride_width, params->stride_height, data->padding.width,
+          data->padding.height, output_offset, data->output_multiplier,
+          data->output_shift, data->output_activation_min,
+          data->output_activation_max, GetTensorData<uint8_t>(output),
+          GetTensorDims(output), GetTensorData<uint8_t>(im2col),
+          GetTensorDims(im2col), gemm_context);
+      break;
+    case kGenericOptimized:
+    case kMultithreadOptimized:
+    case kCblasOptimized:
+      // There is only one optimized implementation for Quantized Conv.
+      optimized_ops::Conv(
+          GetTensorData<uint8_t>(input), GetTensorDims(input), input_offset,
+          GetTensorData<uint8_t>(filter), GetTensorDims(filter), filter_offset,
+          GetTensorData<int32_t>(bias), GetTensorDims(bias),
+          params->stride_width, params->stride_height, data->padding.width,
+          data->padding.height, output_offset, data->output_multiplier,
+          data->output_shift, data->output_activation_min,
+          data->output_activation_max, GetTensorData<uint8_t>(output),
+          GetTensorDims(output), GetTensorData<uint8_t>(im2col),
+          GetTensorDims(im2col), gemm_context);
+      break;
   }
 }
 
@@ -322,31 +339,57 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
   CalculateActivationRangeFloat(params->activation, &output_activation_min,
                                 &output_activation_max);
 
-  if (kernel_type == kReference) {
-    reference_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
-                        GetTensorData<float>(filter), GetTensorDims(filter),
-                        GetTensorData<float>(bias), GetTensorDims(bias),
-                        params->stride_width, params->stride_height,
-                        data->padding.width, data->padding.height,
-                        output_activation_min, output_activation_max,
-                        GetTensorData<float>(output), GetTensorDims(output),
-                        GetTensorData<float>(im2col), GetTensorDims(im2col));
-  } else {
-    const float* filter_data;
-    if (data->need_hwcn_weights) {
-      filter_data = GetTensorData<float>(hwcn_weights);
-    } else {
-      filter_data = GetTensorData<float>(filter);
+  switch (kernel_type) {
+    case kReference: {
+      reference_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
+                          GetTensorData<float>(filter), GetTensorDims(filter),
+                          GetTensorData<float>(bias), GetTensorDims(bias),
+                          params->stride_width, params->stride_height,
+                          data->padding.width, data->padding.height,
+                          output_activation_min, output_activation_max,
+                          GetTensorData<float>(output), GetTensorDims(output),
+                          GetTensorData<float>(im2col), GetTensorDims(im2col));
+      break;
     }
-
-    multithreaded_ops::Conv(
-        GetTensorData<float>(input), GetTensorDims(input), filter_data,
-        GetTensorDims(filter), GetTensorData<float>(bias), GetTensorDims(bias),
-        params->stride_width, params->stride_height, data->padding.width,
-        data->padding.height, params->padding, output_activation_min,
-        output_activation_max, GetTensorData<float>(output),
-        GetTensorDims(output), GetTensorData<float>(im2col),
-        GetTensorDims(im2col));
+    case kGenericOptimized: {
+      optimized_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
+                          GetTensorData<float>(filter), GetTensorDims(filter),
+                          GetTensorData<float>(bias), GetTensorDims(bias),
+                          params->stride_width, params->stride_height,
+                          data->padding.width, data->padding.height,
+                          output_activation_min, output_activation_max,
+                          GetTensorData<float>(output), GetTensorDims(output),
+                          GetTensorData<float>(im2col), GetTensorDims(im2col));
+      break;
+    }
+    case kMultithreadOptimized: {
+      const float* filter_data;
+      if (data->need_hwcn_weights) {
+        filter_data = GetTensorData<float>(hwcn_weights);
+      } else {
+        filter_data = GetTensorData<float>(filter);
+      }
+      multithreaded_ops::Conv(
+          GetTensorData<float>(input), GetTensorDims(input), filter_data,
+          GetTensorDims(filter), GetTensorData<float>(bias),
+          GetTensorDims(bias), params->stride_width, params->stride_height,
+          data->padding.width, data->padding.height, params->padding,
+          output_activation_min, output_activation_max,
+          GetTensorData<float>(output), GetTensorDims(output),
+          GetTensorData<float>(im2col), GetTensorDims(im2col));
+      break;
+    }
+    case kCblasOptimized: {
+      cblas_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
+                      GetTensorData<float>(filter), GetTensorDims(filter),
+                      GetTensorData<float>(bias), GetTensorDims(bias),
+                      params->stride_width, params->stride_height,
+                      data->padding.width, data->padding.height,
+                      output_activation_min, output_activation_max,
+                      GetTensorData<float>(output), GetTensorDims(output),
+                      GetTensorData<float>(im2col), GetTensorDims(im2col));
+      break;
+    }
   }
 }
 
@@ -407,17 +450,23 @@ TfLiteRegistration* Register_CONVOLUTION_GENERIC_OPT() {
   return &r;
 }
 
-TfLiteRegistration* Register_CONVOLUTION_NEON_OPT() {
+TfLiteRegistration* Register_CONVOLUTION_MULTITHREADED_OPT() {
   static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
-                                 conv::Eval<conv::kNeonOptimized>};
+                                 conv::Eval<conv::kMultithreadOptimized>};
+  return &r;
+}
+
+TfLiteRegistration* Register_CONVOLUTION_CBLAS_OPT() {
+  static TfLiteRegistration r = {conv::Init, conv::Free, conv::Prepare,
+                                 conv::Eval<conv::kCblasOptimized>};
   return &r;
 }
 
 TfLiteRegistration* Register_CONV_2D() {
-#ifdef USE_NEON
-  return Register_CONVOLUTION_NEON_OPT();
+#ifdef TFLITE_USE_APPLE_ACCELERATE_FOR_CONV
+  return Register_CONVOLUTION_CBLAS_OPT();
 #else
-  return Register_CONVOLUTION_GENERIC_OPT();
+  return Register_CONVOLUTION_MULTITHREADED_OPT();
 #endif
 }
 

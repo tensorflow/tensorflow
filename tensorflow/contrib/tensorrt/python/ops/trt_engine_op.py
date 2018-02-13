@@ -1,4 +1,4 @@
-# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # =============================================================================
+"""Exposes the Python wrapper of TRTEngineOp."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -31,5 +32,3 @@ if platform.system() != "Windows":
       resource_loader.get_path_to_datafile("_trt_engine_op.so"))
 else:
   raise RuntimeError("Windows platforms are not supported")
-
-

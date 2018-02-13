@@ -96,7 +96,7 @@ if [[ "${ONLY_MAKE_TENSORFLOW}" != "true" ]]; then
 
     if [[ -z "${BUILD_ARCH}" ]]; then
         # Compile protobuf for the target iOS device architectures.
-        tensorflow/contrib/makefile/compile_ios_protobuf.sh -a ${DEFAULT_ARCH}
+        tensorflow/contrib/makefile/compile_ios_protobuf.sh
     else
         # Compile protobuf for the target iOS device architectures.
         tensorflow/contrib/makefile/compile_ios_protobuf.sh -a ${BUILD_ARCH}

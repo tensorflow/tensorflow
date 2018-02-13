@@ -86,10 +86,9 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out) {
   return Status::OK();
 }
 
-Status AttrTypeByName(const AttrTypeMap* m, const string& attr_name,
+Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
                       TF_AttrType* out, unsigned char* is_list) {
-  CHECK(m);
-  auto* t = gtl::FindOrNull(*m, attr_name);
+  auto* t = gtl::FindOrNull(m, attr_name);
   if (t == nullptr) {
     return errors::InvalidArgument("Attribute '", attr_name,
                                    "' does not exist for this operation");
@@ -173,14 +172,14 @@ void CombineUnordered(const tensorflow::Fprint128& a,
   b->high64 += a.high64;
 }
 
-inline tensorflow::Fprint128 CacheKeyHelper(const StringPiece& s,
+inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s,
                                             const tensorflow::Fprint128& b) {
   // TODO(agarwal): avoid ToString().
   tensorflow::Fprint128 a = tensorflow::Fingerprint128(s.ToString());
   return FingerprintCat128(a, b);
 }
 
-inline tensorflow::Fprint128 CacheKeyHelper(const StringPiece& s, uint64 b) {
+inline tensorflow::Fprint128 CacheKeyHelper(StringPiece s, uint64 b) {
   return CacheKeyHelper(s, {b, b});
 }
 
@@ -316,7 +315,7 @@ Status KernelAndDevice::Run(std::vector<Tensor>* input_tensors,
       allocator_pair.second->GetRecordsAndUnRef();
     }
     auto* ms = stats->mutable_memory_stats();
-    ms->set_temp_memory_size(context.temp_memory_size());
+    ms->set_temp_memory_size(context.temp_memory_allocated());
     for (const auto& alloc_id : context.persistent_alloc_ids()) {
       ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
     }

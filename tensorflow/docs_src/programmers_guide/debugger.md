@@ -1,4 +1,4 @@
-# Debugging TensorFlow Programs
+# TensorFlow Debugger
 
 <!-- [comment]: TODO(barryr): Links to and from sections on "Graphs" & "Monitoring Learning". -->
 
@@ -214,7 +214,7 @@ navigate between these screens by clicking the `<--` and
 ### Other Features of the tfdbg CLI
 
 In addition to the commands listed above, the tfdbg CLI provides the following
-addditional features:
+additional features:
 
 *   To navigate through previous tfdbg commands, type in a few characters
     followed by the Up or Down arrow keys. tfdbg will show you the history of

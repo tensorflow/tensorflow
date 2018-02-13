@@ -8,7 +8,7 @@
 
 #include <string>
 #include <sstream>
-#include <NvInfer.h>
+#include "tensorrt/include/NvInfer.h"
 #include <thread>
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/TRTInt8Calibrator.h"

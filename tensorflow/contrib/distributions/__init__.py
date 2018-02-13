@@ -23,6 +23,7 @@ from __future__ import print_function
 # pylint: disable=unused-import,wildcard-import,line-too-long,g-importing-member
 
 from tensorflow.contrib.distributions.python.ops import bijectors
+from tensorflow.contrib.distributions.python.ops.autoregressive import *
 from tensorflow.contrib.distributions.python.ops.binomial import *
 from tensorflow.contrib.distributions.python.ops.cauchy import *
 from tensorflow.contrib.distributions.python.ops.chi2 import *
@@ -84,6 +85,7 @@ from tensorflow.python.ops.distributions.uniform import *
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
+    'auto_correlation',
     'bijectors',
     'Cauchy',
     'ConditionalDistribution',
@@ -92,9 +94,9 @@ _allowed_symbols = [
     'NOT_REPARAMETERIZED',
     'ReparameterizationType',
     'Distribution',
+    'Autoregressive',
     'Binomial',
     'Bernoulli',
-    'BernoulliWithSigmoidProbs',
     'Beta',
     'BetaWithSoftplusConcentration',
     'Categorical',

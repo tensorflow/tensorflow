@@ -18,12 +18,12 @@ limitations under the License.
 // Language-agnostic gradient tape. Does not perform backpropagation, just
 // maintains the data structures required to do so.
 
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
@@ -54,11 +54,11 @@ struct OpTapeEntry {
 // Map from tensor_id to internally-defined operation-id of the operation which
 // produced this tensor. A value of -1 means that the tensor was directly
 // watched and not the result of any operation in the tape.
-using TensorTape = std::unordered_map<int64, int64>;
+using TensorTape = gtl::FlatMap<int64, int64>;
 
 // Map from operation-id to tape entry.
 template <typename BackwardFunction>
-using OpTape = std::unordered_map<int64, OpTapeEntry<BackwardFunction>>;
+using OpTape = gtl::FlatMap<int64, OpTapeEntry<BackwardFunction>>;
 
 // Operations the tape needs to perform on tensors to do backpropagation. Named
 // "vspace" because a subset of these are related to a vector space, such as
@@ -159,7 +159,7 @@ class GradientTape {
 
   // Map from tensor id to number of remaining usages (i.e. how many entries in
   // the tape refer to it); to aid in tape garbage collection.
-  std::unordered_map<int64, int64> tensor_usage_;
+  gtl::FlatMap<int64, int64> tensor_usage_;
 
   // If false, all activations are deleted in the first call to ComputeGradient.
   // Else, only when this is destructed.
@@ -286,11 +286,11 @@ struct BackpropInitialState {
 
   // Map from tensor ID to how many references still exist for this tensor in
   // the tape.
-  std::unordered_map<int64, int64> tensor_usage_counts;
+  gtl::FlatMap<int64, int64> tensor_usage_counts;
 
   // Maps from op ID to how many output tensors of this op still need to have
   // their gradients computed.
-  std::unordered_map<int64, int64> op_missing_tensor;
+  gtl::FlatMap<int64, int64> op_missing_tensor;
 };
 
 // If `persistent_tape` is true, op_tape is not changed and none of the
@@ -301,8 +301,8 @@ struct BackpropInitialState {
 template <typename BackwardFunction>
 BackpropInitialState<BackwardFunction> PrepareBackprop(
     gtl::ArraySlice<int64> target, const TensorTape& tensor_tape,
-    OpTape<BackwardFunction>* op_tape,
-    const std::unordered_set<int64>& sources_set, bool persistent_tape) {
+    OpTape<BackwardFunction>* op_tape, const gtl::FlatSet<int64>& sources_set,
+    bool persistent_tape) {
   std::vector<int64> tensor_stack;
   tensor_stack.reserve(target.size());
   for (auto t : target) {
@@ -362,7 +362,7 @@ BackpropInitialState<BackwardFunction> PrepareBackprop(
 template <typename BackwardFunction>
 std::vector<int64> InitialStack(
     const OpTape<BackwardFunction>& op_tape,
-    const std::unordered_map<int64, int64>& op_missing_tensor) {
+    const gtl::FlatMap<int64, int64>& op_missing_tensor) {
   std::vector<int64> result;
   for (auto& op_entry : op_tape) {
     if (op_missing_tensor.find(op_entry.first) == op_missing_tensor.end()) {
@@ -373,13 +373,13 @@ std::vector<int64> InitialStack(
 }
 
 template <typename Gradient, typename BackwardFunction>
-Status InitialGradients(
-    const VSpace<Gradient, BackwardFunction>& vspace,
-    gtl::ArraySlice<int64> target_tensor_ids,
-    gtl::ArraySlice<Gradient*> output_gradients, const TensorTape& tensor_tape,
-    const OpTape<BackwardFunction>& op_tape,
-    const std::unordered_map<int64, int64>& tensor_usage_counts,
-    std::unordered_map<int64, std::vector<Gradient*>>* result) {
+Status InitialGradients(const VSpace<Gradient, BackwardFunction>& vspace,
+                        gtl::ArraySlice<int64> target_tensor_ids,
+                        gtl::ArraySlice<Gradient*> output_gradients,
+                        const TensorTape& tensor_tape,
+                        const OpTape<BackwardFunction>& op_tape,
+                        const gtl::FlatMap<int64, int64>& tensor_usage_counts,
+                        gtl::FlatMap<int64, std::vector<Gradient*>>* result) {
   for (int i = 0; i < target_tensor_ids.size(); ++i) {
     const int64 id = target_tensor_ids[i];
     if (tensor_usage_counts.find(id) != tensor_usage_counts.end()) {
@@ -441,13 +441,13 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
     gtl::ArraySlice<int64> source_tensor_ids,
     gtl::ArraySlice<Gradient*> output_gradients,
     std::vector<Gradient*>* result) {
-  std::unordered_set<int64> sources_set(source_tensor_ids.begin(),
-                                        source_tensor_ids.end());
+  gtl::FlatSet<int64> sources_set(source_tensor_ids.begin(),
+                                  source_tensor_ids.end());
   BackpropInitialState<BackwardFunction> state = PrepareBackprop(
       target_tensor_ids, tensor_tape_, &op_tape_, sources_set, persistent_);
   std::vector<int64> op_stack =
       InitialStack(state.op_tape, state.op_missing_tensor);
-  std::unordered_map<int64, std::vector<Gradient*>> gradients;
+  gtl::FlatMap<int64, std::vector<Gradient*>> gradients;
   Status s = InitialGradients(vspace, target_tensor_ids, output_gradients,
                               tensor_tape_, state.op_tape,
                               state.tensor_usage_counts, &gradients);
@@ -463,7 +463,7 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
     cleanup();
     return s;
   }
-  std::unordered_map<int64, int64> gradients_size;
+  gtl::FlatMap<int64, int64> gradients_size;
   // TODO(apassos) multiple threads could be dequeuing from op_stack at the same
   // time, for better CPU backprop performance.
   VLOG(1) << "Initial stack:";
@@ -472,11 +472,10 @@ Status GradientTape<Gradient, BackwardFunction>::ComputeGradient(
       VLOG(1) << "  " << t;
     }
   }
-  std::unordered_map<string, std::unordered_set<int>>
-      functions_accept_none_for_indices({
-          {"SoftmaxCrossEntropyWithLogits", {1}},
-          {"FusedBatchNorm", {1, 2, 3, 4}},
-      });
+  gtl::FlatMap<string, gtl::FlatSet<int>> functions_accept_none_for_indices({
+      {"SoftmaxCrossEntropyWithLogits", {1}},
+      {"FusedBatchNorm", {1, 2, 3, 4}},
+  });
   while (!op_stack.empty()) {
     const int64 op = op_stack.back();
     VLOG(1) << "Popped " << op;

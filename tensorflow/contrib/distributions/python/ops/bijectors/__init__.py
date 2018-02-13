@@ -29,6 +29,7 @@
 @@MaskedAutoregressiveFlow
 @@Permute
 @@PowerTransform
+@@RealNVP
 @@Reshape
 @@Sigmoid
 @@SigmoidCentered
@@ -39,6 +40,7 @@
 
 @@masked_autoregressive_default_template
 @@masked_dense
+@@real_nvp_default_template
 """
 
 from __future__ import absolute_import
@@ -60,6 +62,7 @@ from tensorflow.contrib.distributions.python.ops.bijectors.invert import *
 from tensorflow.contrib.distributions.python.ops.bijectors.masked_autoregressive import *
 from tensorflow.contrib.distributions.python.ops.bijectors.permute import *
 from tensorflow.contrib.distributions.python.ops.bijectors.power_transform import *
+from tensorflow.contrib.distributions.python.ops.bijectors.real_nvp import *
 from tensorflow.contrib.distributions.python.ops.bijectors.reshape import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid import *
 from tensorflow.contrib.distributions.python.ops.bijectors.sigmoid_centered import *

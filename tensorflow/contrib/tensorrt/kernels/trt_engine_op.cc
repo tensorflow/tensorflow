@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,13 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/tensorrt/kernels/trt_engine_op.h"
-#include <cuda_runtime_api.h>
-#include <sstream>
+
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
-// Use TF logging f
+#include "tensorflow/core/platform/types.h"
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+#include "cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
 static ::tensorflow::tensorrt::Logger gLogger;
@@ -29,11 +31,8 @@ using Dims=nvinfer1::Dims;
 namespace tensorrt {
 
 TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
-  // char *gieModelStream{nullptr};
-  // size_t size{0};
-
   // read serialized_engine
-  std::string serialized_engine;
+  string serialized_engine;
   OP_REQUIRES_OK(context,
                  context->GetAttr("serialized_engine", &serialized_engine));
 
@@ -57,129 +56,81 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context) : OpKernel(context) {
   IRuntime* infer = nvinfer1::createInferRuntime(gLogger);
   trt_engine_ptr_.reset(infer->deserializeCudaEngine(
       serialized_engine.c_str(), serialized_engine.size(), nullptr));
-
-  trt_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
-
-  // trt_context_ptr_.reset(nullptr);
-  // runtime is safe to delete after engine creation
+  trt_execution_context_ptr_.reset(trt_engine_ptr_->createExecutionContext());
   infer->destroy();
-  std::stringstream oss;
-  // debug iterate through all binding instances
-  for (int i = 0; i < trt_engine_ptr_->getNbBindings(); i++) {
-    LOG(INFO) << "index: " << i
-              << ", binding name: " << trt_engine_ptr_->getBindingName(i);
-
-    if (trt_engine_ptr_->bindingIsInput(i)) {
-      LOG(INFO) << "INPUT";
-    } else {
-      LOG(INFO) << "OUTPUT";
-    }
-    oss << "Dimension: ";
-    auto dims = trt_engine_ptr_->getBindingDimensions(i);
-    oss << " nbDims: " << dims.nbDims << " -> ";
-    for (int j = 0; j < Dims::MAX_DIMS; j++) {
-      oss << dims.d[j] << ", ";
-    }
-    LOG(INFO) << oss.str();
-    oss.str("");
-    switch (trt_engine_ptr_->getBindingDataType(i)) {
-      case nvinfer1::DataType::kFLOAT:
-        LOG(INFO) << "data type float" << std::endl;
-        break;
-      case nvinfer1::DataType::kHALF:
-        LOG(INFO) << "data type half" << std::endl;
-        break;
-      case nvinfer1::DataType::kINT8:
-        LOG(INFO) << "data type int8" << std::endl;
-        break;
-    }
-  }
-
-  // CHECK_NE(cudaStreamCreate(&stream_),0); // logic here is wrong
-  // cudaStreamCreate(&stream_);
 }
 
 void TRTEngineOp::Compute(OpKernelContext* context) {
-  int nbBindings = context->num_inputs() + context->num_outputs();
-  // TODO(jjsjann123) multiple input/output
-  std::vector<void*> buffers(nbBindings);
+  int num_binding = context->num_inputs() + context->num_outputs();
+  std::vector<void*> buffers(num_binding);
 
-  size_t bindingIndex;
-  int nbBatch = 0;
+  size_t binding_index;
+  int num_batch = 0;
   bool valid = true;
   for (int i = 0; i < context->num_inputs(); i++) {
     // Grab the input tensor
-    bindingIndex = trt_engine_ptr_->getBindingIndex(input_nodes_[i].c_str());
+    binding_index = trt_engine_ptr_->getBindingIndex(input_nodes_[i].c_str());
 
     const Tensor& input_tensor = context->input(i);
     const TensorShape& input_shape = input_tensor.shape();
     if (i == 0) {
-      nbBatch = input_shape.dim_size(0);
-      if (nbBatch > trt_engine_ptr_->getMaxBatchSize())
+      num_batch = input_shape.dim_size(0);
+      if (num_batch > trt_engine_ptr_->getMaxBatchSize())
         LOG(FATAL) << "input tensor batch larger than max_batch_size: "
                    << trt_engine_ptr_->getMaxBatchSize(); 
-    } else if (nbBatch != input_shape.dim_size(0)) {
+    } else if (num_batch != input_shape.dim_size(0)) {
       valid = false;
       break;
     }
     // int64 input_shape.dim_size(int d)
     // int input_shape.dims()
-    LOG(INFO) << "INPUT BINDING index: " << bindingIndex << " with name: " << input_nodes_[i];
-    switch (trt_engine_ptr_->getBindingDataType(bindingIndex)) {
+    LOG(INFO) << "INPUT BINDING index: " << binding_index << " with name: " << input_nodes_[i];
+    switch (trt_engine_ptr_->getBindingDataType(binding_index)) {
       case nvinfer1::DataType::kFLOAT:
-        LOG(INFO) << "float";
-        buffers[bindingIndex] = (void*)(input_tensor.flat<float>().data());
+        buffers[binding_index] = (void*)(input_tensor.flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(INFO) << "half";
-        // buffers[bindingIndex] = (void*)input_tensor.flat<float16>().data();
+        LOG(FATAL) << "half size is not supported yet!";
         break;
       case nvinfer1::DataType::kINT8:
-        LOG(INFO) << "int8";
-        // buffers[bindingIndex] = (void*)input_tensor.flat<int8>().data();
+        LOG(FATAL) << "int8 is not supported yet!";
         break;
     }
   }
 
   if (!valid) LOG(FATAL) << "input data inconsistent batch size";
-
   for (int i = 0; i < static_cast<int>(output_nodes_.size()); i++) {
     // This is bad that we have to reallocate output buffer every run.
     // Create an output tensor
-    bindingIndex = trt_engine_ptr_->getBindingIndex(output_nodes_[i].c_str());
-    Tensor* output_tensor = NULL;
+    binding_index = trt_engine_ptr_->getBindingIndex(output_nodes_[i].c_str());
+    Tensor* output_tensor = nullptr;
 
     TensorShape output_shape;
-    if (bindingIndex != -1) {
-      LOG(INFO) << "got binding " << bindingIndex << " with name: " << output_nodes_[i];
-      auto dims = trt_engine_ptr_->getBindingDimensions(bindingIndex);
+    if (binding_index != -1) {
+      auto dims = trt_engine_ptr_->getBindingDimensions(binding_index);
       std::vector<int> trt_shape(dims.nbDims + 1);
-      trt_shape[0] = nbBatch;
+      trt_shape[0] = num_batch;
       for (int j = 0; j < dims.nbDims; j++) trt_shape[j + 1] = dims.d[j];
-      TensorShapeUtils::MakeShape(trt_shape.data(), trt_shape.size(),
-                                  &output_shape);
+      OP_REQUIRES_OK(context,
+                     TensorShapeUtils::MakeShape(
+                         trt_shape.data(), trt_shape.size(), &output_shape));
     } else {
-      LOG(INFO) << "no binding ";
+      LOG(FATAL) << "output node not found, at " << output_nodes_[i];
       break;
     }
 
     OP_REQUIRES_OK(context,
                    context->allocate_output(i, output_shape, &output_tensor));
-    // buffers[bindingIndex] = (void*)output_tensor->flat<float>();
-    // buffers[bindingIndex] = output_tensor->flat<float>().data();
-    switch (trt_engine_ptr_->getBindingDataType(bindingIndex)) {
+    switch (trt_engine_ptr_->getBindingDataType(binding_index)) {
       case nvinfer1::DataType::kFLOAT:
-        LOG(INFO) << "float";
-        buffers[bindingIndex] =
+        buffers[binding_index] =
             reinterpret_cast<void*>(output_tensor->flat<float>().data());
         break;
       case nvinfer1::DataType::kHALF:
-        LOG(INFO) << "half";
-        // buffers[bindingIndex] = (void*)output_tensor->flat<float16>().data();
+        LOG(FATAL) << "half size is not supported yet!";
         break;
       case nvinfer1::DataType::kINT8:
-        LOG(INFO) << "int8";
-        // buffers[bindingIndex] = (void*)output_tensor->flat<int8>().data();
+        LOG(FATAL) << "int8 is not supported yet!";
         break;
     }
   }
@@ -192,12 +143,16 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
                                                 ->CudaStreamMemberHack()));
 
   // TODO(jie): trt enqueue does not return error
-  LOG(INFO) << "enqueue returns: " << trt_context_ptr_->enqueue(nbBatch, &buffers[0], *stream, nullptr);
-  LOG(INFO) << "all good";
+  auto ret=trt_execution_context_ptr_->enqueue(num_batch, &buffers[0], *stream, nullptr);
+  VLOG(2) << "enqueue returns: " << ret;
   // sync should be done by TF.
   // cudaStreamSynchronize(*stream);
 }
 
 REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);
+
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

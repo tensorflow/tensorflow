@@ -139,9 +139,7 @@ class GraphExecutionState {
 
   // The graph returned by BuildGraph may contain only the pruned
   // graph, whereas some clients may want access to the full graph.
-  const Graph* full_graph() {
-    return graph_;
-  }
+  const Graph* full_graph() { return graph_; }
 
   // Returns the node with the given name, or null if it does not exist.
   const Node* get_node_by_name(const string& name) const {

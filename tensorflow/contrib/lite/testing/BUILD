@@ -46,6 +46,7 @@ gen_zipped_test_files(
         "space_to_batch_nd.zip",
         "space_to_depth.zip",
         "squeeze.zip",
+        "strided_slice.zip",
         "sub.zip",
         "transpose.zip",
     ],
@@ -196,7 +197,7 @@ cc_binary(
 
 tf_cc_test(
     name = "generated_examples_zip_test",
-    size = "medium",
+    size = "large",
     srcs = ["generated_examples_zip_test.cc"],
     args = [
         "--zip_files_dir=tensorflow/contrib/lite/testing/optest",
@@ -205,7 +206,7 @@ tf_cc_test(
         "--unzip_binary_path=/usr/bin/unzip",
     ],
     data = [":optest"],
-    shard_count = 10,
+    shard_count = 20,
     tags = ["no_oss"],
     deps = [
         ":parse_testdata_lib",

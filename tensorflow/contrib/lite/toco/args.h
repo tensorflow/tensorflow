@@ -15,8 +15,8 @@ limitations under the License.
 // This abstracts command line arguments in toco.
 // Arg<T> is a parseable type that can register a default value, be able to
 // parse itself, and keep track of whether it was specified.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_
+#define TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_
 
 #include <functional>
 #include <unordered_map>
@@ -208,6 +208,7 @@ struct ParsedModelFlags {
   Arg<bool> dump_graphviz_video = Arg<bool>(false);
   Arg<bool> allow_nonexistent_arrays = Arg<bool>(false);
   Arg<bool> allow_nonascii_arrays = Arg<bool>(false);
+  Arg<string> arrays_extra_info_file;
 };
 
 // Flags that describe the operation you would like to do (what conversion
@@ -232,4 +233,4 @@ struct ParsedTocoFlags {
 };
 
 }  // namespace toco
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_TOCO_ARGS_H_

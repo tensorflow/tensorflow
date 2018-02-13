@@ -171,7 +171,6 @@ struct SimpleBinaryFunctor<CPUDevice, Functor> {
   }
 };
 
-
 #ifdef TENSORFLOW_USE_SYCL
 // Partial specialization of BinaryFunctor for SYCL devices
 typedef Eigen::SyclDevice SYCLDevice;
@@ -184,7 +183,7 @@ struct SimpleBinaryFunctor<SYCLDevice, Functor> {
   }
 };
 
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename T>
 struct tanh_grad : base<T, Eigen::internal::scalar_tanh_gradient_op<T>> {};

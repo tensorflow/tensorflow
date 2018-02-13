@@ -41,14 +41,40 @@ class VectorSupportLibrary {
   llvm::Value* Mul(int64 lhs, llvm::Value* rhs) {
     return Mul(ir_builder()->getInt64(lhs), rhs);
   }
+  llvm::Value* Mul(double lhs, llvm::Value* rhs) {
+    return Mul(llvm::ConstantFP::get(rhs->getType(), lhs), rhs);
+  }
 
   llvm::Value* Add(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* Add(int64 lhs, llvm::Value* rhs) {
     return Add(ir_builder()->getInt64(lhs), rhs);
   }
+  llvm::Value* Add(double lhs, llvm::Value* rhs) {
+    return Add(llvm::ConstantFP::get(vector_type(), lhs), rhs);
+  }
+
+  llvm::Value* Sub(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* Max(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* Div(llvm::Value* lhs, llvm::Value* rhs);
 
   llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, llvm::Value* c) {
     return Add(c, Mul(a, b));
+  }
+
+  llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, double c) {
+    return Add(llvm::ConstantFP::get(vector_type(), c), Mul(a, b));
+  }
+
+  llvm::Value* MulAdd(llvm::Value* a, double b, double c) {
+    return Add(llvm::ConstantFP::get(a->getType(), c),
+               Mul(a, llvm::ConstantFP::get(a->getType(), b)));
+  }
+
+  llvm::Value* Floor(llvm::Value* a);
+
+  llvm::Value* Clamp(llvm::Value* a, double low, double high);
+  llvm::Value* SplatFloat(double d) {
+    return llvm::ConstantFP::get(vector_type(), d);
   }
 
   llvm::Value* ComputeOffsetPointer(llvm::Value* base_pointer,
@@ -143,6 +169,11 @@ class VectorSupportLibrary {
   llvm::Value* AddInternal(llvm::Value* lhs, llvm::Value* rhs);
 
   llvm::Value* AddReduce(llvm::Value* vector);
+
+  // Checks that each value in `values` is either of type scalar_type() or
+  // vector_type().  This LOG(FATAL)'s so it should only be called in cases
+  // where a mismatching type is a programmer bug.
+  void AssertCorrectTypes(std::initializer_list<llvm::Value*> values);
 
   // Perform an X86 AVX style horizontal add between `lhs` and `rhs`.  The
   // resulting IR for an 8-float wide vector is expected to lower to a single

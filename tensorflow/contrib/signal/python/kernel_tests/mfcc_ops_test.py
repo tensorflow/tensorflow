@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.signal.python.ops import mfcc_ops
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import spectral_ops_test_util
@@ -49,6 +50,14 @@ class MFCCTest(test.TestCase):
         signal = random_ops.random_normal((2, 3, 5))
         mfcc_ops.mfccs_from_log_mel_spectrograms(signal).eval()
 
+  def test_unknown_shape(self):
+    """A test that the op runs when shape and rank are unknown."""
+    with spectral_ops_test_util.fft_kernel_label_map():
+      with self.test_session(use_gpu=True):
+        signal = array_ops.placeholder_with_default(
+            random_ops.random_normal((2, 3, 5)), tensor_shape.TensorShape(None))
+        self.assertIsNone(signal.shape.ndims)
+        mfcc_ops.mfccs_from_log_mel_spectrograms(signal).eval()
 
 if __name__ == "__main__":
   test.main()

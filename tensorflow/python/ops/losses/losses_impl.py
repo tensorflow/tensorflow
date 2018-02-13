@@ -28,8 +28,10 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.ops.losses import util
 from tensorflow.python.util.deprecation import deprecated_args
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("losses.Reduction")
 class Reduction(object):
   """Types of loss reduction.
 
@@ -142,16 +144,17 @@ def _num_present(losses, weights, per_batch=False):
     if per_batch:
       return math_ops.reduce_sum(
           present, axis=math_ops.range(1, array_ops.rank(present)),
-          keep_dims=True, name=scope)
+          keepdims=True, name=scope)
     return math_ops.reduce_sum(present, name=scope)
 
 
 def _num_elements(losses):
   """Computes the number of elements in `losses` tensor."""
   with ops.name_scope(None, "num_elements", values=[losses]) as scope:
-    return array_ops.size(losses, name=scope, out_type=losses.dtype)
+    return math_ops.cast(array_ops.size(losses, name=scope), dtype=losses.dtype)
 
 
+@tf_export("losses.compute_weighted_loss")
 def compute_weighted_loss(
     losses, weights=1.0, scope=None, loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -211,6 +214,7 @@ def compute_weighted_loss(
       return loss
 
 
+@tf_export("losses.absolute_difference")
 def absolute_difference(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -258,6 +262,7 @@ def absolute_difference(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
+@tf_export("losses.cosine_distance")
 @deprecated_args(None, "dim is deprecated, use axis instead", "dim")
 def cosine_distance(
     labels, predictions, axis=None, weights=1.0, scope=None,
@@ -306,11 +311,12 @@ def cosine_distance(
     predictions.get_shape().assert_is_compatible_with(labels.get_shape())
 
     radial_diffs = math_ops.multiply(predictions, labels)
-    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(axis,), keep_dims=True)
+    losses = 1 - math_ops.reduce_sum(radial_diffs, axis=(axis,), keepdims=True)
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
+@tf_export("losses.hinge_loss")
 def hinge_loss(labels, logits, weights=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
                reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -352,6 +358,7 @@ def hinge_loss(labels, logits, weights=1.0, scope=None,
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
+@tf_export("losses.huber_loss")
 def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
                loss_collection=ops.GraphKeys.LOSSES,
                reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -370,7 +377,7 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
   the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
+  `[batch_size]`, then the total loss for each sample of the batch is rescaled
   by the corresponding element in the `weights` vector. If the shape of
   `weights` matches the shape of `predictions`, then the loss of each
   measurable element of `predictions` is scaled by the corresponding value of
@@ -415,11 +422,12 @@ def huber_loss(labels, predictions, weights=1.0, delta=1.0, scope=None,
     # This is necessary to avoid doubling the gradient, since there is already a
     # nonzero contribution to the gradient from the quadratic term.
     linear = (abs_error - quadratic)
-    losses = 0.5 * quadratic**2 + delta * linear
+    losses = 0.5 * quadratic * quadratic + delta * linear
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
+@tf_export("losses.log_loss")
 def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
              loss_collection=ops.GraphKeys.LOSSES,
              reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -427,7 +435,7 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
   the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
+  `[batch_size]`, then the total loss for each sample of the batch is rescaled
   by the corresponding element in the `weights` vector. If the shape of
   `weights` matches the shape of `predictions`, then the loss of each
   measurable element of `predictions` is scaled by the corresponding value of
@@ -471,6 +479,7 @@ def log_loss(labels, predictions, weights=1.0, epsilon=1e-7, scope=None,
 
 
 # TODO(b/37208492): Add reduction arg.
+@tf_export("losses.mean_pairwise_squared_error")
 def mean_pairwise_squared_error(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES):
@@ -493,7 +502,7 @@ def mean_pairwise_squared_error(
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
   the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
+  `[batch_size]`, then the total loss for each sample of the batch is rescaled
   by the corresponding element in the `weights` vector.
 
   Args:
@@ -534,16 +543,17 @@ def mean_pairwise_squared_error(
 
       sum_squares_diff_per_batch = math_ops.reduce_sum(
           math_ops.square(diffs), reduction_indices=reduction_indices,
-          keep_dims=True)
+          keepdims=True)
       num_present_per_batch = _num_present(diffs, weights, per_batch=True)
 
       term1 = 2.0 * _safe_div(sum_squares_diff_per_batch,
-                              num_present_per_batch)
+                              num_present_per_batch - 1)
 
       sum_diff = math_ops.reduce_sum(
-          diffs, reduction_indices=reduction_indices, keep_dims=True)
-      term2 = 2.0 * _safe_div(math_ops.square(sum_diff),
-                              math_ops.square(num_present_per_batch))
+          diffs, reduction_indices=reduction_indices, keepdims=True)
+      term2 = 2.0 * _safe_div(
+          math_ops.square(sum_diff),
+          math_ops.multiply(num_present_per_batch, num_present_per_batch - 1))
 
       weighted_losses = math_ops.multiply(term1 - term2, weights)
       loss = math_ops.reduce_sum(weighted_losses)
@@ -557,6 +567,7 @@ def mean_pairwise_squared_error(
       return mean_loss
 
 
+@tf_export("losses.mean_squared_error")
 def mean_squared_error(
     labels, predictions, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -565,7 +576,7 @@ def mean_squared_error(
 
   `weights` acts as a coefficient for the loss. If a scalar is provided, then
   the loss is simply scaled by the given value. If `weights` is a tensor of size
-  [batch_size], then the total loss for each sample of the batch is rescaled
+  `[batch_size]`, then the total loss for each sample of the batch is rescaled
   by the corresponding element in the `weights` vector. If the shape of
   `weights` matches the shape of `predictions`, then the loss of each
   measurable element of `predictions` is scaled by the corresponding value of
@@ -604,6 +615,7 @@ def mean_squared_error(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
+@tf_export("losses.sigmoid_cross_entropy")
 def sigmoid_cross_entropy(
     multi_class_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -662,6 +674,7 @@ def sigmoid_cross_entropy(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
+@tf_export("losses.softmax_cross_entropy")
 def softmax_cross_entropy(
     onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -713,9 +726,12 @@ def softmax_cross_entropy(
       smooth_negatives = label_smoothing / num_classes
       onehot_labels = onehot_labels * smooth_positives + smooth_negatives
 
-    losses = nn.softmax_cross_entropy_with_logits(labels=onehot_labels,
-                                                  logits=logits,
-                                                  name="xentropy")
+    onehot_labels = array_ops.stop_gradient(
+        onehot_labels, name="labels_stop_gradient")
+    losses = nn.softmax_cross_entropy_with_logits_v2(
+        labels=onehot_labels, logits=logits, name="xentropy")
+
+
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
@@ -771,6 +787,7 @@ def _remove_squeezable_dimensions(
   return labels, predictions, weights
 
 
+@tf_export("losses.sparse_softmax_cross_entropy")
 def sparse_softmax_cross_entropy(
     labels, logits, weights=1.0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
@@ -779,7 +796,7 @@ def sparse_softmax_cross_entropy(
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
   then the loss is simply scaled by the given value. If `weights` is a
-  tensor of shape [`batch_size`], then the loss weights apply to each
+  tensor of shape `[batch_size]`, then the loss weights apply to each
   corresponding sample.
 
   Args:

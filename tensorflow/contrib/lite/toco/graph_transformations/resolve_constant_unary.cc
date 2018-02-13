@@ -199,7 +199,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   }
   for (const auto& input : unary_op->inputs) {
     if (CountOpsWithInput(*model, input) == 1) {
-      model->arrays.erase(input);
+      model->EraseArray(input);
     }
   }
   AddMessageF("Resolved constant %s to the equivalent constant array",

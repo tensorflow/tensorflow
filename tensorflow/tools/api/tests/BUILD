@@ -17,10 +17,6 @@ py_test(
     name = "api_compatibility_test",
     srcs = ["api_compatibility_test.py"],
     data = [
-        ":convert_from_multiline",
-        "//tensorflow/core/api_def:base_api_def",
-        "//tensorflow/core/api_def:python_api_def",
-        "//tensorflow/python:hidden_ops",
         "//tensorflow/tools/api/golden:api_golden",
         "//tensorflow/tools/api/tests:API_UPDATE_WARNING.txt",
         "//tensorflow/tools/api/tests:README.txt",
@@ -29,7 +25,6 @@ py_test(
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lib",
         "//tensorflow/python:platform",
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",

@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
@@ -615,8 +617,7 @@ Status IrEmitter::HandleFft(HloInstruction* fft) {
 
 Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
   // TODO(b/33011107): Support cross replica sum on GPU.
-  return Unimplemented(
-      "Cross replica sum not implemented on GPU. See b/33011107.");
+  return Unimplemented("CrossReplicaSum is not implemented on GPU.");
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
@@ -710,11 +711,13 @@ Status IrEmitter::HandleCustomCall(HloInstruction*) {
 }
 
 Status IrEmitter::HandleInfeed(HloInstruction*) {
-  return Unimplemented("Infeed is not supported on GPU (b/30467474).");
+  // TODO(b/30467474): Implement infeed on GPU.
+  return Unimplemented("Infeed is not supported on GPU.");
 }
 
 Status IrEmitter::HandleOutfeed(HloInstruction*) {
-  return Unimplemented("Outfeed is not supported on GPU (b/34359662).");
+  // TODO(b/34359662): Implement outfeed on GPU.
+  return Unimplemented("Outfeed is not supported on GPU.");
 }
 
 Status IrEmitter::HandleRng(HloInstruction* random) {
@@ -756,37 +759,6 @@ Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
       "The GPU backend does not implement BatchNormGrad directly.  It should "
       "be lowered before IR emission to HLO-soup (using BatchNormRewriter) or "
       "to a cudnn CustomCall using CudnnBatchNormRewriter.");
-}
-
-Status IrEmitter::HandleConditional(HloInstruction* conditional) {
-  auto pred = conditional->operand(0);
-  auto true_arg = conditional->operand(1);
-  auto false_arg = conditional->operand(2);
-
-  llvm::Value* conditional_result = GetBasePointer(*conditional);
-
-  llvm::LoadInst* pred_value = ir_builder_.CreateLoad(
-      GetBasePointer(*pred),
-      llvm_ir::AsStringRef(IrName(conditional, "load_predicate_value")));
-  llvm::Value* pred_cond = ir_builder_.CreateICmpNE(
-      pred_value,
-      llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
-      llvm_ir::AsStringRef(IrName(conditional, "boolean_predicate")));
-  llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
-      pred_cond, IrName(conditional, "if_then_else"), &ir_builder_);
-
-  SetToFirstInsertPoint(if_data.true_block, &ir_builder_);
-  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
-      *conditional->true_computation(), {GetBasePointer(*true_arg)},
-      conditional_result));
-
-  SetToFirstInsertPoint(if_data.false_block, &ir_builder_);
-  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
-      *conditional->false_computation(), {GetBasePointer(*false_arg)},
-      conditional_result));
-
-  SetToFirstInsertPoint(if_data.after_block, &ir_builder_);
-  return Status::OK();
 }
 
 llvm_ir::IrArray::Index IrEmitter::EmitOperandArrayLoopNest(

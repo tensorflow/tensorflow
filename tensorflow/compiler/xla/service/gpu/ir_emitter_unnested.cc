@@ -17,6 +17,8 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
+
 #include "llvm/ADT/StringRef.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Function.h"
@@ -28,9 +30,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
+#include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_batchnorm_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/cudnn_convolution_runner.h"
 #include "tensorflow/compiler/xla/service/gpu/fft_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/for_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/gemm_thunk.h"
@@ -38,7 +42,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/hlo_to_ir_bindings.h"
 #include "tensorflow/compiler/xla/service/gpu/infeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
-#include "tensorflow/compiler/xla/service/gpu/ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
@@ -272,15 +275,11 @@ Status IrEmitterUnnested::HandleDot(HloInstruction* dot) {
 }
 
 Status IrEmitterUnnested::HandleConditional(HloInstruction* conditional) {
-  thunk_sequence_->push_back(BuildKernelThunk(conditional));
-  return IrEmitter::HandleConditional(conditional);
+  thunk_sequence_->emplace_back(BuildConditionalThunk(conditional));
+  return Status::OK();
 }
 
 Status IrEmitterUnnested::HandleConvolution(HloInstruction* convolution) {
-  if (ImplementedAsDnnConvolution(*convolution)) {
-    thunk_sequence_->emplace_back(BuildConvolutionThunk(convolution));
-    return Status::OK();
-  }
   thunk_sequence_->emplace_back(BuildKernelThunk(convolution));
   return IrEmitter::HandleConvolution(convolution);
 }
@@ -376,6 +375,71 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
         /*output_grad_offset=*/output_grad_offset,
         /*output_tuple=*/GetAllocationSlice(*custom_call),
         /*hlo=*/custom_call));
+    return Status::OK();
+  }
+
+  if (IsCustomCallToDnnConvolution(*custom_call)) {
+    const auto& assn = ir_emitter_context_->buffer_assignment();
+    const auto& lhs_shape = custom_call->operand(0)->shape();
+    const auto& rhs_shape = custom_call->operand(1)->shape();
+    const auto& conv_result_shape = custom_call->shape().tuple_shapes(0);
+    auto lhs_slice = GetAllocationSlice(*custom_call->operand(0));
+    auto rhs_slice = GetAllocationSlice(*custom_call->operand(1));
+    auto tuple_result_slice = GetAllocationSlice(*custom_call);
+    auto conv_result_slice = assn.GetUniqueSlice(custom_call, {0}).ValueOrDie();
+    auto scratch_slice = assn.GetUniqueSlice(custom_call, {1}).ValueOrDie();
+
+    const HloInstruction* algorithm_inst = custom_call->operand(2);
+    CHECK(algorithm_inst->IsConstant()) << algorithm_inst->ToString();
+    int64 algorithm = algorithm_inst->literal().Get<int64>({});
+
+    const auto& target = custom_call->custom_call_target();
+    std::unique_ptr<ConvolutionThunk> thunk;
+    if (target == kCudnnConvForwardCallTarget) {
+      thunk = MakeUnique<ConvolutionThunk>(
+          CudnnConvKind::kForward,
+          /*input_buffer=*/lhs_slice,
+          /*filter_buffer=*/rhs_slice,
+          /*output_buffer=*/conv_result_slice,
+          /*tuple_result_buffer=*/tuple_result_slice,
+          /*scratch_buffer=*/scratch_slice,
+          /*input_shape=*/lhs_shape,
+          /*filter_shape=*/rhs_shape,
+          /*output_shape=*/conv_result_shape,  //
+          custom_call->window(), custom_call->convolution_dimension_numbers(),
+          algorithm, custom_call);
+    } else if (target == kCudnnConvBackwardInputCallTarget) {
+      thunk = MakeUnique<ConvolutionThunk>(
+          CudnnConvKind::kBackwardInput,
+          /*input_buffer=*/conv_result_slice,
+          /*filter_buffer=*/rhs_slice,
+          /*output_buffer=*/lhs_slice,
+          /*tuple_result_buffer=*/tuple_result_slice,
+          /*scratch_buffer=*/scratch_slice,
+          /*input_shape=*/conv_result_shape,
+          /*filter_shape=*/rhs_shape,
+          /*output_shape=*/lhs_shape,  //
+          custom_call->window(), custom_call->convolution_dimension_numbers(),
+          algorithm, custom_call);
+    } else if (target == kCudnnConvBackwardFilterCallTarget) {
+      thunk = MakeUnique<ConvolutionThunk>(
+          CudnnConvKind::kBackwardFilter,
+          /*input_buffer=*/lhs_slice,
+          /*filter_buffer=*/conv_result_slice,
+          /*output_buffer=*/rhs_slice,
+          /*tuple_result_buffer=*/tuple_result_slice,
+          /*scratch_buffer=*/scratch_slice,
+          /*input_shape=*/lhs_shape,
+          /*filter_shape=*/conv_result_shape,
+          /*output_shape=*/rhs_shape,  //
+          custom_call->window(), custom_call->convolution_dimension_numbers(),
+          algorithm, custom_call);
+    } else {
+      LOG(FATAL) << "Unexpected custom call target: "
+                 << custom_call->custom_call_target();
+    }
+
+    thunk_sequence_->emplace_back(std::move(thunk));
     return Status::OK();
   }
 
@@ -497,10 +561,6 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
   }
   if (ImplementedAsGemm(*fusion)) {
     thunk_sequence_->emplace_back(BuildGemmThunk(fusion));
-    return Status::OK();
-  }
-  if (ImplementedAsDnnConvolution(*fusion)) {
-    thunk_sequence_->emplace_back(BuildConvolutionThunk(fusion));
     return Status::OK();
   }
   thunk_sequence_->emplace_back(BuildKernelThunk(fusion));
@@ -1598,24 +1658,24 @@ Status IrEmitterUnnested::HandleReduce(HloInstruction* reduce) {
 }
 
 Status IrEmitterUnnested::HandleTuple(HloInstruction* tuple) {
-  tensorflow::gtl::ArraySlice<HloInstruction*> operands(tuple->operands());
-  bool all_tuple_elements_have_buffer = std::all_of(
-      operands.begin(), operands.end(), [this](HloInstruction* tuple_element) {
+  bool all_tuple_elements_have_buffer =
+      c_all_of(tuple->operands(), [&](HloInstruction* tuple_element) {
         return ir_emitter_context_->buffer_assignment().HasTopLevelAllocation(
             tuple_element);
       });
-  // Tuples (especially output tuples) can take too many tuple elements,
-  // causing the kernel emitted exceeds the parameter space limit
-  // (b/31336476). As an optimization, if all tuple elements have a buffer, we
-  // collect their buffer addresses in a host array, and then copy that array
-  // to the tuple's buffer.
+  // Tuples (especially tuples that are the final result of a computation) can
+  // be so huge that if we were to emit a kernel that took each tuple element as
+  // a parameter, we would exceed the max allowable number of parameters to a
+  // GPU kernel, b/31336476. As an optimization, if all tuple elements have a
+  // buffer, we collect their buffer addresses in a host array, and then copy
+  // that array to the tuple's buffer.
   //
   // Some tuple elements (e.g. const or bitcast of const) might not have a
-  // buffer -- their contents are stored in code. In that case, we fall back
-  // to emitting kernels which have access to their buffer addresses in code.
+  // buffer -- their contents are stored in code. In that case, we fall back to
+  // emitting kernels which have access to their buffer addresses in code.
   if (all_tuple_elements_have_buffer) {
     std::vector<BufferAllocation::Slice> tuple_element_buffers;
-    for (const HloInstruction* tuple_element : operands) {
+    for (const HloInstruction* tuple_element : tuple->operands()) {
       tuple_element_buffers.push_back(GetAllocationSlice(*tuple_element));
     }
     thunk_sequence_->emplace_back(MakeUnique<TupleThunk>(
@@ -1657,8 +1717,7 @@ Status IrEmitterUnnested::HandleSelectAndScatter(
   // TODO(b/31410564): Implement dilation rate for select-and-scatter.
   if (window_util::HasDilation(window)) {
     return Unimplemented(
-        "Dilation for select-and-scatter not implemented on GPU. "
-        "See b/31410564.");
+        "Dilation for SelectAndScatter not implemented on GPU.");
   }
 
   // kSelectAndScatter is implemented as two kernel launches: the first launch
@@ -2011,52 +2070,6 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildGemmThunk(
   LOG(FATAL) << "Cannot build a GemmThunk for " << inst->ToString();
 }
 
-std::unique_ptr<Thunk> IrEmitterUnnested::BuildConvolutionThunk(
-    const HloInstruction* inst) {
-  const HloInstruction* lhs = inst->operand(0);
-  const HloInstruction* rhs = inst->operand(1);
-  if (inst->opcode() == HloOpcode::kConvolution) {
-    // Forward covolution.
-    return MakeUnique<ConvolutionThunk>(
-        ConvolutionThunk::ConvolutionKind::kForward,
-        /*input_buffer=*/GetAllocationSlice(*lhs),
-        /*filter_buffer=*/GetAllocationSlice(*rhs),
-        /*output_buffer=*/GetAllocationSlice(*inst),
-        /*input_shape=*/lhs->shape(),
-        /*filter_shape=*/rhs->shape(),
-        /*output_shape=*/inst->shape(), inst->window(),
-        inst->convolution_dimension_numbers(), inst);
-  }
-
-  // Backward filter convolution, which takes the input (activations) and the
-  // gradients, and computes the filter.
-  CHECK_EQ(HloOpcode::kFusion, inst->opcode());
-  switch (inst->fusion_kind()) {
-    case HloInstruction::FusionKind::kConvBackwardFilter:
-      return MakeUnique<ConvolutionThunk>(
-          ConvolutionThunk::ConvolutionKind::kBackwardFilter,
-          /*input_buffer=*/GetAllocationSlice(*lhs),
-          /*filter_buffer=*/GetAllocationSlice(*inst),
-          /*output_buffer=*/GetAllocationSlice(*rhs),
-          /*input_shape=*/lhs->shape(),
-          /*filter_shape=*/inst->shape(),
-          /*output_shape=*/rhs->shape(), inst->window(),
-          inst->convolution_dimension_numbers(), inst);
-    case HloInstruction::FusionKind::kConvBackwardInput:
-      return MakeUnique<ConvolutionThunk>(
-          ConvolutionThunk::ConvolutionKind::kBackwardInput,
-          /*input_buffer=*/GetAllocationSlice(*inst),
-          /*filter_buffer=*/GetAllocationSlice(*rhs),
-          /*output_buffer=*/GetAllocationSlice(*lhs),
-          /*input_shape=*/inst->shape(),
-          /*filter_shape=*/rhs->shape(),
-          /*output_shape=*/lhs->shape(), inst->window(),
-          inst->convolution_dimension_numbers(), inst);
-    default:
-      LOG(FATAL) << "Not a convolution-fusion";
-  }
-}
-
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildFftThunk(
     const HloInstruction* inst) {
   const HloInstruction* operand = inst->operand(0);
@@ -2102,6 +2115,24 @@ Status IrEmitterUnnested::EmitInitializer(const HloInstruction* hlo,
 
 namespace {
 
+// Checks that the buffers corresponding to the given two HLOs share the same
+// allocation.
+Status CheckHloBuffersShareAllocation(
+    const HloInstruction* a, const HloInstruction* b, const ShapeIndex& index,
+    const BufferAssignment& buffer_assignment) {
+  const BufferAllocation::Slice slice_a =
+      buffer_assignment.GetUniqueSlice(a, index).ConsumeValueOrDie();
+  const BufferAllocation::Slice slice_b =
+      buffer_assignment.GetUniqueSlice(b, index).ConsumeValueOrDie();
+  if (slice_a != slice_b) {
+    return InternalError(
+        "instruction %s %s does not share allocation with instruction %s %s",
+        a->ToString().c_str(), slice_a.ToString().c_str(),
+        b->ToString().c_str(), slice_b.ToString().c_str());
+  }
+  return Status::OK();
+}
+
 // Checks that all buffers used during while loop iteration share the same
 // buffer allocation. This includes buffers for while result, while init
 // operand, condition parameter, body parameter and body result.
@@ -2111,35 +2142,63 @@ Status CheckWhileBuffersShareAllocation(
     const BufferAssignment& buffer_assignment) {
   return ShapeUtil::ForEachSubshapeWithStatus(
       xla_while->shape(),
-      [&buffer_assignment, &xla_while](const Shape& /*subshape*/,
-                                       const ShapeIndex& index) -> Status {
-        auto check = [&buffer_assignment](const HloInstruction* a,
-                                          const HloInstruction* b,
-                                          const ShapeIndex& index) -> Status {
-          const BufferAllocation::Slice slice_a =
-              buffer_assignment.GetUniqueSlice(a, index).ConsumeValueOrDie();
-          const BufferAllocation::Slice slice_b =
-              buffer_assignment.GetUniqueSlice(b, index).ConsumeValueOrDie();
-          if (slice_a != slice_b) {
-            return InternalError(
-                "instruction %s %s does not share allocation with "
-                "instruction %s %s",
-                a->ToString().c_str(), slice_a.ToString().c_str(),
-                b->ToString().c_str(), slice_b.ToString().c_str());
-          }
-          return Status::OK();
-        };
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
         const HloInstruction* condition_parameter =
             xla_while->while_condition()->parameter_instruction(0);
         const HloComputation* body = xla_while->while_body();
         const HloInstruction* body_parameter = body->parameter_instruction(0);
         const HloInstruction* body_result = body->root_instruction();
-        TF_RETURN_IF_ERROR(check(xla_while, xla_while->operand(0), index));
-        TF_RETURN_IF_ERROR(check(xla_while, condition_parameter, index));
-        TF_RETURN_IF_ERROR(check(xla_while, body_parameter, index));
-        TF_RETURN_IF_ERROR(check(xla_while, body_result, index));
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            xla_while, xla_while->operand(0), index, buffer_assignment));
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            xla_while, condition_parameter, index, buffer_assignment));
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            xla_while, body_parameter, index, buffer_assignment));
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            xla_while, body_result, index, buffer_assignment));
         return Status::OK();
       });
+}
+
+// Checks that the buffers used in a conditional instruction are shared with the
+// operands and result as follows:
+//   * The result buffer of the conditional should share the allocation with the
+//     result buffers of the true and false computations.
+//   * The buffer of operand 1 should share the allocation with the buffer of
+//     the parameter 0 instruction of the true computation.
+//   * The buffer of operand 2 should share the allocation with the buffer of
+//     the parameter 0 instruction of the false computation.
+Status CheckConditionalBuffersShareAllocation(
+    const HloInstruction* conditional,
+    const BufferAssignment& buffer_assignment) {
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      conditional->shape(),
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            conditional, conditional->true_computation()->root_instruction(),
+            index, buffer_assignment));
+        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+            conditional, conditional->false_computation()->root_instruction(),
+            index, buffer_assignment));
+        return Status::OK();
+      }));
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      conditional->operand(1)->shape(),
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
+        return CheckHloBuffersShareAllocation(
+            conditional->operand(1),
+            conditional->true_computation()->parameter_instruction(0), index,
+            buffer_assignment);
+      }));
+  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+      conditional->operand(2)->shape(),
+      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
+        return CheckHloBuffersShareAllocation(
+            conditional->operand(2),
+            conditional->false_computation()->parameter_instruction(0), index,
+            buffer_assignment);
+      }));
+  return Status::OK();
 }
 
 }  // namespace
@@ -2184,9 +2243,36 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildForThunk(
                               ir_emitter_body.ConsumeThunkSequence(), hlo);
 }
 
+std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
+    const HloInstruction* hlo) {
+  // Check that the buffers used in conditional are shared with the operands and
+  // result appropriately.
+  TF_CHECK_OK(CheckConditionalBuffersShareAllocation(
+      hlo, ir_emitter_context_->buffer_assignment()));
+
+  HloComputation* true_computation = hlo->true_computation();
+  IrEmitterUnnested ir_emitter_true(hlo_module_config_, true_computation,
+                                    ir_emitter_context_);
+  TF_CHECK_OK(true_computation->root_instruction()->Accept(&ir_emitter_true));
+
+  HloComputation* false_computation = hlo->false_computation();
+  IrEmitterUnnested ir_emitter_false(hlo_module_config_, false_computation,
+                                     ir_emitter_context_);
+  TF_CHECK_OK(false_computation->root_instruction()->Accept(&ir_emitter_false));
+
+  return MakeUnique<ConditionalThunk>(
+      GetAllocationSlice(*hlo->operand(0)),
+      GetAllocationSlice(*hlo->operand(1)),
+      GetAllocationSlice(*hlo->operand(2)),
+      std::move(*ir_emitter_true.ConsumeThunkSequence()),
+      std::move(*ir_emitter_false.ConsumeThunkSequence()), hlo);
+}
+
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
     const HloInstruction& hlo,
     const llvm_ir::ElementGenerator& element_generator, KernelThunk* thunk) {
+  VLOG(3) << bindings_.ToString();
+
   const Shape& element_shape = hlo.IsMultiOutputFusion()
                                    ? ShapeUtil::GetSubshape(hlo.shape(), {0})
                                    : hlo.shape();

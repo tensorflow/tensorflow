@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
@@ -992,11 +992,11 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
           for (int k = 0; k < 4; k++) {
             acc[k] = vld1q_f32(acc_buffer + i + 4 * k);
           }
-            for (int k = 0; k < 4; k++) {
-              acc[k] = vmaxq_f32(
-                  vdupq_n_f32(output_activation_min),
-                  vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
-            }
+          for (int k = 0; k < 4; k++) {
+            acc[k] = vmaxq_f32(
+                vdupq_n_f32(output_activation_min),
+                vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
+          }
           for (int k = 0; k < 4; k++) {
             vst1q_f32(output_ptr + 4 * k, acc[k]);
           }
@@ -1057,4 +1057,4 @@ void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
 }  // namespace optimized_ops
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_

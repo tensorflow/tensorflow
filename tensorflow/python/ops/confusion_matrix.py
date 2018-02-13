@@ -119,7 +119,7 @@ def confusion_matrix(labels, predictions, num_classes=None, dtype=dtypes.int32,
   For example:
 
   ```python
-    tf.contrib.metrics.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
+    tf.confusion_matrix([1, 2, 4], [2, 2, 4]) ==>
         [[0 0 0 0 0]
          [0 0 1 0 0]
          [0 0 1 0 0]

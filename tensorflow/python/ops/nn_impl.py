@@ -27,7 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import candidate_sampling_ops
 from tensorflow.python.ops import embedding_ops
-from tensorflow.python.ops import gen_array_ops
+from tensorflow.python.ops import gen_array_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -196,9 +196,12 @@ def weighted_cross_entropy_with_logits(targets, logits, pos_weight, name=None):
       targets * -log(sigmoid(logits)) +
           (1 - targets) * -log(1 - sigmoid(logits))
 
-  A value `pos_weights > 1` decreases the false negative count, hence increasing the recall.
-  Conversely setting `pos_weights < 1` decreases the false positive count and increases the precision.
-  This can be seen from the fact that `pos_weight` is introduced as a multiplicative coefficient for the positive targets term 
+  A value `pos_weights > 1` decreases the false negative count, hence increasing
+  the recall.
+  Conversely setting `pos_weights < 1` decreases the false positive count and
+  increases the precision.
+  This can be seen from the fact that `pos_weight` is introduced as a
+  multiplicative coefficient for the positive targets term
   in the loss expression:
 
       targets * -log(sigmoid(logits)) * pos_weight +
@@ -646,9 +649,12 @@ def normalize_moments(counts, mean_ss, variance_ss, shift, name=None):
 
 
 @tf_export("nn.moments")
-def moments(x, axes,
-            shift=None,  # pylint: disable=unused-argument
-            name=None, keep_dims=False):
+def moments(
+    x,
+    axes,
+    shift=None,  # pylint: disable=unused-argument
+    name=None,
+    keep_dims=False):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
@@ -692,8 +698,8 @@ def moments(x, axes,
       mean = array_ops.squeeze(mean, axes)
       variance = array_ops.squeeze(variance, axes)
     if x.dtype == dtypes.float16:
-      return (math_ops.cast(mean, dtypes.float16), math_ops.cast(
-          variance, dtypes.float16))
+      return (math_ops.cast(mean, dtypes.float16),
+              math_ops.cast(variance, dtypes.float16))
     else:
       return (mean, variance)
 
@@ -824,8 +830,8 @@ def batch_normalization(x,
     inv = math_ops.rsqrt(variance + variance_epsilon)
     if scale is not None:
       inv *= scale
-    return x * inv + (offset - mean * inv
-                      if offset is not None else -mean * inv)
+    return x * inv + (
+        offset - mean * inv if offset is not None else -mean * inv)
 
 
 @tf_export("nn.fused_batch_norm")
@@ -963,7 +969,8 @@ def _compute_sampled_logits(weights,
                             subtract_log_q=True,
                             remove_accidental_hits=False,
                             partition_strategy="mod",
-                            name=None):
+                            name=None,
+                            seed=None):
   """Helper function for nce_loss and sampled_softmax_loss functions.
 
   Computes sampled output training logits and labels suitable for implementing
@@ -1001,6 +1008,8 @@ def _compute_sampled_logits(weights,
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
         Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
+    seed: random seed for candidate sampling. Default to None, which doesn't set
+        the op-level random seed for candidate sampling.
   Returns:
     out_logits: `Tensor` object with shape
         `[batch_size, num_true + num_sampled]`, for passing to either
@@ -1030,7 +1039,8 @@ def _compute_sampled_logits(weights,
           num_true=num_true,
           num_sampled=num_sampled,
           unique=True,
-          range_max=num_classes)
+          range_max=num_classes,
+          seed=seed)
     # NOTE: pylint cannot tell that 'sampled_values' is a sequence
     # pylint: disable=unpacking-non-sequence
     sampled, true_expected_count, sampled_expected_count = (
@@ -1249,7 +1259,8 @@ def sampled_softmax_loss(weights,
                          sampled_values=None,
                          remove_accidental_hits=True,
                          partition_strategy="mod",
-                         name="sampled_softmax_loss"):
+                         name="sampled_softmax_loss",
+                         seed=None):
   """Computes and returns the sampled softmax training loss.
 
   This is a faster way to train a softmax classifier over a huge number of
@@ -1310,6 +1321,8 @@ def sampled_softmax_loss(weights,
         if `len(weights) > 1`. Currently `"div"` and `"mod"` are supported.
         Default is `"mod"`. See `tf.nn.embedding_lookup` for more details.
     name: A name for the operation (optional).
+    seed: random seed for candidate sampling. Default to None, which doesn't set
+        the op-level random seed for candidate sampling.
 
   Returns:
     A `batch_size` 1-D tensor of per-example sampled softmax losses.
@@ -1327,7 +1340,8 @@ def sampled_softmax_loss(weights,
       subtract_log_q=True,
       remove_accidental_hits=remove_accidental_hits,
       partition_strategy=partition_strategy,
-      name=name)
+      name=name,
+      seed=seed)
   sampled_losses = nn_ops.softmax_cross_entropy_with_logits(
       labels=labels, logits=logits)
   # sampled_losses is a [batch_size] tensor.

@@ -916,7 +916,6 @@ class CreateOpFromTFOperationTest(test_util.TensorFlowTestCase):
 
     op = g.get_operation_by_name("myloop/myop")
     self.assertIsNotNone(op)
-    self.assertEqual(len(op.control_inputs), 1)
     # External control dep is removed and replaced with internal control dep
     self.assertNotEqual(op.control_inputs[0], c.op)
     self.assertIsNotNone(op.control_inputs[0]._get_control_flow_context())
@@ -2072,9 +2071,33 @@ class InitScopeTest(test_util.TensorFlowTestCase):
       # pylint: disable=protected-access
       self.assertEqual(len(ops._default_graph_stack.stack), 0)
       with ops.init_scope():
-        self.assertEqual(len(ops._default_graph_stack.stack), 1)
+        self.assertGreater(len(ops._default_graph_stack.stack), 0)
       self.assertEqual(len(ops._default_graph_stack.stack), 0)
       # pylint: enable=protected-access
+
+  def testPreservesNameScopeInGraphConstruction(self):
+    with ops.Graph().as_default():
+      function_graph = ops.Graph()
+      with function_graph.as_default():
+        with ops.name_scope("inner"), ops.init_scope():
+          self.assertEqual(ops.get_name_scope(), "inner")
+      self.assertEqual(ops.get_name_scope(), "")
+
+  def testPreservesNameScopeInEagerExecution(self):
+    with context.eager_mode():
+      def foo():
+        with ops.name_scope("inner"), ops.init_scope():
+          if context.in_graph_mode():
+            self.assertEqual(ops.get_name_scope(), "inner")
+          else:
+            # A trailing slash is always appended when eager execution is
+            # enabled.
+            self.assertEqual(context.context().scope_name, "inner/")
+      foo()
+      self.assertEqual(ops.get_name_scope(), "")
+      foo_compiled = eager_function.defun(foo)
+      foo_compiled()
+      self.assertEqual(ops.get_name_scope(), "")
 
 
 @test_util.with_c_api

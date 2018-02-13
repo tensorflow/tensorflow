@@ -28,10 +28,8 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-from collections import defaultdict
 import os
 import re
-import subprocess
 import sys
 import unittest
 
@@ -39,7 +37,6 @@ import tensorflow as tf
 
 from google.protobuf import text_format
 
-from tensorflow.core.framework import api_def_pb2
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.platform import test
@@ -67,11 +64,6 @@ _API_GOLDEN_FOLDER = 'tensorflow/tools/api/golden'
 _TEST_README_FILE = 'tensorflow/tools/api/tests/README.txt'
 _UPDATE_WARNING_FILE = 'tensorflow/tools/api/tests/API_UPDATE_WARNING.txt'
 
-_CONVERT_FROM_MULTILINE_SCRIPT = 'tensorflow/tools/api/tests/convert_from_multiline'
-_BASE_API_DIR = 'tensorflow/core/api_def/base_api'
-_PYTHON_API_DIR = 'tensorflow/core/api_def/python_api'
-_HIDDEN_OPS_FILE = 'tensorflow/python/ops/hidden_ops.txt'
-
 
 def _KeyToFilePath(key):
   """From a given key, construct a filepath."""
@@ -94,55 +86,6 @@ def _FileNameToKey(filename):
   api_object_key = re.sub(
       '((-[a-z]){1})', _ReplaceDashWithCaps, base_filename_without_ext)
   return api_object_key
-
-
-def _GetSymbol(symbol_id):
-  """Get TensorFlow symbol based on the given identifier.
-
-  Args:
-    symbol_id: Symbol identifier in the form module1.module2. ... .sym.
-
-  Returns:
-    Symbol corresponding to the given id.
-  """
-  # Ignore first module which should be tensorflow
-  symbol_id_split = symbol_id.split('.')[1:]
-  symbol = tf
-  for sym in symbol_id_split:
-    symbol = getattr(symbol, sym)
-  return symbol
-
-
-def _IsGenModule(module_name):
-  if not module_name:
-    return False
-  module_name_split = module_name.split('.')
-  return module_name_split[-1].startswith('gen_')
-
-
-def _GetHiddenOps():
-  hidden_ops_file = file_io.FileIO(_HIDDEN_OPS_FILE, 'r')
-  hidden_ops = set()
-  for line in hidden_ops_file:
-    line = line.strip()
-    if not line:
-      continue
-    if line[0] == '#':  # comment line
-      continue
-    # If line is of the form "op_name # comment", only keep the op_name.
-    line_split = line.split('#')
-    hidden_ops.add(line_split[0].strip())
-  return hidden_ops
-
-
-def _GetGoldenApiDefs():
-  old_api_def_files = file_io.get_matching_files(_GetApiDefFilePath('*'))
-  return {file_path: file_io.read_file_to_string(file_path)
-          for file_path in old_api_def_files}
-
-
-def _GetApiDefFilePath(graph_op_name):
-  return os.path.join(_PYTHON_API_DIR, 'api_def_%s.pbtxt' % graph_op_name)
 
 
 class ApiCompatibilityTest(test.TestCase):
@@ -285,188 +228,6 @@ class ApiCompatibilityTest(test.TestCase):
         proto_dict,
         verbose=FLAGS.verbose_diffs,
         update_goldens=FLAGS.update_goldens)
-
-
-class ApiDefTest(test.TestCase):
-
-  def __init__(self, *args, **kwargs):
-    super(ApiDefTest, self).__init__(*args, **kwargs)
-    self._first_cap_pattern = re.compile('(.)([A-Z][a-z]+)')
-    self._all_cap_pattern = re.compile('([a-z0-9])([A-Z])')
-
-  def _GenerateLowerCaseOpName(self, op_name):
-    lower_case_name = self._first_cap_pattern.sub(r'\1_\2', op_name)
-    return self._all_cap_pattern.sub(r'\1_\2', lower_case_name).lower()
-
-  def _CreatePythonApiDef(self, base_api_def, endpoint_names):
-    """Creates Python ApiDef that overrides base_api_def if needed.
-
-    Args:
-      base_api_def: (api_def_pb2.ApiDef) base ApiDef instance.
-      endpoint_names: List of Python endpoint names.
-
-    Returns:
-      api_def_pb2.ApiDef instance with overrides for base_api_def
-      if module.name endpoint is different from any existing
-      endpoints in base_api_def. Otherwise, returns None.
-    """
-    endpoint_names_set = set(endpoint_names)
-
-    # If the only endpoint is equal to graph_op_name then
-    # it is equivalent to having no endpoints.
-    if (not base_api_def.endpoint and len(endpoint_names) == 1
-        and endpoint_names[0] ==
-        self._GenerateLowerCaseOpName(base_api_def.graph_op_name)):
-      return None
-
-    base_endpoint_names_set = {
-        self._GenerateLowerCaseOpName(endpoint.name)
-        for endpoint in base_api_def.endpoint}
-
-    if endpoint_names_set == base_endpoint_names_set:
-      return None  # All endpoints are the same
-
-    api_def = api_def_pb2.ApiDef()
-    api_def.graph_op_name = base_api_def.graph_op_name
-
-    for endpoint_name in sorted(endpoint_names):
-      new_endpoint = api_def.endpoint.add()
-      new_endpoint.name = endpoint_name
-
-    return api_def
-
-  def _GetBaseApiMap(self):
-    """Get a map from graph op name to its base ApiDef.
-
-    Returns:
-      Dictionary mapping graph op name to corresponding ApiDef.
-    """
-    # Convert base ApiDef in Multiline format to Proto format.
-    converted_base_api_dir = os.path.join(
-        test.get_temp_dir(), 'temp_base_api_defs')
-    subprocess.check_call(
-        [os.path.join(resource_loader.get_root_dir_with_all_resources(),
-                      _CONVERT_FROM_MULTILINE_SCRIPT),
-         _BASE_API_DIR, converted_base_api_dir])
-
-    name_to_base_api_def = {}
-    base_api_files = file_io.get_matching_files(
-        os.path.join(converted_base_api_dir, 'api_def_*.pbtxt'))
-    for base_api_file in base_api_files:
-      if file_io.file_exists(base_api_file):
-        api_defs = api_def_pb2.ApiDefs()
-        text_format.Merge(
-            file_io.read_file_to_string(base_api_file), api_defs)
-        for api_def in api_defs.op:
-          name_to_base_api_def[api_def.graph_op_name] = api_def
-    return name_to_base_api_def
-
-  def _AddHiddenOpOverrides(self, name_to_base_api_def, api_def_map):
-    """Adds ApiDef overrides to api_def_map for hidden Python ops.
-
-    Args:
-      name_to_base_api_def: Map from op name to base api_def_pb2.ApiDef.
-      api_def_map: Map from file path to api_def_pb2.ApiDefs for Python API
-        overrides.
-    """
-    hidden_ops = _GetHiddenOps()
-    for hidden_op in hidden_ops:
-      if hidden_op not in name_to_base_api_def:
-        logging.warning('Unexpected hidden op name: %s' % hidden_op)
-        continue
-
-      base_api_def = name_to_base_api_def[hidden_op]
-      if base_api_def.visibility != api_def_pb2.ApiDef.HIDDEN:
-        api_def = api_def_pb2.ApiDef()
-        api_def.graph_op_name = base_api_def.graph_op_name
-        api_def.visibility = api_def_pb2.ApiDef.HIDDEN
-
-        file_path = _GetApiDefFilePath(base_api_def.graph_op_name)
-        api_def_map[file_path].op.extend([api_def])
-
-  @unittest.skipUnless(
-      sys.version_info.major == 2 and os.uname()[0] == 'Linux',
-      'API compabitility test goldens are generated using python2 on Linux.')
-  def testAPIDefCompatibility(self):
-    # Get base ApiDef
-    name_to_base_api_def = self._GetBaseApiMap()
-    snake_to_camel_graph_op_names = {
-        self._GenerateLowerCaseOpName(name): name
-        for name in name_to_base_api_def.keys()}
-    # Extract Python API
-    visitor = python_object_to_proto_visitor.PythonObjectToProtoVisitor()
-    public_api_visitor = public_api.PublicAPIVisitor(visitor)
-    public_api_visitor.do_not_descend_map['tf'].append('contrib')
-    traverse.traverse(tf, public_api_visitor)
-    proto_dict = visitor.GetProtos()
-
-    # Map from file path to Python ApiDefs.
-    new_api_defs_map = defaultdict(api_def_pb2.ApiDefs)
-    # We need to override all endpoints even if 1 endpoint differs from base
-    # ApiDef. So, we first create a map from an op to all its endpoints.
-    op_to_endpoint_name = defaultdict(list)
-
-    # Generate map from generated python op to endpoint names.
-    for public_module, value in proto_dict.items():
-      module_obj = _GetSymbol(public_module)
-      for sym in value.tf_module.member_method:
-        obj = getattr(module_obj, sym.name)
-
-        # Check if object is defined in gen_* module. That is,
-        # the object has been generated from OpDef.
-        if hasattr(obj, '__module__') and _IsGenModule(obj.__module__):
-          if obj.__name__ not in snake_to_camel_graph_op_names:
-            # Symbol might be defined only in Python and not generated from
-            # C++ api.
-            continue
-          relative_public_module = public_module[len('tensorflow.'):]
-          full_name = (relative_public_module + '.' + sym.name
-                       if relative_public_module else sym.name)
-          op_to_endpoint_name[obj].append(full_name)
-
-    # Generate Python ApiDef overrides.
-    for op, endpoint_names in op_to_endpoint_name.items():
-      graph_op_name = snake_to_camel_graph_op_names[op.__name__]
-      api_def = self._CreatePythonApiDef(
-          name_to_base_api_def[graph_op_name], endpoint_names)
-
-      if api_def:
-        file_path = _GetApiDefFilePath(graph_op_name)
-        api_defs = new_api_defs_map[file_path]
-        api_defs.op.extend([api_def])
-
-    self._AddHiddenOpOverrides(name_to_base_api_def, new_api_defs_map)
-
-    old_api_defs_map = _GetGoldenApiDefs()
-    for file_path, new_api_defs in new_api_defs_map.items():
-      # Get new ApiDef string.
-      new_api_defs_str = str(new_api_defs)
-
-      # Get current ApiDef for the given file.
-      old_api_defs_str = (
-          old_api_defs_map[file_path] if file_path in old_api_defs_map else '')
-
-      if old_api_defs_str == new_api_defs_str:
-        continue
-
-      if FLAGS.update_goldens:
-        logging.info('Updating %s...' % file_path)
-        file_io.write_string_to_file(file_path, new_api_defs_str)
-      else:
-        self.assertMultiLineEqual(
-            old_api_defs_str, new_api_defs_str,
-            'To update golden API files, run api_compatibility_test locally '
-            'with --update_goldens=True flag.')
-
-    for file_path in set(old_api_defs_map) - set(new_api_defs_map):
-      if FLAGS.update_goldens:
-        logging.info('Deleting %s...' % file_path)
-        file_io.delete_file(file_path)
-      else:
-        self.fail(
-            '%s file is no longer needed and should be removed.'
-            'To update golden API files, run api_compatibility_test locally '
-            'with --update_goldens=True flag.' % file_path)
 
 
 if __name__ == '__main__':

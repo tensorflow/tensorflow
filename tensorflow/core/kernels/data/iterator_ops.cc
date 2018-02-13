@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_runner.h"
+#include "tensorflow/core/common_runtime/renamed_device.h"
 #include "tensorflow/core/common_runtime/threadpool_device.h"
 #include "tensorflow/core/framework/iterator.pb.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
@@ -82,7 +83,7 @@ class IteratorResource : public ResourceBase {
  public:
   IteratorResource(const DataTypeVector& output_dtypes,
                    const std::vector<PartialTensorShape>& output_shapes,
-                   const int graph_def_version,
+                   const int /*unused: graph_def_version*/,
                    std::unique_ptr<DeviceMgr> device_mgr,
                    std::unique_ptr<FunctionLibraryDefinition> flib_def,
                    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr,
@@ -93,8 +94,7 @@ class IteratorResource : public ResourceBase {
         lib_(lib),
         iterator_(nullptr),
         output_dtypes_(output_dtypes),
-        output_shapes_(output_shapes),
-        graph_def_version_(graph_def_version) {}
+        output_shapes_(output_shapes) {}
 
   Status GetNext(IteratorContext* ctx, std::vector<Tensor>* out_tensors,
                  bool* end_of_sequence) {
@@ -160,6 +160,10 @@ class IteratorResource : public ResourceBase {
       params.runner = *(ctx->runner());
       params.function_library = flib_def;
       params.lib = lib_;
+      DeviceBase* device = lib_->device();
+      params.allocator_getter = [device](AllocatorAttributes attrs) {
+        return device->GetAllocator(attrs);
+      };
       IteratorContext iter_ctx(std::move(params));
 
       TF_RETURN_IF_ERROR(captured_iterator->Restore(&iter_ctx, reader));
@@ -223,7 +227,6 @@ class IteratorResource : public ResourceBase {
   std::shared_ptr<const FunctionLibraryDefinition> lib_def_ GUARDED_BY(mu_);
   const DataTypeVector output_dtypes_;
   const std::vector<PartialTensorShape> output_shapes_;
-  const int graph_def_version_;
 };
 
 // Helper class for reading data from a VariantTensorData object.
@@ -430,13 +433,10 @@ class IteratorStateVariant {
 REGISTER_UNARY_VARIANT_DECODE_FUNCTION(IteratorStateVariant,
                                        kIteratorVariantTypeName);
 
-// TODO(mrry): Can we simply use the template kernel here?
 class IteratorHandleOp : public OpKernel {
  public:
   explicit IteratorHandleOp(OpKernelConstruction* ctx)
       : OpKernel(ctx), graph_def_version_(ctx->graph_def_version()) {
-    OP_REQUIRES_OK(ctx, ctx->allocate_persistent(DT_STRING, TensorShape({2}),
-                                                 &handle_, nullptr));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_dtypes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shared_name", &name_));
@@ -460,56 +460,54 @@ class IteratorHandleOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* context) override LOCKS_EXCLUDED(mu_) {
-    mutex_lock l(mu_);
-    FunctionLibraryRuntime* lib = context->function_library();
-    std::unique_ptr<DeviceMgr> device_mgr(nullptr);
-    std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
-    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
-    // If the iterator is shared then we construct a new FLR, and pass that in.
-    // NOTE(mrry,rohanj): In this case it is not possible to call remote
-    // functions from the iterator. We may add this functionality if there
-    // is sufficient demand, but it will require a significant refactoring.
-    if (!name_.empty()) {
-      lib = CreateFLR(context, &device_mgr, &flib_def, &pflr);
-    }
+    {
+      mutex_lock l(mu_);
+      if (resource_ == nullptr) {
+        FunctionLibraryRuntime* lib;
+        std::unique_ptr<DeviceMgr> device_mgr(nullptr);
+        std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
+        std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
+        // If the iterator is shared then we construct a new FLR, and pass that
+        // in. NOTE(mrry,rohanj): In this case it is not possible to call remote
+        // functions from the iterator. We may add this functionality if there
+        // is sufficient demand, but it will require a significant refactoring.
+        if (!name_.empty()) {
+          lib = CreatePrivateFLR(context, &device_mgr, &flib_def, &pflr);
+        } else {
+          OP_REQUIRES_OK(context, context->function_library()->Clone(
+                                      &flib_def, &pflr, &lib));
+        }
 
-    if (resource_ == nullptr) {
-      ResourceMgr* mgr = context->resource_manager();
-      OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
+        ResourceMgr* mgr = context->resource_manager();
+        OP_REQUIRES_OK(context, cinfo_.Init(mgr, def()));
 
-      IteratorResource* resource;
-      OP_REQUIRES_OK(
-          context,
-          mgr->LookupOrCreate<IteratorResource>(
-              cinfo_.container(), cinfo_.name(), &resource,
-              [lib, &device_mgr, &flib_def, &pflr, this](IteratorResource** ret)
-                  EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-                    *ret = new IteratorResource(
-                        output_dtypes_, output_shapes_, graph_def_version_,
-                        std::move(device_mgr), std::move(flib_def),
-                        std::move(pflr), lib);
-                    return Status::OK();
-                  }));
+        IteratorResource* resource;
+        OP_REQUIRES_OK(
+            context,
+            mgr->LookupOrCreate<IteratorResource>(
+                cinfo_.container(), cinfo_.name(), &resource,
+                [lib, &device_mgr, &flib_def, &pflr,
+                 this](IteratorResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                  *ret = new IteratorResource(
+                      output_dtypes_, output_shapes_, graph_def_version_,
+                      std::move(device_mgr), std::move(flib_def),
+                      std::move(pflr), lib);
+                  return Status::OK();
+                }));
 
-      Status s = VerifyResource(resource);
-      if (TF_PREDICT_FALSE(!s.ok())) {
-        resource->Unref();
-        context->SetStatus(s);
-        return;
+        Status s = VerifyResource(resource);
+        if (TF_PREDICT_FALSE(!s.ok())) {
+          resource->Unref();
+          context->SetStatus(s);
+          return;
+        }
+
+        resource_ = resource;
       }
-
-      auto h = handle_.AccessTensor(context)->template flat<string>();
-      h(0) = cinfo_.container();
-      h(1) = cinfo_.name();
-      resource_ = resource;
     }
-    if (context->expected_output_dtype(0) == DT_RESOURCE) {
-      OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
-                                  context, 0, cinfo_.container(), cinfo_.name(),
-                                  MakeTypeIndex<IteratorResource>()));
-    } else {
-      context->set_output_ref(0, &mu_, handle_.AccessTensor(context));
-    }
+    OP_REQUIRES_OK(context, MakeResourceHandleToOutput(
+                                context, 0, cinfo_.container(), cinfo_.name(),
+                                MakeTypeIndex<IteratorResource>()));
   }
 
  private:
@@ -526,15 +524,32 @@ class IteratorHandleOp : public OpKernel {
     return Status::OK();
   }
 
-  FunctionLibraryRuntime* CreateFLR(
+  template <typename To, typename From>  // use like this: down_cast<T*>(foo);
+  static inline To down_cast(From* f) {  // so we only accept pointers
+    static_assert(
+        (std::is_base_of<From, typename std::remove_pointer<To>::type>::value),
+        "target type not derived from source type");
+
+    // We skip the assert and hence the dynamic_cast if RTTI is disabled.
+#if !defined(__GNUC__) || defined(__GXX_RTTI)
+    // Uses RTTI in dbg and fastbuild. asserts are disabled in opt builds.
+    assert(f == nullptr || dynamic_cast<To>(f) != nullptr);
+#endif  // !defined(__GNUC__) || defined(__GXX_RTTI)
+    return static_cast<To>(f);
+  }
+
+  FunctionLibraryRuntime* CreatePrivateFLR(
       OpKernelContext* ctx, std::unique_ptr<DeviceMgr>* device_mgr,
       std::unique_ptr<FunctionLibraryDefinition>* flib_def,
       std::unique_ptr<ProcessFunctionLibraryRuntime>* pflr) {
-    Device* device = new ThreadPoolDevice(
-        SessionOptions(), ctx->device()->attributes().name(), Bytes(256 << 20),
-        DeviceLocality(), cpu_allocator());
-
-    device_mgr->reset(new DeviceMgr({device}));
+    // Wrap the existing device in order to see any captured resources
+    // in its resource manager. The existing device will outlive the
+    // IteratorResource, because we are storing the IteratorResource
+    // in that device's resource manager.
+    Device* wrapped_device = RenamedDevice::NewRenamedDevice(
+        ctx->device()->name(), down_cast<Device*>(ctx->device()),
+        false /* owns_underlying */, false /* isolate_session_state */);
+    device_mgr->reset(new DeviceMgr({wrapped_device}));
     flib_def->reset(new FunctionLibraryDefinition(
         *ctx->function_library()->GetFunctionLibraryDefinition()));
     pflr->reset(new ProcessFunctionLibraryRuntime(
@@ -542,13 +557,12 @@ class IteratorHandleOp : public OpKernel {
         {} /* TODO(mrry): OptimizerOptions? */,
         nullptr /* TODO(mrry): ClusterFLR */));
 
-    return (*pflr)->GetFLR(device->name());
+    return (*pflr)->GetFLR(ctx->device()->name());
   }
 
   mutex mu_;
-  ContainerInfo cinfo_ GUARDED_BY(mu_);
+  ContainerInfo cinfo_;  // Written once under mu_ then constant afterwards.
   IteratorResource* resource_ GUARDED_BY(mu_) = nullptr;
-  PersistentTensor handle_ GUARDED_BY(mu_);
   DataTypeVector output_dtypes_;
   std::vector<PartialTensorShape> output_shapes_;
   const int graph_def_version_;
@@ -595,6 +609,11 @@ class ToSingleElementOp : public AsyncOpKernel {
       params.env = ctx->env();
       params.runner = *(ctx->runner());
       params.lib = ctx->function_library();
+      DeviceBase* device = ctx->function_library()->device();
+      params.allocator_getter = [device](AllocatorAttributes attrs) {
+        return device->GetAllocator(attrs);
+      };
+
       IteratorContext iter_ctx(std::move(params));
 
       std::vector<Tensor> components;
@@ -715,18 +734,23 @@ class OneShotIteratorOp : public AsyncOpKernel {
   Status TryInit(OpKernelContext* ctx, IteratorResource** iterator,
                  ContainerInfo* cinfo) {
     TF_RETURN_IF_ERROR(cinfo->Init(ctx->resource_manager(), def()));
-    FunctionLibraryRuntime* lib = ctx->function_library();
+
+    FunctionLibraryRuntime* lib;
+    std::unique_ptr<FunctionLibraryDefinition> flib_def(nullptr);
+    std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(nullptr);
+    TF_RETURN_IF_ERROR(ctx->function_library()->Clone(&flib_def, &pflr, &lib));
 
     // Create an IteratorResource that will hold the iterator for this op.
     TF_RETURN_IF_ERROR(
         ctx->resource_manager()->LookupOrCreate<IteratorResource>(
             cinfo->container(), cinfo->name(), iterator,
-            [lib, this](IteratorResource** ret) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-              *ret = new IteratorResource(output_dtypes_, output_shapes_,
-                                          graph_def_version_, nullptr, nullptr,
-                                          nullptr, lib);
-              return Status::OK();
-            }));
+            [lib, this, &flib_def, &pflr](IteratorResource** ret)
+                EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+                  *ret = new IteratorResource(
+                      output_dtypes_, output_shapes_, graph_def_version_,
+                      nullptr, std::move(flib_def), std::move(pflr), lib);
+                  return Status::OK();
+                }));
 
     core::ScopedUnref unref_iterator(*iterator);
 
@@ -829,8 +853,8 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     IteratorResource* iterator;
-    OP_REQUIRES_OK(ctx,
-                   LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+    OP_REQUIRES_OK_ASYNC(
+        ctx, LookupResource(ctx, HandleFromInput(ctx, 0), &iterator), done);
     // The call to `iterator->GetNext()` may block and depend on an
     // inter-op thread pool thread, so we issue the call from the
     // owned thread pool.
@@ -848,6 +872,10 @@ class IteratorGetNextOp : public AsyncOpKernel {
           };
           params.runner = *(ctx->runner());
           params.function_library = iterator->function_library();
+          DeviceBase* device = ctx->function_library()->device();
+          params.allocator_getter = [device](AllocatorAttributes attrs) {
+            return device->GetAllocator(attrs);
+          };
           IteratorContext iter_ctx(std::move(params));
 
           OP_REQUIRES_OK_ASYNC(
@@ -868,6 +896,43 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
  private:
   std::unique_ptr<thread::ThreadPool> thread_pool_;
+};
+
+class IteratorGetNextSyncOp : public OpKernel {
+ public:
+  explicit IteratorGetNextSyncOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    IteratorResource* iterator;
+    OP_REQUIRES_OK(ctx,
+                   LookupResource(ctx, HandleFromInput(ctx, 0), &iterator));
+    core::ScopedUnref unref_iterator(iterator);
+
+    std::vector<Tensor> components;
+    bool end_of_sequence = false;
+
+    IteratorContext::Params params;
+    params.env = ctx->env();
+    params.stats_aggregator_getter = [iterator]() {
+      return iterator->stats_aggregator();
+    };
+    params.runner = *(ctx->runner());
+    params.function_library = iterator->function_library();
+    DeviceBase* device = ctx->function_library()->device();
+    params.allocator_getter = [device](AllocatorAttributes attrs) {
+      return device->GetAllocator(attrs);
+    };
+    IteratorContext iter_ctx(std::move(params));
+
+    OP_REQUIRES_OK(ctx,
+                   iterator->GetNext(&iter_ctx, &components, &end_of_sequence));
+    OP_REQUIRES(ctx, !end_of_sequence, errors::OutOfRange("End of sequence"));
+
+    for (int i = 0; i < components.size(); ++i) {
+      // TODO(mrry): Check that the shapes match the shape attrs.
+      ctx->set_output(i, components[i]);
+    }
+  }
 };
 
 class IteratorToStringHandleOp : public OpKernel {
@@ -1033,6 +1098,8 @@ REGISTER_KERNEL_BUILDER(Name("OneShotIterator").Device(DEVICE_CPU),
                         OneShotIteratorOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorGetNext").Device(DEVICE_CPU),
                         IteratorGetNextOp);
+REGISTER_KERNEL_BUILDER(Name("IteratorGetNextSync").Device(DEVICE_CPU),
+                        IteratorGetNextSyncOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorToStringHandle").Device(DEVICE_CPU),
                         IteratorToStringHandleOp);
 REGISTER_KERNEL_BUILDER(Name("IteratorFromStringHandle").Device(DEVICE_CPU),
