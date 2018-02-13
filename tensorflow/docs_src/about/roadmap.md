@@ -51,7 +51,7 @@ across image recognition, speech, object detection, and
 ### Platforms
 #### TFLite:
 * Increased coverage of supported ops in TFLite
-* Easier conversion of a trained TF graph in for use on TFLite
+* Easier conversion of a trained TF graph for use on TFLite
 * Support for GPU acceleration in TFLite (iOS and Andorid)
 * Support for hardware accelerators via Android NeuralNets API 
 * Improved CPU performance by quantization and other network optimizations (eg. pruning, distillation)
