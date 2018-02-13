@@ -114,8 +114,15 @@ def _query_tpu_system_metadata(master_address, run_config,
       topology=topology,
       devices=devices)
 
-  msg = 'Found TPU system %s' if tpu_core_count else 'Failed to find TPU: %s'
-  logging.info(msg, metadata)
+  if tpu_core_count:
+    logging.info('Found TPU system:')
+    logging.info('*** Num TPU Cores: %d', metadata.num_cores)
+    logging.info('*** Num TPU Workers: %d', metadata.num_hosts)
+    logging.info('*** Num TPU Cores Per Worker: %d',
+                 metadata.num_of_cores_per_host)
+    logging.info('*** Available Devices: %s', metadata.devices)
+  else:
+    logging.info('Failed to find TPU: %s', metadata)
   return metadata
 
 
