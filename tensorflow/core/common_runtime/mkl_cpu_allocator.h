@@ -161,7 +161,7 @@ class MklCPUAllocator : public VisitableAllocator {
   /// The alignment that we need for the allocations
   static const size_t kAlignment = 64;
 
-  Allocator* allocator_;  // owned by this class
+  BFCAllocator* allocator_;  // owned by this class
 };
 
 }  // namespace tensorflow
