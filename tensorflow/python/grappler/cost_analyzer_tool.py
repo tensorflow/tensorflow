@@ -22,7 +22,7 @@ import argparse
 import sys
 
 from google.protobuf import text_format
-
+from tensorflow.contrib.fused_conv.ops import gen_fused_conv2d_bias_activation_op  # pylint: disable=unused-import
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
@@ -43,7 +43,10 @@ def main(_):
   else:
     with gfile.GFile(FLAGS.graphdef) as graph_file:
       graph_def = graph_pb2.GraphDef()
-      graph_def.ParseFromString(graph_file.read())
+      if FLAGS.graphdef.endswith(".pbtxt"):
+        text_format.Merge(graph_file.read(), graph_def)
+      else:
+        graph_def.ParseFromString(graph_file.read())
       importer.import_graph_def(graph_def, name="")
       graph = ops.get_default_graph()
       fetch = graph.get_operation_by_name(FLAGS.fetch)
@@ -51,13 +54,15 @@ def main(_):
       metagraph = saver.export_meta_graph(
           graph_def=graph.as_graph_def(), graph=graph)
 
+  rewriter_config = rewriter_config_pb2.RewriterConfig()
   if FLAGS.rewriter_config is not None:
-    rewriter_config = rewriter_config_pb2.RewriterConfig()
     text_format.Merge(FLAGS.rewriter_config, rewriter_config)
-    optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, metagraph)
-    metagraph.graph_def.CopyFrom(optimized_graph)
+  optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, metagraph)
+  metagraph.graph_def.CopyFrom(optimized_graph)
 
   report = cost_analyzer.GenerateCostReport(metagraph, FLAGS.per_node_report)
+  print(report)
+  report = cost_analyzer.GenerateMemoryReport(metagraph)
   print(report)
 
 

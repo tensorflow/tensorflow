@@ -39,6 +39,7 @@ py_test(
     srcs_version = "PY2AND3",
     deps = [
         ":impl",
+        "//tensorflow/contrib/py2tf/utils",
         "//tensorflow/python:client_testlib",
     ],
 )

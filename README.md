@@ -27,7 +27,7 @@ guidelines](CONTRIBUTING.md). This project adheres to TensorFlow's
 uphold this code.**
 
 **We use [GitHub issues](https://github.com/tensorflow/tensorflow/issues) for
-tracking requests and bugs. So please see 
+tracking requests and bugs. So please see
 [TensorFlow Discuss](https://groups.google.com/a/tensorflow.org/forum/#!forum/discuss) for general questions
 and discussion, and please direct specific questions to [Stack Overflow](https://stackoverflow.com/questions/tagged/tensorflow).**
 

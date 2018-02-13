@@ -234,7 +234,8 @@ Status Literal::CopySliceFromInternal(
       int64 src_index = linear_index(src_literal.shape(), src_indexes);
       int64 dest_index = linear_index(shape(), dest_indexes);
 
-      StridedCopy(data<NativeT>(), dest_index, stride_config.dest_stride,
+      // `this->` is needed to workaround MSVC bug: #16882
+      StridedCopy(this->data<NativeT>(), dest_index, stride_config.dest_stride,
                   src_literal.data<NativeT>(), src_index,
                   stride_config.source_stride, stride_config.minor_loop_size);
       return true;
@@ -1257,11 +1258,17 @@ string Literal::ToString(bool print_layout) const {
 
 /* static */ std::unique_ptr<Literal> Literal::MakeTupleOwned(
     std::vector<std::unique_ptr<Literal>> elements) {
-  std::vector<const Literal*> element_ptrs;
+  std::vector<Shape> element_shapes;
+  element_shapes.reserve(elements.size());
   for (const auto& element : elements) {
-    element_ptrs.push_back(element.get());
+    element_shapes.push_back(element->shape());
   }
-  return MakeTuple(element_ptrs);
+  auto literal = MakeUnique<Literal>(ShapeUtil::MakeTupleShape(element_shapes));
+  for (int64 i = 0; i < elements.size(); ++i) {
+    TF_CHECK_OK(
+        literal->MoveFrom(std::move(*elements[i]), /*dest_shape_index=*/{i}));
+  }
+  return literal;
 }
 
 void Literal::EachCellAsString(

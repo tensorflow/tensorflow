@@ -156,6 +156,7 @@ if (tensorflow_BUILD_PYTHON_TESTS)
     "${tensorflow_source_dir}/tensorflow/contrib/coder/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/data/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/factorization/*_test.py"
+    "${tensorflow_source_dir}/tensorflow/contrib/feature_column/python/feature_column/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/image/*_test.py"
     "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/*_test.py"
     "${tensorflow_source_dir}/tensorflow/contrib/periodic_resample/python/kernel_tests/*_test.py"
@@ -310,6 +311,8 @@ if (tensorflow_BUILD_PYTHON_TESTS)
       "${tensorflow_source_dir}/tensorflow/python/kernel_tests/control_flow_util_test.py"
       # Flaky replicate_model_fn_test
       "${tensorflow_source_dir}/tensorflow/contrib/estimator/python/estimator/replicate_model_fn_test.py"  # b/71901810
+      # Broken io_utils_test
+      "${tensorflow_source_dir}/tensorflow/python/keras/_impl/keras/utils/io_utils_test.py"  # b/72894325
   )
   endif()
   list(REMOVE_ITEM tf_test_src_py ${tf_test_src_py_exclude})

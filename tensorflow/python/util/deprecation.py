@@ -22,9 +22,9 @@ import collections
 import functools
 import re
 
-from tensorflow.python.eager import context
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import decorator_utils
+from tensorflow.python.util import is_in_graph_mode
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -400,7 +400,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
       """Deprecation wrapper."""
       # TODO(apassos) figure out a way to have reasonable performance with
       # deprecation warnings and eager mode.
-      if context.in_graph_mode() and _PRINT_DEPRECATION_WARNINGS:
+      if is_in_graph_mode.IS_IN_GRAPH_MODE() and _PRINT_DEPRECATION_WARNINGS:
         invalid_args = []
         named_args = tf_inspect.getcallargs(func, *args, **kwargs)
         for arg_name, spec in iter(deprecated_positions.items()):

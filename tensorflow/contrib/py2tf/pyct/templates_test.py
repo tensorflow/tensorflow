@@ -27,6 +27,17 @@ from tensorflow.python.platform import test
 
 class TemplatesTest(test.TestCase):
 
+  def test_replace_tuple(self):
+    template = """
+      def test_fn(a, c):
+        return b,
+    """
+
+    node = templates.replace(template, b=('a', 'c'))[0]
+    result, _ = compiler.ast_to_object(node)
+
+    self.assertEquals((2, 3), result.test_fn(2, 3))
+
   def test_replace_variable(self):
     template = """
       def test_fn(a):
@@ -36,7 +47,7 @@ class TemplatesTest(test.TestCase):
     """
 
     node = templates.replace(template, a='b')[0]
-    result = compiler.ast_to_object(node)
+    result, _ = compiler.ast_to_object(node)
     self.assertEquals(7, result.test_fn(2))
 
   def test_replace_function_name(self):
@@ -48,7 +59,7 @@ class TemplatesTest(test.TestCase):
     """
 
     node = templates.replace(template, fname='test_fn')[0]
-    result = compiler.ast_to_object(node)
+    result, _ = compiler.ast_to_object(node)
     self.assertEquals(7, result.test_fn(2))
 
   def test_code_block(self):
@@ -65,7 +76,7 @@ class TemplatesTest(test.TestCase):
                 gast.Name('a', None, None)
             ], gast.BinOp(gast.Name('a', None, None), gast.Add(), gast.Num(1))),
         ] * 2)[0]
-    result = compiler.ast_to_object(node)
+    result, _ = compiler.ast_to_object(node)
     self.assertEquals(3, result.test_fn(1))
 
 

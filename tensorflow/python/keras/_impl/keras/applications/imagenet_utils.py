@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 CLASS_INDEX = None
@@ -162,6 +163,9 @@ def _preprocess_symbolic_input(x, data_format, mode):
   return x
 
 
+@tf_export('keras.applications.resnet50.preprocess_input',
+           'keras.applications.vgg19.preprocess_input',
+           'keras.applications.vgg16.preprocess_input')
 def preprocess_input(x, data_format=None, mode='caffe'):
   """Preprocesses a tensor or Numpy array encoding a batch of images.
 
@@ -193,6 +197,15 @@ def preprocess_input(x, data_format=None, mode='caffe'):
     return _preprocess_symbolic_input(x, data_format=data_format, mode=mode)
 
 
+@tf_export('keras.applications.nasnet.decode_predictions',
+           'keras.applications.resnet50.decode_predictions',
+           'keras.applications.vgg19.decode_predictions',
+           'keras.applications.vgg16.decode_predictions',
+           'keras.applications.inception_resnet_v2.decode_predictions',
+           'keras.applications.inception_v3.decode_predictions',
+           'keras.applications.densenet.decode_predictions',
+           'keras.applications.mobilenet.decode_predictions',
+           'keras.applications.xception.decode_predictions')
 def decode_predictions(preds, top=5):
   """Decodes the prediction of an ImageNet model.
 

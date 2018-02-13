@@ -1869,8 +1869,8 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       image_size = constant_op.constant(
           [40, 50, 1], shape=[3], dtype=dtypes.int32)
       bounding_box = constant_op.constant(
-          [0.0, 0.0, 1.0, 1.0],
-          shape=[4],
+          [[[0.0, 0.0, 1.0, 1.0]]],
+          shape=[1, 1, 4],
           dtype=dtypes.float32,
       )
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
@@ -1884,6 +1884,10 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], begin.get_shape().as_list())
       self.assertAllEqual([3], end.get_shape().as_list())
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
+      # Actual run to make sure shape is correct inside Compute().
+      begin = begin.eval()
+      end = end.eval()
+      bbox_for_drawing = bbox_for_drawing.eval()
 
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
           image_size=image_size,
@@ -1903,8 +1907,8 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       image_size = constant_op.constant(
           [40, 50, 1], shape=[3], dtype=dtypes.int32)
       bounding_box = constant_op.constant(
-          [0.0, 0.0, 1.0, 1.0],
-          shape=[4],
+          [[[0.0, 0.0, 1.0, 1.0]]],
+          shape=[1, 1, 4],
           dtype=dtypes.float32,)
       begin, end, bbox_for_drawing = image_ops.sample_distorted_bounding_box(
           image_size=image_size,
@@ -1915,7 +1919,10 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([3], begin.get_shape().as_list())
       self.assertAllEqual([3], end.get_shape().as_list())
       self.assertAllEqual([1, 1, 4], bbox_for_drawing.get_shape().as_list())
-
+      # Actual run to make sure shape is correct inside Compute().
+      begin = begin.eval()
+      end = end.eval()
+      bbox_for_drawing = bbox_for_drawing.eval()
 
 class ResizeImagesTest(test_util.TensorFlowTestCase):
 
@@ -2821,20 +2828,9 @@ class PngTest(test_util.TensorFlowTestCase):
 
 class GifTest(test_util.TensorFlowTestCase):
 
-  def testOptimizedGifErrorString(self):
-    filename = "tensorflow/core/lib/gif/testdata/optimized.gif"
-
-    with self.test_session(use_gpu=True) as sess:
-      gif = io_ops.read_file(filename)
-      image = image_ops.decode_gif(gif)
-      with self.assertRaisesRegexp(errors.InvalidArgumentError,
-                                   "can't process optimized gif"):
-        gif, image = sess.run([gif, image])
-
-  def testValid(self):
+  def _testValid(self, filename):
     # Read some real GIFs
     prefix = "tensorflow/core/lib/gif/testdata/"
-    filename = "scan.gif"
     WIDTH = 20
     HEIGHT = 40
     STRIDE = 5
@@ -2861,16 +2857,9 @@ class GifTest(test_util.TensorFlowTestCase):
 
         self.assertAllClose(frame, gt)
 
-  def testInValid(self):
-    # Read some real GIFs
-    prefix = "tensorflow/core/lib/gif/testdata/"
-    filename = "optimized.gif"
-
-    with self.test_session(use_gpu=True) as sess:
-      gif0 = io_ops.read_file(prefix + filename)
-      image0 = image_ops.decode_gif(gif0)
-      with self.assertRaises(errors.InvalidArgumentError):
-        gif0, image0 = sess.run([gif0, image0])
+  def testValid(self):
+    self._testValid("scan.gif")
+    self._testValid("optimized.gif")
 
   def testShape(self):
     with self.test_session(use_gpu=True) as sess:
@@ -3171,43 +3160,46 @@ class NonMaxSuppressionTest(test_util.TensorFlowTestCase):
 
   def testInvalidShape(self):
     # The boxes should be 2D of shape [num_boxes, 4].
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 2 but is rank 1'):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 2 but is rank 1"):
       boxes = constant_op.constant([0.0, 0.0, 1.0, 1.0])
       scores = constant_op.constant([0.9])
-      selected_indices = image_ops.non_max_suppression(
-          boxes, scores, 3, 0.5)
+      image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
-    with self.assertRaisesRegexp(
-        ValueError, 'Dimension must be 4 but is 3'):
+    with self.assertRaisesRegexp(ValueError, "Dimension must be 4 but is 3"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0]])
       scores = constant_op.constant([0.9])
+      image_ops.non_max_suppression(boxes, scores, 3, 0.5)
+
+    # The boxes is of shape [num_boxes, 4], and the scores is
+    # of shape [num_boxes]. So an error will thrown.
+    with self.assertRaisesRegexp(
+        ValueError, 'Dimensions must be equal, but are 1 and 2'):
+      boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
+      scores = constant_op.constant([0.9, 0.75])
       selected_indices = image_ops.non_max_suppression(
           boxes, scores, 3, 0.5)
 
     # The scores should be 1D of shape [num_boxes].
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 1 but is rank 2'):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 1 but is rank 2"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([[0.9]])
-      selected_indices = image_ops.non_max_suppression(
-          boxes, scores, 3, 0.5)
+      image_ops.non_max_suppression(boxes, scores, 3, 0.5)
 
     # The max_output_size should be a scaler (0-D).
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 1'):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 0 but is rank 1"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
-      selected_indices = image_ops.non_max_suppression(
-          boxes, scores, [3], 0.5)
+      image_ops.non_max_suppression(boxes, scores, [3], 0.5)
 
     # The iou_threshold should be a scaler (0-D).
-    with self.assertRaisesRegexp(
-        ValueError, 'Shape must be rank 0 but is rank 2'):
+    with self.assertRaisesRegexp(ValueError,
+                                 "Shape must be rank 0 but is rank 2"):
       boxes = constant_op.constant([[0.0, 0.0, 1.0, 1.0]])
       scores = constant_op.constant([0.9])
-      selected_indices = image_ops.non_max_suppression(
-          boxes, scores, 3, [[0.5]])
+      image_ops.non_max_suppression(boxes, scores, 3, [[0.5]])
 
 
 if __name__ == "__main__":

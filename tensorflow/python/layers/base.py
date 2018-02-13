@@ -37,8 +37,10 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('layers.Layer')
 class Layer(object):
   """Base layer class.
 
@@ -125,8 +127,6 @@ class Layer(object):
     self._losses = []
     self._reuse = kwargs.get('_reuse')
     self._graph = ops.get_default_graph()
-    self._per_input_losses = {}
-    self._per_input_updates = {}
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
     call_fn_args = estimator_util.fn_args(self.call)
     self._compute_previous_mask = ('mask' in call_fn_args or
@@ -250,39 +250,32 @@ class Layer(object):
 
     Arguments:
       updates: Update op, or list/tuple of update ops.
-      inputs: Optional input tensor(s) that the update(s) depend on. Must
-        match the `inputs` argument passed to the `__call__` method at the time
-        the updates are created. If `None` is passed, the updates are assumed
-        to be unconditional, and will apply across all dataflows of the layer.
+      inputs: If anything other than None is passed, it signals the updates
+        are conditional on some of the layer's inputs,
+        and thus they should only be run where these inputs are available.
+        This is the case for BatchNormalization updates, for instance.
+        If None, the updates will be taken into account unconditionally,
+        and you are responsible for making sure that any dependency they might
+        have is available at runtime.
+        A step counter might fall into this category.
     """
     if context.in_eager_mode():
       return  # Updates already applied when in eager mode.
+
     updates = _to_list(updates)
-    if not updates:
-      return
     self._updates += updates
-    if inputs is not None:
-      inputs = nest.flatten(inputs)
-    if not inputs:
-      inputs = None
-    if inputs is not None:
-      # We compute an ID that uniquely identifies the list of tensors.
-      # This ID is order-sensitive.
-      inputs_hash = layers_util.object_list_uid(inputs)
+    if inputs is None:
+      for u in updates:
+        u._unconditional_update = True  # pylint: disable=protected-access
     else:
-      inputs_hash = None
-    if inputs_hash not in self._per_input_updates:
-      self._per_input_updates[inputs_hash] = []
-    self._per_input_updates[inputs_hash] += updates
+      for u in updates:
+        u._unconditional_update = False  # pylint: disable=protected-access
 
   def get_updates_for(self, inputs):
     """Retrieves updates relevant to a specific set of inputs.
 
     Arguments:
       inputs: Input tensor or list/tuple of input tensors.
-        Must match the `inputs` argument passed to the `__call__` method
-        at the time the updates were created.
-        If you pass `inputs=None`, unconditional updates are returned.
 
     Returns:
       List of update ops of the layer that depend on `inputs`.
@@ -291,18 +284,24 @@ class Layer(object):
       RuntimeError: If called in Eager mode.
     """
     if context.in_eager_mode():
-      raise RuntimeError('Layer.get_updates_for not supported in Eager mode.')
+      raise RuntimeError('`get_updates_for()` not supported in Eager mode.')
+
+    # Updates disabled if layer is not trainable and not explicitly stateful.
     if not self.trainable and not self.stateful:
       return []
-    if inputs is not None:
-      inputs = nest.flatten(inputs)
-    if not inputs:
-      inputs = None
-    if inputs is not None:
-      inputs_hash = layers_util.object_list_uid(inputs)
-    else:
-      inputs_hash = None
-    return self._per_input_updates.get(inputs_hash, [])
+
+    if inputs is None:
+      # Requesting unconditional updates.
+      return [x for x in self.updates if x._unconditional_update]  # pylint: disable=protected-access
+
+    # Requesting input-conditional updates.
+    inputs = nest.flatten(inputs)
+    reachable = layers_util.get_reachable_from_inputs(inputs, self.updates)
+    updates = []
+    for update in self.updates:
+      if update in reachable:
+        updates.append(update)
+    return updates
 
   @property
   def losses(self):
@@ -342,9 +341,11 @@ class Layer(object):
 
     Arguments:
       losses: Loss tensor, or list/tuple of tensors.
-      inputs: Optional input tensor(s) that the loss(es) depend on. Must
-        match the `inputs` argument passed to the `__call__` method at the time
-        the losses are created. If `None` is passed, the losses are assumed
+      inputs: If anything other than None is passed, it signals the losses
+        are conditional on some of the layer's inputs,
+        and thus they should only be run where these inputs are available.
+        This is the case for activity regularization losses, for instance.
+        If `None` is passed, the losses are assumed
         to be unconditional, and will apply across all dataflows of the layer
         (e.g. weight regularization losses).
 
@@ -352,24 +353,25 @@ class Layer(object):
       RuntimeError: If called in Eager mode.
     """
     if context.in_eager_mode():
+      # TODO(fchollet): it should be possible (and highly desirable) to support
+      # `add_loss` in eager mode. This allows great convenience and flexibility
+      # in defining custom losses on the fly (e.g. in VAEs).
+      # Simply appending the loss value to `self._losses`
+      # is the correct behavior.
+      # The only caveat is that we need to force the user to only call
+      # `add_loss` from inside a model or Layer's `call` method
+      # (otherwise the loss computation cannot be backproped through).
       raise RuntimeError('Layer.add_loss not supported in Eager mode.')
+
     losses = _to_list(losses)
-    if not losses:
-      return
     self._losses += losses
-    if inputs is not None:
-      inputs = nest.flatten(inputs)
-    if not inputs:
-      inputs = None
-    if inputs is not None:
-      # We compute an ID that uniquely identifies the list of tensors.
-      # This ID is order-sensitive.
-      inputs_hash = layers_util.object_list_uid(inputs)
+    if inputs is None:
+      for loss in losses:
+        loss._unconditional_loss = True  # pylint: disable=protected-access
     else:
-      inputs_hash = None
-    if inputs_hash not in self._per_input_losses:
-      self._per_input_losses[inputs_hash] = []
-    self._per_input_losses[inputs_hash] += losses
+      for loss in losses:
+        loss._unconditional_loss = False  # pylint: disable=protected-access
+    # TODO(fchollet): deprecate collection below.
     _add_elements_to_collection(losses, ops.GraphKeys.REGULARIZATION_LOSSES)
 
   def get_losses_for(self, inputs):
@@ -377,10 +379,6 @@ class Layer(object):
 
     Arguments:
       inputs: Input tensor or list/tuple of input tensors.
-        Must match the `inputs` argument passed to the `__call__`
-        method at the time the losses were created.
-        If you pass `inputs=None`, unconditional losses are returned,
-        such as weight regularization losses.
 
     Returns:
       List of loss tensors of the layer that depend on `inputs`.
@@ -390,15 +388,23 @@ class Layer(object):
     """
     if context.in_eager_mode():
       raise RuntimeError('Layer.get_losses_for not supported in Eager mode.')
-    if inputs is not None:
-      inputs = nest.flatten(inputs)
-    if not inputs:
-      inputs = None
-    if inputs is not None:
-      inputs_hash = layers_util.object_list_uid(inputs)
-    else:
-      inputs_hash = None
-    return self._per_input_losses.get(inputs_hash, [])
+
+    if inputs is None:
+      # Requesting unconditional losses.
+      return [x for x in self.losses if x._unconditional_loss]  # pylint: disable=protected-access
+
+    # Requesting input-conditional losses.
+    inputs = nest.flatten(inputs)
+    # Retrieve the set of tensors in the TF graph that depend on `inputs`.
+    # The losses we want to return will be part of this set.
+    # To avoid unnecessary work, we stop the search in case all of
+    # `self.losses` have been retrieved.
+    reachable = layers_util.get_reachable_from_inputs(inputs, self.losses)
+    losses = []
+    for loss in self.losses:
+      if loss in reachable:
+        losses.append(loss)
+    return losses
 
   def build(self, _):
     """Creates the variables of the layer."""
@@ -1228,6 +1234,7 @@ class Layer(object):
                                  ', found shape=' + str(shape))
 
 
+@tf_export('keras.layers.InputSpec', 'layers.InputSpec')
 class InputSpec(object):
   """Specifies the ndim, dtype and shape of every input to a layer.
 

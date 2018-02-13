@@ -20,21 +20,9 @@ from __future__ import print_function
 
 from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import converter_test_base
-from tensorflow.contrib.py2tf.pyct import compiler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.platform import test
-
-
-class TestNamer(control_flow.SymbolNamer):
-
-  def new_symbol(self, name_root, used):
-    i = 0
-    while True:
-      name = '%s%d' % (name_root, i)
-      if name not in used:
-        return name
-      i += 1
 
 
 class ControlFlowTest(converter_test_base.TestCase):
@@ -50,13 +38,12 @@ class ControlFlowTest(converter_test_base.TestCase):
       return s, i, n
 
     node = self.parse_and_analyze(test_fn, {})
-    node = control_flow.transform(node, TestNamer())
-    result = compiler.ast_to_object(node)
-    setattr(result, 'tf', control_flow_ops)
+    node = control_flow.transform(node, self.ctx)
 
-    with self.test_session() as sess:
-      self.assertEqual((10, 5, 5),
-                       sess.run(result.test_fn(constant_op.constant(5))))
+    with self.compiled(node, control_flow_ops.while_loop) as result:
+      with self.test_session() as sess:
+        self.assertEqual((10, 5, 5),
+                         sess.run(result.test_fn(constant_op.constant(5))))
 
   def test_while_single_var(self):
 
@@ -66,12 +53,11 @@ class ControlFlowTest(converter_test_base.TestCase):
       return n
 
     node = self.parse_and_analyze(test_fn, {})
-    node = control_flow.transform(node, TestNamer())
-    result = compiler.ast_to_object(node)
-    setattr(result, 'tf', control_flow_ops)
+    node = control_flow.transform(node, self.ctx)
 
-    with self.test_session() as sess:
-      self.assertEqual(0, sess.run(result.test_fn(constant_op.constant(5))))
+    with self.compiled(node, control_flow_ops.while_loop) as result:
+      with self.test_session() as sess:
+        self.assertEqual(0, sess.run(result.test_fn(constant_op.constant(5))))
 
   def test_simple_if(self):
 
@@ -85,15 +71,14 @@ class ControlFlowTest(converter_test_base.TestCase):
       return a, b
 
     node = self.parse_and_analyze(test_fn, {})
-    node = control_flow.transform(node, TestNamer())
-    result = compiler.ast_to_object(node)
-    setattr(result, 'tf', control_flow_ops)
+    node = control_flow.transform(node, self.ctx)
 
-    with self.test_session() as sess:
-      self.assertEqual((-1, 0), sess.run(
-          result.test_fn(constant_op.constant(1))))
-      self.assertEqual((0, -2),
-                       sess.run(result.test_fn(constant_op.constant(-1))))
+    with self.compiled(node, control_flow_ops.cond) as result:
+      with self.test_session() as sess:
+        self.assertEqual((-1, 0),
+                         sess.run(result.test_fn(constant_op.constant(1))))
+        self.assertEqual((0, -2),
+                         sess.run(result.test_fn(constant_op.constant(-1))))
 
   def test_if_single_var(self):
 
@@ -103,12 +88,11 @@ class ControlFlowTest(converter_test_base.TestCase):
       return n
 
     node = self.parse_and_analyze(test_fn, {})
-    node = control_flow.transform(node, TestNamer())
-    result = compiler.ast_to_object(node)
-    setattr(result, 'tf', control_flow_ops)
+    node = control_flow.transform(node, self.ctx)
 
-    with self.test_session() as sess:
-      self.assertEqual(-1, sess.run(result.test_fn(constant_op.constant(1))))
+    with self.compiled(node, control_flow_ops.cond) as result:
+      with self.test_session() as sess:
+        self.assertEqual(-1, sess.run(result.test_fn(constant_op.constant(1))))
 
 
 if __name__ == '__main__':

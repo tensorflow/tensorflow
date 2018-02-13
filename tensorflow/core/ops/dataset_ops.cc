@@ -107,13 +107,6 @@ REGISTER_OP("SkipDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
-REGISTER_OP("IgnoreErrorsDataset")
-    .Input("input_dataset: variant")
-    .Output("handle: variant")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape);
-
 REGISTER_OP("BytesProducedStatsDataset")
     .Input("input_dataset: variant")
     .Input("tag: string")

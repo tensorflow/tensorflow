@@ -39,7 +39,7 @@ class MNISTModel(tfe.Network):
   """MNIST Network.
 
   Network structure is equivalent to:
-  https://github.com/tensorflow/tensorflow/blob/r1.5/tensorflow/examples/tutorials/mnist/mnist_deep.py
+  https://github.com/tensorflow/tensorflow/blob/r1.6/tensorflow/examples/tutorials/mnist/mnist_deep.py
   and
   https://github.com/tensorflow/models/blob/master/tutorials/image/mnist/convolutional.py
 

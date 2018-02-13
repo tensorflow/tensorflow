@@ -261,14 +261,12 @@ def major_minor_change(old_version, new_version):
 def update_dockerfiles(old_version, new_version):
   """Update dockerfiles if there was a major change."""
   if major_minor_change(old_version, new_version):
-    old_r_major_minor = r"r%s\.%s" % (old_version.major, old_version.minor)
-    old_r_major_minor_string = old_r_major_minor.replace("\\", "")
-    r_major_minor = r"r%s\.%s" % (new_version.major, new_version.minor)
-    r_major_minor_string = r_major_minor.replace("\\", "")
+    old_r_major_minor = "r%s.%s" % (old_version.major, old_version.minor)
+    r_major_minor = "r%s.%s" % (new_version.major, new_version.minor)
 
     print("Detected Major.Minor change.")
     print("Updating pattern %s to %s in additional files"
-          % (old_r_major_minor_string, r_major_minor_string))
+          % (old_r_major_minor, r_major_minor))
 
     # Update dockerfiles
     replace_string_in_line(old_r_major_minor, r_major_minor, DEVEL_DOCKERFILE)

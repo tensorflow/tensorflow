@@ -44,9 +44,10 @@ tf_kernel_library(
     ],
 )
 
+# TODO(mrry): Remove this empty forwarding library.
 cc_library(
     name = "dataset",
-    srcs = ["dataset.cc"],
+    srcs = [],
     hdrs = ["dataset.h"],
     deps = [
         "//tensorflow/core:core_cpu",
@@ -318,18 +319,6 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
-    name = "ignore_errors_dataset_op",
-    srcs = ["ignore_errors_dataset_op.cc"],
-    deps = [
-        ":dataset",
-        "//tensorflow/core:dataset_ops_op_lib",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:lib_internal",
-    ],
-)
-
-tf_kernel_library(
     name = "stats_dataset_ops",
     srcs = ["stats_dataset_ops.cc"],
     deps = [
@@ -531,7 +520,6 @@ tf_kernel_library(
         ":filter_dataset_op",
         ":flat_map_dataset_op",
         ":group_by_window_dataset_op",
-        ":ignore_errors_dataset_op",
         ":interleave_dataset_op",
         ":iterator_ops",
         ":map_and_batch_dataset_op",

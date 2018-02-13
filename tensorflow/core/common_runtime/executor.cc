@@ -172,7 +172,7 @@ void SetMemory(NodeExecStatsWrapper* stats, OpKernelContext* ctx) {
     stats->AddAllocation(allocator_pair.first, allocator_pair.second);
   }
   auto* ms = stats->stats()->mutable_memory_stats();
-  ms->set_temp_memory_size(ctx->temp_memory_size());
+  ms->set_temp_memory_size(ctx->temp_memory_allocated());
   for (const auto& alloc_id : ctx->persistent_alloc_ids()) {
     ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
   }

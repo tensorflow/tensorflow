@@ -24,7 +24,7 @@ import time
 
 import numpy as np
 
-from six.moves import xrange
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib import layers
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
@@ -520,7 +520,7 @@ class Conv2DTest(test.TestCase):
           dilations=[2, 2],
           padding="VALID")
 
-  # TODO this currently fails.
+  # TODO(yzhwang): this currently fails.
   # self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
   #                   filter_in_sizes=[2, 2, 1, 1],
   #                   strides=[4, 4], padding="SAME",

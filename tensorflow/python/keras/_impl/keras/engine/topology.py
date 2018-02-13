@@ -39,6 +39,7 @@ from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.layers import network as tf_network
 from tensorflow.python.layers import utils as tf_layers_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=g-import-not-at-top
@@ -60,6 +61,7 @@ TFBaseLayer = tf_base_layers.Layer
 # pylint: enable=invalid-name
 
 
+@tf_export('keras.layers.Layer')
 class Layer(tf_base_layers.Layer):
   """Abstract base layer class.
 
@@ -490,6 +492,7 @@ class Layer(tf_base_layers.Layer):
     self._activity_regularizer = activity_regularizer
 
 
+@tf_export('keras.layers.InputLayer')
 class InputLayer(tf_network.InputLayer, Layer):
   """Layer to be used as an entry point into a graph.
 
@@ -552,6 +555,7 @@ class InputLayer(tf_network.InputLayer, Layer):
     return config
 
 
+@tf_export('keras.layers.Input', 'keras.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,
@@ -784,8 +788,8 @@ class Network(tf_network.GraphNetwork, Layer):
       masks = [None for _ in range(len(inputs))]
     else:
       masks = _to_list(mask)
-    cache_key = ','.join([str(id(x)) for x in inputs])
-    cache_key += '_' + ','.join([str(id(x)) for x in masks])
+    cache_key = (tf_layers_util.object_list_uid(inputs)
+                 + '_' + tf_layers_util.object_list_uid(masks))
     if cache_key in self._output_mask_cache:
       return self._output_mask_cache[cache_key]
     else:

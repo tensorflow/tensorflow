@@ -135,13 +135,16 @@ string AsControlDependency(const string& node);
 
 // Returns the number of outputs of a node according to its OpDef. Note that
 // some of the outputs may be unconnected.
-int NumOutputs(const NodeDef& node);
+int NumOutputs(const NodeDef& node, GraphDef* graph);
 
 // Number of connected non-control inputs.
 int NumNonControlInputs(const NodeDef& node);
 
 // Number of connected non-control outputs.
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map);
+
+// Removes redundant control inputs from node.
+void DedupControlInputs(NodeDef* node);
 
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.

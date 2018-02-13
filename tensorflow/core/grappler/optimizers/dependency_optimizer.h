@@ -52,8 +52,6 @@ class DependencyOptimizer : public GraphOptimizer {
   void CleanControlInputs();
   // Builds a map from the &optimized_graph_->node(i) to i.
   void BuildNodeToIdx();
-  // Removes the given set of nodes from the graph.
-  void DeleteNodes(const std::set<int>& nodes_to_delete);
   // Tries to optimize the node with the given index, possibly additional
   // optimizations by inserting nodes in nodes_to_simplify, and pruning nodes by
   // inserting them in nodes_to_delete.

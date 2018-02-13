@@ -22,24 +22,21 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import gast
-
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import templates
+from tensorflow.contrib.py2tf.pyct import transformer
+from tensorflow.contrib.py2tf.pyct.static_analysis.annos import NodeAnno
 
 
-class ForLoopCanonicalizationTransformer(gast.NodeTransformer):
+class ForLoopCanonicalizationTransformer(transformer.Base):
   """Canonicalizes for loops (e.g. into while loops)."""
 
-  def __init__(self, namer):
-    self.namer = namer
+  def __init__(self, context):
+    super(ForLoopCanonicalizationTransformer, self).__init__(context)
 
   def visit_For(self, node):
     self.generic_visit(node)
-    body_scope = anno.getanno(node, 'body_scope')
-
-    # TODO(mdan): Distinguish between `for i in n` and `for i in range(n)`
-    # Or maybe we should replace range with tf.range?
+    body_scope = anno.getanno(node, NodeAnno.BODY_SCOPE)
 
     if anno.hasanno(node, 'extra_cond'):
       template = """
@@ -56,8 +53,8 @@ class ForLoopCanonicalizationTransformer(gast.NodeTransformer):
           loop_iter=node.iter,
           target=node.target,
           body=node.body,
-          i=self.namer.new_symbol('i', body_scope.referenced),
-          n=self.namer.new_symbol('n', body_scope.referenced),
+          i=self.context.namer.new_symbol('i', body_scope.referenced),
+          n=self.context.namer.new_symbol('n', body_scope.referenced),
           extra_cond=anno.getanno(node, 'extra_cond'))
     else:
       template = """
@@ -69,13 +66,14 @@ class ForLoopCanonicalizationTransformer(gast.NodeTransformer):
           body  # pylint:disable=pointless-statement
           i += 1
       """
-      return templates.replace(
+      repl = templates.replace(
           template,
           loop_iter=node.iter,
           target=node.target,
           body=node.body,
-          i=self.namer.new_symbol('i', body_scope.referenced),
-          n=self.namer.new_symbol('n', body_scope.referenced))
+          i=self.context.namer.new_symbol('i', body_scope.referenced),
+          n=self.context.namer.new_symbol('n', body_scope.referenced))
+      return repl
 
   def visit_Continue(self, node):
     assert False, 'continue statement should be desugared at this point'
@@ -84,7 +82,5 @@ class ForLoopCanonicalizationTransformer(gast.NodeTransformer):
     assert False, 'break statement should be desugared at this point'
 
 
-def transform(node, namer):
-  transformer = ForLoopCanonicalizationTransformer(namer)
-  node = transformer.visit(node)
-  return node
+def transform(node, context):
+  return ForLoopCanonicalizationTransformer(context).visit(node)

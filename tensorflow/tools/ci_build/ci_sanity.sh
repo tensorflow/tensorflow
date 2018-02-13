@@ -185,7 +185,9 @@ do_pylint() {
   # C0330 bad-continuation
   # C0301 line-too-long
   # C0326 bad-whitespace
-  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326)' ${OUTPUT_FILE} > ${ERRORS_FILE}
+  # W0611 unused-import
+  # W0622 redefined-builtin
+  grep -E '(\[E|\[W0311|\[W0312|\[C0330|\[C0301|\[C0326|\[W0611|\[W0622)' ${OUTPUT_FILE} > ${ERRORS_FILE}
 
   N_ERRORS=0
   while read -r LINE; do
@@ -351,7 +353,7 @@ do_external_licenses_check(){
 
   # Whitelist
   echo ${EXTRA_LICENSE_FILE}
-  grep -e "@bazel_tools//src/" -e "@bazel_tools//tools/" -e "@com_google_absl//" -e "//external" -e "@local" -v ${EXTRA_LICENSES_FILE} > temp.txt
+  grep -e "@bazel_tools//src" -e "@bazel_tools//tools/" -e "@com_google_absl//" -e "//external" -e "@local" -v ${EXTRA_LICENSES_FILE} > temp.txt
   mv temp.txt ${EXTRA_LICENSES_FILE}
 
 

@@ -1612,7 +1612,8 @@ bool HloInstruction::HasConstantOperand() const {
 bool HloInstruction::IdenticalSlowPath(
     const HloInstruction& other,
     const std::function<bool(const HloComputation*, const HloComputation*)>&
-        eq_computations) const {
+        eq_computations,
+    const std::function<bool(const Shape&, const Shape&)>& eq_shapes) const {
   // Perform opcode specific checks.
   switch (opcode()) {
     // The result of these instructions only depend upon their opcode and
@@ -1660,8 +1661,12 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kTuple:
       return true;
 
-    // These opcodes have complex or special behavior so just return false.
     case HloOpcode::kFusion:
+      return fusion_kind() == other.fusion_kind() &&
+             eq_computations(fused_instructions_computation(),
+                             other.fused_instructions_computation());
+
+    // These opcodes have complex or special behavior so just return false.
     case HloOpcode::kRng:
     case HloOpcode::kTrace:
     case HloOpcode::kWhile:
@@ -1671,7 +1676,7 @@ bool HloInstruction::IdenticalSlowPath(
       return parameter_number() == other.parameter_number() &&
              // Check the shape too because `this` and `other` may be in
              // different HloComputations.
-             ShapeUtil::Compatible(shape(), other.shape());
+             eq_shapes(shape(), other.shape());
 
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kBatchNormInference:
@@ -1727,18 +1732,18 @@ bool HloInstruction::IdenticalSlowPath(
              protobuf_util::ProtobufEquals(window(), other.window());
 
     case HloOpcode::kReshape:
-      return ShapeUtil::Compatible(shape(), other.shape());
+      return eq_shapes(shape(), other.shape());
 
     // Transpose result is determined by the final shape and the permutation.
     case HloOpcode::kTranspose:
-      return ShapeUtil::Compatible(shape(), other.shape()) &&
+      return eq_shapes(shape(), other.shape()) &&
              dimensions() == other.dimensions();
 
     // Remaining instructions with special values.
     case HloOpcode::kBitcast:
-      return ShapeUtil::Equal(shape(), other.shape());
+      return eq_shapes(shape(), other.shape());
     case HloOpcode::kBroadcast:
-      return ShapeUtil::Compatible(shape(), other.shape()) &&
+      return eq_shapes(shape(), other.shape()) &&
              dimensions() == other.dimensions();
     case HloOpcode::kConcatenate:
       return dimensions() == other.dimensions();
@@ -1752,10 +1757,10 @@ bool HloInstruction::IdenticalSlowPath(
              slice_limits_ == other.slice_limits_ &&
              slice_strides_ == other.slice_strides_;
     case HloOpcode::kDynamicSlice:
-      return ShapeUtil::Compatible(shape(), other.shape()) &&
+      return eq_shapes(shape(), other.shape()) &&
              dynamic_slice_sizes_ == other.dynamic_slice_sizes_;
     case HloOpcode::kDynamicUpdateSlice:
-      return ShapeUtil::Compatible(shape(), other.shape());
+      return eq_shapes(shape(), other.shape());
     case HloOpcode::kCall:
     case HloOpcode::kMap:
       return eq_computations(to_apply(), other.to_apply());

@@ -32,12 +32,12 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_impl  # pylint: disable=unused-import
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.ops import partitioned_variables  # pylint: disable=unused-import
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.ops import partitioned_variables
-from tensorflow.python.ops import nn_impl
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
 
@@ -2285,7 +2285,7 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
     else:
       self._state_size = rnn_cell_impl.LSTMStateTuple(num_units, num_units)
       self._output_size = num_units
-    self._linear1 = None
+    self._linear1 = [None] * number_of_groups
     self._linear2 = None
 
   @property
@@ -2359,9 +2359,11 @@ class GLSTMCell(rnn_cell_impl.RNNCell):
                                             self._group_shape[0])
               ],
               axis=1)
-          if self._linear1 is None:
-            self._linear1 = _Linear(x_g_id, 4 * self._group_shape[1], False)
-          R_k = self._linear1(x_g_id)  # pylint: disable=invalid-name
+          linear = self._linear1[group_id]
+          if linear is None:
+            linear = _Linear(x_g_id, 4 * self._group_shape[1], False)
+            self._linear1[group_id] = linear
+          R_k = linear(x_g_id)  # pylint: disable=invalid-name
           i_k, j_k, f_k, o_k = array_ops.split(R_k, 4, 1)
 
         i_parts.append(i_k)
@@ -2680,7 +2682,7 @@ class LayerNormLSTMCell(rnn_cell_impl.RNNCell):
     return m, new_state
 
 
-class SRUCell(rnn_cell_impl._LayerRNNCell):
+class SRUCell(rnn_cell_impl.LayerRNNCell):
   """SRU, Simple Recurrent Unit
 
      Implementation based on

@@ -177,6 +177,106 @@ bool HardcodeMinMaxForOutput(Model* model, Operator* op, double min,
   output_minmax.max = max;
   return true;
 }
+
+// Propagates MinMax from any of the listed arrays, to all others.
+// If multiple of these arrays have MinMax, then these are required
+// to agree with each other.
+bool PropagateMinMaxAmongArrays(Model* model,
+                                const std::vector<string> array_names) {
+  string reference_array_name;
+  MinMax* reference_minmax = nullptr;
+  for (const string& array_name : array_names) {
+    if (model->GetArray(array_name).minmax) {
+      reference_array_name = array_name;
+      reference_minmax = model->GetArray(array_name).minmax.get();
+      break;
+    }
+  }
+  // No MinMax info is available to propagate.
+  if (!reference_minmax) {
+    return false;
+  }
+  bool changed = false;
+  for (const string& array_name : array_names) {
+    auto& array = model->GetArray(array_name);
+    if (array.minmax) {
+      CHECK(*array.minmax == *reference_minmax)
+          << "Both the following arrays have minmax, and they disagree: "
+          << reference_array_name << " and " << array_name
+          << ". Expected that either only one of them would have minmax, or at "
+             "least that they would agree.";
+    } else {
+      array.GetOrCreateMinMax() = *reference_minmax;
+      changed = true;
+    }
+  }
+  return changed;
+}
+
+bool HardcodeMinMaxForLstmCell(Model* model, Operator* op) {
+  CHECK_EQ(op->inputs.size(), LstmCellOperator::NUM_INPUTS);
+  CHECK_EQ(op->outputs.size(), LstmCellOperator::NUM_OUTPUTS);
+
+  bool changed = false;
+  changed |= PropagateMinMaxAmongArrays(
+      model, {op->inputs[LstmCellOperator::PREV_STATE_INPUT],
+              op->outputs[LstmCellOperator::STATE_OUTPUT]});
+
+  auto& input_activations =
+      model->GetArray(op->inputs[LstmCellOperator::DATA_INPUT]);
+  if (!input_activations.minmax) {
+    auto& minmax = input_activations.GetOrCreateMinMax();
+    minmax.min = -1;
+    minmax.max = 127. / 128.;
+    changed = true;
+  }
+
+  auto& prev_output_activations =
+      model->GetArray(op->inputs[LstmCellOperator::PREV_ACTIV_INPUT]);
+  if (!prev_output_activations.minmax) {
+    auto& minmax = prev_output_activations.GetOrCreateMinMax();
+    minmax.min = -1;
+    minmax.max = 127. / 128.;
+    changed = true;
+  }
+
+  auto& output_concat_temp =
+      model->GetArray(op->outputs[LstmCellOperator::CONCAT_TEMP]);
+  if (!output_concat_temp.minmax) {
+    auto& minmax = output_concat_temp.GetOrCreateMinMax();
+    minmax.min = -1;
+    minmax.max = 127. / 128.;
+    changed = true;
+  }
+
+  auto& output_activations =
+      model->GetArray(op->outputs[LstmCellOperator::ACTIV_OUTPUT]);
+  if (!output_activations.minmax) {
+    auto& minmax = output_activations.GetOrCreateMinMax();
+    minmax.min = -1;
+    minmax.max = 127. / 128.;
+    changed = true;
+  }
+
+  // (This comment should morph into proper documentation for
+  // quantization of LSTM models. It isn't just a local implementation detail,
+  // the training code for LSTM models needs to be adjusted to that.)
+  //
+  // Finally, output_activations_temp holds the output of the fully-connected
+  // node inside the LSTM cell. For it, we hardcode a minmax of [-8, 8].
+  // The rationale for that is given in a lengthy comment on the LstmCell
+  // quantized runtime implementation in reference_ops.h.
+  auto& output_activations_temp =
+      model->GetArray(op->outputs[LstmCellOperator::ACTIV_TEMP]);
+  if (!output_activations_temp.minmax) {
+    auto& minmax = output_activations_temp.GetOrCreateMinMax();
+    minmax.min = -8;
+    minmax.max = 8 * 32767. / 32768.;
+    changed = true;
+  }
+
+  return changed;
+}
 }  // namespace
 
 bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
@@ -217,6 +317,16 @@ bool HardcodeMinMax::Run(Model* model, std::size_t op_index) {
       // We hardcode quantization_params to: zero_point=0, scale=1/256.
       // This choice of minmax is the one that is equivalent to that.
       changed = HardcodeMinMaxForOutput(model, op, 0, 255. / 256.);
+      break;
+
+    case OperatorType::kTanh:
+      // We hardcode quantization_params to: zero_point=127, scale=1/128.
+      // This choice of minmax is the one that is equivalent to that.
+      changed = HardcodeMinMaxForOutput(model, op, -127. / 128., 1.0);
+      break;
+
+    case OperatorType::kLstmCell:
+      changed = HardcodeMinMaxForLstmCell(model, op);
       break;
 
     default:

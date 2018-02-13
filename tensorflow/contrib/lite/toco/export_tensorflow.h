@@ -22,6 +22,8 @@ namespace toco {
 
 void ExportTensorFlowGraphDef(const Model& model, string* output_file_contents);
 
+void EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(Model* model);
+
 }  // namespace toco
 
 #endif  // TENSORFLOW_CONTRIB_LITE_TOCO_EXPORT_TENSORFLOW_H_
