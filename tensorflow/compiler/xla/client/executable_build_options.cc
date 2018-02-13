@@ -76,4 +76,14 @@ ExecutableBuildOptions::generate_hlo_graph() const {
   return generate_hlo_graph_;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_resource_update_count(
+    int count) {
+  resource_update_count_ = count;
+  return *this;
+}
+
+int ExecutableBuildOptions::resource_update_count() const {
+  return resource_update_count_;
+}
+
 }  // namespace xla

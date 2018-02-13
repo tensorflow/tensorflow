@@ -76,6 +76,12 @@ class HloModuleConfig {
   }
   int64 replica_count() const { return replica_count_; }
 
+  // The number of outputs which are updates of resource variables
+  void set_resource_update_count(int32 count) {
+    resource_update_count_ = count;
+  }
+  int32 resource_update_count() const { return resource_update_count_; }
+
   // Return a string which unambiguously represents all the fields of this data
   // structure. Used for generating a cache key for storing the compiled
   // executable.
@@ -113,6 +119,8 @@ class HloModuleConfig {
   // The target maximum parallelism at which to partition HLOs for parallel
   // execution on the CPU backend.
   int64 intra_op_parallelism_threads_ = -1;
+
+  int32 resource_update_count_ = 0;
 
   DebugOptions debug_options_;
 };

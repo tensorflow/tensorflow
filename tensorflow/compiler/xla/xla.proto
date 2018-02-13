@@ -217,6 +217,9 @@ message ExecutionOptions {
   // computation on. The computation will be partitioned across these devices.
   // If not provided, the default device will be chosen.
   repeated DeviceHandle device_handles = 5;
+
+  // The number of outputs which are updates for resource variables
+  uint32 resource_update_count = 6;
 }
 
 message SnapshotComputationRequest {

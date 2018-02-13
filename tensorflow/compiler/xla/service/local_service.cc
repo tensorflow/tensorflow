@@ -119,6 +119,8 @@ StatusOr<std::unique_ptr<Executable>> LocalService::CompileExecutable(
   }
 
   ExecutionOptions execution_options = CreateDefaultExecutionOptions();
+  execution_options.set_resource_update_count(
+      build_options.resource_update_count());
   if (build_options.generate_hlo_graph().has_value()) {
     execution_options.mutable_debug_options()->set_xla_generate_hlo_graph(
         build_options.generate_hlo_graph().value());

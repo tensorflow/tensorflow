@@ -308,6 +308,8 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     config->set_debug_options(execution_options->debug_options());
     config->enable_hlo_profiling(
         execution_options->debug_options().xla_hlo_profile());
+    config->set_resource_update_count(
+        execution_options->resource_update_count());
   } else {
     config->set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
   }
