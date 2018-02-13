@@ -23,7 +23,10 @@ limitations under the License.
 
 namespace tensorrt {
 namespace convert {
-
+tensorflow::Status ConvertCalibGraphToInferGraph(
+    const tensorflow::GraphDef& graph_def,
+    tensorflow::GraphDef* new_graph_def
+);
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<std::string>& output_names, size_t max_batch_size,

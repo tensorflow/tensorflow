@@ -216,11 +216,11 @@ tensorflow::Status GetCalibNode(ConvertGraphParams* params) {
   TF_RETURN_IF_ERROR(status);
 
   for (auto in_edge: params->subgraph_incoming_edges) {  // loop over incoming edges and attach them to calib node
-    tensorflow::Node* src_node = in_edge->src();
+    // tensorflow::Node* src_node = in_edge->src();
     auto src_output=in_edge->src_output();
     auto dst_node=in_edge->dst();
     auto dst_input=in_edge->dst_input();
-    VLOG(0)<<" update edge "<<trt_node->name()<<":"<<src_output<<" -> "<<dst_node->name()<<":"<<dst_input;
+    VLOG(1)<<" update edge "<<trt_node->name()<<":"<<src_output<<" -> "<<dst_node->name()<<":"<<dst_input;
     params->graph.UpdateEdge(trt_node, src_output, dst_node,
                              dst_input);
   }
@@ -330,6 +330,30 @@ tensorflow::Status BuildNodeMap(
 }
 
 }  // namespace
+tensorflow::Status ConvertCalibGraphToInferGraph(
+    const tensorflow::GraphDef& graph_def,
+    tensorflow::GraphDef* infer_graph){
+  VLOG(0)<<"Starting Calib Conversion";
+  tensorflow::Graph graph(tensorflow::OpRegistry::Global());
+  TF_RETURN_IF_ERROR(tensorflow::ConvertGraphDefToGraph(
+      tensorflow::GraphConstructorOptions(), graph_def, &graph));
+  //  get calib nodes
+  std::vector<tensorflow::Node*> calibNodes;
+  for(auto node : graph.op_nodes()){
+    if(node->type_string()=="TRTCalibOp"){
+      VLOG(1)<<"Found Calib Node";
+      calibNodes.push_back(node);
+    }
+  }
+  VLOG(0)<<"Num Calib nodes in graph= "<<calibNodes.size();
+  if(calibNodes.size()==0)return tensorflow::errors::FailedPrecondition("Graph doesn't contain any calibration nodes!."\
+  " Please generate calibration graph and run calibration first");
+  for(auto n : calibNodes){
+    TF_RETURN_IF_ERROR(tensorrt::convert::ConvertCalibrationNodeToEngineNode(graph,n));
+
+  }
+  return tensorflow::Status::OK();
+}
 
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,

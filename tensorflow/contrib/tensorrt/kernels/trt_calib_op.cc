@@ -43,23 +43,22 @@ TRTCalibOp::TRTCalibOp(OpKernelConstruction* context) : OpKernel(context) {
   }
 void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
   auto trt_rm = tensorflow::trt::TRTResourceManager::instance();
-  VLOG(0) << "Op Name= " << name() << " nodedef name= " << repo_name;
+  VLOG(2) << "Op Name= " << name() << " nodedef name= " << repo_name;
   auto resmgr = trt_rm->getManager("TRTCalibOps");
   tensorflow::trt::TRTCalibrationResource* calibRes = nullptr;
   auto status = resmgr->Lookup(repo_name, repo_name, &calibRes);
-  VLOG(0) << "SAMI status " << status.ToString();
   if (status.ok()) {
     int batchSize = ctx->input(0).dim_size(0);
-    VLOG(0) << "SAMI Batchsize= " << batchSize;
+    VLOG(2) << "SAMI Batchsize= " << batchSize;
     int numInputs = ctx->num_inputs();
-    VLOG(0) << "SAMI numInputs= " << numInputs;
+    VLOG(2) << "SAMI numInputs= " << numInputs;
     dev_tensors_.resize(numInputs);
     if (calibRes->calibrator == nullptr) {
-      VLOG(0) << " Constructing calibrator";
+      VLOG(1) << " Constructing calibrator";
       // first run
       for (int i = 0; i < numInputs; i++) {
         const tensorflow::Tensor& t = ctx->input(i);
-        VLOG(0) << "Tensor " << i << " " << t.shape().DebugString();
+        VLOG(1) << "Tensor " << i << " " << t.shape().DebugString();
         OP_REQUIRES_OK(ctx,
                        ctx->allocate_persistent(t.dtype(), t.shape(),
                                                 &dev_tensors_.at(i), nullptr));
@@ -73,11 +72,14 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
       }
       calibRes->calibrator = new TRTInt8Calibrator(device_buffers_, batchSize);
       calibRes->thr = new std::thread([calibRes]() {
+        VLOG(0)<<"Starting calibration thread, Calibration Resource @ "<<calibRes;
+        calibRes->builder->setInt8Calibrator(calibRes->calibrator);
+        calibRes->builder->setInt8Mode(true);
         calibRes->engine = calibRes->builder->buildCudaEngine(
             *calibRes->network);  // will loop until we terminate calibrator
-        VLOG(1) << "Calibration loop terminated";
+        VLOG(0) << "SAMI Calibration loop terminated";
       });
-      VLOG(0) << "SAMI intialized calibrator resource";
+      VLOG(0) << "SAMI initialized calibrator resource";
     }
 
     std::unordered_map<std::string, void*> input_data;
@@ -92,9 +94,9 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
       input_data.emplace(input_names_.at(i), data_address);
       ctx->set_output(i, t);
     }
-    VLOG(0) << "Filled map";
+    VLOG(1) << "Filled map for sending";
     calibRes->calibrator->setBatch(input_data);
-    VLOG(0) << "Passed calibration data";
+    VLOG(1) << "Passed calibration data";
   } else {
     ctx->SetStatus(status);
     return;

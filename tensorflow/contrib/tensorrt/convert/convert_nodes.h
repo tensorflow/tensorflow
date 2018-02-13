@@ -31,7 +31,7 @@ namespace tensorrt {
 namespace convert {
 
 struct SubGraphParams {
-  SubGraphParams(const tensorflow::Graph& graph_,
+  SubGraphParams(tensorflow::Graph& graph_,
                  const std::set<int>& subgraph_node_ids_,
                  const std::vector<std::pair<int, int>>& input_inds_,
                  const std::vector<std::pair<int, int>>& output_inds_,
@@ -52,7 +52,7 @@ struct SubGraphParams {
         trt_node(trt_node_),
         int8(int8_) {}
 
-  const tensorflow::Graph& graph;
+  tensorflow::Graph& graph;
   const std::set<int>& subgraph_node_ids;
   const std::vector<std::pair<int, int>>& input_inds;   // {node_id, output_idx}
   const std::vector<std::pair<int, int>>& output_inds;  // {node_id, output_idx}
@@ -64,8 +64,10 @@ struct SubGraphParams {
   const bool int8;
 };
 
-tensorflow::Status ConvertSubGraphToTensorRTNodeDef(SubGraphParams& params);
+tensorflow::Status ConvertSubGraphToTensorRTNodeDef(SubGraphParams &params);
 tensorflow::Status InjectCalibrationNode(SubGraphParams& params);
+tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph& graph,
+                                                      tensorflow::Node* c_node);
 }  // namespace convert
 }  // namespace tensorrt
 
