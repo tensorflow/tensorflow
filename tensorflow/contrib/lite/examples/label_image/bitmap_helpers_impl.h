@@ -38,7 +38,9 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
             int image_channels, int wanted_height, int wanted_width,
             int wanted_channels, Settings* s) {
   int number_of_pixels = image_height * image_width * image_channels;
-  std::unique_ptr<Interpreter> interpreter(new Interpreter);
+  // Interpreter will won't need delete anymore, so cannot use
+  // std::unique_ptr<>, otherwise there will be double free
+  Interpreter *interpreter = new Interpreter();
 
   int base_index = 0;
 
@@ -61,10 +63,12 @@ void resize(T* out, uint8_t* in, int image_height, int image_width,
       2, kTfLiteFloat32, "output",
       {1, wanted_height, wanted_width, wanted_channels}, quant);
 
+  TfLiteResizeBilinearParams p = {false};
+
   ops::builtin::BuiltinOpResolver resolver;
   TfLiteRegistration* resize_op =
       resolver.FindOp(BuiltinOperator_RESIZE_BILINEAR);
-  interpreter->AddNodeWithParameters({0, 1}, {2}, nullptr, 0, nullptr,
+  interpreter->AddNodeWithParameters({0, 1}, {2}, nullptr, 0, &p,
                                      resize_op, nullptr);
 
   interpreter->AllocateTensors();
