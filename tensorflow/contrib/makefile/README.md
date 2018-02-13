@@ -132,6 +132,8 @@ For more details, see the [benchmark documentation](../../tools/benchmark).
 
 ## CUDA support for Tegra devices running Android (Nvidia Shield TV, etc)
 
+With the release of TF 1.6 and JetPack for Android 3.2 (currently pending), you can now build a version of TensorFlow for compatible devices according to the following instructions which will receive the full benefits of GPU acceleration.
+
 ### Environment setup:
 
 First, download and install JetPack for Android version 3.2 or greater from [Nvidia](https://developers.nvidia.com). Note that as of the TF 1.6 release the JetPack for Android 3.2 release is still pending, and regular JetPack for L4T will not work.
@@ -210,7 +212,7 @@ adb install -r -f bazel-bin/tensorflow/examples/android/tensorflow_demo.apk
 
 ### Building the CUDA-enabled Android demo with gradle/Android Studio:
 
-Add tensorflow/examples/android as an Android project as normal.
+Add tensorflow/examples/android as an Android project in Android Studio as normal.
 
 Edit build.gradle and:
 * set nativeBuildSystem = 'makefile'
