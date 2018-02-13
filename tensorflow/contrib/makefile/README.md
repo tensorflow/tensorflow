@@ -146,6 +146,8 @@ TEGRA_LIBS="$JETPACK/cuDNN/aarch64/cuda/lib64/libcudnn.so  $JETPACK/cuda-9.0/ext
 ```
 
 ### Building all CUDA-enabled native binaries:
+This will build CUDA-enabled versions of libtensorflow_inference.so and the benchmark binary. (libtensorflow_demo.so will also be built incidentally, but it does not support CUDA)
+
 ```bash
 NDK_ROOT=$JETPACK/android-ndk-r13b
 CC_PREFIX=ccache tensorflow/contrib/makefile/build_all_android.sh -s tensorflow/contrib/makefile/sub_makefiles/android/Makefile.in -t "libtensorflow_inference.so libtensorflow_demo.so all" -a tegra
