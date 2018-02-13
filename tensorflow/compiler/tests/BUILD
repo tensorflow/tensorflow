@@ -678,6 +678,19 @@ tf_xla_py_test(
     ],
 )
 
+tf_xla_py_test(
+    name = "scatter_nd_op_test",
+    size = "medium",
+    srcs = ["scatter_nd_op_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
 cuda_py_test(
     name = "xla_device_test",
     size = "small",

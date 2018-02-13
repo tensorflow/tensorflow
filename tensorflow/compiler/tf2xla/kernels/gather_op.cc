@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/tf2xla/kernels/gather_op_helpers.h"
+#include "tensorflow/compiler/tf2xla/lib/while_loop.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_context.h"
@@ -32,12 +33,12 @@ Status XlaGather(const xla::ComputationDataHandle& input,
                  DataType dtype, DataType index_type,
                  xla::ComputationBuilder* builder,
                  xla::ComputationDataHandle* gather_output) {
-  // If the indices are N-dimensional, then the last dimension of indices should
-  // be of size N and correspond to the N indices.
-  int64 num_axes = 1;
+  // If the indices are N-dimensional, then the minor dimension of indices
+  // should be of size N and correspond to the N indices.
+  int64 num_index_dims = 1;
   if (indices_are_nd) {
     CHECK_GE(indices_shape.dims(), 1);
-    num_axes = indices_shape.dim_size(indices_shape.dims() - 1);
+    num_index_dims = indices_shape.dim_size(indices_shape.dims() - 1);
     indices_shape.RemoveLastDims(1);
   }
 
@@ -46,15 +47,15 @@ Status XlaGather(const xla::ComputationDataHandle& input,
   // input, the output is returned with shape:
   // input.shape[:axis] + indices.shape + input.shape[axis+1:]
 
-  const int num_indices = indices_shape.num_elements();
+  const int64 num_indices = indices_shape.num_elements();
   TensorShape input_shape_pre_axis(input_shape);
   input_shape_pre_axis.RemoveDimRange(axis, input_shape.dims());
   TensorShape input_shape_post_axis(input_shape);
-  input_shape_post_axis.RemoveDimRange(0, axis + num_axes);
+  input_shape_post_axis.RemoveDimRange(0, axis + num_index_dims);
   // Each slice of the input tensor has shape:
   // [<input_shape_pre_axis>, 1, ..., 1, <input shape_post_axis>]
   TensorShape slice_shape(input_shape);
-  for (int64 i = 0; i < num_axes; ++i) {
+  for (int64 i = 0; i < num_index_dims; ++i) {
     slice_shape.set_dim(axis + i, 1);
   }
 
@@ -79,7 +80,7 @@ Status XlaGather(const xla::ComputationDataHandle& input,
     return Status::OK();
   }
 
-  for (int64 i = 0; i < num_axes; ++i) {
+  for (int64 i = 0; i < num_index_dims; ++i) {
     if (input_shape.dim_size(axis + i) == 0) {
       return errors::InvalidArgument("Gather dimension ", axis + i,
                                      " is of size zero in tensor with shape ",
@@ -91,57 +92,30 @@ Status XlaGather(const xla::ComputationDataHandle& input,
   // iteration. If there is an axis dimension, we must leave it alone.
   std::vector<int64> flat_indices_shape = {num_indices};
   if (indices_are_nd) {
-    flat_indices_shape.push_back(num_axes);
+    flat_indices_shape.push_back(num_index_dims);
   }
 
   // Specify the shape of the loop-carried Tensor tuple.
-  xla::PrimitiveType ptype;
-  TF_CHECK_OK(DataTypeToPrimitiveType(dtype, &ptype));
-  xla::PrimitiveType idxtype;
-  TF_CHECK_OK(DataTypeToPrimitiveType(index_type, &idxtype));
-  std::vector<xla::Shape> tuple_shapes(
-      {// The iteration counter i is a scalar, incremented each iteration.
-       xla::ShapeUtil::MakeShape(idxtype, {}),
-       // The input array has shape input_shape. Loop invariant.
-       xla::ShapeUtil::MakeShape(ptype, input_shape.dim_sizes()),
-       // The gather indices are reshaped to flat_indices_shape. Loop invariant.
-       xla::ShapeUtil::MakeShape(idxtype, flat_indices_shape),
-       // The output array, which is updated on each loop iteration.
-       xla::ShapeUtil::MakeShape(ptype, loop_out_shape.dim_sizes())});
-  xla::Shape tuple_shape = xla::ShapeUtil::MakeTupleShape(tuple_shapes);
 
   // Construct the initial values of the loop-carried Tensors.
-  auto init_i = XlaHelpers::Zero(builder, index_type);
+  auto flat_indices = builder->Reshape(indices, flat_indices_shape);
   auto init_out = builder->Broadcast(XlaHelpers::Zero(builder, dtype),
                                      loop_out_shape.dim_sizes());
-  auto flat_indices = builder->Reshape(indices, flat_indices_shape);
-  auto init = builder->Tuple({init_i, input, flat_indices, init_out});
-
-  // Construct the while loop condition (i < num_indices)
-  std::unique_ptr<xla::ComputationBuilder> condb =
-      builder->CreateSubBuilder("GatherWhileCond");
-  condb->Lt(condb->GetTupleElement(
-                condb->Parameter(0, tuple_shape, "GatherWhileTuple"), 0),
-            XlaHelpers::IntegerLiteral(condb.get(), index_type, num_indices));
-  auto cond_status = condb->Build();
-  auto cond = cond_status.ConsumeValueOrDie();
+  auto init = {input, flat_indices, init_out};
 
   // Construct the while loop body's function. The implementation of gather is:
   // for i in range(num_indices):
   //   index = dynamic-slice(indices, i)
   //   xi = dynamic-slice(input, index)
   //   output = dynamic-update-slice(output, xi, i)
-  std::unique_ptr<xla::ComputationBuilder> bodyb =
-      builder->CreateSubBuilder("GatherWhileBody");
-  {
-    // The four loop carried values.
-    auto loop_tuple = bodyb->Parameter(0, tuple_shape, "GatherWhileTuple");
-    auto i = bodyb->GetTupleElement(loop_tuple, 0);
-    auto input = bodyb->GetTupleElement(loop_tuple, 1);
-    auto indices = bodyb->GetTupleElement(loop_tuple, 2);
-    auto output = bodyb->GetTupleElement(loop_tuple, 3);
+  auto body_fn = [&](xla::ComputationDataHandle i,
+                     gtl::ArraySlice<xla::ComputationDataHandle> loop_vars,
+                     xla::ComputationBuilder* bodyb) {
+    auto input = loop_vars[0];
+    auto indices = loop_vars[1];
+    auto output = loop_vars[2];
 
-    auto zero_index = XlaHelpers::Zero(bodyb.get(), index_type);
+    auto zero_index = XlaHelpers::Zero(bodyb, index_type);
 
     // Slice the i-th index from the indices array.
     xla::ComputationDataHandle index;
@@ -150,7 +124,7 @@ Status XlaGather(const xla::ComputationDataHandle& input,
       // Slice out the entire nd index, if applicable.
       indices_offset = bodyb->Pad(indices_offset, zero_index,
                                   xla::MakeEdgePaddingConfig({{0, 1}}));
-      index = bodyb->DynamicSlice(indices, indices_offset, {1, num_axes});
+      index = bodyb->DynamicSlice(indices, indices_offset, {1, num_index_dims});
       index = bodyb->Collapse(index, {0, 1});
     } else {
       index = bodyb->DynamicSlice(indices, indices_offset, {1});
@@ -174,16 +148,16 @@ Status XlaGather(const xla::ComputationDataHandle& input,
     // Update the output Tensor
     auto updated_output = bodyb->DynamicUpdateSlice(output, slice_i, out_index);
 
-    bodyb->Tuple({bodyb->Add(i, XlaHelpers::One(bodyb.get(), index_type)),
-                  input, indices, updated_output});
-  }
-  auto body_status = bodyb->Build();
-  auto body = body_status.ConsumeValueOrDie();
+    return std::vector<xla::ComputationDataHandle>{input, indices,
+                                                   updated_output};
+  };
 
   // Construct the While loop, extract and reshape the output.
-  auto gather_while = builder->While(cond, body, init);
-  auto result = builder->GetTupleElement(gather_while, 3);
-  *gather_output = builder->Reshape(result, out_shape.dim_sizes());
+  auto num_indices_value =
+      XlaHelpers::IntegerLiteral(builder, index_type, num_indices);
+  TF_ASSIGN_OR_RETURN(auto outputs, XlaForEachIndex(num_indices_value, body_fn,
+                                                    init, "gather", builder));
+  *gather_output = builder->Reshape(outputs[2], out_shape.dim_sizes());
   return Status::OK();
 }
 
@@ -250,9 +224,10 @@ class GatherNdOp : public XlaOpKernel {
                 errors::InvalidArgument("params must be at least a vector"));
     OP_REQUIRES(context, TensorShapeUtils::IsVectorOrHigher(indices_shape),
                 errors::InvalidArgument("indices must be at least a vector"));
-    const int64 num_axes = indices_shape.dim_size(indices_shape.dims() - 1);
+    const int64 num_index_dims =
+        indices_shape.dim_size(indices_shape.dims() - 1);
     OP_REQUIRES(
-        context, num_axes <= params_shape.dims(),
+        context, num_index_dims <= params_shape.dims(),
         errors::InvalidArgument(
             "index innermost dimension length must be <= params rank; saw: ",
             indices_shape.dim_size(indices_shape.dims() - 1), " vs. ",
