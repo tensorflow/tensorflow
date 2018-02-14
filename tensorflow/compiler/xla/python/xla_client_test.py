@@ -86,7 +86,8 @@ class ComputationsWithConstantsTest(LocalComputationTest):
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
-    c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
+    root = c.Add(c.ConstantF32Scalar(1.11), c.ConstantF32Scalar(3.14))
+    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
     self._ExecuteAndCompareClose(c, expected=4.25)
 
   def testConstantScalarSumF64(self):

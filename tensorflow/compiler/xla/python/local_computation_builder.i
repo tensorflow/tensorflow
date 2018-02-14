@@ -201,6 +201,15 @@ tensorflow::ImportNumpy();
   }
 }
 
+%typemap(out) StatusOr<Shape> {
+  if ($1.ok()) {
+    $result = numpy::PyShapeInfoFromXlaShape($1.ConsumeValueOrDie());
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    return NULL;
+  }
+}
+
 %typemap(out) Status {
   if (!$1.ok()) {
     PyErr_SetString(
@@ -850,6 +859,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::ClearOpMetadata;
 %unignore xla::swig::LocalComputationBuilder::Parameter;
 %unignore xla::swig::LocalComputationBuilder::GetShape;
+%unignore xla::swig::LocalComputationBuilder::GetReturnValueShape;
 %unignore xla::swig::LocalComputationBuilder::Infeed;
 %unignore xla::swig::LocalComputationBuilder::Outfeed;
 %unignore xla::swig::LocalComputationBuilder::ConstantLiteral;

@@ -195,6 +195,12 @@ class Shape(object):
     self._minor_to_major = minor_to_major
     self._check_minor_to_major()
 
+  def __eq__(self, other):
+    # pylint: disable=protected-access
+    return (self.np_dtype == other.np_dtype and
+            self._dimensions == other._dimensions and
+            self._minor_to_major == other._minor_to_major)
+
   def __repr__(self):
     return ('xla_client.Shape(np_dtype={!r}, dimensions={!r}, '
             'minor_to_major={!r})').format(self.np_dtype, self._dimensions,
@@ -605,6 +611,9 @@ class ComputationBuilder(object):
 
   def GetShape(self, operand):
     return _wrap_shape(self._client.GetShape(_unwrap_data_handle(operand)))
+
+  def GetReturnValueShape(self):
+    return _wrap_shape(self._client.GetReturnValueShape())
 
   def GetComputationStats(self):
     raise NotImplementedError()
