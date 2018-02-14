@@ -933,6 +933,7 @@ class _UnreadVariable(ResourceVariable):
       return gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
 
+  @property
   def op(self):
     """The op for this variable."""
     return self._parent_op
