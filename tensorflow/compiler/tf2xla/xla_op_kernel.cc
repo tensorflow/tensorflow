@@ -302,9 +302,18 @@ Status XlaOpKernelContext::ReadVariableInput(
         "Type mismatch for read of variable ", variable->name(), ". Expected ",
         DataTypeString(type), "; got ", DataTypeString(variable->type()));
   }
-  *value = variable->value();
   if (shape) {
     *shape = variable->shape();
+  }
+
+  XlaContext& xla_context = XlaContext::Get(context_);
+  TensorShape representation_shape = xla_context.VariableRepresentationShape(
+      variable->shape(), variable->type());
+  if (representation_shape == variable->shape()) {
+    *value = variable->value();
+  } else {
+    *value =
+        builder()->Reshape(variable->value(), variable->shape().dim_sizes());
   }
   return Status::OK();
 }
@@ -400,8 +409,8 @@ Status XlaOpKernelContext::GetResourceInput(int index, XlaResource** resource) {
   return Status::OK();
 }
 
-Status XlaOpKernelContext::AssignVariable(
-    int input_index, DataType type, const xla::ComputationDataHandle& handle) {
+Status XlaOpKernelContext::AssignVariable(int input_index, DataType type,
+                                          xla::ComputationDataHandle handle) {
   TF_RET_CHECK(handle.handle() != 0);
 
   const XlaExpression* expression =
@@ -419,6 +428,13 @@ Status XlaOpKernelContext::AssignVariable(
       XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), &shape));
 
   TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
+
+  XlaContext& xla_context = XlaContext::Get(context_);
+  TensorShape representation_shape =
+      xla_context.VariableRepresentationShape(shape, type);
+  if (shape != representation_shape) {
+    handle = builder()->Reshape(handle, representation_shape.dim_sizes());
+  }
   return variable->SetValue(handle);
 }
 
