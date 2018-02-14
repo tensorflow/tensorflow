@@ -262,9 +262,16 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
-      auto param_no = allocation.parameter_number();
-      buffer_allocations_builder.RegisterBuffer(
-          i, arguments[param_no]->root_buffer());
+      // The caller must give us a buffer for ShapeIndex {} of every parameter.
+      // It can optionally give us a buffer for other ShapeIndices, but we
+      // ignore them: Because we can't rely on these sub-buffers' addresses
+      // being available, our generated code can't use them.  Instead, it must
+      // chase pointers starting at the tuple root.
+      if (allocation.param_shape_index().empty()) {
+        auto param_no = allocation.parameter_number();
+        buffer_allocations_builder.RegisterBuffer(
+            i, arguments[param_no]->root_buffer());
+      }
     }
   }
   se::StreamExecutor* executor = run_options->stream()->parent();
