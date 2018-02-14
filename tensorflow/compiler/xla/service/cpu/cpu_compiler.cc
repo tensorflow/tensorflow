@@ -888,8 +888,7 @@ CpuCompiler::CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> modules,
         options::OptimizeForSizeRequested(module->config()),
         module->config().debug_options().xla_enable_fast_math(),
         module->config().debug_options().xla_llvm_disable_expensive_passes(),
-        CompilerFunctor::AllIntrinsics(), pre_optimization_ir_dump_hook,
-        post_optimization_ir_dump_hook);
+        pre_optimization_ir_dump_hook, post_optimization_ir_dump_hook);
     llvm::object::OwningBinary<llvm::object::ObjectFile> object_file =
         compiler_functor(llvm_module);
     llvm::StringRef object_file_data_ref = object_file.getBinary()->getData();

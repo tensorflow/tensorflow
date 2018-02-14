@@ -790,7 +790,7 @@ def _extract_tensors(tensors_and_vars):
     tensor, _ = tensor_and_var
     if isinstance(tensor, ops_lib.IndexedSlices):
       tensors.append(tensor.values)
-    else:
+    elif tensor is not None:
       tensors.append(tensor)
   return tensors
 

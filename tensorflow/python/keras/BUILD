@@ -3,6 +3,8 @@
 
 licenses(["notice"])  # Apache 2.0
 
+exports_files(["LICENSE"])
+
 package(default_visibility = ["//visibility:public"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
@@ -725,6 +727,19 @@ py_test(
     name = "training_eager_test",
     size = "medium",
     srcs = ["_impl/keras/engine/training_eager_test.py"],
+    srcs_version = "PY2AND3",
+    tags = ["notsan"],
+    deps = [
+        ":keras",
+        "//tensorflow/python:client_testlib",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "model_subclassing_test",
+    size = "medium",
+    srcs = ["_impl/keras/model_subclassing_test.py"],
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
