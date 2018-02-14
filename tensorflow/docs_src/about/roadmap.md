@@ -84,8 +84,3 @@ across image recognition, speech, object detection, and
 * Formalize process for external contributions to land in TensorFlow and associated projects 
 * Grow global TF communities and user groups
 * Collaborate with partners to co-develop and publish research papers
-
-
-
-
-
