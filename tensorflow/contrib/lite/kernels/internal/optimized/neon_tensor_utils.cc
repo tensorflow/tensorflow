@@ -38,9 +38,11 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       m_cols - (m_cols & (kFloatWeightsPerNeonLane - 1));
 
   // The arrays used to cache the vector.
-  float32x4_t* vector_cache_float32x4 =
-      new float32x4_t[(m_cols / kFloatWeightsPerNeonLane) *
-                      sizeof(float32x4_t)];
+  float32x4_t* unaligned_cache = new float32x4_t[(m_cols /
+      kFloatWeightsPerNeonLane) * sizeof(float32x4_t) + 1];
+  auto vector_cache_float32x4 =
+      reinterpret_cast<float32x4_t*>((reinterpret_cast<uintptr_t>(unaligned_cache)
+          + sizeof(float32x4_t) - 1) & ~(sizeof(float32x4_t) - 1));
   const int kUnrollSize = 2;
   for (int b = 0; b < n_batch; b++) {
     float* result_in_batch = result + b * m_rows * result_stride;
@@ -110,7 +112,7 @@ void NeonMatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
       result_in_batch += result_stride;
     }
   }
-  delete[] vector_cache_float32x4;
+  delete[] unaligned_cache;
 }
 
 void NeonVectorVectorCwiseProduct(const float* vector1, const float* vector2,
