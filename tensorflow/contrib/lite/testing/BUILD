@@ -195,6 +195,32 @@ cc_binary(
     ],
 )
 
+cc_library(
+    name = "tf_driver",
+    srcs = ["tf_driver.cc"],
+    hdrs = ["tf_driver.h"],
+    deps = [
+        ":split",
+        ":test_runner",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_test(
+    name = "tf_driver_test",
+    size = "small",
+    srcs = ["tf_driver_test.cc"],
+    data = ["//tensorflow/contrib/lite:testdata/multi_add.pb"],
+    deps = [
+        ":tf_driver",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 tf_cc_test(
     name = "generated_examples_zip_test",
     size = "large",
