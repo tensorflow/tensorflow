@@ -512,6 +512,7 @@ def make_parse_example_spec(feature_columns):
 
   ```python
   # Define features and transformations
+  feature_a = categorical_column_with_vocabulary_file(...)
   feature_b = numeric_column(...)
   feature_c_bucketized = bucketized_column(numeric_column("feature_c"), ...)
   feature_a_x_feature_c = crossed_column(

@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/utils.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/utils.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -446,13 +447,14 @@ Status VirtualScheduler::Init() {
   }
 
   if (ready_nodes_->Empty()) {
-    return Status(error::UNAVAILABLE, "No ready nodes in the graph.");
+    return errors::InvalidArgument("No ready nodes in the graph.");
   }
 
-  if (!feed_nodes.empty())
-    LOG(ERROR) << "Some feed nodes were not found in the graph: "
-               << str_util::Join(feed_nodes, ",");
-
+  if (!feed_nodes.empty()) {
+    return errors::InvalidArgument(
+        strings::StrCat("Some feed nodes were not found in the graph: ",
+                        str_util::Join(feed_nodes, ",")));
+  }
   initialized_ = true;
   return Status::OK();
 }

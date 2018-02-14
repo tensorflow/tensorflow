@@ -111,8 +111,8 @@ SYMBOL_REFERENCE_RE = re.compile(
     r"""
     # Start with a literal "@{".
     @\{
-      # Group at least 1 symbol: not "}" or "\n".
-      ([^}\n]+)
+      # Group at least 1 symbol, not "}".
+      ([^}]+)
     # Followed by a closing "}"
     \}
     """,
