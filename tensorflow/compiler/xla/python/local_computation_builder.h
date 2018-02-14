@@ -102,10 +102,15 @@ class CompiledLocalComputation {
 class LocalComputation {
  public:
   LocalComputation(Computation computation);
+
   StatusOr<CompiledLocalComputation*> Compile(
       const std::vector<Shape>& argument_shapes,
       const ExecutableBuildOptions* build_options);
+
   const Computation& computation() const;
+
+  // Returns the return-value shape for this computation.
+  StatusOr<Shape> GetReturnValueShape() const;
 
  private:
   Computation computation_;
