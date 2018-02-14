@@ -6,3 +6,4 @@ DepthwiseConv2DTest.testDepthwiseConv2DInputGradCompare      # Too slow at the m
 DepthwiseConv2DTest.testDepthwiseConv2DFilterGradCompare     # Too slow at the moment
 Pooling3DTest.testMaxPool3dSamePaddingDifferentStrides  # Too slow at the moment
 FFTTest # No support for FFT
+MatrixTriangularSolveOpTest.testLarge # Too slow at the moment
