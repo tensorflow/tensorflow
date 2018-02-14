@@ -845,6 +845,35 @@ REGISTER_OP("MaxPoolGradGradWithArgmax")
 
 // --------------------------------------------------------------------------
 
+REGISTER_OP("Unpool")
+  .Attr("indices_type: {int32,int64} = DT_INT64")
+  .Input("input: type")
+  .Input("indices: indices_type")
+  .Input("unpool_shape: shape_type")
+  .Output("output: type")
+  .Attr("type: realnumbertype = DT_FLOAT")
+  .Attr("shape_type: {int32,int64} = DT_INT32")
+  .SetShapeFn([](shape_inference::InferenceContext* context) {
+    shape_inference::ShapeHandle unpool_shape;
+    TF_RETURN_IF_ERROR(context->MakeShapeFromShapeTensor(2, &unpool_shape));
+    context->set_output(0, unpool_shape);
+
+    return Status::OK();
+  });
+
+REGISTER_OP("UnpoolGradient")
+  .Attr("index_type: {int32,int64} = DT_INT64")
+  .Input("gradient: type")
+  .Input("indices: index_type")
+  .Output("output: type")
+  .Attr("type: realnumbertype")
+  .SetShapeFn([](shape_inference::InferenceContext* context) {
+    context->set_output(0, context->input(1));
+    return Status::OK();
+  });
+
+// --------------------------------------------------------------------------
+
 REGISTER_OP("Dilation2D")
     .Input("input: T")
     .Input("filter: T")
