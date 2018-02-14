@@ -419,13 +419,13 @@ def _rot90_3D(image, k, name_scope):
     return array_ops.reverse_v2(image, [0, 1])
   def _rot270():
     return array_ops.reverse_v2(array_ops.transpose(image, [1, 0, 2]),
-                              [1])
+                                [1])
   cases = [(math_ops.equal(k, 1), _rot90),
            (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
 
   result = control_flow_ops.case(cases, default=lambda: image, exclusive=True,
-                              name=name_scope)
+                                 name=name_scope)
   result.set_shape([None, None, image.get_shape()[2]])
   return result
 
@@ -434,7 +434,8 @@ def _rot90_4D(images, k, name_scope):
 
   Args:
     images: 4-D Tensor of shape `[height, width, channels]`.
-    k: A scalar integer. The number of times the images are rotated by 90 degrees.
+    k: A scalar integer. The number of times the images are rotated by 90
+      degrees.
     name_scope: A valid TensorFlow name scope.
 
   Returns:
@@ -455,7 +456,7 @@ def _rot90_4D(images, k, name_scope):
            (math_ops.equal(k, 3), _rot270)]
 
   result = control_flow_ops.case(cases, default=lambda: images, exclusive=True,
-                              name=name_scope)
+                                 name=name_scope)
   shape = result.get_shape()
   result.set_shape([shape[0], None, None, shape[3]])
   return result
@@ -1121,9 +1122,9 @@ def adjust_contrast(images, contrast_factor):
 def adjust_gamma(image, gamma=1, gain=1):
   """Performs Gamma Correction on the input image.
 
-    Also known as Power Law Transform. This function transforms the
-    input image pixelwise according to the equation Out = In**gamma
-    after scaling each pixel to the range 0 to 1.
+  Also known as Power Law Transform. This function transforms the
+  input image pixelwise according to the equation `Out = In**gamma`
+  after scaling each pixel to the range 0 to 1.
 
   Args:
     image : A Tensor.
