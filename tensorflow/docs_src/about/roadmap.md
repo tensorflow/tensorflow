@@ -79,11 +79,10 @@ across image recognition, speech, object detection, and
 : build and packaging of TF
 * More to be identified and launched
 
-#### Request-for-Comment (RFC) Process:
-* Incorporate public feedback on significant design decisions
+#### Community:
+* Incorporate public feedback on significant design decisions via a Request-for-Comment (RFC) process
 * Formalize process for external contributions to land in TensorFlow and associated projects 
-
-#### Partnerships:
+* Grow global TF communities and user groups
 * Collaborate with partners to co-develop and publish research papers
 
 
