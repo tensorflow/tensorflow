@@ -328,7 +328,7 @@ class ProgbarLogger(Callback):
       if k in logs:
         self.log_values.append((k, logs[k]))
     if self.verbose:
-      self.progbar.update(self.seen, self.log_values, force=True)
+      self.progbar.update(self.seen, self.log_values)
 
 
 @tf_export('keras.callbacks.History')
