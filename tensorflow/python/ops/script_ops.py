@@ -176,7 +176,10 @@ class CleanupFunc(object):
     self._token = token
 
   def __del__(self):
-    _py_funcs.remove(self._token)
+    if _py_funcs is not None:
+      # If _py_funcs is None, the program is most likely in shutdown, and the
+      # _py_funcs object has been destroyed already.
+      _py_funcs.remove(self._token)
 
 
 def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):
