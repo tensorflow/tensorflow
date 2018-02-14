@@ -1460,6 +1460,17 @@ void ConvertBatchToSpaceNDOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertExpOperator(const NodeDef& node,
+                        const TensorFlowImportFlags& tf_import_flags,
+                        Model* model) {
+  CHECK_EQ(node.op(), "Exp");
+  CheckInputsCount(node, tf_import_flags, 1);
+  auto* op = new ExpOperator;
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertMeanOperator(const NodeDef& node,
                          const TensorFlowImportFlags& tf_import_flags,
                          Model* model) {
@@ -1986,6 +1997,8 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertTransposeOperator(node, tf_import_flags, model);
     } else if (node.op() == "ArgMax") {
       ConvertArgMaxOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Exp") {
+      ConvertExpOperator(node, tf_import_flags, model);
     } else {
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }

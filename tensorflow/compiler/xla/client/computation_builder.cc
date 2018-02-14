@@ -233,6 +233,26 @@ StatusOr<std::unique_ptr<Shape>> ComputationBuilder::GetShape(
   return status_or_shape;
 }
 
+StatusOr<ProgramShape> ComputationBuilder::GetProgramShape() {
+  TF_RETURN_IF_ERROR(first_error_);
+
+  GetComputationShapeRequest request;
+  *request.mutable_computation() = computation_.handle();
+  GetComputationShapeResponse response;
+
+  VLOG(2) << "making get-program-shape-request";
+  Status status = client_->stub()->GetComputationShape(&request, &response);
+  VLOG(2) << "done with get-program-shape-request";
+
+  if (!status.ok()) {
+    first_error_ = status;
+    return status;
+  }
+
+  TF_RET_CHECK(response.has_program_shape());
+  return std::move(*response.mutable_program_shape());
+}
+
 ComputationDataHandle ComputationBuilder::CheckShape(
     const ComputationDataHandle& operand, const Shape& expected_shape) {
   std::unique_ptr<Shape> actual_shape = GetShape(operand).ConsumeValueOrDie();

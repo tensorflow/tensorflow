@@ -18,6 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.py2tf import utils
+
+
 PYTHON_LITERALS = {
     'None': None,
     'False': False,
@@ -27,6 +30,7 @@ PYTHON_LITERALS = {
 
 DEFAULT_UNCOMPILED_MODULES = set((
     ('tensorflow',),
+    (utils.__name__,),
 ))
 
 NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))

@@ -163,10 +163,14 @@ TF_Operation* AddWithCtrlDependency(TF_Operation* l, TF_Operation* r,
   return TF_FinishOperation(desc, s);
 }
 
+// If `op_device` is non-empty, set the created op on that device.
 void BinaryOpHelper(const char* op_name, TF_Operation* l, TF_Operation* r,
                     TF_Graph* graph, TF_Status* s, const char* name,
-                    TF_Operation** op, bool check) {
+                    TF_Operation** op, const string& op_device, bool check) {
   TF_OperationDescription* desc = TF_NewOperation(graph, op_name, name);
+  if (!op_device.empty()) {
+    TF_SetDevice(desc, op_device.c_str());
+  }
   TF_AddInput(desc, {l, 0});
   TF_AddInput(desc, {r, 0});
   *op = TF_FinishOperation(desc, s);
@@ -176,11 +180,17 @@ void BinaryOpHelper(const char* op_name, TF_Operation* l, TF_Operation* r,
   }
 }
 
+TF_Operation* MinWithDevice(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                            const string& op_device, TF_Status* s,
+                            const char* name) {
+  TF_Operation* op;
+  BinaryOpHelper("Min", l, r, graph, s, name, &op, op_device, true);
+  return op;
+}
+
 TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s, const char* name) {
-  TF_Operation* op;
-  BinaryOpHelper("Min", l, r, graph, s, name, &op, true);
-  return op;
+  return MinWithDevice(l, r, graph, /*op_device=*/"", s, name);
 }
 
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,

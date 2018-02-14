@@ -63,7 +63,7 @@ def _create_graph(input_graph=None,
         is_training=is_training)
     quantize.Quantize(
         input_graph,
-        is_training=is_training,
+        is_training,
         quant_delay=quant_delay,
         weight_bits=weight_bits,
         activation_bits=activation_bits)

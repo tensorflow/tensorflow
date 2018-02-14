@@ -101,6 +101,9 @@ class ComputationBuilder {
   StatusOr<std::unique_ptr<Shape>> GetShape(
       const ComputationDataHandle& operand);
 
+  // Retrieves the (inferred) result for the current computation's shape.
+  StatusOr<ProgramShape> GetProgramShape();
+
   // Checks that the operand has the given expected shape. Returns the operand
   // if yes, fails with a CHECK error if no.
   ComputationDataHandle CheckShape(const ComputationDataHandle& operand,

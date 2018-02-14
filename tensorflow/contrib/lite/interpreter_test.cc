@@ -773,6 +773,8 @@ class TestDelegate : public ::testing::Test {
         for (int exec_index = 0; exec_index < execution_plan->size;
              exec_index++) {
           int node_index = execution_plan->data[exec_index];
+          // Check that we are an identity map to start.
+          TFLITE_CHECK_EQ(exec_index, node_index);
           TfLiteNode* node;
           TfLiteRegistration* reg;
           context->GetNodeAndRegistration(context, node_index, &node, &reg);
