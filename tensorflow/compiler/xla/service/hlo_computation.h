@@ -77,14 +77,6 @@ class HloComputation {
       return last_added_instruction_;
     }
 
-    Status ForEachInstruction(
-        const std::function<Status(const HloInstruction*)>& func) const {
-      for (const auto& instruction : instructions_) {
-        TF_RETURN_IF_ERROR(func(instruction.get()));
-      }
-      return Status::OK();
-    }
-
    private:
     const string name_;
     HloInstruction* last_added_instruction_;

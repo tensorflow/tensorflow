@@ -60,7 +60,6 @@ bool IsRematerializable(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kCall:
     case HloOpcode::kConstant:
-    case HloOpcode::kConditional:
     case HloOpcode::kCrossReplicaSum:
     case HloOpcode::kCustomCall:
     case HloOpcode::kParameter:

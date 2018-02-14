@@ -145,21 +145,6 @@ void HloModule::ReplaceComputations(
           }
           break;
         }
-        case HloOpcode::kConditional: {
-          HloComputation* new_true_computation =
-              tensorflow::gtl::FindWithDefault(
-                  replacements, instruction->true_computation(), nullptr);
-          if (new_true_computation != nullptr) {
-            instruction->set_true_computation(new_true_computation);
-          }
-          HloComputation* new_false_computation =
-              tensorflow::gtl::FindWithDefault(
-                  replacements, instruction->false_computation(), nullptr);
-          if (new_false_computation != nullptr) {
-            instruction->set_false_computation(new_false_computation);
-          }
-          break;
-        }
         case HloOpcode::kSelectAndScatter: {
           HloComputation* new_select = tensorflow::gtl::FindWithDefault(
               replacements, instruction->select(), nullptr);
