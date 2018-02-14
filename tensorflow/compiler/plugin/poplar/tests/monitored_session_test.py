@@ -33,8 +33,8 @@ class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
     def testTrainingLoop(self):
 
         # Model
-
-        with tf.variable_scope("vs", use_resource=True):
+        with tf.device("/device:XLA_IPU:0"):
+          with tf.variable_scope("vs", use_resource=True):
             x = tf.placeholder(tf.float32, [4,1,4], name="a")
             l = tf.placeholder(tf.float32, [4,1,1], name="b")
 
@@ -64,7 +64,7 @@ class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
             sess.run(init)
             measured_loss,_ = sess.run([loss,train_op],
                                        feed_dict={x: image_data, l: label_data})
-            self.assertTrue(measured_loss < 2.0)
+            self.assertTrue(measured_loss < 5.0)
 
     def testMonitoredSessionStopAtStepHook(self):
       with tf.device("/device:XLA_IPU:0"):
@@ -72,8 +72,8 @@ class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
         pb = tf.placeholder(tf.float32, [2,2], name="b")
         output = pa + pb
 
-        with tf.variable_scope('gs', use_resource=True):
-          tf.train.create_global_step()
+      with tf.variable_scope('gs', use_resource=True):
+        tf.train.create_global_step()
 
       hook = tf.train.StopAtStepHook(num_steps=2)
 

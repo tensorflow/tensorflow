@@ -57,7 +57,7 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
   return Status::OK();
 }
 
-REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_IPU, XlaIpuDeviceFactory, 210);
+REGISTER_LOCAL_DEVICE_FACTORY(DEVICE_XLA_IPU, XlaIpuDeviceFactory);
 
 // Kernel registrations
 
