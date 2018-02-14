@@ -95,13 +95,14 @@ def max_pool(x, ksize=3, stride=2):
 x = tf.placeholder(datatype, shape=[1, 224, 224, 4])
 y_ = tf.placeholder(datatype, shape=[1, 1000])
 
-# Inference
-logits = inference(x)
+with tf.device("/device:XLA_IPU:0"):
+  # Inference
+  logits = inference(x)
 
-# Training
-cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
-optimizer = tf.train.GradientDescentOptimizer(0.01)
-train_step = optimizer.minimize(cross_entropy)
+  # Training
+  cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
+  optimizer = tf.train.GradientDescentOptimizer(0.01)
+  train_step = optimizer.minimize(cross_entropy)
 
 sess = tf.InteractiveSession()
 

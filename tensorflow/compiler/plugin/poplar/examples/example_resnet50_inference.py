@@ -150,8 +150,9 @@ def max_pool(x, ksize=3, stride=2):
 # Inputs
 x = tf.placeholder(datatype, shape=[1, 224, 224, 4])
 
-# Inference
-logits = inference(x)
+with tf.device("/device:XLA_IPU:0"):
+  # Inference
+  logits = inference(x)
 
 sess = tf.InteractiveSession()
 

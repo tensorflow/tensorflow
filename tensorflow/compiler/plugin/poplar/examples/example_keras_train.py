@@ -17,5 +17,6 @@ with tf.device("/device:XLA_IPU:0"):
   model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
   model.compile(optimizer='sgd', loss='sparse_categorical_crossentropy')
 
-# Do some predictions
-model.predict(data, batch_size=32)
+# Train the model, iterating on the data in batches of 32 samples
+model.fit(data, labels, epochs=1, batch_size=32, verbose=False)
+#print model.evaluate(data, labels, batch_size=32)
