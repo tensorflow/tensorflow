@@ -21,14 +21,15 @@ from __future__ import print_function
 import gast
 import six
 
+from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.converters import asserts
-from tensorflow.contrib.py2tf.converters import break_canonicalization
+from tensorflow.contrib.py2tf.converters import break_statements
 from tensorflow.contrib.py2tf.converters import builtin_functions
 from tensorflow.contrib.py2tf.converters import call_trees
-from tensorflow.contrib.py2tf.converters import continue_canonicalization
+from tensorflow.contrib.py2tf.converters import continue_statements
 from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import decorators
-from tensorflow.contrib.py2tf.converters import for_canonicalization
+from tensorflow.contrib.py2tf.converters import for_loops
 from tensorflow.contrib.py2tf.converters import logical_expressions
 from tensorflow.contrib.py2tf.converters import side_effect_guards
 from tensorflow.contrib.py2tf.impl import config
@@ -184,6 +185,13 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
         fn = e.cell_contents
         namespace[fn.__name__] = fn
 
+  # Manually add the utils namespace which may be used from generated code.
+  if 'py2tf_util' not in namespace:
+    namespace['py2tf_utils'] = utils
+  elif namespace['py2tf_utils'] != utils:
+    raise ValueError(
+        'The module name py2tf_utils is reserved and may not be used.')
+
   namer = conversion_map.new_namer(namespace)
   ctx = context.EntityContext(
       namer=namer,
@@ -247,19 +255,20 @@ def node_to_graph(node, ctx, nocompile_decorators):
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   ctx.source_code = None
   node = decorators.transform(node, nocompile_decorators)
-  node = break_canonicalization.transform(node, ctx)
+  node = break_statements.transform(node, ctx)
   node = asserts.transform(node, ctx)
 
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
-  node = continue_canonicalization.transform(node, ctx)
+  node = continue_statements.transform(node, ctx)
   ctx.namespace['len'] = len
 
   node = _static_analysis_pass(node, ctx)
-  node = for_canonicalization.transform(node, ctx)
-  # for_canonicalization may insert new global references.
+  node = for_loops.transform(node, ctx)
+  # for_loops may insert new global references.
   node = builtin_functions.transform(node, ctx)
+  # TODO(mdan): Kept for CL consistency. Remove.
   # builtin_functions may insert new global references.
   ctx.namespace['print'] = print
 

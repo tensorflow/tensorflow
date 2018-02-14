@@ -12,14 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for for_canonicalization module."""
+"""Tests for for_loops module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.py2tf.converters import converter_test_base
-from tensorflow.contrib.py2tf.converters import for_canonicalization
+from tensorflow.contrib.py2tf.converters import for_loops
 from tensorflow.python.platform import test
 
 
@@ -34,7 +34,7 @@ class ControlFlowTest(converter_test_base.TestCase):
       return s
 
     node = self.parse_and_analyze(test_fn, {})
-    node = for_canonicalization.transform(node, self.ctx)
+    node = for_loops.transform(node, self.ctx)
 
     with self.compiled(node) as result:
       l = [1, 2, 3]
