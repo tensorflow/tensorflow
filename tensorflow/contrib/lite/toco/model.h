@@ -44,6 +44,7 @@ enum class OperatorType {
   kSpaceToDepth,
   kDequantize,
   kDiv,
+  kExp,
   kExpandDims,
   kFill,
   kFloorDiv,
@@ -850,6 +851,17 @@ struct TransposeConvOperator : Operator {
   Padding padding;
   int stride_width = 0;
   int stride_height = 0;
+};
+
+// Given a tensor input, this operation calculates element-wise exponential
+// (y = e^x).
+//
+// Inputs:
+//   inputs[0]: required: input tensor
+//
+// TensorFlow equivalent: Exp
+struct ExpOperator : Operator {
+  ExpOperator() : Operator(OperatorType::kExp) {}
 };
 
 // Given a tensor input, this operation inserts a dimension of 1 at the

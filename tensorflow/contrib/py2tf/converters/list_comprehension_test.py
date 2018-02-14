@@ -12,29 +12,57 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for for_canonicalization module."""
+"""Tests for list_comprehension module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.py2tf.converters import converter_test_base
-from tensorflow.contrib.py2tf.converters import for_canonicalization
+from tensorflow.contrib.py2tf.converters import list_comprehension
 from tensorflow.python.platform import test
 
 
-class ControlFlowTest(converter_test_base.TestCase):
+class ListCompTest(converter_test_base.TestCase):
 
-  def test_basic_for(self):
+  def test_basic(self):
 
     def test_fn(l):
-      s = 0
-      for e in l:
-        s += e
+      s = [e * e for e in l]
       return s
 
     node = self.parse_and_analyze(test_fn, {})
-    node = for_canonicalization.transform(node, self.ctx)
+    node = list_comprehension.transform(node, self.ctx)
+
+    with self.compiled(node) as result:
+      l = [1, 2, 3]
+      self.assertEqual(test_fn(l), result.test_fn(l))
+      l = []
+      self.assertEqual(test_fn(l), result.test_fn(l))
+
+  def test_multiple_generators(self):
+
+    def test_fn(l):
+      s = [e * e for sublist in l for e in sublist]
+      return s
+
+    node = self.parse_and_analyze(test_fn, {})
+    node = list_comprehension.transform(node, self.ctx)
+
+    with self.compiled(node) as result:
+      l = [[1], [2], [3]]
+      self.assertEqual(test_fn(l), result.test_fn(l))
+      l = []
+      self.assertEqual(test_fn(l), result.test_fn(l))
+
+  def test_conds(self):
+
+    def test_fn(l):
+      s = [e * e for e in l if e > 1]
+      return s
+
+    node = self.parse_and_analyze(test_fn, {})
+    node = list_comprehension.transform(node, self.ctx)
 
     with self.compiled(node) as result:
       l = [1, 2, 3]

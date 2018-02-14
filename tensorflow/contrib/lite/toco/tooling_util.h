@@ -60,6 +60,7 @@ int CountTrueOutputs(const Model& model, const Operator& op);
 
 int CountOpsWithInput(const Model& model, const string& array_name);
 bool DeleteArrayIfUnused(const string& array_name, Model* model);
+bool DeleteArrayIfUsedOnce(const string& array_name, Model* model);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithOutput(
     const Model& model, const string& array_name);
