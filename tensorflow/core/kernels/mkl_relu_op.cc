@@ -579,17 +579,26 @@ class MklReluGradOpBase : public OpKernel {
       // allocate diff_src tensor
       MklDnnShape dnn_shape_diff_src;
       TensorShape tf_shape_diff_src;
-      if (dnn_shape_src.IsMklTensor()) {
+      if (dnn_shape_src.IsMklTensor() ||
+              dnn_shape_diff_dst.IsMklTensor()) {
         dnn_shape_diff_src.SetMklTensor(true);
         auto diff_src_pd = relu_bwd_pd.diff_src_primitive_desc();
         dnn_shape_diff_src.SetMklLayout(&diff_src_pd);
         dnn_shape_diff_src.SetElemType(MklDnnType<T>());
-        dnn_shape_diff_src.SetTfLayout(dnn_shape_src.GetDimension(),
-                                       dnn_shape_src.GetSizesAsMklDnnDims(),
-                                       dnn_shape_src.GetTfDataFormat());
+        if (dnn_shape_src.IsMklTensor()) {
+          dnn_shape_diff_src.SetTfLayout(dnn_shape_src.GetDimension(),
+                                         dnn_shape_src.GetSizesAsMklDnnDims(),
+                                         dnn_shape_src.GetTfDataFormat());
+        } else {
+          dnn_shape_diff_src.SetTfLayout(dnn_shape_diff_dst.GetDimension(),
+                                    dnn_shape_diff_dst.GetSizesAsMklDnnDims(),
+                                    dnn_shape_diff_dst.GetTfDataFormat());
+        }
         tf_shape_diff_src.AddDim(diff_src_pd.get_size() / sizeof(T));
       } else {
         dnn_shape_diff_src.SetMklTensor(false);
+        // both src and diff_dst are tf layout,
+        // so get tf shape from anyont should be ok
         tf_shape_diff_src = src_tensor.shape();
       }
       AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
