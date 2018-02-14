@@ -1327,6 +1327,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowAssert:
     case OperatorType::kCast:
     case OperatorType::kFloor:
+    case OperatorType::kExp:
       ProcessSimpleOperator(model, op);
       break;
     case OperatorType::kGather:

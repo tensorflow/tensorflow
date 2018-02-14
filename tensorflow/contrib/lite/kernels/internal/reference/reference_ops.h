@@ -2763,6 +2763,14 @@ inline void Slice(const T* input_data, const Dims<4>& input_dims,
 }
 
 template <typename T>
+inline void Exp(const T* input_data, const size_t num_elements,
+                T* output_data) {
+  for (size_t idx = 0; idx < num_elements; ++idx) {
+    output_data[idx] = exp(input_data[idx]);
+  }
+}
+
+template <typename T>
 inline void Mean(T* input_data, const int* input_dims, const int input_num_dims,
                  T* output_data, const int* output_dims,
                  const int output_num_dims, const int* axis,
