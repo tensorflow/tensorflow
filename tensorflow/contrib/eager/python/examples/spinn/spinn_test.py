@@ -36,6 +36,7 @@ from third_party.examples.eager.spinn import spinn
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.python.eager import test
 from tensorflow.python.framework import test_util
+from tensorflow.python.training import checkpoint_utils
 # pylint: enable=g-bad-import-order
 
 
@@ -66,13 +67,30 @@ def _generate_synthetic_snli_data_batch(sequence_length,
   return labels, prem, prem_trans, hypo, hypo_trans
 
 
-def _test_spinn_config(d_embed, d_out, logdir=None):
+def _test_spinn_config(d_embed, d_out, logdir=None, inference_sentences=None):
+  """Generate a config tuple for testing.
+
+  Args:
+    d_embed: Embedding dimensions.
+    d_out: Model output dimensions.
+    logdir: Optional logdir.
+    inference_sentences: A 2-tuple of strings representing the sentences (with
+      binary parsing result), e.g.,
+      ("( ( The dog ) ( ( is running ) . ) )", "( ( The dog ) ( moves . ) )").
+
+  Returns:
+    A config tuple.
+  """
   config_tuple = collections.namedtuple(
       "Config", ["d_hidden", "d_proj", "d_tracker", "predict",
                  "embed_dropout", "mlp_dropout", "n_mlp_layers", "d_mlp",
                  "d_out", "projection", "lr", "batch_size", "epochs",
                  "force_cpu", "logdir", "log_every", "dev_every", "save_every",
-                 "lr_decay_every", "lr_decay_by"])
+                 "lr_decay_every", "lr_decay_by", "inference_premise",
+                 "inference_hypothesis"])
+
+  inference_premise = inference_sentences[0] if inference_sentences else None
+  inference_hypothesis = inference_sentences[1] if inference_sentences else None
   return config_tuple(
       d_hidden=d_embed,
       d_proj=d_embed * 2,
@@ -86,14 +104,16 @@ def _test_spinn_config(d_embed, d_out, logdir=None):
       projection=True,
       lr=2e-2,
       batch_size=2,
-      epochs=10,
+      epochs=20,
       force_cpu=False,
       logdir=logdir,
       log_every=1,
       dev_every=2,
       save_every=2,
       lr_decay_every=1,
-      lr_decay_by=0.75)
+      lr_decay_by=0.75,
+      inference_premise=inference_premise,
+      inference_hypothesis=inference_hypothesis)
 
 
 class SpinnTest(test_util.TensorFlowTestCase):
@@ -288,11 +308,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
       # Training on the batch should have led to a change in the loss value.
       self.assertNotEqual(loss1.numpy(), loss2.numpy())
 
-  def testTrainSpinn(self):
-    """Test with fake toy SNLI data and GloVe vectors."""
-
-    # 1. Create and load a fake SNLI data file and a fake GloVe embedding file.
-    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
+  def _create_test_data(self, snli_1_0_dir):
     fake_train_file = os.path.join(snli_1_0_dir, "snli_1.0_train.txt")
     os.makedirs(snli_1_0_dir)
 
@@ -337,13 +353,52 @@ class SpinnTest(test_util.TensorFlowTestCase):
           else:
             f.write("\n")
 
+    return fake_train_file
+
+  def testInferSpinnWorks(self):
+    """Test inference with the spinn model."""
+    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
+    self._create_test_data(snli_1_0_dir)
+
+    vocab = data.load_vocabulary(self._temp_data_dir)
+    word2index, embed = data.load_word_vectors(self._temp_data_dir, vocab)
+
+    config = _test_spinn_config(
+        data.WORD_VECTOR_LEN, 4,
+        logdir=os.path.join(self._temp_data_dir, "logdir"),
+        inference_sentences=("( foo ( bar . ) )", "( bar ( foo . ) )"))
+    logits = spinn.train_or_infer_spinn(
+        embed, word2index, None, None, None, config)
+    self.assertEqual(np.float32, logits.dtype)
+    self.assertEqual((3,), logits.shape)
+
+  def testInferSpinnThrowsErrorIfOnlyOneSentenceIsSpecified(self):
+    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
+    self._create_test_data(snli_1_0_dir)
+
+    vocab = data.load_vocabulary(self._temp_data_dir)
+    word2index, embed = data.load_word_vectors(self._temp_data_dir, vocab)
+
+    config = _test_spinn_config(
+        data.WORD_VECTOR_LEN, 4,
+        logdir=os.path.join(self._temp_data_dir, "logdir"),
+        inference_sentences=("( foo ( bar . ) )", None))
+    with self.assertRaises(ValueError):
+      spinn.train_or_infer_spinn(embed, word2index, None, None, None, config)
+
+  def testTrainSpinn(self):
+    """Test with fake toy SNLI data and GloVe vectors."""
+
+    # 1. Create and load a fake SNLI data file and a fake GloVe embedding file.
+    snli_1_0_dir = os.path.join(self._temp_data_dir, "snli/snli_1.0")
+    fake_train_file = self._create_test_data(snli_1_0_dir)
+
     vocab = data.load_vocabulary(self._temp_data_dir)
     word2index, embed = data.load_word_vectors(self._temp_data_dir, vocab)
 
     train_data = data.SnliData(fake_train_file, word2index)
     dev_data = data.SnliData(fake_train_file, word2index)
     test_data = data.SnliData(fake_train_file, word2index)
-    print(embed)
 
     # 2. Create a fake config.
     config = _test_spinn_config(
@@ -351,7 +406,8 @@ class SpinnTest(test_util.TensorFlowTestCase):
         logdir=os.path.join(self._temp_data_dir, "logdir"))
 
     # 3. Test training of a SPINN model.
-    spinn.train_spinn(embed, train_data, dev_data, test_data, config)
+    trainer = spinn.train_or_infer_spinn(
+        embed, word2index, train_data, dev_data, test_data, config)
 
     # 4. Load train loss values from the summary files and verify that they
     #    decrease with training.
@@ -362,6 +418,15 @@ class SpinnTest(test_util.TensorFlowTestCase):
                     and event.summary.value[0].tag == "train/loss"]
     self.assertEqual(config.epochs, len(train_losses))
     self.assertLess(train_losses[-1], train_losses[0])
+
+    # 5. Verify that checkpoints exist and contains all the expected variables.
+    self.assertTrue(glob.glob(os.path.join(config.logdir, "ckpt*")))
+    ckpt_variable_names = [
+        item[0] for item in checkpoint_utils.list_variables(config.logdir)]
+    self.assertIn("global_step", ckpt_variable_names)
+    for v in trainer.variables:
+      variable_name = v.name[:v.name.index(":")] if ":" in v.name else v.name
+      self.assertIn(variable_name, ckpt_variable_names)
 
 
 class EagerSpinnSNLIClassifierBenchmark(test.Benchmark):
