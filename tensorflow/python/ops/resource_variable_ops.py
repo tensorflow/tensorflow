@@ -933,6 +933,9 @@ class _UnreadVariable(ResourceVariable):
       return gen_resource_variable_ops.read_variable_op(self._handle,
                                                         self._dtype)
 
+  def set_shape(self, shape):
+    self._shape = shape
+
   @property
   def op(self):
     """The op for this variable."""
