@@ -493,6 +493,7 @@ class BatchNormalization(base.Layer):
     return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=False):
+    in_eager_mode = context.in_eager_mode()
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
       # Tensor and reusing the existing batch norm implementation
@@ -595,6 +596,9 @@ class BatchNormalization(base.Layer):
                                             axis=1, keep_dims=True)
 
       def _do_update(var, value):
+        if in_eager_mode and not self.trainable:
+          return
+
         return moving_averages.assign_moving_average(
             var, value, self.momentum, zero_debias=False)
 
