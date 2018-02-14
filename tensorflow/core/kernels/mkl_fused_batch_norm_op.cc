@@ -1220,7 +1220,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
         common_md = memory::desc(src_dims, MklDnnType<T>(),
                 TFDataFormatToMklDnnDataFormat(tensor_format_));
       }
-      // if any of src and diff_dst as mkl layout, then we set diff_src as mkl layout
+      // if any of src and diff_dst as mkl layout,
+      // then we set diff_src as mkl layout
       if (dnn_shape_src.IsMklTensor() ||
               dnn_shape_diff_dst.IsMklTensor()) {
         dnn_shape_diff_src.SetMklTensor(true);
@@ -1248,7 +1249,8 @@ class MklFusedBatchNormGradOp : public OpKernel {
         tf_shape_diff_src.AddDim(diff_src_pd.get_size() / sizeof(T));
       } else {
         dnn_shape_diff_src.SetMklTensor(false);
-        // both src and diff_dst are tf layout, so get tf shape from anyont should be ok
+        // both src and diff_dst are tf layout,
+        // so get tf shape from anyone should be ok
         tf_shape_diff_src = src_tensor.shape();
       }
       AllocateOutputSetMklShape(context, kDiffSrcIndex, &diff_src_tensor,
@@ -1273,8 +1275,10 @@ class MklFusedBatchNormGradOp : public OpKernel {
           bnrm_bwd_desc, cpu_engine, bnrm_fwd_pd);
 
       std::vector<primitive> net;
-      src.CheckReorderToOpMem(memory::primitive_desc(common_md, cpu_engine), &net);
-      diff_dst.CheckReorderToOpMem(memory::primitive_desc(common_md, cpu_engine), &net);
+      src.CheckReorderToOpMem(memory::primitive_desc(
+                              common_md, cpu_engine), &net);
+      diff_dst.CheckReorderToOpMem(memory::primitive_desc(
+                                   common_md, cpu_engine), &net);
 
       auto bnrm_bwd_op = batch_normalization_backward(
           bnrm_bwd_pd, src.GetOpMem(), mean.GetOpMem(), variance.GetOpMem(),

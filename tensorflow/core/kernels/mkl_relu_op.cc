@@ -591,13 +591,14 @@ class MklReluGradOpBase : public OpKernel {
                                          dnn_shape_src.GetTfDataFormat());
         } else {
           dnn_shape_diff_src.SetTfLayout(dnn_shape_diff_dst.GetDimension(),
-                                         dnn_shape_diff_dst.GetSizesAsMklDnnDims(),
-                                         dnn_shape_diff_dst.GetTfDataFormat());
+                                    dnn_shape_diff_dst.GetSizesAsMklDnnDims(),
+                                    dnn_shape_diff_dst.GetTfDataFormat());
         }
         tf_shape_diff_src.AddDim(diff_src_pd.get_size() / sizeof(T));
       } else {
         dnn_shape_diff_src.SetMklTensor(false);
-        // both src and diff_dst are tf layout, so get tf shape from anyont should be ok
+        // both src and diff_dst are tf layout,
+        // so get tf shape from anyont should be ok
         tf_shape_diff_src = src_tensor.shape();
       }
       AllocateOutputSetMklShape(context, diff_src_index, &diff_src_tensor,
