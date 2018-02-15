@@ -145,19 +145,6 @@ void HloModule::ReplaceComputations(
           }
           break;
         }
-        case HloOpcode::kSelectAndScatter: {
-          HloComputation* new_select = tensorflow::gtl::FindWithDefault(
-              replacements, instruction->select(), nullptr);
-          if (new_select != nullptr) {
-            instruction->set_select(new_select);
-          }
-          HloComputation* new_scatter = tensorflow::gtl::FindWithDefault(
-              replacements, instruction->scatter(), nullptr);
-          if (new_scatter != nullptr) {
-            instruction->set_scatter(new_scatter);
-          }
-          break;
-        }
         case HloOpcode::kConditional: {
           HloComputation* new_true_body = tensorflow::gtl::FindWithDefault(
               replacements, instruction->true_computation(), nullptr);
@@ -168,6 +155,19 @@ void HloModule::ReplaceComputations(
               replacements, instruction->false_computation(), nullptr);
           if (new_false_body != nullptr) {
             instruction->set_false_computation(new_false_body);
+          }
+          break;
+        }
+        case HloOpcode::kSelectAndScatter: {
+          HloComputation* new_select = tensorflow::gtl::FindWithDefault(
+              replacements, instruction->select(), nullptr);
+          if (new_select != nullptr) {
+            instruction->set_select(new_select);
+          }
+          HloComputation* new_scatter = tensorflow::gtl::FindWithDefault(
+              replacements, instruction->scatter(), nullptr);
+          if (new_scatter != nullptr) {
+            instruction->set_scatter(new_scatter);
           }
           break;
         }
