@@ -43,10 +43,12 @@ namespace runtime {
 //    because it is a symbol in the cpu_runtime library.
 extern const char* const kEigenMatMulF32SymbolName;
 extern const char* const kEigenMatMulF64SymbolName;
+extern const char* const kEigenConvF16SymbolName;
 extern const char* const kEigenConvF32SymbolName;
 extern const char* const kEigenFftSymbolName;
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName;
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName;
+extern const char* const kEigenSingleThreadedConvF16SymbolName;
 extern const char* const kEigenSingleThreadedConvF32SymbolName;
 extern const char* const kAcquireInfeedBufferForDequeueSymbolName;
 extern const char* const kReleaseInfeedBufferAfterDequeueSymbolName;
