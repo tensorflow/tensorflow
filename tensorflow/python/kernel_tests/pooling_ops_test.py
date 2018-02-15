@@ -875,6 +875,50 @@ class PoolingTest(test.TestCase):
       out = out_op.eval().flatten()
       self.assertAllClose(out, [11.0, 12.0, 14.0, 16.0])
 
+  def testUnpool(self):
+		def generate_dataset(even_image_size=None, square_image=False, max_image_dimension=64, max_batch_size=10, max_depth=4):
+			batch_size = np.random.randint(1,max_batch_size+1)
+			depth = np.random.randint(1,max_depth+1)
+			if even_image_size==None:
+				np.random.choice([True,False])
+			if even_image_size:
+				max_image_dimension -= even_image_size%2 + 1
+			if square_image:
+				image_size = np.random.randint(2,max_image_dimension+1)
+				image_size = np.array([image_size]*2)
+			else:
+				image_size = np.random.randint(2,max_image_dimension+1,2)
+			if even_image_size:
+				image_size -= image_size%2
+			image_size = image_size.tolist()
+			image_size = [batch_size]+image_size+[depth]
+			print('Image Size {}'.format(image_size))
+
+			kernel_size = [1]+[np.random.randint(2,4)]*2+[1]
+			print('Kernel Size {}'.format(kernel_size))
+			strides = [1,2,2,1]
+			print('Strides {}'.format(strides))
+			input_data = np.random.random(image_size).astype(np.float32)
+
+			return input_data, kernel_size, strides
+
+		for use_gpu in [False]:
+			test_iterations = 10
+			for iteration in range(test_iterations):
+				print("unpool: iteration {}/{} GPU {}".format(iteration+1, test_iterations, use_gpu))
+				input_data, _, strides = generate_dataset()
+				with self.test_session(use_gpu=use_gpu):
+					pooled_data = constant_op.constant(input_data, dtype=dtypes.float32)
+					indices = np.random.permutation(input_data.size*4)[::4]
+					indices = indices.reshape(input_data.shape)
+
+					unpooled_shape = list(np.array(input_data.shape)*strides)
+
+					unpooled_data = nn_ops.unpool(pooled_data, indices, unpooled_shape).eval()
+					print(input_data)
+					print(unpooled_data)
+					self.assertAllCloseAccordingToType(input_data.ravel(), unpooled_data.ravel()[indices.ravel()])
+
   def _ConstructAndTestGradient(self,
                                 pool_func,
                                 input_sizes,
