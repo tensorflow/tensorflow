@@ -328,7 +328,7 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
     if not callable(f):
       raise ValueError('`f` must be a callable function.')
     if use_reparametrization:
-      return math_ops.reduce_mean(f(samples), axis=axis, keep_dims=keep_dims)
+      return math_ops.reduce_mean(f(samples), axis=axis, keepdims=keep_dims)
     else:
       if not callable(log_prob):
         raise ValueError('`log_prob` must be a callable function.')
@@ -348,7 +348,7 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
       # "Is there a floating point value of x, for which x-x == 0 is false?"
       # http://stackoverflow.com/q/2686644
       fx += stop(fx) * (logpx - stop(logpx))  # Add zeros_like(logpx).
-      return math_ops.reduce_mean(fx, axis=axis, keep_dims=keep_dims)
+      return math_ops.reduce_mean(fx, axis=axis, keepdims=keep_dims)
 
 
 def _sample_mean(values):
