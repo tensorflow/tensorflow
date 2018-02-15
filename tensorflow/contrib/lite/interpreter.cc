@@ -166,7 +166,7 @@ TfLiteStatus Interpreter::GetExecutionPlan(TfLiteIntArray** execution_plan) {
   static_assert(sizeof(plan_cache_->data[0]) == sizeof(execution_plan_[0]),
                 "TfLiteIntArray and execution_plan do not contain same type.");
   memcpy(plan_cache_->data, execution_plan_.data(),
-         sizeof(plan_cache_->data[0]));
+         sizeof(plan_cache_->data[0]) * execution_plan_.size());
   return kTfLiteOk;
 }
 

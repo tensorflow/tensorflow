@@ -650,15 +650,34 @@ void ProcessTensorFlowSplitOperator(Model* model, TensorFlowSplitOperator* op) {
   }
   const Shape& input_shape = input_array.shape();
 
-  // This code is slightly suspect.  The TensorFlow docs say that the axis
-  // selection defaults to 0, but we are splitting across the final axis.
-  const int input_dims_count = input_shape.dimensions_count();
-  const int input_depth = input_shape.dims(input_dims_count - 1);
-  CHECK_EQ(input_depth % op->num_split, 0);
-  const int split_depth = input_depth / op->num_split;
+  // Yield until axis is constant.
+  if (!IsConstantParameterArray(*model, op->inputs[0])) {
+    return;
+  }
+
+  const auto& axis_array = model->GetArray(op->inputs[0]);
+
+  // Yield until axis dims have been resolved.
+  if (!axis_array.has_shape()) {
+    return;
+  }
+
+  CHECK(axis_array.data_type == ArrayDataType::kInt32)
+      << "Axis array must be int32.";
+  CHECK_EQ(RequiredBufferSizeForShape(axis_array.shape()), 1)
+      << "Axis array must be scalar.";
+
+  int axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
+  if (axis < 0) {
+    axis += input_shape.dimensions_count();
+  }
+
+  const int split_dim = input_shape.dims(axis);
+  CHECK_EQ(split_dim % op->num_split, 0);
+  const int split_depth = split_dim / op->num_split;
 
   Shape output_shape = input_shape;
-  (*output_shape.mutable_dims())[input_dims_count - 1] = split_depth;
+  (*output_shape.mutable_dims())[axis] = split_depth;
 
   CHECK_EQ(op->outputs.size(), op->num_split);
   for (const auto& output : op->outputs) {
@@ -1308,6 +1327,7 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowAssert:
     case OperatorType::kCast:
     case OperatorType::kFloor:
+    case OperatorType::kExp:
       ProcessSimpleOperator(model, op);
       break;
     case OperatorType::kGather:

@@ -111,6 +111,7 @@ cc_library(
         "div.cc",
         "embedding_lookup.cc",
         "embedding_lookup_sparse.cc",
+        "exp.cc",
         "fully_connected.cc",
         "gather.cc",
         "hashtable_lookup.cc",
@@ -319,6 +320,18 @@ tf_cc_test(
     name = "l2norm_test",
     size = "small",
     srcs = ["l2norm_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "exp_test",
+    size = "small",
+    srcs = ["exp_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
