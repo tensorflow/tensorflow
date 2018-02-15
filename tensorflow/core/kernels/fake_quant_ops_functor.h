@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_
+#ifndef TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_
+#define TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_
 
 #include <tuple>
 
@@ -45,16 +45,16 @@ EIGEN_DEVICE_FUNC EIGEN_ALWAYS_INLINE void Nudge(
   const float quant_max_float = static_cast<float>(quant_max);
   *scale = (max - min) / (quant_max_float - quant_min_float);
   const float zero_point_from_min = quant_min_float - min / *scale;
-  const uint8 nudged_zero_point = [zero_point_from_min, quant_min,
-                                   quant_min_float, quant_max,
-                                   quant_max_float] {
+  const uint16 nudged_zero_point = [zero_point_from_min, quant_min,
+                                    quant_min_float, quant_max,
+                                    quant_max_float] {
     if (zero_point_from_min < quant_min_float) {
-      return static_cast<uint8>(quant_min);
+      return static_cast<uint16>(quant_min);
     }
     if (zero_point_from_min > quant_max_float) {
-      return static_cast<uint8>(quant_max);
+      return static_cast<uint16>(quant_max);
     }
-    return static_cast<uint8>(StdRound(zero_point_from_min));
+    return static_cast<uint16>(StdRound(zero_point_from_min));
   }();
   *nudged_min = (quant_min_float - nudged_zero_point) * (*scale);
   *nudged_max = (quant_max_float - nudged_zero_point) * (*scale);
@@ -277,4 +277,4 @@ struct FakeQuantWithMinMaxVarsPerChannelGradientFunctor {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_
+#endif  // TENSORFLOW_CORE_KERNELS_FAKE_QUANT_FUNCTOR_H_

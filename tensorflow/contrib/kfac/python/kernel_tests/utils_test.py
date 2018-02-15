@@ -22,11 +22,15 @@ import numpy as np
 import numpy.random as npr
 
 from tensorflow.contrib.kfac.python.ops import utils
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -94,6 +98,18 @@ class SubGraphTest(test.TestCase):
     input_list = [b, d]
     filtered_list = sub_graph.filter_list(input_list)
     self.assertEqual(filtered_list, [b])
+
+  def testVariableUses(self):
+    with ops.Graph().as_default():
+      var = variable_scope.get_variable('var', shape=[10, 10])
+      resource_var = variable_scope.get_variable(
+          'resource_var', shape=[10, 10], use_resource=True)
+      x = array_ops.zeros([3, 10])
+      z0 = math_ops.matmul(x, var) + math_ops.matmul(x, var)
+      z1 = math_ops.matmul(x, resource_var)
+      sub_graph = utils.SubGraph((z0, z1))
+      self.assertEqual(2, sub_graph.variable_uses(var))
+      self.assertEqual(1, sub_graph.variable_uses(resource_var))
 
 
 class UtilsTest(test.TestCase):
@@ -252,6 +268,62 @@ class UtilsTest(test.TestCase):
           array_ops.constant(x), identity, damp)
       np_inv = np.linalg.inv(x + damp * np.eye(size))
       self.assertAllClose(sess.run(tf_inv), np_inv)
+
+  def testCrossReplicaMean(self):
+    """Ensures that cross_replica_mean() executes only when num_shards > 1."""
+    with ops.Graph().as_default():
+      with tpu_function.tpu_shard_context(4):
+        tensor = array_ops.zeros([], dtype=dtypes.float32)
+        mean = utils.cross_replica_mean(tensor)
+      self.assertNotEqual(mean, tensor)
+
+    with ops.Graph().as_default():
+      with tpu_function.tpu_shard_context(1):
+        tensor = array_ops.zeros([], dtype=dtypes.float32)
+        mean = utils.cross_replica_mean(tensor)
+      self.assertEqual(mean, tensor)
+
+    with ops.Graph().as_default():
+      with self.assertRaises(ValueError):  # Outside of TPU context.
+        tensor = array_ops.zeros([], dtype=dtypes.float32)
+        mean = utils.cross_replica_mean(tensor)
+
+  def testBatchExecute(self):
+    """Ensure batch_execute runs in a round-robin fashion."""
+
+    def increment_var(var):
+      return lambda: var.assign_add(1)
+
+    with ops.Graph().as_default(), self.test_session() as sess:
+      i = variable_scope.get_variable('i', initializer=0)
+      accumulators = [
+          variable_scope.get_variable('var%d' % j, initializer=0)
+          for j in range(3)
+      ]
+      thunks = [increment_var(var) for var in accumulators]
+      increment_accumulators = utils.batch_execute(i, thunks, 2)
+      increment_i = i.assign_add(1)
+
+      sess.run(variables.global_variables_initializer())
+
+      # Ensure one op per thunk.
+      self.assertEqual(3, len(increment_accumulators))
+
+      # Ensure round-robin execution.
+      values = []
+      for _ in range(5):
+        sess.run(increment_accumulators)
+        sess.run(increment_i)
+        values.append(sess.run(accumulators))
+      self.assertAllClose(
+          [
+              [1, 1, 0],  #
+              [2, 1, 1],  #
+              [2, 2, 2],  #
+              [3, 3, 2],  #
+              [4, 3, 3]
+          ],
+          values)
 
 
 if __name__ == '__main__':

@@ -29,13 +29,6 @@
 
 #include "ios_image_load.h"
 
-#define LOG(x) std::cerr
-#define CHECK(x)                  \
-  if (!(x)) {                     \
-    LOG(ERROR) << #x << "failed"; \
-    exit(1);                      \
-  }
-
 NSString* RunInferenceOnImage();
 
 @interface RunModelViewController ()
@@ -89,28 +82,29 @@ static void GetTopN(const float* prediction, const int prediction_size, const in
 NSString* FilePathForResourceName(NSString* name, NSString* extension) {
   NSString* file_path = [[NSBundle mainBundle] pathForResource:name ofType:extension];
   if (file_path == NULL) {
-    LOG(FATAL) << "Couldn't find '" << [name UTF8String] << "." << [extension UTF8String]
-               << "' in bundle.";
+    NSLog(@"Couldn't find '%@.%@' in bundle.", name, extension);
+    exit(-1);
   }
   return file_path;
 }
 
 NSString* RunInferenceOnImage() {
-  std::string graph;
+  NSString* graph = @"mobilenet_v1_1.0_224";
   const int num_threads = 1;
   std::string input_layer_type = "float";
   std::vector<int> sizes = {1, 224, 224, 3};
 
-  NSString* graph_path = FilePathForResourceName(@"mobilenet_v1_1.0_224", @"tflite");
+  const NSString* graph_path = FilePathForResourceName(graph, @"tflite");
 
   std::unique_ptr<tflite::FlatBufferModel> model(
       tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]));
   if (!model) {
-    LOG(FATAL) << "Failed to mmap model " << graph;
+    NSLog(@"Failed to mmap model %@.", graph);
+    exit(-1);
   }
-  LOG(INFO) << "Loaded model " << graph;
+  NSLog(@"Loaded model %@.", graph);
   model->error_reporter();
-  LOG(INFO) << "resolved reporter";
+  NSLog(@"Resolved reporter.");
 
 #ifdef TFLITE_CUSTOM_OPS_HEADER
   tflite::MutableOpResolver resolver;
@@ -122,7 +116,8 @@ NSString* RunInferenceOnImage() {
   std::unique_ptr<tflite::Interpreter> interpreter;
   tflite::InterpreterBuilder(*model, resolver)(&interpreter);
   if (!interpreter) {
-    LOG(FATAL) << "Failed to construct interpreter";
+    NSLog(@"Failed to construct interpreter.");
+    exit(-1);
   }
 
   if (num_threads != -1) {
@@ -136,7 +131,8 @@ NSString* RunInferenceOnImage() {
   }
 
   if (interpreter->AllocateTensors() != kTfLiteOk) {
-    LOG(FATAL) << "Failed to allocate tensors!";
+    NSLog(@"Failed to allocate tensors.");
+    exit(-1);
   }
 
   // Read the label list
@@ -181,7 +177,8 @@ NSString* RunInferenceOnImage() {
   }
 
   if (interpreter->Invoke() != kTfLiteOk) {
-    LOG(FATAL) << "Failed to invoke!";
+    NSLog(@"Failed to invoke!");
+    exit(-1);
   }
 
   float* output = interpreter->typed_output_tensor<float>(0);
@@ -211,11 +208,9 @@ NSString* RunInferenceOnImage() {
     ss << "\n";
   }
 
-  LOG(INFO) << "Predictions: " << ss.str();
-
   std::string predictions = ss.str();
   NSString* result = @"";
   result = [NSString stringWithFormat:@"%@ - %s", result, predictions.c_str()];
-
+  NSLog(@"Predictions: %@", result);
   return result;
 }

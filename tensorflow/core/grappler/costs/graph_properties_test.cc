@@ -921,6 +921,17 @@ TEST_F(GraphPropertiesTest, FedNodes) {
   }
 }
 
+TEST_F(GraphPropertiesTest, Performance) {
+  // Load a large graph with many nested loops to make sure we can infer shapes
+  // quickly.
+  GrapplerItem item;
+  string filename = io::JoinPath(testing::TensorFlowSrcRoot(), kTestDataPath,
+                                 "large_graph.pbtxt.html");
+  TF_CHECK_OK(ReadGraphDefFromFile(filename, &item.graph));
+  GraphProperties properties(item);
+  TF_CHECK_OK(properties.InferStatically(false));
+}
+
 }  // namespace
 }  // namespace grappler
 }  // namespace tensorflow

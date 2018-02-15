@@ -18,18 +18,23 @@ gen_zipped_test_files(
     files = [
         "add.zip",
         "avg_pool.zip",
+        "batch_to_space_nd.zip",
         "concat.zip",
         "constant.zip",
         "control_dep.zip",
         "conv.zip",
         "depthwiseconv.zip",
+        "div.zip",
+        "exp.zip",
         "fully_connected.zip",
         "fused_batch_norm.zip",
+        "gather.zip",
         "global_batch_norm.zip",
         "l2_pool.zip",
         "l2norm.zip",
         "local_response_norm.zip",
         "max_pool.zip",
+        "mean.zip",
         "mul.zip",
         "pad.zip",
         "relu.zip",
@@ -39,7 +44,12 @@ gen_zipped_test_files(
         "resize_bilinear.zip",
         "sigmoid.zip",
         "softmax.zip",
+        "space_to_batch_nd.zip",
         "space_to_depth.zip",
+        "squeeze.zip",
+        "strided_slice.zip",
+        "sub.zip",
+        "transpose.zip",
     ],
 )
 
@@ -181,31 +191,70 @@ cc_binary(
     srcs = ["nnapi_example.cc"],
     deps = [
         ":parse_testdata_lib",
-        "//tensorflow/contrib/lite:builtin_op_data",
-        "//tensorflow/contrib/lite:framework",
-        "//tensorflow/contrib/lite/kernels:builtin_ops",
+        ":tflite_driver",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
+    ],
+)
+
+cc_library(
+    name = "tf_driver",
+    srcs = ["tf_driver.cc"],
+    hdrs = ["tf_driver.h"],
+    deps = [
+        ":split",
+        ":test_runner",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_test(
+    name = "tf_driver_test",
+    size = "small",
+    srcs = ["tf_driver_test.cc"],
+    data = ["//tensorflow/contrib/lite:testdata/multi_add.pb"],
+    deps = [
+        ":tf_driver",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
 tf_cc_test(
     name = "generated_examples_zip_test",
-    size = "medium",
+    size = "large",
     srcs = ["generated_examples_zip_test.cc"],
+    args = [
+        "--zip_files_dir=tensorflow/contrib/lite/testing/optest",
+        # TODO(angerson) We may be able to add an external unzip binary instead
+        # of relying on an existing one for OSS builds.
+        "--unzip_binary_path=/usr/bin/unzip",
+    ],
     data = [":optest"],
-    shard_count = 10,
+    shard_count = 20,
     tags = ["no_oss"],
     deps = [
         ":parse_testdata_lib",
+        ":tflite_driver",
+        ":util",
+        "@com_google_googletest//:gtest",
+        "@com_googlesource_code_re2//:re2",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite/kernels:builtin_ops",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-        "@com_google_googletest//:gtest",
-        "@com_googlesource_code_re2//:re2",
-    ],
+    ] + select({
+        "//conditions:default": [
+            "//tensorflow/core:framework_internal",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:test",
+        ],
+        "//tensorflow:android": [
+            "//tensorflow/core:android_tensorflow_lib",
+            "//tensorflow/core:android_tensorflow_test_lib",
+        ],
+    }),
 )
 
 filegroup(

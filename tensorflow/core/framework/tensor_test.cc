@@ -20,12 +20,14 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
+#include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
+
 class TensorTestHelper {
  public:
   // This is an operation that can be done by VariableOp.
@@ -33,13 +35,13 @@ class TensorTestHelper {
 };
 
 // To make TestCopies do the right thing.
-inline bool operator==(const ResourceHandle& a, const ResourceHandle& b) {
+bool operator==(const ResourceHandle& a, const ResourceHandle& b) {
   return a.device() == b.device() && a.container() == b.container() &&
          a.name() == b.name() && a.hash_code() == b.hash_code() &&
          a.maybe_type_name() == b.maybe_type_name();
 }
 
-inline bool operator==(const Variant& a, const Variant& b) {
+bool operator==(const Variant& a, const Variant& b) {
   if (a.is_empty()) {
     return b.is_empty();
   }
@@ -71,6 +73,8 @@ inline bool operator==(const Variant& a, const Variant& b) {
 
   return true;
 }
+
+namespace {
 
 TEST(TensorTest, Default) {
   Tensor t;
@@ -997,7 +1001,7 @@ TEST(Tensor_Complex, SimpleWithHelper64) {
     // x contains all the 8-th root of unity.
     Tensor x(DT_COMPLEX64, TensorShape({8}));
     for (int i = 0; i < 8; ++i) {
-      x.vec<complex64>()(i) = std::pow(rotate_45, i);
+      x.vec<complex64>()(i) = MathUtil::IPow(rotate_45, i);
     }
 
     // Shift the roots by 45 degree.
@@ -1005,7 +1009,7 @@ TEST(Tensor_Complex, SimpleWithHelper64) {
     y.vec<complex64>() = x.vec<complex64>() * rotate_45;
     Tensor y_expected(DT_COMPLEX64, TensorShape({8}));
     for (int i = 0; i < 8; ++i) {
-      y_expected.vec<complex64>()(i) = std::pow(rotate_45, i + 1);
+      y_expected.vec<complex64>()(i) = MathUtil::IPow(rotate_45, i + 1);
     }
     test::ExpectTensorNear<complex64>(y, y_expected, 1e-5);
 
@@ -1046,7 +1050,7 @@ TEST(Tensor_Complex, SimpleWithHelper128) {
     // x contains all the 8-th root of unity.
     Tensor x(DT_COMPLEX128, TensorShape({8}));
     for (int i = 0; i < 8; ++i) {
-      x.vec<complex128>()(i) = std::pow(rotate_45, i);
+      x.vec<complex128>()(i) = MathUtil::IPow(rotate_45, i);
     }
 
     // Shift the roots by 45 degree.
@@ -1054,7 +1058,7 @@ TEST(Tensor_Complex, SimpleWithHelper128) {
     y.vec<complex128>() = x.vec<complex128>() * rotate_45;
     Tensor y_expected(DT_COMPLEX128, TensorShape({8}));
     for (int i = 0; i < 8; ++i) {
-      y_expected.vec<complex128>()(i) = std::pow(rotate_45, i + 1);
+      y_expected.vec<complex128>()(i) = MathUtil::IPow(rotate_45, i + 1);
     }
     test::ExpectTensorNear<complex128>(y, y_expected, 1e-5);
 
@@ -1069,8 +1073,6 @@ TEST(Tensor_Complex, SimpleWithHelper128) {
   }
 }
 
-namespace {
-
 // An allocator that always returns nullptr, for testing
 // failures to allocate.
 class DummyCPUAllocator : public Allocator {
@@ -1082,6 +1084,21 @@ class DummyCPUAllocator : public Allocator {
   }
   void DeallocateRaw(void* ptr) override {}
 };
+
+TEST(Tensor, SharesBufferWith) {
+  Tensor a_empty;
+  Tensor b_empty;
+  Tensor a(DT_FLOAT, TensorShape({1}));
+  Tensor b(DT_FLOAT, TensorShape({1}));
+  Tensor copy(a);
+  EXPECT_FALSE(a_empty.SharesBufferWith(a_empty));
+  EXPECT_FALSE(a_empty.SharesBufferWith(b_empty));
+  EXPECT_FALSE(a_empty.SharesBufferWith(a));
+  EXPECT_FALSE(a_empty.SharesBufferWith(copy));
+  EXPECT_TRUE(a.SharesBufferWith(a));
+  EXPECT_FALSE(a.SharesBufferWith(b));
+  EXPECT_TRUE(a.SharesBufferWith(copy));
+}
 
 TEST(Tensor, FailureToAllocate) {
   TensorShape shape({1});
@@ -1210,7 +1227,6 @@ TEST(Tensor, Slice_Basic) {
   }
 }
 
-namespace {
 template <typename T>
 Tensor MkTensor(DataType dt, const TensorShape& shape,
                 std::vector<T> init_values) {
@@ -1223,7 +1239,6 @@ Tensor MkTensor(DataType dt, const TensorShape& shape,
   }
   return x;
 }
-}  // namespace
 
 TEST(SummarizeValue, Uninitialized) {
   Tensor x(DT_INT32);
@@ -1272,7 +1287,7 @@ TEST(SummarizeValue, STRING) {
   EXPECT_EQ("one two three four five one...", x.SummarizeValue(6));
 }
 
-static void BM_CreateAndDestroy(int iters) {
+void BM_CreateAndDestroy(int iters) {
   TensorShape shape({10, 20});
   while (--iters) {
     Tensor t(DT_FLOAT, shape);
@@ -1280,7 +1295,7 @@ static void BM_CreateAndDestroy(int iters) {
 }
 BENCHMARK(BM_CreateAndDestroy);
 
-static void BM_Assign(int iters) {
+void BM_Assign(int iters) {
   Tensor a(DT_FLOAT, TensorShape({10, 20}));
   Tensor b(DT_FLOAT, TensorShape({10, 20}));
   bool a_to_b = true;
@@ -1302,7 +1317,7 @@ TEST(Tensor, EmptyTensorData) {
 }
 
 // Benchmark create and destroy a tensor, with an allocated buffer.
-static void BM_CreateAndDestroyWithBuf(int iters) {
+void BM_CreateAndDestroyWithBuf(int iters) {
   TensorShape shape({10, 20});
   Allocator* allocator = cpu_allocator();
   while (--iters) {
@@ -1312,7 +1327,7 @@ static void BM_CreateAndDestroyWithBuf(int iters) {
 BENCHMARK(BM_CreateAndDestroyWithBuf);
 
 // Benchmark create+copy a tensor, with an allocated buffer.
-static void BM_CreateAndCopyCtrWithBuf(int iters) {
+void BM_CreateAndCopyCtrWithBuf(int iters) {
   TensorShape shape({10, 20});
   Allocator* allocator = cpu_allocator();
   while (--iters) {
@@ -1323,7 +1338,7 @@ static void BM_CreateAndCopyCtrWithBuf(int iters) {
 BENCHMARK(BM_CreateAndCopyCtrWithBuf);
 
 // Benchmark create+move a tensor, with an allocated buffer.
-static void BM_CreateAndMoveCtrWithBuf(int iters) {
+void BM_CreateAndMoveCtrWithBuf(int iters) {
   TensorShape shape({10, 20});
   Allocator* allocator = cpu_allocator();
   while (--iters) {

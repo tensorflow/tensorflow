@@ -41,6 +41,8 @@ class CpuElementalIrEmitter : public ElementalIrEmitter {
  protected:
   StatusOr<llvm::Value*> EmitFloatUnaryOp(
       const HloInstruction* op, llvm::Value* operand_value) const override;
+  StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type, llvm::Value* lhs,
+                                   llvm::Value* rhs) const override;
 
   IrEmitter* ir_emitter_;
 };

@@ -91,27 +91,25 @@ struct SpatialConvolutionBackwardInput {
   void operator()(const Device& d, typename TTypes<T, 4>::Tensor input_backward,
                   typename TTypes<T, 4>::ConstTensor kernel,
                   typename TTypes<T, 4>::ConstTensor output_backward,
-                  int input_rows, int input_cols, int row_stride,
-                  int col_stride) {
+                  int row_stride, int col_stride) {
     // Need to swap row/col when calling Eigen.
     input_backward.device(d) = Eigen::SpatialConvolutionBackwardInput(
-        kernel, output_backward, input_cols, input_rows, col_stride,
-        row_stride);
+        kernel, output_backward, input_backward.dimension(2),
+        input_backward.dimension(1), col_stride, row_stride);
   }
 };
 
 template <typename Device, typename T>
-struct SpatialConvolutionBackwardKernel {
+struct SpatialConvolutionBackwardFilter {
   void operator()(const Device& d,
                   typename TTypes<T, 4>::Tensor kernel_backward,
                   typename TTypes<T, 4>::ConstTensor input,
                   typename TTypes<T, 4>::ConstTensor output_backward,
-                  int kernel_rows, int kernel_cols, int row_stride,
-                  int col_stride) {
+                  int row_stride, int col_stride) {
     // Need to swap row/col when calling Eigen.
     kernel_backward.device(d) = Eigen::SpatialConvolutionBackwardKernel(
-        input, output_backward, kernel_cols, kernel_rows, col_stride,
-        row_stride);
+        input, output_backward, kernel_backward.dimension(1),
+        kernel_backward.dimension(0), col_stride, row_stride);
   }
 };
 

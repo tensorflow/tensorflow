@@ -32,9 +32,11 @@ from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _get_variable_for(v):
@@ -173,19 +175,43 @@ class _StreamingModelPortProcessor(_OptimizableVariable):
     return g
 
 
+class _TensorProcessor(_OptimizableVariable):
+  """Processor for ordinary Tensors.
+
+  Even though a Tensor can't really be updated, sometimes it is useful to
+  compute the gradients with respect to a Tensor using the optimizer. Updating
+  the Tensor is, of course, unsupported.
+  """
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v
+
+  def update_op(self, optimizer, g):
+    raise NotImplementedError("Trying to update a Tensor ", self._v)
+
+
 def _get_processor(v):
   """The processor of v."""
   if context.in_eager_mode():
-    return _DenseResourceVariableProcessor(v)
+    if isinstance(v, ops.Tensor):
+      return _TensorProcessor(v)
+    else:
+      return _DenseResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
   if v.op.type == "SubmodelPort":
     return _StreamingModelPortProcessor(v)
+  if isinstance(v, ops.Tensor):
+    return _TensorProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
+@tf_export("train.Optimizer")
 class Optimizer(object):
   """Base class for optimizers.
 
@@ -299,6 +325,7 @@ class Optimizer(object):
     # Dictionary of slots.
     #  {slot_name : { variable_to_train: slot_for_the_variable, ...}, ... }
     self._slots = {}
+    self._non_slot_dict = {}
 
   def get_name(self):
     return self._name
@@ -378,7 +405,9 @@ class Optimizer(object):
     given variable.
 
     Args:
-      loss: A Tensor containing the value to minimize.
+      loss: A Tensor containing the value to minimize or a callable taking
+        no arguments which returns the value to minimize. When eager execution
+        is enabled it must be a callable.
       var_list: Optional list or tuple of `tf.Variable` to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph
         under the key `GraphKeys.TRAINABLE_VARIABLES`.
@@ -397,37 +426,27 @@ class Optimizer(object):
     Raises:
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid.
-      RuntimeError: If called with eager execution enabled and if `grad_loss`
-        is not `None` or `loss` is not callable.
+      RuntimeError: If called with eager execution enabled and `loss` is
+        not callable.
 
     @compatibility(eager)
-    When eager execution is enabled, `loss` should be a Python function that
-    takes elements of `var_list` as arguments and computes the value to be
-    minimized. If `var_list` is None, `loss` should take no arguments.
-    Gradient computation is done with respect to the elements of `var_list` if
-    not None, else with respect to any trainable variables created during the
-    execution of the `loss` function.
-    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
-    `grad_loss` are ignored when eager execution is enabled.
+    When eager execution is enabled, `gate_gradients`, `aggregation_method`,
+    and `colocate_gradients_with_ops` are ignored.
     @end_compatibility
     """
-    if context.in_eager_mode():
-      if grad_loss is not None:
-        raise RuntimeError(
-            "`grad_loss` argument to Optimizer.compute_gradients "
-            "not supported when eager execution is enabled.")
-      if not callable(loss):
-        raise RuntimeError(
-            "`loss` passed to Optimizer.compute_gradients should "
-            "be a function when eager execution is enabled.")
-      # TODO(agarwal): consider passing parameters to the `loss` function.
+    if callable(loss):
+      with backprop.GradientTape() as tape:
+        if var_list is not None:
+          tape.watch(var_list)
+        loss_value = loss()
       if var_list is None:
-        return backprop.implicit_grad(loss)()
-      else:
-        var_list = nest.flatten(var_list)
-        grads = backprop.gradients_function(loss)(*var_list)
-        grads_and_vars = list(zip(grads, var_list))
-        return grads_and_vars
+        var_list = tape.watched_variables()
+      grads = tape.gradient(loss_value, var_list, grad_loss)
+      return list(zip(grads, var_list))
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "`loss` passed to Optimizer.compute_gradients should "
+          "be a function when eager execution is enabled.")
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
       raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "
@@ -512,7 +531,7 @@ class Optimizer(object):
     if not var_list:
       raise ValueError("No gradients provided for any variable: %s." %
                        ([str(v) for _, _, v in converted_grads_and_vars],))
-    with ops.control_dependencies(None):
+    with ops.init_scope():
       self._create_slots([_get_variable_for(v) for v in var_list])
     update_ops = []
     with ops.name_scope(name, self._name) as name:
@@ -531,7 +550,15 @@ class Optimizer(object):
       else:
         with ops.control_dependencies([self._finish(update_ops, "update")]):
           with ops.colocate_with(global_step):
-            apply_updates = state_ops.assign_add(global_step, 1, name=name)
+            if isinstance(global_step, resource_variable_ops.ResourceVariable):
+              # TODO(apassos): the implicit read in assign_add is slow; consider
+              # making it less so.
+              apply_updates = resource_variable_ops.assign_add_variable_op(
+                  global_step.handle,
+                  ops.convert_to_tensor(1, dtype=global_step.dtype),
+                  name=name)
+            else:
+              apply_updates = state_ops.assign_add(global_step, 1, name=name)
 
       if context.in_graph_mode():
         if isinstance(apply_updates, ops.Tensor):
@@ -590,7 +617,7 @@ class Optimizer(object):
       if executing_eagerly:
         # No variable.op in eager mode. We don't expect lots of eager graphs,
         # but behavior should be consistent with graph mode.
-        return variable._container_prefix == current_graph._container_prefix  # pylint: disable=protected-access
+        return variable._graph_key == current_graph._graph_key  # pylint: disable=protected-access
       else:
         return variable.op.graph is current_graph
 
@@ -603,17 +630,32 @@ class Optimizer(object):
     # Sort variables by name so that the return is deterministic.
     return sorted(optimizer_variables, key=lambda v: v.name)
 
+  def _create_non_slot_variable(self, initial_value, name, colocate_with):
+    """Add an extra variable, not associated with a slot."""
+    if context.in_graph_mode():
+      graph = colocate_with.graph
+    else:
+      graph = None
+
+    key = (name, graph)
+    v = self._non_slot_dict.get(key, None)
+    if v is None:
+      with ops.colocate_with(colocate_with):
+        v = variable_scope.variable(initial_value, name=name, trainable=False)
+      self._non_slot_dict[key] = v
+
+    return v
+
+  def _get_non_slot_variable(self, name, graph=None):
+    return self._non_slot_dict.get((name, graph), None)
+
   def _non_slot_variables(self):
     """Additional variables created by the `Optimizer`.
-
-    This method should be overridden by child classes which create extra
-    variables, so that `variables()` includes the `Optimizer`'s non-slot
-    variables.
 
     Returns:
       A list or tuple of variables.
     """
-    return []
+    return self._non_slot_dict.values()
 
   def _assert_valid_dtypes(self, tensors):
     """Asserts tensors are all valid types (see `_valid_dtypes`).

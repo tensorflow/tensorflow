@@ -23,8 +23,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.GradientDescentOptimizer")
 class GradientDescentOptimizer(optimizer.Optimizer):
   """Optimizer that implements the gradient descent algorithm.
   """

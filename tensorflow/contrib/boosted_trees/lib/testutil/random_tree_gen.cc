@@ -22,9 +22,9 @@ namespace tensorflow {
 namespace boosted_trees {
 namespace testutil {
 
+using boosted_trees::trees::DenseFloatBinarySplit;
 using tensorflow::boosted_trees::trees::DecisionTreeConfig;
 using tensorflow::boosted_trees::trees::TreeNode;
-using boosted_trees::trees::DenseFloatBinarySplit;
 
 namespace {
 

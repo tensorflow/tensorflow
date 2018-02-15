@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/elemental_ir_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/elemental_ir_emitter.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_nested.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emitter_unnested.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/fused_ir_emitter.h"
@@ -269,7 +271,7 @@ bool IrEmitter::MaybeEmitDirectAtomicOperation(
 //   cas_new_output_address = alloca(atomic_size);
 //   cas_old_output_address = alloca(atomic_size);
 //   if (atomic_size != element_size) {
-//     atomic_address = output_address & ((int64)(-2));
+//     atomic_address = output_address & ((int64)(-4));
 //     new_output_address = cas_new_output_address + (output_address & 3);
 //   } else {
 //     atomic_address = output_address;
@@ -326,7 +328,7 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
         ir_builder_.CreatePtrToInt(output_address, address_int_type);
     llvm::Value* mask = llvm::ConstantInt::get(address_int_type, 3);
     llvm::Value* offset = ir_builder_.CreateAnd(atomic_memory_address, mask);
-    mask = llvm::ConstantInt::get(address_int_type, -2);
+    mask = llvm::ConstantInt::get(address_int_type, -4);
     atomic_memory_address = ir_builder_.CreateAnd(atomic_memory_address, mask);
     atomic_memory_address =
         ir_builder_.CreateIntToPtr(atomic_memory_address, atomic_address_type);
@@ -605,10 +607,17 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
       "Hit a case for convolution that is not implemented on GPU.");
 }
 
+Status IrEmitter::HandleFft(HloInstruction* fft) {
+  if (ShapeUtil::HasZeroElements(fft->shape())) {
+    // Emit no code for an empty output.
+    return Status::OK();
+  }
+  return Unimplemented("Hit a case for fft that is not implemented on GPU.");
+}
+
 Status IrEmitter::HandleCrossReplicaSum(HloInstruction* crs) {
   // TODO(b/33011107): Support cross replica sum on GPU.
-  return Unimplemented(
-      "Cross replica sum not implemented on GPU. See b/33011107.");
+  return Unimplemented("CrossReplicaSum is not implemented on GPU.");
 }
 
 Status IrEmitter::HandleParameter(HloInstruction* parameter) {
@@ -702,11 +711,13 @@ Status IrEmitter::HandleCustomCall(HloInstruction*) {
 }
 
 Status IrEmitter::HandleInfeed(HloInstruction*) {
-  return Unimplemented("Infeed is not supported on GPU (b/30467474).");
+  // TODO(b/30467474): Implement infeed on GPU.
+  return Unimplemented("Infeed is not supported on GPU.");
 }
 
 Status IrEmitter::HandleOutfeed(HloInstruction*) {
-  return Unimplemented("Outfeed is not supported on GPU (b/34359662).");
+  // TODO(b/34359662): Implement outfeed on GPU.
+  return Unimplemented("Outfeed is not supported on GPU.");
 }
 
 Status IrEmitter::HandleRng(HloInstruction* random) {
@@ -727,35 +738,27 @@ Status IrEmitter::HandleRng(HloInstruction* random) {
       .EmitLoop(IrName(random));
 }
 
-Status IrEmitter::HandleConditional(HloInstruction* conditional) {
-  auto pred = conditional->operand(0);
-  auto true_arg = conditional->operand(1);
-  auto false_arg = conditional->operand(2);
+Status IrEmitter::HandleBatchNormInference(HloInstruction*) {
+  return Unimplemented(
+      "The GPU backend does not implement BatchNormInference directly.  It "
+      "should be lowered before IR emission to HLO-soup using "
+      "BatchNormRewriter or to a cudnn CustomCall using "
+      "CudnnBatchNormRewriter.");
+}
 
-  llvm::Value* conditional_result = GetBasePointer(*conditional);
+Status IrEmitter::HandleBatchNormTraining(HloInstruction*) {
+  return Unimplemented(
+      "The GPU backend does not implement BatchNormTraining directly.  It "
+      "should be lowered before IR emission to HLO-soup using "
+      "BatchNormRewriter or to a cudnn CustomCall using "
+      "CudnnBatchNormRewriter.");
+}
 
-  llvm::LoadInst* pred_value = ir_builder_.CreateLoad(
-      GetBasePointer(*pred),
-      llvm_ir::AsStringRef(IrName(conditional, "load_predicate_value")));
-  llvm::Value* pred_cond = ir_builder_.CreateICmpNE(
-      pred_value,
-      llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
-      llvm_ir::AsStringRef(IrName(conditional, "boolean_predicate")));
-  llvm_ir::LlvmIfData if_data = llvm_ir::EmitIfThenElse(
-      pred_cond, IrName(conditional, "if_then_else"), &ir_builder_);
-
-  SetToFirstInsertPoint(if_data.true_block, &ir_builder_);
-  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
-      *conditional->true_computation(), {GetBasePointer(*true_arg)},
-      conditional_result));
-
-  SetToFirstInsertPoint(if_data.false_block, &ir_builder_);
-  TF_RETURN_IF_ERROR(EmitCallToNestedComputation(
-      *conditional->false_computation(), {GetBasePointer(*false_arg)},
-      conditional_result));
-
-  SetToFirstInsertPoint(if_data.after_block, &ir_builder_);
-  return Status::OK();
+Status IrEmitter::HandleBatchNormGrad(HloInstruction*) {
+  return Unimplemented(
+      "The GPU backend does not implement BatchNormGrad directly.  It should "
+      "be lowered before IR emission to HLO-soup (using BatchNormRewriter) or "
+      "to a cudnn CustomCall using CudnnBatchNormRewriter.");
 }
 
 llvm_ir::IrArray::Index IrEmitter::EmitOperandArrayLoopNest(
@@ -766,8 +769,8 @@ llvm_ir::IrArray::Index IrEmitter::EmitOperandArrayLoopNest(
   // reduction dimension.
   std::vector<int64> dimensions;
   const Shape& shape = operand_array.GetShape();
-  for (int i = shape.layout().minor_to_major_size() - 1; i >= 0; --i) {
-    int64 dimension = shape.layout().minor_to_major(i);
+  for (int i = 0; i < LayoutUtil::MinorToMajor(shape).size(); ++i) {
+    int64 dimension = LayoutUtil::Major(shape.layout(), i);
     if (dimension != reduction_dimension) {
       dimensions.push_back(dimension);
     }

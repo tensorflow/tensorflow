@@ -41,28 +41,8 @@ support for distributed and multi-GPU training and CPU performance.
 
 ## Installation
 
-Since eager execution is not yet part of a TensorFlow release, using it requires
-either [building from source](https://www.tensorflow.org/install/install_sources)
-or the latest nightly builds. The nightly builds are available as:
-
-- [`pip` packages](https://github.com/tensorflow/tensorflow/blob/master/README.md#installation) and
-
-- [docker](https://hub.docker.com/r/tensorflow/tensorflow/) images.
-
-For example, to run the latest nightly docker image:
-
-```sh
-# If you have a GPU, use https://github.com/NVIDIA/nvidia-docker
-nvidia-docker pull tensorflow/tensorflow:nightly-gpu
-nvidia-docker run -it -p 8888:8888 tensorflow/tensorflow:nightly-gpu
-
-# If you do not have a GPU, use the CPU-only image
-docker pull tensorflow/tensorflow:nightly
-docker run -it -p 8888:8888 tensorflow/tensorflow:nightly
-```
-
-And then visit http://localhost:8888 in your browser for a Jupyter notebook
-environment. Try out the notebooks below.
+Eager execution is included in TensorFlow versions 1.5 and above.
+Installation instructions at https://www.tensorflow.org/install/
 
 ## Documentation
 

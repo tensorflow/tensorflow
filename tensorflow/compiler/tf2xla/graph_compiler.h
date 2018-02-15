@@ -70,7 +70,7 @@ class GraphCompiler {
 
  private:
   // Partially sets params. This partially set params can be reused
-  // across multple nodes visit.
+  // across multiple nodes visit.
   void PartiallySetupParams(OpKernelContext::Params* params);
 
   // Tests if a node is a functional node. A functional node represents a

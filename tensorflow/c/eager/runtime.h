@@ -43,7 +43,7 @@ typedef std::unordered_map<string, uint32> AttrTypeMap;
 Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out);
 
 // Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
-Status AttrTypeByName(const AttrTypeMap* m, const string& attr_name,
+Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
                       TF_AttrType* out, unsigned char* is_list);
 
 // KernelAndDevice::Init needs a NodeDef only to pass the attribute map through.
@@ -175,7 +175,8 @@ class KernelAndDevice {
       : device_(nullptr), flib_(nullptr), rendez_(rendez) {}
 
   // TODO(ashankar): Handle list-valued inputs.
-  Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs);
+  Status Run(std::vector<Tensor>* inputs, std::vector<Tensor>* outputs,
+             NodeExecStats* stats);
 
   const OpKernel* kernel() const { return kernel_.get(); }
 

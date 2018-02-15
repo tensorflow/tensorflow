@@ -131,9 +131,9 @@ Status HloComputation::RemoveParameter(int64 param_no) {
 
   while (param_no < param_instructions_.size()) {
     param_instruction = param_instructions_[param_no];
-    string param_name = param_instruction->parameter_name();
+    string param_name = param_instruction->name();
     // Fusion parameters are named foo.param_1, bar.param_2, etc. We are
-    // renumbering the parameters so replace the final number in the name with
+    // renumbering the parameters, so replace the final number in the name with
     // the updated value.
     const string param_underscore = ".param_";
     size_t index = param_name.rfind(param_underscore);
@@ -364,26 +364,27 @@ std::list<HloComputation*> HloComputation::MakeEmbeddedComputationsList()
   return post_order;
 }
 
-string HloComputation::ToString(int nested_level,
-                                bool include_large_constants) const {
+string HloComputation::ToString(const HloPrintOptions& options) const {
   std::ostringstream s;
-  for (int i = 0; i < nested_level; i++) {
+  for (int i = 0; i < options.indent_amount(); i++) {
     s << "    ";
   }
-  s << "%" << name() << " " << ShapeUtil::HumanString(ComputeProgramShape())
-    << " {\n";
+  if (options.print_percent()) {
+    s << "%";
+  }
+  s << name();
+  if (options.print_program_shape()) {
+    s << " " << ShapeUtil::HumanString(ComputeProgramShape());
+  }
+  s << " {\n";
   for (const HloInstruction* instruction : MakeInstructionPostOrder()) {
-    for (int i = 0; i < nested_level; i++) {
+    for (int i = 0; i < options.indent_amount(); i++) {
       s << "    ";
     }
     s << "  " << (instruction == root_instruction_ ? "ROOT " : "")
-      << instruction->ToString(
-             /*compact_operands=*/false,
-             /*include_metadata=*/true,
-             /*include_large_constants=*/include_large_constants)
-      << "\n";
+      << instruction->ToString(options) << "\n";
   }
-  for (int i = 0; i < nested_level; i++) {
+  for (int i = 0; i < options.indent_amount(); i++) {
     s << "    ";
   }
   s << "}";
@@ -460,20 +461,6 @@ HloInstruction* HloComputation::CreateFusionInstruction(
   return fusion_instruction;
 }
 
-HloInstruction* HloComputation::CreateFusionInstructionForBackwardConvolution(
-    tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
-    HloInstruction::FusionKind fusion_kind, const Window& window,
-    const ConvolutionDimensionNumbers& conv_dnums) {
-  CHECK(HloInstruction::FusionKind::kConvBackwardFilter == fusion_kind ||
-        HloInstruction::FusionKind::kConvBackwardInput == fusion_kind);
-  HloInstruction* root = instructions_to_fuse.front();
-  HloInstruction* fusion_instruction =
-      AddInstruction(HloInstruction::CreateFusionForBackwardConvolution(
-          root->shape(), fusion_kind, window, conv_dnums, root));
-  FuseInstructionsInto(instructions_to_fuse, fusion_instruction);
-  return fusion_instruction;
-}
-
 StatusOr<HloInstruction*> HloComputation::DeepCopyHelper(
     HloInstruction* instruction, const ShapeTree<bool>* indices_to_copy,
     ShapeTree<HloInstruction*>* copies_added, ShapeIndex* index) {
@@ -540,7 +527,7 @@ ProgramShape HloComputation::ComputeProgramShape() const {
 
   for (auto* param_instruction : param_instructions_) {
     *program_shape.add_parameters() = param_instruction->shape();
-    *program_shape.add_parameter_names() = param_instruction->parameter_name();
+    *program_shape.add_parameter_names() = param_instruction->name();
   }
   *program_shape.mutable_result() = root_instruction_->shape();
 
@@ -576,8 +563,11 @@ Status HloComputation::ReplaceWithNewInstruction(
 
 Status HloComputation::ReplaceInstruction(HloInstruction* old_instruction,
                                           HloInstruction* new_instruction) {
-  TF_RET_CHECK(ShapeUtil::Compatible(old_instruction->shape(),
-                                     new_instruction->shape()));
+  TF_RET_CHECK(
+      ShapeUtil::Compatible(old_instruction->shape(), new_instruction->shape()))
+      << ShapeUtil::HumanString(old_instruction->shape()) << " vs "
+      << ShapeUtil::HumanString(new_instruction->shape());
+
   VLOG(10) << "transformed " << old_instruction->ToString() << " to "
            << new_instruction->ToString();
   // Try to add metadata for HLO instructions that are created to replace

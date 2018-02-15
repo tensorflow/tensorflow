@@ -103,18 +103,15 @@ Status XlaContext::AddConstRetval(int retval_index, DataType dtype,
 
 xla::ComputationBuilder* XlaContext::builder() { return builder_; }
 
-Status XlaContext::CreateResource(XlaResource::Kind kind, int arg_num,
-                                  string name, DataType type,
-                                  const xla::ComputationDataHandle& handle,
-                                  XlaResource** resource) {
-  resources_.emplace_back(new XlaResource);
+Status XlaContext::CreateResource(
+    XlaResource::Kind kind, int arg_num, string name, DataType type,
+    TensorShape shape, const xla::ComputationDataHandle& handle,
+    int64 tensor_array_size, const std::set<string>& tensor_array_gradients,
+    XlaResource** resource) {
+  resources_.emplace_back(
+      new XlaResource(kind, arg_num, std::move(name), type, std::move(shape),
+                      handle, tensor_array_size, tensor_array_gradients));
   *resource = resources_.back().get();
-  XlaResource& r = **resource;
-  r.kind = kind;
-  r.arg_num = arg_num;
-  r.name = std::move(name);
-  r.type = type;
-  r.initial_value = r.value = handle;
   return Status::OK();
 }
 

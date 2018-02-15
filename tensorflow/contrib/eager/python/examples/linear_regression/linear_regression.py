@@ -41,7 +41,7 @@ class LinearModel(tfe.Network):
   For those familiar with TensorFlow graphs, notice the absence of
   `tf.Session`. The `forward()` method here immediately executes and
   returns output values. The `loss()` method immediately compares the
-  output of `forward()` with the target adn returns the MSE loss value.
+  output of `forward()` with the target and returns the MSE loss value.
   The `fit()` performs gradient-descent training on the model's weights
   and bias.
   """
@@ -63,6 +63,10 @@ class LinearModel(tfe.Network):
     return self._hidden_layer(xs)
 
 
+def mean_square_loss(model, xs, ys):
+  return tf.reduce_mean(tf.square(model(xs) - ys))
+
+
 def fit(model, dataset, optimizer, verbose=False, logdir=None):
   """Fit the linear-regression model.
 
@@ -76,10 +80,8 @@ def fit(model, dataset, optimizer, verbose=False, logdir=None):
   """
 
   # The loss function to optimize.
-  def mean_square_loss(xs, ys):
-    return tf.reduce_mean(tf.square(model(xs) - ys))
-
-  loss_and_grads = tfe.implicit_value_and_gradients(mean_square_loss)
+  mse = lambda xs, ys: mean_square_loss(model, xs, ys)
+  loss_and_grads = tfe.implicit_value_and_gradients(mse)
 
   tf.train.get_or_create_global_step()
   if logdir:
@@ -103,14 +105,20 @@ def fit(model, dataset, optimizer, verbose=False, logdir=None):
 
 def synthetic_dataset(w, b, noise_level, batch_size, num_batches):
   """tf.data.Dataset that yields synthetic data for linear regression."""
+  return synthetic_dataset_helper(w, b,
+                                  tf.shape(w)[0], noise_level, batch_size,
+                                  num_batches)
 
+
+def synthetic_dataset_helper(w, b, num_features, noise_level, batch_size,
+                             num_batches):
   # w is a matrix with shape [N, M]
   # b is a vector with shape [M]
   # So:
   # - Generate x's as vectors with shape [batch_size N]
   # - y = tf.matmul(x, W) + b + noise
   def batch(_):
-    x = tf.random_normal([batch_size, tf.shape(w)[0]])
+    x = tf.random_normal([batch_size, num_features])
     y = tf.matmul(x, w) + b + noise_level * tf.random_normal([])
     return x, y
 

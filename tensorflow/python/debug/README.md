@@ -28,7 +28,7 @@ models:
 
 * Easy access through session wrappers
 * Easy integration with common high-level APIs, such as
-  [tf-learn](https://www.tensorflow.org/get_started/tflearn) and
+  [TensorFlow Estimators](https://www.tensorflow.org/programmers_guide/estimators) and
   [Keras](https://keras.io/)
 * Inspection of runtime tensor values and node connections
 * Conditional breaking after runs that generate tensors satisfying given

@@ -30,6 +30,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 class InputLayer(base.Layer):
@@ -117,6 +118,7 @@ class InputLayer(base.Layer):
         output_tensors=[input_tensor])
 
 
+@tf_export('layers.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,
@@ -221,13 +223,36 @@ class GraphNetwork(base.Layer):
       - get_layer: retrieves a child layer by name or index in the graph.
 
   Raises:
-    RuntimeError: If created in Eager mode.
+    TypeError: If created when eager execution is enabled, with inputs that
+      don't come from a call to `Input` or outputs that don't come from layers.
   """
 
   def __init__(self, inputs, outputs, name=None):  # pylint: disable=super-init-not-called
+    if isinstance(inputs, (list, tuple)):
+      self.inputs = list(inputs)  # Tensor or list of tensors.
+    else:
+      self.inputs = [inputs]
+    if isinstance(outputs, (list, tuple)):
+      self.outputs = list(outputs)
+    else:
+      self.outputs = [outputs]
+
     if context.in_eager_mode():
-      # TODO(fchollet): check that all inputs and outputs are DeferredTensors.
-      pass
+      # Check that all inputs/outputs are DeferredTensors.
+      for tensor in self.inputs:
+        if not isinstance(tensor, base._DeferredTensor):  # pylint: disable=protected-access
+          raise TypeError('When eager execution is enabled, '
+                          'inputs must come from a call to '
+                          '`tf.keras.Input` (called after '
+                          'tfe.enable_eager_execution()). '
+                          'Received invalid input: ' + str(tensor))
+      for tensor in self.outputs:
+        if not isinstance(tensor, base._DeferredTensor):  # pylint: disable=protected-access
+          raise TypeError('When eager execution is enabled, '
+                          'outputs must come from a call to '
+                          'a layer (called after '
+                          'tfe.enable_eager_execution()). '
+                          'Received invalid output: ' + str(tensor))
 
     self._init_set_name(name)
     self._activity_regularizer = None
@@ -248,32 +273,22 @@ class GraphNetwork(base.Layer):
     self.built = True
     # A GraphNetwork does not create weights of its own, thus has no dtype.
     self._dtype = None
+    self._is_graph_network = True
     # The following are implemented as property functions:
     # self.trainable_weights
     # self.non_trainable_weights
     # self.input_spec
 
     # Private attributes to implement compatibility with Layer.
-    self._per_input_losses = {}
-    self._per_input_updates = {}
     self._updates = []
     self._losses = []
     self._scope = None
     self._reuse = None
     self._graph = ops.get_default_graph()
 
-    # GraphNetwork-specific properties.
-    if isinstance(inputs, (list, tuple)):
-      self.inputs = list(inputs)  # Tensor or list of tensors.
-    else:
-      self.inputs = [inputs]
-    if isinstance(outputs, (list, tuple)):
-      self.outputs = list(outputs)
-    else:
-      self.outputs = [outputs]
     # All layers in order of horizontal graph traversal.
     # Entries are unique. Includes input and output layers.
-    self.layers = []
+    self._layers = []
 
     # Check for redundancy in inputs.
     if len(set(self.inputs)) != len(self.inputs):
@@ -483,7 +498,7 @@ class GraphNetwork(base.Layer):
       # here we order them by traversal order.
       layers_for_depth.sort(key=lambda x: layer_indices[x])
       layers.extend(layers_for_depth)
-    self.layers = layers
+    self._layers = layers
     self._layers_by_depth = layers_by_depth
 
     # Get sorted list of node depths.
@@ -542,6 +557,10 @@ class GraphNetwork(base.Layer):
         input_tensors=self.inputs,
         output_tensors=self.outputs)
 
+  @property
+  def layers(self):
+    return self._layers
+
   def get_layer(self, name=None, index=None):
     """Retrieves a layer based on either its name (unique) or index.
 
@@ -575,31 +594,85 @@ class GraphNetwork(base.Layer):
     raise ValueError('No such layer: ' + name)
 
   @property
+  def stateful(self):
+    return any([(hasattr(layer, 'stateful') and layer.stateful)
+                for layer in self.layers])
+
+  @property
   def updates(self):
     """Retrieve the network's updates.
 
     Will only include updates that are either
     unconditional, or conditional on inputs to this model
-    (e.g. will not include updates that depend on tensors
-    that aren't inputs to this model).
+    (e.g. will not include updates that were created by layers of this model
+    outside of the model).
+
+    Effectively, `network.updates` behaves like `layer.updates`.
+
+    Concrete example:
+
+    ```python
+      bn = keras.layers.BatchNormalization()
+      x1 = keras.layers.Input(shape=(10,))
+      _ = bn(x1)  # This creates 2 updates.
+
+      x2 = keras.layers.Input(shape=(10,))
+      y2 = bn(x2)  # This creates 2 more updates.
+
+      # The BN layer has now 4 updates.
+      self.assertEqual(len(bn.updates), 4)
+
+      # Let's create a model from x2 to y2.
+      model = keras.models.Model(x2, y2)
+
+      # The model does not list all updates from its underlying layers,
+      # but only the updates that are relevant to it. Updates created by layers
+      # outside of the model are discarded.
+      self.assertEqual(len(model.updates), 2)
+
+      # If you keep calling the model, you append to its updates, just like
+      # what happens for a layer.
+      x3 = keras.layers.Input(shape=(10,))
+      y3 = model(x3)
+      self.assertEqual(len(model.updates), 4)
+
+      # But if you call the inner BN layer independently, you don't affect
+      # the model's updates.
+      x4 = keras.layers.Input(shape=(10,))
+      _ = bn(x4)
+      self.assertEqual(len(model.updates), 4)
+    ```
 
     Returns:
         A list of update ops.
     """
+    if context.in_eager_mode():
+      return []
+
+    if not self.trainable and not self.stateful:
+      return []
+
     updates = []
     for layer in self.layers:
-      if hasattr(layer, 'updates'):
-        # Collect updates that are dependent on inputs
-        # that are part of the model.
-        for node_index, node in enumerate(layer._inbound_nodes):  # pylint: disable=protected-access
-          node_key = _make_node_key(layer.name, node_index)
-          if node_key in self._network_nodes:
-            # The model owns this layer node.
-            inputs = node.input_tensors
-            updates += layer.get_updates_for(inputs)
-        # Collect unconditional updates.
-        updates += layer.get_updates_for(None)
-    return updates
+      updates += layer.updates
+
+    # `updates` might contain irrelevant updates, so it needs to be filtered
+    # with respect to inputs the model has been called on.
+    relevant_inputs = self.inputs or []
+    for i in range(1, len(self._inbound_nodes)):
+      inputs = self.get_input_at(i)
+      if isinstance(inputs, list):
+        relevant_inputs += inputs
+      else:
+        relevant_inputs.append(inputs)
+    reachable = layers_util.get_reachable_from_inputs(relevant_inputs, updates)
+    relevant_conditional_updates = [x for x in updates if x in reachable]
+    unconditional_updates = [
+        x for x in updates if x._unconditional_update]  # pylint: disable=protected-access
+    # A layer could be used multiple times in a nested structure,
+    # so the updates list must be de-duped.
+    return list(set(
+        relevant_conditional_updates + unconditional_updates + self._updates))
 
   @property
   def losses(self):
@@ -614,22 +687,24 @@ class GraphNetwork(base.Layer):
         A list of loss tensors.
     """
     losses = []
-    # Retrieve losses for all internal layers.
     for layer in self.layers:
-      if hasattr(layer, 'losses'):
-        # Collect losses that are dependent on inputs
-        # that are part of the model.
-        for node_index, node in enumerate(layer._inbound_nodes):  # pylint: disable=protected-access
-          node_key = _make_node_key(layer.name, node_index)
-          if node_key in self._network_nodes:
-            # The model owns this layer node.
-            inputs = node.input_tensors
-            losses += layer.get_losses_for(inputs)
-        # Collect unconditional losses.
-        losses += layer.get_losses_for(None)
-    # Add any potential unconditional model-level loss.
-    losses += self.get_losses_for(None)
-    return losses
+      losses += layer.losses
+    if context.in_eager_mode():
+      return losses
+
+    relevant_inputs = self.inputs or []
+    for i in range(1, len(self._inbound_nodes)):
+      inputs = self.get_input_at(i)
+      if isinstance(inputs, list):
+        relevant_inputs += inputs
+      else:
+        relevant_inputs.append(inputs)
+    reachable = layers_util.get_reachable_from_inputs(relevant_inputs, losses)
+    relevant_conditional_losses = [x for x in losses if x in reachable]
+    unconditional_losses = [
+        x for x in losses if x._unconditional_loss]  # pylint: disable=protected-access
+    return list(set(
+        relevant_conditional_losses + unconditional_losses + self._losses))
 
   @property
   def trainable_weights(self):
@@ -660,6 +735,10 @@ class GraphNetwork(base.Layer):
         A list of `InputSpec` instances (one per input to the model)
             or a single instance if the model has only one input.
     """
+    # If not a graph network, can't assume anything.
+    if not self._is_graph_network:
+      return None
+
     specs = []
     for layer in self._input_layers:
       if layer.input_spec is None:
@@ -709,7 +788,10 @@ class GraphNetwork(base.Layer):
     outputs, _ = self._run_internal_graph(inputs, masks)
     return outputs
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
+    if not self._is_graph_network:
+      raise NotImplementedError
+
     if isinstance(input_shape, list):
       input_shapes = []
       for shape in input_shape:
@@ -731,12 +813,12 @@ class GraphNetwork(base.Layer):
     cache_key = layers_util.object_list_uid(input_shapes)
     if cache_key not in self._output_shape_cache:
       # Cache miss. We have to run the network graph manually (recursive calls
-      # to `_compute_output_shape`).
+      # to `compute_output_shape`).
       layers_to_output_shapes = {}
       for i in range(len(input_shapes)):
         layer = self._input_layers[i]
         input_shape = input_shapes[i]
-        # It's an input layer: then `_compute_output_shape` is identity,
+        # It's an input layer: then `compute_output_shape` is identity,
         # and there is only one node and one tensor output.
         shape_key = layer.name + '_0_0'
         layers_to_output_shapes[shape_key] = input_shape
@@ -767,9 +849,9 @@ class GraphNetwork(base.Layer):
               input_shapes.append(input_shape)
 
             if len(input_shapes) == 1:
-              output_shape = layer._compute_output_shape(input_shapes[0])  # pylint: disable=protected-access
+              output_shape = layer.compute_output_shape(input_shapes[0])
             else:
-              output_shape = layer._compute_output_shape(input_shapes)  # pylint: disable=protected-access
+              output_shape = layer.compute_output_shape(input_shapes)
             if isinstance(output_shape, list):
               output_shapes = [
                   tuple(tensor_shape.TensorShape(shape).as_list())
@@ -791,20 +873,19 @@ class GraphNetwork(base.Layer):
           layer, node_index, tensor_index = self._output_coordinates[i]
           shape_key = layer.name + '_%s_%s' % (node_index, tensor_index)
           output_shapes.append(layers_to_output_shapes[shape_key])
-
         # Store in cache.
         self._output_shape_cache[cache_key] = output_shapes
-      else:
-        # Cache hit.
-        output_shapes = self._output_shape_cache[cache_key]
+    else:
+      # Cache hit.
+      output_shapes = self._output_shape_cache[cache_key]
 
-      if isinstance(output_shapes, list):
-        if len(output_shapes) == 1:
-          return tensor_shape.TensorShape(output_shapes[0])
-        else:
-          return [tensor_shape.TensorShape(shape) for shape in output_shapes]
+    if isinstance(output_shapes, list):
+      if len(output_shapes) == 1:
+        return tensor_shape.TensorShape(output_shapes[0])
       else:
-        return tensor_shape.TensorShape(output_shapes)
+        return [tensor_shape.TensorShape(shape) for shape in output_shapes]
+    else:
+      return tensor_shape.TensorShape(output_shapes)
 
   def _run_internal_graph(self, inputs, masks=None):
     """Computes output tensors for new inputs.
@@ -846,7 +927,6 @@ class GraphNetwork(base.Layer):
       for node in nodes:
         # This is always a single layer, never a list.
         layer = node.outbound_layer
-
         reference_input_tensors = node.input_tensors
         reference_output_tensors = node.output_tensors
 
@@ -894,26 +974,13 @@ class GraphNetwork(base.Layer):
               else:
                 output_masks = [None for _ in range(len(output_tensors))]
 
-            # Apply activity regularizer if any:
-            if layer.activity_regularizer is not None:
-              regularization_losses = [
-                  layer.activity_regularizer(x) for x in computed_tensors
-              ]
-              layer.add_loss(regularization_losses, computed_tensors)
-
-          if context.in_graph_mode():
-            # Update model updates and losses:
-            # Keep track of updates that depend on the inputs
-            # (e.g. BN updates).
-            self.add_update(layer.get_updates_for(computed_tensors), inputs)
-            # Keep track of unconditional updates (e.g. a counter).
-            self.add_update(layer.get_updates_for(None), None)
-            # Keep track of losses that depend on the inputs
-            # (e.g. activity regularizers).
-            self.add_loss(layer.get_losses_for(computed_tensors), inputs)
-            # Keep track of unconditional losses
-            # (e.g. weight regularizers).
-            self.add_loss(layer.get_losses_for(None), None)
+            if context.in_graph_mode():
+              if layer.activity_regularizer is not None:
+                regularization_losses = [
+                    layer.activity_regularizer(x) for x in computed_tensors
+                ]
+                # Apply activity regularizer if any:
+                layer.add_loss(regularization_losses, computed_tensors)
 
           # Update tensor_map.
           for x, y, mask in zip(reference_output_tensors, output_tensors,
@@ -943,8 +1010,8 @@ class GraphNetwork(base.Layer):
       cache_key = (layers_util.object_list_uid(inputs)
                    + '_' + layers_util.object_list_uid(masks))
       self._output_tensor_cache[cache_key] = output_tensors
-      if output_masks is not None:
-        self._output_mask_cache[cache_key] = output_masks
+      self._output_mask_cache[cache_key] = output_masks
+
       if output_shapes is not None:
         input_shapes = [layers_util.static_shape(x) for x in inputs]
         cache_key = layers_util.object_list_uid(input_shapes)

@@ -119,7 +119,7 @@ class AllReduceTest(test_util.TensorFlowTestCase):
   def _buildInitialVars(self, shape, dev_list):
     values = []
     num_devices = len(dev_list)
-    dim = np.prod(shape)
+    dim = np.prod(shape) if shape else 1
     for d in range(0, num_devices):
       with ops.device(dev_list[d]):
         npt = np.zeros(shape).astype(np.float32)
@@ -164,6 +164,7 @@ class AllReduceTest(test_util.TensorFlowTestCase):
                     (num_workers, num_gpus, shape, subdiv, elapsed))
 
   def testRingAllReduce(self):
+    self._testRingAllReduce(1, 2, [], 1)
     self._testRingAllReduce(1, 2, [8], 1)
     self._testRingAllReduce(1, 2, [4, 4], 1)
     self._testRingAllReduce(6, 1, [8], 1)
@@ -192,6 +193,7 @@ class AllReduceTest(test_util.TensorFlowTestCase):
                     "elapsed=%f" % (num_workers, num_gpus, shape, elapsed))
 
   def testShuffleAllReduce(self):
+    self._testShuffleAllReduce(1, 2, [], 1)
     self._testShuffleAllReduce(1, 2, [8], 1)
     self._testShuffleAllReduce(1, 2, [4, 4], 1)
     self._testShuffleAllReduce(1, 8, [32], 1)

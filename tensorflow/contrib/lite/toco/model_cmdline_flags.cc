@@ -148,6 +148,12 @@ bool ParseModelFlagsFromCommandLineFlags(
            "ranging from 32 to 127. This is disallowed by default so as to "
            "catch common copy-and-paste issues where invisible unicode "
            "characters are unwittingly added to these strings."),
+      Flag(
+          "arrays_extra_info_file", parsed_flags.arrays_extra_info_file.bind(),
+          parsed_flags.arrays_extra_info_file.default_value(),
+          "Path to an optional file containing a serialized ArraysExtraInfo "
+          "proto allowing to pass extra information about arrays not specified "
+          "in the input model file, such as extra MinMax information."),
   };
   bool asked_for_help =
       *argc == 2 && (!strcmp(argv[1], "--help") || !strcmp(argv[1], "-help"));
@@ -327,9 +333,6 @@ void ReadModelFlagsFromCommandLineFlags(
         CHECK(absl::SimpleAtoi(value, &size));
         CHECK_GT(size, 0);
         rnn_state_proto->set_size(size);
-      } else if (key == "manually_create") {
-        CHECK_EQ(absl::AsciiStrToLower(value), "true");
-        rnn_state_proto->set_manually_create(true);
       } else {
         LOG(FATAL) << "Unknown key '" << key << "' in --rnn_states";
       }
@@ -368,6 +371,15 @@ void ReadModelFlagsFromCommandLineFlags(
       parsed_model_flags.allow_nonascii_arrays.value());
   model_flags->set_allow_nonexistent_arrays(
       parsed_model_flags.allow_nonexistent_arrays.value());
+
+  if (parsed_model_flags.arrays_extra_info_file.specified()) {
+    string arrays_extra_info_file_contents;
+    port::file::GetContents(parsed_model_flags.arrays_extra_info_file.value(),
+                            &arrays_extra_info_file_contents,
+                            port::file::Defaults());
+    ParseFromStringEitherTextOrBinary(arrays_extra_info_file_contents,
+                                      model_flags->mutable_arrays_extra_info());
+  }
 }
 
 ParsedModelFlags* UncheckedGlobalParsedModelFlags(bool must_already_exist) {

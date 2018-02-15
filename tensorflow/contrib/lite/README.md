@@ -92,7 +92,7 @@ Similar to the Android demo app, there's an iOS camera app that uses exactly the
 
 This demo app requires a camera so it doesn't work with simulators. It need to be executed on a real iOS device. Follow the instructions to build and run the demo app:
 
-1.   Follow the Building section [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/ios.md#building) to build the universal iOS library for TensorFlow Lite.
+1.   Run `third_party/tensorflow/contrib/lite/examples/ios/download_models.sh` to download the model files used by the demo app.
 1.   Install [CocoaPods](https://cocoapods.org/) if it wasn't installed yet: `sudo gem install cocoapods`.
 1.   Run `pod install` in `tensorflow/contrib/lite/examples/ios/camera` to generate the workspace file.
 1.   Open the project by running `open tflite_camera_example.xcworkspace`, and build the app in XCode.
@@ -142,7 +142,7 @@ Since we employ several formats, the following definitions may be useful:
 
  - SavedModel - A collection of GraphDef and CheckPoint together with a signature that labels input and output arguments to a model. A GraphDef and Checkpoint can be extracted from a saved model.
 
- - TensorFlow lite model (.lite) - a serialized flatbuffer, containing TensorFlow lite operators and Tensors for the TensorFlow lite interpreter. This is most analogous to TensorFlow frozen GraphDefs.
+ - TensorFlow lite model (.tflite) - a serialized flatbuffer, containing TensorFlow lite operators and Tensors for the TensorFlow lite interpreter. This is most analogous to TensorFlow frozen GraphDefs.
 
 ### Freeze Graph
 To use this .pb GraphDef file within TensorFlow Lite, the application developer will need checkpoints containing trained weight parameters. The .pb contains only the structure of the graph. The process of merging the checkpoint values with the graph structure is known as "freezing" the graph.
@@ -164,18 +164,18 @@ bazel-bin/tensorflow/python/tools/freeze_graph\
 The user has to first build the freeze_graph script using bazel and then run the script.  The input_binary flag has to be enabled to ensure that the protobuf is read and written in binary format.  The user has to input the .pb and the .ckpt files to freeze the graph The output_node_names may not be obvious outside of the code that built the model. The easiest way to find them is to visualize the graph, either with
 graphviz, or [in tensorboard](https://codelabs.developers.google.com/codelabs/tensorflow-for-poets-2/#3).
 
-This frozen Graphdef is now ready to be converted to flatbuffer format (.lite) for use on Android or iOS.  On Android users have the flexibility to use either the float or quantized versions of the frozen graphdef, if available, using the Tensorflow Optimizing Converter tool.
+This frozen Graphdef is now ready to be converted to flatbuffer format (.tflite) for use on Android or iOS.  On Android users have the flexibility to use either the float or quantized versions of the frozen graphdef, if available, using the Tensorflow Optimizing Converter tool.
 
-Here is a sample command line to convert the frozen Graphdef to '.lite' format for  The Tensorflow Optimizing Converter supports both float and quantized models, however, different configuration parameters are needed depending on whether a FLOAT or QUANTIZED mode is being used.
+Here is a sample command line to convert the frozen Graphdef to '.tflite' format for  The Tensorflow Optimizing Converter supports both float and quantized models, however, different configuration parameters are needed depending on whether a FLOAT or QUANTIZED mode is being used.
 (Here is a link to the pb [file](https://storage.googleapis.com/download.tensorflow.org/models/mobilenet_v1_1.0_224_frozen.tgz)).
 
 ```
 bazel build tensorflow/contrib/lite/toco:toco
 
-bazel-bin/tensorflow/contrib/lite/toco/toco -- \
+bazel-bin/tensorflow/contrib/lite/toco/toco \
   --input_file=$(pwd)/mobilenet_v1_1.0_224/frozen_graph.pb \
   --input_format=TENSORFLOW_GRAPHDEF  --output_format=TFLITE \
-  --output_file=/tmp/mobilenet_v1_1.0_224.lite --inference_type=FLOAT \
+  --output_file=/tmp/mobilenet_v1_1.0_224.tflite --inference_type=FLOAT \
   --input_type=FLOAT --input_arrays=input \
   --output_arrays=MobilenetV1/Predictions/Reshape_1 --input_shapes=1,224,224,3
 ```
@@ -186,9 +186,9 @@ bazel-bin/tensorflow/contrib/lite/toco/toco -- \
 - Setting the input_array, output_array and input_shape arguments are a bit trickier. The easiest way to find these values is to explore the graph in tensorboard .  The user should reuse the arguments that were used for specifying the output nodes for inference in the `freeze_graph`step.
 
 Note, it is also possible to use the Tensorflow Optimizing Converter through protos either from Python or from the command line see the
-documentation [here](https://github.com/tensorflow/tensorflow/tree/mastertensorflow/contrib/lite/python:toco_from_protos target) A developer can then integrate the conversion step into their model design workflow to ensure that a model will be easily convertible to a mobile inference graph. For example,
+documentation [here](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/toco/python/toco_from_protos.py). A developer can then integrate the conversion step into their model design workflow to ensure that a model will be easily convertible to a mobile inference graph. For example,
 
-```
+```python
 import tensorflow as tf
 
 img = tf.placeholder(name="img", dtype=tf.float32, shape=(1, 64, 64, 3))
@@ -203,9 +203,15 @@ For detailed instructions on how to use the Tensorflow Optimizing Converter, ple
 
 You may refer to the [Ops compatibility guide](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/g3doc/tf_ops_compatibility.md) for troubleshooting help. If that doesn't help, please file an [issue](https://github.com/tensorflow/tensorflow/issues).
 
+If you would like to see a visual description of your TensorFlow Lite model after conversion, you can use tensorflow/contrib/lite/tools/visualize.py by running
+```sh
+bazel run tensorflow/contrib/lite/tools:visualize -- model.tflite model_viz.html
+```
+and then visualize the resulting HTML file in a browser.
+
 ## Step 3. Use the TensorFlow Lite model for inference in a mobile app
 
-After completion of Step 2 the developer should have a .lite model.
+After completion of Step 2 the developer should have a .tflite model.
 
 ### For Android
 Because Android apps need to be written in Java, and core TensorFlow is in C++, a JNI library is provided to interface between the two. Its interface is aimed only at inference, so it provides the ability to load a graph, set up inputs, and run the model to calculate particular outputs. The full documentation for the set of methods can be seen [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/). The demo app is also open sourced on [github](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib/lite/java/demo/app).

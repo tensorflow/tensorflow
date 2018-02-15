@@ -35,6 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_should_use
+from tensorflow.python.util.tf_export import tf_export
 
 
 # _GraphTensorArray accesses many of the hidden generated ops, but is in
@@ -652,7 +653,7 @@ class _EagerTensorArray(object):
     if len(tensors) > len(self._tensor_array) and not self._dynamic_size:
       raise ValueError(
           "Cannot unstack %d tensors into a TensorArray of static size %d" %
-          (len(tensors), len(self._tensors)))
+          (len(tensors), len(self._tensor_array)))
     ta = self._identity_without_array()
     ta._implementation._tensor_array = tensors  # pylint: disable=protected-access
     return ta
@@ -711,6 +712,7 @@ class _EagerTensorArray(object):
 # TensorArray is designed to hide an underlying implementation object
 # and as such accesses many of that object's hidden fields.
 # pylint: disable=protected-access
+@tf_export("TensorArray")
 class TensorArray(object):
   """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
 

@@ -111,8 +111,15 @@ void KernelSupportLibrary::EmitAndCallOutlinedKernel(
     ir_builder->SetInsertPoint(return_inst);
 
     std::vector<llvm::Value*> arg_values;
-    std::transform(function->arg_begin(), function->arg_end(),
-                   std::back_inserter(arg_values), std::addressof<llvm::Value>);
+    /*
+     * clang on OSX doesn't like std::transform or range for loop here.
+     * See https://github.com/tensorflow/tensorflow/issues/15196
+     */
+    for (llvm::Function::arg_iterator arg = function->arg_begin(),
+                                      arg_e = function->arg_end();
+         arg != arg_e; ++arg) {
+      arg_values.push_back(arg);
+    }
     if (null_arg_idx != -1) {
       arg_values.insert(arg_values.begin() + null_arg_idx, nullptr);
     }

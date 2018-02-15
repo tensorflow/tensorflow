@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+import copy
 import random
 import threading
 
@@ -27,19 +29,19 @@ from google.protobuf import text_format
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
-from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_ops  # pylint: disable=unused-import
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
+@test_util.with_c_api
 class TestUtilTest(test_util.TensorFlowTestCase):
 
   def test_assert_ops_in_graph(self):
@@ -184,8 +186,8 @@ class TestUtilTest(test_util.TensorFlowTestCase):
   def _WeMustGoDeeper(self, msg):
     with self.assertRaisesOpError(msg):
       with ops.Graph().as_default():
-        node_def = ops._NodeDef("op_type", "name")
-        node_def_orig = ops._NodeDef("op_type_orig", "orig")
+        node_def = ops._NodeDef("IntOutput", "name")
+        node_def_orig = ops._NodeDef("IntOutput", "orig")
         op_orig = ops.Operation(node_def_orig, ops.get_default_graph())
         op = ops.Operation(node_def, ops.get_default_graph(),
                            original_op=op_orig)
@@ -209,6 +211,18 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       self.assertAllClose(1, {"a": 1})
     with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose({"a": 1}, 1)
+
+  def testAllCloseNamedtuples(self):
+    a = 7
+    b = (2., 3.)
+    c = np.ones((3, 2, 4)) * 7.
+    expected = {"a": a, "b": b, "c": c}
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["a", "b", "c"])
+
+    # Identity.
+    self.assertAllClose(expected, my_named_tuple(a=a, b=b, c=c))
+    self.assertAllClose(
+        my_named_tuple(a=a, b=b, c=c), my_named_tuple(a=a, b=b, c=c))
 
   def testAllCloseDicts(self):
     a = 7
@@ -237,12 +251,30 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(AssertionError, r"Not equal to tolerance"):
       self.assertAllClose(expected, {"a": a, "b": b, "c": c_copy})
 
-  def testAllCloseNestedDicts(self):
-    a = {"a": 1, "b": 2, "nested": {"d": 3, "e": 4}}
-    with self.assertRaisesRegexp(
-        TypeError,
-        r"inputs could not be safely coerced to any supported types"):
-      self.assertAllClose(a, a)
+  def testAllCloseListOfNamedtuples(self):
+    my_named_tuple = collections.namedtuple("MyNamedTuple", ["x", "y"])
+    l1 = [
+        my_named_tuple(x=np.array([[2.3, 2.5]]), y=np.array([[0.97, 0.96]])),
+        my_named_tuple(x=np.array([[3.3, 3.5]]), y=np.array([[0.98, 0.99]]))
+    ]
+    l2 = [
+        ([[2.3, 2.5]], [[0.97, 0.96]]),
+        ([[3.3, 3.5]], [[0.98, 0.99]]),
+    ]
+    self.assertAllClose(l1, l2)
+
+  def testAllCloseNestedStructure(self):
+    a = {"x": np.ones((3, 2, 4)) * 7, "y": (2, [{"nested": {"m": 3, "n": 4}}])}
+    self.assertAllClose(a, a)
+
+    b = copy.deepcopy(a)
+    self.assertAllClose(a, b)
+
+    # Test mismatched values
+    b["y"][1][0]["nested"]["n"] = 4.2
+    with self.assertRaisesRegexp(AssertionError,
+                                 r"\[y\]\[1\]\[0\]\[nested\]\[n\]"):
+      self.assertAllClose(a, b)
 
   def testArrayNear(self):
     a = [1, 2]
@@ -267,6 +299,9 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         control_flow_ops.Assert(x, y).run()
 
   def testAssertAllCloseAccordingToType(self):
+    # test plain int
+    self.assertAllCloseAccordingToType(1, 1, rtol=1e-8, atol=1e-8)
+
     # test float64
     self.assertAllCloseAccordingToType(
         np.asarray([1e-8], dtype=np.float64),
@@ -316,6 +351,10 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       )
 
   def testRandomSeed(self):
+    # Call setUp again for WithCApi case (since it makes a new defeault graph
+    # after setup).
+    # TODO(skyewm): remove this when C API is permanently enabled.
+    self.setUp()
     a = random.randint(1, 1000)
     a_np_rand = np.random.rand(1)
     with self.test_session():
@@ -349,7 +388,15 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(expected, self.evaluate(nested))
 
+  def test_get_node_def_from_graph(self):
+    graph_def = graph_pb2.GraphDef()
+    node_foo = graph_def.node.add()
+    node_foo.name = "foo"
+    self.assertIs(test_util.get_node_def_from_graph("foo", graph_def), node_foo)
+    self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
 
+
+@test_util.with_c_api
 class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
   def test_no_reference_cycle_decorator(self):
@@ -373,72 +420,26 @@ class GarbageCollectionTest(test_util.TensorFlowTestCase):
 
     ReferenceCycleTest().test_has_no_cycle()
 
+  def test_no_leaked_tensor_decorator(self):
 
-@test_util.with_c_api
-class IsolationTest(test_util.TensorFlowTestCase):
+    class LeakedTensorTest(object):
 
-  @test_util.run_in_graph_and_eager_modes()
-  def test_variable_reuse_exception(self):
-    with test_util.IsolateTest(), session.Session():
-      first_container_variable = resource_variable_ops.ResourceVariable(
-          name="first_container_variable",
-          initial_value=1)
-      if context.in_graph_mode():
-        self.evaluate([variables.global_variables_initializer()])
-    with test_util.IsolateTest():
-      if context.in_graph_mode():
-        with self.assertRaises(RuntimeError):
-          self.evaluate(first_container_variable.read_value())
-      else:
-        with self.assertRaises(ValueError):
-          first_container_variable.read_value()
+      def __init__(inner_self):  # pylint: disable=no-self-argument
+        inner_self.assertEqual = self.assertEqual  # pylint: disable=invalid-name
 
-  @test_util.run_in_graph_and_eager_modes()
-  def test_variable_reuse_exception_nested(self):
-    with test_util.IsolateTest(), session.Session():
-      first_container_variable = resource_variable_ops.ResourceVariable(
-          name="first_container_variable",
-          initial_value=1)
-      if context.in_graph_mode():
-        self.evaluate([variables.global_variables_initializer()])
-      with test_util.IsolateTest(), session.Session():
-        if context.in_graph_mode():
-          with self.assertRaises(RuntimeError):
-            self.evaluate(first_container_variable.read_value())
-        else:
-          with self.assertRaises(ValueError):
-            first_container_variable.read_value()
+      @test_util.assert_no_new_tensors
+      def test_has_leak(self):
+        self.a = constant_op.constant([3.])
 
-  @test_util.run_in_graph_and_eager_modes()
-  def test_no_sharing(self):
-    with test_util.IsolateTest(), session.Session():
-      first_container_variable = resource_variable_ops.ResourceVariable(
-          name="same_name",
-          initial_value=1)
-      if context.in_graph_mode():
-        self.evaluate([variables.global_variables_initializer()])
-      with test_util.IsolateTest(), session.Session():
-        second_container_variable = resource_variable_ops.ResourceVariable(
-            name="same_name",
-            initial_value=2)
-        if context.in_graph_mode():
-          self.evaluate([variables.global_variables_initializer()])
-        self.assertEqual(
-            2, self.evaluate(second_container_variable.read_value()))
-      self.assertEqual(1, self.evaluate(first_container_variable.read_value()))
+      @test_util.assert_no_new_tensors
+      def test_has_no_leak(self):
+        constant_op.constant([3.])
 
-  def test_graph_mode_isolation(self):
-    with context.graph_mode():
-      # Even if we've (accidentally) called IsolateTest in Graph mode, it should
-      # provide Eager isolation.
-      with test_util.IsolateTest():
-        with context.eager_mode():
-          first_container_variable = resource_variable_ops.ResourceVariable(
-              name="first_container_variable",
-              initial_value=1)
-      with context.eager_mode():
-        with self.assertRaises(ValueError):
-          first_container_variable.read_value()
+    with self.assertRaisesRegexp(AssertionError, "Tensors not deallocated"):
+      LeakedTensorTest().test_has_leak()
+
+    LeakedTensorTest().test_has_no_leak()
+
 
 if __name__ == "__main__":
   googletest.main()

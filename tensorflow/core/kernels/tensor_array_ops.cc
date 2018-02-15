@@ -336,8 +336,7 @@ class TensorArrayGradOp : public TensorArrayCreationOp {
           tensor_array->HasIdenticalElementShapes(), false /* dynamic_size */,
           true /* multiple_writes_aggregate */, true /* is_grad */,
           marked_size /* marked_size */, true /* close_after_read */);
-      TF_RETURN_IF_ERROR((*ret)->CopyShapesFrom(tensor_array));
-      return Status::OK();
+      return (*ret)->CopyShapesFrom(tensor_array);
     };
 
     Status s = rm->LookupOrCreate<TensorArray>(
@@ -709,7 +708,6 @@ TF_CALL_POD_STRING_TYPES(REGISTER_GATHER_AND_PACK);
 REGISTER_GATHER_AND_PACK(quint8);
 REGISTER_GATHER_AND_PACK(qint8);
 REGISTER_GATHER_AND_PACK(qint32);
-REGISTER_GATHER_AND_PACK(bfloat16);
 
 #undef REGISTER_GATHER_AND_PACK
 
@@ -940,7 +938,6 @@ TF_CALL_POD_STRING_TYPES(REGISTER_CONCAT);
 REGISTER_CONCAT(quint8);
 REGISTER_CONCAT(qint8);
 REGISTER_CONCAT(qint32);
-REGISTER_CONCAT(bfloat16);
 
 #undef REGISTER_CONCAT
 

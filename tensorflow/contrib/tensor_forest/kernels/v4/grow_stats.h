@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GROW_STATS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GROW_STATS_H_
+#ifndef TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GROW_STATS_H_
+#define TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GROW_STATS_H_
 #include <unordered_map>
 #include <vector>
 
@@ -73,21 +73,15 @@ class GrowStats {
       const InputTarget* target, int example) {}
   void RemoveSplit(int split_num);
 
-  int num_splits() const {
-    return splits_.size();
-  }
+  int num_splits() const { return splits_.size(); }
 
-  float weight_sum() const {
-    return weight_sum_;
-  }
+  float weight_sum() const { return weight_sum_; }
 
   virtual bool IsInitialized() const {
     return weight_sum_ > 0 || splits_.size() == num_splits_to_consider_;
   }
 
-  int32 depth() const {
-    return depth_;
-  }
+  int32 depth() const { return depth_; }
 
  protected:
   GrowStats(const TensorForestParams& params, int32 depth);
@@ -206,8 +200,8 @@ class ClassificationStats : public GrowStats {
   virtual float left_count(int split, int class_num) const = 0;
   virtual float right_count(int split, int class_num) const = 0;
 
-  virtual void ClassificationAddLeftExample(
-      int split, int64 int_label, float weight) = 0;
+  virtual void ClassificationAddLeftExample(int split, int64 int_label,
+                                            float weight) = 0;
   virtual void ClassificationAddRightExample(int split, int64 int_label,
                                              float weight) {
     // Does nothing by default, but sub-classes can override.
@@ -316,7 +310,7 @@ class DenseClassificationGrowStats : public ClassificationStats {
   void PackToProto(FertileSlot* slot) const override;
 
   void InitLeafClassStats(int best_split_index, LeafStat* left_stats,
-                          LeafStat* right_stats) const;
+                          LeafStat* right_stats) const override;
 
  protected:
   void ClassificationAddSplitStats() override {
@@ -375,15 +369,13 @@ class SparseClassificationGrowStats : public ClassificationStats {
   SparseClassificationGrowStats(const TensorForestParams& params, int32 depth)
       : ClassificationStats(params, depth) {}
 
-  void Initialize() override {
-    Clear();
-  }
+  void Initialize() override { Clear(); }
 
   void ExtractFromProto(const FertileSlot& slot) override;
   void PackToProto(FertileSlot* slot) const override;
 
   void InitLeafClassStats(int best_split_index, LeafStat* left_stats,
-                          LeafStat* right_stats) const;
+                          LeafStat* right_stats) const override;
 
  protected:
   void ClassificationAddSplitStats() override {
@@ -562,9 +554,9 @@ class LeastSquaresRegressionGrowStats : public GrowStats {
   }
   void RemoveSplitStats(int split_num) override {
     left_sums_.erase(left_sums_.begin() + num_outputs_ * split_num,
-                       left_sums_.begin() + num_outputs_ * (split_num + 1));
+                     left_sums_.begin() + num_outputs_ * (split_num + 1));
     left_squares_.erase(left_squares_.begin() + num_outputs_ * split_num,
-                       left_squares_.begin() + num_outputs_ * (split_num + 1));
+                        left_squares_.begin() + num_outputs_ * (split_num + 1));
     left_counts_.erase(left_counts_.begin() + split_num,
                        left_counts_.begin() + (split_num + 1));
   }
@@ -605,8 +597,7 @@ class LeastSquaresRegressionGrowStats : public GrowStats {
   std::vector<int64> left_counts_;
 };
 
-
 }  // namespace tensorforest
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GROW_STATS_H_
+#endif  // TENSORFLOW_CONTRIB_TENSOR_FOREST_KERNELS_V4_GROW_STATS_H_

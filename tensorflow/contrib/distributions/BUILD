@@ -60,6 +60,7 @@ py_library(
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:spectral_ops",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
@@ -125,6 +126,19 @@ cuda_py_test(
         "//tensorflow/python:random_ops",
     ],
     tags = ["no_pip"],
+)
+
+cuda_py_test(
+    name = "autoregressive_test",
+    size = "small",
+    srcs = ["python/kernel_tests/autoregressive_test.py"],
+    additional_deps = [
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:platform_test",
+    ],
 )
 
 cuda_py_test(
@@ -437,6 +451,7 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:spectral_ops_test_util",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
@@ -904,6 +919,22 @@ cuda_py_test(
     name = "masked_autoregressive_test",
     size = "small",
     srcs = ["python/kernel_tests/bijectors/masked_autoregressive_test.py"],
+    additional_deps = [
+        ":bijectors_py",
+        ":distributions_py",
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+cuda_py_test(
+    name = "real_nvp_test",
+    size = "small",
+    srcs = ["python/kernel_tests/bijectors/real_nvp_test.py"],
     additional_deps = [
         ":bijectors_py",
         ":distributions_py",

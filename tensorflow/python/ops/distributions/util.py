@@ -1041,14 +1041,14 @@ def reduce_weighted_logsumexp(
   with ops.name_scope(name, "reduce_weighted_logsumexp", [logx, w]):
     logx = ops.convert_to_tensor(logx, name="logx")
     if w is None:
-      lswe = math_ops.reduce_logsumexp(logx, axis=axis, keep_dims=keep_dims)
+      lswe = math_ops.reduce_logsumexp(logx, axis=axis, keepdims=keep_dims)
       if return_sign:
         sgn = array_ops.ones_like(lswe)
         return lswe, sgn
       return lswe
     w = ops.convert_to_tensor(w, dtype=logx.dtype, name="w")
     log_absw_x = logx + math_ops.log(math_ops.abs(w))
-    max_log_absw_x = math_ops.reduce_max(log_absw_x, axis=axis, keep_dims=True)
+    max_log_absw_x = math_ops.reduce_max(log_absw_x, axis=axis, keepdims=True)
     # If the largest element is `-inf` or `inf` then we don't bother subtracting
     # off the max. We do this because otherwise we'd get `inf - inf = NaN`. That
     # this is ok follows from the fact that we're actually free to subtract any
@@ -1062,7 +1062,7 @@ def reduce_weighted_logsumexp(
     sum_wx_over_max_absw_x = math_ops.reduce_sum(
         wx_over_max_absw_x,
         axis=axis,
-        keep_dims=keep_dims)
+        keepdims=keep_dims)
     if not keep_dims:
       max_log_absw_x = array_ops.squeeze(max_log_absw_x, axis)
     sgn = math_ops.sign(sum_wx_over_max_absw_x)
@@ -1134,8 +1134,8 @@ def dimension_size(x, axis):
   """Returns the size of a specific dimension."""
   # Since tf.gather isn't "constant-in, constant-out", we must first check the
   # static shape or fallback to dynamic shape.
-  s = x.shape.with_rank_at_least(axis + 1)[axis].value
-  if axis > -1 and s is not None:
+  s = x.shape.with_rank_at_least(np.abs(axis))[axis].value
+  if s is not None:
     return s
   return array_ops.shape(x)[axis]
 
@@ -1180,29 +1180,101 @@ def process_quadrature_grid_and_probs(
     grid = ops.convert_to_tensor(grid, name="grid", dtype=dtype)
     probs = ops.convert_to_tensor(probs, name="unnormalized_probs",
                                   dtype=dtype)
-    probs /= linalg_ops.norm(probs, ord=1, axis=-1, keep_dims=True,
+    probs /= linalg_ops.norm(probs, ord=1, axis=-1, keepdims=True,
                              name="probs")
 
-    def _static_dim_size(x, axis):
+    def _static_event_size(x):
       """Returns the static size of a specific dimension or `None`."""
-      return x.shape.with_rank_at_least(axis + 1)[axis].value
+      return x.shape.with_rank_at_least(1)[-1].value
 
-    m, n = _static_dim_size(probs, axis=0), _static_dim_size(grid, axis=0)
+    m, n = _static_event_size(probs), _static_event_size(grid)
     if m is not None and n is not None:
       if m != n:
         raise ValueError("`quadrature_grid_and_probs` must be a `tuple` of "
                          "same-length zero-th-dimension `Tensor`s "
                          "(saw lengths {}, {})".format(m, n))
     elif validate_args:
-      grid = control_flow_ops.with_dependencies([
+      assertions = [
           check_ops.assert_equal(
-              dimension_size(probs, axis=0),
-              dimension_size(grid, axis=0),
+              dimension_size(probs, axis=-1),
+              dimension_size(grid, axis=-1),
               message=("`quadrature_grid_and_probs` must be a `tuple` of "
                        "same-length zero-th-dimension `Tensor`s")),
-      ], grid)
-
+      ]
+      with ops.control_dependencies(assertions):
+        grid = array_ops.identity(grid)
+        probs = array_ops.identity(probs)
     return grid, probs
+
+
+def pad(x, axis, front=False, back=False, value=0, count=1, name=None):
+  """Pads `value` to the front and/or back of a `Tensor` dim, `count` times.
+
+  Args:
+    x: `Tensor` input.
+    axis: Scalar `int`-like `Tensor` representing the single dimension to pad.
+      (Negative indexing is supported.)
+    front: Python `bool`; if `True` the beginning of the `axis` dimension is
+      padded with `value`, `count` times. If `False` no front padding is made.
+    back: Python `bool`; if `True` the end of the `axis` dimension is
+      padded with `value`, `count` times. If `False` no end padding is made.
+    value: Scalar `int`-like `Tensor` representing the actual value added to the
+      front and/or back of the `axis` dimension of `x`.
+    count: Scalar `int`-like `Tensor` representing number of elements added to
+      the front and/or back of the `axis` dimension of `x`. E.g., if
+      `front = back = True` then `2 * count` elements are added.
+    name: Python `str` name prefixed to Ops created by this function.
+
+  Returns:
+    pad: The padded version of input `x`.
+
+  Raises:
+    ValueError: if both `front` and `back` are `False`.
+    TypeError: if `count` is not `int`-like.
+  """
+  with ops.name_scope(name, "pad", [x, value, count]):
+    x = ops.convert_to_tensor(x, name="x")
+    value = ops.convert_to_tensor(value, dtype=x.dtype, name="value")
+    count = ops.convert_to_tensor(count, name="count")
+    if not count.dtype.is_integer:
+      raise TypeError("`count.dtype` (`{}`) must be `int`-like.".format(
+          count.dtype.name))
+    if not front and not back:
+      raise ValueError("At least one of `front`, `back` must be `True`.")
+    ndims = (x.shape.ndims if x.shape.ndims is not None
+             else array_ops.rank(x, name="ndims"))
+    axis = ops.convert_to_tensor(axis, name="axis")
+    axis_ = tensor_util.constant_value(axis)
+    if axis_ is not None:
+      axis = axis_
+      if axis < 0:
+        axis = ndims + axis
+      count_ = tensor_util.constant_value(count)
+      if axis_ >= 0 or x.shape.ndims is not None:
+        head = x.shape[:axis]
+        middle = tensor_shape.TensorShape(
+            None if count_ is None
+            else (x.shape[axis] + count_ * (front + back)))
+        tail = x.shape[axis+1:]
+        final_shape = head.concatenate(middle.concatenate(tail))
+      else:
+        final_shape = None
+    else:
+      axis = array_ops.where(axis < 0, ndims + axis, axis)
+      final_shape = None
+    x = array_ops.pad(
+        x,
+        paddings=array_ops.one_hot(
+            indices=array_ops.stack([axis if front else -1,
+                                     axis if back else -1]),
+            depth=ndims,
+            axis=0,
+            on_value=count,
+            dtype=dtypes.int32),
+        constant_values=value)
+    if final_shape is not None:
+      x.set_shape(final_shape)
+    return x
 
 
 class AppendDocstring(object):

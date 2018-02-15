@@ -50,16 +50,11 @@ class DataFormatDimMapOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(
-        context, input.dims() == 0,
-        errors::InvalidArgument("input must be a scalar, but got shape ",
-                                input.shape().DebugString()));
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
     functor::DataFormatDimMap<Device, T>()(context->eigen_device<Device>(),
-                                           input.scalar<T>(),
-                                           output->scalar<T>());
+                                           input.flat<T>(), output->flat<T>());
   }
 };
 
@@ -84,20 +79,34 @@ class DataFormatVecPermuteOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    OP_REQUIRES(
-        context, input.dims() == 1,
-        errors::InvalidArgument("input must be a vector, but got shape ",
-                                input.shape().DebugString()));
-    OP_REQUIRES(
-        context, input.NumElements() == 4,
-        errors::InvalidArgument("input must be of size 4, but got shape ",
-                                input.shape().DebugString()));
+    OP_REQUIRES(context, input.dims() == 1 || input.dims() == 2,
+                errors::InvalidArgument(
+                    "input must be a vector or 2D tensor, but got shape ",
+                    input.shape().DebugString()));
+    if (input.dims() == 1) {
+      OP_REQUIRES(
+          context, input.NumElements() == 4,
+          errors::InvalidArgument("1D input must be of size 4, but got shape ",
+                                  input.shape().DebugString()));
+    } else if (input.dims() == 2) {
+      OP_REQUIRES(
+          context, input.dim_size(0) == 4,
+          errors::InvalidArgument(
+              "First dimension of 2D input must be of size 4, but got shape ",
+              input.shape().DebugString()));
+      OP_REQUIRES(
+          context, input.dim_size(1) == 2,
+          errors::InvalidArgument(
+              "Second dimension of 2D input must be of size 2, but got shape ",
+              input.shape().DebugString()));
+    }
+
     Tensor* output = nullptr;
     OP_REQUIRES_OK(context,
                    context->allocate_output(0, input.shape(), &output));
-    functor::DataFormatVecPermute<Device, T>()(context->eigen_device<Device>(),
-                                               input.vec<T>(), output->vec<T>(),
-                                               nhwc_to_nchw_);
+    functor::DataFormatVecPermute<Device, T>()(
+        context->eigen_device<Device>(), input.flat<T>(), output->flat<T>(),
+        nhwc_to_nchw_);
   }
 
  private:
@@ -123,22 +132,22 @@ TF_CALL_int64(REGISTER_KERNEL);
 #if GOOGLE_CUDA
 // Forward declarations of the functor specializations for GPU.
 namespace functor {
-#define DECLARE_GPU_SPEC(T)                                  \
-  template <>                                                \
-  void DataFormatDimMap<GPUDevice, T>::operator()(           \
-      const GPUDevice& d, typename TTypes<T>::ConstScalar x, \
-      typename TTypes<T>::Scalar y);                         \
+#define DECLARE_GPU_SPEC(T)                                \
+  template <>                                              \
+  void DataFormatDimMap<GPUDevice, T>::operator()(         \
+      const GPUDevice& d, typename TTypes<T>::ConstFlat x, \
+      typename TTypes<T>::Flat y);                         \
   extern template struct DataFormatDimMap<GPUDevice, T>;
 #define DECLARE_GPU_SPECS(T) DECLARE_GPU_SPEC(T);
 TF_CALL_int32(DECLARE_GPU_SPECS);
 TF_CALL_int64(DECLARE_GPU_SPECS);
 #undef DECLARE_GPU_SPEC
 
-#define DECLARE_GPU_SPEC(T)                               \
-  template <>                                             \
-  void DataFormatVecPermute<GPUDevice, T>::operator()(    \
-      const GPUDevice& d, typename TTypes<T>::ConstVec x, \
-      typename TTypes<T>::Vec y, bool nhwc_to_nchw);      \
+#define DECLARE_GPU_SPEC(T)                                \
+  template <>                                              \
+  void DataFormatVecPermute<GPUDevice, T>::operator()(     \
+      const GPUDevice& d, typename TTypes<T>::ConstFlat x, \
+      typename TTypes<T>::Vec y, bool nhwc_to_nchw);       \
   extern template struct DataFormatVecPermute<GPUDevice, T>;
 #define DECLARE_GPU_SPECS(T) DECLARE_GPU_SPEC(T);
 TF_CALL_int32(DECLARE_GPU_SPECS);

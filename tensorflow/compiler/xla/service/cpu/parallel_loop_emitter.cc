@@ -39,8 +39,8 @@ llvm_ir::IrArray::Index ParallelLoopEmitter::EmitIndexAndSetExitBasicBlock(
   llvm_ir::IrArray::Index array_index(num_dims);
 
   // Add loops from outer-most to inner-most dimensions.
-  for (int i = shape_.layout().minor_to_major_size() - 1; i >= 0; --i) {
-    const int64 dimension = shape_.layout().minor_to_major(i);
+  for (int i = LayoutUtil::MinorToMajor(shape_).size() - 1; i >= 0; --i) {
+    const int64 dimension = LayoutUtil::Minor(shape_.layout(), i);
     const int bounds_index = num_dims - 1 - i;
     if (bounds_index < dynamic_loop_bounds_->size()) {
       // Emit dynamic loop bounds for this dimension. Dynamic loop bounds

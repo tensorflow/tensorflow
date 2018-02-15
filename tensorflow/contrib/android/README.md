@@ -32,9 +32,9 @@ dependencies {
 ```
 
 This will tell Gradle to use the
-[latest version](https://bintray.com/google/tensorflow/tensorflow-android/_latestVersion)
+[latest version](https://bintray.com/google/tensorflow/tensorflow/_latestVersion)
 of the TensorFlow AAR that has been released to
-[https://bintray.com/google/tensorflow/tensorflow-android](https://bintray.com/google/tensorflow/tensorflow-android).
+[JCenter](https://jcenter.bintray.com/org/tensorflow/tensorflow-android/).
 You may replace the `+` with an explicit version label if you wish to
 use a specific release of TensorFlow in your app.
 
@@ -79,6 +79,11 @@ bazel-bin/tensorflow/contrib/android/libandroid_tensorflow_inference_java.jar
 
 For documentation on building a self-contained AAR file with cmake, see
 [tensorflow/contrib/android/cmake](cmake).
+
+
+### Makefile
+
+For documentation on building native TF libraries with make, including a CUDA-enabled variant for devices like the Nvidia Shield TV, see [tensorflow/contrib/makefile/README.md](../makefile/README.md)
 
 
 ## AssetManagerFileSystem

@@ -51,8 +51,12 @@ void CopyBuffer(const ::tflite::Buffer& buffer, Array* array) {
       return ::tflite::TensorType_FLOAT32;
     case ArrayDataType::kInt32:
       return ::tflite::TensorType_INT32;
+    case ArrayDataType::kInt64:
+      return ::tflite::TensorType_INT64;
     case ArrayDataType::kUint8:
       return ::tflite::TensorType_UINT8;
+    case ArrayDataType::kString:
+      return ::tflite::TensorType_STRING;
     default:
       // FLOAT32 is filled for unknown data types.
       // TODO(ycling): Implement type inference in TF Lite interpreter.
@@ -66,6 +70,10 @@ ArrayDataType DataType::Deserialize(int tensor_type) {
       return ArrayDataType::kFloat;
     case ::tflite::TensorType_INT32:
       return ArrayDataType::kInt32;
+    case ::tflite::TensorType_INT64:
+      return ArrayDataType::kInt64;
+    case ::tflite::TensorType_STRING:
+      return ArrayDataType::kString;
     case ::tflite::TensorType_UINT8:
       return ArrayDataType::kUint8;
     default:
@@ -82,6 +90,8 @@ flatbuffers::Offset<flatbuffers::Vector<uint8_t>> DataBuffer::Serialize(
       return CopyBuffer<ArrayDataType::kFloat>(array, builder);
     case ArrayDataType::kInt32:
       return CopyBuffer<ArrayDataType::kInt32>(array, builder);
+    case ArrayDataType::kString:
+      return CopyBuffer<ArrayDataType::kString>(array, builder);
     case ArrayDataType::kUint8:
       return CopyBuffer<ArrayDataType::kUint8>(array, builder);
     default:
@@ -99,6 +109,10 @@ void DataBuffer::Deserialize(const ::tflite::Tensor& tensor,
       return CopyBuffer<ArrayDataType::kFloat>(buffer, array);
     case ::tflite::TensorType_INT32:
       return CopyBuffer<ArrayDataType::kInt32>(buffer, array);
+    case ::tflite::TensorType_INT64:
+      return CopyBuffer<ArrayDataType::kInt64>(buffer, array);
+    case ::tflite::TensorType_STRING:
+      return CopyBuffer<ArrayDataType::kString>(buffer, array);
     case ::tflite::TensorType_UINT8:
       return CopyBuffer<ArrayDataType::kUint8>(buffer, array);
     default:
@@ -138,7 +152,7 @@ PaddingType Padding::Deserialize(int padding) {
     case FusedActivationFunctionType::kRelu6:
       return ::tflite::ActivationFunctionType_RELU6;
     case FusedActivationFunctionType::kRelu1:
-      return ::tflite::ActivationFunctionType_RELU1;
+      return ::tflite::ActivationFunctionType_RELU_N1_TO_1;
     default:
       LOG(FATAL) << "Unhandled fused activation function type.";
   }
@@ -153,7 +167,7 @@ FusedActivationFunctionType ActivationFunction::Deserialize(
       return FusedActivationFunctionType::kRelu;
     case ::tflite::ActivationFunctionType_RELU6:
       return FusedActivationFunctionType::kRelu6;
-    case ::tflite::ActivationFunctionType_RELU1:
+    case ::tflite::ActivationFunctionType_RELU_N1_TO_1:
       return FusedActivationFunctionType::kRelu1;
     default:
       LOG(FATAL) << "Unhandled fused activation function type.";

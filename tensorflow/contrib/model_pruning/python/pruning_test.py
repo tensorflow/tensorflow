@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.contrib.model_pruning.python import pruning
+from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import partitioned_variables
 from tensorflow.python.ops import random_ops
@@ -110,6 +111,39 @@ class PruningTest(test.TestCase):
       session.run(mask_update_op)
       masked_weights_val = masked_weights.eval()
       self.assertAllEqual(np.count_nonzero(masked_weights_val), 51)
+
+  def _blockMasking(self, hparams, weights, expected_mask):
+
+    threshold = variables.Variable(0.0, name="threshold")
+    sparsity = variables.Variable(0.51, name="sparsity")
+    test_spec = ",".join(hparams)
+    pruning_hparams = pruning.get_pruning_hparams().parse(test_spec)
+
+    # Set up pruning
+    p = pruning.Pruning(pruning_hparams, sparsity=sparsity)
+    with self.test_session():
+      variables.global_variables_initializer().run()
+      _, new_mask = p._maybe_update_block_mask(weights, threshold)
+      # Check if the mask is the same size as the weights
+      self.assertAllEqual(new_mask.get_shape(), weights.get_shape())
+      mask_val = new_mask.eval()
+      self.assertAllEqual(mask_val, expected_mask)
+
+  def testBlockMasking(self):
+    param_list = ["block_height=2", "block_width=2", "threshold_decay=0"]
+
+    weights_avg = constant_op.constant(
+        [[0.1, 0.1, 0.2, 0.2], [0.1, 0.1, 0.2, 0.2], [0.3, 0.3, 0.4, 0.4],
+         [0.3, 0.3, 0.4, 0.4]])
+    weights_max = constant_op.constant(
+        [[0.1, 0.0, 0.2, 0.0], [0.0, -0.1, 0.0, -0.2], [0.3, 0.0, 0.4, 0.0],
+         [0.0, -0.3, 0.0, -0.4]])
+    expected_mask = [[0, 0, 0, 0], [0, 0, 0, 0], [1, 1, 1, 1], [1, 1, 1, 1]]
+
+    self._blockMasking(param_list + ["block_pooling_function=MAX"], weights_max,
+                       expected_mask)
+    self._blockMasking(param_list + ["block_pooling_function=AVG"],
+                       weights_avg, expected_mask)
 
   def testPartitionedVariableMasking(self):
     partitioner = partitioned_variables.variable_axis_size_partitioner(40)

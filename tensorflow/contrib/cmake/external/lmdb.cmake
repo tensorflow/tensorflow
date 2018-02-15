@@ -20,30 +20,27 @@ set(lmdb_HASH SHA256=108532fb94c6f227558d45be3f3347b52539f0f58290a7bb31ec06c462d
 set(lmdb_BUILD ${CMAKE_BINARY_DIR}/lmdb/src/lmdb)
 set(lmdb_INSTALL ${CMAKE_BINARY_DIR}/lmdb/install)
 
-ExternalProject_Add(lmdb
-    PREFIX lmdb
-    URL ${lmdb_URL}
-    URL_HASH ${lmdb_HASH}
-    PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${CMAKE_CURRENT_SOURCE_DIR}/patches/lmdb/CMakeLists.txt ${lmdb_BUILD}
-    INSTALL_DIR ${lmdb_INSTALL}
-    DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
-    CMAKE_CACHE_ARGS
-		if(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
-			-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
-		else()
-			-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=OFF
-		endif()
-        -DCMAKE_BUILD_TYPE:STRING=Release
-        -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
-        -DCMAKE_INSTALL_PREFIX:STRING=${lmdb_INSTALL}
-)
-
 if(WIN32)
     set(lmdb_STATIC_LIBRARIES ${lmdb_INSTALL}/lib/lmdb.lib)
 else()
     set(lmdb_STATIC_LIBRARIES ${lmdb_INSTALL}/lib/liblmdb.a)
 endif()
+
+ExternalProject_Add(lmdb
+    PREFIX lmdb
+    URL ${lmdb_URL}
+    URL_HASH ${lmdb_HASH}
+    BUILD_BYPRODUCTS ${lmdb_STATIC_LIBRARIES}
+    PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${CMAKE_CURRENT_SOURCE_DIR}/patches/lmdb/CMakeLists.txt ${lmdb_BUILD}
+    INSTALL_DIR ${lmdb_INSTALL}
+    DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
+    CMAKE_CACHE_ARGS
+        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=${tensorflow_ENABLE_POSITION_INDEPENDENT_CODE}
+        -DCMAKE_BUILD_TYPE:STRING=Release
+        -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
+        -DCMAKE_INSTALL_PREFIX:STRING=${lmdb_INSTALL}
+)
 
 set(lmdb_HEADERS
     "${lmdb_INSTALL}/include/lmdb.h"

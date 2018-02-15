@@ -13,6 +13,20 @@ py_library(
     deps = [],
 )
 
+py_test(
+    name = "common_test",
+    size = "small",
+    srcs = ["python/common_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":common",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:session",
+    ],
+)
+
 py_library(
     name = "graph_matcher",
     srcs = [
@@ -75,11 +89,18 @@ py_library(
         ":graph_matcher",
         ":input_to_ops",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -94,34 +115,15 @@ py_test(
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
-    ],
-)
-
-py_library(
-    name = "copy_graph",
-    srcs = ["python/copy_graph.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python:random_seed",
+        "//tensorflow/python:session",
         "//tensorflow/python:training",
-    ],
-)
-
-py_test(
-    name = "copy_graph_test",
-    size = "small",
-    srcs = ["python/copy_graph_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":copy_graph",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
 )
@@ -152,7 +154,6 @@ py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:session",
         "//tensorflow/python:variables",
@@ -164,7 +165,7 @@ py_library(
     srcs = ["python/quantize.py"],
     srcs_version = "PY2AND3",
     deps = [
-        ":common",
+        ":graph_matcher",
         ":input_to_ops",
         ":quant_ops",
         "//tensorflow/contrib/graph_editor:graph_editor_py",
@@ -211,7 +212,6 @@ py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:training",
     ],
 )
 
@@ -223,12 +223,9 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":copy_graph",
         ":fold_batch_norms",
         ":quantize",
-        "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
-        "//tensorflow/python:variables",
     ],
 )
 
@@ -241,13 +238,11 @@ py_test(
         ":quantize_graph",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:init_ops",
         "//tensorflow/python:nn_ops",
         "//tensorflow/python:platform_test",
-        "//tensorflow/python:variables",
     ],
 )
 

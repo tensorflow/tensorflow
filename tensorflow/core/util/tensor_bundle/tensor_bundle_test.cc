@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/table_builder.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/test_benchmark.h"
 
 namespace tensorflow {
 
@@ -769,5 +770,92 @@ TEST(TensorBundleTest, VersionTest) {
             ".  Please upgrade TensorFlow: this version is likely buggy."));
   }
 }
+
+class TensorBundleAlignmentTest : public ::testing::Test {
+ protected:
+  template <typename T>
+  void ExpectAlignment(BundleReader* reader, const string& key, int alignment) {
+    BundleEntryProto full_tensor_entry;
+    TF_ASSERT_OK(reader->GetBundleEntryProto(key, &full_tensor_entry));
+    EXPECT_EQ(0, full_tensor_entry.offset() % alignment);
+  }
+};
+
+TEST_F(TensorBundleAlignmentTest, AlignmentTest) {
+  {
+    BundleWriter::Options opts;
+    opts.data_alignment = 42;
+    BundleWriter writer(Env::Default(), Prefix("foo"), opts);
+    TF_EXPECT_OK(writer.Add("foo_003", Constant_2x3<float>(3)));
+    TF_EXPECT_OK(writer.Add("foo_000", Constant_2x3<float>(0)));
+    TF_EXPECT_OK(writer.Add("foo_002", Constant_2x3<float>(2)));
+    TF_EXPECT_OK(writer.Add("foo_001", Constant_2x3<float>(1)));
+    TF_ASSERT_OK(writer.Finish());
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    EXPECT_EQ(
+        AllTensorKeys(&reader),
+        std::vector<string>({"foo_000", "foo_001", "foo_002", "foo_003"}));
+    Expect<float>(&reader, "foo_000", Constant_2x3<float>(0));
+    Expect<float>(&reader, "foo_001", Constant_2x3<float>(1));
+    Expect<float>(&reader, "foo_002", Constant_2x3<float>(2));
+    Expect<float>(&reader, "foo_003", Constant_2x3<float>(3));
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    ExpectNext<float>(&reader, Constant_2x3<float>(0));
+    ExpectNext<float>(&reader, Constant_2x3<float>(1));
+    ExpectNext<float>(&reader, Constant_2x3<float>(2));
+    ExpectNext<float>(&reader, Constant_2x3<float>(3));
+    EXPECT_TRUE(reader.Valid());
+    reader.Next();
+    EXPECT_FALSE(reader.Valid());
+  }
+  {
+    BundleReader reader(Env::Default(), Prefix("foo"));
+    TF_ASSERT_OK(reader.status());
+    ExpectAlignment<float>(&reader, "foo_000", 42);
+    ExpectAlignment<float>(&reader, "foo_001", 42);
+    ExpectAlignment<float>(&reader, "foo_002", 42);
+    ExpectAlignment<float>(&reader, "foo_003", 42);
+  }
+}
+
+static void BM_BundleAlignmentByteOff(int iters, int alignment,
+                                      int tensor_size) {
+  testing::StopTiming();
+  {
+    BundleWriter::Options opts;
+    opts.data_alignment = alignment;
+    BundleWriter writer(Env::Default(), Prefix("foo"), opts);
+    TF_CHECK_OK(writer.Add("small", Constant(true, TensorShape({1}))));
+    TF_CHECK_OK(writer.Add("big", Constant(32.1, TensorShape({tensor_size}))));
+    TF_CHECK_OK(writer.Finish());
+  }
+  BundleReader reader(Env::Default(), Prefix("foo"));
+  TF_CHECK_OK(reader.status());
+  testing::StartTiming();
+  for (int i = 0; i < iters; ++i) {
+    Tensor t;
+    TF_CHECK_OK(reader.Lookup("big", &t));
+  }
+  testing::StopTiming();
+}
+
+#define BM_BundleAlignment(ALIGN, SIZE)                        \
+  static void BM_BundleAlignment_##ALIGN##_##SIZE(int iters) { \
+    BM_BundleAlignmentByteOff(iters, ALIGN, SIZE);             \
+  }                                                            \
+  BENCHMARK(BM_BundleAlignment_##ALIGN##_##SIZE)
+
+BM_BundleAlignment(1, 512);
+BM_BundleAlignment(1, 4096);
+BM_BundleAlignment(1, 1048576);
+BM_BundleAlignment(4096, 512);
+BM_BundleAlignment(4096, 4096);
+BM_BundleAlignment(4096, 1048576);
 
 }  // namespace tensorflow

@@ -22,14 +22,12 @@ import numpy as np
 
 from tensorflow.contrib.framework.python.ops import accumulate_n_v2 as av2
 
-from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes as dtypes_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
-
 
 
 class AccumulateNV2Test(test_util.TensorFlowTestCase):
@@ -62,8 +60,9 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
         accum_n = av2.accumulate_n_v2(input_vars)
         sess.run(variables.global_variables_initializer())
         accum_n_grad = gradients.gradients(accum_n, input_vars)
-        self.assertAllEqual(np.repeat(1.0, num_inputs), # d/dx (x + y + ...) = 1
-                            [g.eval() for g in accum_n_grad])
+        self.assertAllEqual(
+            np.repeat(1.0, num_inputs),  # d/dx (x + y + ...) = 1
+            [g.eval() for g in accum_n_grad])
 
   # The tests below used to be in a separate class under cwise_ops_test.py,
   # which did not run in the default test target.
@@ -75,8 +74,8 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
           np.random.rand(16, 16, 16, 16).astype(np.float32) for _ in range(20)
       ]
       random_tensors = [
-          ops.convert_to_tensor(
-              x, dtype=dtypes_lib.float32) for x in random_arrays
+          ops.convert_to_tensor(x, dtype=dtypes_lib.float32)
+          for x in random_arrays
       ]
       tf_val = av2.accumulate_n_v2(random_tensors)
       np_val = random_arrays[0]
@@ -95,21 +94,21 @@ class AccumulateNV2Test(test_util.TensorFlowTestCase):
       with self.assertRaises(ValueError):
         a = variables.Variable(0.2)
         b = variables.Variable(0.1)
-        tf_val = av2.accumulate_n_v2([a,b], shape=[2,2]) # Should be shape=[]
+        tf_val = av2.accumulate_n_v2([a, b], shape=[2, 2])  # Should be shape=[]
 
   def testIncompatibleShapes(self):
     with self.test_session():
       with self.assertRaises(ValueError):
-        a = variables.Variable(np.array([0.1,0.2]))
-        b = variables.Variable(np.array([[0.3],[0.4]]))
-        tf_val = av2.accumulate_n_v2([a,b])
+        a = variables.Variable(np.array([0.1, 0.2]))
+        b = variables.Variable(np.array([[0.3], [0.4]]))
+        tf_val = av2.accumulate_n_v2([a, b])
 
   def testWrongType(self):
     with self.test_session():
       with self.assertRaises(TypeError):
         a = variables.Variable(0.2, dtype=np.float32)
         b = variables.Variable(0.1, dtype=np.float32)
-        tf_val = av2.accumulate_n_v2([a,b], tensor_dtype=np.int32)
+        tf_val = av2.accumulate_n_v2([a, b], tensor_dtype=np.int32)
 
   def testWrongTypeOneInput(self):
     # Scenario that used to trigger a bug, even when testWrongType() worked

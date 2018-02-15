@@ -5,13 +5,13 @@ intermediaries between raw data and Estimators. Feature columns are very rich,
 enabling you to transform a diverse range of raw data into formats that
 Estimators can use, allowing easy experimentation.
 
-In @{$get_started/estimator$Premade Estimators}, we used the premade Estimator,
-@{tf.estimator.DNNClassifier$`DNNClassifier`} to train a model to predict
-different types of Iris flowers from four input features. That example created
-only numerical feature columns (of type @{tf.feature_column.numeric_column}).
-Although numerical feature columns model the lengths of petals and sepals
-effectively, real world data sets contain all kinds of features, many of which
-are non-numerical.
+In @{$get_started/premade_estimators$Premade Estimators}, we used the premade
+Estimator, @{tf.estimator.DNNClassifier$`DNNClassifier`} to train a model to
+predict different types of Iris flowers from four input features. That example
+created only numerical feature columns (of type
+@{tf.feature_column.numeric_column}). Although numerical feature columns model
+the lengths of petals and sepals effectively, real world data sets contain all
+kinds of features, many of which are non-numerical.
 
 <div style="width:80%; margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../images/feature_columns/feature_cloud.jpg">
@@ -461,8 +461,8 @@ permitting a richer palette of numbers for every cell, an embedding column
 contains far fewer cells than an indicator column.
 
 Let's look at an example comparing indicator and embedding columns. Suppose our
-input examples consists of different words from a limited palette of only 81
-words. Further suppose that the data set provides provides the following input
+input examples consist of different words from a limited palette of only 81
+words. Further suppose that the data set provides the following input
 words in 4 separate examples:
 
 * `"dog"`
@@ -559,9 +559,11 @@ As the following list indicates, not all Estimators permit all types of
 
 For more examples on feature columns, view the following:
 
-* The @{$wide_and_deep$Wide & Deep Tutorial}
-* [Examples](https://github.com/tensorflow/models/tree/master/samples/cookbook/regression)
-  of DNNs and linear models that use feature columns.
+* The @{$low_level_intro#feature_columns$Low Level Introduction} demonstrates how
+  experiment directly with `feature_columns` using TensorFlow's low level APIs.
+* The @{$wide$wide} and @{$wide_and_deep$Wide & Deep} Tutorials solve a
+  binary classification problem using `feature_columns` on a variety of input
+  data types.
 
 To learn more about embeddings, see the following:
 

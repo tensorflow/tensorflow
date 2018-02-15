@@ -33,6 +33,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   const auto* unary_op = unary_it->get();
   // Test for unary ops of types that we know how to resolve
   if (unary_op->type != OperatorType::kCast &&
+      unary_op->type != OperatorType::kNeg &&
       unary_op->type != OperatorType::kTensorFlowRsqrt &&
       unary_op->type != OperatorType::kTensorFlowSqrt &&
       unary_op->type != OperatorType::kTensorFlowSquare &&
@@ -138,14 +139,13 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
            output_buffer_size * sizeof(output_float_data[0]));
   } else if (unary_op->type == OperatorType::kTensorFlowSum) {
     // At the moment only full reduction across all dimensions is supported.
-    for (int i = 0; i < output_dims_count; i++) {
-      CHECK_EQ(output_shape.dims(i), 1);
-    }
     float sum = 0.f;
     for (int i = 0; i < input_buffer_size; i++) {
       sum += (*input_float_data)[i];
     }
-    output_float_data[0] = sum;
+    for (int i = 0; i < output_buffer_size; ++i) {
+      output_float_data[i] = sum;
+    }
   } else if (unary_op->type == OperatorType::kTensorFlowMin) {
     // At the moment only full reduction across all dimensions is supported.
     // TODO(starka): Output should not be padded.
@@ -168,7 +168,8 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
       max = std::max(max, (*input_float_data)[i]);
     }
     output_float_data[0] = max;
-  } else if (unary_op->type == OperatorType::kTensorFlowRsqrt ||
+  } else if (unary_op->type == OperatorType::kNeg ||
+             unary_op->type == OperatorType::kTensorFlowRsqrt ||
              unary_op->type == OperatorType::kTensorFlowSqrt ||
              unary_op->type == OperatorType::kTensorFlowSquare) {
     // Element-wise ops. Should have perfectly matching sizes here.
@@ -179,7 +180,9 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
     for (int i = 0; i < output_buffer_size; i++) {
       const float val = (*input_float_data)[i];
       float outval = 0.f;
-      if (unary_op->type == OperatorType::kTensorFlowRsqrt) {
+      if (unary_op->type == OperatorType::kNeg) {
+        outval = -val;
+      } else if (unary_op->type == OperatorType::kTensorFlowRsqrt) {
         outval = 1.0f / std::sqrt(val);
       } else if (unary_op->type == OperatorType::kTensorFlowSqrt) {
         outval = std::sqrt(val);
@@ -195,7 +198,7 @@ bool ResolveConstantUnaryOperator::Run(Model* model, std::size_t op_index) {
   }
   for (const auto& input : unary_op->inputs) {
     if (CountOpsWithInput(*model, input) == 1) {
-      model->arrays.erase(input);
+      model->EraseArray(input);
     }
   }
   AddMessageF("Resolved constant %s to the equivalent constant array",

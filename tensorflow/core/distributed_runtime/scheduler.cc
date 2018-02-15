@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <queue>
 
-#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_set.h"
+#include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/util/util.h"
 
 namespace tensorflow {

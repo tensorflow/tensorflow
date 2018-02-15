@@ -43,6 +43,7 @@ _DEFAULT_CUDA_PATH = '/usr/local/cuda'
 _DEFAULT_CUDA_PATH_LINUX = '/opt/cuda'
 _DEFAULT_CUDA_PATH_WIN = ('C:/Program Files/NVIDIA GPU Computing '
                           'Toolkit/CUDA/v%s' % _DEFAULT_CUDA_VERSION)
+_DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/x86_64-linux-gnu'
 _TF_OPENCL_VERSION = '1.2'
 _DEFAULT_COMPUTECPP_TOOLKIT_PATH = '/usr/local/computecpp'
 _DEFAULT_TRISYCL_INCLUDE_DIR = '/usr/local/triSYCL/include'
@@ -265,19 +266,6 @@ def reset_tf_configure_bazelrc():
     f.write('import %workspace%/.tf_configure.bazelrc\n')
 
 
-def run_gen_git_source(environ_cp):
-  """Run the gen_git_source to create links.
-
-  The links are for bazel to track dependencies for git hash propagation.
-
-  Args:
-    environ_cp: copy of the os.environ.
-  """
-  cmd = '"%s" tensorflow/tools/git/gen_git_source.py --configure %s' % (
-      environ_cp.get('PYTHON_BIN_PATH'), os.getcwd())
-  os.system(cmd)
-
-
 def cleanup_makefile():
   """Delete any leftover BUILD files from the Makefile build.
 
@@ -310,11 +298,17 @@ def get_var(environ_cp,
       System".
     enabled_by_default: boolean for default behavior.
     question: optional string for how to ask for user input.
-    yes_reply: optionanl string for reply when feature is enabled.
+    yes_reply: optional string for reply when feature is enabled.
     no_reply: optional string for reply when feature is disabled.
 
   Returns:
     boolean value of the variable.
+
+  Raises:
+    UserInputError: if an environment variable is set, but it cannot be
+      interpreted as a boolean indicator, assume that the user has made a
+      scripting error, and will continue to provide invalid input.
+      Raise the error to avoid infinitely looping.
   """
   if not question:
     question = 'Do you wish to build TensorFlow with %s support?' % query_item
@@ -332,6 +326,23 @@ def get_var(environ_cp,
     question += ' [y/N]: '
 
   var = environ_cp.get(var_name)
+  if var is not None:
+    var_content = var.strip().lower()
+    true_strings = ('1', 't', 'true', 'y', 'yes')
+    false_strings = ('0', 'f', 'false', 'n', 'no')
+    if var_content in true_strings:
+      var = True
+    elif var_content in false_strings:
+      var = False
+    else:
+      raise UserInputError(
+          'Environment variable %s must be set as a boolean indicator.\n'
+          'The following are accepted as TRUE : %s.\n'
+          'The following are accepted as FALSE: %s.\n'
+          'Current value is %s.' % (
+              var_name, ', '.join(true_strings), ', '.join(false_strings),
+              var))
+
   while var is None:
     user_input_origin = get_input(question)
     user_input = user_input_origin.strip().lower()
@@ -400,7 +411,7 @@ def set_action_env_var(environ_cp,
       System".
     enabled_by_default: boolean for default behavior.
     question: optional string for how to ask for user input.
-    yes_reply: optionanl string for reply when feature is enabled.
+    yes_reply: optional string for reply when feature is enabled.
     no_reply: optional string for reply when feature is disabled.
   """
   var = int(
@@ -434,7 +445,7 @@ def convert_version_to_int(version):
 
 
 def check_bazel_version(min_version):
-  """Check installed bezel version is at least min_version.
+  """Check installed bazel version is at least min_version.
 
   Args:
     min_version: string for minimum bazel version.
@@ -511,6 +522,21 @@ def set_tf_cuda_clang(environ_cp):
   set_action_env_var(
       environ_cp,
       'TF_CUDA_CLANG',
+      None,
+      False,
+      question=question,
+      yes_reply=yes_reply,
+      no_reply=no_reply)
+
+
+def set_tf_download_clang(environ_cp):
+  """Set TF_DOWNLOAD_CLANG action_env."""
+  question = 'Do you want to download a fresh release of clang? (Experimental)'
+  yes_reply = 'Clang will be downloaded and used to compile tensorflow.'
+  no_reply = 'Clang will not be downloaded.'
+  set_action_env_var(
+      environ_cp,
+      'TF_DOWNLOAD_CLANG',
       None,
       False,
       question=question,
@@ -603,8 +629,9 @@ def prompt_loop_or_load_from_env(
 
   Raises:
     UserInputError: if a query has been attempted n_ask_attempts times without
-    success, assume that the user has made a scripting error, and will continue
-    to provide invalid input. Raise the error to avoid infinitely looping.
+      success, assume that the user has made a scripting error, and will
+      continue to provide invalid input. Raise the error to avoid infinitely
+      looping.
   """
   default = environ_cp.get(var_name) or var_default
   full_query = '%s [Default is %s]: ' % (
@@ -800,6 +827,28 @@ def set_gcc_host_compiler_path(environ_cp):
   write_action_env_to_bazelrc('GCC_HOST_COMPILER_PATH', gcc_host_compiler_path)
 
 
+def reformat_version_sequence(version_str, sequence_count):
+  """Reformat the version string to have the given number of sequences.
+
+  For example:
+  Given (7, 2) -> 7.0
+        (7.0.1, 2) -> 7.0
+        (5, 1) -> 5
+        (5.0.3.2, 1) -> 5
+
+  Args:
+      version_str: String, the version string.
+      sequence_count: int, an integer.
+  Returns:
+      string, reformatted version string.
+  """
+  v = version_str.split('.')
+  if len(v) < sequence_count:
+    v = v + (['0'] * (sequence_count - len(v)))
+
+  return '.'.join(v[:sequence_count])
+
+
 def set_tf_cuda_version(environ_cp):
   """Set CUDA_TOOLKIT_PATH and TF_CUDA_VERSION."""
   ask_cuda_version = (
@@ -810,6 +859,7 @@ def set_tf_cuda_version(environ_cp):
     # Configure the Cuda SDK version to use.
     tf_cuda_version = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_VERSION', ask_cuda_version, _DEFAULT_CUDA_VERSION)
+    tf_cuda_version = reformat_version_sequence(str(tf_cuda_version), 2)
 
     # Find out where the CUDA toolkit is installed
     default_cuda_path = _DEFAULT_CUDA_PATH
@@ -866,6 +916,7 @@ def set_tf_cudnn_version(environ_cp):
     tf_cudnn_version = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDNN_VERSION', ask_cudnn_version,
         _DEFAULT_CUDNN_VERSION)
+    tf_cudnn_version = reformat_version_sequence(str(tf_cudnn_version) ,1)
 
     default_cudnn_path = environ_cp.get('CUDA_TOOLKIT_PATH')
     ask_cudnn_path = (r'Please specify the location where cuDNN %s library is '
@@ -931,6 +982,128 @@ def set_tf_cudnn_version(environ_cp):
   write_action_env_to_bazelrc('CUDNN_INSTALL_PATH', cudnn_install_path)
   environ_cp['TF_CUDNN_VERSION'] = tf_cudnn_version
   write_action_env_to_bazelrc('TF_CUDNN_VERSION', tf_cudnn_version)
+
+
+def set_tf_tensorrt_install_path(environ_cp):
+  """Set TENSORRT_INSTALL_PATH and TF_TENSORRT_VERSION.
+
+  Adapted from code contributed by Sami Kama (https://github.com/samikama).
+
+  Args:
+    environ_cp: copy of the os.environ.
+
+  Raises:
+    ValueError: if this method was called under non-Linux platform.
+    UserInputError: if user has provided invalid input multiple times.
+  """
+  if not is_linux():
+    raise ValueError('Currently TensorRT is only supported on Linux platform.')
+
+  # Ask user whether to add TensorRT support.
+  if str(int(get_var(
+      environ_cp, 'TF_NEED_TENSORRT', 'TensorRT', False))) != '1':
+    return
+
+  for _ in range(_DEFAULT_PROMPT_ASK_ATTEMPTS):
+    ask_tensorrt_path = (r'Please specify the location where TensorRT is '
+                         'installed. [Default is %s]:') % (
+                             _DEFAULT_TENSORRT_PATH_LINUX)
+    trt_install_path = get_from_env_or_user_or_default(
+        environ_cp, 'TENSORRT_INSTALL_PATH', ask_tensorrt_path,
+        _DEFAULT_TENSORRT_PATH_LINUX)
+
+    # Result returned from "read" will be used unexpanded. That make "~"
+    # unusable. Going through one more level of expansion to handle that.
+    trt_install_path = os.path.realpath(
+        os.path.expanduser(trt_install_path))
+
+    def find_libs(search_path):
+      """Search for libnvinfer.so in "search_path"."""
+      fl = set()
+      if os.path.exists(search_path) and os.path.isdir(search_path):
+        fl.update([os.path.realpath(os.path.join(search_path, x))
+                   for x in os.listdir(search_path) if 'libnvinfer.so' in x])
+      return fl
+
+    possible_files = find_libs(trt_install_path)
+    possible_files.update(find_libs(os.path.join(trt_install_path, 'lib')))
+    possible_files.update(find_libs(os.path.join(trt_install_path, 'lib64')))
+
+    def is_compatible(tensorrt_lib, cuda_ver, cudnn_ver):
+      """Check the compatibility between tensorrt and cudnn/cudart libraries."""
+      ldd_bin = which('ldd') or '/usr/bin/ldd'
+      ldd_out = run_shell([ldd_bin, tensorrt_lib]).split(os.linesep)
+      cudnn_pattern = re.compile('.*libcudnn.so\\.?(.*) =>.*$')
+      cuda_pattern = re.compile('.*libcudart.so\\.?(.*) =>.*$')
+      cudnn = None
+      cudart = None
+      for line in ldd_out:
+        if 'libcudnn.so' in line:
+          cudnn = cudnn_pattern.search(line)
+        elif 'libcudart.so' in line:
+          cudart = cuda_pattern.search(line)
+      if cudnn and len(cudnn.group(1)):
+        cudnn = convert_version_to_int(cudnn.group(1))
+      if cudart and len(cudart.group(1)):
+        cudart = convert_version_to_int(cudart.group(1))
+      return (cudnn == cudnn_ver) and (cudart == cuda_ver)
+
+    cuda_ver = convert_version_to_int(environ_cp['TF_CUDA_VERSION'])
+    cudnn_ver = convert_version_to_int(environ_cp['TF_CUDNN_VERSION'])
+    nvinfer_pattern = re.compile('.*libnvinfer.so.?(.*)$')
+    highest_ver = [0, None, None]
+
+    for lib_file in possible_files:
+      if is_compatible(lib_file, cuda_ver, cudnn_ver):
+        ver_str = nvinfer_pattern.search(lib_file).group(1)
+        ver = convert_version_to_int(ver_str) if len(ver_str) else 0
+        if ver > highest_ver[0]:
+          highest_ver = [ver, ver_str, lib_file]
+    if highest_ver[1] is not None:
+      trt_install_path = os.path.dirname(highest_ver[2])
+      tf_tensorrt_version = highest_ver[1]
+      break
+
+    # Try another alternative from ldconfig.
+    ldconfig_bin = which('ldconfig') or '/sbin/ldconfig'
+    ldconfig_output = run_shell([ldconfig_bin, '-p'])
+    search_result = re.search(
+        '.*libnvinfer.so\\.?([0-9.]*).* => (.*)', ldconfig_output)
+    if search_result:
+      libnvinfer_path_from_ldconfig = search_result.group(2)
+      if os.path.exists(libnvinfer_path_from_ldconfig):
+        if is_compatible(libnvinfer_path_from_ldconfig, cuda_ver, cudnn_ver):
+          trt_install_path = os.path.dirname(libnvinfer_path_from_ldconfig)
+          tf_tensorrt_version = search_result.group(1)
+          break
+
+    # Reset and Retry
+    if len(possible_files):
+      print('TensorRT libraries found in one the following directories',
+            'are not compatible with selected cuda and cudnn installations')
+      print(trt_install_path)
+      print(os.path.join(trt_install_path, 'lib'))
+      print(os.path.join(trt_install_path, 'lib64'))
+      if search_result:
+        print(libnvinfer_path_from_ldconfig)
+    else:
+      print('Invalid path to TensorRT. None of the following files can be found:')
+      print(trt_install_path)
+      print(os.path.join(trt_install_path, 'lib'))
+      print(os.path.join(trt_install_path, 'lib64'))
+      if search_result:
+        print(libnvinfer_path_from_ldconfig)
+
+  else:
+    raise UserInputError('Invalid TF_TENSORRT setting was provided %d '
+                         'times in a row. Assuming to be a scripting mistake.' %
+                         _DEFAULT_PROMPT_ASK_ATTEMPTS)
+
+  # Set TENSORRT_INSTALL_PATH and TF_TENSORRT_VERSION
+  environ_cp['TENSORRT_INSTALL_PATH'] = trt_install_path
+  write_action_env_to_bazelrc('TENSORRT_INSTALL_PATH', trt_install_path)
+  environ_cp['TF_TENSORRT_VERSION'] = tf_tensorrt_version
+  write_action_env_to_bazelrc('TF_TENSORRT_VERSION', tf_tensorrt_version)
 
 
 def get_native_cuda_compute_capabilities(environ_cp):
@@ -1096,34 +1269,16 @@ def set_computecpp_toolkit_path(environ_cp):
   write_action_env_to_bazelrc('COMPUTECPP_TOOLKIT_PATH',
                               computecpp_toolkit_path)
 
+
 def set_trisycl_include_dir(environ_cp):
-  """Set TRISYCL_INCLUDE_DIR"""
+  """Set TRISYCL_INCLUDE_DIR."""
+
   ask_trisycl_include_dir = ('Please specify the location of the triSYCL '
                              'include directory. (Use --config=sycl_trisycl '
                              'when building with Bazel) '
                              '[Default is %s]: '
-                             ) % (_DEFAULT_TRISYCL_INCLUDE_DIR)
-  while True:
-    trisycl_include_dir = get_from_env_or_user_or_default(
-      environ_cp, 'TRISYCL_INCLUDE_DIR', ask_trisycl_include_dir,
-      _DEFAULT_TRISYCL_INCLUDE_DIR)
-    if os.path.exists(trisycl_include_dir):
-      break
+                            ) % (_DEFAULT_TRISYCL_INCLUDE_DIR)
 
-    print('Invalid triSYCL include directory, %s cannot be found'
-          % (trisycl_include_dir))
-
-  # Set TRISYCL_INCLUDE_DIR
-  environ_cp['TRISYCL_INCLUDE_DIR'] = trisycl_include_dir
-  write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR',
-                              trisycl_include_dir)
-
-def set_trisycl_include_dir(environ_cp):
-  """Set TRISYCL_INCLUDE_DIR."""
-  ask_trisycl_include_dir = ('Please specify the location of the triSYCL '
-                             'include directory. (Use --config=sycl_trisycl '
-                             'when building with Bazel) '
-                             '[Default is %s]: ') % _DEFAULT_TRISYCL_INCLUDE_DIR
   while True:
     trisycl_include_dir = get_from_env_or_user_or_default(
         environ_cp, 'TRISYCL_INCLUDE_DIR', ask_trisycl_include_dir,
@@ -1138,23 +1293,6 @@ def set_trisycl_include_dir(environ_cp):
   environ_cp['TRISYCL_INCLUDE_DIR'] = trisycl_include_dir
   write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR',
                               trisycl_include_dir)
-
-
-def set_trisycl_include_dir(environ_cp):
-  """Set TRISYCL_INCLUDE_DIR."""
-
-  trisycl_include_dir = prompt_loop_or_load_from_env(
-      environ_cp,
-      var_name='TRISYCL_INCLUDE_DIR',
-      var_default=_DEFAULT_TRISYCL_INCLUDE_DIR,
-      ask_for_var=('Please specify the location of the triSYCL include '
-                   'directory. (Use --config=sycl_trisycl when building with '
-                   'Bazel)'),
-      check_success=os.path.exists,
-      error_msg='Invalid trySYCL include directory. %s cannot be found.',
-      suppress_default_error=True)
-
-  write_action_env_to_bazelrc('TRISYCL_INCLUDE_DIR', trisycl_include_dir)
 
 
 def set_mpi_home(environ_cp):
@@ -1214,45 +1352,9 @@ def set_other_mpi_vars(environ_cp):
     raise ValueError('Cannot find the MPI library file in %s/lib' % mpi_home)
 
 
-def set_mkl():
-  write_to_bazelrc('build:mkl --define using_mkl=true')
-  write_to_bazelrc('build:mkl -c opt')
-  print(
-      'Add "--config=mkl" to your bazel command to build with MKL '
-      'support.\nPlease note that MKL on MacOS or windows is still not '
-      'supported.\nIf you would like to use a local MKL instead of '
-      'downloading, please set the environment variable \"TF_MKL_ROOT\" every '
-      'time before build.\n')
-
-
-def set_monolithic():
-  # Add --config=monolithic to your bazel command to use a mostly-static
-  # build and disable modular op registration support (this will revert to
-  # loading TensorFlow with RTLD_GLOBAL in Python). By default (without
-  # --config=monolithic), TensorFlow will build with a dependence on
-  # //tensorflow:libtensorflow_framework.so.
-  write_to_bazelrc('build:monolithic --define framework_shared_object=false')
-  # For projects which use TensorFlow as part of a Bazel build process, putting
-  # nothing in a bazelrc will default to a monolithic build. The following line
-  # opts in to modular op registration support by default:
-  write_to_bazelrc('build --define framework_shared_object=true')
-
-
-def create_android_bazelrc_configs():
-  # Flags for --config=android
-  write_to_bazelrc('build:android --crosstool_top=//external:android/crosstool')
-  write_to_bazelrc(
-      'build:android --host_crosstool_top=@bazel_tools//tools/cpp:toolchain')
-  # Flags for --config=android_arm
-  write_to_bazelrc('build:android_arm --config=android')
-  write_to_bazelrc('build:android_arm --cpu=armeabi-v7a')
-  # Flags for --config=android_arm64
-  write_to_bazelrc('build:android_arm64 --config=android')
-  write_to_bazelrc('build:android_arm64 --cpu=arm64-v8a')
-
-
 def set_grpc_build_flags():
   write_to_bazelrc('build --define grpc_no_ares=true')
+
 
 def set_windows_build_flags():
   if is_windows():
@@ -1262,6 +1364,11 @@ def set_windows_build_flags():
     write_to_bazelrc('build --copt=-w --host_copt=-w')
     # Output more verbose information when something goes wrong
     write_to_bazelrc('build --verbose_failures')
+
+
+def config_info_line(name, help_text):
+  """Helper function to print formatted help text for Bazel config options."""
+  print('\t--config=%-12s\t# %s' % (name, help_text))
 
 
 def main():
@@ -1274,20 +1381,22 @@ def main():
   reset_tf_configure_bazelrc()
   cleanup_makefile()
   setup_python(environ_cp)
-  run_gen_git_source(environ_cp)
 
   if is_windows():
     environ_cp['TF_NEED_S3'] = '0'
     environ_cp['TF_NEED_GCP'] = '0'
     environ_cp['TF_NEED_HDFS'] = '0'
     environ_cp['TF_NEED_JEMALLOC'] = '0'
+    environ_cp['TF_NEED_KAFKA'] = '0'
     environ_cp['TF_NEED_OPENCL_SYCL'] = '0'
     environ_cp['TF_NEED_COMPUTECPP'] = '0'
     environ_cp['TF_NEED_OPENCL'] = '0'
     environ_cp['TF_CUDA_CLANG'] = '0'
+    environ_cp['TF_NEED_TENSORRT'] = '0'
 
   if is_macos():
     environ_cp['TF_NEED_JEMALLOC'] = '0'
+    environ_cp['TF_NEED_TENSORRT'] = '0'
 
   set_build_var(environ_cp, 'TF_NEED_JEMALLOC', 'jemalloc as malloc',
                 'with_jemalloc', True)
@@ -1297,6 +1406,8 @@ def main():
                 'with_hdfs_support', True, 'hdfs')
   set_build_var(environ_cp, 'TF_NEED_S3', 'Amazon S3 File System',
                 'with_s3_support', True, 's3')
+  set_build_var(environ_cp, 'TF_NEED_KAFKA', 'Apache Kafka Platform',
+                'with_kafka_support', False, 'kafka')
   set_build_var(environ_cp, 'TF_ENABLE_XLA', 'XLA JIT', 'with_xla_support',
                 False, 'xla')
   set_build_var(environ_cp, 'TF_NEED_GDR', 'GDR', 'with_gdr_support',
@@ -1319,12 +1430,27 @@ def main():
       'TF_CUDA_CONFIG_REPO' not in environ_cp):
     set_tf_cuda_version(environ_cp)
     set_tf_cudnn_version(environ_cp)
+    if is_linux():
+      set_tf_tensorrt_install_path(environ_cp)
     set_tf_cuda_compute_capabilities(environ_cp)
+    if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get('LD_LIBRARY_PATH') != '1':
+      write_action_env_to_bazelrc('LD_LIBRARY_PATH', environ_cp.get('LD_LIBRARY_PATH'))
 
     set_tf_cuda_clang(environ_cp)
     if environ_cp.get('TF_CUDA_CLANG') == '1':
-      # Set up which clang we should use as the cuda / host compiler.
-      set_clang_cuda_compiler_path(environ_cp)
+      if not is_windows():
+        # Ask if we want to download clang release while building.
+        set_tf_download_clang(environ_cp)
+      else:
+        # We use bazel's generated crosstool on Windows and there is no
+        # way to provide downloaded toolchain for that yet.
+        # TODO(ibiryukov): Investigate using clang as a cuda compiler on
+        # Windows.
+        environ_cp['TF_DOWNLOAD_CLANG'] = '0'
+
+      if environ_cp.get('TF_DOWNLOAD_CLANG') != '1':
+        # Set up which clang we should use as the cuda / host compiler.
+        set_clang_cuda_compiler_path(environ_cp)
     else:
       # Set up which gcc nvcc should use as the host compiler
       # No need to set this on Windows
@@ -1339,10 +1465,7 @@ def main():
 
   set_grpc_build_flags()
   set_cc_opt_flags(environ_cp)
-  set_mkl()
-  set_monolithic()
   set_windows_build_flags()
-  create_android_bazelrc_configs()
 
   if workspace_has_any_android_rule():
     print('The WORKSPACE file has at least one of ["android_sdk_repository", '
@@ -1360,6 +1483,11 @@ def main():
       create_android_ndk_rule(environ_cp)
       create_android_sdk_rule(environ_cp)
 
+  print('Preconfigured Bazel build configs. You can use any of the below by '
+        'adding "--config=<>" to your build command. See tools/bazel.rc for '
+        'more details.')
+  config_info_line('mkl', 'Build with MKL support.')
+  config_info_line('monolithic', 'Config for mostly static monolithic build.')
 
 if __name__ == '__main__':
   main()

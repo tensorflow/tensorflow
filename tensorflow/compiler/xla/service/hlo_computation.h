@@ -138,8 +138,11 @@ class HloComputation {
   void UniquifyName(NameUniquer* name_uniquer);
 
   // Return a string representation of the computation.
-  string ToString(int nested_level = 0,
-                  bool include_large_constants = false) const;
+  //
+  // (We express the default options using an overload rather than a default
+  // param because gdb ignores default params, but does resolve overloads.)
+  string ToString() const { return ToString(HloPrintOptions()); }
+  string ToString(const HloPrintOptions& options) const;
 
   // Returns a serialized representation of this computation.
   HloComputationProto ToProto() const;
@@ -220,15 +223,6 @@ class HloComputation {
   HloInstruction* CreateFusionInstruction(
       tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
       HloInstruction::FusionKind fusion_kind);
-
-  // Creates a fusion instruction that represents a backward convolution. This
-  // is similar to CreateFusionInstruction but takes window and conv_dnums which
-  // indicate the window and convolution dimension numbers of the backward
-  // convolution.
-  HloInstruction* CreateFusionInstructionForBackwardConvolution(
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions_to_fuse,
-      HloInstruction::FusionKind fusion_kind, const Window& window,
-      const ConvolutionDimensionNumbers& conv_dnums);
 
   // Create a deep copy of the given instruction and return the instruction
   // producing the copied result. All instructions performing the copy are added

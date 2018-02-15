@@ -71,11 +71,15 @@ class XlaContext : public ResourceBase {
   Status AddConstRetval(int retval_index, DataType dtype,
                         const xla::Literal& literal);
 
-  // Creates a resource with resource `kind` and initial type `type` and
-  // value `handle`. `name` is a descriptive name for use in error messages.
+  // Creates a resource with resource `kind` and initial value `handle`. `name`
+  // is a descriptive name for use in error messages. See the `XlaResource`
+  // constructor for a description of the remaining arguments.
   // Fails if the resource already exists.
   Status CreateResource(XlaResource::Kind kind, int arg_num, string name,
-                        DataType type, const xla::ComputationDataHandle& handle,
+                        DataType type, TensorShape shape,
+                        const xla::ComputationDataHandle& handle,
+                        int64 tensor_array_size,
+                        const std::set<string>& tensor_array_gradients,
                         XlaResource** resource);
 
   const std::vector<std::unique_ptr<XlaResource>>& resources() {
@@ -116,7 +120,7 @@ class XlaContext : public ResourceBase {
   const bool allow_cpu_custom_calls_;
 
   // If true, constant return values are returned as Tensors instead of
-  // run-time computation outptus.
+  // run-time computation outputs.
   const bool resolve_compile_time_constants_;
 
   // Arguments to the Tensorflow graph, indexed by _Arg index.
