@@ -631,7 +631,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   };
   Graph* graph = g.get();
   Executor* exec;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g.release(), &exec));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(g), &exec));
 
   {
     // Guard item since it is already inserted in items_.

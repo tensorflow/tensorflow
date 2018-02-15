@@ -10,6 +10,7 @@ exports_files(["LICENSE"])
 
 exports_files(glob([
     "testdata/*.bin",
+    "testdata/*.pb",
     "models/testdata/*",
 ]))
 

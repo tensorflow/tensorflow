@@ -593,10 +593,16 @@ def _defun_internal(name, func, args, kwds):
     with tmp_graph.as_default():
       func_inputs = _get_defun_inputs(args)
 
+      def convert(x):
+        if x is None:
+          return None
+        return ops.convert_to_tensor_or_indexed_slices(x)
+
       with capture_tensors(captures):
         this_tape = tape.push_new_tape()
         try:
           func_outputs = func(*func_inputs, **kwds)
+          func_outputs = nest.map_structure(convert, func_outputs)
         finally:
           tape.pop_tape(this_tape)
         variables = this_tape.watched_variables()

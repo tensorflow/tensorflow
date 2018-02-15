@@ -23,11 +23,14 @@ py_library(
         "context_managers.py",
         "misc.py",
         "multiple_dispatch.py",
+        "py_func.py",
+        "tensor_list.py",
         "type_check.py",
     ],
     srcs_version = "PY2AND3",
     visibility = ["//tensorflow:__subpackages__"],
     deps = [
+        "//tensorflow/python:script_ops",
         "@six_archive//:six",
     ],
 )
@@ -63,11 +66,32 @@ py_test(
 )
 
 py_test(
+    name = "py_func_test",
+    srcs = ["py_func_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":utils",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "type_check_test",
     srcs = ["type_check_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":utils",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "tensor_list_test",
+    srcs = ["tensor_list_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":utils",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:list_ops",
     ],
 )

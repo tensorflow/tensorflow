@@ -110,7 +110,17 @@ int CountOpsWithInput(const Model& model, const string& array_name) {
 }
 
 bool DeleteArrayIfUnused(const string& array_name, Model* model) {
-  if (CountOpsWithInput(*model, array_name) == 0) {
+  if (IsDiscardableArray(*model, array_name) &&
+      CountOpsWithInput(*model, array_name) == 0) {
+    model->EraseArray(array_name);
+    return true;
+  }
+  return false;
+}
+
+bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
+  if (IsDiscardableArray(*model, array_name) &&
+      CountOpsWithInput(*model, array_name) == 1) {
     model->EraseArray(array_name);
     return true;
   }
@@ -303,6 +313,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Svdf)
     HANDLE_OPERATORTYPENAME_CASE(ArgMax)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowUnsupported)
+    HANDLE_OPERATORTYPENAME_CASE(Exp)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -321,6 +332,7 @@ string HelpfulOperatorTypeName(const Operator& op) {
 bool OperatorSupportsFusedActivation(OperatorType type) {
   switch (type) {
     case OperatorType::kConcatenation:
+    case OperatorType::kGather:
     case OperatorType::kSlice:
     case OperatorType::kSqueeze:
     case OperatorType::kTensorFlowReshape:

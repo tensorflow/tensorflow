@@ -106,6 +106,7 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
   CheckSimpleOperator<LogisticOperator>("LOGISTIC", OperatorType::kLogistic);
   CheckSimpleOperator<TanhOperator>("TANH", OperatorType::kTanh);
+  CheckSimpleOperator<ExpOperator>("EXP", OperatorType::kExp);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

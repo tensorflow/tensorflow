@@ -303,6 +303,11 @@ std::unique_ptr<Shape> LocalComputationBuilder::GetShape(
   return builder_.GetShape(operand).ConsumeValueOrDie();
 }
 
+StatusOr<Shape> LocalComputationBuilder::GetReturnValueShape() {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, builder_.GetProgramShape());
+  return program_shape.result();
+}
+
 ComputationDataHandle LocalComputationBuilder::Infeed(const Shape& shape) {
   return builder_.Infeed(shape);
 }

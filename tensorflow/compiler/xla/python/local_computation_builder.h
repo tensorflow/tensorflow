@@ -133,6 +133,9 @@ class LocalComputationBuilder {
 
   std::unique_ptr<Shape> GetShape(const ComputationDataHandle& operand);
 
+  // Returns the shape of the current return value for the computation.
+  StatusOr<Shape> GetReturnValueShape();
+
   ComputationDataHandle Infeed(const Shape& shape);
 
   void Outfeed(const ComputationDataHandle& operand, const Shape& shape,

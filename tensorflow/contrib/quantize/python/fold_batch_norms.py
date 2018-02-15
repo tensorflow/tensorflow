@@ -34,7 +34,7 @@ from tensorflow.python.ops import nn_ops
 from tensorflow.python.util import compat
 
 
-def FoldBatchNorms(graph, freeze_batch_norm_delay=None, is_training=True):
+def FoldBatchNorms(graph, is_training, freeze_batch_norm_delay=None):
   """Finds batch norm layers and folds them into preceding layers.
 
   Folding only affects the following layers: Conv2D, fully connected, depthwise
@@ -42,24 +42,22 @@ def FoldBatchNorms(graph, freeze_batch_norm_delay=None, is_training=True):
 
   Args:
     graph: Graph to walk and modify.
+    is_training: Bool, true if training.
     freeze_batch_norm_delay: How many steps to wait before freezing moving mean
       and variance and using them for batch normalization. This value is used
       only when is_training is True.
-    is_training: Bool, true if training.
   Raises:
     ValueError: When batch norm folding fails.
   """
   _FoldFusedBatchNorms(
-      graph,
-      freeze_batch_norm_delay=freeze_batch_norm_delay,
-      is_training=is_training)
+      graph, is_training, freeze_batch_norm_delay=freeze_batch_norm_delay)
   _FoldUnfusedBatchNorms(
       graph,
-      freeze_batch_norm_delay=freeze_batch_norm_delay,
-      is_training=is_training)
+      is_training=is_training,
+      freeze_batch_norm_delay=freeze_batch_norm_delay)
 
 
-def _FoldFusedBatchNorms(graph, freeze_batch_norm_delay, is_training):
+def _FoldFusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
   """Finds fused batch norm layers and folds them into preceding layers.
 
   Folding only affects the following layers: Conv2D, fully connected, depthwise
@@ -67,9 +65,9 @@ def _FoldFusedBatchNorms(graph, freeze_batch_norm_delay, is_training):
 
   Args:
     graph: Graph to walk and modify.
+    is_training: Bool, true if training.
     freeze_batch_norm_delay: How many steps to wait before freezing moving mean
       and variance and using them for batch normalization.
-    is_training: Bool, true if training.
 
   Raises:
     ValueError: When batch norm folding fails.
@@ -416,7 +414,7 @@ def _FoldFusedBatchNormGrad(op, unused_grad_y, grad_mean, grad_var, unused_1,
   return (dmean_dx + dvar_dx), None, None, None, None
 
 
-def _FoldUnfusedBatchNorms(graph, freeze_batch_norm_delay, is_training):
+def _FoldUnfusedBatchNorms(graph, is_training, freeze_batch_norm_delay):
   """Finds unfused batch norm layers and folds them into preceding layers.
 
   Folding only affects the following layers: Conv2D, fully connected, depthwise
@@ -424,9 +422,9 @@ def _FoldUnfusedBatchNorms(graph, freeze_batch_norm_delay, is_training):
 
   Args:
     graph: Graph to walk and modify.
+    is_training: Bool, True if training.
     freeze_batch_norm_delay: How many steps to wait before freezing moving mean
       and variance and using them for batch normalization.
-    is_training: Bool, True if training
 
   Raises:
     ValueError: When batch norm folding fails.

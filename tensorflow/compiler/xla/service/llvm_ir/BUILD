@@ -54,6 +54,7 @@ cc_library(
         "@llvm//:core",
         "@llvm//:support",
         "@llvm//:target",
+        "@llvm//:transform_utils",
     ],
 )
 

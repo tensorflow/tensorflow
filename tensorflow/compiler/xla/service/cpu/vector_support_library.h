@@ -26,6 +26,16 @@ limitations under the License.
 
 namespace xla {
 namespace cpu {
+
+// Simple wrappers around llvm::APFloat::APFloat to make the calling code more
+// obvious.
+
+inline llvm::APFloat GetIeeeF32(float f) { return llvm::APFloat(f); }
+inline llvm::APFloat GetIeeeF32FromBitwiseRep(int32 bitwise_value) {
+  return llvm::APFloat(llvm::APFloat::IEEEsingle(),
+                       llvm::APInt(/*numBits=*/32, /*val=*/bitwise_value));
+}
+
 // A thin wrapper around llvm_util.h to make code generating vector math flow
 // more readable.
 class VectorSupportLibrary {
@@ -41,24 +51,34 @@ class VectorSupportLibrary {
   llvm::Value* Mul(int64 lhs, llvm::Value* rhs) {
     return Mul(ir_builder()->getInt64(lhs), rhs);
   }
-  llvm::Value* Mul(float lhs, llvm::Value* rhs) {
+  llvm::Value* Mul(const llvm::APFloat& lhs, llvm::Value* rhs) {
     return Mul(GetConstantFloat(rhs->getType(), lhs), rhs);
   }
+
+  // If your call resolved to these then you probably wanted the versions taking
+  // APFloat.
+  llvm::Value* Mul(double lhs, llvm::Value* rhs) = delete;
+  llvm::Value* Mul(float lhs, llvm::Value* rhs) = delete;
 
   llvm::Value* Add(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* Add(int64 lhs, llvm::Value* rhs) {
     return Add(ir_builder()->getInt64(lhs), rhs);
   }
-  llvm::Value* Add(float lhs, llvm::Value* rhs) {
+  llvm::Value* Add(const llvm::APFloat& lhs, llvm::Value* rhs) {
     return Add(GetConstantFloat(rhs->getType(), lhs), rhs);
   }
 
+  // If your call resolved to these then you probably wanted the versions taking
+  // APFloat.
+  llvm::Value* Add(double lhs, llvm::Value* rhs) = delete;
+  llvm::Value* Add(float lhs, llvm::Value* rhs) = delete;
+
   llvm::Value* Sub(llvm::Value* lhs, llvm::Value* rhs);
-  llvm::Value* Sub(llvm::Value* lhs, float rhs) {
+  llvm::Value* Sub(llvm::Value* lhs, const llvm::APFloat& rhs) {
     return Sub(lhs, GetConstantFloat(lhs->getType(), rhs));
   }
   llvm::Value* Max(llvm::Value* lhs, llvm::Value* rhs);
-  llvm::Value* Max(float lhs, llvm::Value* rhs) {
+  llvm::Value* Max(const llvm::APFloat& lhs, llvm::Value* rhs) {
     return Max(GetConstantFloat(rhs->getType(), lhs), rhs);
   }
   llvm::Value* Div(llvm::Value* lhs, llvm::Value* rhs);
@@ -67,19 +87,21 @@ class VectorSupportLibrary {
     return Add(c, Mul(a, b));
   }
 
-  llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, float c) {
+  llvm::Value* MulAdd(llvm::Value* a, llvm::Value* b, const llvm::APFloat& c) {
     return Add(GetConstantFloat(vector_type(), c), Mul(a, b));
   }
 
-  llvm::Value* MulAdd(llvm::Value* a, float b, float c) {
+  llvm::Value* MulAdd(llvm::Value* a, const llvm::APFloat& b,
+                      const llvm::APFloat& c) {
     return Add(GetConstantFloat(a->getType(), c),
                Mul(a, GetConstantFloat(a->getType(), b)));
   }
 
   llvm::Value* Floor(llvm::Value* a);
 
-  llvm::Value* Clamp(llvm::Value* a, float low, float high);
-  llvm::Value* SplatFloat(float d) {
+  llvm::Value* Clamp(llvm::Value* a, const llvm::APFloat& low,
+                     const llvm::APFloat& high);
+  llvm::Value* SplatFloat(const llvm::APFloat& d) {
     return GetConstantFloat(vector_type(), d);
   }
 
@@ -93,7 +115,7 @@ class VectorSupportLibrary {
   llvm::Value* FCmpEQMask(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* FCmpULEMask(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* FCmpOLTMask(llvm::Value* lhs, llvm::Value* rhs);
-  llvm::Value* FCmpOLTMask(llvm::Value* lhs, float rhs) {
+  llvm::Value* FCmpOLTMask(llvm::Value* lhs, const llvm::APFloat& rhs) {
     return FCmpOLTMask(lhs, GetConstantFloat(lhs->getType(), rhs));
   }
 
@@ -102,11 +124,11 @@ class VectorSupportLibrary {
   // generating predicates above this type system oddity makes the kernel IR
   // generation code less cluttered.
   llvm::Value* FloatAnd(llvm::Value* lhs, llvm::Value* rhs);
-  llvm::Value* FloatAnd(llvm::Value* lhs, float rhs) {
+  llvm::Value* FloatAnd(llvm::Value* lhs, const llvm::APFloat& rhs) {
     return FloatAnd(lhs, GetConstantFloat(lhs->getType(), rhs));
   }
   llvm::Value* FloatOr(llvm::Value* lhs, llvm::Value* rhs);
-  llvm::Value* FloatOr(llvm::Value* lhs, float rhs) {
+  llvm::Value* FloatOr(llvm::Value* lhs, const llvm::APFloat& rhs) {
     return FloatOr(lhs, GetConstantFloat(lhs->getType(), rhs));
   }
   llvm::Value* FloatNot(llvm::Value* lhs);
@@ -115,7 +137,7 @@ class VectorSupportLibrary {
   }
 
   llvm::Value* BroadcastScalar(llvm::Value* x);
-  llvm::Value* BroadcastScalar(float d) {
+  llvm::Value* BroadcastScalar(const llvm::APFloat& d) {
     return BroadcastScalar(GetConstantFloat(scalar_type(), d));
   }
 
@@ -238,9 +260,8 @@ class VectorSupportLibrary {
 
   llvm::Type* IntegerTypeForFloatSize(bool vector);
   llvm::Value* I1ToFloat(llvm::Value* i1);
-  llvm::Value* GetConstantFloat(llvm::Type* type, float f) {
-    llvm::Constant* scalar_value =
-        llvm::ConstantFP::get(type->getContext(), llvm::APFloat(f));
+  llvm::Value* GetConstantFloat(llvm::Type* type, const llvm::APFloat& f) {
+    llvm::Constant* scalar_value = llvm::ConstantFP::get(type->getContext(), f);
     if (llvm::isa<llvm::VectorType>(type)) {
       return llvm::ConstantVector::getSplat(vector_size(), scalar_value);
     }
