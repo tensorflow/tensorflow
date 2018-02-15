@@ -306,7 +306,7 @@ class TestSequential(test.TestCase):
         def call(self, inputs):
           return [3 * inputs, 2 * inputs]
 
-        def _compute_output_shape(self, input_shape):
+        def compute_output_shape(self, input_shape):
           return [input_shape, input_shape]
 
       with self.assertRaises(ValueError):
@@ -339,6 +339,35 @@ class TestSequential(test.TestCase):
     self.assertEqual(len(model.trainable_weights), 2)
     inner_model.trainable = True
     self.assertEqual(len(model.trainable_weights), 4)
+
+  def test_sequential_update_disabling(self):
+    val_a = np.random.random((10, 4))
+    val_out = np.random.random((10, 4))
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.BatchNormalization(input_shape=(4,)))
+
+      model.trainable = False
+      assert not model.updates
+
+      model.compile('sgd', 'mse')
+      assert not model.updates
+      assert not model.model.updates
+
+      x1 = model.predict(val_a)
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      self.assertAllClose(x1, x2, atol=1e-7)
+
+      model.trainable = True
+      model.compile('sgd', 'mse')
+      assert model.updates
+      assert model.model.updates
+
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      assert np.abs(np.sum(x1 - x2)) > 1e-5
 
 
 class TestModelCloning(test.TestCase):

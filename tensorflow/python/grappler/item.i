@@ -42,9 +42,12 @@ struct GItem {
 #include <unordered_set>
 #include <map>
 #include "tensorflow/c/tf_status_helper.h"
+#include "tensorflow/core/framework/node_def_util.h"
+#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
 #include "tensorflow/core/grappler/grappler_item_builder.h"
 #include "tensorflow/core/grappler/costs/graph_properties.h"
+#include "tensorflow/core/grappler/utils/topological_sort.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/protobuf/meta_graph.pb.h"
@@ -80,6 +83,7 @@ static GItem TF_NewItem(
   tensorflow::grappler::ItemConfig cfg;
   cfg.ignore_user_placement = ignore_user_placement;
   cfg.ignore_colocation = ignore_colocation;
+  cfg.inline_functions = true;
   std::unique_ptr<tensorflow::grappler::GrapplerItem> item =
       tensorflow::grappler::GrapplerItemFromMetaGraphDef("item", meta_graph, cfg);
   if (!item) {
@@ -92,7 +96,8 @@ static GItem TF_NewItem(
   return GItem(item.release());
 }
 
-static std::vector<string> TF_IdentifyImportantOps(GItem item) {
+static std::vector<string> TF_IdentifyImportantOps(GItem item, bool sort_topologically,
+                                                   TF_Status* status) {
   if (item.is_none()) {
     return {};
   }
@@ -108,8 +113,23 @@ static std::vector<string> TF_IdentifyImportantOps(GItem item) {
   }
 
   std::vector<string> ops;
-  for (const auto& op_name : op_names) {
-    ops.push_back(op_name);
+  if (sort_topologically) {
+    tensorflow::GraphDef subgraph;
+    for (const tensorflow::NodeDef& node : item->graph.node()) {
+      if (op_names.find(node.name()) != op_names.end()) {
+        *subgraph.add_node() = node;
+      }
+    }
+    tensorflow::Status s = tensorflow::grappler::TopologicalSort(&subgraph);
+    tensorflow::Set_TF_Status_from_Status(status, s);
+    for (const tensorflow::NodeDef& node : subgraph.node()) {
+      ops.push_back(node.name());
+    }
+  }
+  else {
+    for (const auto& op_name : op_names) {
+      ops.push_back(op_name);
+    }
   }
 
   return ops;
@@ -120,7 +140,7 @@ static PyObject* TF_GetOpProperties(GItem item) {
     Py_RETURN_NONE;
   }
   tensorflow::grappler::GraphProperties properties(*item);
-  tensorflow::Status status = properties.InferStatically();
+  tensorflow::Status status = properties.InferStatically(false);
   if (!status.ok()) {
     Py_RETURN_NONE;
   }
@@ -145,6 +165,139 @@ static PyObject* TF_GetOpProperties(GItem item) {
   return props;
 }
 
+class ColocationGroups {
+public:
+  void Group(const string& x, const string& y) {
+    Rep* x_root = Find(x);
+    Rep* y_root = Find(y);
+
+    // x and y are already in the same set
+    if (x_root == y_root) {
+      return;
+    }
+    // x and y are not in same set, so we merge them
+    // Use the occasion to strengthen what we know about the handle by merging the
+    // information about the 2 subsets.
+    if (x_root->rank < y_root->rank) {
+      x_root->parent = y_root;
+    } else if (x_root->rank > y_root->rank) {
+      y_root->parent = x_root;
+    } else {
+      // Arbitrarily make one root the new parent
+      y_root->parent = x_root;
+      x_root->rank = x_root->rank + 1;
+    }
+  }
+
+  void ExtractGroups(std::vector<std::vector<string>>* groups) {
+    groups->reserve(nodes_.size());
+    std::unordered_map<const Rep*, int> group_ids;
+    for (const auto& rep : nodes_) {
+      Rep* r = Find(rep.first);
+      auto it = group_ids.find(r);
+      std::vector<string>* g;
+      if (it == group_ids.end()) {
+        int id = group_ids.size();
+        group_ids[r] = id;
+        groups->resize(id+1);
+        g = &groups->back();
+      } else {
+        int id = it->second;
+        g = &((*groups)[id]);
+      }
+      g->push_back(rep.first);
+    }
+  }
+
+private:
+  struct Rep {
+    // Parent in the tree used to encode the set.
+    Rep* parent;
+    // Rank in the tree, used to figure out how to compress the path to the root
+    // of the tree.
+    int rank;
+    // The node.
+    string value;
+  };
+
+  Rep* Find(const string& n) {
+    auto it = nodes_.find(n);
+    if (it == nodes_.end()) {
+      // This is the first time we process this handle, create an entry for it.
+      Rep* node = new Rep;
+      node->parent = node;
+      node->rank = 0;
+      node->value = n;
+      nodes_[n] = node;
+      return node;
+    }
+    // Return the representative for the set, which is the root of the tree. Apply
+    // path compression to speedup future queries.
+    Rep* node = it->second;
+    Rep* root = node->parent;
+    while (root != root->parent) {
+      root = root->parent;
+    }
+    while (node->parent != root) {
+      Rep* next = node->parent;
+      node->parent = root;
+      node = next;
+    }
+    return root;
+  }
+
+  std::unordered_map<string, Rep*> nodes_;
+};
+
+static PyObject* TF_GetColocationGroups(GItem item) {
+  if (item.is_none()) {
+    Py_RETURN_NONE;
+  }
+  ColocationGroups groupings;
+  tensorflow::OpRegistry* registry = tensorflow::OpRegistry::Global();
+  for (const auto& node : item->graph.node()) {
+    const tensorflow::OpDef* op_def;
+    tensorflow::Status s = registry->LookUpOpDef(node.op(), &op_def);
+    if (!s.ok()) {
+      continue;
+    }
+    tensorflow::NameRangeMap inputs;
+    tensorflow::NameRangeMap outputs;
+    s = tensorflow::NameRangesForNode(node, *op_def, &inputs, &outputs);
+    if (!s.ok()) {
+      continue;
+    }
+    int i = 0;
+    for (const auto& arg : op_def->input_arg()) {
+      if (!arg.is_ref()) {
+        continue;
+      }
+      const auto& range = inputs[arg.name()];
+      for (int i = range.first; i < range.second; ++i) {
+        string input = tensorflow::grappler::NodeName(node.input(i));
+        groupings.Group(node.name(), input);
+      }
+    }
+  }
+
+  std::vector<std::vector<string>> groups;
+  groupings.ExtractGroups(&groups);
+
+  PyGILState_STATE gstate = PyGILState_Ensure();
+  PyObject* result = PyList_New(groups.size());
+  for (int i = 0; i < groups.size(); ++i) {
+    const std::vector<string>& group = groups[i];
+    PyObject* g = PyTuple_New(group.size());
+    for (int j = 0; j < group.size(); ++j) {
+      const string& node_name = group[j];
+      PyTuple_SetItem(g, j, PyString_FromString(node_name.c_str()));
+    }
+    PyList_SetItem(result, i, g);
+  }
+  PyGILState_Release(gstate);
+  return result;
+}
+
 %}
 
 
@@ -152,5 +305,7 @@ static PyObject* TF_GetOpProperties(GItem item) {
 static GItem TF_NewItem(
     const tensorflow::MetaGraphDef& meta_graph, bool ignore_colocation,
     bool ignore_user_placement, TF_Status* out_status);
-static std::vector<string> TF_IdentifyImportantOps(GItem item);
+static std::vector<string> TF_IdentifyImportantOps(GItem item, bool sort_topologically,
+                                                   TF_Status* status);
 static PyObject* TF_GetOpProperties(GItem item);
+static PyObject* TF_GetColocationGroups(GItem item);

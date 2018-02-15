@@ -53,6 +53,11 @@ class MlpTest(tf.test.TestCase):
       mlp.train_mnist_multitower(
           data_dir=None, num_epochs=1, num_towers=2, use_fake_data=True)
 
+  def testTrainMnistEstimator(self):
+    with tf.Graph().as_default():
+      # Ensure model training doesn't crash.
+      mlp.train_mnist_estimator(data_dir=None, num_epochs=1, use_fake_data=True)
+
 
 if __name__ == "__main__":
   tf.test.main()

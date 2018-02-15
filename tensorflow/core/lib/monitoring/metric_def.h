@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
 
 #include <array>
 #include <vector>
@@ -28,16 +28,16 @@ namespace monitoring {
 // The different metric kinds available.
 //
 // Gauge indicates that the metric's values are instantaneous measurements of a
-// (typically) continuously varying quantity or a string value. Examples: a
-// process's current heap size, a queue's current length, the name of the binary
-// used by a process.
+// (typically) continuously varying value. Examples: a process's current heap
+// size, a queue's current length, the name of the binary used by a process,
+// whether a task is complete.
 //
 // Cumulative indicates that the metric's values represent non-negative changes
 // over specified time periods. Example: the number of rpc calls to a service.
 enum class MetricKind : int { kGauge = 0, kCumulative };
 
 // The type of the metric values.
-enum class ValueType : int { kInt64 = 0, kHistogram, kString };
+enum class ValueType : int { kInt64 = 0, kHistogram, kString, kBool };
 
 // Everything in the internal namespace is implementation details. Do not depend
 // on this.
@@ -59,6 +59,11 @@ inline ValueType GetValueType<HistogramProto>() {
 template <>
 inline ValueType GetValueType<string>() {
   return ValueType::kString;
+}
+
+template <>
+inline ValueType GetValueType<bool>() {
+  return ValueType::kBool;
 }
 
 }  // namespace internal
@@ -134,4 +139,4 @@ class MetricDef : public AbstractMetricDef {
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_METRIC_DEF_H_

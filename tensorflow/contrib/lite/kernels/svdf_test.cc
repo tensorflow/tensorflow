@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Unit test for TFLite SVDF op.
 
-#include <vector>
 #include <iomanip>
+#include <vector>
 
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
@@ -306,7 +306,7 @@ TEST(SVDFOpTest, BlackBoxTestRank2) {
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  // On Linux, add: tflite::LogToStderr();
+  ::tflite::LogToStderr();
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }

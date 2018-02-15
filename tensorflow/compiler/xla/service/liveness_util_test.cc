@@ -277,8 +277,11 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   auto b = builder.AddInstruction(HloInstruction::CreateConstant(
       Literal::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
 
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(data_shape, HloOpcode::kDot, a, b));
+      HloInstruction::CreateDot(data_shape, a, b, dot_dnums));
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
@@ -312,8 +315,11 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedTransposeDotAdd) {
   auto b_t = builder.AddInstruction(
       HloInstruction::CreateTranspose(data_shape, b, {1, 0}));
 
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
   auto dot = builder.AddInstruction(
-      HloInstruction::CreateBinary(data_shape, HloOpcode::kDot, a, b_t));
+      HloInstruction::CreateDot(data_shape, a, b_t, dot_dnums));
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));

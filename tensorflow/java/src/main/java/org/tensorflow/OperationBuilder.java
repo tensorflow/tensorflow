@@ -352,7 +352,8 @@ public final class OperationBuilder {
 
   private static native void setAttrShape(long handle, String name, long[] shape, int numDims);
 
-  private static native void setAttrShapeList(long handle, String name, long[] shapes, int[] numDims);
+  private static native void setAttrShapeList(
+      long handle, String name, long[] shapes, int[] numDims);
 
   private static native void setAttrStringList(long handle, String name, Object[] value);
 }

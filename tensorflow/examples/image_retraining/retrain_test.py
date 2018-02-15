@@ -87,7 +87,7 @@ class ImageRetrainingTest(test_util.TensorFlowTestCase):
   def testAddEvaluationStep(self):
     with tf.Graph().as_default():
       final = tf.placeholder(tf.float32, [1], name='final')
-      gt = tf.placeholder(tf.float32, [1], name='gt')
+      gt = tf.placeholder(tf.int64, [1], name='gt')
       self.assertIsNotNone(retrain.add_evaluation_step(final, gt))
 
   def testAddJpegDecoding(self):

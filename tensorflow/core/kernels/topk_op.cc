@@ -64,7 +64,9 @@ class TopK : public OpKernel {
                 errors::InvalidArgument("input must be >= 1-D, got shape ",
                                         input_in.shape().DebugString()));
     OP_REQUIRES(context, input_in.dim_size(input_in.dims() - 1) >= k,
-                errors::InvalidArgument("input must have at least k columns"));
+                errors::InvalidArgument(
+                    "input must have at least k columns. Had ",
+                    input_in.dim_size(input_in.dims() - 1), ", needed ", k));
 
     const auto& input = input_in.flat_inner_dims<T>();
 

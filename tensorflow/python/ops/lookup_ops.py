@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import collections
 import functools
+import six
 
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
@@ -39,8 +40,10 @@ from tensorflow.python.ops.gen_lookup_ops import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("initialize_all_tables")
 @deprecated(None, "Use `tf.tables_initializer` instead.")
 def initialize_all_tables(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
@@ -55,6 +58,7 @@ def initialize_all_tables(name="init_all_tables"):
   return tables_initializer(name)
 
 
+@tf_export("tables_initializer")
 def tables_initializer(name="init_all_tables"):
   """Returns an Op that initializes all tables of the default graph.
 
@@ -83,10 +87,10 @@ def _check_table_dtypes(table, key_dtype, value_dtype):
     TypeError: when 'key_dtype' or 'value_dtype' doesn't match the table data
       types.
   """
-  if key_dtype != table.key_dtype:
+  if key_dtype.base_dtype != table.key_dtype:
     raise TypeError("Invalid key dtype, expected %s but got %s." %
                     (table.key_dtype, key_dtype))
-  if value_dtype != table.value_dtype:
+  if value_dtype.base_dtype != table.value_dtype:
     raise TypeError("Invalid value dtype, expected %s but got %s." %
                     (table.value_dtype, value_dtype))
 
@@ -216,7 +220,7 @@ class InitializableLookupTableBase(LookupInterface):
     if isinstance(keys, sparse_tensor.SparseTensor):
       key_tensor = keys.values
 
-    if keys.dtype != self._key_dtype:
+    if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
 
@@ -527,7 +531,7 @@ class TextFileInitializer(TableInitializerBase):
     ops.add_to_collection(ops.GraphKeys.TABLE_INITIALIZERS, init_op)
     # If the filename tensor is anything other than a string constant (e.g., if
     # it is a placeholder) then it does not make sense to track it as an asset.
-    if constant_op.is_constant(filename):
+    if context.in_graph_mode() and constant_op.is_constant(filename):
       ops.add_to_collection(ops.GraphKeys.ASSET_FILEPATHS, filename)
     return init_op
 
@@ -688,19 +692,22 @@ class IdTableWithHashBuckets(LookupInterface):
 
   For example, if an instance of `IdTableWithHashBuckets` is initialized with a
   string-to-id table that maps:
-  - emerson -> 0
-  - lake -> 1
-  - palmer -> 2
+
+  * `emerson -> 0`
+  * `lake -> 1`
+  * `palmer -> 2`
 
   The `IdTableWithHashBuckets` object will performs the following mapping:
-  - emerson -> 0
-  - lake -> 1
-  - palmer -> 2
-  - <other term> -> bucket id between 3 and 3 + num_oov_buckets - 1, calculated
-    by: hash(<term>) % num_oov_buckets + vocab_size
 
-  If input_tensor is ["emerson", "lake", "palmer", "king", "crimson"],
-  the lookup result is [0, 1, 2, 4, 7]
+  * `emerson -> 0`
+  * `lake -> 1`
+  * `palmer -> 2`
+  * `<other term> -> bucket_id`, where bucket_id will be between `3` and
+  `3 + num_oov_buckets - 1`, calculated by:
+  `hash(<term>) % num_oov_buckets + vocab_size`
+
+  If input_tensor is `["emerson", "lake", "palmer", "king", "crimson"]`,
+  the lookup result is `[0, 1, 2, 4, 7]`.
 
   If `table` is None, only out-of-vocabulary buckets are used.
 
@@ -845,7 +852,7 @@ class IdTableWithHashBuckets(LookupInterface):
     Raises:
       TypeError: when `keys` doesn't match the table key data type.
     """
-    if keys.dtype != self._key_dtype:
+    if keys.dtype.base_dtype != self._key_dtype:
       raise TypeError("Signature mismatch. Keys must be dtype %s, got %s." %
                       (self._key_dtype, keys.dtype))
     values = keys
@@ -959,7 +966,7 @@ def index_table_from_file(vocabulary_file=None,
       than zero.
   """
   if vocabulary_file is None or (
-      isinstance(vocabulary_file, str) and not vocabulary_file):
+      isinstance(vocabulary_file, six.string_types) and not vocabulary_file):
     raise ValueError("vocabulary_file must be specified and must not be empty.")
   if num_oov_buckets < 0:
     raise ValueError("num_oov_buckets must be greater or equal than 0, got %d."
@@ -1163,7 +1170,7 @@ def index_to_string_table_from_file(vocabulary_file,
   ```
 
   Args:
-    vocabulary_file: The vocabulary filename.
+    vocabulary_file: The vocabulary filename, may be a constant scalar `Tensor`.
     vocab_size: Number of the elements in the vocabulary, if known.
     default_value: The value to use for out-of-vocabulary indices.
     name: A name for this op (optional).
@@ -1181,8 +1188,10 @@ def index_to_string_table_from_file(vocabulary_file,
     ValueError: when `vocabulary_file` is empty.
     ValueError: when `vocab_size` is invalid.
   """
-  if not vocabulary_file:
-    raise ValueError("vocabulary_file must be specified.")
+  if vocabulary_file is None or (
+      isinstance(vocabulary_file, six.string_types) and not vocabulary_file):
+    raise ValueError("vocabulary_file must be specified and must not be empty.")
+
   if vocab_size is not None and vocab_size < 1:
     raise ValueError("vocab_size must be greater than 0, got %d." % vocab_size)
 

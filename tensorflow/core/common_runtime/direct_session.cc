@@ -61,7 +61,6 @@ limitations under the License.
 #include "tensorflow/core/util/device_name_utils.h"
 #include "tensorflow/core/util/env_var.h"
 
-
 namespace tensorflow {
 
 namespace {
@@ -259,9 +258,10 @@ DirectSession::DirectSession(const SessionOptions& options,
       factory_(factory),
       cancellation_manager_(new CancellationManager()),
       operation_timeout_in_ms_(options_.config.operation_timeout_in_ms()) {
-  if (options_.config.session_inter_op_thread_pool_size() > 0) {
-    for (int i = 0; i < options_.config.session_inter_op_thread_pool_size();
-         ++i) {
+  const int thread_pool_size =
+      options_.config.session_inter_op_thread_pool_size();
+  if (thread_pool_size > 0) {
+    for (int i = 0; i < thread_pool_size; ++i) {
       thread::ThreadPool* pool = nullptr;
       bool owned = false;
       init_error_.Update(NewThreadPoolFromThreadPoolOptions(
@@ -321,6 +321,10 @@ DirectSession::~DirectSession() {
   for (auto d : device_mgr_->ListDevices()) {
     d->op_segment()->RemoveHold(session_handle_);
   }
+  for (auto d : device_mgr_->ListDevices()) {
+    d->ClearResourceMgr();
+  }
+  functions_.clear();
   delete cancellation_manager_;
   for (const auto& p_and_owned : thread_pools_) {
     if (p_and_owned.second) delete p_and_owned.first;
@@ -467,9 +471,9 @@ Status DirectSession::Run(const RunOptions& run_options,
   Executor::Args args;
   args.step_id = step_id_counter_.fetch_add(1);
 
-  TF_RETURN_IF_ERROR(
-      GetOrCreateExecutors(input_tensor_names, output_names, target_nodes,
-                           &executors_and_keys, &run_state_args));
+  TF_RETURN_IF_ERROR(GetOrCreateExecutors(input_tensor_names, output_names,
+                                          target_nodes, &executors_and_keys,
+                                          &run_state_args));
   const int64 executor_step_count = executors_and_keys->step_count.fetch_add(1);
 
   std::unique_ptr<DebuggerStateInterface> debugger_state;
@@ -521,9 +525,7 @@ Status DirectSession::Run(const RunOptions& run_options,
 
   args.rendezvous = run_state.rendez;
   args.cancellation_manager = &step_cancellation_manager;
-  args.runner = [this, pool](Executor::Args::Closure c) {
-    SchedClosure(pool, std::move(c));
-  };
+
   args.session_state = &session_state_;
   args.tensor_store = &run_state.tensor_store;
   args.step_container = &run_state.step_container;
@@ -584,7 +586,23 @@ Status DirectSession::Run(const RunOptions& run_options,
     return errors::Cancelled("Run call was cancelled");
   }
 
+  Executor::Args::Runner default_runner = [this,
+                                           pool](Executor::Args::Closure c) {
+    SchedClosure(pool, std::move(c));
+  };
   for (const auto& item : executors_and_keys->items) {
+    // TODO(zhengxq): support partial run.
+    // TODO(zhengxq): if the device picks its own threadpool, we need to assign
+    //     less threads to the main compute pool by default.
+    thread::ThreadPool* device_thread_pool =
+        item.device->tensorflow_device_thread_pool();
+    if (!device_thread_pool) {
+      args.runner = default_runner;
+    } else {
+      args.runner = [this, device_thread_pool](Executor::Args::Closure c) {
+        SchedClosure(device_thread_pool, std::move(c));
+      };
+    }
     item.executor->RunAsync(args, barrier->Get());
   }
 
@@ -1124,12 +1142,13 @@ Status DirectSession::GetOrCreateExecutors(
     options.debug_options = run_state_args->debug_options;
   }
 
+  std::unique_ptr<FunctionInfo> func_info(new FunctionInfo);
   std::shared_ptr<ExecutorsAndKeys> ek(new ExecutorsAndKeys);
 
   // The executor_lock_ is intentionally released while executor is
   // being created.
   std::unordered_map<string, std::unique_ptr<Graph>> graphs;
-  TF_RETURN_IF_ERROR(CreateGraphs(options, &graphs, &ek->flib_def,
+  TF_RETURN_IF_ERROR(CreateGraphs(options, &graphs, &func_info->flib_def,
                                   run_state_args, &ek->input_types,
                                   &ek->output_types));
 
@@ -1160,9 +1179,9 @@ Status DirectSession::GetOrCreateExecutors(
     graph_def_version =
         execution_state_->original_graph_def().versions().producer();
   }
-  ek->proc_flr.reset(new ProcessFunctionLibraryRuntime(
-      device_mgr_.get(), options_.env, graph_def_version, ek->flib_def.get(),
-      optimizer_opts));
+  func_info->proc_flr.reset(new ProcessFunctionLibraryRuntime(
+      device_mgr_.get(), options_.env, graph_def_version,
+      func_info->flib_def.get(), optimizer_opts));
 
   GraphOptimizer optimizer(optimizer_opts);
   for (auto iter = graphs.begin(); iter != graphs.end(); ++iter) {
@@ -1174,7 +1193,7 @@ Status DirectSession::GetOrCreateExecutors(
 
     ek->items.resize(ek->items.size() + 1);
     auto* item = &(ek->items.back());
-    auto lib = ek->proc_flr->GetFLR(partition_name);
+    auto lib = func_info->proc_flr->GetFLR(partition_name);
     if (lib == nullptr) {
       return errors::Internal("Could not find device: ", partition_name);
     }
@@ -1186,8 +1205,14 @@ Status DirectSession::GetOrCreateExecutors(
     auto opseg = device->op_segment();
     params.create_kernel = [this, lib, opseg](const NodeDef& ndef,
                                               OpKernel** kernel) {
-      // Caches the kernel only if the node is stateful.
-      if (!lib->IsStateful(ndef.op())) {
+      // We do not share the kernel via the OpSegment if the node is
+      // stateless, or a function.
+      // NOTE(mrry): We must not share function kernels (implemented
+      // using `CallOp`) between subgraphs, because `CallOp::handle_`
+      // is tied to a particular subgraph. Even if the function itself
+      // is stateful, the `CallOp` that invokes it is not.
+      if (!lib->IsStateful(ndef.op()) ||
+          lib->GetFunctionLibraryDefinition()->Find(ndef.op()) != nullptr) {
         return lib->CreateKernel(ndef, kernel);
       }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
@@ -1222,9 +1247,10 @@ Status DirectSession::GetOrCreateExecutors(
     // NewLocalExecutor takes ownership of partition_graph.
     item->graph = partition_graph.get();
     item->executor = nullptr;
+    item->device = device;
     Executor* executor;
     TF_RETURN_IF_ERROR(
-        NewLocalExecutor(params, partition_graph.release(), &executor));
+        NewLocalExecutor(params, std::move(partition_graph), &executor));
     item->executor.reset(executor);
   }
 
@@ -1263,6 +1289,7 @@ Status DirectSession::GetOrCreateExecutors(
 
   // Reacquire the lock, try to insert into the map.
   mutex_lock l(executor_lock_);
+  functions_.push_back(std::move(func_info));
 
   // Another thread may have created the entry before us, in which case we will
   // reuse the already created one.

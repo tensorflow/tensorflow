@@ -42,6 +42,7 @@ ExternalProject_Add(highwayhash
     GIT_TAG ${highwayhash_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS ${highwayhash_STATIC_LIBRARIES}
     PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/highwayhash/CMakeLists.txt ${highwayhash_BUILD}
     INSTALL_DIR ${highwayhash_INSTALL}
     CMAKE_CACHE_ARGS

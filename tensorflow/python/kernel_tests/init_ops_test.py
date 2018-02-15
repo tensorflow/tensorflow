@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
@@ -146,6 +147,18 @@ class ConstantInitializersTest(test.TestCase):
       self.assertEqual(x.dtype.base_dtype, dtypes.int32)
       self.assertAllEqual(x.eval(), 7 * np.ones(shape, dtype=np.int32))
 
+  def testConstantTupleInitializer(self):
+    with self.test_session(use_gpu=True):
+      shape = [3]
+      x = variable_scope.get_variable(
+          "x",
+          shape=shape,
+          dtype=dtypes.int32,
+          initializer=init_ops.constant_initializer((10, 20, 30)))
+      x.initializer.run()
+      self.assertEqual(x.dtype.base_dtype, dtypes.int32)
+      self.assertAllEqual(x.eval(), [10, 20, 30])
+
   def _testNDimConstantInitializer(self, name, value, shape, expected):
     with self.test_session(use_gpu=True):
       init = init_ops.constant_initializer(value, dtype=dtypes.int32)
@@ -213,6 +226,16 @@ class ConstantInitializersTest(test.TestCase):
     self._testNDimConstantInitializerMoreValues(np.asarray(value), shape)
     self._testNDimConstantInitializerMoreValues(
         np.asarray(value).reshape(tuple([2, 4])), shape)
+
+  def testInvalidValueTypeForConstantInitializerCausesTypeError(self):
+    c = constant_op.constant([1.0, 2.0, 3.0])
+    with self.assertRaisesRegexp(
+        TypeError, r"Invalid type for initial value: .*Tensor.*"):
+      init_ops.constant_initializer(c, dtype=dtypes.float32)
+    v = variables.Variable([3.0, 2.0, 1.0])
+    with self.assertRaisesRegexp(
+        TypeError, r"Invalid type for initial value: .*Variable.*"):
+      init_ops.constant_initializer(v, dtype=dtypes.float32)
 
 
 class RandomNormalInitializationTest(test.TestCase):

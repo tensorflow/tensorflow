@@ -158,12 +158,21 @@ if (NOT "${NSYNC_LANGUAGE}X" STREQUAL "c++11X")
   elseif ("${CMAKE_SYSTEM_NAME}X" STREQUAL "NetBSDX")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/netbsd")
     set (NSYNC_POSIX ON)
+    set (NSYNC_OS_EXTRA_SRC
+      "platform/posix/src/nsync_semaphore_mutex.c"
+    )
   elseif ("${CMAKE_SYSTEM_NAME}X" STREQUAL "FreeBSDX")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/freebsd")
     set (NSYNC_POSIX ON)
+    set (NSYNC_OS_EXTRA_SRC
+      "platform/posix/src/nsync_semaphore_mutex.c"
+    )
   elseif ("${CMAKE_SYSTEM_NAME}X" STREQUAL "OpenBSDX")
     include_directories ("${PROJECT_SOURCE_DIR}/platform/openbsd")
     set (NSYNC_POSIX ON)
+    set (NSYNC_OS_EXTRA_SRC
+      "platform/posix/src/nsync_semaphore_mutex.c"
+    )
   endif ()
 endif ()
 

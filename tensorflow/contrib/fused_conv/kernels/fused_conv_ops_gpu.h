@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_FUSED_CONV_KERNELS_FUSED_CONV_OPS_GPU_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_FUSED_CONV_KERNELS_FUSED_CONV_OPS_GPU_H_
+#ifndef TENSORFLOW_CONTRIB_FUSED_CONV_KERNELS_FUSED_CONV_OPS_GPU_H_
+#define TENSORFLOW_CONTRIB_FUSED_CONV_KERNELS_FUSED_CONV_OPS_GPU_H_
 
 #if GOOGLE_CUDA
 
@@ -30,11 +30,12 @@ class FusedConvParameters : public ConvParameters {
  public:
   FusedConvParameters(int64 batch, int64 in_depths, const SpatialArray& in,
                       int64 out_depths, const SpatialArray& filter,
-                      const SpatialArray& stride, const SpatialArray& padding,
-                      DataType dtype, int device_id, bool has_side_input,
+                      const SpatialArray& dilation, const SpatialArray& stride,
+                      const SpatialArray& padding, DataType dtype,
+                      int device_id, bool has_side_input,
                       ActivationMode activation_mode)
-      : ConvParameters(batch, in_depths, in, out_depths, filter, stride,
-                       padding, dtype, device_id),
+      : ConvParameters(batch, in_depths, in, out_depths, filter, dilation,
+                       stride, padding, dtype, device_id),
         activation_mode_(activation_mode),
         has_side_input_(has_side_input) {
     hash_code_ = Hash64Combine(hash_code_, has_side_input);
@@ -71,4 +72,4 @@ class FusedConvParameters : public ConvParameters {
 
 #endif  // GOOGLE_CUDA
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_FUSED_CONV_KERNELS_FUSED_CONV_OPS_GPU_H_
+#endif  // TENSORFLOW_CONTRIB_FUSED_CONV_KERNELS_FUSED_CONV_OPS_GPU_H_

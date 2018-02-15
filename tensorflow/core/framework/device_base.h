@@ -145,6 +145,12 @@ class DeviceBase {
     return gpu_device_info_;
   }
 
+  // The preferred thread pool for this device. If it is nullptr, the system
+  // automatically assigns a thread pool for execution.
+  virtual thread::ThreadPool* tensorflow_device_thread_pool() {
+    return device_thread_pool_;
+  }
+
   // Does not take ownership.
   void set_eigen_cpu_device(Eigen::ThreadPoolDevice* d) {
     eigen_cpu_device_ = d;
@@ -215,10 +221,17 @@ class DeviceBase {
     return errors::Internal("Device does not implement MakeTensorFromProto()");
   }
 
+ protected:
+  // Does not take ownership.
+  void set_tensorflow_device_thread_pool(thread::ThreadPool* thread_pool) {
+    device_thread_pool_ = thread_pool;
+  }
+
  private:
   Env* const env_;
   CpuWorkerThreads* cpu_worker_threads_ = nullptr;
   GpuDeviceInfo* gpu_device_info_ = nullptr;
+  thread::ThreadPool* device_thread_pool_ = nullptr;
   Eigen::ThreadPoolDevice* eigen_cpu_device_ = nullptr;
 #ifdef TENSORFLOW_USE_SYCL
   Eigen::SyclDevice* eigen_sycl_device_ = nullptr;

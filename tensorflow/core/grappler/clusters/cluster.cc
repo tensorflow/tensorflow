@@ -23,8 +23,7 @@ Cluster::Cluster(int timeout_s) : timeout_s_(timeout_s) {
   DisableDetailedStats(false);
 }
 
-Cluster::~Cluster() {
-}
+Cluster::~Cluster() {}
 
 void Cluster::AllowSoftPlacement(bool soft_placement_state) {
   options_.config.set_allow_soft_placement(soft_placement_state);
@@ -33,6 +32,10 @@ void Cluster::AllowSoftPlacement(bool soft_placement_state) {
 void Cluster::SetNumWarmupSteps(int num_steps) {
   options_.config.mutable_graph_options()->set_build_cost_model_after(
       num_steps);
+}
+
+int Cluster::NumWarmupSteps() const {
+  return options_.config.graph_options().build_cost_model_after();
 }
 
 void Cluster::DisableDetailedStats(bool disable) {

@@ -312,8 +312,7 @@ __global__ void ColumnReduceKernel(
   int col = blockIdx.x * 32 + threadIdx.x;
 
   value_type sum = initVal;
-  if (row < num_rows && col < num_cols)
-    sum = in[row * num_cols + col];
+  if (row < num_rows && col < num_cols) sum = in[row * num_cols + col];
 
   // 1D array necessary due to bug in CUDA 9 compiler.
   // TODO(nluehr) revert to 2D array when compiler is ready.
@@ -366,8 +365,7 @@ __global__ void CleanupSegments(
   const int tid = threadIdx.x + blockIdx.x * blockDim.x;
 
   value_type val = initVal;
-  if (tid < segment_size * num_cols)
-    val = partial_sums[tid];
+  if (tid < segment_size * num_cols) val = partial_sums[tid];
 
   typedef cub::WarpReduce<value_type> WarpReduce;
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
+#ifndef TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
+#define TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
 
 #ifdef TENSORFLOW_USE_VERBS
 
@@ -38,6 +38,7 @@ class RdmaMgr {
   RdmaChannel* FindChannel(const string& key);
   void SetupChannels();
   bool ConnectivityCheck();
+  void InitAllocators();
   const string& local_worker() { return local_worker_; }
 
  private:
@@ -54,4 +55,4 @@ class RdmaMgr {
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_USE_VERBS
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_
+#endif  // TENSORFLOW_CONTRIB_VERBS_RDMA_MGR_H_

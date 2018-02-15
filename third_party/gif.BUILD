@@ -21,7 +21,7 @@ cc_library(
     ],
     hdrs = ["lib/gif_lib.h"],
     defines = select({
-        #"@%ws%//tensorflow:android": [
+        #"@org_tensorflow//tensorflow:android": [
         ":android": [
             "S_IREAD=S_IRUSR",
             "S_IWRITE=S_IWUSR",

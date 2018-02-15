@@ -42,10 +42,13 @@ The pruning library allows for specification of the following hyper parameters:
 | name | string | model_pruning | Name of the pruning specification. Used for adding summaries and ops under a common tensorflow name_scope |
 | begin_pruning_step | integer | 0 | The global step at which to begin pruning |
 | end_pruning_step   | integer | -1 | The global step at which to terminate pruning. Defaults to -1 implying that pruning continues till  the training stops |
-| do_not_prune | list of strings | [""] | list of layers strings that are not pruned |
+| do_not_prune | list of strings | [""] | list of layers names that are not pruned |
 | threshold_decay | float | 0.9 | The decay factor to use for exponential decay of the thresholds |
 | pruning_frequency | integer | 10 | How often should the masks be updated? (in # of global_steps) |
 | nbins | integer | 255 | Number of bins to use for histogram computation |
+| block_height|integer | 1 | Number of rows in a block for block sparse matrices|
+| block_width |integer | 1 | Number of cols in a block for block sparse matrices|
+| block_pooling_function| string | AVG | The function to use to pool weight values in a block: average (AVG) or max (MAX)|
 | initial_sparsity | float | 0.0 | Initial sparsity value |
 | target_sparsity | float | 0.5 | Target sparsity value |
 | sparsity_function_begin_step | integer | 0 | The global step at this which the gradual sparsity function begins to take effect |
@@ -128,3 +131,12 @@ Eval:
 ```shell
 $ bazel-bin/$examples_dir/cifar10/cifar10_eval --run_once
 ```
+
+### Block Sparsity
+
+For some hardware architectures, it may be beneficial to induce spatially correlated sparsity. To train models in which the weight tensors have block sparse structure, set *block_height* and *block_width* hyperparameters to the desired block configuration (2x2, 4x4, 4x1, 1x8, etc). Currently, block sparsity is supported for weight tensors with rank 2 only. The matrix is partitioned into non-overlapping blocks of size *[block_height, block_dim]* and the either the average or max absolute value in this block is taken as a proxy for the entire block (set by *block_pooling_function* hyperparameter).
+The convolution layer tensors are always pruned used block dimensions of [1,1].
+
+## References
+
+Michael Zhu and Suyog Gupta, “To prune, or not to prune: exploring the efficacy of pruning for model compression”, *2017 NIPS Workshop on Machine Learning of Phones and other Consumer Devices* (https://arxiv.org/pdf/1710.01878.pdf)

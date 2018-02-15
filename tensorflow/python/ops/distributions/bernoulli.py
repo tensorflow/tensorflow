@@ -29,8 +29,10 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("distributions.Bernoulli")
 class Bernoulli(distribution.Distribution):
   """Bernoulli distribution.
 
@@ -163,26 +165,6 @@ class Bernoulli(distribution.Distribution):
   def _mode(self):
     """Returns `1` if `prob > 0.5` and `0` otherwise."""
     return math_ops.cast(self.probs > 0.5, self.dtype)
-
-
-class BernoulliWithSigmoidProbs(Bernoulli):
-  """Bernoulli with `probs = nn.sigmoid(logits)`."""
-
-  def __init__(self,
-               logits=None,
-               dtype=dtypes.int32,
-               validate_args=False,
-               allow_nan_stats=True,
-               name="BernoulliWithSigmoidProbs"):
-    parameters = locals()
-    with ops.name_scope(name):
-      super(BernoulliWithSigmoidProbs, self).__init__(
-          probs=nn.sigmoid(logits, name="sigmoid_probs"),
-          dtype=dtype,
-          validate_args=validate_args,
-          allow_nan_stats=allow_nan_stats,
-          name=name)
-    self._parameters = parameters
 
 
 @kullback_leibler.RegisterKL(Bernoulli, Bernoulli)

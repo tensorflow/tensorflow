@@ -42,8 +42,6 @@ source "tensorflow/tools/ci_build/windows/bazel/common_env.sh" \
 source "tensorflow/tools/ci_build/windows/bazel/bazel_test_lib.sh" \
   || { echo "Failed to source bazel_test_lib.sh" >&2; exit 1; }
 
-clean_output_base
-
 run_configure_for_cpu_build
 
 # Compliling the following test is extremely slow with -c opt
@@ -54,5 +52,5 @@ passing_tests=$(bazel query "kind(cc_test, //tensorflow/cc/... + //tensorflow/co
   # We need to strip \r so that the result could be store into a variable under MSYS
   tr '\r' ' ')
 
-bazel test $BUILD_OPTS -k $slow_compiling_test --test_output=errors
-bazel test -c opt $BUILD_OPTS -k $passing_tests --test_output=errors
+bazel test -k $slow_compiling_test --test_output=errors
+bazel test -c opt -k $passing_tests --test_output=errors

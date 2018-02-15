@@ -60,7 +60,6 @@ mkl_repository = repository_rule(
     ],
     attrs = {
         "build_file": attr.label(),
-        "repository": attr.string(),
         "urls": attr.string_list(default = []),
         "sha256": attr.string(default = ""),
         "strip_prefix": attr.string(default = ""),

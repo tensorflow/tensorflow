@@ -44,13 +44,14 @@ namespace xla {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
-  explicit Executable(std::unique_ptr<const HloModule> hlo_module,
-                      std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
-                      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
+  explicit Executable(
+      std::unique_ptr<const HloModule> hlo_module,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
       : hlo_module_(std::move(hlo_module)),
-        hlo_profile_printer_(std::move(hlo_profile_printer)),
+        hlo_profile_printer_data_(std::move(hlo_profile_printer_data)),
         hlo_profile_index_map_(std::move(hlo_profile_index_map)) {
-    CHECK_EQ(hlo_profile_printer_.get() == nullptr,
+    CHECK_EQ(hlo_profile_printer_data_.get() == nullptr,
              hlo_profile_index_map_.get() == nullptr);
   }
   virtual ~Executable() {}
@@ -61,16 +62,7 @@ class Executable {
   // If the hlo_execution_profile is provided as non-nullptr, profiling will be
   // enabled.
   //
-  // Returns the device memory region that a successful execution would
-  // populate.
-  virtual StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteOnStream(
-      const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments,
-      HloExecutionProfile* hlo_execution_profile) = 0;
-
-  // Overload of ExecuteOnStream which returns and takes arguments as
-  // ShapedBuffers. Used for LocalService execution.
+  // Returns a shaped buffer containing the result of the computation.
   virtual StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStream(
       const ServiceExecutableRunOptions* run_options,
       tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
@@ -78,21 +70,19 @@ class Executable {
 
   // Same as ExecuteOnStream(), but this call is non-blocking and returns as
   // soon as all of the operations are enqueued for launch on the stream.
-  virtual StatusOr<perftools::gputools::DeviceMemoryBase> ExecuteAsyncOnStream(
+  virtual StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteAsyncOnStream(
       const ServiceExecutableRunOptions* run_options,
-      tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-          arguments) = 0;
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) = 0;
 
   // Same as ExecuteOnStream(), but runs this executable on multiple
   // streams. arguments[i] contains the arguments to the execution on
   // run_options[i]->stream() and the returned value is at index i of the
   // returned vector.
-  virtual StatusOr<std::vector<perftools::gputools::DeviceMemoryBase>>
-  ExecuteOnStreams(
+  virtual StatusOr<std::vector<std::unique_ptr<ShapedBuffer>>> ExecuteOnStreams(
       tensorflow::gtl::ArraySlice<const ServiceExecutableRunOptions>
           run_options,
       tensorflow::gtl::ArraySlice<
-          tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>>
+          tensorflow::gtl::ArraySlice<const ShapedBuffer*>>
           arguments);
 
   // Populates `hlo_execution_profile` from `executor`. This is implicit in any
@@ -107,13 +97,10 @@ class Executable {
 
   // Convenience wrapper for calling Executable::ExecuteOnStream. Sets up a
   // timer for the execution, sets up HLO profiling if enabled, and fills in the
-  // given ExecutionProfile if non-null.  The ExecuteOnStream overloads have
-  // different argument types and return types, so this method is templated on
-  // argument type and return type of the execute function.
-  template <typename ReturnT, typename ArgT>
-  StatusOr<ReturnT> ExecuteOnStreamWrapper(
+  // given ExecutionProfile if non-null.
+  StatusOr<std::unique_ptr<ShapedBuffer>> ExecuteOnStreamWrapper(
       const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
-      const ArgT& arguments);
+      tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments);
 
   // Returns the ExecutionProfile from executing on the device. This includes
   // the number of cycles taken for the computation or the compilation time.
@@ -130,9 +117,9 @@ class Executable {
         "Equality test on this executable is not implemented.");
   }
 
-  const HloProfilePrinter& hlo_profile_printer() const {
+  const HloProfilePrinterData& hlo_profile_printer_data() const {
     CHECK(hlo_profiling_enabled());
-    return *hlo_profile_printer_;
+    return *hlo_profile_printer_data_;
   }
 
   const HloProfileIndexMap& hlo_profile_index_map() const {
@@ -143,7 +130,9 @@ class Executable {
   // Returns whether this executable was compiled with HLO profilings support
   // enabled. If not, the caller should not expect an hlo_execution_profile
   // passed to ExecuteOnStream above to be populated during execution.
-  bool hlo_profiling_enabled() const { return hlo_profile_printer_ != nullptr; }
+  bool hlo_profiling_enabled() const {
+    return hlo_profile_printer_data_ != nullptr;
+  }
 
   const HloModule& module() const { return *hlo_module_; }
 
@@ -193,69 +182,9 @@ class Executable {
   // execution.
   int64 execution_count_ = 0;
 
-  std::unique_ptr<HloProfilePrinter> hlo_profile_printer_;
+  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map_;
 };
-
-template <typename ReturnT, typename ArgT>
-StatusOr<ReturnT> Executable::ExecuteOnStreamWrapper(
-    const ServiceExecutableRunOptions* run_options, ExecutionProfile* profile,
-    const ArgT& arguments) {
-  perftools::gputools::Stream* stream = run_options->stream();
-  std::unique_ptr<perftools::gputools::Timer> timer;
-  if (profile != nullptr) {
-    timer.reset(new perftools::gputools::Timer(stream->parent()));
-    stream->InitTimer(timer.get()).ThenStartTimer(timer.get());
-  }
-
-  VLOG(1) << "enqueueing executable on stream...";
-  // If the profiling flag isn't enabled, we pass nullptr as the profile to
-  // indicate profiling is not requested.
-  std::unique_ptr<HloExecutionProfile> profile_ptr =
-      module_config().debug_options().xla_hlo_profile() &&
-              hlo_profiling_enabled()
-          ? MakeUnique<HloExecutionProfile>(&hlo_profile_printer(),
-                                            &hlo_profile_index_map())
-          : nullptr;
-
-  auto return_value =
-      ExecuteOnStream(run_options, arguments, profile_ptr.get());
-
-  if (profile != nullptr) {
-    VLOG(1) << "enqueueing 'stop timer' and blocking host until done...";
-    stream->ThenStopTimer(timer.get()).BlockHostUntilDone();
-    VLOG(1) << "done with block-host-until-done";
-
-    // Merge in run-time profile information from execution_profile.
-    profile->MergeFrom(execution_profile());
-
-    // Overall execution time (in nanoseconds) from the executor timer.
-    profile->set_compute_and_transfer_time_ns(timer->Nanoseconds());
-
-    // TODO(b/28123297): On GPU we end up including transfer time in
-    // the compute time this way. Instead, we should get the correct
-    // value by measuring it. Setting the field here at least lets
-    // benchmarks provide *some* value for GPU computations.
-    //
-    // TODO(b/28447609): The value in compute_and_transfer_time_ns is actually
-    // the compute time without the transfer time, so this way we get the
-    // correct compute time. We should instead have the correct value for
-    // compute_and_transfer_time and set compute_time to the compute time.
-    if (profile->compute_time_ns() == 0) {
-      profile->set_compute_time_ns(profile->compute_and_transfer_time_ns());
-    }
-  }
-
-  if (profile_ptr != nullptr) {
-    XLA_LOG_LINES(
-        tensorflow::INFO,
-        profile_ptr->ToString(stream->parent()->GetDeviceDescription()));
-    hlo_graph_dumper::MaybeDumpHloModule(module(), "Service::Execute",
-                                         profile_ptr.get());
-  }
-
-  return return_value;
-}
 
 }  // namespace xla
 

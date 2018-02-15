@@ -1,8 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "py_test", "tf_cc_binary")
 load("//tensorflow:tensorflow.bzl", "cuda_py_test")
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
@@ -110,6 +109,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:random_ops",
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
@@ -144,6 +144,7 @@ cuda_py_test(
         ":test",
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:math_ops",
+        "//tensorflow/python:resource_variable_ops",
     ],
 )
 
@@ -202,29 +203,6 @@ cc_library(
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/python:python_op_gen",
-    ],
-)
-
-cc_library(
-    name = "python_eager_op_gen_main",
-    srcs = [
-        "python_eager_op_gen_main.cc",
-    ],
-    visibility = ["//visibility:public"],
-    deps = [
-        ":python_eager_op_gen",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:op_gen_lib",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-tf_cc_binary(
-    name = "python_eager_op_gen_demo",
-    deps = [
-        ":python_eager_op_gen_main",
-        "//tensorflow/core:ops",
     ],
 )
 
@@ -415,8 +393,25 @@ cuda_py_test(
         "//tensorflow/python:layers",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
+    ],
+)
+
+py_test(
+    name = "pywrap_tfe_test",
+    srcs = ["pywrap_tfe_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":backprop",
+        ":context",
+        ":test",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:pywrap_tensorflow",
+        "//tensorflow/python:random_ops",
+        "//third_party/py/numpy",
     ],
 )
 

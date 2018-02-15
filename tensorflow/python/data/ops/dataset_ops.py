@@ -40,9 +40,11 @@ from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_io_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
-from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("data.Dataset")
 class Dataset(object):
   """Represents a potentially large set of elements.
 
@@ -201,7 +203,7 @@ class Dataset(object):
       tensors: A nested structure of tensors.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return TensorDataset(tensors)
 
@@ -214,11 +216,12 @@ class Dataset(object):
         0th dimension.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return TensorSliceDataset(tensors)
 
   @staticmethod
+  @deprecation.deprecated(None, "Use `tf.data.Dataset.from_tensor_slices()`.")
   def from_sparse_tensor_slices(sparse_tensor):
     """Splits each rank-N `tf.SparseTensor` in this dataset row-wise.
 
@@ -226,7 +229,7 @@ class Dataset(object):
       sparse_tensor: A `tf.SparseTensor`.
 
     Returns:
-      A `Dataset` of rank-(N-1) sparse tensors.
+      Dataset: A `Dataset` of rank-(N-1) sparse tensors.
     """
     return SparseTensorSliceDataset(sparse_tensor)
 
@@ -285,6 +288,23 @@ class Dataset(object):
     sess.run(value)  # (2, array([1, 1]))
     ```
 
+    NOTE: The current implementation of `Dataset.from_generator()` uses
+    @{tf.py_func} and inherits the same constraints. In particular, it
+    requires the `Dataset`- and `Iterator`-related operations to be placed
+    on a device in the same process as the Python program that called
+    `Dataset.from_generator()`. The body of `generator` will not be
+    serialized in a `GraphDef`, and you should not use this method if you
+    need to serialize your model and restore it in a different environment.
+
+    NOTE: If `generator` depends on mutable global variables or other external
+    state, be aware that the runtime may invoke `generator` multiple times
+    (in order to support repeating the `Dataset`) and at any time
+    between the call to `Dataset.from_generator()` and the production of the
+    first element from the generator. Mutating global variables or external
+    state can cause undefined behavior, and we recommend that you explicitly
+    cache any external state in `generator` before calling
+    `Dataset.from_generator()`.
+
     Args:
       generator: A callable object that takes no arguments and returns an
         object that supports the `iter()` protocol.
@@ -295,7 +315,7 @@ class Dataset(object):
         `generator`.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     if not callable(generator):
       raise TypeError("`generator` must be callable.")
@@ -438,7 +458,7 @@ class Dataset(object):
         len(args) == 3 -> start = args[0], stop = args[1, stop = args[2]
 
     Returns:
-      A `RangeDataset`.
+      Dataset: A `RangeDataset`.
 
     Raises:
       ValueError: if len(args) == 0.
@@ -482,7 +502,7 @@ class Dataset(object):
       datasets: A nested structure of datasets.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return ZipDataset(datasets)
 
@@ -508,7 +528,7 @@ class Dataset(object):
       dataset: `Dataset` to be concatenated.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return ConcatenateDataset(self, dataset)
 
@@ -520,7 +540,7 @@ class Dataset(object):
         maximum number elements that will be buffered when prefetching.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return PrefetchDataset(self, buffer_size)
 
@@ -538,12 +558,14 @@ class Dataset(object):
         - /path/to/dir/b.py
         - /path/to/dir/c.py
 
+    NOTE: The order of the file names returned can be non-deterministic.
+
     Args:
       file_pattern: A string or scalar string `tf.Tensor`, representing
         the filename pattern that will be matched.
 
     Returns:
-     A `Dataset` of strings corresponding to file names.
+     Dataset: A `Dataset` of strings corresponding to file names.
     """
     return Dataset.from_tensor_slices(gen_io_ops.matching_files(file_pattern))
 
@@ -560,7 +582,7 @@ class Dataset(object):
         indefinitely.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return RepeatDataset(self, count)
 
@@ -584,7 +606,7 @@ class Dataset(object):
         iterated over. (Defaults to `True`.)
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return ShuffleDataset(self, buffer_size, seed, reshuffle_each_iteration)
 
@@ -597,7 +619,7 @@ class Dataset(object):
         If a filename is not provided, the dataset will be cached in memory.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return CacheDataset(self, filename)
 
@@ -611,7 +633,7 @@ class Dataset(object):
         dataset, the new dataset will contain all elements of this dataset.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return TakeDataset(self, count)
 
@@ -626,7 +648,7 @@ class Dataset(object):
         is -1, skips the entire dataset.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return SkipDataset(self, count)
 
@@ -673,7 +695,7 @@ class Dataset(object):
       index: A `tf.int64` scalar `tf.Tensor`, representing the worker index.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
 
     Raises:
       ValueError: if `num_shards` or `index` are illegal values. Note: error
@@ -706,12 +728,18 @@ class Dataset(object):
   def batch(self, batch_size):
     """Combines consecutive elements of this dataset into batches.
 
+    NOTE: If the number of elements (`N`) in this dataset is not an exact
+    multiple of `batch_size`, the final batch contain smaller tensors with
+    shape `N % batch_size` in the batch dimension. If your program depends on
+    the batches having the same shape, consider using the
+    @{tf.contrib.data.batch_and_drop_remainder} transformation instead.
+
     Args:
       batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
         consecutive elements of this dataset to combine in a single batch.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return BatchDataset(self, batch_size)
 
@@ -740,12 +768,12 @@ class Dataset(object):
         the empty string for string types.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return PaddedBatchDataset(self, batch_size, padded_shapes, padding_values)
 
   def map(self, map_func, num_parallel_calls=None):
-    """Maps `map_func` across this datset.
+    """Maps `map_func` across this dataset.
 
     Args:
       map_func: A function mapping a nested structure of tensors (having
@@ -756,7 +784,7 @@ class Dataset(object):
         specified, elements will be processed sequentially.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     if num_parallel_calls is None:
       return MapDataset(self, map_func)
@@ -772,7 +800,7 @@ class Dataset(object):
         `Dataset`.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return FlatMapDataset(self, map_func)
 
@@ -785,7 +813,7 @@ class Dataset(object):
     ```python
     # Preprocess 4 files concurrently, and interleave blocks of 16 records from
     # each file.
-    filenames = ["/var/data/file1.txt", "/var/data/file2.txt", ..."]
+    filenames = ["/var/data/file1.txt", "/var/data/file2.txt", ...]
     dataset = (Dataset.from_tensor_slices(filenames)
                .interleave(lambda x:
                    TextLineDataset(x).map(parse_fn, num_parallel_calls=1),
@@ -841,7 +869,7 @@ class Dataset(object):
         input element before cycling to another input element.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return InterleaveDataset(self, map_func, cycle_length, block_length)
 
@@ -854,7 +882,7 @@ class Dataset(object):
         scalar `tf.bool` tensor.
 
     Returns:
-      A `Dataset`.
+      Dataset: A `Dataset`.
     """
     return FilterDataset(self, predicate)
 
@@ -875,10 +903,11 @@ class Dataset(object):
 
     Args:
       transformation_func: A function that takes one `Dataset` argument and
-        returns a `Dataset`.
+          returns a `Dataset`.
 
     Returns:
-      The `Dataset` returned by applying `transformation_func` to this dataset.
+      Dataset: The `Dataset` returned by applying `transformation_func` to this
+          dataset.
     """
     dataset = transformation_func(self)
     if not isinstance(dataset, Dataset):
@@ -944,11 +973,7 @@ class TensorSliceDataset(Dataset):
     batch_dim = flat_tensors[0].get_shape()[0]
     for t in flat_tensors[1:]:
       batch_dim.assert_is_compatible_with(t.get_shape()[0])
-    self._tensors = nest.pack_sequence_as(tensors, [
-        sparse_ops.serialize_many_sparse(tensor)
-        if sparse_tensor_lib.is_sparse(tensor) else tensor
-        for tensor in nest.flatten(tensors)
-    ])
+    self._tensors = sparse.serialize_many_sparse_tensors(tensors)
     self._output_classes = sparse.get_classes(tensors)
     self._output_shapes = nest.pack_sequence_as(
         tensors, [t.get_shape()[1:] for t in nest.flatten(tensors)])
@@ -1233,7 +1258,26 @@ class ShuffleDataset(Dataset):
                buffer_size,
                seed=None,
                reshuffle_each_iteration=None):
-    """See `Dataset.shuffle()` for details."""
+    """Randomly shuffles the elements of this dataset.
+
+    Args:
+      input_dataset: The input dataset.
+      buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
+        number of elements from this dataset from which the new
+        dataset will sample.
+      seed: (Optional.) A `tf.int64` scalar `tf.Tensor`, representing the
+        random seed that will be used to create the distribution. See
+        @{tf.set_random_seed} for behavior.
+      reshuffle_each_iteration: (Optional.) A boolean, which if true indicates
+        that the dataset should be pseudorandomly reshuffled each time it is
+        iterated over. (Defaults to `True`.)
+
+    Returns:
+      A `Dataset`.
+
+    Raises:
+      ValueError: if invalid arguments are provided.
+    """
     super(ShuffleDataset, self).__init__()
     self._input_dataset = input_dataset
     self._buffer_size = ops.convert_to_tensor(
@@ -1415,6 +1459,19 @@ def _padding_value_to_tensor(value, output_type):
   return value
 
 
+def _default_padding(input_dataset):
+
+  def make_zero(t):
+    if t.base_dtype == dtypes.string:
+      return ""
+    elif t.base_dtype == dtypes.variant:
+      raise TypeError("Unable to create padding for field of type 'variant'")
+    else:
+      return np.zeros_like(t.as_numpy_dtype())
+
+  return nest.map_structure(make_zero, input_dataset.output_types)
+
+
 class PaddedBatchDataset(Dataset):
   """A `Dataset` that batches and pads contiguous elements from its input."""
 
@@ -1430,22 +1487,12 @@ class PaddedBatchDataset(Dataset):
         batch_size, dtype=dtypes.int64, name="batch_size")
     padding_values = (
         padding_values
-        if padding_values is not None else self._default_padding(input_dataset))
+        if padding_values is not None else _default_padding(input_dataset))
     self._padded_shapes = nest.map_structure_up_to(
         input_dataset.output_shapes, _partial_shape_to_tensor, padded_shapes)
     self._padding_values = nest.map_structure_up_to(
         input_dataset.output_shapes, _padding_value_to_tensor, padding_values,
         input_dataset.output_types)
-
-  def _default_padding(self, input_dataset):
-
-    def make_zero(t):
-      if t.base_dtype == dtypes.string:
-        return ""
-      else:
-        return np.zeros_like(t.as_numpy_dtype())
-
-    return nest.map_structure(make_zero, input_dataset.output_types)
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.padded_batch_dataset(

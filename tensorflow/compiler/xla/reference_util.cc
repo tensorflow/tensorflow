@@ -195,14 +195,26 @@ ReferenceUtil::ReduceWindow1DGeneric(
     const tensorflow::gtl::ArraySlice<int64>& window,
     const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
   std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
-  auto padding_both = xla::MakePadding(dim_lengths, window, stride, padding);
+  return ReduceWindow1DGeneric(
+      operand, init, reduce_func, window, stride,
+      xla::MakePadding(dim_lengths, window, stride, padding));
+}
 
+/* static  */ std::unique_ptr<std::vector<float>>
+ReferenceUtil::ReduceWindow1DGeneric(
+    const tensorflow::gtl::ArraySlice<float>& operand, float init,
+    const std::function<float(float, float)>& reduce_func,
+    const tensorflow::gtl::ArraySlice<int64>& window,
+    const tensorflow::gtl::ArraySlice<int64>& stride,
+    const tensorflow::gtl::ArraySlice<std::pair<int64, int64>>& padding) {
+  std::vector<int64> dim_lengths{static_cast<int64>(operand.size())};
   std::vector<int64> window_counts(window.size(), 0);
   std::vector<int64> pad_low(window.size(), 0);
   for (int64 i = 0; i < window.size(); ++i) {
+    int64 padded_width = padding[i].first + dim_lengths[i] + padding[i].second;
     window_counts[i] =
-        WindowCount(dim_lengths[i], window[i], stride[i], padding);
-    pad_low[i] = padding_both[i].first;
+        window_util::StridedBound(padded_width, window[i], stride[i]);
+    pad_low[i] = padding[i].first;
   }
   auto result = MakeUnique<std::vector<float>>(window_counts[0]);
 
@@ -264,6 +276,51 @@ ReferenceUtil::ReduceWindow1DAdd(
         }
       }
       (*result)(i0, i1) = val;
+    }
+  }
+  return result;
+}
+
+/* static  */ std::unique_ptr<Array3D<float>> ReferenceUtil::ReduceWindow3DAdd(
+    const Array3D<float>& operand, float init,
+    const tensorflow::gtl::ArraySlice<int64>& window,
+    const tensorflow::gtl::ArraySlice<int64>& stride, Padding padding) {
+  std::vector<int64> dim_lengths{operand.n1(), operand.n2(), operand.n3()};
+  auto padding_both = xla::MakePadding(dim_lengths, window, stride, padding);
+
+  std::vector<int64> window_counts(window.size(), 0);
+  std::vector<int64> pad_low(window.size(), 0);
+  for (int64 i = 0; i < window.size(); ++i) {
+    window_counts[i] =
+        WindowCount(dim_lengths[i], window[i], stride[i], padding);
+    pad_low[i] = padding_both[i].first;
+  }
+  auto result = MakeUnique<Array3D<float>>(window_counts[0], window_counts[1],
+                                           window_counts[2]);
+
+  for (int64 i0 = 0; i0 < window_counts[0]; ++i0) {
+    for (int64 i1 = 0; i1 < window_counts[1]; ++i1) {
+      for (int64 i2 = 0; i2 < window_counts[2]; ++i2) {
+        int64 i0_base = i0 * stride[0] - pad_low[0];
+        int64 i1_base = i1 * stride[1] - pad_low[1];
+        int64 i2_base = i2 * stride[2] - pad_low[2];
+
+        float val = init;
+        for (int64 i0_win = 0; i0_win < window[0]; ++i0_win) {
+          for (int64 i1_win = 0; i1_win < window[1]; ++i1_win) {
+            for (int64 i2_win = 0; i2_win < window[2]; ++i2_win) {
+              if (i0_base + i0_win >= 0 && i1_base + i1_win >= 0 &&
+                  i2_base + i2_win >= 0 && i0_base + i0_win < operand.n1() &&
+                  i1_base + i1_win < operand.n2() &&
+                  i2_base + i2_win < operand.n3()) {
+                val += operand(i0_base + i0_win, i1_base + i1_win,
+                               i2_base + i2_win);
+              }
+            }
+          }
+        }
+        (*result)(i0, i1, i2) = val;
+      }
     }
   }
   return result;
@@ -520,7 +577,7 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
 
   HloEvaluator evaluator;
   std::unique_ptr<Literal> result_literal =
-      evaluator.Evaluate(*computation, {}).ConsumeValueOrDie();
+      evaluator.Evaluate<const Literal*>(*computation, {}).ConsumeValueOrDie();
 
   CHECK_EQ(ShapeUtil::Rank(result_literal->shape()), 4);
   auto result =
@@ -594,8 +651,12 @@ ReferenceUtil::ReduceToRowArray2D(
                    i2 == 0 || (dim_set.count(2) && i2 < array.n3()); ++i2) {
                 for (int64 i3 = 0;
                      i3 == 0 || (dim_set.count(3) && i3 < array.n4()); ++i3) {
-                  accumulator = reduce_function(
-                      accumulator, array(a0 + i0, a1 + i1, a2 + i2, a3 + i3));
+                  // Handle zero-sized arrays.
+                  if (array.n1() > 0 && array.n2() > 0 && array.n3() > 0 &&
+                      array.n4() > 0) {
+                    accumulator = reduce_function(
+                        accumulator, array(a0 + i0, a1 + i1, a2 + i2, a3 + i3));
+                  }
                 }
               }
             }

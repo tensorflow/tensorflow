@@ -18,7 +18,6 @@ cmake_policy(SET CMP0022 NEW)
 
 # Options
 option(tensorflow_VERBOSE "Enable for verbose output" OFF)
-option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
 option(tensorflow_ENABLE_SSL_SUPPORT "Enable boringssl support" OFF)
 option(tensorflow_ENABLE_GRPC_SUPPORT "Enable gRPC support" ON)
 option(tensorflow_ENABLE_HDFS_SUPPORT "Enable HDFS support" OFF)
@@ -34,6 +33,13 @@ option(tensorflow_BUILD_SHARED_LIB "Build TensorFlow as a shared library" OFF)
 option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for the native processor architecture (if available)" ON)
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions")
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
+option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
+
+# GPU, CUDA and cuDNN options
+option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
+set(tensorflow_CUDA_VERSION "9.0" CACHE STRING "CUDA version to build against")
+set(tensorflow_CUDNN_VERSION "7" CACHE STRING "cuDNN version to build against")
+
 if(HAIKU)
 	option(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE "Enable PIE support" OFF)
 else()
@@ -46,6 +52,7 @@ if (NOT WIN32)
   # for targets that link ${CMAKE_THREAD_LIBS_INIT}.
   find_package (Threads)
 
+  # Options for linking CUDA/CUDNN libraries
   option(tensorflow_PATH_STATIC_LIB "Additional library search path for libcudnn_static.a, libnccl_static.a, libculibos.a" /usr/local/cuda/lib64/)
   option(tensorflow_CUDNN_INCLUDE "cudnn.h header install path" /usr/include/)
   if (NOT tensorflow_CUDNN_INCLUDE)
@@ -53,12 +60,28 @@ if (NOT WIN32)
     set(tensorflow_CUDNN_INCLUDE /usr/include)
   endif (NOT tensorflow_CUDNN_INCLUDE)
   option(tensorflow_PATH_CUDNN_STATIC_LIB "Override PATH_STATIC_LIB for libcudnn_static.a" ${tensorflow_PATH_STATIC_LIB})
+  if (NOT tensorflow_PATH_CUDNN_STATIC_LIB)
+    # option's default value is OFF. Fill it with real default values
+    set (tensorflow_PATH_CUDNN_STATIC_LIB ${tensorflow_PATH_STATIC_LIB})
+  endif (NOT tensorflow_PATH_CUDNN_STATIC_LIB)
   option(tensorflow_PATH_NCCL_STATIC_LIB "Override PATH_STATIC_LIB for libnccl_static.a" ${tensorflow_PATH_STATIC_LIB})
+  if (NOT tensorflow_PATH_NCCL_STATIC_LIB)
+    # option's default value is OFF. Fill it with real default values
+    set (tensorflow_PATH_NCCL_STATIC_LIB ${tensorflow_PATH_STATIC_LIB})
+  endif (NOT tensorflow_PATH_NCCL_STATIC_LIB)
   option(tensorflow_CUDA_LIBRARY_PATH "Designate the default CUDA library paths" /usr/local/cuda/lib64)
   if (NOT tensorflow_CUDA_LIBRARY_PATH)
     # option's default value is OFF. Fill it with real default values
     set(tensorflow_CUDA_LIBRARY_PATH /usr/local/cuda/lib64)
   endif (NOT tensorflow_CUDA_LIBRARY_PATH)
+
+  # Options for linking other libraries
+  option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
+
+  option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
+  if (systemlib_ALL)
+    set (systmelib_ZLIB ON)
+  endif (systemlib_ALL)
 endif()
 
 if (WIN32)
@@ -92,6 +115,13 @@ else()
 	set(CMAKE_POSITION_INDEPENDENT_CODE OFF)
 endif()
 
+# TODO(jart): We should make this only apply to snapfn.cc
+add_definitions(-DSQLITE_OMIT_LOAD_EXTENSION)
+
+if (tensorflow_DISABLE_EIGEN_FORCEINLINE)
+  add_definitions(-DEIGEN_STRONG_INLINE=inline)
+endif()
+
 add_definitions(-DEIGEN_AVOID_STL_ARRAY)
 if(WIN32)
   add_definitions(-DNOMINMAX -D_WIN32_WINNT=0x0A00 -DLANG_CXX11 -DCOMPILER_MSVC)
@@ -113,6 +143,9 @@ if(WIN32)
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /D_ITERATOR_DEBUG_LEVEL=0")
+
+  # Try to avoid flaky failures due to failed generation of generate.stamp files.
+  set(CMAKE_SUPPRESS_REGENERATION ON)
 endif()
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -160,13 +193,14 @@ include(protobuf)
 include(re2)
 include(cub)
 include(sqlite)
-include(double_conversion)
 if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
 
+add_definitions(${ADD_CFLAGS})
+link_directories(${ADD_LINK_DIRECTORY})
+
 set(tensorflow_EXTERNAL_LIBRARIES
-    ${zlib_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
@@ -179,8 +213,16 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${protobuf_STATIC_LIBRARIES}
     ${re2_STATIC_LIBRARIES}
     ${sqlite_STATIC_LIBRARIES}
-    ${double_conversion_STATIC_LIBRARIES}
 )
+
+if (systemlib_ZLIB)
+  set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+      ${ZLIB_LIBRARIES})
+else (systemlib_ZLIB)
+  set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+    ${zlib_STATIC_LIBRARIES})
+endif (systemlib_ZLIB)
+
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
     gif_copy_headers_to_destination
@@ -198,7 +240,6 @@ set(tensorflow_EXTERNAL_DEPENDENCIES
     fft2d
     re2
     sqlite_copy_headers_to_destination
-    double_conversion
 )
 
 include_directories(
@@ -221,7 +262,6 @@ include_directories(
     ${PROTOBUF_INCLUDE_DIRS}
     ${re2_INCLUDE_DIR}
     ${sqlite_INCLUDE_DIR}
-    ${double_conversion_INCLUDE_DIR}
 )
 
 if(tensorflow_ENABLE_SSL_SUPPORT)
@@ -266,7 +306,21 @@ if (tensorflow_ENABLE_GPU)
     list(APPEND CMAKE_LIBRARY_PATH "${tensorflow_CUDA_LIBRARY_PATH}/stubs")
   endif (NOT WIN32)
 
-  find_package(CUDA 8.0 REQUIRED)
+  # later command will make use of the value in tensorflow_CUDA_VERSION
+  find_package(CUDA ${tensorflow_CUDA_VERSION} REQUIRED EXACT)
+
+  # Test compatibility of compiler on CUDA
+  try_compile(CUDA_TEST_COMPILE_C
+    ${CMAKE_CURRENT_BINARY_DIR}/tests/cuda
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/cuda/compatibility_test.c
+    CMAKE_FLAGS -DINCLUDE_DIRECTORIES=${CUDA_INCLUDE_DIRS})
+  try_compile(CUDA_TEST_COMPILE_CXX
+    ${CMAKE_CURRENT_BINARY_DIR}/tests/cuda
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/cuda/compatibility_test.cc
+    CMAKE_FLAGS -DINCLUDE_DIRECTORIES=${CUDA_INCLUDE_DIRS})
+  if(NOT (CUDA_TEST_COMPILE_C AND CUDA_TEST_COMPILE_CXX))
+    message(FATAL_ERROR "Selected compiler (or version) is not supported for CUDA")
+  endif()
 
   # by default we assume compute cabability 3.5 and 5.2. If you change this change it in
   # CUDA_NVCC_FLAGS and cuda_config.h below
@@ -320,13 +374,16 @@ if (tensorflow_ENABLE_GPU)
       ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDA_cusolver_LIBRARY} ${cudnn_STATIC_LIBRARY} ${culibos_STATIC_LIBRARY} ${nccl_STATIC_LIBRARY})
   endif (WIN32)
 
+  # Remove "." from CUDA version variable.
+  string(REPLACE "." "" short_CUDA_VER ${tensorflow_CUDA_VERSION})
+
   # create cuda_config.h
   FILE(WRITE ${tensorflow_source_dir}/third_party/gpus/cuda/cuda_config.h
     "#ifndef CUDA_CUDA_CONFIG_H_\n"
     "#define CUDA_CUDA_CONFIG_H_\n"
     "#define TF_CUDA_CAPABILITIES CudaVersion(\"3.0\"),CudaVersion(\"3.5\"),CudaVersion(\"5.2\")\n"
-    "#define TF_CUDA_VERSION \"64_80\"\n"
-    "#define TF_CUDNN_VERSION \"64_6\"\n"
+    "#define TF_CUDA_VERSION \"64_${short_CUDA_VER}\"\n"
+    "#define TF_CUDNN_VERSION \"64_${tensorflow_CUDNN_VERSION}\"\n"
     "#define TF_CUDA_TOOLKIT_PATH \"${CUDA_TOOLKIT_ROOT_DIR}\"\n"
     "#endif  // CUDA_CUDA_CONFIG_H_\n"
   )
@@ -341,6 +398,8 @@ if (tensorflow_ENABLE_GPU)
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
+      ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_fp16.h
+      ${CUDA_TOOLKIT_TARGET_DIR}/include/device_functions.h
       DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
     )
   else(WIN32)
@@ -364,15 +423,15 @@ if (tensorflow_ENABLE_GPU)
   if(WIN32)
     set(tensorflow_BUILD_INFO_FLAGS --build_config cuda --key_value
       msvcp_dll_name=msvcp140.dll
-      cudart_dll_name=cudart64_80.dll
-      cuda_version_number=8.0
+      cudart_dll_name=cudart64_${short_CUDA_VER}.dll
+      cuda_version_number=${tensorflow_CUDA_VERSION}
       nvcuda_dll_name=nvcuda.dll
-      cudnn_dll_name=cudnn64_6.dll
-      cudnn_version_number=6)
+      cudnn_dll_name=cudnn64_${tensorflow_CUDNN_VERSION}.dll
+      cudnn_version_number=${tensorflow_CUDNN_VERSION})
   else(WIN32)
     set(tensorflow_BUILD_INFO_FLAGS --build_config cuda --key_value
-      cuda_version_number=8.0
-      cudnn_version_number=6)
+	    cuda_version_number=${tensorflow_CUDA_VERSION}
+	    cudnn_version_number=${tensorflow_CUDNN_VERSION})
   endif(WIN32)
 else(tensorflow_ENABLE_GPU)
   set(tensorflow_BUILD_INFO_FLAGS --build_config cpu --key_value
@@ -387,10 +446,8 @@ endif()
 
 # Let's get to work!
 include(tf_core_framework.cmake)
-# NOTE: Disabled until issue #3996 is fixed.
-# include(tf_stream_executor.cmake)
 if (tensorflow_ENABLE_GPU)
-    include(tf_stream_executor.cmake)
+  include(tf_stream_executor.cmake)
 endif()
 
 include(tf_core_cpu.cmake)

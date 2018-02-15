@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/costs/graph_memory.h"
 #include <list>
 #include "tensorflow/core/framework/allocation_description.pb.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/step_stats.pb.h"
 #include "tensorflow/core/framework/tensor_description.pb.h"
@@ -32,7 +33,17 @@ Status GraphMemory::InferStatically(
     const std::unordered_map<string, DeviceProperties>& devices) {
   VirtualCluster cluster(devices);
   TF_RETURN_IF_ERROR(cluster.Provision());
-  return InferDynamically(&cluster);
+  TF_RETURN_IF_ERROR(cluster.Initialize(item_));
+  RunMetadata metadata;
+  Status s = cluster.Run(item_.graph, item_.feed, item_.fetch, &metadata);
+  // The virtual cluster returns the RESOURCE_EXHAUSTED error when it detects
+  // that the model would run out of memory. We still get the metadata we need
+  // out of the simulation, so we just ignore this error.
+  if (!s.ok() && s.code() != error::RESOURCE_EXHAUSTED) {
+    return s;
+  }
+  InferFromTrace(metadata.step_stats());
+  return Status::OK();
 }
 
 Status GraphMemory::InferDynamically(Cluster* cluster) {
@@ -153,6 +164,8 @@ void GraphMemory::InferFromTrace(const StepStats& timeline) {
 
   NodeMap node_map(&item_.graph);
   for (const auto& dev_stats : timeline.dev_stats()) {
+    const string& device_name = dev_stats.device();
+    const bool is_gpu = (device_name.find("GPU:") || device_name.find("gpu:"));
     std::list<LiveTensor>& device_tensors =
         live_tensors_per_device[dev_stats.device()];
     for (const auto& node_stats : dev_stats.node_stats()) {
@@ -184,7 +197,24 @@ void GraphMemory::InferFromTrace(const StepStats& timeline) {
         // graph (e.g _Send/_Recv nodes).
         continue;
       }
-      for (const string& input : node->input()) {
+      std::unordered_set<int> swapped_inputs;
+      if (is_gpu) {
+        auto it = node->attr().find("_swap_to_host");
+        if (it != node->attr().end()) {
+          const AttrValue& val = it->second;
+          for (int port_id : val.list().i()) {
+            swapped_inputs.insert(port_id);
+          }
+        }
+      }
+      for (int i = 0; i < node->input_size(); ++i) {
+        if (swapped_inputs.find(i) != swapped_inputs.end()) {
+          // The memory of swapped inputs will be released as early as possible:
+          // therefore ignore this input when determining the deallocation time
+          // of the tensor.
+          continue;
+        }
+        const string& input = node->input(i);
         int position;
         string input_node = ParseNodeName(input, &position);
         if (position < 0) {

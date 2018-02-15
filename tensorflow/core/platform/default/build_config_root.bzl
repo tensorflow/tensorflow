@@ -19,6 +19,9 @@ def tf_additional_plugin_deps():
 def tf_additional_xla_deps_py():
   return []
 
+def tf_additional_grpc_deps_py():
+  return []
+
 def tf_additional_license_deps():
   return select({
       str(Label("//tensorflow:with_xla_support")): ["@llvm//:LICENSE.TXT"],

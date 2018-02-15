@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#ifndef TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#define TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
 
 #include <map>
 #include <memory>
@@ -225,6 +225,12 @@ inline void CollectValue(const string& value, Point* const point) {
 }
 
 template <>
+inline void CollectValue(const bool& value, Point* const point) {
+  point->value_type = ValueType::kBool;
+  point->bool_value = value;
+}
+
+template <>
 inline void CollectValue(const HistogramProto& value, Point* const point) {
   point->value_type = ValueType::kHistogram;
   // This is inefficient. If and when we hit snags, we can change the API to do
@@ -350,4 +356,4 @@ MetricCollector<metric_kind, Value, NumLabels> MetricCollectorGetter::Get(
 }  // namespace monitoring
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_
+#endif  // TENSORFLOW_CORE_LIB_MONITORING_COLLECTION_REGISTRY_H_

@@ -54,6 +54,7 @@ std::ostream& operator<<(std::ostream& out, const CallContext& context) {
 CallContext GetInstructionCallContext(const HloInstruction* instruction) {
   switch (instruction->opcode()) {
     case HloOpcode::kCall:
+    case HloOpcode::kConditional:
     case HloOpcode::kWhile:
       return CallContext::kSequential;
     case HloOpcode::kMap:

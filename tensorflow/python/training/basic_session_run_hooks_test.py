@@ -780,9 +780,12 @@ class StepCounterHookTest(test.TestCase):
       hook.begin()
       sess.run(variables_lib.global_variables_initializer())
       mon_sess = monitored_session._HookedSession(sess, [hook])
-      for _ in range(30):
-        time.sleep(0.01)
-        mon_sess.run(train_op)
+      with test.mock.patch.object(tf_logging, 'warning') as mock_log:
+        for _ in range(30):
+          time.sleep(0.01)
+          mon_sess.run(train_op)
+        # logging.warning should not be called.
+        self.assertIsNone(mock_log.call_args)
       hook.end(sess)
       summary_writer.assert_summaries(
           test_case=self,
@@ -856,6 +859,24 @@ class StepCounterHookTest(test.TestCase):
       self.assertItemsEqual([2], summary_writer.summaries.keys())
       summary_value = summary_writer.summaries[2][0].value[0]
       self.assertEqual('bar/foo/sec', summary_value.tag)
+
+  def test_log_warning_if_global_step_not_increased(self):
+    with ops.Graph().as_default(), session_lib.Session() as sess:
+      variables.get_or_create_global_step()
+      train_op = training_util._increment_global_step(0)  # keep same.
+      sess.run(variables_lib.global_variables_initializer())
+      hook = basic_session_run_hooks.StepCounterHook(
+          every_n_steps=1, every_n_secs=None)
+      hook.begin()
+      mon_sess = monitored_session._HookedSession(sess, [hook])
+      mon_sess.run(train_op)  # Run one step to record global step.
+      with test.mock.patch.object(tf_logging, 'warning') as mock_log:
+        for _ in range(30):
+          mon_sess.run(train_op)
+        self.assertRegexpMatches(
+            str(mock_log.call_args),
+            'global step.*has not been increased')
+      hook.end(sess)
 
 
 class SummarySaverHookTest(test.TestCase):

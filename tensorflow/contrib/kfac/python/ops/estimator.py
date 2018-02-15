@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import contextlib
 import itertools
-import math
 
 import numpy as np
 
@@ -67,7 +66,21 @@ class _DeviceContextGenerator(object):
 
 
 class FisherEstimator(object):
-  """Fisher estimator class supporting various approximations of the Fisher."""
+  """Fisher estimator class supporting various approximations of the Fisher.
+
+  Attributes:
+    cov_update_thunks: list of no-arg functions. Executing a function adds
+      covariance update ops for a single FisherFactor to the graph.
+    cov_update_ops: List of Ops. Running an op updates covariance matrices for a
+      single FisherFactor.
+    cov_update_op: Op. Running updates covariance matrices for all
+      FisherFactors.
+    inv_update_thunks: list of no-arg functions.  Executing a function adds
+      inverse update ops for a single FisherFactor to the graph.
+    inv_update_ops: List of Ops. Running an op updates inverse matrices for a
+      single FisherFactor.
+    inv_update_op: Op. Running updates inverse matrices for all FisherFactors.
+  """
 
   def __init__(self,
                variables,
@@ -75,7 +88,7 @@ class FisherEstimator(object):
                damping,
                layer_collection,
                estimation_mode="gradients",
-               colocate_gradients_with_ops=False,
+               colocate_gradients_with_ops=True,
                cov_devices=None,
                inv_devices=None):
     """Create a FisherEstimator object.
@@ -111,7 +124,7 @@ class FisherEstimator(object):
           is more expensive to compute than the other three options by a factor
           equal to the output dimension, roughly speaking.
       colocate_gradients_with_ops: Whether we should request gradients be
-          colocated with their respective ops.
+          colocated with their respective ops. (Default: True)
       cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
           computations will be placed on these devices in a round-robin fashion.
           Can be None, which means that no devices are specified.
@@ -123,12 +136,13 @@ class FisherEstimator(object):
       ValueError: If no losses have been registered with layer_collection.
     """
 
+    self._cov_ema_decay = cov_ema_decay
     self._variables = variables
     self._damping = damping
     self._estimation_mode = estimation_mode
     self._layers = layer_collection
     self._layers.create_subgraph()
-    self._check_registration(variables)
+    self._layers.check_registration(variables)
     self._gradient_fns = {
         "gradients": self._get_grads_lists_gradients,
         "empirical": self._get_grads_lists_empirical,
@@ -136,13 +150,31 @@ class FisherEstimator(object):
         "exact": self._get_grads_lists_exact
     }
     self._colocate_gradients_with_ops = colocate_gradients_with_ops
+
+    # TODO(b/70674513): Factor device placement outside of this class.
     self._cov_device_context_generator = _DeviceContextGenerator(cov_devices)
     if inv_devices == cov_devices:
       self._inv_device_context_generator = self._cov_device_context_generator
     else:
       self._inv_device_context_generator = _DeviceContextGenerator(inv_devices)
-    setup = self._setup(cov_ema_decay)
-    self.cov_update_op, self.inv_update_op, self.inv_updates_dict = setup
+
+    self._instantiate_factors()
+
+    self.cov_update_thunks = [
+        self._create_cov_update_thunk(factor)
+        for factor in self._layers.get_factors()
+    ]
+    self.cov_update_ops = [thunk() for thunk in self.cov_update_thunks]
+    self.cov_update_op = control_flow_ops.group(
+        self.cov_update_ops, name="cov_update_op")
+
+    self.inv_update_thunks = [
+        self._create_inv_update_thunk(factor)
+        for factor in self._layers.get_factors()
+    ]
+    self.inv_update_ops = [thunk() for thunk in self.inv_update_thunks]
+    self.inv_update_op = control_flow_ops.group(
+        self.inv_update_ops, name="inv_update_op")
 
   @property
   def variables(self):
@@ -203,61 +235,8 @@ class FisherEstimator(object):
     return self._apply_transformation(vecs_and_vars,
                                       lambda fb, vec: fb.multiply(vec))
 
-  def _check_registration(self, variables):
-    """Checks that all variable uses have been registered properly.
-
-    Args:
-      variables: List of variables.
-
-    Raises:
-      ValueError: If any registered variables are not included in the list.
-      ValueError: If any variable in the list is not registered.
-      ValueError: If any variable in the list is registered with the wrong
-          number of "uses" in the subgraph recorded (vs the number of times that
-          variable is actually used in the subgraph).
-    """
-    # Note that overlapping parameters (i.e. those that share variables) will
-    # be caught by layer_collection.LayerParametersDict during registration.
-
-    reg_use_map = self._layers.get_use_count_map()
-
-    error_messages = []
-
-    for var in variables:
-      total_uses = self._layers.subgraph.variable_uses(var)
-      reg_uses = reg_use_map[var]
-
-      if reg_uses == 0:
-        error_messages.append("Variable {} not registered.".format(var))
-      elif (not math.isinf(reg_uses)) and reg_uses != total_uses:
-        error_messages.append(
-            "Variable {} registered with wrong number of uses ({} "
-            "registrations vs {} uses).".format(var, reg_uses, total_uses))
-
-    num_get_vars = len(reg_use_map)
-
-    if num_get_vars > len(variables):
-      error_messages.append("{} registered variables were not included in list."
-                            .format(num_get_vars - len(variables)))
-
-    if error_messages:
-      error_messages = [
-          "Found the following errors with variable registration:"
-      ] + error_messages
-      raise ValueError("\n\t".join(error_messages))
-
-  def _setup(self, cov_ema_decay):
-    """Sets up the various operations.
-
-    Args:
-      cov_ema_decay: The decay factor used when calculating the covariance
-          estimate moving averages.
-
-    Returns:
-      A triple (covs_update_op, invs_update_op, inv_updates_dict), where
-      covs_update_op is the grouped Op to update all the covariance estimates,
-      invs_update_op is the grouped Op to update all the inverses, and
-      inv_updates_dict is a dict mapping Op names to individual inverse updates.
+  def _instantiate_factors(self):
+    """Instantiates FisherFactors' variables.
 
     Raises:
       ValueError: If estimation_mode was improperly specified at construction.
@@ -282,20 +261,25 @@ class FisherEstimator(object):
       with self._cov_device_context_generator():
         fb.instantiate_factors(grads_list, self.damping)
 
-    cov_updates = [
-        factor.make_covariance_update_op(cov_ema_decay)
-        for factor in self._layers.get_factors()
-    ]
-    inv_updates = {op.name: op for op in self._get_all_inverse_update_ops()}
+  def _create_cov_update_thunk(self, factor):
+    """Constructs a covariance update thunk for a single FisherFactor."""
 
-    return control_flow_ops.group(*cov_updates), control_flow_ops.group(
-        *inv_updates.values()), inv_updates
+    def thunk():
+      with tf_ops.name_scope(
+          "create_cov_update_thunk", values=[self._cov_ema_decay]):
+        return factor.make_covariance_update_op(self._cov_ema_decay)
 
-  def _get_all_inverse_update_ops(self):
-    for factor in self._layers.get_factors():
-      with self._inv_device_context_generator():
-        for op in factor.make_inverse_update_ops():
-          yield op
+    return thunk
+
+  def _create_inv_update_thunk(self, factor):
+    """Constructs an inverse update thunk for a single FisherFactor."""
+
+    def thunk():
+      with tf_ops.name_scope("create_inv_update_thunk"):
+        with self._inv_device_context_generator():
+          return control_flow_ops.group(factor.make_inverse_update_ops())
+
+    return thunk
 
   def _get_grads_lists_gradients(self, tensors):
     grads_flat = gradients_impl.gradients(
@@ -333,11 +317,7 @@ class FisherEstimator(object):
     return tuple((grad,) for grad in grads_all)
 
   def _get_grads_lists_exact(self, tensors):
-    """Returns a list of all gradients, computing them exactly.
-
-    Args:
-      tensors: Tensors for which to compute gradients.
-    """
+    """No docstring required."""
     # Loop over all coordinates of all losses.
     grads_all = []
     for loss in self._layers.losses:

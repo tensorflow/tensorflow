@@ -85,6 +85,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleConvolution(HloInstructionPtr convolution) override {
     return DefaultAction(convolution);
   }
+  Status HandleFft(HloInstructionPtr fft) override {
+    return DefaultAction(fft);
+  }
   Status HandleCrossReplicaSum(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }

@@ -72,10 +72,12 @@ REGISTER_OP("TPUReplicate")
     .Attr("Tinputs: list(type) >= 0")
     .Attr("Tbroadcast_inputs: list(type) >= 0")
     .Attr("NumVariables: int >= 0")
+    .Attr("Tguaranteed_constants: list(type) >= 0")
     .Attr("output_types: list(type) >= 0")
     .Input("inputs: Tinputs")
     .Input("broadcast_inputs: Tbroadcast_inputs")
     .Input("variables: NumVariables * resource")
+    .Input("guaranteed_constants: Tguaranteed_constants")
     .Output("outputs: output_types")
     .SetShapeFn(shape_inference::UnknownShape)
     .Doc(R"doc(
@@ -95,9 +97,13 @@ Tinputs: the types of the arguments to 'computation'.
 inputs: the inputs to 'computation', flattened, in replica-major order.
 Tbroadcast_inputs: the types of the additional arguments to broadcast to all
   replicas.
+Tguaranteed_constants: the types of the arguments to 'guaranteed_constants'.
 broadcast_inputs: additional arguments to broadcast to all replicas. The
   broadcast inputs are appended to the per-replica inputs when calling
   computation.
+guaranteed_constants: arguments which have been guaranteed to not
+change their values during the session lifetime. These contain tensors marked as
+constant using the GuaranteeConstOp.
 output_types: the types of the outputs of 'computation'.
 outputs: the outputs of 'computation'.
 )doc");
