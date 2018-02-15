@@ -99,8 +99,10 @@ KNOWN_BUGS = {
     r"batch_to_space_nd.*crops=\[\[1,1\],\[1,1\]\]": "70594634",
     # BatchToSpaceND only supports 4D tensors.
     r"batch_to_space_nd.*input_shape=\[8,2,2,2,1,1\]": "70594733",
-    # Div will use floordiv
-    r"div.*int32": "72051395"
+    # Div will use floordiv.
+    r"div.*int32": "72051395",
+    # TOCO require matching dimensions in strided_slice.
+    r"strided_slice.*begin=\[0\].*end=\[1\].*": "73170889",
 }
 
 
@@ -327,6 +329,12 @@ def toco_convert(graph_def_str, input_tensors, output_tensors,
     return (None if exit_code != 0 else output_file.read()), log
 
 
+def normalize_output_name(output_name):
+  """Remove :0 suffix from tensor names."""
+  return output_name.split(":")[0] if output_name.endswith(
+      ":0") else output_name
+
+
 def make_zip_of_tests(zip_path,
                       test_parameters,
                       make_graph,
@@ -415,8 +423,8 @@ def make_zip_of_tests(zip_path,
             sess.graph_def.SerializeToString(),
             [(input_tensor.name.split(":")[0], input_tensor.get_shape(),
               input_tensor.dtype) for input_tensor in inputs],
-            [out.name.split(":")[0]
-             for out in outputs], drop_control_dependency)
+            [normalize_output_name(out.name) for out in outputs],
+            drop_control_dependency)
         report["toco"] = (report_lib.SUCCESS if tflite_model_binary is not None
                           else report_lib.FAILED)
         report["toco_log"] = toco_log
@@ -1595,6 +1603,19 @@ def make_strided_slice_tests(zip_path):
           "shrink_axis_mask": [None, 1, 8, 11, 15, -1],
           "constant_indices": [False, True],
       },
+      #
+      {
+          "dtype": [tf.float32],
+          "index_type": [tf.int32],
+          "input_shape": [[12, 2, 2, 5]],
+          "begin": [[0]],
+          "end": [[1]],
+          "strides": [[1]],
+          "begin_mask": [0],
+          "end_mask": [0],
+          "shrink_axis_mask": [1],
+          "constant_indices": [True],
+      },
       # 2-D
       {
           "dtype": [tf.float32, tf.int32, tf.int64],
@@ -1610,7 +1631,7 @@ def make_strided_slice_tests(zip_path):
       },
       # Negative strides
       {
-          "dtype": [tf.float32, tf.int32, tf.int64],
+          "dtype": [tf.float32],
           "index_type": [tf.int32],
           "input_shape": [[2, 3]],
           "begin": [[0, -1]],
@@ -1690,6 +1711,32 @@ def make_l2_pool(input_tensor, ksize, strides, padding, data_format):
       padding=padding, data_format=data_format))
 
 
+def make_topk_tests(zip_path):
+  """Make a set of tests to do gather."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[10], [5, 20]],
+  }]
+
+  def build_graph(parameters):
+    """Build the gather op testing graph."""
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    k = tf.constant(3, name="k")
+    out = tf.nn.top_k(input_value, k)
+    return [input_value], [out[1]]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
 # Toco binary path provided by the generate rule.
 bin_path = None
 
@@ -1738,6 +1785,7 @@ def main(unused_args):
         "sigmoid.zip": make_sigmoid_tests,
         "softmax.zip": make_softmax_tests,
         "space_to_depth.zip": make_space_to_depth_tests,
+        "topk.zip": make_topk_tests,
         "transpose.zip": make_transpose_tests,
         "mean.zip": make_mean_tests,
         "squeeze.zip": make_squeeze_tests,

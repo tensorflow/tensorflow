@@ -109,6 +109,12 @@ XlaCompiler::XlaCompiler(XlaCompiler::Options options)
 
   local_flib_runtime_ = local_pflr_->GetFLR(device_->name());
   flib_runtime_ = pflr_->GetFLR(device_->name());
+
+  // The default variable representation shape is the identity function.
+  if (!options_.variable_representation_shape_fn) {
+    options_.variable_representation_shape_fn =
+        [](const TensorShape& shape, DataType type) { return shape; };
+  }
 }
 
 XlaCompiler::~XlaCompiler() = default;
@@ -223,8 +229,8 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
 }
 
 // Computes the XLA shape for argument 'arg'.
-/*static*/ Status XlaCompiler::XLAShapeForArgument(
-    const XlaCompiler::Argument& arg, xla::Shape* xla_shape) {
+Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
+                                        xla::Shape* xla_shape) {
   switch (arg.kind) {
     case XlaCompiler::Argument::kConstant:
       return TensorShapeToXLAShape(arg.type, arg.constant_value.shape(),
@@ -235,8 +241,12 @@ Status XlaCompiler::CompileFunction(const XlaCompiler::CompileOptions& options,
       TF_RET_CHECK(arg.initialized);
 
       switch (arg.resource_kind) {
-        case XlaResource::kVariable:
-          return TensorShapeToXLAShape(arg.type, arg.shape, xla_shape);
+        case XlaResource::kVariable: {
+          TensorShape representation_shape =
+              options_.variable_representation_shape_fn(arg.shape, arg.type);
+          return TensorShapeToXLAShape(arg.type, representation_shape,
+                                       xla_shape);
+        }
         case XlaResource::kTensorArray: {
           if (arg.tensor_array_size < 0) {
             return errors::InvalidArgument(
@@ -307,168 +317,6 @@ Status ExecuteGraph(XlaContext* xla_context, std::unique_ptr<Graph> graph,
   TF_RETURN_IF_ERROR(graph_compiler.Compile());
   // Explicitly clean up the step container, to capture the cleanup status.
   step_container.reset();
-  return Status::OK();
-}
-
-// Builds XLA computations for each of the arguments to the computation.
-// `args` are the arguments to the computation.
-Status BuildArguments(const Graph& graph,
-                      const std::vector<XlaCompiler::Argument>& args,
-                      bool use_tuple_arg, xla::ComputationBuilder* builder,
-                      XlaContext* context, std::vector<int>* arg_cores,
-                      std::vector<XlaExpression>* arg_expressions,
-                      std::vector<int>* input_mapping,
-                      std::vector<xla::Shape>* input_shapes,
-                      bool is_entry_computation) {
-  arg_expressions->resize(args.size());
-  *arg_cores = std::vector<int>(args.size(), -1);
-
-  // Argument numbers of arguments and resources that are to be passed to the
-  // XLA computation as runtime parameters.
-  input_mapping->clear();
-  input_mapping->reserve(args.size());
-  std::vector<int> resources;
-  resources.reserve(args.size());
-
-  // Fills in constant arguments, and computes non-constant argument order.
-  for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
-       ++i) {
-    const XlaCompiler::Argument& arg = args[i];
-    XlaExpression& arg_expression = (*arg_expressions)[i];
-    switch (arg.kind) {
-      case XlaCompiler::Argument::kResource:
-        TF_RET_CHECK(arg.resource_kind != XlaResource::kInvalid);
-        // TODO(phawkins): this code assumes that resource arguments do not
-        // alias.
-        XlaResource* resource;
-        TF_RETURN_IF_ERROR(context->CreateResource(
-            arg.resource_kind, i, arg.name, arg.type, arg.shape,
-            xla::ComputationDataHandle(),
-            /*tensor_array_size=*/arg.tensor_array_size,
-            /*tensor_array_gradients=*/arg.tensor_array_gradients, &resource));
-        arg_expression.set_resource(resource);
-        if (arg.initialized) {
-          resources.push_back(i);
-        }
-        break;
-      case XlaCompiler::Argument::kParameter: {
-        input_mapping->push_back(i);
-        break;
-      }
-      case XlaCompiler::Argument::kConstant:
-        arg_expression.set_constant_value(arg.constant_value);
-        break;
-      case XlaCompiler::Argument::kInvalid:
-        return errors::Internal("Unreachable case in BuildArguments()");
-    }
-  }
-
-  // Append parameters containing variable values after the other runtime
-  // parameters.
-  input_mapping->insert(input_mapping->end(), resources.begin(),
-                        resources.end());
-  if (input_mapping->empty()) {
-    return Status::OK();
-  }
-
-  std::vector<xla::Shape> arg_shapes(input_mapping->size());
-  for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
-    // Computes the shapes of non-constant arguments.
-    TF_RETURN_IF_ERROR(XlaCompiler::XLAShapeForArgument(
-        args[(*input_mapping)[i]], &arg_shapes[i]));
-  }
-
-  if (use_tuple_arg) {
-    input_shapes->push_back(xla::ShapeUtil::MakeTupleShape(arg_shapes));
-  } else {
-    *input_shapes = arg_shapes;
-  }
-
-  // Use the _Arg nodes in the graph to resolve core assignments.
-  for (const Node* n : graph.nodes()) {
-    if (StringPiece(n->type_string()) != "_Arg") continue;
-    int index;
-    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
-    TF_RET_CHECK(index >= 0 && index < args.size())
-        << "_Arg out of bounds: " << index << " vs " << args.size();
-    TF_ASSIGN_OR_RETURN(
-        auto sharding,
-        ParseShardingFromDevice(*n, std::numeric_limits<int32>::max()));
-    if (sharding.has_value()) {
-      TF_RET_CHECK(sharding.value().type() ==
-                   xla::OpSharding::Type::OpSharding_Type_MAXIMAL);
-      const int core = sharding.value().tile_assignment_devices(0);
-      if ((*arg_cores)[index] == -1 || core < (*arg_cores)[index]) {
-        (*arg_cores)[index] = core;
-      }
-    }
-  }
-
-  // Build parameter handles for non-constant arguments.
-  std::vector<xla::ComputationDataHandle> arg_handles(input_mapping->size());
-  if (use_tuple_arg) {
-    xla::ComputationDataHandle tuple;
-    if (is_entry_computation) {
-      xla::OpSharding tuple_sharding;
-      tuple_sharding.set_type(xla::OpSharding::Type::OpSharding_Type_TUPLE);
-      for (int64 parameter : *input_mapping) {
-        const int core = (*arg_cores)[parameter];
-        const int root_device = 0;
-        *tuple_sharding.add_tuple_shardings() =
-            core == -1 ? xla::sharding_builder::AssignDevice(root_device)
-                       : xla::sharding_builder::AssignDevice(core);
-      }
-      xla::ScopedShardingAssignment assign_tuple_sharding(builder,
-                                                          tuple_sharding);
-      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
-    } else {
-      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
-    }
-    for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
-      const int core = (*arg_cores)[input_mapping->at(i)];
-      xla::ScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
-                              : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] = builder->GetTupleElement(tuple, i);
-    }
-  } else {
-    for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
-      const int core = (*arg_cores)[input_mapping->at(i)];
-      xla::ScopedShardingAssignment assign_sharding(
-          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
-                              : xla::sharding_builder::AssignDevice(core));
-      arg_handles[i] =
-          builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
-    }
-  }
-
-  // Fill in the handles in non-constant arguments.
-  VLOG(2) << "XLA computation inputs:";
-  for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
-    const XlaCompiler::Argument& arg = args[input_mapping->at(i)];
-    VLOG(2) << "  XLA arg " << i
-            << " shape: " << xla::ShapeUtil::HumanString(arg_shapes[i])
-            << " name: " << arg.name << " TF arg " << input_mapping->at(i);
-    XlaExpression& arg_expression = (*arg_expressions)[input_mapping->at(i)];
-    switch (arg.kind) {
-      case XlaCompiler::Argument::kResource: {
-        TF_RET_CHECK(arg.initialized);
-        XlaResource* resource = arg_expression.resource();
-        TF_RETURN_IF_ERROR(resource->SetFromPack(arg.tensor_array_gradients,
-                                                 arg_handles[i], builder));
-        VLOG(2) << "    resource: num_gradients: "
-                << arg.tensor_array_gradients.size();
-        break;
-      }
-      case XlaCompiler::Argument::kParameter:
-        arg_expression.set_handle(arg_handles[i]);
-        break;
-      case XlaCompiler::Argument::kConstant:
-      case XlaCompiler::Argument::kInvalid:
-        return errors::Internal("Unreachable case in BuildArguments()");
-    }
-  }
-
   return Status::OK();
 }
 
@@ -574,6 +422,166 @@ Status BuildComputation(
 
 }  // namespace
 
+// Builds XLA computations for each of the arguments to the computation.
+// `args` are the arguments to the computation.
+Status XlaCompiler::BuildArguments(
+    const Graph& graph, const std::vector<XlaCompiler::Argument>& args,
+    bool use_tuple_arg, xla::ComputationBuilder* builder, XlaContext* context,
+    std::vector<int>* arg_cores, std::vector<XlaExpression>* arg_expressions,
+    std::vector<int>* input_mapping, std::vector<xla::Shape>* input_shapes,
+    bool is_entry_computation) {
+  arg_expressions->resize(args.size());
+  *arg_cores = std::vector<int>(args.size(), -1);
+
+  // Argument numbers of arguments and resources that are to be passed to the
+  // XLA computation as runtime parameters.
+  input_mapping->clear();
+  input_mapping->reserve(args.size());
+  std::vector<int> resources;
+  resources.reserve(args.size());
+
+  // Fills in constant arguments, and computes non-constant argument order.
+  for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
+       ++i) {
+    const XlaCompiler::Argument& arg = args[i];
+    XlaExpression& arg_expression = (*arg_expressions)[i];
+    switch (arg.kind) {
+      case XlaCompiler::Argument::kResource:
+        TF_RET_CHECK(arg.resource_kind != XlaResource::kInvalid);
+        // TODO(phawkins): this code assumes that resource arguments do not
+        // alias.
+        XlaResource* resource;
+        TF_RETURN_IF_ERROR(context->CreateResource(
+            arg.resource_kind, i, arg.name, arg.type, arg.shape,
+            xla::ComputationDataHandle(),
+            /*tensor_array_size=*/arg.tensor_array_size,
+            /*tensor_array_gradients=*/arg.tensor_array_gradients, &resource));
+        arg_expression.set_resource(resource);
+        if (arg.initialized) {
+          resources.push_back(i);
+        }
+        break;
+      case XlaCompiler::Argument::kParameter: {
+        input_mapping->push_back(i);
+        break;
+      }
+      case XlaCompiler::Argument::kConstant:
+        arg_expression.set_constant_value(arg.constant_value);
+        break;
+      case XlaCompiler::Argument::kInvalid:
+        return errors::Internal("Unreachable case in BuildArguments()");
+    }
+  }
+
+  // Append parameters containing variable values after the other runtime
+  // parameters.
+  input_mapping->insert(input_mapping->end(), resources.begin(),
+                        resources.end());
+  if (input_mapping->empty()) {
+    return Status::OK();
+  }
+
+  std::vector<xla::Shape> arg_shapes(input_mapping->size());
+  for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
+    // Computes the shapes of non-constant arguments.
+    TF_RETURN_IF_ERROR(
+        XLAShapeForArgument(args[(*input_mapping)[i]], &arg_shapes[i]));
+  }
+
+  if (use_tuple_arg) {
+    input_shapes->push_back(xla::ShapeUtil::MakeTupleShape(arg_shapes));
+  } else {
+    *input_shapes = arg_shapes;
+  }
+
+  // Use the _Arg nodes in the graph to resolve core assignments.
+  for (const Node* n : graph.nodes()) {
+    if (StringPiece(n->type_string()) != "_Arg") continue;
+    int index;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), "index", &index));
+    TF_RET_CHECK(index >= 0 && index < args.size())
+        << "_Arg out of bounds: " << index << " vs " << args.size();
+    TF_ASSIGN_OR_RETURN(
+        auto sharding,
+        ParseShardingFromDevice(*n, std::numeric_limits<int32>::max()));
+    if (sharding.has_value()) {
+      TF_RET_CHECK(sharding.value().type() ==
+                   xla::OpSharding::Type::OpSharding_Type_MAXIMAL);
+      const int core = sharding.value().tile_assignment_devices(0);
+      if ((*arg_cores)[index] == -1 || core < (*arg_cores)[index]) {
+        (*arg_cores)[index] = core;
+      }
+    }
+  }
+
+  // Build parameter handles for non-constant arguments.
+  std::vector<xla::ComputationDataHandle> arg_handles(input_mapping->size());
+  if (use_tuple_arg) {
+    xla::ComputationDataHandle tuple;
+    if (is_entry_computation) {
+      xla::OpSharding tuple_sharding;
+      tuple_sharding.set_type(xla::OpSharding::Type::OpSharding_Type_TUPLE);
+      for (int64 parameter : *input_mapping) {
+        const int core = (*arg_cores)[parameter];
+        const int root_device = 0;
+        *tuple_sharding.add_tuple_shardings() =
+            core == -1 ? xla::sharding_builder::AssignDevice(root_device)
+                       : xla::sharding_builder::AssignDevice(core);
+      }
+      xla::ScopedShardingAssignment assign_tuple_sharding(builder,
+                                                          tuple_sharding);
+      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+    } else {
+      tuple = builder->Parameter(0, (*input_shapes)[0], "arg_tuple");
+    }
+    for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
+      const int core = (*arg_cores)[input_mapping->at(i)];
+      xla::ScopedShardingAssignment assign_sharding(
+          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+                              : xla::sharding_builder::AssignDevice(core));
+      arg_handles[i] = builder->GetTupleElement(tuple, i);
+    }
+  } else {
+    for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
+      const int core = (*arg_cores)[input_mapping->at(i)];
+      xla::ScopedShardingAssignment assign_sharding(
+          builder, core == -1 ? tensorflow::gtl::optional<xla::OpSharding>()
+                              : xla::sharding_builder::AssignDevice(core));
+      arg_handles[i] =
+          builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
+    }
+  }
+
+  // Fill in the handles in non-constant arguments.
+  VLOG(2) << "XLA computation inputs:";
+  for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
+    const XlaCompiler::Argument& arg = args[input_mapping->at(i)];
+    VLOG(2) << "  XLA arg " << i
+            << " shape: " << xla::ShapeUtil::HumanString(arg_shapes[i])
+            << " name: " << arg.name << " TF arg " << input_mapping->at(i);
+    XlaExpression& arg_expression = (*arg_expressions)[input_mapping->at(i)];
+    switch (arg.kind) {
+      case XlaCompiler::Argument::kResource: {
+        TF_RET_CHECK(arg.initialized);
+        XlaResource* resource = arg_expression.resource();
+        TF_RETURN_IF_ERROR(resource->SetFromPack(arg.tensor_array_gradients,
+                                                 arg_handles[i], builder));
+        VLOG(2) << "    resource: num_gradients: "
+                << arg.tensor_array_gradients.size();
+        break;
+      }
+      case XlaCompiler::Argument::kParameter:
+        arg_expression.set_handle(arg_handles[i]);
+        break;
+      case XlaCompiler::Argument::kConstant:
+      case XlaCompiler::Argument::kInvalid:
+        return errors::Internal("Unreachable case in BuildArguments()");
+    }
+  }
+
+  return Status::OK();
+}
+
 Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                  string const& name,
                                  std::unique_ptr<Graph> graph,
@@ -598,7 +606,8 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   xla::ComputationBuilder builder(client(), name);
   XlaContext* context =
       new XlaContext(this, &builder, options_.allow_cpu_custom_calls,
-                     options.resolve_compile_time_constants);
+                     options.resolve_compile_time_constants,
+                     &options_.variable_representation_shape_fn);
   core::ScopedUnref context_unref(context);
 
   std::vector<XlaExpression> arg_expressions;
