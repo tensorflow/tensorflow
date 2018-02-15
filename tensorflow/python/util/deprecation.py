@@ -357,11 +357,11 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
         deprecated_arg_names, arg_spec)
 
     is_varargs_deprecated = arg_spec.varargs in deprecated_arg_names
-    is_kwargs_deprecated = arg_spec.keywords in deprecated_arg_names
+    is_kwargs_deprecated = arg_spec.varkw in deprecated_arg_names
 
     if (len(deprecated_positions) + is_varargs_deprecated + is_kwargs_deprecated
         != len(deprecated_arg_names_or_tuples)):
-      known_args = arg_spec.args + [arg_spec.varargs, arg_spec.keywords]
+      known_args = arg_spec.args + [arg_spec.varargs, arg_spec.varkw]
       missing_args = [arg_name for arg_name in deprecated_arg_names
                       if arg_name not in known_args]
       raise ValueError('The following deprecated arguments are not present '
@@ -411,7 +411,7 @@ def deprecated_args(date, instructions, *deprecated_arg_names_or_tuples,
         if is_varargs_deprecated and len(args) > len(arg_spec.args):
           invalid_args.append(arg_spec.varargs)
         if is_kwargs_deprecated and kwargs:
-          invalid_args.append(arg_spec.keywords)
+          invalid_args.append(arg_spec.varkw)
         for arg_name in deprecated_arg_names:
           if (arg_name in kwargs and
               not (deprecated_positions[arg_name].has_ok_value and
