@@ -120,6 +120,7 @@ enum BuiltinOperator : byte {
   UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
   STRIDED_SLICE = 45,
   BIDIRECTIONAL_SEQUENCE_RNN = 46,
+  EXP = 47,
 }
 
 // Options for the builtin operators.
@@ -156,6 +157,7 @@ union BuiltinOptions {
   SqueezeOptions,
   SequenceRNNOptions,
   StridedSliceOptions,
+  ExpOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -330,6 +332,9 @@ table GatherOptions {
 }
 
 table TransposeOptions {
+}
+
+table ExpOptions {
 }
 
 table MeanOptions {

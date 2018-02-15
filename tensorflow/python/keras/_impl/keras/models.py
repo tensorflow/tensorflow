@@ -406,7 +406,9 @@ class Sequential(Model):
   """
 
   def __init__(self, layers=None, name=None):
-    self.layers = []  # Stack of layers.
+    self._is_graph_network = True
+    self._is_compiled = False
+    self._layers = []  # Stack of layers.
     self.model = None  # Internal Model instance.
     self.inputs = []  # List of input tensors
     self.outputs = []  # List of length 1: the output tensor (unique).
@@ -527,7 +529,7 @@ class Sequential(Model):
       self._inbound_nodes[0].output_tensors = self.outputs
       self._inbound_nodes[0].output_shapes = [K.int_shape(self.outputs[0])]
 
-    self.layers.append(layer)
+    self._layers.append(layer)
     self.built = False
 
   def pop(self):

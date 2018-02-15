@@ -17,6 +17,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import signal
+import sys
 import traceback
 
 # Google-internal import(s).
@@ -137,6 +139,29 @@ class GrpcDebugWrapperSession(framework.NonInteractiveDebugWrapperSession):
             if not address.startswith(common.GRPC_URL_PREFIX) else address)
 
 
+def _signal_handler(unused_signal, unused_frame):
+  try:
+    input_func = raw_input
+  except NameError:
+    # Python 3 does not have raw_input.
+    input_func = input
+
+  while True:
+    response = input_func("\nSIGINT received. Quit program? (Y/n): ").strip()
+    if response in ("", "Y", "y"):
+      sys.exit(0)
+    elif response in ("N", "n"):
+      break
+
+
+def register_signal_handler():
+  try:
+    signal.signal(signal.SIGINT, _signal_handler)
+  except ValueError:
+    # This can happen if we are not in the MainThread.
+    pass
+
+
 class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
   """A tfdbg Session wrapper that can be used with TensorBoard Debugger Plugin.
 
@@ -184,6 +209,8 @@ class TensorBoardDebugWrapperSession(GrpcDebugWrapperSession):
     # Keeps track of the latest version of Python graph object that has been
     # sent to the debug servers.
     self._sent_graph_version = -1
+
+    register_signal_handler()
 
   def run(self,
           fetches,

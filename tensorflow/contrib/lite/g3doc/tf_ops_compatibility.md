@@ -1,4 +1,4 @@
-# TensorFlow Compatibility Guide
+# TensorFlow Lite & TensorFlow Compatibility Guide
 
 TensorFlow Lite supports a number of TensorFlow operations used in common
 inference models. As they are processed by the TensorFlow Lite Optimizing

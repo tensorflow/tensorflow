@@ -155,11 +155,11 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
   }
   for (const auto& subgraph : *model.subgraphs()) {
     if (!subgraph->tensors()) {
-      return true;
+      continue;
     }
     for (const auto& tensor : *subgraph->tensors()) {
       if (!tensor->buffer()) {
-        return true;
+        continue;
       }
       if (tensor->buffer() >= model.buffers()->size()) {
         ReportError(error_reporter, "Invalid tensor buffer index: %d",
@@ -187,9 +187,33 @@ bool VerifyTensors(const Model& model, ErrorReporter* error_reporter) {
   return true;
 }
 
+bool VerifyOps(const Model& model, const OpResolver& resolver,
+               ErrorReporter* error_reporter) {
+  if (!model.operator_codes()) {
+    return true;
+  }
+  for (const auto& opcode : *model.operator_codes()) {
+    if (opcode->builtin_code() == BuiltinOperator_CUSTOM) {
+      if (!resolver.FindOp(opcode->custom_code()->c_str())) {
+        ReportError(error_reporter, "Unsupported custom op: %s",
+                    opcode->custom_code()->c_str());
+        return false;
+      }
+    } else {
+      if (!resolver.FindOp(opcode->builtin_code())) {
+        ReportError(error_reporter, "Unsupported builtin op: %s",
+                    EnumNameBuiltinOperator(opcode->builtin_code()));
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 }  // namespace
 
-bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter) {
+bool Verify(const void* buf, size_t len, const OpResolver& resolver,
+            ErrorReporter* error_reporter) {
   const Model* model = VerifyFlatbufferAndGetModel(buf, len);
   if (model == nullptr) {
     ReportError(error_reporter, "Invalid flatbuffer format");
@@ -200,6 +224,9 @@ bool Verify(const void* buf, size_t len, ErrorReporter* error_reporter) {
     return false;
   }
   if (!VerifyTensors(*model, error_reporter)) {
+    return false;
+  }
+  if (!VerifyOps(*model, resolver, error_reporter)) {
     return false;
   }
   return true;

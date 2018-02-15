@@ -117,6 +117,9 @@ struct GatherOptionsT;
 struct TransposeOptions;
 struct TransposeOptionsT;
 
+struct ExpOptions;
+struct ExpOptionsT;
+
 struct MeanOptions;
 struct MeanOptionsT;
 
@@ -215,11 +218,12 @@ enum BuiltinOperator {
   BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
   BuiltinOperator_STRIDED_SLICE = 45,
   BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN = 46,
+  BuiltinOperator_EXP = 47,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN
+  BuiltinOperator_MAX = BuiltinOperator_EXP
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[44] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[45] {
   static BuiltinOperator values[] = {
       BuiltinOperator_ADD,
       BuiltinOperator_AVERAGE_POOL_2D,
@@ -264,7 +268,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[44] {
       BuiltinOperator_SQUEEZE,
       BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
       BuiltinOperator_STRIDED_SLICE,
-      BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN};
+      BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
+      BuiltinOperator_EXP};
   return values;
 }
 
@@ -316,6 +321,7 @@ inline const char **EnumNamesBuiltinOperator() {
                                 "UNIDIRECTIONAL_SEQUENCE_LSTM",
                                 "STRIDED_SLICE",
                                 "BIDIRECTIONAL_SEQUENCE_RNN",
+                                "EXP",
                                 nullptr};
   return names;
 }
@@ -359,11 +365,12 @@ enum BuiltinOptions {
   BuiltinOptions_SqueezeOptions = 30,
   BuiltinOptions_SequenceRNNOptions = 31,
   BuiltinOptions_StridedSliceOptions = 32,
+  BuiltinOptions_ExpOptions = 33,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_StridedSliceOptions
+  BuiltinOptions_MAX = BuiltinOptions_ExpOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[33] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[34] {
   static BuiltinOptions values[] = {
       BuiltinOptions_NONE,
       BuiltinOptions_Conv2DOptions,
@@ -397,7 +404,8 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[33] {
       BuiltinOptions_DivOptions,
       BuiltinOptions_SqueezeOptions,
       BuiltinOptions_SequenceRNNOptions,
-      BuiltinOptions_StridedSliceOptions};
+      BuiltinOptions_StridedSliceOptions,
+      BuiltinOptions_ExpOptions};
   return values;
 }
 
@@ -435,6 +443,7 @@ inline const char **EnumNamesBuiltinOptions() {
                                 "SqueezeOptions",
                                 "SequenceRNNOptions",
                                 "StridedSliceOptions",
+                                "ExpOptions",
                                 nullptr};
   return names;
 }
@@ -611,6 +620,11 @@ struct BuiltinOptionsTraits<SequenceRNNOptions> {
 template <>
 struct BuiltinOptionsTraits<StridedSliceOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_StridedSliceOptions;
+};
+
+template <>
+struct BuiltinOptionsTraits<ExpOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ExpOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -978,6 +992,16 @@ struct BuiltinOptionsUnion {
   const StridedSliceOptionsT *AsStridedSliceOptions() const {
     return type == BuiltinOptions_StridedSliceOptions
                ? reinterpret_cast<const StridedSliceOptionsT *>(value)
+               : nullptr;
+  }
+  ExpOptionsT *AsExpOptions() {
+    return type == BuiltinOptions_ExpOptions
+               ? reinterpret_cast<ExpOptionsT *>(value)
+               : nullptr;
+  }
+  const ExpOptionsT *AsExpOptions() const {
+    return type == BuiltinOptions_ExpOptions
+               ? reinterpret_cast<const ExpOptionsT *>(value)
                : nullptr;
   }
 };
@@ -2627,16 +2651,13 @@ flatbuffers::Offset<LSTMOptions> CreateLSTMOptions(
 struct ResizeBilinearOptionsT : public flatbuffers::NativeTable {
   typedef ResizeBilinearOptions TableType;
   bool align_corners;
-  ResizeBilinearOptionsT()
-      : align_corners(false) {
-  }
+  ResizeBilinearOptionsT() : align_corners(false) {}
 };
 
-struct ResizeBilinearOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct ResizeBilinearOptions FLATBUFFERS_FINAL_CLASS
+    : private flatbuffers::Table {
   typedef ResizeBilinearOptionsT NativeTableType;
-  enum {
-    VT_ALIGN_CORNERS = 8
-  };
+  enum { VT_ALIGN_CORNERS = 8 };
   bool align_corners() const {
     return GetField<uint8_t>(VT_ALIGN_CORNERS, 0) != 0;
   }
@@ -2645,16 +2666,22 @@ struct ResizeBilinearOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Tabl
            VerifyField<uint8_t>(verifier, VT_ALIGN_CORNERS) &&
            verifier.EndTable();
   }
-  ResizeBilinearOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  void UnPackTo(ResizeBilinearOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
-  static flatbuffers::Offset<ResizeBilinearOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+  ResizeBilinearOptionsT *UnPack(
+      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(
+      ResizeBilinearOptionsT *_o,
+      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ResizeBilinearOptions> Pack(
+      flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT *_o,
+      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 };
 
 struct ResizeBilinearOptionsBuilder {
   flatbuffers::FlatBufferBuilder &fbb_;
   flatbuffers::uoffset_t start_;
   void add_align_corners(bool align_corners) {
-    fbb_.AddElement<uint8_t>(ResizeBilinearOptions::VT_ALIGN_CORNERS, static_cast<uint8_t>(align_corners), 0);
+    fbb_.AddElement<uint8_t>(ResizeBilinearOptions::VT_ALIGN_CORNERS,
+                             static_cast<uint8_t>(align_corners), 0);
   }
   explicit ResizeBilinearOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
       : fbb_(_fbb) {
@@ -2669,14 +2696,15 @@ struct ResizeBilinearOptionsBuilder {
 };
 
 inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    bool align_corners = false) {
+    flatbuffers::FlatBufferBuilder &_fbb, bool align_corners = false) {
   ResizeBilinearOptionsBuilder builder_(_fbb);
   builder_.add_align_corners(align_corners);
   return builder_.Finish();
 }
 
-flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(
+    flatbuffers::FlatBufferBuilder &_fbb, const ResizeBilinearOptionsT *_o,
+    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
 struct CallOptionsT : public flatbuffers::NativeTable {
   typedef CallOptions TableType;
@@ -3345,6 +3373,51 @@ flatbuffers::Offset<TransposeOptions> CreateTransposeOptions(
     flatbuffers::FlatBufferBuilder &_fbb, const TransposeOptionsT *_o,
     const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct ExpOptionsT : public flatbuffers::NativeTable {
+  typedef ExpOptions TableType;
+  ExpOptionsT() {}
+};
+
+struct ExpOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ExpOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) && verifier.EndTable();
+  }
+  ExpOptionsT *UnPack(
+      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(
+      ExpOptionsT *_o,
+      const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ExpOptions> Pack(
+      flatbuffers::FlatBufferBuilder &_fbb, const ExpOptionsT *_o,
+      const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ExpOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit ExpOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+      : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ExpOptionsBuilder &operator=(const ExpOptionsBuilder &);
+  flatbuffers::Offset<ExpOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ExpOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ExpOptions> CreateExpOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  ExpOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ExpOptions> CreateExpOptions(
+    flatbuffers::FlatBufferBuilder &_fbb, const ExpOptionsT *_o,
+    const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct MeanOptionsT : public flatbuffers::NativeTable {
   typedef MeanOptions TableType;
   bool keep_dims;
@@ -3858,6 +3931,11 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
                ? static_cast<const StridedSliceOptions *>(builtin_options())
                : nullptr;
   }
+  const ExpOptions *builtin_options_as_ExpOptions() const {
+    return builtin_options_type() == BuiltinOptions_ExpOptions
+               ? static_cast<const ExpOptions *>(builtin_options())
+               : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -4069,6 +4147,11 @@ template <>
 inline const StridedSliceOptions *
 Operator::builtin_options_as<StridedSliceOptions>() const {
   return builtin_options_as_StridedSliceOptions();
+}
+
+template <>
+inline const ExpOptions *Operator::builtin_options_as<ExpOptions>() const {
+  return builtin_options_as_ExpOptions();
 }
 
 struct OperatorBuilder {
@@ -5449,6 +5532,10 @@ inline void ResizeBilinearOptions::UnPackTo(
     const flatbuffers::resolver_function_t *_resolver) const {
   (void)_o;
   (void)_resolver;
+  {
+    auto _e = align_corners();
+    _o->align_corners = _e;
+  };
 }
 
 inline flatbuffers::Offset<ResizeBilinearOptions> ResizeBilinearOptions::Pack(
@@ -5468,7 +5555,8 @@ inline flatbuffers::Offset<ResizeBilinearOptions> CreateResizeBilinearOptions(
     const flatbuffers::rehasher_function_t *__rehasher;
   } _va = {&_fbb, _o, _rehasher};
   (void)_va;
-  return tflite::CreateResizeBilinearOptions(_fbb);
+  auto _align_corners = _o->align_corners;
+  return tflite::CreateResizeBilinearOptions(_fbb, _align_corners);
 }
 
 inline CallOptionsT *CallOptions::UnPack(
@@ -5933,6 +6021,39 @@ inline flatbuffers::Offset<TransposeOptions> CreateTransposeOptions(
   } _va = {&_fbb, _o, _rehasher};
   (void)_va;
   return tflite::CreateTransposeOptions(_fbb);
+}
+
+inline ExpOptionsT *ExpOptions::UnPack(
+    const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new ExpOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void ExpOptions::UnPackTo(
+    ExpOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<ExpOptions> ExpOptions::Pack(
+    flatbuffers::FlatBufferBuilder &_fbb, const ExpOptionsT *_o,
+    const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateExpOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ExpOptions> CreateExpOptions(
+    flatbuffers::FlatBufferBuilder &_fbb, const ExpOptionsT *_o,
+    const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs {
+    flatbuffers::FlatBufferBuilder *__fbb;
+    const ExpOptionsT *__o;
+    const flatbuffers::rehasher_function_t *__rehasher;
+  } _va = {&_fbb, _o, _rehasher};
+  (void)_va;
+  return tflite::CreateExpOptions(_fbb);
 }
 
 inline MeanOptionsT *MeanOptions::UnPack(
@@ -6595,6 +6716,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier,
       auto ptr = reinterpret_cast<const StridedSliceOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_ExpOptions: {
+      auto ptr = reinterpret_cast<const ExpOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default:
       return false;
   }
@@ -6604,6 +6729,7 @@ inline bool VerifyBuiltinOptionsVector(
     flatbuffers::Verifier &verifier,
     const flatbuffers::Vector<flatbuffers::Offset<void>> *values,
     const flatbuffers::Vector<uint8_t> *types) {
+  if (!values || !types) return !values && !types;
   if (values->size() != types->size()) return false;
   for (flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
     if (!VerifyBuiltinOptions(verifier, values->Get(i),
@@ -6747,6 +6873,10 @@ inline void *BuiltinOptionsUnion::UnPack(
       auto ptr = reinterpret_cast<const StridedSliceOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_ExpOptions: {
+      auto ptr = reinterpret_cast<const ExpOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default:
       return nullptr;
   }
@@ -6885,6 +7015,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(
     case BuiltinOptions_StridedSliceOptions: {
       auto ptr = reinterpret_cast<const StridedSliceOptionsT *>(value);
       return CreateStridedSliceOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_ExpOptions: {
+      auto ptr = reinterpret_cast<const ExpOptionsT *>(value);
+      return CreateExpOptions(_fbb, ptr, _rehasher).Union();
     }
     default:
       return 0;
@@ -7039,6 +7173,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u)
     case BuiltinOptions_StridedSliceOptions: {
       value = new StridedSliceOptionsT(
           *reinterpret_cast<StridedSliceOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_ExpOptions: {
+      value = new ExpOptionsT(*reinterpret_cast<ExpOptionsT *>(u.value));
       break;
     }
     default:
@@ -7205,6 +7343,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_StridedSliceOptions: {
       auto ptr = reinterpret_cast<StridedSliceOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_ExpOptions: {
+      auto ptr = reinterpret_cast<ExpOptionsT *>(value);
       delete ptr;
       break;
     }

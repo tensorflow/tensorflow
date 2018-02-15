@@ -112,6 +112,7 @@ cc_test(
     size = "small",
     srcs = ["verifier_test.cc"],
     deps = [
+        ":mutable_op_resolver",
         ":verifier",
         "//tensorflow/contrib/lite:framework",
         "//tensorflow/contrib/lite:schema_fbs_version",

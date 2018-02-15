@@ -530,7 +530,6 @@ class NetworkTest(test.TestCase):
     self.assertEqual(len(network.layers), 2)
     self.assertEqual(network.layers[0].sparse, True)
 
-  @test_util.run_in_graph_and_eager_modes()
   def testMaskingSingleInput(self):
 
     class MaskedLayer(base_layers.Layer):

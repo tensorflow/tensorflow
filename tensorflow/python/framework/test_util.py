@@ -463,8 +463,7 @@ def assert_no_new_tensors(f):
       f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
-    backprop._last_zero = [None]
-    backprop._shape_dtype = [None, None]
+    backprop._zeros_cache.flush()
     context.get_default_context().scalar_cache().clear()
     gc.collect()
     tensors_after = [

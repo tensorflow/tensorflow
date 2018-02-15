@@ -835,6 +835,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
       "LOGISTIC", OperatorType::kLogistic));
   ops.emplace_back(
       new SimpleOperator<TanhOperator>("TANH", OperatorType::kTanh));
+  ops.emplace_back(new SimpleOperator<ExpOperator>("EXP", OperatorType::kExp));
 
   return ops;
 }
