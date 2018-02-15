@@ -48,6 +48,7 @@ if (WIN32)
         URL_HASH ${jpeg_HASH}
         PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/jpeg/CMakeLists.txt ${jpeg_BUILD}
         INSTALL_DIR ${jpeg_INSTALL}
+        CMAKE_GENERATOR ${CMAKE_GENERATOR}
         DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
         CMAKE_CACHE_ARGS
             -DCMAKE_BUILD_TYPE:STRING=Release
@@ -70,6 +71,7 @@ else()
         INSTALL_DIR ${jpeg_INSTALL}
         DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
         BUILD_COMMAND $(MAKE)
+        CMAKE_GENERATOR ${CMAKE_GENERATOR}
         INSTALL_COMMAND $(MAKE) install
         CONFIGURE_COMMAND
             ${jpeg_BUILD}/configure

@@ -27,6 +27,7 @@ ExternalProject_Add(lmdb
     PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${CMAKE_CURRENT_SOURCE_DIR}/patches/lmdb/CMakeLists.txt ${lmdb_BUILD}
     INSTALL_DIR ${lmdb_INSTALL}
+    CMAKE_GENERATOR ${CMAKE_GENERATOR}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     CMAKE_CACHE_ARGS
 		if(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)

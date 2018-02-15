@@ -44,6 +44,7 @@ ExternalProject_Add(highwayhash
     BUILD_IN_SOURCE 1
     PATCH_COMMAND ${CMAKE_COMMAND} -E copy_if_different ${CMAKE_CURRENT_SOURCE_DIR}/patches/highwayhash/CMakeLists.txt ${highwayhash_BUILD}
     INSTALL_DIR ${highwayhash_INSTALL}
+    CMAKE_GENERATOR ${CMAKE_GENERATOR}
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF

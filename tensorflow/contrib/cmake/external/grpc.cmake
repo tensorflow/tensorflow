@@ -43,6 +43,7 @@ ExternalProject_Add(grpc
     BUILD_COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc++_unsecure
     COMMAND ${CMAKE_COMMAND} --build . --config Release --target grpc_cpp_plugin
     INSTALL_COMMAND ""
+    CMAKE_GENERATOR ${CMAKE_GENERATOR}
     CMAKE_CACHE_ARGS
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
