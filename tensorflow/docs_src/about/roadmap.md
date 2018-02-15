@@ -1,5 +1,5 @@
 # Roadmap
-**Last updated: Feb 12, 2018**
+**Last updated: Feb 15, 2018**
 
 TensorFlow is a rapidly moving, community supported project. This document is intended 
 to provide guidance about priorities and focus areas of the core set of TensorFlow 
@@ -25,7 +25,7 @@ expected in the next one to two releases.
 
 #### Keras API:
 * Better integration with tf.data (ability to call `model.fit` with data tensors)
-* Full support for Eager execution (both Eager support for the regular Keras API, and ability 
+* Full support for Eager Execution (both Eager support for the regular Keras API, and ability 
 to create Keras models Eager- style via Model subclassing)
 * Better distribution/multi-GPU support and TPU support (including a smoother model-to-estimator workflow)
 
@@ -49,10 +49,10 @@ across image recognition, speech, object detection, and
 * Edward 2.0: High-level API for probabilistic programming
 
 ### Platforms
-#### TFLite:
-* Increased coverage of supported ops in TFLite
-* Easier conversion of a trained TF graph for use on TFLite
-* Support for GPU acceleration in TFLite (iOS and Andorid)
+#### TensorFlow Lite:
+* Increased coverage of supported ops in TensorFlow Lite
+* Easier conversion of a trained TensorFlow graph for use on TensorFlow Lite
+* Support for GPU acceleration in TensorFlow Lite (iOS and Android)
 * Support for hardware accelerators via Android NeuralNets API 
 * Improved CPU performance by quantization and other network optimizations (eg. pruning, distillation)
 * Increased support for devices beyond Android and iOS (eg. RPi, Cortex-M)
@@ -76,11 +76,11 @@ across image recognition, speech, object detection, and
 #### Special Interest Groups: 
 * Mobilizing the community to work together in focused domains
 * [tf-distribute](https://groups.google.com/a/tensorflow.org/forum/#!forum/tf-distribute)
-: build and packaging of TF
+: build and packaging of TensorFlow
 * More to be identified and launched
 
 #### Community:
 * Incorporate public feedback on significant design decisions via a Request-for-Comment (RFC) process
 * Formalize process for external contributions to land in TensorFlow and associated projects 
-* Grow global TF communities and user groups
+* Grow global TensorFlow communities and user groups
 * Collaborate with partners to co-develop and publish research papers
