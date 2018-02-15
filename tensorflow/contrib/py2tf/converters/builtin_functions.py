@@ -25,36 +25,36 @@ from tensorflow.contrib.py2tf.pyct import transformer
 
 
 class BuiltinFunctionTransformer(transformer.Base):
-  """Handles builtin functions and canonicalizes old-style print statement.
+  """Handles builtin functions.
 
   This transformer only covers functions that are translated into a
   TF equivalent, like `len`.
-  Note that the `print` statement is converted to a function call here, but
-  wrapping the print function to a `py_func` is done by `call_trees` as a
-  generic uncompilable function wrap.
   """
-
-  # TODO(mdan): Handle print entirely in here.
-  # Fully handling print here makes sense especially since we're considering
-  # using tf.Print instead.
 
   def __init__(self, context):
     super(BuiltinFunctionTransformer, self).__init__(context)
+
+  # pylint:disable=invalid-name
 
   def _convert_len(self, node):
     template = """
       tf.shape(args)[0]
     """
-    new_call = templates.replace(template, args=node.args)[0].value
-    return new_call
+    return templates.replace(template, args=node.args)[0].value
 
-  # pylint:disable=invalid-name
+  def _convert_print(self, node):
+    template = """
+      py2tf_utils.call_print(args)
+    """
+    return templates.replace(template, args=node.args)[0].value
 
   def visit_Call(self, node):
     self.generic_visit(node)
     # TODO(mdan): This won't work if the function was hidden.
     if isinstance(node.func, gast.Name) and node.func.id == 'len':
       return self._convert_len(node)
+    if isinstance(node.func, gast.Name) and node.func.id == 'print':
+      return self._convert_print(node)
     return node
 
   def visit_Print(self, node):
@@ -66,7 +66,8 @@ class BuiltinFunctionTransformer(transformer.Base):
     template = """
       fname(args)
     """
-    return templates.replace(template, fname='print', args=args)
+    function_call = templates.replace(template, fname='print', args=args)[0]
+    return self.visit(function_call)
 
   # pylint:enable=invalid-name
 
