@@ -1375,6 +1375,29 @@ void ConstantFolding::ReplaceOperationWithIdentity(int input_to_forward,
   graph_modified_ = true;
 }
 
+void ConstantFolding::ReplaceOperationWithSnapshot(int input_to_forward,
+                                                   NodeDef* node,
+                                                   GraphDef* graph) {
+  node->set_op("Snapshot");
+  DataType dtype = node->attr().at("T").type();
+  node->clear_attr();
+  (*node->mutable_attr())["T"].set_type(dtype);
+
+  // Propagate the designated input through the Snapshot.
+  node->mutable_input()->SwapElements(0, input_to_forward);
+  // Add all other inputs as control dependencies.
+  for (int i = 1; i < node->input_size(); ++i) {
+    if (IsControlInput(node->input(i))) {
+      break;
+    }
+    const string ctrl_dep =
+        AddControlDependency(node->input(i), graph, node_map_.get());
+    node_map_->UpdateInput(node->name(), node->input(i), ctrl_dep);
+    node->set_input(i, ctrl_dep);
+  }
+  graph_modified_ = true;
+}
+
 void ConstantFolding::ReplaceDivisionOfOnesByReciprocal(NodeDef* node,
                                                         GraphDef* graph) {
   node->set_op("Reciprocal");
@@ -1443,15 +1466,14 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       graph_modified_ = true;
       continue;
     }
-    const bool safe_to_use_shapes =
-        use_shape_info && (feed_nodes_.empty() || is_aggressive);
+
     const bool is_mul = IsMul(*node);
     const bool is_matmul = IsMatMul(*node);
     const bool is_add = IsAdd(*node) || IsBiasAdd(*node);
     const bool is_sub = IsSub(*node);
     const bool is_any_div = IsAnyDiv(*node);
     // Simplify arithmetic operations with ones or zeros.
-    if (safe_to_use_shapes &&
+    if (use_shape_info &&
         (is_mul || is_matmul || is_add || is_sub || is_any_div) &&
         properties.HasInputProperties(node->name()) &&
         properties.HasOutputProperties(node->name())) {
@@ -1475,7 +1497,7 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
           ((is_mul && x_is_one) || (is_add && x_is_zero))) {
         // TODO(rmlarsen): Handle subtraction 0 - y.
         // 1 * y = y or 0 + y = y.
-        ReplaceOperationWithIdentity(1, node, output);
+        ReplaceOperationWithSnapshot(1, node, output);
         continue;
       }
 
@@ -1495,9 +1517,9 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
       const bool x_matches_output_shape = ShapesEqual(output_shape, x_shape);
       if (x_matches_output_shape &&
           (((is_mul || is_any_div) && y_is_one) ||
-           ((is_add || is_sub) && y_is_zero && is_aggressive))) {
+           ((is_add || is_sub) && y_is_zero))) {
         // x * 1 = x or x / 1 = x or x +/- 0 = x
-        ReplaceOperationWithIdentity(0, node, output);
+        ReplaceOperationWithSnapshot(0, node, output);
         continue;
       }
 
@@ -1690,6 +1712,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
 
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
+  LOG(INFO) << "Graph before: " << item.graph.DebugString();
   nodes_to_preserve_ = item.NodesToPreserve();
   for (const auto& feed : item.feed) {
     feed_nodes_.insert(NodeName(feed.first));
@@ -1716,6 +1739,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   *output->mutable_library() = item.graph.library();
   *output->mutable_versions() = item.graph.versions();
 
+  LOG(INFO) << "Graph after: " << output->DebugString();
   return Status::OK();
 }
 
