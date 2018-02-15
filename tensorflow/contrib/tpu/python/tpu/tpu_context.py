@@ -425,14 +425,7 @@ class _TPUContext(object):
                 self._get_master_address(), num_replicas,
                 user_provided_num_replicas))
 
-        if self.model_parallelism_enabled:
-          raise ValueError(message)
-        else:
-          logging.warning(message)
-          logging.warning(
-              'For non-model-parallelism, TPUEstimator currently '
-              'automatically queries the TPU system information so ignores '
-              'this field.')
+        raise ValueError(message)
 
     if mode == model_fn_lib.ModeKeys.TRAIN:
       if self._train_batch_size % num_replicas != 0:
