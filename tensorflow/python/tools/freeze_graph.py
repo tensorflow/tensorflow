@@ -109,7 +109,7 @@ def freeze_graph_with_def_protos(input_graph_def,
           input_meta_graph_def, clear_devices=True)
       restorer.restore(sess, input_checkpoint)
       if initializer_nodes:
-        sess.run(initializer_nodes.replace(' ','').split(","))
+        sess.run(initializer_nodes.replace(' ', '').split(","))
     elif input_saved_model_dir:
       if saved_model_tags is None:
         saved_model_tags = []
@@ -130,25 +130,27 @@ def freeze_graph_with_def_protos(input_graph_def,
           var_list=var_list, write_version=checkpoint_version)
       saver.restore(sess, input_checkpoint)
       if initializer_nodes:
-        sess.run(initializer_nodes.replace(' ','').split(","))
+        sess.run(initializer_nodes.replace(' ', '').split(","))
 
-    variable_names_whitelist = (variable_names_whitelist.replace(' ','').split(",")
-                                if variable_names_whitelist else None)
-    variable_names_blacklist = (variable_names_blacklist.replace(' ','').split(",")
-                                if variable_names_blacklist else None)
+    variable_names_whitelist = (
+      variable_names_whitelist.replace(' ', '').split(",")
+      if variable_names_whitelist else None)
+    variable_names_blacklist = (
+      variable_names_blacklist.replace(' ', '').split(",")
+      if variable_names_blacklist else None)
 
     if input_meta_graph_def:
       output_graph_def = graph_util.convert_variables_to_constants(
           sess,
           input_meta_graph_def.graph_def,
-          output_node_names.replace(' ','').split(","),
+          output_node_names.replace(' ', '').split(","),
           variable_names_whitelist=variable_names_whitelist,
           variable_names_blacklist=variable_names_blacklist)
     else:
       output_graph_def = graph_util.convert_variables_to_constants(
           sess,
           input_graph_def,
-          output_node_names.replace(' ','').split(","),
+          output_node_names.replace(' ', '').split(","),
           variable_names_whitelist=variable_names_whitelist,
           variable_names_blacklist=variable_names_blacklist)
 
@@ -250,7 +252,7 @@ def freeze_graph(input_graph,
       variable_names_blacklist,
       input_meta_graph_def,
       input_saved_model_dir,
-      saved_model_tags.replace(' ','').split(","),
+      saved_model_tags.replace(' ', '').split(","),
       checkpoint_version=checkpoint_version)
 
 
