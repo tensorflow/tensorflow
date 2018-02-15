@@ -794,6 +794,10 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[shr],
         ElementWiseBinaryOp(shr, [](NativeT lhs_elem, NativeT rhs_elem) {
+          // If shift amount is greater than the number of bits, then return 0.
+          if (rhs_elem >= sizeof(UnsignedT) * CHAR_BIT) {
+            return static_cast<NativeT>(0);
+          }
           return static_cast<NativeT>(static_cast<UnsignedT>(lhs_elem) >>
                                       rhs_elem);
         }));
