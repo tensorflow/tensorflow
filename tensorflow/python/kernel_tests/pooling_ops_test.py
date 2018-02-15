@@ -892,12 +892,12 @@ class PoolingTest(test.TestCase):
 				image_size -= image_size%2
 			image_size = image_size.tolist()
 			image_size = [batch_size]+image_size+[depth]
-			print('Image Size {}'.format(image_size))
+			#print('Image Size {}'.format(image_size))
 
 			kernel_size = [1]+[np.random.randint(2,4)]*2+[1]
-			print('Kernel Size {}'.format(kernel_size))
+			#print('Kernel Size {}'.format(kernel_size))
 			strides = [1,2,2,1]
-			print('Strides {}'.format(strides))
+			#print('Strides {}'.format(strides))
 			input_data = np.random.random(image_size).astype(np.float32)
 
 			return input_data, kernel_size, strides
@@ -907,16 +907,19 @@ class PoolingTest(test.TestCase):
 			for iteration in range(test_iterations):
 				print("unpool: iteration {}/{} GPU {}".format(iteration+1, test_iterations, use_gpu))
 				input_data, _, strides = generate_dataset()
+				stride = np.prod(strides)
 				with self.test_session(use_gpu=use_gpu):
-					pooled_data = constant_op.constant(input_data, dtype=dtypes.float32)
-					indices = np.random.permutation(input_data.size*4)[::4]
-					indices = indices.reshape(input_data.shape)
-
 					unpooled_shape = list(np.array(input_data.shape)*strides)
+					num_unpooled_points_per_batch = np.prod(unpooled_shape[1:])
+					indices = []
+					for b in range(unpooled_shape[0]):
+						batch_offset = b*num_unpooled_points_per_batch
+						batch_indices = np.random.permutation(num_unpooled_points_per_batch)[::stride] + batch_offset
+						indices += batch_indices.tolist()
+					pooled_data = constant_op.constant(input_data, dtype=dtypes.float32)
+					indices = np.reshape(indices, input_data.shape)
 
 					unpooled_data = nn_ops.unpool(pooled_data, indices, unpooled_shape).eval()
-					print(input_data)
-					print(unpooled_data)
 					self.assertAllCloseAccordingToType(input_data.ravel(), unpooled_data.ravel()[indices.ravel()])
 
   def _ConstructAndTestGradient(self,
