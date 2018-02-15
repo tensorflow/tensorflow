@@ -123,6 +123,21 @@ cc_test(
 )
 
 cc_library(
+    name = "join",
+    hdrs = ["join.h"],
+)
+
+cc_test(
+    name = "join_test",
+    size = "small",
+    srcs = ["join_test.cc"],
+    deps = [
+        ":join",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
     name = "tflite_driver",
     srcs = ["tflite_driver.cc"],
     hdrs = ["tflite_driver.h"],
@@ -201,6 +216,7 @@ cc_library(
     srcs = ["tf_driver.cc"],
     hdrs = ["tf_driver.h"],
     deps = [
+        ":join",
         ":split",
         ":test_runner",
         "//tensorflow/core:core_cpu",
