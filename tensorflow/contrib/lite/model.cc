@@ -535,6 +535,14 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_SPLIT: {
+      auto* params = MallocPOD<TfLiteSplitParams>();
+      if (auto* schema_params = op->builtin_options_as_SplitOptions()) {
+        params->num_splits = schema_params->num_splits();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_SQUEEZE: {
       auto* params = MallocPOD<TfLiteSqueezeParams>();
       if (auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
