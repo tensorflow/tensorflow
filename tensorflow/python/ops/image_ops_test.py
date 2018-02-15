@@ -1121,9 +1121,8 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
     p_unknown_dims_4 = array_ops.placeholder(
         dtypes.uint8, shape=[None, None, None, None])
     p_unknown_width = array_ops.placeholder(dtypes.uint8, shape=[64, None, 3])
-    p_unknown_batch = array_ops.placeholder(dtypes.uint8,
-																						shape=[None, 64, 64, 3])
-
+    p_unknown_batch = array_ops.placeholder(dtypes.uint8, 
+					    shape=[None, 64, 64, 3])
     p_wrong_rank = array_ops.placeholder(dtypes.uint8, shape=[None, None])
     p_zero_dim = array_ops.placeholder(dtypes.uint8, shape=[64, 0, 3])
 
