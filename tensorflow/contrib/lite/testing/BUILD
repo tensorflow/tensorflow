@@ -49,6 +49,7 @@ gen_zipped_test_files(
         "squeeze.zip",
         "strided_slice.zip",
         "sub.zip",
+        "topk.zip",
         "transpose.zip",
     ],
 )
