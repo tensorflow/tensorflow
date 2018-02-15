@@ -1,7 +1,10 @@
 licenses(["notice"])  # Apache 2.0
 
 package(
-    default_visibility = ["//tensorflow:internal"],
+    default_visibility = [
+        "//learning/tfx:__subpackages__",
+        "//tensorflow:internal",
+    ],
 )
 
 load(
