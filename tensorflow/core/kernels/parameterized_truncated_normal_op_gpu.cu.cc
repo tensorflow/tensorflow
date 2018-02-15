@@ -29,7 +29,7 @@ limitations under the License.
 #include "tensorflow/core/lib/random/random_distributions.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
 
-#ifdef COMPILER_MSVC
+#if defined(_MSC_VER) && !defined(__clang__)
 // msvc does not support unroll. One could try the loop pragma but we need to
 // take a closer look if this generates better code in this case. For now let
 // the compiler take care of it.
@@ -202,12 +202,13 @@ struct TruncatedNormalFunctor<GPUDevice, T> {
                   typename TTypes<T>::Flat output) {
     const auto config = GetCudaLaunchConfig(num_elements, d);
 
-    TruncatedNormalKernel<
-        T><<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        gen, output.data(), num_batches, samples_per_batch, num_elements,
-        means.data(), means.dimension(0) == 1, stddevs.data(),
-        stddevs.dimension(0) == 1, minvals.data(), minvals.dimension(0) == 1,
-        maxvals.data(), maxvals.dimension(0) == 1, kMaxIterations);
+    TruncatedNormalKernel<T>
+        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
+            gen, output.data(), num_batches, samples_per_batch, num_elements,
+            means.data(), means.dimension(0) == 1, stddevs.data(),
+            stddevs.dimension(0) == 1, minvals.data(),
+            minvals.dimension(0) == 1, maxvals.data(),
+            maxvals.dimension(0) == 1, kMaxIterations);
   };
 };
 

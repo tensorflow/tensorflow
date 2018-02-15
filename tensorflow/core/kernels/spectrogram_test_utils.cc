@@ -70,10 +70,24 @@ bool ReadRawFloatFileToComplexVector(
   int offset = 0;
   const int end = data_string.size();
   while (offset < end) {
+#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
+    char arr[4];
+    for (int i = 0; i < kBytesPerValue; ++i) {
+      arr[3 - i] = *(data_string.data() + offset + i);
+    }
+    memcpy(&real_out, arr, kBytesPerValue);
+    offset += kBytesPerValue;
+    for (int i = 0; i < kBytesPerValue; ++i) {
+      arr[3 - i] = *(data_string.data() + offset + i);
+    }
+    memcpy(&imag_out, arr, kBytesPerValue);
+    offset += kBytesPerValue;
+#else
     memcpy(&real_out, data_string.data() + offset, kBytesPerValue);
     offset += kBytesPerValue;
     memcpy(&imag_out, data_string.data() + offset, kBytesPerValue);
     offset += kBytesPerValue;
+#endif
     if (row_counter >= row_length) {
       data->push_back(data_row);
       data_row.clear();

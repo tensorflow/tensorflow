@@ -29,7 +29,7 @@ message RewriterConfig {
     AGGRESSIVE = 3;
   }
 
-  // Optimize tensor layouts
+  // Optimize tensor layouts (default is ON)
   Toggle layout_optimizer = 1;
   // Fold constants (default is ON)
   Toggle constant_folding = 3;
@@ -37,11 +37,13 @@ message RewriterConfig {
   Toggle arithmetic_optimization = 7;
   // Control dependency optimizations (default is ON).
   Toggle dependency_optimization = 8;
+  // Loop optimizations (default is OFF).
+  Toggle loop_optimization = 9;
   // If true, don't remove unnecessary ops from the graph
   bool disable_model_pruning = 2;
 
   enum MemOptType {
-    // The default setting (currently disabled)
+    // The default setting (SCHEDULING_HEURISTICS only)
     DEFAULT_MEM_OPT = 0;
     // Disabled in the meta-optimizer.
     NO_MEM_OPT = 1;

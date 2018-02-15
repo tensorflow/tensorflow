@@ -27,6 +27,7 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import constraints
 from tensorflow.python.keras._impl.keras import initializers
@@ -38,6 +39,7 @@ from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.layers import network as tf_network
 from tensorflow.python.layers import utils as tf_layers_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=g-import-not-at-top
@@ -59,6 +61,7 @@ TFBaseLayer = tf_base_layers.Layer
 # pylint: enable=invalid-name
 
 
+@tf_export('keras.layers.Layer')
 class Layer(tf_base_layers.Layer):
   """Abstract base layer class.
 
@@ -257,6 +260,10 @@ class Layer(tf_base_layers.Layer):
     output = super(Layer, self).__call__(inputs, **kwargs)
     if context.in_eager_mode():
       return output
+
+    # Un-built subclassed network: build it
+    if isinstance(self, Network) and not self.inputs:
+      self._set_inputs(inputs)
 
     # Update learning phase info.
     output_tensors = _to_list(output)
@@ -489,6 +496,7 @@ class Layer(tf_base_layers.Layer):
     self._activity_regularizer = activity_regularizer
 
 
+@tf_export('keras.layers.InputLayer')
 class InputLayer(tf_network.InputLayer, Layer):
   """Layer to be used as an entry point into a graph.
 
@@ -551,6 +559,7 @@ class InputLayer(tf_network.InputLayer, Layer):
     return config
 
 
+@tf_export('keras.layers.Input', 'keras.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,
@@ -676,10 +685,26 @@ class Network(tf_network.GraphNetwork, Layer):
       from_config
   """
 
-  def __init__(self, inputs, outputs, name=None):
+  def __init__(self, *args, **kwargs):  # pylint: disable=super-init-not-called
+    # Signature detection
+    if (len(args) == 2 or
+        len(args) == 1 and 'outputs' in kwargs or
+        'inputs' in kwargs and 'outputs' in kwargs):
+      # Graph network
+      self._init_graph_network(*args, **kwargs)
+    else:
+      # Subclassed network
+      self._init_subclassed_network(**kwargs)
+
+  def _init_graph_network(self, inputs, outputs, name=None):
+    # TODO(fchollet): merge back tf.layers.Network and tf.keras.Network
+    # into a single class tf.keras.Network
     super(Network, self).__init__(inputs, outputs, name=name)
 
+    self._is_compiled = False
     self.supports_masking = False
+    self.optimizer = None
+
     # Fill in the output mask cache.
     masks = []
     for x in self.inputs:
@@ -707,13 +732,63 @@ class Network(tf_network.GraphNetwork, Layer):
       self.input_names.append(layer.name)
       if layer.is_placeholder:
         self._feed_input_names.append(layer.name)
-        self._feed_inputs.append(layer.input)
         self._feed_input_shapes.append(K.int_shape(self.inputs[i]))
+        # layer.input gives an error in eager mode
+        if context.in_graph_mode():
+          self._feed_inputs.append(layer.input)
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 
-    self.internal_input_shapes = [K.int_shape(x) for x in self.inputs]
-    self.internal_output_shapes = [K.int_shape(x) for x in self.outputs]
+  def _init_subclassed_network(self, name=None):
+    self._init_set_name(name)
+    self._layers = []
+    self._is_graph_network = False
+    self._is_compiled = False
+    self.outputs = None
+    self.inputs = None
+    self.trainable = True
+    self.supports_masking = False
+    self.built = False
+    self.optimizer = None
+
+    # Not used, exists for compatibility purposes due to implementation of
+    # the base layer tf.layers.Layer - TODO(fchollet): clean up when refactoring
+    self._scope = None
+    self._reuse = None
+    self._dtype = None
+    self._graph = None
+    self._activity_regularizer = None
+
+    # Used in symbolic mode only
+    self._updates = []
+    self._losses = []
+
+    # Used in symbolic mode only, only in conjonction with graph-networks
+    self._outbound_nodes = []
+    self._inbound_nodes = []
+
+  def __setattr__(self, name, value):
+    if isinstance(value, (tf_base_layers.Layer, Network)):
+      try:
+        is_graph_network = self._is_graph_network
+      except AttributeError:
+        raise RuntimeError('It looks like you are subclassing `Model` and you '
+                           'forgot to call `super(YourClass, self).__init__()`.'
+                           ' Always start with this line.')
+      if not is_graph_network:
+        if value not in self._layers:
+          self._layers.append(value)
+    super(Network, self).__setattr__(name, value)
+
+  def add_variable(self, name, shape, dtype=None, initializer=None,
+                   regularizer=None, trainable=True, constraint=None):
+    raise NotImplementedError('`add_variable` is not supported on Networks')
+
+  def add_loss(self, *args, **kwargs):
+    if context.in_eager_mode():
+      raise NotImplementedError('`add_loss` is not supported in eager-mode '
+                                'on Networks')
+    super(Network, self).add_loss(*args, **kwargs)
 
   @property
   def uses_learning_phase(self):
@@ -776,13 +851,16 @@ class Network(tf_network.GraphNetwork, Layer):
     K.batch_set_value(tuples)
 
   def compute_mask(self, inputs, mask):
+    if not self._is_graph_network:
+      return None
+
     inputs = _to_list(inputs)
     if mask is None:
       masks = [None for _ in range(len(inputs))]
     else:
       masks = _to_list(mask)
-    cache_key = ','.join([str(id(x)) for x in inputs])
-    cache_key += '_' + ','.join([str(id(x)) for x in masks])
+    cache_key = (tf_layers_util.object_list_uid(inputs)
+                 + '_' + tf_layers_util.object_list_uid(masks))
     if cache_key in self._output_mask_cache:
       return self._output_mask_cache[cache_key]
     else:
@@ -790,6 +868,9 @@ class Network(tf_network.GraphNetwork, Layer):
       return output_masks
 
   def get_config(self):
+    if not self._is_graph_network:
+      raise NotImplementedError
+
     config = {
         'name': self.name,
     }
@@ -1039,6 +1120,9 @@ class Network(tf_network.GraphNetwork, Layer):
     model = load_model('my_model.h5')
     ```
     """
+    if not self._is_graph_network:
+      raise NotImplementedError
+
     from tensorflow.python.keras._impl.keras.models import save_model  # pylint: disable=g-import-not-at-top
     save_model(self, filepath, overwrite, include_optimizer)
 
@@ -1141,6 +1225,8 @@ class Network(tf_network.GraphNetwork, Layer):
     Returns:
         A JSON string.
     """
+    if not self._is_graph_network:
+      raise NotImplementedError
 
     def get_json_type(obj):
       # If obj is any numpy type
@@ -1176,6 +1262,9 @@ class Network(tf_network.GraphNetwork, Layer):
     Raises:
         ImportError: if yaml module is not found.
     """
+    if not self._is_graph_network:
+      raise NotImplementedError
+
     if yaml is None:
       raise ImportError('Requires yaml module installed.')
     return yaml.dump(self._updated_config(), **kwargs)
@@ -1303,18 +1392,17 @@ def preprocess_weights_for_loading(layer,
   Returns:
       A list of weights values (Numpy arrays).
   """
+  if layer.__class__.__name__ == 'Bidirectional':
+    num_weights_per_layer = len(weights) // 2
+    forward_weights = preprocess_weights_for_loading(
+        layer.forward_layer, weights[:num_weights_per_layer],
+        original_keras_version, original_backend)
+    backward_weights = preprocess_weights_for_loading(
+        layer.backward_layer, weights[num_weights_per_layer:],
+        original_keras_version, original_backend)
+    weights = forward_weights + backward_weights
+
   if original_keras_version == '1':
-    if layer.__class__.__name__ == 'Bidirectional':
-      num_weights_per_layer = len(weights) // 2
-
-      forward_weights = preprocess_weights_for_loading(
-          layer.forward_layer, weights[:num_weights_per_layer],
-          original_keras_version, original_backend)
-      backward_weights = preprocess_weights_for_loading(
-          layer.backward_layer, weights[num_weights_per_layer:],
-          original_keras_version, original_backend)
-      weights = forward_weights + backward_weights
-
     if layer.__class__.__name__ == 'TimeDistributed':
       weights = preprocess_weights_for_loading(
           layer.layer, weights, original_keras_version, original_backend)
@@ -1418,7 +1506,7 @@ def preprocess_weights_for_loading(layer,
 
   conv_layers = ['Conv1D', 'Conv2D', 'Conv3D', 'Conv2DTranspose', 'ConvLSTM2D']
   if layer.__class__.__name__ in conv_layers:
-    if original_backend and K.backend() != original_backend:
+    if original_backend == 'theano':
       weights[0] = conv_utils.convert_kernel(weights[0])
       if layer.__class__.__name__ == 'ConvLSTM2D':
         weights[1] = conv_utils.convert_kernel(weights[1])
@@ -1427,10 +1515,9 @@ def preprocess_weights_for_loading(layer,
       if layer.__class__.__name__ == 'ConvLSTM2D':
         weights[1] = np.transpose(weights[1], (3, 2, 0, 1))
 
-  # convert the weights of CuDNNLSTM so that they could be loaded into LSTM
+  # Convert the weights of CuDNNLSTM so that they could be loaded into LSTM
   if layer.__class__.__name__ == 'LSTM' and len(weights) == 3:
-    # determine if we're loading a CuDNNLSTM layer from the number of bias
-    # weights:
+    # Determine if loading a CuDNNLSTM layer from the number of bias weights:
     # CuDNNLSTM has (units * 8) weights; while LSTM has (units * 4)
     # if there's no bias weight in the file, skip this conversion
     units = weights[1].shape[0]
@@ -1572,3 +1659,31 @@ def load_weights_from_hdf5_group_by_name(f, layers):
       for i in range(len(weight_values)):
         weight_value_tuples.append((symbolic_weights[i], weight_values[i]))
   K.batch_set_value(weight_value_tuples)
+
+
+def shape_type_conversion(fn):
+  """Decorator that handles tuple/TensorShape conversion.
+
+  Used in `compute_output_shape` and `build`.
+
+  Arguments:
+    fn: function to wrap.
+
+  Returns:
+    Wrapped function.
+  """
+
+  def wrapper(instance, input_shape):
+    if input_shape is not None:
+      if isinstance(input_shape, list):
+        input_shape = [
+            tuple(tensor_shape.TensorShape(x).as_list()) for x in input_shape]
+      else:
+        input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
+    output_shape = fn(instance, input_shape)
+    if output_shape is not None:
+      if isinstance(output_shape, list):
+        return [tensor_shape.TensorShape(x) for x in output_shape]
+      return tensor_shape.TensorShape(output_shape)
+
+  return wrapper

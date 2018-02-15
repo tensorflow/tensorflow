@@ -23,14 +23,18 @@ END
   attr {
     name: "align_corners"
     description: <<END
-If true, rescale input by (new_height - 1) / (height - 1), which
-exactly aligns the 4 corners of images and resized images. If false, rescale
-by new_height / height. Treat similarly the width dimension.
+If true, the centers of the 4 corner pixels of the input and output tensors are
+aligned, preserving the values at the corner pixels. Defaults to false.
 END
   }
   summary: "Resize `images` to `size` using area interpolation."
   description: <<END
 Input images can be of different types but output images are always float.
+
+The range of pixel values for the output image might be slightly different
+from the range for the input image because of limited numerical precision.
+To guarantee an output range, for example `[0.0, 1.0]`, apply
+`tf.clip_by_value` to the output.
 
 Each output pixel is computed by first transforming the pixel's footprint into
 the input tensor and then averaging the pixels that intersect the footprint. An

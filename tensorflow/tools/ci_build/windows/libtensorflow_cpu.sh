@@ -41,7 +41,7 @@ run_configure_for_cpu_build
 # build_libtensorflow_tarball in ../builds/libtensorflow.sh
 # cannot be used on Windows since it relies on pkg_tar rules.
 # So we do something special here
-bazel build -c opt \
+bazel build -c opt --copt=/arch:AVX \
   tensorflow:libtensorflow.so \
   tensorflow/tools/lib_package:clicenses_generate \
   tensorflow/java:libtensorflow_jni.so \
@@ -67,7 +67,7 @@ cp tensorflow/c/c_api.h ${DIR}/include/tensorflow/c
 cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
 cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DIR}/include/tensorflow/c
 cd ${DIR}
-zip -j libtensorflow-cpu-windows-$(uname -m).zip \
+zip libtensorflow-cpu-windows-$(uname -m).zip \
   lib/tensorflow.dll \
   include/tensorflow/c/eager/c_api.h \
   include/tensorflow/c/c_api.h \

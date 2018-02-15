@@ -97,12 +97,11 @@ static Node* AddNoOp(Graph* g) {
 
 static Node* AddIdentity(Graph* g, Endpoint input) {
   DCHECK_LT(0, input.dtype());
-  DCHECK_LT(input.dtype(), DT_FLOAT_REF);
   NodeDef ndef;
   ndef.set_name(g->NewName(kNodeLabel));
   ndef.set_op("Identity");
   ndef.add_input(input.name());
-  AddNodeAttr("T", input.dtype(), &ndef);
+  AddNodeAttr("T", BaseType(input.dtype()), &ndef);
   Status s;
   Node* ret = g->AddNode(ndef, &s);
   TF_CHECK_OK(s);
@@ -183,6 +182,10 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
 
   string DebugString(Handle h) override;
 
+  Status Clone(std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+               FunctionLibraryRuntime** out_flr) override;
+
  private:
   typedef FunctionLibraryRuntimeImpl ME;
 
@@ -205,7 +208,7 @@ class FunctionLibraryRuntimeImpl : public FunctionLibraryRuntime {
   // The instantiated and transformed function is encoded as a Graph
   // object, and an executor is created for the graph.
   struct Item : public core::RefCounted {
-    const Graph* graph = nullptr;  // Owned by exec.
+    const Graph* graph = nullptr;                            // Owned by exec.
     const FunctionLibraryDefinition* overlay_lib = nullptr;  // Not owned.
     FunctionBody* func_graph = nullptr;
     Executor* exec = nullptr;
@@ -266,8 +269,14 @@ FunctionLibraryRuntimeImpl::FunctionLibraryRuntimeImpl(
 }
 
 FunctionLibraryRuntimeImpl::~FunctionLibraryRuntimeImpl() {
+  // The most common patterns of FLR usage don't require the caller to
+  // explicitly release handles. As a result, we try to unref each item until
+  // it's erased.
   for (auto item : items_) {
-    if (item.second) item.second->Unref();
+    if (item.second) {
+      while (!item.second->Unref()) {
+      }
+    }
   }
 }
 
@@ -474,6 +483,8 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
   const string key = Canonicalize(function_name, attrs, options_copy);
   *handle = parent_->GetHandle(key);
   if (*handle != kInvalidHandle) {
+    mutex_lock l(mu_);
+    items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
     return Status::OK();
   }
 
@@ -508,6 +519,7 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     *handle = parent_->GetHandle(key);
     if (*handle != kInvalidHandle) {
       delete fbody;
+      items_[parent_->GetHandleOnDevice(device_name_, *handle)]->Ref();
     } else {
       *handle = parent_->AddHandle(key, device_name_, next_handle_);
       Item* item = new Item;
@@ -619,7 +631,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Handle handle, Item** item) {
   };
   Graph* graph = g.get();
   Executor* exec;
-  TF_RETURN_IF_ERROR(NewLocalExecutor(params, g.release(), &exec));
+  TF_RETURN_IF_ERROR(NewLocalExecutor(params, std::move(g), &exec));
 
   {
     // Guard item since it is already inserted in items_.
@@ -883,6 +895,21 @@ string FunctionLibraryRuntimeImpl::DebugString(Handle handle) {
     return tensorflow::DebugString(item->graph);
   } else {
     return s.ToString();
+  }
+}
+
+Status FunctionLibraryRuntimeImpl::Clone(
+    std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+    std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr,
+    FunctionLibraryRuntime** out_flr) {
+  TF_RETURN_IF_ERROR(
+      parent_->Clone(env_, graph_def_version_, optimizer_.options(),
+                     custom_kernel_creator_, out_lib_def, out_pflr));
+  *out_flr = (*out_pflr)->GetFLR(device_->name());
+  if (out_flr != nullptr) {
+    return Status::OK();
+  } else {
+    return errors::Internal("Cloning FunctionLibraryRuntime failed.");
   }
 }
 

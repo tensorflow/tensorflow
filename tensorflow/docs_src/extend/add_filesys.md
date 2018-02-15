@@ -81,6 +81,8 @@ filesystem implementations call their existing libraries. Examples include:
     plugin](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/platform/hadoop/hadoop_file_system.h)
 *   [GCS
     plugin](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/platform/cloud/gcs_file_system.h)
+*   [S3
+    plugin](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/platform/s3/s3_file_system.h)
 
 #### The File interfaces
 

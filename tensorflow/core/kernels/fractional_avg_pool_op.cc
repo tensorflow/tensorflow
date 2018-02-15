@@ -232,8 +232,9 @@ class FractionalAvgPoolGradOp : public OpKernel {
 
     // Grab the inputs.
     const Tensor& orig_input_tensor_shape = context->input(0);
-    OP_REQUIRES(context, orig_input_tensor_shape.dims() == 1 &&
-                             orig_input_tensor_shape.NumElements() == 4,
+    OP_REQUIRES(context,
+                orig_input_tensor_shape.dims() == 1 &&
+                    orig_input_tensor_shape.NumElements() == 4,
                 errors::InvalidArgument("original input tensor shape must be"
                                         "1-dimensional and 4 elements"));
     const Tensor& out_backprop = context->input(1);

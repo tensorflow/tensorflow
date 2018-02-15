@@ -31,8 +31,6 @@ namespace xla {
 namespace gpu {
 namespace {
 
-using tensorflow::strings::StrCat;
-
 using LayoutAssignmentTest = HloTestBase;
 
 TEST_F(LayoutAssignmentTest, Elementwise) {
@@ -116,7 +114,7 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
 
   for (const Shape& input_shape : AllLayoutsOf(shape)) {
     for (const Shape& result_shape : AllLayoutsOf(shape)) {
-      SCOPED_TRACE(StrCat(
+      SCOPED_TRACE(tensorflow::strings::StrCat(
           "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
           ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
 
@@ -188,7 +186,7 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
   // Enumerate all combinations of shapes.
   for (const Shape& input_shape : AllLayoutsOf(shape)) {
     for (const Shape& result_shape : AllLayoutsOf(shape)) {
-      SCOPED_TRACE(StrCat(
+      SCOPED_TRACE(tensorflow::strings::StrCat(
           "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
           ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
 
@@ -260,7 +258,7 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
   for (const Shape& input_shape : AllLayoutsOf(shape)) {
     for (const Shape& result_shape : AllLayoutsOf(shape)) {
       for (int constrained_param_no : {0, 4}) {
-        SCOPED_TRACE(StrCat(
+        SCOPED_TRACE(tensorflow::strings::StrCat(
             "input_shape=", ShapeUtil::HumanStringWithLayout(input_shape),
             ", result_shape=", ShapeUtil::HumanStringWithLayout(result_shape)));
 

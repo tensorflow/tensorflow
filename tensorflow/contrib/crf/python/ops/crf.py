@@ -166,8 +166,8 @@ def crf_log_likelihood(inputs,
     sequence_lengths: A [batch_size] vector of true sequence lengths.
     transition_params: A [num_tags, num_tags] transition matrix, if available.
   Returns:
-    log_likelihood: A scalar containing the log-likelihood of the given sequence
-        of tag indices.
+    log_likelihood: A [batch_size] `Tensor` containing the log-likelihood of
+      each example, given the sequence of tag indices.
     transition_params: A [num_tags, num_tags] transition matrix. This is either
         provided by the caller or created in this function.
   """
@@ -182,7 +182,7 @@ def crf_log_likelihood(inputs,
                                        transition_params)
   log_norm = crf_log_norm(inputs, sequence_lengths, transition_params)
 
-  # Normalize the scores to get the log-likelihood.
+  # Normalize the scores to get the log-likelihood per example.
   log_likelihood = sequence_scores - log_norm
   return log_likelihood, transition_params
 

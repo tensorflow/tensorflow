@@ -163,7 +163,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
@@ -177,7 +177,6 @@ py_library(
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/estimator:util",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
     ],

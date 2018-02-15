@@ -116,9 +116,9 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<const HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-    : Executable(std::move(hlo_module), std::move(hlo_profile_printer),
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       ptx_(ptx),
       cubin_(cubin),
@@ -262,9 +262,16 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
-      auto param_no = allocation.parameter_number();
-      buffer_allocations_builder.RegisterBuffer(
-          i, arguments[param_no]->root_buffer());
+      // The caller must give us a buffer for ShapeIndex {} of every parameter.
+      // It can optionally give us a buffer for other ShapeIndices, but we
+      // ignore them: Because we can't rely on these sub-buffers' addresses
+      // being available, our generated code can't use them.  Instead, it must
+      // chase pointers starting at the tuple root.
+      if (allocation.param_shape_index().empty()) {
+        auto param_no = allocation.parameter_number();
+        buffer_allocations_builder.RegisterBuffer(
+            i, arguments[param_no]->root_buffer());
+      }
     }
   }
   se::StreamExecutor* executor = run_options->stream()->parent();

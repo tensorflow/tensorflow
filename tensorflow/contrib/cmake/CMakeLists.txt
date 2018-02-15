@@ -52,6 +52,7 @@ if (NOT WIN32)
   # for targets that link ${CMAKE_THREAD_LIBS_INIT}.
   find_package (Threads)
 
+  # Options for linking CUDA/CUDNN libraries
   option(tensorflow_PATH_STATIC_LIB "Additional library search path for libcudnn_static.a, libnccl_static.a, libculibos.a" /usr/local/cuda/lib64/)
   option(tensorflow_CUDNN_INCLUDE "cudnn.h header install path" /usr/include/)
   if (NOT tensorflow_CUDNN_INCLUDE)
@@ -73,6 +74,14 @@ if (NOT WIN32)
     # option's default value is OFF. Fill it with real default values
     set(tensorflow_CUDA_LIBRARY_PATH /usr/local/cuda/lib64)
   endif (NOT tensorflow_CUDA_LIBRARY_PATH)
+
+  # Options for linking other libraries
+  option(systemlib_ZLIB "Use the system installed library as shared objects instead of downloading ZLIB and statically linking to it: ZLIB" OFF)
+
+  option(systemlib_ALL "Turn on every possible systemlib_* options" OFF)
+  if (systemlib_ALL)
+    set (systmelib_ZLIB ON)
+  endif (systemlib_ALL)
 endif()
 
 if (WIN32)
@@ -134,6 +143,9 @@ if(WIN32)
   set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /D_ITERATOR_DEBUG_LEVEL=0")
   set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /D_ITERATOR_DEBUG_LEVEL=0")
+
+  # Try to avoid flaky failures due to failed generation of generate.stamp files.
+  set(CMAKE_SUPPRESS_REGENERATION ON)
 endif()
 
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
@@ -185,8 +197,10 @@ if (tensorflow_BUILD_CC_TESTS)
   include(googletest)
 endif()
 
+add_definitions(${ADD_CFLAGS})
+link_directories(${ADD_LINK_DIRECTORY})
+
 set(tensorflow_EXTERNAL_LIBRARIES
-    ${zlib_STATIC_LIBRARIES}
     ${gif_STATIC_LIBRARIES}
     ${png_STATIC_LIBRARIES}
     ${jpeg_STATIC_LIBRARIES}
@@ -200,6 +214,15 @@ set(tensorflow_EXTERNAL_LIBRARIES
     ${re2_STATIC_LIBRARIES}
     ${sqlite_STATIC_LIBRARIES}
 )
+
+if (systemlib_ZLIB)
+  set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+      ${ZLIB_LIBRARIES})
+else (systemlib_ZLIB)
+  set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+    ${zlib_STATIC_LIBRARIES})
+endif (systemlib_ZLIB)
+
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
     gif_copy_headers_to_destination
@@ -283,7 +306,21 @@ if (tensorflow_ENABLE_GPU)
     list(APPEND CMAKE_LIBRARY_PATH "${tensorflow_CUDA_LIBRARY_PATH}/stubs")
   endif (NOT WIN32)
 
-  find_package(CUDA ${tensorflow_CUDA_VERSION} REQUIRED)
+  # later command will make use of the value in tensorflow_CUDA_VERSION
+  find_package(CUDA ${tensorflow_CUDA_VERSION} REQUIRED EXACT)
+
+  # Test compatibility of compiler on CUDA
+  try_compile(CUDA_TEST_COMPILE_C
+    ${CMAKE_CURRENT_BINARY_DIR}/tests/cuda
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/cuda/compatibility_test.c
+    CMAKE_FLAGS -DINCLUDE_DIRECTORIES=${CUDA_INCLUDE_DIRS})
+  try_compile(CUDA_TEST_COMPILE_CXX
+    ${CMAKE_CURRENT_BINARY_DIR}/tests/cuda
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/cuda/compatibility_test.cc
+    CMAKE_FLAGS -DINCLUDE_DIRECTORIES=${CUDA_INCLUDE_DIRS})
+  if(NOT (CUDA_TEST_COMPILE_C AND CUDA_TEST_COMPILE_CXX))
+    message(FATAL_ERROR "Selected compiler (or version) is not supported for CUDA")
+  endif()
 
   # by default we assume compute cabability 3.5 and 5.2. If you change this change it in
   # CUDA_NVCC_FLAGS and cuda_config.h below
@@ -361,6 +398,8 @@ if (tensorflow_ENABLE_GPU)
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
       ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
+      ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_fp16.h
+      ${CUDA_TOOLKIT_TARGET_DIR}/include/device_functions.h
       DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
     )
   else(WIN32)

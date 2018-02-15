@@ -67,9 +67,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                     "num_parallel_batches must be greater than zero."));
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
-                                                 std::move(other_arguments),
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            func_, std::move(other_arguments), &captured_func));
 
     *output = new Dataset(input, batch_size, num_parallel_batches,
                           output_types_, output_shapes_,
@@ -184,7 +183,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               TensorShape component_shape(
                   batch_results_[current_batch_index_].output[i].shape());
               component_shape.set_dim(0, num_elements);
-              Tensor component(cpu_allocator(), output[i].dtype(),
+              Tensor component(ctx->allocator({}), output[i].dtype(),
                                component_shape);
               TF_RETURN_IF_ERROR(
                   CopyPartialBatch(&component, output[i], num_elements));
@@ -245,7 +244,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      void EnsureOutputAllocated(BatchResult* batch_result,
+      void EnsureOutputAllocated(IteratorContext* ctx,
+                                 BatchResult* batch_result,
                                  const std::vector<Tensor>& return_values) {
         mutex_lock l(batch_result->mu);
         if (batch_result->output_allocated) {
@@ -255,7 +255,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         for (size_t i = 0; i < num_components; ++i) {
           TensorShape component_shape({dataset()->batch_size_});
           component_shape.AppendShape(return_values[i].shape());
-          Tensor component(cpu_allocator(), return_values[i].dtype(),
+          Tensor component(ctx->allocator({}), return_values[i].dtype(),
                            component_shape);
           batch_result->output.emplace_back(std::move(component));
         }
@@ -280,30 +280,15 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         // Call `captured_func_(input_element)`, store the result in
         // `result->return_values`, and notify `batch_result->counter`
         // to unblock a consumer.
-        FunctionLibraryRuntime::Options opts;
-        opts.step_id = CapturedFunction::generate_step_id();
-        ScopedStepContainer* step_container =
-            new ScopedStepContainer(opts.step_id, [this](const string& name) {
-              dataset()
-                  ->captured_func_->resource_manager()
-                  ->Cleanup(name)
-                  .IgnoreError();
-            });
-        opts.step_container = step_container;
-        std::function<void(std::function<void()>)>* runner =
-            new std::function<void(std::function<void()>)>(*ctx->runner());
-        opts.runner = runner;
         (*ctx->runner())(std::bind(
-            [=](std::vector<Tensor> input_element) {
+            [this, result, batch_result, offset](
+                IteratorContext* ctx, std::vector<Tensor> input_element) {
               dataset()->captured_func_->RunAsync(
-                  opts, std::move(input_element), &result->return_values,
-                  [this, step_container, runner, result, batch_result,
-                   offset](Status ret_status) {
-                    delete step_container;
-                    delete runner;
+                  ctx, std::move(input_element), &result->return_values,
+                  [this, ctx, result, batch_result, offset](Status ret_status) {
                     result->status.Update(ret_status);
                     if (ret_status.ok()) {
-                      EnsureOutputAllocated(batch_result,
+                      EnsureOutputAllocated(ctx, batch_result,
                                             result->return_values);
                       const size_t num_components =
                           result->return_values.size();
@@ -333,6 +318,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                         }
                       }
                     }
+                    delete ctx;
                     // NOTE(mrry): We clear the return values here to release
                     // any memory associated with them and to paralellize the
                     // destruction of the tensors (which can be surprisingly
@@ -342,7 +328,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                     batch_result->counter->DecrementCount();
                   });
             },
-            std::move(input_element)));
+            new IteratorContext(*ctx), std::move(input_element)));
       }
 
       void StartInvocationBatch(IteratorContext* ctx, int64 batch_index)

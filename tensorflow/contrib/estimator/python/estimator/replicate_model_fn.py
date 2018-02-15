@@ -50,9 +50,9 @@ from tensorflow.python.training import optimizer as optimizer_lib
 
 
 def replicate_model_fn(model_fn,
-                       loss_reduction=losses.Reduction.SUM,
+                       loss_reduction=losses.Reduction.SUM_BY_NONZERO_WEIGHTS,
                        devices=None):
-  """Replicate `Estimator.model_fn` over GPUs within a single host.
+  """Replicate `Estimator.model_fn` over GPUs.
 
   The given `model_fn` specifies a single forward pass of a model.  To replicate
   such a model over GPUs, each GPU gets its own instance of the forward pass
@@ -139,6 +139,10 @@ def replicate_model_fn(model_fn,
       If `None`, then all available GPUs are going to be used for replication.
       If no GPUs are available, then the model is going to be placed on the CPU.
 
+  Raises:
+    ValueError: if there is no `loss_reduction` or if TowerOptimizer is
+      mis-used.
+
   Returns:
     A replicated version of the supplied `model_fn`. Returned function that
       conforms to the requirements of `Estimator`'s `model_fn` and can be used
@@ -181,7 +185,7 @@ class _VariableDistributionMode(object):
 
 def _replicate_model_fn_with_mode(
     model_fn,
-    loss_reduction=losses.Reduction.SUM,
+    loss_reduction,
     devices=None,
     mode=_VariableDistributionMode.SHARED_LOCAL_PARAMETER_SERVER):
   """A version of `replicate_model_fn` that allows to specify a `mode`."""
@@ -191,7 +195,7 @@ def _replicate_model_fn_with_mode(
   if not devices:
     devices = _get_local_devices('GPU') or _get_local_devices('CPU')
 
-  is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0]
+  is_a_single_gpu_case = len(devices) == 1 and 'GPU' in devices[0].upper()
   consolidation_device = devices[0] if is_a_single_gpu_case else '/CPU:0'
 
   ps_devices = [consolidation_device]
@@ -261,6 +265,10 @@ class TowerOptimizer(optimizer_lib.Optimizer):
     If TowerOptimizer is used but `replicate_model_fn` isn't, then no
     aggregation will happen.  All calls will simply be forwarded to the
     underlying optimizer. The behavior is similar if there is only one tower.
+
+    If TowerOptimizer is used together with SyncReplicasOptimizer that wraps
+    the user's optimizer, then it's the SyncReplicasOptimizer that needs to be
+    wrapped with TowerOptimizer.
 
     Args:
       optimizer_or_optimizer_fn: an instance of optimizer to wrap.  That
@@ -449,6 +457,13 @@ def _get_local_devices(device_type):
 def _split_batch(features, labels, number_of_shards, device):
   """Split input features and labes into batches."""
 
+  def ensure_divisible_by_shards(sequence):
+    batch_size = ops_lib.convert_to_tensor(sequence).get_shape()[0]
+    if batch_size % number_of_shards != 0:
+      raise ValueError(
+          'Batch size {} needs to be divisible by the number of GPUs, which '
+          'is {}.'.format(batch_size, number_of_shards))
+
   def split_dictionary(dictionary):
     """Split a dictionary into shards."""
     shards = [{} for _ in range(number_of_shards)]
@@ -459,6 +474,7 @@ def _split_batch(features, labels, number_of_shards, device):
                 sp_input=tensor, num_split=number_of_shards, axis=0)):
           shards[i][name] = shard
       else:
+        ensure_divisible_by_shards(tensor)
         for i, shard in enumerate(array_ops.split(tensor, number_of_shards)):
           shards[i][name] = shard
     return shards
@@ -468,6 +484,7 @@ def _split_batch(features, labels, number_of_shards, device):
       if isinstance(features, dict):
         feature_shards = split_dictionary(features)
       else:
+        ensure_divisible_by_shards(features)
         feature_shards = array_ops.split(features, number_of_shards)
 
       if labels is None:
@@ -475,6 +492,7 @@ def _split_batch(features, labels, number_of_shards, device):
       elif isinstance(labels, dict):
         label_shards = split_dictionary(labels)
       else:
+        ensure_divisible_by_shards(labels)
         label_shards = array_ops.split(labels, number_of_shards)
   return feature_shards, label_shards
 
@@ -490,7 +508,7 @@ def _get_loss_towers(model_fn,
                      config,
                      devices,
                      local_ps_devices,
-                     loss_reduction=losses.Reduction.SUM,
+                     loss_reduction,
                      name_scope_pattern=_DEFAULT_NAME_SCOPE_PATTERN):
   """Replicate the loss computation across devices."""
   tower_specs = []
@@ -631,7 +649,12 @@ def _train_spec(tower_specs,
                 aggregation_device,
                 aggregated_loss_name='loss'):
   """Populate replicated EstimatorSpec for `GraphKeys.TRAIN`."""
-  estimator_spec = _asdict(tower_specs[0])
+  # Spec of the last tower is used as the template for the final spec, because
+  # some `EstimatorSpec.training_hooks` rely on calls made in model_fn.  For
+  # example, `SyncReplicasOptimizerHook` validates the
+  # `SyncReplicasOptimizer.apply_gradients` call. `TowerEstimator` makes that
+  # call only in the last tower.
+  estimator_spec = _asdict(tower_specs[-1])
   estimator_spec['mode'] = model_fn_lib.ModeKeys.TRAIN
   estimator_spec['train_op'] = train_op
   estimator_spec['loss'] = _compute_sum_on_device(
@@ -767,7 +790,7 @@ def _extract_tensors(tensors_and_vars):
     tensor, _ = tensor_and_var
     if isinstance(tensor, ops_lib.IndexedSlices):
       tensors.append(tensor.values)
-    else:
+    elif tensor is not None:
       tensors.append(tensor)
   return tensors
 
@@ -797,4 +820,3 @@ def _asdict(namedtuple):
     A dictionary version of the tuple.
   """
   return {k: getattr(namedtuple, k) for k in namedtuple._fields}
-

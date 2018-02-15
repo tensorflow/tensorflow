@@ -182,6 +182,7 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
                shift_and_log_scale_fn,
                is_constant_jacobian=False,
                validate_args=False,
+               unroll_loop=False,
                name=None):
     """Creates the MaskedAutoregressiveFlow bijector.
 
@@ -201,17 +202,46 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
         inefficient.)
       validate_args: Python `bool` indicating whether arguments should be
         checked for correctness.
+      unroll_loop: Python `bool` indicating whether the `tf.while_loop` in
+        `_forward` should be replaced with a static for loop. Requires that
+        the final dimension of `x` be known at graph construction time. Defaults
+        to `False`.
       name: Python `str`, name given to ops managed by this object.
     """
     name = name or "masked_autoregressive_flow"
     self._shift_and_log_scale_fn = shift_and_log_scale_fn
+    self._unroll_loop = unroll_loop
     super(MaskedAutoregressiveFlow, self).__init__(
         is_constant_jacobian=is_constant_jacobian,
         validate_args=validate_args,
         name=name)
 
   def _forward(self, x):
+    if self._unroll_loop:
+      event_size = x.shape.with_rank_at_least(1)[-1].value
+      if event_size is None:
+        raise ValueError(
+            "The final dimension of `x` must be known at graph construction "
+            "time if `unroll_loop=True`. `x.shape: %r`" % x.shape)
+      y = array_ops.zeros_like(x, name="y0")
+
+      for _ in range(event_size):
+        shift, log_scale = self._shift_and_log_scale_fn(y)
+        # next_y = scale * x + shift
+        next_y = x
+        if log_scale is not None:
+          next_y *= math_ops.exp(log_scale)
+        if shift is not None:
+          next_y += shift
+        y = next_y
+      return y
+
     event_size = array_ops.shape(x)[-1]
+    # If the event size is available at graph construction time, we can inform
+    # the graph compiler of the maximum number of steps. If not,
+    # static_event_size will be None, and the maximum_iterations argument will
+    # have no effect.
+    static_event_size = x.shape.with_rank_at_least(1)[-1].value
     y0 = array_ops.zeros_like(x, name="y0")
     # call the template once to ensure creation
     _ = self._shift_and_log_scale_fn(y0)
@@ -233,7 +263,8 @@ class MaskedAutoregressiveFlow(bijector_lib.Bijector):
     _, y = control_flow_ops.while_loop(
         cond=lambda index, _: index < event_size,
         body=_loop_body,
-        loop_vars=[0, y0])
+        loop_vars=(0, y0),
+        maximum_iterations=static_event_size)
     return y
 
   def _inverse(self, y):

@@ -369,6 +369,22 @@ cc_library(
     ],
 )
 
+cc_library(
+    name = "batch_kernels",
+    srcs = ["batch_kernels.cc"],
+    deps = [
+        "//tensorflow/core:batch_ops_op_lib",
+        "//tensorflow/core:framework_headers_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:concat_lib_hdrs",
+        "//tensorflow/core/kernels:ops_util_hdrs",
+        "//tensorflow/core/kernels:split_lib_hdrs",
+        "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
+        "//tensorflow/core/kernels/batching_util:shared_batch_scheduler_hdrs",
+    ],
+    alwayslink = 1,
+)
+
 tf_kernel_library(
     name = "record_input_op",
     srcs = [
@@ -613,6 +629,7 @@ cc_library(
         ":transpose_op",
         ":unique_op",
         ":unpack_op",
+        ":unravel_index_op",
         ":where_op",
     ],
 )
@@ -865,6 +882,12 @@ tf_kernel_library(
     name = "unpack_op",
     prefix = "unpack_op",
     deps = ARRAY_DEPS + [":split_lib"],
+)
+
+tf_kernel_library(
+    name = "unravel_index_op",
+    prefix = "unravel_index_op",
+    deps = ARRAY_DEPS,
 )
 
 tf_kernel_library(
@@ -1919,6 +1942,17 @@ tf_kernel_library(
     ],
 )
 
+tf_kernel_library(
+    name = "functional_ops",
+    prefix = "functional_ops",
+    deps = [
+        "//tensorflow/core:framework",
+        "//tensorflow/core:functional_ops_op_lib",
+        "//tensorflow/core:lib",
+        "//third_party/eigen3",
+    ],
+)
+
 cc_library(
     name = "image",
     deps = [
@@ -2347,6 +2381,7 @@ cc_library(
         ":determinant_op",
         ":matrix_exponential_op",
         ":matrix_inverse_op",
+        ":matrix_logarithm_op",
         ":matrix_solve_ls_op",
         ":matrix_solve_op",
         ":matrix_triangular_solve_op",
@@ -2415,6 +2450,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "matrix_exponential_op",
     prefix = "matrix_exponential_op",
+    deps = LINALG_DEPS,
+)
+
+tf_kernel_library(
+    name = "matrix_logarithm_op",
+    prefix = "matrix_logarithm_op",
     deps = LINALG_DEPS,
 )
 
@@ -2550,6 +2591,45 @@ tf_cc_tests(
         ":logging",
         ":ops_testutil",
         ":ops_util",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+cc_library(
+    name = "manip",
+    deps = [
+        ":roll_op",
+    ],
+)
+
+MANIP_DEPS = [
+    "//tensorflow/core:framework",
+    "//tensorflow/core:lib",
+    "//tensorflow/core:manip_ops_op_lib",
+    "//third_party/eigen3",
+]
+
+tf_kernel_library(
+    name = "roll_op",
+    prefix = "roll_op",
+    deps = MANIP_DEPS,
+)
+
+tf_cc_test(
+    name = "roll_op_test",
+    size = "small",
+    srcs = ["roll_op_test.cc"],
+    deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":roll_op",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -4261,7 +4341,7 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/fft2d:fft2d_headers",
-        "@fft2d//:fft2d",
+        "@fft2d",
     ],
 )
 
@@ -4968,6 +5048,7 @@ filegroup(
             "debug_ops.*",
             "scatter_nd_op*",
             "critical_section.*",
+            "batch_kernels.*",
         ],
     ),
     visibility = ["//visibility:public"],
@@ -5000,8 +5081,8 @@ cc_library(
         "//tensorflow/core:protos_all_cc_impl",
         "//third_party/eigen3",
         "//third_party/fft2d:fft2d_headers",
-        "@fft2d//:fft2d",
-        "@gemmlowp//:gemmlowp",
+        "@fft2d",
+        "@gemmlowp",
         "@protobuf_archive//:protobuf",
     ],
     alwayslink = 1,
@@ -5072,7 +5153,7 @@ tf_kernel_library(
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )
 
@@ -5823,6 +5904,23 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_softmax_op",
+    prefix = "mkl_softmax",
+    deps = [
+        ":bounds_check",
+        ":ops_util",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:nn_ops_op_lib",
+    ] + if_mkl([
+        "//third_party/mkl:intel_binary_blob",
+        "@mkl_dnn//:mkl_dnn",
+    ]),
+)
+
+tf_mkl_kernel_library(
     name = "mkl_fused_batch_norm_op",
     srcs = ["mkl_fused_batch_norm_op.cc"],
     deps = NN_DEPS + if_mkl([
@@ -5985,6 +6083,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
     ],
 )

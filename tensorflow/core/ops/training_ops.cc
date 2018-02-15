@@ -22,48 +22,6 @@ using shape_inference::DimensionHandle;
 using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
-const char kAddSignCommonDocStr[] = R"doc(
-Update '*var' according to the AddSign update.
-
-m_t <- beta1 * m_{t-1} + (1 - beta1) * g
-update <- (alpha + sign_decay * sign(g) *sign(m)) * g
-variable <- variable - lr_t * update
-
-var: Should be from a Variable().
-m: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-sign_decay: Must be a scalar.
-alpha: Must be a scalar.
-beta: Must be a scalar.
-grad: The gradient.
-)doc";
-
-const char kPowerSignCommonDocStr[] = R"doc(
-Update '*var' according to the AddSign update.
-
-m_t <- beta1 * m_{t-1} + (1 - beta1) * g
-update <- exp(logbase * sign_decay * sign(g) * sign(m_t)) * g
-variable <- variable - lr_t * update
-
-var: Should be from a Variable().
-m: Should be from a Variable().
-lr: Scaling factor. Must be a scalar.
-logbase: Must be a scalar.
-sign_decay: Must be a scalar.
-beta: Must be a scalar.
-grad: The gradient.
-)doc";
-
-const char kOutDocStr[] = R"doc(
-out: Same as "var".
-)doc";
-
-const char kLockDocStr[] = R"doc(
-use_locking: If `True`, updating of the var and m tensors is
-  protected by a lock; otherwise the behavior is undefined, but may exhibit less
-  contention.
-)doc";
-
 static ShapeHandle ShapeOrHandleShape(InferenceContext* c, int input) {
   auto* handle_data = c->input_handle_shapes_and_types(input);
   if (handle_data != nullptr && !handle_data->empty() &&

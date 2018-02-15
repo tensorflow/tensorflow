@@ -42,14 +42,14 @@ class SummaryFileWriter : public SummaryWriterInterface {
       if (is_dir.code() != tensorflow::error::NOT_FOUND) {
         return is_dir;
       }
-      TF_RETURN_IF_ERROR(env_->CreateDir(logdir));
+      TF_RETURN_IF_ERROR(env_->RecursivelyCreateDir(logdir));
     }
     mutex_lock ml(mu_);
     events_writer_ =
         tensorflow::MakeUnique<EventsWriter>(io::JoinPath(logdir, "events"));
-    if (!events_writer_->InitWithSuffix(filename_suffix)) {
-      return errors::Unknown("Could not initialize events writer.");
-    }
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        events_writer_->InitWithSuffix(filename_suffix),
+        "Could not initialize events writer.");
     last_flush_ = env_->NowMicros();
     is_initialized_ = true;
     return Status::OK();
@@ -151,9 +151,8 @@ class SummaryFileWriter : public SummaryWriterInterface {
       events_writer_->WriteEvent(*e);
     }
     queue_.clear();
-    if (!events_writer_->Flush()) {
-      return errors::InvalidArgument("Could not flush events file.");
-    }
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(events_writer_->Flush(),
+                                    "Could not flush events file.");
     last_flush_ = env_->NowMicros();
     return Status::OK();
   }

@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
+#include "tensorflow/core/graph/graph_def_builder_util.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -193,7 +194,7 @@ class PlacerTest : public ::testing::Test {
   // Builds the given graph, and (if successful) indexes the node
   // names for use in placement, and later lookup.
   Status BuildGraph(const GraphDefBuilder& builder, Graph* out_graph) {
-    TF_RETURN_IF_ERROR(builder.ToGraph(out_graph));
+    TF_RETURN_IF_ERROR(GraphDefBuilderToGraph(builder, out_graph));
     nodes_by_name_.clear();
     for (Node* node : out_graph->nodes()) {
       nodes_by_name_[node->name()] = node->id();
@@ -619,9 +620,9 @@ TEST_F(PlacerTest, TestReferenceConnectionIgnoreInfeasible) {
     Node* input = ops::SourceOp(
         "TestDevice",
         b.opts().WithName("in").WithDevice("/job:a/task:0/device:fakegpu:0"));
-    Node* var = ops::SourceOp("TestVariable",
-                              b.opts().WithName("var_0").WithDevice(
-                                  "/job:a/task:0/device:fakegpu:0"));
+    Node* var =
+        ops::SourceOp("TestVariable", b.opts().WithName("var_0").WithDevice(
+                                          "/job:a/task:0/device:fakegpu:0"));
 
     // This op is specified on CPU, but in practice will be ignored,
     // because the reference edges forces it on GPU.

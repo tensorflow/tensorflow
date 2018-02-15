@@ -485,7 +485,29 @@ class Literal {
   static std::unique_ptr<Literal> MakeTupleOwned(
       std::vector<std::unique_ptr<Literal>> elements);
 
+  // This overload lets you pass a braced list of unique_ptr<Literal>s to
+  // MakeTupleOwned:
+  //
+  //   Literal::MakeTupleOwned(Literal::CreateR1(...), ...).
+  //
+  // Simply relying on the MakeTupleOwned(std::vector<unique_ptr<Literal>>)
+  // overload doesn't work because std::initializer_list's elements are always
+  // const.
+  //
+  // The arguments to this function must all be unique_ptr<Literal>.
+  template <typename... Ts>
+  static std::unique_ptr<Literal> MakeTupleOwned(
+      std::unique_ptr<Ts>... elements) {
+    std::array<std::unique_ptr<Literal>, sizeof...(Ts)> arr{
+        std::move(elements)...};
+    std::vector<std::unique_ptr<Literal>> v;
+    v.insert(v.begin(), std::make_move_iterator(arr.begin()),
+             std::make_move_iterator(arr.end()));
+    return MakeTupleOwned(std::move(v));
+  }
+
   // Returns a string representation of the literal value.
+  // Warning: this function can take minutes for multi-million element Literals.
   string ToString(bool print_layout = false) const;
 
   // Invokes the "per cell" callback for each element in the provided

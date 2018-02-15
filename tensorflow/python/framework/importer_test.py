@@ -154,6 +154,25 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(b3.name, "A_3/B")
       self.assertEqual(list(b3.inputs), [a3.outputs[0]])
 
+      # Import with an already-used name but with a '/' to indicate an
+      # "absolute" name scope (see the Graph.name_scope docstring).
+      a_a, a_b = importer.import_graph_def(
+          graph_def,
+          return_elements=["A", "B"],
+          name="A/")
+      self.assertEqual(a_a.name, "A/A")
+      self.assertEqual(a_b.name, "A/B")
+      self.assertEqual(list(a_b.inputs), [a_a.outputs[0]])
+
+      # Repeat the same import.
+      a_a1, a_b1 = importer.import_graph_def(
+          graph_def,
+          return_elements=["A", "B"],
+          name="A/")
+      self.assertEqual(a_a1.name, "A/A_1")
+      self.assertEqual(a_b1.name, "A/B_1")
+      self.assertEqual(list(a_b1.inputs), [a_a1.outputs[0]])
+
       # Import with existing de-duped node names
       a1_1, b1_1 = importer.import_graph_def(
           self._MakeGraphDef("""
@@ -332,9 +351,9 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d.inputs[1], b.outputs[0])
 
       self.assertEqual(a.outputs[0].dtype, dtypes.int32_ref)
-      self.assertEqual(c._input_dtypes, [dtypes.int32, dtypes.int32])
+      self.assertEqual(c._input_types, [dtypes.int32, dtypes.int32])
       self.assertEqual(c.outputs, [])
-      self.assertEqual(d._input_dtypes, [dtypes.int32_ref, dtypes.int32])
+      self.assertEqual(d._input_types, [dtypes.int32_ref, dtypes.int32])
       self.assertEqual(d.outputs, [])
 
   def testWhileLoop(self):

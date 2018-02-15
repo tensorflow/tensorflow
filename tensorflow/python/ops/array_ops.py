@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# Tests for this file live in python/kernel_tests/array_ops_test.py
 """Support for manipulating tensors.
 
 See the @{$python/array_ops} guide.
@@ -34,6 +35,7 @@ See the @{$python/array_ops} guide.
 @@reshape
 @@squeeze
 @@expand_dims
+@@unravel_index
 @@meshgrid
 @@slice
 @@strided_slice
@@ -103,16 +105,19 @@ from tensorflow.python.ops import gen_math_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_array_ops import *
 from tensorflow.python.util import deprecation
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 # Used for slicing to specify a new 1 size dimension
 newaxis = None
+tf_export("newaxis").export_constant(__name__, "newaxis")
 
 # We override the 'slice' for the "slice" op, so we keep python's
 # existing 'slice' for later use in this module.
 _BaseSlice = slice
 
 
+@tf_export("identity")
 def identity(input, name=None):  # pylint: disable=redefined-builtin
   r"""Return a tensor with the same shape and contents as input.
 
@@ -135,6 +140,7 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
 
 
 # pylint: disable=redefined-builtin,protected-access
+@tf_export("expand_dims")
 def expand_dims(input, axis=None, name=None, dim=None):
   """Inserts a dimension of 1 into a tensor's shape.
 
@@ -211,6 +217,7 @@ listdiff.__doc__ = gen_array_ops._list_diff.__doc__ + "\n" + listdiff.__doc__
 
 
 # pylint: disable=undefined-variable,protected-access
+@tf_export("setdiff1d")
 def setdiff1d(x, y, index_dtype=dtypes.int32, name=None):
   return gen_array_ops._list_diff(x, y, index_dtype, name)
 
@@ -220,6 +227,7 @@ setdiff1d.__doc__ = gen_array_ops._list_diff.__doc__
 # pylint: enable=protected-access
 
 
+@tf_export("broadcast_dynamic_shape")
 def broadcast_dynamic_shape(shape_x, shape_y):
   # pylint: disable=protected-access
   """Returns the broadcasted dynamic shape between `shape_x` and `shape_y`.
@@ -235,6 +243,7 @@ def broadcast_dynamic_shape(shape_x, shape_y):
   # pylint: enable=protected-access
 
 
+@tf_export("broadcast_static_shape")
 def broadcast_static_shape(shape_x, shape_y):
   """Returns the broadcasted static shape between `shape_x` and `shape_y`.
 
@@ -251,6 +260,7 @@ def broadcast_static_shape(shape_x, shape_y):
   return common_shapes.broadcast_shape(shape_x, shape_y)
 
 
+@tf_export("shape")
 def shape(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the shape of a tensor.
@@ -304,6 +314,7 @@ def shape_internal(input, name=None, optimize=True, out_type=dtypes.int32):
       return gen_array_ops.shape(input, name=name, out_type=out_type)
 
 
+@tf_export("shape_n")
 def shape_n(input, out_type=dtypes.int32, name=None):
   # pylint: disable=redefined-builtin
   """Returns shape of tensors.
@@ -330,6 +341,7 @@ def shape_n(input, out_type=dtypes.int32, name=None):
   return output
 
 
+@tf_export("size")
 def size(input, name=None, out_type=dtypes.int32):
   # pylint: disable=redefined-builtin
   """Returns the size of a tensor.
@@ -387,6 +399,7 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
       return gen_array_ops.size(input, name=name, out_type=out_type)
 
 
+@tf_export("rank")
 def rank(input, name=None):
   # pylint: disable=redefined-builtin
   """Returns the rank of a tensor.
@@ -577,6 +590,7 @@ def _slice_helper(tensor, slice_spec, var=None):
 
 
 # pylint: disable=undefined-variable,protected-access,redefined-outer-name
+@tf_export("slice")
 def slice(input_, begin, size, name=None):
   # pylint: disable=redefined-builtin
   """Extracts a slice from a tensor.
@@ -629,6 +643,7 @@ def slice(input_, begin, size, name=None):
 
 
 # pylint: disable=invalid-name
+@tf_export("strided_slice")
 def strided_slice(input_,
                   begin,
                   end,
@@ -817,6 +832,7 @@ def _SliceHelperVar(var, slice_spec):
 ops.Tensor._override_operator("__getitem__", _slice_helper)
 
 
+@tf_export("parallel_stack")
 def parallel_stack(values, name="parallel_stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor in parallel.
 
@@ -867,6 +883,7 @@ def parallel_stack(values, name="parallel_stack"):
         [expand_dims(value, 0) for value in values], shape=output_shape)
 
 
+@tf_export("stack")
 def stack(values, axis=0, name="stack"):
   """Stacks a list of rank-`R` tensors into one rank-`(R+1)` tensor.
 
@@ -1012,6 +1029,7 @@ ops.register_tensor_conversion_function((list, tuple),
                                         _autopacking_conversion_function, 99)
 
 
+@tf_export("unstack")
 def unstack(value, num=None, axis=0, name="unstack"):
   """Unpacks the given dimension of a rank-`R` tensor into rank-`(R-1)` tensors.
 
@@ -1061,6 +1079,7 @@ def unstack(value, num=None, axis=0, name="unstack"):
   return gen_array_ops._unpack(value, num=num, axis=axis, name=name)
 
 
+@tf_export("concat")
 def concat(values, axis, name="concat"):
   """Concatenates tensors along one dimension.
 
@@ -1157,6 +1176,7 @@ def concat(values, axis, name="concat"):
   return gen_array_ops._concat_v2(values=values, axis=axis, name=name)
 
 
+@tf_export("boolean_mask")
 def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
   """Apply boolean mask to tensor.  Numpy equivalent is `tensor[mask]`.
 
@@ -1237,6 +1257,7 @@ def boolean_mask(tensor, mask, name="boolean_mask", axis=None):
     return _apply_mask_1d(tensor, mask, axis)
 
 
+@tf_export("sparse_mask")
 def sparse_mask(a, mask_indices, name=None):
   """Masks elements of `IndexedSlices`.
 
@@ -1279,16 +1300,19 @@ def sparse_mask(a, mask_indices, name=None):
     return ops.IndexedSlices(out_values, out_indices, a.dense_shape)
 
 
+@tf_export("unique")
 def unique(x, out_idx=dtypes.int32, name=None):
-  # TODO (yongtang): switch to v2 once API deprecation
+  # TODO(yongtang): switch to v2 once API deprecation
   # period (3 weeks) pass.
-  # TODO (yongtang): The documentation should also
+  # TODO(yongtang): The documentation should also
   # be updated when switch  to v2.
   return gen_array_ops._unique(x, out_idx, name)
+
 
 unique.__doc__ = gen_array_ops._unique.__doc__
 
 
+@tf_export("split")
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor into sub tensors.
 
@@ -1355,6 +1379,7 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
       name=name)
 
 
+@tf_export("transpose")
 def transpose(a, perm=None, name="transpose", conjugate=False):
   """Transposes `a`. Permutes the dimensions according to `perm`.
 
@@ -1431,6 +1456,7 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
 
 
 # pylint: disable=invalid-name
+@tf_export("matrix_transpose", "linalg.transpose")
 def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   """Transposes last two dimensions of tensor `a`.
 
@@ -1502,6 +1528,7 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
 # pylint: enable=invalid-name
 
 
+@tf_export("zeros")
 def zeros(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to zero.
 
@@ -1546,6 +1573,7 @@ def zeros(shape, dtype=dtypes.float32, name=None):
   return output
 
 
+@tf_export("zeros_like")
 def zeros_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to zero.
 
@@ -1562,9 +1590,9 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
 
   Args:
     tensor: A `Tensor`.
-    dtype: A type for the returned `Tensor`. Must be `float32`, `float64`,
-      `int8`, `uint8`, `int16`, `uint16`, int32`, `int64`,
-      `complex64`, `complex128` or `bool`.
+    dtype: A type for the returned `Tensor`. Must be `float16`, `float32`,
+      `float64`, `int8`, `uint8`, `int16`, `uint16`, `int32`, `int64`,
+      `complex64`, `complex128`, `bool` or `string`.
     name: A name for the operation (optional).
     optimize: if true, attempt to statically determine the shape of 'tensor'
     and encode it as a constant.
@@ -1598,6 +1626,7 @@ def zeros_like(tensor, dtype=None, name=None, optimize=True):
       return gen_array_ops._zeros_like(tensor, name=name)
 
 
+@tf_export("ones_like")
 def ones_like(tensor, dtype=None, name=None, optimize=True):
   """Creates a tensor with all elements set to 1.
 
@@ -1635,6 +1664,7 @@ def ones_like(tensor, dtype=None, name=None, optimize=True):
     return ret
 
 
+@tf_export("ones")
 def ones(shape, dtype=dtypes.float32, name=None):
   """Creates a tensor with all elements set to 1.
 
@@ -1674,6 +1704,7 @@ def ones(shape, dtype=dtypes.float32, name=None):
   return output
 
 
+@tf_export("placeholder")
 def placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a tensor that will be always fed.
 
@@ -1727,6 +1758,7 @@ def _normalize_sparse_shape(shape, name):
   return (ops.convert_to_tensor(shape, dtype=dtypes.int64, name=name), rank)
 
 
+@tf_export("sparse_placeholder")
 def sparse_placeholder(dtype, shape=None, name=None):
   """Inserts a placeholder for a sparse tensor that will be always fed.
 
@@ -1793,6 +1825,7 @@ def sparse_placeholder(dtype, shape=None, name=None):
 # pylint: enable=redefined-outer-name
 
 
+@tf_export("pad")
 def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pylint: disable=invalid-name
   """Pads a tensor.
 
@@ -1886,6 +1919,7 @@ def pad(tensor, paddings, mode="CONSTANT", name=None, constant_values=0):  # pyl
   return result
 
 
+@tf_export("meshgrid")
 def meshgrid(*args, **kwargs):
   """Broadcasts parameters for evaluation on an N-D grid.
 
@@ -2025,6 +2059,7 @@ def _TileGradShape(op):
     return [tensor_shape.TensorShape(output_dims)]
 
 
+@tf_export("edit_distance")
 def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   """Computes the Levenshtein distance between sequences.
 
@@ -2042,7 +2077,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
   hypothesis = tf.SparseTensor(
       [[0, 0, 0],
        [1, 0, 0]],
-      ["a", "b"]
+      ["a", "b"],
       (2, 1, 1))
 
   # 'truth' is a tensor of shape `[2, 2]` with variable-length values:
@@ -2054,7 +2089,7 @@ def edit_distance(hypothesis, truth, normalize=True, name="edit_distance"):
       [[0, 1, 0],
        [1, 0, 0],
        [1, 0, 1],
-       [1, 1, 0]]
+       [1, 1, 0]],
       ["a", "b", "c", "a"],
       (2, 2, 2))
 
@@ -2138,6 +2173,7 @@ def _FakeQuantWithMinMaxVarsPerChannelGradient(op, grad):
       narrow_range=op.get_attr("narrow_range"))
 
 
+@tf_export("required_space_to_batch_paddings")
 def required_space_to_batch_paddings(input_shape,
                                      block_shape,
                                      base_paddings=None,
@@ -2216,6 +2252,7 @@ def required_space_to_batch_paddings(input_shape,
     return result_paddings, result_crops
 
 
+@tf_export("space_to_batch")
 def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=redefined-builtin
   result = space_to_batch_nd(
       input,
@@ -2229,6 +2266,7 @@ def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=r
 space_to_batch.__doc__ = gen_array_ops._space_to_batch.__doc__
 
 
+@tf_export("space_to_depth")
 def space_to_depth(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
   return gen_array_ops.space_to_depth(input, block_size, data_format, name=name)
 
@@ -2236,6 +2274,7 @@ def space_to_depth(input, block_size, name=None, data_format="NHWC"):  # pylint:
 space_to_depth.__doc__ = gen_array_ops.space_to_depth.__doc__
 
 
+@tf_export("depth_to_space")
 def depth_to_space(input, block_size, name=None, data_format="NHWC"):  # pylint: disable=redefined-builtin
   return gen_array_ops.depth_to_space(input, block_size, data_format, name=name)
 
@@ -2243,6 +2282,7 @@ def depth_to_space(input, block_size, name=None, data_format="NHWC"):  # pylint:
 depth_to_space.__doc__ = gen_array_ops.depth_to_space.__doc__
 
 
+@tf_export("batch_to_space")
 def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=redefined-builtin
   result = batch_to_space_nd(
       input,
@@ -2256,6 +2296,7 @@ def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=rede
 batch_to_space.__doc__ = gen_array_ops._batch_to_space.__doc__
 
 
+@tf_export("one_hot")
 def one_hot(indices,
             depth,
             on_value=None,
@@ -2411,10 +2452,11 @@ def _all_dimensions(x):
     r = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.
     return constant_op.constant(np.arange(r), dtype=dtypes.int32)
 
-  # Otherwise, we rely on Range and Rank to do the right thing at run-time.
-  return range(0, rank(x))
+  # Otherwise, we rely on `range` and `rank` to do the right thing at runtime.
+  return gen_math_ops._range(0, rank(x), 1)
 
 
+@tf_export("sequence_mask")
 def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
   """Returns a mask tensor representing the first N positions of each cell.
 
@@ -2456,7 +2498,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
       maxlen = gen_math_ops._max(lengths, _all_dimensions(lengths))
     else:
       maxlen = ops.convert_to_tensor(maxlen)
-    if maxlen.get_shape().ndims != 0:
+    if maxlen.get_shape().ndims is not None and maxlen.get_shape().ndims != 0:
       raise ValueError("maxlen must be scalar for sequence_mask")
 
     # The basic idea is to compare a range row vector of size maxlen:
@@ -2477,6 +2519,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
       return gen_math_ops.cast(result, dtype)
 
 
+@tf_export("squeeze")
 def squeeze(input, axis=None, name=None, squeeze_dims=None):
   # pylint: disable=redefined-builtin
   """Removes dimensions of size 1 from the shape of a tensor.
@@ -2526,6 +2569,7 @@ def squeeze(input, axis=None, name=None, squeeze_dims=None):
   return gen_array_ops._squeeze(input, axis, name)
 
 
+@tf_export("where")
 def where(condition, x=None, y=None, name=None):
   """Return the elements, either from `x` or `y`, depending on the `condition`.
 
@@ -2578,6 +2622,7 @@ def where(condition, x=None, y=None, name=None):
     raise ValueError("x and y must both be non-None or both be None.")
 
 
+@tf_export("reverse")
 def reverse(tensor, axis, name=None):
   return gen_array_ops.reverse_v2(tensor, axis, name)
 
@@ -2586,6 +2631,7 @@ reverse.__doc__ = gen_array_ops.reverse_v2.__doc__
 
 
 # pylint: disable=redefined-builtin
+@tf_export("reverse_sequence")
 def reverse_sequence(input,
                      seq_lengths,
                      seq_axis=None,
@@ -2613,6 +2659,7 @@ reverse_sequence.__doc__ = deprecation.rewrite_argument_docstring(
     "seq_dim", "seq_axis")
 
 
+@tf_export("gather")
 def gather(params, indices, validate_indices=None, name=None, axis=0):
   # TODO(rjryan): Remove "Gather" creation in favor of GatherV2 once the forward
   # compatibility 3 week period has passed.
@@ -2628,6 +2675,7 @@ gather.__doc__ = gen_array_ops.gather_v2.__doc__
 
 # Define quantize_v2 here in order to make name the second-to-last attribute,
 # because round_mode was added later.
+@tf_export("quantize_v2")
 @deprecation.deprecated(
     "2017-10-25",
     "`tf.quantize_v2` is deprecated, please use `tf.quantize` instead.")
@@ -2652,6 +2700,7 @@ quantize_v2.__doc__ = """Please use `tf.quantize` instead."""
 
 # We want to expose tf.quantize instead of tf.quantize_v2; we can deprecate
 # tf.quantize_v2 in next version of TensorFlow.
+@tf_export("quantize")
 def quantize(input,  # pylint: disable=redefined-builtin
              min_range,
              max_range,

@@ -140,24 +140,50 @@ class SpaceToBatchND
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    auto block_shape = builder->CreateVector(op.block_shape);
-    auto before_paddings = builder->CreateVector(op.before_paddings);
-    auto after_paddings = builder->CreateVector(op.after_paddings);
-    return ::tflite::CreateSpaceToBatchNDOptions(
-        *builder, block_shape, before_paddings, after_paddings);
+    return ::tflite::CreateSpaceToBatchNDOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+};
+
+class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
+                                   ::tflite::BuiltinOptions_SubOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    auto activation_function =
+        ActivationFunction::Serialize(op.fused_activation_function);
+    return ::tflite::CreateSubOptions(*builder, activation_function);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->block_shape.insert(op->block_shape.end(),
-                           options.block_shape()->begin(),
-                           options.block_shape()->end());
-    op->before_paddings.insert(op->before_paddings.end(),
-                               options.before_paddings()->begin(),
-                               options.before_paddings()->end());
-    op->after_paddings.insert(op->after_paddings.end(),
-                              options.after_paddings()->begin(),
-                              options.after_paddings()->end());
+    op->fused_activation_function =
+        ActivationFunction::Deserialize(options.fused_activation_function());
+  }
+};
+
+class Div : public BuiltinOperator<DivOperator, ::tflite::DivOptions,
+                                   ::tflite::BuiltinOptions_DivOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    auto activation_function =
+        ActivationFunction::Serialize(op.fused_activation_function);
+    return ::tflite::CreateDivOptions(*builder, activation_function);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->fused_activation_function =
+        ActivationFunction::Deserialize(options.fused_activation_function());
   }
 };
 
@@ -171,25 +197,11 @@ class BatchToSpaceND
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    auto block_shape = builder->CreateVector(op.block_shape);
-    auto before_crops = builder->CreateVector(op.before_crops);
-    auto after_crops = builder->CreateVector(op.after_crops);
-    return ::tflite::CreateBatchToSpaceNDOptions(*builder, block_shape,
-                                                 before_crops, after_crops);
+    return ::tflite::CreateBatchToSpaceNDOptions(*builder);
   }
 
   void ReadOptions(const TfLiteOptions& options,
-                   TocoOperator* op) const override {
-    op->block_shape.insert(op->block_shape.end(),
-                           options.block_shape()->begin(),
-                           options.block_shape()->end());
-    op->before_crops.insert(op->before_crops.end(),
-                            options.before_crops()->begin(),
-                            options.before_crops()->end());
-    op->after_crops.insert(op->after_crops.end(),
-                           options.after_crops()->begin(),
-                           options.after_crops()->end());
-  }
+                   TocoOperator* op) const override {}
 };
 
 class Cast : public CustomOperator<CastOperator> {
@@ -434,20 +446,11 @@ class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    auto before_padding = builder->CreateVector(op.left_padding);
-    auto after_padding = builder->CreateVector(op.right_padding);
-    return ::tflite::CreatePadOptions(*builder, before_padding, after_padding);
+    return ::tflite::CreatePadOptions(*builder);
   }
 
   void ReadOptions(const TfLiteOptions& options,
-                   TocoOperator* op) const override {
-    op->left_padding.insert(op->left_padding.end(),
-                            options.before_padding()->begin(),
-                            options.before_padding()->end());
-    op->right_padding.insert(op->right_padding.end(),
-                             options.after_padding()->begin(),
-                             options.after_padding()->end());
-  }
+                   TocoOperator* op) const override {}
 };
 
 class Reshape
@@ -514,14 +517,32 @@ class Transpose
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    return ::tflite::CreateTransposeOptions(*builder,
-                                            builder->CreateVector(op.perm));
+    return ::tflite::CreateTransposeOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+};
+
+class Lstm : public BuiltinOperator<LstmCellOperator, ::tflite::LSTMOptions,
+                                    ::tflite::BuiltinOptions_LSTMOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    // Current toco converter only supports tanh, no clip.
+    return ::tflite::CreateLSTMOptions(*builder, /*fused_activation_function=*/
+                                       ::tflite::ActivationFunctionType_TANH,
+                                       /*cell_clip=*/0.0,
+                                       /*proj_clip=*/0.0);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->perm.insert(op->perm.end(), options.perm()->begin(),
-                    options.perm()->end());
+    // Only support tanh activation, so check that tflite type is tanh.
+    CHECK(options.fused_activation_function() ==
+          ::tflite::ActivationFunctionType_TANH);
   }
 };
 
@@ -532,15 +553,51 @@ class Mean : public BuiltinOperator<MeanOperator, ::tflite::MeanOptions,
   flatbuffers::Offset<TfLiteOptions> WriteOptions(
       const TocoOperator& op,
       flatbuffers::FlatBufferBuilder* builder) const override {
-    auto axis = builder->CreateVector(op.axis);
-    return ::tflite::CreateMeanOptions(*builder, axis, op.keep_dims);
+    return ::tflite::CreateMeanOptions(*builder, op.keep_dims);
   }
 
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    op->axis.insert(op->axis.end(), options.axis()->begin(),
-                    options.axis()->end());
     op->keep_dims = options.keep_dims();
+  }
+};
+
+class ResizeBilinear
+    : public BuiltinOperator<ResizeBilinearOperator,
+                             ::tflite::ResizeBilinearOptions,
+                             ::tflite::BuiltinOptions_ResizeBilinearOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateResizeBilinearOptions(*builder, op.align_corners);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->align_corners = options.align_corners();
+  }
+};
+
+class Squeeze
+    : public BuiltinOperator<SqueezeOperator, ::tflite::SqueezeOptions,
+                             ::tflite::BuiltinOptions_SqueezeOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    auto squeeze_dims = builder->CreateVector(op.squeeze_dims);
+    return ::tflite::CreateSqueezeOptions(*builder, squeeze_dims);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->squeeze_dims.insert(op->squeeze_dims.end(),
+                            options.squeeze_dims()->begin(),
+                            options.squeeze_dims()->end());
   }
 };
 
@@ -554,6 +611,44 @@ class Split : public CustomOperator<TensorFlowSplitOperator> {
   void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
     op->num_split = m["num_split"].AsInt64();
   }
+};
+
+class StridedSlice
+    : public BuiltinOperator<StridedSliceOperator,
+                             ::tflite::StridedSliceOptions,
+                             ::tflite::BuiltinOptions_StridedSliceOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateStridedSliceOptions(
+        *builder, op.begin_mask, op.end_mask, op.ellipsis_mask,
+        op.new_axis_mask, op.shrink_axis_mask);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->begin_mask = options.begin_mask();
+    op->end_mask = options.end_mask();
+    op->ellipsis_mask = options.ellipsis_mask();
+    op->new_axis_mask = options.new_axis_mask();
+    op->shrink_axis_mask = options.shrink_axis_mask();
+  }
+};
+
+class TopK_V2 : public BuiltinOperator<TopKV2Operator, ::tflite::TopKV2Options,
+                                       ::tflite::BuiltinOptions_TopKV2Options> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateTopKV2Options(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
 };
 
 class TensorFlowUnsupported : public BaseOperator {
@@ -669,6 +764,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
 
   // Builtin Operators.
   ops.emplace_back(new Add(::tflite::BuiltinOperator_ADD, OperatorType::kAdd));
+  ops.emplace_back(new Div(::tflite::BuiltinOperator_DIV, OperatorType::kDiv));
+  ops.emplace_back(new Sub(::tflite::BuiltinOperator_SUB, OperatorType::kSub));
   ops.emplace_back(new AveragePool(::tflite::BuiltinOperator_AVERAGE_POOL_2D,
                                    OperatorType::kAveragePool));
   ops.emplace_back(
@@ -712,6 +809,16 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                  OperatorType::kTranspose));
   ops.emplace_back(
       new Mean(::tflite::BuiltinOperator_MEAN, OperatorType::kMean));
+  ops.emplace_back(new ResizeBilinear(::tflite::BuiltinOperator_RESIZE_BILINEAR,
+                                      OperatorType::kResizeBilinear));
+  ops.emplace_back(
+      new Squeeze(::tflite::BuiltinOperator_SQUEEZE, OperatorType::kSqueeze));
+  ops.emplace_back(new StridedSlice(::tflite::BuiltinOperator_STRIDED_SLICE,
+                                    OperatorType::kStridedSlice));
+  ops.emplace_back(
+      new TopK_V2(::tflite::BuiltinOperator_TOPK_V2, OperatorType::kTopK_V2));
+  ops.emplace_back(
+      new Lstm(::tflite::BuiltinOperator_LSTM, OperatorType::kLstmCell));
 
   // Custom Operators.
   ops.emplace_back(new Cast("CAST", OperatorType::kCast));
@@ -724,12 +831,11 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
 
   // There operators are supported by Toco, but not by TF Lite, and has no
   // attributes.
+  ops.emplace_back(
+      new SimpleOperator<AddNOperator>("ADDN", OperatorType::kAddN));
   ops.emplace_back(new SimpleOperator<NegOperator>("NEG", OperatorType::kNeg));
   ops.emplace_back(new SimpleOperator<TensorFlowRsqrtOperator>(
       "RSQRT", OperatorType::kTensorFlowRsqrt));
-  ops.emplace_back(
-      new SimpleOperator<TensorFlowRsqrtOperator>("DIV", OperatorType::kDiv));
-
   // Simple Operators.
   ops.emplace_back(new SimpleOperator<DequantizeOperator>(
       "DEQUANTIZE", OperatorType::kDequantize));
@@ -738,15 +844,14 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new SimpleOperator<ReluOperator>("RELU", OperatorType::kRelu));
   ops.emplace_back(
-      new SimpleOperator<Relu1Operator>("RELU1", OperatorType::kRelu1));
+      new SimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1));
   ops.emplace_back(
       new SimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6));
-  ops.emplace_back(new SimpleOperator<ResizeBilinearOperator>(
-      "RESIZE_BILINEAR", OperatorType::kResizeBilinear));
   ops.emplace_back(new SimpleOperator<LogisticOperator>(
       "LOGISTIC", OperatorType::kLogistic));
   ops.emplace_back(
       new SimpleOperator<TanhOperator>("TANH", OperatorType::kTanh));
+  ops.emplace_back(new SimpleOperator<ExpOperator>("EXP", OperatorType::kExp));
 
   return ops;
 }

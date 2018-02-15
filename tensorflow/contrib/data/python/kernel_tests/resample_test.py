@@ -19,8 +19,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.data.python.ops import dataset_ops
 from tensorflow.contrib.data.python.ops import resampling
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test

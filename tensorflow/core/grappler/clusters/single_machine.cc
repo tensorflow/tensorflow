@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/notification.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 
 namespace tensorflow {
@@ -36,10 +37,7 @@ namespace grappler {
 static std::atomic<bool> already_provisioned(false);
 
 SingleMachine::SingleMachine(int timeout_s, int num_cpu_cores, int num_gpus)
-    : Cluster(timeout_s),
-      num_gpus_(num_gpus),
-      expected_init_time_s_(0),
-      closing_(false) {
+    : Cluster(timeout_s), expected_init_time_s_(0), closing_(false) {
   VLOG(1) << "Number of CPU cores: " << num_cpu_cores
           << " Number of GPUs: " << num_gpus;
   thread_pool_.reset(new thread::ThreadPool(
@@ -89,7 +87,9 @@ Status SingleMachine::Provision() {
       attr = GetLocalCPUInfo();
     } else if (dev.device_type() == "GPU") {
       attr = GetLocalGPUInfo(gpu_id++);
-    } else {
+    } else if (dev.device_type().find("XLA") == string::npos) {
+      // Filter out the fake XLA devices to avoid double counting the actual
+      // hardware resources that are available.
       attr.set_type(dev.device_type());
     }
     // Overwrite the memory size since users might have requested to use only a

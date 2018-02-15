@@ -193,7 +193,7 @@ REGISTER_OP("ResourceScatterUpdate")
     .Input("resource: resource")
     .Input("indices: Tindices")
     .Input("updates: dtype")
-    .Attr("dtype: numbertype")
+    .Attr("dtype: type")
     .Attr("Tindices: {int32, int64}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeAndType handle_shape_and_type;
@@ -227,8 +227,8 @@ REGISTER_OP("ExecuteInCriticalSection")
     .Output("outputs: output_types")
     .Attr("f: func")
     .Attr("Targuments: list(type) >= 0")
-    .Attr("output_types: list(type) >= 1")
-    .Attr("output_shapes: list(shape) >= 1")
+    .Attr("output_types: list(type) >= 0")
+    .Attr("output_shapes: list(shape) >= 0")
     .SetShapeFn([](InferenceContext* c) {
       std::vector<PartialTensorShape> output_shapes;
       TF_RETURN_IF_ERROR(c->GetAttr("output_shapes", &output_shapes));

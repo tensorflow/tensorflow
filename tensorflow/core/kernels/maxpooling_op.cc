@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/core/kernels/maxpooling_op.h"
 
 #include <vector>
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -37,7 +38,6 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
 #include "tensorflow/core/util/use_cudnn.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/maxpooling_op_gpu.h"
@@ -89,7 +89,6 @@ static void SpatialMaxPoolWithArgMaxHelper(
   //    max value.
   auto shard = [&params, &in_mat, &out_mat, &out_arg_max_mat, &input_backprop,
                 &output_arg_max, &out_backprop](int64 start, int64 limit) {
-
     const int32 depth = params.depth;
     const int32 in_rows = params.tensor_in_rows;
     const int32 in_cols = params.tensor_in_cols;
@@ -180,7 +179,6 @@ static void SpatialMaxPoolWithArgMaxHelper(
         input_backprop_flat(input_backprop_index) += out_backprop_flat(index);
       }
     }
-
   };
 
   const int64 shard_cost = params.tensor_in_rows * params.tensor_in_cols *
@@ -567,7 +565,7 @@ class MaxPoolingGradGradOp : public OpKernel {
     //    tensor_out_as_matrix with the corresponding values in
     //    top_diff_as_matrix.
     auto shard = [&params, &in_mat, &out_mat, &top_diff_mat, &bottom_diff_mat](
-        int64 start, int64 limit) {
+                     int64 start, int64 limit) {
       const int32 depth = params.depth;
       const int32 in_rows = params.tensor_in_rows;
       const int32 in_cols = params.tensor_in_cols;

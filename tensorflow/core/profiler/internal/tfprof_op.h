@@ -15,8 +15,8 @@ limitations under the License.
 
 // Build a flat structure of ops.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
 
 #include <deque>
 #include <map>
@@ -41,8 +41,7 @@ namespace tfprof {
 // to input ops.
 class TFOp : public TFMultiShow {
  public:
-  explicit TFOp()
-      : TFMultiShow() {}
+  explicit TFOp() : TFMultiShow() {}
   ~TFOp() override {}
 
   void AddNode(TFGraphNode* node) override;
@@ -51,7 +50,7 @@ class TFOp : public TFMultiShow {
 
  private:
   const ShowMultiNode* ShowInternal(const Options& opts,
-                                   Timeline* timeline) override;
+                                    Timeline* timeline) override;
 
   int64 SearchRoot(const std::vector<OpNode*> nodes,
                    const std::vector<string>& regexes);
@@ -76,4 +75,4 @@ class TFOp : public TFMultiShow {
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_OP_H_

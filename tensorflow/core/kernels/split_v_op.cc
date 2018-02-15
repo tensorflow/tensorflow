@@ -197,8 +197,9 @@ class SplitVOpCPU : public SplitVOpBase<CPUDevice, T, Tlen> {
 
     // Android also uses int32 indexing, so check here also.
     OP_REQUIRES(
-        context, FastBoundsCheck(input.NumElements(),
-                                 std::numeric_limits<Eigen::DenseIndex>::max()),
+        context,
+        FastBoundsCheck(input.NumElements(),
+                        std::numeric_limits<Eigen::DenseIndex>::max()),
         errors::InvalidArgument("Split requires input size < ",
                                 std::numeric_limits<Eigen::DenseIndex>::max()));
 
@@ -305,10 +306,11 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
     const int32 split_dim_orig = context->input(2).flat<int32>()(0);
     const int32 split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
-    OP_REQUIRES(context, FastBoundsCheck(input.NumElements(),
-                                         std::numeric_limits<int32>::max()),
-                errors::InvalidArgument("Split on GPU requires input size "
-                                        "< max int32"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input.NumElements(), std::numeric_limits<int32>::max()),
+        errors::InvalidArgument("Split on GPU requires input size "
+                                "< max int32"));
 
     int32 prefix_dim_size;
     int32 split_dim_size;
@@ -406,7 +408,6 @@ class SplitVOpGPU : public SplitVOpBase<GPUDevice, T, Tlen> {
   REGISTER_SPLIT(type, int64);
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT_LEN);
-REGISTER_SPLIT_LEN(bfloat16);
 
 #undef REGISTER_SPLIT_LEN
 #undef REGISTER_SPLIT

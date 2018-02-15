@@ -21,15 +21,17 @@ from __future__ import print_function
 import hashlib
 import imp
 import sys
-import threading
+import threading  # pylint: disable=unused-import
 
 from tensorflow.core.framework import op_def_pb2
-from tensorflow.core.lib.core import error_codes_pb2
+from tensorflow.core.lib.core import error_codes_pb2  # pylint: disable=unused-import
 from tensorflow.python import pywrap_tensorflow as py_tf
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('load_op_library')
 def load_op_library(library_filename):
   """Loads a TensorFlow plugin, containing custom ops and kernels.
 
@@ -79,6 +81,7 @@ def load_op_library(library_filename):
   return module
 
 
+@tf_export('load_file_system_library')
 def load_file_system_library(library_filename):
   """Loads a TensorFlow plugin, containing file system implementation.
 

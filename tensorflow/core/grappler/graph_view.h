@@ -46,6 +46,7 @@ class GraphView {
   };
 
   explicit GraphView(GraphDef* graph);
+  GraphDef* GetGraph() const { return graph_; }
   NodeDef* GetNode(const string& node_name) const;
   // Get the specified input port. Note that the special '-1' port_id can be
   // used to access the controlling nodes (i.e. the nodes connected to node_name
@@ -60,15 +61,18 @@ class GraphView {
   // of an output (resp. input) port.
   const std::unordered_set<InputPort, HashPort>& GetFanout(
       const OutputPort& port) const;
-  const std::unordered_set<OutputPort, HashPort> GetFanin(
+  std::unordered_set<OutputPort, HashPort> GetFanin(
       const InputPort& port) const;
   // Special case: regular (i.e. non-control) input ports can only have one
   // fanin.
   const OutputPort GetRegularFanin(const InputPort& port) const;
 
-  // Get all the output ports in the immediate fanin of a node. Include the
-  // controlling nodes iff include_controlling_nodes is true.
-  const std::unordered_set<OutputPort, HashPort> GetFanins(
+  // Get all the input (resp. output) ports in the immediate fanout (resp fanin)
+  // of a node. Include the controlling nodes iff include_controlling_nodes is
+  // true.
+  std::unordered_set<InputPort, HashPort> GetFanouts(
+      const NodeDef& node, bool include_controlled_nodes) const;
+  std::unordered_set<OutputPort, HashPort> GetFanins(
       const NodeDef& node, bool include_controlling_nodes) const;
 
   // Get the number of ports in the immediate fanin of a node. Count the
@@ -82,7 +86,7 @@ class GraphView {
   std::unordered_map<OutputPort, std::unordered_set<InputPort, HashPort>,
                      HashPort>
       fanouts_;
-  std::unordered_map<NodeDef*, std::unordered_set<NodeDef*>> controlled_nodes_;
+  std::unordered_map<const NodeDef*, int> num_regular_outputs_;
 };
 
 }  // end namespace grappler

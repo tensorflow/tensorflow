@@ -53,6 +53,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 # Op names which identify variable reads which should be saved.
@@ -889,6 +890,7 @@ def _GetCheckpointFilename(save_dir, latest_filename):
   return os.path.join(save_dir, latest_filename)
 
 
+@tf_export("train.generate_checkpoint_state_proto")
 def generate_checkpoint_state_proto(save_dir,
                                     model_checkpoint_path,
                                     all_model_checkpoint_paths=None):
@@ -933,6 +935,7 @@ def generate_checkpoint_state_proto(save_dir,
   return coord_checkpoint_proto
 
 
+@tf_export("train.update_checkpoint_state")
 def update_checkpoint_state(save_dir,
                             model_checkpoint_path,
                             all_model_checkpoint_paths=None,
@@ -1025,6 +1028,7 @@ def _update_checkpoint_state(save_dir,
                                       text_format.MessageToString(ckpt))
 
 
+@tf_export("train.get_checkpoint_state")
 def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   """Returns CheckpointState proto from the "checkpoint" file.
 
@@ -1082,6 +1086,7 @@ def get_checkpoint_state(checkpoint_dir, latest_filename=None):
   return ckpt
 
 
+@tf_export("train.Saver")
 class Saver(object):
   """Saves and restores variables.
 
@@ -1229,7 +1234,7 @@ class Saver(object):
         The `saver_def` proto should be the one returned by the
         `as_saver_def()` call of the `Saver` that was created for that `Graph`.
       builder: Optional `SaverBuilder` to use if a `saver_def` was not provided.
-        Defaults to `BaseSaverBuilder()`.
+        Defaults to `BulkSaverBuilder()`.
       defer_build: If `True`, defer adding the save and restore ops to the
         `build()` call. In that case `build()` should be called before
         finalizing the graph or using the saver.
@@ -1309,7 +1314,7 @@ class Saver(object):
 
     if not self.saver_def or context.in_eager_mode():
       if self._builder is None:
-        self._builder = BaseSaverBuilder(self._write_version)
+        self._builder = BulkSaverBuilder(self._write_version)
 
       if self._var_list is None:
         # pylint: disable=protected-access
@@ -1592,9 +1597,9 @@ class Saver(object):
         [Stripping Default-Valued Attributes](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md#stripping-default-valued-attributes).
 
     Returns:
-      A string: path prefix used for the checkpoint files.  If the saver is
-        sharded, this string ends with: '-?????-of-nnnnn' where 'nnnnn'
-        is the number of shards created.
+      A string: path prefix used for the checkpoint files. If checkpoint
+        format is V1 and the saver is sharded, this string ends with:
+         '-?????-of-nnnnn' where 'nnnnn' is the number of shards created.
       If the saver is empty, returns None.
 
     Raises:
@@ -1744,6 +1749,12 @@ class Saver(object):
       return
     if save_path is None:
       raise ValueError("Can't load save_path when it is None.")
+    if (os.path.isfile(save_path) and
+        self._write_version not in (
+            saver_pb2.SaverDef.V1, saver_pb2.SaverDef.LEGACY)):
+      raise ValueError("The specified path: %s is a file."
+                       " Please specify only the path prefix"
+                       " to the checkpoint files." % save_path)
     logging.info("Restoring parameters from %s", save_path)
     if context.in_graph_mode():
       sess.run(self.saver_def.restore_op_name,
@@ -1783,6 +1794,7 @@ def _prefix_to_checkpoint_path(prefix, format_version):
   return prefix  # Just the data file.
 
 
+@tf_export("train.latest_checkpoint")
 def latest_checkpoint(checkpoint_dir, latest_filename=None):
   """Finds the filename of latest saved checkpoint file.
 
@@ -1812,6 +1824,7 @@ def latest_checkpoint(checkpoint_dir, latest_filename=None):
   return None
 
 
+@tf_export("train.import_meta_graph")
 def import_meta_graph(meta_graph_or_file, clear_devices=False,
                       import_scope=None, **kwargs):
   """Recreates a Graph saved in a `MetaGraphDef` proto.
@@ -1913,6 +1926,7 @@ def import_meta_graph(meta_graph_or_file, clear_devices=False,
       return None
 
 
+@tf_export("train.export_meta_graph")
 def export_meta_graph(filename=None,
                       meta_info_def=None,
                       graph_def=None,
@@ -1989,6 +2003,7 @@ def export_meta_graph(filename=None,
   return meta_graph_def
 
 
+@tf_export("train.checkpoint_exists")
 def checkpoint_exists(checkpoint_prefix):
   """Checks whether a V1 or V2 checkpoint exists with the specified prefix.
 
@@ -2013,6 +2028,7 @@ def checkpoint_exists(checkpoint_prefix):
     return False
 
 
+@tf_export("train.get_checkpoint_mtimes")
 def get_checkpoint_mtimes(checkpoint_prefixes):
   """Returns the mtimes (modification timestamps) of the checkpoints.
 

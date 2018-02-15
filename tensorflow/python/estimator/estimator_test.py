@@ -52,6 +52,7 @@ from tensorflow.python.ops import metrics as metrics_lib
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import string_ops
+from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import gfile
@@ -628,6 +629,33 @@ class EstimatorTrainTest(test.TestCase):
     est.train(dummy_input_fn, steps=5)
     self.assertEqual(
         10, estimator._load_global_step_from_checkpoint_dir(est.model_dir))
+
+  def test_warm_starts(self):
+    def _make_model_fn(x):
+      def _variable_creating_model_fn(features, labels, mode):
+        _, _ = features, labels
+        variable_scope.get_variable('x', initializer=x)
+        global_step = training.get_global_step()
+        return model_fn_lib.EstimatorSpec(
+            mode,
+            loss=constant_op.constant(1.),
+            train_op=state_ops.assign_add(global_step, 1))
+      return _variable_creating_model_fn
+
+    est = estimator.Estimator(model_fn=_make_model_fn(42.))
+    est.train(dummy_input_fn, steps=10)
+
+    warm_started_est = estimator.Estimator(
+        model_fn=_make_model_fn(36.),
+        warm_start_from=est.model_dir)
+    warm_started_est.train(dummy_input_fn, steps=5)
+    # warm_start is called after the model_fn, so x should have the value
+    # from the checkpoint.
+    self.assertEqual(42., warm_started_est.get_variable_value('x'))
+    # global_step should not be warm-started.
+    self.assertEqual(
+        5, estimator._load_global_step_from_checkpoint_dir(
+            warm_started_est.model_dir))
 
   def test_max_step(self):
     est = estimator.Estimator(model_fn=model_fn_global_step_incrementer)
@@ -1327,6 +1355,25 @@ class EstimatorPredictTest(test.TestCase):
     est.train(dummy_input_fn, steps=1)
     self.assertEqual(10., next(est.predict(dummy_input_fn)))
 
+  def test_predictionhooks_are_used(self):
+    hook = test.mock.MagicMock(
+        wraps=training.SessionRunHook(), spec=training.SessionRunHook)
+
+    def _model_fn_hooks(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode=mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions=constant_op.constant([[10.]]),
+          prediction_hooks=[hook])
+
+    est = estimator.Estimator(model_fn=_model_fn_hooks)
+    est.train(dummy_input_fn, steps=1)
+    self.assertFalse(hook.begin.called)
+    next(est.predict(dummy_input_fn))
+    self.assertTrue(hook.begin.called)
+
   def test_warn_if_no_queue_runner(self):
 
     def _model_fn(features, labels, mode):
@@ -1424,6 +1471,27 @@ class EstimatorPredictTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  'Batch length of predictions should be same'):
       next(est.predict(dummy_input_fn))
+
+  def test_iterate_batches(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions={
+              # First dim is different but the prediction should still work
+              'y1': array_ops.zeros(shape=[3]),
+              'y2': array_ops.zeros(shape=[5, 3])
+          })
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+
+    predictions = next(est.predict(dummy_input_fn, yield_single_examples=False))
+    self.assertAllEqual(predictions['y1'].shape, [3])
+    self.assertAllEqual(predictions['y2'].shape, [5, 3])
 
   def test_predict_keys_defined_for_tensor(self):
 

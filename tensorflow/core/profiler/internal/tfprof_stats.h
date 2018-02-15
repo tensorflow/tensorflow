@@ -20,8 +20,8 @@ limitations under the License.
 // 3. Accept command and options to selectively aggregate stats for analysis
 //    and print out the results.
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_
 
 #include <map>
 #include <memory>
@@ -83,7 +83,7 @@ class TFStats {
   const MultiGraphNodeProto& ShowMultiGraphNode(const string& cmd,
                                                 const Options& opts) const;
 
-  // A a (partial) graph to existing graph.
+  // Add a (partial) graph to existing graph.
   void AddGraph(std::unique_ptr<GraphDef> graph);
 
   // Add a step of run time meta data.
@@ -98,14 +98,13 @@ class TFStats {
   // For test purpose only.
   void AddNodeForTest(int64 step, std::unique_ptr<TFGraphNode> node);
 
-  void MaybeReportMissingTrace() const;
-
  private:
   bool Validate(const Options& opts) const;
+  string MaybeReportMissingTrace() const;
 
   std::set<int64> steps_;
   bool has_code_traces_;
-  bool miss_gpu_stream_;
+  bool miss_accelerator_stream_;
   std::unique_ptr<TFScope> scope_view_;
   std::unique_ptr<TFGraph> graph_view_;
   std::unique_ptr<TFCode> code_view_;
@@ -119,11 +118,11 @@ class TFStats {
   MultiGraphNodeProto empty_multi_graph_node_;
 
   std::map<int64, string> id_to_string_;
-  // Graph nodes covered by RunMetdata, that is traced with run time stats.
+  // Graph nodes covered by RunMetadata, that is traced with run time stats.
   std::set<int64> covered_nodes_;
 };
 
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_TFPROF_STATS_H_

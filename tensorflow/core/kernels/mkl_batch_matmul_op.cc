@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #define MKL_Complex8 tensorflow::complex64
 #define MKL_Complex16 tensorflow::complex128

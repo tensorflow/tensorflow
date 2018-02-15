@@ -67,7 +67,7 @@ class ComputationBuilder {
   // OpMetadata is often applied to a series of XLA HLO instructions. As a
   // result, OpMetadata is set on the Computation Builder. All subsequent
   // instructions generated via this Computation Builder will have the same
-  // OpMetadata attached until a call to ClearOpMetdata.
+  // OpMetadata attached until a call to ClearOpMetadata.
   void SetOpMetadata(const OpMetadata& metadata) { metadata_ = metadata; }
 
   // Clears the HloMetadata state.
@@ -100,6 +100,9 @@ class ComputationBuilder {
   // Retrieves the (inferred) shape of the operand in the computation.
   StatusOr<std::unique_ptr<Shape>> GetShape(
       const ComputationDataHandle& operand);
+
+  // Retrieves the (inferred) result for the current computation's shape.
+  StatusOr<ProgramShape> GetProgramShape();
 
   // Checks that the operand has the given expected shape. Returns the operand
   // if yes, fails with a CHECK error if no.
@@ -715,7 +718,7 @@ class ComputationBuilder {
   ComputationDataHandle Recv(const Shape& shape, const ChannelHandle& handle);
 
   // Returns true if 'operand' is a compile-time constant. A compile-time
-  // constant does not depend on parameters with higher index then
+  // constant does not depend on parameters with index greater than or equal to
   // `num_parameters`, or on stateful operators such as `RngNormal` or `Infeed`.
   // Unlike `ComputeConstant`, `IsConstant` tests whether a computation is a
   // compile-time constant without evaluating the computation.

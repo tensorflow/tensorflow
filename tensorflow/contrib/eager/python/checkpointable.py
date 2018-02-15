@@ -19,34 +19,37 @@ from __future__ import print_function
 
 import collections
 import re
+import weakref
 
 from tensorflow.contrib.eager.proto import checkpointable_object_graph_pb2
+from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import io_ops
+from tensorflow.python.ops import resource_variable_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import optimizer as optimizer_lib
 from tensorflow.python.training import saver as saver_lib
+from tensorflow.python.training import slot_creator
+from tensorflow.python.training import training
 
 _CheckpointableReference = collections.namedtuple(
     "_CheckpointableReference",
     [
-        "name",  # The local name if explicitly specified, else None.
-        "local_uid",  # 0 for the first dependency, 1 for the next, ... Used for
-        # routing checkpointed variables to their correct
-        # Checkpointables when "name" is not set (see docstring of
-        # `track_checkpointable`).
-        "ref"  # The Checkpointable object being referenced.
-    ])
-
-_OwnedVariable = collections.namedtuple(
-    "_OwnedVariable",
-    [
-        "name",  # The variable's (local) name.
-        "variable"  # The owned variable object.
+        # The local name if explicitly specified, else None.
+        "name",
+        # The Checkpointable object being referenced.
+        "ref"
     ])
 
 # Validation regular expression for the local names of Checkpointable
-# objects. In particular, disallows "/" in names, and reserves
-# underscore-prefixed names.
-_VALID_LOCAL_NAME = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.-]*$")
+# objects. In particular, disallows "/" in names, and reserves dash-prefixed
+# names (which are not valid Python identifiers, so we're not restricting the
+# __setattr__ syntax that way).
+_VALID_LOCAL_NAME = re.compile(r"^[A-Za-z0-9_.][A-Za-z0-9_.-]*$")
 
 # Keyword for identifying that the next bit of a checkpoint variable name is a
 # slot name. May not be the local name of a checkpointable. Checkpoint names for
@@ -56,7 +59,58 @@ _VALID_LOCAL_NAME = re.compile(r"^[A-Za-z0-9.][A-Za-z0-9_.-]*$")
 #
 # Where <path to variable> is a full path from the checkpoint root to the
 # variable being slotted for.
-_OPTIMIZER_SLOTS_NAME = "_OPTIMIZER_SLOT"
+_OPTIMIZER_SLOTS_NAME = "-OPTIMIZER_SLOT"
+
+
+def _assign_existing_variable(variable_to_restore, value_pointer):
+  """Set a variable from a _ValuePointer object."""
+  base_type = variable_to_restore.dtype.base_dtype
+  with ops.colocate_with(variable_to_restore):
+    # TODO(allenl): Handle partitioned variables
+    value_to_restore, = io_ops.restore_v2(
+        prefix=value_pointer.save_path,
+        tensor_names=[value_pointer.checkpoint_key],
+        shape_and_slices=[""],
+        dtypes=[base_type],
+        name="checkpoint_initializer")
+    initializer_op = state_ops.assign(variable_to_restore, value_to_restore)
+    variable_to_restore._initializer_op = initializer_op  # pylint:disable=protected-access
+    if value_pointer.session is not None:
+      value_pointer.session.run(initializer_op)
+
+
+def _default_getter(name, shape, dtype, initializer=None,
+                    partition_info=None, **kwargs):
+  """A pared-down version of get_variable which does not reuse variables."""
+  dtype = dtypes.as_dtype(dtype)
+  shape_object = tensor_shape.as_shape(shape)
+  with ops.init_scope():
+    if initializer is None:
+      initializer, initializing_from_value = (
+          variable_scope._get_default_variable_store()._get_default_initializer(  # pylint: disable=protected-access
+              name=name, shape=shape_object, dtype=dtype))
+    else:
+      initializing_from_value = not callable(initializer)
+    # Same logic as get_variable
+    if initializing_from_value:
+      if shape is not None:
+        raise ValueError("If initializer is a constant, do not specify shape.")
+      initial_value = initializer
+      variable_dtype = None
+    else:
+      # Instantiate initializer if provided initializer is a type object.
+      if isinstance(initializer, type(init_ops.Initializer)):
+        initializer = initializer(dtype=dtype)
+      def initial_value():
+        return initializer(
+            shape_object.as_list(), dtype=dtype, partition_info=partition_info)
+      variable_dtype = dtype.base_dtype
+    return resource_variable_ops.ResourceVariable(
+        initial_value=initial_value,
+        name=name,
+        dtype=variable_dtype,
+        **kwargs
+    )
 
 
 class Checkpointable(object):
@@ -70,16 +124,39 @@ class Checkpointable(object):
   """
 
   def __init__(self):
-    # Basically less useful OrderedDicts but without the reference cycles.
-    # TODO(allenl): Switch these to OrderedDict once TensorFlow supports only
-    # Python 3.6+.
-    self._checkpoint_dependencies = []  # A list of _CheckpointableReference
-    # objects.
-    self._dependency_names = set()
-    self._owned_variables = []  # A list of _OwnedVariable objects.
-    self._owned_variable_names = set()
+    # A list of _CheckpointableReference objects.
+    self._checkpoint_dependencies = []
+    # Maps names -> Checkpointable objects for named dependencies
+    self._dependency_names = {}
+    # Set of all tracked Checkpointables
+    self._already_tracked = set()
+    self._owned_variables = {}  # local name -> variable object
+    self._deferred_restorations = {}  # local name -> _VariableRestoration
+                                      # object
 
-  def add_variable(self, name, shape, dtype=None, initializer=None, **kwargs):
+  def __setattr__(self, name, value):
+    """Support self.foo = checkpointable syntax.
+
+    `self.foo = checkpointable` is equivalent to
+    `self.foo = self.track_checkpointable(checkpointable, name='foo')`.
+
+    No new tracking if `value` is not a `Checkpointable`, or if `value` is
+    already being tracked (either because of an explicit `track_checkpointable`
+    or a previous `__setattr__`).
+
+    Args:
+      name: The name of the property being set.
+      value: The new value for the property.
+    """
+    # Give child classes (e.g. Network) priority, then track only if the object
+    # hasn't been added to _already_tracked.
+    super(Checkpointable, self).__setattr__(name, value)
+    if (isinstance(value, Checkpointable)
+        and value not in self._already_tracked):
+      self.track_checkpointable(value, name=name)
+
+  def add_variable(self, name, shape=None, dtype=dtypes.float32,
+                   initializer=None, **kwargs):
     """Create a new variable object to be saved with this `Checkpointable`.
 
     If the user has requested that this object or another `Checkpointable` which
@@ -93,15 +170,19 @@ class Checkpointable(object):
       dtype: The data type of the variable.
       initializer: The initializer to use. Ignored if deferred loading has been
         requested.
-      **kwargs: Passed to get_variable.
+      **kwargs: Passed to the ResourceVariable constructor.
 
     Returns:
       The new variable object.
 
     Raises:
       ValueError: If the variable name is not unique.
+      RuntimeError: If __init__ has not been called.
     """
-    if name in self._owned_variable_names:
+    if not hasattr(self, "_owned_variables"):
+      raise RuntimeError("Need to call Checkpointable.__init__ before adding "
+                         "variables.")
+    if name in self._owned_variables:
       raise ValueError(
           ("A variable named '%s' already exists in this Checkpointable, but "
            "Checkpointable.add_variable called to create another with "
@@ -113,36 +194,60 @@ class Checkpointable(object):
       # be relatively uncommon in user code.
       getter = kwargs.pop("getter")
     else:
-      getter = variable_scope.get_variable
-    # TODO(allenl): handle deferred loading
+      getter = _default_getter
+    deferred_restoration = self._deferred_restorations.pop(name, None)
+    if deferred_restoration is not None:
+      dtype = deferred_restoration.value_pointer.dtype
+      base_type = dtype.base_dtype
+      # TODO(allenl): Handle partitioned variables here too
+      with ops.init_scope():
+        initializer, = io_ops.restore_v2(
+            prefix=deferred_restoration.value_pointer.save_path,
+            tensor_names=[deferred_restoration.value_pointer.checkpoint_key],
+            shape_and_slices=[""],
+            dtypes=[base_type],
+            name="checkpoint_initializer")
+      # We need to un-set the shape so get_variable doesn't complain, but we
+      # also need to set the static shape information on the initializer if
+      # possible so we don't get a variable with an unknown shape.
+      initializer.set_shape(shape)
+      # Un-set shape since we're using a constant initializer
+      shape = None
+
     new_variable = getter(
         name=name, shape=shape, dtype=dtype, initializer=initializer, **kwargs)
-    self._owned_variables.append(
-        _OwnedVariable(name=name, variable=new_variable))
-    self._owned_variable_names.add(name)
+    if deferred_restoration is not None:
+      if deferred_restoration.value_pointer.session is not None:
+        deferred_restoration.value_pointer.session.run(new_variable.initializer)
+      for slot_restoration in deferred_restoration.slot_restorations:
+        strong_ref = slot_restoration.optimizer_ref()
+        if strong_ref is None:
+          # If the optimizer object has been garbage collected, there's no need
+          # to create the slot variable.
+          continue
+        strong_ref._process_slot_restoration(  # pylint: disable=protected-access
+            slot_restoration, new_variable)
+    self._owned_variables[name] = new_variable
     return new_variable
 
-  def track_checkpointable(self, checkpointable, name=None):
+  def track_checkpointable(self, checkpointable, name):
     """Declare a dependency on another `Checkpointable` object.
 
     Indicates that checkpoints for this object should include variables from
     `checkpointable`.
 
-    Variables in a checkpoint are mapped to `Checkpointable`s based on names if
-    provided when the checkpoint was written, but otherwise use the order those
-    `Checkpointable`s were declared as dependencies. Both `name` arguments and
-    the dependency declaration order should be deterministic.
-
-    There are two sufficient conditions to avoid breaking existing checkpoints
-    when modifying a class: (1) New dependencies must be declared after existing
-    dependencies, and (2) dependencies which were previously declared may never
-    be removed (a trivial placeholder with the same name may be used instead).
+    Variables in a checkpoint are mapped to `Checkpointable`s based on names. To
+    avoid breaking existing checkpoints when modifying a class, neither variable
+    names nor dependency names (the names passed to `track_checkpointable`) may
+    change.
 
     Args:
       checkpointable: A `Checkpointable` which this object depends on.
       name: A local name for `checkpointable`, used for loading checkpoints into
-        the correct objects. If provided, it must be unique within this
-        `Checkpointable`. If None, dependency declaration order is used instead.
+        the correct objects. Python 2 identifiers are valid names, with the
+        addition of leading numerals, periods anywhere, and non-leading dashes.
+        Specifically names must match the regular expression
+        `^[A-Za-z0-9_.][A-Za-z0-9_.-]*$`.
 
     Returns:
       `checkpointable`, for convenience when declaring a dependency and
@@ -160,27 +265,67 @@ class Checkpointable(object):
       raise TypeError(
           ("Checkpointable.track_checkpointable() passed type %s, not a "
            "Checkpointable.") % (type(checkpointable),))
-    if name is not None:
-      if not _VALID_LOCAL_NAME.match(name):
-        raise ValueError(
-            ("Checkpointable names must match the regular expression '%s', but "
-             "got an invalid name '%s' instead.") % (_VALID_LOCAL_NAME.pattern,
-                                                     name))
-      if name in self._dependency_names:
-        raise ValueError(
-            ("Called Checkpointable.track_checkpointable() with name='%s', but "
-             "a Checkpointable with this name is already declared as a "
-             "dependency. If provided, names must be unique.") % (name,))
-      self._dependency_names.add(name)
+    if not _VALID_LOCAL_NAME.match(name):
+      raise ValueError(
+          ("Checkpointable names must match the regular expression '%s', but "
+           "got an invalid name '%s' instead.") % (_VALID_LOCAL_NAME.pattern,
+                                                   name))
+    if (name in self._dependency_names
+        and self._dependency_names[name] is not checkpointable):
+      raise ValueError(
+          ("Called Checkpointable.track_checkpointable() with name='%s', but "
+           "a Checkpointable with this name is already declared as a "
+           "dependency. Names must be unique.") % (name,))
+    self._dependency_names[name] = checkpointable
     self._checkpoint_dependencies.append(
-        _CheckpointableReference(
-            name=name,
-            ref=checkpointable,
-            # TODO(allenl): Should this be exposed to allow users to stop
-            # depending on things and still load checkpoints when not using
-            # names?
-            local_uid=len(self._checkpoint_dependencies)))
+        _CheckpointableReference(name=name, ref=checkpointable))
+    self._already_tracked.add(checkpointable)
     return checkpointable
+
+  def _process_restoration(self, restoration):
+    """Restore a variable and its slot variables (may be deferred)."""
+    variable_to_restore = self._owned_variables.get(restoration.name, None)
+    if variable_to_restore is not None:
+      # This variable already exists, so just do an assignment for this and any
+      # slot variables which depend on it.
+      _assign_existing_variable(
+          variable_to_restore, value_pointer=restoration.value_pointer)
+      for slot_restoration in restoration.slot_restorations:
+        strong_ref = slot_restoration.optimizer_ref()
+        if strong_ref is None:
+          continue
+        strong_ref._process_slot_restoration(  # pylint: disable=protected-access
+            slot_restoration, variable_to_restore)
+    else:
+      # Save this restoration for later. This intentionally overwrites any
+      # previous deferred restorations, since that gives the same semantics as
+      # direct assignment.
+      self._deferred_restorations[restoration.name] = restoration
+
+  def _process_slot_restoration(self, slot_restoration, variable):
+    """Restore a slot variable's value (creating it if necessary)."""
+    # TODO(allenl): Move this to Optimizer
+    assert isinstance(self, optimizer_lib.Optimizer)
+    named_slots = self._slot_dict(slot_restoration.slot_name)
+    variable_key = optimizer_lib._var_key(variable)  # pylint: disable=protected-access
+    existing_slot_variable = named_slots.get(variable_key, None)
+    if existing_slot_variable is None:
+      base_dtype = slot_restoration.value_pointer.dtype.base_dtype
+      initializer, = io_ops.restore_v2(
+          prefix=slot_restoration.value_pointer.save_path,
+          tensor_names=[slot_restoration.value_pointer.checkpoint_key],
+          shape_and_slices=[""],
+          dtypes=[base_dtype],
+          name="checkpoint_initializer")
+      new_slot_variable = slot_creator.create_slot(variable, initializer,
+                                                   slot_restoration.slot_name)
+      if slot_restoration.value_pointer.session is not None:
+        slot_restoration.value_pointer.session.run(
+            new_slot_variable.initializer)
+      named_slots[variable_key] = new_slot_variable
+    else:
+      _assign_existing_variable(
+          existing_slot_variable, value_pointer=slot_restoration.value_pointer)
 
   @property
   def checkpoint_dependencies(self):
@@ -192,7 +337,7 @@ def _breadth_first_checkpointable_traversal(root_checkpointable):
   """Find shortest paths to all variables owned by dependencies of root."""
   bfs_sorted = []
   root_checkpointable_reference = _CheckpointableReference(
-      name=None, local_uid=0, ref=root_checkpointable)
+      name=None, ref=root_checkpointable)
   to_visit = collections.deque([root_checkpointable_reference])
   path_to_root = {root_checkpointable_reference: ()}
   while to_visit:
@@ -208,8 +353,8 @@ def _breadth_first_checkpointable_traversal(root_checkpointable):
 
 
 def _object_prefix_from_path(path_to_root):
-  return "/".join((checkpointable.name if checkpointable.name else "_%d" % (
-      checkpointable.local_uid,)) for checkpointable in path_to_root)
+  return "/".join(
+      (checkpointable.name for checkpointable in path_to_root))
 
 
 def _escape_variable_name(variable_name):
@@ -237,9 +382,9 @@ def _variable_naming_for_object(path_to_root):
   if object_prefix:
     object_prefix += "/"
 
-  def _name_single_variable(owned_variable):
+  def _name_single_variable(local_name):
     """Names a variable within an object."""
-    return object_prefix + _escape_variable_name(owned_variable.name)
+    return object_prefix + _escape_variable_name(local_name)
 
   return _name_single_variable
 
@@ -289,28 +434,30 @@ def _serialize_non_slot_variables(checkpointable_objects, path_to_root,
   for checkpoint_id, checkpointable in enumerate(checkpointable_objects):
     naming_scheme = _variable_naming_for_object(path_to_root[checkpointable])
     object_proto = object_graph_proto.nodes.add()
-    for owned_variable in checkpointable.ref._owned_variables:  # pylint: disable=protected-access
-      variable_name = naming_scheme(owned_variable)
-      named_variables[variable_name] = owned_variable.variable
+    for (local_name, owned_variable) in sorted(
+        checkpointable.ref._owned_variables.items(),  # pylint: disable=protected-access
+        key=lambda x: x[0]):
+      variable_name = naming_scheme(local_name)
+      named_variables[variable_name] = owned_variable
       non_slot_variables.append((
           variable_name,  # The variable's full checkpoint name
-          owned_variable,  # The variable's _OwnedVariable object
+          owned_variable,  # The variable object
+          local_name,  # The variable's local name
           checkpoint_id))  # The checkpoint ID of the node which owns this
       # variable.
       variable_proto = object_proto.variables.add()
-      variable_proto.local_name = owned_variable.name
+      variable_proto.local_name = local_name
+      variable_proto.checkpoint_key = variable_name
       # Figure out the name-based Saver's name for this variable.
       saver_dict = saver_lib.BaseSaverBuilder.OpListToDict(
-          [owned_variable.variable], convert_variable_to_tensor=False)
+          [owned_variable], convert_variable_to_tensor=False)
       variable_full_name, = saver_dict.keys()
       variable_proto.full_name = variable_full_name
 
     for child in checkpointable.ref.checkpoint_dependencies:
       child_proto = object_proto.children.add()
       child_proto.node_id = checkpoint_node_ids[child]
-      child_proto.local_uid = child.local_uid
-      if child.name is not None:
-        child_proto.local_name = child.name
+      child_proto.local_name = child.name
   return named_variables, non_slot_variables
 
 
@@ -326,24 +473,25 @@ def _serialize_slot_variables(checkpointable_objects, path_to_root,
           optimizer=checkpointable_ref.ref,
           path_to_root=path_to_root[checkpointable_ref])
       slot_names = checkpointable_ref.ref.get_slot_names()
-      for (variable_path, owned_variable,
+      for (variable_path, original_variable, original_variable_local_name,
            original_node_checkpoint_id) in non_slot_variables:
         for slot_name in slot_names:
           slot_variable = checkpointable_ref.ref.get_slot(
-              owned_variable.variable, slot_name)
+              original_variable, slot_name)
           if slot_variable is not None:
             checkpoint_name = naming_scheme(
                 variable_path=variable_path, slot_name=slot_name)
             named_slot_variables[checkpoint_name] = slot_variable
             slot_variable_proto = optimizer_object_proto.slot_variables.add()
             slot_variable_proto.slot_name = slot_name
+            slot_variable_proto.checkpoint_key = checkpoint_name
             # Figure out the name-based Saver's name for this variable.
             saver_dict = saver_lib.BaseSaverBuilder.OpListToDict(
                 [slot_variable], convert_variable_to_tensor=False)
             slot_variable_full_name, = saver_dict.keys()
             slot_variable_proto.full_name = slot_variable_full_name
             slot_variable_proto.original_variable_local_name = (
-                owned_variable.name)
+                original_variable_local_name)
             slot_variable_proto.original_variable_node_id = (
                 original_node_checkpoint_id)
   return named_slot_variables
@@ -390,3 +538,236 @@ def _serialize_object_graph(root_checkpointable):
 
   named_variables.update(named_slot_variables)
   return named_variables, object_graph_proto
+
+
+def _set_reference(reference_proto_table, key, checkpointable, parent,
+                   object_id_map):
+  """Record a checkpoint<->object correspondence, with error checking.
+
+  Args:
+    reference_proto_table: Map from names or numbers to `ObjectReference` protos
+      within the parent object.
+    key: Either a numeric or string identifier for the reference.
+    checkpointable: The object to record a correspondence for.
+    parent: The parent Python object, for creating a useful error message.
+    object_id_map: The map from `node_id` to Python object in which to record
+      the reference.
+  Returns:
+    The `node_id` of the Object proto corresponding to the specified Python
+    object.
+  Raises:
+    AssertionError: If another object is already bound to the `Object` proto.
+  """
+  reference_proto = reference_proto_table[key]
+  set_reference = object_id_map.setdefault(reference_proto.node_id,
+                                           checkpointable)
+  if set_reference is not checkpointable:
+    raise AssertionError(
+        ("Unable to load the checkpoint into this object graph. Either "
+         "the Checkpointable object references in the Python program "
+         "have changed in an incompatible way, or the checkpoint was "
+         "generated in an incompatible program.\n\nTwo checkpoint "
+         "references (one being '%s' in %s) resolved to different "
+         "objects (%s and %s).") % (key, parent, set_reference,
+                                    checkpointable))
+  return reference_proto.node_id
+
+
+def _checkpoint_object_id_map(root_checkpointable, object_graph_proto):
+  """Match a checkpointed object graph to a Python object graph.
+
+  Args:
+    root_checkpointable: A Checkpointable object.
+    object_graph_proto: A CheckpointableObjectGraph protocol buffer representing
+      a serialized object graph.
+  Returns:
+    A dictionary mapping from checkpoint node ids (indices into
+    `object_graph_proto.nodes`) to `Checkpointable` objects which are
+    dependencies of `root_checkpointable`.
+  """
+  node_list = object_graph_proto.nodes
+  # Queue of (checkpointable object, node id)
+  to_visit = collections.deque([(root_checkpointable, 0)])
+  object_id_map = {0: root_checkpointable}
+  seen = set()
+  while to_visit:
+    checkpointable, node_id = to_visit.popleft()
+    object_proto = node_list[node_id]
+    named_children = {}
+    for child_reference in object_proto.children:
+      if child_reference.local_name:
+        named_children[child_reference.local_name] = child_reference
+      else:
+        raise AssertionError(
+            ("The checkpointed object graph contains a reference without "
+             "a name (corrupted?). The reference was from the node %s.")
+            % (object_proto,))
+
+    for checkpointable_reference in checkpointable._checkpoint_dependencies:  # pylint: disable=protected-access
+      child_node_id = _set_reference(
+          reference_proto_table=named_children,
+          key=checkpointable_reference.name,
+          checkpointable=checkpointable_reference.ref,
+          parent=checkpointable,
+          object_id_map=object_id_map)
+      if child_node_id not in seen:
+        seen.add(child_node_id)
+        to_visit.append((checkpointable_reference.ref, child_node_id))
+
+  return object_id_map
+
+
+_ValuePointer = collections.namedtuple(
+    "_ValuePointer",
+    [
+        # Information needed to look up the value to restore.
+        "save_path",
+        "checkpoint_key",
+        "dtype",
+        # The session to use when restoring (None when executing eagerly)
+        "session",
+    ])
+
+_SlotVariableRestoration = collections.namedtuple(
+    "_SlotVariableRestoration",
+    [
+        # A weak reference to the Optimizer object
+        "optimizer_ref",
+        # The slot name
+        "slot_name",
+        # The _ValuePointer to use when restoring
+        "value_pointer",
+    ])
+
+_VariableRestoration = collections.namedtuple(
+    "_VariableRestoration",
+    [
+        # The variable's (local) name.
+        "name",
+        # _SlotVariableRestoration objects indicating slot variables which
+        # should be created once this variable has been restored.
+        "slot_restorations",
+        # The _ValuePointer to use when restoring
+        "value_pointer",
+    ])
+
+
+def _gather_restorations(object_graph_proto, save_path, object_id_map,
+                         dtype_map, session):
+  """Iterate over variables to restore, matching with Checkpointable objects."""
+  variable_to_slot_restorations = {}
+  for node_id, node in enumerate(object_graph_proto.nodes):
+    for slot_variable in node.slot_variables:
+      original_variable_key = (slot_variable.original_variable_node_id,
+                               slot_variable.original_variable_local_name)
+      variable_to_slot_restorations.setdefault(
+          original_variable_key, []).append(
+              _SlotVariableRestoration(
+                  optimizer_ref=weakref.ref(object_id_map[node_id]),
+                  slot_name=slot_variable.slot_name,
+                  value_pointer=_ValuePointer(
+                      save_path=save_path,
+                      checkpoint_key=slot_variable.checkpoint_key,
+                      dtype=dtype_map[slot_variable.checkpoint_key],
+                      session=session)))
+
+  for node_id, node in enumerate(object_graph_proto.nodes):
+    for variable in node.variables:
+      slots_key = (node_id, variable.local_name)
+      variable_restore = _VariableRestoration(
+          name=variable.local_name,
+          slot_restorations=variable_to_slot_restorations.get(slots_key, []),
+          value_pointer=_ValuePointer(
+              save_path=save_path,
+              checkpoint_key=variable.checkpoint_key,
+              dtype=dtype_map[variable.checkpoint_key],
+              session=session))
+      yield variable_restore, object_id_map[node_id]
+
+
+def save(file_prefix, root_checkpointable, global_step=None, session=None):
+  """Save a training checkpoint.
+
+  Args:
+    file_prefix: A prefix to use for the checkpoint filenames
+      (/path/to/directory/and_a_prefix). Names are generated based on this
+      prefix and the global step, if provided.
+    root_checkpointable: A Checkpointable object to save. The checkpoint
+      includes variables created by this object and any Checkpointable objects
+      it depends on.
+    global_step: An integer variable or Tensor, used to number
+      checkpoints. Typically this value is saved along with other variables in
+      training checkpoints, which will happen automatically if it was created by
+      `root_checkpointable` or one of its dependencies (via
+      `Checkpointable.add_variable`).
+    session: The session to evaluate variables in. Ignored when executing
+      eagerly. If not provided when graph building, the default session is used.
+
+  Returns:
+    The full path to the checkpoint.
+
+    Currently also returns the serialized object graph proto, but that will go
+    away once it's saved with the checkpoint.
+  """
+  named_variables, serialized_graph = _serialize_object_graph(
+      root_checkpointable)
+  if context.in_graph_mode():
+    if session is None:
+      session = ops.get_default_session()
+  else:
+    session = None
+  with ops.device("/device:CPU:0"):
+    save_path = saver_lib.Saver(var_list=named_variables).save(
+        sess=session,
+        save_path=file_prefix,
+        write_meta_graph=False,
+        global_step=global_step)
+  # TODO(allenl): Save the graph with the checkpoint, then returning it and
+  # taking it as an argument to restore won't be necessary.
+  return serialized_graph, save_path
+
+
+# NOTE: Will be restore(file_prefix, root_checkpointable) once the object graph
+# is saved with the checkpoint.
+def restore(save_path, root_checkpointable, object_graph_proto, session=None):
+  """Restore a training checkpoint.
+
+  Restores the values of variables created with `Checkpointable.add_variable` in
+  the dependency graph of `root_checkpointable`. Either assigns values
+  immediately (if variables to restore have been created already), or defers
+  restoration until the variables are created.
+
+  When building a graph, restorations are executed in the default session if
+  `session` is `None`. Variable initializers read checkpointed values.
+
+  Args:
+    save_path: The path to the checkpoint, as returned by `save` or
+      `tf.train.latest_checkpoint`. If None (as when there is no latest
+      checkpoint for `tf.train.latest_checkpoint` to return), does nothing.
+    root_checkpointable: The root of the object graph to restore. Variables to
+      restore need not have been created yet, but all dependencies on other
+      Checkpointable objects should already be declared. Objects in the
+      dependency graph are matched to objects in the checkpointed graph, and
+      matching objects have their variables restored (or the checkpointed values
+      saved for eventual restoration when the variable is created).
+    object_graph_proto: (Temporary) the checkpointed object graph. This will
+      eventually be saved with the checkpoint, and will not be part of the final
+      API.
+    session: The session to evaluate assignment ops in. Ignored when executing
+      eagerly. If not provided when graph building, the default session is used.
+  """
+  if save_path is None:
+    return
+  object_id_map = _checkpoint_object_id_map(root_checkpointable,
+                                            object_graph_proto)
+  reader = training.NewCheckpointReader(save_path)
+  dtype_map = reader.get_variable_to_dtype_map()
+  if context.in_graph_mode():
+    if session is None:
+      session = ops.get_default_session()
+  else:
+    session = None
+  for restoration, checkpointable in _gather_restorations(
+      object_graph_proto, save_path, object_id_map, dtype_map, session=session):
+    checkpointable._process_restoration(restoration)  # pylint: disable=protected-access
+

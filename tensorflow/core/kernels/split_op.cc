@@ -39,7 +39,7 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class SplitOpBase : public OpKernel {
@@ -142,8 +142,9 @@ class SplitOpCPU : public SplitOpBase<CPUDevice, T> {
 
     // Android also uses int32 indexing, so check here also.
     OP_REQUIRES(
-        context, FastBoundsCheck(input.NumElements(),
-                                 std::numeric_limits<Eigen::DenseIndex>::max()),
+        context,
+        FastBoundsCheck(input.NumElements(),
+                        std::numeric_limits<Eigen::DenseIndex>::max()),
         errors::InvalidArgument("Split requires input size < ",
                                 std::numeric_limits<Eigen::DenseIndex>::max()));
 
@@ -245,10 +246,11 @@ class SplitOpGPU : public SplitOpBase<GPUDevice, T> {
     const int32 split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
     const int32 num_split = Base::num_outputs();
-    OP_REQUIRES(context, FastBoundsCheck(input.NumElements(),
-                                         std::numeric_limits<int32>::max()),
-                errors::InvalidArgument("Split on GPU requires input size "
-                                        "< max int32"));
+    OP_REQUIRES(
+        context,
+        FastBoundsCheck(input.NumElements(), std::numeric_limits<int32>::max()),
+        errors::InvalidArgument("Split on GPU requires input size "
+                                "< max int32"));
     int32 prefix_dim_size;
     int32 split_dim_size;
     int32 suffix_dim_size;
@@ -304,8 +306,9 @@ class SplitOpSYCL : public SplitOpBase<SYCLDevice, T> {
 
     // Android also uses int32 indexing, so check here also.
     OP_REQUIRES(
-        context, FastBoundsCheck(input.NumElements(),
-                                 std::numeric_limits<Eigen::DenseIndex>::max()),
+        context,
+        FastBoundsCheck(input.NumElements(),
+                        std::numeric_limits<Eigen::DenseIndex>::max()),
         errors::InvalidArgument("Split requires input size < ",
                                 std::numeric_limits<Eigen::DenseIndex>::max()));
 
@@ -342,14 +345,14 @@ class SplitOpSYCL : public SplitOpBase<SYCLDevice, T> {
             {prefix_dim_size, split_dim_output_size, suffix_dim_size});
 
         functor::Split<SYCLDevice, T>()(context->eigen_device<SYCLDevice>(),
-                                       result_shaped, input_reshaped,
-                                       slice_indices, slice_sizes);
+                                        result_shaped, input_reshaped,
+                                        slice_indices, slice_sizes);
       }
       indices[1] += split_dim_output_size;
     }
   }
 };
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 #define REGISTER_SPLIT(type)                             \
   REGISTER_KERNEL_BUILDER(Name("Split")                  \
@@ -360,8 +363,6 @@ class SplitOpSYCL : public SplitOpBase<SYCLDevice, T> {
 
 TF_CALL_ALL_TYPES(REGISTER_SPLIT);
 REGISTER_SPLIT(quint8);
-// TODO(xpan): Merge bfloat16 into TF_CALL_ALL_TYPES
-REGISTER_SPLIT(bfloat16);
 
 #undef REGISTER_SPLIT
 
@@ -383,11 +384,11 @@ REGISTER_GPU(bfloat16);
 #endif  // GOOGLE_CUDA
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL(type)                               \
-  REGISTER_KERNEL_BUILDER(Name("Split")                   \
-                              .Device(DEVICE_SYCL)        \
-                              .TypeConstraint<type>("T")  \
-                              .HostMemory("split_dim"),   \
+#define REGISTER_SYCL(type)                              \
+  REGISTER_KERNEL_BUILDER(Name("Split")                  \
+                              .Device(DEVICE_SYCL)       \
+                              .TypeConstraint<type>("T") \
+                              .HostMemory("split_dim"),  \
                           SplitOpSYCL<type>)
 
 TF_CALL_GPU_NUMBER_TYPES_NO_HALF(REGISTER_SYCL);

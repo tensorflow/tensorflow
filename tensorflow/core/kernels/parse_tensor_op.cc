@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 
@@ -92,7 +91,6 @@ class SerializeTensorOp : public OpKernel {
       Name("SerializeTensor").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       SerializeTensorOp<T>);
 TF_CALL_ALL_TYPES(REGISTER)
-TF_CALL_variant(REGISTER)
 #undef REGISTER
 
 }  // namespace tensorflow
