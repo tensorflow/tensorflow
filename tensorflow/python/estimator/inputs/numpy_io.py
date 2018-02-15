@@ -138,6 +138,8 @@ def numpy_input_fn(x,
     ValueError: if x or y is an empty dict.
     TypeError: `x` is not a dict or array, or if `shuffle` is not bool.
   """
+  if shuffle is None:
+    shuffle = False
   if not isinstance(shuffle, bool):
     raise TypeError('shuffle must be explicitly set as boolean; '
                     'got {}'.format(shuffle))
