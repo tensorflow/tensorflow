@@ -132,7 +132,7 @@ class Defun(object):
 
     # Func should not use kwargs and defaults.
     argspec = tf_inspect.getargspec(func)
-    if argspec.keywords or argspec.defaults:
+    if argspec.varkw or argspec.defaults:
       raise ValueError("Functions with argument defaults or keyword "
                        "arguments are not supported.")
 
