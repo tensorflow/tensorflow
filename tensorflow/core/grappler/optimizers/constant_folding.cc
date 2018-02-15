@@ -1712,7 +1712,6 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
 
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* output) {
-  LOG(INFO) << "Graph before: " << item.graph.DebugString();
   nodes_to_preserve_ = item.NodesToPreserve();
   for (const auto& feed : item.feed) {
     feed_nodes_.insert(NodeName(feed.first));
@@ -1739,7 +1738,6 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
   *output->mutable_library() = item.graph.library();
   *output->mutable_versions() = item.graph.versions();
 
-  LOG(INFO) << "Graph after: " << output->DebugString();
   return Status::OK();
 }
 
