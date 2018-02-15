@@ -105,6 +105,7 @@ BUILD_TARGET_LIB_CPP_API="//tensorflow:libtensorflow_cc.so"
 BUILD_TARGET_GRAPH_TRANSFORMS="//tensorflow/tools/graph_transforms:transform_graph"
 BUILD_TARGET_GRAPH_SUMMARIZE="//tensorflow/tools/graph_transforms:summarize_graph"
 BUILD_TARGET_GRAPH_BENCHMARK="//tensorflow/tools/benchmark:benchmark_model"
+BUILD_TARGET_CONVERT_MMAP="//tensorflow/contrib/util:convert_graphdef_memmapped_format"
 
 ## Use lstm_layer_inference as a pre-building target. This is a tf_library
 ## code-path, so it should build us everything to get tfcompile ready to run
