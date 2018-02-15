@@ -1802,9 +1802,9 @@ class StreamingAUCTest(test.TestCase):
       auc, update_op = metrics.streaming_auc(predictions, labels, curve='PR')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.79166, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(0.54166603, sess.run(update_op), delta=1e-3)
 
-      self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-3)
+      self.assertAlmostEqual(0.54166603, auc.eval(), delta=1e-3)
 
   def testAnotherAUCPRSpecialCase(self):
     with self.test_session() as sess:
@@ -1816,9 +1816,9 @@ class StreamingAUCTest(test.TestCase):
       auc, update_op = metrics.streaming_auc(predictions, labels, curve='PR')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.610317, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(0.44365042, sess.run(update_op), delta=1e-3)
 
-      self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-3)
+      self.assertAlmostEqual(0.44365042, auc.eval(), delta=1e-3)
 
   def testThirdAUCPRSpecialCase(self):
     with self.test_session() as sess:
@@ -1830,9 +1830,9 @@ class StreamingAUCTest(test.TestCase):
       auc, update_op = metrics.streaming_auc(predictions, labels, curve='PR')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.90277, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(0.73611039, sess.run(update_op), delta=1e-3)
 
-      self.assertAlmostEqual(0.90277, auc.eval(), delta=1e-3)
+      self.assertAlmostEqual(0.73611039, auc.eval(), delta=1e-3)
 
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
@@ -1865,9 +1865,9 @@ class StreamingAUCTest(test.TestCase):
       auc, update_op = metrics.streaming_auc(predictions, labels, curve='PR')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(1, sess.run(update_op), 6)
+      self.assertAlmostEqual(0.49999976, sess.run(update_op), 6)
 
-      self.assertAlmostEqual(1, auc.eval(), 6)
+      self.assertAlmostEqual(0.49999976, auc.eval(), 6)
 
   def testWithMultipleUpdates(self):
     num_samples = 1000
@@ -6689,7 +6689,8 @@ class CohenKappaTest(test.TestCase):
     # [[0, 25, 0],
     #  [0, 0, 25],
     #  [25, 0, 0]]
-    # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(labels, predictions)
+    # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(
+    #                          labels, predictions)
     expect = -0.333333333333
 
     with self.test_session() as sess:
@@ -6748,7 +6749,8 @@ class CohenKappaTest(test.TestCase):
                 weights_t: weights[batch_start:batch_end]
             })
       # Calculated by v0.19: sklearn.metrics.cohen_kappa_score(
-      #                          labels_np, predictions_np, sample_weight=weights_np)
+      #                          labels_np, predictions_np,
+      #                          sample_weight=weights_np)
       expect = 0.289965397924
       self.assertAlmostEqual(expect, kappa.eval(), 5)
 

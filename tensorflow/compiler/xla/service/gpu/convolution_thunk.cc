@@ -63,12 +63,12 @@ ConvolutionThunk::ConvolutionThunk(
 
 Status ConvolutionThunk::ExecuteOnStream(
     const BufferAllocations& buffer_allocations, se::Stream* stream) {
-  se::DeviceMemory<float> input_data(
-      buffer_allocations.GetDeviceAddress(input_buffer_));
-  se::DeviceMemory<float> filter_data(
-      buffer_allocations.GetDeviceAddress(filter_buffer_));
-  se::DeviceMemory<float> output_data(
-      buffer_allocations.GetDeviceAddress(output_buffer_));
+  se::DeviceMemoryBase input_data =
+      buffer_allocations.GetDeviceAddress(input_buffer_);
+  se::DeviceMemoryBase filter_data =
+      buffer_allocations.GetDeviceAddress(filter_buffer_);
+  se::DeviceMemoryBase output_data =
+      buffer_allocations.GetDeviceAddress(output_buffer_);
   se::DeviceMemoryBase scratch =
       buffer_allocations.GetDeviceAddress(scratch_buffer_);
 
@@ -80,8 +80,8 @@ Status ConvolutionThunk::ExecuteOnStream(
       filter_data, output_data, scratch, window_, dim_nums_, algorithm_config,
       stream));
 
-  // Figure out which of output/input/filter is the result produced by this op,
-  // and write the result tuple.
+  // Figure out which of output/input/filter is the result produced by
+  // this op, and write the result tuple.
   void* result_ptr = [&] {
     switch (convolution_kind_) {
       case CudnnConvKind::kForward:

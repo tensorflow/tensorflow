@@ -586,6 +586,7 @@ xla_test(
     tags = [
         "enormous",
         "manual",
+        "notap",
     ],
     deps = [
         ":client_library_test_base",

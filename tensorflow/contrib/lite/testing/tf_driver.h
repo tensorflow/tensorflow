@@ -41,7 +41,7 @@ class TfDriver : public TestRunner {
   void LoadModel(const string& bin_file_path) override;
   void SetInput(int id, const string& csv_values) override;
   void Invoke() override;
-  string ReadOutput(int id);
+  string ReadOutput(int id) override;
 
   const std::vector<int>& GetInputs() override { return input_ids_; }
   const std::vector<int>& GetOutputs() override { return output_ids_; }
