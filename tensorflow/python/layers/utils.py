@@ -207,14 +207,21 @@ def constant_value(pred):
 
     Arguments:
       pred: A scalar, either a Python bool or a TensorFlow boolean variable
-        or tensor.
+        or tensor, or the Python integer 1 or 0.
 
     Returns:
       True or False if `pred` has a constant boolean value, None otherwise.
 
     Raises:
-      TypeError: If `pred` is not a Variable, Tensor or bool.
+      TypeError: If `pred` is not a Variable, Tensor or bool, or Python
+        interger 1 or 0.
     """
+  # Allow integer booleans.
+  if pred == 0:
+    pred = False
+  elif pred == 1:
+    pred = True
+
   if isinstance(pred, variables.Variable):
     return None
   return control_flow_ops.smart_constant_value(pred)
