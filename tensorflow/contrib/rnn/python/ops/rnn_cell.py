@@ -2771,7 +2771,9 @@ class SRUCell(rnn_cell_impl._LayerRNNCell):
     c = f * state + (1.0 - f) * x_bar
     h = r * self._activation(c) + (1.0 - r) * inputs
 
-    return h, c
+    new_state = (rnn_cell_impl.LSTMStateTuple(c, h))
+
+    return h, new_state
 
 
 class WeightNormLSTMCell(rnn_cell_impl.RNNCell):
