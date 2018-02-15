@@ -202,4 +202,5 @@ def get(identifier):
   elif callable(identifier):
     return identifier
   else:
-    raise ValueError('Could not interpret constraint identifier:', identifier)
+    raise ValueError('Could not interpret constraint identifier: ' +
+                     str(identifier))

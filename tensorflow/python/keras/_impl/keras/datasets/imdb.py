@@ -144,7 +144,5 @@ def get_word_index(path='imdb_word_index.json'):
       path,
       origin='https://s3.amazonaws.com/text-datasets/imdb_word_index.json',
       file_hash='bfafd718b763782e994055a2d397834f')
-  f = open(path)
-  data = json.load(f)
-  f.close()
-  return data
+  with open(path) as f:
+    return json.load(f)
