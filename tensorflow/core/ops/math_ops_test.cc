@@ -522,7 +522,7 @@ TEST(MathOpsTest, Cross_ShapeFn) {
   INFER_ERROR("Dimension 0 in both shapes must be equal, but", op, "[3];[5]");
   INFER_ERROR("Dimension must be 3 but", op, "[3,5];[3,5]");
 
-  INFER_OK(op, "?;?", "?");
+  INFER_OK(op, "?;?", "in0");
   INFER_OK(op, "[?];[?]", "in0");
   INFER_OK(op, "[1,?,3];[?,?,?]", "in0");
 }

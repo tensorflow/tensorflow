@@ -65,7 +65,6 @@ import six
 import tensorflow as tf
 
 from tensorflow.contrib.eager.python import tfe
-from tensorflow.python.eager import context
 
 try:
   import matplotlib.pyplot as plt  # pylint: disable=g-import-not-at-top
@@ -247,9 +246,9 @@ def main(_):
 
   log_dir = os.path.join(FLAGS.dir, "summaries")
   tf.gfile.MakeDirs(log_dir)
-  train_summary_writer = tf.contrib.summary.create_summary_file_writer(
+  train_summary_writer = tf.contrib.summary.create_file_writer(
       os.path.join(log_dir, "train"), flush_millis=10000)
-  test_summary_writer = tf.contrib.summary.create_summary_file_writer(
+  test_summary_writer = tf.contrib.summary.create_file_writer(
       os.path.join(log_dir, "eval"), flush_millis=10000, name="eval")
 
   with tf.device(device):

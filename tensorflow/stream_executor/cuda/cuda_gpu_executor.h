@@ -152,7 +152,7 @@ class CUDAExecutor : public internal::StreamExecutorInterface {
 
   Event::Status PollForEventStatus(Event *event) override;
 
-  bool BlockHostUntilDone(Stream *stream) override;
+  port::Status BlockHostUntilDone(Stream *stream) override;
 
   int PlatformDeviceCount() override { return CUDADriver::GetDeviceCount(); }
 

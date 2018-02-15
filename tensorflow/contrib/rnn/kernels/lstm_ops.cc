@@ -281,23 +281,23 @@ class LSTMBlockCellOp : public OpKernel {
                                         h_prev_tensor->dim_size(0), " vs. ",
                                         batch_size));
     OP_REQUIRES(ctx, h_prev_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument("h_prev.dims(1) != cell_size: ",
-                                        h_prev_tensor->dim_size(1), " vs. ",
-                                        cell_size));
+                errors::InvalidArgument(
+                    "h_prev.dims(1) != cell_size: ", h_prev_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     OP_REQUIRES(ctx, w_tensor->dim_size(0) == input_size + cell_size,
                 errors::InvalidArgument(
                     "w.dim_size(0) != input_size + cell_size: ",
                     w_tensor->dim_size(0), " vs. ", input_size + cell_size));
-    OP_REQUIRES(
-        ctx, w_tensor->dim_size(1) == cell_size * 4,
-        errors::InvalidArgument("w.dim_size(1) != cell_size * 4: ",
-                                w_tensor->dim_size(1), " vs. ", cell_size * 4));
+    OP_REQUIRES(ctx, w_tensor->dim_size(1) == cell_size * 4,
+                errors::InvalidArgument(
+                    "w.dim_size(1) != cell_size * 4: ", w_tensor->dim_size(1),
+                    " vs. ", cell_size * 4));
 
-    OP_REQUIRES(
-        ctx, b_tensor->dim_size(0) == cell_size * 4,
-        errors::InvalidArgument("b.dim_size(0) != cell_size * 4: ",
-                                b_tensor->dim_size(0), " vs. ", cell_size * 4));
+    OP_REQUIRES(ctx, b_tensor->dim_size(0) == cell_size * 4,
+                errors::InvalidArgument(
+                    "b.dim_size(0) != cell_size * 4: ", b_tensor->dim_size(0),
+                    " vs. ", cell_size * 4));
 
     // Allocate our output tensors.
     Tensor* i_tensor = nullptr;
@@ -484,77 +484,77 @@ class LSTMBlockCellGradOp : public OpKernel {
                                         h_prev_tensor->dim_size(0), " vs. ",
                                         batch_size));
     OP_REQUIRES(ctx, h_prev_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument("h_prev.dims(1) != cell_size: ",
-                                        h_prev_tensor->dim_size(1), " vs. ",
-                                        cell_size));
+                errors::InvalidArgument(
+                    "h_prev.dims(1) != cell_size: ", h_prev_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     OP_REQUIRES(ctx, w_tensor->dim_size(0) == input_size + cell_size,
                 errors::InvalidArgument(
                     "w.dim_size(0) != input_size + cell_size: ",
                     w_tensor->dim_size(0), " vs. ", input_size + cell_size));
-    OP_REQUIRES(
-        ctx, w_tensor->dim_size(1) == cell_size * 4,
-        errors::InvalidArgument("w.dim_size(1) != cell_size * 4: ",
-                                w_tensor->dim_size(1), " vs. ", cell_size * 4));
+    OP_REQUIRES(ctx, w_tensor->dim_size(1) == cell_size * 4,
+                errors::InvalidArgument(
+                    "w.dim_size(1) != cell_size * 4: ", w_tensor->dim_size(1),
+                    " vs. ", cell_size * 4));
 
-    OP_REQUIRES(
-        ctx, b_tensor->dim_size(0) == cell_size * 4,
-        errors::InvalidArgument("b.dim_size(0) != cell_size * 4: ",
-                                b_tensor->dim_size(0), " vs. ", cell_size * 4));
+    OP_REQUIRES(ctx, b_tensor->dim_size(0) == cell_size * 4,
+                errors::InvalidArgument(
+                    "b.dim_size(0) != cell_size * 4: ", b_tensor->dim_size(0),
+                    " vs. ", cell_size * 4));
 
-    OP_REQUIRES(
-        ctx, i_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("i.dim_size(0) != batch_size: ",
-                                i_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, i_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("i.dim_size(1) != cell_size: ",
-                                i_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, i_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "i.dim_size(0) != batch_size: ", i_tensor->dim_size(0),
+                    " vs. ", batch_size));
+    OP_REQUIRES(ctx, i_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "i.dim_size(1) != cell_size: ", i_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
-    OP_REQUIRES(
-        ctx, cs_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("cs.dim_size(0) != batch_size: ",
-                                cs_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, cs_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("cs.dim_size(1) != cell_size: ",
-                                cs_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, cs_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "cs.dim_size(0) != batch_size: ", cs_tensor->dim_size(0),
+                    " vs. ", batch_size));
+    OP_REQUIRES(ctx, cs_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "cs.dim_size(1) != cell_size: ", cs_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
-    OP_REQUIRES(
-        ctx, f_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("f.dim_size(0) != batch_size: ",
-                                f_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, f_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("i.dim_size(1) != cell_size: ",
-                                f_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, f_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "f.dim_size(0) != batch_size: ", f_tensor->dim_size(0),
+                    " vs. ", batch_size));
+    OP_REQUIRES(ctx, f_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "i.dim_size(1) != cell_size: ", f_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
-    OP_REQUIRES(
-        ctx, o_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("o.dim_size(0) != batch_size: ",
-                                o_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, o_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("o.dim_size(1) != cell_size: ",
-                                o_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, o_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "o.dim_size(0) != batch_size: ", o_tensor->dim_size(0),
+                    " vs. ", batch_size));
+    OP_REQUIRES(ctx, o_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "o.dim_size(1) != cell_size: ", o_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
-    OP_REQUIRES(
-        ctx, ci_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("ci.dim_size(0) != batch_size: ",
-                                ci_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, ci_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("ci.dim_size(1) != cell_size: ",
-                                ci_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, ci_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "ci.dim_size(0) != batch_size: ", ci_tensor->dim_size(0),
+                    " vs. ", batch_size));
+    OP_REQUIRES(ctx, ci_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "ci.dim_size(1) != cell_size: ", ci_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
-    OP_REQUIRES(
-        ctx, co_tensor->dim_size(0) == batch_size,
-        errors::InvalidArgument("co.dim_size(0) != batch_size: ",
-                                co_tensor->dim_size(0), " vs. ", batch_size));
-    OP_REQUIRES(
-        ctx, co_tensor->dim_size(1) == cell_size,
-        errors::InvalidArgument("co.dim_size(1) != cell_size: ",
-                                co_tensor->dim_size(1), " vs. ", cell_size));
+    OP_REQUIRES(ctx, co_tensor->dim_size(0) == batch_size,
+                errors::InvalidArgument(
+                    "co.dim_size(0) != batch_size: ", co_tensor->dim_size(0),
+                    " vs. ", batch_size));
+    OP_REQUIRES(ctx, co_tensor->dim_size(1) == cell_size,
+                errors::InvalidArgument(
+                    "co.dim_size(1) != cell_size: ", co_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     OP_REQUIRES(ctx, cs_grad_tensor->dim_size(0) == batch_size,
                 errors::InvalidArgument(
@@ -860,9 +860,9 @@ class BlockLSTMOp : public OpKernel {
                                         h_prev_tensor->dim_size(0), " vs. ",
                                         batch_size));
     OP_REQUIRES(ctx, h_prev_tensor->dim_size(1) == cell_size,
-                errors::InvalidArgument("h_prev.dims(1) != cell_size: ",
-                                        h_prev_tensor->dim_size(1), " vs. ",
-                                        cell_size));
+                errors::InvalidArgument(
+                    "h_prev.dims(1) != cell_size: ", h_prev_tensor->dim_size(1),
+                    " vs. ", cell_size));
 
     const Tensor* w_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("w", &w_tensor));
@@ -872,46 +872,46 @@ class BlockLSTMOp : public OpKernel {
                 errors::InvalidArgument(
                     "w.dim_size(0) != input_size + cell_size: ",
                     w_tensor->dim_size(0), " vs. ", input_size + cell_size));
-    OP_REQUIRES(
-        ctx, w_tensor->dim_size(1) == cell_size * 4,
-        errors::InvalidArgument("w.dim_size(1) != cell_size * 4: ",
-                                w_tensor->dim_size(1), " vs. ", cell_size * 4));
+    OP_REQUIRES(ctx, w_tensor->dim_size(1) == cell_size * 4,
+                errors::InvalidArgument(
+                    "w.dim_size(1) != cell_size * 4: ", w_tensor->dim_size(1),
+                    " vs. ", cell_size * 4));
 
     const Tensor* wci_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("wci", &wci_tensor));
     OP_REQUIRES(ctx, wci_tensor->dims() == 1,
                 errors::InvalidArgument("wci must be 1D"));
-    OP_REQUIRES(
-        ctx, wci_tensor->dim_size(0) == cell_size,
-        errors::InvalidArgument("wci.dim_size(0) != cell_size: ",
-                                wci_tensor->dim_size(0), " vs. ", cell_size));
+    OP_REQUIRES(ctx, wci_tensor->dim_size(0) == cell_size,
+                errors::InvalidArgument(
+                    "wci.dim_size(0) != cell_size: ", wci_tensor->dim_size(0),
+                    " vs. ", cell_size));
 
     const Tensor* wcf_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("wcf", &wcf_tensor));
     OP_REQUIRES(ctx, wcf_tensor->dims() == 1,
                 errors::InvalidArgument("wcf must be 1D"));
-    OP_REQUIRES(
-        ctx, wcf_tensor->dim_size(0) == cell_size,
-        errors::InvalidArgument("wcf.dim_size(0) != cell_size: ",
-                                wcf_tensor->dim_size(0), " vs. ", cell_size));
+    OP_REQUIRES(ctx, wcf_tensor->dim_size(0) == cell_size,
+                errors::InvalidArgument(
+                    "wcf.dim_size(0) != cell_size: ", wcf_tensor->dim_size(0),
+                    " vs. ", cell_size));
 
     const Tensor* wco_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("wco", &wco_tensor));
     OP_REQUIRES(ctx, wco_tensor->dims() == 1,
                 errors::InvalidArgument("wco must be 1D"));
-    OP_REQUIRES(
-        ctx, wco_tensor->dim_size(0) == cell_size,
-        errors::InvalidArgument("wco.dim_size(0) != cell_size: ",
-                                wco_tensor->dim_size(0), " vs. ", cell_size));
+    OP_REQUIRES(ctx, wco_tensor->dim_size(0) == cell_size,
+                errors::InvalidArgument(
+                    "wco.dim_size(0) != cell_size: ", wco_tensor->dim_size(0),
+                    " vs. ", cell_size));
 
     const Tensor* b_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("b", &b_tensor));
     OP_REQUIRES(ctx, b_tensor->dims() == 1,
                 errors::InvalidArgument("b must be 1D"));
-    OP_REQUIRES(
-        ctx, b_tensor->dim_size(0) == cell_size * 4,
-        errors::InvalidArgument("b.dim_size(0) != cell_size * 4: ",
-                                b_tensor->dim_size(0), " vs. ", cell_size * 4));
+    OP_REQUIRES(ctx, b_tensor->dim_size(0) == cell_size * 4,
+                errors::InvalidArgument(
+                    "b.dim_size(0) != cell_size * 4: ", b_tensor->dim_size(0),
+                    " vs. ", cell_size * 4));
 
     TensorShape batch_cell_shape({timelen, batch_size, cell_size});
     Tensor* i_out;
@@ -1065,9 +1065,9 @@ class BlockLSTMGradOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->input("w", &w_tensor));
     const int64 cell_size = w_tensor->dim_size(1) / 4;
     OP_REQUIRES(ctx, input_size + cell_size == w_tensor->dim_size(0),
-                errors::InvalidArgument("w matrix rows don't match: ",
-                                        input_size + cell_size, " vs. ",
-                                        w_tensor->dim_size(0)));
+                errors::InvalidArgument(
+                    "w matrix rows don't match: ", input_size + cell_size,
+                    " vs. ", w_tensor->dim_size(0)));
 
     const Tensor* wci_tensor = nullptr;
     OP_REQUIRES_OK(ctx, ctx->input("wci", &wci_tensor));
@@ -1192,7 +1192,6 @@ class BlockLSTMGradOp : public OpKernel {
     Tensor h_grad_tensor;
     OP_REQUIRES_OK(ctx, ctx->allocate_temp(DataTypeToEnum<T>::v(),
                                            batch_cell_shape, &h_grad_tensor));
-
 
     const Device& device = ctx->eigen_device<Device>();
 

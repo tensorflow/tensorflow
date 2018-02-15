@@ -1,6 +1,6 @@
 ## Auto Detect and Advise
 
-tfprof analyzes profiles and generates advises for common issues.
+tfprof analyzes profiles and generates advice for common issues.
 
 ### Run Advise.
 

@@ -24,7 +24,6 @@ from tensorflow.python.eager import execute
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -33,6 +32,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import sparse_ops
 
 
@@ -245,20 +245,12 @@ class OpsTest(test_util.TensorFlowTestCase):
     reshaped = array_ops.reshape(value, shape)
     self.assertAllEqual([[1], [2]], reshaped.cpu())
 
-    # And if the shape is in device memory, it should complain
-    # TODO(ashankar): Revisit this - perhaps instead of complaining,
-    # it should implicitly copy the tensor to host memory?
-    with self.assertRaisesRegexp(
-        errors.InvalidArgumentError,
-        'cannot compute Reshape as input #1 was expected to be on.*'
-        'using.*DEVICE_PLACEMENT_SILENT'):
-      reshaped = array_ops.reshape(value, shape.gpu())
-
-  def testInvalidInputDataType(self):
+  def testInt64(self):
     # Fill requires the first input to be an int32 tensor.
-    with self.assertRaisesRegexp(errors.InvalidArgumentError, 'int64'):
-      array_ops.fill(constant_op.constant([2], dtype=dtypes.int64),
-                     constant_op.constant(1))
+    self.assertAllEqual(
+        [1.0, 1.0],
+        array_ops.fill(constant_op.constant([2], dtype=dtypes.int64),
+                       constant_op.constant(1)))
 
   def testOutputOnHostMemory(self):
     if not context.context().num_gpus():
@@ -321,6 +313,13 @@ class OpsTest(test_util.TensorFlowTestCase):
 
   def testIdentity(self):
     self.assertAllEqual(2, array_ops.identity(2))
+
+  def testIdentityOnVariable(self):
+    if not context.context().num_gpus():
+      self.skipTest('No GPUs found')
+    with context.device('/gpu:0'):
+      v = resource_variable_ops.ResourceVariable(True)
+    self.assertAllEqual(True, array_ops.identity(v))
 
   def testIncompatibleSetShape(self):
     x = constant_op.constant(1)

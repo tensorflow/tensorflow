@@ -88,8 +88,9 @@ py_library(
 
 py_test(
     name = "dnn_linear_combined_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/dnn_linear_combined_test.py"],
+    shard_count = 3,
     srcs_version = "PY2AND3",
     tags = [
         "no_pip",
@@ -162,7 +163,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:check_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lookup_ops",
@@ -176,7 +177,6 @@ py_library(
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
-        "//tensorflow/python/estimator:util",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
     ],
@@ -204,6 +204,7 @@ py_test(
         "//tensorflow/python/estimator:metric_keys",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:prediction_keys",
+        "//tensorflow/python/ops/losses",
         "//tensorflow/python/saved_model:signature_constants",
         "//third_party/py/numpy",
         "@six_archive//:six",
@@ -330,23 +331,24 @@ py_library(
         "//tensorflow/python:device",
         "//tensorflow/python:device_lib",
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:gradients",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
         "//tensorflow/python/estimator:export_output",
         "//tensorflow/python/estimator:model_fn",
         "//tensorflow/python/estimator:util",
+        "//tensorflow/python/ops/losses",
         "@six_archive//:six",
     ],
 )
 
 cuda_py_test(
     name = "replicate_model_fn_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/estimator/replicate_model_fn_test.py"],
     additional_deps = [
         "//tensorflow/python/estimator",
@@ -374,5 +376,9 @@ cuda_py_test(
         "//tensorflow/python:variables",
         ":replicate_model_fn",
     ],
-    tags = ["multi_gpu"],
+    tags = [
+        "manual",
+        "multi_gpu",
+        "notap",
+    ],
 )

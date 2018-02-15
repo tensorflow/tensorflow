@@ -110,7 +110,7 @@ class Evaluator(object):
         return self._all_metric_results()
     else:
       def f():
-        with summary_ops.create_summary_file_writer(
+        with summary_ops.create_file_writer(
             summary_logdir).as_default(), summary_ops.always_record_summaries():
           return self._all_metric_results()
       if context.in_eager_mode():
@@ -178,7 +178,7 @@ class Evaluator(object):
       call_op: An op that updates evaluation state on a mini-batch of examples.
         Must generate an tf.errors.OutOfRangeError when done.
       results_op: A dictionary of tensors that compute the final evaluation
-        results from the evaulation state.
+        results from the evaluation state.
       sess: The Session to run the evaluation in. Defaults to the default
         Session.
 

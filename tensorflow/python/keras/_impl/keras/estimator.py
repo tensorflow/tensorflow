@@ -23,21 +23,31 @@ import os
 
 from tensorflow.python.client import session
 from tensorflow.python.estimator import estimator as estimator_lib
-from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.estimator import export as export_lib
+from tensorflow.python.estimator import model_fn as model_fn_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras import models
 from tensorflow.python.keras._impl.keras.utils.generic_utils import CustomObjectScope
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics as metrics_module
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
-from tensorflow.python.saved_model import signature_constants
+from tensorflow.python.util.tf_export import tf_export
 
 _DEFAULT_SERVING_KEY = signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+
+
+def _cast_tensor_to_floatx(x):
+  """Cast tensor to keras's floatx dtype if it is not already the same dtype."""
+  if x.dtype == K.floatx():
+    return x
+  else:
+    return math_ops.cast(x, K.floatx())
 
 
 def _create_ordered_io(keras_model, estimator_io_dict, is_input=True):
@@ -68,7 +78,7 @@ def _create_ordered_io(keras_model, estimator_io_dict, is_input=True):
                                         ', '.join(keras_io_names)))
   tensors = []
   for io_name in keras_io_names:
-    tensors.append(estimator_io_dict[io_name])
+    tensors.append(_cast_tensor_to_floatx(estimator_io_dict[io_name]))
   return tensors
 
 
@@ -116,7 +126,8 @@ def _clone_and_build_model(mode,
       target_tensors = _create_ordered_io(keras_model, labels, is_input=False)
     else:
       target_tensors = [
-          sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(labels)
+          _cast_tensor_to_floatx(
+              sparse_tensor_lib.convert_to_tensor_or_sparse_tensor(labels))
       ]
 
     model.compile(
@@ -191,7 +202,8 @@ def _create_keras_model_fn(keras_model, custom_objects=None):
         train_op=train_op,
         eval_metric_ops=eval_metric_ops,
         export_outputs={
-            _DEFAULT_SERVING_KEY: export_lib.export_output.PredictOutput(predictions)
+            _DEFAULT_SERVING_KEY:
+            export_lib.export_output.PredictOutput(predictions)
         })
 
   return model_fn
@@ -233,6 +245,7 @@ def _save_first_checkpoint(keras_model, estimator, custom_objects,
         saver.save(sess, os.path.join(estimator.model_dir, 'keras_model.ckpt'))
 
 
+@tf_export('keras.estimator.model_to_estimator')
 def model_to_estimator(keras_model=None,
                        keras_model_path=None,
                        custom_objects=None,

@@ -21,6 +21,7 @@ limitations under the License.
 #endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/kernels/scatter_nd_op.h"
+
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +29,8 @@ limitations under the License.
 #include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/kernels/training_op_helpers.h"
+#include "tensorflow/core/kernels/variable_ops.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
@@ -83,7 +86,10 @@ class ScatterNdUpdateOp : public OpKernel {
     const DataType dt = DataTypeToEnum<T>::v();
     const DataType dt_ref = DataTypeToEnum<T>::ref();
     const DataType index_t = DataTypeToEnum<Index>::v();
-    if (IsRefType(c->input_type(0))) {
+    dtype_ = c->input_type(0);
+    if (c->input_type(0) == DT_RESOURCE) {
+      // TODO(apassos): what to validate here?
+    } else if (IsRefType(c->input_type(0))) {
       OP_REQUIRES_OK(c, c->MatchSignature({dt_ref, index_t, dt}, {dt_ref}));
       OP_REQUIRES_OK(c, c->GetAttr("use_locking", &use_exclusive_lock_));
     } else {
@@ -93,7 +99,16 @@ class ScatterNdUpdateOp : public OpKernel {
   }
 
   void Compute(OpKernelContext* c) override {
-    if (use_exclusive_lock_) {
+    if (dtype_ == DT_RESOURCE) {
+      if (use_exclusive_lock_) {
+        Var* v;
+        OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+        mutex_lock m(*v->mu());
+        DoCompute(c);
+      } else {
+        DoCompute(c);
+      }
+    } else if (use_exclusive_lock_) {
       // If we're here, it means the input type is a ref.
       DCHECK(IsRefType(c->input_dtype(0)));
       // Hold mutex while we apply updates
@@ -105,6 +120,7 @@ class ScatterNdUpdateOp : public OpKernel {
   }
 
  private:
+  DataType dtype_;
   bool use_exclusive_lock_;
 
   void DoCompute(OpKernelContext* c) {
@@ -113,7 +129,20 @@ class ScatterNdUpdateOp : public OpKernel {
     Tensor params;
     TensorShape params_shape;
 
-    if (IsRefType(c->input_dtype(0))) {
+    if (dtype_ == DT_RESOURCE) {
+      Var* v;
+      OP_REQUIRES_OK(c, LookupResource(c, HandleFromInput(c, 0), &v));
+      Tensor* t = v->tensor();
+      if (!use_exclusive_lock_) {
+        // We're not holding the lock in the outer scope so need it here.
+        mutex_lock m(*v->mu());
+        OP_REQUIRES_OK(c, PrepareToUpdateVariable<Device, T>(c, t));
+      } else {
+        OP_REQUIRES_OK(c, PrepareToUpdateVariable<Device, T>(c, t));
+      }
+      params = *t;
+      params_shape = params.shape();
+    } else if (IsRefType(c->input_dtype(0))) {
       params = c->mutable_input(0, use_exclusive_lock_);
       params_shape = params.shape();
       c->forward_ref_input_to_ref_output(0, 0);
@@ -159,6 +188,16 @@ class ScatterNdUpdateOp : public OpKernel {
           .TypeConstraint<index_type>("Tindices"),                           \
       ScatterNdUpdateOp<dev##Device, type, index_type, op>)
 
+#define REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL_INDEX(type, index_type, \
+                                                         dev, name, op)    \
+  REGISTER_KERNEL_BUILDER(                                                 \
+      Name(name)                                                           \
+          .Device(DEVICE_##dev)                                            \
+          .TypeConstraint<type>("T")                                       \
+          .TypeConstraint<index_type>("Tindices")                          \
+          .HostMemory("ref"),                                              \
+      ScatterNdUpdateOp<dev##Device, type, index_type, op>)
+
 #define REGISTER_SCATTER_ND_KERNEL(type, dev, name)         \
   REGISTER_SCATTER_ND_KERNEL_INDEX(type, int32, dev, name); \
   REGISTER_SCATTER_ND_KERNEL_INDEX(type, int64, dev, name)
@@ -166,6 +205,11 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, name, op)         \
   REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX(type, int32, dev, name, op); \
   REGISTER_SCATTER_ND_UPDATE_KERNEL_INDEX(type, int64, dev, name, op)
+
+#define REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(type, dev, name, op)    \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL_INDEX(type, int32, dev, name, \
+                                                   op);                    \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL_INDEX(type, int64, dev, name, op)
 
 #define REGISTER_SCATTER_ND_ADD_SUB(type, dev)                            \
   REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdAdd",            \
@@ -178,9 +222,11 @@ class ScatterNdUpdateOp : public OpKernel {
 #define REGISTER_SCATTER_ND(type, dev) \
   REGISTER_SCATTER_ND_KERNEL(type, dev, "ScatterNd");
 
-#define REGISTER_SCATTER_ND_UPDATE(type, dev)                     \
-  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdUpdate", \
-                                    scatter_nd_op::UpdateOp::ASSIGN);
+#define REGISTER_SCATTER_ND_UPDATE(type, dev)                         \
+  REGISTER_SCATTER_ND_UPDATE_KERNEL(type, dev, "ScatterNdUpdate",     \
+                                    scatter_nd_op::UpdateOp::ASSIGN); \
+  REGISTER_RESOURCE_SCATTER_ND_UPDATE_KERNEL(                         \
+      type, dev, "ResourceScatterNdUpdate", scatter_nd_op::UpdateOp::ASSIGN);
 
 // Registers CPU kernels.
 #define REGISTER_SCATTER_ND_ADD_SUB_CPU(type) \
@@ -281,8 +327,7 @@ Status ValidateUpdateShape(const TensorShape& params_shape,
 }
 
 template <typename Index>
-Status PrepareAndValidateInputs(OpKernelContext* c,
-                                const TensorShape& params_shape,
+Status PrepareAndValidateInputs(const TensorShape& params_shape,
                                 const Tensor& indices, const Tensor& updates,
                                 int64* slice_dim, Index* num_updates,
                                 Index* slice_size) {
@@ -396,7 +441,7 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
   Index num_updates;
   Index slice_size;
   TF_RETURN_IF_ERROR(PrepareAndValidateInputs<Index>(
-      c, shape, indices, updates, &slice_dim, &num_updates, &slice_size));
+      shape, indices, updates, &slice_dim, &num_updates, &slice_size));
 
   IndexFlattener<Device, Index> index_flattener;
   auto indices_flat = index_flattener(c, indices);
@@ -442,6 +487,8 @@ Status DoScatterNd(OpKernelContext* c, const Tensor& indices,
       PARAMS_CASE(3);
       PARAMS_CASE(4);
       PARAMS_CASE(5);
+      PARAMS_CASE(6);
+      PARAMS_CASE(7);
 #undef PARAMS_CASE
       default:
         return errors::InvalidArgument(
@@ -480,7 +527,9 @@ namespace functor {
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 2); \
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 3); \
   DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 4); \
-  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 5);
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 5); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 6); \
+  DECLARE_GPU_SPECS_INDEX_OP_IXDIM(T, Index, op, 7);
 
 #define DECLARE_GPU_SPECS_INDEX(T, Index)                                \
   DECLARE_GPU_SPECS_INDEX_OP(T, Index, scatter_nd_op::UpdateOp::ASSIGN); \

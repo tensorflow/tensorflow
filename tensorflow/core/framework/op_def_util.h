@@ -63,6 +63,10 @@ Status OpDefAddedDefaultsUnchanged(const OpDef& old_op,
                                    const OpDef& penultimate_op,
                                    const OpDef& new_op);
 
+// Returns an error if the default value for any attr is added/removed/modified
+// in new_op compared to old_op.
+Status OpDefAttrDefaultsUnchanged(const OpDef& old_op, const OpDef& new_op);
+
 // Remove all docs from *op_def / *op_list.
 void RemoveDescriptionsFromOpDef(OpDef* op_def);
 void RemoveDescriptionsFromOpList(OpList* op_list);
@@ -78,7 +82,7 @@ bool AttrDefEqual(const OpDef::AttrDef& a1, const OpDef::AttrDef& a2);
 uint64 AttrDefHash(const OpDef::AttrDef& a);
 
 // Returns true if all AttrDefs in `a1` equal corresponding AttrDefs in
-// `a2`. Corrspondence is established by name.
+// `a2`. Correspondence is established by name.
 bool RepeatedAttrDefEqual(const protobuf::RepeatedPtrField<OpDef::AttrDef>& a1,
                           const protobuf::RepeatedPtrField<OpDef::AttrDef>& a2);
 

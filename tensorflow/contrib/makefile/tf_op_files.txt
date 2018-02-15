@@ -68,6 +68,8 @@ tensorflow/core/kernels/scatter_nd_op_cpu_impl_2.cc
 tensorflow/core/kernels/scatter_nd_op_cpu_impl_3.cc
 tensorflow/core/kernels/scatter_nd_op_cpu_impl_4.cc
 tensorflow/core/kernels/scatter_nd_op_cpu_impl_5.cc
+tensorflow/core/kernels/scatter_nd_op_cpu_impl_6.cc
+tensorflow/core/kernels/scatter_nd_op_cpu_impl_7.cc
 tensorflow/core/kernels/scatter_nd_op.cc
 tensorflow/core/kernels/save_restore_tensor.cc
 tensorflow/core/kernels/save_restore_v2_ops.cc
@@ -89,6 +91,7 @@ tensorflow/core/kernels/reduction_ops_max.cc
 tensorflow/core/kernels/reduction_ops_common.cc
 tensorflow/core/kernels/reduction_ops_any.cc
 tensorflow/core/kernels/reduction_ops_all.cc
+tensorflow/core/kernels/roll_op.cc
 tensorflow/core/kernels/queue_ops.cc
 tensorflow/core/kernels/queue_base.cc
 tensorflow/core/kernels/pooling_ops_common.cc
@@ -132,6 +135,8 @@ tensorflow/core/kernels/gather_nd_op_cpu_impl_2.cc
 tensorflow/core/kernels/gather_nd_op_cpu_impl_3.cc
 tensorflow/core/kernels/gather_nd_op_cpu_impl_4.cc
 tensorflow/core/kernels/gather_nd_op_cpu_impl_5.cc
+tensorflow/core/kernels/gather_nd_op_cpu_impl_6.cc
+tensorflow/core/kernels/gather_nd_op_cpu_impl_7.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
 tensorflow/core/kernels/function_ops.cc
 tensorflow/core/kernels/fill_functor.cc
@@ -144,6 +149,7 @@ tensorflow/core/kernels/dynamic_stitch_op.cc
 tensorflow/core/kernels/dynamic_partition_op.cc
 tensorflow/core/kernels/decode_bmp_op.cc
 tensorflow/core/kernels/depthtospace_op.cc
+tensorflow/core/kernels/data_format_ops.cc
 tensorflow/core/kernels/spacetodepth_op.cc
 tensorflow/core/kernels/dense_update_ops.cc
 tensorflow/core/kernels/deep_conv2d.cc
@@ -265,6 +271,7 @@ tensorflow/core/ops/parsing_ops.cc
 tensorflow/core/ops/no_op.cc
 tensorflow/core/ops/nn_ops.cc
 tensorflow/core/ops/nn_grad.cc
+tensorflow/core/ops/manip_ops.cc
 tensorflow/core/ops/math_ops.cc
 tensorflow/core/ops/math_grad.cc
 tensorflow/core/ops/logging_ops.cc
@@ -286,3 +293,4 @@ tensorflow/core/kernels/batchtospace_op.cc
 tensorflow/core/kernels/warn_about_ints.cc
 tensorflow/core/kernels/segment_reduction_ops.cc
 tensorflow/core/kernels/batch_util.cc
+tensorflow/core/ops/audio_ops.cc

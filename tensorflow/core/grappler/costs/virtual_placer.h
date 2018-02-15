@@ -41,7 +41,7 @@ class VirtualPlacer {
  private:
   // Converts given device name to Lowercase Fully-Qualified Name (LFQN) string.
   // This helps us disambiguate device names internally and simplify matching.
-  // If device_name couldn't be parsed succesfully, returns empty string.
+  // If device_name couldn't be parsed successfully, returns empty string.
   string to_lfqn_or_empty(const string& device_name) const;
 
   // Map based on the cluster info: cluster device name -> device properties.

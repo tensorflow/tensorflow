@@ -270,7 +270,7 @@ func typeOf(dt DataType, shape []int64) reflect.Type {
 		}
 	}
 	if ret == nil {
-		panic(bug("DataType %v is not supported", dt))
+		panic(bug("DataType %v is not supported (see https://www.tensorflow.org/code/tensorflow/core/framework/types.proto)", dt))
 	}
 	for range shape {
 		ret = reflect.SliceOf(ret)

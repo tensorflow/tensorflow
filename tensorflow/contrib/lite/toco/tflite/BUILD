@@ -1,3 +1,8 @@
+package(
+    # To suppress build cleaner error about inclusion of schema_generate.h.
+    features = ["-layering_check"],
+)
+
 licenses(["notice"])  # Apache 2.0
 
 load(
@@ -22,7 +27,7 @@ cc_library(
         "//tensorflow/contrib/lite/toco:model",
         "//tensorflow/core:protos_all_cc",
         "@com_google_absl//absl/memory",
-        "@flatbuffers//:flatbuffers",
+        "@flatbuffers",
     ],
 )
 
@@ -36,7 +41,7 @@ tf_cc_test(
         "//tensorflow/contrib/lite/toco:tooling_util",
         "//tensorflow/core:protos_all_cc",
         "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:flatbuffers",
+        "@flatbuffers",
     ],
 )
 
@@ -82,7 +87,7 @@ cc_library(
         "//tensorflow/contrib/lite/toco:model",
         "//tensorflow/contrib/lite/toco:tooling_util",
         "@com_google_absl//absl/strings",
-        "@flatbuffers//:flatbuffers",
+        "@flatbuffers",
     ],
 )
 
@@ -93,6 +98,7 @@ tf_cc_test(
     ],
     deps = [
         ":export",
+        "//tensorflow/contrib/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -111,7 +117,8 @@ cc_library(
         ":types",
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "//tensorflow/contrib/lite/toco:model",
-        "@flatbuffers//:flatbuffers",
+        "//tensorflow/contrib/lite/toco:tooling_util",
+        "@flatbuffers",
     ],
 )
 
@@ -125,7 +132,7 @@ tf_cc_test(
         "//tensorflow/contrib/lite:schema_fbs_version",
         "//tensorflow/contrib/lite/schema:schema_fbs",
         "@com_google_googletest//:gtest_main",
-        "@flatbuffers//:flatbuffers",
+        "@flatbuffers",
     ],
 )
 

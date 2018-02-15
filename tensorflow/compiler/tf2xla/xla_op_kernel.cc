@@ -118,13 +118,36 @@ Status XlaOpKernelContext::ConstantInputReshaped(
   std::iota(layout_indices.rbegin(), layout_indices.rend(), 0);
   xla::Layout layout = xla::LayoutUtil::MakeLayout(layout_indices);
 
+  xla::StatusOr<bool> is_constant = builder()->IsConstant(handle);
+  if (!is_constant.ok()) {
+    Status status = is_constant.status();
+    errors::AppendToMessage(&status, "while evaluating input ", index, " of ",
+                            context_->op_kernel().type_string(),
+                            " operator as a compile-time constant.");
+    return status;
+  }
+
+  if (!is_constant.ValueOrDie()) {
+    return errors::InvalidArgument(
+        "Input ", index, " to ", context_->op_kernel().type_string(),
+        " operator must be a compile-time constant.\n"
+        "\n"
+        "XLA compilation requires that operator arguments that represent "
+        "shapes or dimensions be evaluated to concrete values at compile time. "
+        "This error means that a shape or dimension argument could not be "
+        "evaluated at compile time, usually because the value of the argument "
+        "depends on a parameter to the computation, on a variable, or on a "
+        "stateful operation such as a random number generator.");
+  }
+
   // Ask the XLA compiler to evaluate the data handle to a literal.
   xla::StatusOr<std::unique_ptr<xla::Literal>> computed =
       builder()->ComputeConstant(handle, &layout);
   if (!computed.ok()) {
-    return errors::InvalidArgument(
-        "Error evaluating ", context_->op_kernel().name(), " input ", index,
-        ": ", computed.status().error_message());
+    return errors::Internal("Error evaluating ", context_->op_kernel().name(),
+                            " input ", index,
+                            "as a compile-time constant.\nError: ",
+                            computed.status().error_message());
   }
   *constant_literal = std::move(*computed.ValueOrDie());
 
@@ -206,15 +229,15 @@ Status XlaOpKernelContext::ConstantInputAsInt64Literal(int index,
   xla::Literal literal;
   TF_RETURN_IF_ERROR(ConstantInput(index, &literal));
   switch (literal.shape().element_type()) {
-    case xla::S32:
-      out->Clear();
-      *out->mutable_shape() = literal.shape();
-      out->mutable_shape()->set_element_type(xla::S64);
-      for (int32 x : literal.s32s()) {
-        out->add_s64s(x);
+    case xla::S32: {
+      *out = xla::Literal(
+          xla::ShapeUtil::ChangeElementType(literal.shape(), xla::S64));
+      auto src_data = literal.data<int32>();
+      for (int64 i = 0; i < src_data.size(); ++i) {
+        out->data<int64>()[i] = src_data[i];
       }
       return Status::OK();
-
+    }
     case xla::S64:
       *out = std::move(literal);
       return Status::OK();
@@ -263,17 +286,26 @@ Status XlaOpKernelContext::ConstantInputList(
 }
 
 Status XlaOpKernelContext::ReadVariableInput(
-    int index, xla::ComputationDataHandle* value) {
+    int index, DataType type, TensorShape* shape,
+    xla::ComputationDataHandle* value) {
   const Tensor& tensor = context_->input(index);
   const XlaExpression* expression = CastExpressionFromTensor(tensor);
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
-  TF_RET_CHECK(variable->kind == XlaResource::kVariable);
-  if (variable->value.handle() == 0) {
+  TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
+  if (!variable->initialized()) {
     return errors::InvalidArgument("Read of uninitialized variable ",
-                                   variable->name);
+                                   variable->name());
   }
-  *value = variable->value;
+  if (variable->type() != type) {
+    return errors::InvalidArgument(
+        "Type mismatch for read of variable ", variable->name(), ". Expected ",
+        DataTypeString(type), "; got ", DataTypeString(variable->type()));
+  }
+  *value = variable->value();
+  if (shape) {
+    *shape = variable->shape();
+  }
   return Status::OK();
 }
 
@@ -283,18 +315,13 @@ Status XlaOpKernelContext::GetVariableTypeAndShape(int index, DataType* type,
   const XlaExpression* expression = CastExpressionFromTensor(tensor);
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
-  TF_RET_CHECK(variable->kind == XlaResource::kVariable);
-  if (variable->value.handle() == 0) {
+  TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
+  if (!variable->initialized()) {
     return errors::InvalidArgument("Read of uninitialized variable ",
-                                   variable->name);
+                                   variable->name());
   }
-  *type = variable->type;
-  auto shape_or_status = builder()->GetShape(variable->value);
-  if (!shape_or_status.ok()) {
-    return shape_or_status.status();
-  }
-  TF_RETURN_IF_ERROR(
-      XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), shape));
+  *type = variable->type();
+  *shape = variable->shape();
   return Status::OK();
 }
 
@@ -381,25 +408,37 @@ Status XlaOpKernelContext::AssignVariable(
       CastExpressionFromTensor(context_->input(input_index));
   XlaResource* variable = expression->resource();
   TF_RET_CHECK(variable != nullptr);
-  TF_RET_CHECK(variable->kind == XlaResource::kVariable);
-  if (!((variable->type == DT_INVALID && type != DT_INVALID) ||
-        (variable->type == type))) {
-    return errors::InvalidArgument(
-        "Types of variables cannot change after initialization: old type was ",
-        DataTypeString(variable->type), ", new type is ", DataTypeString(type));
+  TF_RET_CHECK(variable->kind() == XlaResource::kVariable);
+
+  auto shape_or_status = builder()->GetShape(handle);
+  if (!shape_or_status.ok()) {
+    return shape_or_status.status();
   }
-  variable->type = type;
-  variable->value = handle;
-  return Status::OK();
+  TensorShape shape;
+  TF_RETURN_IF_ERROR(
+      XLAShapeToTensorShape(*shape_or_status.ValueOrDie(), &shape));
+
+  TF_RETURN_IF_ERROR(variable->SetTypeAndShape(type, shape));
+  return variable->SetValue(handle);
 }
 
 XlaCompiler* XlaOpKernelContext::compiler() const {
   return XlaContext::Get(context_).compiler();
 }
 
-void XlaOpKernelContext::CtxFailure(Status s) { context_->CtxFailure(s); }
-void XlaOpKernelContext::CtxFailureWithWarning(Status s) {
+void XlaOpKernelContext::CtxFailure(const Status& s) {
+  context_->CtxFailure(s);
+}
+void XlaOpKernelContext::CtxFailureWithWarning(const Status& s) {
   context_->CtxFailureWithWarning(s);
+}
+void XlaOpKernelContext::CtxFailure(const char* file, int line,
+                                    const Status& s) {
+  context_->CtxFailure(file, line, s);
+}
+void XlaOpKernelContext::CtxFailureWithWarning(const char* file, int line,
+                                               const Status& s) {
+  context_->CtxFailureWithWarning(file, line, s);
 }
 
 const xla::Computation* XlaOpKernelContext::GetOrCreateMax(
@@ -415,6 +454,11 @@ const xla::Computation* XlaOpKernelContext::GetOrCreateMin(
 const xla::Computation* XlaOpKernelContext::GetOrCreateAdd(
     const DataType type) {
   return XlaContext::Get(context_).GetOrCreateAdd(type);
+}
+
+const xla::Computation* XlaOpKernelContext::GetOrCreateMul(
+    const DataType type) {
+  return XlaContext::Get(context_).GetOrCreateMul(type);
 }
 
 XlaOpKernel::XlaOpKernel(OpKernelConstruction* context) : OpKernel(context) {}

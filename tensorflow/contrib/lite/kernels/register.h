@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_REGISTER_H_
 
 #include <unordered_map>
 #include "tensorflow/contrib/lite/context.h"
@@ -47,4 +47,4 @@ class BuiltinOpResolver : public OpResolver {
 }  // namespace ops
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_BUILTIN_KERNELS_H
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_BUILTIN_KERNELS_H

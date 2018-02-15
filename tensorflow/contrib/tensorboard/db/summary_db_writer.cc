@@ -14,180 +14,242 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/contrib/tensorboard/db/summary_db_writer.h"
 
-#include "tensorflow/contrib/tensorboard/db/schema.h"
+#include "tensorflow/contrib/tensorboard/db/summary_converter.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/summary.pb.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/db/sqlite.h"
 #include "tensorflow/core/lib/random/random.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
-#include "tensorflow/core/platform/fingerprint.h"
-#include "tensorflow/core/platform/snappy.h"
 #include "tensorflow/core/util/event.pb.h"
+
+// TODO(jart): Break this up into multiple files with excellent unit tests.
+// TODO(jart): Make decision to write in separate op.
+// TODO(jart): Add really good busy handling.
+
+// clang-format off
+#define CALL_SUPPORTED_TYPES(m) \
+  TF_CALL_string(m)             \
+  TF_CALL_half(m)               \
+  TF_CALL_float(m)              \
+  TF_CALL_double(m)             \
+  TF_CALL_complex64(m)          \
+  TF_CALL_complex128(m)         \
+  TF_CALL_int8(m)               \
+  TF_CALL_int16(m)              \
+  TF_CALL_int32(m)              \
+  TF_CALL_int64(m)              \
+  TF_CALL_uint8(m)              \
+  TF_CALL_uint16(m)             \
+  TF_CALL_uint32(m)             \
+  TF_CALL_uint64(m)
+// clang-format on
 
 namespace tensorflow {
 namespace {
 
-double GetWallTime(Env* env) {
+// https://www.sqlite.org/fileformat.html#record_format
+const uint64 kIdTiers[] = {
+    0x7fffffULL,        // 23-bit (3 bytes on disk)
+    0x7fffffffULL,      // 31-bit (4 bytes on disk)
+    0x7fffffffffffULL,  // 47-bit (5 bytes on disk)
+                        // remaining bits for future use
+};
+const int kMaxIdTier = sizeof(kIdTiers) / sizeof(uint64);
+const int kIdCollisionDelayMicros = 10;
+const int kMaxIdCollisions = 21;  // sum(2**i*10µs for i in range(21))~=21s
+const int64 kAbsent = 0LL;
+
+const char* kScalarPluginName = "scalars";
+const char* kImagePluginName = "images";
+const char* kAudioPluginName = "audio";
+const char* kHistogramPluginName = "histograms";
+
+const int kScalarSlots = 10000;
+const int kImageSlots = 10;
+const int kAudioSlots = 10;
+const int kHistogramSlots = 1;
+const int kTensorSlots = 10;
+
+const int64 kReserveMinBytes = 32;
+const double kReserveMultiplier = 1.5;
+
+// Flush is a misnomer because what we're actually doing is having lots
+// of commits inside any SqliteTransaction that writes potentially
+// hundreds of megs but doesn't need the transaction to maintain its
+// invariants. This ensures the WAL read penalty is small and might
+// allow writers in other processes a chance to schedule.
+const uint64 kFlushBytes = 1024 * 1024;
+
+double DoubleTime(uint64 micros) {
   // TODO(@jart): Follow precise definitions for time laid out in schema.
   // TODO(@jart): Use monotonic clock from gRPC codebase.
-  return static_cast<double>(env->NowMicros()) / 1.0e6;
+  return static_cast<double>(micros) / 1.0e6;
 }
 
-int64 MakeRandomId() {
-  // TODO(@jart): Try generating ID in 2^24 space, falling back to 2^63
-  //              https://sqlite.org/src4/doc/trunk/www/varint.wiki
-  int64 id = static_cast<int64>(random::New64() & ((1ULL << 63) - 1));
-  if (id == 0) {
-    ++id;
-  }
-  return id;
-}
-
-Status Serialize(const protobuf::MessageLite& proto, string* output) {
-  output->clear();
-  if (!proto.SerializeToString(output)) {
-    return errors::DataLoss("SerializeToString failed");
-  }
-  return Status::OK();
-}
-
-Status Compress(const string& data, string* output) {
-  output->clear();
-  if (!port::Snappy_Compress(data.data(), data.size(), output)) {
-    return errors::FailedPrecondition("TensorBase needs Snappy");
-  }
-  return Status::OK();
-}
-
-Status BindProto(SqliteStatement* stmt, int parameter,
-                 const protobuf::MessageLite& proto) {
-  string serialized;
-  TF_RETURN_IF_ERROR(Serialize(proto, &serialized));
-  string compressed;
-  TF_RETURN_IF_ERROR(Compress(serialized, &compressed));
-  stmt->BindBlob(parameter, compressed);
-  return Status::OK();
-}
-
-Status BindTensor(SqliteStatement* stmt, int parameter, const Tensor& t) {
-  // TODO(@jart): Make portable between little and big endian systems.
-  // TODO(@jart): Use TensorChunks with minimal copying for big tensors.
-  // TODO(@jart): Add field to indicate encoding.
-  // TODO(@jart): Allow crunch tool to re-compress with zlib instead.
-  TensorProto p;
-  t.AsProtoTensorContent(&p);
-  return BindProto(stmt, parameter, p);
-}
-
-// Tries to fudge shape and dtype to something with smaller storage.
-Status CoerceScalar(const Tensor& t, Tensor* out) {
-  switch (t.dtype()) {
-    case DT_DOUBLE:
-      *out = t;
-      break;
-    case DT_INT64:
-      *out = t;
-      break;
-    case DT_FLOAT:
-      *out = {DT_DOUBLE, {}};
-      out->scalar<double>()() = t.scalar<float>()();
-      break;
-    case DT_HALF:
-      *out = {DT_DOUBLE, {}};
-      out->scalar<double>()() = static_cast<double>(t.scalar<Eigen::half>()());
-      break;
-    case DT_INT32:
-      *out = {DT_INT64, {}};
-      out->scalar<int64>()() = t.scalar<int32>()();
-      break;
-    case DT_INT16:
-      *out = {DT_INT64, {}};
-      out->scalar<int64>()() = t.scalar<int16>()();
-      break;
-    case DT_INT8:
-      *out = {DT_INT64, {}};
-      out->scalar<int64>()() = t.scalar<int8>()();
-      break;
-    case DT_UINT32:
-      *out = {DT_INT64, {}};
-      out->scalar<int64>()() = t.scalar<uint32>()();
-      break;
-    case DT_UINT16:
-      *out = {DT_INT64, {}};
-      out->scalar<int64>()() = t.scalar<uint16>()();
-      break;
-    case DT_UINT8:
-      *out = {DT_INT64, {}};
-      out->scalar<int64>()() = t.scalar<uint8>()();
-      break;
-    default:
-      return errors::Unimplemented("Scalar summary for dtype ",
-                                   DataTypeString(t.dtype()),
-                                   " is not supported.");
-  }
-  return Status::OK();
-}
-
-class Transactor {
- public:
-  explicit Transactor(std::shared_ptr<Sqlite> db)
-      : db_(std::move(db)),
-        begin_(db_->Prepare("BEGIN TRANSACTION")),
-        commit_(db_->Prepare("COMMIT TRANSACTION")),
-        rollback_(db_->Prepare("ROLLBACK TRANSACTION")) {}
-
-  template <typename T, typename... Args>
-  Status Transact(T callback, Args&&... args) {
-    TF_RETURN_IF_ERROR(begin_.StepAndReset());
-    Status s = callback(std::forward<Args>(args)...);
-    if (s.ok()) {
-      TF_RETURN_IF_ERROR(commit_.StepAndReset());
+string StringifyShape(const TensorShape& shape) {
+  string result;
+  bool first = true;
+  for (const auto& dim : shape) {
+    if (first) {
+      first = false;
     } else {
-      TF_RETURN_WITH_CONTEXT_IF_ERROR(rollback_.StepAndReset(), s.ToString());
+      strings::StrAppend(&result, ",");
+    }
+    strings::StrAppend(&result, dim.size);
+  }
+  return result;
+}
+
+Status CheckSupportedType(const Tensor& t) {
+#define CASE(T)                  \
+  case DataTypeToEnum<T>::value: \
+    break;
+  switch (t.dtype()) {
+    CALL_SUPPORTED_TYPES(CASE)
+    default:
+      return errors::Unimplemented(DataTypeString(t.dtype()),
+                                   " tensors unsupported on platform");
+  }
+  return Status::OK();
+#undef CASE
+}
+
+Tensor AsScalar(const Tensor& t) {
+  Tensor t2{t.dtype(), {}};
+#define CASE(T)                        \
+  case DataTypeToEnum<T>::value:       \
+    t2.scalar<T>()() = t.flat<T>()(0); \
+    break;
+  switch (t.dtype()) {
+    CALL_SUPPORTED_TYPES(CASE)
+    default:
+      t2 = {DT_FLOAT, {}};
+      t2.scalar<float>()() = NAN;
+      break;
+  }
+  return t2;
+#undef CASE
+}
+
+void PatchPluginName(SummaryMetadata* metadata, const char* name) {
+  if (metadata->plugin_data().plugin_name().empty()) {
+    metadata->mutable_plugin_data()->set_plugin_name(name);
+  }
+}
+
+int GetSlots(const Tensor& t, const SummaryMetadata& metadata) {
+  if (metadata.plugin_data().plugin_name() == kScalarPluginName) {
+    return kScalarSlots;
+  } else if (metadata.plugin_data().plugin_name() == kImagePluginName) {
+    return kImageSlots;
+  } else if (metadata.plugin_data().plugin_name() == kAudioPluginName) {
+    return kAudioSlots;
+  } else if (metadata.plugin_data().plugin_name() == kHistogramPluginName) {
+    return kHistogramSlots;
+  } else if (t.dims() == 0 && t.dtype() != DT_STRING) {
+    return kScalarSlots;
+  } else {
+    return kTensorSlots;
+  }
+}
+
+Status SetDescription(Sqlite* db, int64 id, const StringPiece& markdown) {
+  const char* sql = R"sql(
+    INSERT OR REPLACE INTO Descriptions (id, description) VALUES (?, ?)
+  )sql";
+  SqliteStatement insert_desc;
+  TF_RETURN_IF_ERROR(db->Prepare(sql, &insert_desc));
+  insert_desc.BindInt(1, id);
+  insert_desc.BindText(2, markdown);
+  return insert_desc.StepAndReset();
+}
+
+/// \brief Generates unique IDs randomly in the [1,2**63-1] range.
+///
+/// This class starts off generating IDs in the [1,2**23-1] range,
+/// because it's human friendly and occupies 4 bytes max on disk with
+/// SQLite's zigzag varint encoding. Then, each time a collision
+/// happens, the random space is increased by 8 bits.
+///
+/// This class uses exponential back-off so writes gradually slow down
+/// as IDs become exhausted but reads are still possible.
+///
+/// This class is thread safe.
+class IdAllocator {
+ public:
+  IdAllocator(Env* env, Sqlite* db) : env_{env}, db_{db} {
+    DCHECK(env_ != nullptr);
+    DCHECK(db_ != nullptr);
+  }
+
+  Status CreateNewId(int64* id) LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    Status s;
+    SqliteStatement stmt;
+    TF_RETURN_IF_ERROR(db_->Prepare("INSERT INTO Ids (id) VALUES (?)", &stmt));
+    for (int i = 0; i < kMaxIdCollisions; ++i) {
+      int64 tid = MakeRandomId();
+      stmt.BindInt(1, tid);
+      s = stmt.StepAndReset();
+      if (s.ok()) {
+        *id = tid;
+        break;
+      }
+      // SQLITE_CONSTRAINT maps to INVALID_ARGUMENT in sqlite.cc
+      if (s.code() != error::INVALID_ARGUMENT) break;
+      if (tier_ < kMaxIdTier) {
+        LOG(INFO) << "IdAllocator collision at tier " << tier_ << " (of "
+                  << kMaxIdTier << ") so auto-adjusting to a higher tier";
+        ++tier_;
+      } else {
+        LOG(WARNING) << "IdAllocator (attempt #" << i << ") "
+                     << "resulted in a collision at the highest tier; this "
+                        "is problematic if it happens often; you can try "
+                        "pruning the Ids table; you can also file a bug "
+                        "asking for the ID space to be increased; otherwise "
+                        "writes will gradually slow down over time until they "
+                        "become impossible";
+      }
+      env_->SleepForMicroseconds((1 << i) * kIdCollisionDelayMicros);
     }
     return s;
   }
 
  private:
-  std::shared_ptr<Sqlite> db_;
-  SqliteStatement begin_;
-  SqliteStatement commit_;
-  SqliteStatement rollback_;
-};
-
-class GraphSaver {
- public:
-  static Status SaveToRun(Env* env, Sqlite* db, GraphDef* graph, int64 run_id) {
-    auto get = db->Prepare("SELECT graph_id FROM Runs WHERE run_id = ?");
-    get.BindInt(1, run_id);
-    bool is_done;
-    TF_RETURN_IF_ERROR(get.Step(&is_done));
-    int64 graph_id = is_done ? 0 : get.ColumnInt(0);
-    if (graph_id == 0) {
-      graph_id = MakeRandomId();
-      // TODO(@jart): Check for ID collision.
-      auto set = db->Prepare("UPDATE Runs SET graph_id = ? WHERE run_id = ?");
-      set.BindInt(1, graph_id);
-      set.BindInt(2, run_id);
-      TF_RETURN_IF_ERROR(set.StepAndReset());
-    }
-    return Save(env, db, graph, graph_id);
+  int64 MakeRandomId() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    int64 id = static_cast<int64>(random::New64() & kIdTiers[tier_]);
+    if (id == kAbsent) ++id;
+    return id;
   }
 
-  static Status Save(Env* env, Sqlite* db, GraphDef* graph, int64 graph_id) {
-    GraphSaver saver{env, db, graph, graph_id};
+  mutex mu_;
+  Env* const env_;
+  Sqlite* const db_;
+  int tier_ GUARDED_BY(mu_) = 0;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(IdAllocator);
+};
+
+class GraphWriter {
+ public:
+  static Status Save(Sqlite* db, SqliteTransaction* txn, IdAllocator* ids,
+                     GraphDef* graph, uint64 now, int64 run_id, int64* graph_id)
+      SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db) {
+    TF_RETURN_IF_ERROR(ids->CreateNewId(graph_id));
+    GraphWriter saver{db, txn, graph, now, *graph_id};
     saver.MapNameToNodeId();
-    TF_RETURN_IF_ERROR(saver.SaveNodeInputs());
-    TF_RETURN_IF_ERROR(saver.SaveNodes());
-    TF_RETURN_IF_ERROR(saver.SaveGraph());
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(saver.SaveNodeInputs(), "SaveNodeInputs");
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(saver.SaveNodes(), "SaveNodes");
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(saver.SaveGraph(run_id), "SaveGraph");
     return Status::OK();
   }
 
  private:
-  GraphSaver(Env* env, Sqlite* db, GraphDef* graph, int64 graph_id)
-      : env_(env), db_(db), graph_(graph), graph_id_(graph_id) {}
+  GraphWriter(Sqlite* db, SqliteTransaction* txn, GraphDef* graph, uint64 now,
+              int64 graph_id)
+      : db_(db), txn_(txn), graph_(graph), now_(now), graph_id_(graph_id) {}
 
   void MapNameToNodeId() {
     size_t toto = static_cast<size_t>(graph_->node_size());
@@ -202,344 +264,983 @@ class GraphSaver {
   }
 
   Status SaveNodeInputs() {
-    auto purge = db_->Prepare("DELETE FROM NodeInputs WHERE graph_id = ?");
-    purge.BindInt(1, graph_id_);
-    TF_RETURN_IF_ERROR(purge.StepAndReset());
-    auto insert = db_->Prepare(R"sql(
-      INSERT INTO NodeInputs (graph_id, node_id, idx, input_node_id, is_control)
-      VALUES (?, ?, ?, ?, ?)
-    )sql");
+    const char* sql = R"sql(
+      INSERT INTO NodeInputs (
+        graph_id,
+        node_id,
+        idx,
+        input_node_id,
+        input_node_idx,
+        is_control
+      ) VALUES (?, ?, ?, ?, ?, ?)
+    )sql";
+    SqliteStatement insert;
+    TF_RETURN_IF_ERROR(db_->Prepare(sql, &insert));
     for (int node_id = 0; node_id < graph_->node_size(); ++node_id) {
       const NodeDef& node = graph_->node(node_id);
       for (int idx = 0; idx < node.input_size(); ++idx) {
         StringPiece name = node.input(idx);
-        insert.BindInt(1, graph_id_);
-        insert.BindInt(2, node_id);
-        insert.BindInt(3, idx);
+        int64 input_node_id;
+        int64 input_node_idx = 0;
+        int64 is_control = 0;
+        size_t i = name.rfind(':');
+        if (i != StringPiece::npos) {
+          if (!strings::safe_strto64(name.substr(i + 1, name.size() - i - 1),
+                                     &input_node_idx)) {
+            return errors::DataLoss("Bad NodeDef.input: ", name);
+          }
+          name.remove_suffix(name.size() - i);
+        }
         if (!name.empty() && name[0] == '^') {
           name.remove_prefix(1);
-          insert.BindInt(5, 1);
+          is_control = 1;
         }
         auto e = name_to_node_id_.find(name);
         if (e == name_to_node_id_.end()) {
           return errors::DataLoss("Could not find node: ", name);
         }
-        insert.BindInt(4, e->second);
+        input_node_id = e->second;
+        insert.BindInt(1, graph_id_);
+        insert.BindInt(2, node_id);
+        insert.BindInt(3, idx);
+        insert.BindInt(4, input_node_id);
+        insert.BindInt(5, input_node_idx);
+        insert.BindInt(6, is_control);
+        unflushed_bytes_ += insert.size();
         TF_RETURN_WITH_CONTEXT_IF_ERROR(insert.StepAndReset(), node.name(),
                                         " -> ", name);
+        TF_RETURN_IF_ERROR(MaybeFlush());
       }
     }
     return Status::OK();
   }
 
   Status SaveNodes() {
-    auto purge = db_->Prepare("DELETE FROM Nodes WHERE graph_id = ?");
-    purge.BindInt(1, graph_id_);
-    TF_RETURN_IF_ERROR(purge.StepAndReset());
-    auto insert = db_->Prepare(R"sql(
-      INSERT INTO Nodes (graph_id, node_id, node_name, op, device, node_def)
+    const char* sql = R"sql(
+      INSERT INTO Nodes (
+        graph_id,
+        node_id,
+        node_name,
+        op,
+        device,
+        node_def)
       VALUES (?, ?, ?, ?, ?, ?)
-    )sql");
+    )sql";
+    SqliteStatement insert;
+    TF_RETURN_IF_ERROR(db_->Prepare(sql, &insert));
     for (int node_id = 0; node_id < graph_->node_size(); ++node_id) {
       NodeDef* node = graph_->mutable_node(node_id);
       insert.BindInt(1, graph_id_);
       insert.BindInt(2, node_id);
       insert.BindText(3, node->name());
+      insert.BindText(4, node->op());
+      insert.BindText(5, node->device());
       node->clear_name();
-      if (!node->op().empty()) {
-        insert.BindText(4, node->op());
-        node->clear_op();
-      }
-      if (!node->device().empty()) {
-        insert.BindText(5, node->device());
-        node->clear_device();
-      }
+      node->clear_op();
+      node->clear_device();
       node->clear_input();
-      TF_RETURN_IF_ERROR(BindProto(&insert, 6, *node));
+      string node_def;
+      if (node->SerializeToString(&node_def)) {
+        insert.BindBlobUnsafe(6, node_def);
+      }
+      unflushed_bytes_ += insert.size();
       TF_RETURN_WITH_CONTEXT_IF_ERROR(insert.StepAndReset(), node->name());
+      TF_RETURN_IF_ERROR(MaybeFlush());
     }
     return Status::OK();
   }
 
-  Status SaveGraph() {
-    auto insert = db_->Prepare(R"sql(
-      INSERT OR REPLACE INTO Graphs (graph_id, inserted_time, graph_def)
-      VALUES (?, ?, ?)
-    )sql");
-    insert.BindInt(1, graph_id_);
-    insert.BindDouble(2, GetWallTime(env_));
+  Status SaveGraph(int64 run_id) {
+    const char* sql = R"sql(
+      INSERT OR REPLACE INTO Graphs (
+        run_id,
+        graph_id,
+        inserted_time,
+        graph_def
+      ) VALUES (?, ?, ?, ?)
+    )sql";
+    SqliteStatement insert;
+    TF_RETURN_IF_ERROR(db_->Prepare(sql, &insert));
+    if (run_id != kAbsent) insert.BindInt(1, run_id);
+    insert.BindInt(2, graph_id_);
+    insert.BindDouble(3, DoubleTime(now_));
     graph_->clear_node();
-    TF_RETURN_IF_ERROR(BindProto(&insert, 3, *graph_));
+    string graph_def;
+    if (graph_->SerializeToString(&graph_def)) {
+      insert.BindBlobUnsafe(4, graph_def);
+    }
     return insert.StepAndReset();
   }
 
-  Env* env_;
-  Sqlite* db_;
-  GraphDef* graph_;
-  int64 graph_id_;
-  std::vector<string> name_copies_;
-  std::unordered_map<StringPiece, int64, StringPieceHasher> name_to_node_id_;
-};
-
-class SummaryDbWriter : public SummaryWriterInterface {
- public:
-  SummaryDbWriter(Env* env, std::shared_ptr<Sqlite> db)
-      : SummaryWriterInterface(),
-        env_(env),
-        db_(std::move(db)),
-        txn_(db_),
-        run_id_{0LL} {}
-  ~SummaryDbWriter() override {}
-
-  Status Initialize(const string& experiment_name, const string& run_name,
-                    const string& user_name) {
-    mutex_lock ml(mu_);
-    insert_tensor_ = db_->Prepare(R"sql(
-      INSERT OR REPLACE INTO Tensors (tag_id, step, computed_time, tensor)
-      VALUES (?, ?, ?, ?)
-    )sql");
-    update_metadata_ = db_->Prepare(R"sql(
-      UPDATE Tags SET metadata = ? WHERE tag_id = ?
-    )sql");
-    experiment_name_ = experiment_name;
-    run_name_ = run_name;
-    user_name_ = user_name;
+  Status MaybeFlush() {
+    if (unflushed_bytes_ >= kFlushBytes) {
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(txn_->Commit(), "flushing ",
+                                      unflushed_bytes_, " bytes");
+      unflushed_bytes_ = 0;
+    }
     return Status::OK();
   }
 
-  // TODO(@jart): Use transactions that COMMIT on Flush()
-  // TODO(@jart): Retry Commit() on SQLITE_BUSY with exponential back-off.
+  Sqlite* const db_;
+  SqliteTransaction* const txn_;
+  uint64 unflushed_bytes_ = 0;
+  GraphDef* const graph_;
+  const uint64 now_;
+  const int64 graph_id_;
+  std::vector<string> name_copies_;
+  std::unordered_map<StringPiece, int64, StringPieceHasher> name_to_node_id_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(GraphWriter);
+};
+
+/// \brief Run metadata manager.
+///
+/// This class gives us Tag IDs we can pass to SeriesWriter. In order
+/// to do that, rows are created in the Ids, Tags, Runs, Experiments,
+/// and Users tables.
+///
+/// This class is thread safe.
+class RunMetadata {
+ public:
+  RunMetadata(IdAllocator* ids, const string& experiment_name,
+              const string& run_name, const string& user_name)
+      : ids_{ids},
+        experiment_name_{experiment_name},
+        run_name_{run_name},
+        user_name_{user_name} {
+    DCHECK(ids_ != nullptr);
+  }
+
+  const string& experiment_name() { return experiment_name_; }
+  const string& run_name() { return run_name_; }
+  const string& user_name() { return user_name_; }
+
+  int64 run_id() LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    return run_id_;
+  }
+
+  Status SetGraph(Sqlite* db, uint64 now, double computed_time,
+                  std::unique_ptr<GraphDef> g) SQLITE_TRANSACTIONS_EXCLUDED(*db)
+      LOCKS_EXCLUDED(mu_) {
+    int64 run_id;
+    {
+      mutex_lock lock(mu_);
+      TF_RETURN_IF_ERROR(InitializeRun(db, now, computed_time));
+      run_id = run_id_;
+    }
+    int64 graph_id;
+    SqliteTransaction txn(*db);  // only to increase performance
+    TF_RETURN_IF_ERROR(
+        GraphWriter::Save(db, &txn, ids_, g.get(), now, run_id, &graph_id));
+    return txn.Commit();
+  }
+
+  Status GetTagId(Sqlite* db, uint64 now, double computed_time,
+                  const string& tag_name, int64* tag_id,
+                  const SummaryMetadata& metadata) LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    TF_RETURN_IF_ERROR(InitializeRun(db, now, computed_time));
+    auto e = tag_ids_.find(tag_name);
+    if (e != tag_ids_.end()) {
+      *tag_id = e->second;
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(ids_->CreateNewId(tag_id));
+    tag_ids_[tag_name] = *tag_id;
+    TF_RETURN_IF_ERROR(
+        SetDescription(db, *tag_id, metadata.summary_description()));
+    const char* sql = R"sql(
+      INSERT INTO Tags (
+        run_id,
+        tag_id,
+        tag_name,
+        inserted_time,
+        display_name,
+        plugin_name,
+        plugin_data
+      ) VALUES (
+        :run_id,
+        :tag_id,
+        :tag_name,
+        :inserted_time,
+        :display_name,
+        :plugin_name,
+        :plugin_data
+      )
+    )sql";
+    SqliteStatement insert;
+    TF_RETURN_IF_ERROR(db->Prepare(sql, &insert));
+    if (run_id_ != kAbsent) insert.BindInt(":run_id", run_id_);
+    insert.BindInt(":tag_id", *tag_id);
+    insert.BindTextUnsafe(":tag_name", tag_name);
+    insert.BindDouble(":inserted_time", DoubleTime(now));
+    insert.BindTextUnsafe(":display_name", metadata.display_name());
+    insert.BindTextUnsafe(":plugin_name", metadata.plugin_data().plugin_name());
+    insert.BindBlobUnsafe(":plugin_data", metadata.plugin_data().content());
+    return insert.StepAndReset();
+  }
+
+  Status GetIsWatching(Sqlite* db, bool* is_watching)
+      SQLITE_TRANSACTIONS_EXCLUDED(*db) LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    if (experiment_id_ == kAbsent) {
+      *is_watching = true;
+      return Status::OK();
+    }
+    const char* sql = R"sql(
+      SELECT is_watching FROM Experiments WHERE experiment_id = ?
+    )sql";
+    SqliteStatement stmt;
+    TF_RETURN_IF_ERROR(db->Prepare(sql, &stmt));
+    stmt.BindInt(1, experiment_id_);
+    TF_RETURN_IF_ERROR(stmt.StepOnce());
+    *is_watching = stmt.ColumnInt(0) != 0;
+    return Status::OK();
+  }
+
+ private:
+  Status InitializeUser(Sqlite* db, uint64 now) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (user_id_ != kAbsent || user_name_.empty()) return Status::OK();
+    const char* get_sql = R"sql(
+      SELECT user_id FROM Users WHERE user_name = ?
+    )sql";
+    SqliteStatement get;
+    TF_RETURN_IF_ERROR(db->Prepare(get_sql, &get));
+    get.BindText(1, user_name_);
+    bool is_done;
+    TF_RETURN_IF_ERROR(get.Step(&is_done));
+    if (!is_done) {
+      user_id_ = get.ColumnInt(0);
+      return Status::OK();
+    }
+    TF_RETURN_IF_ERROR(ids_->CreateNewId(&user_id_));
+    const char* insert_sql = R"sql(
+      INSERT INTO Users (
+        user_id,
+        user_name,
+        inserted_time
+      ) VALUES (?, ?, ?)
+    )sql";
+    SqliteStatement insert;
+    TF_RETURN_IF_ERROR(db->Prepare(insert_sql, &insert));
+    insert.BindInt(1, user_id_);
+    insert.BindText(2, user_name_);
+    insert.BindDouble(3, DoubleTime(now));
+    TF_RETURN_IF_ERROR(insert.StepAndReset());
+    return Status::OK();
+  }
+
+  Status InitializeExperiment(Sqlite* db, uint64 now, double computed_time)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (experiment_name_.empty()) return Status::OK();
+    if (experiment_id_ == kAbsent) {
+      TF_RETURN_IF_ERROR(InitializeUser(db, now));
+      const char* get_sql = R"sql(
+        SELECT
+          experiment_id,
+          started_time
+        FROM
+          Experiments
+        WHERE
+          user_id IS ?
+          AND experiment_name = ?
+      )sql";
+      SqliteStatement get;
+      TF_RETURN_IF_ERROR(db->Prepare(get_sql, &get));
+      if (user_id_ != kAbsent) get.BindInt(1, user_id_);
+      get.BindText(2, experiment_name_);
+      bool is_done;
+      TF_RETURN_IF_ERROR(get.Step(&is_done));
+      if (!is_done) {
+        experiment_id_ = get.ColumnInt(0);
+        experiment_started_time_ = get.ColumnInt(1);
+      } else {
+        TF_RETURN_IF_ERROR(ids_->CreateNewId(&experiment_id_));
+        experiment_started_time_ = computed_time;
+        const char* insert_sql = R"sql(
+          INSERT INTO Experiments (
+            user_id,
+            experiment_id,
+            experiment_name,
+            inserted_time,
+            started_time,
+            is_watching
+          ) VALUES (?, ?, ?, ?, ?, ?)
+        )sql";
+        SqliteStatement insert;
+        TF_RETURN_IF_ERROR(db->Prepare(insert_sql, &insert));
+        if (user_id_ != kAbsent) insert.BindInt(1, user_id_);
+        insert.BindInt(2, experiment_id_);
+        insert.BindText(3, experiment_name_);
+        insert.BindDouble(4, DoubleTime(now));
+        insert.BindDouble(5, computed_time);
+        insert.BindInt(6, 0);
+        TF_RETURN_IF_ERROR(insert.StepAndReset());
+      }
+    }
+    if (computed_time < experiment_started_time_) {
+      experiment_started_time_ = computed_time;
+      const char* update_sql = R"sql(
+        UPDATE
+          Experiments
+        SET
+          started_time = ?
+        WHERE
+          experiment_id = ?
+      )sql";
+      SqliteStatement update;
+      TF_RETURN_IF_ERROR(db->Prepare(update_sql, &update));
+      update.BindDouble(1, computed_time);
+      update.BindInt(2, experiment_id_);
+      TF_RETURN_IF_ERROR(update.StepAndReset());
+    }
+    return Status::OK();
+  }
+
+  Status InitializeRun(Sqlite* db, uint64 now, double computed_time)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (run_name_.empty()) return Status::OK();
+    TF_RETURN_IF_ERROR(InitializeExperiment(db, now, computed_time));
+    if (run_id_ == kAbsent) {
+      TF_RETURN_IF_ERROR(ids_->CreateNewId(&run_id_));
+      run_started_time_ = computed_time;
+      const char* insert_sql = R"sql(
+        INSERT OR REPLACE INTO Runs (
+          experiment_id,
+          run_id,
+          run_name,
+          inserted_time,
+          started_time
+        ) VALUES (?, ?, ?, ?, ?)
+      )sql";
+      SqliteStatement insert;
+      TF_RETURN_IF_ERROR(db->Prepare(insert_sql, &insert));
+      if (experiment_id_ != kAbsent) insert.BindInt(1, experiment_id_);
+      insert.BindInt(2, run_id_);
+      insert.BindText(3, run_name_);
+      insert.BindDouble(4, DoubleTime(now));
+      insert.BindDouble(5, computed_time);
+      TF_RETURN_IF_ERROR(insert.StepAndReset());
+    }
+    if (computed_time < run_started_time_) {
+      run_started_time_ = computed_time;
+      const char* update_sql = R"sql(
+        UPDATE
+          Runs
+        SET
+          started_time = ?
+        WHERE
+          run_id = ?
+      )sql";
+      SqliteStatement update;
+      TF_RETURN_IF_ERROR(db->Prepare(update_sql, &update));
+      update.BindDouble(1, computed_time);
+      update.BindInt(2, run_id_);
+      TF_RETURN_IF_ERROR(update.StepAndReset());
+    }
+    return Status::OK();
+  }
+
+  mutex mu_;
+  IdAllocator* const ids_;
+  const string experiment_name_;
+  const string run_name_;
+  const string user_name_;
+  int64 experiment_id_ GUARDED_BY(mu_) = kAbsent;
+  int64 run_id_ GUARDED_BY(mu_) = kAbsent;
+  int64 user_id_ GUARDED_BY(mu_) = kAbsent;
+  double experiment_started_time_ GUARDED_BY(mu_) = 0.0;
+  double run_started_time_ GUARDED_BY(mu_) = 0.0;
+  std::unordered_map<string, int64> tag_ids_ GUARDED_BY(mu_);
+
+  TF_DISALLOW_COPY_AND_ASSIGN(RunMetadata);
+};
+
+/// \brief Tensor writer for a single series, e.g. Tag.
+///
+/// This class can be used to write an infinite stream of Tensors to the
+/// database in a fixed block of contiguous disk space. This is
+/// accomplished using Algorithm R reservoir sampling.
+///
+/// The reservoir consists of a fixed number of rows, which are inserted
+/// using ZEROBLOB upon receiving the first sample, which is used to
+/// predict how big the other ones are likely to be. This is done
+/// transactionally in a way that tries to be mindful of other processes
+/// that might be trying to access the same DB.
+///
+/// Once the reservoir fills up, rows are replaced at random, and writes
+/// gradually become no-ops. This allows long training to go fast
+/// without configuration. The exception is when someone is actually
+/// looking at TensorBoard. When that happens, the "keep last" behavior
+/// is turned on and Append() will always result in a write.
+///
+/// If no one is watching training, this class still holds on to the
+/// most recent "dangling" Tensor, so if Finish() is called, the most
+/// recent training state can be written to disk.
+///
+/// The randomly selected sampling points should be consistent across
+/// multiple instances.
+///
+/// This class is thread safe.
+class SeriesWriter {
+ public:
+  SeriesWriter(int64 series, int slots, RunMetadata* meta)
+      : series_{series},
+        slots_{slots},
+        meta_{meta},
+        rng_{std::mt19937_64::default_seed} {
+    DCHECK(series_ > 0);
+    DCHECK(slots_ > 0);
+  }
+
+  Status Append(Sqlite* db, int64 step, uint64 now, double computed_time,
+                Tensor t) SQLITE_TRANSACTIONS_EXCLUDED(*db)
+      LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    if (rowids_.empty()) {
+      Status s = Reserve(db, t);
+      if (!s.ok()) {
+        rowids_.clear();
+        return s;
+      }
+    }
+    DCHECK(rowids_.size() == slots_);
+    int64 rowid;
+    size_t i = count_;
+    if (i < slots_) {
+      rowid = last_rowid_ = rowids_[i];
+    } else {
+      i = rng_() % (i + 1);
+      if (i < slots_) {
+        rowid = last_rowid_ = rowids_[i];
+      } else {
+        bool keep_last;
+        TF_RETURN_IF_ERROR(meta_->GetIsWatching(db, &keep_last));
+        if (!keep_last) {
+          ++count_;
+          dangling_tensor_.reset(new Tensor(std::move(t)));
+          dangling_step_ = step;
+          dangling_computed_time_ = computed_time;
+          return Status::OK();
+        }
+        rowid = last_rowid_;
+      }
+    }
+    Status s = Write(db, rowid, step, computed_time, t);
+    if (s.ok()) {
+      ++count_;
+      dangling_tensor_.reset();
+    }
+    return s;
+  }
+
+  Status Finish(Sqlite* db) SQLITE_TRANSACTIONS_EXCLUDED(*db)
+      LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    // Short runs: Delete unused pre-allocated Tensors.
+    if (count_ < rowids_.size()) {
+      SqliteTransaction txn(*db);
+      const char* sql = R"sql(
+        DELETE FROM Tensors WHERE rowid = ?
+      )sql";
+      SqliteStatement deleter;
+      TF_RETURN_IF_ERROR(db->Prepare(sql, &deleter));
+      for (size_t i = count_; i < rowids_.size(); ++i) {
+        deleter.BindInt(1, rowids_[i]);
+        TF_RETURN_IF_ERROR(deleter.StepAndReset());
+      }
+      TF_RETURN_IF_ERROR(txn.Commit());
+      rowids_.clear();
+    }
+    // Long runs: Make last sample be the very most recent one.
+    if (dangling_tensor_) {
+      DCHECK(last_rowid_ != kAbsent);
+      TF_RETURN_IF_ERROR(Write(db, last_rowid_, dangling_step_,
+                               dangling_computed_time_, *dangling_tensor_));
+      dangling_tensor_.reset();
+    }
+    return Status::OK();
+  }
+
+ private:
+  Status Write(Sqlite* db, int64 rowid, int64 step, double computed_time,
+               const Tensor& t) SQLITE_TRANSACTIONS_EXCLUDED(*db) {
+    if (t.dtype() == DT_STRING) {
+      if (t.dims() == 0) {
+        return Update(db, step, computed_time, t, t.scalar<string>()(), rowid);
+      } else {
+        SqliteTransaction txn(*db);
+        TF_RETURN_IF_ERROR(
+            Update(db, step, computed_time, t, StringPiece(), rowid));
+        TF_RETURN_IF_ERROR(UpdateNdString(db, t, rowid));
+        return txn.Commit();
+      }
+    } else {
+      return Update(db, step, computed_time, t, t.tensor_data(), rowid);
+    }
+  }
+
+  Status Update(Sqlite* db, int64 step, double computed_time, const Tensor& t,
+                const StringPiece& data, int64 rowid) {
+    // TODO(jart): How can we ensure reservoir fills on replace?
+    const char* sql = R"sql(
+      UPDATE OR REPLACE
+        Tensors
+      SET
+        step = ?,
+        computed_time = ?,
+        dtype = ?,
+        shape = ?,
+        data = ?
+      WHERE
+        rowid = ?
+    )sql";
+    SqliteStatement stmt;
+    TF_RETURN_IF_ERROR(db->Prepare(sql, &stmt));
+    stmt.BindInt(1, step);
+    stmt.BindDouble(2, computed_time);
+    stmt.BindInt(3, t.dtype());
+    stmt.BindText(4, StringifyShape(t.shape()));
+    stmt.BindBlobUnsafe(5, data);
+    stmt.BindInt(6, rowid);
+    TF_RETURN_IF_ERROR(stmt.StepAndReset());
+    return Status::OK();
+  }
+
+  Status UpdateNdString(Sqlite* db, const Tensor& t, int64 tensor_rowid)
+      SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db) {
+    DCHECK_EQ(t.dtype(), DT_STRING);
+    DCHECK_GT(t.dims(), 0);
+    const char* deleter_sql = R"sql(
+      DELETE FROM TensorStrings WHERE tensor_rowid = ?
+    )sql";
+    SqliteStatement deleter;
+    TF_RETURN_IF_ERROR(db->Prepare(deleter_sql, &deleter));
+    deleter.BindInt(1, tensor_rowid);
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(deleter.StepAndReset(), tensor_rowid);
+    const char* inserter_sql = R"sql(
+      INSERT INTO TensorStrings (
+        tensor_rowid,
+        idx,
+        data
+      ) VALUES (?, ?, ?)
+    )sql";
+    SqliteStatement inserter;
+    TF_RETURN_IF_ERROR(db->Prepare(inserter_sql, &inserter));
+    auto flat = t.flat<string>();
+    for (int64 i = 0; i < flat.size(); ++i) {
+      inserter.BindInt(1, tensor_rowid);
+      inserter.BindInt(2, i);
+      inserter.BindBlobUnsafe(3, flat(i));
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(inserter.StepAndReset(), "i=", i);
+    }
+    return Status::OK();
+  }
+
+  Status Reserve(Sqlite* db, const Tensor& t) SQLITE_TRANSACTIONS_EXCLUDED(*db)
+      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    SqliteTransaction txn(*db);  // only for performance
+    unflushed_bytes_ = 0;
+    if (t.dtype() == DT_STRING) {
+      if (t.dims() == 0) {
+        TF_RETURN_IF_ERROR(ReserveData(db, &txn, t.scalar<string>()().size()));
+      } else {
+        TF_RETURN_IF_ERROR(ReserveTensors(db, &txn, kReserveMinBytes));
+      }
+    } else {
+      TF_RETURN_IF_ERROR(ReserveData(db, &txn, t.tensor_data().size()));
+    }
+    return txn.Commit();
+  }
+
+  Status ReserveData(Sqlite* db, SqliteTransaction* txn, size_t size)
+      SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    int64 space =
+        static_cast<int64>(static_cast<double>(size) * kReserveMultiplier);
+    if (space < kReserveMinBytes) space = kReserveMinBytes;
+    return ReserveTensors(db, txn, space);
+  }
+
+  Status ReserveTensors(Sqlite* db, SqliteTransaction* txn,
+                        int64 reserved_bytes)
+      SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    const char* sql = R"sql(
+      INSERT INTO Tensors (
+        series,
+        data
+      ) VALUES (?, ZEROBLOB(?))
+    )sql";
+    SqliteStatement insert;
+    TF_RETURN_IF_ERROR(db->Prepare(sql, &insert));
+    // TODO(jart): Maybe preallocate index pages by setting step. This
+    //             is tricky because UPDATE OR REPLACE can have a side
+    //             effect of deleting preallocated rows.
+    for (int64 i = 0; i < slots_; ++i) {
+      insert.BindInt(1, series_);
+      insert.BindInt(2, reserved_bytes);
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(insert.StepAndReset(), "i=", i);
+      rowids_.push_back(db->last_insert_rowid());
+      unflushed_bytes_ += reserved_bytes;
+      TF_RETURN_IF_ERROR(MaybeFlush(db, txn));
+    }
+    return Status::OK();
+  }
+
+  Status MaybeFlush(Sqlite* db, SqliteTransaction* txn)
+      SQLITE_EXCLUSIVE_TRANSACTIONS_REQUIRED(*db)
+          EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    if (unflushed_bytes_ >= kFlushBytes) {
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(txn->Commit(), "flushing ",
+                                      unflushed_bytes_, " bytes");
+      unflushed_bytes_ = 0;
+    }
+    return Status::OK();
+  }
+
+  mutex mu_;
+  const int64 series_;
+  const int slots_;
+  RunMetadata* const meta_;
+  std::mt19937_64 rng_ GUARDED_BY(mu_);
+  uint64 count_ GUARDED_BY(mu_) = 0;
+  int64 last_rowid_ GUARDED_BY(mu_) = kAbsent;
+  std::vector<int64> rowids_ GUARDED_BY(mu_);
+  uint64 unflushed_bytes_ GUARDED_BY(mu_) = 0;
+  std::unique_ptr<Tensor> dangling_tensor_ GUARDED_BY(mu_);
+  int64 dangling_step_ GUARDED_BY(mu_) = 0;
+  double dangling_computed_time_ GUARDED_BY(mu_) = 0.0;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(SeriesWriter);
+};
+
+/// \brief Tensor writer for a single Run.
+///
+/// This class farms out tensors to SeriesWriter instances. It also
+/// keeps track of whether or not someone is watching the TensorBoard
+/// GUI, so it can avoid writes when possible.
+///
+/// This class is thread safe.
+class RunWriter {
+ public:
+  explicit RunWriter(RunMetadata* meta) : meta_{meta} {}
+
+  Status Append(Sqlite* db, int64 tag_id, int64 step, uint64 now,
+                double computed_time, Tensor t, int slots)
+      SQLITE_TRANSACTIONS_EXCLUDED(*db) LOCKS_EXCLUDED(mu_) {
+    SeriesWriter* writer = GetSeriesWriter(tag_id, slots);
+    return writer->Append(db, step, now, computed_time, std::move(t));
+  }
+
+  Status Finish(Sqlite* db) SQLITE_TRANSACTIONS_EXCLUDED(*db)
+      LOCKS_EXCLUDED(mu_) {
+    mutex_lock lock(mu_);
+    if (series_writers_.empty()) return Status::OK();
+    for (auto i = series_writers_.begin(); i != series_writers_.end(); ++i) {
+      if (!i->second) continue;
+      TF_RETURN_WITH_CONTEXT_IF_ERROR(i->second->Finish(db),
+                                      "finish tag_id=", i->first);
+      i->second.reset();
+    }
+    return Status::OK();
+  }
+
+ private:
+  SeriesWriter* GetSeriesWriter(int64 tag_id, int slots) LOCKS_EXCLUDED(mu_) {
+    mutex_lock sl(mu_);
+    auto spot = series_writers_.find(tag_id);
+    if (spot == series_writers_.end()) {
+      SeriesWriter* writer = new SeriesWriter(tag_id, slots, meta_);
+      series_writers_[tag_id].reset(writer);
+      return writer;
+    } else {
+      return spot->second.get();
+    }
+  }
+
+  mutex mu_;
+  RunMetadata* const meta_;
+  std::unordered_map<int64, std::unique_ptr<SeriesWriter>> series_writers_
+      GUARDED_BY(mu_);
+
+  TF_DISALLOW_COPY_AND_ASSIGN(RunWriter);
+};
+
+/// \brief SQLite implementation of SummaryWriterInterface.
+///
+/// This class is thread safe.
+class SummaryDbWriter : public SummaryWriterInterface {
+ public:
+  SummaryDbWriter(Env* env, Sqlite* db, const string& experiment_name,
+                  const string& run_name, const string& user_name)
+      : SummaryWriterInterface(),
+        env_{env},
+        db_{db},
+        ids_{env_, db_},
+        meta_{&ids_, experiment_name, run_name, user_name},
+        run_{&meta_} {
+    DCHECK(env_ != nullptr);
+    db_->Ref();
+  }
+
+  ~SummaryDbWriter() override {
+    core::ScopedUnref unref(db_);
+    Status s = run_.Finish(db_);
+    if (!s.ok()) {
+      // TODO(jart): Retry on transient errors here.
+      LOG(ERROR) << s.ToString();
+    }
+    int64 run_id = meta_.run_id();
+    if (run_id == kAbsent) return;
+    const char* sql = R"sql(
+      UPDATE Runs SET finished_time = ? WHERE run_id = ?
+    )sql";
+    SqliteStatement update;
+    s = db_->Prepare(sql, &update);
+    if (s.ok()) {
+      update.BindDouble(1, DoubleTime(env_->NowMicros()));
+      update.BindInt(2, run_id);
+      s = update.StepAndReset();
+    }
+    if (!s.ok()) {
+      LOG(ERROR) << "Failed to set Runs[" << run_id
+                 << "].finish_time: " << s.ToString();
+    }
+  }
+
   Status Flush() override { return Status::OK(); }
 
   Status WriteTensor(int64 global_step, Tensor t, const string& tag,
                      const string& serialized_metadata) override {
-    mutex_lock ml(mu_);
-    TF_RETURN_IF_ERROR(InitializeParents());
-    // TODO(@jart): Memoize tag_id.
-    int64 tag_id;
-    TF_RETURN_IF_ERROR(GetTagId(run_id_, tag, &tag_id));
-    if (!serialized_metadata.empty()) {
-      // TODO(@jart): Only update metadata for first tensor.
-      update_metadata_.BindBlobUnsafe(1, serialized_metadata);
-      update_metadata_.BindInt(2, tag_id);
-      TF_RETURN_IF_ERROR(update_metadata_.StepAndReset());
+    TF_RETURN_IF_ERROR(CheckSupportedType(t));
+    SummaryMetadata metadata;
+    if (!metadata.ParseFromString(serialized_metadata)) {
+      return errors::InvalidArgument("Bad serialized_metadata");
     }
-    // TODO(@jart): Lease blocks of rowids and *_ids to minimize fragmentation.
-    // TODO(@jart): Check for random ID collisions without needing txn retry.
-    insert_tensor_.BindInt(1, tag_id);
-    insert_tensor_.BindInt(2, global_step);
-    insert_tensor_.BindDouble(3, GetWallTime(env_));
-    if (t.shape().dims() == 0 && t.dtype() == DT_INT64) {
-      insert_tensor_.BindInt(4, t.scalar<int64>()());
-    } else if (t.shape().dims() == 0 && t.dtype() == DT_DOUBLE) {
-      insert_tensor_.BindDouble(4, t.scalar<double>()());
-    } else {
-      TF_RETURN_IF_ERROR(BindTensor(&insert_tensor_, 4, t));
-    }
-    return insert_tensor_.StepAndReset();
+    return Write(global_step, t, tag, metadata);
   }
 
   Status WriteScalar(int64 global_step, Tensor t, const string& tag) override {
-    Tensor t2;
-    TF_RETURN_IF_ERROR(CoerceScalar(t, &t2));
-    // TODO(jart): Generate scalars plugin metadata on this value.
-    return WriteTensor(global_step, std::move(t2), tag, "");
+    TF_RETURN_IF_ERROR(CheckSupportedType(t));
+    SummaryMetadata metadata;
+    PatchPluginName(&metadata, kScalarPluginName);
+    return Write(global_step, AsScalar(t), tag, metadata);
   }
 
   Status WriteGraph(int64 global_step, std::unique_ptr<GraphDef> g) override {
-    mutex_lock ml(mu_);
-    TF_RETURN_IF_ERROR(InitializeParents());
-    return txn_.Transact(GraphSaver::SaveToRun, env_, db_.get(), g.get(),
-                         run_id_);
+    uint64 now = env_->NowMicros();
+    return meta_.SetGraph(db_, now, DoubleTime(now), std::move(g));
   }
 
   Status WriteEvent(std::unique_ptr<Event> e) override {
-    switch (e->what_case()) {
-      case Event::WhatCase::kSummary: {
-        mutex_lock ml(mu_);
-        TF_RETURN_IF_ERROR(InitializeParents());
-        const Summary& summary = e->summary();
-        for (int i = 0; i < summary.value_size(); ++i) {
-          TF_RETURN_IF_ERROR(WriteSummary(e.get(), summary.value(i)));
-        }
-        return Status::OK();
-      }
-      case Event::WhatCase::kGraphDef: {
-        std::unique_ptr<GraphDef> graph{new GraphDef};
-        if (!ParseProtoUnlimited(graph.get(), e->graph_def())) {
-          return errors::DataLoss("parse event.graph_def failed");
-        }
-        return WriteGraph(e->step(), std::move(graph));
-      }
-      default:
-        // TODO(@jart): Handle other stuff.
-        return Status::OK();
-    }
+    return MigrateEvent(std::move(e));
   }
 
   Status WriteHistogram(int64 global_step, Tensor t,
                         const string& tag) override {
-    return errors::Unimplemented(
-        "SummaryDbWriter::WriteHistogram not supported. Please use ",
-        "tensorboard.summary.histogram() instead.");
+    uint64 now = env_->NowMicros();
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(DoubleTime(now));
+    TF_RETURN_IF_ERROR(
+        AddTensorAsHistogramToSummary(t, tag, e->mutable_summary()));
+    return MigrateEvent(std::move(e));
   }
 
-  Status WriteImage(int64 global_step, Tensor tensor, const string& tag,
+  Status WriteImage(int64 global_step, Tensor t, const string& tag,
                     int max_images, Tensor bad_color) override {
-    return errors::Unimplemented(
-        "SummaryDbWriter::WriteImage not supported. Please use ",
-        "tensorboard.summary.image() instead.");
+    uint64 now = env_->NowMicros();
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(DoubleTime(now));
+    TF_RETURN_IF_ERROR(AddTensorAsImageToSummary(t, tag, max_images, bad_color,
+                                                 e->mutable_summary()));
+    return MigrateEvent(std::move(e));
   }
 
-  Status WriteAudio(int64 global_step, Tensor tensor, const string& tag,
+  Status WriteAudio(int64 global_step, Tensor t, const string& tag,
                     int max_outputs, float sample_rate) override {
-    return errors::Unimplemented(
-        "SummaryDbWriter::WriteAudio not supported. Please use ",
-        "tensorboard.summary.audio() instead.");
+    uint64 now = env_->NowMicros();
+    std::unique_ptr<Event> e{new Event};
+    e->set_step(global_step);
+    e->set_wall_time(DoubleTime(now));
+    TF_RETURN_IF_ERROR(AddTensorAsAudioToSummary(
+        t, tag, max_outputs, sample_rate, e->mutable_summary()));
+    return MigrateEvent(std::move(e));
   }
 
   string DebugString() override { return "SummaryDbWriter"; }
 
  private:
-  Status InitializeParents() EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (run_id_ > 0) {
-      return Status::OK();
-    }
-    int64 user_id;
-    TF_RETURN_IF_ERROR(GetUserId(user_name_, &user_id));
-    int64 experiment_id;
-    TF_RETURN_IF_ERROR(
-        GetExperimentId(user_id, experiment_name_, &experiment_id));
-    TF_RETURN_IF_ERROR(GetRunId(experiment_id, run_name_, &run_id_));
-    return Status::OK();
-  }
-
-  Status GetUserId(const string& user_name, int64* user_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (user_name.empty()) {
-      *user_id = 0LL;
-      return Status::OK();
-    }
-    SqliteStatement get_user_id = db_->Prepare(R"sql(
-      SELECT user_id FROM Users WHERE user_name = ?
-    )sql");
-    get_user_id.BindText(1, user_name);
-    bool is_done;
-    TF_RETURN_IF_ERROR(get_user_id.Step(&is_done));
-    if (!is_done) {
-      *user_id = get_user_id.ColumnInt(0);
-    } else {
-      *user_id = MakeRandomId();
-      SqliteStatement insert_user = db_->Prepare(R"sql(
-        INSERT INTO Users (user_id, user_name, inserted_time) VALUES (?, ?, ?)
-      )sql");
-      insert_user.BindInt(1, *user_id);
-      insert_user.BindText(2, user_name);
-      insert_user.BindDouble(3, GetWallTime(env_));
-      TF_RETURN_IF_ERROR(insert_user.StepAndReset());
-    }
-    return Status::OK();
-  }
-
-  Status GetExperimentId(int64 user_id, const string& experiment_name,
-                         int64* experiment_id) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    // TODO(@jart): Compute started_time.
-    return GetId("Experiments", "user_id", user_id, "experiment_name",
-                 experiment_name, "experiment_id", experiment_id);
-  }
-
-  Status GetRunId(int64 experiment_id, const string& run_name, int64* run_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    // TODO(@jart): Compute started_time.
-    return GetId("Runs", "experiment_id", experiment_id, "run_name", run_name,
-                 "run_id", run_id);
-  }
-
-  Status GetTagId(int64 run_id, const string& tag_name, int64* tag_id)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    return GetId("Tags", "run_id", run_id, "tag_name", tag_name, "tag_id",
-                 tag_id);
-  }
-
-  Status GetId(const char* table, const char* parent_id_field, int64 parent_id,
-               const char* name_field, const string& name, const char* id_field,
-               int64* id) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (name.empty()) {
-      *id = 0LL;
-      return Status::OK();
-    }
-    SqliteStatement select = db_->Prepare(
-        strings::Printf("SELECT %s FROM %s WHERE %s = ? AND %s = ?", id_field,
-                        table, parent_id_field, name_field));
-    if (parent_id > 0) {
-      select.BindInt(1, parent_id);
-    }
-    select.BindText(2, name);
-    bool is_done;
-    TF_RETURN_IF_ERROR(select.Step(&is_done));
-    if (!is_done) {
-      *id = select.ColumnInt(0);
-    } else {
-      *id = MakeRandomId();
-      SqliteStatement insert = db_->Prepare(strings::Printf(
-          "INSERT INTO %s (%s, %s, %s, inserted_time) VALUES (?, ?, ?, ?)",
-          table, parent_id_field, id_field, name_field));
-      if (parent_id > 0) {
-        insert.BindInt(1, parent_id);
-      }
-      insert.BindInt(2, *id);
-      insert.BindText(3, name);
-      insert.BindDouble(4, GetWallTime(env_));
-      TF_RETURN_IF_ERROR(insert.StepAndReset());
-    }
-    return Status::OK();
-  }
-
-  Status WriteSummary(const Event* e, const Summary::Value& summary)
-      EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+  Status Write(int64 step, const Tensor& t, const string& tag,
+               const SummaryMetadata& metadata) {
+    uint64 now = env_->NowMicros();
+    double computed_time = DoubleTime(now);
     int64 tag_id;
-    TF_RETURN_IF_ERROR(GetTagId(run_id_, summary.tag(), &tag_id));
-    insert_tensor_.BindInt(1, tag_id);
-    insert_tensor_.BindInt(2, e->step());
-    insert_tensor_.BindDouble(3, e->wall_time());
-    switch (summary.value_case()) {
-      case Summary::Value::ValueCase::kSimpleValue:
-        insert_tensor_.BindDouble(4, summary.simple_value());
+    TF_RETURN_IF_ERROR(
+        meta_.GetTagId(db_, now, computed_time, tag, &tag_id, metadata));
+    TF_RETURN_WITH_CONTEXT_IF_ERROR(
+        run_.Append(db_, tag_id, step, now, computed_time, t,
+                    GetSlots(t, metadata)),
+        meta_.user_name(), "/", meta_.experiment_name(), "/", meta_.run_name(),
+        "/", tag, "@", step);
+    return Status::OK();
+  }
+
+  Status MigrateEvent(std::unique_ptr<Event> e) {
+    switch (e->what_case()) {
+      case Event::WhatCase::kSummary: {
+        uint64 now = env_->NowMicros();
+        auto summaries = e->mutable_summary();
+        for (int i = 0; i < summaries->value_size(); ++i) {
+          Summary::Value* value = summaries->mutable_value(i);
+          TF_RETURN_WITH_CONTEXT_IF_ERROR(
+              MigrateSummary(e.get(), value, now), meta_.user_name(), "/",
+              meta_.experiment_name(), "/", meta_.run_name(), "/", value->tag(),
+              "@", e->step());
+        }
+        break;
+      }
+      case Event::WhatCase::kGraphDef:
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(
+            MigrateGraph(e.get(), e->graph_def()), meta_.user_name(), "/",
+            meta_.experiment_name(), "/", meta_.run_name(), "/__graph__@",
+            e->step());
         break;
       default:
-        // TODO(@jart): Handle the rest.
-        return Status::OK();
+        // TODO(@jart): Handle other stuff.
+        break;
     }
-    return insert_tensor_.StepAndReset();
+    return Status::OK();
   }
 
-  mutex mu_;
-  Env* env_;
-  std::shared_ptr<Sqlite> db_ GUARDED_BY(mu_);
-  Transactor txn_ GUARDED_BY(mu_);
-  SqliteStatement insert_tensor_ GUARDED_BY(mu_);
-  SqliteStatement update_metadata_ GUARDED_BY(mu_);
-  string user_name_ GUARDED_BY(mu_);
-  string experiment_name_ GUARDED_BY(mu_);
-  string run_name_ GUARDED_BY(mu_);
-  int64 run_id_ GUARDED_BY(mu_);
+  Status MigrateGraph(const Event* e, const string& graph_def) {
+    uint64 now = env_->NowMicros();
+    std::unique_ptr<GraphDef> graph{new GraphDef};
+    if (!ParseProtoUnlimited(graph.get(), graph_def)) {
+      return errors::InvalidArgument("bad proto");
+    }
+    return meta_.SetGraph(db_, now, e->wall_time(), std::move(graph));
+  }
+
+  Status MigrateSummary(const Event* e, Summary::Value* s, uint64 now) {
+    switch (s->value_case()) {
+      case Summary::Value::ValueCase::kTensor:
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(MigrateTensor(e, s, now), "tensor");
+        break;
+      case Summary::Value::ValueCase::kSimpleValue:
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(MigrateScalar(e, s, now), "scalar");
+        break;
+      case Summary::Value::ValueCase::kHisto:
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(MigrateHistogram(e, s, now), "histo");
+        break;
+      case Summary::Value::ValueCase::kImage:
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(MigrateImage(e, s, now), "image");
+        break;
+      case Summary::Value::ValueCase::kAudio:
+        TF_RETURN_WITH_CONTEXT_IF_ERROR(MigrateAudio(e, s, now), "audio");
+        break;
+      default:
+        break;
+    }
+    return Status::OK();
+  }
+
+  Status MigrateTensor(const Event* e, Summary::Value* s, uint64 now) {
+    Tensor t;
+    if (!t.FromProto(s->tensor())) return errors::InvalidArgument("bad proto");
+    TF_RETURN_IF_ERROR(CheckSupportedType(t));
+    int64 tag_id;
+    TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
+                                      &tag_id, s->metadata()));
+    return run_.Append(db_, tag_id, e->step(), now, e->wall_time(), t,
+                       GetSlots(t, s->metadata()));
+  }
+
+  // TODO(jart): Refactor Summary -> Tensor logic into separate file.
+
+  Status MigrateScalar(const Event* e, Summary::Value* s, uint64 now) {
+    // See tensorboard/plugins/scalar/summary.py and data_compat.py
+    Tensor t{DT_FLOAT, {}};
+    t.scalar<float>()() = s->simple_value();
+    int64 tag_id;
+    PatchPluginName(s->mutable_metadata(), kScalarPluginName);
+    TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
+                                      &tag_id, s->metadata()));
+    return run_.Append(db_, tag_id, e->step(), now, e->wall_time(),
+                       std::move(t), kScalarSlots);
+  }
+
+  Status MigrateHistogram(const Event* e, Summary::Value* s, uint64 now) {
+    const HistogramProto& histo = s->histo();
+    int k = histo.bucket_size();
+    if (k != histo.bucket_limit_size()) {
+      return errors::InvalidArgument("size mismatch");
+    }
+    // See tensorboard/plugins/histogram/summary.py and data_compat.py
+    Tensor t{DT_DOUBLE, {k, 3}};
+    auto data = t.flat<double>();
+    for (int i = 0; i < k; ++i) {
+      double left_edge = ((i - 1 >= 0) ? histo.bucket_limit(i - 1)
+                                       : std::numeric_limits<double>::min());
+      double right_edge = ((i + 1 < k) ? histo.bucket_limit(i + 1)
+                                       : std::numeric_limits<double>::max());
+      data(i + 0) = left_edge;
+      data(i + 1) = right_edge;
+      data(i + 2) = histo.bucket(i);
+    }
+    int64 tag_id;
+    PatchPluginName(s->mutable_metadata(), kHistogramPluginName);
+    TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
+                                      &tag_id, s->metadata()));
+    return run_.Append(db_, tag_id, e->step(), now, e->wall_time(),
+                       std::move(t), kHistogramSlots);
+  }
+
+  Status MigrateImage(const Event* e, Summary::Value* s, uint64 now) {
+    // See tensorboard/plugins/image/summary.py and data_compat.py
+    Tensor t{DT_STRING, {3}};
+    auto img = s->mutable_image();
+    t.flat<string>()(0) = strings::StrCat(img->width());
+    t.flat<string>()(1) = strings::StrCat(img->height());
+    t.flat<string>()(2) = std::move(*img->mutable_encoded_image_string());
+    int64 tag_id;
+    PatchPluginName(s->mutable_metadata(), kImagePluginName);
+    TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
+                                      &tag_id, s->metadata()));
+    return run_.Append(db_, tag_id, e->step(), now, e->wall_time(),
+                       std::move(t), kImageSlots);
+  }
+
+  Status MigrateAudio(const Event* e, Summary::Value* s, uint64 now) {
+    // See tensorboard/plugins/audio/summary.py and data_compat.py
+    Tensor t{DT_STRING, {1, 2}};
+    auto wav = s->mutable_audio();
+    t.flat<string>()(0) = std::move(*wav->mutable_encoded_audio_string());
+    t.flat<string>()(1) = "";
+    int64 tag_id;
+    PatchPluginName(s->mutable_metadata(), kAudioPluginName);
+    TF_RETURN_IF_ERROR(meta_.GetTagId(db_, now, e->wall_time(), s->tag(),
+                                      &tag_id, s->metadata()));
+    return run_.Append(db_, tag_id, e->step(), now, e->wall_time(),
+                       std::move(t), kAudioSlots);
+  }
+
+  Env* const env_;
+  Sqlite* const db_;
+  IdAllocator ids_;
+  RunMetadata meta_;
+  RunWriter run_;
 };
 
 }  // namespace
 
-Status CreateSummaryDbWriter(std::shared_ptr<Sqlite> db,
-                             const string& experiment_name,
+Status CreateSummaryDbWriter(Sqlite* db, const string& experiment_name,
                              const string& run_name, const string& user_name,
                              Env* env, SummaryWriterInterface** result) {
-  TF_RETURN_IF_ERROR(SetupTensorboardSqliteDb(db));
-  SummaryDbWriter* w = new SummaryDbWriter(env, std::move(db));
-  const Status s = w->Initialize(experiment_name, run_name, user_name);
-  if (!s.ok()) {
-    w->Unref();
-    *result = nullptr;
-    return s;
-  }
-  *result = w;
+  *result = new SummaryDbWriter(env, db, experiment_name, run_name, user_name);
   return Status::OK();
 }
 

@@ -43,10 +43,6 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 
 
-# TODO(ebrevdo): Delete this line after Dec. 4, 2017.
-tensor_array_ops._ENABLE_IDENTICAL_ELEMENT_SHAPES = True
-
-
 def _make_converter(tf_dtype):
   def _converter(x):
     if tf_dtype == dtypes.string:

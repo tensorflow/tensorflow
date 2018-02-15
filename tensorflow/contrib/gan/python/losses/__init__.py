@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TFGAN grouped API. Please see README.md for details and usage."""
+"""TFGAN losses and penalties.
+
+Losses can be used with individual arguments or with GANModel tuples.
+"""
 
 from __future__ import absolute_import
 from __future__ import division

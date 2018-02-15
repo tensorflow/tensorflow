@@ -38,6 +38,7 @@ from tensorflow.python.keras._impl.keras.engine.training import Model
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.keras._impl.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=g-import-not-at-top
@@ -53,6 +54,7 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
+@tf_export('keras.models.save_model')
 def save_model(model, filepath, overwrite=True, include_optimizer=True):
   """Save a model to a HDF5 file.
 
@@ -183,6 +185,7 @@ def save_model(model, filepath, overwrite=True, include_optimizer=True):
     f.flush()
 
 
+@tf_export('keras.models.load_model')
 def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=redefined-builtin
   """Loads a model saved via `save_model`.
 
@@ -302,6 +305,7 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
   return model
 
 
+@tf_export('keras.models.model_from_config')
 def model_from_config(config, custom_objects=None):
   """Instantiates a Keras model from its config.
 
@@ -324,6 +328,7 @@ def model_from_config(config, custom_objects=None):
   return layer_module.deserialize(config, custom_objects=custom_objects)
 
 
+@tf_export('keras.models.model_from_yaml')
 def model_from_yaml(yaml_string, custom_objects=None):
   """Parses a yaml model configuration file and returns a model instance.
 
@@ -345,6 +350,7 @@ def model_from_yaml(yaml_string, custom_objects=None):
   return layer_module.deserialize(config, custom_objects=custom_objects)
 
 
+@tf_export('keras.models.model_from_json')
 def model_from_json(json_string, custom_objects=None):
   """Parses a JSON model configuration file and returns a model instance.
 
@@ -361,6 +367,7 @@ def model_from_json(json_string, custom_objects=None):
   return layer_module.deserialize(config, custom_objects=custom_objects)
 
 
+@tf_export('keras.models.Sequential', 'keras.Sequential')
 class Sequential(Model):
   """Linear stack of layers.
 
@@ -399,7 +406,9 @@ class Sequential(Model):
   """
 
   def __init__(self, layers=None, name=None):
-    self.layers = []  # Stack of layers.
+    self._is_graph_network = True
+    self._is_compiled = False
+    self._layers = []  # Stack of layers.
     self.model = None  # Internal Model instance.
     self.inputs = []  # List of input tensors
     self.outputs = []  # List of length 1: the output tensor (unique).
@@ -421,8 +430,6 @@ class Sequential(Model):
     # Used by Layer base class.
     self._dtype = None
     self._activity_regularizer = None
-    self._per_input_losses = {}
-    self._per_input_updates = {}
 
     # The following properties are not actually used by Keras;
     # they exist for compatibility with TF's variable scoping mechanism.
@@ -492,13 +499,13 @@ class Sequential(Model):
         # to the input layer we just created.
         layer(x)
 
-      if len(layer.inbound_nodes[-1].output_tensors) != 1:
+      if len(layer._inbound_nodes[-1].output_tensors) != 1:
         raise ValueError('All layers in a Sequential model '
                          'should have a single output tensor. '
                          'For multi-output layers, '
                          'use the functional API.')
 
-      self.outputs = [layer.inbound_nodes[-1].output_tensors[0]]
+      self.outputs = [layer._inbound_nodes[-1].output_tensors[0]]
       self.inputs = topology.get_source_inputs(self.outputs[0])
 
       # We create an input node, which we will keep updated
@@ -522,7 +529,7 @@ class Sequential(Model):
       self._inbound_nodes[0].output_tensors = self.outputs
       self._inbound_nodes[0].output_shapes = [K.int_shape(self.outputs[0])]
 
-    self.layers.append(layer)
+    self._layers.append(layer)
     self.built = False
 
   def pop(self):
@@ -635,34 +642,6 @@ class Sequential(Model):
       trainable_weights = self._gather_list_attr('trainable_weights')
       return trainable_weights + weights
     return weights
-
-  @property
-  def updates(self):
-    if not self.built:
-      self.build()
-    return self.model.updates
-
-  @property
-  def state_updates(self):
-    if not self.built:
-      self.build()
-    return self.model.state_updates
-
-  def get_updates_for(self, inputs):
-    if not self.built:
-      self.build()
-    return self.model.get_updates_for(inputs)
-
-  @property
-  def losses(self):
-    if not self.built:
-      self.build()
-    return self.model.losses
-
-  def get_losses_for(self, inputs):
-    if not self.built:
-      self.build()
-    return self.model.get_losses_for(inputs)
 
   @property
   def regularizers(self):
@@ -1070,7 +1049,7 @@ class Sequential(Model):
 
   def fit_generator(self,
                     generator,
-                    steps_per_epoch,
+                    steps_per_epoch=None,
                     epochs=1,
                     verbose=1,
                     callbacks=None,
@@ -1101,8 +1080,10 @@ class Sequential(Model):
         steps_per_epoch: Total number of steps (batches of samples)
             to yield from `generator` before declaring one epoch
             finished and starting the next epoch. It should typically
-            be equal to the number of unique samples of your dataset
+            be equal to the number of samples of your dataset
             divided by the batch size.
+            Optional for `Sequence`: if unspecified, will use
+            the `len(generator)` as a number of steps.
         epochs: Integer, total number of iterations on the data.
             Note that in conjunction with initial_epoch, the parameter
             epochs is to be understood as "final epoch". The model is
@@ -1118,8 +1099,10 @@ class Sequential(Model):
             is a generator.
             Number of steps to yield from validation generator
             at the end of every epoch. It should typically
-            be equal to the number of unique samples of your
+            be equal to the number of samples of your
             validation dataset divided by the batch size.
+            Optional for `Sequence`: if unspecified, will use
+            the `len(validation_data)` as a number of steps.
         class_weight: Dictionary mapping class indices to a weight
             for the class.
         max_queue_size: Maximum size for the generator queue
@@ -1195,7 +1178,7 @@ class Sequential(Model):
 
   def evaluate_generator(self,
                          generator,
-                         steps,
+                         steps=None,
                          max_queue_size=10,
                          workers=1,
                          use_multiprocessing=False,
@@ -1210,6 +1193,8 @@ class Sequential(Model):
             or (inputs, targets, sample_weights)
         steps: Total number of steps (batches of samples)
             to yield from `generator` before stopping.
+            Optional for `Sequence`: if unspecified, will use
+            the `len(generator)` as a number of steps.
         max_queue_size: maximum size for the generator queue
         workers: maximum number of processes to spin up
         use_multiprocessing: if True, use process based threading.
@@ -1254,7 +1239,7 @@ class Sequential(Model):
 
   def predict_generator(self,
                         generator,
-                        steps,
+                        steps=None,
                         max_queue_size=10,
                         workers=1,
                         use_multiprocessing=False,
@@ -1269,6 +1254,8 @@ class Sequential(Model):
         generator: generator yielding batches of input samples.
         steps: Total number of steps (batches of samples)
             to yield from `generator` before stopping.
+            Optional for `Sequence`: if unspecified, will use
+            the `len(generator)` as a number of steps.
         max_queue_size: maximum size for the generator queue
         workers: maximum number of processes to spin up
         use_multiprocessing: if True, use process based threading.

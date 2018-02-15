@@ -107,11 +107,26 @@ class VariableOpsTest(XLATestCase):
                  [[[30, 31, 32], [33, 34, 35]], [[0, 1, 2], [3, 4, 5]]]],
             ).astype(dtype), sess.run(x))
 
+  def testShape(self):
+    for dtype in self.numeric_types:
+      init = np.ones([2, 3]).astype(dtype)
+      with self.test_session() as session, self.test_scope():
+        v = resource_variable_ops.ResourceVariable(init)
+        session.run(variables.variables_initializer([v]))
+        h = v.handle
+        s32, s64 = session.run([
+            resource_variable_ops.variable_shape(h),
+            resource_variable_ops.variable_shape(h, out_type=dtypes.int64)
+        ])
+        self.assertEqual(s32.dtype, np.int32)
+        self.assertEqual(s64.dtype, np.int64)
+        self.assertAllEqual(s32, [2, 3])
+        self.assertAllEqual(s64, [2, 3])
+
   def testReadWrite(self):
     """Tests initialization, reading, and writing a resource variable."""
     for dtype in self.numeric_types:
       with self.test_session() as session:
-        print(ops.get_default_graph())
         with self.test_scope():
           with variable_scope.variable_scope("ascope", use_resource=True):
             x = variable_scope.get_variable(

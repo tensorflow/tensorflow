@@ -184,11 +184,12 @@ class ResourceVariable(variables.Variable):
     assign = a.assign(2.0)
     with tf.control_dependencies([assign]):
       b = a.read_value()
-
-    other_assign = a.assign(3.0)
+    with tf.control_dependencies([b]):
+      other_assign = a.assign(3.0)
     with tf.control_dependencies([other_assign]):
-      tf.Print(b, [b]).run()  # Will print 2.0 because the value was read before
-                              # other_assign ran.
+      # Will print 2.0 because the value was read before other_assign ran. If
+      # `a` was a tf.Variable instead, 2.0 or 3.0 could be printed.
+      tf.Print(b, [b]).eval()
   ```
 
   To enforce these consistency properties tf.ResourceVariable might make more
@@ -275,10 +276,6 @@ class ResourceVariable(variables.Variable):
           dtype=dtype,
           constraint=constraint)
 
-  # LINT.IfChange
-  # _VariableFromResource inherits from ResourceVariable but
-  # doesn't call the constructor, so changes here might need to be reflected
-  # there.
   # pylint: disable=unused-argument
   def _init_from_args(self,
                       initial_value=None,
@@ -351,11 +348,11 @@ class ResourceVariable(variables.Variable):
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
     self._save_slice_info = None
-    self._in_graph_mode = context.in_graph_mode()
-    # Save the graph's container prefix for error checking. Reading the value of
-    # the ResourceVariable from another Graph in Eager mode is an error.
-    self._container_prefix = ops.get_default_graph()._container_prefix  # pylint: disable=protected-access
-    with ops.control_dependencies(None):
+    # Store the graph key so optimizers know how to only retrieve variables from
+    # this graph.
+    self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    with ops.init_scope():
+      self._in_graph_mode = context.in_graph_mode()
       with ops.name_scope(name, "Variable", []
                           if init_from_fn else [initial_value]) as name:
         # pylint: disable=protected-access
@@ -437,7 +434,8 @@ class ResourceVariable(variables.Variable):
               self._initializer_op = (
                   gen_resource_variable_ops.assign_variable_op(
                       self._handle,
-                      self._build_initializer_expr(initial_value),
+                      self._try_guard_against_uninitialized_dependencies(
+                          initial_value),
                       name=n))
           with ops.name_scope("Read"), ops.colocate_with(self._handle):
             # Manually assign reads to the handle's device to avoid log
@@ -505,6 +503,14 @@ class ResourceVariable(variables.Variable):
     self._initializer_op = g.as_graph_element(
         ops.prepend_name_scope(
             variable_def.initializer_name, import_scope=import_scope))
+    # Check whether initial_value_name exists for backwards compatibility.
+    if (hasattr(variable_def, "initial_value_name") and
+        variable_def.initial_value_name):
+      self._initial_value = g.as_graph_element(
+          ops.prepend_name_scope(variable_def.initial_value_name,
+                                 import_scope=import_scope))
+    else:
+      self._initial_value = None
     if variable_def.snapshot_name:
       self._cached_value = g.as_graph_element(
           ops.prepend_name_scope(
@@ -521,7 +527,6 @@ class ResourceVariable(variables.Variable):
     self._dtype = dtypes.as_dtype(self._handle.op.get_attr("dtype"))
     self._graph_element = self.value()
     self._constraint = None
-  # LINT.ThenChange(//tensorflow/python/eager/graph_callable.py)
 
   def __nonzero__(self):
     return self.__bool__()
@@ -665,15 +670,7 @@ class ResourceVariable(variables.Variable):
 
     Returns:
      the read operation.
-    Raises:
-      ValueError: if the ResourceVariable was created in another isolation
-        environment or graph.
     """
-    if (not self._in_graph_mode and
-        self._container_prefix != ops.get_default_graph()._container_prefix):  # pylint: disable=protected-access
-      raise ValueError(
-          "Attempted to read a variable from another isolation environment"
-          " or Graph")
     with ops.name_scope("Read"):
       # Ensure we read the variable in the same device as the handle.
       with ops.device(self._handle_device):
@@ -710,6 +707,12 @@ class ResourceVariable(variables.Variable):
       var_def = variable_pb2.VariableDef()
       var_def.variable_name = ops.strip_name_scope(self.handle.name,
                                                    export_scope)
+      if self._initial_value is not None:
+        # This is inside an if-statement for backwards compatibility, since
+        # self._initial_value might be None for variables constructed from old
+        # protos.
+        var_def.initial_value_name = ops.strip_name_scope(
+            self._initial_value.name, export_scope)
       var_def.initializer_name = ops.strip_name_scope(self.initializer.name,
                                                       export_scope)
       if self._cached_value is not None:
@@ -780,38 +783,38 @@ class ResourceVariable(variables.Variable):
     # TODO(apassos): this here and below is not atomic. Consider making it
     # atomic if there's a way to do so without a performance cost for those who
     # don't need it.
-    with ops.control_dependencies([
-        gen_resource_variable_ops.assign_sub_variable_op(
-            self.handle,
-            ops.convert_to_tensor(delta, dtype=self.dtype),
-            name=name)
-    ]):
-      return self.read_value()
+    return self._lazy_read(gen_resource_variable_ops.assign_sub_variable_op(
+        self.handle,
+        ops.convert_to_tensor(delta, dtype=self.dtype),
+        name=name))
 
   def assign_add(self, delta, use_locking=None, name=None):
-    with ops.control_dependencies([
-        gen_resource_variable_ops.assign_add_variable_op(
-            self.handle,
-            ops.convert_to_tensor(delta, dtype=self.dtype),
-            name=name)
-    ]):
-      return self.read_value()
+    return self._lazy_read(gen_resource_variable_ops.assign_add_variable_op(
+        self.handle,
+        ops.convert_to_tensor(delta, dtype=self.dtype),
+        name=name))
+
+  def _lazy_read(self, op):
+    if hasattr(self, "_trainable") and self._trainable:
+      tape.watch_variable(self)
+    return _UnreadVariable(
+        self._handle, self.dtype, self._handle_device, self._shape,
+        self._in_graph_mode,
+        self._handle_deleter if not self._in_graph_mode else None, op)
 
   def assign(self, value, use_locking=None, name=None):
     value_tensor = ops.convert_to_tensor(value, dtype=self.dtype)
     self._shape.assert_is_compatible_with(value_tensor.shape)
-    with ops.control_dependencies([
+    return self._lazy_read(
         gen_resource_variable_ops.assign_variable_op(
             self.handle,
             value_tensor,
-            name=name)
-    ]):
-      return self.read_value()
+            name=name))
 
   def _strided_slice_assign(self, begin, end, strides, value, name, begin_mask,
                             end_mask, ellipsis_mask, new_axis_mask,
                             shrink_axis_mask):
-    with ops.control_dependencies([
+    return self._lazy_read(
         gen_array_ops.resource_strided_slice_assign(
             ref=self.handle,
             begin=begin,
@@ -823,9 +826,12 @@ class ResourceVariable(variables.Variable):
             end_mask=end_mask,
             ellipsis_mask=ellipsis_mask,
             new_axis_mask=new_axis_mask,
-            shrink_axis_mask=shrink_axis_mask)
-    ]):
-      return self.value()
+            shrink_axis_mask=shrink_axis_mask))
+
+  def __int__(self):
+    if self.dtype != dtypes.int32 and self.dtype != dtypes.int64:
+      raise TypeError("Non-integer variable can't be converted to integer.")
+    return int(self.value().numpy())
 
   def _dense_var_to_tensor(self, dtype=None, name=None, as_ref=False):
     del name
@@ -838,30 +844,105 @@ class ResourceVariable(variables.Variable):
       return self.value()
 
   def __iadd__(self, unused_other):
-    raise RuntimeError("Variable += value not supported.")
+    raise RuntimeError("Variable += value not supported. Use "
+                       "variable.assign_add(value) to modify the variable "
+                       "value and variable = variable + value to get a new "
+                       "Tensor object.")
 
   def __isub__(self, unused_other):
-    raise RuntimeError("Variable -= value not supported.")
+    raise RuntimeError("Variable -= value not supported. Use "
+                       "variable.assign_sub(value) to modify the variable "
+                       "value and variable = variable - value to get a new "
+                       "Tensor object.")
 
   def __imul__(self, unused_other):
-    raise RuntimeError("Variable *= value not supported.")
+    raise RuntimeError("Variable *= value not supported. Use "
+                       "variable.assign_mul(value) to modify the variable "
+                       "value and variable = variable * value to get a new "
+                       "Tensor object.")
 
   def __idiv__(self, unused_other):
-    raise RuntimeError("Variable /= value not supported.")
+    raise RuntimeError("Variable /= value not supported. Use "
+                       "variable.assign_div(value) to modify the variable "
+                       "value and variable = variable / value to get a new "
+                       "Tensor object.")
 
   def __itruediv__(self, unused_other):
-    raise RuntimeError("Variable /= value not supported.")
+    raise RuntimeError("Variable /= value not supported. Use "
+                       "variable.assign_div(value) to modify the variable "
+                       "value and variable = variable / value to get a new "
+                       "Tensor object.")
 
   def __irealdiv__(self, unused_other):
-    raise RuntimeError("Variable /= value not supported.")
+    raise RuntimeError("Variable /= value not supported. Use "
+                       "variable.assign_div(value) to modify the variable "
+                       "value and variable = variable / value to get a new "
+                       "Tensor object.")
 
   def __ipow__(self, unused_other):
-    raise RuntimeError("Variable **= value not supported.")
+    raise RuntimeError("Variable **= value not supported. Use "
+                       "value and variable = variable ** value to get a new "
+                       "Tensor object.")
 
 
 def _dense_var_to_tensor(var, dtype=None, name=None, as_ref=False):
   return var._dense_var_to_tensor(dtype=dtype, name=name, as_ref=as_ref)  # pylint: disable=protected-access
 
+
+class _UnreadVariable(ResourceVariable):
+  """Represents a future for a read of a variable.
+
+  Pretends to be the tensor if anyone looks.
+  """
+
+  def __init__(self, handle, dtype, handle_device,  # pylint: disable=super-init-not-called
+               shape, in_graph_mode, deleter, parent_op):
+    # We do not call super init on purpose.
+    self._trainable = False
+    self._save_slice_info = None
+    self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+    self._in_graph_mode = in_graph_mode
+    self._handle = handle
+    self._handle_device = handle_device
+    self._shape = shape
+    self._initial_value = None
+    if isinstance(self._handle, ops.EagerTensor):
+      self._handle_name = ""
+    else:
+      self._handle_name = self._handle.name
+    self._dtype = dtype
+    self._constraint = None
+    self._cached_value = None
+    self._is_initialized_op = None
+    self._initializer_op = None
+    self._parent_op = parent_op
+    if context.in_graph_mode():
+      self._graph_element = self.read_value()
+    else:
+      self._graph_element = None
+    self._handle_deleter = deleter
+
+  def value(self):
+    return self._read_variable_op()
+
+  def read_value(self):
+    return self._read_variable_op()
+
+  def _read_variable_op(self):
+    with ops.control_dependencies([self._parent_op]):
+      return gen_resource_variable_ops.read_variable_op(self._handle,
+                                                        self._dtype)
+
+  def set_shape(self, shape):
+    self._shape = shape
+
+  @property
+  def op(self):
+    """The op for this variable."""
+    return self._parent_op
+
+ops.register_tensor_conversion_function(_UnreadVariable, _dense_var_to_tensor)
+ops.register_dense_tensor_like_type(_UnreadVariable)
 
 # Register a conversion function which reads the value of the variable,
 # allowing instances of the class to be used as tensors.
@@ -887,26 +968,14 @@ def _ReadGrad(_, grad):
 def _GatherGrad(op, grad):
   """Gradient for gather op."""
   # Build appropriately shaped IndexedSlices
-  # Walk graph back until the original handle is found.
-  # TODO(apassos): more robust way of getting the shape.
-  # TODO(apassos): implement this for EAGER mode.
-  if context.in_eager_mode():
-    dense_shape = gen_resource_variable_ops.variable_shape(op.inputs[0])
-    return (ops.IndexedSlices(grad,
-                              op.inputs[1],
-                              dense_shape=dense_shape),
-            None)
   handle = op.inputs[0]
-  while handle.op.type != "VarHandleOp":
-    handle = handle.op.inputs[0]
-  params_shape = ops.convert_to_tensor(
-      tensor_shape.TensorShape(handle.op.get_attr("shape")))
   indices = op.inputs[1]
+  params_shape = gen_resource_variable_ops.variable_shape(handle)
   size = array_ops.expand_dims(array_ops.size(indices), 0)
   values_shape = array_ops.concat([size, params_shape[1:]], 0)
   values = array_ops.reshape(grad, values_shape)
   indices = array_ops.reshape(indices, size)
-  return [ops.IndexedSlices(values, indices, params_shape), None]
+  return (ops.IndexedSlices(values, indices, params_shape), None)
 
 
 def _to_proto_fn(v, export_scope=None):
@@ -946,3 +1015,9 @@ ops.register_proto_function(
     proto_type=variable_pb2.VariableDef,
     to_proto=_to_proto_fn,
     from_proto=_from_proto_fn)
+
+
+def is_resource_variable(var):
+  """"Returns True if `var` is to be considered a ResourceVariable."""
+  return isinstance(var, ResourceVariable) or hasattr(
+      var, "_should_act_as_resource_variable")

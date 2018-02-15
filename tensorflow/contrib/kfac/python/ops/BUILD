@@ -38,6 +38,7 @@ py_library(
         ":utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:special_math_ops",
@@ -64,6 +65,7 @@ py_library(
     srcs = ["loss_functions.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:tensor_shape",
@@ -195,7 +197,9 @@ py_library(
     srcs = ["utils.py"],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/contrib/tpu",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:gradients",

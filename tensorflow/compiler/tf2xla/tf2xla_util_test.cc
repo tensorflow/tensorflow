@@ -58,24 +58,14 @@ TEST(ValidateConfig, Good) {
 
 TEST(ValidateConfig, BadEmpty) {
   tf2xla::Config config;
-  ExpectErrorContains(ValidateConfig(config),
-                      "feeds and fetches must be specified");
-}
-
-TEST(ValidateConfig, BadNoFeed) {
-  tf2xla::Config config;
-  tf2xla::Fetch* fetch = config.add_fetch();
-  fetch->mutable_id()->set_node_name("foo");
-  ExpectErrorContains(ValidateConfig(config),
-                      "feeds and fetches must be specified");
+  ExpectErrorContains(ValidateConfig(config), "fetches must be specified");
 }
 
 TEST(ValidateConfig, BadNoFetch) {
   tf2xla::Config config;
   tf2xla::Feed* feed = config.add_feed();
   feed->mutable_id()->set_node_name("foo");
-  ExpectErrorContains(ValidateConfig(config),
-                      "feeds and fetches must be specified");
+  ExpectErrorContains(ValidateConfig(config), "fetches must be specified");
 }
 
 TEST(ValidateConfig, BadFeedNodeName) {

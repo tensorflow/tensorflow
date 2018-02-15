@@ -89,6 +89,7 @@ from tensorflow.python.ops import gen_state_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_state_ops import *
+from tensorflow.python.util.tf_export import tf_export
 # pylint: enable=wildcard-import
 
 
@@ -189,6 +190,7 @@ def is_variable_initialized(ref, name=None):
                                                            name=name)
 
 
+@tf_export("assign_sub")
 def assign_sub(ref, value, use_locking=None, name=None):
   """Update 'ref' by subtracting 'value' from it.
 
@@ -217,6 +219,7 @@ def assign_sub(ref, value, use_locking=None, name=None):
   return ref.assign_sub(value)
 
 
+@tf_export("assign_add")
 def assign_add(ref, value, use_locking=None, name=None):
   """Update 'ref' by adding 'value' to it.
 
@@ -245,6 +248,7 @@ def assign_add(ref, value, use_locking=None, name=None):
   return ref.assign_add(value)
 
 
+@tf_export("assign")
 def assign(ref, value, validate_shape=None, use_locking=None, name=None):
   """Update 'ref' by assigning 'value' to it.
 
@@ -274,9 +278,10 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
     return gen_state_ops.assign(
         ref, value, use_locking=use_locking, name=name,
         validate_shape=validate_shape)
-  return ref.assign(value)
+  return ref.assign(value, name=name)
 
 
+@tf_export("count_up_to")
 def count_up_to(ref, limit, name=None):
   r"""Increments 'ref' until it reaches 'limit'.
 
@@ -299,6 +304,7 @@ def count_up_to(ref, limit, name=None):
       ref.handle, limit, T=ref.dtype, name=name)
 
 
+@tf_export("scatter_update")
 def scatter_update(ref, indices, updates, use_locking=True, name=None):
   # pylint: disable=line-too-long
   r"""Applies sparse updates to a variable reference.
@@ -347,5 +353,70 @@ def scatter_update(ref, indices, updates, use_locking=True, name=None):
   if ref.dtype._is_ref_dtype:
     return gen_state_ops.scatter_update(ref, indices, updates,
                                         use_locking=use_locking, name=name)
-  return gen_resource_variable_ops.resource_scatter_update(
-      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype), name=name)
+  return ref._lazy_read(gen_resource_variable_ops.resource_scatter_update(  # pylint: disable=protected-access
+      ref.handle, indices, ops.convert_to_tensor(updates, ref.dtype),
+      name=name))
+
+
+@tf_export("scatter_nd_update")
+def scatter_nd_update(ref, indices, updates, use_locking=True, name=None):
+  r"""Applies sparse `updates` to individual values or slices in a Variable.
+
+  `ref` is a `Tensor` with rank `P` and `indices` is a `Tensor` of rank `Q`.
+
+  `indices` must be integer tensor, containing indices into `ref`.
+  It must be shape `[d_0, ..., d_{Q-2}, K]` where `0 < K <= P`.
+
+  The innermost dimension of `indices` (with length `K`) corresponds to
+  indices into elements (if `K = P`) or slices (if `K < P`) along the `K`th
+  dimension of `ref`.
+
+  `updates` is `Tensor` of rank `Q-1+P-K` with shape:
+
+  ```
+  [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+  ```
+
+  For example, say we want to update 4 scattered elements to a rank-1 tensor to
+  8 elements. In Python, that update would look like this:
+
+  ```python
+      ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+      indices = tf.constant([[4], [3], [1] ,[7]])
+      updates = tf.constant([9, 10, 11, 12])
+      update = tf.scatter_nd_update(ref, indices, updates)
+      with tf.Session() as sess:
+        print sess.run(update)
+  ```
+
+  The resulting update to ref would look like this:
+
+      [1, 11, 3, 10, 9, 6, 7, 12]
+
+  See @{tf.scatter_nd} for more details about how to make updates to
+  slices.
+
+  Args:
+    ref: A Variable.
+    indices: A `Tensor`. Must be one of the following types: `int32`, `int64`.
+      A Tensor. Must be one of the following types: int32, int64.
+      A tensor of indices into ref.
+    updates: A `Tensor`. Must have the same type as `ref`.
+      A Tensor. Must have the same type as ref. A tensor of updated
+      values to add to ref.
+    use_locking: An optional `bool`. Defaults to `True`.
+      An optional bool. Defaults to True. If True, the assignment will
+      be protected by a lock; otherwise the behavior is undefined,
+      but may exhibit less contention.
+    name: A name for the operation (optional).
+
+  Returns:
+    The value of the variable after the update.
+  """
+  if ref.dtype._is_ref_dtype:
+    return gen_state_ops.scatter_nd_update(
+        ref, indices, updates, use_locking, name)
+  with ops.control_dependencies([gen_state_ops.resource_scatter_nd_update(
+      ref.handle, indices, ops.convert_to_tensor(updates, dtype=ref.dtype),
+      use_locking, name)]):
+    return ref.read_value()

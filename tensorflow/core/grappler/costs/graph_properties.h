@@ -34,12 +34,19 @@ class TopoQueue;
 // nodes, and potentially a set of nodes to feed.
 class GraphProperties {
  public:
-  // Factory method for creating a GrapplerShapes from a MetaGraphDef.
-  // Returns nullptr if the given meta_graph cannot be converted.
   explicit GraphProperties(const GrapplerItem& item) : item_(item) {}
 
-  Status InferStatically();
+  // Infer the shapes through abstract interpretation. Feed information can be
+  // incorrect so it should be discarded to ensure correctness of the analysis.
+  // However, it can help infer shapes in the fanout of fed nodes (even though
+  // the correctness of these shapes can't be guaranteed), so in some cases
+  // (such as simulation or scheduling) it makes sense of keep these shapes.
+  Status InferStatically(bool assume_valid_feeds);
+  // Infer the shape by running the graph on the specified cluster and recording
+  // the shapes of the processed tensors.
   Status InferDynamically(Cluster* cluster);
+  // Extract the properties from a cost graph. For testing only since there is
+  // no way to ensure that the cost graph match the item.
   Status InferFromCostGraph(const CostGraphDef& cost_graph);
 
   // Stores `item_.graph` with the inferred output shapes to `output_graph_def`.
@@ -65,12 +72,6 @@ class GraphProperties {
       OpInfo::TensorProperties*);
 
  private:
-  // Inputs
-  GrapplerItem item_;
-  std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
-  std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
-  const std::vector<OpInfo::TensorProperties> missing_properties_;
-
   // Merges shapes <shapes_and_types>, determined from an EnqueueV2 node, into
   // <*queue_shapes_and_types>.
   static Status MergeEnqueueShapesAndTypes(
@@ -99,17 +100,31 @@ class GraphProperties {
   static Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
                             const Node* node, bool relax,
                             TopoQueue* new_shapes);
+  // Process a node that is used to feed the model.
+  Status OverwriteFedPorts(
+      SymbolicShapeRefiner* shape_refiner,
+      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
+      const Node* node, TopoQueue* new_shapes) const;
   // Update the shapes for node 'n'. If output shapes for n have changed,
   // enqueue its fanout in 'new_shapes'.
-  static Status UpdateShapes(SymbolicShapeRefiner* shape_refiner, bool relax,
-                             const Node* n, TopoQueue* new_shapes);
+  Status UpdateShapes(
+      SymbolicShapeRefiner* shape_refiner, bool relax,
+      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
+      const Node* n, TopoQueue* new_shapes) const;
   // Propagate the shapes for the nodes enqueued in new_shapes and their
   // transitive fanout until a fixed point is reached.
   Status PropagateShapes(
       SymbolicShapeRefiner* shape_refiner, bool relax, TopoQueue* new_shapes,
       const std::unordered_map<const Node*, std::unordered_set<const Node*>>&
           resources,
+      const std::unordered_map<string, std::unordered_set<int>>& fed_ports,
       int num_loops) const;
+
+  // Data members
+  GrapplerItem item_;
+  std::map<string, std::vector<OpInfo::TensorProperties>> input_properties_;
+  std::map<string, std::vector<OpInfo::TensorProperties>> output_properties_;
+  const std::vector<OpInfo::TensorProperties> missing_properties_;
 };
 
 }  // end namespace grappler

@@ -127,7 +127,7 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
 //
 // NOTE: Recursive user-defined functions are not supported.
 // Maybe we won't support recursive functions at all in TF, because of
-// other maintanabilty issues.
+// other maintainability issues.
 Status ShapeRefiner::InferShapesForFunction(
     const tensorflow::FunctionDef* function_def, bool keep_nested_shapes,
     ExtendedInferenceContext* outer_context) {
@@ -558,6 +558,13 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     return Status::OK();
   }
 
+  if (target_node->type_string() == "PlaceholderWithDefault") {
+    return Status::OK();
+  }
+
+  // TODO(skyewm): more of the filtering applied in input nodes below should be
+  // applied to target_node here
+
   struct NodeAndRecursed {
     Node* new_node = nullptr;
     bool recursed = false;
@@ -604,6 +611,14 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     // Don't constant fold enter/exit currently either, as it's easy to end
     // up with a partial frame.
     if (IsEnter(current_node) || IsExit(current_node)) {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
+    // Placeholders should never be constant folded because their outputs are
+    // fed by the user. Note that "Placeholder" nodes have no inputs so are
+    // handled below.
+    if (current_node->type_string() == "PlaceholderWithDefault") {
       *is_constant_graph = false;
       return Status::OK();
     }

@@ -135,7 +135,7 @@ TEST_F(CallInlinerTest, InlineWithoutRunningPass) {
       HloInstruction::CreateCall(pred, {}, false_computation));
   auto computation = module->AddEntryComputation(call_false_builder.Build());
 
-  TF_ASSERT_OK(CallInliner::Inline(call));
+  TF_ASSERT_OK(CallInliner::Inline(call).status());
   EXPECT_THAT(computation->root_instruction(), op::Constant());
   EXPECT_THAT(computation->root_instruction()->control_successors(),
               ElementsAre(op::Constant()));

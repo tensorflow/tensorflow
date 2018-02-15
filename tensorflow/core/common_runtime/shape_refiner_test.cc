@@ -724,6 +724,25 @@ TEST_F(ShapeRefinerTest, PropagateRange) {
   EXPECT_EQ("[1,4,7,10]", ctx->DebugString(ctx->output(0)));
 }
 
+// Make sure PlaceholderWithDefaults aren't treated as constants.
+TEST_F(ShapeRefinerTest, NoPropagatePlaceholderWithDefault) {
+  Scope root = Scope::NewRootScope();
+  auto constant = ops::Const<int>(root, 2);
+  auto placeholder =
+      ops::PlaceholderWithDefault(root, constant, PartialTensorShape());
+  Node* shape_data;
+  TF_ASSERT_OK(NodeBuilder("Test", "ShapeData")
+                   .Input(placeholder.node())
+                   .Finalize(root.graph(), &shape_data));
+
+  ShapeRefiner m(TF_GRAPH_DEF_VERSION, OpRegistry::Global());
+  TF_ASSERT_OK(m.AddNode(constant.node()));
+  TF_ASSERT_OK(m.AddNode(placeholder.node()));
+  TF_ASSERT_OK(m.AddNode(shape_data));
+  shape_inference::InferenceContext* ic = m.GetContext(shape_data);
+  EXPECT_EQ(ic->DebugString(ic->output(0)), "?");
+}
+
 TEST_F(ShapeRefinerTest, ConstantValueTwoInputsToSameNode) {
   Scope root = Scope::NewRootScope();
   // This node is used as two inputs to 'range'.

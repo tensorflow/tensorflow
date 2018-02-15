@@ -72,8 +72,10 @@ from tensorflow.python.summary.writer.writer_cache import FileWriterCache
 
 from tensorflow.python.util import compat as _compat
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('summary.scalar')
 def scalar(name, tensor, collections=None, family=None):
   """Outputs a `Summary` protocol buffer containing a single scalar value.
 
@@ -102,6 +104,7 @@ def scalar(name, tensor, collections=None, family=None):
   return val
 
 
+@tf_export('summary.image')
 def image(name, tensor, max_outputs=3, collections=None, family=None):
   """Outputs a `Summary` protocol buffer with images.
 
@@ -156,6 +159,7 @@ def image(name, tensor, max_outputs=3, collections=None, family=None):
   return val
 
 
+@tf_export('summary.histogram')
 def histogram(name, values, collections=None, family=None):
   # pylint: disable=line-too-long
   """Outputs a `Summary` protocol buffer with a histogram.
@@ -195,6 +199,7 @@ def histogram(name, values, collections=None, family=None):
   return val
 
 
+@tf_export('summary.audio')
 def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
           family=None):
   # pylint: disable=line-too-long
@@ -242,6 +247,7 @@ def audio(name, tensor, sample_rate, max_outputs=3, collections=None,
   return val
 
 
+@tf_export('summary.merge')
 def merge(inputs, collections=None, name=None):
   # pylint: disable=line-too-long
   """Merges summaries.
@@ -286,12 +292,14 @@ def merge(inputs, collections=None, name=None):
   return val
 
 
-def merge_all(key=_ops.GraphKeys.SUMMARIES):
+@tf_export('summary.merge_all')
+def merge_all(key=_ops.GraphKeys.SUMMARIES, scope=None):
   """Merges all summaries collected in the default graph.
 
   Args:
     key: `GraphKey` used to collect the summaries.  Defaults to
       `GraphKeys.SUMMARIES`.
+    scope: Optional scope used to filter the summary ops, using `re.match`
 
   Returns:
     If no summaries were collected, returns None.  Otherwise returns a scalar
@@ -310,13 +318,14 @@ def merge_all(key=_ops.GraphKeys.SUMMARIES):
     raise RuntimeError(
         'Merging tf.summary.* ops is not compatible with eager execution. '
         'Use tf.contrib.summary instead.')
-  summary_ops = _ops.get_collection(key)
+  summary_ops = _ops.get_collection(key, scope=scope)
   if not summary_ops:
     return None
   else:
     return merge(summary_ops)
 
 
+@tf_export('summary.get_summary_description')
 def get_summary_description(node_def):
   """Given a TensorSummary node_def, retrieve its SummaryDescription.
 

@@ -149,8 +149,9 @@ TEST_F(LSTMOpsTest, BlockLSTMGrad_ShapeFn) {
   INFER_ERROR("must be rank 1", op, "?;?;?;?;?;?;?;?;[1,?]" + suffix);
 
   // Output with all input knowns makes known rank outputs.
-  INFER_OK(op, JoinedCopies("?", 18), "[?,?,?];" + JoinedCopies("[?,?]", 3) +
-                                          ";" + JoinedCopies("[?]", 4));
+  INFER_OK(
+      op, JoinedCopies("?", 18),
+      "[?,?,?];" + JoinedCopies("[?,?]", 3) + ";" + JoinedCopies("[?]", 4));
 
   // Output with copies input shapes to output.
   string input = strings::StrCat("?;[?,?,?];", JoinedCopies("[?,?]", 3), ";",

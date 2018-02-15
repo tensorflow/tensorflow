@@ -61,6 +61,15 @@ XLA_TEST_F(Bfloat16Test, ScalarOperation) {
                                 error_spec_);
 }
 
+XLA_TEST_F(Bfloat16Test, LogOperation) {
+  ComputationBuilder builder(client_, TestName());
+  auto x = builder.ConstantR0<bfloat16>(static_cast<bfloat16>(4.0f));
+  builder.Log(x);
+
+  ComputeAndCompareR0<bfloat16>(&builder, static_cast<bfloat16>(1.387f), {},
+                                error_spec_);
+}
+
 XLA_TEST_F(Bfloat16Test, NegateScalarF16) {
   ComputationBuilder builder(client_, TestName());
   builder.Neg(builder.ConstantR0<bfloat16>(static_cast<bfloat16>(2.1f)));
@@ -88,10 +97,11 @@ XLA_TEST_F(Bfloat16Test, BatchNormTraining) {
   auto tuple = builder.BatchNormTraining(operand, scale, offset,
                                          /*epsilon=*/0.001, kFeatureIndex);
 
-  auto expected = *Literal::MakeTuple(
+  auto expected = Literal::MakeTuple(
       {Literal::CreateR4<bfloat16>(
-           {{{{static_cast<bfloat16>(-1.7f)}, {static_cast<bfloat16>(-2.04f)}},
-             {{static_cast<bfloat16>(0.105f)}, {static_cast<bfloat16>(0.65f)}}},
+           {{{{static_cast<bfloat16>(-1.6875f)},
+              {static_cast<bfloat16>(-2.04f)}},
+             {{static_cast<bfloat16>(0.105f)}, {static_cast<bfloat16>(0.66f)}}},
             {{{static_cast<bfloat16>(1.89f)}, {static_cast<bfloat16>(3.35f)}},
              {{static_cast<bfloat16>(3.7f)}, {static_cast<bfloat16>(6.04f)}}}})
            .get(),
@@ -102,7 +112,7 @@ XLA_TEST_F(Bfloat16Test, BatchNormTraining) {
            {static_cast<bfloat16>(5), static_cast<bfloat16>(5)})
            .get()});
 
-  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.01));
+  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.01));
 }
 
 XLA_TEST_F(Bfloat16Test, BatchNormGrad) {
@@ -130,7 +140,7 @@ XLA_TEST_F(Bfloat16Test, BatchNormGrad) {
   builder.BatchNormGrad(operand, scale, mean, var, grad_output,
                         /*epsilon=*/0.0, kFeatureIndex);
 
-  auto expected = *Literal::MakeTuple(
+  auto expected = Literal::MakeTuple(
       {Literal::CreateR4<bfloat16>(
            {{{{static_cast<bfloat16>(-3.f)}, {static_cast<bfloat16>(-3.f)}},
              {{static_cast<bfloat16>(-1.f)}, {static_cast<bfloat16>(-1.f)}}},
@@ -144,7 +154,7 @@ XLA_TEST_F(Bfloat16Test, BatchNormGrad) {
            {static_cast<bfloat16>(16), static_cast<bfloat16>(20)})
            .get()});
 
-  ComputeAndCompareTuple(&builder, expected, {}, ErrorSpec(0.01));
+  ComputeAndCompareTuple(&builder, *expected, {}, ErrorSpec(0.01));
 }
 
 }  // namespace

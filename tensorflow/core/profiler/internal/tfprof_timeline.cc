@@ -153,10 +153,8 @@ void MemoryTracker::TrackNode(int64 step, const GraphNode* node) {
 
   std::map<int64, int64> allocs;
   for (const auto& alloc : node->node->allocations(step)) {
-    for (const auto& r : alloc.allocation_records()) {
-      allocs[r.alloc_micros()] += r.alloc_bytes();
-      dev.tracked_allocations[r.alloc_micros()] += r.alloc_bytes();
-    }
+    allocs[alloc.alloc_micros()] += alloc.alloc_bytes();
+    dev.tracked_allocations[alloc.alloc_micros()] += alloc.alloc_bytes();
   }
   dev.tracked_allocations[0] += node->node->accelerator_persistent_bytes();
   allocs[0] += node->node->accelerator_persistent_bytes();
@@ -167,9 +165,9 @@ void MemoryTracker::TrackNode(int64 step, const GraphNode* node) {
     last += it->second;
     aggregate_allocs[it->first] = last;
   }
-  int64 end_micros = node->node->lastest_schedule_end_micros(step);
-  if (end_micros > 0 && node->node->allocator_bytes_in_use(step) > 0) {
-    dev.allocations[end_micros] = node->node->allocator_bytes_in_use(step);
+  for (const auto& bytes_in_use : node->node->allocator_bytes_in_use(step)) {
+    if (bytes_in_use.first <= 0) continue;
+    dev.allocations[bytes_in_use.first] = bytes_in_use.second;
   }
 }
 
@@ -265,6 +263,10 @@ void Timeline::GenerateGraphTimeline(const std::vector<GraphNode*>& gnodes) {
     }
   }
   for (const auto& dev : mem_tracker_.devices()) {
+    if (IsPlacedOnCPU(dev.first)) {
+      // TODO(xpan): Maybe also support CPU allocator memory tracking.
+      continue;
+    }
     int64 pid = AllocatePID();
     chrome_formatter_.EmitPID(GetMemoryLaneName(dev.first), pid);
     int64 pid2 = AllocatePID();

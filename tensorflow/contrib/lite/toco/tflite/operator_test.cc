@@ -101,14 +101,12 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<DequantizeOperator>("DEQUANTIZE",
                                           OperatorType::kDequantize);
   CheckSimpleOperator<FloorOperator>("FLOOR", OperatorType::kFloor);
-  CheckSimpleOperator<GatherOperator>("GATHER", OperatorType::kGather);
   CheckSimpleOperator<ReluOperator>("RELU", OperatorType::kRelu);
-  CheckSimpleOperator<Relu1Operator>("RELU1", OperatorType::kRelu1);
+  CheckSimpleOperator<Relu1Operator>("RELU_N1_TO_1", OperatorType::kRelu1);
   CheckSimpleOperator<Relu6Operator>("RELU6", OperatorType::kRelu6);
-  CheckSimpleOperator<ResizeBilinearOperator>("RESIZE_BILINEAR",
-                                              OperatorType::kResizeBilinear);
   CheckSimpleOperator<LogisticOperator>("LOGISTIC", OperatorType::kLogistic);
   CheckSimpleOperator<TanhOperator>("TANH", OperatorType::kTanh);
+  CheckSimpleOperator<ExpOperator>("EXP", OperatorType::kExp);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {
@@ -118,6 +116,15 @@ TEST_F(OperatorTest, BuiltinAdd) {
       SerializeAndDeserialize(GetOperator("ADD", OperatorType::kAdd), op);
   EXPECT_EQ(op.fused_activation_function,
             output_toco_op->fused_activation_function);
+}
+
+TEST_F(OperatorTest, BuiltinMean) {
+  MeanOperator op;
+  op.keep_dims = false;
+
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("MEAN", OperatorType::kMean), op);
+  EXPECT_EQ(op.keep_dims, output_toco_op->keep_dims);
 }
 
 TEST_F(OperatorTest, CustomCast) {
@@ -132,10 +139,10 @@ TEST_F(OperatorTest, CustomCast) {
 
 TEST_F(OperatorTest, CustomConcatenation) {
   ConcatenationOperator op;
-  op.concat_dim = 123;
+  op.axis = 123;
   auto output_toco_op = SerializeAndDeserialize(
       GetOperator("CONCATENATION", OperatorType::kConcatenation), op);
-  EXPECT_EQ(op.concat_dim, output_toco_op->concat_dim);
+  EXPECT_EQ(op.axis, output_toco_op->axis);
 }
 
 TEST_F(OperatorTest, CustomDepthToSpace) {
@@ -165,6 +172,13 @@ TEST_F(OperatorTest, CustomFullyConnected) {
       GetOperator("FULLY_CONNECTED", OperatorType::kFullyConnected), op);
   EXPECT_EQ(op.fused_activation_function,
             output_toco_op->fused_activation_function);
+}
+
+TEST_F(OperatorTest, BuiltinGather) {
+  GatherOperator op;
+  auto output_toco_op =
+      SerializeAndDeserialize(GetOperator("GATHER", OperatorType::kGather), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
 }
 
 TEST_F(OperatorTest, BuiltinL2Pool) {
@@ -316,6 +330,14 @@ TEST_F(OperatorTest, BuiltinMul) {
             output_toco_op->fused_activation_function);
 }
 
+TEST_F(OperatorTest, ResizeBilinear) {
+  ResizeBilinearOperator op;
+  op.align_corners = true;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("RESIZE_BILINEAR", OperatorType::kResizeBilinear), op);
+  EXPECT_EQ(op.align_corners, output_toco_op->align_corners);
+}
+
 TEST_F(OperatorTest, Svdf) {
   SvdfOperator op;
   op.fused_activation_function = FusedActivationFunctionType::kRelu;
@@ -325,6 +347,37 @@ TEST_F(OperatorTest, Svdf) {
   EXPECT_EQ(op.fused_activation_function,
             output_toco_op->fused_activation_function);
   EXPECT_EQ(op.rank, output_toco_op->rank);
+}
+
+TEST_F(OperatorTest, Squeeze) {
+  SqueezeOperator op;
+  op.squeeze_dims = {-2, -3, 4, 1, 4};
+
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("SQUEEZE", OperatorType::kSqueeze), op);
+  EXPECT_EQ(op.squeeze_dims, output_toco_op->squeeze_dims);
+}
+
+TEST_F(OperatorTest, StridedSlice) {
+  StridedSliceOperator op;
+
+  op.begin_mask = 1;
+  op.end_mask = 2;
+  op.ellipsis_mask = 1;
+  op.new_axis_mask = 1;
+  op.shrink_axis_mask = 2;
+
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("STRIDED_SLICE", OperatorType::kStridedSlice), op);
+  EXPECT_EQ(op.start_indices, output_toco_op->start_indices);
+  EXPECT_EQ(op.stop_indices, output_toco_op->stop_indices);
+  EXPECT_EQ(op.strides, output_toco_op->strides);
+  EXPECT_EQ(op.begin_mask, output_toco_op->begin_mask);
+  EXPECT_EQ(op.end_mask, output_toco_op->end_mask);
+  EXPECT_EQ(op.end_mask, output_toco_op->end_mask);
+  EXPECT_EQ(op.ellipsis_mask, output_toco_op->ellipsis_mask);
+  EXPECT_EQ(op.new_axis_mask, output_toco_op->new_axis_mask);
+  EXPECT_EQ(op.shrink_axis_mask, output_toco_op->shrink_axis_mask);
 }
 
 TEST_F(OperatorTest, TensorFlowUnsupported) {

@@ -127,11 +127,11 @@ inline tensorflow::string* TfCheckOpHelper(::tensorflow::Status v,
   return TfCheckOpHelperOutOfLine(v, msg);
 }
 
-#define TF_DO_CHECK_OK(val, level)                  \
-  while (auto _result = TfCheckOpHelper(val, #val)) \
-    LOG(level) << *(_result)
+#define TF_DO_CHECK_OK(val, level)                                \
+  while (auto _result = ::tensorflow::TfCheckOpHelper(val, #val)) \
+  LOG(level) << *(_result)
 
-#define TF_CHECK_OK(val)  TF_DO_CHECK_OK(val, FATAL)
+#define TF_CHECK_OK(val) TF_DO_CHECK_OK(val, FATAL)
 #define TF_QCHECK_OK(val) TF_DO_CHECK_OK(val, QFATAL)
 
 // DEBUG only version of TF_CHECK_OK.  Compiler still parses 'val' even in opt

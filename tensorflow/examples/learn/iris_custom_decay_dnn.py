@@ -46,12 +46,8 @@ def my_model(features, labels, mode):
     }
     return tf.estimator.EstimatorSpec(mode, predictions=predictions)
 
-  # Convert the labels to a one-hot tensor of shape (length of features, 3) and
-  # with a on-value of 1 for each one-hot vector of length 3.
-  onehot_labels = tf.one_hot(labels, 3, 1, 0)
   # Compute loss.
-  loss = tf.losses.softmax_cross_entropy(
-      onehot_labels=onehot_labels, logits=logits)
+  loss = tf.losses.sparse_softmax_cross_entropy(labels=labels, logits=logits)
 
   # Create training op with exponentially decaying learning rate.
   if mode == tf.estimator.ModeKeys.TRAIN:

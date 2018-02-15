@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
+# pylint: disable=invalid-name
+# pylint: disable=unused-import
 """Inception-ResNet V2 model for Keras.
 
 # Reference
@@ -23,10 +25,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.applications import imagenet_utils
 from tensorflow.python.keras._impl.keras.applications.imagenet_utils import _obtain_input_shape
-from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions  # pylint: disable=unused-import
+from tensorflow.python.keras._impl.keras.applications.imagenet_utils import decode_predictions
 from tensorflow.python.keras._impl.keras.engine.topology import get_source_inputs
 from tensorflow.python.keras._impl.keras.layers import Activation
 from tensorflow.python.keras._impl.keras.layers import AveragePooling2D
@@ -41,10 +45,14 @@ from tensorflow.python.keras._impl.keras.layers import Lambda
 from tensorflow.python.keras._impl.keras.layers import MaxPooling2D
 from tensorflow.python.keras._impl.keras.models import Model
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
+
 
 BASE_WEIGHT_URL = 'https://github.com/fchollet/deep-learning-models/releases/download/v0.7/'
 
 
+@tf_export('keras.applications.inception_resnet_v2.preprocess_input')
 def preprocess_input(x):
   """Preprocesses a numpy array encoding a batch of images.
 
@@ -114,7 +122,8 @@ def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
       scale: scaling factor to scale the residuals (i.e., the output of
           passing `x` through an inception module) before adding them
           to the shortcut branch. Let `r` be the output from the residual
-          branch, the output of this block will be `x + scale * r`.
+            branch,
+          the output of this block will be `x + scale * r`.
       block_type: `'block35'`, `'block17'` or `'block8'`, determines
           the network structure in the residual branch.
       block_idx: an `int` used for generating layer names. The Inception-ResNet
@@ -126,8 +135,7 @@ def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
           will have `block_type='block35', block_idx=0`, ane the layer names
             will have
           a common prefix `'block35_0'`.
-      activation: activation function to use at the end of the block
-          (see [activations](../activations.md)).
+      activation: activation function to use at the end of the block.
           When `activation=None`, no activation is applied
           (i.e., "linear" activation: `a(x) = x`).
 
@@ -176,6 +184,7 @@ def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
 
   x = Lambda(
       lambda inputs, scale: inputs[0] + inputs[1] * scale,
+      output_shape=K.int_shape(x)[1:],
       arguments={'scale': scale},
       name=block_name)([x, up])
   if activation is not None:
@@ -183,7 +192,9 @@ def inception_resnet_block(x, scale, block_type, block_idx, activation='relu'):
   return x
 
 
-def InceptionResNetV2(include_top=True,  # pylint: disable=invalid-name
+@tf_export('keras.applications.InceptionResNetV2',
+           'keras.applications.inception_resnet_v2.InceptionResNetV2')
+def InceptionResNetV2(include_top=True,
                       weights='imagenet',
                       input_tensor=None,
                       input_shape=None,
@@ -208,8 +219,9 @@ def InceptionResNetV2(include_top=True,  # pylint: disable=invalid-name
   Arguments:
       include_top: whether to include the fully-connected
           layer at the top of the network.
-      weights: one of `None` (random initialization)
-          or `'imagenet'` (pre-training on ImageNet).
+      weights: one of `None` (random initialization),
+            'imagenet' (pre-training on ImageNet),
+            or the path to the weights file to be loaded.
       input_tensor: optional Keras tensor (i.e. output of `layers.Input()`)
           to use as image input for the model.
       input_shape: optional shape tuple, only to be specified
@@ -239,10 +251,11 @@ def InceptionResNetV2(include_top=True,  # pylint: disable=invalid-name
       ValueError: in case of invalid argument for `weights`,
           or invalid input shape.
   """
-  if weights not in {'imagenet', None}:
+  if not (weights in {'imagenet', None} or os.path.exists(weights)):
     raise ValueError('The `weights` argument should be either '
-                     '`None` (random initialization) or `imagenet` '
-                     '(pre-training on ImageNet).')
+                     '`None` (random initialization), `imagenet` '
+                     '(pre-training on ImageNet), '
+                     'or the path to the weights file to be loaded.')
 
   if weights == 'imagenet' and include_top and classes != 1000:
     raise ValueError('If using `weights` as imagenet with `include_top`'
@@ -365,5 +378,7 @@ def InceptionResNetV2(include_top=True,  # pylint: disable=invalid-name
           cache_subdir='models',
           file_hash='d19885ff4a710c122648d3b5c3b684e4')
     model.load_weights(weights_path)
+  elif weights is not None:
+    model.load_weights(weights)
 
   return model

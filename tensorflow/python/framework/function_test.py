@@ -19,12 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import re
+import sys
 import time
 
 import numpy as np
 
 from tensorflow.core.framework import function_pb2
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -83,6 +85,21 @@ class FunctionTest(test.TestCase):
       self.assertEqual("MyIdentity", call.op.name)
       with session.Session() as sess:
         self.assertAllEqual([18.0], sess.run(call))
+
+  def testIdentityImplicitDeref(self):
+
+    @function.Defun(dtypes.float32, func_name="MyIdentity")
+    def MyIdentityFunc(a):
+      return a
+
+    with ops.Graph().as_default():
+      var = variables.Variable([18.0])
+      call = MyIdentityFunc(var._ref())  # pylint: disable=protected-access
+      self.assertEqual("MyIdentity", call.op.name)
+      for cfg in _OptimizerOptions():
+        with session.Session(config=cfg) as sess:
+          sess.run(var.initializer)
+          self.assertAllEqual([18.0], sess.run(call))
 
   def testIdentityOutputName(self):
 
@@ -450,13 +467,17 @@ class FunctionTest(test.TestCase):
                                          lambda y: AssertFail(y), [x])
       # pylint: enable=unnecessary-lambda
 
+    rewriter_config = rewriter_config_pb2.RewriterConfig(
+        dependency_optimization=rewriter_config_pb2.RewriterConfig.OFF)
     # Enables inlining.
-    config = config_pb2.ConfigProto(graph_options=config_pb2.GraphOptions(
-        optimizer_options=config_pb2.OptimizerOptions(
-            opt_level=config_pb2.OptimizerOptions.L0,
-            do_common_subexpression_elimination=True,
-            do_function_inlining=True,
-            do_constant_folding=True)))
+    config = config_pb2.ConfigProto(
+        graph_options=config_pb2.GraphOptions(
+            optimizer_options=config_pb2.OptimizerOptions(
+                opt_level=config_pb2.OptimizerOptions.L0,
+                do_common_subexpression_elimination=True,
+                do_function_inlining=True,
+                do_constant_folding=True),
+            rewrite_options=rewriter_config))
 
     with session.Session(config=config) as sess:
       # Since the 'False' branch is not taken, the assertion should not fire.
@@ -724,6 +745,38 @@ class FunctionTest(test.TestCase):
         # NOTE: We still do not support capturing control deps.
         _ = Foo(x)
 
+  def testCaptureInWhileLoop(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+
+      @function.Defun()
+      def Foo():
+        return control_flow_ops.while_loop(lambda i: i < 10,
+                                           lambda i: i + x,
+                                           [0])
+      y = Foo()
+
+    with self.test_session(graph=g) as sess:
+      self.assertEqual(sess.run(y), 10)
+
+  def testCaptureInCond(self):
+    g = ops.Graph()
+    with g.as_default():
+      x = constant_op.constant(1)
+
+      @function.Defun(dtypes.bool)
+      def Foo(pred):
+        return control_flow_ops.cond(pred,
+                                     lambda: x,
+                                     lambda: x + 1)
+      y = Foo(True)
+      z = Foo(False)
+
+    with self.test_session(graph=g) as sess:
+      self.assertEqual(sess.run(y), 1)
+      self.assertEqual(sess.run(z), 2)
+
   def testStableName(self):
 
     @function.Defun()
@@ -733,8 +786,12 @@ class FunctionTest(test.TestCase):
     # We added more randomness to function names in C API.
     # TODO(iga): Remove this if statement when we switch to C API.
     if ops._USE_C_API:  # pylint: disable=protected-access
-      self.assertEqual("Foo_aCYSbwBkR5A",
-                       Foo.instantiate([dtypes.float32] * 3).name)
+      if sys.byteorder == "big":
+        self.assertEqual("Foo_kEdkAG8SJvg",
+                         Foo.instantiate([dtypes.float32] * 3).name)
+      else:
+        self.assertEqual("Foo_aCYSbwBkR5A",
+                         Foo.instantiate([dtypes.float32] * 3).name)
     else:
       self.assertEqual("Foo_d643acf7",
                        Foo.instantiate([dtypes.float32] * 3).name)
@@ -881,6 +938,94 @@ class FunctionTest(test.TestCase):
       self.assertAllClose(
           np.array([1.0, 0.0]).astype(np.float32),
           sess.run(dinp, {inp: x}))
+
+  def testFunctionMarkedStateful(self):
+
+    @function.Defun(dtypes.int32, dtypes.float32)
+    def Foo(t, x):
+      return x[t]
+
+    @function.Defun(dtypes.int64)
+    def Bar(x):
+      return x
+
+    # NOTE(mrry): All functions are currently considered stateless by the
+    # runtime, so we simulate a "stateful" function.
+    # TODO(b/70565970): Remove this hack when we are able to build stateful
+    # functions using the API.
+    # pylint: disable=protected-access
+    Foo._signature.is_stateful = True
+    Bar._signature.is_stateful = True
+    # pylint: enable=protected-access
+
+    result_1 = Foo(3, [1.0, 2.0, 3.0, 4.0])
+    result_2 = Bar(constant_op.constant(100, dtype=dtypes.int64))
+
+    with session.Session() as sess:
+      self.assertEqual(4.0, sess.run(result_1))
+      self.assertEqual(100, sess.run(result_2))
+      self.assertEqual((4.0, 100), sess.run((result_1, result_2)))
+
+  def testStatefulFunction(self):
+
+    @function.Defun()
+    def FunctionWithStatelessOp():
+      return constant_op.constant(42.0)
+
+    @function.Defun()
+    def FunctionWithStatefulOp():
+      return random_ops.random_uniform([100], maxval=10, dtype=dtypes.int32)
+
+    @function.Defun()
+    def FunctionWithStatelessFunctionCall():
+      return FunctionWithStatelessOp()
+
+    @function.Defun()
+    def FunctionWithStatefulFunctionCall():
+      return FunctionWithStatefulOp()
+
+    # Test that the `is_stateful` bit is propagated.
+    self.assertFalse(FunctionWithStatelessOp.definition.signature.is_stateful)
+    self.assertTrue(FunctionWithStatefulOp.definition.signature.is_stateful)
+    self.assertFalse(
+        FunctionWithStatelessFunctionCall.definition.signature.is_stateful)
+    self.assertTrue(
+        FunctionWithStatefulFunctionCall.definition.signature.is_stateful)
+
+    # Ensure that two invocations of the same random-number-generating
+    # function produce different results.
+    result1 = FunctionWithStatefulFunctionCall()
+    result2 = FunctionWithStatefulFunctionCall()
+
+    # Statefulness affects how the function is treated by the various
+    # optimization passes, so run the test in each optimizer
+    # configuration.
+    for config in _OptimizerOptions():
+      with session.Session(config=config) as sess:
+        val1, val2 = sess.run((result1, result2))
+        self.assertFalse(all(val1 == val2))
+        val3, val4 = sess.run((result1, result2))
+        self.assertFalse(all(val3 == val1))
+        self.assertFalse(all(val4 == val2))
+
+  def testSameFunctionOnTwoDevices(self):
+
+    @function.Defun(dtypes.float32)
+    def AddOne(x):
+      return x + 1.0
+
+    with ops.device("/cpu:0"):
+      f_0 = AddOne(41.0)
+
+    with ops.device("/cpu:1"):
+      f_1 = AddOne(43.0)
+
+    for config in _OptimizerOptions():
+      config.device_count["CPU"] = 2
+      with session.Session(config=config) as sess:
+        self.assertEqual(42.0, sess.run(f_0))
+        self.assertEqual(44.0, sess.run(f_1))
+        self.assertEqual((42.0, 44.0), sess.run((f_0, f_1)))
 
 
 @test_util.with_c_api
@@ -1313,7 +1458,7 @@ class FunctionInlineControlTest(test.TestCase):
       def Cell(v):
         # If v is a vector [n, 1], x is a big square matrix.
         x = math_ops.tanh(v + array_ops.transpose(v, [1, 0]))
-        return math_ops.reduce_sum(x, 1, keep_dims=True)
+        return math_ops.reduce_sum(x, 1, keepdims=True)
 
       @function.Defun(dtype)
       def Forward(x):

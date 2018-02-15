@@ -156,47 +156,42 @@ TEST_F(ModelPrunerTest, NoOpPruning) {
   const NodeDef& new_e = output.node(4);
   EXPECT_EQ(NodeName(e.name()), new_e.name());
 
-  EXPECT_EQ(1, new_e.input_size());
-  EXPECT_EQ(NodeName(d.name()), new_e.input(0));
-  EXPECT_EQ(2, new_d.input_size());
-  EXPECT_EQ(NodeName(b.name()), new_d.input(0));
-  EXPECT_EQ(1, new_c.input_size());
-  EXPECT_EQ(NodeName(b.name()), new_c.input(0));
+  for (const auto& new_node : output.node()) {
+    if (new_node.name() != "a") {
+      EXPECT_EQ(1, new_node.input_size());
+      EXPECT_EQ("a", new_node.input(0));
+    }
+  }
 }
 
-TEST_F(ModelPrunerTest, PruningSkipsCtrlDependencies) {
-  // Build a simple graph with a few trivially prunable ops.
-  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-
-  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
-  Output b = ops::Sqrt(s.WithOpName("b"), {a});
-  Output c = ops::Identity(s.WithOpName("c"), b);
-  Output d = ops::Identity(s.WithOpName("d"), c);
-  Output e = ops::Sqrt(s.WithOpName("e").WithControlDependencies(c), {d});
+TEST_F(ModelPrunerTest, PreserveIdentities) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  ops::Variable v_in(scope.WithOpName("v_in"), {3}, DT_FLOAT);
+  ops::Variable v_ctrl(scope.WithOpName("v_ctrl"), {}, DT_BOOL);
+  ops::Switch s(scope.WithOpName("switch"), v_in, v_ctrl);
+  // id0 is preserved because it is fed by a Switch and drives a
+  // control dependency.
+  Output id0 = ops::Identity(scope.WithOpName("id0"), s.output_true);
+  // id1 is preserved because it feeds a Merge.
+  Output id1 = ops::Identity(
+      scope.WithOpName("id1").WithControlDependencies(v_ctrl), s.output_false);
+  Output id2 = ops::Identity(scope.WithOpName("id2"), id0);
+  Output id3 =
+      ops::Identity(scope.WithOpName("id3").WithControlDependencies(id0), id1);
+  auto merge = ops::Merge(scope.WithOpName("merge"), {id0, id1});
 
   GrapplerItem item;
-  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  item.fetch.push_back("id2");
+  item.fetch.push_back("id3");
+  item.fetch.push_back("merge");
 
   ModelPruner pruner;
   GraphDef output;
   Status status = pruner.Optimize(nullptr, item, &output);
+
   TF_EXPECT_OK(status);
-
-  EXPECT_EQ(5, output.node_size());
-  const NodeDef& new_a = output.node(0);
-  EXPECT_EQ(NodeName(a.name()), new_a.name());
-  const NodeDef& new_b = output.node(1);
-  EXPECT_EQ(NodeName(b.name()), new_b.name());
-  const NodeDef& new_c = output.node(2);
-  EXPECT_EQ(NodeName(c.name()), new_c.name());
-  const NodeDef& new_d = output.node(3);
-  EXPECT_EQ(NodeName(d.name()), new_d.name());
-  const NodeDef& new_e = output.node(4);
-  EXPECT_EQ(NodeName(e.name()), new_e.name());
-
-  EXPECT_EQ(2, new_e.input_size());
-  EXPECT_EQ(NodeName(c.name()), new_e.input(0));
-  EXPECT_EQ("^c", new_e.input(1));
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
 }
 
 TEST_F(ModelPrunerTest, PruningSkipsRefOutputs) {
@@ -239,55 +234,53 @@ TEST_F(ModelPrunerTest, PruningSkipsRefOutputs) {
   EXPECT_EQ("b", new_e.input(0));
 }
 
-TEST_F(ModelPrunerTest, PruningPerservesCtrlDependencies) {
+// TODO(rmlarsen): Reenable this test when the issues with
+// //robotics/learning/sensor_predict:utils_multi_sensor_rnn_test
+// have been resolved.
+/*
+TEST_F(ModelPrunerTest, PruningForwardsCtrlDependencies) {
   // Build a simple graph with a few trivially prunable ops.
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
 
   Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
   Output b = ops::Sqrt(s.WithOpName("b"), {a});
   Output c = ops::Sqrt(s.WithOpName("c"), {a});
-  Output d = ops::Identity(s.WithOpName("d"), c);
-  Output e = ops::Identity(s.WithOpName("e"), d);
-  Output f = ops::Sqrt(s.WithOpName("f"), {e});
+  Output d = ops::Identity(s.WithOpName("d").WithControlDependencies(b), c);
+  Output e = ops::Identity(s.WithOpName("e").WithControlDependencies(c), d);
+  Output f = ops::Sqrt(s.WithOpName("f"), {d});
+  Output g = ops::Sqrt(s.WithOpName("g"), {e});
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
-
-  // Add a control dependency between b and d and another one between c and e.
-  // They should be properly forwarded.
-  EXPECT_EQ("d", item.graph.node(3).name());
-  EXPECT_EQ("e", item.graph.node(4).name());
-  *item.graph.mutable_node(3)->add_input() = "^b";
-  *item.graph.mutable_node(4)->add_input() = "^c";
+  item.fetch.push_back("f");
+  item.fetch.push_back("g");
 
   ModelPruner pruner;
   GraphDef output;
   Status status = pruner.Optimize(nullptr, item, &output);
   TF_EXPECT_OK(status);
+  LOG(INFO) << "After: " << output.DebugString();
 
-  EXPECT_EQ(6, output.node_size());
-  const NodeDef& new_a = output.node(0);
-  EXPECT_EQ(NodeName(a.name()), new_a.name());
-  const NodeDef& new_b = output.node(1);
-  EXPECT_EQ(NodeName(b.name()), new_b.name());
-  const NodeDef& new_c = output.node(2);
-  EXPECT_EQ(NodeName(c.name()), new_c.name());
-  const NodeDef& new_d = output.node(3);
-  EXPECT_EQ(NodeName(d.name()), new_d.name());
-  const NodeDef& new_e = output.node(4);
-  EXPECT_EQ(NodeName(e.name()), new_e.name());
-  const NodeDef& new_f = output.node(5);
-  EXPECT_EQ(NodeName(f.name()), new_f.name());
-
-  EXPECT_EQ(1, new_f.input_size());
-  EXPECT_EQ(NodeName(e.name()), new_f.input(0));
-  EXPECT_EQ(2, new_e.input_size());
-  EXPECT_EQ(NodeName(d.name()), new_e.input(0));
-  EXPECT_EQ("^c", new_e.input(1));
-  EXPECT_EQ(2, new_d.input_size());
-  EXPECT_EQ(NodeName(c.name()), new_d.input(0));
-  EXPECT_EQ("^b", new_d.input(1));
+  EXPECT_EQ(5, output.node_size());
+  for (const auto& new_node : output.node()) {
+    // "d" and "e" should be removed.
+    EXPECT_NE("d", new_node.name());
+    EXPECT_NE("e", new_node.name());
+    if (new_node.name() == "g") {
+      EXPECT_EQ(2, new_node.input_size());
+      // The input from switch should be forwarded to id3.
+      EXPECT_EQ("c", new_node.input(0));
+      EXPECT_EQ("^b", new_node.input(1));
+    }
+    if (new_node.name() == "f") {
+      EXPECT_EQ(2, new_node.input_size());
+      // The input from switch should be forwarded to id3.
+      EXPECT_EQ("c", new_node.input(0));
+      EXPECT_EQ("^b", new_node.input(1));
+    }
+  }
 }
+*/
 
 TEST_F(ModelPrunerTest, PruningPerservesFetch) {
   // Build a simple graph with a few trivially prunable ops.
@@ -296,6 +289,7 @@ TEST_F(ModelPrunerTest, PruningPerservesFetch) {
   Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
   Output b = ops::Sqrt(s.WithOpName("b"), {a});
   Output c = ops::Identity(s.WithOpName("c"), b);
+  Output d = ops::Identity(s.WithOpName("d"), c);
 
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
