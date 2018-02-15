@@ -107,6 +107,10 @@ class EagerResourceDeleter(object):
   """
 
   def __init__(self, handle, handle_device):
+    if not isinstance(handle, ops.Tensor):
+      raise ValueError(
+          ("Passed handle=%s to EagerResourceDeleter. Was expecting a handle "
+           "Tensor." % (handle,)))
     self._handle = handle
     self._handle_device = handle_device
 

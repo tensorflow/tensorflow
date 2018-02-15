@@ -17,6 +17,7 @@ limitations under the License.
 #include <fstream>
 #include <iostream>
 
+#include "tensorflow/contrib/lite/testing/join.h"
 #include "tensorflow/contrib/lite/testing/split.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
@@ -52,16 +53,8 @@ void FillTensorWithZeros(tensorflow::Tensor* tensor) {
 
 template <typename T>
 string TensorDataToCsvString(const tensorflow::Tensor& tensor) {
-  std::stringstream stream;
   const auto& data = tensor.flat<T>();
-  if (data.size() == 0) {
-    return "";
-  }
-  stream << data(0);
-  for (int i = 1; i < data.size(); i++) {
-    stream << "," << data(i);
-  }
-  return stream.str();
+  return Join(data.data(), data.size(), ",");
 }
 
 }  // namespace

@@ -2272,6 +2272,8 @@ GPU_RUNTIME_HEADERS = [
     "common_runtime/gpu/gpu_cudamalloc_allocator.h",
     "common_runtime/gpu/gpu_debug_allocator.h",
     "common_runtime/gpu/gpu_device.h",
+    "common_runtime/gpu/gpu_id.h",
+    "common_runtime/gpu/gpu_id_manager.h",
     "common_runtime/gpu/gpu_id_utils.h",
     "common_runtime/gpu/gpu_init.h",
     "common_runtime/gpu/gpu_managed_allocator.h",

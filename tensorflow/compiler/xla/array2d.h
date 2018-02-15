@@ -52,6 +52,14 @@ class Array2D : public Array<T> {
   Array2D(std::initializer_list<std::initializer_list<T>> values)
       : Array<T>(values) {}
 
+  // Creates an array of Eigen::half from the given nested initializer list of
+  // float values.
+  template <typename T2, typename = typename std::enable_if<
+                             std::is_same<T, Eigen::half>::value &&
+                             std::is_same<T2, float>::value>::type>
+  Array2D(std::initializer_list<std::initializer_list<T2>> values)
+      : Array<T>(values) {}
+
   Array2D(const Array2D<T>& other) : Array<T>(other) {}
 
   int64 n1() const { return this->dim(0); }
