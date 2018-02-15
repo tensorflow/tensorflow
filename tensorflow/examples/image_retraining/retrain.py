@@ -41,7 +41,6 @@ The subfolder names are important, since they define what label is applied to
 each image, but the filenames themselves don't matter. Once your images are
 prepared, you can run the training with a command like this:
 
-
 ```bash
 bazel build tensorflow/examples/image_retraining:retrain && \
 bazel-bin/tensorflow/examples/image_retraining/retrain \
@@ -70,12 +69,14 @@ on resource-limited platforms, you can try the `--architecture` flag with a
 Mobilenet model. For example:
 
 Run floating-point version of mobilenet:
+
 ```bash
 python tensorflow/examples/image_retraining/retrain.py \
     --image_dir ~/flower_photos --architecture mobilenet_1.0_224
 ```
 
 Run quantized version of mobilenet:
+
 ```bash
 python tensorflow/examples/image_retraining/retrain.py \
     --image_dir ~/flower_photos/   --architecture mobilenet_1.0_224_quantized
@@ -98,8 +99,10 @@ tensorboard --logdir /tmp/retrain_logs
 
 To use with Tensorflow Serving:
 
-tensorflow_model_server --port=9000 --model_name=inception --model_base_path=/tmp/saved_models/
-
+```bash
+tensorflow_model_server --port=9000 --model_name=inception \
+    --model_base_path=/tmp/saved_models/
+```
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -1026,24 +1029,25 @@ def export_model(sess, architecture, saved_model_dir):
   inputs = {'image': tf.saved_model.utils.build_tensor_info(in_image)}
 
   out_classes = sess.graph.get_tensor_by_name('final_result:0')
-  outputs = {'prediction': tf.saved_model.utils.build_tensor_info(out_classes)}
+  outputs = {'prediction': 
+             tf.saved_model.utils.build_tensor_info(out_classes)}
 
   signature = tf.saved_model.signature_def_utils.build_signature_def(
-    inputs=inputs,
-    outputs=outputs,
-    method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME
-  )
+      inputs=inputs,
+      outputs=outputs,
+      method_name=tf.saved_model.signature_constants.PREDICT_METHOD_NAME)
 
   legacy_init_op = tf.group(tf.tables_initializer(), name='legacy_init_op')
 
   # Save out the SavedModel.
   builder = tf.saved_model.builder.SavedModelBuilder(saved_model_dir)
   builder.add_meta_graph_and_variables(
-    sess, [tf.saved_model.tag_constants.SERVING],
-    signature_def_map={
-      tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: signature
-    },
-    legacy_init_op=legacy_init_op)
+      sess, [tf.saved_model.tag_constants.SERVING],
+      signature_def_map = {
+          tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: 
+          signature
+      },
+      legacy_init_op=legacy_init_op)
   builder.save()
 
 
