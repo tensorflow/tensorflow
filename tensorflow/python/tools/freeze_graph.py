@@ -133,11 +133,11 @@ def freeze_graph_with_def_protos(input_graph_def,
         sess.run(initializer_nodes.replace(' ', '').split(","))
 
     variable_names_whitelist = (
-      variable_names_whitelist.replace(' ', '').split(",")
-      if variable_names_whitelist else None)
+        variable_names_whitelist.replace(' ', '').split(",")
+        if variable_names_whitelist else None)
     variable_names_blacklist = (
-      variable_names_blacklist.replace(' ', '').split(",")
-      if variable_names_blacklist else None)
+        variable_names_blacklist.replace(' ', '').split(",")
+        if variable_names_blacklist else None)
 
     if input_meta_graph_def:
       output_graph_def = graph_util.convert_variables_to_constants(
