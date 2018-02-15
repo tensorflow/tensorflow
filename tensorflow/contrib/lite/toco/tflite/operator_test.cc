@@ -380,6 +380,13 @@ TEST_F(OperatorTest, StridedSlice) {
   EXPECT_EQ(op.shrink_axis_mask, output_toco_op->shrink_axis_mask);
 }
 
+TEST_F(OperatorTest, BuiltinTopKV2) {
+  TopKV2Operator op;
+  auto output_toco_op = SerializeAndDeserialize(
+      GetOperator("TOPK_V2", OperatorType::kTopK_V2), op);
+  ASSERT_NE(nullptr, output_toco_op.get());
+}
+
 TEST_F(OperatorTest, TensorFlowUnsupported) {
   TensorFlowUnsupportedOperator op;
   op.tensorflow_op = "MyCustomUnsupportedOp";

@@ -47,7 +47,7 @@ installed on your system:
 
 If you have a different version of one of the preceding packages, please
 change to the specified versions.  In particular, the cuDNN version
-must match exactly: TensorFlow will not load if it cannot find `cuDNN64_6.dll`.
+must match exactly: TensorFlow will not load if it cannot find `cudnn64_7.dll`.
 To use a different version of cuDNN, you must build from source.
 
 ## Determine how to install TensorFlow

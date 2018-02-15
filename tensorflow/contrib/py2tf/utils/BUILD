@@ -23,6 +23,7 @@ py_library(
         "context_managers.py",
         "misc.py",
         "multiple_dispatch.py",
+        "printing.py",
         "py_func.py",
         "tensor_list.py",
         "type_check.py",
@@ -68,6 +69,16 @@ py_test(
 py_test(
     name = "py_func_test",
     srcs = ["py_func_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":utils",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "printing_test",
+    srcs = ["printing_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":utils",

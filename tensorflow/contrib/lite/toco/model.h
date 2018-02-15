@@ -114,6 +114,7 @@ enum class OperatorType {
   kTensorFlowSwitch,
   kTensorFlowTile,
   kTranspose,
+  kTopK_V2,
   // An unsupported TF operation. It's only needed to be able to represent TF
   // graph internally and is expected to be dropped by graph transformations.
   kTensorFlowUnsupported,
@@ -1398,6 +1399,14 @@ struct MeanOperator : Operator {
 struct SvdfOperator : Operator {
   SvdfOperator() : Operator(OperatorType::kSvdf) {}
   int rank;
+};
+
+// TopKV2 operator.
+//
+// Inputs:
+//    input tensor and top_k scalar.
+struct TopKV2Operator : Operator {
+  TopKV2Operator() : Operator(OperatorType::kTopK_V2) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

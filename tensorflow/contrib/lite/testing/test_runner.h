@@ -68,6 +68,10 @@ class TestRunner {
   // satisfied.
   virtual bool CheckResults() = 0;
 
+  // Read contents of tensor into csv format.
+  // The given 'id' is guaranteed to be one of the ids returned by GetOutputs().
+  virtual string ReadOutput(int id) = 0;
+
   // Set the base path for loading models.
   void SetModelBaseDir(const string& path) {
     model_base_dir_ = path;
