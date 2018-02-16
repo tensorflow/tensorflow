@@ -1040,7 +1040,7 @@ tf_cc_test(
 
 tf_cc_test(
     name = "conv_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["conv_ops_test.cc"],
     deps = [
         ":conv_ops",
