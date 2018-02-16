@@ -167,12 +167,11 @@ class MultivariateNormalFullCovariance(mvn_tril.MultivariateNormalTriL):
           covariance_matrix = ops.convert_to_tensor(
               covariance_matrix, name="covariance_matrix")
           if validate_args:
-            assert_symmetric = check_ops.assert_equal(
-                covariance_matrix,
-                array_ops.matrix_transpose(covariance_matrix),
-                message="Matrix was not symmetric.")
-            covariance_matrix = control_flow_ops.with_dependencies(
-                [assert_symmetric], covariance_matrix)
+            covariance_matrix = control_flow_ops.with_dependencies([
+                check_ops.assert_near(
+                    covariance_matrix,
+                    array_ops.matrix_transpose(covariance_matrix),
+                    message="Matrix was not symmetric")], covariance_matrix)
           # No need to validate that covariance_matrix is non-singular.
           # LinearOperatorLowerTriangular has an assert_non_singular method that
           # is called by the Bijector.

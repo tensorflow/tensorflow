@@ -124,6 +124,20 @@ config_setting(
     },
 )
 
+config_setting(
+    name = "darwin_x86_64",
+    values = {
+        "cpu": "darwin_x86_64",
+    },
+)
+
+config_setting(
+    name = "freebsd",
+    values = {
+        "cpu": "freebsd",
+    },
+)
+
 cc_library(
     name = "optimized_base",
     srcs = [],
@@ -138,7 +152,7 @@ cc_library(
         ":types",
         ":round",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -147,6 +161,8 @@ cc_library(
         ":x86": tflite_deps_intel,
         ":x86_64": tflite_deps_intel,
         ":darwin": tflite_deps_intel,
+        ":darwin_x86_64": tflite_deps_intel,
+        ":freebsd": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -154,6 +170,8 @@ cc_library(
 cc_library(
     name = "optimized",
     hdrs = [
+        "optimized/cblas_conv.h",
+        "optimized/cblas_reference.h",
         "optimized/eigen_spatial_convolutions.h",
         "optimized/eigen_tensor_reduced_instantiations_oss.h",
         "optimized/multithreaded_conv.h",
@@ -215,7 +233,7 @@ cc_library(
         ":round",
         ":types",
         "//third_party/eigen3",
-        "@gemmlowp//:gemmlowp",
+        "@gemmlowp",
         "//tensorflow/contrib/lite:builtin_op_data",
     ] + select({
         ":haswell": tflite_deps_intel,
@@ -224,6 +242,8 @@ cc_library(
         ":x86": tflite_deps_intel,
         ":x86_64": tflite_deps_intel,
         ":darwin": tflite_deps_intel,
+        ":darwin_x86_64": tflite_deps_intel,
+        ":freebsd": tflite_deps_intel,
         "//conditions:default": [],
     }),
 )
@@ -258,6 +278,8 @@ cc_library(
         "optimized/neon_tensor_utils.cc",
     ],
     hdrs = [
+        "common.h",
+        "optimized/cpu_check.h",
         "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",
     ],
@@ -265,8 +287,21 @@ cc_library(
     deps = [
         ":cpu_check",
         ":portable_tensor_utils",
+        ":types",
         "//tensorflow/contrib/lite:builtin_op_data",
         "//tensorflow/contrib/lite/kernels:activation_functor",
+        "@arm_neon_2_x86_sse",
+        "@gemmlowp",
+    ],
+)
+
+cc_library(
+    name = "kernel_utils",
+    srcs = ["kernel_utils.cc"],
+    hdrs = ["kernel_utils.h"],
+    deps = [
+        ":tensor_utils",
+        "//tensorflow/contrib/lite:builtin_op_data",
     ],
 )
 
@@ -276,14 +311,21 @@ cc_library(
         "tensor_utils.cc",
     ],
     hdrs = [
+        "common.h",
+        "compatibility.h",
+        "optimized/cpu_check.h",
+        "optimized/neon_tensor_utils.h",
         "optimized/tensor_utils_impl.h",
         "reference/portable_tensor_utils.h",
         "tensor_utils.h",
+        "types.h",
     ],
     copts = NEON_FLAGS_IF_APPLICABLE,
     deps = [
         "//tensorflow/contrib/lite/kernels:activation_functor",
         "//tensorflow/contrib/lite:builtin_op_data",
+        "@arm_neon_2_x86_sse",
+        "@gemmlowp",
     ] + select({
         ":arm": [
             ":neon_tensor_utils",
@@ -301,6 +343,21 @@ cc_library(
             ":neon_tensor_utils",
         ],
         ":ios_arm64": [
+            ":neon_tensor_utils",
+        ],
+        ":ios_x86_64": [
+            ":neon_tensor_utils",
+        ],
+        ":x86_64": [
+            ":neon_tensor_utils",
+        ],
+        ":x86": [
+            ":neon_tensor_utils",
+        ],
+        ":k8": [
+            ":neon_tensor_utils",
+        ],
+        ":darwin": [
             ":neon_tensor_utils",
         ],
         "//conditions:default": [

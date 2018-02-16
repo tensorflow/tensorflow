@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
+#ifndef TENSORFLOW_C_C_TEST_UTIL_H_
+#define TENSORFLOW_C_C_TEST_UTIL_H_
 
 #include "tensorflow/c/c_api.h"
 
@@ -69,6 +69,14 @@ TF_Operation* AddWithCtrlDependency(TF_Operation* l, TF_Operation* r,
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
                   const char* name = "add");
 
+TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                  TF_Status* s, const char* name = "min");
+
+// If `op_device` is non-empty, set the created op on that device.
+TF_Operation* MinWithDevice(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                            const string& op_device, TF_Status* s,
+                            const char* name = "min");
+
 TF_Operation* Neg(TF_Operation* n, TF_Graph* graph, TF_Status* s,
                   const char* name = "neg");
 
@@ -77,7 +85,7 @@ TF_Operation* LessThan(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s);
 TF_Operation* RandomUniform(TF_Operation* shape, TF_DataType dtype,
                             TF_Graph* graph, TF_Status* s);
 
-// Split `input` along the first dimention into 3 tensors
+// Split `input` along the first dimension into 3 tensors
 TF_Operation* Split3(TF_Operation* input, TF_Graph* graph, TF_Status* s,
                      const char* name = "split3");
 
@@ -108,7 +116,7 @@ std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def);
 
 class CSession {
  public:
-  CSession(TF_Graph* graph, TF_Status* s);
+  CSession(TF_Graph* graph, TF_Status* s, bool use_XLA = false);
   explicit CSession(TF_Session* session);
 
   ~CSession();
@@ -124,6 +132,8 @@ class CSession {
 
   TF_Tensor* output_tensor(int i) { return output_values_[i]; }
 
+  TF_Session* mutable_session() { return session_; }
+
  private:
   void DeleteInputValues();
   void ResetOutputValues();
@@ -136,4 +146,4 @@ class CSession {
   std::vector<TF_Operation*> targets_;
 };
 
-#endif  // THIRD_PARTY_TENSORFLOW_C_C_TEST_UTIL_H_
+#endif  // TENSORFLOW_C_C_TEST_UTIL_H_

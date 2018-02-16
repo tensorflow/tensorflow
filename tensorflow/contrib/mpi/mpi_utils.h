@@ -18,8 +18,8 @@ limitations under the License.
 
 #ifdef TENSORFLOW_USE_MPI
 
-#include <string>
 #include <map>
+#include <string>
 #include <vector>
 
 #include "tensorflow/core/lib/strings/str_util.h"

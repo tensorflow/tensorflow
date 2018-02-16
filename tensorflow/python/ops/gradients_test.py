@@ -621,6 +621,45 @@ class HessianTest(test_util.TensorFlowTestCase):
         with self.assertRaises(ValueError):
           gradients.hessians(x, x)
 
+  def testHessian2D_square_matrix(self):
+    # Manually compute the Hessian explicitly for a low-dimensional problem
+    # and check that `hessian` matches. Specifically, the Hessian of
+    # f(x) = 1/2 * x^T * x is H = constant (block identity matrix)
+    m = 3
+    rng = np.random.RandomState([1, 2, 3])
+    x_value = rng.randn(m, m).astype("float32")
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant(x_value)
+      x_square = math_ops.reduce_sum(
+          math_ops.matmul(array_ops.transpose(x), x) * 0.5
+      )
+      hess = gradients.hessians(x_square, x)[0]
+      hess_actual = hess.eval()
+    hess_value = np.bmat([
+        [elem*np.ones((m, m)) for elem in vec]
+        for vec in np.eye(m)
+    ]).astype("float32")
+    self.assertAllEqual((m, m, m, m), hess_actual.shape)
+    self.assertAllClose(hess_value, hess_actual.reshape((m * m, m * m)))
+
+  def testHessian2D_non_square_matrix(self):
+    m = 3
+    n = 4
+    rng = np.random.RandomState([1, 2, 3])
+    x_value = rng.randn(m, n).astype("float32")
+    with self.test_session(use_gpu=True):
+      x = constant_op.constant(x_value)
+      x_square = math_ops.reduce_sum(
+          math_ops.matmul(array_ops.transpose(x), x) * 0.5
+      )
+      hess = gradients.hessians(x_square, x)[0]
+      hess_actual = hess.eval()
+    hess_value = np.bmat([
+        [elem*np.ones((n, n)) for elem in vec]
+        for vec in np.eye(m)
+    ]).astype("float32")
+    self.assertAllEqual((m, n, m, n), hess_actual.shape)
+    self.assertAllClose(hess_value, hess_actual.reshape((m * n, m * n)))
 
 @test_util.with_c_api
 class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
@@ -665,8 +704,8 @@ class IndexedSlicesToTensorTest(test_util.TensorFlowTestCase):
   def testWarnings(self):
     # TODO(gunan) Reenable after this issue is fixed:
     # https://github.com/google/protobuf/issues/2812
-    if sys.version_info >= (3, 6):
-      self.skipTest("Skipped test for Python 3.6+")
+    if sys.version_info >= (3, 5):
+      self.skipTest("Skipped test for Python 3.5+")
 
     # Smaller than the threshold: no warning.
     c_sparse = ops.IndexedSlices(

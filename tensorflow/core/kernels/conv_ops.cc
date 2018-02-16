@@ -112,14 +112,21 @@ struct LaunchGeneric {
 template <typename T>
 struct LaunchConv2DOp<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
-                  const Tensor& input, const Tensor& filter,
-                  int /*row_dilation*/, int /*col_dilation*/, int row_stride,
-                  int col_stride, const Padding& padding, Tensor* output,
+                  const Tensor& input, const Tensor& filter, int row_dilation,
+                  int col_dilation, int row_stride, int col_stride,
+                  const Padding& padding, Tensor* output,
                   TensorFormat data_format) {
     if (data_format != FORMAT_NHWC) {
       ctx->SetStatus(
           errors::Unimplemented("Generic conv implementation only supports "
                                 "NHWC tensor format for now."));
+      return;
+    }
+    // TODO(yangzihao): Add the CPU implementation of dilated conv 2D.
+    if (row_dilation > 1 || col_dilation > 1) {
+      ctx->SetStatus(
+          errors::Unimplemented("Generic conv implementation only supports "
+                                "dilated rate of 1 for now."));
       return;
     }
     LaunchGeneric<CPUDevice, T>()(ctx, input, filter, row_stride, col_stride,
@@ -681,7 +688,7 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
   static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
-      );
+  );
 
   int device_id = stream->parent()->device_ordinal();
   DataType dtype = input.dtype();

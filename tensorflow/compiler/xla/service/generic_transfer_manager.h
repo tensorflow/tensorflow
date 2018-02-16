@@ -42,16 +42,6 @@ class GenericTransferManager : public TransferManager {
 
   perftools::gputools::Platform::Id PlatformId() const override;
 
-  Status TransferLiteralFromDevice(
-      perftools::gputools::StreamExecutor* executor,
-      const perftools::gputools::DeviceMemoryBase& source,
-      const Shape& device_shape, const Shape& literal_shape,
-      Literal* literal) override;
-
-  Status TransferLiteralToDevice(
-      perftools::gputools::StreamExecutor* executor, const Literal& literal,
-      perftools::gputools::DeviceMemoryBase* destination) override;
-
   StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
       perftools::gputools::StreamExecutor* executor,
       const ShapedBuffer& device_buffer) override;
@@ -62,9 +52,6 @@ class GenericTransferManager : public TransferManager {
 
   Status TransferLiteralToInfeed(perftools::gputools::StreamExecutor* executor,
                                  const Literal& literal) override;
-  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
-                                int64 size, const void* source) override;
-
   Status TransferLiteralFromOutfeed(
       perftools::gputools::StreamExecutor* executor, const Shape& literal_shape,
       Literal* literal) override;
@@ -73,16 +60,13 @@ class GenericTransferManager : public TransferManager {
       tensorflow::gtl::ArraySlice<perftools::gputools::StreamExecutor*>
           executors) override;
 
-  StatusOr<std::vector<perftools::gputools::DeviceMemoryBase>>
-  ShallowCopyTupleFromDevice(
-      perftools::gputools::StreamExecutor* executor,
-      const perftools::gputools::DeviceMemoryBase& source,
-      const Shape& shape) override;
-
   int64 GetByteSizeRequirement(const Shape& shape) const override;
 
  protected:
-  Status WriteTuplePointersToDevice(
+  Status TransferBufferToInfeed(perftools::gputools::StreamExecutor* executor,
+                                int64 size, const void* source) override;
+
+  Status WriteSingleTupleIndexTable(
       perftools::gputools::StreamExecutor* executor,
       tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
           elements,

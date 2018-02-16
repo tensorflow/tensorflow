@@ -18,6 +18,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/toco/tflite/operator.h"
 #include "tensorflow/contrib/lite/toco/tflite/types.h"
+#include "tensorflow/contrib/lite/toco/tooling_util.h"
 
 namespace toco {
 
@@ -119,8 +120,16 @@ void ImportOperators(
     auto inputs = input_op->inputs();
     for (int i = 0; i < inputs->Length(); i++) {
       auto input_index = inputs->Get(i);
-      const string& input_name = tensors_table.at(input_index);
-      op->inputs.push_back(input_name);
+      // input_index == -1 indicates optional tensor.
+      if (input_index != -1) {
+        const string& input_name = tensors_table.at(input_index);
+        op->inputs.push_back(input_name);
+      } else {
+        const string& tensor_name =
+            toco::AvailableArrayName(*model, "OptionalTensor");
+        model->CreateOptionalArray(tensor_name);
+        op->inputs.push_back(tensor_name);
+      }
     }
     auto outputs = input_op->outputs();
     for (int i = 0; i < outputs->Length(); i++) {

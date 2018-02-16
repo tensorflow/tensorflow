@@ -27,10 +27,13 @@ from __future__ import print_function
 import os.path as _os_path
 
 from tensorflow.python.framework.versions import CXX11_ABI_FLAG as _CXX11_ABI_FLAG
+from tensorflow.python.framework.versions import MONOLITHIC_BUILD as _MONOLITHIC_BUILD
 from tensorflow.python.util.all_util import remove_undocumented
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=g-import-not-at-top
+@tf_export('sysconfig.get_include')
 def get_include():
   """Get the directory containing the TensorFlow C++ header files.
 
@@ -45,6 +48,7 @@ def get_include():
   return _os_path.join(_os_path.dirname(tf.__file__), 'include')
 
 
+@tf_export('sysconfig.get_lib')
 def get_lib():
   """Get the directory containing the TensorFlow framework library.
 
@@ -55,6 +59,7 @@ def get_lib():
   return _os_path.join(_os_path.dirname(tf.__file__))
 
 
+@tf_export('sysconfig.get_compile_flags')
 def get_compile_flags():
   """Get the compilation flags for custom operators.
 
@@ -68,6 +73,7 @@ def get_compile_flags():
   return flags
 
 
+@tf_export('sysconfig.get_link_flags')
 def get_link_flags():
   """Get the link flags for custom operators.
 
@@ -75,8 +81,9 @@ def get_link_flags():
     The link flags.
   """
   flags = []
-  flags.append('-L%s' % get_lib())
-  flags.append('-ltensorflow_framework')
+  if not _MONOLITHIC_BUILD:
+    flags.append('-L%s' % get_lib())
+    flags.append('-ltensorflow_framework')
   return flags
 
 _allowed_symbols = []

@@ -1,6 +1,6 @@
 # Importing Data
 
-The `tf.data` API enables you to build complex input pipelines from
+The @{tf.data} API enables you to build complex input pipelines from
 simple, reusable pieces. For example, the pipeline for an image model might
 aggregate data from files in a distributed file system, apply random
 perturbations to each image, and merge randomly selected images into a batch
@@ -322,9 +322,10 @@ sess.run(iterator.initializer)
 next1, (next2, next3) = iterator.get_next()
 ```
 
-Note that evaluating *any* of `next1`, `next2`, or `next3` will advance the
-iterator for all components. A typical consumer of an iterator will include all
-components in a single expression.
+Note that `next1`, `next2`, and `next3` are tensors produced by the
+same op/node (created by `Iterator.get_next()`). Therefore,  evaluating *any* of
+these tensors will advance the iterator for all components. A typical consumer
+of an iterator will include all components in a single expression.
 
 ## Reading input data
 
@@ -455,9 +456,6 @@ dataset = dataset.flat_map(
         .filter(lambda line: tf.not_equal(tf.substr(line, 0, 1), "#"))))
 ```
 
-For a full example of parsing a CSV file using datasets, see [`imports85.py`](https://www.tensorflow.org/code/tensorflow/examples/get_started/regression/imports85.py)
-in @{$get_started/linear_regression}.
-
 <!--
 TODO(mrry): Add these sections.
 
@@ -540,7 +538,7 @@ import cv2
 # Use a custom OpenCV function to read the image, instead of the standard
 # TensorFlow `tf.read_file()` operation.
 def _read_py_function(filename, label):
-  image_decoded = cv2.imread(image_string, cv2.IMREAD_GRAYSCALE)
+  image_decoded = cv2.imread(filename.decode(), cv2.IMREAD_GRAYSCALE)
   return image_decoded, label
 
 # Use standard TensorFlow operations to resize the image to a fixed shape.

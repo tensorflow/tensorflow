@@ -19,14 +19,19 @@ namespace xla {
 
 HloProto MakeHloProto(const HloModule& module,
                       const BufferAssignment& assignment) {
-  HloModuleProto proto_module = module.ToProto();
   HloOrderingProto proto_ordering =
       assignment.liveness().hlo_ordering().ToProto();
   BufferAssignmentProto proto_assignment = assignment.ToProto();
-  HloProto proto;
-  proto.mutable_hlo_module()->Swap(&proto_module);
+  HloProto proto = MakeHloProto(module);
   proto.mutable_hlo_ordering()->Swap(&proto_ordering);
   proto.mutable_buffer_assignment()->Swap(&proto_assignment);
+  return proto;
+}
+
+HloProto MakeHloProto(const HloModule& module) {
+  HloModuleProto proto_module = module.ToProto();
+  HloProto proto;
+  proto.mutable_hlo_module()->Swap(&proto_module);
   return proto;
 }
 

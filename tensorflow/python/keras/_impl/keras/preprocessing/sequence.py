@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Preprocessing utilities for sequence data.
+"""Utilities for preprocessing sequence data.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -22,8 +22,10 @@ import random
 
 import numpy as np
 from six.moves import range  # pylint: disable=redefined-builtin
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.preprocessing.sequence.pad_sequences')
 def pad_sequences(sequences,
                   maxlen=None,
                   dtype='int32',
@@ -104,6 +106,7 @@ def pad_sequences(sequences,
   return x
 
 
+@tf_export('keras.preprocessing.sequence.make_sampling_table')
 def make_sampling_table(size, sampling_factor=1e-5):
   """Generates a word rank-based probabilistic sampling table.
 
@@ -129,7 +132,7 @@ def make_sampling_table(size, sampling_factor=1e-5):
       is the probability that a word of rank i should be sampled.
   """
   gamma = 0.577
-  rank = np.array(list(range(size)))
+  rank = np.arange(size)
   rank[0] = 1
   inv_fq = rank * (np.log(rank) + gamma) + 0.5 - 1. / (12. * rank)
   f = sampling_factor * inv_fq
@@ -137,6 +140,7 @@ def make_sampling_table(size, sampling_factor=1e-5):
   return np.minimum(1., f / np.sqrt(f))
 
 
+@tf_export('keras.preprocessing.sequence.skipgrams')
 def skipgrams(sequence,
               vocabulary_size,
               window_size=4,
@@ -170,7 +174,7 @@ def skipgrams(sequence,
           if True labels will be categorical eg. [[1,0],[0,1],[0,1] .. ]
       sampling_table: 1D array of size `vocabulary_size` where the entry i
           encodes the probability to sample a word of rank i.
-      seed: Random seed.
+      seed: random seed.
 
   Returns:
       couples, labels: where `couples` are int pairs and
@@ -224,3 +228,22 @@ def skipgrams(sequence,
     random.shuffle(labels)
 
   return couples, labels
+
+
+def _remove_long_seq(maxlen, seq, label):
+  """Removes sequences that exceed the maximum length.
+
+  Arguments:
+      maxlen: int, maximum length
+      seq: list of lists where each sublist is a sequence
+      label: list where each element is an integer
+
+  Returns:
+      new_seq, new_label: shortened lists for `seq` and `label`.
+  """
+  new_seq, new_label = [], []
+  for x, y in zip(seq, label):
+    if len(x) < maxlen:
+      new_seq.append(x)
+      new_label.append(y)
+  return new_seq, new_label

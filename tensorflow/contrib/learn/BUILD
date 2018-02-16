@@ -173,6 +173,17 @@ tf_py_test(
 )
 
 py_test(
+    name = "export_strategy_test",
+    size = "small",
+    srcs = ["python/learn/export_strategy_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":learn",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "graph_actions_test",
     size = "small",
     srcs = ["python/learn/graph_actions_test.py"],
@@ -345,6 +356,7 @@ py_test(
     srcs = ["python/learn/estimators/dnn_linear_combined_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
+    tags = ["no_oss"],  # flaky b/70524820
     deps = [
         ":learn",
         "//tensorflow/contrib/layers:layers_py",
@@ -376,6 +388,7 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:lookup_ops",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:variables",
@@ -482,7 +495,7 @@ py_test(
     name = "linear_test",
     size = "medium",
     srcs = ["python/learn/estimators/linear_test.py"],
-    shard_count = 4,
+    shard_count = 20,
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
@@ -736,20 +749,6 @@ tf_py_test(
         "//tensorflow/python:variables",
     ],
     grpc_enabled = True,
-)
-
-py_test(
-    name = "numpy_io_test",
-    size = "small",
-    srcs = ["python/learn/learn_io/numpy_io_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":learn",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:errors",
-        "//tensorflow/python:training",
-        "//third_party/py/numpy",
-    ],
 )
 
 py_test(

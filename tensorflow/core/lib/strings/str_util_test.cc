@@ -305,7 +305,7 @@ TEST(SplitAndParseAsInts, Int64) {
   EXPECT_EQ(nums[0], 134);
   EXPECT_EQ(nums[1], 2);
   EXPECT_EQ(nums[2], 13);
-  EXPECT_EQ(nums[3], -4000000000);
+  EXPECT_EQ(nums[3], static_cast<int64>(-4000000000ull));
 
   EXPECT_FALSE(str_util::SplitAndParseAsInts("abc", ',', &nums));
 

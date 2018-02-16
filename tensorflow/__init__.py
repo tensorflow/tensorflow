@@ -21,7 +21,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import
-from tensorflow.python import *
+from tensorflow.python import *  # pylint: disable=redefined-builtin
 # pylint: enable=wildcard-import
 
 from tensorflow.python.util.lazy_loader import LazyLoader

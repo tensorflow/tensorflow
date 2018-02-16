@@ -25,6 +25,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -55,6 +56,7 @@ def _logit(x):
   return np.log(x) - np.log1p(-x)
 
 
+@test_util.with_c_api
 class AssertCloseTest(test.TestCase):
 
   def testAssertCloseIntegerDtype(self):
@@ -145,6 +147,7 @@ class AssertCloseTest(test.TestCase):
           array_ops.identity(w).eval(feed_dict=feed_dict)
 
 
+@test_util.with_c_api
 class GetLogitsAndProbsTest(test.TestCase):
 
   def testImproperArguments(self):
@@ -298,6 +301,7 @@ class GetLogitsAndProbsTest(test.TestCase):
         logit.eval(feed_dict={l: np.ones([int(2**11+1)])})
 
 
+@test_util.with_c_api
 class EmbedCheckCategoricalEventShapeTest(test.TestCase):
 
   def testTooSmall(self):
@@ -335,6 +339,7 @@ class EmbedCheckCategoricalEventShapeTest(test.TestCase):
         du.embed_check_categorical_event_shape(param)
 
 
+@test_util.with_c_api
 class EmbedCheckIntegerCastingClosedTest(test.TestCase):
 
   def testCorrectlyAssertsNonnegative(self):
@@ -370,6 +375,7 @@ class EmbedCheckIntegerCastingClosedTest(test.TestCase):
         x_checked.eval(feed_dict={x: np.array([1, -1], dtype=np.int32)})
 
 
+@test_util.with_c_api
 class LogCombinationsTest(test.TestCase):
 
   def testLogCombinationsBinomial(self):
@@ -400,6 +406,7 @@ class LogCombinationsTest(test.TestCase):
       self.assertEqual([2, 2], log_binom.get_shape())
 
 
+@test_util.with_c_api
 class DynamicShapeTest(test.TestCase):
 
   def testSameDynamicShape(self):
@@ -504,6 +511,7 @@ class DynamicShapeTest(test.TestCase):
               }))
 
 
+@test_util.with_c_api
 class RotateTransposeTest(test.TestCase):
 
   def _np_rotate_transpose(self, x, shift):
@@ -537,6 +545,7 @@ class RotateTransposeTest(test.TestCase):
                                   shift: shift_value}))
 
 
+@test_util.with_c_api
 class PickVectorTest(test.TestCase):
 
   def testCorrectlyPicksVector(self):
@@ -557,6 +566,128 @@ class PickVectorTest(test.TestCase):
                               constant_op.constant(False), x, y))  # No eval.
 
 
+@test_util.with_c_api
+class PreferStaticRankTest(test.TestCase):
+
+  def testNonEmptyConstantTensor(self):
+    x = array_ops.zeros((2, 3, 4))
+    rank = du.prefer_static_rank(x)
+    self.assertIsInstance(rank, np.ndarray)
+    self.assertEqual(3, rank)
+
+  def testEmptyConstantTensor(self):
+    x = constant_op.constant([])
+    rank = du.prefer_static_rank(x)
+    self.assertIsInstance(rank, np.ndarray)
+    self.assertEqual(1, rank)
+
+  def testScalarTensor(self):
+    x = constant_op.constant(1.)
+    rank = du.prefer_static_rank(x)
+    self.assertIsInstance(rank, np.ndarray)
+    self.assertEqual(0, rank)
+
+  def testDynamicRankEndsUpBeingNonEmpty(self):
+    x = array_ops.placeholder(np.float64, shape=None)
+    rank = du.prefer_static_rank(x)
+    with self.test_session():
+      self.assertAllEqual(2, rank.eval(feed_dict={x: np.zeros((2, 3))}))
+
+  def testDynamicRankEndsUpBeingEmpty(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    rank = du.prefer_static_rank(x)
+    with self.test_session():
+      self.assertAllEqual(1, rank.eval(feed_dict={x: []}))
+
+  def testDynamicRankEndsUpBeingScalar(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    rank = du.prefer_static_rank(x)
+    with self.test_session():
+      self.assertAllEqual(0, rank.eval(feed_dict={x: 1}))
+
+
+@test_util.with_c_api
+class PreferStaticShapeTest(test.TestCase):
+
+  def testNonEmptyConstantTensor(self):
+    x = array_ops.zeros((2, 3, 4))
+    shape = du.prefer_static_shape(x)
+    self.assertIsInstance(shape, np.ndarray)
+    self.assertAllEqual(np.array([2, 3, 4]), shape)
+
+  def testEmptyConstantTensor(self):
+    x = constant_op.constant([])
+    shape = du.prefer_static_shape(x)
+    self.assertIsInstance(shape, np.ndarray)
+    self.assertAllEqual(np.array([0]), shape)
+
+  def testScalarTensor(self):
+    x = constant_op.constant(1.)
+    shape = du.prefer_static_shape(x)
+    self.assertIsInstance(shape, np.ndarray)
+    self.assertAllEqual(np.array([]), shape)
+
+  def testDynamicShapeEndsUpBeingNonEmpty(self):
+    x = array_ops.placeholder(np.float64, shape=None)
+    shape = du.prefer_static_shape(x)
+    with self.test_session():
+      self.assertAllEqual((2, 3), shape.eval(feed_dict={x: np.zeros((2, 3))}))
+
+  def testDynamicShapeEndsUpBeingEmpty(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    shape = du.prefer_static_shape(x)
+    with self.test_session():
+      self.assertAllEqual(np.array([0]), shape.eval(feed_dict={x: []}))
+
+  def testDynamicShapeEndsUpBeingScalar(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    shape = du.prefer_static_shape(x)
+    with self.test_session():
+      self.assertAllEqual(np.array([]), shape.eval(feed_dict={x: 1}))
+
+
+@test_util.with_c_api
+class PreferStaticValueTest(test.TestCase):
+
+  def testNonEmptyConstantTensor(self):
+    x = array_ops.zeros((2, 3, 4))
+    value = du.prefer_static_value(x)
+    self.assertIsInstance(value, np.ndarray)
+    self.assertAllEqual(np.zeros((2, 3, 4)), value)
+
+  def testEmptyConstantTensor(self):
+    x = constant_op.constant([])
+    value = du.prefer_static_value(x)
+    self.assertIsInstance(value, np.ndarray)
+    self.assertAllEqual(np.array([]), value)
+
+  def testScalarTensor(self):
+    x = constant_op.constant(1.)
+    value = du.prefer_static_value(x)
+    self.assertIsInstance(value, np.ndarray)
+    self.assertAllEqual(np.array(1.), value)
+
+  def testDynamicValueEndsUpBeingNonEmpty(self):
+    x = array_ops.placeholder(np.float64, shape=None)
+    value = du.prefer_static_value(x)
+    with self.test_session():
+      self.assertAllEqual(np.zeros((2, 3)),
+                          value.eval(feed_dict={x: np.zeros((2, 3))}))
+
+  def testDynamicValueEndsUpBeingEmpty(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    value = du.prefer_static_value(x)
+    with self.test_session():
+      self.assertAllEqual(np.array([]), value.eval(feed_dict={x: []}))
+
+  def testDynamicValueEndsUpBeingScalar(self):
+    x = array_ops.placeholder(np.int32, shape=None)
+    value = du.prefer_static_value(x)
+    with self.test_session():
+      self.assertAllEqual(np.array(1), value.eval(feed_dict={x: 1}))
+
+
+@test_util.with_c_api
 class FillTriangularTest(test.TestCase):
 
   def setUp(self):
@@ -651,6 +782,7 @@ class FillTriangularTest(test.TestCase):
     self._run_test(self._rng.randn(2, 3, int(7*8/2)), upper=True)
 
 
+@test_util.with_c_api
 class ReduceWeightedLogSumExp(test.TestCase):
 
   def _reduce_weighted_logsumexp(self, logx, w, axis, keep_dims=False):
@@ -747,6 +879,7 @@ class ReduceWeightedLogSumExp(test.TestCase):
           du.reduce_weighted_logsumexp(x, w, axis=[0, 1]).eval())
 
 
+@test_util.with_c_api
 class GenNewSeedTest(test.TestCase):
 
   def testOnlyNoneReturnsNone(self):
@@ -757,6 +890,7 @@ class GenNewSeedTest(test.TestCase):
 # TODO(jvdillon): Merge this test back into:
 # tensorflow/python/kernel_tests/softplus_op_test.py
 # once TF core is accepting new ops.
+@test_util.with_c_api
 class SoftplusTest(test.TestCase):
 
   def _npSoftplus(self, np_features):

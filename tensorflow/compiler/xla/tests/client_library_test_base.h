@@ -43,6 +43,23 @@ limitations under the License.
 
 namespace xla {
 
+// Sets the use_bfloat16 on a container of test cases according to the values in
+// use_bfloat16_params. Generates one set of test cases for each values in
+// use_bfloat16_params with that value. Returns the result.
+template <typename TestCase>
+std::vector<TestCase> ExpandUseBfloat16(
+    tensorflow::gtl::ArraySlice<bool> use_bfloat16_params,
+    tensorflow::gtl::ArraySlice<TestCase> specs) {
+  std::vector<TestCase> expanded;
+  for (bool use_bfloat16 : use_bfloat16_params) {
+    for (const auto& spec : specs) {
+      expanded.push_back(spec);
+      expanded.back().use_bfloat16 = use_bfloat16;
+    }
+  }
+  return expanded;
+}
+
 // A client library test establishes an in-process XLA client connection.
 class ClientLibraryTestBase : public ::testing::Test {
  protected:
@@ -253,6 +270,28 @@ class ClientLibraryTestBase : public ::testing::Test {
       int64 parameter_number, const Literal& literal, const string& name,
       ComputationBuilder* builder, ComputationDataHandle* data_handle);
 
+  // As above, but the caller can specify the device that the literal is
+  // transferred to. If device_handle is nullptr, the literal will be
+  // transferred to the default device.
+  std::unique_ptr<GlobalData> CreateParameterAndTransferLiteral(
+      int64 parameter_number, const Literal& literal, const string& name,
+      const DeviceHandle* device_handle, ComputationBuilder* builder,
+      ComputationDataHandle* data_handle);
+
+  // Creates a parameter instruction and sets the value that will be passed to
+  // the computation as specified. This function must be used for all parameters
+  // or none and no parameters must be passed when invoking the computation if
+  // using this mechanism. If using this mechanism, then each parameter must be
+  // set exactly once. The first added parameter gets index 0, then 1 and so on.
+  ComputationDataHandle AddParam(const Literal& argument,
+                                 ComputationBuilder* builder);
+
+  template <class T>
+  ComputationDataHandle AddParam(const Array<T>& argument,
+                                 ComputationBuilder* builder) {
+    return AddParam(*Literal::CreateFromArray(argument), builder);
+  }
+
   // Creates a constant instruction with the given literal. When the
   // use_bfloat16 flag is set but the literal has F32 elements, the elements
   // will be converted to BF16s.
@@ -370,6 +409,9 @@ class ClientLibraryTestBase : public ::testing::Test {
   // Whether to run tests with all float-type input/output converted to
   // bfloat16.
   bool use_bfloat16_ = false;
+
+  // Arguments to be passed to the computation when it runs.
+  std::vector<std::unique_ptr<GlobalData>> arguments_;
 };
 
 template <typename NativeT>
@@ -389,6 +431,7 @@ void ClientLibraryTestBase::ComputeAndCompareR0(
   static_assert(std::is_same<NativeT, float>::value ||
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, half>::value ||
                     std::is_same<NativeT, complex64>::value,
                 "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
@@ -414,6 +457,7 @@ void ClientLibraryTestBase::ComputeAndCompareR1(
   static_assert(std::is_same<NativeT, float>::value ||
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, half>::value ||
                     std::is_same<NativeT, complex64>::value,
                 "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
@@ -439,6 +483,7 @@ void ClientLibraryTestBase::ComputeAndCompareR2(
   static_assert(std::is_same<NativeT, float>::value ||
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, half>::value ||
                     std::is_same<NativeT, complex64>::value,
                 "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
@@ -464,6 +509,7 @@ void ClientLibraryTestBase::ComputeAndCompareR3(
   static_assert(std::is_same<NativeT, float>::value ||
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, half>::value ||
                     std::is_same<NativeT, complex64>::value,
                 "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =
@@ -489,6 +535,7 @@ void ClientLibraryTestBase::ComputeAndCompareR4(
   static_assert(std::is_same<NativeT, float>::value ||
                     std::is_same<NativeT, double>::value ||
                     std::is_same<NativeT, bfloat16>::value ||
+                    std::is_same<NativeT, half>::value ||
                     std::is_same<NativeT, complex64>::value,
                 "Float or complex type required when specifying an ErrorSpec");
   std::unique_ptr<Literal> expected_literal =

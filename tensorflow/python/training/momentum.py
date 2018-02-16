@@ -22,8 +22,10 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import training_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("train.MomentumOptimizer")
 class MomentumOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Momentum algorithm.
 

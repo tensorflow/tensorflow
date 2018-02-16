@@ -41,8 +41,13 @@ class GpuExecutable;
 class Thunk {
  public:
   enum class Kind {
+    kConditional,
     kConvolution,
     kCopy,
+    kCudnnBatchNormBackward,
+    kCudnnBatchNormForwardInference,
+    kCudnnBatchNormForwardTraining,
+    kFft,
     kGemm,
     kInfeed,
     kKernel,
@@ -82,6 +87,16 @@ class Thunk {
       perftools::gputools::Stream* /*stream*/) {
     return false;
   }
+
+  // Indicates whether thunks scheduled after this one should wait for this one
+  // to complete before running. For example, a convolution thunk creates a
+  // scratch allocator, then kicks off a convolution in cudnn via the stream
+  // executor. When the stream executor call returns, the scratch allocator goes
+  // out of scope, and the scratch memory is deallocated. In this case, the
+  // convolution thunk needs to return true so that future thunks wait for the
+  // convolution thunk to avoid reusing the deallocated memory until the
+  // convolution thunk is done with it.
+  virtual bool ShouldBlockFutureThunks() { return false; }
 
   // Execute the kernel for the thunk on the given stream. This method must be
   // called after Initialize and can be called multiple times over Thunk's

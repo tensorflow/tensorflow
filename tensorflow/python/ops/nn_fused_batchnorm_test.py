@@ -171,6 +171,10 @@ class BatchNormalizationTest(test.TestCase):
         x, x_shape, y, y_shape, delta=1e-3, x_init_value=x_init_val)
     _, numerical_grad = gradient_checker.compute_gradient(
         x32, x_shape, y32, y_shape, delta=1e-3, x_init_value=x32_init_val)
+
+    # If grad is empty, no error.
+    if theoretical_grad.size == 0 and numerical_grad.size == 0:
+      return 0
     return np.fabs(theoretical_grad - numerical_grad).max()
 
   def _test_gradient(self,
@@ -274,7 +278,8 @@ class BatchNormalizationTest(test.TestCase):
         epsilon = y.op.get_attr('epsilon')
         data_format = y.op.get_attr('data_format')
         grad_vals = sess.run([grad_x, grad_scale, grad_offset])
-        grad_internal = nn_grad._BatchNormGrad(grad_y, x, scale, pop_mean, pop_var, epsilon, data_format)
+        grad_internal = nn_grad._BatchNormGrad(grad_y, x, scale, pop_mean,
+                                               pop_var, epsilon, data_format)
         grad_internal_vals = sess.run(list(grad_internal))
         for grad_val, grad_internal_val in zip(grad_vals, grad_internal_vals):
           self.assertAllClose(grad_val, grad_internal_val, atol=err_tolerance)
@@ -371,6 +376,17 @@ class BatchNormalizationTest(test.TestCase):
       self._test_inference(
           x_shape, dtype, [6], np.float32, use_gpu=False, data_format='NHWC')
 
+  def testInferenceShape5(self):
+    x_shape = [0, 131, 127, 6]
+    for dtype in [np.float16, np.float32]:
+      if test.is_gpu_available(cuda_only=True):
+        self._test_inference(
+            x_shape, dtype, [131], np.float32, use_gpu=True, data_format='NCHW')
+        self._test_inference(
+            x_shape, dtype, [6], np.float32, use_gpu=True, data_format='NHWC')
+      self._test_inference(
+          x_shape, dtype, [6], np.float32, use_gpu=False, data_format='NHWC')
+
   def testTrainingShape1(self):
     x_shape = [1, 1, 6, 1]
     for dtype in [np.float16, np.float32]:
@@ -400,6 +416,17 @@ class BatchNormalizationTest(test.TestCase):
 
   def testTrainingShape4(self):
     x_shape = [27, 131, 127, 6]
+    for dtype in [np.float16, np.float32]:
+      if test.is_gpu_available(cuda_only=True):
+        self._test_training(
+            x_shape, dtype, [131], np.float32, use_gpu=True, data_format='NCHW')
+        self._test_training(
+            x_shape, dtype, [6], np.float32, use_gpu=True, data_format='NHWC')
+      self._test_training(
+          x_shape, dtype, [6], np.float32, use_gpu=False, data_format='NHWC')
+
+  def testTrainingShape5(self):
+    x_shape = [0, 131, 127, 6]
     for dtype in [np.float16, np.float32]:
       if test.is_gpu_available(cuda_only=True):
         self._test_training(
@@ -472,6 +499,33 @@ class BatchNormalizationTest(test.TestCase):
   def testBatchNormGradShape4(self):
     for is_training in [True, False]:
       x_shape = [5, 7, 11, 4]
+      for dtype in [np.float16, np.float32]:
+        if test.is_gpu_available(cuda_only=True):
+          self._test_gradient(
+              x_shape,
+              dtype, [7],
+              np.float32,
+              use_gpu=True,
+              data_format='NCHW',
+              is_training=is_training)
+          self._test_gradient(
+              x_shape,
+              dtype, [4],
+              np.float32,
+              use_gpu=True,
+              data_format='NHWC',
+              is_training=is_training)
+        self._test_gradient(
+            x_shape,
+            dtype, [4],
+            np.float32,
+            use_gpu=False,
+            data_format='NHWC',
+            is_training=is_training)
+
+  def testBatchNormGradShape5(self):
+    for is_training in [True, False]:
+      x_shape = [0, 7, 11, 4]
       for dtype in [np.float16, np.float32]:
         if test.is_gpu_available(cuda_only=True):
           self._test_gradient(

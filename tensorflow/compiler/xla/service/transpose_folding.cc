@@ -42,7 +42,7 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoDot(
   TransposeFolding::OperandIndices operand_set;
   for (int64 i = 0; i < dot.operand_count(); ++i) {
     auto& operand = *dot.operand(i);
-    if (operand.IsRank2Transpose() && operand.user_count() == 1) {
+    if (operand.IsRank2Transpose()) {
       operand_set.push_back(i);
     }
   }
@@ -61,8 +61,7 @@ TransposeFolding::OperandIndices CanFoldOperandsIntoConvolution(
   TransposeFolding::OperandIndices operand_set;
   for (int64 i = 0; i < convolution.operand_count(); ++i) {
     auto& operand = *convolution.operand(i);
-    if (operand.opcode() == HloOpcode::kTranspose &&
-        operand.user_count() == 1) {
+    if (operand.opcode() == HloOpcode::kTranspose) {
       operand_set.push_back(i);
     }
   }

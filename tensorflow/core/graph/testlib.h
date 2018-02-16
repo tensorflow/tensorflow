@@ -117,6 +117,10 @@ Node* RandomGamma(Graph* g, Node* shape, Node* alpha);
 // Output dtype determined by lam.
 Node* RandomPoisson(Graph* g, Node* shape, Node* lam);
 
+// Rolls tensor by an offset of <shift> along the corresponding
+// <axis> dimensions.
+Node* Roll(Graph* g, Node* input, Node* shift, Node* axis);
+
 // Generates random parameters from the truncated standard normal distribution
 // of the nput shape
 Node* TruncatedNormal(Graph* g, Node* input, DataType dtype);

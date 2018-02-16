@@ -28,56 +28,89 @@ limitations under the License.
 namespace xla {
 namespace {
 
+#ifdef XLA_BACKEND_SUPPORTS_BFLOAT16
+// Tests both F32 and BF16.
+static std::array<bool, 2> use_bfloat16_params{false, true};
+#else
+// Only tests F32.
+static std::array<bool, 1> use_bfloat16_params{false};
+#endif
+
+struct ReverseSpec {
+  tensorflow::gtl::ArraySlice<int64> input_dims;
+  tensorflow::gtl::ArraySlice<int64> reversal;
+  bool use_bfloat16;
+
+  string ToTestCaseName() const {
+    return tensorflow::strings::Printf(
+        "reverse_%s_in_dims_%s_%s",
+        tensorflow::str_util::Join(input_dims, "x").c_str(),
+        tensorflow::str_util::Join(reversal, "x").c_str(),
+        use_bfloat16 ? "bf16" : "f32");
+  }
+};
+
+static std::vector<ReverseSpec> GetTestCases() {
+  // clang-format off
+  return ExpandUseBfloat16<ReverseSpec>(
+      use_bfloat16_params,
+      {{{}, {}},
+        {{0, 0}, {0, 1}},
+        {{0, 1}, {0, 1}},
+        {{1, 0}, {0, 1}},
+        {{1, 1}, {0, 1}},
+        {{2, 0, 4, 3}, {0, 2}},
+        {{2, 0, 4, 3}, {1, 3}},
+        {{1, 2, 3, 4}, {0, 3}},
+        {{4, 3, 2, 1}, {0, 1}},
+      });
+  // clang-format on
+}
+
+void PrintTo(const ReverseSpec& spec, std::ostream* os) {
+  *os << spec.ToTestCaseName();
+}
+
+class FloatReverseTest : public ClientLibraryTestBase,
+                         public ::testing::WithParamInterface<ReverseSpec> {
+ public:
+  FloatReverseTest() { set_use_bfloat16(GetParam().use_bfloat16); }
+};
+
+TEST_P(FloatReverseTest, Reverses) {
+  const ReverseSpec& spec = GetParam();
+  std::vector<float> input_vector(
+      ShapeUtil::ElementsIn(ShapeUtil::MakeShape(F32, spec.input_dims)));
+  std::iota(input_vector.begin(), input_vector.end(), 0.0);
+  auto r1_literal = Literal::CreateR1<float>(input_vector);
+  auto input_literal = r1_literal->Reshape(spec.input_dims).ConsumeValueOrDie();
+
+  ComputationBuilder builder(client_, TestName());
+  auto a = AddParam(*input_literal, &builder);
+  builder.Rev(a, spec.reversal);
+
+  std::unique_ptr<Literal> expected = input_literal->CloneToUnique();
+  std::vector<int64> output_indices(spec.input_dims.size());
+  expected->EachCell<float>(
+      [&](tensorflow::gtl::ArraySlice<int64> indices, float) {
+        for (int64 i = 0; i < indices.size(); ++i) {
+          output_indices[i] = indices[i];
+        }
+        float value = input_literal->Get<float>(indices);
+        for (int64 dim : spec.reversal) {
+          output_indices[dim] = (spec.input_dims[dim] - 1) - indices[dim];
+        }
+        expected->Set<float>(output_indices, value);
+      });
+  ComputeAndCompareLiteral(&builder, *expected, {});
+}
+
+INSTANTIATE_TEST_CASE_P(FloatReverseInstance, FloatReverseTest,
+                        ::testing::ValuesIn(GetTestCases()),
+                        ::testing::PrintToStringParamName());
+
+// A simple test class which not templated by float precision.
 class ReverseTest : public ClientLibraryTestBase {};
-
-// Tests the reverse operation on a scalar.
-XLA_TEST_F(ReverseTest, ReverseScalar) {
-  ComputationBuilder b(client_, TestName());
-  float input = 3.5f;
-  b.Rev(b.ConstantR0<float>(input), {});
-  ComputeAndCompareR0<float>(&b, input, {});
-}
-
-// Tests the reverse operation on a 0x0 float array on both dimensions.
-XLA_TEST_F(ReverseTest, Reverse0x0FloatArray) {
-  ComputationBuilder b(client_, TestName());
-  b.Rev(b.ConstantR2FromArray2D<float>(Array2D<float>(0, 0)), {0, 1});
-  ComputeAndCompareR2<float>(&b, Array2D<float>(0, 0), {});
-}
-
-// Tests the reverse operation on a 0x1 float array on both dimensions.
-XLA_TEST_F(ReverseTest, Reverse0x1FloatArray) {
-  ComputationBuilder b(client_, TestName());
-  b.Rev(b.ConstantR2FromArray2D<float>(Array2D<float>(0, 1)), {0, 1});
-  ComputeAndCompareR2<float>(&b, Array2D<float>(0, 1), {});
-}
-
-// Tests the reverse operation on a 1x0 float array on both dimensions.
-XLA_TEST_F(ReverseTest, Reverse1x0FloatArray) {
-  ComputationBuilder b(client_, TestName());
-  b.Rev(b.ConstantR2FromArray2D<float>(Array2D<float>(1, 0)), {0, 1});
-  ComputeAndCompareR2<float>(&b, Array2D<float>(1, 0), {});
-}
-
-// Tests the reverse operation on a 1x1 float array on both dimensions.
-XLA_TEST_F(ReverseTest, Reverse1x1FloatArray) {
-  ComputationBuilder b(client_, TestName());
-  Array2D<float> input({{3.5f}});
-  b.Rev(b.ConstantR2FromArray2D<float>(input), {0, 1});
-  ComputeAndCompareR2<float>(&b, input, {});
-}
-
-XLA_TEST_F(ReverseTest, Reverse2x0x4x3FloatArrayDim02) {
-  ComputationBuilder b(client_, TestName());
-  b.Rev(b.ConstantR4FromArray4D<float>(Array4D<float>(2, 0, 4, 3)), {0, 2});
-  ComputeAndCompareR4<float>(&b, Array4D<float>(2, 0, 4, 3), {});
-}
-
-XLA_TEST_F(ReverseTest, Reverse2x0x4x3FloatArrayDim13) {
-  ComputationBuilder b(client_, TestName());
-  b.Rev(b.ConstantR4FromArray4D<float>(Array4D<float>(2, 0, 4, 3)), {1, 3});
-  ComputeAndCompareR4<float>(&b, Array4D<float>(2, 0, 4, 3), {});
-}
 
 // Tests the reverse operation on a 4D U8 array on dimension 0 and 3.
 XLA_TEST_F(ReverseTest, Reverse4DU8ArrayOnDim23) {

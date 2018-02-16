@@ -53,5 +53,5 @@ REGISTER_KERNEL_BUILDER(Name("Sub")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::sub<int32>>);
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 }  // namespace tensorflow

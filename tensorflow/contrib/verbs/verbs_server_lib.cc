@@ -49,8 +49,8 @@ VerbsServer::~VerbsServer() {
 Status VerbsServer::ChannelCacheFactory(const ServerDef& server_def,
                                         GrpcChannelCache** channel_cache) {
   string name_prefix =
-      strings::StrCat("/job:", server_def.job_name(), "/replica:0", "/task:",
-                      server_def.task_index());
+      strings::StrCat("/job:", server_def.job_name(), "/replica:0",
+                      "/task:", server_def.task_index());
 
   GrpcChannelSpec channel_spec;
   TF_RETURN_IF_ERROR(ParseChannelSpec(server_def, &channel_spec));
@@ -104,6 +104,7 @@ Status VerbsServer::Start() {
           [this] { verbs_service_->HandleRPCsLoop(); }));
       rdma_mgr_->SetupChannels();
       CHECK(rdma_mgr_->ConnectivityCheck()) << "Connectivity check failed!";
+      rdma_mgr_->InitAllocators();
       verbs_state_ = CONNECTED;
     }
   }

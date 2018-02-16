@@ -712,8 +712,8 @@ TEST_F(HloInstructionTest, PreserveOutfeedShapeThroughClone) {
           {1, 2},
           {3, 4},
       })));
-  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {1, 0});
-  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {0, 1});
+  auto shape10 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0});
+  auto shape01 = ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1});
   auto outfeed10 = builder.AddInstruction(
       HloInstruction::CreateOutfeed(shape10, constant, ""));
   auto outfeed01 = builder.AddInstruction(
@@ -825,17 +825,42 @@ TEST_F(HloInstructionTest, ComplexFusionOp) {
   EXPECT_THAT(c1->users(), ElementsAre(fusion));
 }
 
-// Convenience function for comparing two HloInstructions inside of
-// std::unique_ptrs.
-static bool Identical(std::unique_ptr<HloInstruction> instruction1,
-                      std::unique_ptr<HloInstruction> instruction2) {
+// Convenience function for comparing two HloInstructions.
+static bool Identical(const HloInstruction& instruction1,
+                      const HloInstruction& instruction2) {
   // Verify Identical is reflexive for both instructions.
-  EXPECT_TRUE(instruction1->Identical(*instruction1));
-  EXPECT_TRUE(instruction2->Identical(*instruction2));
+  EXPECT_TRUE(instruction1.Identical(instruction1));
+  EXPECT_TRUE(instruction2.Identical(instruction2));
 
-  bool is_equal = instruction1->Identical(*instruction2);
+  bool is_equal = instruction1.Identical(instruction2);
   // Verify Identical is symmetric.
-  EXPECT_EQ(is_equal, instruction2->Identical(*instruction1));
+  EXPECT_EQ(is_equal, instruction2.Identical(instruction1));
+  return is_equal;
+}
+
+// Convenience function for comparing two HloInstructions for structural
+// equality.
+static bool StructuralEqual(const HloInstruction& instruction1,
+                            const HloInstruction& instruction2) {
+  auto eq_operand_shapes = [](const HloInstruction* a,
+                              const HloInstruction* b) {
+    return ShapeUtil::Equal(a->shape(), b->shape());
+  };
+  auto eq_computations = [](const HloComputation* a, const HloComputation* b) {
+    return *a == *b;
+  };
+
+  // Verify Identical is reflexive for both instructions.
+  EXPECT_TRUE(
+      instruction1.Identical(instruction1, eq_operand_shapes, eq_computations));
+  EXPECT_TRUE(
+      instruction2.Identical(instruction2, eq_operand_shapes, eq_computations));
+
+  bool is_equal =
+      instruction1.Identical(instruction2, eq_operand_shapes, eq_computations);
+  // Verify Identical is symmetric.
+  EXPECT_EQ(is_equal, instruction2.Identical(instruction1, eq_operand_shapes,
+                                             eq_computations));
   return is_equal;
 }
 
@@ -858,42 +883,42 @@ TEST_F(HloInstructionTest, IdenticalInstructions) {
 
   // Operations which only depend on their operands and opcode.
   EXPECT_TRUE(
-      Identical(HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
-                HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1)));
+      Identical(*HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
+                *HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1)));
   EXPECT_FALSE(
-      Identical(HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
-                HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op2)));
+      Identical(*HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
+                *HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op2)));
   EXPECT_FALSE(
-      Identical(HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
-                HloInstruction::CreateUnary(shape, HloOpcode::kNegate, op1)));
+      Identical(*HloInstruction::CreateUnary(shape, HloOpcode::kCopy, op1),
+                *HloInstruction::CreateUnary(shape, HloOpcode::kNegate, op1)));
 
   // Tuples.
-  EXPECT_TRUE(Identical(HloInstruction::CreateTuple({op1, op2}),
-                        HloInstruction::CreateTuple({op1, op2})));
-  EXPECT_FALSE(Identical(HloInstruction::CreateTuple({op1, op2}),
-                         HloInstruction::CreateTuple({op2, op1})));
+  EXPECT_TRUE(Identical(*HloInstruction::CreateTuple({op1, op2}),
+                        *HloInstruction::CreateTuple({op1, op2})));
+  EXPECT_FALSE(Identical(*HloInstruction::CreateTuple({op1, op2}),
+                         *HloInstruction::CreateTuple({op2, op1})));
 
   // Broadcasts.
-  EXPECT_TRUE(Identical(HloInstruction::CreateBroadcast(shape, op1, {0, 1}),
-                        HloInstruction::CreateBroadcast(shape, op1, {0, 1})));
-  EXPECT_FALSE(Identical(HloInstruction::CreateBroadcast(shape, op1, {0, 1}),
-                         HloInstruction::CreateBroadcast(shape, op1, {1, 0})));
+  EXPECT_TRUE(Identical(*HloInstruction::CreateBroadcast(shape, op1, {0, 1}),
+                        *HloInstruction::CreateBroadcast(shape, op1, {0, 1})));
+  EXPECT_FALSE(Identical(*HloInstruction::CreateBroadcast(shape, op1, {0, 1}),
+                         *HloInstruction::CreateBroadcast(shape, op1, {1, 0})));
   Shape bcast_shape1 = ShapeUtil::MakeShape(F32, {2, 2, 42});
   Shape bcast_shape2 = ShapeUtil::MakeShape(F32, {2, 2, 123});
   EXPECT_FALSE(
-      Identical(HloInstruction::CreateBroadcast(bcast_shape1, op1, {0, 1}),
-                HloInstruction::CreateBroadcast(bcast_shape2, op1, {0, 1})));
+      Identical(*HloInstruction::CreateBroadcast(bcast_shape1, op1, {0, 1}),
+                *HloInstruction::CreateBroadcast(bcast_shape2, op1, {0, 1})));
 
   // Binary operands.
   EXPECT_TRUE(Identical(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2)));
+      *HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
+      *HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2)));
   EXPECT_FALSE(Identical(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
-      HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op2, op1)));
+      *HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
+      *HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op2, op1)));
   EXPECT_FALSE(Identical(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
-      HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op1, op2)));
+      *HloInstruction::CreateBinary(shape, HloOpcode::kAdd, op1, op2),
+      *HloInstruction::CreateBinary(shape, HloOpcode::kDivide, op1, op2)));
 }
 
 TEST_F(HloInstructionTest, FunctionVisitor) {
@@ -1089,6 +1114,70 @@ TEST_F(HloInstructionTest, CloneOfFusionPreservesShape) {
       ShapeUtil::Equal(root->operand(1)->shape(), root2->operand(1)->shape()));
   EXPECT_TRUE(ShapeUtil::Equal(root->operand(1)->operand(0)->shape(),
                                root2->operand(1)->operand(0)->shape()));
+  EXPECT_TRUE(StructuralEqual(*fusion, *fusion2));
+}
+
+TEST_F(HloInstructionTest, FusionEquality) {
+  HloModule module(TestName());
+  HloComputation::Builder builder(TestName());
+
+  // Create two fusion instructions containing a single unary operation.
+  auto parameter =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "x"));
+  auto exp = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kExp, parameter));
+  auto neg = builder.AddInstruction(
+      HloInstruction::CreateUnary(r0f32_, HloOpcode::kNegate, parameter));
+  auto* computation = module.AddEntryComputation(builder.Build());
+  auto* fusion = computation->CreateFusionInstruction(
+      {exp}, HloInstruction::FusionKind::kLoop);
+  auto* fusion2 = computation->CreateFusionInstruction(
+      {neg}, HloInstruction::FusionKind::kLoop);
+  EXPECT_FALSE(StructuralEqual(*fusion, *fusion2));
+
+  auto clone = fusion->Clone();
+  EXPECT_TRUE(StructuralEqual(*fusion, *clone));
+}
+
+TEST_F(HloInstructionTest, NestedFusionEquality) {
+  HloModule module(TestName());
+  HloComputation::Builder builder(TestName());
+
+  // Build a nested fusion computation.
+  Shape data_shape = ShapeUtil::MakeShape(F32, {2, 2});
+  auto a = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<float>({{1.0, 0.0}, {0.0, 1.0}})));
+  auto b = builder.AddInstruction(HloInstruction::CreateConstant(
+      Literal::CreateR2<float>({{2.0, 2.0}, {2.0, 2.0}})));
+  auto b_t = builder.AddInstruction(
+      HloInstruction::CreateTranspose(data_shape, b, {1, 0}));
+  DotDimensionNumbers dot_dnums;
+  dot_dnums.add_lhs_contracting_dimensions(1);
+  dot_dnums.add_rhs_contracting_dimensions(0);
+  auto dot = builder.AddInstruction(
+      HloInstruction::CreateDot(data_shape, a, b_t, dot_dnums));
+  auto one = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(1.0)));
+  auto add_operand = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(data_shape, one, {1}));
+  auto add = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kAdd, dot, add_operand));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      data_shape, HloOpcode::kSubtract, dot, add_operand));
+  builder.AddInstruction(
+      HloInstruction::CreateBinary(data_shape, HloOpcode::kMultiply, add, sub));
+  auto computation = module.AddEntryComputation(builder.Build());
+
+  auto nested_fusion = computation->CreateFusionInstruction(
+      {dot, b_t}, HloInstruction::FusionKind::kTransposeDot);
+
+  auto fusion = computation->CreateFusionInstruction(
+      {add, nested_fusion}, HloInstruction::FusionKind::kOutput);
+  auto fusion2 = computation->CreateFusionInstruction(
+      {sub, nested_fusion}, HloInstruction::FusionKind::kOutput);
+  auto clone = fusion->Clone();
+  EXPECT_TRUE(StructuralEqual(*fusion, *clone));
+  EXPECT_FALSE(StructuralEqual(*fusion, *fusion2));
 }
 
 TEST_F(HloInstructionTest, CloneSuffixNames) {
@@ -1130,7 +1219,7 @@ TEST_F(HloInstructionTest, CloneSuffixNames) {
 }
 
 TEST_F(HloInstructionTest, Stringification) {
-  // Tests stringification of a simple op, fusion, and while.
+  // Tests stringification of a simple op, fusion, while, and conditional.
   const Shape s1 = ShapeUtil::MakeShape(F32, {5, 10});
   const Shape s2 = ShapeUtil::MakeShape(F32, {20, 10});
   const Shape s2t = ShapeUtil::MakeShape(F32, {10, 20});
@@ -1149,9 +1238,11 @@ TEST_F(HloInstructionTest, Stringification) {
   HloInstruction* dot = builder.AddInstruction(
       HloInstruction::CreateDot(sout, x, reshape, dot_dnums));
 
-  EXPECT_EQ(dot->ToString(false, false),
+  auto options = HloPrintOptions().set_print_metadata(false);
+
+  EXPECT_EQ(dot->ToString(options),
             "%dot = f32[5,20]{1,0} dot(f32[5,10]{1,0} %x, f32[10,20]{1,0} "
-            "%transpose), lhs_contracting_dims=1,rhs_contracting_dims=0");
+            "%transpose), lhs_contracting_dims={1}, rhs_contracting_dims={0}");
 
   HloModule module(TestName());
   auto* computation = module.AddEntryComputation(builder.Build());
@@ -1159,15 +1250,25 @@ TEST_F(HloInstructionTest, Stringification) {
       {dot, reshape}, HloInstruction::FusionKind::kTransposeDot);
 
   EXPECT_EQ(
-      fusion->ToString(false, false),
-      "%fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
+      fusion->ToString(options),
+      "%dot_fusion = f32[5,20]{1,0} fusion(f32[5,10]{1,0} %x, "
       "f32[20,10]{1,0} %y), kind=kTransposeDot, calls=%fused_computation");
 
   HloInstruction* loop = builder.AddInstruction(
       HloInstruction::CreateWhile(sout, computation, computation, x));
-  EXPECT_EQ(loop->ToString(false, false),
+  EXPECT_EQ(loop->ToString(options),
             "%while = f32[5,20]{1,0} while(f32[5,10]{1,0} %x), "
             "condition=%TransposeDot, body=%TransposeDot");
+
+  auto pred = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+  HloInstruction* conditional =
+      builder.AddInstruction(HloInstruction::CreateConditional(
+          sout, pred, x, computation, x, computation));
+  EXPECT_EQ(conditional->ToString(options),
+            "%conditional = f32[5,20]{1,0} conditional(pred[] %constant, "
+            "f32[5,10]{1,0} %x, f32[5,10]{1,0} %x), "
+            "true_computation=%TransposeDot, false_computation=%TransposeDot");
 }
 
 }  // namespace

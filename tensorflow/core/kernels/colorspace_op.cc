@@ -71,7 +71,7 @@ class RGBToHSVOp : public OpKernel {
                                         TensorShape({input_data.dimension(0)}),
                                         &trange));
 
-    typename TTypes<T, 1>::Tensor range = trange.tensor<T, 1>();
+    typename TTypes<T, 1>::Tensor range(trange.tensor<T, 1>());
 
     functor::RGBToHSV<Device, T>()(context->eigen_device<Device>(), input_data,
                                    range, output_data);
@@ -107,14 +107,14 @@ class HSVToRGBOp : public OpKernel {
   }
 };
 
-#define REGISTER_CPU(T)                                       \
-  REGISTER_KERNEL_BUILDER(Name("RGBToHSV").Device(DEVICE_CPU) \
-                              .TypeConstraint<T>("T"),        \
-                          RGBToHSVOp<CPUDevice, T>);          \
-  template class RGBToHSVOp<CPUDevice, T>;                    \
-  REGISTER_KERNEL_BUILDER(Name("HSVToRGB").Device(DEVICE_CPU) \
-                              .TypeConstraint<T>("T"),        \
-                          HSVToRGBOp<CPUDevice, T>);          \
+#define REGISTER_CPU(T)                                           \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("RGBToHSV").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      RGBToHSVOp<CPUDevice, T>);                                  \
+  template class RGBToHSVOp<CPUDevice, T>;                        \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("HSVToRGB").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
+      HSVToRGBOp<CPUDevice, T>);                                  \
   template class HSVToRGBOp<CPUDevice, T>;
 TF_CALL_float(REGISTER_CPU);
 TF_CALL_double(REGISTER_CPU);
@@ -123,40 +123,39 @@ TF_CALL_double(REGISTER_CPU);
 // Forward declarations of the function specializations for GPU (to prevent
 // building the GPU versions here, they will be built compiling _gpu.cu.cc).
 namespace functor {
-#define DECLARE_GPU(T)                                        \
-  template <>                                                 \
-  void RGBToHSV<GPUDevice, T>::operator()(const GPUDevice& d, \
-      TTypes<T, 2>::ConstTensor input_data,                   \
-      TTypes<T, 1>::Tensor range,                             \
-      TTypes<T, 2>::Tensor output_data);                      \
-  extern template struct RGBToHSV<GPUDevice, T>;              \
-  template <>                                                 \
-  void HSVToRGB<GPUDevice, T>::operator()(const GPUDevice& d, \
-      TTypes<T, 2>::ConstTensor input_data,                   \
-      TTypes<T, 2>::Tensor output_data);                      \
+#define DECLARE_GPU(T)                                               \
+  template <>                                                        \
+  void RGBToHSV<GPUDevice, T>::operator()(                           \
+      const GPUDevice& d, TTypes<T, 2>::ConstTensor input_data,      \
+      TTypes<T, 1>::Tensor range, TTypes<T, 2>::Tensor output_data); \
+  extern template struct RGBToHSV<GPUDevice, T>;                     \
+  template <>                                                        \
+  void HSVToRGB<GPUDevice, T>::operator()(                           \
+      const GPUDevice& d, TTypes<T, 2>::ConstTensor input_data,      \
+      TTypes<T, 2>::Tensor output_data);                             \
   extern template struct HSVToRGB<GPUDevice, T>;
 TF_CALL_float(DECLARE_GPU);
 TF_CALL_double(DECLARE_GPU);
 }  // namespace functor
-#define REGISTER_GPU(T)                                       \
-  REGISTER_KERNEL_BUILDER(Name("RGBToHSV").Device(DEVICE_GPU) \
-                              .TypeConstraint<T>("T"),        \
-                          RGBToHSVOp<GPUDevice, T>);          \
-  REGISTER_KERNEL_BUILDER(Name("HSVToRGB").Device(DEVICE_GPU) \
-                              .TypeConstraint<T>("T"),        \
-                          HSVToRGBOp<GPUDevice, T>);
+#define REGISTER_GPU(T)                                           \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("RGBToHSV").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      RGBToHSVOp<GPUDevice, T>);                                  \
+  REGISTER_KERNEL_BUILDER(                                        \
+      Name("HSVToRGB").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
+      HSVToRGBOp<GPUDevice, T>);
 TF_CALL_float(REGISTER_GPU);
 TF_CALL_double(REGISTER_GPU);
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL(T)                                       \
-  REGISTER_KERNEL_BUILDER(Name("RGBToHSV").Device(DEVICE_SYCL) \
-                              .TypeConstraint<T>("T"),         \
-                          RGBToHSVOp<SYCLDevice, T>);          \
-  REGISTER_KERNEL_BUILDER(Name("HSVToRGB").Device(DEVICE_SYCL) \
-                              .TypeConstraint<T>("T"),         \
-                          HSVToRGBOp<SYCLDevice, T>);
+#define REGISTER_SYCL(T)                                           \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("RGBToHSV").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      RGBToHSVOp<SYCLDevice, T>);                                  \
+  REGISTER_KERNEL_BUILDER(                                         \
+      Name("HSVToRGB").Device(DEVICE_SYCL).TypeConstraint<T>("T"), \
+      HSVToRGBOp<SYCLDevice, T>);
 TF_CALL_float(REGISTER_SYCL);
 TF_CALL_double(REGISTER_SYCL);
 #endif

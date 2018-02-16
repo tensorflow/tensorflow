@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 // Functions for getting information about kernels registered in the binary.
-#ifndef THIRD_PARTY_TENSORFLOW_PYTHON_UTIL_UTIL_H_
-#define THIRD_PARTY_TENSORFLOW_PYTHON_UTIL_UTIL_H_
+#ifndef TENSORFLOW_PYTHON_UTIL_UTIL_H_
+#define TENSORFLOW_PYTHON_UTIL_UTIL_H_
 
 #include <Python.h>
 
@@ -71,4 +71,4 @@ void RegisterSequenceClass(PyObject* sequence_class);
 }  // namespace swig
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_PYTHON_UTIL_UTIL_H_
+#endif  // TENSORFLOW_PYTHON_UTIL_UTIL_H_

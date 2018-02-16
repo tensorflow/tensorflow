@@ -49,7 +49,11 @@ Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
       break;
   }
   if (*output_size < 0) {
-    return errors::InvalidArgument("computed output size would be negative");
+    return errors::InvalidArgument(
+        "Computed output size would be negative: ", *output_size,
+        " [input_size: ", input_size,
+        ", effective_filter_size: ", effective_filter_size,
+        ", stride: ", stride, "]");
   }
   return Status::OK();
 }
@@ -1125,16 +1129,20 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
     for (int i = start_value_index; i < end_value_index; ++i) {
       if (rank == InferenceContext::kUnknownRank) rank = c->Rank(c->input(i));
       if (rank != InferenceContext::kUnknownRank) {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
+        break;
       }
     }
     if (rank == InferenceContext::kUnknownRank) {
       c->set_output(0, c->UnknownShape());
       return Status::OK();
-    }
-    if (rank == 0) {
+    } else if (rank == 0) {
       return errors::InvalidArgument(
           "Can't concatenate scalars (use tf.stack instead)");
+    } else {
+      for (int i = start_value_index; i < end_value_index; ++i) {
+        // Check that all the inputs are of the correct rank.
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
+      }
     }
     // Build result of <rank> different unknown dims.
     std::vector<DimensionHandle> dims;
@@ -1352,10 +1360,11 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", num_outer_dims, " dimensions of indices.shape=",
-            c->DebugString(indices_shape), " must match the outer ",
-            num_outer_dims, " dimensions of updates.shape=",
-            c->DebugString(updates_shape), ": ", s.error_message());
+            "The outer ", num_outer_dims,
+            " dimensions of indices.shape=", c->DebugString(indices_shape),
+            " must match the outer ", num_outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
       }
 
       ShapeHandle input_suffix;

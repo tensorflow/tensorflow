@@ -64,7 +64,7 @@ class LookupTableOp : public OpKernel {
         return ctx->status();
       }
       if (ctx->track_allocations()) {
-        ctx->record_host_persistent_memory_allocation(
+        ctx->record_persistent_memory_allocation(
             container->MemoryUsed() + table_handle_.AllocatedBytes());
       }
       *ret = container;

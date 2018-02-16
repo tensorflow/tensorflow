@@ -70,33 +70,6 @@ ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
   }
 }
 
-ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options)
-    : ProcessFunctionLibraryRuntime(device_mgr, env, graph_def_version, lib_def,
-                                    optimizer_options,
-                                    nullptr /* cluster_flr */) {}
-
-ProcessFunctionLibraryRuntime::ProcessFunctionLibraryRuntime(
-    const DeviceMgr* device_mgr, Env* env, int graph_def_version,
-    const FunctionLibraryDefinition* lib_def,
-    const OptimizerOptions& optimizer_options,
-    CustomKernelCreator custom_kernel_creator)
-    : ProcessFunctionLibraryRuntime(
-          device_mgr, env, graph_def_version, lib_def, optimizer_options,
-          std::move(custom_kernel_creator), nullptr /* cluster_flr */) {}
-
-/* static */
-string ProcessFunctionLibraryRuntime::ObtainFunctionTarget(
-    const AttrSlice& attrs) {
-  const AttrValue* value;
-  if (!attrs.Find("_target", &value).ok()) {
-    return "";
-  }
-  return DeviceNameUtils::CanonicalizeDeviceName(value->s());
-}
-
 /* static */
 Status ProcessFunctionLibraryRuntime::SendTensors(
     const string& source_device, const string& target_device,
@@ -168,7 +141,7 @@ Status ProcessFunctionLibraryRuntime::GetDeviceContext(
 }
 
 FunctionLibraryRuntime* ProcessFunctionLibraryRuntime::GetFLR(
-    const string& device_name) {
+    const string& device_name) const {
   Device* device = nullptr;
   if (device_name != kDefaultFLRDevice) {
     if (!device_mgr_->LookupDevice(device_name, &device).ok()) {
@@ -240,22 +213,23 @@ string ProcessFunctionLibraryRuntime::GetDeviceName(
 
 Status ProcessFunctionLibraryRuntime::Instantiate(
     const string& function_name, AttrSlice attrs,
+    const FunctionLibraryRuntime::InstantiateOptions& options,
     FunctionLibraryRuntime::Handle* handle) {
   *handle = kInvalidHandle;
-  string target = ObtainFunctionTarget(attrs);
-  FunctionLibraryRuntime* flr = GetFLR(target);
+  FunctionLibraryRuntime* flr = GetFLR(options.target);
   if (flr != nullptr) {
-    return flr->Instantiate(function_name, attrs, handle);
+    return flr->Instantiate(function_name, attrs, options, handle);
   }
   if (parent_ == nullptr) {
     return errors::Internal(
-        "Currently don't support instantiating functions on device: ", target);
+        "Currently don't support instantiating functions on device: ",
+        options.target);
   }
   FunctionLibraryRuntime::Handle cluster_handle;
-  TF_RETURN_IF_ERROR(
-      parent_->Instantiate(function_name, *lib_def_, attrs, &cluster_handle));
+  TF_RETURN_IF_ERROR(parent_->Instantiate(function_name, *lib_def_, attrs,
+                                          options, &cluster_handle));
   string function_key = Canonicalize(function_name, attrs);
-  *handle = AddHandle(function_key, target, cluster_handle);
+  *handle = AddHandle(function_key, options.target, cluster_handle);
   return Status::OK();
 }
 
@@ -272,7 +246,7 @@ Status ProcessFunctionLibraryRuntime::ReleaseHandle(
   string target_device;
   {
     mutex_lock l(mu_);
-    CHECK_EQ(1, function_data_.count(handle));
+    CHECK_EQ(1, function_data_.count(handle)) << " handle: " << handle;
     target_device = function_data_[handle].target_device;
   }
   flr = GetFLR(target_device);
@@ -357,6 +331,18 @@ void ProcessFunctionLibraryRuntime::Run(
     return;
   }
   done(errors::Internal("Could not find device"));
+}
+
+Status ProcessFunctionLibraryRuntime::Clone(
+    Env* env, int graph_def_version, const OptimizerOptions& optimizer_options,
+    CustomKernelCreator custom_kernel_creator,
+    std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+    std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr) {
+  out_lib_def->reset(new FunctionLibraryDefinition(*lib_def_));
+  out_pflr->reset(new ProcessFunctionLibraryRuntime(
+      device_mgr_, env, graph_def_version, out_lib_def->get(),
+      optimizer_options, std::move(custom_kernel_creator), parent_));
+  return Status::OK();
 }
 
 }  // namespace tensorflow

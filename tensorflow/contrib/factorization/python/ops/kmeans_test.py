@@ -194,15 +194,7 @@ class KMeansTest(KMeansTestBase):
     score = kmeans.score(input_fn=self.input_fn(batch_size=self.num_points))
     self.assertNear(self.true_score, score, self.true_score * 0.01)
 
-  def test_infer(self):
-    kmeans = self._kmeans()
-    # Make a call to fit to initialize the cluster centers.
-    max_steps = 1
-    kmeans.train(input_fn=self.input_fn(), max_steps=max_steps)
-    clusters = kmeans.cluster_centers()
-
-    # Make a small test set
-    num_points = 10
+  def _infer_helper(self, kmeans, clusters, num_points):
     points, true_assignments, true_offsets = make_random_points(
         clusters, num_points)
     input_fn = self.input_fn(batch_size=num_points, points=points, num_epochs=1)
@@ -222,6 +214,17 @@ class KMeansTest(KMeansTestBase):
         2 * np.dot(points, np.transpose(clusters)) + np.transpose(
             np.sum(np.square(clusters), axis=1, keepdims=True)))
     self.assertAllClose(transform, true_transform, rtol=0.05, atol=10)
+
+  def test_infer(self):
+    kmeans = self._kmeans()
+    # Make a call to fit to initialize the cluster centers.
+    max_steps = 1
+    kmeans.train(input_fn=self.input_fn(), max_steps=max_steps)
+    clusters = kmeans.cluster_centers()
+
+    # Run inference on small datasets.
+    self._infer_helper(kmeans, clusters, 10)
+    self._infer_helper(kmeans, clusters, 1)
 
 
 class KMeansTestMultiStageInit(KMeansTestBase):

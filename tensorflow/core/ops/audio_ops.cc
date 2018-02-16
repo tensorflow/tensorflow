@@ -128,52 +128,13 @@ REGISTER_OP("DecodeWav")
     .Attr("desired_samples: int = -1")
     .Output("audio: float")
     .Output("sample_rate: int32")
-    .SetShapeFn(DecodeWavShapeFn)
-    .Doc(R"doc(
-Decode a 16-bit PCM WAV file to a float tensor.
-
-The -32768 to 32767 signed 16-bit values will be scaled to -1.0 to 1.0 in float.
-
-When desired_channels is set, if the input contains fewer channels than this
-then the last channel will be duplicated to give the requested number, else if
-the input has more channels than requested then the additional channels will be
-ignored.
-
-If desired_samples is set, then the audio will be cropped or padded with zeroes
-to the requested length.
-
-The first output contains a Tensor with the content of the audio samples. The
-lowest dimension will be the number of channels, and the second will be the
-number of samples. For example, a ten-sample-long stereo WAV file should give an
-output shape of [10, 2].
-
-contents: The WAV-encoded audio, usually from a file.
-desired_channels: Number of sample channels wanted.
-desired_samples: Length of audio requested.
-audio: 2-D with shape `[length, channels]`.
-sample_rate: Scalar holding the sample rate found in the WAV header.
-)doc");
+    .SetShapeFn(DecodeWavShapeFn);
 
 REGISTER_OP("EncodeWav")
     .Input("audio: float")
     .Input("sample_rate: int32")
     .Output("contents: string")
-    .SetShapeFn(EncodeWavShapeFn)
-    .Doc(R"doc(
-Encode audio data using the WAV file format.
-
-This operation will generate a string suitable to be saved out to create a .wav
-audio file. It will be encoded in the 16-bit PCM format. It takes in float
-values in the range -1.0f to 1.0f, and any outside that value will be clamped to
-that range.
-
-`audio` is a 2-D float Tensor of shape `[length, channels]`.
-`sample_rate` is a scalar Tensor holding the rate to use (e.g. 44100).
-
-audio: 2-D with shape `[length, channels]`.
-sample_rate: Scalar containing the sample frequency.
-contents: 0-D. WAV-encoded file contents.
-)doc");
+    .SetShapeFn(EncodeWavShapeFn);
 
 REGISTER_OP("AudioSpectrogram")
     .Input("input: float")
@@ -181,44 +142,7 @@ REGISTER_OP("AudioSpectrogram")
     .Attr("stride: int")
     .Attr("magnitude_squared: bool = false")
     .Output("spectrogram: float")
-    .SetShapeFn(SpectrogramShapeFn)
-    .Doc(R"doc(
-Produces a visualization of audio data over time.
-
-Spectrograms are a standard way of representing audio information as a series of
-slices of frequency information, one slice for each window of time. By joining
-these together into a sequence, they form a distinctive fingerprint of the sound
-over time.
-
-This op expects to receive audio data as an input, stored as floats in the range
--1 to 1, together with a window width in samples, and a stride specifying how
-far to move the window between slices. From this it generates a three
-dimensional output. The lowest dimension has an amplitude value for each
-frequency during that time slice. The next dimension is time, with successive
-frequency slices. The final dimension is for the channels in the input, so a
-stereo audio input would have two here for example.
-
-This means the layout when converted and saved as an image is rotated 90 degrees
-clockwise from a typical spectrogram. Time is descending down the Y axis, and
-the frequency decreases from left to right.
-
-Each value in the result represents the square root of the sum of the real and
-imaginary parts of an FFT on the current window of samples. In this way, the
-lowest dimension represents the power of each frequency in the current window,
-and adjacent windows are concatenated in the next dimension.
-
-To get a more intuitive and visual look at what this operation does, you can run
-tensorflow/examples/wav_to_spectrogram to read in an audio file and save out the
-resulting spectrogram as a PNG image.
-
-input: Float representation of audio data.
-window_size: How wide the input window is in samples. For the highest efficiency
-  this should be a power of two, but other values are accepted.
-stride: How widely apart the center of adjacent sample windows should be.
-magnitude_squared: Whether to return the squared magnitude or just the
-  magnitude. Using squared magnitude can avoid extra calculations.
-spectrogram: 3D representation of the audio frequencies as an image.
-)doc");
+    .SetShapeFn(SpectrogramShapeFn);
 
 REGISTER_OP("Mfcc")
     .Input("spectrogram: float")
@@ -228,26 +152,6 @@ REGISTER_OP("Mfcc")
     .Attr("filterbank_channel_count: int = 40")
     .Attr("dct_coefficient_count: int = 13")
     .Output("output: float")
-    .SetShapeFn(MfccShapeFn)
-    .Doc(R"doc(
-Transforms a spectrogram into a form that's useful for speech recognition.
-
-Mel Frequency Cepstral Coefficients are a way of representing audio data that's
-been effective as an input feature for machine learning. They are created by
-taking the spectrum of a spectrogram (a 'cepstrum'), and discarding some of the
-higher frequencies that are less significant to the human ear. They have a long
-history in the speech recognition world, and https://en.wikipedia.org/wiki/Mel-frequency_cepstrum
-is a good resource to learn more.
-
-spectrogram: Typically produced by the Spectrogram op, with magnitude_squared
-  set to true.
-sample_rate: How many samples per second the source audio used.
-upper_frequency_limit: The highest frequency to use when calculating the
-  ceptstrum.
-lower_frequency_limit: The lowest frequency to use when calculating the
-  ceptstrum.
-filterbank_channel_count: Resolution of the Mel bank used internally.
-dct_coefficient_count: How many output channels to produce per time slice.
-)doc");
+    .SetShapeFn(MfccShapeFn);
 
 }  // namespace tensorflow

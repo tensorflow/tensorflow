@@ -24,6 +24,7 @@ import time
 
 import numpy as np
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib import layers
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
@@ -164,8 +165,8 @@ class Conv2DTest(test.TestCase):
       # as we will be using its gradients as reference for fp16 gradients.
       return [dtypes.float32, dtypes.float16]
 
-  def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, strides,
-                            padding, data_format, dtype, use_gpu):
+  def _SetupValuesForDevice(self, tensor_in_sizes, filter_in_sizes, dilations,
+                            strides, padding, data_format, dtype, use_gpu):
     """Verifies the output values of the convolution function.
 
     Args:
@@ -173,6 +174,7 @@ class Conv2DTest(test.TestCase):
         [batch, input_rows, input_cols, input_depth].
       filter_in_sizes: Filter tensor dimensions in
         [kernel_rows, kernel_cols, input_depth, output_depth].
+      dilations: Dilated rate: [col_dilation, row_dilation]
       strides: Stride: [col_stride, row_stride]
       padding: Padding type.
       data_format: Format of the data tensors.
@@ -196,11 +198,18 @@ class Conv2DTest(test.TestCase):
       t1 = constant_op.constant(x1, shape=tensor_in_sizes, dtype=dtype)
       t2 = constant_op.constant(x2, shape=filter_in_sizes, dtype=dtype)
       strides = [1] + strides + [1]
+      dilations = [1] + dilations + [1]
       if data_format == "NCHW":
         t1 = test_util.NHWCToNCHW(t1)
         strides = test_util.NHWCToNCHW(strides)
+        dilations = test_util.NHWCToNCHW(dilations)
       conv = nn_ops.conv2d(
-          t1, t2, strides=strides, padding=padding, data_format=data_format)
+          t1,
+          t2,
+          dilations=dilations,
+          strides=strides,
+          padding=padding,
+          data_format=data_format)
       if data_format == "NCHW":
         conv = test_util.NCHWToNHWC(conv)
 
@@ -316,11 +325,13 @@ class Conv2DTest(test.TestCase):
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, strides, padding,
                     expected):
     tensors = []
+    dilations = [1, 1]
     for (data_format, use_gpu) in GetTestConfigs():
       for dtype in self._DtypesToTest(use_gpu):
         result = self._SetupValuesForDevice(
             tensor_in_sizes,
             filter_in_sizes,
+            dilations,
             strides,
             padding,
             data_format,
@@ -509,7 +520,7 @@ class Conv2DTest(test.TestCase):
           dilations=[2, 2],
           padding="VALID")
 
-  # TODO this currently fails.
+  # TODO(yzhwang): this currently fails.
   # self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
   #                   filter_in_sizes=[2, 2, 1, 1],
   #                   strides=[4, 4], padding="SAME",
@@ -780,6 +791,20 @@ class Conv2DTest(test.TestCase):
           input_sizes=[1, 2, 3, 1],
           filter_sizes=[2, 2, 1, 0],
           output_sizes=[1, 1, 2, 0],
+          strides=[1, 1],
+          padding="VALID",
+          expected=expected,
+          data_format=data_format,
+          use_gpu=use_gpu)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def testConv2DBackpropFilterWithEmptyInput(self):
+    expected = [0, 0, 0, 0]
+    for (data_format, use_gpu) in GetTestConfigs():
+      self._RunAndVerifyBackpropFilter(
+          input_sizes=[0, 2, 3, 1],
+          filter_sizes=[2, 2, 1, 1],
+          output_sizes=[0, 1, 2, 1],
           strides=[1, 1],
           padding="VALID",
           expected=expected,
@@ -1497,6 +1522,36 @@ class Conv2DTest(test.TestCase):
                     dtypes.float32, shape=[21, 20, 3, 2]),
                 strides=[1, 1, 1, 1],
                 padding="VALID"))
+
+  def testCPUConv2DNCHWUnimplemented(self):
+    with self.test_session(use_gpu=False):
+      with self.assertRaisesRegexp(errors_impl.UnimplementedError,
+                                   "NHWC tensor format for now"):
+        conv = self._SetupValuesForDevice(
+            tensor_in_sizes=[1, 4, 4, 1],
+            filter_in_sizes=[2, 2, 1, 1],
+            dilations=[1, 1],
+            strides=[1, 1],
+            padding="VALID",
+            data_format="NCHW",
+            dtype=dtypes.float32,
+            use_gpu=False)
+        self.evaluate(conv)
+
+  def testCPUConv2DDilatedUnimplemented(self):
+    with self.test_session(use_gpu=False):
+      with self.assertRaisesRegexp(errors_impl.UnimplementedError,
+                                   "dilated rate of 1 for now"):
+        conv = self._SetupValuesForDevice(
+            tensor_in_sizes=[1, 4, 4, 1],
+            filter_in_sizes=[2, 2, 1, 1],
+            dilations=[2, 1],
+            strides=[1, 1],
+            padding="VALID",
+            data_format="NHWC",
+            dtype=dtypes.float32,
+            use_gpu=False)
+        self.evaluate(conv)
 
 
 class DepthwiseConv2DTest(test.TestCase):

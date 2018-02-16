@@ -25,6 +25,7 @@ import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
 /** Unit tests for {@link org.tensorflow.lite.NativeInterpreterWrapper}. */
+// TODO(b/71818425): Generates model files dynamically.
 @RunWith(JUnit4.class)
 public final class NativeInterpreterWrapperTest {
 
@@ -43,6 +44,9 @@ public final class NativeInterpreterWrapperTest {
   private static final String INVALID_MODEL_PATH =
       "tensorflow/contrib/lite/java/src/testdata/invalid_model.bin";
 
+  private static final String MODEL_WITH_CUSTOM_OP_PATH =
+      "tensorflow/contrib/lite/java/src/testdata/with_custom_op.lite";
+
   @Test
   public void testConstructor() {
     NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(FLOAT_MODEL_PATH);
@@ -56,9 +60,19 @@ public final class NativeInterpreterWrapperTest {
       NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(INVALID_MODEL_PATH);
       fail();
     } catch (IllegalArgumentException e) {
+      assertThat(e).hasMessageThat().contains("is not a valid flatbuffer model");
+    }
+  }
+
+  @Test
+  public void testConstructorWithUnresolableCustomOp() {
+    try {
+      NativeInterpreterWrapper wrapper = new NativeInterpreterWrapper(MODEL_WITH_CUSTOM_OP_PATH);
+      fail();
+    } catch (IllegalArgumentException e) {
       assertThat(e)
           .hasMessageThat()
-          .contains("Model provided has model identifier ' is ', should be 'TFL3'");
+          .contains("Cannot create interpreter: Didn't find custom op for name 'Assign'");
     }
   }
 

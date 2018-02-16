@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/core/framework/op_gen_lib.h"
 #endif
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -63,6 +64,7 @@ using tensorflow::AllocationDescription;
 using tensorflow::DataType;
 using tensorflow::Graph;
 using tensorflow::GraphDef;
+using tensorflow::mutex_lock;
 using tensorflow::NameRangeMap;
 using tensorflow::NameRangesForNode;
 using tensorflow::NewSession;
@@ -76,6 +78,7 @@ using tensorflow::RunMetadata;
 using tensorflow::RunOptions;
 using tensorflow::Session;
 using tensorflow::Status;
+using tensorflow::string;
 using tensorflow::Tensor;
 using tensorflow::TensorBuffer;
 using tensorflow::TensorId;
@@ -86,8 +89,6 @@ using tensorflow::error::Code;
 using tensorflow::errors::FailedPrecondition;
 using tensorflow::errors::InvalidArgument;
 using tensorflow::gtl::ArraySlice;
-using tensorflow::mutex_lock;
-using tensorflow::string;
 using tensorflow::strings::StrCat;
 
 extern "C" {
@@ -108,6 +109,10 @@ TF_Status* TF_NewStatus() { return new TF_Status; }
 void TF_DeleteStatus(TF_Status* s) { delete s; }
 
 void TF_SetStatus(TF_Status* s, TF_Code code, const char* msg) {
+  if (code == TF_OK) {
+    s->status = Status::OK();
+    return;
+  }
   s->status = Status(static_cast<Code>(code), tensorflow::StringPiece(msg));
 }
 
@@ -194,11 +199,11 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
       reinterpret_cast<intptr_t>(data) % EIGEN_MAX_ALIGN_BYTES != 0) {
     // TF_STRING and TF_RESOURCE tensors have a different representation in
     // TF_Tensor than they do in tensorflow::Tensor. So a copy here is a waste
-    // (any alignement requirements will be taken care of by TF_TensorToTensor
+    // (any alignment requirements will be taken care of by TF_TensorToTensor
     // and TF_TensorFromTensor).
     //
-    // Other types have the same represntation, so copy only if it is safe to do
-    // so.
+    // Other types have the same representation, so copy only if it is safe to
+    // do so.
     buf->data_ = allocate_tensor("TF_NewTensor", len);
     std::memcpy(buf->data_, data, len);
     buf->deallocator_ = deallocate_buffer;
@@ -210,7 +215,13 @@ TF_Tensor* TF_NewTensor(TF_DataType dtype, const int64_t* dims, int num_dims,
     buf->deallocator_ = deallocator;
     buf->deallocator_arg_ = deallocator_arg;
   }
-  return new TF_Tensor{dtype, TensorShape(dimvec), buf};
+  TF_Tensor* ret = new TF_Tensor{dtype, TensorShape(dimvec), buf};
+  size_t elem_size = TF_DataTypeSize(dtype);
+  if (elem_size > 0 && len < (elem_size * ret->shape.num_elements())) {
+    delete ret;
+    return nullptr;
+  }
+  return ret;
 }
 
 TF_Tensor* TF_TensorMaybeMove(TF_Tensor* tensor) {
@@ -643,6 +654,56 @@ void RecordMutation(TF_Graph* graph, const TF_Operation& op,
   }
 }
 
+namespace {
+
+// Helper method that creates a shape handle for a shape described by dims.
+tensorflow::shape_inference::ShapeHandle ShapeHandleFromDims(
+    tensorflow::shape_inference::InferenceContext* ic, int num_dims,
+    const int64_t* dims) {
+  if (num_dims != -1) {
+    std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
+    dim_vec.reserve(num_dims);
+    for (int i = 0; i < num_dims; ++i) {
+      dim_vec.push_back(ic->MakeDim(dims[i]));
+    }
+    return ic->MakeShape(dim_vec);
+  } else {
+    return ic->UnknownShape();
+  }
+}
+
+}  // namespace
+
+void TF_GraphSetOutputHandleShapesAndTypes(TF_Graph* graph, TF_Output output,
+                                           int num_shapes_and_types,
+                                           const int64_t** shapes,
+                                           const int* ranks,
+                                           const TF_DataType* types,
+                                           TF_Status* status) {
+  Node* node = &output.oper->node;
+
+  mutex_lock l(graph->mu);
+  tensorflow::shape_inference::InferenceContext* ic =
+      graph->refiner.GetContext(node);
+  if (ic == nullptr) {
+    status->status =
+        InvalidArgument("Node ", node->name(), " was not found in the graph");
+    return;
+  }
+
+  auto shape_and_type_vec =
+      std::vector<tensorflow::shape_inference::ShapeAndType>(
+          num_shapes_and_types);
+  for (int i = 0; i < num_shapes_and_types; ++i) {
+    tensorflow::shape_inference::ShapeHandle shape_handle =
+        ShapeHandleFromDims(ic, ranks[i], shapes[i]);
+    shape_and_type_vec[i] = tensorflow::shape_inference::ShapeAndType(
+        shape_handle, static_cast<DataType>(types[i]));
+  }
+
+  ic->set_output_handle_shapes_and_types(output.index, shape_and_type_vec);
+}
+
 // Helpers for loading a TensorFlow plugin (a .so file).
 Status LoadLibrary(const char* library_filename, void** result,
                    const void** buf, size_t* len);
@@ -876,6 +937,7 @@ int TF_DeviceListCount(const TF_DeviceList* list) {
       status->status = InvalidArgument("index out of bounds");            \
       return err_val;                                                     \
     }                                                                     \
+    status->status = Status::OK();                                        \
     return list->response[index].accessor;                                \
   }
 
@@ -948,7 +1010,6 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
   Node* node = &output.oper->node;
 
   mutex_lock l(graph->mu);
-  // Set the shape.
   tensorflow::shape_inference::InferenceContext* ic =
       graph->refiner.GetContext(node);
   if (ic == nullptr) {
@@ -956,18 +1017,8 @@ void TF_GraphSetTensorShape(TF_Graph* graph, TF_Output output,
         InvalidArgument("Node ", node->name(), " was not found in the graph");
     return;
   }
-
-  tensorflow::shape_inference::ShapeHandle new_shape;
-  if (num_dims != -1) {
-    std::vector<tensorflow::shape_inference::DimensionHandle> dim_vec;
-    dim_vec.reserve(num_dims);
-    for (int i = 0; i < num_dims; ++i) {
-      dim_vec.push_back(ic->MakeDim(dims[i]));
-    }
-    new_shape = ic->MakeShape(dim_vec);
-  } else {
-    new_shape = ic->UnknownShape();
-  }
+  tensorflow::shape_inference::ShapeHandle new_shape =
+      tensorflow::ShapeHandleFromDims(ic, num_dims, dims);
   status->status = graph->refiner.SetShape(node, output.index, new_shape);
 }
 
@@ -1159,6 +1210,13 @@ void TF_SetAttrTypeList(TF_OperationDescription* desc, const char* attr_name,
   desc->node_builder.Attr(
       attr_name, ArraySlice<const DataType>(
                      reinterpret_cast<const DataType*>(values), num_values));
+}
+
+void TF_SetAttrFuncName(TF_OperationDescription* desc, const char* attr_name,
+                        const char* value, size_t length) {
+  tensorflow::NameAttrList func_name;
+  func_name.set_name(std::string(value, value + length));
+  desc->node_builder.Attr(attr_name, func_name);
 }
 
 void TF_SetAttrShape(TF_OperationDescription* desc, const char* attr_name,
@@ -1422,7 +1480,13 @@ int TF_OperationOutputConsumers(TF_Output oper_out, TF_Input* consumers,
 }
 
 int TF_OperationNumControlInputs(TF_Operation* oper) {
-  return oper->node.in_edges().size() - oper->node.num_inputs();
+  int count = 0;
+  for (const auto* edge : oper->node.in_edges()) {
+    if (edge->IsControlEdge() && !edge->src()->IsSource()) {
+      ++count;
+    }
+  }
+  return count;
 }
 
 int TF_OperationGetControlInputs(TF_Operation* oper,
@@ -1430,7 +1494,7 @@ int TF_OperationGetControlInputs(TF_Operation* oper,
                                  int max_control_inputs) {
   int count = 0;
   for (const auto* edge : oper->node.in_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->src()->IsSource()) {
       if (count < max_control_inputs) {
         control_inputs[count] = ToOperation(edge->src());
       }
@@ -1443,7 +1507,7 @@ int TF_OperationGetControlInputs(TF_Operation* oper,
 int TF_OperationNumControlOutputs(TF_Operation* oper) {
   int count = 0;
   for (const auto* edge : oper->node.out_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->dst()->IsSink()) {
       ++count;
     }
   }
@@ -1455,7 +1519,7 @@ int TF_OperationGetControlOutputs(TF_Operation* oper,
                                   int max_control_outputs) {
   int count = 0;
   for (const auto* edge : oper->node.out_edges()) {
-    if (edge->IsControlEdge()) {
+    if (edge->IsControlEdge() && !edge->dst()->IsSink()) {
       if (count < max_control_outputs) {
         control_outputs[count] = ToOperation(edge->dst());
       }
@@ -1919,12 +1983,12 @@ void TF_ImportGraphDefResultsReturnOperations(TF_ImportGraphDefResults* results,
   *opers = results->return_nodes.data();
 }
 
-void TF_ImportGraphDefResultsUnusedInputMappings(
-    TF_ImportGraphDefResults* results, int* num_unused_input_mappings,
+void TF_ImportGraphDefResultsMissingUnusedInputMappings(
+    TF_ImportGraphDefResults* results, int* num_missing_unused_input_mappings,
     const char*** src_names, int** src_indexes) {
-  *num_unused_input_mappings = results->unused_key_names.size();
-  *src_names = results->unused_key_names.data();
-  *src_indexes = results->unused_key_indexes.data();
+  *num_missing_unused_input_mappings = results->missing_unused_key_names.size();
+  *src_names = results->missing_unused_key_names.data();
+  *src_indexes = results->missing_unused_key_indexes.data();
 }
 
 void TF_DeleteImportGraphDefResults(TF_ImportGraphDefResults* results) {
@@ -1964,18 +2028,21 @@ static void GraphImportGraphDefLocked(TF_Graph* graph, const GraphDef& def,
     tf_results->return_nodes[i] = ToOperation(results.return_nodes[i]);
   }
 
-  // Populate unused map keys
-  DCHECK(tf_results->unused_key_names.empty());
-  DCHECK(tf_results->unused_key_indexes.empty());
-  DCHECK(tf_results->unused_key_names_data.empty());
-  tf_results->unused_key_names.resize(results.unused_input_map_keys.size());
-  tf_results->unused_key_indexes.resize(results.unused_input_map_keys.size());
-  for (int i = 0; i < results.unused_input_map_keys.size(); ++i) {
-    TensorId id = results.unused_input_map_keys[i];
-    tf_results->unused_key_names_data.push_back(id.first.ToString());
-    tf_results->unused_key_names[i] =
-        tf_results->unused_key_names_data.back().c_str();
-    tf_results->unused_key_indexes[i] = id.second;
+  // Populate missing unused map keys
+  DCHECK(tf_results->missing_unused_key_names.empty());
+  DCHECK(tf_results->missing_unused_key_indexes.empty());
+  DCHECK(tf_results->missing_unused_key_names_data.empty());
+
+  size_t size = results.missing_unused_input_map_keys.size();
+  tf_results->missing_unused_key_names.resize(size);
+  tf_results->missing_unused_key_indexes.resize(size);
+
+  for (int i = 0; i < size; ++i) {
+    TensorId id = results.missing_unused_input_map_keys[i];
+    tf_results->missing_unused_key_names_data.push_back(id.first.ToString());
+    tf_results->missing_unused_key_names[i] =
+        tf_results->missing_unused_key_names_data.back().c_str();
+    tf_results->missing_unused_key_indexes[i] = id.second;
   }
 }
 
@@ -2087,7 +2154,7 @@ Status CopyGraph(Graph* src_graph, Graph* dst_graph,
     opts.return_tensors.push_back(ToTensorId(nodes_to_return[i]));
   }
 
-  // TOOD(skyewm): change to OutputTensor
+  // TODO(skyewm): change to OutputTensor
   tensorflow::ImportGraphDefResults results;
   TF_RETURN_IF_ERROR(
       ImportGraphDef(opts, gdef, dst_graph, dst_refiner, &results));
@@ -2615,4 +2682,54 @@ void TF_SessionPRun(TF_Session* session, const char* handle,
                 output_values, target_names, nullptr, status);
 }
 
+TF_ApiDefMap* TF_NewApiDefMap(TF_Buffer* op_list_buffer, TF_Status* status) {
+  tensorflow::OpList op_list;
+  if (!op_list.ParseFromArray(op_list_buffer->data, op_list_buffer->length)) {
+    status->status = InvalidArgument("Unparseable OpList");
+    return nullptr;
+  }
+  status->status = Status::OK();
+  return new TF_ApiDefMap(op_list);
+}
+
+void TF_DeleteApiDefMap(TF_ApiDefMap* apimap) { delete apimap; }
+
+void TF_ApiDefMapPut(TF_ApiDefMap* api_def_map, const char* text,
+                     size_t text_len, TF_Status* status) {
+#ifdef __ANDROID__
+  status->status = tensorflow::errors::Unimplemented(
+      "ApiDefMap is not supported in Android.");
+#else
+  mutex_lock l(api_def_map->lock);
+  if (api_def_map->update_docs_called) {
+    status->status = FailedPrecondition(
+        "TF_ApiDefMapPut cannot be called after TF_ApiDefMapGet has been "
+        "called.");
+    return;
+  }
+  string api_def_text(text, text_len);
+  status->status = api_def_map->api_def_map.LoadApiDef(api_def_text);
+#endif  // __ANDROID__
+}
+
+TF_Buffer* TF_ApiDefMapGet(TF_ApiDefMap* api_def_map, const char* name,
+                           size_t name_len, TF_Status* status) {
+#ifdef __ANDROID__
+  status->status = tensorflow::errors::Unimplemented(
+      "ApiDefMap is not supported in Android.");
+  return nullptr;
+#else
+  mutex_lock l(api_def_map->lock);
+  if (!api_def_map->update_docs_called) {
+    api_def_map->api_def_map.UpdateDocs();
+    api_def_map->update_docs_called = true;
+  }
+  string name_str(name, name_len);
+  const auto* api_def = api_def_map->api_def_map.GetApiDef(name_str);
+
+  TF_Buffer* ret = TF_NewBuffer();
+  status->status = MessageToBuffer(*api_def, ret);
+  return ret;
+#endif  // __ANDROID__
+}
 }  // end extern "C"
