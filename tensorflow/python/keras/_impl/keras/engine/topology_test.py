@@ -555,6 +555,27 @@ class TopologyConstructionTest(test.TestCase):
     model = keras.models.Model(a, b)
     self.assertEqual(model.output_mask.get_shape().as_list(), [None, 10])
 
+  def test_activity_regularization_with_model_composition(self):
+
+    def reg(x):
+      return keras.backend.sum(x)
+
+    net_a_input = keras.Input((2,))
+    net_a = net_a_input
+    net_a = keras.layers.Dense(2, kernel_initializer='ones',
+                               use_bias=False,
+                               activity_regularizer=reg)(net_a)
+    model_a = keras.Model([net_a_input], [net_a])
+
+    net_b_input = keras.Input((2,))
+    net_b = model_a(net_b_input)
+    model_b = keras.Model([net_b_input], [net_b])
+
+    model_b.compile(optimizer='sgd', loss=None)
+    x = np.ones((1, 2))
+    loss = model_b.evaluate(x)
+    self.assertEqual(loss, 4.)
+
   def test_weight_preprocessing(self):
     input_dim = 3
     output_dim = 3
