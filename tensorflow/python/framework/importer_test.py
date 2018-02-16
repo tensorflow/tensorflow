@@ -34,6 +34,7 @@ from tensorflow.python.framework import test_ops  # pylint: disable=unused-impor
 from tensorflow.python.framework import test_util
 from tensorflow.python.framework import versions
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
@@ -152,6 +153,25 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(a3.name, "A_3/A")
       self.assertEqual(b3.name, "A_3/B")
       self.assertEqual(list(b3.inputs), [a3.outputs[0]])
+
+      # Import with an already-used name but with a '/' to indicate an
+      # "absolute" name scope (see the Graph.name_scope docstring).
+      a_a, a_b = importer.import_graph_def(
+          graph_def,
+          return_elements=["A", "B"],
+          name="A/")
+      self.assertEqual(a_a.name, "A/A")
+      self.assertEqual(a_b.name, "A/B")
+      self.assertEqual(list(a_b.inputs), [a_a.outputs[0]])
+
+      # Repeat the same import.
+      a_a1, a_b1 = importer.import_graph_def(
+          graph_def,
+          return_elements=["A", "B"],
+          name="A/")
+      self.assertEqual(a_a1.name, "A/A_1")
+      self.assertEqual(a_b1.name, "A/B_1")
+      self.assertEqual(list(a_b1.inputs), [a_a1.outputs[0]])
 
       # Import with existing de-duped node names
       a1_1, b1_1 = importer.import_graph_def(
@@ -331,29 +351,27 @@ class ImportGraphDefTest(test.TestCase):
       self.assertEqual(d.inputs[1], b.outputs[0])
 
       self.assertEqual(a.outputs[0].dtype, dtypes.int32_ref)
-      self.assertEqual(c._input_dtypes, [dtypes.int32, dtypes.int32])
+      self.assertEqual(c._input_types, [dtypes.int32, dtypes.int32])
       self.assertEqual(c.outputs, [])
-      self.assertEqual(d._input_dtypes, [dtypes.int32_ref, dtypes.int32])
+      self.assertEqual(d._input_types, [dtypes.int32_ref, dtypes.int32])
       self.assertEqual(d.outputs, [])
 
-  def testCyclic(self):
-    # Importing cycles not supported with C API enabled (this test will
-    # eventually be deleted).
-    # TODO(skyewm): write while loop test
-    if ops._USE_C_API: return
+  def testWhileLoop(self):
+    # Produce GraphDef containing while loop.
+    graph = ops.Graph()
+    with graph.as_default():
+      r = control_flow_ops.while_loop(lambda i: i < 10, lambda i: i + 1, [0])
+      # Add an op that consumes the while loop output.
+      math_ops.add(r, 1)
+    graph_def = graph.as_graph_def()
 
+    # Import the GraphDef and make sure it runs.
     with ops.Graph().as_default():
-      a, b = importer.import_graph_def(
-          self._MakeGraphDef("""
-          node { name: 'A' op: 'Unary'
-                 attr { key: 'T' value { type: DT_INT32 } } input: 'B:0' }
-          node { name: 'B' op: 'Unary'
-                 attr { key: 'T' value { type: DT_INT32 } } input: 'A:0' }
-          """),
-          return_elements=["A", "B"])
-
-      self.assertEqual(a.inputs[0], b.outputs[0])
-      self.assertEqual(b.inputs[0], a.outputs[0])
+      imported_r, = importer.import_graph_def(graph_def,
+                                              return_elements=[r.name])
+      self.assertEqual(imported_r.name, "import/" + r.name)
+      with self.test_session() as sess:
+        self.assertEqual(sess.run(imported_r), 10)
 
   def testTypeMismatchInGraphDef(self):
     if ops._USE_C_API:
@@ -570,20 +588,17 @@ class ImportGraphDefTest(test.TestCase):
             return_elements=["A:B:0"])
 
   def testMissingInputMap(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(
+          ValueError,
+          r"Attempted to map inputs that were not found in graph_def: \[B:0\]"):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'None' }
             """),
             input_map={"B:0": constant_op.constant(5.0)})
-      self.assertTrue("not found in graph_def: [B:0]" in str(e.exception))
 
   def testInputMapUnusedAsInput(self):
-    if ops._USE_C_API: return  # TODO(skyewm): make this work with C API
-
     with ops.Graph().as_default():
       # Mapping an unused node output should succeed.
       importer.import_graph_def(
@@ -593,13 +608,14 @@ class ImportGraphDefTest(test.TestCase):
           input_map={"A:0": constant_op.constant(5.0)})
 
       # Mapping a non-existent output of an existing node should fail.
-      with self.assertRaises(ValueError) as e:
+      with self.assertRaisesRegexp(
+          ValueError,
+          r"Attempted to map inputs that were not found in graph_def: \[A:2\]"):
         importer.import_graph_def(
             self._MakeGraphDef("""
             node { name: 'A' op: 'IntOutput' }
             """),
             input_map={"A:2": constant_op.constant(5.0)})
-      self.assertTrue("not found in graph_def: [A:2]" in str(e.exception))
 
   def testInputMapTypeMismatch(self):
     if ops._USE_C_API:

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.contrib.kfac.python.ops import estimator
 from tensorflow.contrib.kfac.python.ops import layer_collection as lc
 from tensorflow.contrib.kfac.python.ops import utils
@@ -25,11 +27,15 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
+from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
+from tensorflow.python.training import training_util
 
 _ALL_ESTIMATION_MODES = ["gradients", "empirical", "curvature_prop", "exact"]
 
@@ -118,6 +124,114 @@ class EstimatorTest(test.TestCase):
       with self._graph.as_default():
         estimator.FisherEstimator([self.weights], 0.1, 0.2,
                                   self.layer_collection, mode)
+
+  def test_cov_update_thunks(self):
+    """Ensures covariance update ops run once per global_step."""
+    with self._graph.as_default(), self.test_session() as sess:
+      fisher_estimator = estimator.FisherEstimator(
+          variables=[self.weights],
+          layer_collection=self.layer_collection,
+          cov_ema_decay=0.0,
+          damping=0.0)
+
+      # Construct an op that executes one covariance update per step.
+      global_step = training_util.get_or_create_global_step()
+      cov_matrices = [
+          fisher_factor.get_cov()
+          for fisher_factor in self.layer_collection.get_factors()
+      ]
+      cov_update_op_thunks = fisher_estimator.cov_update_thunks
+      cov_update_op = control_flow_ops.case(
+          [(math_ops.equal(global_step, i), thunk)
+           for i, thunk in enumerate(cov_update_op_thunks)])
+      increment_global_step = global_step.assign_add(1)
+
+      sess.run(variables.global_variables_initializer())
+      initial_cov_values = sess.run(cov_matrices)
+
+      # Ensure there's one update per covariance matrix.
+      self.assertEqual(len(cov_matrices), len(cov_update_op_thunks))
+
+      # Test is no-op if only 1 covariance matrix.
+      assert len(cov_matrices) > 1
+
+      for i in range(len(cov_matrices)):
+        # Compare new and old covariance values
+        new_cov_values = sess.run(cov_matrices)
+        is_cov_equal = [
+            np.allclose(initial_cov_value, new_cov_value)
+            for (initial_cov_value,
+                 new_cov_value) in zip(initial_cov_values, new_cov_values)
+        ]
+        num_cov_equal = sum(is_cov_equal)
+
+        # Ensure exactly one covariance matrix changes per step.
+        self.assertEqual(num_cov_equal, len(cov_matrices) - i)
+
+        # Run all covariance update ops.
+        sess.run(cov_update_op)
+        sess.run(increment_global_step)
+
+  def test_inv_update_thunks(self):
+    """Ensures inverse update ops run once per global_step."""
+    with self._graph.as_default(), self.test_session() as sess:
+      fisher_estimator = estimator.FisherEstimator(
+          variables=[self.weights],
+          layer_collection=self.layer_collection,
+          cov_ema_decay=0.0,
+          damping=0.0)
+
+      # Construct op that updates one inverse per global step.
+      global_step = training_util.get_or_create_global_step()
+      inv_matrices = [
+          matrix
+          for fisher_factor in self.layer_collection.get_factors()
+          for matrix in fisher_factor._inverses_by_damping.values()
+      ]
+      inv_update_op_thunks = fisher_estimator.inv_update_thunks
+      inv_update_op = control_flow_ops.case(
+          [(math_ops.equal(global_step, i), thunk)
+           for i, thunk in enumerate(inv_update_op_thunks)])
+      increment_global_step = global_step.assign_add(1)
+
+      sess.run(variables.global_variables_initializer())
+      initial_inv_values = sess.run(inv_matrices)
+
+      # Ensure there's one update per inverse matrix. This is true as long as
+      # there's no fan-in/fan-out or parameter re-use.
+      self.assertEqual(len(inv_matrices), len(inv_update_op_thunks))
+
+      # Test is no-op if only 1 invariance matrix.
+      assert len(inv_matrices) > 1
+
+      # Assign each covariance matrix a value other than the identity. This
+      # ensures that the inverse matrices are updated to something different as
+      # well.
+      cov_matrices = [
+          fisher_factor.get_cov()
+          for fisher_factor in self.layer_collection.get_factors()
+      ]
+      sess.run([
+          cov_matrix.assign(2 * linalg_ops.eye(int(cov_matrix.shape[0])))
+          for cov_matrix in cov_matrices
+      ])
+
+      for i in range(len(inv_matrices)):
+        # Compare new and old inverse values
+        new_inv_values = sess.run(inv_matrices)
+        is_inv_equal = [
+            np.allclose(initial_inv_value, new_inv_value)
+            for (initial_inv_value,
+                 new_inv_value) in zip(initial_inv_values, new_inv_values)
+        ]
+        num_inv_equal = sum(is_inv_equal)
+
+        # Ensure exactly one inverse matrix changes per step.
+        self.assertEqual(num_inv_equal, len(inv_matrices) - i)
+
+        # Run all inverse update ops.
+        sess.run(inv_update_op)
+        sess.run(increment_global_step)
 
 
 if __name__ == "__main__":

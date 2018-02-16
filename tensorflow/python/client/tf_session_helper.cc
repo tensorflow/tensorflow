@@ -18,11 +18,16 @@ limitations under the License.
 #include <cstring>
 
 #include "tensorflow/c/c_api.h"
+#include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/attr_value.pb.h"
+#include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/graph/tensor_id.h"
 #include "tensorflow/core/lib/core/coding.h"
+#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/equal_graph_def.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
@@ -299,6 +304,27 @@ string EqualGraphDefWrapper(const string& actual, const string& expected) {
   return EqualGraphDef(actual_def, expected_def, &diff) ? "" : diff;
 }
 
+string EqualAttrValueWrapper(const string& actual, const string& expected) {
+  AttrValue actual_attr_value;
+  if (!actual_attr_value.ParseFromString(actual)) {
+    return "actual is not a valid serialized AttrValue";
+  }
+
+  AttrValue expected_attr_value;
+  if (!expected_attr_value.ParseFromString(expected)) {
+    return "expected is not a valid serialized AttrValue";
+  }
+
+  string diff;
+  if (!AreAttrValuesEqual(actual_attr_value, expected_attr_value)) {
+    diff = strings::Printf(
+        "Actual AttrValue %s does not match Expected AttrValue %s.",
+        SummarizeAttrValue(actual_attr_value).c_str(),
+        SummarizeAttrValue(expected_attr_value).c_str());
+  }
+  return diff;
+}
+
 // Return value set to 6 inlined elements so it fits in a 64-byte cache line.
 tensorflow::gtl::InlinedVector<int64_t, 6> TF_GraphGetTensorShapeHelper(
     TF_Graph* graph, TF_Output output, TF_Status* out_status,
@@ -420,6 +446,20 @@ TF_Function* TF_GraphToFunction_wrapper(
                             opts, description, out_status);
 }
 
+void TF_GraphSetOutputHandleShapesAndTypes_wrapper(
+    TF_Graph* graph, TF_Output output,
+    const std::vector<std::vector<int64_t>>& shapes,
+    const std::vector<int>& ranks, const std::vector<TF_DataType>& types,
+    TF_Status* status) {
+  std::vector<const int64_t*> shapes_pointers(shapes.size());
+  for (int i = 0; i < shapes.size(); ++i) {
+    shapes_pointers[i] = ranks[i] <= 0 ? nullptr : &shapes[i][0];
+  }
+  TF_GraphSetOutputHandleShapesAndTypes(graph, output, shapes.size(),
+                                        shapes_pointers.data(), ranks.data(),
+                                        types.data(), status);
+}
+
 void TF_GraphSetTensorShape_wrapper(TF_Graph* graph, TF_Output output,
                                     const std::vector<int64_t>& dims,
                                     bool unknown_shape, TF_Status* status) {
@@ -437,6 +477,20 @@ std::vector<int64_t> TF_GraphGetTensorShape_wrapper(TF_Graph* graph,
   std::vector<int64_t> dims(num_dims);
   TF_GraphGetTensorShape(graph, output, dims.data(), num_dims, status);
   return dims;
+}
+
+std::vector<string> TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper(
+    TF_ImportGraphDefResults* results) {
+  int num_missing_unused_input_mappings;
+  const char** src_names;
+  int* src_indexes;
+  TF_ImportGraphDefResultsMissingUnusedInputMappings(
+      results, &num_missing_unused_input_mappings, &src_names, &src_indexes);
+  std::vector<string> input_strs(num_missing_unused_input_mappings);
+  for (int i = 0; i < num_missing_unused_input_mappings; ++i) {
+    input_strs[i] = TensorId(src_names[i], src_indexes[i]).ToString();
+  }
+  return input_strs;
 }
 
 }  // namespace tensorflow

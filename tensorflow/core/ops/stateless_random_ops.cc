@@ -46,52 +46,13 @@ static Status StatelessShape(shape_inference::InferenceContext* context) {
       .SetShapeFn(StatelessShape)
 
 // This op is exposed through contrib/stateless only.  The interface may change.
-REGISTER_STATELESS_OP("StatelessRandomUniform")
-    .Doc(R"doc(
-Outputs deterministic pseudorandom random values from a uniform distribution.
-
-The generated values follow a uniform distribution in the range `[0, 1)`. The
-lower bound 0 is included in the range, while the upper bound 1 is excluded.
-
-The outputs are a deterministic function of `shape` and `seed`.
-
-shape: The shape of the output tensor.
-dtype: The type of the output.
-seed: 2 seeds (shape [2]).
-output: Random values with specified shape.
-)doc");
+REGISTER_STATELESS_OP("StatelessRandomUniform");
 
 // This op is exposed through contrib/stateless only.  The interface may change.
-REGISTER_STATELESS_OP("StatelessRandomNormal")
-    .Doc(R"doc(
-Outputs deterministic pseudorandom values from a normal distribution.
-
-The generated values will have mean 0 and standard deviation 1.
-
-The outputs are a deterministic function of `shape` and `seed`.
-
-shape: The shape of the output tensor.
-dtype: The type of the output.
-seed: 2 seeds (shape [2]).
-output: Random values with specified shape.
-)doc");
+REGISTER_STATELESS_OP("StatelessRandomNormal");
 
 // This op is exposed through contrib/stateless only.  The interface may change.
-REGISTER_STATELESS_OP("StatelessTruncatedNormal")
-    .Doc(R"doc(
-Outputs deterministic pseudorandom values from a truncated normal distribution.
-
-The generated values follow a normal distribution with mean 0 and standard
-deviation 1, except that values whose magnitude is more than 2 standard
-deviations from the mean are dropped and re-picked.
-
-The outputs are a deterministic function of `shape` and `seed`.
-
-shape: The shape of the output tensor.
-dtype: The type of the output.
-seed: 2 seeds (shape [2]).
-output: Random values with specified shape.
-)doc");
+REGISTER_STATELESS_OP("StatelessTruncatedNormal");
 
 #undef REGISTER_STATELESS_OP
 

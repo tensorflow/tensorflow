@@ -23,6 +23,7 @@ import timeit
 
 import numpy as np
 
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.contrib import rnn as contrib_rnn
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session

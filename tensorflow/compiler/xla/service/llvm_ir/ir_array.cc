@@ -39,13 +39,27 @@ IrArray::Index::Index(llvm::Value* linear, const Shape& shape,
       << "Shape " << ShapeUtil::HumanStringWithLayout(shape)
       << " should have a layout.";
   int64 divisor = 1;
-  for (int64 dimension : layout_.minor_to_major()) {
+  for (int64 i = 0; i < layout_.minor_to_major_size(); ++i) {
+    int64 dimension = layout_.minor_to_major(i);
     int64 size_of_current_dimension = shape.dimensions(dimension);
-    // Emit IR instructions that compute
-    //   (linear_index / divisor) % current_dimension
-    multidim_[dimension] = ir_builder->CreateURem(
-        ir_builder->CreateUDiv(linear, ir_builder->getInt64(divisor)),
-        ir_builder->getInt64(size_of_current_dimension));
+
+    // If i is not the last dimension, compute
+    //   (linear_index / divisor) % current_dimension.
+    // If i is the last dimension, we can skip the mod, because we assume that
+    // linear is in bounds.
+    //
+    // TODO(jlebar): We could add bounds checks here and elsewhere in this file,
+    // guarded under some sort of xla-memcheck flag.  This might be particularly
+    // useful because cuda-memcheck can't help us much in XLA: Most of our
+    // memory lives in one big allocation, so cuda-memcheck can't detect
+    // out-of-bounds accesses.
+    auto* quot = ir_builder->CreateUDiv(linear, ir_builder->getInt64(divisor));
+    if (i < layout_.minor_to_major_size() - 1) {
+      multidim_[dimension] = ir_builder->CreateURem(
+          quot, ir_builder->getInt64(size_of_current_dimension));
+    } else {
+      multidim_[dimension] = quot;
+    }
     divisor *= size_of_current_dimension;
   }
 }
@@ -244,8 +258,8 @@ llvm::Value* IrArray::EmitArrayElementAddress(
   //
   //   getelementptr base_ptr_, 0, most major index, ..., most minor index
   std::vector<llvm::Value*> gep_indices(1, ir_builder->getInt64(0));
-  for (int64 i = shape_->layout().minor_to_major_size() - 1; i >= 0; --i) {
-    int64 dimension = shape_->layout().minor_to_major(i);
+  for (int64 i = 0; i < LayoutUtil::MinorToMajor(*shape_).size(); ++i) {
+    int64 dimension = LayoutUtil::Major(shape_->layout(), i);
     gep_indices.push_back(actual_index[dimension]);
   }
   return ir_builder->CreateInBoundsGEP(base_ptr_, gep_indices,

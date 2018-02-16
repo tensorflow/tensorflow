@@ -26,12 +26,14 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.ops.linalg import linear_operator_util
+from tensorflow.python.util.tf_export import tf_export
 
 __all__ = [
     "LinearOperatorLowerTriangular",
 ]
 
 
+@tf_export("linalg.LinearOperatorLowerTriangular")
 class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
   """`LinearOperator` acting like a [batch] square lower triangular matrix.
 
@@ -118,7 +120,8 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
     Args:
       tril:  Shape `[B1,...,Bb, N, N]` with `b >= 0`, `N >= 0`.
         The lower triangular part of `tril` defines this operator.  The strictly
-        upper triangle is ignored.  Allowed dtypes: `float32`, `float64`.
+        upper triangle is ignored.  Allowed dtypes: `float16`, `float32`,
+        `float64`.
       is_non_singular:  Expect that this operator is non-singular.
         This operator is non-singular if and only if its diagonal elements are
         all non-zero.
@@ -164,7 +167,11 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
     """Static check of the `tril` argument."""
     # TODO(langmore) Add complex types once matrix_triangular_solve works for
     # them.
-    allowed_dtypes = [dtypes.float32, dtypes.float64]
+    allowed_dtypes = [
+        dtypes.float16,
+        dtypes.float32,
+        dtypes.float64,
+    ]
     dtype = tril.dtype
     if dtype not in allowed_dtypes:
       raise TypeError(

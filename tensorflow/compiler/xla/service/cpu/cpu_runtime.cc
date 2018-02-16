@@ -35,12 +35,17 @@ extern const char* const kEigenMatMulF32SymbolName =
     "__xla_cpu_runtime_EigenMatMulF32";
 extern const char* const kEigenMatMulF64SymbolName =
     "__xla_cpu_runtime_EigenMatMulF64";
+extern const char* const kEigenConvF16SymbolName =
+    "__xla_cpu_runtime_EigenConvF16";
 extern const char* const kEigenConvF32SymbolName =
     "__xla_cpu_runtime_EigenConvF32";
+extern const char* const kEigenFftSymbolName = "__xla_cpu_runtime_EigenFft";
 extern const char* const kEigenSingleThreadedMatMulF32SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF32";
 extern const char* const kEigenSingleThreadedMatMulF64SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedMatMulF64";
+extern const char* const kEigenSingleThreadedConvF16SymbolName =
+    "__xla_cpu_runtime_EigenSingleThreadedConvF16";
 extern const char* const kEigenSingleThreadedConvF32SymbolName =
     "__xla_cpu_runtime_EigenSingleThreadedConvF32";
 extern const char* const kAcquireInfeedBufferForDequeueSymbolName =

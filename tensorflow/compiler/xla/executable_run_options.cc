@@ -83,7 +83,7 @@ ExecutableRunOptions& ExecutableRunOptions::set_device_assignment(
   return *this;
 }
 
-DeviceAssignment* ExecutableRunOptions::device_assignment() const {
+const DeviceAssignment* ExecutableRunOptions::device_assignment() const {
   return device_assignment_;
 }
 

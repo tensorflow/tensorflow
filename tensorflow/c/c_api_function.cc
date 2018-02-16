@@ -44,8 +44,12 @@ class NodeNameMapping {
  public:
   NodeNameMapping() = default;
 
-  // Normalize the input/output name and make it unique.
-  string GetIOName(const string& name);
+  // Normalize the input name and make it unique. This is the same as the
+  // function for output, expect that it adds a name mapping for the name.
+  string GetInputName(const string& name);
+
+  // Normalize the output name and make it unique.
+  string GetOutputName(const string& name);
 
   // Make the node name unique.
   string Uniquify(const string& name);
@@ -107,7 +111,13 @@ string NodeNameMapping::UniquifyHelper(const string& name) const {
   }
 }
 
-string NodeNameMapping::GetIOName(const string& name) {
+string NodeNameMapping::GetInputName(const string& name) {
+  const string& input_name = GetOutputName(name);
+  name_mapping_[name] = input_name;
+  return input_name;
+}
+
+string NodeNameMapping::GetOutputName(const string& name) {
   const string& input_name = UniquifyHelper(Normalize(name));
   // Record that we used this name, but don't add it to name_mapping_
   // since this name is not for a node.
@@ -214,10 +224,11 @@ Status FillFunctionBody(
 
     // Add control inputs.
     for (const Edge* edge : control_edges) {
-      // Add this control input only if the src node is in the body.
+      // Add this control input only if the src node is in the body or a part of
+      // the inputs.
       const string normalized = node_names.Lookup(edge->src()->name());
       // If we did not find a name for the source of control edge, this
-      // source must be outside of the body. Raise an error.
+      // source must be outside of the body, and not an input. Raise an error.
       if (normalized.empty()) {
         return InvalidArgument(
             "The source of control edge ", edge->DebugString(),
@@ -279,7 +290,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
       TF_RETURN_IF_ERROR(node_names.UseOutputName(output_names[i]));
       argdef->set_name(output_names[i]);
     } else {
-      argdef->set_name(node_names.GetIOName(node->name()));
+      argdef->set_name(node_names.GetOutputName(node->name()));
     }
   }
 
@@ -289,7 +300,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     int idx = inputs[i].index;
     OpDef::ArgDef* argdef = fdef->mutable_signature()->add_input_arg();
     argdef->set_type(node->output_type(idx));
-    const string& input_name = node_names.GetIOName(node->name());
+    const string& input_name = node_names.GetInputName(node->name());
     argdef->set_name(input_name);
     tensor_renaming[strings::StrCat(node->name(), ":", idx)] = input_name;
   }
@@ -312,7 +323,7 @@ Status GraphToFunctionDef(const Graph& fn_body, const string& fn_name,
     TF_RETURN_IF_ERROR(
         NameRangesForNode(*node, node->op_def(), nullptr, &output_ranges));
     for (const auto& output : output_ranges) {
-      const string& output_name = output.first;
+      const StringPiece& output_name = output.first;
       int index_start = output.second.first;
       int index_end = output.second.second;
       for (int i = index_start; i < index_end; ++i) {
@@ -467,7 +478,7 @@ Status ComputeBodyNodes(
   return Status::OK();
 }
 
-}  // anonymous namespace
+}  // namespace
 }  // namespace tensorflow
 
 using tensorflow::Node;
@@ -546,6 +557,28 @@ void TF_GraphCopyFunction(TF_Graph* g, const TF_Function* func,
 
   tensorflow::mutex_lock l(g->mu);
   status->status = g->graph.AddFunctionLibrary(fdef_lib);
+}
+
+int TF_GraphNumFunctions(TF_Graph* g) {
+  tensorflow::mutex_lock l(g->mu);
+  return g->graph.flib_def().num_functions();
+}
+
+int TF_GraphGetFunctions(TF_Graph* g, TF_Function** funcs, int max_func,
+                         TF_Status* status) {
+  tensorflow::FunctionDefLibrary lib;
+  {
+    tensorflow::mutex_lock l(g->mu);
+    lib = g->graph.flib_def().ToProto();
+  }
+  const auto len = std::min(max_func, static_cast<int>(lib.function_size()));
+  for (int i = 0; i < len; ++i) {
+    TF_Function* func = new TF_Function();
+    func->fdef = lib.function(i);
+    funcs[i] = func;
+  }
+  status->status = tensorflow::Status::OK();
+  return len;
 }
 
 void TF_FunctionToFunctionDef(TF_Function* func, TF_Buffer* output_func_def,

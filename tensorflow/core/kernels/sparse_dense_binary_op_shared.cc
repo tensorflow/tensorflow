@@ -70,8 +70,9 @@ class SparseDenseBinaryOpShared : public OpKernel {
                 errors::InvalidArgument(
                     "Input sp_indices should be a matrix but received shape: ",
                     indices_t->shape().DebugString()));
-    OP_REQUIRES(ctx, TensorShapeUtils::IsVector(values_t->shape()) &&
-                         TensorShapeUtils::IsVector(shape_t->shape()),
+    OP_REQUIRES(ctx,
+                TensorShapeUtils::IsVector(values_t->shape()) &&
+                    TensorShapeUtils::IsVector(shape_t->shape()),
                 errors::InvalidArgument(
                     "Inputs sp_values and sp_shape should be vectors "
                     "but received shapes: ",
@@ -150,8 +151,9 @@ class SparseDenseBinaryOpShared : public OpKernel {
       CASE(4);
       CASE(5);
       default:
-        OP_REQUIRES(ctx, false, errors::InvalidArgument(
-                                    "Only tensors with ranks between 1 and 5 "
+        OP_REQUIRES(
+            ctx, false,
+            errors::InvalidArgument("Only tensors with ranks between 1 and 5 "
                                     "are currently supported.  Tensor rank: ",
                                     ndims));
 #undef CASE

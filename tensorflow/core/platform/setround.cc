@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/platform/setround.h"
 
-
 namespace tensorflow {
 namespace port {
 

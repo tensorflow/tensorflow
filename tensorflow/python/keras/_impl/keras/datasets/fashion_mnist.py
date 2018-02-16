@@ -20,7 +20,9 @@ from __future__ import print_function
 
 import gzip
 import os
+
 import numpy as np
+
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
 
 
@@ -38,9 +40,8 @@ def load_data():
   ]
 
   paths = []
-  for given_file in files:
-    paths.append(
-        get_file(given_file, origin=base + given_file, cache_subdir=dirname))
+  for fname in files:
+    paths.append(get_file(fname, origin=base + fname, cache_subdir=dirname))
 
   with gzip.open(paths[0], 'rb') as lbpath:
     y_train = np.frombuffer(lbpath.read(), np.uint8, offset=8)

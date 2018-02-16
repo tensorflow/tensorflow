@@ -30,11 +30,11 @@ limitations under the License.
 #include "mkl_dnn_types.h"
 #include "tensorflow/core/util/mkl_util.h"
 
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
 #include "mkldnn.hpp"
 
-using mkldnn::stream;
 using mkldnn::concat;
+using mkldnn::stream;
 #endif
 
 namespace tensorflow {
@@ -44,7 +44,6 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef std::vector<TensorShape> TensorShapeList;
 
 enum AxisArgumentName { NAME_IS_AXIS, NAME_IS_CONCAT_DIM };
-
 
 // TODO(intelft) Check if we can reuse existing EigenConcatOp using Mutable
 // reference inputs.
@@ -63,7 +62,7 @@ class EigenConcatBaseOp : public OpKernel {
   // we need to have empty Compute because Compute is pure virtual function.
   void Compute(OpKernelContext* c) {}
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
   void Compute(OpKernelContext* c, const std::vector<Tensor>& values) {
     const Tensor* concat_dim_tensor;
@@ -152,8 +151,8 @@ class EigenConcatBaseOp : public OpKernel {
 
 #else  // MKL_DNN
 
-void Compute(OpKernelContext* c, const std::vector<Tensor>& values,
-                        const TensorShapeList& input_shapes) {
+  void Compute(OpKernelContext* c, const std::vector<Tensor>& values,
+               const TensorShapeList& input_shapes) {
     const Tensor* concat_dim_tensor;
     const char* axis_attribute_name =
         AxisArgName == NAME_IS_AXIS
@@ -197,7 +196,8 @@ void Compute(OpKernelContext* c, const std::vector<Tensor>& values,
       const auto in = values[i];
       const bool in_is_scalar = IsLegacyScalar(input_shapes[i]);
       OP_REQUIRES(
-          c, (input_shapes[i].dims() == input_dims) ||
+          c,
+          (input_shapes[i].dims() == input_dims) ||
               (input_is_scalar && in_is_scalar),
           errors::InvalidArgument(
               "ConcatOp : Ranks of all input tensors should match: shape[0] = ",
@@ -208,8 +208,8 @@ void Compute(OpKernelContext* c, const std::vector<Tensor>& values,
         inputs_flat.emplace_back(new typename TTypes<T, 2>::ConstMatrix(
             in.shaped<T, 2>({inputs_flat_dim0, inputs_flat_dim1})));
       }
-      output_concat_dim += input_shapes[i].dims() > 0 ?
-                           input_shapes[i].dim_size(axis) : 1;
+      output_concat_dim +=
+          input_shapes[i].dims() > 0 ? input_shapes[i].dim_size(axis) : 1;
     }
 
     TensorShape output_shape(input_shape);
@@ -230,7 +230,7 @@ void Compute(OpKernelContext* c, const std::vector<Tensor>& values,
 #endif
 };
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 
 // --------------------------------------------------------------------------
 //                      Mkl Concat Op
@@ -418,7 +418,6 @@ class MklConcatOp : public OpKernel {
     OP_REQUIRES_OK(context, context->status());
   }
 
-
  private:
   typedef struct {
     TensorFormat data_format;
@@ -590,37 +589,45 @@ class MklConcatOp : public OpKernel {
       GetMklShapeList(context, "values", &input_shapes);
 
       const Tensor& concat_dim_tensor = (AxisArgName == NAME_IS_CONCAT_DIM)
-                    ? MklGetInput(context, 0) : MklGetInput(context, N);
+                                            ? MklGetInput(context, 0)
+                                            : MklGetInput(context, N);
       // Sanity checks
-      OP_REQUIRES(context, IsLegacyScalar(concat_dim_tensor.shape()),
-        errors::InvalidArgument(
-            "Concat dim tensor should be a scalar integer, but got shape ",
-            concat_dim_tensor.shape().DebugString()));
-      int32 concat_dim = internal::SubtleMustCopy(
-                           concat_dim_tensor.scalar<int32>()());
-      if (concat_dim < 0) concat_dim = N + concat_dim;
+      OP_REQUIRES(
+          context, IsLegacyScalar(concat_dim_tensor.shape()),
+          errors::InvalidArgument(
+              "Concat dim tensor should be a scalar integer, but got shape ",
+              concat_dim_tensor.shape().DebugString()));
+      int32 concat_dim =
+          internal::SubtleMustCopy(concat_dim_tensor.scalar<int32>()());
 
       // check that ranks of all tensors match
       // and that their shapes match except for concat_dim.
       int i = 0;
       bool invoke_eigen = false;
       bool are_all_mkl_inputs = true, are_all_tf_inputs = true;
-      const TensorShape expected_shape = input_shapes[0].IsMklTensor() ?
-                                         input_shapes[0].GetTfShape() :
-                                         input_tensors[0].shape();
+      const TensorShape expected_shape = input_shapes[0].IsMklTensor()
+                                             ? input_shapes[0].GetTfShape()
+                                             : input_tensors[0].shape();
       size_t expected_dims = expected_shape.dims();
-      for (auto& s : input_shapes) {
-        if (s == expected_shape) {++i; continue;}
 
-        TensorShape s_shape = s.IsMklTensor() ? s.GetTfShape() :
-                      input_tensors[i].shape();
+      if (concat_dim < 0) concat_dim = expected_dims + concat_dim;
+
+      for (auto& s : input_shapes) {
+        if (s == expected_shape) {
+          ++i;
+          continue;
+        }
+
+        TensorShape s_shape =
+            s.IsMklTensor() ? s.GetTfShape() : input_tensors[i].shape();
         size_t s_dims = s_shape.dims();
 
-        OP_REQUIRES(context, s_dims == expected_dims,
-                  errors::InvalidArgument(
-                      "_MklConcatOp : Ranks of all input tensors should match:"
-                      " input dimensions = ",
-                      s_dims, " vs. expected rank = ", expected_dims));
+        OP_REQUIRES(
+            context, s_dims == expected_dims,
+            errors::InvalidArgument(
+                "_MklConcatOp : Ranks of all input tensors should match:"
+                " input dimensions = ",
+                s_dims, " vs. expected rank = ", expected_dims));
 
         for (int d = 0; d < expected_dims; ++d) {
           if (d == concat_dim) continue;
@@ -628,10 +635,11 @@ class MklConcatOp : public OpKernel {
           size_t expected_size = expected_shape.dim_size(d);
           size_t s_size = s_shape.dim_size(d);
           OP_REQUIRES(
-            context, expected_size == s_size,
-            errors::InvalidArgument("_MklConcatOp : Dimensions of inputs "
-                    "should match: shape[0][", d, "]= ", expected_size,
-                    " vs. shape[", i, "][", d, "] = ", s_size));
+              context, expected_size == s_size,
+              errors::InvalidArgument("_MklConcatOp : Dimensions of inputs "
+                                      "should match: shape[0][",
+                                      d, "]= ", expected_size, " vs. shape[", i,
+                                      "][", d, "] = ", s_size));
         }
 
         if (s.IsMklTensor())
@@ -650,17 +658,13 @@ class MklConcatOp : public OpKernel {
       // format and avoid calling eigen version.
       if (!are_all_tf_inputs && !are_all_mkl_inputs) invoke_eigen = true;
 
-      // Temporary fallback to Eigen until MKLDNN Concat performance
-      // is improved. To be removed.
-      invoke_eigen = true;
-
       // Call Eigen library
       if (invoke_eigen) {
         TensorShapeList tf_input_shapes;
         i = 0;
         for (auto& s : input_shapes) {
-          TensorShape s_shape = s.IsMklTensor() ? s.GetTfShape() :
-                                input_tensors[i].shape();
+          TensorShape s_shape =
+              s.IsMklTensor() ? s.GetTfShape() : input_tensors[i].shape();
           tf_input_shapes.push_back(s_shape);
           ++i;
         }
@@ -680,21 +684,22 @@ class MklConcatOp : public OpKernel {
       std::vector<memory::primitive_desc> srcs_pd;
       std::vector<MklDnnData<T>> srcs(N, MklDnnData<T>(&cpu_engine));
       int64 dst_concat_dim_size = 0;
-      for (int k =0; k < N; k++) {
+      for (int k = 0; k < N; k++) {
         bool is_mkl_tensor = input_shapes[k].IsMklTensor();
         memory::dims src_dims;
 
         // Same comment as dst_dims for src_dims.
-        src_dims = (is_mkl_tensor) ?
-                   TFShapeToMklDnnDims(input_shapes[k].GetTfShape()) :
-                   TFShapeToMklDnnDims(input_tensors[k].shape());
+        src_dims = (is_mkl_tensor)
+                       ? TFShapeToMklDnnDims(input_shapes[k].GetTfShape())
+                       : TFShapeToMklDnnDims(input_tensors[k].shape());
 
         dst_concat_dim_size += src_dims[concat_dim];
-        auto src_md = is_mkl_tensor ? input_shapes[k].GetMklLayout() :
-          // It does not matter what data format we use here (NHWC or NCHW).
-          // We just need to ensure that output of Concat uses same data format
-          // as input.
-                  memory::desc(src_dims, MklDnnType<T>(), memory::format::nhwc);
+        auto src_md =
+            is_mkl_tensor ? input_shapes[k].GetMklLayout() :
+                          // It does not matter what data format we use here
+                          // (NHWC or NCHW). We just need to ensure that output
+                          // of Concat uses same data format as input.
+                memory::desc(src_dims, MklDnnType<T>(), memory::format::nchw);
 
         srcs[k].SetUsrMem(src_md, &input_tensors[k]);
         auto src_mpd = srcs[k].GetUsrMemPrimDesc();
@@ -709,22 +714,23 @@ class MklConcatOp : public OpKernel {
         // Since we are passing a specific format for destination,
         // we need to have dst_dims in MklDnn order (NCHW).
         auto orig_tf_format = input_shapes[0].GetTfDataFormat();
-        dst_dims_in_nchw = MklDnnDimsInNCHW(dst_dims,
-                               MklDnnDataFormatToTFDataFormat(orig_tf_format));
+        dst_dims_in_nchw = MklDnnDimsInNCHW(
+            dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
         // We will set the output in the same format as input to avoid layout
         // conversions.
         // Currently we are setting dst format same as input format.
         // See if we can make this choice in a better way.
-        dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
-                 (memory::format) input_shapes[0].GetMklLayout().data.format);
+        dst_md = memory::desc(
+            dst_dims_in_nchw, MklDnnType<T>(),
+            (memory::format)input_shapes[0].GetMklLayout().data.format);
       } else {
         // Again, format does not matter here. We just need to make it same as
         // input format.
-        dst_md = memory::desc(dst_dims, MklDnnType<T>(), memory::format::nhwc);
+        dst_md = memory::desc(dst_dims, MklDnnType<T>(), memory::format::nchw);
       }
 
       std::vector<primitive::at> inputs;
-      for (int k=0; k < input_tensors.size(); k++)
+      for (int k = 0; k < input_tensors.size(); k++)
         inputs.push_back(srcs[k].GetOpMem());
 
       // If all inputs are in MKL format, then meaning of concat_dim needs to
@@ -734,8 +740,7 @@ class MklConcatOp : public OpKernel {
       // But ifinput tensors are in NHWC order, then semantics need to change.
       // E.g., if we are concatinating over Channel (dimension 3 for NHWC),
       // then since MklDnn order is NCHW, concat_dim needs to be 1.
-      if (are_all_mkl_inputs)
-        concat_dim = input_shapes[0].TfDimIdx(concat_dim);
+      if (are_all_mkl_inputs) concat_dim = input_shapes[0].TfDimIdx(concat_dim);
 
       auto concat_pd = concat::primitive_desc(dst_md, concat_dim, srcs_pd);
 
@@ -754,24 +759,25 @@ class MklConcatOp : public OpKernel {
         dnn_shape_dst.SetMklTensor(false);
         tf_shape_dst = MklDnnDimsToTFShape(dst_dims);
       }
-      AllocateOutputSetMklShape(context, 0, &dst_tensor,
-                                tf_shape_dst, dnn_shape_dst);
+      AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
+                                dnn_shape_dst);
       CHECK_NOTNULL(dst_tensor);
 
-      dst_md = dnn_shape_dst.IsMklTensor() ?
-               dnn_shape_dst.GetMklLayout() : dst_md;
+      dst_md =
+          dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout() : dst_md;
       dst.SetUsrMem(dst_md, dst_tensor);
 
       auto concat_op = concat(concat_pd, inputs, dst.GetOpMem());
       std::vector<primitive> net;
       net.push_back(concat_op);
       stream(stream::kind::eager).submit(net).wait();
-    } catch (mkldnn::error &e) {
-        string error_msg = "Status: " + std::to_string(e.status) +
-               ", message: " + string(e.message) + ", in file " +
-               string(__FILE__) + ":" + std::to_string(__LINE__);
-        OP_REQUIRES_OK(context, errors::Aborted(
-                "Operation received an exception:", error_msg));
+    } catch (mkldnn::error& e) {
+      string error_msg = "Status: " + std::to_string(e.status) +
+                         ", message: " + string(e.message) + ", in file " +
+                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      OP_REQUIRES_OK(
+          context,
+          errors::Aborted("Operation received an exception:", error_msg));
     }
   }
 
@@ -792,11 +798,9 @@ class MklConcatOp : public OpKernel {
     dnn_shape_output.SetDimensions(4);
     Tensor* output_tensor = nullptr;
     TensorShape tf_shape_output;
-    tf_shape_output.AddDim(
-        dnn_shape_output.GetSerializeBufferSize());
-    context->allocate_output(
-        GetTensorMetaDataIndex(0, context->num_outputs()),
-        tf_shape_output, &output_tensor);
+    tf_shape_output.AddDim(dnn_shape_output.GetSerializeBufferSize());
+    context->allocate_output(GetTensorMetaDataIndex(0, context->num_outputs()),
+                             tf_shape_output, &output_tensor);
     dnn_shape_output.SerializeMklDnnShape(
         output_tensor->flat<uint8>().data(),
         output_tensor->flat<uint8>().size() * sizeof(uint8));

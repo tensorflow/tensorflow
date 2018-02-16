@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
 #include "tensorflow/core/kernels/conv_2d.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #ifdef TENSORFLOW_USE_LIBXSMM
 #include "tensorflow/core/kernels/xsmm_conv2d.h"
 #endif
@@ -92,16 +93,15 @@ typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
-struct LaunchConv2DBackpropInputOp<CPUDevice, T> {
+struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
   void operator()(OpKernelContext* ctx, bool use_cudnn, bool cudnn_use_autotune,
                   const Tensor& out_backprop, const Tensor& input,
                   int row_stride, int col_stride, const Padding& padding,
                   Tensor* filter_backprop, TensorFormat data_format) {
     const CPUDevice& d = ctx->eigen_device<CPUDevice>();
-    functor::SpatialConvolutionBackwardInput<CPUDevice, T>()(
+    functor::SpatialConvolutionBackwardFilter<CPUDevice, T>()(
         d, filter_backprop->tensor<T, 4>(), input.tensor<T, 4>(),
-        out_backprop.tensor<T, 4>(), filter_backprop->dim_size(0),
-        filter_backprop->dim_size(1), row_stride, col_stride);
+        out_backprop.tensor<T, 4>(), row_stride, col_stride);
   }
 };
 
@@ -272,7 +272,7 @@ class Conv2DFastBackpropFilterOp : public OpKernel {
     }
 #endif
 
-    LaunchConv2DBackpropInputOp<Device, T>()(
+    LaunchConv2DBackpropFilterOp<Device, T>()(
         context, false, false, out_backprop, input, dims.spatial_dims[0].stride,
         dims.spatial_dims[1].stride, padding_, filter_backprop, data_format_);
   }
@@ -593,6 +593,12 @@ class Conv2DSlowBackpropFilterOp : public OpKernel {
 
     // If there is nothing to compute, return.
     if (filter_shape.num_elements() == 0) {
+      return;
+    }
+    // If input is empty, set gradients to zero.
+    if (input.shape().num_elements() == 0) {
+      functor::SetZeroFunctor<Device, T> f;
+      f(context->eigen_device<Device>(), filter_backprop->flat<T>());
       return;
     }
 

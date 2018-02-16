@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
+#ifndef TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
+#define TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
 
 #include <unordered_map>
 
@@ -29,34 +29,19 @@ class ProcessFunctionLibraryRuntime {
   // Creates FunctionLibraryRuntime objects for each device in the provided
   // DeviceMgr. Caller needs to make sure that device_mgr, lib_def and parent
   // (if provided) outlive this object.
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options,
-                                DistributedFunctionLibraryRuntime* parent);
+  ProcessFunctionLibraryRuntime(
+      const DeviceMgr* device_mgr, Env* env, int graph_def_version,
+      const FunctionLibraryDefinition* lib_def,
+      const OptimizerOptions& optimizer_options,
+      DistributedFunctionLibraryRuntime* parent = nullptr);
 
+  // With `custom_kernel_creator`.
   ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
                                 int graph_def_version,
                                 const FunctionLibraryDefinition* lib_def,
                                 const OptimizerOptions& optimizer_options,
                                 CustomKernelCreator custom_kernel_creator,
                                 DistributedFunctionLibraryRuntime* parent);
-
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options);
-
-  ProcessFunctionLibraryRuntime(const DeviceMgr* device_mgr, Env* env,
-                                int graph_def_version,
-                                const FunctionLibraryDefinition* lib_def,
-                                const OptimizerOptions& optimizer_options,
-                                CustomKernelCreator custom_kernel_creator);
-
-  // Given a list of attrs on a function, extracts the "_target" attribute which
-  // indicates which device to run the function on. If it can't find the _target
-  // attribute, returns "". Canonicalizes the device name.
-  static string ObtainFunctionTarget(const AttrSlice& attrs);
 
   // Sends `tensors_to_send` from `source_device` to `target_device` using
   // `rendezvous`. `key_prefix` is used as a prefix for the keys sent to the
@@ -90,7 +75,7 @@ class ProcessFunctionLibraryRuntime {
 
   static const char kDefaultFLRDevice[];
   // Returns the FunctionLibraryRuntime for the corresponding device_name.
-  FunctionLibraryRuntime* GetFLR(const string& device_name);
+  FunctionLibraryRuntime* GetFLR(const string& device_name) const;
 
   // Returns the device incarnation for the given device_name.
   Status GetDeviceIncarnation(const string& device_name, int64* incarnation);
@@ -121,6 +106,7 @@ class ProcessFunctionLibraryRuntime {
   // Allows for function_name to be instantiated on different devices
   // as specified in attrs.
   Status Instantiate(const string& function_name, AttrSlice attrs,
+                     const FunctionLibraryRuntime::InstantiateOptions& options,
                      FunctionLibraryRuntime::Handle* handle);
 
   // Delegates to the local FLR that owns state corresponding to `handle` and
@@ -148,6 +134,12 @@ class ProcessFunctionLibraryRuntime {
 
   // Removes handle from the state owned by this object.
   Status RemoveHandle(FunctionLibraryRuntime::Handle handle);
+
+  Status Clone(Env* env, int graph_def_version,
+               const OptimizerOptions& optimizer_options,
+               CustomKernelCreator custom_kernel_creator,
+               std::unique_ptr<FunctionLibraryDefinition>* out_lib_def,
+               std::unique_ptr<ProcessFunctionLibraryRuntime>* out_pflr);
 
   friend class FunctionLibraryRuntimeImpl;
 
@@ -177,4 +169,4 @@ class ProcessFunctionLibraryRuntime {
 
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_
+#endif  // TENSORFLOW_CORE_COMMON_RUNTIME_PROCESS_FUNCTION_LIBRARY_RUNTIME_H_

@@ -47,18 +47,18 @@ table QuantizationParameters {
 
 table Tensor {
   // The tensor shape. The meaning of each entry is operator-specific but
-  // builtin ops use: [batch size, number of channels, height, width] (That's
-  // Tensorflow's NCHW).
+  // builtin ops use: [batch size, height, width, number of channels] (That's
+  // Tensorflow's NHWC).
   shape:[int];
   type:TensorType;
   // An index that refers to the buffers table at the root of the model. Or,
   // if there is no data buffer associated (i.e. intermediate results), then
-  // this is 0 (which refers to an always existant empty buffer).
+  // this is 0 (which refers to an always existent empty buffer).
   //
   // The data_buffer itself is an opaque container, with the assumption that the
   // target device is little-endian. In addition, all builtin operators assume
   // the memory is ordered such that if `shape` is [4, 3, 2], then index
-  // [i, j, k] maps to data_buffer[i*3*2 + j*3 + k].
+  // [i, j, k] maps to data_buffer[i*3*2 + j*2 + k].
   buffer:uint;
   name:string;  // For debugging and importing back into tensorflow.
   quantization:QuantizationParameters;  // Optional.
@@ -89,7 +89,10 @@ enum BuiltinOperator : byte {
   MAX_POOL_2D = 17,
   MUL = 18,
   RELU = 19,
-  RELU1 = 20,
+  // NOTE(aselle): RELU_N1_TO_1 used to be called RELU1, but it was renamed
+  // since different model developers use RELU1 in different ways. Never
+  // create another op called RELU1.
+  RELU_N1_TO_1 = 20,
   RELU6 = 21,
   RESHAPE = 22,
   RESIZE_BILINEAR = 23,
@@ -104,6 +107,21 @@ enum BuiltinOperator : byte {
   CALL = 31,
   CUSTOM = 32,
   EMBEDDING_LOOKUP_SPARSE = 33,
+  PAD = 34,
+  UNIDIRECTIONAL_SEQUENCE_RNN = 35,
+  GATHER = 36,
+  BATCH_TO_SPACE_ND = 37,
+  SPACE_TO_BATCH_ND = 38,
+  TRANSPOSE = 39,
+  MEAN = 40,
+  SUB = 41,
+  DIV = 42,
+  SQUEEZE = 43,
+  UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
+  STRIDED_SLICE = 45,
+  BIDIRECTIONAL_SEQUENCE_RNN = 46,
+  EXP = 47,
+  TOPK_V2=48,
 }
 
 // Options for the builtin operators.
@@ -129,6 +147,19 @@ union BuiltinOptions {
   SpaceToDepthOptions,
   EmbeddingLookupSparseOptions,
   MulOptions,
+  PadOptions,
+  GatherOptions,
+  BatchToSpaceNDOptions,
+  SpaceToBatchNDOptions,
+  TransposeOptions,
+  MeanOptions,
+  SubOptions,
+  DivOptions,
+  SqueezeOptions,
+  SequenceRNNOptions,
+  StridedSliceOptions,
+  ExpOptions,
+  TopKV2Options,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -136,7 +167,7 @@ enum Padding : byte { SAME, VALID }
 enum ActivationFunctionType : byte {
   NONE = 0,
   RELU = 1,
-  RELU1 = 2,
+  RELU_N1_TO_1 = 2,
   RELU6 = 3,
   TANH = 4,
   SIGN_BIT = 5,
@@ -192,6 +223,18 @@ table RNNOptions {
   fused_activation_function:ActivationFunctionType;
 }
 
+// An implementation of TensorFlow dynamic_rnn with RNNCell.
+table SequenceRNNOptions {
+  time_major:bool;
+  fused_activation_function:ActivationFunctionType;
+}
+
+// An implementation of TensorFlow bidrectional_dynamic_rnn with RNNCell.
+table BidirectionalSequenceRNNOptions {
+  time_major:bool;
+  fused_activation_function:ActivationFunctionType;
+}
+
 // An implementation of TensorFlow fully_connected (a.k.a Dense) layer.
 table FullyConnectedOptions {
   fused_activation_function:ActivationFunctionType;
@@ -234,8 +277,9 @@ table LSTMOptions {
 }
 
 table ResizeBilinearOptions {
-  new_height:int;
-  new_width:int;
+  new_height: int (deprecated);
+  new_width: int (deprecated);
+  align_corners: bool;
 }
 
 // A call operation options
@@ -244,8 +288,17 @@ table CallOptions {
   subgraph:uint;
 }
 
+table PadOptions {
+}
+
 table ReshapeOptions {
   new_shape:[int];
+}
+
+table SpaceToBatchNDOptions {
+}
+
+table BatchToSpaceNDOptions {
 }
 
 table SkipGramOptions {
@@ -258,6 +311,17 @@ table SpaceToDepthOptions {
   block_size: int;
 }
 
+table SubOptions {
+  fused_activation_function:ActivationFunctionType;
+}
+
+table DivOptions {
+  fused_activation_function:ActivationFunctionType;
+}
+
+table TopKV2Options {
+}
+
 enum CombinerType : byte {
   SUM = 0,
   MEAN = 1,
@@ -266,6 +330,32 @@ enum CombinerType : byte {
 
 table EmbeddingLookupSparseOptions {
   combiner:CombinerType;
+}
+
+table GatherOptions {
+  axis: int;
+}
+
+table TransposeOptions {
+}
+
+table ExpOptions {
+}
+
+table MeanOptions {
+  keep_dims: bool;
+}
+
+table SqueezeOptions {
+  squeeze_dims:[int];
+}
+
+table StridedSliceOptions {
+  begin_mask: int;
+  end_mask: int;
+  ellipsis_mask: int;
+  new_axis_mask: int;
+  shrink_axis_mask: int;
 }
 
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
@@ -343,4 +433,3 @@ table Model {
 }
 
 root_type Model;
-

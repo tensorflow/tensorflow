@@ -236,7 +236,7 @@ static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
       VLOG(2) << "Couldn't evaluate while cond: " << result.status();
       return nullopt;
     }
-    return result.ValueOrDie()->GetArraySlice<bool>() ==
+    return result.ValueOrDie()->data<bool>() ==
            tensorflow::gtl::ArraySlice<bool>{true};
   };
 
@@ -306,6 +306,13 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     return false;
   }
 
+  if (while_body_root->opcode() != HloOpcode::kTuple) {
+    VLOG(2) << "While body's root is not a tuple(...) instruction.";
+    return false;
+  }
+
+  auto print_no_metadata = HloPrintOptions().set_print_metadata(false);
+
   // Bail if param0 of while_cond or while_body has users which aren't of type
   // get-tuple-element.
   for (const HloInstruction* instr : {while_body->parameter_instruction(0),
@@ -313,9 +320,10 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
     for (const HloInstruction* user : instr->users()) {
       if (user->opcode() != HloOpcode::kGetTupleElement) {
         VLOG(2) << "Cowardly refusing to analyze while loop with "
-                << instr->ToStringNoMetadata()
-                << " used by non-GTE instruction " << user->ToStringNoMetadata()
-                << " in computation " << instr->parent()->name();
+                << instr->ToString(print_no_metadata)
+                << " used by non-GTE instruction "
+                << user->ToString(print_no_metadata) << " in computation "
+                << instr->parent()->name();
         return false;
       }
     }
@@ -351,7 +359,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 
       used_tuple_indices.insert(user->tuple_index());
       if (used_tuple_indices.size() == tuple_size) {
-        VLOG(2) << "Loop " << while_op->ToStringNoMetadata()
+        VLOG(2) << "Loop " << while_op->ToString(print_no_metadata)
                 << " uses all of its inputs; no simplification possible.";
         return false;
       }
@@ -375,7 +383,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       used_tuple_indices.insert(i);
 
       if (used_tuple_indices.size() == tuple_size) {
-        VLOG(2) << "Loop " << while_op->ToStringNoMetadata()
+        VLOG(2) << "Loop " << while_op->ToString(print_no_metadata)
                 << " uses all of its inputs; no simplification possible.";
         return false;
       }
@@ -387,7 +395,8 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   CHECK_LT(used_tuple_indices.size(), tuple_size);
 
   VLOG(1) << "Eliminating " << tuple_size - used_tuple_indices.size()
-          << " elements from tuple of " << while_op->ToStringNoMetadata();
+          << " elements from tuple of "
+          << while_op->ToString(print_no_metadata);
 
   // Build up maps from the old/new to the new/old tuple indices.
   std::vector<int64> new_to_old_tuple_idx(used_tuple_indices.begin(),
@@ -431,7 +440,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
         continue;
       }
       CHECK_EQ(user->opcode(), HloOpcode::kGetTupleElement)
-          << user->ToStringNoMetadata();
+          << user->ToString(print_no_metadata);
 
       int64 old_idx = user->tuple_index();
       auto new_idx_iter = old_to_new_tuple_idx.find(old_idx);
@@ -446,14 +455,14 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
         CHECK(user->user_count() == 0 ||
               user->user_count() == 1 &&
                   user->users().front() == while_body_root)
-            << "Instruction " << user->ToStringNoMetadata()
+            << "Instruction " << user->ToString(print_no_metadata)
             << " should be unused (except by root of while body), but has "
                "users: {"
             << tensorflow::str_util::Join(
                    user->users(), ", ",
-                   [](string* out, const HloInstruction* instr) {
+                   [&](string* out, const HloInstruction* instr) {
                      tensorflow::strings::StrAppend(
-                         out, instr->ToStringNoMetadata());
+                         out, instr->ToString(print_no_metadata));
                    })
             << "}";
 
@@ -555,9 +564,11 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   //
   // This is not a fundamental limitation.  The control operands can be moved
   // onto the new HLOs after simplification, and any side-effecting ops inside
-  // the loop aren't removed, just cloned and added back to the loop.
-  // Nevertheless our infrastructure sees loop simplification as removal of
-  // these nodes and currently doesn't allow it.
+  // the loop aren't removed, just cloned and added back to the loop.  But
+  // moving an op out of the loop also removes implicit control dependencies
+  // between the op and the ops outside the loop, so we'd have to add those back
+  // for things like infeed/outfeed.  It gets complicated.  So for now we just
+  // avoid it.
   if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
     VLOG(2) << "Not attempting to remove while loop it is not removable: "
             << while_op->ToShortString();
@@ -586,7 +597,9 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
     auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
         while_op->shape(), while_op->operands(), while_op->while_body()));
     TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
-    TF_RETURN_IF_ERROR(CallInliner::Inline(call_op));
+    TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
+                        CallInliner::Inline(call_op));
+    (void)inlined_instructions_map;
     return true;
   }
   return false;

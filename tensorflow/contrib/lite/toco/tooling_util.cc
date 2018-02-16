@@ -21,6 +21,7 @@ limitations under the License.
 #include <unordered_set>
 #include <utility>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
@@ -31,6 +32,24 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace toco {
+
+// Find the longest common prefix of two strings.
+absl::string_view FindLongestCommonPrefix(absl::string_view a,
+                                          absl::string_view b) {
+  if (a.empty() || b.empty()) return absl::string_view();
+
+  const char* pa = a.data();
+  const char* pb = b.data();
+  size_t count = 0;
+  const size_t limit = std::min(a.size(), b.size());
+  while (count < limit && *pa == *pb) {
+    ++pa;
+    ++pb;
+    ++count;
+  }
+
+  return absl::string_view(a.data(), count);
+}
 
 string LogName(const Operator& op) {
   const string& opname = HelpfulOperatorTypeName(op);
@@ -91,8 +110,18 @@ int CountOpsWithInput(const Model& model, const string& array_name) {
 }
 
 bool DeleteArrayIfUnused(const string& array_name, Model* model) {
-  if (CountOpsWithInput(*model, array_name) == 0) {
-    model->arrays.erase(array_name);
+  if (IsDiscardableArray(*model, array_name) &&
+      CountOpsWithInput(*model, array_name) == 0) {
+    model->EraseArray(array_name);
+    return true;
+  }
+  return false;
+}
+
+bool DeleteArrayIfUsedOnce(const string& array_name, Model* model) {
+  if (IsDiscardableArray(*model, array_name) &&
+      CountOpsWithInput(*model, array_name) == 1) {
+    model->EraseArray(array_name);
     return true;
   }
   return false;
@@ -130,6 +159,18 @@ Operator* GetOpWithOutput(const Model& model, const string& array_name) {
 // GetFirstOpWithInput assumes that this finds the first op.
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithInput(
     const Model& model, const string& array_name) {
+  for (auto it = model.operators.begin(); it != model.operators.end(); ++it) {
+    for (auto& input : it->get()->inputs) {
+      if (input == array_name) {
+        return it;
+      }
+    }
+  }
+  return model.operators.end();
+}
+
+std::vector<std::unique_ptr<Operator>>::iterator FindOpWithInput(
+    Model& model, const string& array_name) {
   for (auto it = model.operators.begin(); it != model.operators.end(); ++it) {
     for (auto& input : it->get()->inputs) {
       if (input == array_name) {
@@ -196,7 +237,9 @@ const char* OperatorTypeName(OperatorType type) {
   case OperatorType::k##c:              \
     return #c;
     HANDLE_OPERATORTYPENAME_CASE(Add)
+    HANDLE_OPERATORTYPENAME_CASE(AddN)
     HANDLE_OPERATORTYPENAME_CASE(AveragePool)
+    HANDLE_OPERATORTYPENAME_CASE(BatchMatMul)
     HANDLE_OPERATORTYPENAME_CASE(BatchNormalization)
     HANDLE_OPERATORTYPENAME_CASE(Conv)
     HANDLE_OPERATORTYPENAME_CASE(Concatenation)
@@ -218,6 +261,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(Relu6)
     HANDLE_OPERATORTYPENAME_CASE(ReorderAxes)
     HANDLE_OPERATORTYPENAME_CASE(Softmax)
+    HANDLE_OPERATORTYPENAME_CASE(LogSoftmax)
     HANDLE_OPERATORTYPENAME_CASE(Div)
     HANDLE_OPERATORTYPENAME_CASE(Tanh)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowAll)
@@ -237,6 +281,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMerge)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMin)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowMinimum)
+    HANDLE_OPERATORTYPENAME_CASE(Neg)
     HANDLE_OPERATORTYPENAME_CASE(Pad)
     HANDLE_OPERATORTYPENAME_CASE(StridedSlice)
     HANDLE_OPERATORTYPENAME_CASE(Stack)
@@ -266,7 +311,10 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(BatchToSpaceND)
     HANDLE_OPERATORTYPENAME_CASE(Mean)
     HANDLE_OPERATORTYPENAME_CASE(Svdf)
+    HANDLE_OPERATORTYPENAME_CASE(ArgMax)
+    HANDLE_OPERATORTYPENAME_CASE(TopK_V2)
     HANDLE_OPERATORTYPENAME_CASE(TensorFlowUnsupported)
+    HANDLE_OPERATORTYPENAME_CASE(Exp)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -282,9 +330,23 @@ string HelpfulOperatorTypeName(const Operator& op) {
   return OperatorTypeName(op.type);
 }
 
+bool OperatorSupportsFusedActivation(OperatorType type) {
+  switch (type) {
+    case OperatorType::kConcatenation:
+    case OperatorType::kGather:
+    case OperatorType::kSlice:
+    case OperatorType::kSqueeze:
+    case OperatorType::kTensorFlowReshape:
+    case OperatorType::kTensorFlowSplit:
+      return false;
+    default:
+      return true;
+  }
+}
+
 void LogSummary(int log_level, const Model& model) {
   VLOG(log_level) << "Operators summary (" << model.operators.size()
-                  << " operators): ";
+                  << " operators):";
   std::unordered_multiset<OperatorType> ops_by_type;
   for (const auto& op : model.operators) {
     ops_by_type.insert(op->type);
@@ -313,6 +375,9 @@ void LogArray(int log_level, const Model& model, const string& name) {
     case ArrayDataType::kUint8:
       VLOG(log_level) << "  Data type: kUint8";
       break;
+    case ArrayDataType::kString:
+      VLOG(log_level) << "  Data type: kString";
+      break;
     default:
       VLOG(log_level) << "  Data type: other (numerical value: "
                       << static_cast<int>(array.data_type) << ")";
@@ -330,6 +395,9 @@ void LogArray(int log_level, const Model& model, const string& name) {
       break;
     case ArrayDataType::kUint8:
       VLOG(log_level) << "  Final type: kUint8";
+      break;
+    case ArrayDataType::kString:
+      VLOG(log_level) << "  Final type: kString";
       break;
     default:
       VLOG(log_level) << "  Final type: other (numerical value: "
@@ -365,7 +433,7 @@ void LogArray(int log_level, const Model& model, const string& name) {
   }
   if (array.quantization_params) {
     VLOG(log_level) << "  QuantizationParams: zero_point="
-                    << array.quantization_params->zero_point
+                    << static_cast<int>(array.quantization_params->zero_point)
                     << ", scale=" << array.quantization_params->scale;
   }
 }
@@ -395,6 +463,7 @@ void DumpGraphvizVideoFrame(const Model& model) {
   DumpGraphviz(model, &graphviz_dump);
   std::size_t hash = std::hash<string>{}(graphviz_dump);
   if (!dump_hashes.count(hash)) {
+    LOG(INFO) << "DUMPING GRAPHVIZ VIDEO FRAME: " << dump_id;
     dump_hashes.insert(hash);
     CHECK(port::file::SetContents(
               port::file::JoinPath(
@@ -438,7 +507,7 @@ void LogDump(int log_level, const string& message, const Model& model) {
         LogArray(log_level, model, input);
       }
     }
-    VLOG(log_level) << HelpfulOperatorTypeName(*op) << " : ";
+    VLOG(log_level) << HelpfulOperatorTypeName(*op) << " :";
     VLOG(log_level) << "  " << FormatArraysList(model, op->inputs) << " -> "
                     << FormatArraysList(model, op->outputs);
     if (op->fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -556,65 +625,129 @@ int RequiredBufferSizeForShape(const Shape& shape) {
 }
 
 bool IsConstantParameterArray(const Model& model, const string& name) {
-  if (!model.arrays.count(name)) {
+  if (!model.HasArray(name)) {
     return false;
   }
 
-  return !!model.arrays.at(name)->buffer;
+  return !!model.GetArray(name).buffer;
 }
 
-void CheckNoMissingArray(const Model& model) {
-  for (const auto& op : model.operators) {
-    for (const auto& input : op->inputs) {
-      CHECK(model.arrays.count(input));
-    }
-    for (const auto& output : op->outputs) {
-      CHECK(model.arrays.count(output));
+namespace {
+void CheckInputArraysAreNotOutputArrays(const ModelFlags& model_flags) {
+  for (const auto& input_array : model_flags.input_arrays()) {
+    for (const string& output_array : model_flags.output_arrays()) {
+      QCHECK_NE(input_array.name(), output_array)
+          << "The array " << output_array
+          << " is listed in both --input_arrays and --output_arrays.";
     }
   }
+}
+
+bool IsAsciiPrintable(const string& name) {
+  for (char c : name) {
+    if (!absl::ascii_isprint(c)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+string DumpAscii(const string& name) {
+  string result;
+  port::AppendF(&result, "ASCII | Hex\n");
+  port::AppendF(&result, "------+----\n");
+  for (char c : name) {
+    if (absl::ascii_isprint(c)) {
+      port::AppendF(&result, "%c     | %x\n", c, c);
+    } else {
+      port::AppendF(&result, "      | %x   Not ASCII printable!\n", c);
+    }
+  }
+  return result;
+}
+
+void CheckNonAsciiIOArrays(const ModelFlags& model_flags) {
+  if (model_flags.allow_nonascii_arrays()) {
+    return;
+  }
+  for (const auto& input_array : model_flags.input_arrays()) {
+    QCHECK(IsAsciiPrintable(input_array.name()))
+        << "Non-ASCII-printable character found in --input_arrays: "
+        << input_array.name()
+        << ". Pass --allow_nonascii_arrays to allow that. "
+        << "Here is a dump of the string:\n\n"
+        << DumpAscii(input_array.name());
+  }
+  for (const string& output_array : model_flags.output_arrays()) {
+    QCHECK(IsAsciiPrintable(output_array))
+        << "Non-ASCII-printable character found in --output_arrays: "
+        << output_array << ". Pass --allow_nonascii_arrays to allow that. "
+        << "Here is a dump of the string:\n\n"
+        << DumpAscii(output_array);
+  }
+}
+
+void CheckNonExistentIOArrays(const Model& model) {
+  if (model.flags.allow_nonexistent_arrays()) {
+    return;
+  }
   for (const auto& input_array : model.flags.input_arrays()) {
-    CHECK(model.arrays.count(input_array.name()))
+    CHECK(model.HasArray(input_array.name()))
         << "Input array not found: " << input_array.name();
   }
   for (const string& output_array : model.flags.output_arrays()) {
-    CHECK(model.arrays.count(output_array))
+    CHECK(model.HasArray(output_array))
         << "Output array not found: " << output_array;
   }
   for (const auto& rnn_state : model.flags.rnn_states()) {
     if (!rnn_state.discardable()) {
-      CHECK(model.arrays.count(rnn_state.state_array()));
-      CHECK(model.arrays.count(rnn_state.back_edge_source_array()));
+      CHECK(model.HasArray(rnn_state.state_array()));
+      CHECK(model.HasArray(rnn_state.back_edge_source_array()));
     }
   }
+}
+}  // namespace
+
+void CheckNoMissingArray(const Model& model) {
+  for (const auto& op : model.operators) {
+    for (const auto& input : op->inputs) {
+      CHECK(model.HasArray(input) || model.optional_arrays.count(input))
+          << "Input: " << input << " missing for op: " << op->outputs[0] << ".";
+    }
+    for (const auto& output : op->outputs) {
+      CHECK(model.HasArray(output)) << "Output: " << output << " missing.";
+    }
+  }
+  CheckNonExistentIOArrays(model);
 }
 
 void FixNoMissingArray(Model* model) {
   for (const auto& op : model->operators) {
     for (const auto& input : op->inputs) {
-      if (!model->arrays.count(input)) {
+      if (!model->HasArray(input)) {
         model->GetOrCreateArray(input);
       }
     }
     for (const auto& output : op->outputs) {
-      if (!model->arrays.count(output)) {
+      if (!model->HasArray(output)) {
         model->GetOrCreateArray(output);
       }
     }
   }
-  for (const string& output_array : model->flags.output_arrays()) {
-    if (!model->arrays.count(output_array)) {
+  if (model->flags.allow_nonexistent_arrays()) {
+    for (const string& output_array : model->flags.output_arrays()) {
       model->GetOrCreateArray(output_array);
     }
-  }
-  for (const auto& rnn_state : model->flags.rnn_states()) {
-    model->GetOrCreateArray(rnn_state.state_array());
-    model->GetOrCreateArray(rnn_state.back_edge_source_array());
+    for (const auto& rnn_state : model->flags.rnn_states()) {
+      model->GetOrCreateArray(rnn_state.state_array());
+      model->GetOrCreateArray(rnn_state.back_edge_source_array());
+    }
   }
 }
 
 void CheckNoOrphanedArray(const Model& model) {
   std::unordered_set<string> arrays_without_known_use;
-  for (const auto& array : model.arrays) {
+  for (const auto& array : model.GetArrayMap()) {
     if (IsDiscardableArray(model, array.first)) {
       arrays_without_known_use.insert(array.first);
     }
@@ -641,7 +774,7 @@ void CheckNoOrphanedArray(const Model& model) {
 
 void FixNoOrphanedArray(Model* model) {
   std::unordered_set<string> arrays_without_known_use;
-  for (const auto& array : model->arrays) {
+  for (const auto& array : model->GetArrayMap()) {
     arrays_without_known_use.insert(array.first);
   }
   for (const auto& op : model->operators) {
@@ -658,13 +791,13 @@ void FixNoOrphanedArray(Model* model) {
   }
   for (const auto& array : arrays_without_known_use) {
     if (IsDiscardableArray(*model, array)) {
-      model->arrays.erase(array);
+      model->EraseArray(array);
     }
   }
 }
 
 void CheckArrayFieldsConsistent(const Model& model) {
-  for (const auto& array_entry : model.arrays) {
+  for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = array_entry.second;
     if (array->has_shape()) {
       for (int d : array->shape().dims()) {
@@ -683,11 +816,13 @@ void CheckArrayFieldsConsistent(const Model& model) {
 
 void CheckOperatorOrdering(const Model& model) {
   std::unordered_set<string> arrays_behind_us;
-  for (const auto& array_entry : model.arrays) {
+  for (const auto& array_entry : model.GetArrayMap()) {
     if (!GetOpWithOutput(model, array_entry.first)) {
       arrays_behind_us.insert(array_entry.first);
     }
   }
+  arrays_behind_us.insert(model.optional_arrays.begin(),
+                          model.optional_arrays.end());
   for (const auto& op : model.operators) {
     for (const auto& input : op->inputs) {
       if (!IsConstantParameterArray(model, input)) {
@@ -706,11 +841,13 @@ void CheckOperatorOrdering(const Model& model) {
 
 void FixOperatorOrdering(Model* model) {
   std::unordered_set<string> arrays_behind_us;
-  for (const auto& array_entry : model->arrays) {
+  for (const auto& array_entry : model->GetArrayMap()) {
     if (!GetOpWithOutput(*model, array_entry.first)) {
       arrays_behind_us.insert(array_entry.first);
     }
   }
+  arrays_behind_us.insert(model->optional_arrays.begin(),
+                          model->optional_arrays.end());
   std::vector<std::unique_ptr<Operator>> old_operators;
   std::swap(old_operators, model->operators);
   std::set<std::size_t> remaining;
@@ -818,6 +955,8 @@ void FixOperatorOrdering(Model* model) {
 }
 
 void CheckInvariants(const Model& model) {
+  CheckInputArraysAreNotOutputArrays(model.flags);
+  CheckNonAsciiIOArrays(model.flags);
   CheckNoMissingArray(model);
   CheckNoOrphanedArray(model);
   CheckArrayFieldsConsistent(model);
@@ -857,7 +996,8 @@ void CheckModelCounts(const Model& model) {
     if (count_type == "None") {
       continue;
     } else if (count_type == "Arrays") {
-      CheckCountInRange(model_check, model.arrays.size(), "count of arrays");
+      CheckCountInRange(model_check, model.GetArrayMap().size(),
+                        "count of arrays");
     } else if (count_type == "Total") {
       CheckCountInRange(model_check, model.operators.size(),
                         "count of all operator instances");
@@ -877,7 +1017,9 @@ void CheckModelCounts(const Model& model) {
 void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
                    std::vector<int>* out_dims) {
   CHECK(out_dims->empty());
-  if (num_dims == 1) {
+  if (num_dims == 0) {
+    return;
+  } else if (num_dims == 1) {
     CHECK_EQ(batch, 1);
     *out_dims = {depth};
   } else if (num_dims == 2) {
@@ -909,13 +1051,13 @@ void CreateOrCheckRnnStateArray(const string& name, int size, Model* model) {
   if (array.has_shape()) {
     num_dims = array.shape().dimensions_count();
   }
-  std::vector<int> dims;
-  MakeArrayDims(num_dims, batch, 1, 1, size, &dims);
   CHECK(array.data_type == ArrayDataType::kFloat ||
         array.data_type == ArrayDataType::kNone);
   array.data_type = ArrayDataType::kFloat;
-  if (!array.has_shape()) {
+  if (!array.has_shape() && num_dims >= 0) {
     Shape* shape = array.mutable_shape();
+    std::vector<int> dims;
+    MakeArrayDims(num_dims, batch, 1, 1, size, &dims);
     *shape->mutable_dims() = dims;
   }
 }
@@ -1072,11 +1214,16 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
         }
       }
     } else {
-      const auto& input_array_dims =
-          *input_array.mutable_shape()->mutable_dims();
-      CHECK_EQ(input_array_dims.size(), input_array_proto.shape().dims_size());
-      for (int i = 0; i < input_array_dims.size(); i++) {
-        CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
+      if (input_array_proto.has_shape()) {
+        // If an input shape was specified on the flags ensure that it matches
+        // the actual shape in the model.
+        const auto& input_array_dims =
+            *input_array.mutable_shape()->mutable_dims();
+        CHECK_EQ(input_array_dims.size(),
+                 input_array_proto.shape().dims_size());
+        for (int i = 0; i < input_array_dims.size(); i++) {
+          CHECK_EQ(input_array_dims[i], input_array_proto.shape().dims(i));
+        }
       }
     }
 
@@ -1099,9 +1246,6 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
   }
   // Creation of the RNN state arrays
   for (const auto& rnn_state : model->flags.rnn_states()) {
-    if (!rnn_state.manually_create()) {
-      continue;
-    }
     CreateOrCheckRnnStateArray(rnn_state.state_array(), rnn_state.size(),
                                model);
   }
@@ -1111,6 +1255,13 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       CHECK(input_array.shape().dims_size());
     }
   }
+
+  model->flags.set_allow_nonascii_arrays(model_flags.allow_nonascii_arrays());
+  model->flags.set_allow_nonexistent_arrays(
+      model_flags.allow_nonexistent_arrays());
+
+  CHECK(!model->flags.has_arrays_extra_info());
+  *model->flags.mutable_arrays_extra_info() = model_flags.arrays_extra_info();
 }
 
 void CheckIsReadyForQuantization(const Model& model) {
@@ -1170,10 +1321,28 @@ int ElementSize(ArrayDataType data_type) {
   switch (data_type) {
     case ArrayDataType::kFloat:
       return 4;
-    case ArrayDataType::kInt32:
-      return 4;
+    case ArrayDataType::kInt8:
+      return 1;
     case ArrayDataType::kUint8:
       return 1;
+    case ArrayDataType::kInt16:
+      return 2;
+    case ArrayDataType::kUint16:
+      return 2;
+    case ArrayDataType::kInt32:
+      return 4;
+    case ArrayDataType::kUint32:
+      return 4;
+    case ArrayDataType::kInt64:
+      return 8;
+    case ArrayDataType::kUint64:
+      return 8;
+
+    // Usually not critical limitation because strings are only input and/or
+    // output.
+    case ArrayDataType::kString:
+      LOG(FATAL) << "Transient arrays with strings are not supported yet";
+      return 0;
     default:
       LOG(FATAL) << "Should not get here.";
       return 0;
@@ -1190,6 +1359,8 @@ void DropMinMax(Model* model, const string& array_name) {
 }
 
 bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
+  // Optional array is not transient
+  if (model.IsOptionalArray(array_name)) return false;
   // The model's input and output arrays are externally allocated.
   // They are not transient arrays.
   if (IsInputArray(model, array_name)) {
@@ -1200,7 +1371,7 @@ bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
       return false;
     }
   }
-  const auto& array = model.arrays.at(array_name);
+  const auto& array = &model.GetArray(array_name);
   // An array with a constant buffer isn't a transient array.
   if (!!array->buffer) {
     return false;
@@ -1213,13 +1384,14 @@ bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
 }
 
 string AvailableArrayName(const Model& model, const string& name) {
-  if (!model.arrays.count(name)) {
+  if (!model.HasArray(name) && !model.IsOptionalArray(name)) {
     return name;
   }
   const int kNumSuffixesToTry = 1000;
   for (int i = 0; i < kNumSuffixesToTry; i++) {
     const string& name_with_suffix = toco::port::StringF("%s_%d", name, i);
-    if (!model.arrays.count(name_with_suffix)) {
+    if (!model.HasArray(name_with_suffix) &&
+        !model.IsOptionalArray(name_with_suffix)) {
       return name_with_suffix;
     }
   }
@@ -1237,12 +1409,12 @@ string ShapeToString(const Shape& shape) {
 }
 
 void PrintArrayShape(Model* model, const string& name) {
-  if (!model->arrays[name]->has_shape()) {
+  if (!model->GetArray(name).has_shape()) {
     LOG(INFO) << name << " has no shape";
     return;
   }
   LOG(INFO) << name
-            << " has shape: " << ShapeToString(model->arrays[name]->shape());
+            << " has shape: " << ShapeToString(model->GetArray(name).shape());
 }
 
 bool IsArrayFullyConnectedWeights(const Model& model, const string& name) {
@@ -1261,6 +1433,21 @@ bool IsArrayFullyConnectedWeights(const Model& model, const string& name) {
   }
   CHECK(!(is_fc_weights && is_something_else));
   return is_fc_weights;
+}
+
+string CreateInt32Array(Model* model, const string& param_name,
+                        const std::vector<int>& value) {
+  auto param_array_name = AvailableArrayName(*model, param_name);
+  auto& param_array = model->GetOrCreateArray(param_array_name);
+  param_array.mutable_shape()->ReplaceDims({static_cast<int>(value.size())});
+  param_array.data_type = ArrayDataType::kInt32;
+  auto& param_array_data =
+      param_array.GetMutableBuffer<ArrayDataType::kInt32>().data;
+  param_array_data.resize(RequiredBufferSizeForShape(param_array.shape()));
+  for (int i = 0; i < value.size(); ++i) {
+    param_array_data[i] = value[i];
+  }
+  return param_array_name;
 }
 
 bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
@@ -1298,8 +1485,19 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
         total += RequiredBufferSizeForShape(output_array.shape());
         break;
       }
+      case OperatorType::kAddN: {
+        const auto& output_array = model.GetArray(op->outputs[0]);
+        if (!output_array.has_shape()) {
+          return false;
+        }
+        // AddN cost is roughly the same cost as N-1 Adds.
+        const int num_adds = op->inputs.size() - 1;
+        total += num_adds * RequiredBufferSizeForShape(output_array.shape());
+        break;
+      }
       case OperatorType::kLogistic:
       case OperatorType::kSoftmax:
+      case OperatorType::kLogSoftmax:
       case OperatorType::kTanh: {
         const auto& output_array = model.GetArray(op->outputs[0]);
         if (!output_array.has_shape()) {
@@ -1365,8 +1563,6 @@ bool EstimateArithmeticOpsCount(const Model& model, int64* result) {
   return true;
 }
 
-namespace {
-
 void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
                      std::vector<int>* shuffle) {
   CHECK_EQ(AxesCount(input_axes_order), AxesCount(output_axes_order));
@@ -1401,8 +1597,6 @@ void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
   }
 }
 
-// Extend shuffle is designed to match ExtendShape, which pads the shape with
-// unit dimensions at the beginning.
 void ExtendShuffle(const std::vector<int>& input_shuffle, int newdim,
                    std::vector<int>* extended_shuffle) {
   *extended_shuffle = input_shuffle;
@@ -1416,8 +1610,6 @@ void ExtendShuffle(const std::vector<int>& input_shuffle, int newdim,
     (*extended_shuffle)[i] = input_shuffle[i - pad_size] + pad_size;
   }
 }
-
-}  // end anonymous namespace
 
 void ShuffleDims(const Shape& input_shape, AxesOrder input_axes_order,
                  AxesOrder output_axes_order, Shape* output_shape) {
@@ -1438,9 +1630,11 @@ void ShuffleDims(const Shape& input_shape, AxesOrder input_axes_order,
   }
 }
 
-void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
-                  AxesOrder output_axes_order, const Shape& output_shape,
-                  const float* input_data, float* output_data) {
+template <typename T>
+void ShuffleArrayTemplate(const Shape& input_shape, AxesOrder input_axes_order,
+                          AxesOrder output_axes_order,
+                          const Shape& output_shape, const T* input_data,
+                          T* output_data) {
   if (input_axes_order == AxesOrder::kHWIM &&
       output_axes_order == AxesOrder::k1HWO) {
     // This special case isn't just a permutation, the IM pair of dims get
@@ -1492,16 +1686,15 @@ void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
   const int output_stride_3 = output_stride_2 * output_size_2;
 
   for (int i3 = 0; i3 < output_size_3; i3++) {
-    const float* const input_ptr_3 = input_data + i3 * input_stride_3;
-    float* const output_ptr_3 = output_data + i3 * output_stride_3;
+    const T* const input_ptr_3 = input_data + i3 * input_stride_3;
+    T* const output_ptr_3 = output_data + i3 * output_stride_3;
     for (int i2 = 0; i2 < output_size_2; i2++) {
-      const float* const input_ptr_2 = input_ptr_3 + i2 * input_stride_2;
-      float* const output_ptr_2 = output_ptr_3 + i2 * output_stride_2;
+      const T* const input_ptr_2 = input_ptr_3 + i2 * input_stride_2;
+      T* const output_ptr_2 = output_ptr_3 + i2 * output_stride_2;
       for (int i1 = 0; i1 < output_size_1; i1++) {
-        const float* input_ptr = input_ptr_2 + i1 * input_stride_1;
-        float* output_ptr = output_ptr_2 + i1 * output_stride_1;
-        float* const output_ptr_end =
-            output_ptr + output_size_0 * output_stride_0;
+        const T* input_ptr = input_ptr_2 + i1 * input_stride_1;
+        T* output_ptr = output_ptr_2 + i1 * output_stride_1;
+        T* const output_ptr_end = output_ptr + output_size_0 * output_stride_0;
         while (output_ptr != output_ptr_end) {
           *output_ptr = *input_ptr;
           input_ptr += input_stride_0;
@@ -1510,6 +1703,20 @@ void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
       }
     }
   }
+}
+
+void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
+                  AxesOrder output_axes_order, const Shape& output_shape,
+                  const uint8* input_data, uint8* output_data) {
+  ShuffleArrayTemplate<uint8>(input_shape, input_axes_order, output_axes_order,
+                              output_shape, input_data, output_data);
+}
+
+void ShuffleArray(const Shape& input_shape, AxesOrder input_axes_order,
+                  AxesOrder output_axes_order, const Shape& output_shape,
+                  const float* input_data, float* output_data) {
+  ShuffleArrayTemplate<float>(input_shape, input_axes_order, output_axes_order,
+                              output_shape, input_data, output_data);
 }
 
 int AxesCount(AxesOrder axes_order) {
@@ -1561,7 +1768,7 @@ bool IsDiscardableArray(const Model& model, const string& array_name) {
 }
 
 void CheckFinalDataTypesSatisfied(const Model& model) {
-  for (const auto& array_entry : model.arrays) {
+  for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = *array_entry.second;
     if (array.final_data_type != ArrayDataType::kNone) {
       CHECK(array.final_data_type == array.data_type)
@@ -1585,6 +1792,17 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt64;
     default:
       return ArrayDataType::kNone;
+  }
+}
+
+void UseArraysExtraInfo(Model* model) {
+  for (const auto& entry : model->flags.arrays_extra_info().entries()) {
+    QCHECK(model->HasArray(entry.name()))
+        << "ArraysExtraInfo refers to non-existent array name: "
+        << entry.name();
+    auto& minmax = model->GetArray(entry.name()).GetOrCreateMinMax();
+    minmax.min = entry.min();
+    minmax.max = entry.max();
   }
 }
 

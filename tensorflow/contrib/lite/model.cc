@@ -30,17 +30,6 @@ limitations under the License.
 
 namespace tflite {
 
-namespace {
-inline const tflite::Model* VerifyAndGetModel(const void* buf, size_t len) {
-  ::flatbuffers::Verifier verifier(static_cast<const uint8_t*>(buf), len);
-  if (VerifyModelBuffer(verifier)) {
-    return ::tflite::GetModel(buf);
-  } else {
-    return nullptr;
-  }
-}
-}  // namespace
-
 const char* kEmptyTensorName = "";
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
@@ -80,10 +69,9 @@ FlatBufferModel::FlatBufferModel(const char* filename, bool mmap_file,
   } else {
     allocation_ = new FileCopyAllocation(filename, error_reporter);
   }
-  if (!allocation_->valid()) return;
-  if (!CheckModelIdentifier()) return;
+  if (!allocation_->valid() || !CheckModelIdentifier()) return;
 
-  model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
+  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 bool FlatBufferModel::CheckModelIdentifier() const {
@@ -104,7 +92,7 @@ FlatBufferModel::FlatBufferModel(const char* ptr, size_t num_bytes,
   allocation_ = new MemoryAllocation(ptr, num_bytes, error_reporter);
   if (!allocation_->valid()) return;
 
-  model_ = VerifyAndGetModel(allocation_->base(), allocation_->bytes());
+  model_ = ::tflite::GetModel(allocation_->base());
 }
 
 FlatBufferModel::FlatBufferModel(const Model* model,
@@ -175,6 +163,27 @@ std::vector<int> FlatBufferIntArrayToVector(T* flat_array) {
   return ret;
 }
 
+// Copies the contents from the flatbuffer int vector `flatbuffer` into the
+// int array `buffer`. `flat_vector` and `buffer` represent the same
+// configuration operation for a given operation.
+void FlatBufferIntVectorToArray(int max_size_of_buffer,
+                                const flatbuffers::Vector<int32_t>* flat_vector,
+                                int* buffer, ErrorReporter* error_reporter) {
+  if (!flat_vector) {
+    error_reporter->Report("Input array not provided for operation.\n");
+  } else {
+    int num_dimensions = flat_vector->Length();
+    if (num_dimensions > max_size_of_buffer / sizeof(int)) {
+      error_reporter->Report(
+          "Found too many dimensions in the operation's input array.\n");
+    } else {
+      for (int i = 0; i < num_dimensions; ++i) {
+        buffer[i] = flat_vector->Get(i);
+      }
+    }
+  }
+}
+
 // Allocate a structure using C malloc, but make sure the structure is a
 // POD structure that doesn't require constructors to run. The reason we do
 // this, is that Interpreter's C extension part will take ownership and wants
@@ -190,6 +199,9 @@ T* MallocPOD() {
 // This handles builtin data explicitly as there are flatbuffer schemas.
 //
 // Returns memory that must be feed.
+//
+// TODO(nupurgarg): Pass in void ** and return TfLiteStatus to ensure program
+// crashes if error reporter is called.
 void* ParseOpData(const Operator* op, BuiltinOperator op_type,
                   ErrorReporter* error_reporter) {
   auto parse_padding = [](Padding padding) {
@@ -207,7 +219,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         return kTfLiteActNone;
       case ActivationFunctionType_RELU:
         return kTfLiteActRelu;
-      case ActivationFunctionType_RELU1:
+      case ActivationFunctionType_RELU_N1_TO_1:
         return kTfLiteActRelu1;
       case ActivationFunctionType_RELU6:
         return kTfLiteActRelu6;
@@ -263,9 +275,11 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_TANH:
     case BuiltinOperator_LOGISTIC:
     case BuiltinOperator_RELU:
-    case BuiltinOperator_RELU1:
+    case BuiltinOperator_RELU_N1_TO_1:
     case BuiltinOperator_RELU6:
     case BuiltinOperator_CONCAT_EMBEDDINGS:
+    case BuiltinOperator_EXP:
+    case BuiltinOperator_TOPK_V2:
       break;
     case BuiltinOperator_LSH_PROJECTION: {
       TfLiteLSHProjectionParams* params =
@@ -312,6 +326,18 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
         params->rank = svdf_params->rank();
         params->activation =
             parse_activation(svdf_params->fused_activation_function());
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN:
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN: {
+      TfLiteSequenceRNNParams* params = MallocPOD<TfLiteSequenceRNNParams>();
+      if (auto* sequence_rnn_params =
+              op->builtin_options_as_SequenceRNNOptions()) {
+        params->activation =
+            parse_activation(sequence_rnn_params->fused_activation_function());
+        params->time_major = sequence_rnn_params->time_major();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -390,6 +416,24 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_DIV: {
+      auto* params = MallocPOD<TfLiteDivParams>();
+      if (auto* schema_params = op->builtin_options_as_DivOptions()) {
+        params->activation =
+            parse_activation(schema_params->fused_activation_function());
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_SUB: {
+      auto* params = MallocPOD<TfLiteSubParams>();
+      if (auto* schema_params = op->builtin_options_as_SubOptions()) {
+        params->activation =
+            parse_activation(schema_params->fused_activation_function());
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
     case BuiltinOperator_L2_NORMALIZATION: {
       auto* params = MallocPOD<TfLiteL2NormParams>();
       if (auto* schema_params = op->builtin_options_as_L2NormOptions()) {
@@ -411,6 +455,7 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       builtin_data = reinterpret_cast<void*>(params);
       break;
     }
+    case BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM:
     case BuiltinOperator_LSTM: {
       TfLiteLSTMParams* params = MallocPOD<TfLiteLSTMParams>();
       if (auto* lstm_params = op->builtin_options_as_LSTMOptions()) {
@@ -426,29 +471,21 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto* params = MallocPOD<TfLiteResizeBilinearParams>();
       if (auto* schema_params =
               op->builtin_options_as_ResizeBilinearOptions()) {
-        params->new_height = schema_params->new_height();
-        params->new_width = schema_params->new_width();
+        params->align_corners = schema_params->align_corners();
       }
       builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_PAD: {
       break;
     }
     case BuiltinOperator_RESHAPE: {
       auto* params = MallocPOD<TfLiteReshapeParams>();
       if (auto* schema_params = op->builtin_options_as_ReshapeOptions()) {
         auto* new_shape = schema_params->new_shape();
-        if (!new_shape) {
-          error_reporter->Report("No new_shape provided for Reshape\n");
-        } else {
-          params->num_dimensions = new_shape->Length();
-          if (params->num_dimensions > sizeof(params->shape) / sizeof(int)) {
-            error_reporter->Report(
-                "Found too many dimensions in Reshape's new_shape\n");
-          } else {
-            for (int i = 0; i < params->num_dimensions; ++i) {
-              params->shape[i] = new_shape->Get(i);
-            }
-          }
-        }
+        FlatBufferIntVectorToArray(sizeof(params->shape), new_shape,
+                                   params->shape, error_reporter);
+        params->num_dimensions = new_shape->Length();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;
@@ -467,6 +504,56 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto* params = MallocPOD<TfLiteSpaceToDepthParams>();
       if (auto* schema_params = op->builtin_options_as_SpaceToDepthOptions()) {
         params->block_size = schema_params->block_size();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_GATHER: {
+      TfLiteGatherParams* params = MallocPOD<TfLiteGatherParams>();
+      params->axis = 0;
+      if (auto* gather_params = op->builtin_options_as_GatherOptions()) {
+        params->axis = gather_params->axis();
+      }
+
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_SPACE_TO_BATCH_ND: {
+      break;
+    }
+    case BuiltinOperator_BATCH_TO_SPACE_ND: {
+      break;
+    }
+    case BuiltinOperator_TRANSPOSE: {
+      break;
+    }
+    case BuiltinOperator_MEAN: {
+      auto* params = MallocPOD<TfLiteMeanParams>();
+      if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
+        params->keep_dims = schema_params->keep_dims();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_SQUEEZE: {
+      auto* params = MallocPOD<TfLiteSqueezeParams>();
+      if (auto* schema_params = op->builtin_options_as_SqueezeOptions()) {
+        const auto& squeeze_dims = schema_params->squeeze_dims();
+        FlatBufferIntVectorToArray(sizeof(params->squeeze_dims), squeeze_dims,
+                                   params->squeeze_dims, error_reporter);
+        params->num_squeeze_dims = squeeze_dims->Length();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_STRIDED_SLICE: {
+      auto* params = MallocPOD<TfLiteStridedSliceParams>();
+      if (auto* schema_params = op->builtin_options_as_StridedSliceOptions()) {
+        params->begin_mask = schema_params->begin_mask();
+        params->end_mask = schema_params->end_mask();
+        params->ellipsis_mask = schema_params->ellipsis_mask();
+        params->new_axis_mask = schema_params->new_axis_mask();
+        params->shrink_axis_mask = schema_params->shrink_axis_mask();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;

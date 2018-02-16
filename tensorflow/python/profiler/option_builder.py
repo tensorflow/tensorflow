@@ -20,8 +20,10 @@ from __future__ import print_function
 import copy
 
 from tensorflow.python.profiler import tfprof_logger
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('profiler.ProfileOptionBuilder')
 class ProfileOptionBuilder(object):
   # pylint: disable=line-too-long
   """Option Builder for Profiling API.
@@ -298,7 +300,7 @@ class ProfileOptionBuilder(object):
     # pylint: disable=line-too-long
     """Only show profiler nodes consuming no less than 'min_float_ops'.
 
-    Please see https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profilerg3doc/profile_model_architecture.md
+    Please see https://github.com/tensorflow/tensorflow/tree/master/tensorflow/core/profiler/g3doc/profile_model_architecture.md
     on the caveats of calculating float operations.
 
     Args:

@@ -156,6 +156,10 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import deprecation
 
 
+# Imports the core `InputLayer` symbol in contrib during development.
+InputLayer = fc_core.InputLayer  # pylint: disable=invalid-name
+
+
 class _LinearEmbeddingLookupArguments(
     collections.namedtuple("_LinearEmbeddingLookupArguments",
                            ["input_tensor",
@@ -747,6 +751,10 @@ class _WeightedSparseColumn(
     config.update(
         {self.weight_column_name: parsing_ops.VarLenFeature(self.dtype)})
     return config
+
+  @property
+  def lookup_config(self):
+    return self.sparse_id_column.lookup_config
 
   @property
   def key(self):

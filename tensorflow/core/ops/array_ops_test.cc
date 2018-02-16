@@ -142,8 +142,13 @@ TEST(ArrayOpsTest, Const_ShapeFn) {
 
 TEST(ArrayOpsTest, UnchangedShapes_ShapeFn) {
   for (const char* op_name : {
-           "CheckNumerics", "Identity", "RefIdentity", "QuantizeAndDequantize",
-           "StopGradient", "ZerosLike", "OnesLike",
+           "CheckNumerics",
+           "Identity",
+           "RefIdentity",
+           "QuantizeAndDequantize",
+           "StopGradient",
+           "ZerosLike",
+           "OnesLike",
        }) {
     ShapeInferenceTestOp op(op_name);
     INFER_OK(op, "?", "in0");
@@ -253,6 +258,7 @@ TEST(ArrayOpsTest, ReverseV2_ShapeFn) {
 
 TEST(ArrayOpsTest, Fill_ShapeFn) {
   ShapeInferenceTestOp op("Fill");
+  AddNodeAttr("index_type", DT_INT32, &op.node_def);
   op.input_tensors.resize(2);
   INFER_OK(op, "?;?", "?");
   INFER_OK(op, "[?];?", "?");

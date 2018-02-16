@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-# pylint: disable=wildcard-import,g-importing-member
+# pylint: disable=wildcard-import,g-importing-member,redefined-builtin
 from tensorflow.contrib.specs.python.params_ops import *
 from tensorflow.contrib.specs.python.specs import *
 from tensorflow.contrib.specs.python.specs_lib import *
 from tensorflow.contrib.specs.python.specs_ops import *
 from tensorflow.contrib.specs.python.summaries import *
-# pylint: enable=wildcard-import
+# pylint: enable=wildcard-import,redefined-builtin

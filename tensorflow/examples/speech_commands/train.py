@@ -357,12 +357,12 @@ if __name__ == '__main__':
       '--window_size_ms',
       type=float,
       default=30.0,
-      help='How long each spectrogram timeslice is',)
+      help='How long each spectrogram timeslice is.',)
   parser.add_argument(
       '--window_stride_ms',
       type=float,
       default=10.0,
-      help='How long each spectrogram timeslice is',)
+      help='How far to move in time between spectogram timeslices.',)
   parser.add_argument(
       '--dct_coefficient_count',
       type=int,

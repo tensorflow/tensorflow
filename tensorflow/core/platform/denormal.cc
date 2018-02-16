@@ -41,8 +41,8 @@ namespace tensorflow {
 namespace port {
 
 ScopedFlushDenormal::ScopedFlushDenormal() {
-// For now, we flush denormals only on SSE 3.  Other architectures such as ARM
-// can be added as needed.
+  // For now, we flush denormals only on SSE 3.  Other architectures such as ARM
+  // can be added as needed.
 
 #ifdef DENORM_USE_INTRINSICS
   if (TestCPUFeature(SSE3)) {

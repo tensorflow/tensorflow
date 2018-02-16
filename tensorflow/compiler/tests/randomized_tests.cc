@@ -93,11 +93,11 @@ class OpTestBuilder {
  public:
   explicit OpTestBuilder(const string& op_name);
 
-  // Adds an input 'tensor'.
+  // Adds an input 'tensor' as a Placeholder node.
   OpTestBuilder& Input(const Tensor& tensor);
 
-  // Adds a random input tensor with 'type'. If 'dims' is not provided,
-  // RandomDims() is used.
+  // Adds a random input tensor with 'type' as a Placeholder node.
+  // If 'dims' is not provided, RandomDims() is used.
   OpTestBuilder& RandomInput(DataType type);
   OpTestBuilder& RandomInput(DataType type, std::vector<int64> dims);
 
@@ -998,6 +998,13 @@ TEST_F(OpTest, Atanh) {
   });
 }
 
+TEST_F(OpTest, Atan) {
+  Repeatedly([this]() {
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("Atan").RandomInput(DT_FLOAT).Attr("T", DT_FLOAT));
+  });
+}
+
 TEST_F(OpTest, Atan2) {
   Repeatedly([this]() {
     auto dims = BroadcastableDims();
@@ -1368,6 +1375,121 @@ TEST_F(OpTest, Conj) {
   });
 }
 
+TEST_F(OpTest, FFT) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(1, kDefaultMaxRank);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("FFT").RandomInput(DT_COMPLEX64, dims));
+  });
+}
+
+TEST_F(OpTest, FFT2D) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(2, kDefaultMaxRank);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("FFT2D").RandomInput(DT_COMPLEX64, dims));
+  });
+}
+
+TEST_F(OpTest, FFT3D) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(3, kDefaultMaxRank);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("FFT3D").RandomInput(DT_COMPLEX64, dims));
+  });
+}
+
+TEST_F(OpTest, IFFT) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(1, kDefaultMaxRank);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("IFFT").RandomInput(DT_COMPLEX64, dims));
+  });
+}
+
+TEST_F(OpTest, IFFT2D) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(2, kDefaultMaxRank);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("IFFT2D").RandomInput(DT_COMPLEX64, dims));
+  });
+}
+
+TEST_F(OpTest, IFFT3D) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(3, kDefaultMaxRank);
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("IFFT3D").RandomInput(DT_COMPLEX64, dims));
+  });
+}
+
+TEST_F(OpTest, RFFT) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(1, kDefaultMaxRank, 3);
+    Tensor fft_shape = test::AsTensor<int32>(AsInt32s({dims[dims.size() - 1]}));
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("RFFT").RandomInput(DT_FLOAT, dims).Input(fft_shape));
+  });
+}
+
+TEST_F(OpTest, RFFT2D) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(2, kDefaultMaxRank, 3);
+    Tensor fft_shape = test::AsTensor<int32>(
+        AsInt32s({dims[dims.size() - 2], dims[dims.size() - 1]}));
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("RFFT2D").RandomInput(DT_FLOAT, dims).Input(fft_shape));
+  });
+}
+
+TEST_F(OpTest, RFFT3D) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(3, kDefaultMaxRank, 3);
+    Tensor fft_shape = test::AsTensor<int32>(AsInt32s(
+        {dims[dims.size() - 3], dims[dims.size() - 2], dims[dims.size() - 1]}));
+    return ExpectTfAndXlaOutputsAreClose(
+        OpTestBuilder("RFFT3D").RandomInput(DT_FLOAT, dims).Input(fft_shape));
+  });
+}
+
+TEST_F(OpTest, IRFFT) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(1, kDefaultMaxRank, 3);
+    int64 orig_size = dims[dims.size() - 1];
+    dims[dims.size() - 1] = dims[dims.size() - 1] / 2 + 1;
+    Tensor fft_shape = test::AsTensor<int32>(AsInt32s({orig_size}));
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("IRFFT")
+                                             .RandomInput(DT_COMPLEX64, dims)
+                                             .Input(fft_shape));
+  });
+}
+
+TEST_F(OpTest, IRFFT2D) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(2, kDefaultMaxRank, 3);
+    std::vector<int64> orig_size = {dims[dims.size() - 2],
+                                    dims[dims.size() - 1]};
+    dims[dims.size() - 1] = dims[dims.size() - 1] / 2 + 1;
+    Tensor fft_shape = test::AsTensor<int32>(AsInt32s({orig_size}));
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("IRFFT2D")
+                                             .RandomInput(DT_COMPLEX64, dims)
+                                             .Input(fft_shape));
+  });
+}
+
+TEST_F(OpTest, IRFFT3D) {
+  Repeatedly([this]() {
+    std::vector<int64> dims = RandomDims(3, kDefaultMaxRank, 3);
+    std::vector<int64> orig_size = {
+        dims[dims.size() - 3], dims[dims.size() - 2], dims[dims.size() - 1]};
+    dims[dims.size() - 1] = dims[dims.size() - 1] / 2 + 1;
+    Tensor fft_shape = test::AsTensor<int32>(AsInt32s({orig_size}));
+    return ExpectTfAndXlaOutputsAreClose(OpTestBuilder("IRFFT3D")
+                                             .RandomInput(DT_COMPLEX64, dims)
+                                             .Input(fft_shape));
+  });
+}
+
 TEST_F(OpTest, Conv2D) {
   Repeatedly([this]() {
     WindowedSpatialDims d = ChooseWindowedSpatialDims(2);
@@ -1382,7 +1504,7 @@ TEST_F(OpTest, Conv2D) {
 
     std::vector<int64> kernel_dims = {d.kernel_dims[0], d.kernel_dims[1],
                                       features_in, features_out};
-    DataType type = DT_FLOAT;  // TODO(b/65408531): COMPLEX_64 support
+    DataType type = DT_FLOAT;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv2D")
             .RandomInput(type, data_dims)
@@ -1407,7 +1529,7 @@ TEST_F(OpTest, Conv2DBackpropFilter) {
         ImageDims(FORMAT_NHWC, batch, features_out, d.output_dims);
     Tensor kernel_shape = test::AsTensor<int32>(AsInt32s(
         {d.kernel_dims[0], d.kernel_dims[1], features_in, features_out}));
-    DataType type = DT_FLOAT;  // TODO(b/65408531): COMPLEX_64 support
+    DataType type = DT_FLOAT;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv2DBackpropFilter")
             .RandomInput(type, activations)
@@ -1433,7 +1555,7 @@ TEST_F(OpTest, Conv2DBackpropInput) {
         ImageDims(FORMAT_NHWC, batch, features_out, d.output_dims);
     std::vector<int64> kernel = {d.kernel_dims[0], d.kernel_dims[1],
                                  features_in, features_out};
-    DataType type = DT_FLOAT;  // TODO(b/65408531): COMPLEX_64 support
+    DataType type = DT_FLOAT;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv2DBackpropInput")
             .Input(in_shape)
@@ -1457,7 +1579,7 @@ TEST_F(OpTest, Conv3D) {
 
     std::vector<int64> kernel = {d.kernel_dims[0], d.kernel_dims[1],
                                  d.kernel_dims[2], features_in, features_out};
-    DataType type = DT_FLOAT;  // TODO(b/65408531): COMPLEX_64 support
+    DataType type = DT_FLOAT;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv3D")
             .RandomInput(type, data)
@@ -1482,7 +1604,7 @@ TEST_F(OpTest, Conv3DBackpropFilter) {
     Tensor kernel_shape = test::AsTensor<int32>(
         AsInt32s({d.kernel_dims[0], d.kernel_dims[1], d.kernel_dims[2],
                   features_in, features_out}));
-    DataType type = DT_FLOAT;  // TODO(b/65408531): COMPLEX_64 support
+    DataType type = DT_FLOAT;
     return ExpectTfAndXlaOutputsAreClose(
         OpTestBuilder("Conv3DBackpropFilterV2")
             .RandomInput(type, activations)

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import numpy as np
 
+from tensorflow.contrib.distributions.python.ops import distribution_util
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -134,11 +135,8 @@ class SoftmaxCentered(bijector.Bijector):
     # Pad the last dim with a zeros vector. We need this because it lets us
     # infer the scale in the inverse function.
     y = array_ops.expand_dims(x, dim=-1) if self._static_event_ndims == 0 else x
-    ndims = _get_ndims(y)
-    y = array_ops.pad(y, paddings=array_ops.one_hot(indices=[-1, ndims - 1],
-                                                    depth=ndims,
-                                                    axis=0,
-                                                    dtype=dtypes.int32))
+    y = distribution_util.pad(y, axis=-1, back=True)
+
     # Set shape hints.
     if x.shape.ndims is not None:
       shape = x.shape.as_list()
@@ -166,7 +164,7 @@ class SoftmaxCentered(bijector.Bijector):
     shape = (np.asarray(y.shape.as_list(), dtype=np.int32)
              if y.shape.is_fully_defined()
              else array_ops.shape(y, name="shape"))
-    ndims = _get_ndims(y)
+    ndims = distribution_util.prefer_static_rank(y)
 
     # Do this first to make sure CSE catches that it'll happen again in
     # _inverse_log_det_jacobian.
@@ -240,10 +238,3 @@ class SoftmaxCentered(bijector.Bijector):
                                   axis=-1,
                                   keep_dims=True))
       return array_ops.squeeze(fldj, squeeze_dims=-1)
-
-
-def _get_ndims(x):
-  """Returns `ndims`, statically if possible."""
-  if x.shape.ndims is not None:
-    return x.shape.ndims
-  return array_ops.rank(x, name="ndims")

@@ -90,6 +90,18 @@ class SoftmaxTest(test_lib.TestCase):
     self.assertAllClose(y_tf_np, y_np, eps)
     self.assertAllClose(y_tf_last_dim_np, y_np, eps)
 
+  def testSoftmaxAxes(self):
+    arr = np.linspace(0., 1, 12).reshape(3, 4)
+    x_neg_axis = nn_ops.softmax(arr, axis=-2)
+    y_pos_axis = nn_ops.softmax(arr, axis=0)
+    z_gt_axis = nn_ops.softmax(arr, axis=4)
+    x_neg_axis_tf = self.evaluate(x_neg_axis)
+    y_pos_axis_tf = self.evaluate(y_pos_axis)
+    z_gt_axis_tf = self.evaluate(z_gt_axis)
+    eps = 1e-3
+    self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
+    self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
+
   def testGradient(self):
     x_shape = [5, 10]
     x_np = np.random.randn(*x_shape).astype(np.float64)
@@ -119,8 +131,7 @@ class LogPoissonLossTest(test_lib.TestCase):
     y_np = self._log_poisson_loss(x_np, z_np, compute_full_loss=False)
     y_np_stirling = self._log_poisson_loss(x_np, z_np, compute_full_loss=True)
     y_tf = nn_impl.log_poisson_loss(z_np, x_np, compute_full_loss=False)
-    y_tf_stirling = nn_impl.log_poisson_loss(
-        z_np, x_np, compute_full_loss=True)
+    y_tf_stirling = nn_impl.log_poisson_loss(z_np, x_np, compute_full_loss=True)
     y_tf_np = self.evaluate(y_tf)
     y_tf_np_stirling = self.evaluate(y_tf_stirling)
     eps = 1e-3
@@ -163,6 +174,18 @@ class LogSoftmaxTest(test_lib.TestCase):
     y_tf_np = self.evaluate(y_tf)
     eps = 1e-3
     self.assertAllClose(y_tf_np, y_np, eps)
+
+  def testLogSoftmaxAxes(self):
+    arr = np.linspace(0., 1, 12).reshape(3, 4)
+    x_neg_axis = nn_ops.log_softmax(arr, axis=-2)
+    y_pos_axis = nn_ops.log_softmax(arr, axis=0)
+    z_gt_axis = nn_ops.log_softmax(arr, axis=4)
+    x_neg_axis_tf = self.evaluate(x_neg_axis)
+    y_pos_axis_tf = self.evaluate(y_pos_axis)
+    z_gt_axis_tf = self.evaluate(z_gt_axis)
+    eps = 1e-3
+    self.assertAllClose(x_neg_axis_tf, y_pos_axis_tf, eps)
+    self.assertAllClose(y_pos_axis_tf, z_gt_axis_tf, eps)
 
   def testGradient(self):
     x_shape = [5, 10]
@@ -359,6 +382,31 @@ class DropoutTest(test_lib.TestCase):
     dropout_x = nn_ops.dropout(
         x, keep_prob, noise_shape=array_ops.placeholder(dtypes.int32))
     self.assertEqual(x.get_shape(), dropout_x.get_shape())
+
+  def testPartialShapedDropout(self):
+    x_dim = 40 * 30
+    y_dim = 3
+    num_iter = 10
+    for keep_prob in [0.1, 0.5, 0.8]:
+      with self.test_session():
+        t = constant_op.constant(
+            1.0, shape=[x_dim, y_dim], dtype=dtypes.float32)
+        # Set noise_shape=[None, 1] which means [x_dim, 1].
+        dropout = nn_ops.dropout(t, keep_prob, noise_shape=[None, 1])
+        self.assertEqual([x_dim, y_dim], dropout.get_shape())
+        final_count = 0
+        for _ in xrange(0, num_iter):
+          value = dropout.eval()
+          final_count += np.count_nonzero(value)
+          # Verifies that there are only two values: 0 and 1/keep_prob.
+          sorted_value = np.unique(np.sort(value))
+          self.assertEqual(0, sorted_value[0])
+          self.assertAllClose(1 / keep_prob, sorted_value[1])
+      # Check that we are in the 15% error range
+      expected_count = x_dim * y_dim * keep_prob * num_iter
+      rel_error = math.fabs(final_count - expected_count) / expected_count
+      print(rel_error)
+      self.assertTrue(rel_error < 0.15)
 
   def testInvalidKeepProb(self):
     x_dim = 40
@@ -749,8 +797,8 @@ class ComputeSampledLogitsTest(test_lib.TestCase):
     def _SoftmaxCrossEntropyWithLogits(logits, targets):
       # logits, targets: float arrays of the same shape.
       assert logits.shape == targets.shape
-      stable_exp_logits = np.exp(logits - np.amax(
-          logits, axis=1, keepdims=True))
+      stable_exp_logits = np.exp(
+          logits - np.amax(logits, axis=1, keepdims=True))
       pred = stable_exp_logits / np.sum(stable_exp_logits, 1, keepdims=True)
       return -np.sum(targets * np.log(pred + 1.0e-20), axis=1)
 
@@ -841,8 +889,8 @@ class LeakyReluTest(test_lib.TestCase):
     batch_size = 3
     height, width = 4, 4
     np.random.seed(1)  # Make it reproducible.
-    inputs = np.random.uniform(
-        size=(batch_size, height, width, 3)).astype(np.float32)
+    inputs = np.random.uniform(size=(batch_size, height, width, 3)).astype(
+        np.float32)
     inputs = constant_op.constant(inputs)
 
     outputs = nn_ops.leaky_relu(inputs)
@@ -854,11 +902,14 @@ class LeakyReluTest(test_lib.TestCase):
     self.assertAllClose(inputs, outputs)
 
   def testValues(self):
-    np_values = np.array([-1.0, 0.0, 0.5, 1.0, 2.0], dtype=np.float32)
-    outputs = nn_ops.leaky_relu(constant_op.constant(np_values))
-    with self.test_session() as sess:
-      outputs = sess.run(outputs)
-    self.assertAllClose(outputs, [-0.2, 0.0, 0.5, 1.0, 2.0])
+    for dtype in [np.int32, np.int64, np.float16, np.float32, np.float64]:
+      np_values = np.array([-2, -1, 0, 1, 2], dtype=dtype)
+      outputs = nn_ops.leaky_relu(constant_op.constant(np_values))
+      with self.test_session() as sess:
+        outputs = sess.run(outputs)
+      tol = 2e-3 if dtype == np.float16 else 1e-6
+      self.assertAllClose(
+          outputs, [-0.4, -0.2, 0.0, 1.0, 2.0], rtol=tol, atol=tol)
 
 
 class SwishTest(test_lib.TestCase):
@@ -889,7 +940,10 @@ class SwishTest(test_lib.TestCase):
 
 class MomentsTest(test_lib.TestCase):
 
-  def doOutputTest(self, input_shape, moments_axes, tol=1e-4,
+  def doOutputTest(self,
+                   input_shape,
+                   moments_axes,
+                   tol=1e-4,
                    check_gradients=False):
     for mu in [0.0, 1.0, 1e3]:
       for sigma in [1.0, 0.1]:
@@ -960,7 +1014,7 @@ class DataFormatDimMapTest(test_lib.TestCase):
     y = nn_ops.data_format_dim_map(x)
     with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
-      self.assertEqual(y_val, y_val_expected)
+      self.assertAllEqual(y_val, y_val_expected)
 
   def test(self):
     self._test(0, 0)
@@ -971,17 +1025,45 @@ class DataFormatDimMapTest(test_lib.TestCase):
     self._test(-2, 3)
     self._test(-3, 2)
     self._test(-4, 0)
+    self._test([1, 3], [2, 1])
+    self._test([1, 3, -2], [2, 1, 3])
+    self._test([1, -3, -2], [2, 2, 3])
+    self._test([[1, -3], [1, -1]], [[2, 2], [2, 1]])
 
 
 class DataFormatVectorPermuteTest(test_lib.TestCase):
 
-  def test(self):
+  def testNHWCToNCHW(self):
     x_val = [7, 4, 9, 3]
     x = constant_op.constant(x_val)
     y = nn_ops.data_format_vec_permute(x)
     with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
       y_val = sess.run(y)
       self.assertAllEqual(y_val, [7, 3, 4, 9])
+
+  def testNCHWToNHWC(self):
+    x_val = [7, 4, 9, 3]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NCHW", dst_format="NHWC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [7, 9, 3, 4])
+
+  def testNHWCToNCHW2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x)
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [[7, 4], [5, 1], [9, 3], [4, 5]])
+
+  def testNCHWToNHWC2D(self):
+    x_val = [[7, 4], [9, 3], [4, 5], [5, 1]]
+    x = constant_op.constant(x_val)
+    y = nn_ops.data_format_vec_permute(x, src_format="NCHW", dst_format="NHWC")
+    with self.test_session(use_gpu=test_lib.is_gpu_available()) as sess:
+      y_val = sess.run(y)
+      self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
 
 
 if __name__ == "__main__":

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
+#ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
+#define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
 
 #include "grpc++/impl/codegen/proto_utils.h"
 #include "grpc++/support/slice.h"
@@ -66,7 +66,7 @@ class GrpcBufferWriter final
     }
     // It's dangerous to keep an inlined grpc_slice as the backup slice, since
     // on a following Next() call, a reference will be returned to this slice
-    // via GRPC_SLICE_START_PTR, which will not be an adddress held by
+    // via GRPC_SLICE_START_PTR, which will not be an address held by
     // slice_buffer_.
     have_backup_ = backup_slice_.refcount != NULL;
     byte_count_ -= count;
@@ -231,4 +231,4 @@ class UnlimitedSizeProtoSerializationTraits {
       : public UnlimitedSizeProtoSerializationTraits<MessageType> {}; \
   }  // namespace grpc
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_
+#endif  // TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_SERIALIZATION_TRAITS_H_

@@ -146,6 +146,11 @@ Status OpCompatibilityLib::ValidateCompatible(Env* env, int* changed_ops,
               OpDefCompatible(in_op_history.op(i), op_list_.op(cur)));
         }
 
+        // Verify default value of attrs has not been added/removed/modified
+        // as compared to only the last historical version.
+        TF_RETURN_IF_ERROR(OpDefAttrDefaultsUnchanged(in_op_history.op(end - 1),
+                                                      op_list_.op(cur)));
+
         // Check that attrs missing from in_op_history.op(start) don't
         // change their defaults.
         if (start < end - 1) {

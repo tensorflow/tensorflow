@@ -71,7 +71,7 @@ def should_record_summaries():
 def record_summaries_every_n_global_steps(n, global_step=None):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""
   if global_step is None:
-    global_step = training_util.get_global_step()
+    global_step = training_util.get_or_create_global_step()
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
   old = collection_ref[:]
   with ops.device("cpu:0"):
@@ -110,7 +110,7 @@ class SummaryWriter(object):
 
   def  __init__(self, resource):
     self._resource = resource
-    if context.in_eager_mode():
+    if context.in_eager_mode() and self._resource is not None:
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device="cpu:0")
 
@@ -154,10 +154,12 @@ def initialize(
       to @{tf.get_default_session}.
 
   Raises:
-    RuntimeError: If in eager mode, or if the current thread has no
-      default @{tf.contrib.summary.SummaryWriter}.
+    RuntimeError: If  the current thread has no default
+      @{tf.contrib.summary.SummaryWriter}.
     ValueError: If session wasn't passed and no default session.
   """
+  if context.in_eager_mode():
+    return
   if context.context().summary_writer_resource is None:
     raise RuntimeError("No default tf.contrib.summary.SummaryWriter found")
   if session is None:
@@ -202,7 +204,7 @@ def create_file_writer(logdir,
     if flush_millis is None:
       flush_millis = constant_op.constant(2 * 60 * 1000)
     if filename_suffix is None:
-      filename_suffix = constant_op.constant("")
+      filename_suffix = constant_op.constant(".v2")
     return _make_summary_writer(
         name,
         gen_summary_ops.create_summary_file_writer,
@@ -292,13 +294,9 @@ def all_summary_ops():
 
   Returns:
     The summary ops.
-
-  Raises:
-    RuntimeError: If in Eager mode.
   """
   if context.in_eager_mode():
-    raise RuntimeError(
-        "tf.contrib.summary.all_summary_ops is only supported in graph mode.")
+    return None
   return ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
 
 
@@ -560,7 +558,7 @@ def _serialize_graph(arbitrary_graph):
 
 def _choose_step(step):
   if step is None:
-    return training_util.get_global_step()
+    return training_util.get_or_create_global_step()
   if not isinstance(step, ops.Tensor):
     return ops.convert_to_tensor(step, dtypes.int64)
   return step

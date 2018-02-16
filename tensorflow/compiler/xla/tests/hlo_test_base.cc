@@ -90,7 +90,9 @@ HloTestBase::HloTestBase()
 
 HloTestBase::HloTestBase(se::Platform* test_platform,
                          se::Platform* reference_platform)
-    : test_runner_(test_platform), reference_runner_(reference_platform) {}
+    : test_runner_(test_platform), reference_runner_(reference_platform) {
+  hlo_verifier_ = MakeUnique<HloVerifier>();
+}
 
 /* static */
 std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
@@ -107,28 +109,16 @@ std::unique_ptr<HloModule> HloTestBase::CreateNewModule() {
   return debug_options;
 }
 
-StatusOr<perftools::gputools::DeviceMemoryBase> HloTestBase::Execute(
+StatusOr<std::unique_ptr<Literal>> HloTestBase::Execute(
     std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<perftools::gputools::DeviceMemoryBase>
-        arguments,
-    Shape* result_shape) {
-  return test_runner_.Execute(std::move(module), arguments, result_shape);
-}
-
-se::DeviceMemoryBase HloTestBase::TransferToDevice(const Literal& literal) {
-  return test_runner_.TransferToDevice(literal).ValueOrDie();
-}
-
-std::unique_ptr<Literal> HloTestBase::TransferFromDevice(
-    const Shape& shape, se::DeviceMemoryBase device_base) {
-  return test_runner_.TransferFromDevice(shape, device_base).ValueOrDie();
+    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+  return test_runner_.Execute(std::move(module), arguments);
 }
 
 std::unique_ptr<Literal> HloTestBase::ExecuteAndTransfer(
     std::unique_ptr<HloModule> module,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> arguments) {
-  return test_runner_.ExecuteAndTransfer(std::move(module), arguments)
-      .ValueOrDie();
+    tensorflow::gtl::ArraySlice<Literal*> arguments) {
+  return test_runner_.Execute(std::move(module), arguments).ValueOrDie();
 }
 
 StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
@@ -228,7 +218,9 @@ template <typename LiteralPtr>
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
-    return ::testing::AssertionFailure() << "failed parsing hlo textual IR";
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_or_status.status().ToString();
   }
   return RunAndCompare(module_or_status.ConsumeValueOrDie(), error,
                        reference_preprocessor);
@@ -238,7 +230,7 @@ template <typename LiteralPtr>
     const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
-      HloRunner::ReadModule(filename, GetDebugOptionsForTest());
+      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "failed reading hlo module from file";
@@ -254,7 +246,9 @@ template <typename LiteralPtr>
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
-    return ::testing::AssertionFailure() << "failed parsing hlo textual IR";
+    return ::testing::AssertionFailure()
+           << "Error while parsing HLO text format: "
+           << module_or_status.status().ToString();
   }
   return RunAndCompareNoHloPasses(module_or_status.ConsumeValueOrDie(), error,
                                   reference_preprocessor);
@@ -264,7 +258,7 @@ template <typename LiteralPtr>
     const string& filename, const tensorflow::gtl::optional<ErrorSpec>& error,
     const std::function<void(HloModule*)>& reference_preprocessor) {
   auto module_or_status =
-      HloRunner::ReadModule(filename, GetDebugOptionsForTest());
+      HloRunner::ReadModuleFromHloTextFile(filename, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
     return ::testing::AssertionFailure()
            << "failed reading hlo module from file";

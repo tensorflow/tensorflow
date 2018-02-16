@@ -92,7 +92,7 @@ android_binary(
 filegroup(
     name = "external_assets",
     srcs = [
-        "@inception5h//:model_files",
+        "@inception_v1//:model_files",
         "@mobile_ssd//:model_files",
         "@speech_commands//:model_files",
         "@stylize//:model_files",

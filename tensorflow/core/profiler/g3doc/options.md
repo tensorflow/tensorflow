@@ -112,8 +112,8 @@ accelerator_micros and cpu_micros. Note: cpu and accelerator can run in parallel
 
 `-account_displayed_op_only`: If True, only account the statistics of ops eventually displayed. If False, account all op statistics matching -account_type_regexes recursively.
 
-
-Notes: See <b>overview</b> sesion on how does above options play with each other to decide the output and counting.
+Notes: See <b>overview</b> session on how does above options play with each
+other to decide the output and counting.
 
 `-select`: Comma-separated list of attributes to show. Supported attributes:
 [bytes|peak_bytes|residual_bytes|output_bytes|micros|accelerator_micros|cpu_micros|params|float_ops|occurrence|tensor_value|device|op_types|input_shapes].

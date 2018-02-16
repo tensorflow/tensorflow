@@ -46,7 +46,7 @@ GraphTransferUtils::GetTopNFloatResults(const float* const data,
       GetTopNFloatResults(data, labels, element_count);
   LOG(INFO) << "=== Dump ranking ===";
   for (int i = 0; i < top_n; ++i) {
-    const std::tuple<float, int, string> &entry = queue.top();
+    const std::tuple<float, int, string>& entry = queue.top();
     LOG(INFO) << i << ": " << std::get<1>(entry) << ", " << std::get<2>(entry)
               << ", " << std::get<0>(entry);
     queue.pop();
