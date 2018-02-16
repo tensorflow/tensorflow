@@ -1291,7 +1291,8 @@ class EstimatorEvaluateTest(test.TestCase):
     writer_cache.FileWriterCache.clear()
 
     # Get last evaluation Event written.
-    if check_eventfile_for_keyword('image', os.path.join(est.model_dir, 'eval')):
+    if check_eventfile_for_keyword('image', 
+                                   os.path.join(est.model_dir, 'eval')):
       return
     self.fail('{} should be part of reported summaries.'.format('image'))
 
