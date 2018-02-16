@@ -39,6 +39,7 @@ from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.layers import network as tf_network
 from tensorflow.python.layers import utils as tf_layers_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # pylint: disable=g-import-not-at-top
@@ -60,6 +61,7 @@ TFBaseLayer = tf_base_layers.Layer
 # pylint: enable=invalid-name
 
 
+@tf_export('keras.layers.Layer')
 class Layer(tf_base_layers.Layer):
   """Abstract base layer class.
 
@@ -258,6 +260,10 @@ class Layer(tf_base_layers.Layer):
     output = super(Layer, self).__call__(inputs, **kwargs)
     if context.in_eager_mode():
       return output
+
+    # Un-built subclassed network: build it
+    if isinstance(self, Network) and not self.inputs:
+      self._set_inputs(inputs)
 
     # Update learning phase info.
     output_tensors = _to_list(output)
@@ -490,6 +496,7 @@ class Layer(tf_base_layers.Layer):
     self._activity_regularizer = activity_regularizer
 
 
+@tf_export('keras.layers.InputLayer')
 class InputLayer(tf_network.InputLayer, Layer):
   """Layer to be used as an entry point into a graph.
 
@@ -552,6 +559,7 @@ class InputLayer(tf_network.InputLayer, Layer):
     return config
 
 
+@tf_export('keras.layers.Input', 'keras.Input')
 def Input(  # pylint: disable=invalid-name
     shape=None,
     batch_size=None,
@@ -677,10 +685,26 @@ class Network(tf_network.GraphNetwork, Layer):
       from_config
   """
 
-  def __init__(self, inputs, outputs, name=None):
+  def __init__(self, *args, **kwargs):  # pylint: disable=super-init-not-called
+    # Signature detection
+    if (len(args) == 2 or
+        len(args) == 1 and 'outputs' in kwargs or
+        'inputs' in kwargs and 'outputs' in kwargs):
+      # Graph network
+      self._init_graph_network(*args, **kwargs)
+    else:
+      # Subclassed network
+      self._init_subclassed_network(**kwargs)
+
+  def _init_graph_network(self, inputs, outputs, name=None):
+    # TODO(fchollet): merge back tf.layers.Network and tf.keras.Network
+    # into a single class tf.keras.Network
     super(Network, self).__init__(inputs, outputs, name=name)
 
+    self._is_compiled = False
     self.supports_masking = False
+    self.optimizer = None
+
     # Fill in the output mask cache.
     masks = []
     for x in self.inputs:
@@ -715,8 +739,56 @@ class Network(tf_network.GraphNetwork, Layer):
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 
-    self._internal_input_shapes = [K.int_shape(x) for x in self.inputs]
-    self._internal_output_shapes = [K.int_shape(x) for x in self.outputs]
+  def _init_subclassed_network(self, name=None):
+    self._init_set_name(name)
+    self._layers = []
+    self._is_graph_network = False
+    self._is_compiled = False
+    self.outputs = None
+    self.inputs = None
+    self.trainable = True
+    self.supports_masking = False
+    self.built = False
+    self.optimizer = None
+
+    # Not used, exists for compatibility purposes due to implementation of
+    # the base layer tf.layers.Layer - TODO(fchollet): clean up when refactoring
+    self._scope = None
+    self._reuse = None
+    self._dtype = None
+    self._graph = None
+    self._activity_regularizer = None
+
+    # Used in symbolic mode only
+    self._updates = []
+    self._losses = []
+
+    # Used in symbolic mode only, only in conjonction with graph-networks
+    self._outbound_nodes = []
+    self._inbound_nodes = []
+
+  def __setattr__(self, name, value):
+    if isinstance(value, (tf_base_layers.Layer, Network)):
+      try:
+        is_graph_network = self._is_graph_network
+      except AttributeError:
+        raise RuntimeError('It looks like you are subclassing `Model` and you '
+                           'forgot to call `super(YourClass, self).__init__()`.'
+                           ' Always start with this line.')
+      if not is_graph_network:
+        if value not in self._layers:
+          self._layers.append(value)
+    super(Network, self).__setattr__(name, value)
+
+  def add_variable(self, name, shape, dtype=None, initializer=None,
+                   regularizer=None, trainable=True, constraint=None):
+    raise NotImplementedError('`add_variable` is not supported on Networks')
+
+  def add_loss(self, *args, **kwargs):
+    if context.in_eager_mode():
+      raise NotImplementedError('`add_loss` is not supported in eager-mode '
+                                'on Networks')
+    super(Network, self).add_loss(*args, **kwargs)
 
   @property
   def uses_learning_phase(self):
@@ -779,13 +851,16 @@ class Network(tf_network.GraphNetwork, Layer):
     K.batch_set_value(tuples)
 
   def compute_mask(self, inputs, mask):
+    if not self._is_graph_network:
+      return None
+
     inputs = _to_list(inputs)
     if mask is None:
       masks = [None for _ in range(len(inputs))]
     else:
       masks = _to_list(mask)
-    cache_key = ','.join([str(id(x)) for x in inputs])
-    cache_key += '_' + ','.join([str(id(x)) for x in masks])
+    cache_key = (tf_layers_util.object_list_uid(inputs)
+                 + '_' + tf_layers_util.object_list_uid(masks))
     if cache_key in self._output_mask_cache:
       return self._output_mask_cache[cache_key]
     else:
@@ -793,6 +868,9 @@ class Network(tf_network.GraphNetwork, Layer):
       return output_masks
 
   def get_config(self):
+    if not self._is_graph_network:
+      raise NotImplementedError
+
     config = {
         'name': self.name,
     }
@@ -1042,6 +1120,9 @@ class Network(tf_network.GraphNetwork, Layer):
     model = load_model('my_model.h5')
     ```
     """
+    if not self._is_graph_network:
+      raise NotImplementedError
+
     from tensorflow.python.keras._impl.keras.models import save_model  # pylint: disable=g-import-not-at-top
     save_model(self, filepath, overwrite, include_optimizer)
 
@@ -1144,6 +1225,8 @@ class Network(tf_network.GraphNetwork, Layer):
     Returns:
         A JSON string.
     """
+    if not self._is_graph_network:
+      raise NotImplementedError
 
     def get_json_type(obj):
       # If obj is any numpy type
@@ -1179,6 +1262,9 @@ class Network(tf_network.GraphNetwork, Layer):
     Raises:
         ImportError: if yaml module is not found.
     """
+    if not self._is_graph_network:
+      raise NotImplementedError
+
     if yaml is None:
       raise ImportError('Requires yaml module installed.')
     return yaml.dump(self._updated_config(), **kwargs)

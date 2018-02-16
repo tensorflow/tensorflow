@@ -53,11 +53,6 @@ class TPURunConfigTest(test.TestCase):
                                  'computation_shape elements can only be'):
       tpu_config_lib.TPUConfig(computation_shape=[1, 3, 1])
 
-  def test_fail_with_invalid_shards(self):
-    with self.assertRaisesRegexp(ValueError,
-                                 'shards can not be evenly distributed across'):
-      tpu_config_lib.TPUConfig(num_shards=6, computation_shape=[1, 1, 2])
-
 
 class TPURunConfigMasterTest(test.TestCase):
 

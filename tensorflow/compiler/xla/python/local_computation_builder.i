@@ -201,6 +201,15 @@ tensorflow::ImportNumpy();
   }
 }
 
+%typemap(out) StatusOr<Shape> {
+  if ($1.ok()) {
+    $result = numpy::PyShapeInfoFromXlaShape($1.ConsumeValueOrDie());
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    return NULL;
+  }
+}
+
 %typemap(out) Status {
   if (!$1.ok()) {
     PyErr_SetString(
@@ -823,6 +832,21 @@ tensorflow::ImportNumpy();
     }
     Py_DECREF(o);
 
+    o = PyObject_GetAttrString($input, "result_shape");
+    if (o == nullptr) {
+      return nullptr;
+    }
+    if (o != Py_None) {
+      StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape(o);
+      if (!statusor.ok()) {
+        PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat("ExecutableBuildOptions.result_shape could not be created from Python shape value: ", statusor.status().ToString()).c_str());
+        Py_DECREF(o);
+        return NULL;
+      }
+      build_options.set_result_layout(statusor.ValueOrDie());
+    }
+    Py_DECREF(o);
+
     $1 = &build_options;
   }
 }
@@ -843,6 +867,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::CompiledLocalComputation::ExecuteWithShapedBuffers;
 %unignore xla::swig::LocalComputation;
 %unignore xla::swig::LocalComputation::Compile;
+%unignore xla::swig::LocalComputation::GetReturnValueShape;
 %unignore xla::swig::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::Build;
@@ -850,6 +875,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::LocalComputationBuilder::ClearOpMetadata;
 %unignore xla::swig::LocalComputationBuilder::Parameter;
 %unignore xla::swig::LocalComputationBuilder::GetShape;
+%unignore xla::swig::LocalComputationBuilder::GetReturnValueShape;
 %unignore xla::swig::LocalComputationBuilder::Infeed;
 %unignore xla::swig::LocalComputationBuilder::Outfeed;
 %unignore xla::swig::LocalComputationBuilder::ConstantLiteral;

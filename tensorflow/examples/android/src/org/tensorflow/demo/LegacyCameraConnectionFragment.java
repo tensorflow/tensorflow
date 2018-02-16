@@ -82,7 +82,7 @@ public class LegacyCameraConnectionFragment extends Fragment {
           try {
             Camera.Parameters parameters = camera.getParameters();
             List<String> focusModes = parameters.getSupportedFocusModes();
-            if (focusModes != null 
+            if (focusModes != null
                 && focusModes.contains(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE)) {
               parameters.setFocusMode(Camera.Parameters.FOCUS_MODE_CONTINUOUS_PICTURE);
             }

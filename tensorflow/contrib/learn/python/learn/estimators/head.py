@@ -181,7 +181,8 @@ def regression_head(label_name=None,
                     weight_column_name=None,
                     label_dimension=1,
                     enable_centered_bias=False,
-                    head_name=None):
+                    head_name=None,
+                    link_fn=None):
   """Creates a `Head` for linear regression.
 
   Args:
@@ -199,6 +200,8 @@ def regression_head(label_name=None,
     head_name: name of the head. If provided, predictions, summary and metrics
       keys will be suffixed by `"/" + head_name` and the default variable scope
       will be `head_name`.
+    link_fn: link function to convert logits to predictions. If provided,
+      this link function will be used instead of identity.
 
   Returns:
     An instance of `Head` for linear regression.
@@ -210,7 +213,7 @@ def regression_head(label_name=None,
       enable_centered_bias=enable_centered_bias,
       head_name=head_name,
       loss_fn=_mean_squared_loss,
-      link_fn=array_ops.identity)
+      link_fn=(link_fn if link_fn is not None else array_ops.identity))
 
 
 def poisson_regression_head(label_name=None,

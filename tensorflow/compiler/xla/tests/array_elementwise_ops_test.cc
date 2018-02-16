@@ -2048,45 +2048,115 @@ XLA_TEST_F(ArrayElementwiseOpTest, TanhF32s) {
 XLA_TEST_F(ArrayElementwiseOpTest, TanhF32sVector) {
   // This is like the test ArrayElementwiseOpTest.TanhF32s above, except that
   // the input tensor is large enough to exercise the vectorized tanh
-  // implementation.
+  // implementation on XLA CPU.
   ComputationBuilder builder(client_, TestName());
-  auto input_literal = Literal::CreateR2<float>(
-      {{1.02, -0.32, 0.85, 0.90, 1.23, -0.91, -0.49, 0.80},
-       {-0.67, 0.16, -0.07, 0.39, -0.41, 0.04, 1.36, 1.25},
-       {0.41, 0.65, -1.08, 0.32, -1.45, -0.77, -1.09, 0.91},
-       {-1.03, -0.30, -1.11, -1.17, 1.50, -0.85, 0.04, 1.02},
-       {0.34, -0.61, 0.41, 0.07, -0.02, 1.42, -0.62, 0.81},
-       {0.08, 0.81, -0.30, 1.17, -0.65, -0.44, 0.92, 1.26},
-       {-1.29, 1.35, 0.08, -1.24, -0.92, 0.49, 1.17, -0.45},
-       {-1.31, -1.44, -0.13, -1.31, -0.79, 1.41, 1.21, 1.05}});
-  auto input_data =
-      client_->TransferToServer(*input_literal).ConsumeValueOrDie();
+  auto input_literal = Literal::CreateR1<float>(
+      {1.02,  -0.32, 0.85,  0.90,  1.23,  -0.91, -0.49, 0.80,  -0.67, 0.16,
+       -0.07, 0.39,  -0.41, 0.04,  1.36,  1.25,  0.41,  0.65,  -1.08, 0.32,
+       -1.45, -0.77, -1.09, 0.91,  -1.03, -0.30, -1.11, -1.17, 1.50,  -0.85,
+       0.04,  1.02,  0.34,  -0.61, 0.41,  0.07,  -0.02, 1.42,  -0.62, 0.81,
+       0.08,  0.81,  -0.30, 1.17,  -0.65, -0.44, 0.92,  1.26,  -1.29, 1.35,
+       0.08,  -1.24, -0.92, 0.49,  1.17,  -0.45, -1.31, -1.44, -0.13, -1.31,
+       -0.79, 1.41,  1.21,  1.05});
+  TF_ASSERT_OK_AND_ASSIGN(auto input_data,
+                          client_->TransferToServer(*input_literal));
 
   auto input = builder.Parameter(0, input_literal->shape(), "input");
   builder.Tanh(input);
 
-  ComputeAndCompareR2<float>(
+  ComputeAndCompareR1<float>(
       &builder,
-      {{0.77009583, -0.30665702, 0.69070244, 0.71401149, 0.84400684,
-        -0.71985596, -0.45764771, 0.66664988},
-       {-0.58278900, 0.16050975, -0.06770509, 0.36843640, -0.38476998,
-        0.04018109, 0.87562293, 0.84788644},
-       {0.38603750, 0.57294142, -0.79140943, 0.31032649, -0.89590985,
-        -0.64770776, -0.79625875, 0.72234446},
-       {-0.77389336, -0.28871772, -0.80428445, -0.82541436, 0.90456349,
-        -0.68856895, 0.03877772, 0.76877952},
-       {0.32561871, -0.54546672, 0.39072621, 0.07273290, -0.01924866,
-        0.88924897, -0.55283129, 0.67183107},
-       {0.08006320, 0.66944766, -0.29068485, 0.82573754, -0.57170743,
-        -0.41581789, 0.72739530, 0.85025692},
-       {-0.85931867, 0.87357593, 0.07782833, -0.84597743, -0.72748238,
-        0.45396307, 0.82449573, -0.42462519},
-       {-0.86363792, -0.89368379, -0.12621804, -0.86445558, -0.65565848,
-        0.88789743, 0.83566397, 0.78287679}},
+      {0.77009583,  -0.30665702, 0.69070244,  0.71401149,  0.84400684,
+       -0.71985596, -0.45764771, 0.66664988,  -0.58278900, 0.16050975,
+       -0.06770509, 0.36843640,  -0.38476998, 0.04018109,  0.87562293,
+       0.84788644,  0.38603750,  0.57294142,  -0.79140943, 0.31032649,
+       -0.89590985, -0.64770776, -0.79625875, 0.72234446,  -0.77389336,
+       -0.28871772, -0.80428445, -0.82541436, 0.90456349,  -0.68856895,
+       0.03877772,  0.76877952,  0.32561871,  -0.54546672, 0.39072621,
+       0.07273290,  -0.01924866, 0.88924897,  -0.55283129, 0.67183107,
+       0.08006320,  0.66944766,  -0.29068485, 0.82573754,  -0.57170743,
+       -0.41581789, 0.72739530,  0.85025692,  -0.85931867, 0.87357593,
+       0.07782833,  -0.84597743, -0.72748238, 0.45396307,  0.82449573,
+       -0.42462519, -0.86363792, -0.89368379, -0.12621804, -0.86445558,
+       -0.65565848, 0.88789743,  0.83566397,  0.78287679},
       {input_data.get()},
       // The error spec is unusually high here to account for the fact that we
       // use a rational interpolant to approximate tanh.
       ErrorSpec(0.004, 0.004));
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ExpF32sVector) {
+  // The input tensor is large enough to exercise the vectorized exp
+  // implementation on XLA CPU.
+  ComputationBuilder builder(client_, TestName());
+
+  // Just to help make sense of the scales here -- exp(89) saturates float32 and
+  // exp(-10) is smaller than our error spec.
+  std::unique_ptr<Literal> input_literal = Literal::CreateR1<float>(
+      {1.02,   -0.32,  0.85,   0.9,    1.23,   -0.91,  -0.49, 0.8,    -1.31,
+       -1.44,  -0.13,  -1.31,  -0.79,  1.41,   1.21,   1.05,  -195.6, -194.5,
+       -193.4, -192.3, -191.2, -190.1, -189.0, -187.9, -19.6, -18.5,  -17.4,
+       -16.3,  -15.2,  -14.1,  -13.0,  -11.9,  -10.8,  -9.7,  -8.6,   -7.5,
+       -6.4,   -5.3,   -4.2,   -3.1,   -2.0,   -0.9,   0.2,   1.3,    2.4,
+       3.5,    4.6,    5.7,    6.8,    7.9,    9.0,    10.1,  11.2,   12.3,
+       13.4,   14.5,   15.6,   16.7,   17.8,   18.9,   20.0,  21.1,   22.2,
+       23.3,   24.4,   25.5,   26.6,   27.7,   28.8,   29.9,  31.0,   32.1,
+       68.4,   69.5,   70.6,   71.7,   72.8,   73.9,   75.0,  76.1,   77.2,
+       78.3,   79.4,   80.5,   81.6,   82.7,   83.8,   84.9,  85.2,   86.3,
+       86.4,   86.5,   87.6,   87.7,   87.8,   87.9});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
+
+  auto input = builder.Parameter(0, input_literal->shape(), "input");
+  builder.Exp(input);
+
+  std::vector<float> expected_result;
+  int64 input_size = input_literal->shape().dimensions(0);
+  expected_result.reserve(input_size);
+  for (int64 i = 0; i < input_size; i++) {
+    expected_result.push_back(std::exp(input_literal->Get<float>({i})));
+  }
+
+  ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
+                             error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, LogF32sVector) {
+  // The input tensor is large enough to exercise the vectorized exp
+  // implementation on XLA CPU.
+  ComputationBuilder builder(client_, TestName());
+
+  std::unique_ptr<Literal> input_literal = Literal::CreateR1<float>(
+      {-1.29,    -1.41,    -1.25,    -13.5,    -11.7,    -17.9,    -198,
+       -167,     1.29,     1.41,     1.25,     13.5,     11.7,     17.9,
+       198,      167,      1.27e+03, 1.33e+03, 1.74e+03, 1.6e+04,  1.84e+04,
+       1.74e+04, 1.89e+05, 1.9e+05,  1.93e+06, 1.98e+06, 1.65e+06, 1.97e+07,
+       1.66e+07, 1e+07,    1.98e+08, 1.96e+08, 1.64e+09, 1.58e+09, 1.64e+09,
+       1.44e+10, 1.5e+10,  1.99e+10, 1.17e+11, 1.08e+11, 1.08e+12, 1.38e+12,
+       1.4e+12,  1.03e+13, 1.6e+13,  1.99e+13, 1.26e+14, 1.51e+14, 1.33e+15,
+       1.41e+15, 1.63e+15, 1.39e+16, 1.21e+16, 1.27e+16, 1.28e+17, 1.62e+17,
+       2e+18,    1.96e+18, 1.81e+18, 1.99e+19, 1.86e+19, 1.61e+19, 1.71e+20,
+       1.47e+20, 1.83e+21, 1.33e+21, 1.3e+21,  1.35e+22, 1.84e+22, 1.02e+22,
+       1.81e+23, 1.02e+23, 1.89e+24, 1.49e+24, 1.08e+24, 1.95e+25, 1.1e+25,
+       1.62e+25, 1.2e+26,  1.41e+26, 1.93e+27, 1.66e+27, 1.62e+27, 1.05e+28,
+       1.5e+28,  1.79e+28, 1.36e+29, 1.95e+29, 1.5e+30,  1.81e+30, 1.34e+30,
+       1.7e+31,  1.44e+31, 1.1e+31,  1.4e+32,  1.67e+32, 1.96e+33, 1.11e+33,
+       1.19e+33, 1.61e+34, 1.05e+34, 1.88e+34, 1.67e+35, 1.7e+35});
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> input_data,
+                          client_->TransferToServer(*input_literal));
+
+  auto input = builder.Parameter(0, input_literal->shape(), "input");
+  builder.Log(input);
+
+  std::vector<float> expected_result;
+  int64 input_size = input_literal->shape().dimensions(0);
+  expected_result.reserve(input_size);
+  for (int64 i = 0; i < input_size; i++) {
+    expected_result.push_back(std::log(input_literal->Get<float>({i})));
+  }
+
+  ComputeAndCompareR1<float>(&builder, expected_result, {input_data.get()},
+                             error_spec_);
 }
 
 XLA_TEST_F(ArrayElementwiseOpTest, AddChainFoldLeft) {

@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.contrib.layers.python.layers import feature_column
+
 from tensorflow.contrib.timeseries.python.timeseries import ar_model
 from tensorflow.contrib.timeseries.python.timeseries import feature_keys
 from tensorflow.contrib.timeseries.python.timeseries import head as ts_head_lib
@@ -72,15 +74,14 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
   # tf.Example containing all features (times, values, any exogenous features)
   # and serialized model state (possibly also as a tf.Example).
   def build_raw_serving_input_receiver_fn(self,
-                                          exogenous_features=None,
                                           default_batch_size=None,
                                           default_series_length=None):
     """Build an input_receiver_fn for export_savedmodel which accepts arrays.
 
+    Automatically creates placeholders for exogenous `FeatureColumn`s passed to
+    the model.
+
     Args:
-      exogenous_features: A dictionary mapping feature keys to exogenous
-        features (either Numpy arrays or Tensors). Used to determine the shapes
-        of placeholders for these features.
       default_batch_size: If specified, must be a scalar integer. Sets the batch
         size in the static shape information of all feature Tensors, which means
         only this batch size will be accepted by the exported model. If None
@@ -94,9 +95,6 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
       An input_receiver_fn which may be passed to the Estimator's
       export_savedmodel.
     """
-    if exogenous_features is None:
-      exogenous_features = {}
-
     def _serving_input_receiver_fn():
       """A receiver function to be passed to export_savedmodel."""
       placeholders = {}
@@ -119,14 +117,22 @@ class TimeSeriesRegressor(estimator_lib.Estimator):
                   dtype=self._model.dtype),
               shape=(default_batch_size, default_series_length,
                      self._model.num_features)))
-      for feature_key, feature_value in exogenous_features.items():
-        value_tensor = ops.convert_to_tensor(feature_value)
-        value_tensor.get_shape().with_rank_at_least(2)
-        feature_shape = value_tensor.get_shape().as_list()
-        feature_shape[0] = default_batch_size
-        feature_shape[1] = default_series_length
+      with ops.Graph().as_default():
+        # Default placeholders have only an unknown batch dimension. Make them
+        # in a separate graph, then splice in the series length to the shapes
+        # and re-create them in the outer graph.
+        exogenous_feature_shapes = {
+            key: (value.get_shape(), value.dtype) for key, value
+            in feature_column.make_place_holder_tensors_for_base_features(
+                self._model.exogenous_feature_columns).items()}
+      for feature_key, (batch_only_feature_shape, value_dtype) in (
+          exogenous_feature_shapes.items()):
+        batch_only_feature_shape = batch_only_feature_shape.with_rank_at_least(
+            1).as_list()
+        feature_shape = ([default_batch_size, default_series_length]
+                         + batch_only_feature_shape[1:])
         placeholders[feature_key] = array_ops.placeholder(
-            dtype=value_tensor.dtype, name=feature_key, shape=feature_shape)
+            dtype=value_dtype, name=feature_key, shape=feature_shape)
       # Models may not know the shape of their state without creating some
       # variables/ops. Avoid polluting the default graph by making a new one. We
       # use only static metadata from the returned Tensors.

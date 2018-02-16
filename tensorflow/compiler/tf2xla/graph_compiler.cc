@@ -134,7 +134,7 @@ Status GraphCompiler::Compile() {
       TF_RET_CHECK(src->id() < output_registry.size());
       const NodeOutputs& src_outputs = output_registry[src->id()];
 
-      tensor_inputs_[e->dst_input()] = src_outputs[e->src_output()];
+      tensor_inputs_.at(e->dst_input()) = src_outputs.at(e->src_output());
     }
 
     OpKernelContext op_context(&params, n->num_outputs());

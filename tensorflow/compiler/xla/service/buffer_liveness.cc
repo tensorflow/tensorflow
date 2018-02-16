@@ -117,11 +117,12 @@ bool BufferLiveness::live_range_strictly_before(const LogicalBuffer& a,
 
     // If the root instruction aliases the buffer 'a', the live range of 'a' is
     // until the end of the computation and can never be strictly before another
-    // buffer. This is needed to prevent the root instruction's buffers from
-    // being reused by later instructions even when the root is not the last
-    // instruction in the schedule.
+    // buffer defined in the same computation. This is needed to prevent the
+    // root instruction's buffers from being reused by later instructions even
+    // when the root is not the last instruction in the schedule.
     if (alias.instruction()->parent()->root_instruction() ==
-        alias.instruction()) {
+            alias.instruction() &&
+        alias.instruction()->parent() == b.instruction()->parent()) {
       return false;
     }
   }

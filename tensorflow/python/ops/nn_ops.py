@@ -48,8 +48,8 @@ local_response_normalization = gen_nn_ops.lrn
 
 
 def _non_atrous_convolution(
-    input,
-    filter,
+    input,  # pylint: disable=redefined-builtin
+    filter,  # pylint: disable=redefined-builtin
     padding,
     data_format=None,  # pylint: disable=redefined-builtin
     strides=None,
@@ -94,9 +94,9 @@ def _non_atrous_convolution(
 
   """
   with ops.name_scope(name, "non_atrous_convolution", [input, filter]) as scope:
-    input = ops.convert_to_tensor(input, name="input")
+    input = ops.convert_to_tensor(input, name="input")  # pylint: disable=redefined-builtin
     input_shape = input.get_shape()
-    filter = ops.convert_to_tensor(filter, name="filter")
+    filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
     filter_shape = filter.get_shape()
     op = _NonAtrousConvolution(
         input_shape,
@@ -348,7 +348,7 @@ def with_space_to_batch(
     ValueError: if `spatial_dims` are invalid.
 
   """
-  input = ops.convert_to_tensor(input, name="input")
+  input = ops.convert_to_tensor(input, name="input")  # pylint: disable=redefined-builtin
   input_shape = input.get_shape()
 
   def build_op(num_spatial_dims, padding):
@@ -645,7 +645,7 @@ def _get_strides_and_dilation_rate(num_spatial_dims, strides, dilation_rate):
 
 @tf_export("nn.convolution")
 def convolution(
-    input,
+    input,  # pylint: disable=redefined-builtin
     filter,  # pylint: disable=redefined-builtin
     padding,
     strides=None,
@@ -766,9 +766,9 @@ def convolution(
   """
   # pylint: enable=line-too-long
   with ops.name_scope(name, "convolution", [input, filter]) as name:
-    input = ops.convert_to_tensor(input, name="input")
+    input = ops.convert_to_tensor(input, name="input")  # pylint: disable=redefined-builtin
     input_shape = input.get_shape()
-    filter = ops.convert_to_tensor(filter, name="filter")
+    filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
     filter_shape = filter.get_shape()
     op = Convolution(
         input_shape,
@@ -962,7 +962,7 @@ def pool(
   # pylint: enable=line-too-long
   with ops.name_scope(name, "%s_pool" % (pooling_type.lower()),
                       [input]) as scope:
-    input = ops.convert_to_tensor(input, name="input")
+    input = ops.convert_to_tensor(input, name="input")  # pylint: disable=redefined-builtin
 
     num_spatial_dims = len(window_shape)
     if num_spatial_dims < 1 or num_spatial_dims > 3:
@@ -1223,7 +1223,7 @@ def conv2d_transpose(
     if data_format not in ("NCHW", "NHWC"):
       raise ValueError("data_format has to be either NCHW or NHWC.")
     value = ops.convert_to_tensor(value, name="value")
-    filter = ops.convert_to_tensor(filter, name="filter")
+    filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
     axis = 3 if data_format == "NHWC" else 1
     if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[3]):
       raise ValueError("input channels does not match filter's input channels, "
@@ -1447,7 +1447,7 @@ def conv3d_transpose(
   with ops.name_scope(name, "conv3d_transpose",
                       [value, filter, output_shape]) as name:
     value = ops.convert_to_tensor(value, name="value")
-    filter = ops.convert_to_tensor(filter, name="filter")
+    filter = ops.convert_to_tensor(filter, name="filter")  # pylint: disable=redefined-builtin
     axis = 1 if data_format == "NCDHW" else 4
     if not value.get_shape()[axis].is_compatible_with(filter.get_shape()[4]):
       raise ValueError("input channels does not match filter's input channels, "
@@ -2214,6 +2214,30 @@ def xw_plus_b_v1(x, weights, biases, name=None):  # pylint: disable=invalid-name
     mm = math_ops.matmul(x, weights)
     return bias_add_v1(mm, biases, name=name)
 
+def _get_noise_shape(x, noise_shape):
+  # If noise_shape is none return immediately.
+  if noise_shape is None:
+    return array_ops.shape(x)
+
+  try:
+    # Best effort to figure out the intended shape.
+    # If not possible, let the op to handle it.
+    # In eager mode exception will show up.
+    noise_shape_ = tensor_shape.as_shape(noise_shape)
+  except (TypeError, ValueError):
+    return noise_shape
+
+  if (x.shape.dims is not None and
+      len(x.shape.dims) == len(noise_shape_.dims)):
+    new_dims = []
+    for i, dim in enumerate(x.shape.dims):
+      if noise_shape_.dims[i].value is None and dim.value is not None:
+        new_dims.append(dim.value)
+      else:
+        new_dims.append(noise_shape_.dims[i].value)
+    return tensor_shape.TensorShape(new_dims)
+
+  return noise_shape
 
 @tf_export("nn.dropout")
 def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: disable=invalid-name
@@ -2265,7 +2289,8 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
     if tensor_util.constant_value(keep_prob) == 1:
       return x
 
-    noise_shape = noise_shape if noise_shape is not None else array_ops.shape(x)
+    noise_shape = _get_noise_shape(x, noise_shape)
+
     # uniform [keep_prob, 1.0 + keep_prob)
     random_tensor = keep_prob
     random_tensor += random_ops.random_uniform(
@@ -2279,7 +2304,7 @@ def dropout(x, keep_prob, noise_shape=None, seed=None, name=None):  # pylint: di
 
 
 @tf_export("nn.top_k")
-def top_k(input, k=1, sorted=True, name=None):
+def top_k(input, k=1, sorted=True, name=None):  # pylint: disable=redefined-builtin
   """Finds values and indices of the `k` largest entries for the last dimension.
 
   If the input is a vector (rank=1), finds the `k` largest entries in the vector
@@ -2308,7 +2333,7 @@ def top_k(input, k=1, sorted=True, name=None):
   return gen_nn_ops._top_kv2(input, k=k, sorted=sorted, name=name)
 
 
-def nth_element(input, n, reverse=False, name=None):
+def nth_element(input, n, reverse=False, name=None):  # pylint: disable=redefined-builtin
   r"""Finds values of the `n`-th order statistic for the last dmension.
 
   If the input is a vector (rank-1), finds the entries which is the nth-smallest
@@ -2380,7 +2405,7 @@ def conv1d(value,
 
   Args:
     value: A 3D `Tensor`.  Must be of type `float16` or `float32`.
-    filters: A 3D `Tensor`.  Must have the same type as `input`.
+    filters: A 3D `Tensor`.  Must have the same type as `value`.
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.
     padding: 'SAME' or 'VALID'
@@ -2505,7 +2530,7 @@ def conv1d_transpose(
       spatial_start_dim = 2
       strides = [1, 1, 1, stride]
     value = array_ops.expand_dims(value, spatial_start_dim)
-    filter = array_ops.expand_dims(filter, 0)
+    filter = array_ops.expand_dims(filter, 0)  # pylint: disable=redefined-builtin
 
     result = gen_nn_ops.conv2d_backprop_input(
         input_sizes=output_shape_,

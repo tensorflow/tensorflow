@@ -36,7 +36,7 @@ while getopts "bc:Eps" opt_name; do
     b) BUILD_ONLY="true";;
     c) TEST_COUNT="${OPTARG}";;
     E) ENABLE_EXPERIMENTAL_HEXNN_OPS="true";;
-    p) USE_PREBUILT_HEXAOGON_BINARIES="true";;
+    p) USE_PREBUILT_HEXAGON_BINARIES="true";;
     s) SKIP_DOWNLOAD_IF_EXIST="true";;
     *) usage;;
   esac
@@ -49,7 +49,7 @@ if [[ -z "${NDK_ROOT}" ]]; then
     exit 1
 fi
 
-if [[ "${USE_PREBUILT_HEXAOGON_BINARIES}" != "true" &&
+if [[ "${USE_PREBUILT_HEXAGON_BINARIES}" != "true" &&
       -z "${QUALCOMM_SDK}" ]]; then
     echo "QUALCOMM_SDK is empty" 1>&2
     usage
@@ -84,7 +84,7 @@ rm -rf "${GEN_DIR}"
 mkdir -p "${GEN_LIBS_DIR}"
 mkdir -p "${GEN_DOWNLOAD_DIR}"
 
-if [[ "${USE_PREBUILT_HEXAOGON_BINARIES}" == "true" ]]; then
+if [[ "${USE_PREBUILT_HEXAGON_BINARIES}" == "true" ]]; then
     echo "Download prebuilt hexagon binaries"
     if [[ "${BUILD_ONLY}" != "true" ]]; then
         CONTROLLER_PUSH_DEST="/data/local/tmp"

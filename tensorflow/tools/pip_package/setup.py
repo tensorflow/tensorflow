@@ -64,7 +64,7 @@ else:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.5.0a0, < 1.6.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.7.0a0, < 1.8.0a0'
       break
 
 # weakref.finalize and enum were introduced in Python 3.4
@@ -183,9 +183,10 @@ def find_files(pattern, root):
 
 matches = ['../' + x for x in find_files('*', 'external') if '.py' not in x]
 
-so_lib_paths = [i for i in os.listdir('.')
-                if os.path.isdir(i) 
-                and fnmatch.fnmatch(i, '_solib_*')]
+so_lib_paths = [
+    i for i in os.listdir('.')
+    if os.path.isdir(i) and fnmatch.fnmatch(i, '_solib_*')
+]
 
 for path in so_lib_paths:
   matches.extend(

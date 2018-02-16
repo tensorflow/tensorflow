@@ -159,9 +159,6 @@ cc_library(
     deps = [
         ":compiler_functor",
         ":cpu_runtime",
-        ":cpu_runtime_avx",
-        ":cpu_runtime_neon",
-        ":cpu_runtime_sse4_1",
         ":custom_call_target_registry",
         ":disassembler",
         ":external_constant_pool",
@@ -408,9 +405,6 @@ cc_library(
     hdrs = ["compiler_functor.h"],
     deps = [
         ":cpu_runtime",
-        ":cpu_runtime_avx",
-        ":cpu_runtime_neon",
-        ":cpu_runtime_sse4_1",
         ":disassembler",
         ":llvm_ir_runtime",
         "//tensorflow/compiler/xla:statusor",
@@ -427,43 +421,6 @@ cc_library(
         "@llvm//:object",
         "@llvm//:support",
         "@llvm//:target",
-    ],
-)
-
-cc_library(
-    name = "cpu_runtime_sse4_1",
-    srcs = ["cpu_runtime_sse4_1.cc"],
-    hdrs = ["cpu_runtime_sse4_1.h"],
-    copts = ["-DEIGEN_AVOID_STL_ARRAY"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "cpu_runtime_avx",
-    srcs = ["cpu_runtime_avx.cc"],
-    hdrs = ["cpu_runtime_avx.h"],
-    copts = ["-DEIGEN_AVOID_STL_ARRAY"],
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
-    ],
-)
-
-cc_library(
-    name = "cpu_runtime_neon",
-    srcs = ["cpu_runtime_neon.cc"],
-    hdrs = ["cpu_runtime_neon.h"],
-    # runtime_copts() enables -mfpu=neon
-    copts = ["-DEIGEN_AVOID_STL_ARRAY"] + runtime_copts(),
-    visibility = ["//visibility:public"],
-    deps = [
-        "//tensorflow/core:framework_lite",
-        "//third_party/eigen3",
     ],
 )
 
@@ -497,6 +454,7 @@ cc_library(
         "llvm_ir_runtime.h",
     ],
     deps = [
+        ":vector_support_library",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "//tensorflow/core:lib",
         "@llvm//:core",
@@ -852,6 +810,7 @@ cc_library(
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/service/llvm_ir:llvm_util",
         "@llvm//:core",
+        "@llvm//:support",
     ],
 )
 

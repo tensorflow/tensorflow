@@ -93,14 +93,10 @@ class IrEmitterUnnested : public IrEmitter {
   std::unique_ptr<Thunk> BuildThunk(const HloInstruction* hlo);
 
   // Builds the prototype of the IR kernel for `inst` and adds it to the module.
+  // This kernel takes as arguments pointers to the given buffer allocations.
   llvm::Function* BuildKernelPrototype(
       const HloInstruction& inst,
-      tensorflow::gtl::ArraySlice<const HloInstruction*> escaped_hlos);
-
-  // Emits the base pointers for `hlo` and its operands. `io_hlos` will store
-  // all input/output HLOs among `hlo` and its operands.
-  llvm::Function* EmitBasePointersForHloAndItsOperands(
-      const HloInstruction& hlo, std::vector<const HloInstruction*>* io_hlos);
+      tensorflow::gtl::ArraySlice<const BufferAllocation*> args);
 
   // EmitColumnReduction and EmitRowReduction emit code for column and row
   // reduction of a matrix and/or 3D tensor. Row and column reduction have

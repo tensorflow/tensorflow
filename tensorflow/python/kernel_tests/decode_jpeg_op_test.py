@@ -21,7 +21,7 @@ from __future__ import print_function
 import os
 import time
 
-from six.moves import xrange
+from six.moves import xrange  # pylint: disable=redefined-builtin
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops

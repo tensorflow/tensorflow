@@ -158,6 +158,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import tf_export
 
 
 def _internal_input_layer(features,
@@ -511,6 +512,7 @@ def make_parse_example_spec(feature_columns):
 
   ```python
   # Define features and transformations
+  feature_a = categorical_column_with_vocabulary_file(...)
   feature_b = numeric_column(...)
   feature_c_bucketized = bucketized_column(numeric_column("feature_c"), ...)
   feature_a_x_feature_c = crossed_column(
@@ -662,6 +664,7 @@ def embedding_column(
       trainable=trainable)
 
 
+@tf_export('feature_column.shared_embedding_columns')
 def shared_embedding_columns(
     categorical_columns, dimension, combiner='mean', initializer=None,
     shared_embedding_collection_name=None, ckpt_to_load_from=None,

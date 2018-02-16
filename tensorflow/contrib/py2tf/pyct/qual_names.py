@@ -31,9 +31,7 @@ from tensorflow.contrib.py2tf.pyct import anno
 
 
 class QN(object):
-  """Represents a qualified name.
-
-  """
+  """Represents a qualified name."""
 
   def __init__(self, base, attr=None):
     if attr:
@@ -42,8 +40,15 @@ class QN(object):
       self._parent = base
       self.qn = base.qn + (attr,)
     else:
-      self._parent = None
-      self.qn = tuple(base.split('.'))
+      if isinstance(base, QN):
+        if base.is_composite():
+          self._parent = base.parent
+        else:
+          self._parent = None
+        self.qn = base.qn
+      else:
+        self._parent = None
+        self.qn = tuple(base.split('.'))
 
   def is_composite(self):
     return len(self.qn) > 1

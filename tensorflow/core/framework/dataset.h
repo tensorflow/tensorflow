@@ -274,7 +274,7 @@ class IteratorContext {
     std::shared_ptr<const FunctionLibraryDefinition> function_library = nullptr;
 
     // The Allocator to be used to allocate the output of an iterator.
-    Allocator* allocator = nullptr;
+    std::function<Allocator*(AllocatorAttributes)> allocator_getter = nullptr;
   };
 
   explicit IteratorContext(Params params) : params_(std::move(params)) {}
@@ -301,7 +301,9 @@ class IteratorContext {
 
   void set_lib(FunctionLibraryRuntime* lib) { params_.lib = lib; }
 
-  Allocator* allocator(AllocatorAttributes attrs);
+  Allocator* allocator(AllocatorAttributes attrs) {
+    return params_.allocator_getter(attrs);
+  }
 
  private:
   Params params_;

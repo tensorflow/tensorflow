@@ -175,16 +175,39 @@ class _StreamingModelPortProcessor(_OptimizableVariable):
     return g
 
 
+class _TensorProcessor(_OptimizableVariable):
+  """Processor for ordinary Tensors.
+
+  Even though a Tensor can't really be updated, sometimes it is useful to
+  compute the gradients with respect to a Tensor using the optimizer. Updating
+  the Tensor is, of course, unsupported.
+  """
+
+  def __init__(self, v):
+    self._v = v
+
+  def target(self):
+    return self._v
+
+  def update_op(self, optimizer, g):
+    raise NotImplementedError("Trying to update a Tensor ", self._v)
+
+
 def _get_processor(v):
   """The processor of v."""
   if context.in_eager_mode():
-    return _DenseResourceVariableProcessor(v)
+    if isinstance(v, ops.Tensor):
+      return _TensorProcessor(v)
+    else:
+      return _DenseResourceVariableProcessor(v)
   if v.op.type == "VarHandleOp":
     return _DenseResourceVariableProcessor(v)
   if isinstance(v, variables.Variable):
     return _RefVariableProcessor(v)
   if v.op.type == "SubmodelPort":
     return _StreamingModelPortProcessor(v)
+  if isinstance(v, ops.Tensor):
+    return _TensorProcessor(v)
   raise NotImplementedError("Trying to optimize unsupported type ", v)
 
 
@@ -382,7 +405,9 @@ class Optimizer(object):
     given variable.
 
     Args:
-      loss: A Tensor containing the value to minimize.
+      loss: A Tensor containing the value to minimize or a callable taking
+        no arguments which returns the value to minimize. When eager execution
+        is enabled it must be a callable.
       var_list: Optional list or tuple of `tf.Variable` to update to minimize
         `loss`.  Defaults to the list of variables collected in the graph
         under the key `GraphKeys.TRAINABLE_VARIABLES`.
@@ -401,37 +426,27 @@ class Optimizer(object):
     Raises:
       TypeError: If `var_list` contains anything else than `Variable` objects.
       ValueError: If some arguments are invalid.
-      RuntimeError: If called with eager execution enabled and if `grad_loss`
-        is not `None` or `loss` is not callable.
+      RuntimeError: If called with eager execution enabled and `loss` is
+        not callable.
 
     @compatibility(eager)
-    When eager execution is enabled, `loss` should be a Python function that
-    takes elements of `var_list` as arguments and computes the value to be
-    minimized. If `var_list` is None, `loss` should take no arguments.
-    Gradient computation is done with respect to the elements of `var_list` if
-    not None, else with respect to any trainable variables created during the
-    execution of the `loss` function.
-    `gate_gradients`, `aggregation_method`, `colocate_gradients_with_ops` and
-    `grad_loss` are ignored when eager execution is enabled.
+    When eager execution is enabled, `gate_gradients`, `aggregation_method`,
+    and `colocate_gradients_with_ops` are ignored.
     @end_compatibility
     """
-    if context.in_eager_mode():
-      if grad_loss is not None:
-        raise RuntimeError(
-            "`grad_loss` argument to Optimizer.compute_gradients "
-            "not supported when eager execution is enabled.")
-      if not callable(loss):
-        raise RuntimeError(
-            "`loss` passed to Optimizer.compute_gradients should "
-            "be a function when eager execution is enabled.")
-      # TODO(agarwal): consider passing parameters to the `loss` function.
+    if callable(loss):
+      with backprop.GradientTape() as tape:
+        if var_list is not None:
+          tape.watch(var_list)
+        loss_value = loss()
       if var_list is None:
-        return backprop.implicit_grad(loss)()
-      else:
-        var_list = nest.flatten(var_list)
-        grads = backprop.gradients_function(loss)(*var_list)
-        grads_and_vars = list(zip(grads, var_list))
-        return grads_and_vars
+        var_list = tape.watched_variables()
+      grads = tape.gradient(loss_value, var_list, grad_loss)
+      return list(zip(grads, var_list))
+    if context.in_eager_mode():
+      raise RuntimeError(
+          "`loss` passed to Optimizer.compute_gradients should "
+          "be a function when eager execution is enabled.")
     if gate_gradients not in [Optimizer.GATE_NONE, Optimizer.GATE_OP,
                               Optimizer.GATE_GRAPH]:
       raise ValueError("gate_gradients must be one of: Optimizer.GATE_NONE, "

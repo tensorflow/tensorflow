@@ -29,6 +29,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
+from tensorflow.python.util.tf_export import tf_export
 
 
 class _Conv(base.Layer):
@@ -222,6 +223,7 @@ class _Conv(base.Layer):
                                       new_space)
 
 
+@tf_export('layers.Conv1D')
 class Conv1D(_Conv):
   """1D convolution layer (e.g. temporal convolution).
 
@@ -311,6 +313,7 @@ class Conv1D(_Conv):
         name=name, **kwargs)
 
 
+@tf_export('layers.conv1d')
 def conv1d(inputs,
            filters,
            kernel_size,
@@ -411,6 +414,7 @@ def conv1d(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.Conv2D')
 class Conv2D(_Conv):
   """2D convolution layer (e.g. spatial convolution over images).
 
@@ -507,6 +511,7 @@ class Conv2D(_Conv):
         name=name, **kwargs)
 
 
+@tf_export('layers.conv2d')
 def conv2d(inputs,
            filters,
            kernel_size,
@@ -614,6 +619,7 @@ def conv2d(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.Conv3D')
 class Conv3D(_Conv):
   """3D convolution layer (e.g. spatial convolution over volumes).
 
@@ -711,6 +717,7 @@ class Conv3D(_Conv):
         name=name, **kwargs)
 
 
+@tf_export('layers.conv3d')
 def conv3d(inputs,
            filters,
            kernel_size,
@@ -980,6 +987,7 @@ class _SeparableConv(_Conv):
     raise NotImplementedError
 
 
+@tf_export('layers.SeparableConv1D')
 class SeparableConv1D(_SeparableConv):
   """Depthwise separable 1D convolution.
 
@@ -1123,6 +1131,7 @@ class SeparableConv1D(_SeparableConv):
     return outputs
 
 
+@tf_export('layers.SeparableConv2D')
 class SeparableConv2D(_SeparableConv):
   """Depthwise separable 2D convolution.
 
@@ -1260,6 +1269,7 @@ class SeparableConv2D(_SeparableConv):
     return outputs
 
 
+@tf_export('layers.separable_conv1d')
 def separable_conv1d(inputs,
                      filters,
                      kernel_size,
@@ -1376,6 +1386,7 @@ def separable_conv1d(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.separable_conv2d')
 def separable_conv2d(inputs,
                      filters,
                      kernel_size,
@@ -1497,6 +1508,7 @@ def separable_conv2d(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.Conv2DTranspose')
 class Conv2DTranspose(Conv2D):
   """Transposed 2D convolution layer (sometimes called 2D Deconvolution).
 
@@ -1695,6 +1707,7 @@ class Conv2DTranspose(Conv2D):
     return tensor_shape.TensorShape(output_shape)
 
 
+@tf_export('layers.conv2d_transpose')
 def conv2d_transpose(inputs,
                      filters,
                      kernel_size,
@@ -1790,6 +1803,7 @@ def conv2d_transpose(inputs,
   return layer.apply(inputs)
 
 
+@tf_export('layers.Conv3DTranspose')
 class Conv3DTranspose(Conv3D):
   """Transposed 3D convolution layer (sometimes called 3D Deconvolution).
 
@@ -2018,6 +2032,7 @@ class Conv3DTranspose(Conv3D):
     return tensor_shape.TensorShape(output_shape)
 
 
+@tf_export('layers.conv3d_transpose')
 def conv3d_transpose(inputs,
                      filters,
                      kernel_size,

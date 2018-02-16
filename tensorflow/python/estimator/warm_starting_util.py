@@ -30,8 +30,10 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_ops
 from tensorflow.python.training import checkpoint_utils
 from tensorflow.python.training import saver
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("estimator.VocabInfo")
 class VocabInfo(
     collections.namedtuple("VocabInfo", [
         "new_vocab",
@@ -81,6 +83,7 @@ class VocabInfo(
     )
 
 
+@tf_export("estimator.WarmStartSettings")
 class WarmStartSettings(
     collections.namedtuple("WarmStartSettings", [
         "ckpt_to_initialize_from",
@@ -117,19 +120,11 @@ class WarmStartSettings(
   ws = WarmStartSettings(ckpt_to_initialize_from="/tmp/model-1000")
   ```
 
-  Warm-start only the embeddings (input layer) and their accumulator variables:
+  Warm-start only the embeddings (input layer):
 
   ```
   ws = WarmStartSettings(ckpt_to_initialize_from="/tmp",
                          vars_to_warm_start=".*input_layer.*")
-  ```
-
-  Warm-start everything except the optimizer accumulator variables
-  (DNN defaults to Adagrad):
-
-  ```
-  ws = WarmStartSettings(ckpt_to_initialize_from="/tmp",
-                         vars_to_warm_start="^(?!.*(Adagrad))")
   ```
 
   Warm-start all weights but the embedding parameters corresponding to
@@ -423,6 +418,8 @@ def _warm_start(warm_start_settings):
   # Both warm_start_settings.vars_to_warm_start = '.*' and
   # warm_start_settings.vars_to_warm_start = None will match everything here.
   for v in ops.get_collection(
+      # TODO(eddz): Allow for different collections here (to support
+      # warm-starting accumulators).
       ops.GraphKeys.TRAINABLE_VARIABLES,
       scope=warm_start_settings.vars_to_warm_start):
     if not isinstance(v, list):

@@ -504,6 +504,9 @@ def tf_gen_op_wrappers_cc(name,
 #     is invalid to specify both "hidden" and "op_whitelist".
 #   cc_linkopts: Optional linkopts to be added to tf_cc_binary that contains the
 #     specified ops.
+#   gen_locally: if True, the genrule to generate the Python library will be run
+#     without sandboxing. This would help when the genrule depends on symlinks
+#     which may not be supported in the sandbox.
 def tf_gen_op_wrapper_py(name,
                          out=None,
                          hidden=None,
@@ -514,7 +517,8 @@ def tf_gen_op_wrapper_py(name,
                          generated_target_name=None,
                          op_whitelist=[],
                          cc_linkopts=[],
-                         api_def_srcs=[]):
+                         api_def_srcs=[],
+                         gen_locally=False):
   if (hidden or hidden_file) and op_whitelist:
     fail('Cannot pass specify both hidden and op_whitelist.')
 
@@ -569,6 +573,7 @@ def tf_gen_op_wrapper_py(name,
         outs=[out],
         srcs=api_def_srcs + [hidden_file],
         tools=[tool_name] + tf_binary_additional_srcs(),
+        local = (1 if gen_locally else 0),
         cmd=("$(location " + tool_name + ") " + api_def_args_str +
              " @$(location " + hidden_file + ") " +
              ("1" if require_shape_functions else "0") + " > $@"))
@@ -578,6 +583,7 @@ def tf_gen_op_wrapper_py(name,
         outs=[out],
         srcs=api_def_srcs,
         tools=[tool_name] + tf_binary_additional_srcs(),
+        local = (1 if gen_locally else 0),
         cmd=("$(location " + tool_name + ") " + api_def_args_str + " " +
              op_list_arg + " " +
              ("1" if require_shape_functions else "0") + " " +
@@ -1327,6 +1333,46 @@ def tf_extension_linkopts():
 def tf_extension_copts():
   return []  # No extension c opts
 
+# In tf_py_wrap_cc generated libraries
+# module init functions are not exported unless
+# they contain one of the keywords in the version file
+# this prevents custom python modules.
+# This function attempts to append init_module_name to list of
+# exported functions in version script
+def _append_init_to_versionscript_impl(ctx):
+  mod_name = ctx.attr.module_name
+  if ctx.attr.is_version_script:
+    ctx.actions.expand_template(
+      template=ctx.file.template_file,
+      output=ctx.outputs.versionscript,
+      substitutions={
+        "global:":"global:\n     init_%s;\n     PyInit_*;"%(mod_name),
+      },
+      is_executable=False,
+    )
+  else:
+    ctx.actions.expand_template(
+      template=ctx.file.template_file,
+      output=ctx.outputs.versionscript,
+      substitutions={
+        "*tensorflow*":"*tensorflow*\ninit_%s\nPyInit_*\n"%(mod_name),
+      },
+      is_executable=False,
+    )
+
+
+_append_init_to_versionscript= rule(
+  implementation=_append_init_to_versionscript_impl,
+  attrs={
+    "module_name":attr.string(mandatory=True),
+    "template_file":attr.label(allow_files=True,single_file=True,mandatory=True),
+    "is_version_script":attr.bool(default=True,
+      doc='whether target is a ld version script or exported symbol list',
+      mandatory=False),
+  },
+  outputs={"versionscript":"%{name}.lds"},
+)
+
 def tf_py_wrap_cc(name,
                              srcs,
                              swig_includes=[],
@@ -1348,26 +1394,39 @@ def tf_py_wrap_cc(name,
       toolchain_deps=["//tools/defaults:crosstool"],
       module_name=module_name,
       py_module_name=name)
+  vscriptname=name+"_versionscript"
+  _append_init_to_versionscript(
+      name=vscriptname,
+      module_name=module_name,
+      is_version_script=select({
+          "@local_config_cuda//cuda:darwin":False,
+          "//conditions:default":True,
+          }),
+      template_file=select({
+          "@local_config_cuda//cuda:darwin":clean_dep("//tensorflow:tf_exported_symbols.lds"),
+          "//conditions:default":clean_dep("//tensorflow:tf_version_script.lds")
+      })
+  )
   extra_linkopts = select({
       "@local_config_cuda//cuda:darwin": [
           "-Wl,-exported_symbols_list",
-          clean_dep("//tensorflow:tf_exported_symbols.lds")
+          "%s.lds"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
           "-Wl,--version-script",
-          clean_dep("//tensorflow:tf_version_script.lds")
+          "%s.lds"%vscriptname,
       ]
   })
   extra_deps += select({
       "@local_config_cuda//cuda:darwin": [
-          clean_dep("//tensorflow:tf_exported_symbols.lds")
+          "%s.lds"%vscriptname,
       ],
       clean_dep("//tensorflow:windows"): [],
       clean_dep("//tensorflow:windows_msvc"): [],
       "//conditions:default": [
-          clean_dep("//tensorflow:tf_version_script.lds")
+          "%s.lds"%vscriptname,
       ]
   })
 

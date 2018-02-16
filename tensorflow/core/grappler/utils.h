@@ -143,6 +143,9 @@ int NumNonControlInputs(const NodeDef& node);
 // Number of connected non-control outputs.
 int NumNonControlOutputs(const NodeDef& node, const NodeMap& node_map);
 
+// Removes redundant control inputs from node.
+void DedupControlInputs(NodeDef* node);
+
 // Returns the data type in attribute `attr_name` of `node`. If that attribute
 // doesn't exist, returns DT_INVALID.
 DataType GetDataTypeFromAttr(const NodeDef& node, const string& attr_name);

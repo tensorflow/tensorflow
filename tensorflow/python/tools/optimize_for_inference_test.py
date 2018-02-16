@@ -184,8 +184,11 @@ class OptimizeForInferenceTest(test.TestCase):
         weights_op = constant_op.constant(
             np.array(weights), shape=[1, 2, 2, 2], dtype=dtypes.float32)
         conv_op = nn_ops.conv2d(
-            input_op, weights_op, [1, 1, 1, 1], padding="SAME",
-            data_format=data_format, name="conv_op")
+            input_op,
+            weights_op, [1, 1, 1, 1],
+            padding="SAME",
+            data_format=data_format,
+            name="conv_op")
         mean_op = constant_op.constant(
             np.array([10, 20]), shape=[2], dtype=dtypes.float32)
         variance_op = constant_op.constant(

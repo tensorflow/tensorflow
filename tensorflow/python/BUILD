@@ -1,5 +1,8 @@
 # Description:
 # Python support for TensorFlow.
+#
+# Public targets:
+#  ":platform" - Low-level and platform-specific Python code.
 
 package(
     default_visibility = [
@@ -132,6 +135,7 @@ py_library(
         ],
     ) + ["platform/build_info.py"],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":lib",
         ":pywrap_tensorflow",

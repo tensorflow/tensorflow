@@ -23,6 +23,7 @@ from __future__ import print_function
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.engine.topology import Layer
 from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
+from tensorflow.python.util.tf_export import tf_export
 
 
 class _Merge(Layer):
@@ -210,6 +211,7 @@ class _Merge(Layer):
     return K.all(K.concatenate(masks, axis=0), axis=0, keepdims=False)
 
 
+@tf_export('keras.layers.Add')
 class Add(_Merge):
   """Layer that adds a list of inputs.
 
@@ -279,6 +281,7 @@ class Subtract(_Merge):
     return inputs[0] - inputs[1]
 
 
+@tf_export('keras.layers.Multiply')
 class Multiply(_Merge):
   """Layer that multiplies (element-wise) a list of inputs.
 
@@ -294,6 +297,7 @@ class Multiply(_Merge):
     return output
 
 
+@tf_export('keras.layers.Average')
 class Average(_Merge):
   """Layer that averages a list of inputs.
 
@@ -309,6 +313,7 @@ class Average(_Merge):
     return output / len(inputs)
 
 
+@tf_export('keras.layers.Maximum')
 class Maximum(_Merge):
   """Layer that computes the maximum (element-wise) a list of inputs.
 
@@ -339,6 +344,7 @@ class Minimum(_Merge):
     return output
 
 
+@tf_export('keras.layers.Concatenate')
 class Concatenate(_Merge):
   """Layer that concatenates a list of inputs.
 
@@ -429,6 +435,7 @@ class Concatenate(_Merge):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Dot')
 class Dot(_Merge):
   """Layer that computes a dot product between samples in two tensors.
 
@@ -543,6 +550,7 @@ class Dot(_Merge):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.add')
 def add(inputs, **kwargs):
   """Functional interface to the `Add` layer.
 
@@ -599,6 +607,7 @@ def subtract(inputs, **kwargs):
   return Subtract(**kwargs)(inputs)
 
 
+@tf_export('keras.layers.multiply')
 def multiply(inputs, **kwargs):
   """Functional interface to the `Multiply` layer.
 
@@ -612,6 +621,7 @@ def multiply(inputs, **kwargs):
   return Multiply(**kwargs)(inputs)
 
 
+@tf_export('keras.layers.average')
 def average(inputs, **kwargs):
   """Functional interface to the `Average` layer.
 
@@ -625,6 +635,7 @@ def average(inputs, **kwargs):
   return Average(**kwargs)(inputs)
 
 
+@tf_export('keras.layers.maximum')
 def maximum(inputs, **kwargs):
   """Functional interface to the `Maximum` layer.
 
@@ -651,6 +662,7 @@ def minimum(inputs, **kwargs):
   return Minimum(**kwargs)(inputs)
 
 
+@tf_export('keras.layers.concatenate')
 def concatenate(inputs, axis=-1, **kwargs):
   """Functional interface to the `Concatenate` layer.
 
@@ -665,6 +677,7 @@ def concatenate(inputs, axis=-1, **kwargs):
   return Concatenate(axis=axis, **kwargs)(inputs)
 
 
+@tf_export('keras.layers.dot')
 def dot(inputs, axes, normalize=False, **kwargs):
   """Functional interface to the `Dot` layer.
 

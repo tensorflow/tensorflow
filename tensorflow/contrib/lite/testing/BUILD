@@ -25,6 +25,7 @@ gen_zipped_test_files(
         "conv.zip",
         "depthwiseconv.zip",
         "div.zip",
+        "exp.zip",
         "fully_connected.zip",
         "fused_batch_norm.zip",
         "gather.zip",
@@ -48,6 +49,7 @@ gen_zipped_test_files(
         "squeeze.zip",
         "strided_slice.zip",
         "sub.zip",
+        "topk.zip",
         "transpose.zip",
     ],
 )
@@ -117,6 +119,21 @@ cc_test(
     srcs = ["split_test.cc"],
     deps = [
         ":split",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "join",
+    hdrs = ["join.h"],
+)
+
+cc_test(
+    name = "join_test",
+    size = "small",
+    srcs = ["join_test.cc"],
+    deps = [
+        ":join",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -192,6 +209,33 @@ cc_binary(
         ":parse_testdata_lib",
         ":tflite_driver",
         "//tensorflow/contrib/lite/nnapi:nnapi_lib",
+    ],
+)
+
+cc_library(
+    name = "tf_driver",
+    srcs = ["tf_driver.cc"],
+    hdrs = ["tf_driver.h"],
+    deps = [
+        ":join",
+        ":split",
+        ":test_runner",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+    ],
+)
+
+cc_test(
+    name = "tf_driver_test",
+    size = "small",
+    srcs = ["tf_driver_test.cc"],
+    data = ["//tensorflow/contrib/lite:testdata/multi_add.pb"],
+    deps = [
+        ":tf_driver",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

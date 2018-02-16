@@ -35,7 +35,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import check_ops
+from tensorflow.python.ops import check_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_grad  # pylint: disable=unused-import
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -494,7 +494,7 @@ def gradients(ys,
       list(ys) + list(xs) + list(stop_gradients) + list(grad_ys)) as grad_scope:
     ys = ops.convert_n_to_tensor_or_indexed_slices(ys, name="y")
     xs = [
-        x.handle if isinstance(x, resource_variable_ops.ResourceVariable) else x
+        x.handle if resource_variable_ops.is_resource_variable(x) else x
         for x in xs
     ]
     xs = ops.internal_convert_n_to_tensor_or_indexed_slices(

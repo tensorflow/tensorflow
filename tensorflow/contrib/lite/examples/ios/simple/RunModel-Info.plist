@@ -7,7 +7,7 @@
 	<key>CFBundleDisplayName</key>
 	<string>tflite-simple-example</string>
 	<key>CFBundleExecutable</key>
-	<string>tf_simple_example</string>
+	<string>tflite_simple_example</string>
 	<key>CFBundleIdentifier</key>
 	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
 	<key>CFBundleInfoDictionaryVersion</key>

@@ -33,7 +33,7 @@ Status CapturedFunction::Create(
 }
 
 CapturedFunction::~CapturedFunction() {
-  if (lib_ != nullptr) {
+  if (lib_ != nullptr && f_handle_ != kInvalidHandle) {
     lib_->ReleaseHandle(f_handle_).IgnoreError();
   }
 }

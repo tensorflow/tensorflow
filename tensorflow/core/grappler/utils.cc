@@ -132,7 +132,7 @@ string ParseNodeName(const string& name, int* position) {
   strings::Scanner scan(name);
   scan.ZeroOrOneLiteral("^")
       .RestartCapture()
-      .One(strings::Scanner::LETTER_DIGIT_DOT)
+      .One(strings::Scanner::LETTER_DIGIT_DOT_UNDERSCORE)
       .Any(strings::Scanner::LETTER_DIGIT_DASH_DOT_SLASH_UNDERSCORE);
   StringPiece capture;
   StringPiece remaining;
@@ -308,6 +308,20 @@ void PermuteNodesInPlace(GraphDef* graph, std::vector<int>* permutation,
       std::size_t r = (*permutation)[n];
       graph->mutable_node()->SwapElements(n, r);
       std::swap((*permutation)[n], (*permutation)[r]);
+    }
+  }
+}
+
+void DedupControlInputs(NodeDef* node) {
+  std::unordered_set<string> inputs;
+  int pos = 0;
+  while (pos < node->input_size()) {
+    const string& input = node->input(pos);
+    if (!inputs.insert(NodeName(input)).second && IsControlInput(input)) {
+      node->mutable_input()->SwapElements(pos, node->input_size() - 1);
+      node->mutable_input()->RemoveLast();
+    } else {
+      ++pos;
     }
   }
 }

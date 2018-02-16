@@ -175,7 +175,7 @@ def format_tensor(tensor,
     include_numeric_summary: Whether a text summary of the numeric values (if
       applicable) will be included.
     write_path: A path to save the tensor value (after any slicing) to
-      (optinal). `numpy.save()` is used to save the value.
+      (optional). `numpy.save()` is used to save the value.
 
   Returns:
     An instance of `debugger_cli_common.RichTextLines` representing the

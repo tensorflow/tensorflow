@@ -35,6 +35,7 @@ from tensorflow.python.keras._impl.keras.utils.generic_utils import Progbar
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.summary import summary as tf_summary
+from tensorflow.python.util.tf_export import tf_export
 
 
 try:
@@ -159,6 +160,7 @@ class CallbackList(object):
     return iter(self.callbacks)
 
 
+@tf_export('keras.callbacks.Callback')
 class Callback(object):
   """Abstract base class used to build new callbacks.
 
@@ -215,6 +217,7 @@ class Callback(object):
     pass
 
 
+@tf_export('keras.callbacks.BaseLogger')
 class BaseLogger(Callback):
   """Callback that accumulates epoch averages of metrics.
 
@@ -244,6 +247,7 @@ class BaseLogger(Callback):
           logs[k] = self.totals[k] / self.seen
 
 
+@tf_export('keras.callbacks.TerminateOnNaN')
 class TerminateOnNaN(Callback):
   """Callback that terminates training when a NaN loss is encountered.
   """
@@ -260,6 +264,7 @@ class TerminateOnNaN(Callback):
         self.model.stop_training = True
 
 
+@tf_export('keras.callbacks.ProgbarLogger')
 class ProgbarLogger(Callback):
   """Callback that prints metrics to stdout.
 
@@ -323,9 +328,10 @@ class ProgbarLogger(Callback):
       if k in logs:
         self.log_values.append((k, logs[k]))
     if self.verbose:
-      self.progbar.update(self.seen, self.log_values, force=True)
+      self.progbar.update(self.seen, self.log_values)
 
 
+@tf_export('keras.callbacks.History')
 class History(Callback):
   """Callback that records events into a `History` object.
 
@@ -345,6 +351,7 @@ class History(Callback):
       self.history.setdefault(k, []).append(v)
 
 
+@tf_export('keras.callbacks.ModelCheckpoint')
 class ModelCheckpoint(Callback):
   """Save the model after every epoch.
 
@@ -448,6 +455,7 @@ class ModelCheckpoint(Callback):
           self.model.save(filepath, overwrite=True)
 
 
+@tf_export('keras.callbacks.EarlyStopping')
 class EarlyStopping(Callback):
   """Stop training when a monitored quantity has stopped improving.
 
@@ -531,6 +539,7 @@ class EarlyStopping(Callback):
       print('Epoch %05d: early stopping' % (self.stopped_epoch + 1))
 
 
+@tf_export('keras.callbacks.RemoteMonitor')
 class RemoteMonitor(Callback):
   """Callback used to stream events to a server.
 
@@ -575,6 +584,7 @@ class RemoteMonitor(Callback):
                       'root server at ' + str(self.root))
 
 
+@tf_export('keras.callbacks.LearningRateScheduler')
 class LearningRateScheduler(Callback):
   """Learning rate scheduler.
 
@@ -603,6 +613,7 @@ class LearningRateScheduler(Callback):
             'rate to %s.' % (epoch + 1, lr))
 
 
+@tf_export('keras.callbacks.TensorBoard')
 class TensorBoard(Callback):
   # pylint: disable=line-too-long
   """Tensorboard basic visualizations.
@@ -772,6 +783,7 @@ class TensorBoard(Callback):
     self.writer.close()
 
 
+@tf_export('keras.callbacks.ReduceLROnPlateau')
 class ReduceLROnPlateau(Callback):
   """Reduce learning rate when a metric has stopped improving.
 
@@ -891,6 +903,7 @@ class ReduceLROnPlateau(Callback):
     return self.cooldown_counter > 0
 
 
+@tf_export('keras.callbacks.CSVLogger')
 class CSVLogger(Callback):
   """Callback that streams epoch results to a csv file.
 
@@ -971,6 +984,7 @@ class CSVLogger(Callback):
     self.writer = None
 
 
+@tf_export('keras.callbacks.LambdaCallback')
 class LambdaCallback(Callback):
   r"""Callback for creating simple, custom callbacks on-the-fly.
 
