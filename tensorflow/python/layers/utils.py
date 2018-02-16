@@ -217,11 +217,12 @@ def constant_value(pred):
         interger 1 or 0.
     """
   # Allow integer booleans.
-  if pred == 0:
-    pred = False
-  elif pred == 1:
-    pred = True
-
+  if isinstance(pred, int):
+    if pred == 1:
+      pred = True
+    elif pred == 0:
+      pred = False
+  
   if isinstance(pred, variables.Variable):
     return None
   return control_flow_ops.smart_constant_value(pred)
