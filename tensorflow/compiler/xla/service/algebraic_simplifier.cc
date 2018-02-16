@@ -284,8 +284,6 @@ class AlgebraicSimplifierVisitor : public DfsHloVisitorWithDefault {
       const Shape& dot_shape, HloInstruction* lhs, int64 lhs_contracting_dim,
       HloInstruction* rhs, int64 rhs_contracting_dim, bool swapped);
 
-  StatusOr<HloInstruction*> OptimizeDotOfGather(HloInstruction* dot);
-
   // Current HloComputation instance the AlgebraicSimplifierVisitor is
   // traversing.
   HloComputation* computation_;
@@ -919,134 +917,6 @@ StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfConcatHelper(
   return add_result;
 }
 
-StatusOr<HloInstruction*> AlgebraicSimplifierVisitor::OptimizeDotOfGather(
-    HloInstruction* dot) {
-  const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
-  if (dnums.lhs_contracting_dimensions_size() != 1 ||
-      dnums.rhs_contracting_dimensions_size() != 1 ||
-      dnums.lhs_batch_dimensions_size() != 0 ||
-      dnums.rhs_batch_dimensions_size() != 0 ||
-      dot->shape().dimensions_size() != 2) {  // dot output 2D
-    VLOG(10) << "DotOfGather: Can only optimize 2D, non-batch dot operations.";
-    return nullptr;
-  }
-
-  // Optimize either dot(DS(ctA), ctB)) or dot(ctB, DS(ctA)).
-  // Currently a Gather is a DynamicSlice.
-  auto is_dynamic_slice_constant_combination =
-      [](HloInstruction* a, HloInstruction* b, int a_contracting_dimension) {
-        // First operand is a DynamicSlice(Constant).
-        if (a->opcode() != HloOpcode::kDynamicSlice) {
-          return false;
-        }
-        auto* dynamic_slice_op = a->operand(0);
-        if (dynamic_slice_op->opcode() != HloOpcode::kConstant) {
-          return false;
-        }
-        // Second operand is a Constant.
-        if (b->opcode() != HloOpcode::kConstant) {
-          return false;
-        }
-        // The DynamicSlice output is a vector.
-        const Shape& dynamic_slice_shape = a->shape();
-        if (dynamic_slice_shape.dimensions(1 - a_contracting_dimension) != 1) {
-          return false;
-        }
-        // Constant size is the same before and after slice in the contracting
-        // dimension, otherwise we either must precompute for all possible slice
-        // indices or dot is invalid.
-        const Shape& dynamic_slice_op_shape = dynamic_slice_op->shape();
-        if (dynamic_slice_op_shape.dimensions(a_contracting_dimension) !=
-            dynamic_slice_shape.dimensions(a_contracting_dimension)) {
-          return false;
-        }
-        return true;
-      };
-
-  HloInstruction* lhs = dot->mutable_operand(0);
-  HloInstruction* rhs = dot->mutable_operand(1);
-  int lhs_contracting_dimension = dnums.lhs_contracting_dimensions(0);
-  int rhs_contracting_dimension = dnums.rhs_contracting_dimensions(0);
-
-  if (!is_dynamic_slice_constant_combination(
-          lhs, rhs, /*a_contracting_dimension=*/lhs_contracting_dimension) &&
-      !is_dynamic_slice_constant_combination(
-          rhs, lhs, /*a_contracting_dimension=*/rhs_contracting_dimension)) {
-    VLOG(10) << "DotOfGather: Can only optimize dot(DS(ctA), ctB)) or "
-                "dot(ctB, DS(ctA)), where the two constants have equal "
-                "contracting dimensions.";
-    return nullptr;
-  }
-
-  // LHS is DynamicSlice:
-  // input: dot(DS(ctA), ctB))
-  // where DS(ctA) = DS({M x K}, {start, 0}, {1, K}) and ctB = {K x N}.
-  // => input dimensions: dot({1 x K}, {K x N}) => {1 x N}.
-  // output: DS(dot(ctA, ctB))
-  // => output dimensions: DS ({M x N}, {start, 0}, {1, N}) => {1 x N}.
-
-  // RHS is DynamicSlice:
-  // input: dot(ctA, DS(ctB))
-  // where ctA = {M x K} and DS(ctB) = DS({K x N}, {0, start}, {K, 1}).
-  // => input dimensions: dot({M x K}, {K x 1}) => {M x 1}.
-  // output: DS(dot(ctA, ctB))
-  // => output dimensions: DS ({M x N}, {0, start}, {M, 1}) => {M x 1}.
-
-  bool lhs_is_dynamic_slice = lhs->opcode() == HloOpcode::kDynamicSlice;
-
-  // ctA:
-  HloInstruction* left_operand =
-      lhs_is_dynamic_slice ? lhs->mutable_operand(0) : lhs;
-  // ctB:
-  HloInstruction* right_operand =
-      lhs_is_dynamic_slice ? rhs : rhs->mutable_operand(0);
-  // Build ctA x ctB.
-  const int m = left_operand->shape().dimensions(1 - lhs_contracting_dimension);
-  const int n =
-      right_operand->shape().dimensions(1 - rhs_contracting_dimension);
-  auto memoized_shape = ShapeUtil::MakeShape(F32, {m, n});
-  auto* memoized_inst = computation_->AddInstruction(HloInstruction::CreateDot(
-      memoized_shape, left_operand, right_operand, dnums));
-  // Get pair {start, 0} or {0, start}.
-  HloInstruction* original_start_indices =
-      lhs_is_dynamic_slice ? lhs->mutable_operand(1) : rhs->mutable_operand(1);
-  // Position of start:
-  int index_of_non_zero_start = lhs_is_dynamic_slice
-                                    ? 1 - lhs_contracting_dimension
-                                    : 1 - rhs_contracting_dimension;
-  // Position of zero:
-  int index_of_zero_start = 1 - index_of_non_zero_start;
-
-  // Slice out start and 0 components and reorder if necessary.
-  auto indices_type = original_start_indices->shape().element_type();
-  Shape s_shape = ShapeUtil::MakeShape(indices_type, {1});
-  Shape d_shape = ShapeUtil::MakeShape(indices_type, {2});
-  HloInstruction* non_zero_start =
-      computation_->AddInstruction(HloInstruction::CreateSlice(
-          s_shape, original_start_indices, {index_of_non_zero_start},
-          {index_of_non_zero_start + 1}, {1}));
-  HloInstruction* zero_start =
-      computation_->AddInstruction(HloInstruction::CreateSlice(
-          s_shape, original_start_indices, {index_of_zero_start},
-          {index_of_zero_start + 1}, {1}));
-  HloInstruction* new_start_indices =
-      lhs_is_dynamic_slice
-          ? computation_->AddInstruction(HloInstruction::CreateConcatenate(
-                d_shape, {non_zero_start, zero_start}, 0))
-          : computation_->AddInstruction(HloInstruction::CreateConcatenate(
-                d_shape, {zero_start, non_zero_start}, 0));
-
-  // Build DynamicSlice(ctA x ctB).
-  const int new_slice_m = lhs_is_dynamic_slice ? 1 : m;
-  const int new_slice_n = lhs_is_dynamic_slice ? n : 1;
-  auto* memoized_lookup =
-      computation_->AddInstruction(HloInstruction::CreateDynamicSlice(
-          dot->shape(), memoized_inst, new_start_indices,
-          {new_slice_m, new_slice_n}));
-
-  return memoized_lookup;
-}
-
 Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
   auto lhs = dot->mutable_operand(0);
   auto rhs = dot->mutable_operand(1);
@@ -1074,17 +944,6 @@ Status AlgebraicSimplifierVisitor::HandleDot(HloInstruction* dot) {
     VLOG(10) << "Replaced dot(concat(...), constant) with add(dot(..., "
                 "constant)...)";
     return ReplaceInstruction(dot, dot_of_concat_optimized);
-  }
-
-  // Simplify dot(ConstA, Gather(Index, ConstB)) to:
-  // Gather(Index, dot*(ConstA, ConstB)), where dot* is an appropriately
-  // batched version of dot.
-  TF_ASSIGN_OR_RETURN(HloInstruction * dot_of_gather_optimized,
-                      OptimizeDotOfGather(dot));
-  if (dot_of_gather_optimized) {
-    VLOG(10) << "Replaced dot(constA, gather(i, constB)) with "
-                "gather(i, dot*(constA, constB))";
-    return ReplaceInstruction(dot, dot_of_gather_optimized);
   }
 
   if (enable_dot_strength_reduction_ && !is_layout_sensitive_) {
