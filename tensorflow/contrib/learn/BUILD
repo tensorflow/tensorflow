@@ -7,6 +7,7 @@ exports_files(["LICENSE"])
 
 package(default_visibility = [
     "//engedu/ml/tf_from_scratch:__pkg__",
+    "//quality/sixface/sequel/experiments/deep_learning/entity_cloud:__pkg__",
     "//tensorflow:internal",
 ])
 
