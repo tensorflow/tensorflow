@@ -26,6 +26,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 import os
+import subprocess as _subprocess
+import tempfile as _tempfile
 
 # pylint: disable=unused-import
 from tensorflow.contrib.lite.python.op_hint import convert_op_hints_to_stubs
@@ -100,13 +102,10 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
     return _toco_python.TocoConvert(
         model_flags_str, toco_flags_str, input_data_str)
 
-  import subprocess
-  import tempfile
-
-  with tempfile.NamedTemporaryFile() as fp_toco, \
-           tempfile.NamedTemporaryFile() as fp_model, \
-           tempfile.NamedTemporaryFile() as fp_input, \
-           tempfile.NamedTemporaryFile() as fp_output:
+  with _tempfile.NamedTemporaryFile() as fp_toco, \
+           _tempfile.NamedTemporaryFile() as fp_model, \
+           _tempfile.NamedTemporaryFile() as fp_input, \
+           _tempfile.NamedTemporaryFile() as fp_output:
     fp_model.write(model_flags_str)
     fp_toco.write(toco_flags_str)
     fp_input.write(input_data_str)
@@ -119,11 +118,11 @@ def toco_convert_protos(model_flags_str, toco_flags_str, input_data_str):
         fp_output.name
     ]
     cmdline = " ".join(cmd)
-    proc = subprocess.Popen(
+    proc = _subprocess.Popen(
         cmdline,
         shell=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        stdout=_subprocess.PIPE,
+        stderr=_subprocess.STDOUT,
         close_fds=True)
     stdout, stderr = proc.communicate()
     exitcode = proc.returncode
