@@ -987,6 +987,7 @@ tf_cuda_cc_test(
     name = "constant_op_test",
     size = "small",
     srcs = ["constant_op_test.cc"],
+    tags = ["no_cuda_on_cpu_tap"],
     deps = [
         ":constant_op",
         ":ops_testutil",
