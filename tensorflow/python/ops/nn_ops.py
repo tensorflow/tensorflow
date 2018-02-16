@@ -2405,7 +2405,7 @@ def conv1d(value,
 
   Args:
     value: A 3D `Tensor`.  Must be of type `float16` or `float32`.
-    filters: A 3D `Tensor`.  Must have the same type as `input`.
+    filters: A 3D `Tensor`.  Must have the same type as `value`.
     stride: An `integer`.  The number of entries by which
       the filter is moved right at each step.
     padding: 'SAME' or 'VALID'
