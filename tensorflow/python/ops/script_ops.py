@@ -267,7 +267,7 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
   Given a python function `func`, which takes numpy arrays as its
-  inputs and returns numpy arrays as its outputs, wrap this function as an
+  arguments and returns numpy arrays as its outputs, wrap this function as an
   operation in a TensorFlow graph. The following snippet constructs a simple
   TensorFlow graph that invokes the `np.sinh()` NumPy function as a operation
   in the graph:
@@ -276,8 +276,8 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   def my_func(x):
     # x will be a numpy array with the contents of the placeholder below
     return np.sinh(x)
-  inp = tf.placeholder(tf.float32)
-  y = tf.py_func(my_func, [inp], tf.float32)
+  input = tf.placeholder(tf.float32)
+  y = tf.py_func(my_func, [input], tf.float32)
   ```
 
   **N.B.** The `tf.py_func()` operation has the following known limitations:
@@ -293,10 +293,12 @@ def py_func(func, inp, Tout, stateful=True, name=None):
     server (e.g. using `with tf.device():`).
 
   Args:
-    func: A Python function, which accepts a list of NumPy `ndarray` objects
-      having element types that match the corresponding `tf.Tensor` objects
-      in `inp`, and returns a list of `ndarray` objects (or a single `ndarray`)
-      having element types that match the corresponding values in `Tout`.
+    func: A Python function, which accepts `ndarray` objects as arguments and
+      returns a list of `ndarray` objects (or a single `ndarray`). This function
+      must accept as many arguments as there are tensors in `inp`, and these
+      argument types will match the corresponding `tf.Tensor` objects
+      in `inp`. The returns `ndarray`s must match the number and types defined
+      `Tout`.
       Important Note: Input and output numpy `ndarray`s of `func` are not
       guaranteed to be copies. In some cases their underlying memory will be
       shared with the corresponding TensorFlow tensors.
