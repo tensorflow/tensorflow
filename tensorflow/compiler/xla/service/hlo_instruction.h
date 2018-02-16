@@ -917,6 +917,9 @@ class HloInstruction {
   // Return true if this operator has a sharding assigned.
   bool has_sharding() const { return sharding_ != nullptr; }
 
+  // Adds a new operand the fusion instruction.
+  HloInstruction* AddFusionOperand(HloInstruction* new_operand);
+
   // Merges the fused instructions from 'instruction_to_merge' into the
   // fused instruction set of 'this', updating operands as necessary.
   //
