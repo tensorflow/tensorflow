@@ -37,6 +37,11 @@ namespace xla {
 // the expected result type for computations that are built up via the API --
 // the shape that results from an operation is inferred. Some methods have
 // overloads for inferring shape at the HLO level.
+//
+// TODO(b/73352135): Shape inference does not issue very good error messages, in
+// part because HloInstruction::ToString() is not available since shape
+// inference runs before the HloInstruction object is created. We need a
+// solution for this.
 class ShapeInference {
  public:
   // Infers the shape produced by applying the given unary operation to the

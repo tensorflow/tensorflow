@@ -770,6 +770,10 @@ class HloInstruction {
   //
   // (We express the default options using an overload rather than a default
   // param because gdb ignores default params, but does resolve overloads.)
+  //
+  // TODO(b/73348663): Make ToString() adaptive to the size of the string by
+  // default, backing off on providing full information for very large strings,
+  // or provide a different name for a ToString-like function that does that.
   string ToString() const { return ToString(HloPrintOptions()); }
   string ToString(const HloPrintOptions& options) const;
 
