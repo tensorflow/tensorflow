@@ -1043,7 +1043,7 @@ def export_model(sess, architecture, saved_model_dir):
   builder = tf.saved_model.builder.SavedModelBuilder(saved_model_dir)
   builder.add_meta_graph_and_variables(
       sess, [tf.saved_model.tag_constants.SERVING],
-      signature_def_map = {
+      signature_def_map={
           tf.saved_model.signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY: 
           signature
       },
