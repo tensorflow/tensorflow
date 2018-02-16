@@ -79,6 +79,7 @@ namespace xla {
   V(kGe, "greater-than-or-equal-to", kHloOpcodeIsComparison) \
   V(kGetTupleElement, "get-tuple-element")                   \
   V(kGt, "greater-than", kHloOpcodeIsComparison)             \
+  V(kHostCompute, "host-compute")                            \
   V(kImag, "imag")                                           \
   V(kInfeed, "infeed")                                       \
   V(kIsFinite, "is-finite")                                  \

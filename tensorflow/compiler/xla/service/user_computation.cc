@@ -1276,6 +1276,28 @@ StatusOr<ComputationDataHandle> UserComputation::AddCustomCallInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddHostComputeInstruction(
+    const HostComputeRequest& host_compute_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  for (const ComputationDataHandle& handle : host_compute_request.operands()) {
+    TF_RETURN_IF_ERROR(LookUpRequest(handle).status());
+  }
+
+  ComputationDataHandle handle = CreateComputationDataHandle();
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = host_compute_request.shape();
+  *request.mutable_request()->mutable_host_compute_request() =
+      host_compute_request;
+
+  VLOG(1) << "AddHostComputeInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << host_compute_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddDotInstruction(
     const DotRequest& dot_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1709,6 +1731,11 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
     }
 
     case OpRequest::kOutfeedRequest: {
+      *is_functional = false;
+      break;
+    }
+
+    case OpRequest::kHostComputeRequest: {
       *is_functional = false;
       break;
     }
@@ -2643,6 +2670,15 @@ static void ForEachOperand(
       break;
     }
 
+    case OpRequest::kHostComputeRequest: {
+      const HostComputeRequest& hc_request =
+          request.request().host_compute_request();
+      for (const ComputationDataHandle& operand : hc_request.operands()) {
+        apply(operand);
+      }
+      break;
+    }
+
     case OpRequest::kDotRequest: {
       const DotRequest& dot_request = request.request().dot_request();
       apply(dot_request.rhs());
@@ -3296,6 +3332,22 @@ void ComputationLowerer::Visit(
       }
       hlo_instruction = add_instruction(HloInstruction::CreateCustomCall(
           cc_request.shape(), operands, cc_request.call_target_name()));
+      break;
+    }
+
+    case OpRequest::kHostComputeRequest: {
+      const HostComputeRequest& host_compute_request =
+          request.request().host_compute_request();
+      std::vector<HloInstruction*> operands;
+      for (const ComputationDataHandle& operand :
+           host_compute_request.operands()) {
+        operands.push_back(lookup_instruction(operand));
+      }
+      auto output_shape = host_compute_request.shape();
+      auto channel_name = host_compute_request.channel_name();
+      auto cost_estimate_ns = host_compute_request.cost_estimate_ns();
+      hlo_instruction = add_instruction(HloInstruction::CreateHostCompute(
+          output_shape, operands, channel_name, cost_estimate_ns));
       break;
     }
 

@@ -1094,6 +1094,7 @@ bool HloInstruction::HasSideEffect() const {
     case HloOpcode::kInfeed:
     case HloOpcode::kOutfeed:
     case HloOpcode::kTrace:
+    case HloOpcode::kHostCompute:
       return true;
     default: {
       // Check if any of the called computations has a side effect.
@@ -1128,6 +1129,19 @@ bool HloInstruction::HasSideEffect() const {
     instruction->AppendOperand(operand);
   }
   instruction->custom_call_target_ = custom_call_target.ToString();
+  return instruction;
+}
+
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateHostCompute(
+    const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+    tensorflow::StringPiece channel_name, const int64 cost_estimate_ns) {
+  std::unique_ptr<HloInstruction> instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kHostCompute, shape));
+  for (auto operand : operands) {
+    instruction->AppendOperand(operand);
+  }
+  instruction->channel_name_ = channel_name.ToString();
+  instruction->cost_estimate_ns_ = cost_estimate_ns;
   return instruction;
 }
 
@@ -1221,6 +1235,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kCustomCall:
       clone = CreateCustomCall(shape, new_operands, custom_call_target_);
+      break;
+    case HloOpcode::kHostCompute:
+      clone = CreateHostCompute(shape, new_operands, channel_name_,
+                                cost_estimate_ns_);
       break;
     case HloOpcode::kConcatenate:
       clone = CreateConcatenate(shape, new_operands, dimensions(0));
@@ -1792,6 +1810,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
+    case HloOpcode::kHostCompute:
       return false;
   }
 }
@@ -2577,6 +2596,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleInfeed(this);
     case HloOpcode::kOutfeed:
       return visitor->HandleOutfeed(this);
+    case HloOpcode::kHostCompute:
+      return visitor->HandleHostCompute(this);
     case HloOpcode::kRng:
       return visitor->HandleRng(this);
     case HloOpcode::kWhile:

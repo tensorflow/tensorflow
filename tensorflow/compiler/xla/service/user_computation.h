@@ -149,6 +149,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddOutfeedInstruction(
       const OutfeedRequest& outfeed_request);
 
+  // Enqueues a host compute instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddHostComputeInstruction(
+      const HostComputeRequest& host_compute_request);
+
   // Enqueues a call instruction onto this user computation.
   StatusOr<ComputationDataHandle> AddCallInstruction(
       const CallRequest& call_request,

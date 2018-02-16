@@ -125,6 +125,10 @@ Status ShapeVerifier::HandleOutfeed(HloInstruction* outfeed) {
   return CheckShape(outfeed, ShapeUtil::MakeNil());
 }
 
+Status ShapeVerifier::HandleHostCompute(HloInstruction*) {
+  return tensorflow::Status::OK();
+}
+
 Status ShapeVerifier::HandleRng(HloInstruction*) {
   return tensorflow::Status::OK();
 }

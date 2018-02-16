@@ -475,6 +475,12 @@ class HloInstruction {
       const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       tensorflow::StringPiece custom_call_target);
 
+  // Creates a HostCompute instruction, which records host-side control and
+  // data dependencies for use in instruction scheduling.
+  static std::unique_ptr<HloInstruction> CreateHostCompute(
+      const Shape& shape, tensorflow::gtl::ArraySlice<HloInstruction*> operands,
+      tensorflow::StringPiece channel_name, const int64 cost_estimate_ns);
+
   // Creates a tuple instruction with the given elements. This is a convenience
   // wrapper around CreateVariadic.
   static std::unique_ptr<HloInstruction> CreateTuple(
@@ -1397,6 +1403,12 @@ class HloInstruction {
 
   // Name of a global symbol to call, only present for kCustomCall.
   string custom_call_target_;
+
+  // Name to use for host send/recv channels, only present for kHostCompute.
+  string channel_name_;
+
+  // Estimate of the duration of a host computation in nanoseconds.
+  int64 cost_estimate_ns_;
 
   // Computations called by this instruction.
   std::vector<HloComputation*> called_computations_;

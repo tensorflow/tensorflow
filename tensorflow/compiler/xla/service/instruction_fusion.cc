@@ -102,6 +102,7 @@ namespace xla {
     case HloOpcode::kExp:
     case HloOpcode::kFft:
     case HloOpcode::kFusion:
+    case HloOpcode::kHostCompute:
     case HloOpcode::kLog:
     case HloOpcode::kMap:
     case HloOpcode::kParameter:

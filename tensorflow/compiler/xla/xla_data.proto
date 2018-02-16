@@ -519,6 +519,20 @@ message CustomCallRequest {
   Shape shape = 4;
 }
 
+message HostComputeRequest {
+  // Operand to the HostCompute. Supports tuple.
+  repeated ComputationDataHandle operands = 1;
+
+  // Name used to identify HostSend/Recv channels.
+  string channel_name = 2;
+
+  // Cost estimate in nanoseconds.
+  int64 cost_estimate_ns = 3;
+
+  // The shape of any data returned by host.
+  Shape shape = 4;
+}
+
 message DotDimensionNumbers {
   // The dimension numbers that represent the 'lhs' contracting dimensions.
   repeated int64 lhs_contracting_dimensions = 1;
@@ -957,7 +971,8 @@ message OpRequest {
     FftRequest fft_request = 41;
     ConvertRequest bitcast_convert_request = 42;
     ConditionalRequest conditional_request = 44;
-    // Next: 45
+    HostComputeRequest host_compute_request = 45;
+    // Next: 46
   }
 }
 

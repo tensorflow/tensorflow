@@ -994,6 +994,20 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           shape, operands, *custom_call_target));
       break;
     }
+    case HloOpcode::kHostCompute: {
+      optional<string> channel_name;
+      optional<int64> cost_estimate_ns;
+      attrs["channel_name"] = {/*required=*/true, AttrTy::kString,
+                               &channel_name};
+      attrs["cost_estimate_ns"] = {/*required=*/true, AttrTy::kInt64,
+                                   &cost_estimate_ns};
+      if (!ParseOperands(&operands) || !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateHostCompute(
+          shape, operands, *channel_name, *cost_estimate_ns));
+      break;
+    }
     case HloOpcode::kDot: {
       optional<std::vector<int64>> lhs_contracting_dims;
       attrs["lhs_contracting_dims"] = {
