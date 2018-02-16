@@ -15,6 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_compiler.h"
 
+#ifdef __FAST_MATH__
+#error "Don't build XLA with -ffast-math"
+#endif
+
 namespace xla {
 StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> modules,

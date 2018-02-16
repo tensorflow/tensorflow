@@ -189,6 +189,11 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
 }
 
 void Transform(const TocoFlags& toco_flags, Model* model) {
+  // Clean up after import.
+  SetFinalDataTypeOnInputs(toco_flags, model);
+  UseArraysExtraInfo(model);
+  FinishBuildingRNNStates(model);
+
   const FileFormat output_format = toco_flags.output_format();
   const IODataType inference_type = toco_flags.inference_type();
 
@@ -199,9 +204,6 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     QCHECK_NE(toco_flags.inference_input_type(), FLOAT)
         << "Quantized inference is not allowed with float inputs.";
   }
-
-  SetFinalDataTypeOnInputs(toco_flags, model);
-  UseArraysExtraInfo(model);
 
   // Remove unused ops before performing any other optimizations. This is to
   // stop optimizations from crossing the input/output boundaries. For example
