@@ -51,11 +51,13 @@ enum KernelType {
   kCblasOptimized,
 };
 
+const int kTensorNotAllocated = -1;
+
 struct OpData {
   // IDs are the arbitrary identifiers used by TF Lite to identify and access
   // memory buffers.
-  int im2col_id;
-  int hwcn_weights_id;
+  int im2col_id = kTensorNotAllocated;
+  int hwcn_weights_id = kTensorNotAllocated;
 
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -80,8 +82,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Instead, we allocate a new object to use as scratch space for im2col, and
   // to carry information from Prepare() to Eval().
   auto* data = new OpData;
-  context->AddTensors(context, 1, &data->im2col_id);
-  context->AddTensors(context, 1, &data->hwcn_weights_id);
   gemm_support::IncrementUsageCounter(context);
   return data;
 }
@@ -219,10 +219,16 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int temporaries_count = 0;
   if (data->need_im2col) {
     data->im2col_index = temporaries_count;
+    if (data->im2col_id == kTensorNotAllocated) {
+      context->AddTensors(context, 1, &data->im2col_id);
+    }
     ++temporaries_count;
   }
   if (data->need_hwcn_weights) {
     data->hwcn_weights_index = temporaries_count;
+    if (data->hwcn_weights_id == kTensorNotAllocated) {
+      context->AddTensors(context, 1, &data->hwcn_weights_id);
+    }
     ++temporaries_count;
   }
 
