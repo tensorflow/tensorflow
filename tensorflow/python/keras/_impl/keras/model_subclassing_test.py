@@ -376,11 +376,11 @@ class ModelSubclassingTest(test.TestCase):
     with self.test_session():
       model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
       model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32)
+      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
       model.fit({'input_1': x1, 'input_2': x2},
                 {'output_1': y1, 'output_2': y2},
                 epochs=2, batch_size=32)
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32,
+      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0,
                 validation_data=([x1, x2], [y1, y2]))
 
       model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
@@ -438,7 +438,7 @@ class ModelSubclassingTest(test.TestCase):
     with self.test_session():
       model = MultiIOTestModel(num_classes=num_classes, use_bn=True)
       model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
-      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32)
+      model.fit([x1, x2], [y1, y2], epochs=2, batch_size=32, verbose=0)
       y_ref_1, y_ref_2 = model.predict([x1, x2])
 
       fd, fname = tempfile.mkstemp('.h5')
@@ -552,6 +552,37 @@ class ModelSubclassingTest(test.TestCase):
       self.assertEqual(
           len(model.non_trainable_weights), 4)
       self.assertEqual(len(model.trainable_weights), 12)
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_support_for_manual_training_arg(self):
+    # In most cases, the `training` argument is left unspecified, in which
+    # case it defaults to value corresponding to the Model method being used
+    # (fit -> True, predict -> False, etc).
+    # If the user writes their model `call` method to take
+    # an explicit `training` argument, we must check that the correct value
+    # is being passed to the model for each method call.
+
+    class DPNet(keras.Model):
+
+      def __init__(self):
+        super(DPNet, self).__init__()
+        self.dp = keras.layers.Dropout(0.5)
+        self.dense = keras.layers.Dense(1,
+                                        use_bias=False,
+                                        kernel_initializer='ones')
+
+      def call(self, inputs, training=False):
+        x = self.dp(inputs, training=training)
+        return self.dense(x)
+
+    with self.test_session():
+      model = DPNet()
+      x = np.ones((10, 10))
+      y = model.predict(x)
+      self.assertEqual(np.sum(y), np.sum(x))
+      model.compile(loss='mse', optimizer=RMSPropOptimizer(learning_rate=0.001))
+      loss = model.train_on_batch(x, y)
+      self.assertGreater(loss, 0.1)
 
 
 if __name__ == '__main__':
