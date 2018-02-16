@@ -1446,6 +1446,9 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kFftRequest:
       handle_status = computation->AddFftInstruction(arg->fft_request());
       break;
+    case OpRequest::kGatherRequest:
+      handle_status = computation->AddGatherInstruction(arg->gather_request());
+      break;
     case OpRequest::kGetTupleElementRequest:
       handle_status = computation->AddGetTupleElementInstruction(
           arg->get_tuple_element_request());

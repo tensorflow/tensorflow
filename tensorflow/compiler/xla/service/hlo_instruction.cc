@@ -1155,6 +1155,38 @@ bool HloInstruction::HasSideEffect() const {
   return CreateVariadic(tuple_shape, HloOpcode::kTuple, elements);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateGather(
+    const Shape& shape, HloInstruction* operand, HloInstruction* gather_indices,
+    const GatherDimensionNumbers& gather_dim_numbers,
+    tensorflow::gtl::ArraySlice<int64> window_bounds) {
+  std::unique_ptr<HloInstruction> instruction =
+      WrapUnique(new HloInstruction(HloOpcode::kGather, shape));
+  instruction->AppendOperand(operand);
+  instruction->AppendOperand(gather_indices);
+  instruction->gather_dimension_numbers_ =
+      MakeUnique<GatherDimensionNumbers>(gather_dim_numbers);
+  c_copy(window_bounds, std::back_inserter(instruction->gather_window_bounds_));
+  return instruction;
+}
+
+/* static */ GatherDimensionNumbers HloInstruction::MakeGatherDimNumbers(
+    tensorflow::gtl::ArraySlice<int64> output_window_dims,
+    tensorflow::gtl::ArraySlice<int64> elided_window_dims,
+    tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims) {
+  GatherDimensionNumbers gather_dim_numbers;
+  for (int64 output_window_dim : output_window_dims) {
+    gather_dim_numbers.add_output_window_dims(output_window_dim);
+  }
+  for (int64 elided_window_dim : elided_window_dims) {
+    gather_dim_numbers.add_elided_window_dims(elided_window_dim);
+  }
+  for (int64 gather_dim_to_input_dim : gather_dims_to_operand_dims) {
+    gather_dim_numbers.add_gather_dims_to_operand_dims(gather_dim_to_input_dim);
+  }
+
+  return gather_dim_numbers;
+}
+
 std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     const Shape& shape,
     tensorflow::gtl::ArraySlice<HloInstruction*> new_operands,
@@ -1396,6 +1428,11 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kRecvDone:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateRecvDone(new_operands[0]);
+      break;
+    case HloOpcode::kGather:
+      CHECK_EQ(new_operands.size(), 2);
+      clone = CreateGather(shape, new_operands[0], new_operands[1],
+                           *gather_dimension_numbers_, gather_window_bounds_);
       break;
     case HloOpcode::kTrace:
       LOG(FATAL) << "Not yet implemented, clone: " << HloOpcodeString(opcode_);
@@ -1739,6 +1776,11 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDot:
       return protobuf_util::ProtobufEquals(dot_dimension_numbers(),
                                            other.dot_dimension_numbers());
+
+    case HloOpcode::kGather:
+      return protobuf_util::ProtobufEquals(gather_dimension_numbers(),
+                                           other.gather_dimension_numbers()) &&
+             gather_window_bounds() == other.gather_window_bounds();
 
     // FFT has various types & lengths.
     case HloOpcode::kFft:
@@ -2171,6 +2213,11 @@ std::vector<string> HloInstruction::ExtraAttributesToString(
   if (dot_dimension_numbers_ != nullptr) {
     extra.push_back(DotDimensionNumbersToString());
   }
+  if (gather_dimension_numbers_ != nullptr) {
+    extra.push_back(GatherDimensionNumbersToString());
+    extra.push_back(
+        StrCat("window_bounds={", Join(gather_window_bounds(), ","), "}"));
+  }
   if (opcode() == HloOpcode::kFft) {
     extra.push_back(StrCat("fft_type=", FftType_Name(fft_type())));
     extra.push_back(StrCat("fft_length={", Join(fft_length(), ","), "}"));
@@ -2301,6 +2348,14 @@ HloInstructionProto HloInstruction::ToProto() const {
   }
   if (dot_dimension_numbers_ != nullptr) {
     *proto.mutable_dot_dimension_numbers() = *dot_dimension_numbers_;
+  }
+  if (gather_dimension_numbers_ != nullptr) {
+    *proto.mutable_gather_dimension_numbers() = *gather_dimension_numbers_;
+  }
+  if (opcode() == HloOpcode::kGather) {
+    for (int64 bound : gather_window_bounds()) {
+      proto.add_gather_window_bounds(bound);
+    }
   }
   for (int i = 0; i < slice_starts_.size(); ++i) {
     auto* slice_dimension = proto.add_slice_dimensions();
@@ -2618,6 +2673,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleSend(this);
     case HloOpcode::kSendDone:
       return visitor->HandleSendDone(this);
+    case HloOpcode::kGather:
+      return visitor->HandleGather(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:
@@ -3299,6 +3356,23 @@ string HloInstruction::DotDimensionNumbersToString() const {
                           Join(dnums.rhs_contracting_dimensions(), ","), "}"));
 
   return Join(result, ", ");
+}
+
+string HloInstruction::GatherDimensionNumbersToString() const {
+  CHECK_NE(gather_dimension_numbers_.get(), nullptr);
+  string output_window_dims =
+      StrCat("output_window_dims={",
+             Join(gather_dimension_numbers_->output_window_dims(), ","), "}");
+  string elided_window_dims =
+      StrCat("elided_window_dims={",
+             Join(gather_dimension_numbers_->elided_window_dims(), ","), "}");
+  string gather_dims_to_operand_dims = StrCat(
+      "gather_dims_to_operand_dims={",
+      Join(gather_dimension_numbers_->gather_dims_to_operand_dims(), ","), "}");
+
+  return Join<std::initializer_list<string>>(
+      {output_window_dims, elided_window_dims, gather_dims_to_operand_dims},
+      ", ");
 }
 
 bool HloInstruction::CouldBeBitcast() const {

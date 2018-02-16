@@ -242,6 +242,10 @@ class UserComputation {
   StatusOr<ComputationDataHandle> AddRecvInstruction(
       const RecvRequest& recv_request);
 
+  // Enqueues a Gather instruction onto this user computation.
+  StatusOr<ComputationDataHandle> AddGatherInstruction(
+      const GatherRequest& gather_request);
+
   // Returns the user-provided name of this user computation, which is provided
   // via the XLA computation-building API.
   const string& name() const { return name_; }

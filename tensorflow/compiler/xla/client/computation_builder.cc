@@ -1234,6 +1234,22 @@ ComputationDataHandle ComputationBuilder::While(
   return RunOpAndParseResponse(&op_request);
 }
 
+ComputationDataHandle ComputationBuilder::Gather(
+    const ComputationDataHandle& input,
+    const ComputationDataHandle& gather_indices,
+    const GatherDimensionNumbers& dimension_numbers,
+    tensorflow::gtl::ArraySlice<int64> window_bounds) {
+  OpRequest op_request;
+  GatherRequest* gather_request = op_request.mutable_gather_request();
+  *gather_request->mutable_input() = input;
+  *gather_request->mutable_gather_indices() = gather_indices;
+  *gather_request->mutable_dimension_numbers() = dimension_numbers;
+  for (int64 window_bound : window_bounds) {
+    gather_request->add_window_bounds(window_bound);
+  }
+  return RunOpAndParseResponse(&op_request);
+}
+
 ComputationDataHandle ComputationBuilder::Conditional(
     const ComputationDataHandle& predicate,
     const ComputationDataHandle& true_operand,

@@ -100,6 +100,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleTranspose(const HloInstruction* transpose) override;
   Status HandleWhile(const HloInstruction* xla_while) override;
   Status HandleConditional(const HloInstruction* conditional) override;
+  Status HandleGather(const HloInstruction* gather) override;
   Status FinishVisit(const HloInstruction* root) override;
 
   Status Preprocess(const HloInstruction* hlo) override;

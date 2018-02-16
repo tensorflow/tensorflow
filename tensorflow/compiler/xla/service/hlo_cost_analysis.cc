@@ -533,6 +533,11 @@ Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleGather(const HloInstruction* gather) {
+  // Gather does not issue any flops.
+  return Status::OK();
+}
+
 Status HloCostAnalysis::FinishVisit(const HloInstruction*) {
   return Status::OK();
 }

@@ -451,6 +451,12 @@ class HloInstruction {
       HloInstruction* true_computation_arg, HloComputation* true_computation,
       HloInstruction* false_computation_arg, HloComputation* false_computation);
 
+  static std::unique_ptr<HloInstruction> CreateGather(
+      const Shape& shape, HloInstruction* operand,
+      HloInstruction* gather_indices,
+      const GatherDimensionNumbers& gather_dim_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
+
   // Creates a fusion instruction. A fusion instruction contains one or more
   // fused instructions forming an expression with a single root
   // "fused_root". Additional instructions can be added to the fusion
@@ -491,6 +497,12 @@ class HloInstruction {
   static std::unique_ptr<HloInstruction> CreateReverse(
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> dimensions);
+
+  // Creates an instance of GatherDimensionNumbers.
+  static GatherDimensionNumbers MakeGatherDimNumbers(
+      tensorflow::gtl::ArraySlice<int64> output_window_dims,
+      tensorflow::gtl::ArraySlice<int64> elided_window_dims,
+      tensorflow::gtl::ArraySlice<int64> gather_dims_to_operand_dims);
 
   // Returns the opcode for this instruction.
   HloOpcode opcode() const { return opcode_; }
@@ -1102,6 +1114,19 @@ class HloInstruction {
   // Returns the dump string of the dot dimension numbers.
   string DotDimensionNumbersToString() const;
 
+  const GatherDimensionNumbers& gather_dimension_numbers() const {
+    CHECK(gather_dimension_numbers_ != nullptr);
+    return *gather_dimension_numbers_;
+  }
+
+  tensorflow::gtl::ArraySlice<int64> gather_window_bounds() const {
+    CHECK_EQ(opcode(), HloOpcode::kGather);
+    return gather_window_bounds_;
+  }
+
+  // Returns the dump string of the gather dimension numbers.
+  string GatherDimensionNumbersToString() const;
+
   // Returns the random distribution for this rng node.
   //
   // Precondition: opcode() == HloOpcode::kRng
@@ -1365,6 +1390,9 @@ class HloInstruction {
 
   // Describes the dimension numbers used for a dot.
   std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
+
+  std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers_;
+  std::vector<int64> gather_window_bounds_;
 
   // Describes FFT type for an FFT instruction.
   FftType fft_type_ = FftType::FFT;

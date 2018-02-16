@@ -214,6 +214,7 @@ class DfsHloVisitorBase {
   virtual Status HandleSelectAndScatter(HloInstructionPtr hlo) = 0;
   virtual Status HandleWhile(HloInstructionPtr hlo) = 0;
   virtual Status HandleConditional(HloInstructionPtr hlo) = 0;
+  virtual Status HandleGather(HloInstructionPtr hlo) = 0;
 
   virtual Status HandlePad(HloInstructionPtr hlo) = 0;
 

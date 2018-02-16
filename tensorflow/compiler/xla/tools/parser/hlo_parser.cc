@@ -1049,6 +1049,9 @@ bool HloParser::ParseInstruction(HloComputation::Builder* builder,
           HloInstruction::CreateDot(shape, operands[0], operands[1], dnum));
       break;
     }
+    case HloOpcode::kGather:
+      // TODO(b/72710576): HLO parsing is not implemented for Gather.
+      return TokenError("HLO parsing is not implemented for Gather");
     case HloOpcode::kTrace:
       return TokenError(StrCat("parsing not yet implemented for op: ",
                                HloOpcodeString(opcode)));

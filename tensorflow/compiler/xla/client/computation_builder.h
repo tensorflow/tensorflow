@@ -718,6 +718,13 @@ class ComputationBuilder {
                                         const int exponent_bits,
                                         const int mantissa_bits);
 
+  // Enqueues a Gather node onto the computation.
+  ComputationDataHandle Gather(
+      const ComputationDataHandle& input,
+      const ComputationDataHandle& gather_indices,
+      const GatherDimensionNumbers& dimension_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
+
   // Enqueues a Send node onto the computation, to send the given operand to
   // a Recv instruction that shares the same channel handle.
   void Send(const ComputationDataHandle& operand, const ChannelHandle& handle);

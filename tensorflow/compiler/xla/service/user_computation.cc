@@ -315,6 +315,36 @@ StatusOr<ComputationDataHandle> UserComputation::AddConstantInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddGatherInstruction(
+    const GatherRequest& gather_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* input_request,
+                      LookUpRequest(gather_request.input()));
+  TF_ASSIGN_OR_RETURN(const OperationRequest* gather_indices_request,
+                      LookUpRequest(gather_request.gather_indices()));
+
+  TF_ASSIGN_OR_RETURN(
+      Shape shape,
+      ShapeInference::InferGatherShape(
+          input_request->output_shape(), gather_indices_request->output_shape(),
+          gather_request.dimension_numbers(),
+          AsInt64Slice(gather_request.window_bounds())));
+
+  const ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = shape;
+  *request.mutable_request()->mutable_gather_request() = gather_request;
+
+  VLOG(1) << "AddGatherInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << gather_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddGetTupleElementInstruction(
     const GetTupleElementRequest& get_tuple_element_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -2018,6 +2048,16 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kGatherRequest: {
+      PureFunctionalVisitor(session_computation,
+                            request.request().gather_request().input(),
+                            num_parameters, visited, is_functional);
+      PureFunctionalVisitor(session_computation,
+                            request.request().gather_request().gather_indices(),
+                            num_parameters, visited, is_functional);
+      break;
+    }
+
     case OpRequest::OP_NOT_SET:
       LOG(FATAL) << "OperationRequest doesn't contain a request";
 
@@ -2717,6 +2757,13 @@ static void ForEachOperand(
     case OpRequest::kSendRequest: {
       const SendRequest& send_request = request.request().send_request();
       apply(send_request.operand());
+      break;
+    }
+
+    case OpRequest::kGatherRequest: {
+      const GatherRequest& gather_request = request.request().gather_request();
+      apply(gather_request.input());
+      apply(gather_request.gather_indices());
       break;
     }
 
@@ -3450,6 +3497,20 @@ void ComputationLowerer::Visit(
       HloInstruction* send = add_instruction(HloInstruction::CreateSend(
           operand, send_request.channel_handle().handle()));
       hlo_instruction = add_instruction(HloInstruction::CreateSendDone(send));
+      break;
+    }
+
+    case OpRequest::kGatherRequest: {
+      const GatherRequest& gather_request = request.request().gather_request();
+      HloInstruction* input_operand =
+          lookup_instruction(gather_request.input());
+      HloInstruction* gather_indices_operand =
+          lookup_instruction(gather_request.gather_indices());
+      std::vector<int64> window_bounds;
+      c_copy(gather_request.window_bounds(), std::back_inserter(window_bounds));
+      hlo_instruction = add_instruction(HloInstruction::CreateGather(
+          request.output_shape(), input_operand, gather_indices_operand,
+          gather_request.dimension_numbers(), window_bounds));
       break;
     }
 

@@ -424,6 +424,14 @@ Status CheckMixedPrecisionOperands(const HloInstruction* instruction) {
 
 }  // namespace
 
+Status ShapeVerifier::HandleGather(HloInstruction* gather) {
+  return CheckShape(
+      gather,
+      ShapeInference::InferGatherShape(
+          gather->operand(0)->shape(), gather->operand(1)->shape(),
+          gather->gather_dimension_numbers(), gather->gather_window_bounds()));
+}
+
 Status ShapeVerifier::CheckShape(const HloInstruction* instruction,
                                  const Shape& inferred_shape) {
   // If allow_mixed_precision_ is false, check if there are operands with

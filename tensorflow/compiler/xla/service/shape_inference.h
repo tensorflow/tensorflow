@@ -253,6 +253,14 @@ class ShapeInference {
       const Shape& lhs, const Shape& rhs,
       const DotDimensionNumbers& dimension_numbers);
 
+  // Helper that infers the shape of the tensor produced by a gather operation
+  // with the given input shape, gather indices shape and gather dimension
+  // numbers.
+  static StatusOr<Shape> InferGatherShape(
+      const Shape& input_shape, const Shape& gather_indices_shape,
+      const GatherDimensionNumbers& gather_dim_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
+
  private:
   // Helper that infers the shape produced by performing an element-wise binary
   // operation with the given LHS and RHS shapes.
