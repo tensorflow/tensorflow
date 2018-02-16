@@ -276,6 +276,17 @@ template <>
 tensorflow::DataType TFAttrs::get<tensorflow::DataType>(string key) const {
   return this->at(key)->type();
 }
+
+template <>
+float TFAttrs::get<float>(string key) const {
+  return this->at(key)->f();
+}
+
+template <>
+bool TFAttrs::get<bool>(string key) const {
+  return this->at(key)->b();
+}
+
 // TODO(jie): reorder4 & reorder2 should be merged?
 template <typename T>
 void Reorder4(nvinfer1::DimsNCHW shape, const T* idata,
@@ -1703,6 +1714,60 @@ tensorflow::Status ConvertConcat(Converter& ctx,
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertFusedBatchNorm(Converter& ctx,
+                                         tensorflow::NodeDef const& node_def,
+                                         std::vector<TRT_TensorOrWeights> const& inputs,
+                                         std::vector<TRT_TensorOrWeights>* outputs) {
+  TFAttrs attrs(node_def);
+  float epsilon = attrs.get<float>("epsilon");
+  auto data_format = attrs.get<string>("data_format");
+  if (data_format != "NCHW" ) {
+    return tensorflow::errors::Unimplemented(
+      "only data_format=NCHW is supported, at " + node_def.name());
+  }
+  bool is_training = attrs.get<bool>("is_training");
+  if (is_training) {
+    return tensorflow::errors::Unimplemented(
+      "only is_training=false is supported, at " + node_def.name());
+  }
+  nvinfer1::ITensor const* tensor    = inputs.at(0).tensor();
+  TRT_ShapedWeights scale_weights    = inputs.at(1).weights();
+  TRT_ShapedWeights offset_weights   = inputs.at(2).weights();
+  TRT_ShapedWeights mean_weights     = inputs.at(3).weights();
+  TRT_ShapedWeights variance_weights = inputs.at(4).weights();
+  TRT_ShapedWeights dummy_power_weights(scale_weights.type_);
+  TRT_ShapedWeights combined_scale_weights =
+      ctx.get_temp_weights_like(scale_weights);
+  TRT_ShapedWeights combined_offset_weights =
+      ctx.get_temp_weights_like(offset_weights);
+  size_t nweight = scale_weights.count();
+  if (scale_weights.type_    != tensorflow::DataType::DT_FLOAT ||
+      offset_weights.type_   != tensorflow::DataType::DT_FLOAT ||
+      mean_weights.type_     != tensorflow::DataType::DT_FLOAT ||
+      variance_weights.type_ != tensorflow::DataType::DT_FLOAT) {
+    return tensorflow::errors::Unimplemented(
+      "only float32 weights data type is supported, at " + node_def.name());
+  }
+  for (size_t i=0; i<nweight; ++i) {
+    float scale    = (static_cast<float const*>(scale_weights.GetValues()))[i];
+    float offset   = (static_cast<float const*>(offset_weights.GetValues()))[i];
+    float mean     = (static_cast<float const*>(mean_weights.GetValues()))[i];
+    float variance = (static_cast<float const*>(variance_weights.GetValues()))[i];
+    float& combined_scale_ref = const_cast<float*>(
+        static_cast<float const*>(combined_scale_weights.GetValues()))[i];
+    float& combined_offset_ref  = const_cast<float*>(
+        static_cast<float const*>(combined_offset_weights.GetValues()))[i];
+    combined_scale_ref  = scale / sqrtf(variance + epsilon);
+    combined_offset_ref = offset - mean * combined_scale_ref;
+  }
+  nvinfer1::IScaleLayer* layer = ctx.network()->addScale(
+      *const_cast<nvinfer1::ITensor*>(tensor), nvinfer1::ScaleMode::kCHANNEL,
+      combined_offset_weights, combined_scale_weights, dummy_power_weights);
+  nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+  outputs->push_back(TRT_TensorOrWeights(output_tensor));
+  return tensorflow::Status::OK();
+}
+
 tensorflow::Status ConvertMatMul(Converter& ctx,
                                  tensorflow::NodeDef const& node_def,
                                  std::vector<TRT_TensorOrWeights> const& inputs,
@@ -1827,6 +1892,8 @@ void Converter::register_op_converters() {
   op_registry_["ConcatV2"] = ConvertConcat;
   op_registry_["MatMul"] = ConvertMatMul;
   op_registry_["Reshape"] = ConvertReshape;
+  op_registry_["FusedBatchNorm"] = ConvertFusedBatchNorm;
+  op_registry_["FusedBatchNormV2"] = ConvertFusedBatchNorm;
 }
 
 }  // namespace
