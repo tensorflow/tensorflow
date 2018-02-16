@@ -29,6 +29,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import checkpointable
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
@@ -36,7 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("Variable")
-class Variable(object):
+class Variable(checkpointable.Checkpointable):
   """See the @{$variables$Variables How To} for a high level overview.
 
   A variable maintains state in the graph across calls to `run()`. You add a
@@ -305,6 +306,11 @@ class Variable(object):
           "or set. Got %s of type %s" % (collections, type(collections)))
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
+
+    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
+      self._maybe_initialize_checkpointable()
+      self._update_uid = initial_value.checkpoint_position.restore_uid
+      initial_value = initial_value.wrapped_value
 
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:
       collections = list(collections) + [ops.GraphKeys.TRAINABLE_VARIABLES]
@@ -785,6 +791,20 @@ class Variable(object):
       pass
 
     setattr(Variable, operator, _run_op)
+
+  def _scatter_tensors_from_checkpoint(self, attributes):
+    """For implementing `Checkpointable`. Return an assignment op to run."""
+    if (len(attributes) != 1
+        or checkpointable.VARIABLE_VALUE_KEY not in attributes):
+      raise ValueError(
+          ("The variable %s was restored with unexpected values (expected one "
+           "with key %s, got %s)") % (
+               self, checkpointable.VARIABLE_VALUE_KEY, attributes))
+    return self.assign(attributes[checkpointable.VARIABLE_VALUE_KEY])
+
+  def _gather_tensors_for_checkpoint(self):
+    """For implementing `Checkpointable`. This object is saveable on its own."""
+    return {checkpointable.VARIABLE_VALUE_KEY: self}
 
   def _try_guard_against_uninitialized_dependencies(self, initial_value):
     """Attempt to guard against dependencies on uninitialized variables.

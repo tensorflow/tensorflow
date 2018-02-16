@@ -65,7 +65,7 @@ llvm::StringRef AsStringRef(tensorflow::StringPiece str) {
 
 std::unique_ptr<llvm::Module> DropConstantInitializers(
     const llvm::Module& module) {
-  std::unique_ptr<llvm::Module> cloned_module = CloneModule(&module);
+  std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
   for (llvm::GlobalVariable& global_var : cloned_module->globals()) {
     global_var.setInitializer(nullptr);
     global_var.setLinkage(llvm::GlobalValue::LinkageTypes::ExternalLinkage);

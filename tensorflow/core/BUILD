@@ -1336,6 +1336,13 @@ tf_pyclif_proto_library(
 )
 
 tf_pyclif_proto_library(
+    name = "framework/kernel_def_pyclif",
+    proto_lib = ":protos_all_cc",
+    proto_srcfile = "framework/kernel_def.proto",
+    visibility = ["//visibility:public"],
+)
+
+tf_pyclif_proto_library(
     name = "framework/node_def_pyclif",
     proto_lib = ":protos_all_cc",
     proto_srcfile = "framework/node_def.proto",
