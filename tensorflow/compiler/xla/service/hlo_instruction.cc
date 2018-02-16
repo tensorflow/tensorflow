@@ -1371,7 +1371,9 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
       break;
     case HloOpcode::kRecv:
       CHECK_EQ(new_operands.size(), 0);
-      clone = CreateRecv(shape, channel_id());
+      // The shape is a tuple, but CreateRecv() wants the raw data shape.
+      clone =
+          CreateRecv(ShapeUtil::GetTupleElementShape(shape, 0), channel_id());
       break;
     case HloOpcode::kRecvDone:
       CHECK_EQ(new_operands.size(), 1);

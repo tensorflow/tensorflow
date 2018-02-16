@@ -729,7 +729,8 @@ class CopyRemover {
       // has a different operand (the operand of the elided copy).
       for (const HloUse* copy_use : copy_value_node->uses) {
         operand_node->uses.push_back(copy_use);
-        if (copy_use->instruction->opcode() == HloOpcode::kCopy) {
+        if (copy_use->instruction->opcode() == HloOpcode::kCopy &&
+            ContainsKey(copy_map_, copy_use->instruction)) {
           copy_map_.at(copy_use->instruction).src = operand_node;
         }
       }
