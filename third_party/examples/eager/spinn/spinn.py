@@ -44,7 +44,6 @@ import os
 import sys
 import time
 
-import numpy as np
 from six.moves import xrange  # pylint: disable=redefined-builtin
 import tensorflow as tf
 
@@ -567,7 +566,7 @@ def train_or_infer_spinn(embed,
   Returns:
     If `config.inference_premise ` and `config.inference_hypothesis` are not
       `None`, i.e., inference mode: the logits for the possible labels of the
-      SNLI data set, as numpy array of three floats.
+      SNLI data set, as a `Tensor` of three floats.
     else:
       The trainer object.
   Raises:
@@ -626,8 +625,8 @@ def train_or_infer_spinn(embed,
         inference_logits = model(  # pylint: disable=not-callable
             tf.constant(prem), tf.constant(prem_trans),
             tf.constant(hypo), tf.constant(hypo_trans), training=False)
-        inference_logits = np.array(inference_logits[0][1:])
-        max_index = np.argmax(inference_logits)
+        inference_logits = inference_logits[0][1:]
+        max_index = tf.argmax(inference_logits)
         print("\nInference logits:")
         for i, (label, logit) in enumerate(
             zip(data.POSSIBLE_LABELS, inference_logits)):

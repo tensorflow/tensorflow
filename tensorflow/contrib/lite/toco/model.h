@@ -160,17 +160,17 @@ enum class AxesOrder {
 // may be involved only in debug-only subgraphs that we may not be interested
 // in actually supporting).
 enum class ArrayDataType {
-  kNone,
+  kNone,  // 0
   kBool,
   kFloat,
   kInt8,
   kUint8,
-  kInt16,
+  kInt16,  // 5
   kUint16,
   kInt32,
   kUint32,
   kInt64,
-  kUint64,
+  kUint64,  // 10
   kString
 };
 

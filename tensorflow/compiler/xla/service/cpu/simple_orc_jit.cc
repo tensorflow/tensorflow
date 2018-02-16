@@ -138,13 +138,15 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
           [](llvm::Error Err) {
             cantFail(std::move(Err), "lookupFlags failed");
           })),
-      object_layer_(
-          execution_session_,
-          [](llvm::orc::VModuleKey) {
-            return std::make_shared<llvm::SectionMemoryManager>(
-                orc_jit_memory_mapper::GetInstance());
-          },
-          [this](llvm::orc::VModuleKey K) { return symbol_resolver_; }),
+      object_layer_(execution_session_,
+                    [this](llvm::orc::VModuleKey) {
+                      llvm::orc::RTDyldObjectLinkingLayer::Resources result;
+                      result.MemMgr =
+                          std::make_shared<llvm::SectionMemoryManager>(
+                              orc_jit_memory_mapper::GetInstance());
+                      result.Resolver = symbol_resolver_;
+                      return result;
+                    }),
       compile_layer_(object_layer_,
                      CompilerFunctor(target_machine_.get(), &disassembler_,
                                      opt_level, optimize_for_size,

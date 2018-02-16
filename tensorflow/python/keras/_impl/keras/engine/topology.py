@@ -1154,10 +1154,8 @@ class Network(tf_network.GraphNetwork, Layer):
       proceed = ask_to_proceed_with_overwrite(filepath)
       if not proceed:
         return
-    f = h5py.File(filepath, 'w')
-    save_weights_to_hdf5_group(f, self.layers)
-    f.flush()
-    f.close()
+    with h5py.File(filepath, 'w') as f:
+      save_weights_to_hdf5_group(f, self.layers)
 
   def load_weights(self, filepath, by_name=False):
     """Loads all layer weights from a HDF5 save file.
@@ -1184,16 +1182,13 @@ class Network(tf_network.GraphNetwork, Layer):
     """
     if h5py is None:
       raise ImportError('`load_weights` requires h5py.')
-    f = h5py.File(filepath, mode='r')
-    if 'layer_names' not in f.attrs and 'model_weights' in f:
-      f = f['model_weights']
-    if by_name:
-      load_weights_from_hdf5_group_by_name(f, self.layers)
-    else:
-      load_weights_from_hdf5_group(f, self.layers)
-
-    if hasattr(f, 'close'):
-      f.close()
+    with h5py.File(filepath, 'r') as f:
+      if 'layer_names' not in f.attrs and 'model_weights' in f:
+        f = f['model_weights']
+      if by_name:
+        load_weights_from_hdf5_group_by_name(f, self.layers)
+      else:
+        load_weights_from_hdf5_group(f, self.layers)
 
   def _updated_config(self):
     """Util hared between different serialization methods.

@@ -130,6 +130,9 @@ struct MeanOptionsT;
 struct SqueezeOptions;
 struct SqueezeOptionsT;
 
+struct SplitOptions;
+struct SplitOptionsT;
+
 struct StridedSliceOptions;
 struct StridedSliceOptionsT;
 
@@ -236,11 +239,12 @@ enum BuiltinOperator {
   BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN = 46,
   BuiltinOperator_EXP = 47,
   BuiltinOperator_TOPK_V2 = 48,
+  BuiltinOperator_SPLIT = 49,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_TOPK_V2
+  BuiltinOperator_MAX = BuiltinOperator_SPLIT
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[46] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[47] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -287,7 +291,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[46] {
     BuiltinOperator_STRIDED_SLICE,
     BuiltinOperator_BIDIRECTIONAL_SEQUENCE_RNN,
     BuiltinOperator_EXP,
-    BuiltinOperator_TOPK_V2
+    BuiltinOperator_TOPK_V2,
+    BuiltinOperator_SPLIT
   };
   return values;
 }
@@ -343,6 +348,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "BIDIRECTIONAL_SEQUENCE_RNN",
     "EXP",
     "TOPK_V2",
+    "SPLIT",
     nullptr
   };
   return names;
@@ -389,11 +395,12 @@ enum BuiltinOptions {
   BuiltinOptions_StridedSliceOptions = 32,
   BuiltinOptions_ExpOptions = 33,
   BuiltinOptions_TopKV2Options = 34,
+  BuiltinOptions_SplitOptions = 35,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_TopKV2Options
+  BuiltinOptions_MAX = BuiltinOptions_SplitOptions
 };
 
-inline BuiltinOptions (&EnumValuesBuiltinOptions())[35] {
+inline BuiltinOptions (&EnumValuesBuiltinOptions())[36] {
   static BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -429,7 +436,8 @@ inline BuiltinOptions (&EnumValuesBuiltinOptions())[35] {
     BuiltinOptions_SequenceRNNOptions,
     BuiltinOptions_StridedSliceOptions,
     BuiltinOptions_ExpOptions,
-    BuiltinOptions_TopKV2Options
+    BuiltinOptions_TopKV2Options,
+    BuiltinOptions_SplitOptions
   };
   return values;
 }
@@ -471,6 +479,7 @@ inline const char **EnumNamesBuiltinOptions() {
     "StridedSliceOptions",
     "ExpOptions",
     "TopKV2Options",
+    "SplitOptions",
     nullptr
   };
   return names;
@@ -619,6 +628,10 @@ template<> struct BuiltinOptionsTraits<ExpOptions> {
 
 template<> struct BuiltinOptionsTraits<TopKV2Options> {
   static const BuiltinOptions enum_value = BuiltinOptions_TopKV2Options;
+};
+
+template<> struct BuiltinOptionsTraits<SplitOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_SplitOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -923,6 +936,14 @@ struct BuiltinOptionsUnion {
   const TopKV2OptionsT *AsTopKV2Options() const {
     return type == BuiltinOptions_TopKV2Options ?
       reinterpret_cast<const TopKV2OptionsT *>(value) : nullptr;
+  }
+  SplitOptionsT *AsSplitOptions() {
+    return type == BuiltinOptions_SplitOptions ?
+      reinterpret_cast<SplitOptionsT *>(value) : nullptr;
+  }
+  const SplitOptionsT *AsSplitOptions() const {
+    return type == BuiltinOptions_SplitOptions ?
+      reinterpret_cast<const SplitOptionsT *>(value) : nullptr;
   }
 };
 
@@ -3391,6 +3412,60 @@ inline flatbuffers::Offset<SqueezeOptions> CreateSqueezeOptionsDirect(
 
 flatbuffers::Offset<SqueezeOptions> CreateSqueezeOptions(flatbuffers::FlatBufferBuilder &_fbb, const SqueezeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct SplitOptionsT : public flatbuffers::NativeTable {
+  typedef SplitOptions TableType;
+  int32_t num_splits;
+  SplitOptionsT()
+      : num_splits(0) {
+  }
+};
+
+struct SplitOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef SplitOptionsT NativeTableType;
+  enum {
+    VT_NUM_SPLITS = 4
+  };
+  int32_t num_splits() const {
+    return GetField<int32_t>(VT_NUM_SPLITS, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_NUM_SPLITS) &&
+           verifier.EndTable();
+  }
+  SplitOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(SplitOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<SplitOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const SplitOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct SplitOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_num_splits(int32_t num_splits) {
+    fbb_.AddElement<int32_t>(SplitOptions::VT_NUM_SPLITS, num_splits, 0);
+  }
+  explicit SplitOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  SplitOptionsBuilder &operator=(const SplitOptionsBuilder &);
+  flatbuffers::Offset<SplitOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<SplitOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<SplitOptions> CreateSplitOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t num_splits = 0) {
+  SplitOptionsBuilder builder_(_fbb);
+  builder_.add_num_splits(num_splits);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<SplitOptions> CreateSplitOptions(flatbuffers::FlatBufferBuilder &_fbb, const SplitOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct StridedSliceOptionsT : public flatbuffers::NativeTable {
   typedef StridedSliceOptions TableType;
   int32_t begin_mask;
@@ -3712,6 +3787,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const TopKV2Options *builtin_options_as_TopKV2Options() const {
     return builtin_options_type() == BuiltinOptions_TopKV2Options ? static_cast<const TopKV2Options *>(builtin_options()) : nullptr;
   }
+  const SplitOptions *builtin_options_as_SplitOptions() const {
+    return builtin_options_type() == BuiltinOptions_SplitOptions ? static_cast<const SplitOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -3872,6 +3950,10 @@ template<> inline const ExpOptions *Operator::builtin_options_as<ExpOptions>() c
 
 template<> inline const TopKV2Options *Operator::builtin_options_as<TopKV2Options>() const {
   return builtin_options_as_TopKV2Options();
+}
+
+template<> inline const SplitOptions *Operator::builtin_options_as<SplitOptions>() const {
+  return builtin_options_as_SplitOptions();
 }
 
 struct OperatorBuilder {
@@ -5269,6 +5351,32 @@ inline flatbuffers::Offset<SqueezeOptions> CreateSqueezeOptions(flatbuffers::Fla
       _squeeze_dims);
 }
 
+inline SplitOptionsT *SplitOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new SplitOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void SplitOptions::UnPackTo(SplitOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = num_splits(); _o->num_splits = _e; };
+}
+
+inline flatbuffers::Offset<SplitOptions> SplitOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const SplitOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateSplitOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<SplitOptions> CreateSplitOptions(flatbuffers::FlatBufferBuilder &_fbb, const SplitOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const SplitOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _num_splits = _o->num_splits;
+  return tflite::CreateSplitOptions(
+      _fbb,
+      _num_splits);
+}
+
 inline StridedSliceOptionsT *StridedSliceOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new StridedSliceOptionsT();
   UnPackTo(_o, _resolver);
@@ -5623,6 +5731,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const TopKV2Options *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_SplitOptions: {
+      auto ptr = reinterpret_cast<const SplitOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -5777,6 +5889,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const TopKV2Options *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_SplitOptions: {
+      auto ptr = reinterpret_cast<const SplitOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -5919,6 +6035,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const TopKV2OptionsT *>(value);
       return CreateTopKV2Options(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_SplitOptions: {
+      auto ptr = reinterpret_cast<const SplitOptionsT *>(value);
+      return CreateSplitOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -6059,6 +6179,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_TopKV2Options: {
       value = new TopKV2OptionsT(*reinterpret_cast<TopKV2OptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_SplitOptions: {
+      value = new SplitOptionsT(*reinterpret_cast<SplitOptionsT *>(u.value));
       break;
     }
     default:
@@ -6235,6 +6359,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_TopKV2Options: {
       auto ptr = reinterpret_cast<TopKV2OptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_SplitOptions: {
+      auto ptr = reinterpret_cast<SplitOptionsT *>(value);
       delete ptr;
       break;
     }

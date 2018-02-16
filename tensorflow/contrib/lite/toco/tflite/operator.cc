@@ -601,15 +601,21 @@ class Squeeze
   }
 };
 
-class Split : public CustomOperator<TensorFlowSplitOperator> {
+class Split
+    : public BuiltinOperator<TensorFlowSplitOperator, ::tflite::SplitOptions,
+                             ::tflite::BuiltinOptions_SplitOptions> {
  public:
-  using CustomOperator::CustomOperator;
-  void WriteOptions(const TocoOperator& op,
-                    flexbuffers::Builder* fbb) const override {
-    fbb->Int("num_split", op.num_split);
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateSplitOptions(*builder, op.num_split);
   }
-  void ReadOptions(const flexbuffers::Map& m, TocoOperator* op) const override {
-    op->num_split = m["num_split"].AsInt64();
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->num_split = options.num_splits();
   }
 };
 
@@ -813,6 +819,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
                                       OperatorType::kResizeBilinear));
   ops.emplace_back(
       new Squeeze(::tflite::BuiltinOperator_SQUEEZE, OperatorType::kSqueeze));
+  ops.emplace_back(new Split(::tflite::BuiltinOperator_SPLIT,
+                             OperatorType::kTensorFlowSplit));
   ops.emplace_back(new StridedSlice(::tflite::BuiltinOperator_STRIDED_SLICE,
                                     OperatorType::kStridedSlice));
   ops.emplace_back(
@@ -825,7 +833,6 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList() {
   ops.emplace_back(
       new DepthToSpace("DEPTH_TO_SPACE", OperatorType::kDepthToSpace));
   ops.emplace_back(new FakeQuant("FAKE_QUANT", OperatorType::kFakeQuant));
-  ops.emplace_back(new Split("SPLIT", OperatorType::kTensorFlowSplit));
   ops.emplace_back(new TensorFlowUnsupported(
       "TENSORFLOW_UNSUPPORTED", OperatorType::kTensorFlowUnsupported));
 

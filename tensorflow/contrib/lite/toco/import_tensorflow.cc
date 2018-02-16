@@ -1582,7 +1582,7 @@ void ConvertFloorDivOperator(const NodeDef& node,
 void ConvertFloorModOperator(const NodeDef& node,
                              const TensorFlowImportFlags& tf_import_flags,
                              Model* model) {
-  CHECK(node.op() == "FloorMod");
+  CHECK_EQ(node.op(), "FloorMod");
   CheckInputsCount(node, tf_import_flags, 2);
   auto* op = new FloorModOperator;
   op->inputs.push_back(node.input(0));
