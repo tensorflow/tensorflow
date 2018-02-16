@@ -54,6 +54,49 @@ class ControlFlowTransformer(transformer.Base):
   def visit_For(self, node):
     assert False, 'for statement should have been canonicalized at this point'
 
+  def _create_cond_branch(self, body_name, aliased_orig_names,
+                          aliased_new_names, body, returns):
+    if aliased_orig_names:
+      template = """
+        def body_name():
+          aliased_new_names, = aliased_orig_names,
+          body
+          return (returns,)
+      """
+      return templates.replace(
+          template,
+          body_name=body_name,
+          body=body,
+          aliased_orig_names=aliased_orig_names,
+          aliased_new_names=aliased_new_names,
+          returns=returns)
+    else:
+      template = """
+        def body_name():
+          body
+          return (returns,)
+      """
+      return templates.replace(
+          template, body_name=body_name, body=body, returns=returns)
+
+  def _create_cond_expr(self, results, test, body_name, orelse_name):
+    if results is not None:
+      template = """
+        results = py2tf_utils.run_cond(test, body_name, orelse_name)
+      """
+      return templates.replace(
+          template,
+          test=test,
+          results=results,
+          body_name=body_name,
+          orelse_name=orelse_name)
+    else:
+      template = """
+        py2tf_utils.run_cond(test, body_name, orelse_name)
+      """
+      return templates.replace(
+          template, test=test, body_name=body_name, orelse_name=orelse_name)
+
   def visit_If(self, node):
     self.generic_visit(node)
 
@@ -67,7 +110,7 @@ class ControlFlowTransformer(transformer.Base):
       raise ValueError(
           'The else branch creates new symbols that the if branch does not.')
 
-    all_modified = tuple(body_scope.modified | orelse_scope.modified)
+    modified = tuple(body_scope.modified | orelse_scope.modified)
     all_referenced = body_scope.referenced | orelse_scope.referenced
 
     # Alias the closure variables inside the conditional functions
@@ -84,56 +127,41 @@ class ControlFlowTransformer(transformer.Base):
     node_body = ast_util.rename_symbols(node.body, alias_map)
     node_orelse = ast_util.rename_symbols(node.orelse, alias_map)
 
-    if len(all_modified) == 1:
-      results = all_modified[0]
+    if not modified:
+      # When the cond would return no value, we leave the cond called without
+      # results. That in turn should trigger the side effect guards. The
+      # branch functions will return a dummy value that ensures cond
+      # actually has some return value as well.
+      results = None
+    elif len(modified) == 1:
+      results = modified[0]
     else:
-      results = gast.Tuple([s.ast() for s in all_modified], None)
+      results = gast.Tuple([s.ast() for s in modified], None)
 
-    if aliased_orig_names:
-      template = """
-        def body_name():
-          aliased_new_names, = aliased_orig_names,
-          body
-          return (all_results,)
-        def orelse_name():
-          aliased_new_names, = aliased_orig_names,
-          orelse
-          return (all_results,)
-        results = tf.cond(test, body_name, orelse_name)
-      """
-      body_name = self.context.namer.new_symbol('if_true', all_referenced)
-      return templates.replace(
-          template,
-          test=node.test,
-          body_name=body_name,
-          body=node_body,
-          orelse_name=self.context.namer.new_symbol('if_false', all_referenced),
-          orelse=node_orelse,
-          aliased_orig_names=tuple(aliased_orig_names),
-          aliased_new_names=tuple(aliased_new_names),
-          all_results=tuple(alias_map[s] if s in aliased_orig_names else s
-                            for s in all_modified),
-          results=results)
+    body_name = self.context.namer.new_symbol('if_true', all_referenced)
+    orelse_name = self.context.namer.new_symbol('if_false', all_referenced)
+    if modified:
+      body_returns = tuple(
+          alias_map[s] if s in aliased_orig_names else s for s in modified)
     else:
-      template = """
-        def body_name():
-          body
-          return (all_results,)
-        def orelse_name():
-          orelse
-          return (all_results,)
-        results = tf.cond(test, body_name, orelse_name)
-      """
-      body_name = self.context.namer.new_symbol('if_true', all_referenced)
-      return templates.replace(
-          template,
-          test=node.test,
-          body_name=body_name,
-          body=node_body,
-          orelse_name=self.context.namer.new_symbol('if_false', all_referenced),
-          orelse=node_orelse,
-          all_results=tuple(s for s in all_modified),
-          results=results)
+      body_returns = templates.replace('tf.ones(())')[0].value
+
+    body_def = self._create_cond_branch(
+        body_name,
+        aliased_orig_names=tuple(aliased_orig_names),
+        aliased_new_names=tuple(aliased_new_names),
+        body=node_body,
+        returns=body_returns)
+    orelse_def = self._create_cond_branch(
+        orelse_name,
+        aliased_orig_names=tuple(aliased_orig_names),
+        aliased_new_names=tuple(aliased_new_names),
+        body=node_orelse,
+        returns=body_returns)
+    cond_expr = self._create_cond_expr(results, node.test, body_name,
+                                       orelse_name)
+
+    return body_def + orelse_def + cond_expr
 
   def visit_While(self, node):
     self.generic_visit(node)
@@ -168,7 +196,7 @@ class ControlFlowTransformer(transformer.Base):
       def body_name(state_ssf):
         body
         return state_ssf,
-      state_ast_tuple = tf.while_loop(test_name, body_name, [state])
+      state_ast_tuple = py2tf_utils.run_while(test_name, body_name, [state])
     """
     node = templates.replace(
         template,

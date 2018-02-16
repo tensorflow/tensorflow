@@ -195,6 +195,12 @@ class Shape(object):
     self._minor_to_major = minor_to_major
     self._check_minor_to_major()
 
+  def __eq__(self, other):
+    # pylint: disable=protected-access
+    return (self.np_dtype == other.np_dtype and
+            self._dimensions == other._dimensions and
+            self._minor_to_major == other._minor_to_major)
+
   def __repr__(self):
     return ('xla_client.Shape(np_dtype={!r}, dimensions={!r}, '
             'minor_to_major={!r})').format(self.np_dtype, self._dimensions,
@@ -354,17 +360,44 @@ class LocalComputation(object):
 
     # Ensure a reference to C-based destructor for use in __del__.
     if is_compiled:
+      assert isinstance(c_local_computation, c_api.CompiledLocalComputation)
       self._delete = c_api.DeleteCompiledLocalComputation
     else:
+      assert isinstance(c_local_computation, c_api.LocalComputation)
       self._delete = c_api.DeleteLocalComputation
 
   def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None):
+    """Compiles an un-compiled local computation.
+
+    Local computations are the result of a "LocalComputationBuild'ing" process
+    -- they start in uncompiled form, and via a call to Compile() turn into a
+    compiled local computation.
+
+    Raises:
+      ValueError: if this is already a compiled local computation.
+
+    Arguments:
+      argument_shapes: parameter shapes -- they are first laid out by layout_fn
+        if layout_fn is provided. Otherwise, the default layout for those shapes
+        will be used.
+      compile_options: options to use for compilation, includes an optional
+        laid out result shape for the computation.
+      layout_fn: lambda that is used to lay out the argument/result shapes.
+
+    Returns:
+      A newly *compiled* local computation instance.
+    """
     if self.is_compiled:
       raise ValueError('Attempt to compile a compiled local XLA computation.')
+
     if layout_fn:
       argument_shapes = [
           shape.map_leaves(layout_fn) for shape in argument_shapes
       ]
+      result_shape = _wrap_shape(self.c_local_computation.GetReturnValueShape())
+      result_shape = result_shape.map_leaves(layout_fn)
+      compile_options = compile_options or CompileOptions()
+      compile_options.result_shape = result_shape
     return LocalComputation(
         self.c_local_computation.Compile(argument_shapes, compile_options),
         is_compiled=True)
@@ -605,6 +638,9 @@ class ComputationBuilder(object):
 
   def GetShape(self, operand):
     return _wrap_shape(self._client.GetShape(_unwrap_data_handle(operand)))
+
+  def GetReturnValueShape(self):
+    return _wrap_shape(self._client.GetReturnValueShape())
 
   def GetComputationStats(self):
     raise NotImplementedError()

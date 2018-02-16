@@ -120,6 +120,8 @@ enum BuiltinOperator : byte {
   UNIDIRECTIONAL_SEQUENCE_LSTM = 44,
   STRIDED_SLICE = 45,
   BIDIRECTIONAL_SEQUENCE_RNN = 46,
+  EXP = 47,
+  TOPK_V2=48,
 }
 
 // Options for the builtin operators.
@@ -156,6 +158,8 @@ union BuiltinOptions {
   SqueezeOptions,
   SequenceRNNOptions,
   StridedSliceOptions,
+  ExpOptions,
+  TopKV2Options,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -315,6 +319,9 @@ table DivOptions {
   fused_activation_function:ActivationFunctionType;
 }
 
+table TopKV2Options {
+}
+
 enum CombinerType : byte {
   SUM = 0,
   MEAN = 1,
@@ -330,6 +337,9 @@ table GatherOptions {
 }
 
 table TransposeOptions {
+}
+
+table ExpOptions {
 }
 
 table MeanOptions {

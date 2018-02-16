@@ -1226,7 +1226,7 @@ def precision_recall_at_equal_thresholds(labels,
     predictions: A floating point `Tensor` of arbitrary shape and whose values
       are in the range `[0, 1]`.
     weights: Optional; If provided, a `Tensor` that has the same dtype as,
-      and broadcastable to, `predictions`. This tensor is multplied by counts.
+      and broadcastable to, `predictions`. This tensor is multiplied by counts.
     num_thresholds: Optional; Number of thresholds, evenly distributed in
       `[0, 1]`. Should be `>= 2`. Defaults to 201. Note that the number of bins
       is 1 less than `num_thresholds`. Using an even `num_thresholds` value

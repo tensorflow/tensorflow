@@ -494,6 +494,13 @@ class Graph {
   // Serialize to a GraphDef.
   void ToGraphDef(GraphDef* graph_def) const;
 
+  // This version can be called from debugger to inspect the graph content.
+  // Use the previous version outside debug context for efficiency reasons.
+  //
+  // Note: We do not expose a DebugString() API, since GraphDef.DebugString() is
+  // not defined in some TensorFlow builds.
+  GraphDef ToGraphDefDebug() const;
+
   // Generate new node name with the specified prefix that is unique
   // across this graph.
   string NewName(StringPiece prefix);

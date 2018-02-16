@@ -194,8 +194,7 @@ XLA_TEST_F(TupleTest, TupleGTEToTuple) {
   ComputeAndCompareTuple(&builder, *expected, {}, error_spec_);
 }
 
-// TODO(b/68395210): GPU does not tolerate ambiguous top-level buffers.
-XLA_TEST_F(TupleTest, DISABLED_ON_GPU(SelectBetweenPredTuples)) {
+XLA_TEST_F(TupleTest, SelectBetweenPredTuples) {
   ComputationBuilder b(client_, TestName());
   ComputationDataHandle v1, v2;
 

@@ -39,12 +39,13 @@ def _assert_is_image(data):
   data.shape[1:].assert_is_fully_defined()
 
 
-def add_gan_model_image_summaries(gan_model, grid_size=4):
+def add_gan_model_image_summaries(gan_model, grid_size=4, model_summaries=True):
   """Adds image summaries for real and fake images.
 
   Args:
     gan_model: A GANModel tuple.
     grid_size: The size of an image grid.
+    model_summaries: Also add summaries of the model.
 
   Raises:
     ValueError: If real and generated data aren't images.
@@ -83,7 +84,9 @@ def add_gan_model_image_summaries(gan_model, grid_size=4):
           image_shape=generated_image_shape,
           num_channels=generated_channels),
       max_outputs=1)
-  add_gan_model_summaries(gan_model)
+
+  if model_summaries:
+    add_gan_model_summaries(gan_model)
 
 
 def add_image_comparison_summaries(gan_model, num_comparisons=2,

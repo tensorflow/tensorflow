@@ -7,6 +7,7 @@ package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load("//third_party/mpi:mpi.bzl", "if_mpi")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 
 py_library(
     name = "contrib_py",
@@ -72,7 +73,6 @@ py_library(
         "//tensorflow/contrib/metrics:metrics_py",
         "//tensorflow/contrib/model_pruning",
         "//tensorflow/contrib/nccl:nccl_py",
-        "//tensorflow/contrib/ndlstm",
         "//tensorflow/contrib/nearest_neighbor:nearest_neighbor_py",
         "//tensorflow/contrib/nn:nn_py",
         "//tensorflow/contrib/opt:opt_py",
@@ -109,7 +109,9 @@ py_library(
         "//tensorflow/contrib/training:training_py",
         "//tensorflow/contrib/util:util_py",
         "//tensorflow/python:util",
-    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]),
+    ] + if_mpi(["//tensorflow/contrib/mpi_collectives:mpi_collectives_py"]) + if_tensorrt([
+        "//tensorflow/contrib/tensorrt:init_py",
+    ]),
 )
 
 cc_library(
@@ -119,6 +121,7 @@ cc_library(
         "//tensorflow/contrib/boosted_trees:boosted_trees_kernels",
         "//tensorflow/contrib/coder:all_kernels",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_kernels",
+        "//tensorflow/contrib/data/kernels:dataset_kernels",
         "//tensorflow/contrib/factorization/kernels:all_kernels",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_kernels",
         "//tensorflow/contrib/layers:sparse_feature_cross_op_kernel",
@@ -141,6 +144,7 @@ cc_library(
         "//tensorflow/contrib/boosted_trees:boosted_trees_ops_op_lib",
         "//tensorflow/contrib/coder:all_ops",
         "//tensorflow/contrib/cudnn_rnn:cudnn_rnn_ops_op_lib",
+        "//tensorflow/contrib/data:dataset_ops_op_lib",
         "//tensorflow/contrib/factorization:all_ops",
         "//tensorflow/contrib/framework:all_ops",
         "//tensorflow/contrib/input_pipeline:input_pipeline_ops_op_lib",

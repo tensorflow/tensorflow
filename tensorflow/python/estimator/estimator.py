@@ -57,12 +57,14 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'self', 'config'])
 
 
+@tf_export('estimator.Estimator')
 class Estimator(object):
   """Estimator class to train and evaluate TensorFlow models.
 
@@ -425,7 +427,8 @@ class Estimator(object):
               input_fn,
               predict_keys=None,
               hooks=None,
-              checkpoint_path=None):
+              checkpoint_path=None,
+              yield_single_examples=True):
     """Yields predictions for given features.
 
     Args:
@@ -451,13 +454,18 @@ class Estimator(object):
         inside the prediction call.
       checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
         latest checkpoint in `model_dir` is used.
+      yield_single_examples: If False, yield the whole batch as returned by the
+        model_fn instead of decomposing the batch into individual elements. This
+        is useful if model_fn return some tensor with first dimension not
+        equal to the batch size
 
     Yields:
       Evaluated values of `predictions` tensors.
 
     Raises:
       ValueError: Could not find a trained model in model_dir.
-      ValueError: if batch length of predictions are not same.
+      ValueError: if batch length of predictions are not same and
+        yield_single_examples is True.
       ValueError: If there is a conflict between `predict_keys` and
         `predictions`. For example if `predict_keys` is not `None` but
         `EstimatorSpec.predictions` is not a `dict`.
@@ -490,7 +498,9 @@ class Estimator(object):
           hooks=all_hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
-          if not isinstance(predictions, dict):
+          if not yield_single_examples:
+            yield preds_evaluated
+          elif not isinstance(predictions, dict):
             for pred in preds_evaluated:
               yield pred
           else:
@@ -502,9 +512,11 @@ class Estimator(object):
 
   def _assert_members_are_not_overridden(self):
     """Asserts members of `Estimator` are not overridden."""
-    allowed_overrides = set(['_call_input_fn', '_create_global_step',
-                             '_convert_train_steps_to_hooks',
-                             '_convert_eval_steps_to_hooks'])
+    allowed_overrides = set([
+        '_call_input_fn', '_create_global_step',
+        '_convert_train_steps_to_hooks', '_convert_eval_steps_to_hooks',
+        '_tf_api_names'
+    ])
     estimator_members = set([m for m in Estimator.__dict__.keys()
                              if not m.startswith('__')])
     subclass_members = set(self.__class__.__dict__.keys())
@@ -613,7 +625,6 @@ class Estimator(object):
             sharded=True)
         saver_for_restore.restore(session, checkpoint_path)
 
-        # TODO(b/36111876): replace legacy_init_op with main_op mechanism
         # pylint: disable=protected-access
         local_init_op = (
             estimator_spec.scaffold.local_init_op or
@@ -1103,7 +1114,7 @@ def _write_dict_to_summary(output_dir,
           isinstance(dictionary[key], np.int32) or
           isinstance(dictionary[key], int)):
       summary_proto.value.add(tag=key, simple_value=int(dictionary[key]))
-    elif isinstance(dictionary[key], six.string_types):
+    elif isinstance(dictionary[key], six.binary_type):
       try:
         summ = summary_pb2.Summary.FromString(dictionary[key])
         for i, _ in enumerate(summ.value):

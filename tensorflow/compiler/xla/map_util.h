@@ -65,6 +65,25 @@ MaybeFind(const Collection& collection,
   return {it->second};
 }
 
+// Returns a const reference to the value associated with the given key if it
+// exists, otherwise returns a const reference to the provided default value.
+//
+// WARNING: If a temporary object is passed as the default "value,"
+// this function will return a reference to that temporary object,
+// which will be destroyed at the end of the statement. A common
+// example: if you have a map with string values, and you pass a char*
+// as the default "value," either use the returned value immediately
+// or store it in a string (not string&).
+template <class Collection>
+const typename Collection::value_type::second_type& FindOrDefault(
+    const Collection& collection,
+    const typename Collection::value_type::first_type& key,
+    const typename Collection::value_type::second_type& value) {
+  auto it = collection.find(key);
+  if (it != collection.end()) return it->second;
+  return value;
+}
+
 // Inserts the key-value pair into the collection. Dies if key was already
 // present.
 template <class Collection>

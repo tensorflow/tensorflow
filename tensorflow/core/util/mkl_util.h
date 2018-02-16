@@ -749,7 +749,6 @@ inline void GetMklInputList(OpKernelContext* ctext, StringPiece name,
   ctext->input_list(name, input_tensors);
 }
 
-
 #ifdef INTEL_MKL_ML
 
 inline void GetMklShapeList(OpKernelContext* ctext, StringPiece name,
@@ -1113,9 +1112,9 @@ inline void ForwardMklTensorInToOutWithMklShape(OpKernelContext* context,
 // Forward the MKL shape ONLY (used in elementwise and other ops where
 // we call the eigen implementation and MKL shape is not used)
 inline void ForwardMklMetaDataInToOut(OpKernelContext* context,
-                                      uint idx_data_in, uint idx_data_out) {
-  uint idx_meta_in = GetTensorMetaDataIndex(idx_data_in, context->num_inputs());
-  uint idx_meta_out =
+                                      uint32 idx_data_in, uint32_t idx_data_out) {
+  uint32 idx_meta_in = GetTensorMetaDataIndex(idx_data_in, context->num_inputs());
+  uint32 idx_meta_out =
       GetTensorMetaDataIndex(idx_data_out, context->num_outputs());
 
   if (IsRefType(context->input_dtype(idx_data_in))) {
@@ -1127,7 +1126,7 @@ inline void ForwardMklMetaDataInToOut(OpKernelContext* context,
 
 // Set a dummy MKL shape (called when the output is in TF format)
 inline void SetDummyMklShapeOutput(OpKernelContext* context,
-                                   uint idx_data_out) {
+                                   uint32 idx_data_out) {
   MklShape mkl_shape_output;
   mkl_shape_output.SetMklTensor(false);
   AllocateOutputSetMklShape(context, idx_data_out, mkl_shape_output);

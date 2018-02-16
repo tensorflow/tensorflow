@@ -27,8 +27,8 @@ import six
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
-from tensorflow.python.util import compat
 from tensorflow.python.util import compat_internal
+from tensorflow.python.util.tf_export import tf_export
 
 
 _USE_DEFAULT = object()
@@ -287,6 +287,7 @@ class TaskType(object):
   EVALUATOR = 'evaluator'
 
 
+@tf_export('estimator.RunConfig')
 class RunConfig(object):
   """This class specifies the configurations for an `Estimator` run."""
 

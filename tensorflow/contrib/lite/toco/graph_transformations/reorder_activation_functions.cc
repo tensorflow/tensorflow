@@ -62,6 +62,20 @@ bool ReorderActivationFunctions::Run(Model* model, std::size_t op_index) {
     return false;
   }
 
+  // If the ac_op was originally producing an output_array we can't reorder as
+  // otherwise the output array would change. It'd be nice to still be able to
+  // reorder but if code is relying on the fetch names instead of array indices
+  // this won't work.
+  for (int i = 0; i < model->flags.output_arrays_size(); ++i) {
+    if (model->flags.output_arrays(i) == ac_op->outputs[0]) {
+      AddMessageF(
+          "Not exchanging activation function with %s to preserve output array "
+          "name %s",
+          LogName(*exchange_op), ac_op->outputs[0]);
+      return false;
+    }
+  }
+
   // Rewire by changing inputs, including all consumers.
   Operator* consumer = GetFirstOpWithInput(*model, ac_op_output);
   while (consumer) {
@@ -74,6 +88,10 @@ bool ReorderActivationFunctions::Run(Model* model, std::size_t op_index) {
   }
   ac_op->inputs[0] = exchange_op_input;
   exchange_op->inputs[0] = ac_op_output;
+
+  // Clear shapes; this will allow shape propagation to fix the sizes for us.
+  model->GetOrCreateArray(ac_op->outputs[0]).clear_shape();
+  model->GetOrCreateArray(exchange_op->outputs[0]).clear_shape();
 
   // Finally, reorder operators.  Note that this only works when there are no
   // other direct descendents of the exchange_op.

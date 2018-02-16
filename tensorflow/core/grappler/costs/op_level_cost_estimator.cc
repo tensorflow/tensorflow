@@ -457,10 +457,15 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
     const TensorShapeProto& original_image_shape,
     const TensorShapeProto& original_filter_shape, const OpInfo& op_features,
     bool* found_unknown_shapes) {
+  VLOG(2) << "op features: " << op_features.DebugString();
+  VLOG(2) << "Original image shape: " << original_image_shape.DebugString();
+  VLOG(2) << "Original filter shape: " << original_filter_shape.DebugString();
   auto image_shape =
       MaybeGetMinimumShape(original_image_shape, 4, found_unknown_shapes);
   auto filter_shape =
       MaybeGetMinimumShape(original_filter_shape, 4, found_unknown_shapes);
+  VLOG(2) << "Image shape: " << image_shape.DebugString();
+  VLOG(2) << "Filter shape: " << filter_shape.DebugString();
 
   int x_index, y_index, channel_index;
   const string& data_format = GetDataFormat(op_features);
@@ -719,18 +724,35 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
     bool* found_unknown_shapes) const {
   int64 ops = 0;
 
-  if (op_features.op() != kConv2dBackpropInput) {
-    LOG(ERROR) << "Invalid Operation";
+  DCHECK_EQ(kConv2dBackpropInput, op_features.op());
+
+  if (op_features.inputs_size() < 2) {
+    *found_unknown_shapes = true;
     return ops;
   }
 
-  if (op_features.outputs_size() != 1) {
-    // Need _output_shapes for input shape.
-    LOG(ERROR) << "No output shape in Conv2DBackpropInput op.";
-    return ops;
+  TensorShapeProto input_shape;
+  if (op_features.inputs(0).has_value()) {
+    const TensorProto& value = op_features.inputs(0).value();
+    if (value.int64_val_size() > 0) {
+      for (int i = 0; i < value.int64_val_size(); ++i) {
+        input_shape.add_dim()->set_size(value.int64_val(i));
+      }
+    } else {
+      for (int i = 0; i < value.int_val_size(); ++i) {
+        input_shape.add_dim()->set_size(value.int_val(i));
+      }
+    }
+  } else if (op_features.outputs_size() == 1) {
+    input_shape = op_features.outputs(0).shape();
+  } else {
+    // Set the minimum filter size that's feasible.
+    for (int i = 0; i < 4; ++i) {
+      input_shape.add_dim()->set_size(1);
+    }
+    *found_unknown_shapes = true;
   }
 
-  const auto& input_shape = op_features.outputs(0).shape();
   ConvolutionDimensions conv_dims = ConvolutionDimensionsFromInputs(
       input_shape, op_features.inputs(1).shape(), op_features,
       found_unknown_shapes);
@@ -753,18 +775,34 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
     const OpInfo& op_features, ConvolutionDimensions* returned_conv_dims,
     bool* found_unknown_shapes) const {
   int64 ops = 0;
-  if (op_features.op() != kConv2dBackpropFilter) {
-    LOG(ERROR) << "Invalid Operation";
-    return ops;
+  DCHECK_EQ(kConv2dBackpropFilter, op_features.op());
+
+  TensorShapeProto filter_shape;
+  if (op_features.inputs_size() >= 2 && op_features.inputs(1).has_value()) {
+    const TensorProto& value = op_features.inputs(1).value();
+    if (value.int64_val_size() > 0) {
+      for (int i = 0; i < value.int64_val_size(); ++i) {
+        filter_shape.add_dim()->set_size(value.int64_val(i));
+      }
+    } else {
+      for (int i = 0; i < value.int_val_size(); ++i) {
+        filter_shape.add_dim()->set_size(value.int_val(i));
+      }
+    }
+  } else if (op_features.outputs_size() == 1) {
+    filter_shape = op_features.outputs(0).shape();
+  } else {
+    // Set the minimum filter size that's feasible.
+    for (int i = 0; i < 4; ++i) {
+      filter_shape.add_dim()->set_size(1);
+    }
+    *found_unknown_shapes = true;
   }
 
-  if (op_features.outputs_size() != 1) {
-    // Need _output_shapes for input shape.
-    LOG(ERROR) << "No output shape in Conv2DBackpropFilter op.";
+  if (op_features.inputs_size() < 1) {
+    *found_unknown_shapes = true;
     return ops;
   }
-
-  const auto& filter_shape = op_features.outputs(0).shape();
   ConvolutionDimensions conv_dims = ConvolutionDimensionsFromInputs(
       op_features.inputs(0).shape(), filter_shape, op_features,
       found_unknown_shapes);

@@ -60,6 +60,7 @@ int CountTrueOutputs(const Model& model, const Operator& op);
 
 int CountOpsWithInput(const Model& model, const string& array_name);
 bool DeleteArrayIfUnused(const string& array_name, Model* model);
+bool DeleteArrayIfUsedOnce(const string& array_name, Model* model);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithOutput(
     const Model& model, const string& array_name);
@@ -67,10 +68,15 @@ Operator* GetOpWithOutput(const Model& model, const string& array_name);
 
 std::vector<std::unique_ptr<Operator>>::iterator FindOpWithOutput(
     Model& model, const string& array_name);
+
 Operator* GetOpWithOutput(const Model& model, const string& array_name);
 
 std::vector<std::unique_ptr<Operator>>::const_iterator FindOpWithInput(
     const Model& model, const string& array_name);
+
+std::vector<std::unique_ptr<Operator>>::iterator FindOpWithInput(
+    Model& model, const string& array_name);
+
 Operator* GetOpWithInput(const Model& model, const string& array_name);
 Operator* GetFirstOpWithInput(const Model& model, const string& array_name);
 
@@ -255,6 +261,11 @@ void PrintArrayShape(Model* model, const string& name);
 void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
                    std::vector<int>* out_dims);
 
+// Defines a constant int32 array with the provided values formatted for use
+// as op parameters.
+string CreateInt32Array(Model* model, const string& param_name,
+                        const std::vector<int>& value);
+
 bool EstimateArithmeticOpsCount(const Model& model, int64* result);
 
 int AxesCount(AxesOrder axes_order);
@@ -263,6 +274,11 @@ int AxesCount(AxesOrder axes_order);
 // output axes order.
 void GetShuffleShape(AxesOrder input_axes_order, AxesOrder output_axes_order,
                      std::vector<int>* shuffle);
+
+// Extend shuffle is designed to match ExtendShape, which pads the shape with
+// unit dimensions at the beginning.
+void ExtendShuffle(const std::vector<int>& input_shuffle, int newdim,
+                   std::vector<int>* extended_shuffle);
 
 void ShuffleDims(const Shape& input_shape, AxesOrder input_axes_order,
                  AxesOrder output_axes_order, Shape* output_shape);
@@ -284,9 +300,6 @@ void CheckFinalDataTypesSatisfied(const Model& model);
 ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 
 void UseArraysExtraInfo(Model* model);
-
-bool IsRnnSourceArray(const toco::Model& model, const string& array_name);
-bool IsRnnStateArray(const toco::Model& model, const string& array_name);
 
 }  // namespace toco
 

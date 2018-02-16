@@ -3649,7 +3649,7 @@ class Graph(object):
   def _last_id(self):
     return self._next_id_counter
 
-  def _get_op_def(self, type):
+  def _get_op_def(self, type):  # pylint: disable=redefined-builtin
     """Returns the `OpDef` proto for `type`. `type` is a string."""
     if self._c_graph:
       with c_api_util.tf_buffer() as buf:
@@ -5537,6 +5537,9 @@ def get_all_collection_keys():
   return get_default_graph().get_all_collection_keys()
 
 
+name_scope_cache = {}
+
+
 # Named like a function for backwards compatibility with the
 # @tf_contextlib.contextmanager version, which was switched to a class to avoid
 # some object creation overhead.
@@ -5596,7 +5599,11 @@ class name_scope(object):  # pylint: disable=invalid-name
       if not self._name:
         scope_name = ""
       else:
-        if self._name[-1] == "/":
+        cache_key = self._name, self._old_name, self._default_name
+        if cache_key in name_scope_cache:
+          self._ctx.scope_name = name_scope_cache[cache_key]
+          return self._ctx.scope_name
+        elif self._name[-1] == "/":
           # A trailing slash breaks out of nested name scopes, indicating a
           # fully specified scope name, for compatibility with Graph.name_scope.
           scope_name = self._name
@@ -5605,6 +5612,7 @@ class name_scope(object):  # pylint: disable=invalid-name
           scope_name = (
               self._old_name + name_with_trailing_slash
               if self._old_name else name_with_trailing_slash)
+        name_scope_cache[cache_key] = scope_name
       self._ctx.scope_name = scope_name
       return scope_name
     else:

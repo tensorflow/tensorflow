@@ -585,16 +585,23 @@ bool HloDataflowAnalysis::UpdateInstructionValueSet(
 
 void HloDataflowAnalysis::Propagate() {
   std::queue<HloInstruction*> worklist;
+  tensorflow::gtl::FlatSet<HloInstruction*> workset;
+  auto add_to_worklist = [&worklist, &workset](HloInstruction* instruction) {
+    if (workset.insert(instruction).second) {
+      worklist.push(instruction);
+    }
+  };
 
   for (HloComputation* computation : module_->computations()) {
     for (HloInstruction* instruction : computation->instructions()) {
-      worklist.push(instruction);
+      add_to_worklist(instruction);
     }
   }
 
   while (!worklist.empty()) {
     HloInstruction* instruction = worklist.front();
     worklist.pop();
+    workset.erase(workset.find(instruction));
 
     VLOG(3) << "Worklist top: " << instruction->name();
     VLOG(3) << ToString();
@@ -608,9 +615,10 @@ void HloDataflowAnalysis::Propagate() {
     VLOG(4) << "New value set for " << instruction->name() << ": "
             << GetInstructionValueSet(instruction);
 
-    // Instruction value was updated. Add users to work list.
+    // Instruction value was updated. Add users to work list if we haven't
+    // already.
     for (HloInstruction* user : instruction->users()) {
-      worklist.push(user);
+      add_to_worklist(user);
 
       // If user sequentially calls a computation, then the respective
       // parameter(s) of the computation need to be updated.
@@ -625,10 +633,10 @@ void HloDataflowAnalysis::Propagate() {
         // Note that the same instruction can be used in both operand 1 and
         // operand 2.
         if (user->operand(1) == instruction) {
-          worklist.push(user->true_computation()->parameter_instruction(0));
+          add_to_worklist(user->true_computation()->parameter_instruction(0));
         }
         if (user->operand(2) == instruction) {
-          worklist.push(user->false_computation()->parameter_instruction(0));
+          add_to_worklist(user->false_computation()->parameter_instruction(0));
         }
       } else {
         for (HloComputation* called_computation : user->called_computations()) {
@@ -636,7 +644,7 @@ void HloDataflowAnalysis::Propagate() {
               call_graph_->GetNode(called_computation);
           if (call_graph_node.context() == CallContext::kSequential) {
             for (int64 operand_number : user->OperandIndices(instruction)) {
-              worklist.push(
+              add_to_worklist(
                   called_computation->parameter_instruction(operand_number));
             }
           }
@@ -652,13 +660,13 @@ void HloDataflowAnalysis::Propagate() {
       for (const CallSite& callsite : call_graph_node.caller_callsites()) {
         if ((callsite.instruction()->opcode() == HloOpcode::kCall) ||
             (callsite.instruction()->opcode() == HloOpcode::kConditional)) {
-          worklist.push(callsite.instruction());
+          add_to_worklist(callsite.instruction());
         } else if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
           // Add the while itself, and the body and condition parameters.
-          worklist.push(callsite.instruction());
-          worklist.push(
+          add_to_worklist(callsite.instruction());
+          add_to_worklist(
               callsite.instruction()->while_body()->parameter_instruction(0));
-          worklist.push(
+          add_to_worklist(
               callsite.instruction()->while_condition()->parameter_instruction(
                   0));
         }

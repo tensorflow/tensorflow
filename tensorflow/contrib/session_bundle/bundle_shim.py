@@ -134,9 +134,8 @@ def _convert_named_signatures_to_signature_def(signatures):
       signature_constants.PREDICT_OUTPUTS]
   # TODO(pdudnik): what if there are other signatures? Mimic cr/140900781 once
   # it is submitted.
-  if (input_signature.WhichOneof("type") !=
-      legacy_constants.GENERIC_SIGNATURE or
-      output_signature.WhichOneof("type") !=
+  if (input_signature.WhichOneof("type") != legacy_constants.GENERIC_SIGNATURE
+      or output_signature.WhichOneof("type") !=
       legacy_constants.GENERIC_SIGNATURE):
     raise RuntimeError("Named input and output signatures can only be "
                        "up-converted if they are generic signature. "

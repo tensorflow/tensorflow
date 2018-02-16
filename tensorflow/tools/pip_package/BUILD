@@ -11,6 +11,7 @@ load(
 )
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("@local_config_tensorrt//:build_defs.bzl", "if_tensorrt")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "tf_additional_license_deps")
 
 # This returns a list of headers of all public header libraries (e.g.,
@@ -70,7 +71,6 @@ py_binary(
         "//tensorflow/python/eager:eager_pip",
         "//tensorflow/contrib/summary:summary_test_util",
         # These targets don't build on Windows yet. Exclude them for now.
-        # "//tensorflow/contrib/ndlstm",
         # "//tensorflow/contrib/slim",
         # "//tensorflow/contrib/slim/python/slim/nets:nets_pip",
         # "//tensorflow/contrib/specs",
@@ -148,7 +148,7 @@ sh_binary(
             "//tensorflow/contrib/boosted_trees:boosted_trees_pip",
             "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
             "//tensorflow/contrib/data/python/kernel_tests:dataset_serialization_test",
-            "//tensorflow/contrib/data/python/ops:prefetching_py",
+            "//tensorflow/contrib/data/python/ops:contrib_op_loader",
             "//tensorflow/contrib/eager/python/examples:examples_pip",
             "//tensorflow/contrib/eager/python:checkpointable",
             "//tensorflow/contrib/eager/python:evaluator",
@@ -159,7 +159,6 @@ sh_binary(
             "//tensorflow/contrib/lite/toco:toco",
             "//tensorflow/contrib/lite/toco/python:toco_wrapper",
             "//tensorflow/contrib/lite/toco/python:toco_from_protos",
-            "//tensorflow/contrib/ndlstm:ndlstm",
             "//tensorflow/contrib/nn:nn_py",
             "//tensorflow/contrib/predictor:predictor_pip",
             "//tensorflow/contrib/py2tf:py2tf",
@@ -193,7 +192,9 @@ sh_binary(
             "//tensorflow/python:test_ops",
             "//tensorflow/tools/dist_test/server:grpc_tensorflow_server",
         ],
-    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]),
+    }) + if_mkl(["//third_party/mkl:intel_binary_blob"]) + if_tensorrt([
+        "//tensorflow/contrib/tensorrt:init_py",
+    ]),
 )
 
 # A genrule for generating a marker file for the pip package on Windows

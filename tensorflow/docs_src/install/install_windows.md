@@ -47,7 +47,7 @@ installed on your system:
 
 If you have a different version of one of the preceding packages, please
 change to the specified versions.  In particular, the cuDNN version
-must match exactly: TensorFlow will not load if it cannot find `cuDNN64_6.dll`.
+must match exactly: TensorFlow will not load if it cannot find `cudnn64_7.dll`.
 To use a different version of cuDNN, you must build from source.
 
 ## Determine how to install TensorFlow
@@ -153,7 +153,7 @@ TensorFlow programs:
 
 <pre>Hello, TensorFlow!</pre>
 
-If you are new to TensorFlow, see @{$get_started/get_started$Getting Started with
+If you are new to TensorFlow, see @{$get_started/premade_estimators$Getting Started with
 TensorFlow}.
 
 If the system outputs an error message instead of a greeting, see [Common

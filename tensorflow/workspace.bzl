@@ -179,11 +179,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "gemmlowp",
       urls = [
-          "https://mirror.bazel.build/github.com/google/gemmlowp/archive/010bb3e71a26ca1d0884a167081d092b43563996.zip",
-          "https://github.com/google/gemmlowp/archive/010bb3e71a26ca1d0884a167081d092b43563996.zip",
+          "https://mirror.bazel.build/github.com/google/gemmlowp/archive/d4d1e29a62192d8defdc057b913ef36ca582ac98.zip",
+          "https://github.com/google/gemmlowp/archive/d4d1e29a62192d8defdc057b913ef36ca582ac98.zip",
       ],
-      sha256 = "dd2557072bde12141419cb8320a9c25e6ec41a8ae53c2ac78c076a347bb46d9d",
-      strip_prefix = "gemmlowp-010bb3e71a26ca1d0884a167081d092b43563996",
+      sha256 = "e2bee7afd3c43028f23dd0d7f85ddd8b21aaf79c572b658e56164ef502b2b9c7",
+      strip_prefix = "gemmlowp-d4d1e29a62192d8defdc057b913ef36ca582ac98",
   )
 
   tf_http_archive(
@@ -474,11 +474,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/ee84001a30d264f1f2acc6f8245b9886a3c0401b.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/ee84001a30d264f1f2acc6f8245b9886a3c0401b.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/ba2e473a530286f386d18a95c9de4d673d4a21dc.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/ba2e473a530286f386d18a95c9de4d673d4a21dc.tar.gz",
       ],
-      sha256 = "d2b18ec6f1838d837c4cae8adce218630b028a6033aad2b06f2554b2132b264f",
-      strip_prefix = "llvm-ee84001a30d264f1f2acc6f8245b9886a3c0401b",
+      sha256 = "0885a7c01220d2a96aeef4ff9aee016837150af839956d18af1845ea1acd0105",
+      strip_prefix = "llvm-ba2e473a530286f386d18a95c9de4d673d4a21dc",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 
@@ -671,6 +671,9 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       sha256 = "20a1a39fd97e5da7f40f5f2e7fd73fd2ea59f9dc4bb8a6c5f228aa543e727e31",
       strip_prefix = "cub-1.7.4",
       build_file = str(Label("//third_party:cub.BUILD")),
+      # TODO: remove the patch when upstream fix is accepted and released.
+      #       PR with a fix: https://github.com/NVlabs/cub/pull/125
+      patch_file = str(Label("//third_party/cub:fix_compilation_in_clang.patch")),
   )
 
   tf_http_archive(

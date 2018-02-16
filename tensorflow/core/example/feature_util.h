@@ -56,9 +56,9 @@ limitations under the License.
 //
 // To add values to feature_lists:
 //   AppendFeatureValues({4.0},
-//                       GetFeatureList("movie_ratings", &se)->Add());
+//                       GetFeatureList("images", &se)->Add());
 //   AppendFeatureValues({5.0, 3.0},
-//                       GetFeatureList("movie_ratings", &se)->Add());
+//                       GetFeatureList("images", &se)->Add());
 // This will create a feature list keyed as "images" with two features:
 //   feature_lists {
 //     feature_list {

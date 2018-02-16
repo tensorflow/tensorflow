@@ -41,7 +41,7 @@ TensorFlow coding style.
 #### General guidelines and philosophy for contribution
 
 * Include unit tests when you contribute new features, as they help to
-  a) prove that your code works correctly, b) guard against future breaking
+  a) prove that your code works correctly, and b) guard against future breaking
   changes to lower the maintenance cost.
 * Bug fixes also generally require unit tests, because the presence of bugs
   usually indicates insufficient test coverage.
@@ -51,7 +51,7 @@ TensorFlow coding style.
   non-backward-compatible API changes without a major release. Reviewers of your
   pull request will comment on any API compatibility issues.
 * When you contribute a new feature to TensorFlow, the maintenance burden is (by
-  default) transferred to the TensorFlow team. This means that benefit of
+  default) transferred to the TensorFlow team. This means that benefit of the
   contribution must be compared against the cost of maintaining the feature.
 * Full new features (e.g., a new op implementing a cutting-edge algorithm)
   typically will live in
@@ -163,7 +163,7 @@ There are two ways to run TensorFlow unit tests.
    bazel test ${flags} //tensorflow/python/...
    ```
 
-2. Using [Docker](www.docker.com) and TensorFlow's CI scripts.
+2. Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
 
    ```bash
    # Install Docker first, then this will build and run cpu tests

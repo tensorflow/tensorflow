@@ -26,6 +26,7 @@ import numpy as np
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.keras._impl.keras import testing_utils
 from tensorflow.python.keras._impl.keras.engine.training import _weighted_masked_objective
+from tensorflow.python.keras._impl.keras.utils.generic_utils import slice_arrays
 from tensorflow.python.platform import test
 
 try:
@@ -1057,22 +1058,22 @@ class TestTrainingUtils(test.TestCase):
 
   def test_slice_arrays(self):
     input_a = np.random.random((10, 3))
-    keras.engine.training._slice_arrays(None)
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(None)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
     input_a = [None, [1, 1], None, [1, 1]]
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
     input_a = [None]
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
     input_a = None
-    keras.engine.training._slice_arrays(input_a, 0)
-    keras.engine.training._slice_arrays(input_a, 0, 1)
-    keras.engine.training._slice_arrays(input_a, stop=2)
+    slice_arrays(input_a, 0)
+    slice_arrays(input_a, 0, 1)
+    slice_arrays(input_a, stop=2)
 
 
 class TestTrainingWithDataTensors(test.TestCase):

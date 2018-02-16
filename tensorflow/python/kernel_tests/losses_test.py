@@ -953,8 +953,8 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     # Compute the expected loss 'manually'.
     total = np.zeros((batch_size,))
     for b in range(batch_size):
-      for i in range(dims-1):
-        for j in range(i+1, dims):
+      for i in range(dims - 1):
+        for j in range(i + 1, dims):
           x = self._predictions[b, i].item() - self._predictions[b, j].item()
           y = self._labels[b, i].item() - self._labels[b, j].item()
           diff = (x - y)
@@ -1059,8 +1059,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
         [[4, 8, 12], [1, 2, 3], [4, 5, 6]],
         [[8, 1, 3], [7, 8, 9], [10, 11, 12]],
     ])
-    self._test_valid_weights(
-        labels, predictions, expected_loss=137.5)
+    self._test_valid_weights(labels, predictions, expected_loss=137.5)
 
   def test3dWeightedScalar(self):
     labels = np.array([
@@ -1073,8 +1072,7 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     ])
     weight = 3.0
     self._test_valid_weights(
-        labels, predictions, expected_loss=weight * 137.5,
-        weights=weight)
+        labels, predictions, expected_loss=weight * 137.5, weights=weight)
 
   def _test_invalid_weights(
       self, labels, predictions, weights=1.0):
@@ -1124,7 +1122,9 @@ class MeanPairwiseSquaredErrorTest(test.TestCase):
     ])
     self._test_valid_weights(
         # TODO(ptucker): This doesn't look right.
-        labels, predictions, expected_loss=9 * 137.5,
+        labels,
+        predictions,
+        expected_loss=9 * 137.5,
         weights=np.ones((2, 3, 3)))
 
   def testLossWithAllZeroBatchSpecificWeights(self):

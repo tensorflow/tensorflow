@@ -49,7 +49,7 @@ bool SupportsQuantization(const Operator& op) {
          type == OperatorType::kTensorFlowReshape ||
          type == OperatorType::kTanh || type == OperatorType::kMul ||
          type == OperatorType::kSpaceToDepth ||
-         type == OperatorType::kDepthToSpace;
+         type == OperatorType::kDepthToSpace || type == OperatorType::kLstmCell;
 }
 
 template <ArrayDataType A>
@@ -103,6 +103,9 @@ void QuantizeArray(GraphTransformation* transformation, Model* model,
   switch (quantized_data_type) {
     case ArrayDataType::kUint8:
       return QuantizeArray<ArrayDataType::kUint8>(transformation, model, name,
+                                                  quantization_params);
+    case ArrayDataType::kInt16:
+      return QuantizeArray<ArrayDataType::kInt16>(transformation, model, name,
                                                   quantization_params);
     case ArrayDataType::kInt32:
       return QuantizeArray<ArrayDataType::kInt32>(transformation, model, name,
@@ -172,36 +175,62 @@ bool ChooseQuantizationForOperatorInput(
   if (array.data_type != ArrayDataType::kFloat) {
     return false;
   }
+
+  // Quantization of bias vectors
+  bool is_bias_vector = false;
+  int activations_input_index;
+  int weights_input_index;
   if (op.type == OperatorType::kConv ||
       op.type == OperatorType::kDepthwiseConv ||
       op.type == OperatorType::kFullyConnected) {
     if (input_index == 2) {
-      // Quantization of bias vector.
-      // We need both of the mandatory inputs (input activations and weights) to
-      // have
-      // been already quantized.
-      const auto& input_activations = model->GetArray(op.inputs[0]);
-      const auto& input_weights = model->GetArray(op.inputs[1]);
-      if (!input_activations.quantization_params ||
-          !input_weights.quantization_params) {
-        return false;
-      }
-      const auto input_activations_scale =
-          input_activations.quantization_params->scale;
-      const auto input_weights_scale = input_weights.quantization_params->scale;
-      quantization_params->scale =
-          input_activations_scale * input_weights_scale;
-      quantization_params->zero_point = 0;
-      *quantized_data_type = ArrayDataType::kInt32;
-      transformation->AddMessageF(
-          "Input array %s is a bias vector. Choosing quantization params "
-          "accordingly.",
-          input);
+      is_bias_vector = true;
+      activations_input_index = 0;
+      weights_input_index = 1;
+    }
+  }
+  if (op.type == OperatorType::kLstmCell) {
+    if (input_index == LstmCellOperator::BIASES_INPUT) {
+      is_bias_vector = true;
+      activations_input_index = LstmCellOperator::DATA_INPUT;
+      weights_input_index = LstmCellOperator::WEIGHTS_INPUT;
+    }
+  }
+  if (is_bias_vector) {
+    // Quantization of bias vector.
+    // We need both of the mandatory inputs (input activations and weights) to
+    // have been already quantized.
+    const auto& input_activations =
+        model->GetArray(op.inputs[activations_input_index]);
+    const auto& input_weights = model->GetArray(op.inputs[weights_input_index]);
+    if (!input_activations.quantization_params ||
+        !input_weights.quantization_params) {
+      return false;
+    }
+    const auto input_activations_scale =
+        input_activations.quantization_params->scale;
+    const auto input_weights_scale = input_weights.quantization_params->scale;
+    quantization_params->scale = input_activations_scale * input_weights_scale;
+    quantization_params->zero_point = 0;
+    *quantized_data_type = ArrayDataType::kInt32;
+    transformation->AddMessageF(
+        "Input array %s is a bias vector. Choosing quantization params "
+        "accordingly.",
+        input);
+    return true;
+  }
+
+  const MinMax& minmax = GetOrComputeMinMax(model, input);
+
+  if (op.type == OperatorType::kLstmCell) {
+    if (input_index == LstmCellOperator::PREV_STATE_INPUT) {
+      GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
+          model->flags, minmax, quantization_params);
+      *quantized_data_type = ArrayDataType::kInt16;
       return true;
     }
   }
 
-  const MinMax& minmax = GetOrComputeMinMax(model, input);
   GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(model->flags, minmax,
                                                          quantization_params);
   transformation->AddMessageF(
@@ -265,7 +294,7 @@ bool ChooseHardcodedQuantizationForOperatorOutput(
   if (op.type == OperatorType::kTanh) {
     // Tanh has the range: [-1, 1].
     *quantized_data_type = ArrayDataType::kUint8;
-    quantization_params->zero_point = 127;
+    quantization_params->zero_point = 128;
     quantization_params->scale = 1. / 128.;
     // 0 should be exactly representable, as values will typically be centered
     // around 0, with many values near 0.
@@ -310,6 +339,15 @@ bool ChooseQuantizationForOperatorOutput(
     return true;
   }
   const MinMax& minmax = GetOrComputeMinMax(model, output);
+  if (op.type == OperatorType::kLstmCell) {
+    if (output_index == LstmCellOperator::STATE_OUTPUT ||
+        output_index == LstmCellOperator::ACTIV_TEMP) {
+      GetQuantizationParamsFromMinMax<ArrayDataType::kInt16>(
+          model->flags, minmax, quantization_params);
+      *quantized_data_type = ArrayDataType::kInt16;
+      return true;
+    }
+  }
   GetQuantizationParamsFromMinMax<ArrayDataType::kUint8>(model->flags, minmax,
                                                          quantization_params);
   *quantized_data_type = ArrayDataType::kUint8;
@@ -405,41 +443,52 @@ bool Quantize::Run(Model* model, std::size_t op_index) {
     if (ChooseQuantizationForOperatorInput(this, model, op, input_index,
                                            &quantized_data_type,
                                            &quantization_params)) {
-      changed = true;
       const auto& input = op.inputs[input_index];
       if (IsConstantParameterArray(*model, input)) {
         QuantizeArray(this, model, input, quantized_data_type,
                       quantization_params);
-      } else if (toco::IsRnnStateArray(*model, input)) {
-        // Simply Quantize the Array
-        auto& array = model->GetArray(op.inputs[input_index]);
-        array.GetOrCreateQuantizationParams() = quantization_params;
-        array.data_type = quantized_data_type;
+        changed = true;
       } else {
         auto dequantize_it = FindOpWithOutput(*model, input);
-        CHECK(dequantize_it != model->operators.end())
-            << "Cannot quantize input \"" << input
-            << "\" on operator with output \"" << op.outputs[0]
-            << "\". Nothing feeding input.";
-        auto* dequantize_op = dequantize_it->get();
-        CHECK(dequantize_op->type == OperatorType::kDequantize)
-            << "Cannot quantize input \"" << input
-            << "\" on operator with output \"" << op.outputs[0]
-            << "\". Input is not fed by a Dequantize operator.";
-        op.inputs[input_index] = dequantize_op->inputs[0];
-        // Check if the output of that Dequantize op was not used by any
-        // other operator. We will then erase that Dequantize op.
-        if (!CountOpsWithInput(*model, dequantize_op->outputs[0])) {
-          // If any of the model's output_arrays was pointing to the
-          // Dequantize op's output, let it point to the Dequantize op's
-          // input instead.
-          for (int i = 0; i < model->flags.output_arrays_size(); i++) {
-            if (model->flags.output_arrays(i) == dequantize_op->outputs[0]) {
-              model->flags.set_output_arrays(i, dequantize_op->inputs[0]);
+        if (dequantize_it != model->operators.end()) {
+          auto* dequantize_op = dequantize_it->get();
+          CHECK(dequantize_op->type == OperatorType::kDequantize);
+          op.inputs[input_index] = dequantize_op->inputs[0];
+          // Check if the output of that Dequantize op was not used by any
+          // other operator. We will then erase that Dequantize op.
+          if (!CountOpsWithInput(*model, dequantize_op->outputs[0])) {
+            // If any of the model's output_arrays was pointing to the
+            // Dequantize op's output, let it point to the Dequantize op's
+            // input instead.
+            for (int i = 0; i < model->flags.output_arrays_size(); i++) {
+              if (model->flags.output_arrays(i) == dequantize_op->outputs[0]) {
+                model->flags.set_output_arrays(i, dequantize_op->inputs[0]);
+              }
+            }
+            model->EraseArray(dequantize_op->outputs[0]);
+            model->operators.erase(dequantize_it);
+          }
+          changed = true;
+        } else {
+          // This input array is not produced by a Dequantize op.
+          // We have encountered this situation in RNN graphs, whose cyclic
+          // nature defeats the basic assumption underlying the quantization
+          // algorithm implemented here. For now, when we have seen this
+          // happening, the array in question was a RNN state array itself,
+          // so let us just implement this case here, and guard that assumption
+          // with a CHECK. A more general fix would involve revisiting the
+          // design of this whole Quantization transformation.
+          bool is_rnn_state_array = false;
+          for (const auto& rnn_state : model->flags.rnn_states()) {
+            if (rnn_state.state_array() == input) {
+              is_rnn_state_array = true;
+              break;
             }
           }
-          model->EraseArray(dequantize_op->outputs[0]);
-          model->operators.erase(dequantize_it);
+          CHECK(is_rnn_state_array);
+          QuantizeArray(this, model, input, quantized_data_type,
+                        quantization_params);
+          changed = true;
         }
       }
     }

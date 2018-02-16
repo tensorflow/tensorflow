@@ -21,11 +21,10 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include <unistd.h>
 #include <cstdlib>
 #include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
-#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
@@ -46,7 +45,7 @@ class MklSubAllocator : public SubAllocator {
 
 /// CPU allocator for MKL that wraps BFC allocator and intercepts
 /// and redirects memory allocation calls from MKL.
-class MklCPUAllocator : public Allocator {
+class MklCPUAllocator : public VisitableAllocator {
  public:
   // Constructor and other standard functions
 
@@ -119,6 +118,14 @@ class MklCPUAllocator : public Allocator {
 
   void ClearStats() override { allocator_->ClearStats(); }
 
+  void AddAllocVisitor(Visitor visitor) override {
+    allocator_->AddAllocVisitor(visitor);
+  }
+
+  void AddFreeVisitor(Visitor visitor) override {
+    allocator_->AddFreeVisitor(visitor);
+  }
+
  private:
   // Hooks provided by this allocator for memory allocation routines from MKL
 
@@ -153,7 +160,7 @@ class MklCPUAllocator : public Allocator {
   /// The alignment that we need for the allocations
   static const size_t kAlignment = 64;
 
-  Allocator* allocator_;  // owned by this class
+  VisitableAllocator* allocator_;  // owned by this class
 };
 
 }  // namespace tensorflow

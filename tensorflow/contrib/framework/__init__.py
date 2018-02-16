@@ -85,6 +85,8 @@ See the @{$python/contrib.framework} guide.
 @@py_func
 @@sort
 
+@@get_placeholders
+
 @@CriticalSection
 
 @@BoundedTensorSpec

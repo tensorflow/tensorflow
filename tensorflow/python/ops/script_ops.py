@@ -97,7 +97,7 @@ class FuncRegistry(object):
     components of a tensor have different lengths.  This is bad: ignoring the
     padding is wrong for text data, and removing the padding is wrong for binary
     data.  To avoid this bug, we redo the conversion using an object dtype.
-    Additionally, we convert unicode strings to (byte-)strings for Python3
+    Additionally, we convert unicode strings to (byte-)strings for
     compatibility.
 
     Args:
@@ -111,7 +111,7 @@ class FuncRegistry(object):
     if result.dtype.char == "S" and result is not value:
       return np.asarray(value, order="C", dtype=object)
     elif result.dtype.char == "U" and result is not value:
-      value = np.vectorize(lambda x: x.encode())(value)
+      value = np.vectorize(lambda x: x.encode("utf8"))(value)
       return np.asarray(value, order="C", dtype=object)
     elif result.dtype.char == "U":
       return result.astype(np.bytes_)
@@ -176,7 +176,10 @@ class CleanupFunc(object):
     self._token = token
 
   def __del__(self):
-    _py_funcs.remove(self._token)
+    if _py_funcs is not None:
+      # If _py_funcs is None, the program is most likely in shutdown, and the
+      # _py_funcs object has been destroyed already.
+      _py_funcs.remove(self._token)
 
 
 def _internal_py_func(func, inp, Tout, stateful=None, eager=False, name=None):

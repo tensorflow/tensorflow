@@ -29,6 +29,7 @@ from tensorflow.python.keras._impl.keras.engine import InputSpec
 from tensorflow.python.keras._impl.keras.engine.topology import shape_type_conversion
 from tensorflow.python.keras._impl.keras.layers.recurrent import Recurrent
 from tensorflow.python.keras._impl.keras.utils import conv_utils
+from tensorflow.python.util.tf_export import tf_export
 
 
 class ConvRecurrent2D(Recurrent):
@@ -190,6 +191,7 @@ class ConvRecurrent2D(Recurrent):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.ConvLSTM2D')
 class ConvLSTM2D(ConvRecurrent2D):
   """Convolutional LSTM.
 
