@@ -161,6 +161,10 @@ public final class Interpreter implements AutoCloseable {
     return wrapper.getOutputIndex(opName);
   }
 
+  public void setUseNNAPI(boolean useNNAPI) {
+    wrapper.setUseNNAPI(useNNAPI);
+  }
+
   /** Release resources associated with the {@code Interpreter}. */
   @Override
   public void close() {
