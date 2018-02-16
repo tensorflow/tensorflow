@@ -2095,7 +2095,8 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
               const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
               const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
               const Dims<4>& activ_temp_dims, int32 weights_zero_point,
-              int32 accum_multiplier, int accum_shift) {
+              int32 accum_multiplier, int accum_shift,
+              gemmlowp::GemmContext* gemm_context) {
   gemmlowp::ScopedProfilingLabel label(
       "LstmCell/quantized (8bit external, 16bit internal)");
   // Gather dimensions information, and perform consistency checks.
@@ -2144,42 +2145,112 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
   // integers, and the output is 16-bit fixed-point with 3 integer bits so
   // the output range is [-2^3, 2^3] == [-8, 8]. The rationale for that
   // is explained in the function comment above.
-  for (int b = 0; b < fc_batches; ++b) {
-    for (int out_c = 0; out_c < fc_output_depth; ++out_c) {
-      // Internal accumulation.
-      // Initialize accumulator with the bias-value.
-      int32 accum = bias_data_int32[out_c];
-      // Accumulation loop.
-      for (int d = 0; d < fc_accum_depth; ++d) {
-        int16 input_val = concat_temp_data_uint8[b * fc_accum_depth + d] - 128;
-        int16 weights_val =
-            weights_data_uint8[out_c * fc_accum_depth + d] - weights_zero_point;
-        accum += input_val * weights_val;
-      }
-      // Down-scale the final int32 accumulator to the scale used by our
-      // (16-bit, using 3 integer bits) fixed-point format. The quantized
-      // multiplier and shift here have been pre-computed offline
-      // (e.g. by toco).
-      // Note that the implicit assumption here, that this multiplier is smaller
-      // than one, is equivalent to the assumption that the fully-connected
-      // weights min-max is enclosed within [-4, 4] (it may be narrower).
-      // If that eventually fails, offline tools (e.g. toco) will fail early
-      // and that will be easy to support as needed. For now, assuming that
-      // this multiplier is less than one allows us to use a simpler, more
-      // accurate implementation.
-      accum =
-          MultiplyByQuantizedMultiplier(accum, accum_multiplier, accum_shift);
-      // Saturate, cast to int16, and store to the temporary activations array.
-      accum = std::max(-32768, std::min(32767, accum));
-      activ_temp_data_int16[out_c + fc_output_depth * b] = accum;
-    }
-  }
+
+  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> weights_matrix(
+      weights_data_uint8, fc_output_depth, fc_accum_depth);
+  gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
+      concat_temp_data_uint8, fc_accum_depth, fc_batches);
+  gemmlowp::MatrixMap<int16, gemmlowp::MapOrder::ColMajor> output_matrix(
+      activ_temp_data_int16, fc_output_depth, fc_batches);
+  typedef gemmlowp::VectorMap<const int32, gemmlowp::VectorShape::Col>
+      ColVectorMap;
+  ColVectorMap bias_vector(bias_data_int32, fc_output_depth);
+  gemmlowp::OutputStageBiasAddition<ColVectorMap> bias_addition_stage;
+  bias_addition_stage.bias_vector = bias_vector;
+  gemmlowp::OutputStageScaleInt32ByFixedPointAndExponent scale_stage;
+  scale_stage.result_offset_after_shift = 0;
+  scale_stage.result_fixedpoint_multiplier = accum_multiplier;
+  scale_stage.result_exponent = accum_shift;
+  gemmlowp::OutputStageSaturatingCastToInt16 saturating_cast_int16_stage;
+  auto output_pipeline = std::make_tuple(bias_addition_stage, scale_stage,
+                                         saturating_cast_int16_stage);
+  gemmlowp::GemmWithOutputPipeline<uint8, int16,
+                                   gemmlowp::L8R8WithLhsNonzeroBitDepthParams>(
+      gemm_context, weights_matrix, input_matrix, &output_matrix,
+      -weights_zero_point, -128, output_pipeline);
 
   // Rest of the LSTM cell: tanh and logistic math functions, and some adds
   // and muls, all done in 16-bit fixed-point.
   const int outer_size = batches * width * height;
+  const int16* input_gate_input_ptr = activ_temp_data_int16;
+  const int16* input_modulation_gate_input_ptr =
+      activ_temp_data_int16 + output_depth;
+  const int16* forget_gate_input_ptr = activ_temp_data_int16 + 2 * output_depth;
+  const int16* output_gate_input_ptr = activ_temp_data_int16 + 3 * output_depth;
+  const int16* prev_state_ptr = prev_state_data_int16;
+  int16* output_state_data_ptr = output_state_data_int16;
+  uint8* output_activ_data_ptr = output_activ_data_uint8;
+
   for (int b = 0; b < outer_size; ++b) {
-    for (int c = 0; c < output_depth; ++c) {
+    int c = 0;
+#ifdef GEMMLOWP_NEON
+    for (; c <= output_depth - 8; c += 8) {
+      // Define the fixed-point data types that we will use here. All use
+      // int16 as the underlying integer type i.e. all are 16-bit fixed-point.
+      // They only differ by the number of integral vs. fractional bits,
+      // determining the range of values that they can represent.
+      //
+      // F0 uses 0 integer bits, range [-1, 1].
+      // This is the return type of math functions such as tanh, logistic,
+      // whose range is in [-1, 1].
+      using F0 = gemmlowp::FixedPoint<int16x8_t, 0>;
+      // F3 uses 3 integer bits, range [-8, 8].
+      // This is the range of the previous fully-connected node's output,
+      // which is our input here.
+      using F3 = gemmlowp::FixedPoint<int16x8_t, 3>;
+      // FS uses StateIntegerBits integer bits, range [-2^StateIntegerBits,
+      // 2^StateIntegerBits]. It's used to represent the internal state, whose
+      // number of integer bits is currently dictated by the model. See comment
+      // on the StateIntegerBits template parameter above.
+      using FS = gemmlowp::FixedPoint<int16x8_t, StateIntegerBits>;
+      // Implementation of input gate, using fixed-point logistic function.
+      F3 input_gate_input = F3::FromRaw(vld1q_s16(input_gate_input_ptr));
+      input_gate_input_ptr += 8;
+      F0 input_gate_output = gemmlowp::logistic(input_gate_input);
+      // Implementation of input modulation gate, using fixed-point tanh
+      // function.
+      F3 input_modulation_gate_input =
+          F3::FromRaw(vld1q_s16(input_modulation_gate_input_ptr));
+      input_modulation_gate_input_ptr += 8;
+      F0 input_modulation_gate_output =
+          gemmlowp::tanh(input_modulation_gate_input);
+      // Implementation of forget gate, using fixed-point logistic function.
+      F3 forget_gate_input = F3::FromRaw(vld1q_s16(forget_gate_input_ptr));
+      forget_gate_input_ptr += 8;
+      F0 forget_gate_output = gemmlowp::logistic(forget_gate_input);
+      // Implementation of output gate, using fixed-point logistic function.
+      F3 output_gate_input = F3::FromRaw(vld1q_s16(output_gate_input_ptr));
+      output_gate_input_ptr += 8;
+      F0 output_gate_output = gemmlowp::logistic(output_gate_input);
+      // Implementation of internal multiplication nodes, still in fixed-point.
+      F0 input_times_input_modulation =
+          input_gate_output * input_modulation_gate_output;
+      FS prev_state = FS::FromRaw(vld1q_s16(prev_state_ptr));
+      prev_state_ptr += 8;
+      FS prev_state_times_forget_state = forget_gate_output * prev_state;
+      // Implementation of internal addition node, saturating.
+      FS new_state = gemmlowp::SaturatingAdd(
+          gemmlowp::Rescale<StateIntegerBits>(input_times_input_modulation),
+          prev_state_times_forget_state);
+      // Implementation of last internal tanh node, still in fixed-point.
+      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state);
+      // Store the new internal state back to memory, as 16-bit integers.
+      vst1q_s16(output_state_data_ptr, new_state.raw());
+      output_state_data_ptr += 8;
+      // Down-scale the output activations to 8-bit integers, saturating,
+      // and store back to memory.
+      int16 buf16[8];
+      vst1q_s16(buf16, output_activ_int16.raw());
+      for (int i = 0; i < 8; i++) {
+        int16 rescaled_output_activ =
+            gemmlowp::RoundingDivideByPOT(buf16[i], 8);
+        int16 clamped_output_activ =
+            std::max<int16>(-128, std::min<int16>(127, rescaled_output_activ));
+        *output_activ_data_ptr++ = 128 + clamped_output_activ;
+      }
+    }
+#endif
+    for (; c < output_depth; ++c) {
       // Define the fixed-point data types that we will use here. All use
       // int16 as the underlying integer type i.e. all are 16-bit fixed-point.
       // They only differ by the number of integral vs. fractional bits,
@@ -2199,27 +2270,24 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
       // on the StateIntegerBits template parameter above.
       using FS = gemmlowp::FixedPoint<std::int16_t, StateIntegerBits>;
       // Implementation of input gate, using fixed-point logistic function.
-      F3 input_gate_input = F3::FromRaw(
-          activ_temp_data_int16[b * fc_output_depth + 0 * output_depth + c]);
+      F3 input_gate_input = F3::FromRaw(*input_gate_input_ptr++);
       F0 input_gate_output = gemmlowp::logistic(input_gate_input);
       // Implementation of input modulation gate, using fixed-point tanh
       // function.
-      F3 input_modulation_gate_input = F3::FromRaw(
-          activ_temp_data_int16[b * fc_output_depth + 1 * output_depth + c]);
+      F3 input_modulation_gate_input =
+          F3::FromRaw(*input_modulation_gate_input_ptr++);
       F0 input_modulation_gate_output =
           gemmlowp::tanh(input_modulation_gate_input);
       // Implementation of forget gate, using fixed-point logistic function.
-      F3 forget_gate_input = F3::FromRaw(
-          activ_temp_data_int16[b * fc_output_depth + 2 * output_depth + c]);
+      F3 forget_gate_input = F3::FromRaw(*forget_gate_input_ptr++);
       F0 forget_gate_output = gemmlowp::logistic(forget_gate_input);
       // Implementation of output gate, using fixed-point logistic function.
-      F3 output_gate_input = F3::FromRaw(
-          activ_temp_data_int16[b * fc_output_depth + 3 * output_depth + c]);
+      F3 output_gate_input = F3::FromRaw(*output_gate_input_ptr++);
       F0 output_gate_output = gemmlowp::logistic(output_gate_input);
       // Implementation of internal multiplication nodes, still in fixed-point.
       F0 input_times_input_modulation =
           input_gate_output * input_modulation_gate_output;
-      FS prev_state = FS::FromRaw(prev_state_data_int16[b * output_depth + c]);
+      FS prev_state = FS::FromRaw(*prev_state_ptr++);
       FS prev_state_times_forget_state = forget_gate_output * prev_state;
       // Implementation of internal addition node, saturating.
       FS new_state = gemmlowp::SaturatingAdd(
@@ -2228,16 +2296,19 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
       // Implementation of last internal tanh node, still in fixed-point.
       F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state);
       // Store the new internal state back to memory, as 16-bit integers.
-      output_state_data_int16[b * output_depth + c] = new_state.raw();
+      *output_state_data_ptr++ = new_state.raw();
       // Down-scale the output activations to 8-bit integers, saturating,
       // and store back to memory.
       int16 rescaled_output_activ =
           gemmlowp::RoundingDivideByPOT(output_activ_int16.raw(), 8);
       int16 clamped_output_activ =
           std::max<int16>(-128, std::min<int16>(127, rescaled_output_activ));
-      output_activ_data_uint8[b * output_depth + c] =
-          128 + clamped_output_activ;
+      *output_activ_data_ptr++ = 128 + clamped_output_activ;
     }
+    input_gate_input_ptr += 3 * output_depth;
+    input_modulation_gate_input_ptr += 3 * output_depth;
+    forget_gate_input_ptr += 3 * output_depth;
+    output_gate_input_ptr += 3 * output_depth;
   }
 }
 

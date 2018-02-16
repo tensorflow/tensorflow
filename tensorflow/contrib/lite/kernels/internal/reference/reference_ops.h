@@ -1453,7 +1453,10 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
               const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
               const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
               const Dims<4>& activ_temp_dims, int32 weights_zero_point,
-              int32 accum_multiplier, int accum_shift) {
+              int32 accum_multiplier, int accum_shift,
+              gemmlowp::GemmContext* gemm_context) {
+  (void)gemm_context;  // only used in optimized code.
+
   // Gather dimensions information, and perform consistency checks.
   const int batches =
       MatchingArraySize(input_dims, 3, prev_activ_dims, 3, prev_state_dims, 3,
