@@ -186,6 +186,8 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNHWCSmall(
   const int pad_height = args.pad_rows;
   const int pad_width = args.pad_cols;
 
+  assert(blockDim.x == kBlockDepth);
+  assert(blockDim.y == args.in_cols);
   const int block_height = blockDim.z;
 
   // These values are the same for all threads and could
@@ -465,6 +467,8 @@ __global__ __launch_bounds__(1024, 2) void DepthwiseConv2dGPUKernelNCHWSmall(
   const int pad_width = args.pad_cols;
 
   // Fixed blockDim.z, tailored for maximum grid size for images of size 16x16.
+  assert(blockDim.x == args.in_cols);
+  assert(blockDim.z == kBlockDepth);
   const int block_height = blockDim.y;
 
   // These values are the same for all threads and could
@@ -588,20 +592,30 @@ void LaunchDepthwiseConv2dGPUSmall(const GpuDevice& device,
                                    TensorFormat data_format) {
   const int block_height = (args.in_rows + 1) / 2;
   dim3 block_dim;
+  int block_count;
   void (*kernel)(const DepthwiseArgs, const T*, const T*, T*);
-  if (data_format == FORMAT_NHWC) {
-    block_dim = dim3(kBlockDepth, args.in_cols, block_height);
-    kernel = DepthwiseConv2dGPUKernelNHWCSmall<T, kDirection, kKnownFilterWidth,
-                                               kKnownFilterHeight, kBlockDepth,
-                                               kKnownEvenHeight>;
-  } else if (data_format == FORMAT_NCHW) {
-    block_dim = dim3(args.in_cols, block_height, kBlockDepth);
-    kernel = DepthwiseConv2dGPUKernelNCHWSmall<T, kDirection, kKnownFilterWidth,
-                                               kKnownFilterHeight, kBlockDepth,
-                                               kKnownEvenHeight>;
-  } else {
-    assert(false && "Incorrect data format");
-    return;
+  switch (data_format) {
+    case FORMAT_NHWC:
+      block_dim = dim3(kBlockDepth, args.in_cols, block_height);
+      block_count =
+          args.batch * DivUp(args.out_depth, kBlockDepth) * kBlockDepth;
+      kernel =
+          DepthwiseConv2dGPUKernelNHWCSmall<T, kDirection, kKnownFilterWidth,
+                                            kKnownFilterHeight, kBlockDepth,
+                                            kKnownEvenHeight>;
+      break;
+    case FORMAT_NCHW:
+      block_dim = dim3(args.in_cols, block_height, kBlockDepth);
+      block_count =
+          DivUp(args.batch * args.out_depth, kBlockDepth) * kBlockDepth;
+      kernel =
+          DepthwiseConv2dGPUKernelNCHWSmall<T, kDirection, kKnownFilterWidth,
+                                            kKnownFilterHeight, kBlockDepth,
+                                            kKnownEvenHeight>;
+      break;
+    case FORMAT_NCHW_VECT_C:
+      LOG(ERROR) << "FORMAT_NCHW_VECT_C is not supported";
+      return;
   }
   const int tile_width = args.in_cols + args.filter_cols - 1;
   const int tile_height = block_height * 2 + args.filter_rows - 1;
@@ -609,11 +623,10 @@ void LaunchDepthwiseConv2dGPUSmall(const GpuDevice& device,
   const int filter_pixels = args.filter_rows * args.filter_cols;
   const int shared_memory_size =
       kBlockDepth * (tile_pixels + filter_pixels) * sizeof(T);
-  const int num_outputs =
-      args.batch * args.out_rows * args.out_cols * args.out_depth;
-  CudaLaunchConfig config =
-      GetCudaLaunchConfig(num_outputs, device, kernel, shared_memory_size,
-                          block_dim.x * block_dim.y * block_dim.z);
+  const int num_outputs = args.out_rows * args.out_cols * block_count;
+  CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+      num_outputs, device, kernel, shared_memory_size,
+      block_dim.x * block_dim.y * block_dim.z);
   kernel<<<config.block_count, block_dim, shared_memory_size,
            device.stream()>>>(args, input, filter, output);
 }
@@ -666,17 +679,20 @@ void LaunchDepthwiseConv2dGPU(const GpuDevice& device,
                               const T* filter, T* output,
                               TensorFormat data_format) {
   void (*kernel)(const DepthwiseArgs, const T*, const T*, T*, int);
-  if (data_format == FORMAT_NHWC) {
-    kernel =
-        DepthwiseConv2dGPUKernelNHWC<T, kKnownFilterWidth, kKnownFilterHeight,
-                                     kKnownDepthMultiplier>;
-  } else if (data_format == FORMAT_NCHW) {
-    kernel =
-        DepthwiseConv2dGPUKernelNCHW<T, kKnownFilterWidth, kKnownFilterHeight,
-                                     kKnownDepthMultiplier>;
-  } else {
-    assert(false && "Incorrect data format");
-    return;
+  switch (data_format) {
+    case FORMAT_NHWC:
+      kernel =
+          DepthwiseConv2dGPUKernelNHWC<T, kKnownFilterWidth, kKnownFilterHeight,
+                                       kKnownDepthMultiplier>;
+      break;
+    case FORMAT_NCHW:
+      kernel =
+          DepthwiseConv2dGPUKernelNCHW<T, kKnownFilterWidth, kKnownFilterHeight,
+                                       kKnownDepthMultiplier>;
+      break;
+    case FORMAT_NCHW_VECT_C:
+      LOG(ERROR) << "FORMAT_NCHW_VECT_C is not supported";
+      return;
   }
   const int num_outputs =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
@@ -894,15 +910,18 @@ void LaunchDepthwiseConv2dBackpropInputGPU(const GpuDevice& device,
                                            const T* filter, T* in_backprop,
                                            TensorFormat data_format) {
   void (*kernel)(const DepthwiseArgs, const T*, const T*, T*, int);
-  if (data_format == FORMAT_NHWC) {
-    kernel = DepthwiseConv2dBackpropInputGPUKernelNHWC<
-        T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
-  } else if (data_format == FORMAT_NCHW) {
-    kernel = DepthwiseConv2dBackpropInputGPUKernelNCHW<
-        T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
-  } else {
-    assert(false && "Incorrect data format");
-    return;
+  switch (data_format) {
+    case FORMAT_NHWC:
+      kernel = DepthwiseConv2dBackpropInputGPUKernelNHWC<
+          T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
+      break;
+    case FORMAT_NCHW:
+      kernel = DepthwiseConv2dBackpropInputGPUKernelNCHW<
+          T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
+      break;
+    case FORMAT_NCHW_VECT_C:
+      LOG(ERROR) << "FORMAT_NCHW_VECT_C is not supported";
+      return;
   }
   const int num_in_backprop =
       args.batch * args.in_rows * args.in_cols * args.in_depth;
@@ -1113,6 +1132,8 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall(
   const int pad_height = args.pad_rows;
   const int pad_width = args.pad_cols;
 
+  assert(blockDim.x == kBlockDepth);
+  assert(blockDim.y == args.in_cols);
   const int block_height = blockDim.z;
 
   // These values are the same for all threads and could
@@ -1381,6 +1402,8 @@ __launch_bounds__(1024, 2) void DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall(
   const int pad_height = args.pad_rows;
   const int pad_width = args.pad_cols;
 
+  assert(blockDim.x == args.in_cols);
+  assert(blockDim.z == kBlockDepth);
   const int block_height = blockDim.y;
 
   // These values are the same for all threads and could
@@ -1519,24 +1542,31 @@ bool TryLaunchDepthwiseConv2dBackpropFilterGPUSmall(
   }
 
   dim3 block_dim;
+  int block_count;
   void (*kernel)(const DepthwiseArgs, const T*, const T*, T*);
-  if (data_format == FORMAT_NHWC) {
-    block_dim = dim3(kBlockDepth, args.in_cols, block_height);
-    kernel = DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall<
-        T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels>;
-  } else if (data_format == FORMAT_NCHW) {
-    block_dim = dim3(args.in_cols, block_height, kBlockDepth);
-    kernel = DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall<
-        T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels>;
-  } else {
-    assert(false && "Incorrect data format");
-    return false;
+  switch (data_format) {
+    case FORMAT_NHWC:
+      block_dim = dim3(kBlockDepth, args.in_cols, block_height);
+      block_count =
+          args.batch * DivUp(args.out_depth, kBlockDepth) * kBlockDepth;
+      kernel = DepthwiseConv2dBackpropFilterGPUKernelNHWCSmall<
+          T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels>;
+      break;
+    case FORMAT_NCHW:
+      block_dim = dim3(args.in_cols, block_height, kBlockDepth);
+      block_count =
+          DivUp(args.batch * args.out_depth, kBlockDepth) * kBlockDepth;
+      kernel = DepthwiseConv2dBackpropFilterGPUKernelNCHWSmall<
+          T, kKnownFilterWidth, kKnownFilterHeight, kBlockDepth, kAccumPixels>;
+      break;
+    case FORMAT_NCHW_VECT_C:
+      LOG(ERROR) << "FORMAT_NCHW_VECT_C is not supported";
+      return false;
   }
-  const int num_out_backprop =
-      args.batch * args.out_rows * args.out_cols * args.out_depth;
-  CudaLaunchConfig config =
-      GetCudaLaunchConfig(num_out_backprop, device, kernel, shared_memory_size,
-                          block_dim.x * block_dim.y * block_dim.z);
+  const int num_out_backprop = args.out_rows * args.out_cols * block_count;
+  CudaLaunchConfig config = GetCudaLaunchConfigFixedBlockSize(
+      num_out_backprop, device, kernel, shared_memory_size,
+      block_dim.x * block_dim.y * block_dim.z);
   kernel<<<config.block_count, block_dim, shared_memory_size,
            device.stream()>>>(args, out_backprop, input, filter_backprop);
   return true;
@@ -1623,15 +1653,18 @@ void LaunchDepthwiseConv2dBackpropFilterGPU(const GpuDevice& device,
                                             const T* input, T* filter_backprop,
                                             TensorFormat data_format) {
   void (*kernel)(const DepthwiseArgs, const T*, const T*, T*, int);
-  if (data_format == FORMAT_NHWC) {
-    kernel = DepthwiseConv2dBackpropFilterGPUKernelNHWC<
-        T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
-  } else if (data_format == FORMAT_NCHW) {
-    kernel = DepthwiseConv2dBackpropFilterGPUKernelNCHW<
-        T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
-  } else {
-    assert(false && "Incorrect data format");
-    return;
+  switch (data_format) {
+    case FORMAT_NHWC:
+      kernel = DepthwiseConv2dBackpropFilterGPUKernelNHWC<
+          T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
+      break;
+    case FORMAT_NCHW:
+      kernel = DepthwiseConv2dBackpropFilterGPUKernelNCHW<
+          T, kKnownFilterWidth, kKnownFilterHeight, kKnownDepthMultiplier>;
+      break;
+    case FORMAT_NCHW_VECT_C:
+      LOG(ERROR) << "FORMAT_NCHW_VECT_C is not supported";
+      return;
   }
   const int num_out_backprop =
       args.batch * args.out_rows * args.out_cols * args.out_depth;
