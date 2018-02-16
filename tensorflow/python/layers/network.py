@@ -977,7 +977,7 @@ class GraphNetwork(base.Layer):
             if context.in_graph_mode():
               if layer.activity_regularizer is not None:
                 regularization_losses = [
-                    layer.activity_regularizer(x) for x in computed_tensors
+                    layer.activity_regularizer(x) for x in output_tensors
                 ]
                 # Apply activity regularizer if any:
                 layer.add_loss(regularization_losses, computed_tensors)

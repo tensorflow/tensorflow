@@ -136,7 +136,7 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
       }
     } else if (!opcode->custom_code()) {
       error_reporter_->Report(
-          "Operator with builtin_code==0 has no custom_code.\n");
+          "Operator with CUSTOM builtin_code has no custom_code.\n");
       status = kTfLiteError;
     } else {
       const char* name = opcode->custom_code()->c_str();
@@ -531,6 +531,14 @@ void* ParseOpData(const Operator* op, BuiltinOperator op_type,
       auto* params = MallocPOD<TfLiteMeanParams>();
       if (auto* schema_params = op->builtin_options_as_MeanOptions()) {
         params->keep_dims = schema_params->keep_dims();
+      }
+      builtin_data = reinterpret_cast<void*>(params);
+      break;
+    }
+    case BuiltinOperator_SPLIT: {
+      auto* params = MallocPOD<TfLiteSplitParams>();
+      if (auto* schema_params = op->builtin_options_as_SplitOptions()) {
+        params->num_splits = schema_params->num_splits();
       }
       builtin_data = reinterpret_cast<void*>(params);
       break;

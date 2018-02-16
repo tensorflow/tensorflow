@@ -196,7 +196,10 @@ tf_cc_test(
     srcs = ["debug_gateway_test.cc"],
     args = ["--heap_check=local"],
     linkstatic = tf_kernel_tests_linkstatic(),
-    tags = ["no_gpu"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_gpu",
+    ],
     deps = [
         ":debug",
         ":debug_gateway_internal",

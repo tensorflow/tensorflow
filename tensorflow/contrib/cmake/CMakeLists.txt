@@ -341,7 +341,8 @@ if (tensorflow_ENABLE_GPU)
     if(NOT CUDNN_HOME)
       set(CUDNN_HOME ${CUDA_TOOLKIT_TARGET_DIR})
     endif(NOT CUDNN_HOME)
-    include_directories(${CUDNN_HOME})
+    set(CUDNN_INCLUDE "${CUDNN_HOME}/include")
+
     set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_CUFFT_LIBRARIES}
       ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDA_cusolver_LIBRARY} ${CUDNN_HOME}/lib/x64/cudnn.lib)
   else (WIN32)
@@ -369,10 +370,10 @@ if (tensorflow_ENABLE_GPU)
       message("culibos-static: ${culibos_STATIC_LIBRARY}")
     endif (NOT culibos_STATIC_LIBRARY)
 
-    include_directories(${CUDNN_INCLUDE})
     set(CUDA_LIBRARIES ${CUDA_LIBRARIES} ${CUDA_CUDA_LIBRARY} ${CUDA_CUBLAS_LIBRARIES} ${CUDA_CUFFT_LIBRARIES}
       ${CUDA_curand_LIBRARY} ${CUDA_cupti_LIBRARY} ${CUDA_cusolver_LIBRARY} ${cudnn_STATIC_LIBRARY} ${culibos_STATIC_LIBRARY} ${nccl_STATIC_LIBRARY})
   endif (WIN32)
+  include_directories(${CUDNN_INCLUDE})
 
   # Remove "." from CUDA version variable.
   string(REPLACE "." "" short_CUDA_VER ${tensorflow_CUDA_VERSION})
@@ -388,31 +389,22 @@ if (tensorflow_ENABLE_GPU)
     "#endif  // CUDA_CUDA_CONFIG_H_\n"
   )
 
-  if (WIN32)
-    # tf assumes in various places header files to be in cuda/include. On windows the cuda sdk
-    # installs them under cuda/version/include and to avoid that we need to change tf we copy a
-    # few files to cuda/include
-    FILE(COPY
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda.h ${CUDA_TOOLKIT_TARGET_DIR}/include/cuComplex.h
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h ${CUDNN_HOME}/include/cudnn.h
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_fp16.h
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/device_functions.h
-      DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
-    )
-  else(WIN32)
-    # Linux has slightly differnt install paths than Windows
-    FILE(COPY
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda.h ${CUDA_TOOLKIT_TARGET_DIR}/include/cuComplex.h
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h ${CUDNN_INCLUDE}/cudnn.h
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
-      ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
-      DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
-    )
-  endif(WIN32)
+  # tf assumes in various places header files to be in cuda/include. On windows the cuda sdk
+  # installs them under cuda/version/include and to avoid that we need to change tf we copy a
+  # few files to cuda/include
+  FILE(COPY
+    ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda.h
+    ${CUDA_TOOLKIT_TARGET_DIR}/include/cuComplex.h
+    ${CUDA_TOOLKIT_TARGET_DIR}/include/cublas_v2.h
+    ${CUDA_TOOLKIT_TARGET_DIR}/include/cusolverDn.h
+    ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_fp16.h
+    ${CUDA_TOOLKIT_TARGET_DIR}/include/device_functions.h
+    ${CUDA_TOOLKIT_TARGET_DIR}/include/cufft.h
+    ${CUDA_TOOLKIT_TARGET_DIR}/include/curand.h
+    ${CUDA_TOOLKIT_TARGET_DIR}/include/cuda_runtime_api.h
+    ${CUDNN_INCLUDE}/cudnn.h
+    DESTINATION ${tensorflow_source_dir}/third_party/gpus/cuda/include
+  )
 
   include_directories(${tensorflow_source_dir}/third_party/gpus)
   # add cuda libraries to tensorflow_EXTERNAL_LIBRARIES

@@ -144,7 +144,9 @@ def layer_params_to_mat2d(vector):
                                         [-1, w_part.shape.as_list()[-1]])
     return array_ops.concat(
         (w_part_reshaped, array_ops.reshape(b_part, [1, -1])), axis=0)
-  else:
+  elif isinstance(vector, ops.IndexedSlices):
+    return vector
+  else:  # Tensor or Tensor-like.
     return array_ops.reshape(vector, [-1, vector.shape.as_list()[-1]])
 
 
@@ -163,6 +165,11 @@ def mat2d_to_layer_params(vector_template, mat2d):
   if isinstance(vector_template, (tuple, list)):
     w_part, b_part = mat2d[:-1], mat2d[-1]
     return array_ops.reshape(w_part, vector_template[0].shape), b_part
+  elif isinstance(vector_template, ops.IndexedSlices):
+    if not isinstance(mat2d, ops.IndexedSlices):
+      raise TypeError(
+          "If vector_template is an IndexedSlices, so should mat2d.")
+    return mat2d
   else:
     return array_ops.reshape(mat2d, vector_template.shape)
 
@@ -419,6 +426,58 @@ def batch_execute(global_step, thunks, batch_size, name=None):
     ]
     return result
 
+
+def matmul_sparse_dense(A, B, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(A, B) where A is sparse, B is dense.
+
+  Args:
+    A: tf.IndexedSlices with dense shape [m, n].
+    B: tf.Tensor with shape [n, k].
+    name: str. Name of op.
+
+  Returns:
+    tf.IndexedSlices resulting from matmul(A, B).
+
+  Raises:
+    ValueError: If A doesn't represent a matrix.
+    ValueError: If B is not rank-2.
+  """
+  with ops.name_scope(name, "matmul_sparse_dense", [A, B]):
+    if A.indices.shape.ndims != 1 or A.values.shape.ndims != 2:
+      raise ValueError("A must represent a matrix. Found: %s." % A)
+    if B.shape.ndims != 2:
+      raise ValueError("B must be a matrix.")
+    new_values = math_ops.matmul(A.values, B)
+    return ops.IndexedSlices(
+        new_values,
+        A.indices,
+        dense_shape=array_ops.stack([A.dense_shape[0], new_values.shape[1]]))
+
+
+def matmul_diag_sparse(A_diag, B, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(A, B) where A is a diagonal matrix, B is sparse.
+
+  Args:
+    A_diag: diagonal entries of matrix A of shape [m, m].
+    B: tf.IndexedSlices. Represents matrix of shape [m, n].
+    name: str. Name of op.
+
+  Returns:
+    tf.IndexedSlices resulting from matmul(A, B).
+
+  Raises:
+    ValueError: If A_diag is not rank-1.
+    ValueError: If B doesn't represent a matrix.
+  """
+  with ops.name_scope(name, "matmul_diag_sparse", [A_diag, B]):
+    A_diag = ops.convert_to_tensor(A_diag)
+    if A_diag.shape.ndims != 1:
+      raise ValueError("A_diag must be a rank-1 Tensor.")
+    if B.indices.shape.ndims != 1 or B.values.shape.ndims != 2:
+      raise ValueError("B must represent a matrix. Found: %s." % B)
+    a = array_ops.gather(A_diag, B.indices)
+    a = array_ops.reshape(a, list(a.shape) + [1] * (B.values.shape.ndims - 1))
+    return ops.IndexedSlices(a * B.values, B.indices, dense_shape=B.dense_shape)
 
 # TODO(b/69623235): Add a function for finding tensors that share gradients
 # to eliminate redundant fisher factor computations.
