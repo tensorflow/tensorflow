@@ -68,9 +68,12 @@ bool IsTensorRTCandidate(const tensorflow::NodeDef& node_def) {
       "Mean",
       "AvgPool",
       "ConcatV2",
-      "DepthwiseConv2dNative"  //, "MatMul",
-                               //"Reshape"
-                               // TODO(ben,jie): ...
+      "DepthwiseConv2dNative",
+      "FusedBatchNorm",
+      "FusedBatchNormV2",
+      //, "MatMul",
+      //"Reshape"
+      // TODO(ben,jie): ...
   };
   // LINT.ThenChange(//tensorflow/contrib/tensorrt/convert/convert_nodes.h)
   return candidate_ops.count(node_def.op());
