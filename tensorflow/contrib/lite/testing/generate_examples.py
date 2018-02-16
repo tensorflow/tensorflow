@@ -775,7 +775,8 @@ def make_exp_tests(zip_path):
 
   def build_inputs(parameters, sess, inputs, outputs):
     values = [
-        create_tensor_data(parameters["input_dtype"], parameters["input_shape"])
+        create_tensor_data(parameters["input_dtype"], parameters["input_shape"],
+                           min_value=-100, max_value=9)
     ]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
