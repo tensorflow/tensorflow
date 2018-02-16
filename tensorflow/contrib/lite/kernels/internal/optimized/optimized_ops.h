@@ -2936,8 +2936,10 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
             vsubq_s16(vreinterpretq_s16_u16(input_u16), max_in_row_s16);
         int32x4_t input_diff_s32_0 = vmovl_s16(vget_low_s16(input_diff_s16));
         int32x4_t input_diff_s32_1 = vmovl_s16(vget_high_s16(input_diff_s16));
-        int32x4_t mask_0 = vcgeq_s32(input_diff_s32_0, diff_min_s32);
-        int32x4_t mask_1 = vcgeq_s32(input_diff_s32_1, diff_min_s32);
+        int32x4_t mask_0 =
+            gemmlowp::MaskIfGreaterThanOrEqual(input_diff_s32_0, diff_min_s32);
+        int32x4_t mask_1 =
+            gemmlowp::MaskIfGreaterThanOrEqual(input_diff_s32_1, diff_min_s32);
         FixedPointScaledDiffInt32x4 scaled_diff_0 =
             input_beta_multiplier_f0 *
             FixedPointScaledDiffInt32x4::FromRaw(
@@ -3011,8 +3013,7 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
             vsubq_s16(vreinterpretq_s16_u16(input_u16), max_in_row_s16);
         int32x4_t input_diff_s32_0 = vmovl_s16(vget_low_s16(input_diff_s16));
         int32x4_t input_diff_s32_1 = vmovl_s16(vget_high_s16(input_diff_s16));
-        uint8x8_t mask = vmovn_u16(
-            vreinterpretq_u16_s16(vcgeq_s16(input_diff_s16, diff_min_s16)));
+        uint8x8_t mask = vmovn_u16(vcgeq_s16(input_diff_s16, diff_min_s16));
         FixedPointScaledDiffInt32x4 scaled_diff_0 =
             input_beta_multiplier_f0 *
             FixedPointScaledDiffInt32x4::FromRaw(
@@ -3032,7 +3033,7 @@ inline void Softmax(const uint8* input_data, const Dims<4>& input_dims,
         int16x8_t output_s16 =
             vcombine_s16(vqmovn_s32(output_s32_0), vqmovn_s32(output_s32_1));
         uint8x8_t output_u8 = vqmovun_s16(output_s16);
-        uint8x8_t masked_output = vbsl_s16(mask, output_u8, vdup_n_u8(0));
+        uint8x8_t masked_output = vbsl_u8(mask, output_u8, vdup_n_u8(0));
         vst1_u8(output_data_ptr + c, masked_output);
       }
 #endif
