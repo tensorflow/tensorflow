@@ -721,6 +721,7 @@ cc_library(
     hdrs = ["llvm_compiler.h"],
     deps = [
         ":compiler",
+        "//tensorflow/core:lib_internal",
         "@llvm//:core",
     ],
 )
