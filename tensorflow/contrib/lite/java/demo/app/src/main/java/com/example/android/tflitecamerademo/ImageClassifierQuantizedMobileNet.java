@@ -49,7 +49,8 @@ public class ImageClassifierQuantizedMobileNet extends ImageClassifier {
 
   @Override
   protected String getLabelPath() {
-    return "labels_mobilenet_quant_v1_224.txt";
+    // current bazel build rule needs "labels.txt"
+    return "labels.txt";
   }
 
   @Override
