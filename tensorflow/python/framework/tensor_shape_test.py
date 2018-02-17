@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import googletest
@@ -175,6 +176,10 @@ class DimensionTest(test_util.TensorFlowTestCase):
   def testStr(self):
     self.assertEqual(str(tensor_shape.Dimension(7)), "7")
     self.assertEqual(str(tensor_shape.Dimension(None)), "?")
+
+  def testUnsupportedType(self):
+    with self.assertRaises(TypeError):
+      tensor_shape.Dimension(dtypes.string)
 
 
 class ShapeTest(test_util.TensorFlowTestCase):
