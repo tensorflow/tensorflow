@@ -33,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_script_ops
+from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -318,6 +319,12 @@ def py_func(func, inp, Tout, stateful=True, name=None):
   Returns:
     A list of `Tensor` or a single `Tensor` which `func` computes.
   """
+  if context.in_eager_mode():
+    result = func(*[x.numpy() for x in inp])
+    result = nest.flatten(result)
+
+    return [x if x is None else ops.convert_to_tensor(x) for x in result]
+
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
 

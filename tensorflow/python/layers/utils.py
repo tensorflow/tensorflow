@@ -20,6 +20,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.ops import variables
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.framework import ops
@@ -200,6 +201,12 @@ def smart_cond(pred, fn1, fn2, name=None):
     raise TypeError('`fn1` must be callable.')
   if not callable(fn2):
     raise TypeError('`fn2` must be callable.')
+
+  if context.in_eager_mode():
+    if pred:
+      return fn1()
+    else:
+      return fn2()
 
   pred_value = constant_value(pred)
   if pred_value is not None:
