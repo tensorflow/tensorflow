@@ -548,8 +548,10 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
                                     var_default):
   """Get var_name either from env, or user or default.
 
-  If var_name has been set as environment variable, use the preset value, else
-  ask for user input. If no input is provided, the default is used.
+  If 'USE_DEFAULT_' + var_name has been set as an environment variable to 1,
+  then the default is used. If var_name has been set as an environment variable,
+  use the environment variable's value, else ask for user input. If no input is
+  provided by the user, then the default is used.
 
   Args:
     environ_cp: copy of the os.environ.
@@ -560,7 +562,16 @@ def get_from_env_or_user_or_default(environ_cp, var_name, ask_for_var,
   Returns:
     string value for var_name
   """
+  use_default_var_name = 'USE_DEFAULT_' + var_name
   var = environ_cp.get(var_name)
+  if environ_cp.get(use_default_var_name) == '1':
+    if var is not None and var != var_default:
+      print('WARNING: Environment variable %s is set to \'%s\', but '
+            '%s is set to 1, meaning that the default value of \'%s\' '
+            'will be used instead.' % (var_name, var, use_default_var_name,
+                                       var_default))
+    return var_default
+
   if not var:
     var = get_input(ask_for_var)
     print('\n')
