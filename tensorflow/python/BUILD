@@ -781,6 +781,7 @@ py_library(
     srcs = ["framework/tensor_shape.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":dtypes",
         ":util",
         "//tensorflow/core:protos_all_py",
     ],
