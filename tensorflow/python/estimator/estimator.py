@@ -455,17 +455,17 @@ class Estimator(object):
       checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
         latest checkpoint in `model_dir` is used.
       yield_single_examples: If False, yield the whole batch as returned by the
-        model_fn instead of decomposing the batch into individual elements. This
-        is useful if model_fn return some tensor with first dimension not
-        equal to the batch size
+        `model_fn` instead of decomposing the batch into individual elements. This
+        is useful if `model_fn` returns some tensor with first dimension not
+        equal to the batch size.
 
     Yields:
       Evaluated values of `predictions` tensors.
 
     Raises:
-      ValueError: Could not find a trained model in model_dir.
-      ValueError: if batch length of predictions are not same and
-        yield_single_examples is True.
+      ValueError: Could not find a trained model in `model_dir`.
+      ValueError: if batch length of predictions are not the same and
+        `yield_single_examples` is True.
       ValueError: If there is a conflict between `predict_keys` and
         `predictions`. For example if `predict_keys` is not `None` but
         `EstimatorSpec.predictions` is not a `dict`.
