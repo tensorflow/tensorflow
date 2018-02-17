@@ -29,10 +29,10 @@ import os
 import sys
 
 # Schema to use for flatbuffers
-_SCHEMA = "third_party/tensorflow/contrib/lite/schema/schema.fbs"
+_SCHEMA = os.path.abspath(os.path.dirname(__file__) + "/../schema/schema.fbs")
 
 # Where the binary will be once built in for the flatc converter
-_BINARY = "third_party/flatbuffers/flatc"
+_BINARY = os.path.abspath(os.path.dirname(__file__) + "/../../../../third_party/flatbuffers/flatc")
 
 # A CSS description for making the visualizer
 _CSS = """
