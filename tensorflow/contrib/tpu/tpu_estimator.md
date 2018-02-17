@@ -231,7 +231,7 @@ Refer to this link for all [Cloud TPU documentation](https://cloud.google.com/tp
 
 
 ### Profiling
-You can profile the `worker` by using instructions as spcified in the [Cloud TPU Tools](https://cloud.google.com/tpu/docs/cloud-tpu-tools).
+You can profile the `worker` by using instructions as specified in the [Cloud TPU Tools](https://cloud.google.com/tpu/docs/cloud-tpu-tools).
 
 
 ### Is `int64` supported?

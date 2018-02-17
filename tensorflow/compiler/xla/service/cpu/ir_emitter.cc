@@ -1337,7 +1337,7 @@ IrEmitter::ReductionGenerator IrEmitter::MatchReductionGenerator(
   if (ShapeUtil::ElementIsComplex(root_shape)) {
     // TODO(b/65408531): Complex add could by done via bitcast to <float x [2N]>
     // Complex multiply would be more challenging. We could perhaps use a
-    // strided load to get all reals in a vector, all imags in a vector, or use
+    // strided load to get all reals in a vector, all images in a vector, or use
     // CreateShuffleVector on a bitcast to float x [2N].
     *failure_reason = "complex values not supported";
     return nullptr;

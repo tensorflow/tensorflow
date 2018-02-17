@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -11,16 +11,10 @@ distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
-==============================================================================*/
+============================================================================*/
 
-#if GOOGLE_CUDA
+// This is a program to test if compiler is compatible with CUDA.
+#define __CUDACC__
+#include "crt/host_config.h"
 
-#include "tensorflow/core/kernels/cwise_ops_gpu_common.cu.h"
-
-namespace tensorflow {
-namespace functor {
-DEFINE_UNARY8(invert, int8, int16, int32, int64, uint8, uint16, uint32, uint64);
-}  // namespace functor
-}  // namespace tensorflow
-
-#endif  // GOOGLE_CUDA
+int main(void) { return 0; }

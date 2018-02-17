@@ -480,7 +480,6 @@ class LinearOperator(object):
           cond,
           self._max_condition_number_to_be_non_singular(),
           message="Singular matrix up to precision epsilon.")
-    raise NotImplementedError("assert_non_singular is not implemented.")
 
   def _max_condition_number_to_be_non_singular(self):
     """Return the maximum condition number that we consider nonsingular."""

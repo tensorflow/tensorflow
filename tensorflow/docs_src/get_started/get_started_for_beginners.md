@@ -705,7 +705,7 @@ for pred_dict, expec in zip(predictions, expected):
 
     class_id = pred_dict['class_ids'][0]
     probability = pred_dict['probabilities'][class_id]
-    print(template.format(SPECIES[class_id], 100 * probability, expec))
+    print(template.format(iris_data.SPECIES[class_id], 100 * probability, expec))
 ```
 
 Running the program yields the following output:

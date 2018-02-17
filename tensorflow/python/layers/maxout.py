@@ -106,6 +106,6 @@ class MaxOut(base.Layer):
       if shape[i] is None:
         shape[i] = gen_array_ops.shape(inputs)[i]
     outputs = math_ops.reduce_max(
-        gen_array_ops.reshape(inputs, shape), -1, keep_dims=False)
+        gen_array_ops.reshape(inputs, shape), -1, keepdims=False)
 
     return outputs

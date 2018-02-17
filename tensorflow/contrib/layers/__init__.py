@@ -35,6 +35,7 @@ See the @{$python/contrib.layers} guide.
 @@fully_connected
 @@GDN
 @@gdn
+@@images_to_sequence
 @@layer_norm
 @@linear
 @@max_pool2d
@@ -50,6 +51,7 @@ See the @{$python/contrib.layers} guide.
 @@scale_gradient
 @@separable_conv2d
 @@separable_convolution2d
+@@sequence_to_images
 @@softmax
 @@spatial_softmax
 @@stack

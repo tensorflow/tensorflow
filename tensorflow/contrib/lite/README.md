@@ -172,7 +172,7 @@ Here is a sample command line to convert the frozen Graphdef to '.tflite' format
 ```
 bazel build tensorflow/contrib/lite/toco:toco
 
-bazel-bin/tensorflow/contrib/lite/toco/toco -- \
+bazel-bin/tensorflow/contrib/lite/toco/toco \
   --input_file=$(pwd)/mobilenet_v1_1.0_224/frozen_graph.pb \
   --input_format=TENSORFLOW_GRAPHDEF  --output_format=TFLITE \
   --output_file=/tmp/mobilenet_v1_1.0_224.tflite --inference_type=FLOAT \

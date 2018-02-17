@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -211,6 +212,16 @@ class PyFuncTest(test.TestCase):
       value = tf_array + constant_op.constant([2.0, 3.0], dtype=dtypes.float32)
       value.op.run()
       self.assertAllEqual(np_array, [1.0, 2.0])
+
+  def testReturnUnicodeString(self):
+    with self.test_session():
+      correct = u"你好 世界"
+
+      def unicode_string():
+        return correct
+
+      z, = script_ops.py_func(unicode_string, [], [dtypes.string])
+      self.assertEqual(z.eval(), correct.encode("utf8"))
 
   def testBadNumpyReturnType(self):
     with self.test_session():

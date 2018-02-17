@@ -773,7 +773,7 @@ class Dataset(object):
     return PaddedBatchDataset(self, batch_size, padded_shapes, padding_values)
 
   def map(self, map_func, num_parallel_calls=None):
-    """Maps `map_func` across this datset.
+    """Maps `map_func` across this dataset.
 
     Args:
       map_func: A function mapping a nested structure of tensors (having
