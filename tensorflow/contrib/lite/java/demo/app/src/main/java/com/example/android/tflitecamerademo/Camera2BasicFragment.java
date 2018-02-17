@@ -298,13 +298,7 @@ public class Camera2BasicFragment extends Fragment
 
     toggle.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
       public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
-        if (isChecked) {
-          // The toggle is enabled
-          classifier.setUseNNAPI(true);
-        } else {
-          // The toggle is disabled
-          classifier.setUseNNAPI(false);
-        }
+        classifier.setUseNNAPI(isChecked);
       }
     });
 
