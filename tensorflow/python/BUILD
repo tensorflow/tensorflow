@@ -1536,6 +1536,18 @@ py_library(
     ],
 )
 
+cuda_py_test(
+    name = "array_grad_test",
+    size = "small",
+    srcs = ["ops/array_grad_test.py"],
+    additional_deps = [
+        ":array_grad",
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+    ],
+    tags = ["no_windows_gpu"],
+)
+
 py_library(
     name = "array_ops",
     srcs = ["ops/array_ops.py"],
