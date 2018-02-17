@@ -1156,7 +1156,7 @@ bool IsWhileBody(const HloComputation* computation,
     HloModule* module) {
   std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
   TF_ASSIGN_OR_RETURN(std::unique_ptr<HloDataflowAnalysis> dataflow,
-                      HloDataflowAnalysis::Run(module));
+                      HloDataflowAnalysis::Run(*module));
 
   bool changed = false;
 
