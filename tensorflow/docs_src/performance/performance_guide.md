@@ -432,19 +432,17 @@ scenarios.
 
 ## Optimizing for CPU
 
-CPUs, which includes Intel® Xeon Phi™, achieve optimal performance when
-TensorFlow is @{$install_sources$built from source} with all of the instructions
-supported by the target CPU.
+To optimize TensorFlow performance on CPUs, including Intel® Xeon and Xeon Phi™, 
+the best approach is to @{$install_sources$install from sources} with all of the 
+instructions supported by the target CPU. For details, see the [article](https://software.intel.com/en-us/articles/boosting-deep-learning-training-inference-performance-on-xeon-and-xeon-phi).
 
-Beyond using the latest instruction sets, Intel® has added support for the
-Intel® Math Kernel Library for Deep Neural Networks (Intel® MKL-DNN) to
-TensorFlow. While the name is not completely accurate, these optimizations are
-often simply referred to as 'MKL' or 'TensorFlow with MKL'. [TensorFlow
-with Intel® MKL-DNN](#tensorflow_with_intel_mkl_dnn) contains details on the
-MKL optimizations.
+TensorFlow can make use of intra-op and inter-op parallelism when running on CPU. 
+Intra-op controls the size of the thread pool to parallelize kernels in a given 
+operation and inter-op controls the size of thread pool to run operations in 
+parallel. 
 
-The two configurations listed below are used to optimize CPU performance by
-adjusting the thread pools.
+The two configuration parameters listed below can be used to optimize CPU performance 
+by adjusting the thread pools:
 
 *   `intra_op_parallelism_threads`: Nodes that can use multiple threads to
     parallelize their execution will schedule the individual pieces into this
@@ -472,47 +470,13 @@ The [Comparing compiler optimizations](#comparing-compiler-optimizations)
 section contains the results of tests that used different compiler
 optimizations.
 
-### TensorFlow with Intel® MKL DNN
 
-Intel® has added optimizations to TensorFlow for Intel® Xeon® and Intel® Xeon
-Phi™ though the use of Intel® Math Kernel Library for Deep Neural Networks
-(Intel® MKL-DNN) optimized primitives. The optimizations also provide speedups
-for the consumer line of processors, e.g. i5 and i7 Intel processors. The Intel
-published paper
-[TensorFlow* Optimizations on Modern Intel® Architecture](https://software.intel.com/en-us/articles/tensorflow-optimizations-on-modern-intel-architecture)
-contains additional details on the implementation.
+### Deep Learning Inference: Partitioning Multi-Socket Intel® Xeon® Processor-based Systems
 
-> Note: MKL was added as of TensorFlow 1.2 and currently only works on Linux. It
-> also does not work when also using `--config=cuda`.
-
-In addition to providing significant performance improvements for training CNN
-based models, compiling with the MKL creates a binary that is optimized for AVX
-and AVX2. The result is a single binary that is optimized and compatible with
-most modern (post-2011) processors.
-
-TensorFlow can be compiled with the MKL optimizations using the following
-commands that depending on the version of the TensorFlow source used.
-
-For TensorFlow source versions after 1.3.0:
-
-```bash
-./configure
-# Pick the desired options
-bazel build --config=mkl --config=opt //tensorflow/tools/pip_package:build_pip_package
-
-```
-
-For TensorFlow versions 1.2.0 through 1.3.0:
-
-```bash
-./configure
-Do you wish to build TensorFlow with MKL support? [y/N] Y
-Do you wish to download MKL LIB from the web? [Y/n] Y
-# Select the defaults for the rest of the options.
-
-bazel build --config=mkl --copt="-DEIGEN_USE_VML" -c opt //tensorflow/tools/pip_package:build_pip_package
-
-```
+Still more performance gains can be had from micro-architectural information on 
+the underlying NUMA configuration in multi-socket Intel Xeon processor-based 
+platforms. These are especially useful for (inference models)[https://software.intel.com/en-us/articles/boosting-deep-learning-training-inference-performance-on-xeon-and-xeon-phi#inpage-nav-5],
+where sub-socket partitioning can be useful for multiple inference streams.  
 
 #### Tuning MKL for the best performance
 
