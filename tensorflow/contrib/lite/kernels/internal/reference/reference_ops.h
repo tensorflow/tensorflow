@@ -1577,9 +1577,19 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
       FS new_state = gemmlowp::SaturatingAdd(
           gemmlowp::Rescale<StateIntegerBits>(input_times_input_modulation),
           prev_state_times_forget_state);
-      // Implementation of last internal tanh node, still in fixed-point.
-      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state);
+      // Implementation of last internal Tanh node, still in fixed-point.
+      // Since a Tanh fixed-point implementation is specialized for a given
+      // number or integer bits, and each specialization can have a substantial
+      // code size, and we already used above a Tanh on an input with 3 integer
+      // bits, and per the table in the above function comment there is no
+      // significant accuracy to be lost by clamping to [-8, +8] for a
+      // 3-integer-bits representation, let us just do that. This helps people
+      // porting this to targets where code footprint must be minimized.
+      F3 new_state_f3 = gemmlowp::Rescale<3>(new_state);
+      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state_f3);
       // Store the new internal state back to memory, as 16-bit integers.
+      // Note: here we store the original value with StateIntegerBits, not
+      // the rescaled 3-integer-bits value fed to tanh.
       output_state_data_int16[b * output_depth + c] = new_state.raw();
       // Down-scale the output activations to 8-bit integers, saturating,
       // and store back to memory.
