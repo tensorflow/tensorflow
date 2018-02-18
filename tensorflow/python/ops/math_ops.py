@@ -169,6 +169,7 @@ from tensorflow.python.ops import gen_sparse_ops
 from tensorflow.python.ops import gen_spectral_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import state_ops
+from tensorflow.python.platform import tf_logging as logging
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_math_ops import *
@@ -830,6 +831,8 @@ def to_float(x, name="ToFloat"):
   Raises:
     TypeError: If `x` cannot be cast to the `float32`.
   """
+  if x.dtype.is_complex:
+    logging.warn('Casting complex to real discards imaginary part.')
   return cast(x, dtypes.float32, name=name)
 
 
