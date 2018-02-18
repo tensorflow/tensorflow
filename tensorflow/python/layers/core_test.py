@@ -323,20 +323,20 @@ class DenseTest(test.TestCase):
     ts = tensor_shape.TensorShape
     # pylint: disable=protected-access
     with self.assertRaises(ValueError):
-      dense._compute_output_shape(ts(None))
+      dense.compute_output_shape(ts(None))
     with self.assertRaises(ValueError):
-      dense._compute_output_shape(ts([]))
+      dense.compute_output_shape(ts([]))
     with self.assertRaises(ValueError):
-      dense._compute_output_shape(ts([1]))
+      dense.compute_output_shape(ts([1]))
     self.assertEqual(
         [None, 2],
-        dense._compute_output_shape((None, 3)).as_list())
+        dense.compute_output_shape((None, 3)).as_list())
     self.assertEqual(
         [None, 2],
-        dense._compute_output_shape(ts([None, 3])).as_list())
+        dense.compute_output_shape(ts([None, 3])).as_list())
     self.assertEqual(
         [None, 4, 2],
-        dense._compute_output_shape(ts([None, 4, 3])).as_list())
+        dense.compute_output_shape(ts([None, 4, 3])).as_list())
     # pylint: enable=protected-access
 
   @test_util.run_in_graph_and_eager_modes()
@@ -456,13 +456,13 @@ class FlattenTest(test.TestCase):
       self.assertEqual(y.get_shape().as_list(), [1, 12])
 
   def testComputeShape(self):
-    shape = core_layers.Flatten()._compute_output_shape((1, 2, 3, 2))
+    shape = core_layers.Flatten().compute_output_shape((1, 2, 3, 2))
     self.assertEqual(shape.as_list(), [1, 12])
 
-    shape = core_layers.Flatten()._compute_output_shape((None, 3, 2))
+    shape = core_layers.Flatten().compute_output_shape((None, 3, 2))
     self.assertEqual(shape.as_list(), [None, 6])
 
-    shape = core_layers.Flatten()._compute_output_shape((None, 3, None))
+    shape = core_layers.Flatten().compute_output_shape((None, 3, None))
     self.assertEqual(shape.as_list(), [None, None])
 
   def testFunctionalFlatten(self):

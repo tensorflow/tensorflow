@@ -15,9 +15,9 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include <vector>
-#include <limits>
 #include "tensorflow/core/kernels/mkl_pooling_ops_common.h"
+#include <limits>
+#include <vector>
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/kernels/bounds_check.h"
@@ -42,7 +42,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
   Init(context, ksize, stride, padding, data_format);
 }
 
-#ifndef INTEL_MKL_DNN
+#ifdef INTEL_MKL_ML
 // Initialization for MKL format
 void MklPoolParameters::Init(OpKernelContext* context,
                              const std::vector<int32>& ksize,
@@ -72,7 +72,7 @@ void MklPoolParameters::Init(OpKernelContext* context,
 
   Init(context, ksize, stride, padding, data_format);
 }
-#endif  // INTEL_MKL_DNN
+#endif  // INTEL_MKL_ML
 // Common Initialization for TensorFlow and MKL formats
 void MklPoolParameters::Init(OpKernelContext* context,
                              const std::vector<int32>& ksize,
@@ -107,21 +107,21 @@ void MklPoolParameters::Init(OpKernelContext* context,
     OP_REQUIRES_OK(context, GetWindowedOutputSizeVerbose(
                                 tensor_in_cols, window_cols, col_stride,
                                 padding, &out_width, &pad_left, &pad_right));
-#ifdef INTEL_MKL_DNN
+#ifndef INTEL_MKL_ML
     // TF can work with int64, but mkldnn only supports int32
     // Fail if the height or width are greater than MAX_INT
 
-    OP_REQUIRES(context, FastBoundsCheck(out_height,
-                                         std::numeric_limits<int>::max()),
+    OP_REQUIRES(context,
+                FastBoundsCheck(out_height, std::numeric_limits<int>::max()),
                 errors::InvalidArgument("output height is too large"));
 
-    OP_REQUIRES(context, FastBoundsCheck(out_width,
-                                         std::numeric_limits<int>::max()),
+    OP_REQUIRES(context,
+                FastBoundsCheck(out_width, std::numeric_limits<int>::max()),
                 errors::InvalidArgument("output width is too large"));
 
 #endif
     out_depth = depth;  // output will have the same depth as the input
-  } else {  // we are pooling in the depth dimension
+  } else {              // we are pooling in the depth dimension
     // Our current version of depthwise max pooling does not support
     // any padding, and expects the depth_window to equal the depth
     // stride (no overlapping).

@@ -181,7 +181,8 @@ class ClassifierMetricsTest(test.TestCase):
     batch_size = 3
     img = array_ops.ones([batch_size, 299, 299, 3])
     pool = _run_with_mock(
-        classifier_metrics.run_inception, img,
+        classifier_metrics.run_inception,
+        img,
         output_tensor=classifier_metrics.INCEPTION_FINAL_POOL)
 
     self.assertTrue(isinstance(pool, ops.Tensor))
@@ -195,9 +196,12 @@ class ClassifierMetricsTest(test.TestCase):
     batch_size = 3
     img = array_ops.ones([batch_size, 299, 299, 3])
     logits, pool = _run_with_mock(
-        classifier_metrics.run_inception, img,
-        output_tensor=[classifier_metrics.INCEPTION_OUTPUT,
-                       classifier_metrics.INCEPTION_FINAL_POOL])
+        classifier_metrics.run_inception,
+        img,
+        output_tensor=[
+            classifier_metrics.INCEPTION_OUTPUT,
+            classifier_metrics.INCEPTION_FINAL_POOL
+        ])
 
     self.assertTrue(isinstance(logits, ops.Tensor))
     self.assertTrue(isinstance(pool, ops.Tensor))
@@ -209,8 +213,10 @@ class ClassifierMetricsTest(test.TestCase):
 
   def test_inception_score_graph(self):
     """Test `inception_score` graph construction."""
-    score = _run_with_mock(classifier_metrics.inception_score,
-                           array_ops.zeros([6, 299, 299, 3]), num_batches=3)
+    score = _run_with_mock(
+        classifier_metrics.inception_score,
+        array_ops.zeros([6, 299, 299, 3]),
+        num_batches=3)
     self.assertTrue(isinstance(score, ops.Tensor))
     score.shape.assert_has_rank(0)
 
@@ -248,12 +254,14 @@ class ClassifierMetricsTest(test.TestCase):
           array_ops.zeros([8, 10], dtype=dtypes.int32), p_logits, q)
 
     with self.assertRaisesRegexp(ValueError, 'must be floating type'):
-      classifier_metrics._kl_divergence(
-          p, array_ops.zeros([8, 10], dtype=dtypes.int32), q)
+      classifier_metrics._kl_divergence(p,
+                                        array_ops.zeros(
+                                            [8, 10], dtype=dtypes.int32), q)
 
     with self.assertRaisesRegexp(ValueError, 'must be floating type'):
-      classifier_metrics._kl_divergence(
-          p, p_logits, array_ops.zeros([10], dtype=dtypes.int32))
+      classifier_metrics._kl_divergence(p, p_logits,
+                                        array_ops.zeros(
+                                            [10], dtype=dtypes.int32))
 
     with self.assertRaisesRegexp(ValueError, 'must have rank 2'):
       classifier_metrics._kl_divergence(array_ops.zeros([8]), p_logits, q)
@@ -266,8 +274,9 @@ class ClassifierMetricsTest(test.TestCase):
 
   def test_inception_score_value(self):
     """Test that `inception_score` gives the correct value."""
-    logits = np.array([np.array([1, 2] * 500 + [4]),
-                       np.array([4, 5] * 500 + [6])])
+    logits = np.array(
+        [np.array([1, 2] * 500 + [4]),
+         np.array([4, 5] * 500 + [6])])
     unused_image = array_ops.zeros([2, 299, 299, 3])
     incscore = _run_with_mock(classifier_metrics.inception_score, unused_image)
 
@@ -285,9 +294,11 @@ class ClassifierMetricsTest(test.TestCase):
     test_pool_real_a = np.float32(np.random.randn(512, 256))
     test_pool_gen_a = np.float32(np.random.randn(512, 256))
 
-    fid_op = _run_with_mock(classifier_metrics.frechet_classifier_distance,
-                            test_pool_real_a, test_pool_gen_a,
-                            classifier_fn=lambda x: x)
+    fid_op = _run_with_mock(
+        classifier_metrics.frechet_classifier_distance,
+        test_pool_real_a,
+        test_pool_gen_a,
+        classifier_fn=lambda x: x)
 
     with self.test_session() as sess:
       actual_fid = sess.run(fid_op)
@@ -295,6 +306,33 @@ class ClassifierMetricsTest(test.TestCase):
     expected_fid = _expected_fid(test_pool_real_a, test_pool_gen_a)
 
     self.assertAllClose(expected_fid, actual_fid, 0.0001)
+
+  def test_frechet_classifier_distance_covariance(self):
+    """Test that `frechet_classifier_distance` takes covariance into account."""
+    np.random.seed(0)
+
+    # Make num_examples > num_features to ensure scipy's sqrtm function
+    # doesn't return a complex matrix.
+    test_pool_reals, test_pool_gens = [], []
+    for i in range(1, 11, 2):
+      test_pool_reals.append(np.float32(np.random.randn(2048, 256) * i))
+      test_pool_gens.append(np.float32(np.random.randn(2048, 256) * i))
+
+    fid_ops = []
+    for i in range(len(test_pool_reals)):
+      fid_ops.append(_run_with_mock(
+          classifier_metrics.frechet_classifier_distance,
+          test_pool_reals[i],
+          test_pool_gens[i],
+          classifier_fn=lambda x: x))
+
+    fids = []
+    with self.test_session() as sess:
+      for fid_op in fid_ops:
+        fids.append(sess.run(fid_op))
+
+    # Check that the FIDs increase monotonically.
+    self.assertTrue(all(fid_a < fid_b for fid_a, fid_b in zip(fids, fids[1:])))
 
   def test_trace_sqrt_product_value(self):
     """Test that `trace_sqrt_product` gives the correct value."""

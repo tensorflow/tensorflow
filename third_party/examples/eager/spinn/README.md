@@ -19,14 +19,26 @@ Other eager execution examples can be found under [tensorflow/contrib/eager/pyth
 
 ##  Content
 
-Python source file(s):
-- `spinn.py`: Model definition and training routines written with TensorFlow
-  eager execution idioms.
+- [`data.py`](../../../../tensorflow/contrib/eager/python/examples/spinn/data.py): Pipeline for loading and preprocessing the
+   [SNLI](https://nlp.stanford.edu/projects/snli/) data and
+   [GloVe](https://nlp.stanford.edu/projects/glove/) word embedding, written
+   using the [`tf.data`](https://www.tensorflow.org/programmers_guide/datasets)
+   API.
+- [`spinn.py`](./spinn.py): Model definition and training routines.
+  This example illustrates how one might perform the following actions with
+  eager execution enabled:
+  * defining a model consisting of a dynamic computation graph,
+  * assigning operations to the CPU or GPU dependending on device availability,
+  * training the model using the data from the `tf.data`-based pipeline,
+  * obtaining metrics such as mean accuracy during training,
+  * saving and loading checkpoints,
+  * writing summaries for monitoring and visualization in TensorBoard.
 
 ## To run
 
-- Make sure you have installed the latest `tf-nightly` or `tf-nightly-gpu` pip
-  package of TensorFlow in order to access the eager execution feature.
+- Make sure you have installed TensorFlow release 1.5 or higher. Alternatively,
+  you can use the latest `tf-nightly` or `tf-nightly-gpu` pip
+  package to access the eager execution feature.
 
 - Download and extract the raw SNLI data and GloVe embedding vectors.
   For example:
@@ -53,4 +65,45 @@ Python source file(s):
 
   ```bash
   tensorboard --logdir /tmp/spinn-logs
+  ```
+
+- After training, you may use the model to perform inference on input data in
+  the SNLI data format. The premise and hypotheses sentences are specified with
+  the command-line flags `--inference_premise` and `--inference_hypothesis`,
+  respecitvely. Each sentence should include the words, as well as parentheses
+  representing a binary parsing of the sentence. The words and parentheses
+  should all be separated by spaces. For instance,
+
+  ```bash
+  python spinn.py --data_root /tmp/spinn-data --logdir /tmp/spinn-logs \
+      --inference_premise '( ( The dog ) ( ( is running ) . ) )' \
+      --inference_hypothesis '( ( The dog ) ( moves . ) )'
+  ```
+
+  which will generate an output like the following, due to the semantic
+  consistency of the two sentences.
+
+  ```none
+  Inference logits:
+    entailment:     1.101249 (winner)
+    contradiction:  -2.374171
+    neutral:        -0.296733
+  ```
+
+  By contrast, the following sentence pair:
+
+  ```bash
+  python spinn.py --data_root /tmp/spinn-data --logdir /tmp/spinn-logs \
+      --inference_premise '( ( The dog ) ( ( is running ) . ) )' \
+      --inference_hypothesis '( ( The dog ) ( rests . ) )'
+  ```
+
+  will give you an output like the following, due to the semantic
+  contradiction of the two sentences.
+
+  ```none
+  Inference logits:
+    entailment:     -1.070098
+    contradiction:  2.798695 (winner)
+    neutral:        -1.402287
   ```

@@ -25,6 +25,7 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 
 @@py_func
 @@defun
+@@make_template
 @@implicit_gradients
 @@implicit_value_and_gradients
 @@gradients_function
@@ -51,13 +52,13 @@ To use, at program startup, call `tfe.enable_eager_execution()`.
 @@EagerVariableStore
 
 @@Network
+@@Sequential
 @@save_network_checkpoint
 @@restore_network_checkpoint
 
 @@in_eager_mode
 @@in_graph_mode
 
-@@IsolateTest
 @@run_test_in_graph_and_eager_modes
 
 @@DEVICE_PLACEMENT_EXPLICIT
@@ -75,6 +76,7 @@ from __future__ import print_function
 from tensorflow.contrib.eager.python import metrics
 from tensorflow.contrib.eager.python.datasets import Iterator
 from tensorflow.contrib.eager.python.network import Network
+from tensorflow.contrib.eager.python.network import Sequential
 from tensorflow.contrib.eager.python.network import save_network_checkpoint
 from tensorflow.contrib.eager.python.network import restore_network_checkpoint
 from tensorflow.contrib.eager.python.saver import get_optimizer_variables
@@ -98,15 +100,16 @@ from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
 from tensorflow.python.framework.ops import enable_eager_execution
 from tensorflow.python.framework.ops import eager_run as run
-from tensorflow.python.framework.test_util import IsolateTest
 from tensorflow.python.framework.test_util import run_in_graph_and_eager_modes as run_test_in_graph_and_eager_modes
 from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Variable
 from tensorflow.python.ops.variable_scope import EagerVariableStore
 from tensorflow.python.ops import script_ops
+from tensorflow.python.ops import template
 from tensorflow.python.util.all_util import remove_undocumented
 
 py_func = script_ops.eager_py_func
 defun = function.defun
+make_template = template.make_template_internal
 implicit_gradients = backprop.implicit_grad
 implicit_value_and_gradients = backprop.implicit_val_and_grad
 gradients_function = backprop.gradients_function

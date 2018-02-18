@@ -44,13 +44,14 @@ namespace xla {
 // interface that is used for launching compiled programs across platforms.
 class Executable {
  public:
-  explicit Executable(std::unique_ptr<const HloModule> hlo_module,
-                      std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
-                      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
+  explicit Executable(
+      std::unique_ptr<const HloModule> hlo_module,
+      std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
+      std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
       : hlo_module_(std::move(hlo_module)),
-        hlo_profile_printer_(std::move(hlo_profile_printer)),
+        hlo_profile_printer_data_(std::move(hlo_profile_printer_data)),
         hlo_profile_index_map_(std::move(hlo_profile_index_map)) {
-    CHECK_EQ(hlo_profile_printer_.get() == nullptr,
+    CHECK_EQ(hlo_profile_printer_data_.get() == nullptr,
              hlo_profile_index_map_.get() == nullptr);
   }
   virtual ~Executable() {}
@@ -116,9 +117,9 @@ class Executable {
         "Equality test on this executable is not implemented.");
   }
 
-  const HloProfilePrinter& hlo_profile_printer() const {
+  const HloProfilePrinterData& hlo_profile_printer_data() const {
     CHECK(hlo_profiling_enabled());
-    return *hlo_profile_printer_;
+    return *hlo_profile_printer_data_;
   }
 
   const HloProfileIndexMap& hlo_profile_index_map() const {
@@ -129,7 +130,9 @@ class Executable {
   // Returns whether this executable was compiled with HLO profilings support
   // enabled. If not, the caller should not expect an hlo_execution_profile
   // passed to ExecuteOnStream above to be populated during execution.
-  bool hlo_profiling_enabled() const { return hlo_profile_printer_ != nullptr; }
+  bool hlo_profiling_enabled() const {
+    return hlo_profile_printer_data_ != nullptr;
+  }
 
   const HloModule& module() const { return *hlo_module_; }
 
@@ -179,7 +182,7 @@ class Executable {
   // execution.
   int64 execution_count_ = 0;
 
-  std::unique_ptr<HloProfilePrinter> hlo_profile_printer_;
+  std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data_;
   std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map_;
 };
 

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_
+#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_
+#define TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -877,29 +877,29 @@ struct gemm_pack_rhs<
 }  // end namespace internal
 
 /** SpatialConvolution
-  * \ingroup CXX11_NeuralNetworks_Module
-  *
-  * \brief Applies a 2D convolution over a multichannel input image.
-  *
-  * The input parameter is expected to be a tensor with a rank of 3 or more
+ * \ingroup CXX11_NeuralNetworks_Module
+ *
+ * \brief Applies a 2D convolution over a multichannel input image.
+ *
+ * The input parameter is expected to be a tensor with a rank of 3 or more
  * (channels, height, width, and optionally others)
-  * The kernel parameter is expected to be a 4D tensor (filters, channels,
+ * The kernel parameter is expected to be a 4D tensor (filters, channels,
  * kernel_height, kernel_width)
-  * The input and the kernel must both be in col-major layout. The result will
+ * The input and the kernel must both be in col-major layout. The result will
  * also be in col-major layout.
-  *
-  * If col_in_stride, row_in_stride > 1, then applies convolution with holes
+ *
+ * If col_in_stride, row_in_stride > 1, then applies convolution with holes
  * (aka atrous convolution), sampling every col_in_stride, row_in_stride input
  * pixels.
-  *
-  * The result can be assigned to a tensor of rank equal to the rank of the
+ *
+ * The result can be assigned to a tensor of rank equal to the rank of the
  * input. The dimensions of the result will be filters, height, width (and
  * others if applicable).
-  *
-  * It is possible to swap the order of the width and height dimensions provided
+ *
+ * It is possible to swap the order of the width and height dimensions provided
  * that the same order is used in the input, the kernel, and the output.
-  *
-  */
+ *
+ */
 template <typename Input, typename Kernel>
 EIGEN_DEVICE_FUNC
     EIGEN_ALWAYS_INLINE static const typename internal::conditional<
@@ -993,7 +993,7 @@ EIGEN_DEVICE_FUNC
     default:
       // Initialize unused variables to avoid a compiler warning
       out_height = 0;
-      out_width  = 0;
+      out_width = 0;
       eigen_assert(false && "unexpected padding");
   }
 
@@ -1069,4 +1069,4 @@ EIGEN_DEVICE_FUNC
 
 }  // end namespace Eigen
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_
+#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_SPATIAL_CONVOLUTIONS_H_

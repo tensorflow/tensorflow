@@ -18,13 +18,57 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/computation_builder.h"
+#include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
+#include "tensorflow/compiler/xla/service/shaped_buffer.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 
 namespace swig {
+
+// Initializes the number of replicas that XLA will be initialized with (when
+// first obtaining a handle to the local XLA service). If this is called after
+// the handle to the local XLA service has been established, then an error is
+// returned.
+Status InitializeReplicaCount(int replica_count);
+
+// Returns the replica count that is currently set, regardless of whether the
+// local XLA service has been instantiated yet or not.
+int GetReplicaCount();
+
+// Wraps the local client's infeed-transfer function.
+//
+// The default device ordinal (0) is used.
+Status TransferToInfeedLocal(const Literal& literal);
+
+// Transfers the given literal to the infeed of the given replica.
+//
+// The replica number is resolved to an appropriate device ordinal.
+Status TransferToInfeedLocalReplica(const Literal& literal, int replica_number);
+
+// Transfers a literal of the given shape from the outfeed of the given replica.
+//
+// The replica number is resolved to an appropriate device ordinal.
+StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
+    const Shape& shape, int replica_number);
+
+// Wraps a ScopedShapedBuffer produced by copying a literal "to
+// device," i.e. copying a literal to a scoped buffer via the local
+// client.
+class LocalShapedBuffer {
+ public:
+  static LocalShapedBuffer* FromLiteral(
+      const Literal& argument,
+      const tensorflow::gtl::optional<Shape>& shape_with_layout);
+  LocalShapedBuffer(std::unique_ptr<ScopedShapedBuffer> shaped_buffer);
+  const std::unique_ptr<ScopedShapedBuffer>& shaped_buffer() const;
+  std::unique_ptr<Literal> ToLiteral() const;
+
+ private:
+  std::unique_ptr<ScopedShapedBuffer> shaped_buffer_;
+};
 
 // Wraps a LocalExecutable produced by compiling a
 // LocalComputation. The Execute method forwards to that of the
@@ -35,7 +79,17 @@ namespace swig {
 class CompiledLocalComputation {
  public:
   CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
-  std::unique_ptr<Literal> Execute(const std::vector<Literal>& arguments);
+
+  // Execute the computation with the given argument literals, and
+  // with optionally-specified argument layouts. The literals will be
+  // re-laid out according to the corresponding elements of
+  // shapes_with_layout.
+  StatusOr<std::unique_ptr<Literal> > Execute(
+      const std::vector<Literal>& arguments,
+      const std::vector<tensorflow::gtl::optional<Shape> >& shapes_with_layout);
+
+  LocalShapedBuffer* ExecuteWithShapedBuffers(
+      tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles);
 
  private:
   std::unique_ptr<LocalExecutable> executable_;
@@ -47,12 +101,19 @@ class CompiledLocalComputation {
 // made available to Python via SWIG.
 class LocalComputation {
  public:
-  LocalComputation(std::unique_ptr<Computation> computation);
-  CompiledLocalComputation* Compile(const std::vector<Shape>& argument_shapes);
+  LocalComputation(Computation computation);
+
+  StatusOr<CompiledLocalComputation*> Compile(
+      const std::vector<Shape>& argument_shapes,
+      const ExecutableBuildOptions* build_options);
+
   const Computation& computation() const;
 
+  // Returns the return-value shape for this computation.
+  StatusOr<Shape> GetReturnValueShape() const;
+
  private:
-  std::unique_ptr<Computation> computation_;
+  Computation computation_;
 };
 
 // Wraps the ComputationBuilder API in order to:
@@ -66,18 +127,34 @@ class LocalComputationBuilder {
  public:
   LocalComputationBuilder(const string& computation_name);
 
-  LocalComputation* Build();
+  void SetOpMetadata(const OpMetadata& metadata);
+  void ClearOpMetadata();
+
+  // Returns an owned LocalComputation to the caller on success.
+  StatusOr<LocalComputation*> Build();
 
   ComputationDataHandle Parameter(int64 parameter_number, const Shape& shape,
                                   const string& name);
 
   std::unique_ptr<Shape> GetShape(const ComputationDataHandle& operand);
 
+  // Returns the shape of the current return value for the computation.
+  StatusOr<Shape> GetReturnValueShape();
+
+  ComputationDataHandle Infeed(const Shape& shape);
+
+  void Outfeed(const ComputationDataHandle& operand, const Shape& shape,
+               const string& outfeed_config);
+
   ComputationDataHandle ConstantLiteral(const Literal& literal);
 
   ComputationDataHandle Broadcast(
       const ComputationDataHandle& operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_sizes);
+
+  ComputationDataHandle Pad(const ComputationDataHandle& operand,
+                            const ComputationDataHandle& padding_value,
+                            const PaddingConfig& padding_config);
 
   ComputationDataHandle Reshape(const ComputationDataHandle& operand,
                                 tensorflow::gtl::ArraySlice<int64> dimensions,
@@ -106,9 +183,13 @@ class LocalComputationBuilder {
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
       int64 dimension);
 
-  ComputationDataHandle Select(const ComputationDataHandle& pred,
-                               const ComputationDataHandle& on_true,
-                               const ComputationDataHandle& on_false);
+  ComputationDataHandle SelectAndScatterWithGeneralPadding(
+      const ComputationDataHandle& operand, const LocalComputation& select,
+      tensorflow::gtl::ArraySlice<int64> window_dimensions,
+      tensorflow::gtl::ArraySlice<int64> window_strides,
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding,
+      const ComputationDataHandle& source,
+      const ComputationDataHandle& init_value, const LocalComputation& scatter);
 
   ComputationDataHandle Tuple(
       tensorflow::gtl::ArraySlice<ComputationDataHandle> elements);
@@ -118,6 +199,10 @@ class LocalComputationBuilder {
 
   ComputationDataHandle Dot(const ComputationDataHandle& lhs,
                             const ComputationDataHandle& rhs);
+
+  ComputationDataHandle DotGeneral(
+      const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+      const DotDimensionNumbers& dimension_numbers);
 
   ComputationDataHandle ConvGeneralDilated(
       const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
@@ -153,9 +238,31 @@ class LocalComputationBuilder {
       const LocalComputation& local_computation,
       tensorflow::gtl::ArraySlice<int64> dimensions_to_reduce);
 
+  ComputationDataHandle ReduceWindowWithGeneralPadding(
+      const ComputationDataHandle& operand,
+      const ComputationDataHandle& init_value,
+      const LocalComputation& local_computation,
+      tensorflow::gtl::ArraySlice<int64> window_dimensions,
+      tensorflow::gtl::ArraySlice<int64> window_strides,
+      tensorflow::gtl::ArraySlice<std::pair<int64, int64> > padding);
+
+  ComputationDataHandle RngNormal(const ComputationDataHandle& mu,
+                                  const ComputationDataHandle& sigma,
+                                  const Shape& shape);
+
+  ComputationDataHandle RngUniform(const ComputationDataHandle& a,
+                                   const ComputationDataHandle& b,
+                                   const Shape& shape);
+
   ComputationDataHandle While(const LocalComputation& condition,
                               const LocalComputation& body,
                               const ComputationDataHandle& init);
+
+  ComputationDataHandle Conditional(const ComputationDataHandle& predicate,
+                                    const ComputationDataHandle& true_operand,
+                                    const LocalComputation& true_computation,
+                                    const ComputationDataHandle& false_operand,
+                                    const LocalComputation& false_computation);
 
 #define _FORWARD(method_name, return_sig, args_sig) \
   return_sig method_name args_sig;
@@ -170,6 +277,14 @@ class LocalComputationBuilder {
       (const ComputationDataHandle& lhs, const ComputationDataHandle& rhs, \
        tensorflow::gtl::ArraySlice<int64> broadcast_dimensions))
 
+#define _FORWARD_TRIOP(method_name)                                        \
+  _FORWARD(                                                                \
+      method_name, ComputationDataHandle,                                  \
+      (const ComputationDataHandle& lhs, const ComputationDataHandle& rhs, \
+       const ComputationDataHandle& ehs))
+
+  _FORWARD_TRIOP(Select)
+  _FORWARD_TRIOP(Clamp)
   _FORWARD_BINOP(Eq)
   _FORWARD_BINOP(Ne)
   _FORWARD_BINOP(Ge)
@@ -190,6 +305,7 @@ class LocalComputationBuilder {
   _FORWARD_UNOP(Exp)
   _FORWARD_UNOP(Floor)
   _FORWARD_UNOP(Ceil)
+  _FORWARD_UNOP(Round)
   _FORWARD_UNOP(Log)
   _FORWARD_UNOP(Sign)
   _FORWARD_UNOP(Cos)
@@ -206,19 +322,16 @@ class LocalComputationBuilder {
 #undef _FORWARD
 #undef _FORWARD_UNOP
 #undef _FORWARD_BINOP
+#undef _FORWARD_TRIOP
 
  private:
   ComputationBuilder builder_;
 };
 
-static void DeleteLocalComputation(LocalComputation* computation) {
-  delete computation;
-}
-
-static void DeleteCompiledLocalComputation(
-    CompiledLocalComputation* computation) {
-  delete computation;
-}
+// Functions for freeing resources from the Python side.
+void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer);
+void DeleteCompiledLocalComputation(CompiledLocalComputation* computation);
+void DeleteLocalComputation(LocalComputation* computation);
 
 }  // namespace swig
 

@@ -16,37 +16,230 @@ limitations under the License.
 #include "tensorflow/compiler/xla/python/local_computation_builder.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/core/platform/default/thread_annotations.h"
 
 namespace xla {
 
 namespace swig {
 
+// TODO(b/34473877) Ideally XLA would support AllReduce among arbitrary sets of
+// device handles instead of needing to set the number of replicas at XLA
+// service initialization time.
+tensorflow::mutex g_local_client_mutex(tensorflow::LINKER_INITIALIZED);
+int g_replica_count GUARDED_BY(g_local_client_mutex) = 1;
+LocalClient* g_local_client GUARDED_BY(g_local_client_mutex) = nullptr;
+
+Status InitializeReplicaCount(int replica_count) {
+  if (replica_count < 1) {
+    return InvalidArgument("Replica count must be >= 1; got %d.",
+                           replica_count);
+  }
+  tensorflow::mutex_lock lock(g_local_client_mutex);
+  if (g_local_client != nullptr) {
+    return FailedPrecondition(
+        "Attempted to set the replica count to %d, but a local XLA service was "
+        "previously created with a replica count of %d.",
+        replica_count, g_replica_count);
+  }
+  g_replica_count = replica_count;
+  return Status::OK();
+}
+
+int GetReplicaCount() {
+  tensorflow::mutex_lock lock(g_local_client_mutex);
+  return g_replica_count;
+}
+
+LocalClient* GetOrCreateLocalClient() {
+  tensorflow::mutex_lock lock(g_local_client_mutex);
+  if (g_local_client != nullptr) {
+    return g_local_client;
+  }
+  LocalClientOptions options;
+  options.set_number_of_replicas(g_replica_count);
+  g_local_client = ClientLibrary::GetOrCreateLocalClient(options).ValueOrDie();
+  CHECK(g_local_client != nullptr);
+  return g_local_client;
+}
+
+Status TransferToInfeedLocal(const Literal& literal) {
+  VLOG(1) << "Infeeding literal without replica number; shape: "
+          << literal.shape();
+  LocalClient* client = GetOrCreateLocalClient();
+  return client->TransferToInfeedLocal(literal, /*device_ordinal=*/0);
+}
+
+Status TransferToInfeedLocalReplica(const Literal& literal,
+                                    int replica_number) {
+  VLOG(1) << "Infeeding shape " << literal.shape()
+          << " to replica number: " << replica_number;
+  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(int device_ordinal,
+                      client->ReplicaNumberToDeviceOrdinal(replica_number));
+  return client->TransferToInfeedLocal(literal, device_ordinal);
+}
+
+StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocalReplica(
+    const Shape& shape, int replica_number) {
+  VLOG(1) << "Outfeeding literal from replica number: " << replica_number
+          << " shape: " << shape;
+  LocalClient* client = GetOrCreateLocalClient();
+  TF_ASSIGN_OR_RETURN(int device_ordinal,
+                      client->ReplicaNumberToDeviceOrdinal(replica_number));
+  return client->TransferFromOutfeedLocal(shape, device_ordinal);
+}
+
+LocalShapedBuffer::LocalShapedBuffer(
+    std::unique_ptr<ScopedShapedBuffer> shaped_buffer)
+    : shaped_buffer_(std::move(shaped_buffer)) {}
+
+const std::unique_ptr<ScopedShapedBuffer>& LocalShapedBuffer::shaped_buffer()
+    const {
+  return shaped_buffer_;
+}
+
+static StatusOr<std::unique_ptr<ScopedShapedBuffer>> ToBuffer(
+    LocalClient* client, int device_ordinal, const Literal& arg) {
+  return client->LiteralToShapedBuffer(arg, device_ordinal,
+                                       client->backend().memory_allocator());
+}
+
+/* static */
+LocalShapedBuffer* LocalShapedBuffer::FromLiteral(
+    const Literal& argument,
+    const tensorflow::gtl::optional<Shape>& shape_with_layout) {
+  LocalClient* client = GetOrCreateLocalClient();
+  std::unique_ptr<ScopedShapedBuffer> buf;
+  if (shape_with_layout) {
+    std::unique_ptr<Literal> relaid =
+        argument.Relayout(shape_with_layout.value());
+    buf = ToBuffer(client, /*device_ordinal=*/0, *relaid).ConsumeValueOrDie();
+  } else {
+    buf = ToBuffer(client, /*device_ordinal=*/0, argument).ConsumeValueOrDie();
+  }
+  return new LocalShapedBuffer(std::move(buf));
+}
+
+std::unique_ptr<Literal> LocalShapedBuffer::ToLiteral() const {
+  LocalClient* client = GetOrCreateLocalClient();
+  return client->ShapedBufferToLiteral(*shaped_buffer()).ConsumeValueOrDie();
+}
+
 CompiledLocalComputation::CompiledLocalComputation(
     std::unique_ptr<LocalExecutable> executable)
     : executable_(std::move(executable)) {}
 
-std::unique_ptr<Literal> CompiledLocalComputation::Execute(
-    const std::vector<Literal>& arguments) {
-  LocalClient* client = ClientLibrary::LocalClientOrDie();
+StatusOr<std::unique_ptr<Literal>> CompiledLocalComputation::Execute(
+    const std::vector<Literal>& arguments,
+    const std::vector<tensorflow::gtl::optional<Shape>>& shapes_with_layout) {
+  LocalClient* client = GetOrCreateLocalClient();
 
-  // Transfer arguments in
-  std::vector<std::unique_ptr<ScopedShapedBuffer>> scoped_buffers;
-  scoped_buffers.reserve(arguments.size());
-  for (const Literal& argument : arguments) {
-    scoped_buffers.push_back(
-        client
-            ->LiteralToShapedBuffer(argument,
-                                    /*device_ordinal=*/0,
-                                    client->backend().memory_allocator())
-            .ConsumeValueOrDie());
+  VLOG(1) << "Execution requested with " << GetReplicaCount() << " replicas.";
+
+  // Each replica populates a StatusOr result, but only replica zero actually
+  // retrieves its literal value.
+  std::vector<StatusOr<std::unique_ptr<Literal>>> results(GetReplicaCount());
+  {
+    tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(), "xlarun",
+                                        GetReplicaCount());
+
+    for (int replica = 0; replica < GetReplicaCount(); ++replica) {
+      pool.Schedule([this, client, replica, &arguments, &shapes_with_layout,
+                     &results] {
+        StatusOr<int> device_ordinal_status =
+            client->ReplicaNumberToDeviceOrdinal(replica);
+        if (!device_ordinal_status.ok()) {
+          results[replica] = device_ordinal_status.status();
+          return;
+        }
+        const int device_ordinal = device_ordinal_status.ValueOrDie();
+        VLOG(3) << "Replica " << replica
+                << " mapped to device ordinal for execution: "
+                << device_ordinal;
+
+        // Transfer arguments in
+        std::vector<std::unique_ptr<ScopedShapedBuffer>> scoped_buffers;
+        scoped_buffers.reserve(arguments.size());
+        for (int i = 0; i < arguments.size(); ++i) {
+          const Literal& argument = arguments[i];
+          const tensorflow::gtl::optional<Shape>& shape_with_layout =
+              shapes_with_layout[i];
+
+          StatusOr<std::unique_ptr<ScopedShapedBuffer>> pushed;
+          if (shape_with_layout) {
+            std::unique_ptr<Literal> relaid =
+                argument.Relayout(shape_with_layout.value());
+            pushed = ToBuffer(client, device_ordinal, *relaid);
+          } else {
+            pushed = ToBuffer(client, device_ordinal, argument);
+          }
+          if (!pushed.ok()) {
+            results[replica] = pushed.status();
+            return;
+          }
+
+          scoped_buffers.push_back(std::move(pushed).ValueOrDie());
+        }
+
+        // Execute
+        std::vector<const ShapedBuffer*> argument_buffers;
+        argument_buffers.reserve(scoped_buffers.size());
+        for (auto& buffer : scoped_buffers) {
+          argument_buffers.push_back(buffer.get());
+        }
+
+        DeviceAssignment device_assignment =
+            client->backend()
+                .computation_placer()
+                ->AssignDevices(GetReplicaCount(), /*computation_count=*/1)
+                .ConsumeValueOrDie();
+
+        ExecutableRunOptions options;
+        options.set_device_ordinal(device_ordinal);
+        options.set_allocator(client->backend().memory_allocator());
+        options.set_inter_op_thread_pool(
+            client->backend().inter_op_thread_pool());
+        options.set_intra_op_thread_pool(
+            client->backend().eigen_intra_op_thread_pool_device());
+        options.set_device_assignment(&device_assignment);
+        StatusOr<std::unique_ptr<ScopedShapedBuffer>> result_buffer_status =
+            executable_->Run(argument_buffers, options);
+        if (!result_buffer_status.ok()) {
+          results[replica] = result_buffer_status.status();
+          return;
+        }
+
+        // Transfer result out
+        results[replica] =
+            client->ShapedBufferToLiteral(*result_buffer_status.ValueOrDie());
+      });
+    }
+  }
+
+  for (int replica = 0; replica < GetReplicaCount(); ++replica) {
+    const auto& statusor = results[replica];
+    if (!statusor.ok()) {
+      return InternalError(
+          "Failed running replica %d (other replicas may have failed as well): "
+          "%s.",
+          replica, statusor.status().ToString().c_str());
+    }
+  }
+
+  return std::move(results[0]);
+}
+
+LocalShapedBuffer* CompiledLocalComputation::ExecuteWithShapedBuffers(
+    tensorflow::gtl::ArraySlice<LocalShapedBuffer*> argument_handles) {
+  LocalClient* client = GetOrCreateLocalClient();
+
+  std::vector<const ShapedBuffer*> argument_buffers;
+  argument_buffers.reserve(argument_handles.size());
+  for (auto& handle : argument_handles) {
+    argument_buffers.push_back(handle->shaped_buffer().get());
   }
 
   // Execute
-  std::vector<const ShapedBuffer*> argument_buffers;
-  argument_buffers.reserve(scoped_buffers.size());
-  for (auto& buffer : scoped_buffers) {
-    argument_buffers.push_back(buffer.get());
-  }
   ExecutableRunOptions options;
   options.set_allocator(client->backend().memory_allocator());
   options.set_inter_op_thread_pool(client->backend().inter_op_thread_pool());
@@ -55,38 +248,54 @@ std::unique_ptr<Literal> CompiledLocalComputation::Execute(
   std::unique_ptr<ScopedShapedBuffer> result_buffer =
       executable_->Run(argument_buffers, options).ConsumeValueOrDie();
 
-  // Transfer result out
-  return client->ShapedBufferToLiteral(*result_buffer).ConsumeValueOrDie();
+  return new LocalShapedBuffer(std::move(result_buffer));
 }
 
-LocalComputation::LocalComputation(std::unique_ptr<Computation> computation)
+LocalComputation::LocalComputation(Computation computation)
     : computation_(std::move(computation)) {}
 
-CompiledLocalComputation* LocalComputation::Compile(
-    const std::vector<Shape>& argument_shapes) {
+StatusOr<CompiledLocalComputation*> LocalComputation::Compile(
+    const std::vector<Shape>& argument_shapes,
+    const ExecutableBuildOptions* build_options) {
   std::vector<const Shape*> argument_shape_pointers;
   argument_shape_pointers.reserve(argument_shapes.size());
   for (auto& argument_shape : argument_shapes) {
     argument_shape_pointers.push_back(&argument_shape);
   }
 
-  LocalClient* client = ClientLibrary::LocalClientOrDie();
+  LocalClient* client = GetOrCreateLocalClient();
   ExecutableBuildOptions options;
-  return new CompiledLocalComputation(
-      client->Compile(*computation_, argument_shape_pointers, options)
-          .ValueOrDie());
+  if (build_options != nullptr) {
+    options = *build_options;
+  }
+  TF_ASSIGN_OR_RETURN(
+      auto local_executable,
+      client->Compile(computation_, argument_shape_pointers, options));
+  return new CompiledLocalComputation(std::move(local_executable));
 }
 
 const Computation& LocalComputation::computation() const {
-  return *computation_;
+  return computation_;
+}
+
+StatusOr<Shape> LocalComputation::GetReturnValueShape() const {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation_.GetProgramShape());
+  return std::move(*program_shape.mutable_result());
 }
 
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
-    : builder_(ClientLibrary::LocalClientOrDie(), computation_name) {}
+    : builder_(GetOrCreateLocalClient(), computation_name) {}
 
-LocalComputation* LocalComputationBuilder::Build() {
-  return new LocalComputation(std::unique_ptr<Computation>(
-      new Computation(builder_.Build().ConsumeValueOrDie())));
+void LocalComputationBuilder::SetOpMetadata(const OpMetadata& metadata) {
+  builder_.SetOpMetadata(metadata);
+}
+
+void LocalComputationBuilder::ClearOpMetadata() { builder_.ClearOpMetadata(); }
+
+StatusOr<LocalComputation*> LocalComputationBuilder::Build() {
+  TF_ASSIGN_OR_RETURN(Computation computation, builder_.Build());
+  return new LocalComputation(std::move(computation));
 }
 
 ComputationDataHandle LocalComputationBuilder::Parameter(int64 parameter_number,
@@ -100,6 +309,21 @@ std::unique_ptr<Shape> LocalComputationBuilder::GetShape(
   return builder_.GetShape(operand).ConsumeValueOrDie();
 }
 
+StatusOr<Shape> LocalComputationBuilder::GetReturnValueShape() {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, builder_.GetProgramShape());
+  return program_shape.result();
+}
+
+ComputationDataHandle LocalComputationBuilder::Infeed(const Shape& shape) {
+  return builder_.Infeed(shape);
+}
+
+void LocalComputationBuilder::Outfeed(const ComputationDataHandle& operand,
+                                      const Shape& shape,
+                                      const string& outfeed_config) {
+  builder_.Outfeed(operand, shape, outfeed_config);
+}
+
 ComputationDataHandle LocalComputationBuilder::ConstantLiteral(
     const Literal& literal) {
   return builder_.ConstantLiteral(literal);
@@ -109,6 +333,13 @@ ComputationDataHandle LocalComputationBuilder::Broadcast(
     const ComputationDataHandle& operand,
     tensorflow::gtl::ArraySlice<int64> broadcast_sizes) {
   return builder_.Broadcast(operand, broadcast_sizes);
+}
+
+ComputationDataHandle LocalComputationBuilder::Pad(
+    const ComputationDataHandle& operand,
+    const ComputationDataHandle& padding_value,
+    const PaddingConfig& padding_config) {
+  return builder_.Pad(operand, padding_value, padding_config);
 }
 
 ComputationDataHandle LocalComputationBuilder::Reshape(
@@ -156,10 +387,17 @@ ComputationDataHandle LocalComputationBuilder::ConcatInDim(
   return builder_.ConcatInDim(operands, dimension);
 }
 
-ComputationDataHandle LocalComputationBuilder::Select(
-    const ComputationDataHandle& pred, const ComputationDataHandle& on_true,
-    const ComputationDataHandle& on_false) {
-  return builder_.Select(pred, on_true, on_false);
+ComputationDataHandle
+LocalComputationBuilder::SelectAndScatterWithGeneralPadding(
+    const ComputationDataHandle& operand, const LocalComputation& select,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding,
+    const ComputationDataHandle& source,
+    const ComputationDataHandle& init_value, const LocalComputation& scatter) {
+  return builder_.SelectAndScatterWithGeneralPadding(
+      operand, select.computation(), window_dimensions, window_strides, padding,
+      source, init_value, scatter.computation());
 }
 
 ComputationDataHandle LocalComputationBuilder::Tuple(
@@ -175,6 +413,12 @@ ComputationDataHandle LocalComputationBuilder::GetTupleElement(
 ComputationDataHandle LocalComputationBuilder::Dot(
     const ComputationDataHandle& lhs, const ComputationDataHandle& rhs) {
   return builder_.Dot(lhs, rhs);
+}
+
+ComputationDataHandle LocalComputationBuilder::DotGeneral(
+    const ComputationDataHandle& lhs, const ComputationDataHandle& rhs,
+    const DotDimensionNumbers& dimension_numbers) {
+  return builder_.DotGeneral(lhs, rhs, dimension_numbers);
 }
 
 ComputationDataHandle LocalComputationBuilder::ConvGeneralDilated(
@@ -230,10 +474,45 @@ ComputationDataHandle LocalComputationBuilder::Reduce(
                          dimensions_to_reduce);
 }
 
+ComputationDataHandle LocalComputationBuilder::ReduceWindowWithGeneralPadding(
+    const ComputationDataHandle& operand,
+    const ComputationDataHandle& init_value,
+    const LocalComputation& local_computation,
+    tensorflow::gtl::ArraySlice<int64> window_dimensions,
+    tensorflow::gtl::ArraySlice<int64> window_strides,
+    tensorflow::gtl::ArraySlice<std::pair<int64, int64>> padding) {
+  return builder_.ReduceWindowWithGeneralPadding(
+      operand, init_value, local_computation.computation(), window_dimensions,
+      window_strides, padding);
+}
+
+ComputationDataHandle LocalComputationBuilder::RngNormal(
+    const ComputationDataHandle& mu, const ComputationDataHandle& sigma,
+    const Shape& shape) {
+  return builder_.RngNormal(mu, sigma, shape);
+}
+
+ComputationDataHandle LocalComputationBuilder::RngUniform(
+    const ComputationDataHandle& a, const ComputationDataHandle& b,
+    const Shape& shape) {
+  return builder_.RngUniform(a, b, shape);
+}
+
 ComputationDataHandle LocalComputationBuilder::While(
     const LocalComputation& condition, const LocalComputation& body,
     const ComputationDataHandle& init) {
   return builder_.While(condition.computation(), body.computation(), init);
+}
+
+ComputationDataHandle LocalComputationBuilder::Conditional(
+    const ComputationDataHandle& predicate,
+    const ComputationDataHandle& true_operand,
+    const LocalComputation& true_computation,
+    const ComputationDataHandle& false_operand,
+    const LocalComputation& false_computation) {
+  return builder_.Conditional(predicate, true_operand,
+                              true_computation.computation(), false_operand,
+                              false_computation.computation());
 }
 
 #define _FORWARD(method_name, return_sig, args_sig, args)    \
@@ -252,6 +531,15 @@ ComputationDataHandle LocalComputationBuilder::While(
        tensorflow::gtl::ArraySlice<int64> broadcast_dimensions),           \
       (lhs, rhs, broadcast_dimensions))
 
+#define _FORWARD_TRIOP(method_name)                                        \
+  _FORWARD(                                                                \
+      method_name, ComputationDataHandle,                                  \
+      (const ComputationDataHandle& lhs, const ComputationDataHandle& rhs, \
+       const ComputationDataHandle& ehs),                                  \
+      (lhs, rhs, ehs))
+
+_FORWARD_TRIOP(Select)
+_FORWARD_TRIOP(Clamp)
 _FORWARD_BINOP(Eq)
 _FORWARD_BINOP(Ne)
 _FORWARD_BINOP(Ge)
@@ -272,6 +560,7 @@ _FORWARD_UNOP(Abs)
 _FORWARD_UNOP(Exp)
 _FORWARD_UNOP(Floor)
 _FORWARD_UNOP(Ceil)
+_FORWARD_UNOP(Round)
 _FORWARD_UNOP(Log)
 _FORWARD_UNOP(Sign)
 _FORWARD_UNOP(Cos)
@@ -288,6 +577,19 @@ _FORWARD_UNOP(Sort)
 #undef _FORWARD
 #undef _FORWARD_UNOP
 #undef _FORWARD_BINOP
+#undef _FORWARD_TRIOP
+
+void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer) {
+  delete local_shaped_buffer;
+}
+
+void DeleteCompiledLocalComputation(CompiledLocalComputation* computation) {
+  delete computation;
+}
+
+void DeleteLocalComputation(LocalComputation* computation) {
+  delete computation;
+}
 
 }  // namespace swig
 

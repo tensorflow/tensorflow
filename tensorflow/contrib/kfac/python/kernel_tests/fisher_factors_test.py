@@ -35,18 +35,27 @@ from tensorflow.python.platform import test
 
 class MaybeColocateTest(test.TestCase):
 
+  def setUp(self):
+    self._colocate_cov_ops_with_inputs = ff.COLOCATE_COV_OPS_WITH_INPUTS
+
+  def tearDown(self):
+    ff.set_global_constants(
+        colocate_cov_ops_with_inputs=self._colocate_cov_ops_with_inputs)
+
   def testFalse(self):
+    ff.set_global_constants(colocate_cov_ops_with_inputs=False)
     with tf_ops.Graph().as_default():
       a = constant_op.constant([2.0], name='a')
-      with ff._maybe_colocate_with(a, False):
+      with ff.maybe_colocate_with(a):
         b = constant_op.constant(3.0, name='b')
       self.assertEqual([b'loc:@a'], a.op.colocation_groups())
       self.assertEqual([b'loc:@b'], b.op.colocation_groups())
 
   def testTrue(self):
+    ff.set_global_constants(colocate_cov_ops_with_inputs=True)
     with tf_ops.Graph().as_default():
       a = constant_op.constant([2.0], name='a')
-      with ff._maybe_colocate_with(a, True):
+      with ff.maybe_colocate_with(a):
         b = constant_op.constant(3.0, name='b')
       self.assertEqual([b'loc:@a'], a.op.colocation_groups())
       self.assertEqual([b'loc:@a'], b.op.colocation_groups())
@@ -79,6 +88,21 @@ class FisherFactorTestingDummy(ff.FisherFactor):
 
   def make_inverse_update_ops(self):
     return []
+
+  def get_cov(self):
+    return NotImplementedError
+
+  def left_multiply(self, x, damping):
+    return NotImplementedError
+
+  def right_multiply(self, x, damping):
+    return NotImplementedError
+
+  def left_multiply_inverse(self, x, damping):
+    return NotImplementedError
+
+  def right_multiply_inverse(self, x, damping):
+    return NotImplementedError
 
 
 class InverseProvidingFactorTestingDummy(ff.InverseProvidingFactor):
@@ -120,7 +144,7 @@ class NumericalUtilsTest(test.TestCase):
       random_seed.set_random_seed(200)
 
       x = npr.randn(100, 3)
-      cov = ff._compute_cov(array_ops.constant(x))
+      cov = ff.compute_cov(array_ops.constant(x))
       np_cov = np.dot(x.T, x) / x.shape[0]
 
       self.assertAllClose(sess.run(cov), np_cov)
@@ -132,7 +156,7 @@ class NumericalUtilsTest(test.TestCase):
 
       normalizer = 10.
       x = npr.randn(100, 3)
-      cov = ff._compute_cov(array_ops.constant(x), normalizer=normalizer)
+      cov = ff.compute_cov(array_ops.constant(x), normalizer=normalizer)
       np_cov = np.dot(x.T, x) / normalizer
 
       self.assertAllClose(sess.run(cov), np_cov)
@@ -143,7 +167,7 @@ class NumericalUtilsTest(test.TestCase):
 
       m, n = 3, 4
       a = npr.randn(m, n)
-      a_homog = ff._append_homog(array_ops.constant(a))
+      a_homog = ff.append_homog(array_ops.constant(a))
       np_result = np.hstack([a, np.ones((m, 1))])
 
       self.assertAllClose(sess.run(a_homog), np_result)
@@ -370,7 +394,7 @@ class NaiveDiagonalFactorTest(test.TestCase):
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3), name='a/b/c')
       factor = ff.NaiveDiagonalFactor((tensor,), 32)
-      self.assertEqual([6, 1], factor.get_cov().get_shape().as_list())
+      self.assertEqual([6, 1], factor.get_cov_var().get_shape().as_list())
 
   def testNaiveDiagonalFactorInitFloat64(self):
     with tf_ops.Graph().as_default():
@@ -378,7 +402,7 @@ class NaiveDiagonalFactorTest(test.TestCase):
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
       factor = ff.NaiveDiagonalFactor((tensor,), 32)
-      cov = factor.get_cov()
+      cov = factor.get_cov_var()
       self.assertEqual(cov.dtype, dtype)
       self.assertEqual([6, 1], cov.get_shape().as_list())
 
@@ -391,6 +415,29 @@ class NaiveDiagonalFactorTest(test.TestCase):
       sess.run(tf_variables.global_variables_initializer())
       new_cov = sess.run(factor.make_covariance_update_op(.5))
       self.assertAllClose([[0.75], [1.5]], new_cov)
+
+
+class EmbeddingInputKroneckerFactorTest(test.TestCase):
+
+  def testInitialization(self):
+    with tf_ops.Graph().as_default():
+      input_ids = array_ops.constant([[0], [1], [4]])
+      vocab_size = 5
+      factor = ff.EmbeddingInputKroneckerFactor((input_ids,), vocab_size)
+      cov = factor.get_cov_var()
+      self.assertEqual(cov.shape.as_list(), [vocab_size])
+
+  def testCovarianceUpdateOp(self):
+    with tf_ops.Graph().as_default():
+      input_ids = array_ops.constant([[0], [1], [4]])
+      vocab_size = 5
+      factor = ff.EmbeddingInputKroneckerFactor((input_ids,), vocab_size)
+      cov_update_op = factor.make_covariance_update_op(0.0)
+
+      with self.test_session() as sess:
+        sess.run(tf_variables.global_variables_initializer())
+        new_cov = sess.run(cov_update_op)
+        self.assertAllClose(np.array([1., 1., 0., 0., 1.]) / 3., new_cov)
 
 
 class FullyConnectedKroneckerFactorTest(test.TestCase):

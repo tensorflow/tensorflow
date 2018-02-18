@@ -50,6 +50,7 @@ from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
+from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import saver
 
 from tensorflow.python.util import compat
@@ -390,7 +391,8 @@ def make_export_strategy(serving_input_fn,
                          default_output_alternative_key=None,
                          assets_extra=None,
                          as_text=False,
-                         exports_to_keep=5):
+                         exports_to_keep=5,
+                         strip_default_attrs=None):
   """Create an ExportStrategy for use with Experiment.
 
   Args:
@@ -411,12 +413,16 @@ def make_export_strategy(serving_input_fn,
     exports_to_keep: Number of exports to keep.  Older exports will be
       garbage-collected.  Defaults to 5.  Set to None to disable garbage
       collection.
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
   """
 
-  def export_fn(estimator, export_dir_base, checkpoint_path=None):
+  def export_fn(estimator, export_dir_base, checkpoint_path=None,
+                strip_default_attrs=False):
     """Exports the given Estimator as a SavedModel.
 
     Args:
@@ -425,6 +431,8 @@ def make_export_strategy(serving_input_fn,
         graph and checkpoints.
       checkpoint_path: The checkpoint path to export.  If None (the default),
         the most recent checkpoint found within the model directory is chosen.
+      strip_default_attrs: Boolean. If `True`, default-valued attributes will
+        be removed from the NodeDefs.
 
     Returns:
       The string path to the exported directory.
@@ -443,7 +451,8 @@ def make_export_strategy(serving_input_fn,
           serving_input_fn,
           assets_extra=assets_extra,
           as_text=as_text,
-          checkpoint_path=checkpoint_path)
+          checkpoint_path=checkpoint_path,
+          strip_default_attrs=strip_default_attrs)
     else:
       export_result = estimator.export_savedmodel(
           export_dir_base,
@@ -451,12 +460,13 @@ def make_export_strategy(serving_input_fn,
           default_output_alternative_key=default_output_alternative_key,
           assets_extra=assets_extra,
           as_text=as_text,
-          checkpoint_path=checkpoint_path)
+          checkpoint_path=checkpoint_path,
+          strip_default_attrs=strip_default_attrs)
 
     garbage_collect_exports(export_dir_base, exports_to_keep)
     return export_result
 
-  return export_strategy.ExportStrategy('Servo', export_fn)
+  return export_strategy.ExportStrategy('Servo', export_fn, strip_default_attrs)
 
 
 def make_parsing_export_strategy(feature_columns,
@@ -464,7 +474,8 @@ def make_parsing_export_strategy(feature_columns,
                                  assets_extra=None,
                                  as_text=False,
                                  exports_to_keep=5,
-                                 target_core=False):
+                                 target_core=False,
+                                 strip_default_attrs=None):
   """Create an ExportStrategy for use with Experiment, using `FeatureColumn`s.
 
   Creates a SavedModel export that expects to be fed with a single string
@@ -492,6 +503,9 @@ def make_parsing_export_strategy(feature_columns,
     target_core: If True, prepare an ExportStrategy for use with
       tensorflow.python.estimator.*.  If False (default), prepare an
       ExportStrategy for use with tensorflow.contrib.learn.python.learn.*.
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
@@ -508,7 +522,8 @@ def make_parsing_export_strategy(feature_columns,
       default_output_alternative_key=default_output_alternative_key,
       assets_extra=assets_extra,
       as_text=as_text,
-      exports_to_keep=exports_to_keep)
+      exports_to_keep=exports_to_keep,
+      strip_default_attrs=strip_default_attrs)
 
 
 def _default_compare_fn(curr_best_eval_result, cand_eval_result):
@@ -542,15 +557,16 @@ def _default_compare_fn(curr_best_eval_result, cand_eval_result):
 class BestModelSelector(object):
   """A helper that keeps track of export selection candidates."""
 
-  def __init__(self, compare_fn=None):
+  def __init__(self, event_file_pattern=None, compare_fn=None):
     """Constructor of this class.
 
     Args:
+      event_file_pattern: absolute event file name pattern.
       compare_fn: a function that returns true if the candidate is better than
         the current best model.
     """
-    self._best_eval_result = None
     self._compare_fn = compare_fn or _default_compare_fn
+    self._best_eval_result = self._get_best_eval_result(event_file_pattern)
 
   def update(self, checkpoint_path, eval_result):
     """Records a given checkpoint and exports if this is the best model.
@@ -580,11 +596,40 @@ class BestModelSelector(object):
     else:
       return '', None
 
+  def _get_best_eval_result(self, event_files):
+    """Get the best eval result from event files.
 
-def make_best_model_export_strategy(serving_input_fn,
-                                    exports_to_keep=1,
-                                    compare_fn=None,
-                                    default_output_alternative_key=None):
+    Args:
+      event_files: Absolute pattern of event files.
+
+    Returns:
+      The best eval result.
+    """
+    if not event_files:
+      return None
+
+    best_eval_result = None
+    for event_file in gfile.Glob(os.path.join(event_files)):
+      for event in summary_iterator.summary_iterator(event_file):
+        if event.HasField('summary'):
+          event_eval_result = {}
+          for value in event.summary.value:
+            if value.HasField('simple_value'):
+              event_eval_result[value.tag] = value.simple_value
+          if best_eval_result is None or self._compare_fn(
+              best_eval_result, event_eval_result):
+            best_eval_result = event_eval_result
+    return best_eval_result
+
+
+def make_best_model_export_strategy(
+    serving_input_fn,
+    exports_to_keep=1,
+    model_dir=None,
+    event_file_pattern=None,
+    compare_fn=None,
+    default_output_alternative_key=None,
+    strip_default_attrs=None):
   """Creates an custom ExportStrategy for use with tf.contrib.learn.Experiment.
 
   Args:
@@ -592,10 +637,24 @@ def make_best_model_export_strategy(serving_input_fn,
       `InputFnOps`.
     exports_to_keep: an integer indicating how many historical best models need
       to be preserved.
+    model_dir: Directory where model parameters, graph etc. are saved. This will
+        be used to load eval metrics from the directory when the export strategy
+        is created. So the best metrics would not be lost even if the export
+        strategy got preempted, which guarantees that only the best model would
+        be exported regardless of preemption. If None, however, the export
+        strategy would not be preemption-safe. To be preemption-safe, both
+        model_dir and event_file_pattern would be needed.
+    event_file_pattern: event file name pattern relative to model_dir, e.g.
+        "eval_continuous/*.tfevents.*". If None, however, the export strategy
+        would not be preemption-safe. To be preemption-safe, both
+        model_dir and event_file_pattern would be needed.
     compare_fn: a function that select the 'best' candidate from a dictionary
         of evaluation result keyed by corresponding checkpoint path.
     default_output_alternative_key: the key for default serving signature for
         multi-headed inference graphs.
+    strip_default_attrs: Boolean. If True, default attrs in the
+      `GraphDef` will be stripped on write. This is recommended for better
+      forward compatibility of the resulting `SavedModel`.
 
   Returns:
     An ExportStrategy that can be passed to the Experiment constructor.
@@ -603,9 +662,13 @@ def make_best_model_export_strategy(serving_input_fn,
   best_model_export_strategy = make_export_strategy(
       serving_input_fn,
       exports_to_keep=exports_to_keep,
-      default_output_alternative_key=default_output_alternative_key)
+      default_output_alternative_key=default_output_alternative_key,
+      strip_default_attrs=strip_default_attrs)
 
-  best_model_selector = BestModelSelector(compare_fn)
+  full_event_file_pattern = os.path.join(
+      model_dir,
+      event_file_pattern) if model_dir and event_file_pattern else None
+  best_model_selector = BestModelSelector(full_event_file_pattern, compare_fn)
 
   def export_fn(estimator, export_dir_base, checkpoint_path, eval_result=None):
     """Exports the given Estimator as a SavedModel.

@@ -155,7 +155,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
         // Determine the size of the output tensors:
         // * dense_shape will be [`row_shape + 1`].
-        Tensor dense_shape(cpu_allocator(), DT_INT64, {row_ndims + 1});
+        Tensor dense_shape(ctx->allocator({}), DT_INT64, {row_ndims + 1});
         auto dense_shape_vec = dense_shape.vec<int64>();
         for (size_t i = 0; i < row_ndims; ++i) {
           if (row_shape.dim_size(i) == -1) {
@@ -215,10 +215,10 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
 
         // * indices will be [`total_elements`, `row_shape + 1`].
         // * values will be [`total_elements`].
-        Tensor indices(cpu_allocator(), DT_INT64,
+        Tensor indices(ctx->allocator({}), DT_INT64,
                        {total_elements, row_ndims + 1});
         Tensor values(
-            cpu_allocator(),
+            ctx->allocator({}),
             DatasetIterator<Dataset<T>>::dataset()->input_->output_dtypes()[0],
             {total_elements});
         auto indices_matrix = indices.matrix<int64>();
@@ -273,7 +273,7 @@ class DenseToSparseBatchDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(Iterator::RestoreParent(ctx, reader, input_impl_));

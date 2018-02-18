@@ -78,7 +78,7 @@ def per_example_maxent_loss(labels, weights, logits, num_classes, eps=1e-15):
 
   # Calculate softmax probabilities for each class.
   unnormalized_probs = math_ops.exp(logits)
-  normalizers = math_ops.reduce_sum(unnormalized_probs, 1, keep_dims=True)
+  normalizers = math_ops.reduce_sum(unnormalized_probs, 1, keepdims=True)
   softmax_predictions = math_ops.divide(unnormalized_probs,
                                         math_ops.add(normalizers, eps))
 
@@ -120,7 +120,7 @@ def per_example_squared_loss(labels, weights, predictions):
     update_op: An update operation to update the loss's internal state.
   """
   unweighted_loss = math_ops.reduce_sum(
-      math_ops.square(predictions - labels), 1, keep_dims=True)
+      math_ops.square(predictions - labels), 1, keepdims=True)
 
   return unweighted_loss * weights, control_flow_ops.no_op()
 

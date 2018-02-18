@@ -23,7 +23,6 @@ from __future__ import division
 from __future__ import print_function
 
 import argparse
-import functools
 import os
 import sys
 import time
@@ -36,11 +35,11 @@ from tensorflow.examples.tutorials.mnist import input_data
 FLAGS = None
 
 
-class MNISTModel(tfe.Network):
+class MNISTModel(tf.keras.Model):
   """MNIST Network.
 
   Network structure is equivalent to:
-  https://github.com/tensorflow/tensorflow/blob/r1.4/tensorflow/examples/tutorials/mnist/mnist_deep.py
+  https://github.com/tensorflow/tensorflow/blob/r1.6/tensorflow/examples/tutorials/mnist/mnist_deep.py
   and
   https://github.com/tensorflow/models/blob/master/tutorials/image/mnist/convolutional.py
 
@@ -62,18 +61,17 @@ class MNISTModel(tfe.Network):
     else:
       assert data_format == 'channels_last'
       self._input_shape = [-1, 28, 28, 1]
-    self.conv1 = self.track_layer(
-        tf.layers.Conv2D(32, 5, data_format=data_format, activation=tf.nn.relu))
-    self.conv2 = self.track_layer(
-        tf.layers.Conv2D(64, 5, data_format=data_format, activation=tf.nn.relu))
-    self.fc1 = self.track_layer(tf.layers.Dense(1024, activation=tf.nn.relu))
-    self.fc2 = self.track_layer(tf.layers.Dense(10))
-    self.dropout = self.track_layer(tf.layers.Dropout(0.5))
-    self.max_pool2d = self.track_layer(
-        tf.layers.MaxPooling2D(
-            (2, 2), (2, 2), padding='SAME', data_format=data_format))
+    self.conv1 = tf.layers.Conv2D(
+        32, 5, data_format=data_format, activation=tf.nn.relu)
+    self.conv2 = tf.layers.Conv2D(
+        64, 5, data_format=data_format, activation=tf.nn.relu)
+    self.fc1 = tf.layers.Dense(1024, activation=tf.nn.relu)
+    self.fc2 = tf.layers.Dense(10)
+    self.dropout = tf.layers.Dropout(0.5)
+    self.max_pool2d = tf.layers.MaxPooling2D(
+        (2, 2), (2, 2), padding='SAME', data_format=data_format)
 
-  def call(self, inputs, training):
+  def call(self, inputs, training=False):
     """Computes labels from inputs.
 
     Users should invoke __call__ to run the network, which delegates to this
@@ -96,8 +94,7 @@ class MNISTModel(tfe.Network):
     x = self.max_pool2d(x)
     x = tf.layers.flatten(x)
     x = self.fc1(x)
-    if training:
-      x = self.dropout(x)
+    x = self.dropout(x, training=training)
     x = self.fc2(x)
     return x
 
@@ -124,21 +121,18 @@ def train_one_epoch(model, optimizer, dataset, log_interval=None):
 
   tf.train.get_or_create_global_step()
 
-  def model_loss(labels, images):
-    prediction = model(images, training=True)
-    loss_value = loss(prediction, labels)
-    tf.contrib.summary.scalar('loss', loss_value)
-    tf.contrib.summary.scalar('accuracy',
-                              compute_accuracy(prediction, labels))
-    return loss_value
-
   for (batch, (images, labels)) in enumerate(tfe.Iterator(dataset)):
     with tf.contrib.summary.record_summaries_every_n_global_steps(10):
-      batch_model_loss = functools.partial(model_loss, labels, images)
-      optimizer.minimize(
-          batch_model_loss, global_step=tf.train.get_global_step())
+      with tfe.GradientTape() as tape:
+        prediction = model(images, training=True)
+        loss_value = loss(prediction, labels)
+        tf.contrib.summary.scalar('loss', loss_value)
+        tf.contrib.summary.scalar('accuracy',
+                                  compute_accuracy(prediction, labels))
+      grads = tape.gradient(loss_value, model.variables)
+      optimizer.apply_gradients(zip(grads, model.variables))
       if log_interval and batch % log_interval == 0:
-        print('Batch #%d\tLoss: %.6f' % (batch, batch_model_loss()))
+        print('Batch #%d\tLoss: %.6f' % (batch, loss_value))
 
 
 def test(model, dataset):

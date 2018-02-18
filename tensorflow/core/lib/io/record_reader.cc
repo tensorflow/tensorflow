@@ -49,7 +49,7 @@ RecordReaderOptions RecordReaderOptions::CreateRecordReaderOptions(
 #endif  // IS_SLIM_BUILD
   } else if (compression_type != compression::kNone) {
     LOG(ERROR) << "Unsupported compression_type:" << compression_type
-               << ". No comprression will be used.";
+               << ". No compression will be used.";
   }
   return options;
 }
@@ -207,7 +207,7 @@ Status RecordReader::SkipNBytes(uint64 offset) {
     }
   }
   return Status::OK();
-}
+}  // namespace io
 
 SequentialRecordReader::SequentialRecordReader(
     RandomAccessFile* file, const RecordReaderOptions& options)

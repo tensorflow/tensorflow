@@ -20,9 +20,11 @@ limitations under the License.
 #include <vector>
 
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/GlobalValue.h"
 #include "llvm/IR/MDBuilder.h"
 #include "llvm/IR/Operator.h"
 #include "llvm/Target/TargetOptions.h"
+#include "llvm/Transforms/Utils/Cloning.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
@@ -59,6 +61,16 @@ string AsString(const std::string& str) {
 
 llvm::StringRef AsStringRef(tensorflow::StringPiece str) {
   return llvm::StringRef(str.data(), str.size());
+}
+
+std::unique_ptr<llvm::Module> DropConstantInitializers(
+    const llvm::Module& module) {
+  std::unique_ptr<llvm::Module> cloned_module = CloneModule(module);
+  for (llvm::GlobalVariable& global_var : cloned_module->globals()) {
+    global_var.setInitializer(nullptr);
+    global_var.setLinkage(llvm::GlobalValue::LinkageTypes::ExternalLinkage);
+  }
+  return cloned_module;
 }
 
 string DumpModuleToString(const llvm::Module& module) {
@@ -150,6 +162,8 @@ llvm::Type* PrimitiveTypeToIrType(PrimitiveType element_type,
       // addition to an addition on this type (int16) - this is just the type
       // used for storage.
       return llvm::Type::getInt16Ty(module->getContext());
+    case F16:
+      return llvm::Type::getHalfTy(module->getContext());
     case S32:
     case U32:
       return llvm::Type::getInt32Ty(module->getContext());
@@ -291,6 +305,11 @@ llvm::Constant* LiteralToConstant(const Literal& literal, int64 dimension_index,
         value = llvm::ConstantInt::get(
             ir_element_type,
             tensorflow::bit_cast<uint16>(literal.Get<bfloat16>(*multi_index)));
+        break;
+      case F16:
+        value = llvm::ConstantFP::get(
+            ir_element_type,
+            static_cast<float>(literal.Get<half>(*multi_index)));
         break;
       case F64:
         value = llvm::ConstantFP::get(ir_element_type,
@@ -665,6 +684,19 @@ static string GetProcessUniqueIrFileName(tensorflow::StringPiece prefix) {
   return uniquer->GetUniqueName(prefix);
 }
 
+static Status CreateAndWriteStringToFile(const string& directory_name,
+                                         const string& file_name,
+                                         const string& text) {
+  std::unique_ptr<tensorflow::WritableFile> f;
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
+  TF_RETURN_IF_ERROR(
+      tensorflow::Env::Default()->NewWritableFile(file_name, &f));
+  TF_RETURN_IF_ERROR(f->Append(text));
+  TF_RETURN_IF_ERROR(f->Close());
+  return Status::OK();
+}
+
 Status DumpIRToDirectory(const string& directory_name,
                          const string& hlo_module_name,
                          const llvm::Module& llvm_module, bool optimized) {
@@ -679,13 +711,17 @@ Status DumpIRToDirectory(const string& directory_name,
       directory_name,
       tensorflow::strings::StrCat(unique_and_safe_file_name, ".ll"));
 
-  std::unique_ptr<tensorflow::WritableFile> f;
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->RecursivelyCreateDir(directory_name));
-  TF_RETURN_IF_ERROR(
-      tensorflow::Env::Default()->NewWritableFile(ir_file_name, &f));
-  TF_RETURN_IF_ERROR(f->Append(DumpModuleToString(llvm_module)));
-  return f->Close();
+  // For some models the embedded constants can be huge, so also dump the module
+  // with the constants stripped to get IR that is easier to manipulate.
+  string ir_no_constant_initializers_file_name = tensorflow::io::JoinPath(
+      directory_name,
+      tensorflow::strings::StrCat(unique_and_safe_file_name, "-noconst.ll"));
+
+  TF_RETURN_IF_ERROR(CreateAndWriteStringToFile(
+      directory_name, ir_file_name, DumpModuleToString(llvm_module)));
+  return CreateAndWriteStringToFile(
+      directory_name, ir_no_constant_initializers_file_name,
+      DumpModuleToString(*DropConstantInitializers(llvm_module)));
 }
 
 llvm::Function* CreateFunction(llvm::FunctionType* function_type,
@@ -713,6 +749,32 @@ llvm::Function* CreateFunction(llvm::FunctionType* function_type,
   }
 
   return function;
+}
+
+void InitializeLLVMCommandLineOptions(const HloModuleConfig& config) {
+  auto options = config.debug_options().xla_backend_extra_options();
+  if (!options.empty()) {
+    std::vector<string> fake_argv_storage;
+    fake_argv_storage.push_back("");
+    for (const auto& it : options) {
+      // Skip options the XLA backend itself consumes.
+      if (!tensorflow::StringPiece(it.first).starts_with("xla_")) {
+        if (it.second.empty()) {
+          fake_argv_storage.push_back(it.first);
+        } else {
+          fake_argv_storage.push_back(it.first + "=" + it.second);
+        }
+      }
+    }
+
+    VLOG(2) << "Passing argv to LLVM:";
+    std::vector<const char*> fake_argv;
+    for (const auto& s : fake_argv_storage) {
+      fake_argv.push_back(s.c_str());
+      VLOG(2) << s;
+    }
+    llvm::cl::ParseCommandLineOptions(fake_argv.size(), &fake_argv[0]);
+  }
 }
 
 }  // namespace llvm_ir

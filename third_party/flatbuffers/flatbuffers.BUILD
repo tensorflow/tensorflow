@@ -4,6 +4,8 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
+exports_files(["LICENSE.txt"])
+
 config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},

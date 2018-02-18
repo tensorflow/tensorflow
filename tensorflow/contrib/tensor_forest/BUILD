@@ -497,6 +497,7 @@ py_library(
         ":tensor_forest_v4_ops_py",
         "//tensorflow/contrib/decision_trees/proto:generic_tree_model_py",
         "//tensorflow/contrib/framework:framework_py",
+        "//tensorflow/contrib/tensor_forest/proto:fertile_stats_proto_py",
         "//tensorflow/contrib/tensor_forest/proto:tensor_forest_params_proto_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -530,7 +531,6 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":client_lib",
-        "//tensorflow/contrib/framework:framework_py",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
         "//tensorflow/python:array_ops",

@@ -369,14 +369,6 @@ StatusOr<ComputationDataHandle> UserComputation::AddRngInstruction(
 
   // Check the number of parameters per RNG distribution.
   switch (rng_request.distribution()) {
-    case RandomDistribution::RNG_BERNOULLI:
-      if (rng_request.parameter_size() != 1) {
-        return InvalidArgument(
-            "RNG distribution (%s) expects 1 parameters, but got %d",
-            RandomDistribution_Name(rng_request.distribution()).c_str(),
-            rng_request.parameter_size());
-      }
-      break;
     case RandomDistribution::RNG_NORMAL:
     case RandomDistribution::RNG_UNIFORM:
       if (rng_request.parameter_size() != 2) {
@@ -1121,6 +1113,31 @@ StatusOr<ComputationDataHandle> UserComputation::AddConvolveInstruction(
   return handle;
 }
 
+StatusOr<ComputationDataHandle> UserComputation::AddFftInstruction(
+    const FftRequest& fft_request) {
+  tensorflow::mutex_lock lock(mutex_);
+
+  TF_ASSIGN_OR_RETURN(const OperationRequest* operand,
+                      LookUpRequest(fft_request.operand()));
+  TF_ASSIGN_OR_RETURN(Shape shape,
+                      ShapeInference::InferFftShape(
+                          operand->output_shape(), fft_request.fft_type(),
+                          AsInt64Slice(fft_request.fft_length())));
+
+  const ComputationDataHandle handle = CreateComputationDataHandle();
+
+  OperationRequest& request =
+      (*session_computation_.mutable_requests())[handle.handle()];
+  *request.mutable_output_handle() = handle;
+  *request.mutable_output_shape() = shape;
+  *request.mutable_request()->mutable_fft_request() = fft_request;
+
+  VLOG(1) << "AddFftInstruction (" << GetVersionedHandleInternal()
+          << "), data handle " << handle.handle() << ": "
+          << fft_request.ShortDebugString();
+  return handle;
+}
+
 StatusOr<ComputationDataHandle> UserComputation::AddCrossReplicaSumInstruction(
     const CrossReplicaSumRequest& cross_replica_sum_request) {
   tensorflow::mutex_lock lock(mutex_);
@@ -1168,7 +1185,7 @@ StatusOr<ComputationDataHandle> UserComputation::AddInfeedInstruction(
   return handle;
 }
 
-Status UserComputation::AddOutfeedInstruction(
+StatusOr<ComputationDataHandle> UserComputation::AddOutfeedInstruction(
     const OutfeedRequest& outfeed_request) {
   tensorflow::mutex_lock lock(mutex_);
 
@@ -1180,8 +1197,6 @@ Status UserComputation::AddOutfeedInstruction(
   // Verify that operand is valid.
   TF_RETURN_IF_ERROR(LookUpRequest(outfeed_request.operand()).status());
 
-  // No handle is returned, but a handle must be assigned to this instruction
-  // for computation versioning.
   ComputationDataHandle handle = CreateComputationDataHandle();
   OperationRequest& request =
       (*session_computation_.mutable_requests())[handle.handle()];
@@ -1192,7 +1207,7 @@ Status UserComputation::AddOutfeedInstruction(
   VLOG(1) << "AddOutfeedInstruction (" << GetVersionedHandleInternal()
           << "), data handle " << handle.handle() << ": "
           << outfeed_request.ShortDebugString();
-  return Status::OK();
+  return handle;
 }
 
 StatusOr<ComputationDataHandle> UserComputation::AddCallInstruction(
@@ -1675,6 +1690,13 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
       break;
     }
 
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      PureFunctionalVisitor(session_computation, fft_request.operand(),
+                            num_parameters, visited, is_functional);
+      break;
+    }
+
     case OpRequest::kCrossReplicaSumRequest: {
       // TODO(b/33009255): Implmement constant folding for cross replica sum.
       *is_functional = false;
@@ -1975,6 +1997,9 @@ void PureFunctionalVisitor(const SessionComputation& session_computation,
     default:
       LOG(FATAL) << "Unexpected request type: " << request.request().op_case();
   }
+  if (!*is_functional) {
+    VLOG(1) << "Non-functional: " << request.request().DebugString();
+  }
   visited->insert(handle.handle());
 }
 
@@ -2120,6 +2145,24 @@ UserComputation::GetEmbeddedComputations(
                    out->append(h.ToString());
                  });
   return computations;
+}
+
+StatusOr<const OperationRequest*>
+UserComputation::LookUpRequestForErrorReporting(
+    const ComputationDataHandle& handle) const {
+  tensorflow::mutex_lock lock(mutex_);
+  return LookUpRequest(handle);
+}
+
+tensorflow::gtl::optional<const OpMetadata*> UserComputation::ParameterMetadata(
+    int parameter_number) const {
+  tensorflow::mutex_lock lock(mutex_);
+  auto it = parameters_.find(parameter_number);
+  if (it == parameters_.end()) {
+    return tensorflow::gtl::nullopt;
+  }
+  OperationRequest* op = it->second;
+  return &op->request().metadata();
 }
 
 Status UserComputation::RemapEmbeddedComputations(
@@ -2403,6 +2446,12 @@ static void ForEachOperand(
           request.request().convolve_request();
       apply(convolve_request.lhs());
       apply(convolve_request.rhs());
+      break;
+    }
+
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      apply(fft_request.operand());
       break;
     }
 
@@ -2719,48 +2768,11 @@ HloComputation* ComputationLowerer::ResolveComputation(
 
 HloInstruction* ComputationLowerer::ImplicitBroadcastToExplicitBroadcast(
     HloInstruction* operand, const Shape& output_shape) {
-  CHECK(ShapeUtil::IsScalar(operand->shape()) ||
-        ShapeUtil::Rank(operand->shape()) == ShapeUtil::Rank(output_shape));
-  Shape broadcast_shape = ShapeUtil::MakeShape(
-      operand->shape().element_type(), AsInt64Slice(output_shape.dimensions()));
-  // Do explicit broadcast for scalar.
-  if (ShapeUtil::IsScalar(operand->shape())) {
-    HloInstruction* broadcast = hlo_builder_.AddInstruction(
-        HloInstruction::CreateBroadcast(broadcast_shape, operand, {}));
-    broadcast->set_metadata(operand->metadata());
-    if (operand->has_sharding()) {
-      broadcast->set_sharding(operand->sharding());
-    }
-    return broadcast;
-  }
-  // Do explicit broadcast for degenerate broadcast.
-  std::vector<int64> broadcast_dimensions;
-  std::vector<int64> reshaped_dimensions;
-  for (int i = 0; i < ShapeUtil::Rank(operand->shape()); i++) {
-    if (operand->shape().dimensions(i) == output_shape.dimensions(i)) {
-      broadcast_dimensions.push_back(i);
-      reshaped_dimensions.push_back(operand->shape().dimensions(i));
-    }
-  }
-  // Eliminate the size one dimensions.
-  HloInstruction* reshaped_operand =
-      hlo_builder_.AddInstruction(HloInstruction::CreateReshape(
-          ShapeUtil::MakeShape(operand->shape().element_type(),
-                               reshaped_dimensions),
-          operand));
-  reshaped_operand->set_metadata(operand->metadata());
-  if (operand->has_sharding()) {
-    reshaped_operand->set_sharding(operand->sharding());
-  }
-  // Broadcast 'reshape' up to the larger size.
-  HloInstruction* broadcast =
-      hlo_builder_.AddInstruction(HloInstruction::CreateBroadcast(
-          broadcast_shape, reshaped_operand, broadcast_dimensions));
-  broadcast->set_metadata(operand->metadata());
-  if (operand->has_sharding()) {
-    broadcast->set_sharding(operand->sharding());
-  }
-  return broadcast;
+  auto fadd = [this](std::unique_ptr<HloInstruction> x) {
+    return hlo_builder_.AddInstruction(std::move(x));
+  };
+  return fadd(
+      HloInstruction::CreateBroadcastSequence(output_shape, operand, fadd));
 }
 
 void ComputationLowerer::Visit(
@@ -2801,7 +2813,8 @@ void ComputationLowerer::Visit(
       const ConstantRequest& constant_request =
           request.request().constant_request();
       hlo_instruction = add_instruction(HloInstruction::CreateConstant(
-          Literal(constant_request.literal()).CloneToUnique()));
+          Literal::CreateFromProto(constant_request.literal())
+              .ConsumeValueOrDie()));
       break;
     }
 
@@ -2877,6 +2890,15 @@ void ComputationLowerer::Visit(
       hlo_instruction = add_instruction(HloInstruction::CreateConvolve(
           request.output_shape(), lhs, rhs, convolve_request.window(),
           convolve_request.dimension_numbers()));
+      break;
+    }
+
+    case OpRequest::kFftRequest: {
+      const FftRequest& fft_request = request.request().fft_request();
+      HloInstruction* operand = lookup_instruction(fft_request.operand());
+      hlo_instruction = add_instruction(HloInstruction::CreateFft(
+          request.output_shape(), operand, fft_request.fft_type(),
+          AsInt64Slice(fft_request.fft_length())));
       break;
     }
 

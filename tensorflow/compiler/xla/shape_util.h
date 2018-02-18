@@ -23,6 +23,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -61,6 +62,9 @@ class ShapeIndex {
   size_t size() const { return indices_.size(); }
   void push_back(int64 value) { indices_.push_back(value); }
   void pop_back() { indices_.pop_back(); }
+
+  // push_front is O(n^2), but shapes don't usually have a ton of dimensions.
+  void push_front(int64 value) { indices_.insert(indices_.begin(), value); }
 
   std::vector<int64>::const_iterator begin() const { return indices_.begin(); }
   std::vector<int64>::const_iterator end() const { return indices_.end(); }
@@ -134,6 +138,7 @@ class ShapeIndexView {
 };
 
 std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
+std::ostream& operator<<(std::ostream& out, const ShapeIndexView& shape_index);
 
 // Namespaced collection of (static) shape utilities.
 //
@@ -142,7 +147,10 @@ std::ostream& operator<<(std::ostream& out, const ShapeIndex& shape_index);
 class ShapeUtil {
  public:
   // Returns the number of elements are contained within the provided shape;
-  // e.g. for rank 0 (scalars) the result is always 1.
+  // e.g. for rank 0 (scalars) the result is always 1. Note that sparse shapes
+  // may not actually be able to store this number of elements. See
+  // LayoutUtil::MaxSparseElements(shape) to obtain the maximum number of
+  // elements that can be stored in a sparse shape.
   // Precondition: !IsTuple(shape)
   static int64 ElementsIn(const Shape& shape);
 
@@ -162,6 +170,27 @@ class ShapeUtil {
   //
   // Precondition: !ShapeUtil::IsOpaque(shape) && !ShapeUtil::IsTuple(shape)
   static int64 ByteSizeOfPrimitiveType(PrimitiveType primitive_type);
+
+  // Returns the number of bytes required to store the tuple member pointers for
+  // a allocation of shape. The `shape` must be a TUPLE shape, and
+  // `pointer_size` must be larger than zero.
+  static int64 ByteSizeOfTupleIndexTable(const Shape& shape,
+                                         int64 pointer_size);
+
+  // Returns the number of bytes required for the elements in an allocation of
+  // `shape`, which must be an array shape. The return value does not include
+  // the bytes needed to store sparse indices. Dense shapes use a separate
+  // memory location for each element, and so for these shapes,
+  // `ByteSizeOf(shape) == ByteSizeOfElements(shape)`. For dense shapes, this
+  // size also includes padding if present in the layout. For sparse shapes,
+  // `ByteSizeOf(shape) == ByteSizeOfElements(shape) +
+  // ByteSizeOfSparseindices(shape)`.
+  static int64 ByteSizeOfElements(const Shape& shape);
+
+  // Returns the number of bytes required for the sparse indices in an
+  // allocation of shape. The shape must be an array shape. The return value
+  // does not include the bytes needed to store sparse indices.
+  static int64 ByteSizeOfSparseIndices(const Shape& shape);
 
   // Returns a human-readable string that represents the given shape, with or
   // without layout. e.g. "f32[42x12] {0, 1}" or "f32[64]".
@@ -186,6 +215,31 @@ class ShapeUtil {
     return lhs.element_type() == rhs.element_type();
   }
 
+  // As SameElementType, but allows floating point types to have different
+  // precisions.
+  static bool SameElementTypeIgnoringFpPrecision(const Shape& a,
+                                                 const Shape& b) {
+    if (ElementIsFloating(a) && ElementIsFloating(b)) {
+      return true;
+    }
+    return ShapeUtil::SameElementType(a, b);
+  }
+
+  // Returns the higher-precision element type if a and b are both floating
+  // point types; otherwise, checks that that they have the same element type
+  // and returns it.
+  static PrimitiveType HigherPrecisionElementType(const Shape& a,
+                                                  const Shape& b) {
+    if (SameElementType(a, b)) {
+      return a.element_type();
+    }
+    CHECK(SameElementTypeIgnoringFpPrecision(a, b));
+    return primitive_util::BitWidth(a.element_type()) <
+                   primitive_util::BitWidth(b.element_type())
+               ? b.element_type()
+               : a.element_type();
+  }
+
   // Returns true if the rank, dimension sizes, and element type are
   // identical. Layout is ignored. Tuple elements are compared recursively for
   // compatibility.
@@ -195,6 +249,10 @@ class ShapeUtil {
   // and layout are ignored. Tuple elements are compared recursively for
   // compatibility.
   static bool CompatibleIgnoringElementType(const Shape& lhs, const Shape& rhs);
+
+  // As Compatible, but allow one of lhs and rhs to be BF16 while the other
+  // being F32. Tuple elements are compared recursively for compatibility.
+  static bool CompatibleIgnoringFpPrecision(const Shape& lhs, const Shape& rhs);
 
   // Returns whether the lhs and rhs shapes are identical protobufs.
   static bool Equal(const Shape& lhs, const Shape& rhs);
@@ -267,6 +325,10 @@ class ShapeUtil {
   static Shape MakeShapeWithLayout(
       PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
       tensorflow::gtl::ArraySlice<int64> minor_to_major);
+
+  static Shape MakeShapeWithSparseLayout(
+      PrimitiveType element_type, tensorflow::gtl::ArraySlice<int64> dimensions,
+      int64 max_sparse_elements);
 
   // Constructs a new shape with major-first layout (i.e. {n, n-1, ..., 0}).
   static Shape MakeShapeWithDescendingLayout(
@@ -537,6 +599,8 @@ class ShapeUtil {
 
   TF_DISALLOW_COPY_AND_ASSIGN(ShapeUtil);
 };
+
+std::ostream& operator<<(std::ostream& out, const Shape& shape);
 
 }  // namespace xla
 

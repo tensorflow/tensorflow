@@ -520,9 +520,39 @@ XLA_TEST_F(DotOperationTest, BatchMatMul) {
 
   ComputeAndCompareR4<float>(
       &builder,
-      /*expected=*/{{{{1300, 2400}, {13, 24}}, {{11400, 13600}, {114, 136}}},
-                    {{{42900, 79200}, {429, 792}},
-                     {{250800, 299200}, {2508, 2992}}}},
+      /*expected=*/
+      {{{{1300, 2400}, {13, 24}}, {{11400, 13600}, {114, 136}}},
+       {{{42900, 79200}, {429, 792}}, {{250800, 299200}, {2508, 2992}}}},
+      {x_data.get(), y_data.get()}, error_spec_);
+}
+
+XLA_TEST_F(DotOperationTest, GeneralMatMul) {
+  ComputationBuilder builder(client_, TestName());
+  auto x = builder.Parameter(0, ShapeUtil::MakeShape(F32, {2, 2, 2}), "x");
+  auto y = builder.Parameter(1, ShapeUtil::MakeShape(F32, {2, 2, 2}), "y");
+
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(2);
+  dnums.add_rhs_contracting_dimensions(1);
+  dnums.add_lhs_batch_dimensions(0);
+  dnums.add_rhs_batch_dimensions(0);
+
+  auto out = builder.DotGeneral(x, y, dnums);
+
+  auto x_data = client_
+                    ->TransferToServer(*Literal::CreateR3<float>(
+                        {{{1.0, 2.0}, {3.0, 4.0}}, {{5.0, 6.0}, {7.0, 8.0}}}))
+                    .ConsumeValueOrDie();
+
+  auto y_data = client_
+                    ->TransferToServer(*Literal::CreateR3<float>(
+                        {{{1.0, 0.0}, {0.0, 1.0}}, {{1.0, 0.0}, {0.0, 1.0}}}))
+                    .ConsumeValueOrDie();
+
+  ComputeAndCompareR3<float>(
+      &builder,
+      /*expected=*/
+      {{{1.0, 2.0}, {3.0, 4.0}}, {{5.0, 6.0}, {7.0, 8.0}}},
       {x_data.get(), y_data.get()}, error_spec_);
 }
 

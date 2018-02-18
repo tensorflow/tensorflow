@@ -18,13 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 from os import path
+import tempfile
 
 import numpy
 import tensorflow as tf
 
 from tensorflow.contrib.timeseries.python.timeseries import estimators as ts_estimators
 from tensorflow.contrib.timeseries.python.timeseries import model as ts_model
+from tensorflow.contrib.timeseries.python.timeseries import state_management
 
 try:
   import matplotlib  # pylint: disable=g-import-not-at-top
@@ -45,7 +48,8 @@ _DATA_FILE = path.join(_MODULE_PATH, "data/multivariate_periods.csv")
 class _LSTMModel(ts_model.SequentialTimeSeriesModel):
   """A time series model-building example using an RNNCell."""
 
-  def __init__(self, num_units, num_features, dtype=tf.float32):
+  def __init__(self, num_units, num_features, exogenous_feature_columns=None,
+               dtype=tf.float32):
     """Initialize/configure the model object.
 
     Note that we do not start graph building here. Rather, this object is a
@@ -55,6 +59,10 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
       num_units: The number of units in the model's LSTMCell.
       num_features: The dimensionality of the time series (features per
         timestep).
+      exogenous_feature_columns: A list of tf.contrib.layers.FeatureColumn
+          objects representing features which are inputs to the model but are
+          not predicted by it. These must then be present for training,
+          evaluation, and prediction.
       dtype: The floating point data type to use.
     """
     super(_LSTMModel, self).__init__(
@@ -62,6 +70,7 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
         train_output_names=["mean"],
         predict_output_names=["mean"],
         num_features=num_features,
+        exogenous_feature_columns=exogenous_feature_columns,
         dtype=dtype)
     self._num_units = num_units
     # Filled in by initialize_graph()
@@ -69,7 +78,7 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
     self._lstm_cell_run = None
     self._predict_from_lstm_output = None
 
-  def initialize_graph(self, input_statistics):
+  def initialize_graph(self, input_statistics=None):
     """Save templates for components, which can then be used repeatedly.
 
     This method is called every time a new graph is created. It's safe to start
@@ -80,18 +89,19 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
       input_statistics: A math_utils.InputStatistics object.
     """
     super(_LSTMModel, self).initialize_graph(input_statistics=input_statistics)
-    self._lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self._num_units)
-    # Create templates so we don't have to worry about variable reuse.
-    self._lstm_cell_run = tf.make_template(
-        name_="lstm_cell",
-        func_=self._lstm_cell,
-        create_scope_now_=True)
-    # Transforms LSTM output into mean predictions.
-    self._predict_from_lstm_output = tf.make_template(
-        name_="predict_from_lstm_output",
-        func_=
-        lambda inputs: tf.layers.dense(inputs=inputs, units=self.num_features),
-        create_scope_now_=True)
+    with tf.variable_scope("", use_resource=True):
+      # Use ResourceVariables to avoid race conditions.
+      self._lstm_cell = tf.nn.rnn_cell.LSTMCell(num_units=self._num_units)
+      # Create templates so we don't have to worry about variable reuse.
+      self._lstm_cell_run = tf.make_template(
+          name_="lstm_cell",
+          func_=self._lstm_cell,
+          create_scope_now_=True)
+      # Transforms LSTM output into mean predictions.
+      self._predict_from_lstm_output = tf.make_template(
+          name_="predict_from_lstm_output",
+          func_=functools.partial(tf.layers.dense, units=self.num_features),
+          create_scope_now_=True)
 
   def get_start_state(self):
     """Return initial state for the time series model."""
@@ -100,6 +110,8 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
         tf.zeros([], dtype=tf.int64),
         # The previous observation or prediction.
         tf.zeros([self.num_features], dtype=self.dtype),
+        # The most recently seen exogenous features.
+        tf.zeros(self._get_exogenous_embedding_shape(), dtype=self.dtype),
         # The state of the RNNCell (batch dimension removed since this parent
         # class will broadcast).
         [tf.squeeze(state_element, axis=0)
@@ -127,7 +139,7 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
       loss (note that we could also return other measures of goodness of fit,
       although only "loss" will be optimized).
     """
-    state_from_time, prediction, lstm_state = state
+    state_from_time, prediction, exogenous, lstm_state = state
     with tf.control_dependencies(
         [tf.assert_equal(current_times, state_from_time)]):
       # Subtract the mean and divide by the variance of the series.  Slightly
@@ -139,16 +151,22 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
           (prediction - transformed_values) ** 2, axis=-1)
       # Keep track of the new observation in model state. It won't be run
       # through the LSTM until the next _imputation_step.
-      new_state_tuple = (current_times, transformed_values, lstm_state)
+      new_state_tuple = (current_times, transformed_values,
+                         exogenous, lstm_state)
     return (new_state_tuple, predictions)
 
   def _prediction_step(self, current_times, state):
     """Advance the RNN state using a previous observation or prediction."""
-    _, previous_observation_or_prediction, lstm_state = state
+    _, previous_observation_or_prediction, exogenous, lstm_state = state
+    # Update LSTM state based on the most recent exogenous and endogenous
+    # features.
+    inputs = tf.concat([previous_observation_or_prediction, exogenous],
+                       axis=-1)
     lstm_output, new_lstm_state = self._lstm_cell_run(
-        inputs=previous_observation_or_prediction, state=lstm_state)
+        inputs=inputs, state=lstm_state)
     next_prediction = self._predict_from_lstm_output(lstm_output)
-    new_state_tuple = (current_times, next_prediction, new_lstm_state)
+    new_state_tuple = (current_times, next_prediction,
+                       exogenous, new_lstm_state)
     return new_state_tuple, {"mean": self._scale_back_data(next_prediction)}
 
   def _imputation_step(self, current_times, state):
@@ -160,36 +178,75 @@ class _LSTMModel(ts_model.SequentialTimeSeriesModel):
 
   def _exogenous_input_step(
       self, current_times, current_exogenous_regressors, state):
-    """Update model state based on exogenous regressors."""
-    raise NotImplementedError(
-        "Exogenous inputs are not implemented for this example.")
+    """Save exogenous regressors in model state for use in _prediction_step."""
+    state_from_time, prediction, _, lstm_state = state
+    return (state_from_time, prediction,
+            current_exogenous_regressors, lstm_state)
 
 
 def train_and_predict(
-    csv_file_name=_DATA_FILE, training_steps=200, estimator_config=None):
+    csv_file_name=_DATA_FILE, training_steps=200, estimator_config=None,
+    export_directory=None):
   """Train and predict using a custom time series model."""
   # Construct an Estimator from our LSTM model.
+  exogenous_feature_columns = [
+      # Exogenous features are not part of the loss, but can inform
+      # predictions. In this example the features have no extra information, but
+      # are included as an API example.
+      tf.contrib.layers.real_valued_column(
+          "2d_exogenous_feature", dimension=2)]
   estimator = ts_estimators.TimeSeriesRegressor(
-      model=_LSTMModel(num_features=5, num_units=128),
-      optimizer=tf.train.AdamOptimizer(0.001), config=estimator_config)
+      model=_LSTMModel(num_features=5, num_units=128,
+                       exogenous_feature_columns=exogenous_feature_columns),
+      optimizer=tf.train.AdamOptimizer(0.001), config=estimator_config,
+      # Set state to be saved across windows.
+      state_manager=state_management.ChainingStateManager())
   reader = tf.contrib.timeseries.CSVReader(
       csv_file_name,
       column_names=((tf.contrib.timeseries.TrainEvalFeatures.TIMES,)
-                    + (tf.contrib.timeseries.TrainEvalFeatures.VALUES,) * 5))
+                    + (tf.contrib.timeseries.TrainEvalFeatures.VALUES,) * 5
+                    + ("2d_exogenous_feature",) * 2))
   train_input_fn = tf.contrib.timeseries.RandomWindowInputFn(
       reader, batch_size=4, window_size=32)
   estimator.train(input_fn=train_input_fn, steps=training_steps)
   evaluation_input_fn = tf.contrib.timeseries.WholeDatasetInputFn(reader)
   evaluation = estimator.evaluate(input_fn=evaluation_input_fn, steps=1)
   # Predict starting after the evaluation
+  predict_exogenous_features = {
+      "2d_exogenous_feature": numpy.concatenate(
+          [numpy.ones([1, 100, 1]), numpy.zeros([1, 100, 1])],
+          axis=-1)}
   (predictions,) = tuple(estimator.predict(
       input_fn=tf.contrib.timeseries.predict_continuation_input_fn(
-          evaluation, steps=100)))
+          evaluation, steps=100,
+          exogenous_features=predict_exogenous_features)))
   times = evaluation["times"][0]
   observed = evaluation["observed"][0, :, :]
   predicted_mean = numpy.squeeze(numpy.concatenate(
       [evaluation["mean"][0], predictions["mean"]], axis=0))
   all_times = numpy.concatenate([times, predictions["times"]], axis=0)
+
+  # Export the model in SavedModel format.
+  if export_directory is None:
+    export_directory = tempfile.mkdtemp()
+  input_receiver_fn = estimator.build_raw_serving_input_receiver_fn()
+  export_location = estimator.export_savedmodel(
+      export_directory, input_receiver_fn)
+  # Predict using the SavedModel
+  with tf.Graph().as_default():
+    with tf.Session() as session:
+      signatures = tf.saved_model.loader.load(
+          session, [tf.saved_model.tag_constants.SERVING], export_location)
+      saved_model_output = (
+          tf.contrib.timeseries.saved_model_utils.predict_continuation(
+              continue_from=evaluation, signatures=signatures,
+              session=session, steps=100,
+              exogenous_features=predict_exogenous_features))
+      # The exported model gives the same results as the Estimator.predict()
+      # call above.
+      numpy.testing.assert_allclose(
+          predictions["mean"],
+          numpy.squeeze(saved_model_output["mean"], axis=0))
   return times, observed, all_times, predicted_mean
 
 

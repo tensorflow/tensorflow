@@ -117,7 +117,7 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
           out_tensors->reserve(dataset()->tensors_.size());
           for (int i = 0; i < dataset()->tensors_.size(); ++i) {
             const Tensor& t = dataset()->tensors_[i];
-            Tensor t_slice(cpu_allocator(), t.dtype(),
+            Tensor t_slice(ctx->allocator({}), t.dtype(),
                            TensorShape(dataset()->shapes_[i].dim_sizes()));
             TF_RETURN_IF_ERROR(batch_util::CopySliceToElement(t, &t_slice, i_));
             out_tensors->emplace_back(std::move(t_slice));
@@ -137,7 +137,7 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));

@@ -15,11 +15,13 @@ limitations under the License.
 
 #include "tensorflow/c/c_test_util.h"
 
+#include "tensorflow/compiler/jit/legacy_flags/mark_for_compilation_pass_flags.h"
 #include "tensorflow/core/framework/function.pb.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/public/session_options.h"
 
 using tensorflow::GraphDef;
 using tensorflow::NodeDef;
@@ -124,8 +126,9 @@ TF_Operation* ScalarConst(double v, TF_Graph* graph, TF_Status* s,
   return Const(tensor.get(), graph, s, name);
 }
 
-void AddHelper(TF_Operation* l, TF_Operation* r, TF_Graph* graph, TF_Status* s,
-               const char* name, TF_Operation** op, bool check) {
+void AddOpHelper(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                 TF_Status* s, const char* name, TF_Operation** op,
+                 bool check) {
   TF_OperationDescription* desc = TF_NewOperation(graph, "AddN", name);
   TF_Output add_inputs[2] = {{l, 0}, {r, 0}};
   TF_AddInputList(desc, add_inputs, 2);
@@ -139,14 +142,14 @@ void AddHelper(TF_Operation* l, TF_Operation* r, TF_Graph* graph, TF_Status* s,
 TF_Operation* Add(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                   TF_Status* s, const char* name) {
   TF_Operation* op;
-  AddHelper(l, r, graph, s, name, &op, true);
+  AddOpHelper(l, r, graph, s, name, &op, true);
   return op;
 }
 
 TF_Operation* AddNoCheck(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
                          TF_Status* s, const char* name) {
   TF_Operation* op;
-  AddHelper(l, r, graph, s, name, &op, false);
+  AddOpHelper(l, r, graph, s, name, &op, false);
   return op;
 }
 
@@ -158,6 +161,36 @@ TF_Operation* AddWithCtrlDependency(TF_Operation* l, TF_Operation* r,
   TF_AddInputList(desc, add_inputs, 2);
   TF_AddControlInput(desc, ctrl_op);
   return TF_FinishOperation(desc, s);
+}
+
+// If `op_device` is non-empty, set the created op on that device.
+void BinaryOpHelper(const char* op_name, TF_Operation* l, TF_Operation* r,
+                    TF_Graph* graph, TF_Status* s, const char* name,
+                    TF_Operation** op, const string& op_device, bool check) {
+  TF_OperationDescription* desc = TF_NewOperation(graph, op_name, name);
+  if (!op_device.empty()) {
+    TF_SetDevice(desc, op_device.c_str());
+  }
+  TF_AddInput(desc, {l, 0});
+  TF_AddInput(desc, {r, 0});
+  *op = TF_FinishOperation(desc, s);
+  if (check) {
+    ASSERT_EQ(TF_OK, TF_GetCode(s)) << TF_Message(s);
+    ASSERT_NE(*op, nullptr);
+  }
+}
+
+TF_Operation* MinWithDevice(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                            const string& op_device, TF_Status* s,
+                            const char* name) {
+  TF_Operation* op;
+  BinaryOpHelper("Min", l, r, graph, s, name, &op, op_device, true);
+  return op;
+}
+
+TF_Operation* Min(TF_Operation* l, TF_Operation* r, TF_Graph* graph,
+                  TF_Status* s, const char* name) {
+  return MinWithDevice(l, r, graph, /*op_device=*/"", s, name);
 }
 
 TF_Operation* Add(TF_Output l, TF_Output r, TF_Graph* graph, TF_Status* s,
@@ -369,8 +402,21 @@ std::vector<string> GetFuncNames(const tensorflow::GraphDef& graph_def) {
   return names;
 }
 
-CSession::CSession(TF_Graph* graph, TF_Status* s) {
+CSession::CSession(TF_Graph* graph, TF_Status* s, bool use_XLA) {
   TF_SessionOptions* opts = TF_NewSessionOptions();
+  tensorflow::legacy_flags::MarkForCompilationPassFlags* flags =
+      tensorflow::legacy_flags::GetMarkForCompilationPassFlags();
+  flags->tf_xla_cpu_global_jit = use_XLA;
+  if (use_XLA) {
+    tensorflow::ConfigProto config;
+    config.mutable_graph_options()
+        ->mutable_optimizer_options()
+        ->set_global_jit_level(tensorflow::OptimizerOptions::ON_1);
+    std::string contents;
+    contents.resize(config.ByteSizeLong());
+    config.SerializeToArray(&contents[0], contents.size());
+    TF_SetConfig(opts, contents.data(), contents.size(), s);
+  }
   session_ = TF_NewSession(graph, opts, s);
   TF_DeleteSessionOptions(opts);
 }

@@ -296,6 +296,8 @@ py_test(
     ],
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",  # b/63709811
+        "no_pip",  # b/63709811
         "no_pip_gpu",  # b/63391119
     ],
     deps = [

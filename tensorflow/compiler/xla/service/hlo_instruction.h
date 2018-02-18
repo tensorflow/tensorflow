@@ -25,6 +25,7 @@ limitations under the License.
 #include <iosfwd>
 #include <list>
 #include <memory>
+#include <set>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -161,17 +162,14 @@ class HloPrintOptions {
 class HloInstruction {
  public:
   enum class FusionKind {
-    kLoop,                // Fused into a loop.
-    kInput,               // Op's input is fused into the op itself.
-    kOutput,              // Op's output is fused into the op itself.
-                          // REQUIRES: At least one operand buffer must be able
-                          // to alias the output buffer.
-    kTransposeDot,        // Fused into a dot with transposed operands.
-    kConvBackwardFilter,  // Fused into a backward filter convolution.
-    kConvBackwardInput,   // Fused into a backward input convolution.
-
-    kCustom,  // Custom category for backend-specific fusions that
-              // do not match any of the more specific ones.
+    kLoop,          // Fused into a loop.
+    kInput,         // Op's input is fused into the op itself.
+    kOutput,        // Op's output is fused into the op itself.
+                    // REQUIRES: At least one operand buffer must be able
+                    // to alias the output buffer.
+    kTransposeDot,  // Fused into a dot with transposed operands.
+    kCustom,        // Custom category for backend-specific fusions that
+                    // do not match any of the more specific ones.
   };
 
   ~HloInstruction();
@@ -260,6 +258,11 @@ class HloInstruction {
       const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
       const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
+
+  // Creates an FFT op, of the type indicated by fft_type.
+  static std::unique_ptr<HloInstruction> CreateFft(
+      const Shape& shape, HloInstruction* operand, FftType fft_type,
+      tensorflow::gtl::ArraySlice<int64> fft_length);
 
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
   // dimensions specified in 'dimension_numbers'.
@@ -403,6 +406,20 @@ class HloInstruction {
       const Shape& shape, HloInstruction* operand,
       tensorflow::gtl::ArraySlice<int64> broadcast_dimensions);
 
+  // Creates a sequence of instructions that performs an explicit broadcast of
+  // the operand to the target shape.
+  //
+  // Interior HLOs are passed to "adder", but the "root" HLO of the sequence is
+  // returned as a unique_ptr for API consistency with other factory methods in
+  // this interface.
+  //
+  // TODO(b/72173833) Ideally HloComputations would always be present, and so
+  // the adder being passed by the caller would not be necessary.
+  static std::unique_ptr<HloInstruction> CreateBroadcastSequence(
+      const Shape& output_shape, HloInstruction* operand,
+      const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+          adder);
+
   // Creates a pad instruction, where the operand is padded on the edges and
   // between the elements with the given padding value.
   static std::unique_ptr<HloInstruction> CreatePad(
@@ -445,14 +462,6 @@ class HloInstruction {
       const Shape& shape, FusionKind fusion_kind,
       tensorflow::gtl::ArraySlice<HloInstruction*> operands,
       HloComputation* fusion_computation);
-
-  // Creates a fusion instruction that represents backward convolution. This is
-  // similar to CreateFusion, but with extra arguments indicating the window and
-  // dimemsion mapping of the backward convolution.
-  static std::unique_ptr<HloInstruction> CreateFusionForBackwardConvolution(
-      const Shape& shape, FusionKind fusion_kind, const Window& window,
-      const ConvolutionDimensionNumbers& conv_dnums,
-      HloInstruction* fused_root);
 
   // Creates a call instruction that applies the given computation on the given
   // operands. "shape" is the resultant shape.
@@ -545,28 +554,42 @@ class HloInstruction {
   }
 
   // Returns true if "other" performs the same computation as this instruction.
-  // Layout of the instructions' output array is not considered.
   bool Identical(
       const HloInstruction& other,
-      std::function<bool(const HloInstruction*, const HloInstruction*)>
+      const std::function<bool(const HloInstruction*, const HloInstruction*)>&
           eq_operands = std::equal_to<const HloInstruction*>(),
-      std::function<bool(const HloComputation*, const HloComputation*)>
-          eq_computations = std::equal_to<const HloComputation*>()) const {
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations = std::equal_to<const HloComputation*>(),
+      bool layout_sensitive = true) const {
     // An instruction is always identical to itself.
     if (this == &other) {
       return true;
     }
 
-    // Identical instruction must have the same opcode and identical operands.
-    // In general, there is no need to check shape because shape is inferred
-    // from the shape of the operands.
-    if (opcode() != other.opcode() ||
-        !ContainersEqual(operands(), other.operands(),
-                         std::move(eq_operands))) {
+    // Identical instruction must have the same opcode, shape, and identical
+    // operands.
+    if (opcode() != other.opcode()) {
+      return false;
+    }
+    using EqShapeFuncType = bool (*)(const Shape&, const Shape&);
+    EqShapeFuncType eq_shapes =
+        layout_sensitive ? ShapeUtil::Equal : ShapeUtil::Compatible;
+    if (!eq_shapes(shape(), other.shape())) {
+      return false;
+    }
+    if (operands().size() != other.operands().size()) {
       return false;
     }
 
-    return IdenticalSlowPath(other, eq_computations);
+    // Use an explicit loop rather than ContainerEquals, because copying around
+    // std::functions may be too expensive in some cases.
+    for (size_t i = 0; i < operands().size(); ++i) {
+      if (!eq_operands(operand(i), other.operand(i))) {
+        return false;
+      }
+    }
+
+    return IdenticalSlowPath(other, eq_computations, eq_shapes);
   }
 
   // Returns whether the instruction has a constant operand.
@@ -857,8 +880,8 @@ class HloInstruction {
   // Returns true if this instruction is a fusion instruction that generates
   // multiple outputs.
   const bool IsMultiOutputFusion() const {
-    return (opcode() == HloOpcode::kFusion &&
-            fused_expression_root()->opcode() == HloOpcode::kTuple);
+    return opcode() == HloOpcode::kFusion &&
+           fused_expression_root()->opcode() == HloOpcode::kTuple;
   }
 
   FusionKind fusion_kind() const {
@@ -1024,11 +1047,31 @@ class HloInstruction {
     return *padding_config_;
   }
 
-  // Returns data on the dimension numbers used for a convolution
-  // operation.
+  // Returns data on the dimension numbers used for a convolution operation,
+  // which may be a kConvolution instruction or a kCustomCall that implements a
+  // convolution.
   const ConvolutionDimensionNumbers& convolution_dimension_numbers() const {
     CHECK(convolution_dimension_numbers_ != nullptr);
     return *convolution_dimension_numbers_;
+  }
+
+  // Sets the convolution dimension numbers on this instruction.  In general you
+  // shouldn't need to call this; instead, specify the convolution dimension
+  // numbers when you create the instruction.
+  void set_convolution_dimension_numbers(
+      const ConvolutionDimensionNumbers& dnums) {
+    convolution_dimension_numbers_ =
+        MakeUnique<ConvolutionDimensionNumbers>(dnums);
+  }
+
+  FftType fft_type() const {
+    CHECK_EQ(HloOpcode::kFft, opcode_);
+    return fft_type_;
+  }
+
+  const std::vector<int64>& fft_length() const {
+    CHECK_EQ(HloOpcode::kFft, opcode_);
+    return fft_length_;
   }
 
   // Returns the dump string of the convolution dimension numbers.
@@ -1195,10 +1238,14 @@ class HloInstruction {
   class FusionReusesParamElements;
 
   // See comments on Identical().
+  // eq_shapes() is used to check shapes for equality, and would normally be
+  // expected to be ShapeUtil::Equals or ShapeUtil::Compatible, depending on
+  // whether we want a layout-sensitive check or not.
   bool IdenticalSlowPath(
       const HloInstruction& other,
-      std::function<bool(const HloComputation*, const HloComputation*)>
-          eq_computations) const;
+      const std::function<bool(const HloComputation*, const HloComputation*)>&
+          eq_computations,
+      const std::function<bool(const Shape&, const Shape&)>& eq_shapes) const;
 
   // Creates an n-ary elementwise operation.
   static std::unique_ptr<HloInstruction> CreateNary(
@@ -1302,6 +1349,12 @@ class HloInstruction {
 
   // Describes the dimension numbers used for a dot.
   std::unique_ptr<DotDimensionNumbers> dot_dimension_numbers_;
+
+  // Describes FFT type for an FFT instruction.
+  FftType fft_type_ = FftType::FFT;
+
+  // Indicates the FFT length for an FFT instruction.
+  std::vector<int64> fft_length_;
 
   // Describes the [begin, end) index range for a slice.
   std::vector<int64> slice_starts_;
@@ -1429,6 +1482,10 @@ using HloInstructionMap = std::map<HloInstruction*, ValueT, HloPtrComparator>;
 template <typename ValueT>
 using ConstHloInstructionMap =
     std::map<const HloInstruction*, ValueT, HloPtrComparator>;
+
+using HloInstructionSet = std::set<HloInstruction*, HloPtrComparator>;
+using ConstHloInstructionSet =
+    std::set<const HloInstruction*, HloPtrComparator>;
 
 }  // namespace xla
 

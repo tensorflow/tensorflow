@@ -22,10 +22,6 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 
 namespace tensorflow {
-namespace {
-template <typename T>
-bool ConvertHelper(const string& s, T* value);
-}
 
 template <typename T, typename Tlabel>
 class DecodeLibsvmOp : public OpKernel {
@@ -50,34 +46,47 @@ class DecodeLibsvmOp : public OpKernel {
     std::vector<T> out_values;
     std::vector<std::pair<int64, int64>> out_indices;
     for (int i = 0; i < input_flat.size(); ++i) {
-      std::vector<string> entries =
-          str_util::Split(input_flat(i), " ", str_util::SkipEmpty());
-      OP_REQUIRES(ctx, !entries.empty(),
-                  errors::InvalidArgument("No entries found for input[", i,
+      StringPiece line(input_flat(i));
+      str_util::RemoveWhitespaceContext(&line);
+
+      StringPiece piece;
+      OP_REQUIRES(ctx, str_util::ConsumeNonWhitespace(&line, &piece),
+                  errors::InvalidArgument("No label found for input[", i,
                                           "]: \"", input_flat(i), "\""));
+
       Tlabel label_value;
-      OP_REQUIRES(
-          ctx, ConvertHelper<Tlabel>(entries[0], &label_value),
-          errors::InvalidArgument("Label format incorrect: ", entries[0]));
+      OP_REQUIRES(ctx,
+                  strings::SafeStringToNumeric<Tlabel>(piece, &label_value),
+                  errors::InvalidArgument("Label format incorrect: ", piece));
+
       label(i) = label_value;
-      for (int j = 1; j < entries.size(); j++) {
-        std::vector<string> pair = str_util::Split(entries[j], ":");
-        OP_REQUIRES(
-            ctx, (pair.size() == 2),
-            errors::InvalidArgument("Invalid feature \"", entries[j], "\""));
+
+      str_util::RemoveLeadingWhitespace(&line);
+      while (str_util::ConsumeNonWhitespace(&line, &piece)) {
+        size_t p = piece.find(':');
+        OP_REQUIRES(ctx, (p != StringPiece::npos),
+                    errors::InvalidArgument("Invalid feature \"", piece, "\""));
+
         int64 feature_index;
         OP_REQUIRES(
-            ctx, strings::safe_strto64(pair[0].c_str(), &feature_index),
-            errors::InvalidArgument("Feature format incorrect: ", entries[j]));
+            ctx, strings::safe_strto64(piece.substr(0, p), &feature_index),
+            errors::InvalidArgument("Feature format incorrect: ", piece));
         OP_REQUIRES(ctx, (feature_index >= 0),
                     errors::InvalidArgument(
                         "Feature index should be >= 0, got ", feature_index));
+
         T feature_value;
         OP_REQUIRES(
-            ctx, ConvertHelper<T>(pair[1], &feature_value),
-            errors::InvalidArgument("Feature format incorrect: ", entries[j]));
+
+            ctx,
+            strings::SafeStringToNumeric<T>(piece.substr(p + 1),
+                                            &feature_value),
+            errors::InvalidArgument("Feature format incorrect: ", piece));
+
         out_values.emplace_back(feature_value);
         out_indices.emplace_back(std::pair<int64, int64>(i, feature_index));
+
+        str_util::RemoveLeadingWhitespace(&line);
       }
     }
 
@@ -127,25 +136,6 @@ class DecodeLibsvmOp : public OpKernel {
  private:
   int64 num_features_;
 };
-
-namespace {
-template <>
-bool ConvertHelper<float>(const string& s, float* value) {
-  return strings::safe_strtof(s.c_str(), value);
-}
-template <>
-bool ConvertHelper<double>(const string& s, double* value) {
-  return strings::safe_strtod(s.c_str(), value);
-}
-template <>
-bool ConvertHelper<int32>(const string& s, int32* value) {
-  return strings::safe_strto32(s.c_str(), value);
-}
-template <>
-bool ConvertHelper<int64>(const string& s, int64* value) {
-  return strings::safe_strto64(s.c_str(), value);
-}
-}  // namespace
 
 #define REGISTER_KERNEL(type)                                         \
   REGISTER_KERNEL_BUILDER(Name("DecodeLibsvm")                        \

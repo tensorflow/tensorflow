@@ -31,13 +31,13 @@ namespace {
 
 void PrintModelStats(const string& label, const Model& model) {
   int quantized_arrays = 0;
-  for (const auto& array : model.arrays) {
+  for (const auto& array : model.GetArrayMap()) {
     if (array.second->quantization_params) {
       quantized_arrays++;
     }
   }
   LOG(INFO) << label << ": " << model.operators.size() << " operators, "
-            << model.arrays.size() << " arrays (" << quantized_arrays
+            << model.GetArrayMap().size() << " arrays (" << quantized_arrays
             << " quantized)";
 }
 
@@ -91,14 +91,9 @@ void DiscardUselessConnectedComponentsAndRNNBackEdges(Model* model) {
     }
   } while (found_new_useful_arrays);
   // Erase arrays that aren't useful, and that are discardable.
-  for (auto it = model->arrays.begin(); it != model->arrays.end();) {
-    if (useful_arrays.count(it->first) ||
-        !IsDiscardableArray(*model, it->first)) {
-      ++it;
-    } else {
-      it = model->arrays.erase(it);
-    }
-  }
+  model->EraseArrays([&](const string& name) {
+    return (!useful_arrays.count(name) && IsDiscardableArray(*model, name));
+  });
   // Erase operators that do not produce a useful output array.
   for (auto it = model->operators.begin(); it != model->operators.end();) {
     // Only need to test the first output, as we simultaneously added all of
@@ -118,8 +113,8 @@ void DiscardUselessConnectedComponentsAndRNNBackEdges(Model* model) {
   std::vector<RnnState> rnn_states_to_keep;
   for (const auto& rnn_state : model->flags.rnn_states()) {
     const bool dangling =
-        !model->arrays.count(rnn_state.back_edge_source_array()) ||
-        !model->arrays.count(rnn_state.state_array());
+        !model->HasArray(rnn_state.back_edge_source_array()) ||
+        !model->HasArray(rnn_state.state_array());
     if (dangling) {
       CHECK(rnn_state.discardable());
     } else {
@@ -137,6 +132,7 @@ bool GraphTransformationsPass(int increment, Model* model,
   CHECK(increment == 1 || increment == -1);
   bool changed = false;
   if (model->operators.empty()) {
+    LOG(INFO) << "Model is empty!!!";
     return false;
   }
   int op_index = increment == 1 ? 0 : model->operators.size() - 1;
@@ -147,23 +143,28 @@ bool GraphTransformationsPass(int increment, Model* model,
       CHECK(!changed_now);
       CHECK(transformation->Messages().empty());
       changed_now = transformation->Run(model, op_index);
-      if (changed_now) {
-        DumpGraphvizVideoFrame(*model);
-        CHECK(!model->operators.empty());
-        op_index = std::min<int>(op_index, model->operators.size() - 1);
-        // Uncomment for debugging
-        // CheckInvariants(*model);
-      }
       const char* made_a_change_msg =
           changed_now ? "made a change" : "did NOT make a change";
       const int log_level =
           changed_now ? kLogLevelModelChanged : kLogLevelModelUnchanged;
+      if (transformation->Messages().empty()) {
+        VLOG(log_level) << transformation->Name() << " " << made_a_change_msg
+                        << " at op_index=" << op_index << "/"
+                        << model->operators.size() - 1;
+      }
       for (const string& message : transformation->Messages()) {
         VLOG(log_level) << transformation->Name() << " " << made_a_change_msg
                         << " at op_index=" << op_index << "/"
                         << model->operators.size() - 1 << ": " << message;
       }
       transformation->ClearMessages();
+      if (changed_now) {
+        DumpGraphvizVideoFrame(*model);
+        if (model->operators.empty()) return true;
+        op_index = std::min<int>(op_index, model->operators.size() - 1);
+        // Uncomment for debugging
+        // CheckInvariants(*model);
+      }
       if (changed_now) {
         break;
       }

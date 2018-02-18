@@ -25,13 +25,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
-// Return the string containing the list of valid activation modes, that can be
-// used as an Attr() in REGISTER_OP.
-string GetAllActivationModeAttrString() { return "activation_mode: {'Relu'}"; }
-
-}  // namespace
-
 // --------------------------------------------------------------------------
 
 // TODO(pauldonnelly): Add support for double inputs and scales to this Op,

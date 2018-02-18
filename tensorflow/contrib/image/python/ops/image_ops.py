@@ -24,6 +24,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import resource_loader
@@ -34,11 +35,12 @@ _image_ops_so = loader.load_op_library(
 _IMAGE_DTYPES = set(
     [dtypes.uint8, dtypes.int32, dtypes.int64, dtypes.float32, dtypes.float64])
 
+ops.RegisterShape("ImageConnectedComponents")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
 
 
 def rotate(images, angles, interpolation="NEAREST", name=None):
-  """Rotate image(s) by the passed angle(s) in radians.
+  """Rotate image(s) counterclockwise by the passed angle(s) in radians.
 
   Args:
     images: A tensor of shape (num_images, num_rows, num_columns, num_channels)
@@ -288,31 +290,76 @@ def compose_transforms(*transforms):
   """
   assert transforms, "transforms cannot be empty"
   with ops.name_scope("compose_transforms"):
-    composed = _flat_transforms_to_matrices(transforms[0])
+    composed = flat_transforms_to_matrices(transforms[0])
     for tr in transforms[1:]:
       # Multiply batches of matrices.
-      composed = math_ops.matmul(composed, _flat_transforms_to_matrices(tr))
-    return _transform_matrices_to_flat(composed)
+      composed = math_ops.matmul(composed, flat_transforms_to_matrices(tr))
+    return matrices_to_flat_transforms(composed)
 
 
-def _flat_transforms_to_matrices(transforms):
-  # Make the transform(s) 2D in case the input is a single transform.
-  transforms = array_ops.reshape(transforms, constant_op.constant([-1, 8]))
-  num_transforms = array_ops.shape(transforms)[0]
-  # Add a column of ones for the implicit last entry in the matrix.
-  return array_ops.reshape(
-      array_ops.concat(
-          [transforms, array_ops.ones([num_transforms, 1])], axis=1),
-      constant_op.constant([-1, 3, 3]))
+def flat_transforms_to_matrices(transforms):
+  """Converts `tf.contrib.image` projective transforms to affine matrices.
+
+  Note that the output matrices map output coordinates to input coordinates. For
+  the forward transformation matrix, call `tf.linalg.inv` on the result.
+
+  Args:
+    transforms: Vector of length 8, or batches of transforms with shape
+      `(N, 8)`.
+
+  Returns:
+    3D tensor of matrices with shape `(N, 3, 3)`. The output matrices map the
+      *output coordinates* (in homogeneous coordinates) of each transform to the
+      corresponding *input coordinates*.
+
+  Raises:
+    ValueError: If `transforms` have an invalid shape.
+  """
+  with ops.name_scope("flat_transforms_to_matrices"):
+    transforms = ops.convert_to_tensor(transforms, name="transforms")
+    if transforms.shape.ndims not in (1, 2):
+      raise ValueError("Transforms should be 1D or 2D, got: %s" % transforms)
+    # Make the transform(s) 2D in case the input is a single transform.
+    transforms = array_ops.reshape(transforms, constant_op.constant([-1, 8]))
+    num_transforms = array_ops.shape(transforms)[0]
+    # Add a column of ones for the implicit last entry in the matrix.
+    return array_ops.reshape(
+        array_ops.concat(
+            [transforms, array_ops.ones([num_transforms, 1])], axis=1),
+        constant_op.constant([-1, 3, 3]))
 
 
-def _transform_matrices_to_flat(transform_matrices):
-  # Flatten each matrix.
-  transforms = array_ops.reshape(transform_matrices,
-                                 constant_op.constant([-1, 9]))
-  # Divide each matrix by the last entry (normally 1).
-  transforms /= transforms[:, 8:9]
-  return transforms[:, :8]
+def matrices_to_flat_transforms(transform_matrices):
+  """Converts affine matrices to `tf.contrib.image` projective transforms.
+
+  Note that we expect matrices that map output coordinates to input coordinates.
+  To convert forward transformation matrices, call `tf.linalg.inv` on the
+  matrices and use the result here.
+
+  Args:
+    transform_matrices: One or more affine transformation matrices, for the
+      reverse transformation in homogeneous coordinates. Shape `(3, 3)` or
+      `(N, 3, 3)`.
+
+  Returns:
+    2D tensor of flat transforms with shape `(N, 8)`, which may be passed into
+      `tf.contrib.image.transform`.
+
+  Raises:
+    ValueError: If `transform_matrices` have an invalid shape.
+  """
+  with ops.name_scope("matrices_to_flat_transforms"):
+    transform_matrices = ops.convert_to_tensor(
+        transform_matrices, name="transform_matrices")
+    if transform_matrices.shape.ndims not in (2, 3):
+      raise ValueError(
+          "Matrices should be 2D or 3D, got: %s" % transform_matrices)
+    # Flatten each matrix.
+    transforms = array_ops.reshape(transform_matrices,
+                                   constant_op.constant([-1, 9]))
+    # Divide each matrix by the last entry (normally 1).
+    transforms /= transforms[:, 8:9]
+    return transforms[:, :8]
 
 
 @ops.RegisterGradient("ImageProjectiveTransform")
@@ -344,9 +391,9 @@ def _image_projective_transform_grad(op, grad):
     raise TypeError("Transforms should have rank 1 or 2.")
 
   # Invert transformations
-  transforms = _flat_transforms_to_matrices(transforms=transforms)
+  transforms = flat_transforms_to_matrices(transforms=transforms)
   inverse = linalg_ops.matrix_inverse(transforms)
-  transforms = _transform_matrices_to_flat(inverse)
+  transforms = matrices_to_flat_transforms(inverse)
   output = gen_image_ops.image_projective_transform(
       grad, transforms, interpolation=interpolation)
   if len(image_or_images.get_shape()) == 2:
@@ -395,4 +442,72 @@ def bipartite_match(distance_mat,
   return result
 
 
+def connected_components(images):
+  """Labels the connected components in a batch of images.
+
+  A component is a set of pixels in a single input image, which are all adjacent
+  and all have the same non-zero value. The components using a squared
+  connectivity of one (all True entries are joined with their neighbors above,
+  below, left, and right). Components across all images have consecutive ids 1
+  through n. Components are labeled according to the first pixel of the
+  component appearing in row-major order (lexicographic order by
+  image_index_in_batch, row, col). Zero entries all have an output id of 0.
+
+  This op is equivalent with `scipy.ndimage.measurements.label` on a 2D array
+  with the default structuring element (which is the connectivity used here).
+
+  Args:
+    images: A 2D (H, W) or 3D (N, H, W) Tensor of boolean image(s).
+
+  Returns:
+    Components with the same shape as `images`. False entries in `images` have
+    value 0, and all True entries map to a component id > 0.
+
+  Raises:
+    TypeError: if `images` is not 2D or 3D.
+  """
+  with ops.name_scope("connected_components"):
+    image_or_images = ops.convert_to_tensor(images, name="images")
+    if len(image_or_images.get_shape()) == 2:
+      images = image_or_images[None, :, :]
+    elif len(image_or_images.get_shape()) == 3:
+      images = image_or_images
+    else:
+      raise TypeError(
+          "images should have rank 2 (HW) or 3 (NHW). Static shape is %s" %
+          image_or_images.get_shape())
+    components = gen_image_ops.image_connected_components(images)
+
+    # TODO(ringwalt): Component id renaming should be done in the op, to avoid
+    # constructing multiple additional large tensors.
+    components_flat = array_ops.reshape(components, [-1])
+    unique_ids, id_index = array_ops.unique(components_flat)
+    id_is_zero = array_ops.where(math_ops.equal(unique_ids, 0))[:, 0]
+    # Map each nonzero id to consecutive values.
+    nonzero_consecutive_ids = math_ops.range(
+        array_ops.shape(unique_ids)[0] - array_ops.shape(id_is_zero)[0]) + 1
+
+    def no_zero():
+      # No need to insert a zero into the ids.
+      return nonzero_consecutive_ids
+
+    def has_zero():
+      # Insert a zero in the consecutive ids where zero appears in unique_ids.
+      # id_is_zero has length 1.
+      zero_id_ind = math_ops.to_int32(id_is_zero[0])
+      ids_before = nonzero_consecutive_ids[:zero_id_ind]
+      ids_after = nonzero_consecutive_ids[zero_id_ind:]
+      return array_ops.concat([ids_before, [0], ids_after], axis=0)
+
+    new_ids = control_flow_ops.cond(
+        math_ops.equal(array_ops.shape(id_is_zero)[0], 0), no_zero, has_zero)
+    components = array_ops.reshape(
+        array_ops.gather(new_ids, id_index), array_ops.shape(components))
+    if len(image_or_images.get_shape()) == 2:
+      return components[0, :, :]
+    else:
+      return components
+
+
 ops.NotDifferentiable("BipartiteMatch")
+ops.NotDifferentiable("ImageConnectedComponents")

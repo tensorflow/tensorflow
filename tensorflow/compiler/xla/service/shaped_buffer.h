@@ -87,18 +87,24 @@ class ShapedBuffer {
 
   string ToString() const;
 
+  ShapedBuffer(ShapedBuffer&& s);
+  ShapedBuffer& operator=(ShapedBuffer&&);
+
  protected:
+  ShapedBuffer(const ShapedBuffer&) = delete;
+  ShapedBuffer& operator=(const ShapedBuffer&) = delete;
+
   // The shape of the data when represented on the host.
-  const Shape on_host_shape_;
+  Shape on_host_shape_;
 
   // The shape of the data on the device.
-  const Shape on_device_shape_;
+  Shape on_device_shape_;
 
   // The platform the memory is allocated on.
   const perftools::gputools::Platform* platform_;
 
   // The device the memory is allocated on.
-  const int device_ordinal_;
+  int device_ordinal_;
 
   // The tree of device buffers. Its shape is on_device_shape().
   ShapeTree<perftools::gputools::DeviceMemoryBase> buffers_;
@@ -121,14 +127,20 @@ class ScopedShapedBuffer : public ShapedBuffer {
   ScopedShapedBuffer(const Shape& on_host_shape, const Shape& on_device_shape,
                      DeviceMemoryAllocator* allocator, int device_ordinal);
 
+  // Create a ScopedShapedBuffer by taking over the memory from the incoming
+  // ShapedBuffer.
+  ScopedShapedBuffer(ShapedBuffer shaped_buffer,
+                     DeviceMemoryAllocator* allocator);
+
   // Return the allocator used to allocate the device memory held in this
   // ScopedShapedBuffer.
   DeviceMemoryAllocator* memory_allocator() const { return allocator_; }
 
-  // Release all device memory owned by this ScopedShapedBuffer and return the
-  // device memory pointers in the form of a ShapedBuffer. Device memory
-  // pointers in this ScopedShapedBuffer object are set to null. This method is
-  // analogous to std::unique_ptr::release().
+  // Release all device memory owned by this ScopedShapedBuffer and
+  // return the device memory pointers in the form of a
+  // ShapedBuffer. The returned ShapedBuffer takes over the memory
+  // from the ScopedShapedBuffer. The resulting ScopedShapedBuffer can
+  // only be destroyed.
   std::unique_ptr<ShapedBuffer> release();
 
   // All buffers in the shape are deallocated on destruction.

@@ -24,6 +24,7 @@ from tensorflow.python.util.all_util import remove_undocumented
 # pylint: enable=unused-import,line-too-long,wildcard-import
 
 _allowed_symbols = [
+    "set_global_constants",
     "SequenceDict",
     "tensors_to_column",
     "column_to_tensors",
@@ -37,6 +38,10 @@ _allowed_symbols = [
     "SubGraph",
     "generate_random_signs",
     "fwd_gradients",
+    "ensure_sequence",
+    "batch_execute",
+    "matmul_sparse_dense",
+    "matmul_diag_sparse",
 ]
 
 remove_undocumented(__name__, allowed_exception_list=_allowed_symbols)

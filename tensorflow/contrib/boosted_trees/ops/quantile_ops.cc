@@ -19,8 +19,8 @@
 
 namespace tensorflow {
 namespace boosted_trees {
-using shape_inference::InferenceContext;
 using shape_inference::DimensionHandle;
+using shape_inference::InferenceContext;
 using shape_inference::ShapeHandle;
 
 REGISTER_RESOURCE_HANDLE_OP(QuantileStreamResource);
@@ -39,6 +39,7 @@ REGISTER_OP("CreateQuantileAccumulator")
     .Attr("max_elements: int = 1099511627776")  // 1 << 40
     .Attr("epsilon: float")
     .Attr("num_quantiles: int")
+    .Attr("generate_quantiles: bool=False")
     .Input("quantile_accumulator_handle: resource")
     .Input("stamp_token: int64")
     .SetShapeFn([](shape_inference::InferenceContext* c) {

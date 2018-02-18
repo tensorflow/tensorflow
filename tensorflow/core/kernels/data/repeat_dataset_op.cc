@@ -99,7 +99,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
       Status SaveInternal(IteratorStateWriter* writer) override {
         return Status::OK();
       }
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         return Status::OK();
       }
@@ -147,7 +147,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("i"), &i_));
@@ -187,12 +187,11 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
           } else {
             input_impl_.reset();
             if (first_call) {
-              // If the first call to GetNext() fails because the end of
-              // sequence has been reached, we return an OutOfRange error to
-              // terminate the iteration. (Otherwise, this iterator would loop
-              // infinitely and never produce a value.)
-              return errors::OutOfRange(
-                  "Attempted to repeat an empty dataset infinitely.");
+              // If the first call to GetNext() fails because the end
+              // of sequence has been reached, we terminate the
+              // iteration immediately. (Otherwise, this iterator
+              // would loop infinitely and never produce a value.)
+              return Status::OK();
             }
           }
         } while (true);
@@ -209,7 +208,7 @@ class RepeatDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         if (reader->Contains(full_name("uninitialized"))) {

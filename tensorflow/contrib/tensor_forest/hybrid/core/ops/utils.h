@@ -24,16 +24,11 @@ namespace tensorflow {
 namespace tensorforest {
 
 // Returns the probability that the point falls to the left.
-float LeftProbability(const Tensor& point,
-                      const Tensor& weight,
-                      float bias,
+float LeftProbability(const Tensor& point, const Tensor& weight, float bias,
                       int num_features);
 
-float LeftProbabilityK(const Tensor& point,
-                       std::vector<int32> feature_set,
-                       const Tensor& weight,
-                       float bias,
-                       int num_features,
+float LeftProbabilityK(const Tensor& point, std::vector<int32> feature_set,
+                       const Tensor& weight, float bias, int num_features,
                        int k);
 
 // Returns a random set of num_features_to_pick features in the
@@ -49,5 +44,3 @@ void GetFeatureSet(int32 tree_num, int32 node_num, int32 random_seed,
 }  // namespace tensorflow
 
 #endif  // LEARNING_LIB_TENSOR_FOREST_HYBRID_CORE_OPS_UTILS_H_
-
-

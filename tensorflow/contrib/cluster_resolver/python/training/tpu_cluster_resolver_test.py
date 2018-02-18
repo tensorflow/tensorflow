@@ -48,6 +48,15 @@ class MockNodeClass(object):
     return MockRequestClass(name, self._tpu_map)
 
 
+def mock_request_compute_metadata(cls, *args, **kwargs):
+  del cls, kwargs  # Unused.
+  if args[0] == '/project/project-id':
+    return 'test-project'
+  elif args[0] == '/instance/zone':
+    return 'projects/test-project/locations/us-central1-c'
+  return ''
+
+
 class TPUClusterResolverTest(test.TestCase):
 
   def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
@@ -89,11 +98,37 @@ class TPUClusterResolverTest(test.TestCase):
 
     return mock_client
 
+  @mock.patch.object(TPUClusterResolver,
+                     '_requestComputeMetadata',
+                     mock_request_compute_metadata)
+  def testRetrieveProjectAndZoneFromMetadata(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'health': 'HEALTHY'
+        }
+    }
+
+    tpu_cluster_resolver = TPUClusterResolver(
+        project=None,
+        zone=None,
+        tpu_names=['test-tpu-1'],
+        credentials=None,
+        service=self.mock_service_client(tpu_map=tpu_map))
+
+    actual_cluster_spec = tpu_cluster_resolver.cluster_spec()
+    expected_proto = """
+    job { name: 'tpu_worker' tasks { key: 0 value: '10.1.2.3:8470' } }
+    """
+    self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
+
   def testSimpleSuccessfulRetrieval(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
             'ipAddress': '10.1.2.3',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         }
     }
 
@@ -114,11 +149,13 @@ class TPUClusterResolverTest(test.TestCase):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
             'ipAddress': '10.1.2.3',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         },
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-2': {
             'ipAddress': '10.4.5.6',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         }
     }
 
@@ -136,15 +173,54 @@ class TPUClusterResolverTest(test.TestCase):
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
 
+  def testHealthyTpuNodeRetrieval(self):
+    tpu_map = {
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
+            'ipAddress': '10.1.2.3',
+            'port': '8470',
+            'health': 'HEALTHY'
+        },
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-2': {
+            'ipAddress': '10.4.5.6',
+            'port': '8470',
+        },
+        'projects/test-project/locations/us-central1-c/nodes/test-tpu-3': {
+            'ipAddress': '10.7.8.9',
+            'port': '8470',
+            'health': 'UNHEALTHY'
+        }
+    }
+
+    tpu_cluster_resolver = TPUClusterResolver(
+        project='test-project',
+        zone='us-central1-c',
+        tpu_names=['test-tpu-2', 'test-tpu-1', 'test-tpu-3'],
+        credentials=None,
+        service=self.mock_service_client(tpu_map=tpu_map))
+
+    actual_cluster_spec = tpu_cluster_resolver.cluster_spec()
+    expected_proto = """
+    job {
+      name: 'tpu_worker'
+      tasks {
+        key: 0
+        value: '10.1.2.3:8470'
+      }
+    }
+    """
+    self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
+
   def testGetMasterMultipleEntries(self):
     tpu_map = {
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
             'ipAddress': '10.1.2.3',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         },
         'projects/test-project/locations/us-central1-c/nodes/test-tpu-2': {
             'ipAddress': '10.4.5.6',
-            'port': '8470'
+            'port': '8470',
+            'health': 'HEALTHY'
         }
     }
 

@@ -26,6 +26,8 @@ import numpy as np
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras._impl import keras
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import test
 
 try:
@@ -42,22 +44,28 @@ except ImportError:
 class TopologyConstructionTest(test.TestCase):
 
   def test_get_updates_for(self):
-    a = keras.layers.Input(shape=(2,))
+    a = keras.layers.Input(shape=(1,))
     dense_layer = keras.layers.Dense(1)
-    dense_layer.add_update(0, inputs=a)
-    dense_layer.add_update(1, inputs=None)
+    dense_layer.build((None, 1))
+    update_1 = state_ops.assign_add(dense_layer.kernel, a)
+    update_2 = state_ops.assign_add(dense_layer.kernel, [[1.]])
+    dense_layer.add_update(update_1, inputs=a)
+    dense_layer.add_update(update_2, inputs=None)
 
-    self.assertListEqual(dense_layer.get_updates_for(a), [0])
-    self.assertListEqual(dense_layer.get_updates_for(None), [1])
+    self.assertListEqual(dense_layer.get_updates_for(a), [update_1])
+    self.assertListEqual(dense_layer.get_updates_for(None), [update_2])
 
   def test_get_losses_for(self):
-    a = keras.layers.Input(shape=(2,))
+    a = keras.layers.Input(shape=(1,))
     dense_layer = keras.layers.Dense(1)
-    dense_layer.add_loss(0, inputs=a)
-    dense_layer.add_loss(1, inputs=None)
+    dense_layer.build((None, 1))
+    loss_1 = math_ops.reduce_sum(a)
+    loss_2 = math_ops.reduce_sum(dense_layer.kernel)
+    dense_layer.add_loss(loss_1, inputs=a)
+    dense_layer.add_loss(loss_2, inputs=None)
 
-    self.assertListEqual(dense_layer.get_losses_for(a), [0])
-    self.assertListEqual(dense_layer.get_losses_for(None), [1])
+    self.assertListEqual(dense_layer.get_losses_for(a), [loss_1])
+    self.assertListEqual(dense_layer.get_losses_for(None), [loss_2])
 
   def test_trainable_weights(self):
     a = keras.layers.Input(shape=(2,))
@@ -279,7 +287,7 @@ class TopologyConstructionTest(test.TestCase):
 
       model = keras.models.Model(inputs=[a, b], outputs=[c, d], name='model')
       self.assertEqual(len(model.layers), 6)
-      output_shapes = model._compute_output_shape([(None, 32), (None, 32)])
+      output_shapes = model.compute_output_shape([(None, 32), (None, 32)])
       self.assertListEqual(output_shapes[0].as_list(), [None, 64])
       self.assertListEqual(output_shapes[1].as_list(), [None, 5])
       self.assertListEqual(
@@ -340,6 +348,7 @@ class TopologyConstructionTest(test.TestCase):
       e = keras.layers.Input(shape=(32,), name='input_e')
       f = keras.layers.Input(shape=(32,), name='input_f')
       g, h = model([e, f])
+      self.assertEqual(g.name, 'model_1/dense_2/BiasAdd:0')
 
       self.assertListEqual(g.get_shape().as_list(), c.get_shape().as_list())
       self.assertListEqual(h.get_shape().as_list(), d.get_shape().as_list())
@@ -360,8 +369,8 @@ class TopologyConstructionTest(test.TestCase):
       self.assertListEqual(
           model.compute_mask([e, f], [None, None]), [None, None])
       self.assertListEqual(
-          final_model._compute_output_shape([(10, 32), (10, 32)]), [(10, 7),
-                                                                    (10, 64)])
+          final_model.compute_output_shape([(10, 32), (10, 32)]), [(10, 7),
+                                                                   (10, 64)])
 
       # run recursive model
       fn = keras.backend.function(final_model.inputs, final_model.outputs)
@@ -545,6 +554,27 @@ class TopologyConstructionTest(test.TestCase):
     b = keras.layers.Masking()(a)
     model = keras.models.Model(a, b)
     self.assertEqual(model.output_mask.get_shape().as_list(), [None, 10])
+
+  def test_activity_regularization_with_model_composition(self):
+
+    def reg(x):
+      return keras.backend.sum(x)
+
+    net_a_input = keras.Input((2,))
+    net_a = net_a_input
+    net_a = keras.layers.Dense(2, kernel_initializer='ones',
+                               use_bias=False,
+                               activity_regularizer=reg)(net_a)
+    model_a = keras.Model([net_a_input], [net_a])
+
+    net_b_input = keras.Input((2,))
+    net_b = model_a(net_b_input)
+    model_b = keras.Model([net_b_input], [net_b])
+
+    model_b.compile(optimizer='sgd', loss=None)
+    x = np.ones((1, 2))
+    loss = model_b.evaluate(x)
+    self.assertEqual(loss, 4.)
 
   def test_weight_preprocessing(self):
     input_dim = 3

@@ -253,7 +253,7 @@ class RNNTest(test.TestCase):
       self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
     with self.test_session():
-      # test flat list inputs
+      # test flat list inputs.
       with keras.utils.CustomObjectScope(custom_objects):
         layer = keras.layers.RNN.from_config(config.copy())
       y = layer([x, c])
@@ -261,6 +261,35 @@ class RNNTest(test.TestCase):
       model.set_weights(weights)
       y_np_3 = model.predict([x_np, c_np])
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
+
+    with self.test_session():
+      # Test stacking.
+      cells = [keras.layers.recurrent.GRUCell(8),
+               RNNCellWithConstants(12),
+               RNNCellWithConstants(32)]
+      layer = keras.layers.recurrent.RNN(cells)
+      y = layer(x, constants=c)
+      model = keras.models.Model([x, c], y)
+      model.compile(optimizer='rmsprop', loss='mse')
+      model.train_on_batch(
+          [np.zeros((6, 5, 5)), np.zeros((6, 3))],
+          np.zeros((6, 32))
+      )
+
+    with self.test_session():
+      # Test stacked RNN serialization
+      x_np = np.random.random((6, 5, 5))
+      c_np = np.random.random((6, 3))
+      y_np = model.predict([x_np, c_np])
+      weights = model.get_weights()
+      config = layer.get_config()
+      with keras.utils.CustomObjectScope(custom_objects):
+        layer = keras.layers.recurrent.RNN.from_config(config.copy())
+      y = layer(x, constants=c)
+      model = keras.models.Model([x, c], y)
+      model.set_weights(weights)
+      y_np_2 = model.predict([x_np, c_np])
+      self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
   def test_rnn_cell_with_constants_layer_passing_initial_state(self):
 
@@ -353,13 +382,10 @@ class RNNTest(test.TestCase):
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
   def test_stacked_rnn_attributes(self):
-    cells = [keras.layers.LSTMCell(3),
-             keras.layers.LSTMCell(3, kernel_regularizer='l2')]
+    cells = [keras.layers.LSTMCell(1),
+             keras.layers.LSTMCell(1)]
     layer = keras.layers.RNN(cells)
-    layer.build((None, None, 5))
-
-    # Test regularization losses
-    self.assertEqual(len(layer.losses), 1)
+    layer.build((None, None, 1))
 
     # Test weights
     self.assertEqual(len(layer.trainable_weights), 6)
@@ -367,11 +393,32 @@ class RNNTest(test.TestCase):
     self.assertEqual(len(layer.trainable_weights), 3)
     self.assertEqual(len(layer.non_trainable_weights), 3)
 
-    # Test `get_losses_for`
-    x = keras.Input((None, 5))
-    y = keras.backend.sum(x)
-    cells[0].add_loss(y, inputs=x)
-    self.assertEqual(layer.get_losses_for(x), [y])
+    # Test `get_losses_for` and `losses`
+    x = keras.Input((None, 1))
+    loss_1 = keras.backend.sum(x)
+    loss_2 = keras.backend.sum(cells[0].kernel)
+    cells[0].add_loss(loss_1, inputs=x)
+    cells[0].add_loss(loss_2)
+    self.assertEqual(len(layer.losses), 2)
+    self.assertEqual(layer.get_losses_for(None), [loss_2])
+    self.assertEqual(layer.get_losses_for(x), [loss_1])
+
+    # Test `get_updates_for` and `updates`
+    cells = [keras.layers.LSTMCell(1),
+             keras.layers.LSTMCell(1)]
+    layer = keras.layers.RNN(cells)
+    layer.build((None, None, 1))
+
+    x = keras.Input((None, 1))
+    update_1 = keras.backend.update_add(
+        cells[0].kernel, x[0, 0, 0] * cells[0].kernel)
+    update_2 = keras.backend.update_add(
+        cells[0].kernel, keras.backend.ones_like(cells[0].kernel))
+    cells[0].add_update(update_1, inputs=x)
+    cells[0].add_update(update_2)
+    self.assertEqual(len(layer.updates), 2)
+    self.assertEqual(layer.get_updates_for(None), [update_2])
+    self.assertEqual(layer.get_updates_for(x), [update_1])
 
   def test_rnn_dynamic_trainability(self):
     layer_class = keras.layers.SimpleRNN
@@ -391,6 +438,105 @@ class RNNTest(test.TestCase):
     self.assertEqual(len(layer.weights), 3)
     self.assertEqual(len(layer.trainable_weights), 3)
     self.assertEqual(len(layer.non_trainable_weights), 0)
+
+  def test_state_reuse_with_dropout(self):
+    layer_class = keras.layers.SimpleRNN
+    embedding_dim = 4
+    units = 3
+    timesteps = 2
+    num_samples = 2
+
+    with self.test_session():
+      input1 = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
+      layer = layer_class(units,
+                          return_state=True,
+                          return_sequences=True,
+                          dropout=0.2)
+      state = layer(input1)[1:]
+
+      input2 = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
+      output = layer_class(units)(input2, initial_state=state)
+      model = keras.Model([input1, input2], output)
+
+      inputs = [np.random.random((num_samples, timesteps, embedding_dim)),
+                np.random.random((num_samples, timesteps, embedding_dim))]
+      model.predict(inputs)
+
+  def test_builtin_rnn_cell_serialization(self):
+    for cell_class in [keras.layers.SimpleRNNCell,
+                       keras.layers.GRUCell,
+                       keras.layers.LSTMCell]:
+      with self.test_session():
+        # Test basic case.
+        x = keras.Input((None, 5))
+        cell = cell_class(32)
+        layer = keras.layers.RNN(cell)
+        y = layer(x)
+        model = keras.models.Model(x, y)
+        model.compile(optimizer='rmsprop', loss='mse')
+
+        # Test basic case serialization.
+        x_np = np.random.random((6, 5, 5))
+        y_np = model.predict(x_np)
+        weights = model.get_weights()
+        config = layer.get_config()
+        layer = keras.layers.RNN.from_config(config)
+        y = layer(x)
+        model = keras.models.Model(x, y)
+        model.set_weights(weights)
+        y_np_2 = model.predict(x_np)
+        self.assertAllClose(y_np, y_np_2, atol=1e-4)
+
+        # Test stacking.
+        cells = [cell_class(8),
+                 cell_class(12),
+                 cell_class(32)]
+        layer = keras.layers.RNN(cells)
+        y = layer(x)
+        model = keras.models.Model(x, y)
+        model.compile(optimizer='rmsprop', loss='mse')
+
+        # Test stacked RNN serialization.
+        x_np = np.random.random((6, 5, 5))
+        y_np = model.predict(x_np)
+        weights = model.get_weights()
+        config = layer.get_config()
+        layer = keras.layers.RNN.from_config(config)
+        y = layer(x)
+        model = keras.models.Model(x, y)
+        model.set_weights(weights)
+        y_np_2 = model.predict(x_np)
+        self.assertAllClose(y_np, y_np_2, atol=1e-4)
+
+  def test_stacked_rnn_dropout(self):
+    cells = [keras.layers.LSTMCell(3, dropout=0.1, recurrent_dropout=0.1),
+             keras.layers.LSTMCell(3, dropout=0.1, recurrent_dropout=0.1)]
+    layer = keras.layers.RNN(cells)
+
+    with self.test_session():
+      x = keras.Input((None, 5))
+      y = layer(x)
+      model = keras.models.Model(x, y)
+      model.compile('sgd', 'mse')
+      x_np = np.random.random((6, 5, 5))
+      y_np = np.random.random((6, 3))
+      model.train_on_batch(x_np, y_np)
+
+  def test_stacked_rnn_compute_output_shape(self):
+    cells = [keras.layers.LSTMCell(3),
+             keras.layers.LSTMCell(6)]
+    embedding_dim = 4
+    timesteps = 2
+    layer = keras.layers.RNN(cells, return_state=True, return_sequences=True)
+    output_shape = layer.compute_output_shape((None, timesteps, embedding_dim))
+    expected_output_shape = [(None, timesteps, 6),
+                             (None, 6),
+                             (None, 6),
+                             (None, 3),
+                             (None, 3)]
+    self.assertEqual(
+        [tuple(o.as_list()) for o in output_shape],
+        expected_output_shape)
 
 
 if __name__ == '__main__':

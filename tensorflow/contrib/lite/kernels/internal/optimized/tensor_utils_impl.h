@@ -15,7 +15,7 @@ limitations under the License.
 #ifndef TF_LITE_KERNELS_INTERNAL_OPTIMIZED_TENSOR_UTILS_IMPL_H_
 #define TF_LITE_KERNELS_INTERNAL_OPTIMIZED_TENSOR_UTILS_IMPL_H_
 
-// TDOD(ghodrat): Remove this header file and the dependency to internal data
+// TODO(ghodrat): Remove this header file and the dependency to internal data
 // structure.
 #include "tensorflow/contrib/lite/builtin_op_data.h"
 

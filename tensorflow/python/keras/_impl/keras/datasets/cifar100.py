@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""CIFAR100 small image classification dataset.
+"""CIFAR100 small images classification dataset.
 """
 from __future__ import absolute_import
 from __future__ import division
@@ -25,8 +25,10 @@ import numpy as np
 from tensorflow.python.keras._impl.keras import backend as K
 from tensorflow.python.keras._impl.keras.datasets.cifar import load_batch
 from tensorflow.python.keras._impl.keras.utils.data_utils import get_file
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.datasets.cifar100.load_data')
 def load_data(label_mode='fine'):
   """Loads CIFAR100 dataset.
 
@@ -40,7 +42,7 @@ def load_data(label_mode='fine'):
       ValueError: in case of invalid `label_mode`.
   """
   if label_mode not in ['fine', 'coarse']:
-    raise ValueError('label_mode must be one of "fine" "coarse".')
+    raise ValueError('`label_mode` must be one of `"fine"`, `"coarse"`.')
 
   dirname = 'cifar-100-python'
   origin = 'https://www.cs.toronto.edu/~kriz/cifar-100-python.tar.gz'
