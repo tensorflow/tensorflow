@@ -456,7 +456,7 @@ class Estimator(object):
         latest checkpoint in `model_dir` is used.
       yield_single_examples: If False, yield the whole batch as returned by the
         `model_fn` instead of decomposing the batch into individual elements. This
-        is useful if `model_fn` returns some tensor with first dimension not
+        is useful if `model_fn` returns some tensors whose first dimension is not
         equal to the batch size.
 
     Yields:
@@ -464,7 +464,7 @@ class Estimator(object):
 
     Raises:
       ValueError: Could not find a trained model in `model_dir`.
-      ValueError: if batch length of predictions are not the same and
+      ValueError: If batch length of predictions is not the same and
         `yield_single_examples` is True.
       ValueError: If there is a conflict between `predict_keys` and
         `predictions`. For example if `predict_keys` is not `None` but
