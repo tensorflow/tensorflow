@@ -832,7 +832,7 @@ def to_float(x, name="ToFloat"):
     TypeError: If `x` cannot be cast to the `float32`.
   """
   if x.dtype.is_complex:
-    logging.warn('Casting complex to real discards imaginary part.')
+    logging.warn("Casting complex to real discards imaginary part.")
   return cast(x, dtypes.float32, name=name)
 
 
