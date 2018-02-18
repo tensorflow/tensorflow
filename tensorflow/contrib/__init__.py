@@ -21,6 +21,7 @@ from __future__ import print_function
 # Add projects here, they will show up under tf.contrib.
 from tensorflow.contrib import batching
 from tensorflow.contrib import bayesflow
+from tensorflow.contrib import bilinear_initializer
 from tensorflow.contrib import cloud
 from tensorflow.contrib import cluster_resolver
 from tensorflow.contrib import coder

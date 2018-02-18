@@ -23,6 +23,7 @@ py_library(
         "//tensorflow/contrib/all_reduce",
         "//tensorflow/contrib/batching:batch_py",
         "//tensorflow/contrib/bayesflow:bayesflow_py",
+        "//tensorflow/contrib/bilinear_initializer:bilinear_initializer_op_py",
         "//tensorflow/contrib/boosted_trees:init_py",
         "//tensorflow/contrib/cloud:cloud_py",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
