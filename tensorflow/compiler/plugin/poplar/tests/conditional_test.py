@@ -14,7 +14,7 @@ class ConditionalTest(test_util.TensorFlowTestCase):
 
     def testSimpleCond(self):
 
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
             pcond = tf.placeholder(tf.bool, [], name="pred")
             pa = tf.placeholder(tf.float32, [], name="a")
             pb = tf.placeholder(tf.float32, [], name="b")
@@ -35,7 +35,7 @@ class ConditionalTest(test_util.TensorFlowTestCase):
 
     def testDifferentArgs(self):
 
-      with tf.device("/device:XLA_IPU:0"):
+      with tf.device("/device:IPU:0"):
         pcond = tf.placeholder(tf.bool, [], name="pred")
         pa = tf.placeholder(tf.float32, [], name="a")
         pb = tf.placeholder(tf.float32, [], name="b")
@@ -56,7 +56,7 @@ class ConditionalTest(test_util.TensorFlowTestCase):
 
     def testReadResourceVar(self):
 
-      with tf.device("/device:XLA_IPU:0"):
+      with tf.device("/device:IPU:0"):
         with tf.variable_scope('vs', use_resource=True):
           pcond = tf.placeholder(tf.bool, [], name="pred")
           va = tf.get_variable("x", shape=[], dtype=tf.float32,
@@ -81,7 +81,7 @@ class ConditionalTest(test_util.TensorFlowTestCase):
 
     def testWriteResourceVar(self):
 
-      with tf.device("/device:XLA_IPU:0"):
+      with tf.device("/device:IPU:0"):
         with tf.variable_scope('vs', use_resource=True):
           pcond = tf.placeholder(tf.bool, [], name="pred")
           va = tf.get_variable("x", shape=[], dtype=tf.float32,

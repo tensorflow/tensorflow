@@ -34,7 +34,7 @@ class IpuXlaDeviceLibTest(test_util.TensorFlowTestCase):
 
         found_ipu = False
         for d in devices:
-            if d.device_type == "XLA_IPU":
+            if d.device_type == "IPU":
                 found_ipu = True
 
         self.assertTrue(found_ipu)

@@ -13,7 +13,7 @@ from tensorflow.python.framework import test_util
 class IpuXlaMultiRunTest(test_util.TensorFlowTestCase):
 
     def testSimpleTwice(self):
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float32, [2,2], name="a")
                 pb = tf.placeholder(tf.float32, [2,2], name="b")
@@ -29,7 +29,7 @@ class IpuXlaMultiRunTest(test_util.TensorFlowTestCase):
 
 
     def testSimpleThree(self):
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float32, [2,2], name="a")
                 pb = tf.placeholder(tf.float32, [2,2], name="b")

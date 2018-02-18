@@ -14,7 +14,7 @@ from tensorflow.python.training import monitored_session as ms
 class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
 
     def testMonitoredSession(self):
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
             pa = tf.placeholder(tf.float32, [2,2], name="a")
             pb = tf.placeholder(tf.float32, [2,2], name="b")
             output = pa + pb
@@ -33,7 +33,7 @@ class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
     def testTrainingLoop(self):
 
         # Model
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
           with tf.variable_scope("vs", use_resource=True):
             x = tf.placeholder(tf.float32, [4,1,4], name="a")
             l = tf.placeholder(tf.float32, [4,1,1], name="b")
@@ -67,7 +67,7 @@ class IpuMonitoredSessionTest(test_util.TensorFlowTestCase):
             self.assertTrue(measured_loss < 5.0)
 
     def testMonitoredSessionStopAtStepHook(self):
-      with tf.device("/device:XLA_IPU:0"):
+      with tf.device("/device:IPU:0"):
         pa = tf.placeholder(tf.float32, [2,2], name="a")
         pb = tf.placeholder(tf.float32, [2,2], name="b")
         output = pa + pb

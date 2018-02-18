@@ -22,7 +22,7 @@ def my_model(features, labels, mode):
   vscope = tf.get_variable_scope()
   vscope.set_use_resource(True)
 
-  with tf.device("/device:XLA_IPU:0"):
+  with tf.device("/device:IPU:0"):
     x = tf.reshape(features["x"], [-1, 4])
     x = tf.layers.dense(inputs=x, units=10)
     x = tf.layers.dense(inputs=x, units=3)

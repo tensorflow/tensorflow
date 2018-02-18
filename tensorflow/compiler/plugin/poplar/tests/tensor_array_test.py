@@ -17,7 +17,7 @@ from tensorflow.python.ops import tensor_array_ops
 class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
 
   def testTensorArrayWriteRead(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as session:
 
         in1 = tf.placeholder(tf.float32, [1, 2])
@@ -48,7 +48,7 @@ class IpuXlaTensorArrayTest(test_util.TensorFlowTestCase):
 
 
   def testTensorArrayScatterGather(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as session:
 
         in1 = tf.placeholder(tf.float32, [5, 2])
