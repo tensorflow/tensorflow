@@ -8,8 +8,8 @@ We'd love to accept your patches! Before we can take them, we have to jump a cou
 
 Please fill out either the individual or corporate Contributor License Agreement (CLA).
 
-  * If you are an individual writing original source code and you're sure you own the intellectual property, then you'll need to sign an [individual CLA](http://code.google.com/legal/individual-cla-v1.0.html).
-  * If you work for a company that wants to allow you to contribute your work, then you'll need to sign a [corporate CLA](http://code.google.com/legal/corporate-cla-v1.0.html).
+  * If you are an individual writing original source code and you're sure you own the intellectual property, then you'll need to sign an [individual CLA](https://code.google.com/legal/individual-cla-v1.0.html).
+  * If you work for a company that wants to allow you to contribute your work, then you'll need to sign a [corporate CLA](https://code.google.com/legal/corporate-cla-v1.0.html).
 
 Follow either of the two links above to access the appropriate CLA and instructions for how to sign and return it. Once we receive it, we'll be able to accept your pull requests.
 
@@ -41,7 +41,7 @@ TensorFlow coding style.
 #### General guidelines and philosophy for contribution
 
 * Include unit tests when you contribute new features, as they help to
-  a) prove that your code works correctly, b) guard against future breaking
+  a) prove that your code works correctly, and b) guard against future breaking
   changes to lower the maintenance cost.
 * Bug fixes also generally require unit tests, because the presence of bugs
   usually indicates insufficient test coverage.
@@ -51,7 +51,7 @@ TensorFlow coding style.
   non-backward-compatible API changes without a major release. Reviewers of your
   pull request will comment on any API compatibility issues.
 * When you contribute a new feature to TensorFlow, the maintenance burden is (by
-  default) transferred to the TensorFlow team. This means that benefit of
+  default) transferred to the TensorFlow team. This means that benefit of the
   contribution must be compared against the cost of maintaining the feature.
 * Full new features (e.g., a new op implementing a cutting-edge algorithm)
   typically will live in
@@ -68,8 +68,8 @@ Include a license at the top of new files.
 * [Java license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/java/src/main/java/org/tensorflow/Graph.java#L1)
 * [Go license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/go/operation.go#L1)
 * [Bash license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/ci_build/ci_sanity.sh#L2)
-* [HTML license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/dist/index.html#L2)
-* [JavaScript/TypeScript license example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tensorboard/components/tf_backend/backend.ts#L1)
+* [HTML license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/tf-backend.html#L2)
+* [JavaScript/TypeScript license example](https://github.com/tensorflow/tensorboard/blob/master/tensorboard/components/tf_backend/backend.ts#L1)
 
 Bazel BUILD files also need to include a license section, e.g.,
 [BUILD example](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/core/BUILD#L61).
@@ -117,7 +117,7 @@ pylint --rcfile=/tmp/pylintrc myfile.py
 * [Google Java Style Guide](https://google.github.io/styleguide/javaguide.html)
 * [Google JavaScript Style Guide](https://google.github.io/styleguide/jsguide.html)
 * [Google Shell Style Guide](https://google.github.io/styleguide/shell.xml)
-* [Google Objective-C Style Guide](http://google.github.io/styleguide/objcguide.html)
+* [Google Objective-C Style Guide](https://google.github.io/styleguide/objcguide.html)
 
 #### Running sanity check
 
@@ -163,7 +163,7 @@ There are two ways to run TensorFlow unit tests.
    bazel test ${flags} //tensorflow/python/...
    ```
 
-2. Using [Docker](www.docker.com) and TensorFlow's CI scripts.
+2. Using [Docker](https://www.docker.com) and TensorFlow's CI scripts.
 
    ```bash
    # Install Docker first, then this will build and run cpu tests

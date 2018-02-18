@@ -47,6 +47,7 @@ from tensorflow.python.training import session_run_hook
 from tensorflow.python.training import training_util
 from tensorflow.python.training.session_run_hook import SessionRunArgs
 from tensorflow.python.training.summary_io import SummaryWriterCache
+from tensorflow.python.util.tf_export import tf_export
 
 
 class _HookTimer(object):
@@ -85,6 +86,7 @@ class _HookTimer(object):
     raise NotImplementedError
 
 
+@tf_export("train.SecondOrStepTimer")
 class SecondOrStepTimer(_HookTimer):
   """Timer that triggers at most once every N seconds or once every N steps.
   """
@@ -164,6 +166,7 @@ class NeverTriggerTimer(_HookTimer):
     return None
 
 
+@tf_export("train.LoggingTensorHook")
 class LoggingTensorHook(session_run_hook.SessionRunHook):
   """Prints the given tensors every N local steps, every N seconds, or at end.
 
@@ -262,6 +265,7 @@ class LoggingTensorHook(session_run_hook.SessionRunHook):
       self._log_tensors(values)
 
 
+@tf_export("train.StopAtStepHook")
 class StopAtStepHook(session_run_hook.SessionRunHook):
   """Hook that requests stop at a specified step."""
 
@@ -317,6 +321,7 @@ class StopAtStepHook(session_run_hook.SessionRunHook):
         run_context.request_stop()
 
 
+@tf_export("train.CheckpointSaverListener")
 class CheckpointSaverListener(object):
   """Interface for listeners that take action before or after checkpoint save.
 
@@ -331,7 +336,7 @@ class CheckpointSaverListener(object):
   `CheckpointSaverHook`, as in this example:
 
   ```python
-  class ExampleCheckpointSaverListerner(CheckpointSaverListener):
+  class ExampleCheckpointSaverListener(CheckpointSaverListener):
     def begin(self):
       # You can add ops to the graph here.
       print('Starting the session.')
@@ -347,7 +352,7 @@ class CheckpointSaverListener(object):
       print('Done with the session.')
 
   ...
-  listener = ExampleCheckpointSaverListerner()
+  listener = ExampleCheckpointSaverListener()
   saver_hook = tf.train.CheckpointSaverHook(
       checkpoint_dir, listeners=[listener])
   with tf.train.MonitoredTrainingSession(chief_only_hooks=[saver_hook]):
@@ -375,6 +380,7 @@ class CheckpointSaverListener(object):
     pass
 
 
+@tf_export("train.CheckpointSaverHook")
 class CheckpointSaverHook(session_run_hook.SessionRunHook):
   """Saves checkpoints every N steps or seconds."""
 
@@ -497,6 +503,7 @@ class CheckpointSaverHook(session_run_hook.SessionRunHook):
     return savers[0]
 
 
+@tf_export("train.StepCounterHook")
 class StepCounterHook(session_run_hook.SessionRunHook):
   """Hook that counts steps per second."""
 
@@ -529,6 +536,14 @@ class StepCounterHook(session_run_hook.SessionRunHook):
   def before_run(self, run_context):  # pylint: disable=unused-argument
     return SessionRunArgs(self._global_step_tensor)
 
+  def _log_and_record(self, elapsed_steps, elapsed_time, global_step):
+    steps_per_sec = elapsed_steps / elapsed_time
+    if self._summary_writer is not None:
+      summary = Summary(value=[Summary.Value(
+          tag=self._summary_tag, simple_value=steps_per_sec)])
+      self._summary_writer.add_summary(summary, global_step)
+    logging.info("%s: %g", self._summary_tag, steps_per_sec)
+
   def after_run(self, run_context, run_values):
     _ = run_context
 
@@ -540,12 +555,7 @@ class StepCounterHook(session_run_hook.SessionRunHook):
         elapsed_time, elapsed_steps = self._timer.update_last_triggered_step(
             global_step)
         if elapsed_time is not None:
-          steps_per_sec = elapsed_steps / elapsed_time
-          if self._summary_writer is not None:
-            summary = Summary(value=[Summary.Value(
-                tag=self._summary_tag, simple_value=steps_per_sec)])
-            self._summary_writer.add_summary(summary, global_step)
-          logging.info("%s: %g", self._summary_tag, steps_per_sec)
+          self._log_and_record(elapsed_steps, elapsed_time, global_step)
 
     # Check whether the global step has been increased. Here, we do not use the
     # timer.last_triggered_step as the timer might record a different global
@@ -572,12 +582,14 @@ class StepCounterHook(session_run_hook.SessionRunHook):
     self._last_global_step = stale_global_step
 
 
+@tf_export("train.NanLossDuringTrainingError")
 class NanLossDuringTrainingError(RuntimeError):
 
   def __str__(self):
     return "NaN loss during training."
 
 
+@tf_export("train.NanTensorHook")
 class NanTensorHook(session_run_hook.SessionRunHook):
   """Monitors the loss tensor and stops training if loss is NaN.
 
@@ -609,6 +621,7 @@ class NanTensorHook(session_run_hook.SessionRunHook):
         run_context.request_stop()
 
 
+@tf_export("train.SummarySaverHook")
 class SummarySaverHook(session_run_hook.SessionRunHook):
   """Saves summaries every N steps."""
 
@@ -717,6 +730,7 @@ class SummarySaverHook(session_run_hook.SessionRunHook):
     return summary_op
 
 
+@tf_export("train.GlobalStepWaiterHook")
 class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
   """Delays execution until global step reaches `wait_until_step`.
 
@@ -764,6 +778,7 @@ class GlobalStepWaiterHook(session_run_hook.SessionRunHook):
       time.sleep(0.5)
 
 
+@tf_export("train.FinalOpsHook")
 class FinalOpsHook(session_run_hook.SessionRunHook):
   """A hook which evaluates `Tensors` at the end of a session."""
 
@@ -790,6 +805,7 @@ class FinalOpsHook(session_run_hook.SessionRunHook):
                                            feed_dict=self._final_ops_feed_dict)
 
 
+@tf_export("train.FeedFnHook")
 class FeedFnHook(session_run_hook.SessionRunHook):
   """Runs `feed_fn` and sets the `feed_dict` accordingly."""
 
@@ -807,6 +823,7 @@ class FeedFnHook(session_run_hook.SessionRunHook):
         fetches=None, feed_dict=self.feed_fn())
 
 
+@tf_export("train.ProfilerHook")
 class ProfilerHook(session_run_hook.SessionRunHook):
   """Captures CPU/GPU profiling information every N steps or seconds.
 

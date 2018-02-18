@@ -33,6 +33,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import lookup_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.losses import losses as losses_lib
 from tensorflow.python.platform import test
@@ -152,6 +153,25 @@ class RegressionHeadTest(test.TestCase):
       _assert_summary_tags(self, ["loss"])
       _assert_no_variables(self)
       _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
+
+  def testRegressionWithLogitFn(self):
+    head = head_lib.regression_head(link_fn=math_ops.square)
+    def _assert_preditions(test_case, expected_predictions, model_fn_ops):
+      variables.initialize_local_variables().run()
+      test_case.assertAllClose(expected_predictions,
+                               model_fn_ops.predictions["scores"].eval())
+    with ops.Graph().as_default(), session.Session():
+      model_fn_ops = head.create_model_fn_ops(
+          {},
+          labels=((0.,), (1.,), (1.,)),
+          mode=model_fn.ModeKeys.TRAIN,
+          train_op_fn=head_lib.no_op_train_fn,
+          logits=((1.,), (1.,), (3.,)))
+      self._assert_output_alternatives(model_fn_ops)
+      _assert_summary_tags(self, ["loss"])
+      _assert_no_variables(self)
+      _assert_metrics(self, 5. / 3, {"loss": 5. / 3}, model_fn_ops)
+      _assert_preditions(self, ([1.0, 1.0, 9.0]), model_fn_ops)
 
   def testRegressionWithInvalidLogits(self):
     head = head_lib.regression_head()
@@ -342,7 +362,7 @@ class MultiLabelHeadTest(test.TestCase):
         "auc_precision_recall": 0.166667,
         "auc_precision_recall/class0": 0,
         "auc_precision_recall/class1": 0.,
-        "auc_precision_recall/class2": 1.,
+        "auc_precision_recall/class2": 0.49999,
         "labels/actual_label_mean/class0": self._labels[0][0],
         "labels/actual_label_mean/class1": self._labels[0][1],
         "labels/actual_label_mean/class2": self._labels[0][2],
@@ -728,7 +748,7 @@ class BinaryClassificationHeadTest(test.TestCase):
         "accuracy/baseline_label_mean": label_mean,
         "accuracy/threshold_0.500000_mean": 1. / 2,
         "auc": 1. / 2,
-        "auc_precision_recall": 0.749999,
+        "auc_precision_recall": 0.25,
         "labels/actual_label_mean": label_mean,
         "labels/prediction_mean": .731059,  # softmax
         "loss": expected_loss,

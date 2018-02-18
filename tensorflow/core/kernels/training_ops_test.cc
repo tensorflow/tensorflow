@@ -176,8 +176,9 @@ static void Adam(int32 n, Graph** init_g, Graph** train_g) {
     auto beta2 = Scalar(g, 0.99);
     auto epsilon = Scalar(g, 1e-8);
     auto grad = Random(g, n);
-    test::graph::Multi(g, "ApplyAdam", {var, m, v, beta1_power, beta2_power, lr,
-                                        beta1, beta2, epsilon, grad});
+    test::graph::Multi(
+        g, "ApplyAdam",
+        {var, m, v, beta1_power, beta2_power, lr, beta1, beta2, epsilon, grad});
     *train_g = g;
   }
 }

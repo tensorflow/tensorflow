@@ -14,8 +14,8 @@ limitations under the License.
 ==============================================================================*/
 // Optional debugging functionality. For small sized binaries, these are not
 // needed.
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_DEBUG_TOOLS_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_DEBUG_TOOLS_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_DEBUG_TOOLS_H_
+#define TENSORFLOW_CONTRIB_LITE_DEBUG_TOOLS_H_
 
 #include "tensorflow/contrib/lite/interpreter.h"
 
@@ -29,4 +29,4 @@ TfLiteStatus ValidateInterpreterState(const Interpreter* interpreter);
 
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_DEBUG_TOOLS_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_DEBUG_TOOLS_H_

@@ -253,22 +253,21 @@ class SymbolicGradientOp : public AsyncOpKernel {
       args.push_back(ctx->input(i));
     }
     std::vector<Tensor>* rets = new std::vector<Tensor>;
-    lib->Run(
-        opts, handle, args, rets, [ctx, done, rets](const Status& status) {
-          if (!status.ok()) {
-            ctx->SetStatus(status);
-          } else if (rets->size() != ctx->num_outputs()) {
-            ctx->SetStatus(errors::InvalidArgument(
-                "SymGrad expects to return ", ctx->num_outputs(),
-                " tensor(s), but get ", rets->size(), " tensor(s) instead."));
-          } else {
-            for (size_t i = 0; i < rets->size(); ++i) {
-              ctx->set_output(i, (*rets)[i]);
-            }
-          }
-          delete rets;
-          done();
-        });
+    lib->Run(opts, handle, args, rets, [ctx, done, rets](const Status& status) {
+      if (!status.ok()) {
+        ctx->SetStatus(status);
+      } else if (rets->size() != ctx->num_outputs()) {
+        ctx->SetStatus(errors::InvalidArgument(
+            "SymGrad expects to return ", ctx->num_outputs(),
+            " tensor(s), but get ", rets->size(), " tensor(s) instead."));
+      } else {
+        for (size_t i = 0; i < rets->size(); ++i) {
+          ctx->set_output(i, (*rets)[i]);
+        }
+      }
+      delete rets;
+      done();
+    });
   }
 
  private:
@@ -296,21 +295,21 @@ class RemoteCallOp : public AsyncOpKernel {
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     const Tensor* target;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input("target", &target), done);
-    AttrValueMap attr_values = func_.attr();
-    AttrValue v;
     const string& target_device =
         DeviceNameUtils::CanonicalizeDeviceName(target->scalar<string>()());
-    v.set_s(target_device);
-    AddAttr("_target", v, &attr_values);
 
     FunctionLibraryRuntime* lib = ctx->function_library();
     OP_REQUIRES_ASYNC(ctx, lib != nullptr,
                       errors::Internal("No function library is provided."),
                       done);
+    AttrValueMap attr_values = func_.attr();
+    FunctionLibraryRuntime::InstantiateOptions instantiate_opts;
+    instantiate_opts.target = target_device;
     FunctionLibraryRuntime::Handle handle;
-    OP_REQUIRES_OK_ASYNC(
-        ctx, lib->Instantiate(func_.name(), AttrSlice(&attr_values), &handle),
-        done);
+    OP_REQUIRES_OK_ASYNC(ctx,
+                         lib->Instantiate(func_.name(), AttrSlice(&attr_values),
+                                          instantiate_opts, &handle),
+                         done);
 
     OpInputList arguments;
     OP_REQUIRES_OK_ASYNC(ctx, ctx->input_list("args", &arguments), done);

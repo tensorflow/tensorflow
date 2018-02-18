@@ -26,6 +26,7 @@ See the @{$python/image} guide.
 @@extract_jpeg_shape
 @@decode_png
 @@encode_png
+@@is_jpeg
 @@decode_image
 @@resize_images
 @@resize_area
@@ -49,6 +50,10 @@ See the @{$python/image} guide.
 @@grayscale_to_rgb
 @@hsv_to_rgb
 @@rgb_to_hsv
+@@rgb_to_yiq
+@@yiq_to_rgb
+@@rgb_to_yuv
+@@yuv_to_rgb
 @@convert_image_dtype
 @@adjust_brightness
 @@random_brightness

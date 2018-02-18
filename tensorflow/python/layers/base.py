@@ -31,13 +31,16 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.layers import utils as layers_util
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('layers.Layer')
 class Layer(object):
   """Base layer class.
 
@@ -99,8 +102,16 @@ class Layer(object):
         raise TypeError('Keyword argument not understood:', kwarg)
 
     # Mutable properties
+    # Indicates whether the layer's weights are updated during training
+    # and whether the layer's updates are run during training
     self.trainable = trainable
+    # A stateful layer is a layer whose updates are run during inference too,
+    # for instance stateful RNNs.
+    self.stateful = False
+    # Indicates whether `build` needs to be called upon layer call, to create
+    # the layer's weights.
     self.built = False
+    # Provides information about which inputs are compatible with the layer.
     self.input_spec = None
 
     if activity_regularizer and context.in_eager_mode():
@@ -116,8 +127,6 @@ class Layer(object):
     self._losses = []
     self._reuse = kwargs.get('_reuse')
     self._graph = ops.get_default_graph()
-    self._per_input_losses = {}
-    self._per_input_updates = {}
     self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
     call_fn_args = estimator_util.fn_args(self.call)
     self._compute_previous_mask = ('mask' in call_fn_args or
@@ -220,6 +229,8 @@ class Layer(object):
   def updates(self):
     if context.in_eager_mode():
       raise RuntimeError('Layer.updates not supported in Eager mode.')
+    if not self.trainable and not self.stateful:
+      return []
     return self._updates
 
   def add_update(self, updates, inputs=None):
@@ -239,39 +250,34 @@ class Layer(object):
 
     Arguments:
       updates: Update op, or list/tuple of update ops.
-      inputs: Optional input tensor(s) that the update(s) depend on. Must
-        match the `inputs` argument passed to the `__call__` method at the time
-        the updates are created. If `None` is passed, the updates are assumed
-        to be unconditional, and will apply across all dataflows of the layer.
+      inputs: If anything other than None is passed, it signals the updates
+        are conditional on some of the layer's inputs,
+        and thus they should only be run where these inputs are available.
+        This is the case for BatchNormalization updates, for instance.
+        If None, the updates will be taken into account unconditionally,
+        and you are responsible for making sure that any dependency they might
+        have is available at runtime.
+        A step counter might fall into this category.
     """
     if context.in_eager_mode():
       return  # Updates already applied when in eager mode.
+
     updates = _to_list(updates)
-    if not updates:
-      return
+    updates = [x if isinstance(x, ops.Operation)
+               else ops.convert_to_tensor(x) for x in updates]
     self._updates += updates
-    if inputs is not None:
-      inputs = nest.flatten(inputs)
-    if not inputs:
-      inputs = None
-    if inputs is not None:
-      # We compute an ID that uniquely identifies the list of tensors.
-      # This ID is order-sensitive.
-      inputs_hash = layers_util.object_list_uid(inputs)
+    if inputs is None:
+      for u in updates:
+        u._unconditional_update = True  # pylint: disable=protected-access
     else:
-      inputs_hash = None
-    if inputs_hash not in self._per_input_updates:
-      self._per_input_updates[inputs_hash] = []
-    self._per_input_updates[inputs_hash] += updates
+      for u in updates:
+        u._unconditional_update = False  # pylint: disable=protected-access
 
   def get_updates_for(self, inputs):
     """Retrieves updates relevant to a specific set of inputs.
 
     Arguments:
       inputs: Input tensor or list/tuple of input tensors.
-        Must match the `inputs` argument passed to the `__call__` method
-        at the time the updates were created.
-        If you pass `inputs=None`, unconditional updates are returned.
 
     Returns:
       List of update ops of the layer that depend on `inputs`.
@@ -280,16 +286,24 @@ class Layer(object):
       RuntimeError: If called in Eager mode.
     """
     if context.in_eager_mode():
-      raise RuntimeError('Layer.get_updates_for not supported in Eager mode.')
-    if inputs is not None:
-      inputs = nest.flatten(inputs)
-    if not inputs:
-      inputs = None
-    if inputs is not None:
-      inputs_hash = layers_util.object_list_uid(inputs)
-    else:
-      inputs_hash = None
-    return self._per_input_updates.get(inputs_hash, [])
+      raise RuntimeError('`get_updates_for()` not supported in Eager mode.')
+
+    # Updates disabled if layer is not trainable and not explicitly stateful.
+    if not self.trainable and not self.stateful:
+      return []
+
+    if inputs is None:
+      # Requesting unconditional updates.
+      return [x for x in self.updates if x._unconditional_update]  # pylint: disable=protected-access
+
+    # Requesting input-conditional updates.
+    inputs = nest.flatten(inputs)
+    reachable = layers_util.get_reachable_from_inputs(inputs, self.updates)
+    updates = []
+    for update in self.updates:
+      if update in reachable:
+        updates.append(update)
+    return updates
 
   @property
   def losses(self):
@@ -329,9 +343,11 @@ class Layer(object):
 
     Arguments:
       losses: Loss tensor, or list/tuple of tensors.
-      inputs: Optional input tensor(s) that the loss(es) depend on. Must
-        match the `inputs` argument passed to the `__call__` method at the time
-        the losses are created. If `None` is passed, the losses are assumed
+      inputs: If anything other than None is passed, it signals the losses
+        are conditional on some of the layer's inputs,
+        and thus they should only be run where these inputs are available.
+        This is the case for activity regularization losses, for instance.
+        If `None` is passed, the losses are assumed
         to be unconditional, and will apply across all dataflows of the layer
         (e.g. weight regularization losses).
 
@@ -339,24 +355,25 @@ class Layer(object):
       RuntimeError: If called in Eager mode.
     """
     if context.in_eager_mode():
+      # TODO(fchollet): it should be possible (and highly desirable) to support
+      # `add_loss` in eager mode. This allows great convenience and flexibility
+      # in defining custom losses on the fly (e.g. in VAEs).
+      # Simply appending the loss value to `self._losses`
+      # is the correct behavior.
+      # The only caveat is that we need to force the user to only call
+      # `add_loss` from inside a model or Layer's `call` method
+      # (otherwise the loss computation cannot be backproped through).
       raise RuntimeError('Layer.add_loss not supported in Eager mode.')
+
     losses = _to_list(losses)
-    if not losses:
-      return
     self._losses += losses
-    if inputs is not None:
-      inputs = nest.flatten(inputs)
-    if not inputs:
-      inputs = None
-    if inputs is not None:
-      # We compute an ID that uniquely identifies the list of tensors.
-      # This ID is order-sensitive.
-      inputs_hash = layers_util.object_list_uid(inputs)
+    if inputs is None:
+      for loss in losses:
+        loss._unconditional_loss = True  # pylint: disable=protected-access
     else:
-      inputs_hash = None
-    if inputs_hash not in self._per_input_losses:
-      self._per_input_losses[inputs_hash] = []
-    self._per_input_losses[inputs_hash] += losses
+      for loss in losses:
+        loss._unconditional_loss = False  # pylint: disable=protected-access
+    # TODO(fchollet): deprecate collection below.
     _add_elements_to_collection(losses, ops.GraphKeys.REGULARIZATION_LOSSES)
 
   def get_losses_for(self, inputs):
@@ -364,10 +381,6 @@ class Layer(object):
 
     Arguments:
       inputs: Input tensor or list/tuple of input tensors.
-        Must match the `inputs` argument passed to the `__call__`
-        method at the time the losses were created.
-        If you pass `inputs=None`, unconditional losses are returned,
-        such as weight regularization losses.
 
     Returns:
       List of loss tensors of the layer that depend on `inputs`.
@@ -377,15 +390,23 @@ class Layer(object):
     """
     if context.in_eager_mode():
       raise RuntimeError('Layer.get_losses_for not supported in Eager mode.')
-    if inputs is not None:
-      inputs = nest.flatten(inputs)
-    if not inputs:
-      inputs = None
-    if inputs is not None:
-      inputs_hash = layers_util.object_list_uid(inputs)
-    else:
-      inputs_hash = None
-    return self._per_input_losses.get(inputs_hash, [])
+
+    if inputs is None:
+      # Requesting unconditional losses.
+      return [x for x in self.losses if x._unconditional_loss]  # pylint: disable=protected-access
+
+    # Requesting input-conditional losses.
+    inputs = nest.flatten(inputs)
+    # Retrieve the set of tensors in the TF graph that depend on `inputs`.
+    # The losses we want to return will be part of this set.
+    # To avoid unnecessary work, we stop the search in case all of
+    # `self.losses` have been retrieved.
+    reachable = layers_util.get_reachable_from_inputs(inputs, self.losses)
+    losses = []
+    for loss in self.losses:
+      if loss in reachable:
+        losses.append(loss)
+    return losses
 
   def build(self, _):
     """Creates the variables of the layer."""
@@ -407,13 +428,8 @@ class Layer(object):
     """Determines op naming for the Layer."""
     return current_variable_scope.original_name_scope
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     """Computes the output shape of the layer given the input shape.
-
-    Assumes that the layer will be built to match that input shape.
-    If this method is not implemented by child classes, the default
-    assumption will be that the layer does not alter the shape of the tensors
-    passing through it.
 
     Args:
       input_shape: A (possibly nested tuple of) `TensorShape`.  It need not
@@ -428,7 +444,7 @@ class Layer(object):
       ValueError: if `input_shape` is incomplete or is incompatible with the
         the layer.
     """
-    return input_shape
+    raise NotImplementedError
 
   def _make_unique_name(self, name_uid_map=None, avoid_names=None,
                         namespace='', zero_based=False):
@@ -484,17 +500,37 @@ class Layer(object):
       instance is returned.
 
     Raises:
-      RuntimeError: If called in Eager mode with regularizers.
+      RuntimeError: If called with partioned variable regularization and
+        eager execution is enabled.
     """
+
+    # `init_graph` should point to the graph in which variable initialization
+    # will occur; it should be None if and only if initialization will take
+    # place in the eager context.
+    init_graph = None
     if context.in_graph_mode():
-      existing_variables = set(tf_variables.global_variables())
+      default_graph = ops.get_default_graph()
+      if default_graph.building_function:
+        with ops.init_scope():
+          # Retrieve the variables from the graph into which variables
+          # will be lifted; if initialization ops will be lifted into
+          # the eager context, then there is nothing to retrieve, since variable
+          # collections are not supported when eager execution is enabled.
+          if context.in_graph_mode():
+            init_graph = ops.get_default_graph()
+            existing_variables = set(tf_variables.global_variables())
+      else:
+        # Initialization ops will not be lifted out of the default graph.
+        init_graph = default_graph
+        existing_variables = set(tf_variables.global_variables())
+
     if dtype is None:
       dtype = self.dtype or dtypes.float32
 
     self._set_scope(None)
+    reuse = self.built or self._reuse
     with vs.variable_scope(
-        self._scope, reuse=(self.built or self._reuse),
-        auxiliary_name_scope=False) as scope:
+        self._scope, reuse=reuse, auxiliary_name_scope=False) as scope:
       with ops.name_scope(self._name_scope_name(scope)):
         variable = vs.get_variable(name,
                                    shape=shape,
@@ -503,16 +539,23 @@ class Layer(object):
                                    constraint=constraint,
                                    trainable=trainable and self.trainable,
                                    partitioner=partitioner)
-        if context.in_graph_mode():
-          if (trainable and self.trainable
-              and variable not in tf_variables.trainable_variables()):
+
+        if init_graph is not None:  # pylint: disable=protected-access
+          # The variable was created and initialized in a graph.
+
+          if variable in existing_variables:
+            # To match the behavior of tf.get_variable(), we only apply
+            # regularization if the variable is newly created.
+            return variable
+
+          with init_graph.as_default():
+            trainable_variables = tf_variables.trainable_variables()
+          if (trainable and self.trainable and
+              variable not in trainable_variables):
             # A custom getter / variable scope overrode the trainable flag.
             trainable = False
-          if variable in existing_variables:
-            return variable
+
           if regularizer:
-            # To match the behavior of tf.get_variable(), we only
-            # apply regularization if the variable is newly created.
             if isinstance(variable, tf_variables.PartitionedVariable):
               for v in variable:
                 with ops.colocate_with(v.op):
@@ -526,16 +569,23 @@ class Layer(object):
                   regularization = regularizer(variable)
               if regularization is not None:
                 self.add_loss(regularization)
-        elif regularizer:
+        elif regularizer:  # and initialization took place in an eager context
           if isinstance(variable, tf_variables.PartitionedVariable):
             raise RuntimeError(
-                'Partitioned variable regularization is not yet supported when '
-                'executing eagerly. File a feature request is this is '
-                'important to you.')
+                'Partitioned variable regularization is not yet '
+                'supported when executing eagerly. File a feature request'
+                'if this is important to you.')
           # Save a zero-argument lambda which runs the regularizer on the
-          # variable, to be executed when `Layer.losses` is requested. This
-          # makes losses responsive to variable updates when executing eagerly.
+          # variable, to be executed when `Layer.losses` is requested.
+          # This makes losses responsive to variable updates when executing
+          # eagerly.
+          #
+          # TODO(akshayka): Do the same for graphs as well, so that losses
+          # collected in a while_loop can be run outside its control flow
+          # context and so that losses won't be swallowed up by graph functions
+          # (i.e., `.losses()` should always create regularizers).
           self._losses.append(lambda: regularizer(variable))
+
     if trainable:
       self._trainable_weights.append(variable)
     else:
@@ -608,6 +658,7 @@ class Layer(object):
     else:
       scope_context_manager = vs.variable_scope(
           self._scope, reuse=self._reuse, auxiliary_name_scope=False)
+    input_shapes = None
     with scope_context_manager as scope:
       with ops.name_scope(self._name_scope_name(scope)):
         if not self.built:
@@ -655,9 +706,12 @@ class Layer(object):
             raise ValueError('A layer\'s `call` method should return a Tensor '
                              'or a list of Tensors, not None.')
         else:
-          # Deferred mode behavior: use `_compute_output_shape` to
+          # Deferred mode behavior: use `compute_output_shape` to
           # infer the number of outputs of the layer and their shapes.
-          output_shapes = self._compute_output_shape(input_shapes)
+          if input_shapes is None:
+            input_shapes = nest.map_structure(lambda x: x.get_shape(), inputs)
+
+          output_shapes = self.compute_output_shape(input_shapes)
           output_shapes = nest.flatten(output_shapes)
           outputs = [
               # TODO(fchollet): name the deferred tensors?
@@ -678,12 +732,10 @@ class Layer(object):
                 activity_regularization = self._activity_regularizer(output)
               self.add_loss(activity_regularization, inputs=inputs)
 
-        if not in_deferred_mode:
-          # TODO(fchollet): consider how masking will work with deferred mode.
-          # Handle mask computation and propagation to the next layer.
+          # TODO(fchollet): consider enabling masking for Eager mode.
           if hasattr(self, 'compute_mask'):
             output_mask = self.compute_mask(inputs, previous_mask)
-            if isinstance(outputs, list):
+            if isinstance(outputs, (list, tuple)):
               if output_mask is None:
                 output_mask = [None for _ in range(len(outputs))]
               for x, m in zip(outputs, output_mask):
@@ -1182,6 +1234,7 @@ class Layer(object):
                                  ', found shape=' + str(shape))
 
 
+@tf_export('keras.layers.InputSpec', 'layers.InputSpec')
 class InputSpec(object):
   """Specifies the ndim, dtype and shape of every input to a layer.
 
@@ -1218,6 +1271,15 @@ class InputSpec(object):
     self.max_ndim = max_ndim
     self.min_ndim = min_ndim
     self.axes = axes or {}
+
+  def __repr__(self):
+    spec = [('dtype=' + str(self.dtype)) if self.dtype else '',
+            ('shape=' + str(self.shape)) if self.shape else '',
+            ('ndim=' + str(self.ndim)) if self.ndim else '',
+            ('max_ndim=' + str(self.max_ndim)) if self.max_ndim else '',
+            ('min_ndim=' + str(self.min_ndim)) if self.min_ndim else '',
+            ('axes=' + str(self.axes)) if self.axes else '']
+    return 'InputSpec(%s)' % ', '.join(x for x in spec if x)
 
 
 class Node(object):
@@ -1343,7 +1405,10 @@ class _DeferredTensor(object):
 
   def __init__(self, shape, dtype, name=None):
     self.shape = tensor_shape.TensorShape(shape)
-    self.dtype = dtypes.as_dtype(dtype)
+    if dtype is None:
+      self.dtype = dtypes.as_dtype(np.float32)
+    else:
+      self.dtype = dtypes.as_dtype(dtype)
     self.name = name
 
   def get_shape(self):

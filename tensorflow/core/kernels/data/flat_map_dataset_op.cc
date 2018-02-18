@@ -48,9 +48,8 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
     }
 
     std::unique_ptr<CapturedFunction> captured_func;
-    OP_REQUIRES_OK(ctx, CapturedFunction::Create(ctx, func_, graph_def_version_,
-                                                 std::move(other_arguments),
-                                                 &captured_func));
+    OP_REQUIRES_OK(ctx, CapturedFunction::Create(
+                            func_, std::move(other_arguments), &captured_func));
 
     *output = new Dataset(ctx, input, func_, std::move(captured_func),
                           output_types_, output_shapes_);
@@ -195,7 +194,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
         return Status::OK();
       }
 
-      Status RestoreInternal(OpKernelContext* ctx,
+      Status RestoreInternal(IteratorContext* ctx,
                              IteratorStateReader* reader) override {
         mutex_lock l(mu_);
         input_impl_.reset();
@@ -250,6 +249,7 @@ class FlatMapDatasetOp : public UnaryDatasetOpKernel {
         IteratorContext::Params params;
         params.env = ctx->env();
         params.runner = *(ctx->runner());
+        params.lib = ctx->function_library();
         IteratorContext iter_ctx(std::move(params));
         return BuildCurrentElementIteratorLocked(&iter_ctx);
       }

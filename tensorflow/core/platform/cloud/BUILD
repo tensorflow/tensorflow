@@ -11,6 +11,7 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_copts",
+    "if_windows",
 )
 
 filegroup(
@@ -57,6 +58,17 @@ cc_library(
 )
 
 cc_library(
+    name = "gcs_throttle",
+    srcs = ["gcs_throttle.cc"],
+    hdrs = ["gcs_throttle.h"],
+    copts = tf_copts(),
+    visibility = ["//tensorflow:__subpackages__"],
+    deps = [
+        "//tensorflow/core:lib",
+    ],
+)
+
+cc_library(
     name = "gcs_file_system",
     srcs = ["gcs_file_system.cc"],
     hdrs = ["gcs_file_system.h"],
@@ -68,6 +80,7 @@ cc_library(
         ":expiring_lru_cache",
         ":file_block_cache",
         ":gcs_dns_cache",
+        ":gcs_throttle",
         ":google_auth_provider",
         ":http_request",
         ":retrying_file_system",
@@ -101,7 +114,7 @@ cc_library(
         ":http_request",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib_internal",
-        "@curl//:curl",
+        "@curl",
     ],
 )
 
@@ -118,7 +131,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:test",
-        "@curl//:curl",
+        "@curl",
     ],
 )
 
@@ -261,8 +274,22 @@ tf_cc_test(
     name = "gcs_dns_cache_test",
     size = "small",
     srcs = ["gcs_dns_cache_test.cc"],
+    linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
     deps = [
         ":gcs_dns_cache",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+tf_cc_test(
+    name = "gcs_throttle_test",
+    size = "small",
+    srcs = ["gcs_throttle_test.cc"],
+    linkopts = if_windows(["-DEFAULTLIB:ws2_32.lib"]),
+    deps = [
+        ":gcs_throttle",
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",

@@ -159,25 +159,25 @@ EIGEN_STRONG_INLINE Packet4f pload2bf16<Packet4f>(const float* from) {
 // Return a packet with the first value of the input Packet replicated
 template <>
 EIGEN_STRONG_INLINE Packet4f pbroadcast_first<Packet4f>(const Packet4f& a) {
-  return vec_splat (a, 0);
+  return vec_splat(a, 0);
 }
 
 // Return a packet with the second value of the input Packet replicated
 template <>
 EIGEN_STRONG_INLINE Packet4f pbroadcast_second<Packet4f>(const Packet4f& a) {
-  return vec_splat (a, 1);
+  return vec_splat(a, 1);
 }
 
 // Return a packet with the third value of the input Packet replicated
 template <>
 EIGEN_STRONG_INLINE Packet4f pbroadcast_third<Packet4f>(const Packet4f& a) {
-  return vec_splat (a, 2);
+  return vec_splat(a, 2);
 }
 
 // Return a packet with the fourth value of the input Packet replicated
 template <>
 EIGEN_STRONG_INLINE Packet4f pbroadcast_fourth<Packet4f>(const Packet4f& a) {
-  return vec_splat (a, 3);
+  return vec_splat(a, 3);
 }
 #endif
 

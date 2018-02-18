@@ -299,4 +299,13 @@ class TestEnqueuers(test.TestCase):
 
 
 if __name__ == '__main__':
+  # Bazel sets these environment variables to very long paths.
+  # Tempfile uses them to create long paths, and in turn multiprocessing
+  # library tries to create sockets named after paths. Delete whatever bazel
+  # writes to these to avoid tests failing due to socket addresses being too
+  # long.
+  for var in ('TMPDIR', 'TMP', 'TEMP'):
+    if var in os.environ:
+      del os.environ[var]
+
   test.main()

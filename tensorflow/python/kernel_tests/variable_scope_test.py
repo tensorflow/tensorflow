@@ -117,7 +117,7 @@ class VariableScopeTest(test.TestCase):
         w = variable_scope.get_variable("w", [])
         self.assertEqual(w.dtype.base_dtype, dtypes.float16)
 
-  def testEagerVaribleStore(self):
+  def testEagerVariableStore(self):
     with context.eager_mode():
       store = variable_scope.EagerVariableStore()
       with store.as_default():
@@ -130,6 +130,30 @@ class VariableScopeTest(test.TestCase):
       self.assertFalse(w in store.trainable_variables())
       self.assertFalse(v in store.non_trainable_variables())
       self.assertTrue(w in store.non_trainable_variables())
+
+      # Test copying.
+      new_store = store.copy()
+      with new_store.as_default():
+        new_v = variable_scope.get_variable("v")
+        new_w = variable_scope.get_variable("w")
+      self.assertEqual(new_v.numpy(), v.numpy())
+      self.assertEqual(new_w.numpy(), w.numpy())
+      self.assertTrue(new_v in new_store.variables())
+      self.assertTrue(new_w in new_store.variables())
+      self.assertTrue(new_v in new_store.trainable_variables())
+      self.assertFalse(new_w in new_store.trainable_variables())
+      self.assertFalse(new_v in new_store.non_trainable_variables())
+      self.assertTrue(new_w in new_store.non_trainable_variables())
+
+      # Check that variables are separate instances.
+      for v in store.variables():
+        v.assign(-1)
+      for v in new_store.variables():
+        v.assign(1)
+      for v in store.variables():
+        self.assertEqual(v.numpy(), -1)
+      for v in new_store.variables():
+        self.assertEqual(v.numpy(), 1)
 
   @test_util.run_in_graph_and_eager_modes()
   def testInitFromNonTensorValue(self):
@@ -1005,6 +1029,18 @@ class VariableScopeTest(test.TestCase):
     # Ensure it is possible to do get_variable with a _ref dtype passed in.
     _ = variable_scope.get_variable("w", shape=[5, 6], dtype=v.dtype)
 
+  def testTwoGraphs(self):
+
+    def f():
+      g1 = ops.Graph()
+      g2 = ops.Graph()
+      with g1.as_default():
+        with g2.as_default():
+          with variable_scope.variable_scope("_"):
+            pass
+
+    self.assertRaisesRegexp(ValueError, "'_' is not a valid scope name", f)
+
 
 def axis0_into1_partitioner(shape=None, **unused_kwargs):
   part = [1] * len(shape)
@@ -1240,6 +1276,24 @@ class VariableScopeWithCustomGetterTest(test.TestCase):
           np_v,
           (((np_vars[0] * np_vars[1]) + (np_vars[2] * np_vars[3]))
            + ((np_vars[4] * np_vars[5]) + (np_vars[6] * np_vars[7]))))
+
+  def testVariableCreator(self):
+
+    variable_names = []
+
+    def creator_a(next_creator, **kwargs):
+      variable_names.append(kwargs.get("name", ""))
+      return next_creator(**kwargs)
+
+    def creator_b(next_creator, **kwargs):
+      kwargs["name"] = "forced_name"
+      return next_creator(**kwargs)
+
+    with variable_scope.variable_creator_scope(creator_a):
+      with variable_scope.variable_creator_scope(creator_b):
+        variable_scope.variable(1.0, name="one_name")
+
+    self.assertAllEqual(variable_names, ["forced_name"])
 
 
 class PartitionInfoTest(test.TestCase):

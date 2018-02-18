@@ -1,4 +1,4 @@
-# TensorFlow Compatibility Guide
+# TensorFlow Lite & TensorFlow Compatibility Guide
 
 TensorFlow Lite supports a number of TensorFlow operations used in common
 inference models. As they are processed by the TensorFlow Lite Optimizing
@@ -329,18 +329,18 @@ Inputs {
   0: a tensor
 }
 Outputs {
-  0: a tensor equivalent to max(0, min(input, 1)
+  0: a tensor equivalent to max(0, input)
 }
 ```
 
-**RELU1**
+**RELU_N1_TO_1**
 
 ```
 Inputs {
   0: a tensor
 }
 Outputs {
-  0: a tensor equivalent to max(-1, min(input, 6)
+  0: a tensor equivalent to max(-1, min(input, 1)
 }
 ```
 

@@ -236,7 +236,7 @@ static optional<int64> GetLoopTripCount(HloInstruction* while_op) {
       VLOG(2) << "Couldn't evaluate while cond: " << result.status();
       return nullopt;
     }
-    return result.ValueOrDie()->GetArraySlice<bool>() ==
+    return result.ValueOrDie()->data<bool>() ==
            tensorflow::gtl::ArraySlice<bool>{true};
   };
 
@@ -303,6 +303,11 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
 
   if (!ShapeUtil::IsTuple(while_init->shape())) {
     VLOG(2) << "While op's carried value isn't tuple shaped.";
+    return false;
+  }
+
+  if (while_body_root->opcode() != HloOpcode::kTuple) {
+    VLOG(2) << "While body's root is not a tuple(...) instruction.";
     return false;
   }
 
@@ -559,9 +564,11 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
   //
   // This is not a fundamental limitation.  The control operands can be moved
   // onto the new HLOs after simplification, and any side-effecting ops inside
-  // the loop aren't removed, just cloned and added back to the loop.
-  // Nevertheless our infrastructure sees loop simplification as removal of
-  // these nodes and currently doesn't allow it.
+  // the loop aren't removed, just cloned and added back to the loop.  But
+  // moving an op out of the loop also removes implicit control dependencies
+  // between the op and the ops outside the loop, so we'd have to add those back
+  // for things like infeed/outfeed.  It gets complicated.  So for now we just
+  // avoid it.
   if (!while_op->parent()->IsRemovable(while_op) || while_op->HasSideEffect()) {
     VLOG(2) << "Not attempting to remove while loop it is not removable: "
             << while_op->ToShortString();
@@ -590,7 +597,9 @@ static StatusOr<bool> TryRemoveWhileLoop(HloInstruction* while_op) {
     auto call_op = computation->AddInstruction(HloInstruction::CreateCall(
         while_op->shape(), while_op->operands(), while_op->while_body()));
     TF_RETURN_IF_ERROR(computation->ReplaceInstruction(while_op, call_op));
-    TF_RETURN_IF_ERROR(CallInliner::Inline(call_op));
+    TF_ASSIGN_OR_RETURN(auto inlined_instructions_map,
+                        CallInliner::Inline(call_op));
+    (void)inlined_instructions_map;
     return true;
   }
   return false;

@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
@@ -508,8 +509,17 @@ stylesheet="
 
     // The "to_node" value may be a NULL, indicating that this points to the
     // "root" tag rather than a normal node.
-    int64 from_node_id = node_ids_.at(from_node);
-    int64 to_node_id = to_node ? node_ids_.at(to_node) : root_node_id_;
+    int64 from_node_id =
+        tensorflow::gtl::FindWithDefault(node_ids_, from_node, -1);
+    if (from_node_id == -1) {
+      LOG(FATAL) << from_node->name() << " was added to edges but not to nodes";
+    }
+    int64 to_node_id =
+        to_node ? tensorflow::gtl::FindWithDefault(node_ids_, to_node, -1)
+                : root_node_id_;
+    if (to_node != nullptr && to_node_id == -1) {
+      LOG(FATAL) << to_node->name() << " was added to edges but not to nodes";
+    }
 
     add_hover_css_rule("node", from_node_id, kBlue);
     add_hover_css_rule("node", to_node_id, kRed);
@@ -653,11 +663,14 @@ string HloDotDumper::DumpComputation(const HloComputation* comp) {
 
 string HloDotDumper::DumpRootTag() {
   const HloInstruction* from = GetNodeForEdge(computation_->root_instruction());
-  auto from_id = InstructionId(from);
 
-  if (!filter_.Show(from)) {
+  // We didn't display constants as separate nodes; so if the root is a
+  // constant, we don't add root tag or edge for it.
+  if (!filter_.Show(from) || from->opcode() == HloOpcode::kConstant) {
     return "";
   }
+
+  auto from_id = InstructionId(from);
 
   // The ID of the root computation is otherwise unused, so it makes a good ID
   // to use for the root-tag node.  However, the edge_ids_ map requires a
@@ -948,6 +961,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
       return kGreen;
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
+    case HloOpcode::kFft:
       return kDarkBlue;
     case HloOpcode::kReducePrecision:
       return kRed;
@@ -1049,14 +1063,19 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   // node -- there the shape and layout is present in the output node.
   if (instr->opcode() != HloOpcode::kFusion ||
       !ShouldShowFusionSubcomputation(instr)) {
-    string instr_shape = ShapeUtil::HumanString(instr->shape());
-
-    // Show layout of non-tuple shapes with more than one dimension.
-    if (LayoutUtil::HasLayout(instr->shape()) &&
-        instr->shape().dimensions_size() > 1 &&
-        !ShapeUtil::IsTuple(instr->shape())) {
-      StrAppend(&instr_shape, "{",
-                Join(LayoutUtil::MinorToMajor(instr->shape()), ","), "}");
+    // Show layout of instructions with more than one dimension.  Don't show
+    // layout on tuples or tensors with just one dimension (which only have one
+    // possible layout) to avoid visual noise.
+    bool shape_is_multidim = false;
+    ShapeUtil::ForEachSubshape(instr->shape(),
+                               [&](const Shape& s, const ShapeIndex&) {
+                                 shape_is_multidim |= s.dimensions_size() > 1;
+                               });
+    string instr_shape;
+    if (instr->opcode() != HloOpcode::kTuple && shape_is_multidim) {
+      instr_shape = ShapeUtil::HumanStringWithLayout(instr->shape());
+    } else {
+      instr_shape = ShapeUtil::HumanString(instr->shape());
     }
 
     // Some instructions have giant tuples as their shapes, so truncate the
@@ -1407,9 +1426,11 @@ void DumpText(const HloModule& module, const string& label,
 
 string MaybeDumpHloModule(const HloModule& module, const string& label,
                           const HloExecutionProfile* profile) {
-  VLOG(2) << "MaybeDumpHloModule called on module " << module.name();
-  string graph_url;
   const DebugOptions& debug_options = module.config().debug_options();
+  VLOG(2) << "MaybeDumpHloModule called on module " << module.name()
+          << " with generate_hlo_graph regex \""
+          << debug_options.xla_generate_hlo_graph() << "\"";
+  string graph_url;
   if (!debug_options.xla_generate_hlo_graph().empty() &&
       RE2::PartialMatch(module.name(),
                         debug_options.xla_generate_hlo_graph())) {

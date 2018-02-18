@@ -118,15 +118,19 @@ tf_class {
   }
   member_method {
     name: "build"
-    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'instance\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "call"
-    argspec: "args=[\'self\', \'inputs\', \'states\'], varargs=None, keywords=kwargs, defaults=None"
+    argspec: "args=[\'self\', \'inputs\', \'states\', \'constants\'], varargs=None, keywords=kwargs, defaults=[\'None\'], "
   }
   member_method {
     name: "compute_mask"
     argspec: "args=[\'self\', \'inputs\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "compute_output_shape"
+    argspec: "args=[\'self\', \'input_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "count_params"
@@ -154,7 +158,7 @@ tf_class {
   }
   member_method {
     name: "get_losses_for"
-    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_output_at"

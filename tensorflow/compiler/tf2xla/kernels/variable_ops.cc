@@ -33,21 +33,29 @@ class VarIsInitializedOp : public XlaOpKernel {
  public:
   explicit VarIsInitializedOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
-    xla::ComputationDataHandle handle;
-    bool initialized = ctx->ReadVariableInput(0, &handle).ok();
-    ctx->SetOutput(0, ctx->builder()->ConstantR0<bool>(initialized));
+    XlaResource* variable;
+    OP_REQUIRES_OK(ctx, ctx->GetResourceInput(0, &variable));
+    ctx->SetOutput(0,
+                   ctx->builder()->ConstantR0<bool>(variable->initialized()));
   }
 };
 REGISTER_XLA_OP(Name("VarIsInitializedOp"), VarIsInitializedOp);
 
 class ReadVariableOp : public XlaOpKernel {
  public:
-  explicit ReadVariableOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
+  explicit ReadVariableOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtype", &dtype_));
+  }
+
   void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationDataHandle handle;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &handle));
+    OP_REQUIRES_OK(
+        ctx, ctx->ReadVariableInput(0, dtype_, /*shape=*/nullptr, &handle));
     ctx->SetOutput(0, handle);
   }
+
+ private:
+  DataType dtype_;
 };
 REGISTER_XLA_OP(Name("ReadVariableOp"), ReadVariableOp);
 
@@ -65,10 +73,12 @@ class AssignAddVariableOp : public XlaOpKernel {
  public:
   explicit AssignAddVariableOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
+    DataType type = ctx->input_type(1);
     xla::ComputationDataHandle handle;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &handle));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ReadVariableInput(0, type, /*shape=*/nullptr, &handle));
     handle = ctx->builder()->Add(handle, ctx->Input(1));
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
 };
 REGISTER_XLA_OP(
@@ -79,10 +89,12 @@ class AssignSubVariableOp : public XlaOpKernel {
  public:
   explicit AssignSubVariableOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
   void Compile(XlaOpKernelContext* ctx) override {
+    DataType type = ctx->input_type(1);
     xla::ComputationDataHandle handle;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &handle));
+    OP_REQUIRES_OK(ctx,
+                   ctx->ReadVariableInput(0, type, /*shape=*/nullptr, &handle));
     handle = ctx->builder()->Sub(handle, ctx->Input(1));
-    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, ctx->input_type(1), handle));
+    OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, type, handle));
   }
 };
 REGISTER_XLA_OP(
@@ -95,28 +107,21 @@ class ResourceGatherOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     xla::ComputationBuilder* builder = ctx->builder();
 
-    // Get the shape of the resource tensor.
+    DataType type = ctx->expected_output_dtype(0);
+
     TensorShape resource_shape;
-    DataType resource_dtype;
-    OP_REQUIRES_OK(
-        ctx, ctx->GetVariableTypeAndShape(0, &resource_dtype, &resource_shape));
-
-    DataType expected_output_dtype = ctx->expected_output_dtype(0);
-    OP_REQUIRES(ctx, resource_dtype == expected_output_dtype,
-                errors::InvalidArgument(
-                    "Variable dtype is ", DataTypeString(resource_dtype),
-                    " but expected output dtype is ",
-                    DataTypeString(expected_output_dtype), "."));
-
     xla::ComputationDataHandle resource_handle;
-    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, &resource_handle));
+    OP_REQUIRES_OK(ctx, ctx->ReadVariableInput(0, type, &resource_shape,
+                                               &resource_handle));
 
     auto indices = ctx->Input(1);
     auto indices_shape = ctx->InputShape(1);
     DataType index_type = ctx->input_type(1);
-    xla::ComputationDataHandle gather = XlaComputeGatherDynamicSlice(
-        ctx, resource_handle, resource_shape, indices, indices_shape, 0,
-        resource_dtype, index_type, builder);
+    xla::ComputationDataHandle gather;
+    OP_REQUIRES_OK(
+        ctx, XlaGather(resource_handle, resource_shape, indices, indices_shape,
+                       /*axis=*/0, /*indices_are_nd=*/false, type, index_type,
+                       builder, &gather));
     ctx->SetOutput(0, gather);
   }
 };

@@ -23,15 +23,8 @@ limitations under the License.
 
 namespace xla {
 
-/*static*/ int64 HloVerifiedTestBase::DefaultShapeSize(const Shape& shape) {
-  constexpr int64 kPointerSize = sizeof(void*);
-  if (ShapeUtil::IsOpaque(shape)) {
-    return kPointerSize;
-  }
-  return ShapeUtil::ByteSizeOf(shape, kPointerSize);
-}
-
-HloVerifiedTestBase::HloVerifiedTestBase() : shape_size_fn_(DefaultShapeSize) {}
+HloVerifiedTestBase::HloVerifiedTestBase()
+    : shape_verifier_(MakeUnique<ShapeVerifier>()) {}
 
 HloVerifiedTestBase::~HloVerifiedTestBase() {
   // We can't call the ASSERT or EXPECT test macros in destructors, so we
@@ -47,7 +40,7 @@ void HloVerifiedTestBase::TearDown() {
       << "TearDown called more than once; it should be called exactly once.";
   tear_down_called_ = true;
   if (module_) {
-    HloVerifier verifier(shape_size_fn_);
+    HloVerifier verifier;
     xla::StatusOr<bool> mutated = verifier.Run(module_.get());
     if (!mutated.ok()) {
       ADD_FAILURE() << "HloVerifier failed: " << mutated.status();

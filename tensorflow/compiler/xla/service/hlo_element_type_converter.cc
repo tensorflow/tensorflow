@@ -54,45 +54,96 @@ bool HasOperandType(HloInstruction* hlo, PrimitiveType type) {
   return false;
 }
 
+// Finds out the Tuple Shape of the new instruction after converting the element
+// type of the operands of the original instruction from `from_type` to
+// `to_type`.
+//
+// This routine assumes the resulting `shape` of the original instruction is a
+// non-nested tuple. This assumption is currently safe as only kTuple, kInfeed,
+// kOutfeed, kCall, kCustomCall and kBatchNorm* HLO instructions can produce
+// results with tuple shapes, and this routine is only called to convert the
+// result shapes of kBatchNorm* HLO instructions, which are non-nested tuples.
+Shape GetConvertedTupleShape(const Shape& shape, PrimitiveType from_type,
+                             PrimitiveType to_type) {
+  std::vector<Shape> new_tuple_subshapes;
+  for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    Shape subshape = ShapeUtil::GetTupleElementShape(shape, i);
+    CHECK(!ShapeUtil::IsTuple(subshape));
+    if (subshape.element_type() == from_type) {
+      subshape = ShapeUtil::ChangeElementType(subshape, to_type);
+    }
+    new_tuple_subshapes.push_back(subshape);
+  }
+  return ShapeUtil::MakeTupleShape(new_tuple_subshapes);
+}
+
+// Converts the elements of the result of `hlo` to produce a new tuple with
+// shape `to_shape`.
+//
+// This routine assumes `hlo` is an instruction that produces a non-nested Tuple
+// as a result.
+HloInstruction* ConvertTupleElements(HloInstruction* hlo,
+                                     const Shape& to_shape) {
+  const Shape& shape = hlo->shape();
+  HloComputation* computation = hlo->parent();
+  std::vector<HloInstruction*> tuple_elements;
+  for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
+    const Shape& ele_shape = ShapeUtil::GetTupleElementShape(shape, i);
+    HloInstruction* element = computation->AddInstruction(
+        HloInstruction::CreateGetTupleElement(ele_shape, hlo, i));
+    const Shape& to_ele_shape = ShapeUtil::GetTupleElementShape(to_shape, i);
+    CHECK(!ShapeUtil::IsTuple(ele_shape));
+    if (ele_shape.element_type() != to_ele_shape.element_type()) {
+      element = computation->AddInstruction(
+          HloInstruction::CreateConvert(to_ele_shape, element));
+    }
+    tuple_elements.push_back(element);
+  }
+  return computation->AddInstruction(
+      HloInstruction::CreateTuple(tuple_elements));
+}
+
 }  // namespace
 
 HloElementTypeConverter::HloElementTypeConverter(
     PrimitiveType eliminate_type, PrimitiveType replace_with_type)
     : eliminate_type_(eliminate_type), replace_with_type_(replace_with_type) {}
 
+// This routine converts the arithmetic operations in the given module that use
+// eliminate_type_ to operations that use replace_with_type_.
 StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
   XLA_VLOG_LINES(
       3, "HloElementTypeConverter::Run(), before:\n" + module->ToString());
+
+  if (eliminate_type_ == replace_with_type_) {
+    return false;
+  }
+
   bool changed = false;
   for (auto* computation : module->computations()) {
     for (auto* hlo : computation->MakeInstructionPostOrder()) {
+      const auto opcode = hlo->opcode();
       // These are ops where it does not make sense to convert them.
-      if (hlo->opcode() == HloOpcode::kParameter ||
-          hlo->opcode() == HloOpcode::kConstant ||
-          hlo->opcode() == HloOpcode::kTuple ||
-          hlo->opcode() == HloOpcode::kConvert ||
-          hlo->opcode() == HloOpcode::kGetTupleElement ||
-          hlo->opcode() == HloOpcode::kInfeed ||
-          hlo->opcode() == HloOpcode::kOutfeed) {
+      if (opcode == HloOpcode::kParameter || opcode == HloOpcode::kConstant ||
+          opcode == HloOpcode::kTuple || opcode == HloOpcode::kConvert ||
+          opcode == HloOpcode::kGetTupleElement ||
+          opcode == HloOpcode::kInfeed || opcode == HloOpcode::kOutfeed) {
         continue;
       }
 
       // We cannot change a CustomCall since we have no way of adjusting the
       // called binary to expect the updated type.
-      if (hlo->opcode() == HloOpcode::kCustomCall) {
+      if (opcode == HloOpcode::kCustomCall) {
         continue;
       }
 
       // These are ops with embedded computations where it suffices to convert
       // the embedded computations instead of converting the ops themselves.
-      if (hlo->opcode() == HloOpcode::kWhile ||
-          hlo->opcode() == HloOpcode::kCall ||
-          hlo->opcode() == HloOpcode::kFusion ||
-          hlo->opcode() == HloOpcode::kMap ||
-          hlo->opcode() == HloOpcode::kReduce ||
-          hlo->opcode() == HloOpcode::kReduceWindow ||
-          hlo->opcode() == HloOpcode::kSelectAndScatter ||
-          hlo->opcode() == HloOpcode::kConditional) {
+      if (opcode == HloOpcode::kWhile || opcode == HloOpcode::kCall ||
+          opcode == HloOpcode::kFusion || opcode == HloOpcode::kMap ||
+          opcode == HloOpcode::kReduce || opcode == HloOpcode::kReduceWindow ||
+          opcode == HloOpcode::kSelectAndScatter ||
+          opcode == HloOpcode::kConditional) {
         continue;
       }
       TF_RET_CHECK(hlo->called_computations().empty()) << hlo->ToString();
@@ -106,6 +157,11 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
         continue;
       }
 
+      // Handle instructions that perform arithmetic operations and contain
+      // operands with eliminate_type_.
+      //
+      // First, convert the operands with eliminate_type_ to operands with
+      // replace_with_type_.
       std::vector<HloInstruction*> new_operands;
       for (HloInstruction* operand : hlo->operands()) {
         if (operand->shape().element_type() == eliminate_type_) {
@@ -114,6 +170,10 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
         new_operands.push_back(operand);
       }
 
+      // Then find out the result type of the new instruction with the same
+      // opcode but using the converted operands, create the new instruction,
+      // and convert the result of the new instruction back to match the result
+      // type of the original instruction.
       HloInstruction* new_hlo;
       if (hlo->shape().element_type() == eliminate_type_) {
         Shape shape =
@@ -121,10 +181,20 @@ StatusOr<bool> HloElementTypeConverter::Run(HloModule* module) {
         new_hlo = computation->AddInstruction(
             hlo->CloneWithNewOperands(shape, new_operands, hlo->GetModule()));
         new_hlo = ToElementType(new_hlo, eliminate_type_);
+      } else if (ShapeUtil::IsTuple(hlo->shape())) {
+        Shape old_shape = hlo->shape();
+        Shape new_shape = GetConvertedTupleShape(hlo->shape(), eliminate_type_,
+                                                 replace_with_type_);
+        new_hlo = computation->AddInstruction(hlo->CloneWithNewOperands(
+            new_shape, new_operands, hlo->GetModule()));
+        // Convert the elements of the result of `new_hlo` to produce a new
+        // tuple with shape `old_shape`.
+        new_hlo = ConvertTupleElements(new_hlo, old_shape);
       } else {
         new_hlo = computation->AddInstruction(hlo->CloneWithNewOperands(
             hlo->shape(), new_operands, hlo->GetModule()));
       }
+
       TF_RETURN_IF_ERROR(computation->ReplaceInstruction(hlo, new_hlo));
       changed = true;
     }

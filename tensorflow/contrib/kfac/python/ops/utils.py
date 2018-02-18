@@ -25,6 +25,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -143,7 +144,9 @@ def layer_params_to_mat2d(vector):
                                         [-1, w_part.shape.as_list()[-1]])
     return array_ops.concat(
         (w_part_reshaped, array_ops.reshape(b_part, [1, -1])), axis=0)
-  else:
+  elif isinstance(vector, ops.IndexedSlices):
+    return vector
+  else:  # Tensor or Tensor-like.
     return array_ops.reshape(vector, [-1, vector.shape.as_list()[-1]])
 
 
@@ -162,6 +165,11 @@ def mat2d_to_layer_params(vector_template, mat2d):
   if isinstance(vector_template, (tuple, list)):
     w_part, b_part = mat2d[:-1], mat2d[-1]
     return array_ops.reshape(w_part, vector_template[0].shape), b_part
+  elif isinstance(vector_template, ops.IndexedSlices):
+    if not isinstance(mat2d, ops.IndexedSlices):
+      raise TypeError(
+          "If vector_template is an IndexedSlices, so should mat2d.")
+    return mat2d
   else:
     return array_ops.reshape(mat2d, vector_template.shape)
 
@@ -343,6 +351,133 @@ def cross_replica_mean(tensor, name=None):
       return tensor
     return tpu_ops.cross_replica_sum(tensor / num_shards)
 
+
+def ensure_sequence(obj):
+  """If `obj` isn't a tuple or list, return a tuple containing `obj`."""
+  if isinstance(obj, (tuple, list)):
+    return obj
+  else:
+    return (obj,)
+
+
+def batch_execute(global_step, thunks, batch_size, name=None):
+  """Executes a subset of ops per global step.
+
+  Given a list of thunks, each of which produces a single stateful op,
+  ensures that exactly 'batch_size' ops are run per global step. Ops are
+  scheduled in a round-robin fashion. For example, with 3 ops
+
+    global_step | op0 | op1 | op2
+    ------------+-----+-----+-----
+        0       |  x  |  x  |
+    ------------+-----+-----+-----
+        1       |  x  |     |  x
+    ------------+-----+-----+-----
+        2       |     |  x  |  x
+    ------------+-----+-----+-----
+        3       |  x  |  x  |
+    ------------+-----+-----+-----
+        4       |  x  |     |  x
+
+  Does not guarantee order of op execution within a single global step.
+
+  Args:
+    global_step: Tensor indicating time. Determines which ops run.
+    thunks: List of thunks. Each thunk encapsulates one op. Return values are
+      ignored.
+    batch_size: int. Number of ops to execute per global_step.
+    name: string or None. Name scope for newly added ops.
+
+  Returns:
+    List of ops. Exactly 'batch_size' ops are guaranteed to have an effect
+    every global step.
+  """
+
+  def true_fn(thunk):
+    """Ensures thunk is executed and returns an Op (not a Tensor)."""
+
+    def result():
+      with ops.control_dependencies([thunk()]):
+        return control_flow_ops.no_op()
+
+    return result
+
+  def false_fn(_):
+    """Executes a no-op."""
+
+    def result():
+      return control_flow_ops.no_op()
+
+    return result
+
+  with ops.name_scope(name, "batch_execute"):
+    true_fns = [true_fn(thunk) for thunk in thunks]
+    false_fns = [false_fn(thunk) for thunk in thunks]
+    num_thunks = len(thunks)
+    conditions = [
+        math_ops.less(
+            math_ops.mod(batch_size - 1 + global_step * batch_size - j,
+                         num_thunks), batch_size) for j in range(num_thunks)
+    ]
+    result = [
+        control_flow_ops.cond(condition, true_fn, false_fn)
+        for (condition, true_fn,
+             false_fn) in zip(conditions, true_fns, false_fns)
+    ]
+    return result
+
+
+def matmul_sparse_dense(A, B, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(A, B) where A is sparse, B is dense.
+
+  Args:
+    A: tf.IndexedSlices with dense shape [m, n].
+    B: tf.Tensor with shape [n, k].
+    name: str. Name of op.
+
+  Returns:
+    tf.IndexedSlices resulting from matmul(A, B).
+
+  Raises:
+    ValueError: If A doesn't represent a matrix.
+    ValueError: If B is not rank-2.
+  """
+  with ops.name_scope(name, "matmul_sparse_dense", [A, B]):
+    if A.indices.shape.ndims != 1 or A.values.shape.ndims != 2:
+      raise ValueError("A must represent a matrix. Found: %s." % A)
+    if B.shape.ndims != 2:
+      raise ValueError("B must be a matrix.")
+    new_values = math_ops.matmul(A.values, B)
+    return ops.IndexedSlices(
+        new_values,
+        A.indices,
+        dense_shape=array_ops.stack([A.dense_shape[0], new_values.shape[1]]))
+
+
+def matmul_diag_sparse(A_diag, B, name=None):  # pylint: disable=invalid-name
+  """Computes matmul(A, B) where A is a diagonal matrix, B is sparse.
+
+  Args:
+    A_diag: diagonal entries of matrix A of shape [m, m].
+    B: tf.IndexedSlices. Represents matrix of shape [m, n].
+    name: str. Name of op.
+
+  Returns:
+    tf.IndexedSlices resulting from matmul(A, B).
+
+  Raises:
+    ValueError: If A_diag is not rank-1.
+    ValueError: If B doesn't represent a matrix.
+  """
+  with ops.name_scope(name, "matmul_diag_sparse", [A_diag, B]):
+    A_diag = ops.convert_to_tensor(A_diag)
+    if A_diag.shape.ndims != 1:
+      raise ValueError("A_diag must be a rank-1 Tensor.")
+    if B.indices.shape.ndims != 1 or B.values.shape.ndims != 2:
+      raise ValueError("B must represent a matrix. Found: %s." % B)
+    a = array_ops.gather(A_diag, B.indices)
+    a = array_ops.reshape(a, list(a.shape) + [1] * (B.values.shape.ndims - 1))
+    return ops.IndexedSlices(a * B.values, B.indices, dense_shape=B.dense_shape)
 
 # TODO(b/69623235): Add a function for finding tensors that share gradients
 # to eliminate redundant fisher factor computations.

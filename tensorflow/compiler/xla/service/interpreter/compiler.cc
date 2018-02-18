@@ -44,41 +44,26 @@ namespace interpreter {
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::interpreter;
 
-/*
- * Run optimization passes on the module. The graph is transformed by
- * each pass in the optimization pipeline. The service subdirectory
- * contains useful optimization passes.
- */
 Status InterpreterCompiler::RunHloOptimization(HloModule* hlo_module) {
   HloPassPipeline pipeline("Interpreter");
-  pipeline.AddPass<Inliner>();
-  pipeline.AddPass<HloSubcomputationUnification>();
-  pipeline.AddPass<HloCSE>(false);
 
-  pipeline.AddPass<HloPassFix<AlgebraicSimplifier>>(
-      false, [](const Shape&, const Shape&) { return false; });
-  pipeline.AddPass<WhileLoopSimplifier>();
-  pipeline.AddPass<ReshapeMover>();
-  pipeline.AddPass<HloConstantFolding>();
-  pipeline.AddPass<HloCSE>(true);
   pipeline.AddPass<LayoutAssignment>(
       hlo_module->mutable_entry_computation_layout());
 
-  pipeline.AddPass<HloDCE>();
-  pipeline.AddPass<FlattenCallGraph>();
   return pipeline.Run(hlo_module).status();
 }
 
 StatusOr<std::unique_ptr<HloModule>> InterpreterCompiler::RunHloPasses(
-    std::unique_ptr<HloModule> hlo_module,
-    se::StreamExecutor* /*stream_exec*/) {
+    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* /*stream_exec*/,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   VLOG(1) << "Run hlo passes on graph " << hlo_module->name();
   TF_RETURN_IF_ERROR(RunHloOptimization(hlo_module.get()));
   return std::move(hlo_module);
 }
 
 StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
-    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec) {
+    std::unique_ptr<HloModule> hlo_module, se::StreamExecutor* stream_exec,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   TF_RET_CHECK(stream_exec != nullptr);
 
   VLOG(1) << "Run backend " << hlo_module->name();
@@ -96,7 +81,8 @@ StatusOr<std::unique_ptr<Executable>> InterpreterCompiler::RunBackend(
 
 StatusOr<std::vector<std::unique_ptr<Executable>>> InterpreterCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> /*hlo_modules*/,
-    std::vector<std::vector<se::StreamExecutor*>> /*stream_execs*/) {
+    std::vector<std::vector<se::StreamExecutor*>> /*stream_execs*/,
+    DeviceMemoryAllocator* /*device_allocator*/) {
   return tensorflow::errors::Unimplemented(
       "Compilation of multiple HLO modules is not supported on Interpreter.");
 }

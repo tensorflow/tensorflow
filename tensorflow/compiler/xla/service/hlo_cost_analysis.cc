@@ -392,6 +392,21 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   return Status::OK();
 }
 
+Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
+  auto real_shape =
+      ShapeUtil::IsTuple(fft->operand(0)->shape())
+          ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
+          : fft->operand(0)->shape();
+  constexpr int kFmaPerComplexMul = 4;
+  int64 log_factors = 1;
+  for (int64 dim : fft->fft_length()) {
+    log_factors *= tensorflow::Log2Floor(dim);
+  }
+  current_properties_[kFlopsKey] = kFmaFlops * kFmaPerComplexMul * log_factors *
+                                   ShapeUtil::ElementsIn(real_shape);
+  return Status::OK();
+}
+
 Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
@@ -454,7 +469,13 @@ Status HloCostAnalysis::HandleCall(const HloInstruction* call) {
 }
 
 Status HloCostAnalysis::HandleCustomCall(const HloInstruction*) {
-  return Unimplemented("Custom-call is not implemented for HLO cost analysis.");
+  // We can't do anything sane with CustomCalls, since we don't know what they
+  // do, and returning an error status will stop iteration over this
+  // computation, which is probably also not what we want.  So just punt and
+  // return OK.  This will cause all of the properties to be reported as 0,
+  // which is fine.
+  current_should_compute_bottleneck_time_ = false;
+  return Status::OK();
 }
 
 Status HloCostAnalysis::HandleSort(const HloInstruction* sort) {

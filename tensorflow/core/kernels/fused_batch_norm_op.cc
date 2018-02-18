@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
+#include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/fused_batch_norm_op.h"
 #include "tensorflow/core/util/tensor_format.h"
 
@@ -238,6 +239,14 @@ struct FusedBatchNorm<GPUDevice, T, U> {
             << " scale shape: " << scale.shape().DebugString()
             << " offset shape: " << offset.shape().DebugString()
             << " tensor format: " << tensor_format;
+
+    // If input is empty, return NaN mean/variance
+    if (x.shape().num_elements() == 0) {
+      functor::SetNanFunctor<U> f;
+      f(context->eigen_device<GPUDevice>(), batch_mean->flat<U>());
+      f(context->eigen_device<GPUDevice>(), batch_var->flat<U>());
+      return;
+    }
 
     Tensor x_maybe_transformed = x;
     Tensor x_transformed;
@@ -566,27 +575,6 @@ class FusedBatchNormOp : public OpKernel {
   bool is_training_;
 };
 
-namespace {
-
-template <typename Device>
-void FillZeros(Tensor* t);
-
-#if GOOGLE_CUDA
-template <>
-void FillZeros<GPUDevice>(Tensor* t) {
-  cudaMemset(const_cast<char*>(t->tensor_data().data()), 0,
-             t->tensor_data().size());
-}
-#endif
-
-template <>
-void FillZeros<CPUDevice>(Tensor* t) {
-  memset(const_cast<char*>(t->tensor_data().data()), 0,
-         t->tensor_data().size());
-}
-
-}  // namespace
-
 template <typename Device, typename T, typename U>
 class FusedBatchNormGradOp : public OpKernel {
  public:
@@ -650,11 +638,20 @@ class FusedBatchNormGradOp : public OpKernel {
     Tensor* placeholder_1 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(3, TensorShape({}), &placeholder_1));
-    FillZeros<Device>(placeholder_1);
+    functor::SetZeroFunctor<Device, float> f;
+    f(context->eigen_device<Device>(), placeholder_1->flat<U>());
     Tensor* placeholder_2 = nullptr;
     OP_REQUIRES_OK(
         context, context->allocate_output(4, TensorShape({}), &placeholder_2));
-    FillZeros<Device>(placeholder_2);
+    f(context->eigen_device<Device>(), placeholder_2->flat<U>());
+
+    // If input is empty, set gradients w.r.t scale/offset to zero.
+    if (x.shape().num_elements() == 0) {
+      functor::SetZeroFunctor<Device, U> f;
+      f(context->eigen_device<Device>(), scale_backprop->flat<U>());
+      f(context->eigen_device<Device>(), offset_backprop->flat<U>());
+      return;
+    }
 
     if (is_training_) {
       functor::FusedBatchNormGrad<Device, T, U>()(

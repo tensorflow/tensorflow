@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_debug_allocator.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
+#include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/gpu/pool_allocator.h"
@@ -88,8 +89,8 @@ ProcessState::~ProcessState() {
 }
 
 string ProcessState::MemDesc::DebugString() {
-  return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index, ", dma: ",
-                         gpu_registered, ", nic: ", nic_registered);
+  return strings::StrCat((loc == CPU ? "CPU " : "GPU "), dev_index,
+                         ", dma: ", gpu_registered, ", nic: ", nic_registered);
 }
 
 ProcessState::MemDesc ProcessState::PtrType(const void* ptr) {
@@ -124,7 +125,7 @@ Allocator* ProcessState::GetGPUAllocator(const GPUOptions& options,
       return nullptr;
     }
 
-    const CudaGpuId cuda_gpu_id = GpuIdUtil::TfToCudaGpuId(tf_gpu_id);
+    const CudaGpuId cuda_gpu_id = GpuIdManager::TfToCudaGpuId(tf_gpu_id);
     gpu_allocator =
         new GPUBFCAllocator(cuda_gpu_id, total_bytes, options,
                             strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
@@ -230,8 +231,24 @@ Allocator* ProcessState::GetCUDAHostAllocator(int numa_node) {
   // TODO(tucker): actually maintain separate CPUAllocators for
   // different numa_nodes.  For now, just one.
   numa_node = 0;
-  mutex_lock lock(mu_);
 
+  {
+    // Here we optimize the most common use case where cuda_host_allocators_
+    // and cuda_al_ have already been populated and since we're only reading
+    // these vectors, we can get by with a shared lock. In the slower case,
+    // we take a unique lock and populate these vectors.
+    tf_shared_lock lock(mu_);
+
+    if (FLAGS_brain_gpu_record_mem_types &&
+        static_cast<int>(cuda_al_.size()) > 0) {
+      return cuda_al_[0];
+    }
+    if (static_cast<int>(cuda_host_allocators_.size()) > numa_node) {
+      return cuda_host_allocators_[0];
+    }
+  }
+
+  mutex_lock lock(mu_);
   // Find the first valid StreamExecutor to request CUDA host memory
   // through, since any will work.
   //

@@ -291,6 +291,9 @@ class Mean(Metric):
     Args:
       values: Tensor with the per-example value.
       weights: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      The arguments, for easy chaining.
     """
     if weights is None:
       self.denom.assign_add(
@@ -302,6 +305,9 @@ class Mean(Metric):
       self.denom.assign_add(math_ops.reduce_sum(weights))
       values = math_ops.cast(values, self.dtype) * weights
       self.numer.assign_add(math_ops.reduce_sum(values))
+    if weights is None:
+      return values
+    return values, weights
 
   def result(self):
     t = self.numer / self.denom
@@ -329,7 +335,13 @@ class Accuracy(Mean):
         per element of the Tensor.
       predictions: Tensor with the predicted label for each example.
       weights: Optional weighting of each example. Defaults to 1.
+
+    Returns:
+      The arguments, for easy chaining.
     """
     matches = math_ops.equal(labels, predictions)
     matches = math_ops.cast(matches, dtypes.float64)
     super(Accuracy, self).call(matches, weights=weights)
+    if weights is None:
+      return labels, predictions
+    return labels, predictions, weights

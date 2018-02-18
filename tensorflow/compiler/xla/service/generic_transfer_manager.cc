@@ -89,7 +89,7 @@ GenericTransferManager::TransferLiteralFromDevice(
               /*source=*/device_buffer.buffer(index),
               /*size=*/GetByteSizeRequirement(subshape),
               /*destination=*/
-              literal->GetSubliteral(index).MutableInternalData()));
+              literal->untyped_data(index)));
         }
 
         return Status::OK();
@@ -124,17 +124,17 @@ Status GenericTransferManager::TransferLiteralToDevice(
           TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
                        device_memory.size());
           // Element is array-shaped: transfer array data to device buffer.
-          const Literal& subliteral = literal.GetSubliteral(index);
+          const auto subliteral = LiteralView::Create(literal, index);
           std::unique_ptr<Literal> relayed_out_literal;
           const void* source;
           if (LayoutUtil::Equal(device_subshape.layout(),
                                 subliteral.shape().layout())) {
-            source = subliteral.InternalData();
+            source = subliteral.untyped_data();
           } else {
             // Relayout data before transferring.
             relayed_out_literal = subliteral.Relayout(device_subshape.layout(),
                                                       /*shape_index=*/{});
-            source = relayed_out_literal->InternalData();
+            source = relayed_out_literal->untyped_data();
           }
           return TransferBufferToDevice(
               executor,

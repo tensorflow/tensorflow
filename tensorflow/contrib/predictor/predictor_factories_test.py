@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.predictor import predictor_factories
+from tensorflow.contrib.predictor import testing_common
 from tensorflow.python.platform import test
 
 MODEL_DIR_NAME = 'contrib/predictor/test_export_dir'
@@ -45,6 +46,29 @@ class PredictorFactoriesTest(test.TestCase):
     bad_tags_regex = ('.*? could not be found in SavedModel')
     with self.assertRaisesRegexp(RuntimeError, bad_tags_regex):
       predictor_factories.from_saved_model(self._export_dir, tags='bad_tag')
+
+  def testFromContribEstimator(self):
+    estimator = testing_common.get_arithmetic_estimator(core=False)
+    input_fn = testing_common.get_arithmetic_input_fn(core=False)
+    predictor_factories.from_contrib_estimator(
+        estimator, input_fn, output_alternative_key='sum')
+
+  def testFromContribEstimatorWithCoreEstimatorRaises(self):
+    estimator = testing_common.get_arithmetic_estimator(core=True)
+    input_fn = testing_common.get_arithmetic_input_fn(core=True)
+    with self.assertRaises(TypeError):
+      predictor_factories.from_contrib_estimator(estimator, input_fn)
+
+  def testFromCoreEstimator(self):
+    estimator = testing_common.get_arithmetic_estimator(core=True)
+    input_fn = testing_common.get_arithmetic_input_fn(core=True)
+    predictor_factories.from_estimator(estimator, input_fn)
+
+  def testFromCoreEstimatorWithContribEstimatorRaises(self):
+    estimator = testing_common.get_arithmetic_estimator(core=False)
+    input_fn = testing_common.get_arithmetic_input_fn(core=False)
+    with self.assertRaises(TypeError):
+      predictor_factories.from_estimator(estimator, input_fn)
 
 
 if __name__ == '__main__':

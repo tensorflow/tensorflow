@@ -49,7 +49,7 @@ std::vector<Matcher<float>> ArrayFloatNear(const std::vector<float>& values,
   return matchers;
 }
 
-int SingleOpModel::AddTensor(TensorData t) {
+int SingleOpModel::AddTensor(TensorData t, std::initializer_list<int> data) {
   int id = tensors_.size();
 
   // This is slightly different depending on whether we are adding a
@@ -78,8 +78,23 @@ int SingleOpModel::AddTensor(TensorData t) {
         builder_.CreateVector<int64_t>({t.zero_point}));
   }
 
-  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>({}),
-                                  t.type, /*buffer=*/0,
+  int buffer_id = 0;
+  if (data.size()) {
+    // Initialize buffers list with empty buffer to allow for non-const tensors.
+    if (buffers_.empty()) {
+      buffers_.push_back(CreateBuffer(builder_, builder_.CreateVector({})));
+    }
+
+    // Add data as a Buffer to buffers list.
+    buffer_id = buffers_.size();
+    auto data_buffer =
+        builder_.CreateVector(reinterpret_cast<const uint8_t*>(data.begin()),
+                              sizeof(int) * data.size());
+    buffers_.push_back(CreateBuffer(builder_, data_buffer));
+  }
+
+  tensors_.push_back(CreateTensor(builder_, builder_.CreateVector<int>(t.shape),
+                                  t.type, /*buffer=*/buffer_id,
                                   /*name=*/0, q_params));
 
   tensor_data_[id] = t;
@@ -88,7 +103,15 @@ int SingleOpModel::AddTensor(TensorData t) {
 }
 
 int SingleOpModel::AddInput(const TensorData& t) {
-  int id = AddTensor(t);
+  int id = AddTensor(t, {});
+  inputs_.push_back(id);
+  return id;
+}
+
+int SingleOpModel::AddConstInput(TensorType type,
+                                 std::initializer_list<int> data,
+                                 std::initializer_list<int> shape) {
+  int id = AddTensor(TensorData{type, shape}, data);
   inputs_.push_back(id);
   return id;
 }
@@ -100,7 +123,7 @@ int SingleOpModel::AddNullInput() {
 }
 
 int SingleOpModel::AddOutput(const TensorData& t) {
-  int id = AddTensor(t);
+  int id = AddTensor(t, {});
   outputs_.push_back(id);
   return id;
 }
@@ -142,19 +165,21 @@ void SingleOpModel::BuildInterpreter(
   subgraphs.push_back(subgraph);
   auto subgraphs_flatbuffer = builder_.CreateVector(subgraphs);
 
-  std::vector<flatbuffers::Offset<Buffer>> buffers_vec;
-  auto buffers = builder_.CreateVector(buffers_vec);
+  auto buffers = builder_.CreateVector(buffers_);
   auto description = builder_.CreateString("programmatic model");
   builder_.Finish(CreateModel(builder_, TFLITE_SCHEMA_VERSION, opcodes,
                               subgraphs_flatbuffer, description, buffers));
 
   auto* model = GetModel(builder_.GetBufferPointer());
 
-  ops::builtin::BuiltinOpResolver builtins;
-  for (const auto& reg : custom_registrations_) {
-    builtins.AddCustom(reg.first.data(), reg.second());
+  if (!resolver_) {
+    auto resolver = new ops::builtin::BuiltinOpResolver();
+    for (const auto& reg : custom_registrations_) {
+      resolver->AddCustom(reg.first.data(), reg.second());
+    }
+    resolver_ = std::unique_ptr<OpResolver>(resolver);
   }
-  InterpreterBuilder(model, builtins)(&interpreter_);
+  InterpreterBuilder(model, *resolver_)(&interpreter_);
 
   CHECK(interpreter_ != nullptr);
 
@@ -162,6 +187,7 @@ void SingleOpModel::BuildInterpreter(
   for (const auto& shape : input_shapes) {
     int input_idx = interpreter_->inputs()[i++];
     if (input_idx == kOptionalTensor) continue;
+    if (shape.empty()) continue;
     CHECK(interpreter_->ResizeInputTensor(input_idx, shape) == kTfLiteOk);
   }
   CHECK(interpreter_->AllocateTensors() == kTfLiteOk)

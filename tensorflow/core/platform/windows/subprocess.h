@@ -19,8 +19,7 @@ limitations under the License.
 namespace tensorflow {
 
 // SubProcess is not yet implemented for Windows.
-class SubProcess {
-};
+class SubProcess {};
 
 }  // namespace tensorflow
 

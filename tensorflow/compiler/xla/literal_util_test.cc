@@ -31,6 +31,7 @@ namespace xla {
 namespace {
 
 using ::testing::ElementsAre;
+using ::testing::HasSubstr;
 
 class LiteralUtilTest : public ::testing::Test {
  protected:
@@ -192,6 +193,34 @@ TEST_F(LiteralUtilTest, CreateR3FromArray3d) {
   ASSERT_EQ(expected, result);
 }
 
+TEST_F(LiteralUtilTest, CreateSparse) {
+  std::vector<int64> dimensions = {8, 8, 8};
+  Array2D<int64> indices = {
+      {3, 4, 5},
+      {1, 2, 3},
+      {2, 3, 4},
+      {3, 5, 6},
+  };
+  std::vector<int64> values = {7, 8, 9, 10};
+  auto literal = Literal::CreateSparse<int64>(
+      dimensions, SparseIndexArray(indices.n1() + 3, indices), values);
+
+  Array2D<int64> expected_indices = {
+      {1, 2, 3},
+      {2, 3, 4},
+      {3, 4, 5},
+      {3, 5, 6},
+  };
+  std::vector<int64> expected_values = {8, 9, 7, 10};
+
+  EXPECT_EQ(literal->sparse_indices()->data(),
+            tensorflow::gtl::ArraySlice<int64>(
+                expected_indices.data(), expected_indices.num_elements()));
+  EXPECT_EQ(tensorflow::gtl::ArraySlice<int64>(literal->data<int64>().data(),
+                                               expected_values.size()),
+            tensorflow::gtl::ArraySlice<int64>(expected_values));
+}
+
 TEST_F(LiteralUtilTest, LiteralR4F32ProjectedStringifies) {
   // clang-format off
   auto literal = Literal::CreateR4Projected<float>({
@@ -293,29 +322,28 @@ TEST_F(LiteralUtilTest, NonScalarEquality) {
   auto matrix_different = Literal::CreateR2<float>({{4.0, 3.0}, {1.0, 2.0}});
   auto vector_literal = Literal::CreateR1<float>({1.0, 2.0, 3.0, 4.0});
   auto scalar = Literal::CreateR0<float>(1.0);
+  Literal nil(ShapeUtil::MakeNil());
 
   EXPECT_EQ(*matrix, *matrix);
   EXPECT_EQ(*matrix, *matrix_clone);
   EXPECT_NE(*matrix, *matrix_different);
   EXPECT_NE(*matrix, *vector_literal);
   EXPECT_NE(*matrix, *scalar);
+  EXPECT_NE(*matrix, nil);
+  EXPECT_EQ(nil, nil);
 }
 
 TEST_F(LiteralUtilTest, DifferentLayoutEquality) {
   // Test equality with literals which have different layouts.
-  auto colmajor = MakeUnique<Literal>();
-  *colmajor->mutable_shape() = ShapeUtil::MakeShape(F32, {2, 2});
-  *colmajor->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({0, 1});
-  colmajor->Reserve(4);
+  auto colmajor =
+      MakeUnique<Literal>(ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {0, 1}));
   colmajor->Set<float>({0, 0}, 1.0);
   colmajor->Set<float>({0, 1}, 2.0);
   colmajor->Set<float>({1, 0}, 3.0);
   colmajor->Set<float>({1, 1}, 4.0);
 
-  auto rowmajor = MakeUnique<Literal>();
-  *rowmajor->mutable_shape() = ShapeUtil::MakeShape(F32, {2, 2});
-  *rowmajor->mutable_shape()->mutable_layout() = LayoutUtil::MakeLayout({1, 0});
-  rowmajor->Reserve(4);
+  auto rowmajor =
+      MakeUnique<Literal>(ShapeUtil::MakeShapeWithLayout(F32, {2, 2}, {1, 0}));
   rowmajor->Set<float>({0, 0}, 1.0);
   rowmajor->Set<float>({0, 1}, 2.0);
   rowmajor->Set<float>({1, 0}, 3.0);
@@ -597,24 +625,26 @@ TEST_F(LiteralUtilTest, TestR4RelayoutEquivalence) {
 
 TEST_F(LiteralUtilTest, TestR2LinearLayout) {
   // Test expected memory layout of R2 dim0-minor (column-major) literal.
-  auto mat_dim0minor = Literal::CreateR2WithLayout<int>({{1, 2, 3}, {4, 5, 6}},
-                                                        layout_r2_dim0minor_);
-  EXPECT_EQ(mat_dim0minor->s32s_size(), 6);
-  EXPECT_THAT(mat_dim0minor->s32s(), ElementsAre(1, 4, 2, 5, 3, 6));
+  auto mat_dim0minor = Literal::CreateR2WithLayout<int32>(
+      {{1, 2, 3}, {4, 5, 6}}, layout_r2_dim0minor_);
+  EXPECT_EQ(mat_dim0minor->element_count(), 6);
+  EXPECT_THAT(mat_dim0minor->data<int32>(), ElementsAre(1, 4, 2, 5, 3, 6));
 
   // Test expected memory layout when using Relayout to row major.
   auto relaid_mat_to_dim0major = mat_dim0minor->Relayout(layout_r2_dim0major_);
-  EXPECT_THAT(relaid_mat_to_dim0major->s32s(), ElementsAre(1, 2, 3, 4, 5, 6));
+  EXPECT_THAT(relaid_mat_to_dim0major->data<int32>(),
+              ElementsAre(1, 2, 3, 4, 5, 6));
 
   // Test expected memory layout of R2 created with dim0-major (row-major).
-  auto mat_dim0major = Literal::CreateR2WithLayout<int>({{1, 2, 3}, {4, 5, 6}},
-                                                        layout_r2_dim0major_);
-  EXPECT_EQ(mat_dim0major->s32s_size(), 6);
-  EXPECT_THAT(mat_dim0major->s32s(), ElementsAre(1, 2, 3, 4, 5, 6));
+  auto mat_dim0major = Literal::CreateR2WithLayout<int32>(
+      {{1, 2, 3}, {4, 5, 6}}, layout_r2_dim0major_);
+  EXPECT_EQ(mat_dim0major->element_count(), 6);
+  EXPECT_THAT(mat_dim0major->data<int32>(), ElementsAre(1, 2, 3, 4, 5, 6));
 
   // Test expected memory layout when using Relayout to column major.
   auto relaid_mat_to_dim0minor = mat_dim0major->Relayout(layout_r2_dim0minor_);
-  EXPECT_THAT(relaid_mat_to_dim0minor->s32s(), ElementsAre(1, 4, 2, 5, 3, 6));
+  EXPECT_THAT(relaid_mat_to_dim0minor->data<int32>(),
+              ElementsAre(1, 4, 2, 5, 3, 6));
 }
 
 TEST_F(LiteralUtilTest, TestR3LinearLayout) {
@@ -634,27 +664,27 @@ TEST_F(LiteralUtilTest, TestR3LinearLayout) {
   auto lit_dim0minor =
       Literal::CreateR3FromArray3DWithLayout<int>(arr3d, layout_r3_dim0minor_);
 
-  EXPECT_EQ(lit_dim0minor->s32s_size(), 12);
+  EXPECT_EQ(lit_dim0minor->element_count(), 12);
   std::vector<int> expected_dim0minor{1, 7, 4, 10, 2, 8, 5, 11, 3, 9, 6, 12};
-  EXPECT_THAT(lit_dim0minor->s32s(),
+  EXPECT_THAT(lit_dim0minor->data<int32>(),
               testing::ElementsAreArray(expected_dim0minor));
 
   // Test expected memory layout when using Relayout to row major.
   auto relaid_lit_to_dim0major = lit_dim0minor->Relayout(layout_r3_dim0major_);
   std::vector<int> expected_dim0major{1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
-  EXPECT_THAT(relaid_lit_to_dim0major->s32s(),
+  EXPECT_THAT(relaid_lit_to_dim0major->data<int32>(),
               testing::ElementsAreArray(expected_dim0major));
 
   // Test expected memory layout of R3 created with dim0-major (row-major).
   auto lit_dim0major =
       Literal::CreateR3FromArray3DWithLayout<int>(arr3d, layout_r3_dim0major_);
-  EXPECT_EQ(lit_dim0major->s32s_size(), 12);
-  EXPECT_THAT(lit_dim0major->s32s(),
+  EXPECT_EQ(lit_dim0major->element_count(), 12);
+  EXPECT_THAT(lit_dim0major->data<int32>(),
               testing::ElementsAreArray(expected_dim0major));
 
   // Test expected memory layout when using Relayout to column major.
   auto relaid_lit_to_dim0minor = lit_dim0major->Relayout(layout_r3_dim0minor_);
-  EXPECT_THAT(relaid_lit_to_dim0minor->s32s(),
+  EXPECT_THAT(relaid_lit_to_dim0minor->data<int32>(),
               testing::ElementsAreArray(expected_dim0minor));
 }
 
@@ -687,28 +717,28 @@ TEST_F(LiteralUtilTest, SliceR3U32Full) {
 }
 
 TEST_F(LiteralUtilTest, PopulateR1S64) {
-  Literal output;
+  Literal output(ShapeUtil::MakeShape(S64, {1}));
   output.PopulateR1<int64>({77});
   auto expected = Literal::CreateR1<int64>({77});
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateR1U64) {
-  Literal output;
+  Literal output(ShapeUtil::MakeShape(U64, {2}));
   output.PopulateR1<uint64>({{77, 88}});
   auto expected = Literal::CreateR1<uint64>({{77, 88}});
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateR1C64) {
-  Literal output;
+  Literal output(ShapeUtil::MakeShape(C64, {1}));
   output.PopulateR1<complex64>({{77, 88}});
   auto expected = Literal::CreateR1<complex64>({{77, 88}});
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateR2C64) {
-  Literal output;
+  Literal output(ShapeUtil::MakeShape(C64, {2, 2}));
   output.PopulateR2<complex64>({{{7, 8}, {9, 10}}, {{1, 2}, {3, 4}}});
   auto expected =
       Literal::CreateR2<complex64>({{{7, 8}, {9, 10}}, {{1, 2}, {3, 4}}});
@@ -716,78 +746,78 @@ TEST_F(LiteralUtilTest, PopulateR2C64) {
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR0BF16) {
-  Literal output;
+  Literal output(ShapeUtil::MakeShape(BF16, {}));
   bfloat16 h(0.25f);
-  output.PopulateWithValue<bfloat16>(h, {});
+  output.PopulateWithValue<bfloat16>(h);
   auto expected = Literal::CreateR0<bfloat16>(h);
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR1BF16) {
-  Literal output;
+  Literal output(ShapeUtil::MakeShape(BF16, {3}));
   bfloat16 h(0.5f);
-  output.PopulateWithValue<bfloat16>(h, {3});
+  output.PopulateWithValue<bfloat16>(h);
   auto expected = Literal::CreateR1<bfloat16>({h, h, h});
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR2BF16) {
-  Literal output;
+  Literal output(ShapeUtil::MakeShape(BF16, {2, 2}));
   bfloat16 h(2.0f);
-  output.PopulateWithValue<bfloat16>(h, {2, 2});
+  output.PopulateWithValue<bfloat16>(h);
   auto expected = Literal::CreateR2<bfloat16>({{h, h}, {h, h}});
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR0F32) {
-  Literal output;
-  output.PopulateWithValue<float>(2.5f, {});
+  Literal output(ShapeUtil::MakeShape(F32, {}));
+  output.PopulateWithValue<float>(2.5f);
   auto expected = Literal::CreateR0<float>(2.5f);
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR1S64) {
-  Literal output;
-  output.PopulateWithValue<int64>(-7, {3});
+  Literal output(ShapeUtil::MakeShape(S64, {3}));
+  output.PopulateWithValue<int64>(-7);
   auto expected = Literal::CreateR1<int64>({-7, -7, -7});
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR2U64) {
-  Literal output;
-  output.PopulateWithValue<uint64>(42, {2, 2});
+  Literal output(ShapeUtil::MakeShape(U64, {2, 2}));
+  output.PopulateWithValue<uint64>(42);
   auto expected = Literal::CreateR2<uint64>({{42, 42}, {42, 42}});
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR2C64) {
-  Literal output;
-  output.PopulateWithValue<complex64>({4, 2}, {2, 2});
+  Literal output(ShapeUtil::MakeShape(C64, {2, 2}));
+  output.PopulateWithValue<complex64>({4, 2});
   auto expected =
       Literal::CreateR2<complex64>({{{4, 2}, {4, 2}}, {{4, 2}, {4, 2}}});
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR0F16) {
-  Literal output;
+  Literal output(ShapeUtil::MakeShape(F16, {}));
   half h(0.25f);
-  output.PopulateWithValue<half>(h, {});
+  output.PopulateWithValue<half>(h);
   auto expected = Literal::CreateR0<half>(h);
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR1F16) {
-  Literal output;
+  Literal output(ShapeUtil::MakeShape(F16, {3}));
   half h(0.5f);
-  output.PopulateWithValue<half>(h, {3});
+  output.PopulateWithValue<half>(h);
   auto expected = Literal::CreateR1<half>({h, h, h});
   EXPECT_EQ(output, *expected);
 }
 
 TEST_F(LiteralUtilTest, PopulateWithValueR2F16) {
-  Literal output;
+  Literal output(ShapeUtil::MakeShape(F16, {2, 2}));
   half h(2.0f);
-  output.PopulateWithValue<half>(h, {2, 2});
+  output.PopulateWithValue<half>(h);
   auto expected = Literal::CreateR2<half>({{h, h}, {h, h}});
   EXPECT_EQ(output, *expected);
 }
@@ -803,7 +833,7 @@ TEST_F(LiteralUtilTest, ReplicateR2U32) {
   EXPECT_EQ(*output, *expected);
 }
 
-TEST_F(LiteralUtilTest, Copy) {
+TEST_F(LiteralUtilTest, CopySliceFrom) {
   const int64 dimensions[] = {17, 15, 34, 21};
   const int64 layouts[][4] = {
       {3, 2, 1, 0}, {0, 2, 1, 3}, {0, 1, 2, 3}, {2, 0, 3, 1}, {1, 3, 0, 2}};
@@ -826,7 +856,7 @@ TEST_F(LiteralUtilTest, Copy) {
     const int64 src_base[] = {3, 1, 5, 7};
     const int64 dest_base[] = {6, 4, 12, 2};
     const int64 copy_size[] = {7, 8, 11, 9};
-    TF_EXPECT_OK(blank->Copy(*source, src_base, dest_base, copy_size));
+    TF_EXPECT_OK(blank->CopySliceFrom(*source, src_base, dest_base, copy_size));
 
     std::vector<int64> source_indexes(TF_ARRAYSIZE(dimensions), 0);
     std::vector<int64> blank_indexes(TF_ARRAYSIZE(dimensions), 0);
@@ -849,16 +879,16 @@ TEST_F(LiteralUtilTest, Copy) {
   }
 }
 
-TEST_F(LiteralUtilTest, CopyScalars) {
+TEST_F(LiteralUtilTest, CopyFromScalars) {
   auto zero = Literal::CreateR0<uint32>(0);
   auto nine = Literal::CreateR0<uint32>(9);
-  TF_EXPECT_OK(zero->Copy(*nine, {}, {}, {}));
+  TF_EXPECT_OK(zero->CopyFrom(*nine));
   EXPECT_EQ(*zero, *nine);
 
   auto vect = Literal::CreateR1<uint32>({3, 4, 9, 12, 5, 17, 21});
-  TF_EXPECT_OK(zero->Copy(*vect, {5}, {}, {}));
+  TF_EXPECT_OK(zero->CopySliceFrom(*vect, {5}, {}, {}));
   EXPECT_EQ(zero->Get<uint32>({}), 17);
-  TF_EXPECT_OK(vect->Copy(*zero, {}, {4}, {}));
+  TF_EXPECT_OK(vect->CopySliceFrom(*zero, {}, {4}, {}));
   EXPECT_EQ(vect->Get<uint32>({4}), 17);
 }
 
@@ -872,7 +902,7 @@ TEST_F(LiteralUtilTest, CopyFromAndToZeroElement) {
     const auto empty = Literal::CreateFromShape(empty_r1_shape);
     auto nine = Literal::CreateR1<float>({9});
 
-    TF_EXPECT_OK(nine->Copy(*empty, {0}, {0}, {0}));
+    TF_EXPECT_OK(nine->CopySliceFrom(*empty, {0}, {0}, {0}));
     EXPECT_EQ(*nine, *const_nine);
   }
 
@@ -881,9 +911,92 @@ TEST_F(LiteralUtilTest, CopyFromAndToZeroElement) {
     const auto empty = Literal::CreateFromShape(empty_r1_shape);
     auto nine = Literal::CreateR1<float>({9});
 
-    TF_EXPECT_OK(empty->Copy(*nine, {0}, {0}, {0}));
+    TF_EXPECT_OK(empty->CopySliceFrom(*nine, {0}, {0}, {0}));
     EXPECT_EQ(*empty, *const_empty);
   }
+}
+
+TEST_F(LiteralUtilTest, CopyFromNilShape) {
+  Literal nil_literal0(ShapeUtil::MakeNil());
+  Literal nil_literal1(ShapeUtil::MakeNil());
+  // This doesn't actually do any copying, but it should succeed.
+  TF_ASSERT_OK(nil_literal0.CopyFrom(nil_literal1));
+}
+
+TEST_F(LiteralUtilTest, CopyFromArrays) {
+  auto scalar_42 = Literal::CreateR0<float>(42.0);
+  auto scalar_123 = Literal::CreateR0<float>(123.0);
+  EXPECT_NE(*scalar_42, *scalar_123);
+  TF_ASSERT_OK(scalar_42->CopyFrom(*scalar_123, /*dest_shape_index=*/{},
+                                   /*src_shape_index=*/{}));
+  EXPECT_EQ(*scalar_42, *scalar_123);
+  EXPECT_EQ(scalar_42->Get<float>({}), 123.0f);
+
+  auto matrix_1234 = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto matrix_5678 = Literal::CreateR2<float>({{5.0, 6.0}, {7.0, 8.0}});
+  EXPECT_NE(*matrix_1234, *matrix_5678);
+  EXPECT_EQ(matrix_1234->Get<float>({0, 0}), 1.0f);
+  TF_ASSERT_OK(matrix_1234->CopyFrom(*matrix_5678, /*dest_shape_index=*/{},
+                                     /*src_shape_index=*/{}));
+  EXPECT_EQ(*matrix_1234, *matrix_5678);
+  EXPECT_EQ(matrix_1234->Get<float>({0, 0}), 5.0f);
+}
+
+TEST_F(LiteralUtilTest, CopyFromTuples) {
+  auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  Literal nil_literal(ShapeUtil::MakeNil());
+  auto nested_tuple = Literal::MakeTuple(
+      {matrix.get(),
+       Literal::MakeTuple({Literal::CreateR0<int32>(42).get(),
+                           Literal::CreateR1<double>({23.0, 44.0}).get(),
+                           &nil_literal})
+           .get()});
+  // Create a tuple the same shape as the inner tuple of nested_tuple but with
+  // different values..
+  auto tuple = Literal::MakeTuple({Literal::CreateR0<int32>(-5).get(),
+                                   Literal::CreateR1<double>({2.0, 4.0}).get(),
+                                   &nil_literal});
+
+  EXPECT_EQ(*matrix, LiteralView::Create(*nested_tuple, {0}));
+  EXPECT_EQ(nested_tuple->Get<int32>({}, {1, 0}), 42);
+  EXPECT_EQ(nested_tuple->Get<double>({0}, {1, 1}), 23.0);
+  EXPECT_EQ(nested_tuple->Get<double>({1}, {1, 1}), 44.0);
+
+  // Overwrite the inner tuple element of nested_tuple with the contents of
+  // 'tuple'.
+  TF_ASSERT_OK(nested_tuple->CopyFrom(*tuple, /*dest_shape_index=*/{1},
+                                      /*src_shape_index=*/{}));
+
+  // The matrix element should be unchanged.
+  EXPECT_EQ(*matrix, LiteralView::Create(*nested_tuple, {0}));
+
+  // The tuple element should have been copied from 'tuple'.
+  EXPECT_EQ(nested_tuple->Get<int32>({}, {1, 0}), -5);
+  EXPECT_EQ(nested_tuple->Get<double>({0}, {1, 1}), 2.0);
+  EXPECT_EQ(nested_tuple->Get<double>({1}, {1, 1}), 4.0);
+}
+TEST_F(LiteralUtilTest, CopyBetweenSameTuple) {
+  auto tuple = Literal::MakeTuple(
+      {Literal::CreateR0<int32>(-2).get(), Literal::CreateR0<int32>(4).get()});
+
+  EXPECT_EQ(tuple->Get<int32>({}, {0}), -2);
+  EXPECT_EQ(tuple->Get<int32>({}, {1}), 4);
+
+  // Copy from one element to the other.
+  TF_ASSERT_OK(tuple->CopyFrom(*tuple, /*dest_shape_index=*/{1},
+                               /*src_shape_index=*/{0}));
+
+  EXPECT_EQ(tuple->Get<int32>({}, {0}), -2);
+  EXPECT_EQ(tuple->Get<int32>({}, {1}), -2);
+}
+
+TEST_F(LiteralUtilTest, CopyFromDifferentShapes) {
+  auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto vector = Literal::CreateR1<float>({5.0, 7.0});
+  Status status = matrix->CopyFrom(*vector);
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Destination subshape incompatible"));
 }
 
 TEST_F(LiteralUtilTest, F16) {
@@ -892,7 +1005,7 @@ TEST_F(LiteralUtilTest, F16) {
   // TODO - modify if we make the data format machine endianess dependent
   auto m1 = Literal::CreateFromShape(ShapeUtil::MakeShape(F16, {2, 2}));
   Literal* l1 = m1.get();
-  const char* d1 = static_cast<const char*>(l1->InternalData());
+  const char* d1 = reinterpret_cast<const char*>(l1->data<half>().data());
   EXPECT_EQ(d1[0], 0);
   EXPECT_EQ(d1[1], 0);
   EXPECT_EQ(d1[2], 0);
@@ -901,13 +1014,12 @@ TEST_F(LiteralUtilTest, F16) {
   EXPECT_EQ(d1[5], 0);
   EXPECT_EQ(d1[6], 0);
   EXPECT_EQ(d1[7], 0);
-  EXPECT_EQ(l1->InternalData(), l1->MutableInternalData());
 
   half h1(1.0f);
   half h2(2.0f);
   auto m2 = Literal::CreateR2<half>({{h1, h2}, {h2, h1}});
   Literal* l2 = m2.get();
-  const char* d2 = static_cast<const char*>(l2->InternalData());
+  const char* d2 = reinterpret_cast<const char*>(l2->data<half>().data());
   EXPECT_EQ(d2[0], 0);
   EXPECT_EQ(d2[1], 0x3C);
   EXPECT_EQ(d2[2], 0);
@@ -916,7 +1028,6 @@ TEST_F(LiteralUtilTest, F16) {
   EXPECT_EQ(d2[5], 0x40);
   EXPECT_EQ(d2[6], 0);
   EXPECT_EQ(d2[7], 0x3C);
-  EXPECT_EQ(l2->InternalData(), l2->MutableInternalData());
 }
 
 TEST_F(LiteralUtilTest, Populate) {
@@ -941,7 +1052,9 @@ TEST_F(LiteralUtilTest, Populate) {
     auto generator = [&](tensorflow::gtl::ArraySlice<int64> indexes) -> uint32 {
       // Offsets from linear index just to avoid R0 literals to be initialized
       // with zero.
-      return literal->LinearIndex(indexes) + 17;
+      return IndexUtil::MultidimensionalIndexToLinearIndex(literal->shape(),
+                                                           indexes) +
+             17;
     };
     TF_EXPECT_OK(literal->Populate<uint32>(generator));
 
@@ -1118,16 +1231,18 @@ TEST_F(LiteralUtilTest, CopyFromProto_Bool) {
   for (int len = 0; len < 25; ++len) {
     p.mutable_shape()->clear_dimensions();
     p.mutable_shape()->add_dimensions(len);
+    LayoutUtil::SetToDefaultLayout(p.mutable_shape());
     p.clear_preds();
     for (int i = 0; i < len; ++i) {
       p.add_preds((i % 2) == (len % 2));
     }
 
-    Literal literal(p);
-    ASSERT_EQ(len, literal.preds_size());
+    TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> literal,
+                            Literal::CreateFromProto(p));
+    ASSERT_EQ(len, literal->data<bool>().size());
     int i = 0;
-    for (auto it = literal.preds().begin(); it < literal.preds().end(); ++it) {
-      EXPECT_EQ((i % 2) == (len % 2), *it);
+    for (bool value : literal->data<bool>()) {
+      EXPECT_EQ((i % 2) == (len % 2), value);
       ++i;
     }
   }
@@ -1141,8 +1256,7 @@ TEST_F(LiteralUtilTest, ToProto_f16) {
   auto m = Literal::CreateR2<half>({{h1, h2}, {h2, h1}});
   Literal* l = m.get();
   EXPECT_EQ(4, ShapeUtil::ElementsIn(l->shape()));
-  EXPECT_EQ(4, l->f16s().size());
-  EXPECT_EQ(4, l->f16s_size());
+  EXPECT_EQ(4, l->data<half>().size());
 
   LiteralProto p = l->ToProto();
   EXPECT_EQ(4, ShapeUtil::ElementsIn(p.shape()));
@@ -1168,17 +1282,12 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   p.mutable_shape()->set_element_type(F16);
   p.mutable_shape()->clear_dimensions();
   p.mutable_shape()->add_dimensions(4);
+  LayoutUtil::SetToDefaultLayout(p.mutable_shape());
   p.clear_f16s();
   p.set_f16s(half_vals, 8);
-
-  Literal literal(p);
-  ASSERT_EQ(4, literal.f16s_size());
-  ASSERT_EQ(h1, literal.f16s(0));
-  ASSERT_EQ(h2, literal.f16s(1));
-  ASSERT_EQ(h2, literal.f16s(2));
-  ASSERT_EQ(h1, literal.f16s(3));
-
-  const std::vector<half>& r = literal.f16s();
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<Literal> literal,
+                          Literal::CreateFromProto(p));
+  auto r = literal->data<half>();
   ASSERT_EQ(4, r.size());
   ASSERT_EQ(h1, r[0]);
   ASSERT_EQ(h2, r[1]);
@@ -1186,24 +1295,402 @@ TEST_F(LiteralUtilTest, CopyFromProto_f16) {
   ASSERT_EQ(h1, r[3]);
 }
 
-TEST_F(LiteralUtilTest, Subliterals) {
+TEST_F(LiteralUtilTest, LiteralViewTest) {
+  auto scalar = Literal::CreateR0<float>(1.0);
+  auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
+  auto nested_tuple = Literal::MakeTuple({tuple.get(), scalar.get()});
+  Literal nil(ShapeUtil::MakeNil());
+
+  EXPECT_EQ(LiteralView::Create(*scalar, {}), *scalar);
+  EXPECT_EQ(LiteralView::Create(*matrix, {}), *matrix);
+  EXPECT_EQ(LiteralView::Create(*tuple, {}), *tuple);
+  EXPECT_EQ(LiteralView::Create(*nested_tuple, {}), *nested_tuple);
+  EXPECT_EQ(LiteralView::Create(nil, {}), nil);
+
+  EXPECT_EQ(LiteralView::Create(*tuple, {0}), *scalar);
+  EXPECT_EQ(LiteralView::Create(*tuple, {1}), *matrix);
+
+  EXPECT_EQ(LiteralView::Create(*nested_tuple, {0}), *tuple);
+  EXPECT_EQ(LiteralView::Create(*nested_tuple, {0, 0}), *scalar);
+  EXPECT_EQ(LiteralView::Create(*nested_tuple, {0, 1}), *matrix);
+  EXPECT_EQ(LiteralView::Create(*nested_tuple, {1}), *scalar);
+}
+
+TEST_F(LiteralUtilTest, MutatingLiteralView) {
+  auto scalar = Literal::CreateR0<float>(1.0);
+  auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
+  auto nested_tuple = Literal::MakeTuple({tuple.get(), scalar.get()});
+  // Verify that changing the underlying data beneath the view changes the
+  // data of the view itself.
+  const auto nested_tuple_view = LiteralView::Create(*nested_tuple);
+  EXPECT_EQ(
+      nested_tuple->Get<float>(/*multi_index=*/{}, /*shape_index=*/{0, 0}),
+      1.0f);
+  EXPECT_EQ(nested_tuple_view.Get<float>(/*multi_index=*/{},
+                                         /*shape_index=*/{0, 0}),
+            1.0f);
+  nested_tuple->Set<float>(/*multi_index=*/{}, /*shape_index=*/{0, 0}, 555.0f);
+  EXPECT_EQ(
+      nested_tuple->Get<float>(/*multi_index=*/{}, /*shape_index=*/{0, 0}),
+      555.0f);
+  EXPECT_EQ(nested_tuple_view.Get<float>(/*multi_index=*/{},
+                                         /*shape_index=*/{0, 0}),
+            555.0f);
+}
+
+TEST_F(LiteralUtilTest, LiteralViewOfALiteralView) {
   auto scalar = Literal::CreateR0<float>(1.0);
   auto matrix = Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
   auto tuple = Literal::MakeTuple({scalar.get(), matrix.get()});
   auto nested_tuple = Literal::MakeTuple({tuple.get(), scalar.get()});
 
-  EXPECT_EQ(&scalar->GetSubliteral(/*index=*/{}), scalar.get());
-  EXPECT_EQ(&matrix->GetSubliteral(/*index=*/{}), matrix.get());
-  EXPECT_EQ(&tuple->GetSubliteral(/*index=*/{}), tuple.get());
-  EXPECT_EQ(&nested_tuple->GetSubliteral(/*index=*/{}), nested_tuple.get());
+  const auto nested_tuple_view = LiteralView::Create(*nested_tuple);
+  const auto tuple_view =
+      LiteralView::Create(nested_tuple_view, /*view_root=*/{0});
+  const auto matrix_view = LiteralView::Create(tuple_view, /*view_root=*/{1});
+  EXPECT_EQ(matrix_view, *Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}));
+}
 
-  EXPECT_EQ(tuple->GetSubliteral(/*index=*/{0}), *scalar);
-  EXPECT_EQ(tuple->GetSubliteral(/*index=*/{1}), *matrix);
+TEST_F(LiteralUtilTest, LiteralMove) {
+  std::unique_ptr<Literal> matrix =
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  Literal literal(std::move(*matrix));
 
-  EXPECT_EQ(nested_tuple->GetSubliteral(/*index=*/{0}), *tuple);
-  EXPECT_EQ(nested_tuple->GetSubliteral(/*index=*/{0, 0}), *scalar);
-  EXPECT_EQ(nested_tuple->GetSubliteral(/*index=*/{0, 1}), *matrix);
-  EXPECT_EQ(nested_tuple->GetSubliteral(/*index=*/{1}), *scalar);
+  EXPECT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {2, 2}), literal.shape()));
+  EXPECT_EQ(literal.Get<float>({0, 0}), 1.0);
+  EXPECT_EQ(literal.Get<float>({0, 1}), 2.0);
+  EXPECT_EQ(literal.Get<float>({1, 0}), 3.0);
+  EXPECT_EQ(literal.Get<float>({1, 1}), 4.0);
+}
+
+TEST_F(LiteralUtilTest, DecomposeTuple) {
+  Literal nil_literal(ShapeUtil::MakeNil());
+  auto nested_tuple = Literal::MakeTuple(
+      {Literal::CreateR2<int32>({{1, 2}, {3, 4}}).get(),
+       Literal::MakeTuple({Literal::CreateR0<int32>(42).get(),
+                           Literal::CreateR1<double>({23.0, 44.0}).get(),
+                           &nil_literal})
+           .get(),
+       &nil_literal});
+
+  EXPECT_FALSE(ShapeUtil::IsNil(nested_tuple->shape()));
+  std::vector<Literal> elements = nested_tuple->DecomposeTuple();
+  EXPECT_TRUE(ShapeUtil::IsNil(nested_tuple->shape()));
+
+  ASSERT_EQ(elements.size(), 3);
+
+  EXPECT_TRUE(ShapeUtil::Compatible(elements[0].shape(),
+                                    ShapeUtil::MakeShape(S32, {2, 2})));
+  EXPECT_EQ(elements[0].Get<int32>({0, 0}), 1);
+  EXPECT_EQ(elements[0].Get<int32>({0, 1}), 2);
+  EXPECT_EQ(elements[0].Get<int32>({1, 0}), 3);
+  EXPECT_EQ(elements[0].Get<int32>({1, 1}), 4);
+
+  EXPECT_TRUE(ShapeUtil::Compatible(
+      elements[1].shape(),
+      ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(S32, {}),
+                                 ShapeUtil::MakeShape(F64, {2}),
+                                 ShapeUtil::MakeNil()})));
+  EXPECT_EQ(elements[1].Get<int32>({}, /*shape_index=*/{0}), 42);
+  EXPECT_EQ(elements[1].Get<double>({0}, /*shape_index=*/{1}), 23.0);
+  EXPECT_EQ(elements[1].Get<double>({1}, /*shape_index=*/{1}), 44.0);
+
+  EXPECT_TRUE(ShapeUtil::Compatible(elements[2].shape(), ShapeUtil::MakeNil()));
+}
+
+TEST_F(LiteralUtilTest, DecomposeEmptyTuple) {
+  Literal nil_literal(ShapeUtil::MakeNil());
+  std::vector<Literal> elements = nil_literal.DecomposeTuple();
+  EXPECT_EQ(elements.size(), 0);
+}
+
+TEST_F(LiteralUtilTest, MoveIntoTuple) {
+  std::vector<Literal> elements;
+  elements.push_back(std::move(*Literal::CreateR0<float>(1.0)));
+  elements.push_back(std::move(*Literal::CreateR1<int32>({4, 8})));
+  elements.push_back(std::move(
+      *Literal::MakeTuple({Literal::CreateR0<int32>(42).get(),
+                           Literal::CreateR1<double>({23.0, 44.0}).get()})
+
+          ));
+
+  Literal literal = Literal::MoveIntoTuple(&elements);
+  ASSERT_TRUE(ShapeUtil::IsTuple(literal.shape()));
+  ASSERT_EQ(ShapeUtil::TupleElementCount(literal.shape()), 3);
+
+  EXPECT_EQ(literal.Get<float>({}, /*shape_index=*/{0}), 1.0);
+  EXPECT_EQ(literal.Get<int32>({0}, /*shape_index=*/{1}), 4);
+  EXPECT_EQ(literal.Get<int32>({1}, /*shape_index=*/{1}), 8);
+  EXPECT_EQ(literal.Get<int32>({}, /*shape_index=*/{2, 0}), 42);
+  EXPECT_EQ(literal.Get<double>({0}, /*shape_index=*/{2, 1}), 23.0);
+  EXPECT_EQ(literal.Get<double>({1}, /*shape_index=*/{2, 1}), 44.0);
+
+  for (const Literal& element : elements) {
+    EXPECT_TRUE(ShapeUtil::IsNil(element.shape()));
+  }
+}
+
+TEST_F(LiteralUtilTest, MoveIntoEmptyTuple) {
+  Literal literal = Literal::MoveIntoTuple({});
+  ASSERT_TRUE(ShapeUtil::IsTuple(literal.shape()));
+  ASSERT_EQ(ShapeUtil::TupleElementCount(literal.shape()), 0);
+}
+
+TEST_F(LiteralUtilTest, LiteralMoveAssignment) {
+  Literal literal;
+  EXPECT_TRUE(ShapeUtil::Equal(ShapeUtil::MakeNil(), literal.shape()));
+
+  std::unique_ptr<Literal> matrix =
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  literal = std::move(*matrix);
+
+  EXPECT_TRUE(
+      ShapeUtil::Equal(ShapeUtil::MakeShape(F32, {2, 2}), literal.shape()));
+  EXPECT_EQ(literal.Get<float>({0, 0}), 1.0);
+  EXPECT_EQ(literal.Get<float>({0, 1}), 2.0);
+  EXPECT_EQ(literal.Get<float>({1, 0}), 3.0);
+  EXPECT_EQ(literal.Get<float>({1, 1}), 4.0);
+}
+
+TEST_F(LiteralUtilTest, LiteralViewCopy) {
+  std::unique_ptr<Literal> matrix =
+      Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}});
+  const auto matrix_view = LiteralView::Create(*matrix);
+  LiteralView matrix_view_copy(matrix_view);
+
+  EXPECT_EQ(matrix_view_copy.Get<float>({0, 0}), 1.0);
+  EXPECT_EQ(matrix_view_copy.Get<float>({0, 1}), 2.0);
+  EXPECT_EQ(matrix_view_copy.Get<float>({1, 0}), 3.0);
+  EXPECT_EQ(matrix_view_copy.Get<float>({1, 1}), 4.0);
+}
+
+TEST_F(LiteralUtilTest, GetSetTuple) {
+  auto tuple = Literal::MakeTuple(
+      {Literal::CreateR0<float>(42.0).get(),
+       Literal::CreateR2<float>({{1.0, 2.0}, {3.0, 4.0}}).get()});
+  EXPECT_EQ(tuple->Get<float>(/*multi_index=*/{}, /*shape_index=*/{0}), 42.0);
+  tuple->Set<float>(/*multi_index=*/{}, /*shape_index=*/{0}, -5.0);
+  EXPECT_EQ(tuple->Get<float>(/*multi_index=*/{}, /*shape_index=*/{0}), -5.0);
+
+  EXPECT_EQ(tuple->Get<float>(/*multi_index=*/{1, 0}, /*shape_index=*/{1}),
+            3.0);
+  tuple->Set<float>(/*multi_index=*/{1, 0}, /*shape_index=*/{1}, -4.0);
+  EXPECT_EQ(tuple->Get<float>(/*multi_index=*/{1, 0}, /*shape_index=*/{1}),
+            -4.0);
+}
+
+TEST_F(LiteralUtilTest, CreateFromShapeZeroInitialized) {
+  // Literals constructed using CreateFromShape should be zero initialized.
+  std::unique_ptr<Literal> scalar_f32 =
+      Literal::CreateFromShape(ShapeUtil::MakeShape(F32, {}));
+  EXPECT_EQ(scalar_f32->Get<float>({}), 0.0);
+  EXPECT_TRUE(scalar_f32->IsAll(0));
+
+  std::unique_ptr<Literal> vector_s32 =
+      Literal::CreateFromShape(ShapeUtil::MakeShape(S32, {3}));
+  EXPECT_EQ(vector_s32->Get<int32>({0}), 0);
+  EXPECT_EQ(vector_s32->Get<int32>({1}), 0);
+  EXPECT_EQ(vector_s32->Get<int32>({2}), 0);
+  EXPECT_TRUE(vector_s32->IsAll(0));
+
+  std::unique_ptr<Literal> tuple =
+      Literal::CreateFromShape(ShapeUtil::MakeTupleShape(
+          {ShapeUtil::MakeShape(F64, {}), ShapeUtil::MakeShape(PRED, {2}),
+           ShapeUtil::MakeShape(U64, {2, 1}), ShapeUtil::MakeShape(C64, {})}));
+
+  EXPECT_EQ(tuple->Get<double>({}, {0}), 0.0);
+  EXPECT_EQ(tuple->Get<bool>({0}, {1}), false);
+  EXPECT_EQ(tuple->Get<bool>({1}, {1}), false);
+  EXPECT_EQ(tuple->Get<uint64>({0, 0}, {2}), 0);
+  EXPECT_EQ(tuple->Get<uint64>({1, 0}, {2}), 0);
+  EXPECT_EQ(tuple->Get<complex64>({}, {3}), complex64(0.0f, 0.0f));
+}
+
+TEST_F(LiteralUtilTest, ProtoRoundTrip) {
+  // Test serializing then deserializing a Literal through a proto.
+  auto one_f32 = Literal::CreateR0<float>(1.0);
+  auto two_f32 = Literal::CreateR0<float>(2.0);
+  auto vector_int8 = Literal::CreateR1<int8>({-128, 0, 2, 4, 7, 56, 127});
+  auto vector_c64 = Literal::CreateR1<complex64>({{1.0, 2.0}, {3.0, 4.0}});
+  auto vector_bfloat16 = Literal::CreateR1<bfloat16>(
+      {bfloat16{-1.0}, bfloat16{2.0}, bfloat16{-3.0}});
+  auto vector_half =
+      Literal::CreateR1<half>({half{10.0}, half{20.0}, half{-30.0}});
+  auto matrix_pred =
+      Literal::CreateR2<bool>({{true, false, true}, {false, false, true}});
+  auto tuple = Literal::MakeTuple(
+      {one_f32.get(), vector_half.get(), matrix_pred.get(), matrix_pred.get()});
+  Literal nil_literal(ShapeUtil::MakeNil());
+  auto nested_tuple = Literal::MakeTuple(
+      {tuple.get(), vector_bfloat16.get(), tuple.get(), &nil_literal});
+
+  auto to_from_proto = [](const Literal& literal) -> Literal {
+    return std::move(*Literal::CreateFromProto(literal.ToProto()).ValueOrDie());
+  };
+
+  EXPECT_EQ(*one_f32, to_from_proto(*one_f32));
+  EXPECT_EQ(*vector_c64, to_from_proto(*vector_c64));
+  EXPECT_EQ(*vector_bfloat16, to_from_proto(*vector_bfloat16));
+  EXPECT_EQ(*matrix_pred, to_from_proto(*matrix_pred));
+  EXPECT_EQ(*tuple, to_from_proto(*tuple));
+  EXPECT_EQ(*nested_tuple, to_from_proto(*nested_tuple));
+  EXPECT_EQ(nil_literal, to_from_proto(nil_literal));
+
+  EXPECT_NE(*one_f32, *two_f32);
+  EXPECT_NE(*one_f32, to_from_proto(*two_f32));
+}
+
+TEST_F(LiteralUtilTest, InvalidProtoNoValues) {
+  // Proto contains a shape, but no values.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3});
+  Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Expected 3 elements in LiteralProto"));
+}
+
+TEST_F(LiteralUtilTest, InvalidProtoNoShape) {
+  // Proto contains values, but no shape.
+  LiteralProto proto;
+  proto.add_preds(false);
+  proto.add_preds(true);
+  proto.add_preds(false);
+  Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.error_message(), HasSubstr("LiteralProto has no shape"));
+}
+
+TEST_F(LiteralUtilTest, InvalidProtoWrongContainer) {
+  // Proto contains values in wrong container.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {3});
+  proto.add_preds(false);
+  proto.add_preds(true);
+  proto.add_preds(false);
+  Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Expected 3 elements in LiteralProto"));
+}
+
+TEST_F(LiteralUtilTest, InvalidProtoTooFewValues) {
+  // Proto contains too few values.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeShape(F32, {42, 2});
+  proto.add_f32s(1.0);
+  proto.add_f32s(2.0);
+  proto.add_f32s(3.0);
+  Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Expected 84 elements in LiteralProto"));
+}
+
+TEST_F(LiteralUtilTest, InvalidProtoTooManyValues) {
+  // Proto contains too many values.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeShape(S32, {2});
+  proto.add_s32s(42);
+  proto.add_s32s(-10);
+  proto.add_s32s(100);
+  Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.error_message(),
+              HasSubstr("Expected 2 elements in LiteralProto"));
+}
+
+TEST_F(LiteralUtilTest, InvalidProtoMissingLayout) {
+  // Proto shape missing layout.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeShape(PRED, {2, 2});
+  LayoutUtil::ClearLayout(proto.mutable_shape());
+  proto.add_preds(true);
+  proto.add_preds(false);
+  proto.add_preds(true);
+  proto.add_preds(false);
+  Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.error_message(), HasSubstr("LiteralProto has no layout"));
+}
+
+TEST_F(LiteralUtilTest, InvalidProtoTooFewTupleElements) {
+  // Proto has the too few tuple elements.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(PRED, {2}), ShapeUtil::MakeShape(F32, {})});
+  LiteralProto* element0 = proto.add_tuple_literals();
+  *element0->mutable_shape() =
+      ShapeUtil::GetTupleElementShape(proto.shape(), 0);
+  element0->add_preds(false);
+  element0->add_preds(true);
+
+  Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.error_message(), HasSubstr("Expected 2 tuple elements"));
+}
+
+TEST_F(LiteralUtilTest, InvalidProtoTooManyTupleElements) {
+  // Proto has the too many tuple elements.
+  LiteralProto proto;
+  *proto.mutable_shape() = ShapeUtil::MakeTupleShape(
+      {ShapeUtil::MakeShape(PRED, {2}), ShapeUtil::MakeShape(F32, {})});
+  LiteralProto* element0 = proto.add_tuple_literals();
+  *element0->mutable_shape() =
+      ShapeUtil::GetTupleElementShape(proto.shape(), 0);
+  element0->add_preds(false);
+  element0->add_preds(true);
+  LiteralProto* element1 = proto.add_tuple_literals();
+  *element1->mutable_shape() =
+      ShapeUtil::GetTupleElementShape(proto.shape(), 1);
+  element1->add_f32s(42.0);
+  LiteralProto* element2 = proto.add_tuple_literals();
+  *element2->mutable_shape() = ShapeUtil::MakeShape(F32, {});
+  element2->add_f32s(123.0);
+
+  Status status = Literal::CreateFromProto(proto).status();
+  ASSERT_FALSE(status.ok());
+  ASSERT_THAT(status.error_message(), HasSubstr("Expected 2 tuple elements"));
+}
+
+TEST_F(LiteralUtilTest, SortSparseElements) {
+  auto literal =
+      Literal::CreateSparse<float>({10, 10, 10}, SparseIndexArray(10, 3), {});
+  literal->AppendSparseElement<float>({2, 3, 4}, 2.0);
+  literal->AppendSparseElement<float>({3, 4, 5}, 3.0);
+  literal->AppendSparseElement<float>({1, 2, 3}, 1.0);
+  literal->SortSparseElements();
+  ASSERT_EQ(literal->ToString(false),
+            "f32[10,10,10]{[1, 2, 3]: 1, [2, 3, 4]: 2, [3, 4, 5]: 3}");
+}
+
+TEST_F(LiteralUtilTest, GetSparseElementAsString) {
+  std::vector<int64> dimensions = {10, 10, 10};
+  SparseIndexArray indices(10, {{1, 2, 3}, {2, 3, 4}, {3, 4, 5}});
+
+  ASSERT_EQ(
+      Literal::CreateSparse<bool>(dimensions, indices, {true, false, true})
+          ->GetSparseElementAsString(1),
+      "false");
+  ASSERT_EQ(Literal::CreateSparse<int64>(dimensions, indices, {1, 2, 3})
+                ->GetSparseElementAsString(1),
+            tensorflow::strings::StrCat(int64{2}));
+  ASSERT_EQ(Literal::CreateSparse<double>(dimensions, indices, {1.0, 2.0, 3.0})
+                ->GetSparseElementAsString(1),
+            tensorflow::strings::StrCat(double{2.0}));
+  ASSERT_EQ(Literal::CreateSparse<half>(dimensions, indices,
+                                        {half{1.0}, half{2.0}, half{3.0}})
+                ->GetSparseElementAsString(1),
+            tensorflow::strings::StrCat(half{2.0}));
+  ASSERT_EQ(
+      Literal::CreateSparse<complex64>(
+          dimensions, indices,
+          std::vector<complex64>{{1.0, 2.0}, {3.0, 4.0}, {5.0, 6.0}})
+          ->GetSparseElementAsString(1),
+      tensorflow::strings::StrCat("(", float{3.0}, ", ", float{4.0}, ")"));
 }
 
 }  // namespace

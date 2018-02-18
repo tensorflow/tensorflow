@@ -120,6 +120,9 @@ enum Format {
   // The default layout, with exactly one storage location per element (ignoring
   // padding).
   DENSE = 1;
+  // A sparsely encoded layout, providing only the index/value pairs of non-zero
+  // elements.
+  SPARSE = 2;
 }
 
 // A layout describes how the array is placed in (1D) memory space.  This
@@ -150,6 +153,11 @@ message Layout {
   // Describes the values in the padding specified by padded_dimensions. This
   // field must be unset unless the format is DENSE.
   PaddingValue padding_value = 3;
+
+  // The maximum number of elements that can be stored for SPARSE formats.  This
+  // can be used to determine the maximum size in bytes of arrays stored in
+  // memory.  This field must be unset unless the format is SPARSE.
+  int64 max_sparse_elements = 5;
 
   // Important: if any field is added, be sure to modify ShapeUtil::Equal()
   // appropriately to account for the new field.
@@ -333,7 +341,8 @@ message LiteralProto {
   // The F16s and BF16s are encoded in little endian byte order
   bytes f16s = 11;
   bytes bf16s = 13;
-  // Next = 14
+  repeated int64 sparse_indices = 14;
+  // Next = 15
 }
 
 message WindowDimension {
@@ -814,9 +823,7 @@ enum RandomDistribution {
   // parameter[0] and standard deviation parameter[1].
   RNG_NORMAL = 2;
 
-  // Creates a Bernoulli-distribution-generated random number with mean
-  // parameter[0].
-  RNG_BERNOULLI = 3;
+  // Next: 4
 }
 
 message RngRequest {

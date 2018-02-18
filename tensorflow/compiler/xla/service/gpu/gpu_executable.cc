@@ -66,7 +66,9 @@ class HloExecutionProfiler {
 
   // If profiling is enabled, sets the total cycle count on the profile from the
   // execution timer.
-  ~HloExecutionProfiler() {
+  void FinishExecution() {
+    CHECK(!finished_execution_) << "Call FinishExecution only once!";
+    finished_execution_ = true;
     if (do_profile_) {
       stream_->ThenStopTimer(execution_timer_.get());
       stream_->BlockHostUntilDone().IgnoreError();
@@ -101,6 +103,7 @@ class HloExecutionProfiler {
   const HloComputation* computation_;
   std::unique_ptr<se::Timer> execution_timer_;
   std::unique_ptr<se::Timer> per_op_timer_;
+  bool finished_execution_ = false;
 };
 
 }  // namespace
@@ -113,9 +116,9 @@ GpuExecutable::GpuExecutable(
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
     std::unique_ptr<const HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<HloProfilePrinter> hlo_profile_printer,
+    std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
-    : Executable(std::move(hlo_module), std::move(hlo_profile_printer),
+    : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
                  std::move(hlo_profile_index_map)),
       ptx_(ptx),
       cubin_(cubin),
@@ -143,8 +146,11 @@ Status GpuExecutable::ExecuteThunks(
   if (do_profile) {
     LOG(WARNING) << "PROFILING: profiling is enabled";
   }
+
   HloExecutionProfiler profiler(do_profile, hlo_execution_profile, main_stream,
                                 hlo_module_->entry_computation());
+
+  uint64 start_micros = tensorflow::Env::Default()->NowMicros();
 
   // Stream 0 indicates `main_stream` and substreams start from stream 1.
   std::vector<Pool<se::Stream>::SmartPtr> sub_streams;
@@ -222,6 +228,22 @@ Status GpuExecutable::ExecuteThunks(
     }
   }
 
+  profiler.FinishExecution();
+  uint64 end_micros = tensorflow::Env::Default()->NowMicros();
+
+  {
+    tensorflow::mutex_lock lock(mutex_);
+    const double nanoseconds = (end_micros - start_micros) * 1000.0;
+    execution_profile_.set_compute_time_ns(std::max(nanoseconds, 1.0));
+
+    // If hlo profiling was disabled then the cycle count is left empty.
+    if (do_profile) {
+      execution_profile_.set_compute_cycle_count(
+          hlo_execution_profile->total_cycles_executed(
+              *module().entry_computation()));
+    }
+  }
+
   return Status::OK();
 }
 
@@ -240,9 +262,16 @@ StatusOr<std::unique_ptr<ShapedBuffer>> GpuExecutable::ExecuteOnStream(
        ++i) {
     const BufferAllocation& allocation = assignment_->GetAllocation(i);
     if (allocation.is_entry_computation_parameter()) {
-      auto param_no = allocation.parameter_number();
-      buffer_allocations_builder.RegisterBuffer(
-          i, arguments[param_no]->root_buffer());
+      // The caller must give us a buffer for ShapeIndex {} of every parameter.
+      // It can optionally give us a buffer for other ShapeIndices, but we
+      // ignore them: Because we can't rely on these sub-buffers' addresses
+      // being available, our generated code can't use them.  Instead, it must
+      // chase pointers starting at the tuple root.
+      if (allocation.param_shape_index().empty()) {
+        auto param_no = allocation.parameter_number();
+        buffer_allocations_builder.RegisterBuffer(
+            i, arguments[param_no]->root_buffer());
+      }
     }
   }
   se::StreamExecutor* executor = run_options->stream()->parent();

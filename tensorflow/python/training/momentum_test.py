@@ -247,7 +247,7 @@ class MomentumOptimizerTest(test.TestCase):
       # pylint: enable=cell-var-from-loop
 
       opt = momentum_lib.MomentumOptimizer(learning_rate=1.0, momentum=0.0)
-      sgd_op = opt.minimize(loss if context.in_eager_mode() else loss())
+      sgd_op = opt.minimize(loss)
       self.evaluate(variables.global_variables_initializer())
       # Run 1 step of sgd
       self.evaluate(sgd_op)
@@ -262,7 +262,7 @@ class MomentumOptimizerTest(test.TestCase):
       return math_ops.reduce_sum(embedding_ops.embedding_lookup(var0, [[1]]))
 
     opt = momentum_lib.MomentumOptimizer(learning_rate=1.0, momentum=0.0)
-    sgd_op = opt.minimize(loss if context.in_eager_mode() else loss())
+    sgd_op = opt.minimize(loss)
     self.evaluate(variables.global_variables_initializer())
     self.evaluate(sgd_op)
     self.assertAllCloseAccordingToType([[1, 1], [0, 0]], self.evaluate(var0))

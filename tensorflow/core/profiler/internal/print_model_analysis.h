@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_PRINT_MODEL_ANALYSIS_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_PRINT_MODEL_ANALYSIS_H_
+#ifndef TENSORFLOW_CORE_PROFILER_INTERNAL_PRINT_MODEL_ANALYSIS_H_
+#define TENSORFLOW_CORE_PROFILER_INTERNAL_PRINT_MODEL_ANALYSIS_H_
 
 #include <string>
 
@@ -44,6 +44,9 @@ void WriteProfile(const string* filename);
 // Load the profile to profiler from a proto buffer file.
 void ProfilerFromFile(const string* filename);
 
+// Returns a binary string that represents the serialized ProfileProto.
+string SerializeToString();
+
 string Profile(const string* command, const string* options);
 
 // Single-step Profiler.
@@ -60,4 +63,4 @@ string PrintModelAnalysis(const string* graph, const string* run_meta,
 }  // namespace tfprof
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_PROFILER_INTERNAL_PRINT_MODEL_ANALYSIS_H_
+#endif  // TENSORFLOW_CORE_PROFILER_INTERNAL_PRINT_MODEL_ANALYSIS_H_
