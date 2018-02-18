@@ -14,6 +14,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/pooling_ops_common.h"
 #include "tensorflow/core/util/padding.h"
 
+#if GOOGLE_CUDA
+#include "unpooling_op_gpu.h"
+#endif
+
 typedef Eigen::ThreadPoolDevice CPUDevice;
 
 namespace tensorflow {
@@ -68,6 +72,21 @@ struct LaunchUnpool<CPUDevice,T>
     }
   }
 };
+
+#if GOOGLE_CUDA
+template <typename T>
+struct LaunchUnpool<Eigen::GpuDevice,T>
+{
+  static void launch(tensorflow::OpKernelContext* context, const tensorflow::Tensor& pooled_data, const tensorflow::Tensor& indices, tensorflow::Tensor* unpooled_data)
+  {
+    bool status = UnpoolForwardWithIndex(pooled_data.flat<T>().data(), pooled_data.shape(), indices.flat<tensorflow::int64>().data(), unpooled_data->flat<T>().data(), context->eigen_gpu_device());
+
+    if (!status) {
+      context->SetStatus(tensorflow::errors::Internal("Failed launching maxUnpoolForwardWithIndex on GPU"));
+    }
+  }
+};
+#endif
 
 template <typename Device, typename T>
 struct LaunchUnpoolGradient;
@@ -196,4 +215,7 @@ public:
 REGISTER_KERNEL_BUILDER(Name("Unpool").Device(tensorflow::DEVICE_CPU), UnpoolOp<CPUDevice, float>)
 REGISTER_KERNEL_BUILDER(Name("UnpoolGradient").Device(tensorflow::DEVICE_CPU), UnpoolGradientOp<CPUDevice, float>)
 
+#ifdef GOOGLE_CUDA
+REGISTER_KERNEL_BUILDER(Name("Unpool").Device(tensorflow::DEVICE_GPU).HostMemory("unpool_shape"), UnpoolOp<Eigen::GpuDevice, float>)
+#endif
 }
