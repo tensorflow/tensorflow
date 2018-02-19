@@ -123,7 +123,7 @@ Normalizes an array across batch and spatial dimensions.
 | `scale`         | `ComputationDataHandle` | 1 dimensional array              |
 :                 :                         : (\\(\gamma\\))                   :
 | `offset`        | `ComputationDataHandle` | 1 dimensional array              |
-:                 :                         : (\\(\beta\\ )                    :
+:                 :                         : (\\(\beta\\))                    :
 | `epsilon`       | `float`                 | Epsilon value (\\(\epsilon\\))   |
 | `feature_index` | `int64`                 | Index to feature dimension       |
 :                 :                         : in `operand`                     :
@@ -135,8 +135,8 @@ element in `operand`. The `feature_index` must be a valid index for the feature
 dimension in `operand`.
 
 The algorithm goes as follows for each batch in `operand` \\(x\\) that
-contains `m` elements with `w` and `h` as the size of spatial dimensions (
-assuming `operand` is an 4 dimensional array):
+contains `m` elements with `w` and `h` as the size of spatial dimensions
+(assuming `operand` is an 4 dimensional array):
 
 - Calculates batch mean \\(\mu_l\\) for each feature `l` in feature dimension:
 \\(\mu_l=\frac{1}{mwh}\sum_{i=1}^m\sum_{j=1}^w\sum_{k=1}^h x_{ijkl}\\)
@@ -170,7 +170,7 @@ Similar to a `tf.bitcast` in TensorFlow, performs an element-wise bitcast
 operation from a data shape to a target shape. The dimensions must match, and
 the conversion is an element-wise one; e.g. `s32` elements become `f32` elements
 via bitcast routine. Bitcast is implemented as a low-level cast, so machines
-with different floating point representations will give different results.
+with different floating-point representations will give different results.
 
 <b> `BitcastConvertType(operand, new_element_type)` </b>
 
@@ -351,7 +351,7 @@ each other) and contains the arguments in the order that they were specified.
 :             :                         : concatenated between the `operands`. :
 
 With the exception of `dimension` all dimensions must be the same. This is
-because XLA does not support "ragged" arrays Also note that rank-0 values
+because XLA does not support "ragged" arrays. Also note that rank-0 values
 cannot be concatenated (as it's impossible to name the dimension along which the
 concatenation occurs).
 
@@ -468,7 +468,7 @@ filter/kernel/window. The dimensions are, in this order:
     window that moves across the base area.
 
 The `window_strides` argument specifies the stride of the convolutional window
-in the spatial dimensions. For example, if the stride in a the first spatial
+in the spatial dimensions. For example, if the stride in the first spatial
 dimension is 3, then the window can only be placed at coordinates where the
 first spatial index is divisible by 3.
 
@@ -942,7 +942,7 @@ expand the rank of the lower-rank operand up to the rank of the higher-rank
 operand. `broadcast_dimensions` maps the dimensions of the lower-rank shape to
 the dimensions of the higher-rank shape. The unmapped dimensions of the expanded
 shape are filled with dimensions of size one. Degenerate-dimension broadcasting
-then broadcasts the shapes along these degenerate dimension to equalize the
+then broadcasts the shapes along these degenerate dimensions to equalize the
 shapes of both operands. The semantics are described in detail on the
 @{$broadcasting$broadcasting page}.
 
@@ -1081,7 +1081,7 @@ result2 = while (condition, init = result1) {
 ```
 
 Nested tuple shapes are not supported. For an empty tuple shape, the Infeed
-operation is effectively a nop and proceeds without reading any data from the
+operation is effectively a no-op and proceeds without reading any data from the
 Infeed of the device.
 
 > Note: We plan to allow multiple Infeed operations without a total order, in
@@ -1144,7 +1144,7 @@ dimension.
 
 `PaddingConfig` is a repeated field of `PaddingConfigDimension`, which contains
 three fields for each dimension: `edge_padding_low`, `edge_padding_high`, and
-`interior_padding`. `edge_padding_low` and `edge_padding_high` specifies the
+`interior_padding`. `edge_padding_low` and `edge_padding_high` specify the
 amount of padding added at the low-end (next to index 0) and the high-end (next
 to the highest index) of each dimension respectively. The amount of edge padding
 can be negative -- the absolute value of negative padding indicates the number
@@ -1153,8 +1153,8 @@ the amount of padding added between any two elements in each dimension. Interior
 padding occurs logically before edge padding, so in the case of negative edge
 padding elements are removed from the interior-padded operand. This operation is
 a no-op if the edge padding pairs are all (0, 0) and the interior padding values
-are all 0. Figure below shows examples of different `edge_padding` and
-`interior_padding` values for a two dimensional array.
+are all 0. The figure below shows examples of different `edge_padding` and
+`interior_padding` values for a two-dimensional array.
 
 <div style="width:95%; margin:auto; margin-bottom:10px; margin-top:20px;">
   <img style="width:100%" src="https://www.tensorflow.org/images/ops_pad.png">
