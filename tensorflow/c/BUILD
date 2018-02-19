@@ -28,7 +28,11 @@ filegroup(
             "*.cc",
             "*.h",
         ],
-        exclude = ["*test*"],
+        exclude = [
+            "c_api_experimental.cc",
+            "c_api_experimental.h",
+            "*test*",
+        ],
     ),
     visibility = ["//visibility:public"],
 )
