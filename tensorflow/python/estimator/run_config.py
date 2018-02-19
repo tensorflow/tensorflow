@@ -28,12 +28,14 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.estimator import util
+from tensorflow.python.training import training
 from tensorflow.python.util import compat_internal
 from tensorflow.python.util.tf_export import tf_export
 
 
 _USE_DEFAULT = object()
 _VALID_PS_STRATEGY_ARGS = set(['op'])
+_VALID_DEVICE_FN_ARGS = set(['op'])
 
 # A list of the property names in RunConfig that the user is allowed to change.
 _DEFAULT_REPLACEABLE_LIST = [
@@ -46,6 +48,7 @@ _DEFAULT_REPLACEABLE_LIST = [
     'keep_checkpoint_max',
     'keep_checkpoint_every_n_hours',
     'log_step_count_steps',
+    'device_fn',
     'ps_strategy'
 ]
 
@@ -281,6 +284,9 @@ def _validate_properties(run_config):
   _validate('tf_random_seed', lambda seed: isinstance(seed, six.integer_types),
             message='tf_random_seed must be integer.')
 
+  _validate('device_fn', lambda device_fn: six.callable(device_fn) and
+                                           set(util.fn_args(device_fn)) == set(['op']),
+            message='device_fn must be callable with exactly one argument "op".')
   _validate('ps_strategy', lambda ps_strategy: six.callable(ps_strategy) and
                                                set(util.fn_args(ps_strategy)) == set(['op']),
             message='ps_strategy must be callable with exactly one argument "op".')
@@ -308,6 +314,7 @@ class RunConfig(object):
                keep_checkpoint_max=5,
                keep_checkpoint_every_n_hours=10000,
                log_step_count_steps=100,
+               device_fn=None,
                ps_strategy=None):
     """Constructs a RunConfig.
 
@@ -432,6 +439,9 @@ class RunConfig(object):
         the feature.
       log_step_count_steps: The frequency, in number of global steps, that the
         global step/sec will be logged during training.
+      device_fn: A callable invoked for every `Operation` that takes the
+        `Operation` and returns the device string. If `None`, defaults to
+        device function returned by `tf.train.replica_device_setter`.
       ps_strategy: A callable invoked for every ps `Operation` (i.e. matched by
         `ps_ops`), that takes the `Operation` and returns the ps task index to
         use.  If `None`, defaults to a round-robin strategy across all `ps`
@@ -473,6 +483,7 @@ class RunConfig(object):
         keep_checkpoint_max=keep_checkpoint_max,
         keep_checkpoint_every_n_hours=keep_checkpoint_every_n_hours,
         log_step_count_steps=log_step_count_steps,
+        device_fn=device_fn,
         ps_strategy=ps_strategy)
 
     self._init_distributed_setting_from_environment_var(tf_config)
@@ -574,6 +585,22 @@ class RunConfig(object):
   @property
   def cluster_spec(self):
     return self._cluster_spec
+
+  @property
+  def device_fn(self):
+    """Returns the device_fn.
+
+    If the device_fn is None, the device function returned by
+    `training.replica_device_setter` is used.
+    If the device_fn is not None, it is returned directly.
+
+    Returns:
+      None for non-distributed setting, device_fn otherwise.
+    """
+    if self._device_fn is None:
+      return _get_replica_device_setter(self)
+
+    return self._device_fn
 
   @property
   def evaluation_master(self):
@@ -702,6 +729,8 @@ class RunConfig(object):
       - `keep_checkpoint_max`,
       - `keep_checkpoint_every_n_hours`,
       - `log_step_count_steps`,
+      - `device_fn`,
+      - `ps_strategy`
 
     In addition, either `save_checkpoints_steps` or `save_checkpoints_secs`
     can be set (should not be both).
@@ -785,3 +814,40 @@ def _get_model_dir(tf_config, model_dir):
     logging.info('Using model_dir in TF_CONFIG: %s', model_dir_in_tf_config)
 
   return model_dir or model_dir_in_tf_config
+
+
+def _get_replica_device_setter(config):
+  """Creates a replica device setter if required as a default device_fn.
+
+  `Estimator` uses ReplicaDeviceSetter as a default device placer. It sets the
+  distributed related arguments such as number of ps_replicas based on given
+  config.
+
+  Args:
+    config: A `RunConfig` instance.
+
+  Returns:
+    A replica device setter, or None.
+  """
+  ps_ops = [
+      'Variable', 'VariableV2', 'AutoReloadVariable', 'MutableHashTable',
+      'MutableHashTableV2', 'MutableHashTableOfTensors',
+      'MutableHashTableOfTensorsV2', 'MutableDenseHashTable',
+      'MutableDenseHashTableV2', 'VarHandleOp'
+  ]
+
+  if config.task_type:
+    worker_device = '/job:%s/task:%d' % (config.task_type, config.task_id)
+  else:
+    worker_device = '/job:worker'
+
+  if config.num_ps_replicas > 0:
+    return training.replica_device_setter(
+        ps_tasks=config.num_ps_replicas,
+        worker_device=worker_device,
+        merge_devices=True,
+        ps_ops=ps_ops,
+        cluster=config.cluster_spec,
+        ps_strategy=config.ps_strategy)
+  else:
+    return None
