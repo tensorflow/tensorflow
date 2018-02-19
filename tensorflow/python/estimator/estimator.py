@@ -207,7 +207,7 @@ class Estimator(object):
     else:
       self._session_config = self._config.session_config
 
-    self._device_fn = _get_replica_device_setter(self._config)
+    # self._device_fn = _get_replica_device_setter(self._config)
 
     if model_fn is None:
       raise ValueError('model_fn must be provided to Estimator.')
@@ -811,7 +811,7 @@ class Estimator(object):
 
   def _train_model(self, input_fn, hooks, saving_listeners):
     worker_hooks = []
-    with ops.Graph().as_default() as g, g.device(self._device_fn):
+    with ops.Graph().as_default() as g, g.device(self._config.device_fn):  # g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
       global_step_tensor = self._create_and_assert_global_step(g)
       training_util._get_or_create_global_step_read()  # pylint: disable=protected-access
