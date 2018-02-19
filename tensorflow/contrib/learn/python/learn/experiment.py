@@ -216,6 +216,8 @@ class Experiment(object):
       saving_listeners: list of `CheckpointSaverListener` objects. Used by
         tf.estimator.Estimator for callbacks that run immediately before or
         after checkpoint savings.
+      train_loss_logging_freqeuency: int passed to the underlying estimator
+        indicating the number of steps before logging the training loss. 
 
     Raises:
       ValueError: if `estimator` does not implement Estimator interface,
