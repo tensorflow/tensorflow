@@ -131,6 +131,12 @@ message GPUOptions {
   Experimental experimental = 9;
 };
 
+message IPUOptions {
+  // When set to true, use mixed 16:32 bit arithmetic for 16 bit operations
+  bool use_32_bit_accumulation = 1;
+
+};
+
 // Options passed to the graph optimizer
 message OptimizerOptions {
   // If true, optimize the graph using common subexpression elimination.
@@ -359,7 +365,10 @@ message ConfigProto {
   // shared with other sessions.
   bool isolate_session_state = 15;
 
-  // Next: 16
+  // Options that apply to Graphcore IPUs
+  IPUOptions ipu_options = 16;
+
+  // Next: 17
 };
 
 // Options for a single Run() call.
