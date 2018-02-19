@@ -177,8 +177,6 @@ def Assert(condition, data, summarize=None, name=None):
             condition, data, summarize, name="Assert")
 
       guarded_assert = cond(condition, no_op, true_assert, name="AssertGuard")
-      if context.in_eager_mode():
-        return
       return guarded_assert.op
 
 
