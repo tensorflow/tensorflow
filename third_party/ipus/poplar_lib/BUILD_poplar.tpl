@@ -10,14 +10,13 @@ filegroup(
 filegroup(
   name = "poplar_lib",
   srcs = glob([
-    "lib/libpoplar.*",
-    "lib/libxgraph.*",
-    "lib/libpopnn.*",
-    "lib/libpoplin.*",
     "lib/libpopconv.*",
-    "lib/libpopreduce.*",
-    "lib/libpopstd.*",
+    "lib/libpoplar.*",
+    "lib/libpoplin.*",
+    "lib/libpopnn.*",
+    "lib/libpopops.*",
     "lib/libpoprand.*",
+    "lib/libpoputil.*",
   ]),
 )
 

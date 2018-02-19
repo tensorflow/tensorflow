@@ -19,11 +19,11 @@
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
 
-#include <popstd/Cast.hpp>
-#include <popstd/Operations.hpp>
-#include <popstd/Add.hpp>
-#include <popstd/SubtractFrom.hpp>
-#include <popstd/HadamardProduct.hpp>
+#include <popops/Cast.hpp>
+#include <popops/ElementWise.hpp>
+#include <popops/Add.hpp>
+#include <popops/SubtractFrom.hpp>
+#include <popops/HadamardProduct.hpp>
 #include <poplin/MatMul.hpp>
 #include <popnn/NonLinearity.hpp>
 
@@ -39,31 +39,31 @@ static const std::string out_conn("out");
 #define UNUSED_OPCODE(O) case HloOpcode::O: break;
 
 
-port::StatusOr<popstd_unary_fn>
+port::StatusOr<popops_unary_fn>
 LookupUnaryFn(const HloInstruction* inst) {
   HloOpcode opcode = inst->opcode();
   switch (opcode) {
-    case HloOpcode::kAbs: return popstd::abs;
-    case HloOpcode::kCeil: return popstd::ceil;
-    case HloOpcode::kCos: return popstd::cos;
-    case HloOpcode::kExp: return popstd::exp;
-    case HloOpcode::kFloor: return popstd::floor;
-    case HloOpcode::kLog: return popstd::log;
-    case HloOpcode::kNegate: return popstd::neg;
-    case HloOpcode::kRoundNearestAfz: return popstd::round;
-    case HloOpcode::kSign: return popstd::signum;
-    case HloOpcode::kSin: return popstd::sin;
-    case HloOpcode::kTanh: return popstd::tanh;
-    case HloOpcode::kIsFinite: return popstd::isFinite;
+    case HloOpcode::kAbs: return popops::abs;
+    case HloOpcode::kCeil: return popops::ceil;
+    case HloOpcode::kCos: return popops::cos;
+    case HloOpcode::kExp: return popops::exp;
+    case HloOpcode::kFloor: return popops::floor;
+    case HloOpcode::kLog: return popops::log;
+    case HloOpcode::kNegate: return popops::neg;
+    case HloOpcode::kRoundNearestAfz: return popops::round;
+    case HloOpcode::kSign: return popops::signum;
+    case HloOpcode::kSin: return popops::sin;
+    case HloOpcode::kTanh: return popops::tanh;
+    case HloOpcode::kIsFinite: return popops::isFinite;
     default:
       break;
   }
 
   if (opcode == HloOpcode::kNot) {
     if (inst->shape().element_type() == PRED) {
-      return popstd::logicalNot;
+      return popops::logicalNot;
     } else {
-      return popstd::bitwiseNot;
+      return popops::bitwiseNot;
     }
   }
 
@@ -72,45 +72,45 @@ LookupUnaryFn(const HloInstruction* inst) {
                                    HloOpcodeString(opcode)));
 }
 
-port::StatusOr<popstd_binary_fn>
+port::StatusOr<popops_binary_fn>
 LookupBinaryFn(const HloInstruction* inst) {
   HloOpcode opcode = inst->opcode();
   switch (opcode) {
-    case HloOpcode::kAdd: return popstd::add;
-    case HloOpcode::kAtan2: return popstd::atan2;
-    case HloOpcode::kDivide: return popstd::div;
-    case HloOpcode::kEq: return popstd::eq;
-    case HloOpcode::kGt: return popstd::gt;
-    case HloOpcode::kGe: return popstd::gteq;
-    case HloOpcode::kLt: return popstd::lt;
-    case HloOpcode::kLe: return popstd::lteq;
-    case HloOpcode::kMaximum: return popstd::max;
-    case HloOpcode::kMinimum: return popstd::min;
-    case HloOpcode::kMultiply: return popstd::mul;
-    case HloOpcode::kNe: return popstd::neq;
-    case HloOpcode::kPower: return popstd::pow;
-    case HloOpcode::kRemainder: return popstd::rem;
-    case HloOpcode::kShiftLeft: return popstd::shiftLeft;
-    case HloOpcode::kShiftRightArithmetic: return popstd::shiftRightSignExtend;
-    case HloOpcode::kShiftRightLogical: return popstd::shiftRight;
-    case HloOpcode::kSubtract: return popstd::sub;
+    case HloOpcode::kAdd: return popops::add;
+    case HloOpcode::kAtan2: return popops::atan2;
+    case HloOpcode::kDivide: return popops::div;
+    case HloOpcode::kEq: return popops::eq;
+    case HloOpcode::kGt: return popops::gt;
+    case HloOpcode::kGe: return popops::gteq;
+    case HloOpcode::kLt: return popops::lt;
+    case HloOpcode::kLe: return popops::lteq;
+    case HloOpcode::kMaximum: return popops::max;
+    case HloOpcode::kMinimum: return popops::min;
+    case HloOpcode::kMultiply: return popops::mul;
+    case HloOpcode::kNe: return popops::neq;
+    case HloOpcode::kPower: return popops::pow;
+    case HloOpcode::kRemainder: return popops::rem;
+    case HloOpcode::kShiftLeft: return popops::shiftLeft;
+    case HloOpcode::kShiftRightArithmetic: return popops::shiftRightSignExtend;
+    case HloOpcode::kShiftRightLogical: return popops::shiftRight;
+    case HloOpcode::kSubtract: return popops::sub;
     default:
       break;
   }
 
   if (opcode == HloOpcode::kAnd) {
     if (inst->shape().element_type() == PRED) {
-      return popstd::logicalAnd;
+      return popops::logicalAnd;
     } else {
-      return popstd::bitwiseAnd;
+      return popops::bitwiseAnd;
     }
   }
 
   if (opcode == HloOpcode::kOr) {
     if (inst->shape().element_type() == PRED) {
-      return popstd::logicalOr;
+      return popops::logicalOr;
     } else {
-      return popstd::bitwiseOr;
+      return popops::bitwiseOr;
     }
   }
 
@@ -119,13 +119,13 @@ LookupBinaryFn(const HloInstruction* inst) {
                                    HloOpcodeString(opcode)));
 }
 
-port::StatusOr<popstd_inplace_fn>
+port::StatusOr<popops_inplace_fn>
 LookupBinaryInPlaceFn(const HloInstruction* inst) {
   HloOpcode opcode = inst->opcode();
   switch (opcode) {
-    case HloOpcode::kAdd: return popstd::addTo;
-    case HloOpcode::kMultiply: return popstd::hadamardProduct;
-    case HloOpcode::kSubtract: return popstd::subtractFrom;
+    case HloOpcode::kAdd: return popops::addTo;
+    case HloOpcode::kMultiply: return popops::hadamardProduct;
+    case HloOpcode::kSubtract: return popops::subtractFrom;
     default:
       break;
   }
@@ -158,7 +158,7 @@ CreateUnaryElementwiseOp(poplar::Graph &graph,
   poplar::Tensor in;
   TF_ASSIGN_OR_RETURN(in, FindInstructionInput(tensor_map, inst, 0));
 
-  popstd_unary_fn fn;
+  popops_unary_fn fn;
   TF_ASSIGN_OR_RETURN(fn, LookupUnaryFn(inst));
 
   poplar::program::Sequence seq;
@@ -189,7 +189,7 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
       (in0.shape() == in1.shape()) &&
       in0.isParallelWriteable()) {
 
-    popstd_inplace_fn fn;
+    popops_inplace_fn fn;
     TF_ASSIGN_OR_RETURN(fn, LookupBinaryInPlaceFn(inst));
 
     poplar::program::Sequence seq;
@@ -222,7 +222,7 @@ CreateBinaryElementwiseOp(poplar::Graph &graph,
       in1 = TileTensor(bcast.y_bcast(), in1);
     }
 
-    popstd_binary_fn fn;
+    popops_binary_fn fn;
     TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(inst));
 
     poplar::program::Sequence seq;
@@ -317,7 +317,7 @@ CreateSelectOp(poplar::Graph &graph,
       p = p.reshape(i0.shape());
     }
 
-    poplar::Tensor out = popstd::select(graph, i0, i1, p, seq, inst->name());
+    poplar::Tensor out = popops::select(graph, i0, i1, p, seq, inst->name());
 
     TF_RETURN_IF_ERROR(AddOutputTensor(tensor_map, inst, i, out));
   }
@@ -340,7 +340,7 @@ CreateCastOp(poplar::Graph &graph,
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(output_shape));
 
   poplar::program::Sequence seq;
-  poplar::Tensor out = popstd::cast(graph, in, poplar_type, seq, inst->name());
+  poplar::Tensor out = popops::cast(graph, in, poplar_type, seq, inst->name());
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 
@@ -375,7 +375,7 @@ CreateClampOp(poplar::Graph &graph,
   }
 
   poplar::program::Sequence seq;
-  poplar::Tensor out = popstd::clamp(graph, arg, min, max, seq, inst->name());
+  poplar::Tensor out = popops::clamp(graph, arg, min, max, seq, inst->name());
 
   TF_ASSIGN_OR_RETURN(out, BroadcastTensor(out, output_shape));
 

@@ -19,7 +19,7 @@
 #include <poplar/Engine.hpp>
 #include <popnn/PoolingDef.hpp>
 #include <popnn/Pooling.hpp>
-#include <popreduce/Reduce.hpp>
+#include <popops/Reduce.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -138,24 +138,24 @@ GetIdentityConstantLiteral(const HloInstruction* root) {
   }
 }
 
-static popreduce::Operation
+static popops::Operation
 PoplibsReductionOperation(const HloInstruction* inst) {
   switch (inst->opcode()) {
     case HloOpcode::kAdd:
-      return popreduce::Operation::ADD;
+      return popops::Operation::ADD;
     case HloOpcode::kMultiply:
-      return popreduce::Operation::MUL;
+      return popops::Operation::MUL;
     case HloOpcode::kMaximum:
-      return popreduce::Operation::MAX;
+      return popops::Operation::MAX;
     case HloOpcode::kMinimum:
-      return popreduce::Operation::MIN;
+      return popops::Operation::MIN;
     case HloOpcode::kAnd:
-      return popreduce::Operation::AND;
+      return popops::Operation::AND;
     case HloOpcode::kOr:
-      return popreduce::Operation::OR;
+      return popops::Operation::OR;
     default:
       // Cannot reach here
-      return popreduce::Operation::ADD;
+      return popops::Operation::ADD;
   }
 }
 
@@ -240,14 +240,14 @@ CreateSimpleReduction(poplar::Graph &graph,
     TF_ASSIGN_OR_RETURN(to_reduce, FindInstructionInput(tensor_map, inst, 0));
 
     HloInstruction* root(inst->to_apply()->root_instruction());
-    popreduce::Operation op = PoplibsReductionOperation(root);
+    popops::Operation op = PoplibsReductionOperation(root);
 
     std::vector<std::size_t> reduction_dims;
     for (auto d : inst->dimensions()) {
       reduction_dims.push_back(d);
     }
 
-    poplar::Tensor out = popreduce::reduce(graph, to_reduce, reduction_dims,
+    poplar::Tensor out = popops::reduce(graph, to_reduce, reduction_dims,
                                            op, seq, inst->name());
 
     // Apply initial value
@@ -262,7 +262,7 @@ CreateSimpleReduction(poplar::Graph &graph,
       // Create a binary op with the scatter_root opcode
       TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
-      popstd_binary_fn fn;
+      popops_binary_fn fn;
       TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root));
 
       out = fn(graph, out, init_val, seq, inst->name() + "_initval");
@@ -370,7 +370,7 @@ CreateSimpleWindowReduction(poplar::Graph &graph,
       // Create a binary op with the scatter_root opcode
       TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
-      popstd_binary_fn fn;
+      popops_binary_fn fn;
       TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(root));
 
       out = fn(graph, out, init_val, seq, inst->name() + "_initval");
@@ -634,12 +634,12 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
   /*
    * Reduction
    */
-  popreduce::Operation op = PoplibsReductionOperation(scatter_root);
+  popops::Operation op = PoplibsReductionOperation(scatter_root);
 
   std::vector<std::size_t> reduction_dims;
   reduction_dims.push_back(partial.rank() - 1);
 
-  out = popreduce::reduce(graph, partial, reduction_dims, op, program_seq,
+  out = popops::reduce(graph, partial, reduction_dims, op, program_seq,
                           inst->name() + "_reduce");
 
   /*
@@ -655,7 +655,7 @@ CreateSimpleSelectAndScatter(poplar::Graph &graph,
     // Create a binary op with the scatter_root opcode
     TF_ASSIGN_OR_RETURN(init_val, BroadcastTensor(init_val, output_shape));
 
-    popstd_binary_fn fn;
+    popops_binary_fn fn;
     TF_ASSIGN_OR_RETURN(fn, LookupBinaryFn(scatter_root));
 
     out = fn(graph, out, init_val, program_seq, inst->name() + "_initval");

@@ -14,7 +14,7 @@
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
-#include <popstd/DynamicSlice.hpp>
+#include <popops/DynamicSlice.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -170,7 +170,7 @@ CreateDynamicSliceUpdateOp(poplar::Graph &graph,
   }
 
   if (slice_dims.size() > 0) {
-    popstd::dynamicUpdate(graph,
+    popops::dynamicUpdate(graph,
                           input,
                           update,
                           slice_indices,
@@ -234,7 +234,7 @@ CreateDynamicSliceOp(poplar::Graph &graph,
   poplar::Tensor out;
 
   if (slice_dims.size() > 0) {
-    out = popstd::dynamicSlice(graph,
+    out = popops::dynamicSlice(graph,
                                input,
                                slice_indices,
                                slice_dims,

@@ -33,8 +33,8 @@ limitations under the License.
 #include "tensorflow/core/util/bcast.h"
 
 #include <poplar/Engine.hpp>
-#include <popstd/TileMapping.hpp>
-#include <popstd/Pad.hpp>
+#include <poputil/TileMapping.hpp>
+#include <popops/Pad.hpp>
 
 namespace sep = ::perftools::gputools::poplarplugin;
 
@@ -140,7 +140,7 @@ AddPlainTensor(poplar::Graph& graph,
   TF_ASSIGN_OR_RETURN(poplar_type, PoplarDataType(shape));
 
   out = graph.addVariable(poplar_type, dim, inst->name());
-  popstd::mapTensorLinearly(graph, out);
+  poputil::mapTensorLinearly(graph, out);
   return out;
 }
 
@@ -156,7 +156,7 @@ AddRnnSequence(poplar::Graph& graph,
   out = graph.addVariable(poplar_type, dim, inst->name());
 
   for (auto i = 0; i != dim[0]; ++i) {
-    popstd::mapTensorLinearly(graph, out[i]);
+    poputil::mapTensorLinearly(graph, out[i]);
   }
 
   return out;
@@ -651,7 +651,7 @@ PadWithConstantZero(poplar::Graph& graph,
     paddingLower.push_back(d.edge_padding_low());
     paddingUpper.push_back(d.edge_padding_high());
   }
-  return popstd::pad(graph, in, paddingLower, paddingUpper);
+  return popops::pad(graph, in, paddingLower, paddingUpper);
 }
 
 port::StatusOr<poplar::Tensor>

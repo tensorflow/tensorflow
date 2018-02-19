@@ -58,14 +58,12 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 
 #include <poplar/exceptions.hpp>
-#include <popstd/exceptions.hpp>
+#include <poputil/exceptions.hpp>
 #include <poplar/IPUModel.hpp>
 
 #include <popconv/codelets.hpp>
-#include <poplin/codelets.hpp>
 #include <popnn/codelets.hpp>
-#include <popreduce/codelets.hpp>
-#include <popstd/codelets.hpp>
+#include <popops/codelets.hpp>
 #include <poprand/codelets.hpp>
 
 namespace se = ::perftools::gputools;
@@ -257,10 +255,8 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   poplar::Graph* graph = new poplar::Graph(dev);
   graph->addCodelets(GetPathToGraphProgFile());
   popconv::addCodelets(*graph);
-  poplin::addCodelets(*graph);
   popnn::addCodelets(*graph);
-  popreduce::addCodelets(*graph);
-  popstd::addCodelets(*graph);
+  popops::addCodelets(*graph);
   poprand::addCodelets(*graph);
 
   CompilerResources resources(module->config().seed() + 1);

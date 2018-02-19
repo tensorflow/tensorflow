@@ -20,7 +20,7 @@
 
 #include <poplar/Graph.hpp>
 #include <poplar/Engine.hpp>
-#include <popstd/AllTrue.hpp>
+#include <popops/AllTrue.hpp>
 
 namespace xla {
 namespace poplarplugin {
@@ -311,7 +311,7 @@ CreateWhileOp(poplar::Graph &graph,
     }
   }
   cond_seq.add(cond->second.sequence);
-  popstd::allTrue(graph, cond_outputs[0], cond_seq, inst->name());
+  popops::allTrue(graph, cond_outputs[0], cond_seq, inst->name());
 
   // Main
   main_seq.add(poplar::program::RepeatWhileTrue(cond_seq, body_seq));
@@ -353,7 +353,7 @@ CreateIfOp(poplar::Graph &graph,
                                                  inst->false_computation()));
 
   poplar::program::Sequence cond_seq;
-  popstd::allTrue(graph, pred, cond_seq, inst->name());
+  popops::allTrue(graph, pred, cond_seq, inst->name());
 
   if (true_body->second.inputs().size() != 1 ||
       false_body->second.inputs().size() != 1) {
