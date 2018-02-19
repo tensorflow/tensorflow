@@ -145,6 +145,7 @@ py_library(
         "//tensorflow/python/estimator:estimator_py",
         "//tensorflow/python/estimator:export",
         "//tensorflow/python/estimator:head",
+        "//tensorflow/python/estimator:metric_keys"
     ],
 )
 
