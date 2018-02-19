@@ -306,8 +306,8 @@ class MultiHeadTest(test.TestCase):
         # this assert tests that the algorithm remains consistent.
         keys.AUC + '/head1': 0.1667,
         keys.AUC + '/head2': 0.3333,
-        keys.AUC_PR + '/head1': 0.6667,
-        keys.AUC_PR + '/head2': 0.5000,
+        keys.AUC_PR + '/head1': 0.49999964,
+        keys.AUC_PR + '/head2': 0.33333313,
     }
 
     # Assert spec contains expected tensors.

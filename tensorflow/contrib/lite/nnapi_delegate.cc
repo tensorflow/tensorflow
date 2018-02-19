@@ -335,10 +335,12 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_GATHER:
       case tflite::BuiltinOperator_SPACE_TO_BATCH_ND:
       case tflite::BuiltinOperator_BATCH_TO_SPACE_ND:
+      case tflite::BuiltinOperator_TOPK_V2:
       case tflite::BuiltinOperator_TRANSPOSE:
       case tflite::BuiltinOperator_MEAN:
       case tflite::BuiltinOperator_DIV:
       case tflite::BuiltinOperator_SUB:
+      case tflite::BuiltinOperator_SPLIT:
       case tflite::BuiltinOperator_SQUEEZE:
       case tflite::BuiltinOperator_STRIDED_SLICE:
       case tflite::BuiltinOperator_EXP:

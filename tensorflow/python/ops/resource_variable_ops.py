@@ -35,6 +35,7 @@ from tensorflow.python.ops import variables
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.training import checkpointable
 from tensorflow.python.util import compat
 
 
@@ -107,6 +108,10 @@ class EagerResourceDeleter(object):
   """
 
   def __init__(self, handle, handle_device):
+    if not isinstance(handle, ops.Tensor):
+      raise ValueError(
+          ("Passed handle=%s to EagerResourceDeleter. Was expecting a handle "
+           "Tensor." % (handle,)))
     self._handle = handle
     self._handle_device = handle_device
 
@@ -343,6 +348,11 @@ class ResourceVariable(variables.Variable):
           "or set. Got %s of type %s" % (collections, type(collections)))
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
+
+    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
+      self._maybe_initialize_checkpointable()
+      self._update_uid = initial_value.checkpoint_position.restore_uid
+      initial_value = initial_value.wrapped_value
 
     self._trainable = trainable
     if trainable and ops.GraphKeys.TRAINABLE_VARIABLES not in collections:

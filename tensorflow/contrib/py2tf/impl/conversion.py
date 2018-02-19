@@ -268,9 +268,6 @@ def node_to_graph(node, ctx, nocompile_decorators):
   node = for_loops.transform(node, ctx)
   # for_loops may insert new global references.
   node = builtin_functions.transform(node, ctx)
-  # TODO(mdan): Kept for CL consistency. Remove.
-  # builtin_functions may insert new global references.
-  ctx.namespace['print'] = print
 
   node = _static_analysis_pass(node, ctx)
   node = call_trees.transform(node, ctx, config.DEFAULT_UNCOMPILED_MODULES,

@@ -46,9 +46,11 @@ gen_zipped_test_files(
         "softmax.zip",
         "space_to_batch_nd.zip",
         "space_to_depth.zip",
+        "split.zip",
         "squeeze.zip",
         "strided_slice.zip",
         "sub.zip",
+        "topk.zip",
         "transpose.zip",
     ],
 )
@@ -118,6 +120,21 @@ cc_test(
     srcs = ["split_test.cc"],
     deps = [
         ":split",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "join",
+    hdrs = ["join.h"],
+)
+
+cc_test(
+    name = "join_test",
+    size = "small",
+    srcs = ["join_test.cc"],
+    deps = [
+        ":join",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -201,6 +218,7 @@ cc_library(
     srcs = ["tf_driver.cc"],
     hdrs = ["tf_driver.h"],
     deps = [
+        ":join",
         ":split",
         ":test_runner",
         "//tensorflow/core:core_cpu",

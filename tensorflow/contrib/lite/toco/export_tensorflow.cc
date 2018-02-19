@@ -1236,8 +1236,9 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   // Write weights
   const string weights_output = base + "weights";
   CHECK(model.HasArray(src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]));
-  const auto& weights_array =
-      model.GetArray(src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]);
+  const string weights_name = WalkUpToConstantArray(
+      model, src_op.inputs[LstmCellOperator::WEIGHTS_INPUT]);
+  const auto& weights_array = model.GetArray(weights_name);
   // Convert 4D FullyConnected weights into 2D matrix
   const auto& weights_shape = weights_array.shape();
   CHECK_EQ(weights_shape.dimensions_count(), 2);
@@ -1262,8 +1263,9 @@ void ConvertLstmCellOperator(const Model& model, const LstmCellOperator& src_op,
   // Write biases
   const string biases_output = base + "biases";
   CHECK(model.HasArray(src_op.inputs[LstmCellOperator::BIASES_INPUT]));
-  const auto& bias_array =
-      model.GetArray(src_op.inputs[LstmCellOperator::BIASES_INPUT]);
+  const string bias_name = WalkUpToConstantArray(
+      model, src_op.inputs[LstmCellOperator::BIASES_INPUT]);
+  const auto& bias_array = model.GetArray(bias_name);
   // TODO(b/62904716) Bias arrays should be 1-D, and used directly.
   Shape bias_shape_1d = bias_array.shape();
   UnextendShape(&bias_shape_1d, 1);
@@ -1579,6 +1581,17 @@ void ConvertTensorFlowMaximumOperator(const Model& model,
   (*sub_op->mutable_attr())["T"].set_type(data_type);
 }
 
+void ConvertTopKV2Operator(const Model& model, const TopKV2Operator& src_op,
+                           GraphDef* tensorflow_graph) {
+  auto* topk_op = tensorflow_graph->add_node();
+  topk_op->set_op("TOPKV2");
+  topk_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *topk_op->add_input() = src_op.inputs[0];
+  *topk_op->add_input() = src_op.inputs[1];
+  (*topk_op->mutable_attr())["sorted"].set_b(true);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -1726,6 +1739,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
                          tensorflow_graph);
   } else if (src_op.type == OperatorType::kArgMax) {
     ConvertArgMaxOperator(model, static_cast<const ArgMaxOperator&>(src_op),
+                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kTopK_V2) {
+    ConvertTopKV2Operator(model, static_cast<const TopKV2Operator&>(src_op),
                           tensorflow_graph);
   } else if (src_op.type == OperatorType::kTranspose) {
     ConvertTransposeOperator(

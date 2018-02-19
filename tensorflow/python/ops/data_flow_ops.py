@@ -474,7 +474,7 @@ class QueueBase(object):
       name: A name for the operation (optional).
 
     Returns:
-      The tuple of concatenated tensors that was dequeued.
+      The list of concatenated tensors that was dequeued.
     """
     if name is None:
       name = "%s_DequeueMany" % self._name

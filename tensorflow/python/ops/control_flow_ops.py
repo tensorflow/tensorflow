@@ -3119,6 +3119,43 @@ def while_loop(cond,
       c, b, loop_vars=[i0, m0],
       shape_invariants=[i0.get_shape(), tf.TensorShape([None, 2])])
   ```
+  
+  Example which demonstrates non-strict semantics: In the following 
+  example, the final value of the counter `i` does not depend on `x`. So 
+  the `while_loop` can increment the counter parallel to updates of `x`. 
+  However, because the loop counter at one loop iteration depends
+  on the value at the previous iteration, the loop counter itself cannot
+  be incremented in parallel. Hence if we just want the final value of the 
+  counter (which we print on the line `print(sess.run(i))`), then  
+  `x` will never be incremented, but the counter will be updated on a 
+  single thread. Conversely, if we want the value of the output (which we
+  print on the line `print(sess.run(out).shape)`), then the counter may be 
+  incremented on its own thread, while `x` can be incremented in 
+  parallel on a separate thread. In the extreme case, it is conceivable 
+  that the thread incrementing the counter runs until completion before 
+  `x` is incremented even a single time. The only thing that can never 
+  happen is that the thread updating `x` can never get ahead of the 
+  counter thread because the thread incrementing `x` depends on the value 
+  of the counter. 
+  ```python
+  import tensorflow as tf
+
+  n = 10000
+  x = tf.constant(list(range(n)))
+  c = lambda i, x: i < n
+  b = lambda i, x: (tf.Print(i + 1, [i]), tf.Print(x + 1, [i], "x:"))
+  i, out = tf.while_loop(c, b, (0, x))
+  with tf.Session() as sess:
+      print(sess.run(i))  # prints [0] ... [9999]
+
+      # The following line may increment the counter and x in parallel. 
+      # The counter thread may get ahead of the other thread, but not the 
+      # other way around. So you may see things like 
+      # [9996] x:[9987]
+      # meaning that the counter thread is on iteration 9996, 
+      # while the other thread is on iteration 9987
+      print(sess.run(out).shape)  
+  ```
 
   """
   with ops.name_scope(name, "while", loop_vars):

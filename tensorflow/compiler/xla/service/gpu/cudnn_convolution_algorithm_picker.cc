@@ -135,15 +135,6 @@ std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
       break;
   }
 
-  // Remove any algorithms with tensor math enabled.  These have lower precision
-  // than regular algorithms, and we don't yet have a way to turn this on/off in
-  // XLA.
-  algorithms.erase(std::remove_if(algorithms.begin(), algorithms.end(),
-                                  [&](const AlgorithmDesc& a) {
-                                    return a.tensor_ops_enabled();
-                                  }),
-                   algorithms.end());
-
   return algorithms;
 }
 
@@ -222,6 +213,7 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
       ShouldIncludeWinogradNonfusedAlgo(input_shape, output_shape, dnums);
   se::dnn::ProfileResult best_result;
   int64 best_result_bytes_used = 0;
+
   for (const AlgorithmDesc& alg :
        GetAlgorithms(kind, use_winograd_nonfused, stream_exec_)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
@@ -229,14 +221,12 @@ CudnnConvolutionAlgorithmPicker::PickBestAlgorithm(
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
             << instr->ToString();
 
-    bool launch_ok =
-        RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
-                            se::DeviceMemory<float>(input_buf.ValueOrDie()),
-                            se::DeviceMemory<float>(filter_buf.ValueOrDie()),
-                            se::DeviceMemory<float>(output_buf.ValueOrDie()),
-                            &scratch_allocator, window, dnums,
-                            AlgorithmConfig(alg), &stream, &profile_result)
-            .ok();
+    bool launch_ok = RunCudnnConvolution(
+                         kind, input_shape, filter_shape, output_shape,
+                         input_buf.ValueOrDie(), filter_buf.ValueOrDie(),
+                         output_buf.ValueOrDie(), &scratch_allocator, window,
+                         dnums, AlgorithmConfig(alg), &stream, &profile_result)
+                         .ok();
 
     if (launch_ok && profile_result.is_valid()) {
       int64 scratch_bytes_used = scratch_allocator.TotalAllocatedBytes();

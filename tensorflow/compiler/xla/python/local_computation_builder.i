@@ -832,6 +832,21 @@ tensorflow::ImportNumpy();
     }
     Py_DECREF(o);
 
+    o = PyObject_GetAttrString($input, "result_shape");
+    if (o == nullptr) {
+      return nullptr;
+    }
+    if (o != Py_None) {
+      StatusOr<Shape> statusor = numpy::XlaShapeFromPyShape(o);
+      if (!statusor.ok()) {
+        PyErr_SetString(PyExc_TypeError, tensorflow::strings::StrCat("ExecutableBuildOptions.result_shape could not be created from Python shape value: ", statusor.status().ToString()).c_str());
+        Py_DECREF(o);
+        return NULL;
+      }
+      build_options.set_result_layout(statusor.ValueOrDie());
+    }
+    Py_DECREF(o);
+
     $1 = &build_options;
   }
 }
@@ -852,6 +867,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::CompiledLocalComputation::ExecuteWithShapedBuffers;
 %unignore xla::swig::LocalComputation;
 %unignore xla::swig::LocalComputation::Compile;
+%unignore xla::swig::LocalComputation::GetReturnValueShape;
 %unignore xla::swig::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::LocalComputationBuilder;
 %unignore xla::swig::LocalComputationBuilder::Build;

@@ -794,6 +794,10 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[shr],
         ElementWiseBinaryOp(shr, [](NativeT lhs_elem, NativeT rhs_elem) {
+          // If shift amount is greater than the number of bits, then return 0.
+          if (rhs_elem >= sizeof(UnsignedT) * CHAR_BIT) {
+            return static_cast<NativeT>(0);
+          }
           return static_cast<NativeT>(static_cast<UnsignedT>(lhs_elem) >>
                                       rhs_elem);
         }));
@@ -1401,6 +1405,11 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
       }
       case S64: {
         TF_ASSIGN_OR_RETURN(parent_->evaluated_[map], MapImpl<int64>(map));
+        break;
+      }
+      case F16: {
+        TF_ASSIGN_OR_RETURN(parent_->evaluated_[map],
+                            MapImpl<Eigen::half>(map));
         break;
       }
       case F32: {
@@ -2041,9 +2050,7 @@ HloEvaluator::HloEvaluator() {
   });
   typed_visitors_[S32] = MakeUnique<TypedVisitor<int32>>(this);
   typed_visitors_[S64] = MakeUnique<TypedVisitor<int64>>(this);
-  typed_visitors_[F16] = MakeUnique<FunctionVisitor>([](HloInstruction*) {
-    return Unimplemented("HloEvaluator: unhandled primitive type: F16.");
-  });
+  typed_visitors_[F16] = MakeUnique<TypedVisitor<Eigen::half, float>>(this);
   typed_visitors_[F32] = MakeUnique<TypedVisitor<float>>(this);
   typed_visitors_[F64] = MakeUnique<TypedVisitor<double>>(this);
   typed_visitors_[C64] = MakeUnique<TypedVisitor<complex64>>(this);
