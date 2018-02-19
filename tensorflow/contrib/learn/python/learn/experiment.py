@@ -152,7 +152,8 @@ class Experiment(object):
                export_strategies=None,
                train_steps_per_iteration=None,
                checkpoint_and_export=False,
-               saving_listeners=None):
+               saving_listeners=None,
+               train_loss_logging_frequency=100):
     """Constructor for `Experiment`.
 
     Creates an Experiment instance. None of the functions passed to this
@@ -261,6 +262,7 @@ class Experiment(object):
     self._continuous_eval_throttle_secs = continuous_eval_throttle_secs
     self._checkpoint_and_export = checkpoint_and_export
     self._saving_listeners = saving_listeners
+    self._train_loss_logging_frequency = train_loss_logging_frequency
     # Using 1 on a non-cached file system requires a lot of overhead to
     # read the checkpoint state file. This is particular bad on GCS, so
     # we use a different default. This is a temporary band-aid, to be
@@ -385,7 +387,8 @@ class Experiment(object):
         input_fn=self._train_input_fn,
         max_steps=self._train_steps,
         hooks=self._train_monitors + extra_hooks,
-        saving_listeners=self._saving_listeners)
+        saving_listeners=self._saving_listeners,
+        loss_logging_frequency=self._train_loss_logging_frequency)
 
   def evaluate(self, delay_secs=None, name=None):
     """Evaluate on the evaluation data.
@@ -762,7 +765,8 @@ class Experiment(object):
           input_fn=self._train_input_fn,
           steps=train_steps_per_iteration,
           hooks=self._train_monitors,
-          saving_listeners=self._saving_listeners)
+          saving_listeners=self._saving_listeners,
+          loss_logging_frequency=self._train_loss_logging_frequency)
 
       logging.info("Evaluating model now.")
       latest_checkpoint = saver.latest_checkpoint(self._estimator.model_dir)
@@ -816,7 +820,8 @@ class Experiment(object):
         input_fn=self._train_input_fn,
         steps=1,
         hooks=self._train_monitors,
-        saving_listeners=self._saving_listeners)
+        saving_listeners=self._saving_listeners,
+        loss_logging_frequency=self._train_loss_logging_frequency)
 
     eval_result = self._call_evaluate(
         input_fn=self._eval_input_fn,
@@ -851,7 +856,8 @@ class Experiment(object):
       steps=None,
       hooks=None,
       max_steps=None,
-      saving_listeners=None):
+      saving_listeners=None,
+      loss_logging_frequency=None):
     if _sentinel is not None:
       raise ValueError("_call_train should be called with keyword args only")
 
@@ -865,7 +871,9 @@ class Experiment(object):
           steps=steps,
           max_steps=max_steps,
           hooks=hooks,
-          saving_listeners=saving_listeners)
+          saving_listeners=saving_listeners,
+          loss_logging_frequency=loss_logging_frequency)
+
     else:
       return self._estimator.fit(
           input_fn=input_fn, steps=steps, max_steps=max_steps, monitors=hooks)
