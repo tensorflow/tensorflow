@@ -16,7 +16,7 @@ import numpy as np
 class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
   def testConv1x1_Stride2x1_In1x5(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         pa = tf.placeholder(tf.float32, [1,1,5,1], name="a")
         pb = tf.placeholder(tf.float32, [1,1,1,1], name="b")
@@ -31,7 +31,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                             [[[[10], [30], [50]]]])
 
     def testConv3x3_Pad1x1(self):
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float32, [1,14,14,64], name="a")
                 pb = tf.placeholder(tf.float32, [3,3,64,128], name="b")
@@ -46,7 +46,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                                     np.zeros([1,14,14,128]))
 
     def testConv3x3_WithBias(self):
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float32, [1,14,14,64], name="a")
                 pb = tf.placeholder(tf.float32, [3,3,64,128], name="b")
@@ -64,7 +64,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
                                     np.zeros([1,14,14,128]))
 
     def testConv8x8_WithBias(self):
-      with tf.device("/device:XLA_IPU:0"):
+      with tf.device("/device:IPU:0"):
         with tf.Session() as sess:
           inp = tf.placeholder(tf.float32, [1,84,84,4], name="inp")
           wei = tf.placeholder(tf.float32, [8,8,4,16], name="wei")
@@ -83,7 +83,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
 
     def testDepthwiseConv3x2(self):
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.float32, [1,2,2,3], name="a")
                 pb = tf.placeholder(tf.float32, [1,1,3,2], name="b")

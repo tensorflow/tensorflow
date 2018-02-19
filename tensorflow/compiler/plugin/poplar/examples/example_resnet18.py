@@ -95,7 +95,7 @@ def max_pool(x, ksize=3, stride=2):
 x = tf.placeholder(datatype, shape=[1, 224, 224, 4])
 y_ = tf.placeholder(datatype, shape=[1, 1000])
 
-with tf.device("/device:XLA_IPU:0"):
+with tf.device("/device:IPU:0"):
   # Inference
   logits = inference(x)
 

@@ -15,7 +15,7 @@ from tensorflow.python.ops import math_ops
 class Ipu64BitTest(test_util.TensorFlowTestCase):
 
     def testAdd(self):
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.int64, [2,2], name="a")
                 pb = tf.placeholder(tf.int64, [2,2], name="b")
@@ -30,7 +30,7 @@ class Ipu64BitTest(test_util.TensorFlowTestCase):
                 self.assertAllClose(result, [[2,1],[5,6]])
 
     def testSubConstant(self):
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
             with tf.Session() as sess:
                 pa = tf.placeholder(tf.int64, [2,2], name="a")
                 pb = tf.constant([[1, 2], [3, 4]], dtype=tf.int64)

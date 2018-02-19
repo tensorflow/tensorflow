@@ -19,7 +19,7 @@ class IpuXlaBatchNormTest(test_util.TensorFlowTestCase):
         vscope = tf.get_variable_scope()
         vscope.set_use_resource(True)
 
-        with tf.device("/device:XLA_IPU:0"):
+        with tf.device("/device:IPU:0"):
             with tf.Session() as sess:
                 x = tf.placeholder(tf.float32, [1,64,64,4], name="a")
 

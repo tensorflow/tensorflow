@@ -19,7 +19,7 @@
 
 plugins = {
   "poplar": {
-    "device":"XLA_IPU",
+    "device":"IPU",
     "types":"DT_FLOAT,DT_INT32",
     "tags":[],
     "args":["--disabled_manifest=tensorflow/compiler/plugin/poplar/disabled_manifest.txt"],

@@ -29,7 +29,7 @@ namespace se = ::perftools::gputools;
 
 namespace tensorflow {
 
-const char* const DEVICE_XLA_IPU = "XLA_IPU";
+const char* const DEVICE_XLA_IPU = "IPU";
 const char* const DEVICE_IPU_XLA_JIT = "XLA_IPU_JIT";
 
 constexpr std::array<DataType, 6> kIpuAllTypes =

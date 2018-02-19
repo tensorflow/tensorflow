@@ -15,6 +15,37 @@ IRIS_TRAINING_URL = "http://download.tensorflow.org/data/iris_training.csv"
 IRIS_TEST = "/tmp/iris_test.csv"
 IRIS_TEST_URL = "http://download.tensorflow.org/data/iris_test.csv"
 
+
+def my_model(features, labels, mode):
+
+  # Set variables to resource variables
+  vscope = tf.get_variable_scope()
+  vscope.set_use_resource(True)
+
+  with tf.device("/device:IPU:0"):
+    x = tf.reshape(features["x"], [-1, 4])
+    x = tf.layers.dense(inputs=x, units=10)
+    x = tf.layers.dense(inputs=x, units=3)
+
+    if (mode == tf.estimator.ModeKeys.TRAIN or
+        mode == tf.estimator.ModeKeys.EVAL):
+      loss = tf.reduce_mean(
+        tf.nn.sparse_softmax_cross_entropy_with_logits(logits=x, labels=labels))
+    else:
+      loss = None
+    if mode == tf.estimator.ModeKeys.TRAIN:
+      train = tf.train.GradientDescentOptimizer(0.01).minimize(loss,
+                                                               tf.train.get_global_step())
+    else:
+      train = None
+
+  return tf.estimator.EstimatorSpec(
+    mode=mode,
+    predictions=x,
+    loss=loss,
+    train_op=train)
+
+
 def main():
   # If the training and test sets aren't stored locally, download them.
   if not os.path.exists(IRIS_TRAINING):
@@ -37,37 +68,32 @@ def main():
       target_dtype=np.int,
       features_dtype=np.float32)
 
-  # Specify that all features have real-value data
-  feature_columns = [tf.feature_column.numeric_column("x", shape=[4])]
+  classifier = tf.estimator.Estimator(model_fn=my_model,
+                                      model_dir="/tmp/iris_model")
 
-  # Build 3 layer DNN with 10, 20, 10 units respectively.
-  with tf.device("/device:XLA_IPU:0"):
-    with tf.variable_scope("vars", use_resource=True):
-      classifier = tf.estimator.DNNClassifier(feature_columns=feature_columns,
-                                              hidden_units=[10, 20, 10],
-                                              n_classes=3,
-                                              model_dir="/tmp/iris_model")
   # Define the training inputs
   train_input_fn = tf.estimator.inputs.numpy_input_fn(
       x={"x": np.array(training_set.data)},
       y=np.array(training_set.target),
       num_epochs=None,
-      shuffle=True)
+      shuffle=True,
+      batch_size=4)
 
   # Train model.
-  classifier.train(input_fn=train_input_fn, steps=2000)
+  classifier.train(input_fn=train_input_fn, steps=1024)
 
   # Define the test inputs
   test_input_fn = tf.estimator.inputs.numpy_input_fn(
       x={"x": np.array(test_set.data)},
       y=np.array(test_set.target),
       num_epochs=1,
-      shuffle=False)
+      shuffle=False,
+      batch_size=4)
 
   # Evaluate accuracy.
-  accuracy_score = classifier.evaluate(input_fn=test_input_fn)["accuracy"]
+  accuracy_score = classifier.evaluate(input_fn=test_input_fn)
+  print (accuracy_score)
 
-  print("\nTest Accuracy: {0:f}\n".format(accuracy_score))
 
   # Classify two new flower samples.
   new_samples = np.array(
@@ -79,11 +105,7 @@ def main():
       shuffle=False)
 
   predictions = list(classifier.predict(input_fn=predict_input_fn))
-  predicted_classes = [p["classes"] for p in predictions]
-
-  print(
-      "New Samples, Class Predictions:    {}\n"
-      .format(predicted_classes))
+  print(predictions)
 
 if __name__ == "__main__":
     main()

@@ -16,7 +16,7 @@ from tensorflow.python.ops import special_math_ops
 
 class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
   def testMatMul2x2(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         pa = tf.placeholder(tf.float32, [2, 2], name="a")
         pb = tf.placeholder(tf.float32, [2, 2], name="b")
@@ -27,7 +27,7 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
         self.assertAllClose(result, [[0., 1.], [8., 6.]])
 
   def testMatMul1x1(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         pa = tf.placeholder(tf.float32, [1, 1], name="a")
         pb = tf.placeholder(tf.float32, [1, 1], name="b")
@@ -38,7 +38,7 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
         self.assertAllClose(result, [[4.]])
 
   def testMatMulVec1(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         pa = tf.placeholder(tf.float32, [1, 3], name="a")
         pb = tf.placeholder(tf.float32, [3, 1], name="b")
@@ -49,7 +49,7 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
         self.assertAllClose(result, [[32.]])
 
   def testMatMulVec2(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         pa = tf.placeholder(tf.float32, [3, 1], name="a")
         pb = tf.placeholder(tf.float32, [1, 3], name="b")
@@ -61,7 +61,7 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
                             [[4., 5., 6.], [8., 10., 12.], [12., 15., 18.]])
 
   def testMatMulEinsumDot(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         pa = tf.placeholder(tf.float32, [3], name="a")
         pb = tf.placeholder(tf.float32, [3], name="b")
@@ -72,7 +72,7 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
         self.assertAllClose(result, 32.)
 
   def testMatMul3x1x2(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         pa = tf.placeholder(tf.float32, [1, 3], name="a")
         pb = tf.placeholder(tf.float32, [3, 2], name="b")
@@ -83,7 +83,7 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
         self.assertAllClose(result, [[123, 354]])
 
   def testMatMulBatch(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         pa = tf.placeholder(tf.float32, [2, 2, 2, 2], name="a")
         pb = tf.placeholder(tf.float32, [2, 2, 2, 2], name="b")
@@ -107,7 +107,7 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
                               [[250800, 299200], [2508, 2992]]]])
 
   def testMatMulBatch2(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         pa = tf.placeholder(tf.float32, [6, 2, 2], name="a")
         pb = tf.placeholder(tf.float32, [6, 2, 2], name="b")
@@ -137,7 +137,7 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
                              [[6, 0], [6, 0]]])
 
   def testMatMulFwdBackwd(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.variable_scope("vs", use_resource=True):
         w1 = tf.get_variable("w1", shape=[4, 3], dtype=tf.float32,
                             initializer=tf.constant_initializer(
@@ -174,7 +174,7 @@ class IpuXlaMatMulTest(test_util.TensorFlowTestCase):
       sess.run(train, feed_dict=fd)
 
   def testMatMulFwdBackwdLeftHandWeights(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.variable_scope("vs", use_resource=True):
         w1 = tf.get_variable("w1", shape=[3, 4], dtype=tf.float32,
                              initializer=tf.constant_initializer(

@@ -12,7 +12,7 @@ from tensorflow.python.ops import resource_variable_ops
 class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
   def testInitializeSimpleVariables(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
 
         x = resource_variable_ops.ResourceVariable(
@@ -28,7 +28,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(r2, [0.0], atol=1.0)
 
   def testInitializeSharedVariables(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
           x = tf.get_variable("x", shape=[], dtype=tf.float32,
@@ -45,7 +45,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(r2, 2)
 
   def testRead(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
           z = tf.get_variable("z", shape=[], dtype=tf.float32,
@@ -58,7 +58,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(r, 3)
 
   def testAssign(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
           z = tf.get_variable("z", shape=[], dtype=tf.float32,
@@ -75,7 +75,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(r, 8)
 
   def testGradientDescent(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.variable_scope("vs", use_resource=True):
 
         w = tf.get_variable("w", shape=[4, 2], dtype=tf.float32,
@@ -107,7 +107,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       self.assertAllClose(np.array([1.9, 2.9], dtype=np.float32), vb, rtol=1e-4)
 
   def testRepeatedGradientDescent(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.variable_scope("vs", use_resource=True):
 
         w = tf.get_variable("w", shape=[4, 2], dtype=tf.float32,
@@ -144,7 +144,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
 
   def testMultipleUpdate(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
           z = tf.get_variable("z", shape=[], dtype=tf.float32,
@@ -169,7 +169,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(r, 10.0)
 
   def testRandomNormalInitalizer(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
           i = tf.random_normal_initializer(mean=2.0, stddev=0.01)
@@ -180,7 +180,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(o, 2.0, 0.2, 0.2)
 
   def testDefaultRandomNormalInitalizer(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
           i = tf.random_normal_initializer()
@@ -191,7 +191,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(o, 0.0, 1.0, 3.0)
 
   def testTruncatedNormalInitalizer(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
           i = tf.truncated_normal_initializer(mean=1.0, stddev=0.01)
@@ -202,7 +202,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(o, 1.0, 0.2, 0.2)
 
   def testDefaultTruncatedNormalInitalizer(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
           i = tf.truncated_normal_initializer()
@@ -213,7 +213,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(o, 1.0, 2.0, 2.0)
 
   def testUniformRandomInitalizer(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
           i = tf.random_uniform_initializer(minval=-2.0, maxval=2.0)
@@ -224,7 +224,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
         self.assertAllClose(o, 0.0, 2.0, 2.0)
 
   def testDefaultUniformRandomInitalizer(self):
-    with tf.device("/device:XLA_IPU:0"):
+    with tf.device("/device:IPU:0"):
       with tf.Session() as sess:
         with tf.variable_scope("vs", use_resource=True):
           i = tf.random_uniform_initializer()

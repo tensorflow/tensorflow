@@ -11,7 +11,7 @@ vscope = tf.get_variable_scope()
 vscope.set_use_resource(True)
 
 # Create Keras model
-with tf.device("/device:XLA_IPU:0"):
+with tf.device("/device:IPU:0"):
   model = tf.keras.Sequential()
   model.add(tf.keras.layers.Dense(32, activation='relu', input_dim=100))
   model.add(tf.keras.layers.Dense(1, activation='sigmoid'))
