@@ -36,6 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
+from tensorflow.python.summary import summary
 
 
 def time_series_regression_head(model,
@@ -84,7 +85,7 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
       model_outputs = self.state_manager.define_loss(
           self.model, features, mode)
       summary.scalar(
-        head_lib._summary_key(self._name, metric_keys.LOSS),
+        head_lib._summary_key(self._name, metric_keys.MetricKeys.LOSS),
         model_outputs.loss)
     return model_outputs
 
