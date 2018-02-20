@@ -31,7 +31,7 @@ from tensorflow.python.ops import nn
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.util.tf_export import tf_export
 
-
+@tf_export('layers._Conv')
 class _Conv(base.Layer):
   """Abstract nD convolution layer (private, used as implementation base).
 
