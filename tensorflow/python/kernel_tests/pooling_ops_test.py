@@ -912,7 +912,10 @@ class PoolingTest(test.TestCase):
 
 
   def testUnpool(self):
-		for use_gpu in [False]:
+    gpu_settings = [False]
+    if test.is_gpu_available(cuda_only=True):
+      gpu_settings.append(True)
+    for use_gpu in gpu_settings:
 			test_iterations = 10
 			for iteration in range(test_iterations):
 				print("unpool: iteration {}/{} GPU {}".format(iteration+1, test_iterations, use_gpu))
@@ -923,7 +926,10 @@ class PoolingTest(test.TestCase):
 					self.assertAllCloseAccordingToType(input_data.ravel(), unpooled_data.ravel()[indices.ravel()])
 
   def testUnpoolGrad(self):
-		for use_gpu in [False]:
+    gpu_settings = [False]
+    if test.is_gpu_available(cuda_only=True):
+      gpu_settings.append(True)
+    for use_gpu in gpu_settings:
 			test_iterations = 10
 			for iteration in range(test_iterations):
 				print("unpool gradient: iteration {}/{} GPU {}".format(iteration+1, test_iterations, use_gpu))

@@ -20,25 +20,56 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-__global__ void UnpoolForwardWithIndexKernel(const int numThreads, const T* pooledData, const tensorflow::int64* indices, T* unpooledData)
+__global__ void UnpoolForwardWithIndexKernel(const int num_threads, const T* pooled_data, const int64* indices, T* unpooled_data)
 {
-  CUDA_1D_KERNEL_LOOP(index, numThreads)
+  CUDA_1D_KERNEL_LOOP(index, num_threads)
   {
-    int64 unpooledIndex = indices[index];
-    unpooledData[unpooledIndex] = pooledData[index];
+    int64 unpooled_index = indices[index];
+    unpooled_data[unpooled_index] = pooled_data[index];
   }
 }
 
-bool UnpoolForwardWithIndex(const float* input, TensorShape inputShape, const int64* indices, float* unpooledData, const Eigen::GpuDevice& device)
+template <typename T>
+__global__ void MaxUnpoolBackward(const int num_threads, const T* unpooled_gradient, const int64* indices, T* pooled_gradient)
 {
-  const int threadsPerBlock = 1024;
+  CUDA_1D_KERNEL_LOOP(pooled_index, num_threads)
+  {
+    int64 unpooled_index = indices[pooled_index];
+    CudaAtomicAdd(pooled_gradient+pooled_index, unpooled_gradient[unpooled_index]);
+  }
+}
 
-  const int64 numPooledPoints = GetTensorDim(inputShape, FORMAT_NHWC, 'N')*GetTensorDim(inputShape, FORMAT_NHWC, 'H')*GetTensorDim(inputShape, FORMAT_NHWC, 'W')*GetTensorDim(inputShape, FORMAT_NHWC, 'C');
+template <typename T>
+__global__ void SetToZero(const int num_threads, T* input)
+{
+  CUDA_1D_KERNEL_LOOP(index, num_threads)
+  {
+    *(input + index) = T(0);
+  }
+}
 
-  tensorflow::int64 numBlocks = (numPooledPoints+threadsPerBlock-1)/threadsPerBlock;
-  UnpoolForwardWithIndexKernel<<<numBlocks, threadsPerBlock, 0, device.stream()>>>(numPooledPoints, input, indices, unpooledData);
+bool UnpoolForwardWithIndex(const float* input, TensorShape input_shape, const int64* indices, float* unpooled_data, const Eigen::GpuDevice& device)
+{
+  const int threads_per_block = 1024;
+
+  const int64 num_pooled_points = GetTensorDim(input_shape, FORMAT_NHWC, 'N')*GetTensorDim(input_shape, FORMAT_NHWC, 'H')*GetTensorDim(input_shape, FORMAT_NHWC, 'W')*GetTensorDim(input_shape, FORMAT_NHWC, 'C');
+
+  int64 num_blocks = (num_pooled_points+threads_per_block-1)/threads_per_block;
+  UnpoolForwardWithIndexKernel<<<num_blocks, threads_per_block, 0, device.stream()>>>(num_pooled_points, input, indices, unpooled_data);
 
   return device.ok();
+}
+
+bool MaxUnpoolBackward(const float* unpooled_gradient, const int64* indices, float* pooled_gradient, const int64 num_pooled_points, const Eigen::GpuDevice& device)
+{
+ const int threads_per_block = 1024;
+ int64 num_blocks = (num_pooled_points+threads_per_block-1)/threads_per_block;
+
+ SetToZero<<<num_blocks, threads_per_block, 0, device.stream()>>>(num_pooled_points, pooled_gradient);
+
+ MaxUnpoolBackward<<<num_blocks, threads_per_block, 0, device.stream()>>>(num_pooled_points, unpooled_gradient, indices, pooled_gradient);
+
+ return device.ok();
 }
 
 }

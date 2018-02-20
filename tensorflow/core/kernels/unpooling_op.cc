@@ -217,5 +217,6 @@ REGISTER_KERNEL_BUILDER(Name("UnpoolGradient").Device(tensorflow::DEVICE_CPU), U
 
 #ifdef GOOGLE_CUDA
 REGISTER_KERNEL_BUILDER(Name("Unpool").Device(tensorflow::DEVICE_GPU).HostMemory("unpool_shape"), UnpoolOp<Eigen::GpuDevice, float>)
+REGISTER_KERNEL_BUILDER(Name("UnpoolGradient").Device(tensorflow::DEVICE_GPU), UnpoolGradientOp<Eigen::GpuDevice, float>)
 #endif
 }
