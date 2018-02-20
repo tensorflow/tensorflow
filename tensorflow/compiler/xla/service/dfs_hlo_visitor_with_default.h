@@ -103,6 +103,9 @@ class DfsHloVisitorWithDefaultBase
   Status HandleOutfeed(HloInstructionPtr outfeed) override {
     return DefaultAction(outfeed);
   }
+  Status HandleHostCompute(HloInstructionPtr host_compute) override {
+    return DefaultAction(host_compute);
+  }
   Status HandleReverse(HloInstructionPtr reverse) override {
     return DefaultAction(reverse);
   }
@@ -184,6 +187,9 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleSendDone(HloInstructionPtr send_done) override {
     return DefaultAction(send_done);
+  }
+  Status HandleGather(HloInstructionPtr gather) override {
+    return DefaultAction(gather);
   }
 
   // Invoked to inform the visitor that the traversal has completed, and that

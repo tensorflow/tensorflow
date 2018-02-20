@@ -605,7 +605,7 @@ def slice(input_, begin, size, name=None):
 
   Note that @{tf.Tensor.__getitem__} is typically a more pythonic way to
   perform slices, as it allows you to write `foo[3:7, :-2]` instead of
-  `tf.slice([3, 0], [4, foo.get_shape()[1]-2])`.
+  `tf.slice(foo, [3, 0], [4, foo.get_shape()[1]-2])`.
 
   `begin` is zero-based; `size` is one-based. If `size[i]` is -1,
   all remaining elements in dimension i are included in the

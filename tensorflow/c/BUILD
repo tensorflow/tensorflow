@@ -12,12 +12,6 @@ load(
     "tf_custom_op_library",
 )
 
-# For platform specific build config
-load(
-    "//tensorflow/core:platform/default/build_config.bzl",
-    "tf_kernel_tests_linkstatic",
-)
-
 # -----------------------------------------------------------------------------
 # Public targets
 
@@ -34,7 +28,11 @@ filegroup(
             "*.cc",
             "*.h",
         ],
-        exclude = ["*test*"],
+        exclude = [
+            "c_api_experimental.cc",
+            "c_api_experimental.h",
+            "*test*",
+        ],
     ),
     visibility = ["//visibility:public"],
 )
@@ -101,6 +99,24 @@ tf_cuda_library(
     }),
 )
 
+tf_cuda_library(
+    name = "c_api_experimental",
+    srcs = [
+        "c_api_experimental.cc",
+    ],
+    hdrs = [
+        "c_api_experimental.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api",
+        ":c_api_internal",
+        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
 exports_files(
     [
         "version_script.lds",
@@ -148,7 +164,7 @@ tf_cuda_library(
     ],
     deps = [
         ":c_api",
-        "//tensorflow/compiler/jit/legacy_flags:mark_for_compilation_pass_flags",
+        ":c_api_experimental",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",

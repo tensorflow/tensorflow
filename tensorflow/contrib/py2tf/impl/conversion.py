@@ -58,16 +58,20 @@ class ConversionMap(object):
         converted AST
     name_map: dict[string]: string; maps original entities to the name of
         their converted counterparts
+    api_module: A reference to the api module. The reference needs to be passed
+        to avoid circular dependencies.
   """
 
   # TODO(mdan): Rename to ConversionContext, and pull in additional flags.
 
-  def __init__(self, recursive, nocompile_decorators, partial_types):
+  def __init__(self, recursive, nocompile_decorators, partial_types,
+               api_module):
     self.recursive = recursive
     self.nocompile_decorators = nocompile_decorators
     self.partial_types = partial_types if partial_types else ()
     self.dependency_cache = {}
     self.name_map = {}
+    self.api_module = api_module
 
   def new_namer(self, namespace):
     return naming.Namer(namespace, self.recursive, self.name_map,
@@ -170,6 +174,24 @@ def class_to_graph(c, conversion_map):
   return node, class_name
 
 
+def _add_self_references(namespace, api_module):
+  """Self refs are only required for analysis and are not used directly."""
+  # Manually add the utils namespace which may be used from generated code.
+  if 'py2tf_util' not in namespace:
+    namespace['py2tf_utils'] = utils
+  elif namespace['py2tf_utils'] != utils:
+    raise ValueError(
+        'The module name "py2tf_utils" is reserved and may not be used.')
+
+  # We also make reference to the api module for dynamic conversion, but
+  # to avoid circular references we don't import it here.
+  if 'py2tf_api' not in namespace:
+    namespace['py2tf_api'] = api_module
+  elif namespace['py2tf_api'] != api_module:
+    raise ValueError(
+        'The module name "py2tf_api" is reserved and may not be used.')
+
+
 def function_to_graph(f, conversion_map, arg_values, arg_types,
                       owner_type=None):
   """Specialization of `entity_to_graph` for callable functions."""
@@ -185,12 +207,7 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
         fn = e.cell_contents
         namespace[fn.__name__] = fn
 
-  # Manually add the utils namespace which may be used from generated code.
-  if 'py2tf_util' not in namespace:
-    namespace['py2tf_utils'] = utils
-  elif namespace['py2tf_utils'] != utils:
-    raise ValueError(
-        'The module name py2tf_utils is reserved and may not be used.')
+  _add_self_references(namespace, conversion_map.api_module)
 
   namer = conversion_map.new_namer(namespace)
   ctx = context.EntityContext(
