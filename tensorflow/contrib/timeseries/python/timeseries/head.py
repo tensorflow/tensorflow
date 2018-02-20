@@ -81,13 +81,11 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
   # once `_Head.create_loss` becomes extendable
   def create_loss(self, features, mode, logits=None, labels=None):
     """See `_Head`."""
-    with variable_scope.variable_scope(
-        "model", reuse=variable_scope.AUTO_REUSE):
-      model_outputs = self.state_manager.define_loss(
-          self.model, features, mode)
-      summary.scalar(
-          head_lib._summary_key(self._name, metric_keys.MetricKeys.LOSS),
-          model_outputs.loss)
+    model_outputs = self.state_manager.define_loss(
+        self.model, features, mode)
+    summary.scalar(
+        head_lib._summary_key(self._name, metric_keys.MetricKeys.LOSS),
+        model_outputs.loss)
     return model_outputs
 
   @property
@@ -98,7 +96,8 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
   def _train_ops(self, features):
     """Add training ops to the graph."""
     mode = estimator_lib.ModeKeys.TRAIN
-    model_outputs = self.create_loss(features, mode)
+    with variable_scope.variable_scope("model"):
+      model_outputs = self.create_loss(features, mode)
     train_op = optimizers.optimize_loss(
         model_outputs.loss,
         global_step=training_util.get_global_step(),
@@ -113,7 +112,8 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
   def _evaluate_ops(self, features):
     """Add ops for evaluation (aka filtering) to the graph."""
     mode = estimator_lib.ModeKeys.EVAL
-    model_outputs = self.create_loss(features, mode)
+    with variable_scope.variable_scope("model"):
+      model_outputs = self.create_loss(features, mode)
     metrics = {}
     # Just output in-sample predictions for the last chunk seen
     for prediction_key, prediction_value in model_outputs.predictions.items():
@@ -143,7 +143,8 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
     """Add ops for serving to the graph."""
     with variable_scope.variable_scope("model"):
       prediction_outputs = self.model.predict(features=features)
-    filtering_outputs = self.create_loss(features, estimator_lib.ModeKeys.EVAL)
+    with variable_scope.variable_scope("model", reuse=True):
+      filtering_outputs = self.create_loss(features, estimator_lib.ModeKeys.EVAL)
     return estimator_lib.EstimatorSpec(
         mode=estimator_lib.ModeKeys.PREDICT,
         export_outputs={
