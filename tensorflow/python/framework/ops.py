@@ -2707,15 +2707,21 @@ class Graph(object):
     self._name_stack = ""
     # Maps a name used in the graph to the next id to use for that name.
     self._names_in_use = {}
+    self._stack_state_is_thread_local = False
+    self._thread_local = threading.local()
     # Functions that will be applied to choose a device if none is specified.
-    self._device_function_stack = []
+    # After switch_to_thread_local(), self._thread_local._device_function_stack
+    # is used instead.
+    self._graph_device_function_stack = []
     # Default original_op applied to new ops.
     self._default_original_op = None
     # Current control flow context. It could be either CondContext or
     # WhileContext defined in ops/control_flow_ops.py
     self._control_flow_context = None
     # A new node will depend of the union of all of the nodes in the stack.
-    self._control_dependencies_stack = []
+    # After switch_to_thread_local(),
+    # self._thread_local._control_dependencies_stack is used instead.
+    self._graph_control_dependencies_stack = []
     # Arbitrary collections of objects.
     self._collections = {}
     # The graph-level random seed
@@ -2737,8 +2743,9 @@ class Graph(object):
         producer=versions.GRAPH_DEF_VERSION,
         min_consumer=versions.GRAPH_DEF_VERSION_MIN_CONSUMER)
     self._building_function = False
-    # Stack of colocate_with ops
-    self._colocation_stack = []
+    # Stack of colocate_with ops. After switch_to_thread_local(),
+    # self._thread_local._colocation_stack is used instead.
+    self._graph_colocation_stack = []
     # Set of tensors that are dangerous to feed!
     self._unfeedable_tensors = set()
     # Set of operations that are dangerous to fetch!
@@ -4668,6 +4675,79 @@ class Graph(object):
       return tensor_or_op.op not in self._unfetchable_ops
     else:
       return tensor_or_op not in self._unfetchable_ops
+
+  def switch_to_thread_local(self):
+    """Make device, colocation and dependencies stacks thread-local.
+
+    Device, colocation and dependencies stacks are not thread-local be default.
+    If multiple threads access them, then the state is shared.  This means that
+    one thread may affect the behavior of another thread.
+
+    After this method is called, the stacks become thread-local.  If multiple
+    threads access them, then the state is not shared.  Each thread uses its own
+    value; a thread doesn't affect other threads by mutating such a stack.
+
+    The initial value for every thread's stack is set to the current value
+    of the stack when `switch_to_thread_local()` was first called.
+    """
+    if not self._stack_state_is_thread_local:
+      self._stack_state_is_thread_local = True
+
+  @property
+  def _device_function_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where device_function_stack doesn't yet
+      # exist.
+      if not hasattr(self._thread_local, "_device_function_stack"):
+        self._thread_local._device_function_stack = (
+            self._graph_device_function_stack[:])
+      return self._thread_local._device_function_stack
+    else:
+      return self._graph_device_function_stack
+
+  @_device_function_stack.setter
+  def _device_function_stack(self, device_function_stack):
+    if self._stack_state_is_thread_local:
+      self._thread_local._device_function_stack = device_function_stack
+    else:
+      self._graph_device_function_stack = device_function_stack
+
+  @property
+  def _colocation_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where colocation_stack doesn't yet
+      # exist.
+      if not hasattr(self._thread_local, "_colocation_stack"):
+        self._thread_local._colocation_stack = self._graph_colocation_stack[:]
+      return self._thread_local._colocation_stack
+    else:
+      return self._graph_colocation_stack
+
+  @_colocation_stack.setter
+  def _colocation_stack(self, colocation_stack):
+    if self._stack_state_is_thread_local:
+      self._thread_local._colocation_stack = colocation_stack
+    else:
+      self._graph_colocation_stack = colocation_stack
+
+  @property
+  def _control_dependencies_stack(self):
+    if self._stack_state_is_thread_local:
+      # This may be called from a thread where control_dependencies_stack
+      # doesn't yet exist.
+      if not hasattr(self._thread_local, "_control_dependencies_stack"):
+        self._thread_local._control_dependencies_stack = (
+            self._graph_control_dependencies_stack[:])
+      return self._thread_local._control_dependencies_stack
+    else:
+      return self._graph_control_dependencies_stack
+
+  @_control_dependencies_stack.setter
+  def _control_dependencies_stack(self, control_dependencies):
+    if self._stack_state_is_thread_local:
+      self._thread_local._control_dependencies_stack = control_dependencies
+    else:
+      self._graph_control_dependencies_stack = control_dependencies
 
 
 # TODO(agarwal): currently device directives in an outer eager scope will not
