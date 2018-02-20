@@ -77,16 +77,17 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
   def name(self):
     return self._name
 
-  # TODO(terrytangyuan): consolidate model_outputs and _Head.LossSpec once _Head.create_loss
-  # becomes extendable
+  # TODO(terrytangyuan): consolidate `model_outputs` and `_Head.LossSpec`
+  # once `_Head.create_loss` becomes extendable
   def create_loss(self, features, mode, logits=None, labels=None):
     """See `_Head`."""
-    with variable_scope.variable_scope("model", reuse=variable_scope.AUTO_REUSE):
+    with variable_scope.variable_scope(
+        "model", reuse=variable_scope.AUTO_REUSE):
       model_outputs = self.state_manager.define_loss(
           self.model, features, mode)
       summary.scalar(
-        head_lib._summary_key(self._name, metric_keys.MetricKeys.LOSS),
-        model_outputs.loss)
+          head_lib._summary_key(self._name, metric_keys.MetricKeys.LOSS),
+          model_outputs.loss)
     return model_outputs
 
   @property
