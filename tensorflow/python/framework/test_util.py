@@ -463,8 +463,7 @@ def assert_no_new_tensors(f):
       f(self, **kwargs)
     # Make an effort to clear caches, which would otherwise look like leaked
     # Tensors.
-    backprop._last_zero = [None]
-    backprop._shape_dtype = [None, None]
+    backprop._zeros_cache.flush()
     context.get_default_context().scalar_cache().clear()
     gc.collect()
     tensors_after = [
@@ -1102,7 +1101,12 @@ class TensorFlowTestCase(googletest.TestCase):
       np.testing.assert_allclose(
           a, b, rtol=rtol, atol=atol, err_msg=msg, equal_nan=True)
 
-  def _assertAllCloseRecursive(self, a, b, rtol=1e-6, atol=1e-6, path=None,
+  def _assertAllCloseRecursive(self,
+                               a,
+                               b,
+                               rtol=1e-6,
+                               atol=1e-6,
+                               path=None,
                                msg=None):
     path = path or []
     path_str = (("[" + "][".join([str(p) for p in path]) + "]") if path else "")
@@ -1249,7 +1253,7 @@ class TensorFlowTestCase(googletest.TestCase):
     a = self._GetNdArray(a)
     b = self._GetNdArray(b)
     self.assertEqual(a.shape, b.shape, "Shape mismatch: expected %s, got %s."
-                                       " %s" % (a.shape, b.shape, msg))
+                     " %s" % (a.shape, b.shape, msg))
     same = (a == b)
 
     if a.dtype == np.float32 or a.dtype == np.float64:
@@ -1331,8 +1335,8 @@ class TensorFlowTestCase(googletest.TestCase):
       raise TypeError("np_array must be a Numpy ndarray or Numpy scalar")
     if not isinstance(tf_tensor, ops.Tensor):
       raise TypeError("tf_tensor must be a Tensor")
-    self.assertAllEqual(np_array.shape, tf_tensor.get_shape().as_list(),
-                        msg=msg)
+    self.assertAllEqual(
+        np_array.shape, tf_tensor.get_shape().as_list(), msg=msg)
 
   def assertDeviceEqual(self, device1, device2, msg=None):
     """Asserts that the two given devices are the same.

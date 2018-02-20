@@ -244,6 +244,9 @@ class LabeledTensorTest(test_util.Base):
   def test_dtype(self):
     self.assertEqual(self.lt.dtype, self.lt.tensor.dtype)
 
+  def test_shape(self):
+    self.assertEqual(self.lt.shape, self.lt.tensor.shape)
+
   def test_get_shape(self):
     self.assertEqual(self.lt.get_shape(), self.lt.tensor.get_shape())
 

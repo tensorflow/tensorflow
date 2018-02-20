@@ -175,7 +175,7 @@ class XlaOpKernelContext {
   // variable has been initialized with a different type or with a
   // different shape.
   Status AssignVariable(int input_index, DataType type,
-                        const xla::ComputationDataHandle& handle);
+                        xla::ComputationDataHandle handle);
 
   // Helper routines for the OP_REQUIRES macros
   void CtxFailure(const Status& s);

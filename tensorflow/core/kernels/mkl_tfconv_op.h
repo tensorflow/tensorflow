@@ -128,7 +128,7 @@ class MklToTfOp : public OpKernel {
 #else
   static void ConvertMklToTf(OpKernel* op_kernel, OpKernelContext* context,
                              string data_format_str, DataType op_data_type,
-                             bool has_avx512f, uint input_number) {
+                             bool has_avx512f, uint32 input_number) {
     // Check that input tensor is in MKL format.
     const Tensor& input_tensor = MklGetInput(context, input_number);
     MklShape input_shape;

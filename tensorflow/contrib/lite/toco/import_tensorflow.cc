@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "google/protobuf/map.h"
 #include "google/protobuf/text_format.h"
+#include "absl/memory/memory.h"
 #include "absl/strings/match.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
@@ -1460,6 +1461,17 @@ void ConvertBatchToSpaceNDOperator(const NodeDef& node,
   model->operators.emplace_back(op);
 }
 
+void ConvertExpOperator(const NodeDef& node,
+                        const TensorFlowImportFlags& tf_import_flags,
+                        Model* model) {
+  CHECK_EQ(node.op(), "Exp");
+  CheckInputsCount(node, tf_import_flags, 1);
+  auto* op = new ExpOperator;
+  op->inputs.push_back(node.input(0));
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+}
+
 void ConvertMeanOperator(const NodeDef& node,
                          const TensorFlowImportFlags& tf_import_flags,
                          Model* model) {
@@ -1570,7 +1582,7 @@ void ConvertFloorDivOperator(const NodeDef& node,
 void ConvertFloorModOperator(const NodeDef& node,
                              const TensorFlowImportFlags& tf_import_flags,
                              Model* model) {
-  CHECK(node.op() == "FloorMod");
+  CHECK_EQ(node.op(), "FloorMod");
   CheckInputsCount(node, tf_import_flags, 2);
   auto* op = new FloorModOperator;
   op->inputs.push_back(node.input(0));
@@ -1805,6 +1817,37 @@ bool InlineAllFunctions(GraphDef* graphdef) {
   }
   return graph_modified;
 }
+
+void ConvertTopKV2Operator(const NodeDef& node,
+                           const TensorFlowImportFlags& tf_import_flags,
+                           Model* model) {
+  CHECK((node.op() == "TopK") || (node.op() == "TopKV2"));
+  auto op = absl::make_unique<TopKV2Operator>();
+  op->inputs.push_back(node.input(0));
+  // K can be encoded as attr (TopK) convert it to a const.
+  if (HasAttr(node, "k")) {
+    // Convert attribute into const tensor.
+    const string array_name = node.name() + "k";
+    auto& array = model->GetOrCreateArray(array_name);
+    array.data_type = ArrayDataType::kInt32;
+    // Size of array is always 1.
+    array.mutable_shape()->mutable_dims()->emplace_back(1);
+
+    auto& output_int_data =
+        array.GetMutableBuffer<ArrayDataType::kInt32>().data;
+    output_int_data.resize(1);
+    output_int_data[0] = GetIntAttr(node, "k");
+    op->inputs.push_back(array_name);
+
+  } else {
+    CheckInputsCount(node, tf_import_flags, 2);
+    op->inputs.push_back(node.input(1));
+  }
+  // The op has two outputs.
+  op->outputs.push_back(node.name() + ":0");
+  op->outputs.push_back(node.name() + ":1");
+  model->operators.emplace_back(op.release());
+}
 }  // namespace
 
 std::unique_ptr<Model> ImportTensorFlowGraphDef(
@@ -1986,6 +2029,10 @@ std::unique_ptr<Model> ImportTensorFlowGraphDef(
       ConvertTransposeOperator(node, tf_import_flags, model);
     } else if (node.op() == "ArgMax") {
       ConvertArgMaxOperator(node, tf_import_flags, model);
+    } else if (node.op() == "Exp") {
+      ConvertExpOperator(node, tf_import_flags, model);
+    } else if (node.op() == "TopK" || node.op() == "TopKV2") {
+      ConvertTopKV2Operator(node, tf_import_flags, model);
     } else {
       ConvertUnsupportedOperator(node, tf_import_flags, model);
     }

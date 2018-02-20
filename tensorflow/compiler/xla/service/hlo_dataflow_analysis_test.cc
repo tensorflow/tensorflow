@@ -50,7 +50,7 @@ class HloDataflowAnalysisTest : public HloTestBase,
                                          bool bitcast_defines_value = false) {
     hlo_graph_dumper::MaybeDumpHloModule(*module_, "Before dataflow analysis");
     analysis_ =
-        HloDataflowAnalysis::Run(module_.get(), ssa_form, bitcast_defines_value)
+        HloDataflowAnalysis::Run(*module_, ssa_form, bitcast_defines_value)
             .ConsumeValueOrDie();
     return *analysis_;
   }

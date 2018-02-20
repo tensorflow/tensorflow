@@ -234,7 +234,8 @@ def decode_predictions(preds, top=5):
         CLASS_INDEX_PATH,
         cache_subdir='models',
         file_hash='c2c37ea517e94d9795004a39431a14cb')
-    CLASS_INDEX = json.load(open(fpath))
+    with open(fpath) as f:
+      CLASS_INDEX = json.load(f)
   results = []
   for pred in preds:
     top_indices = pred.argsort()[-top:][::-1]

@@ -672,7 +672,7 @@ def auc(labels,
         x = fp_rate
         y = rec
       else:  # curve == 'PR'.
-        prec = math_ops.div(tp + epsilon, tp + fp + epsilon)
+        prec = math_ops.div(tp, tp + fp + epsilon)
         x = rec
         y = prec
       if summation_method == 'trapezoidal':
@@ -923,8 +923,8 @@ def mean_per_class_accuracy(labels,
         weights = array_ops.reshape(weights, [-1])
       weights = math_ops.to_float(weights)
 
-      is_correct = is_correct * weights
-      ones = ones * weights
+      is_correct *= weights
+      ones *= weights
 
     update_total_op = state_ops.scatter_add(total, labels, ones)
     update_count_op = state_ops.scatter_add(count, labels, is_correct)

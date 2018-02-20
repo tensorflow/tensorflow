@@ -66,6 +66,29 @@ class CallTreesTest(converter_test_base.TestCase):
       tc = TestClass()
       self.assertEquals(3, result.test_fn_2(tc, 1))
 
+  def test_py_func_wrap_no_retval(self):
+
+    def test_fn(a):
+      setattr(a, 'foo', 'bar')
+
+    node = self.parse_and_analyze(test_fn, {'setattr': setattr})
+    node = call_trees.transform(node, self.ctx, (), ())
+
+    with self.compiled(node) as result:
+      with self.test_session() as sess:
+        # The function has no return value, so we do some tricks to grab the
+        # generated py_func node and ensure its effect only happens at graph
+        # execution.
+
+        class Dummy(object):
+          pass
+
+        a = Dummy()
+        result.test_fn(a)
+        self.assertFalse(hasattr(a, 'foo'))
+        sess.run(sess.graph.get_operations()[0])
+        self.assertEquals('bar', a.foo)
+
   def test_uncompiled_modules(self):
 
     def test_fn(a):

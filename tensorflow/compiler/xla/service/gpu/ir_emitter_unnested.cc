@@ -75,6 +75,10 @@ namespace gpu {
 namespace {
 
 using llvm_ir::IrName;
+using tensorflow::gtl::ArraySlice;
+using tensorflow::gtl::nullopt;
+using tensorflow::gtl::optional;
+using tensorflow::strings::StrCat;
 
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
@@ -137,6 +141,38 @@ void UpdateLaunchDimensions(const LaunchDimensions& launch_dims, Thunk* thunk,
        llvm::MDString::get(llvm_context, "reqntidx"),
        llvm::ConstantAsMetadata::get(threads_per_block_ir_value)}));
 }
+
+// Tries to get a Slice for the given instruction at the given index, but
+// returns nullopt if we might not know the slice's address at runtime without
+// dereferencing a containing tuple.
+//
+// In particular, when XLA accepts a parameter of tuple type, the caller has the
+// option of telling XLA what are the values inside of the tuple, or just giving
+// XLA a pointer to the top-level tuple and letting us chase the pointers on the
+// GPU.  We therefore cannot rely having these pointers to parameter sub-buffers
+// being present when we run the program.
+optional<BufferAllocation::Slice> GetKnownAtRuntimeSlice(
+    const HloInstruction* instr, const ShapeIndex& index,
+    const BufferAssignment& buffer_assn) {
+  auto maybe_slice = buffer_assn.GetUniqueSlice(instr, index);
+  if (!maybe_slice.ok()) {
+    return nullopt;
+  }
+  // BufferAllocation gives a slice and alloc to every buffer accessed by XLA,
+  // but we don't necessarily know the runtime address of sub-buffers of input
+  // parameters.
+  const BufferAllocation::Slice& slice = maybe_slice.ValueOrDie();
+  const BufferAllocation* alloc = slice.allocation();
+  if (alloc->IsInputOrOutput() && !alloc->maybe_live_out() &&
+      !alloc->param_shape_index().empty()) {
+    return nullopt;
+  }
+
+  // Otherwise, we will know the address of this slice at runtime without having
+  // to dereference a tuple.
+  return slice;
+}
+
 }  // namespace
 
 IrEmitterUnnested::IrEmitterUnnested(const HloModuleConfig& hlo_module_config,
@@ -154,16 +190,20 @@ Status IrEmitterUnnested::Postprocess(HloInstruction* hlo) {
 }
 
 namespace {
-bool ImplementedAsHostToDeviceMemcpy(const HloInstruction& hlo) {
-  // `hlo` needs to satisfy three conditions to be implemented as a
+bool ImplementedAsHostToDeviceMemcpy(const BufferAssignment& buffer_assignment,
+                                     const HloInstruction& hlo) {
+  // `hlo` needs to satisfy the following conditions to be implemented as a
   // host-to-device cuMemcpy.
   //
   // 1. `hlo` is a kCopy instruction.
   // 2. `hlo`'s only operand is a kConstant instruction.
   // 3. `hlo` and its operand have the same shape (thus the same layout too).
+  // 4. The address of `hlo`'s buffer is known at runtime (without dereferencing
+  //    pointers in a tuple).
   return hlo.opcode() == HloOpcode::kCopy &&
          hlo.operand(0)->opcode() == HloOpcode::kConstant &&
-         ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape());
+         ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape()) &&
+         GetKnownAtRuntimeSlice(&hlo, {}, buffer_assignment).has_value();
 }
 
 bool ImplementedAsDeviceToDeviceMemcpy(
@@ -177,13 +217,15 @@ bool ImplementedAsDeviceToDeviceMemcpy(
   //    instance) which means the source buffer also resides on the device.
   return hlo.opcode() == HloOpcode::kCopy &&
          ShapeUtil::Equal(hlo.operand(0)->shape(), hlo.shape()) &&
-         buffer_assignment.HasTopLevelAllocation(hlo.operand(0));
+         GetKnownAtRuntimeSlice(&hlo, {}, buffer_assignment).has_value() &&
+         GetKnownAtRuntimeSlice(hlo.operand(0), {}, buffer_assignment)
+             .has_value();
 }
 }  // namespace
 
 llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
     const HloInstruction& inst,
-    tensorflow::gtl::ArraySlice<const HloInstruction*> escaped_hlos) {
+    tensorflow::gtl::ArraySlice<const BufferAllocation*> args) {
   // Compute the kernel name. The opcode string may contain "-" which cannot be
   // in a PTX function name, so sanitize the name before uniquifying it.
   string kernel_name = ir_emitter_context_->name_uniquer()->GetUniqueName(
@@ -192,43 +234,32 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
   // Create the kernel and add it to the module.
   llvm::Module* module = ir_emitter_context_->llvm_module();
   llvm::LLVMContext& context = module->getContext();
-  int num_escaped_hlos = escaped_hlos.size();
   llvm::FunctionType* kernel_type = llvm::FunctionType::get(
       /*Result=*/llvm::Type::getVoidTy(context),
-      std::vector<llvm::Type*>(num_escaped_hlos + 1,
-                               ir_builder_.getInt8PtrTy()),
+      std::vector<llvm::Type*>(args.size(), ir_builder_.getInt8PtrTy()),
       /*isVarArg=*/false);
   llvm::Function* kernel =
       llvm::Function::Create(kernel_type, llvm::GlobalValue::ExternalLinkage,
                              kernel_name.c_str(), module);
 
-  // Add dereferenceable information to each of the escaped HLO parameters.
-  for (size_t arg_no = 0; arg_no < escaped_hlos.size(); ++arg_no) {
-    const HloInstruction* escaped_hlo = escaped_hlos[arg_no];
-    const Shape& escaped_hlo_shape = escaped_hlo->shape();
-    int64 escaped_hlo_size = llvm_ir::ByteSizeOf(
-        escaped_hlo_shape, ir_emitter_context_->llvm_module()->getDataLayout());
-    kernel->addDereferenceableAttr(arg_no + 1, escaped_hlo_size);
-  }
+  // Add dereferenceable and alignment information to each of the kernel's
+  // parameters.
+  auto arg_it = kernel->arg_begin();
+  for (size_t arg_no = 0; arg_no < args.size(); ++arg_no) {
+    const BufferAllocation* alloc = args[arg_no];
+    llvm::Argument* fn_arg = &*arg_it;
+    ++arg_it;
 
-  // The last argument is a pointer to the temporary buffer memory block.
-  // We know that it doesn't alias any of the escaped arguments (the inputs +
-  // the result).  We also know how many bytes can be dereferenced in it.
-  const llvm::Argument& temp_buffer = *std::prev(kernel->arg_end());
-  int64 temp_buffer_arg_no = temp_buffer.getArgNo();
-  int64 temp_allocation_total_size =
-      ir_emitter_context_->buffer_assignment().temp_allocation_total_size();
-  if (temp_allocation_total_size != 0) {
-    kernel->addDereferenceableAttr(temp_buffer_arg_no + 1,
-                                   temp_allocation_total_size);
-  }
-  kernel->addParamAttr(temp_buffer_arg_no, llvm::Attribute::NoAlias);
-
-  // All arguments to a kernel must be aligned to kCudaMallocAlignBytes.
-  for (int64 i = 0; i < kernel->arg_size(); ++i) {
+    kernel->addDereferenceableAttr(arg_no + 1, alloc->size());
     kernel->addParamAttr(
-        i, llvm::Attribute::get(context, llvm::Attribute::Alignment,
-                                kCudaMallocAlignBytes));
+        arg_no, llvm::Attribute::get(context, llvm::Attribute::Alignment,
+                                     kCudaMallocAlignBytes));
+
+    if (alloc->IsPreallocatedTempBuffer()) {
+      fn_arg->setName("temp_buf");
+    } else {
+      fn_arg->setName(llvm_ir::AsStringRef(StrCat("alloc", alloc->index())));
+    }
   }
 
   // TODO(b/65380986): Investigate if adding fast math flags for generated
@@ -245,10 +276,9 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
 
   // Update the insert point to the entry basic block.
   llvm::BasicBlock* entry_bb =
-      llvm::BasicBlock::Create(context,
-                               "entry",  // The name of the basic block.
-                               kernel);  // The parent/owner of "entry_bb".
-  // Emit a "return void" at entry_bb's end, and sets the insert point before
+      llvm::BasicBlock::Create(context, /*Name=*/"entry", /*Parent=*/kernel);
+
+  // Emit a "return void" at entry_bb's end, and set the insert point before
   // that return instruction.
   ir_builder_.SetInsertPoint(llvm::ReturnInst::Create(context, entry_bb));
 
@@ -869,7 +899,8 @@ int64 EmitTranspose021Tiled(llvm_ir::IrArray input, llvm_ir::IrArray output,
 }  // namespace
 
 Status IrEmitterUnnested::HandleCopy(HloInstruction* copy) {
-  if (ImplementedAsHostToDeviceMemcpy(*copy)) {
+  if (ImplementedAsHostToDeviceMemcpy(ir_emitter_context_->buffer_assignment(),
+                                      *copy)) {
     thunk_sequence_->emplace_back(BuildHostToDeviceCopyThunk(copy));
     return Status::OK();
   }
@@ -1931,62 +1962,207 @@ Status IrEmitterUnnested::HandleInfeed(HloInstruction* infeed) {
   return Status::OK();
 }
 
-llvm::Function* IrEmitterUnnested::EmitBasePointersForHloAndItsOperands(
-    const HloInstruction& hlo, std::vector<const HloInstruction*>* io_hlos) {
-  const BufferAssignment& buffer_assignment =
-      ir_emitter_context_->buffer_assignment();
-  // GetTupleElement instructions are implemented by emitting IR that indexes
-  // and loads the target tuple element pointer from its operand (possibly
-  // recursively). For this reason, GetTupleElement instructions are associated
-  // with their operand buffer in 'io_hlos' and 'non_io_hlos' below.
-  std::vector<const HloInstruction*> non_io_hlos;
-  for (const HloInstruction* operand : hlo.operands()) {
-    const HloInstruction* to_lookup = operand->LatestNonGteAncestor();
-    if (buffer_assignment.HasTopLevelAllocation(to_lookup) &&
-        buffer_assignment.GetUniqueTopLevelSlice(to_lookup)
-            .ConsumeValueOrDie()
-            .allocation()
-            ->IsInputOrOutput()) {
-      io_hlos->push_back(operand);
-    } else {
-      non_io_hlos.push_back(operand);
+// Figures out how to access the buffers for all subshapes of hlo's operands and
+// for hlo itself (i.e. all the buffers produced by HLO).
+//
+// Returns a map keyed on the pair {HloInstruction, ShapeIndex}.  The value for
+// this key is a pair {Slice, ShapeIndex}, where the slice tells you the root
+// buffer to look in, and the ShapeIndex describes how to dereference starting
+// at that buffer to get to the buffer in question.
+//
+// For example, if {hlo, {1}} is mapped to {slice, {3, 4}}, then the buffer for
+// hlo at ShapeIndex {1} (i.e. the buffer for the second tuple element of hlo)
+// is found at slice[3][4].  That is, slice is a void***, which we dereference
+// twice -- first at index 3, and then at index 4 -- to get the address of our
+// buffer.
+//
+// This function conservatively assumes that we'll touch all sub-buffers of
+// every operand and of the output.
+static std::map<std::pair<const HloInstruction*, ShapeIndex>,
+                std::pair<BufferAllocation::Slice, ShapeIndex>>
+GetHloBufferSlices(const HloInstruction* hlo,
+                   const BufferAssignment& buffer_assn) {
+  std::map<std::pair<const HloInstruction*, ShapeIndex>,
+           std::pair<BufferAllocation::Slice, ShapeIndex>>
+      slices;
+
+  // Tries to find a slice plus an array of indices i1, ..., iN such that the
+  // sub-buffer for instr at index can be found at slice[i1]...[iN].
+  auto find_slice_for = [&](const HloInstruction* instr,
+                            const ShapeIndex& index)
+      -> optional<std::pair<BufferAllocation::Slice, ShapeIndex>> {
+    // Simple, common case: Is the buffer for instr known at runtime?  If so,
+    // we're done.
+    auto slice = GetKnownAtRuntimeSlice(instr, index, buffer_assn);
+    if (slice.has_value()) {
+      return {{*slice, ShapeIndex()}};
     }
+
+    // If we don't know the buffer for instr at index, see if we know the buffer
+    // for instr at index without its last element.  If so, we can dynamically
+    // find the buffer for instr by dereferencing a pointer in that buffer.
+    // Continue looking this way until we run out of elements in 'index'.
+    ShapeIndex new_index = index;
+    ShapeIndex gte_indices;
+    while (!new_index.empty()) {
+      gte_indices.push_front(new_index.back());
+      new_index.pop_back();
+      auto slice = GetKnownAtRuntimeSlice(instr, new_index, buffer_assn);
+      if (slice.has_value()) {
+        return {{*slice, gte_indices}};
+      }
+    }
+
+    // If *that* didn't work, check whether instr is a GTE instruction.  If it
+    // is, see if we can get a buffer for its parent, and continue walking up
+    // parents until we find a defined buffer or we hit something that's not a
+    // GTE.
+    const HloInstruction* parent = instr;
+    while (parent->opcode() == HloOpcode::kGetTupleElement) {
+      gte_indices.push_front(parent->tuple_index());
+      parent = parent->operand(0);
+
+      auto slice = GetKnownAtRuntimeSlice(parent, {}, buffer_assn);
+      if (slice.has_value()) {
+        return {{*slice, gte_indices}};
+      }
+    }
+
+    return nullopt;
+  };
+
+  // Adds entries for all subshapes of instr to `slices`.
+  auto add_slices_for = [&](const HloInstruction* instr) {
+    // GPU constants don't have buffers; don't bother looking for one.
+    if (instr->IsConstant()) {
+      return;
+    }
+
+    ShapeUtil::ForEachSubshape(
+        instr->shape(), [&](const Shape& /*shape*/, const ShapeIndex& index) {
+          if (slices.count({instr, index})) {
+            // HLOs can have duplicate operands; don't bother redoing work.
+            return;
+          }
+          auto maybe_slice = find_slice_for(instr, index);
+          if (maybe_slice.has_value()) {
+            slices[{instr, index}] = *maybe_slice;
+          } else {
+            VLOG(1) << "Couldn't find buffer for " << instr->ToString()
+                    << " at index " << index.ToString();
+          }
+        });
+  };
+
+  add_slices_for(hlo);
+  for (const HloInstruction* operand : hlo->operands()) {
+    // Conservatively assume we'll need the buffers for all subshapes of the
+    // operand.
+    add_slices_for(operand);
   }
 
-  CHECK_NE(HloOpcode::kGetTupleElement, hlo.opcode());
-  if (buffer_assignment.HasTopLevelAllocation(&hlo) &&
-      buffer_assignment.GetUniqueTopLevelSlice(&hlo)
-          .ConsumeValueOrDie()
-          .allocation()
-          ->IsInputOrOutput()) {
-    io_hlos->push_back(&hlo);
-  } else {
-    non_io_hlos.push_back(&hlo);
-  }
+  return slices;
+}
 
-  llvm::Function* kernel = BuildKernelPrototype(hlo, *io_hlos);
-  // bindings_ is reused because the bindings of kConstant to their underlying
-  // llvm::Constant can be shared for all HLOs in this computation.
-  bindings_.EmitBasePointersForHlos(*io_hlos, non_io_hlos);
-  return kernel;
+Status IrEmitterUnnested::HandleGather(HloInstruction* gather) {
+  // TODO(b/72710576): Gather is not implemented on GPUs
+  return Unimplemented("Gather is not implemented on GPUs.");
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildKernelThunk(
     const HloInstruction* inst) {
-  std::vector<const HloInstruction*> io_hlos;
-  llvm::Function* kernel =
-      EmitBasePointersForHloAndItsOperands(*inst, &io_hlos);
+  const BufferAssignment& buffer_assn =
+      ir_emitter_context_->buffer_assignment();
 
-  // Compute the input buffer indices.
-  std::vector<BufferAllocation::Slice> io_buffers;
-  io_buffers.reserve(io_hlos.size());
-  for (const HloInstruction* io_hlo : io_hlos) {
-    io_buffers.push_back(GetAllocationSlice(*io_hlo->LatestNonGteAncestor()));
+  std::map<std::pair<const HloInstruction*, ShapeIndex>,
+           std::pair<BufferAllocation::Slice, ShapeIndex>>
+      hlo_slices = GetHloBufferSlices(inst, buffer_assn);
+
+  // Figure out which buffer allocations need to be passed as arguments to our
+  // kernel.  This is simply all of the allocations referenced in hlo_slices,
+  // plus the XLA temp buffer (if we have it).  We always include the temp
+  // buffer because even if the kernel itself doesn't use it, a nested
+  // subcomputation within the kernel (e.g. a kMap's computation) might.
+  std::unordered_set<const BufferAllocation*> buffers_needed;
+  for (const auto& kv : hlo_slices) {
+    buffers_needed.insert(kv.second.first.allocation());
+  }
+  tensorflow::gtl::optional<const BufferAllocation*> temp_buffer;
+  for (const BufferAllocation& alloc : buffer_assn.Allocations()) {
+    if (alloc.IsPreallocatedTempBuffer()) {
+      if (!temp_buffer.has_value()) {
+        temp_buffer = &alloc;
+      } else {
+        LOG(FATAL) << "Multiple temp buffers found, but only one is allowed!";
+      }
+    }
+  }
+  if (temp_buffer.has_value()) {
+    buffers_needed.insert(*temp_buffer);
   }
 
-  // Create a KernelThunk that launches the kernel that implements "inst".
-  return MakeUnique<KernelThunk>(io_buffers,
-                                 llvm_ir::AsString(kernel->getName()), inst);
+  // We'll pass a pointer to each of the elements of `buffers` to our kernel, in
+  // this order.
+  std::vector<const BufferAllocation*> buffers(buffers_needed.begin(),
+                                               buffers_needed.end());
+  std::sort(buffers.begin(), buffers.end(),
+            [](const BufferAllocation* a, const BufferAllocation* b) {
+              return a->index() < b->index();
+            });
+
+  llvm::Function* kernel = BuildKernelPrototype(*inst, buffers);
+
+  // Build a map from a BufferAllocation to the corresponding argument in our
+  // kernel.
+  std::unordered_map<const BufferAllocation*, llvm::Value*> kernel_args;
+  {
+    auto arg_it = kernel->arg_begin();
+    auto buffers_it = buffers.begin();
+    for (; arg_it != kernel->arg_end(); ++arg_it, ++buffers_it) {
+      kernel_args[*buffers_it] = arg_it;
+    }
+  }
+
+  // For each buffer our kernel might want to touch, bind it to a value derived
+  // from our kernel args.
+  for (const auto& kv : hlo_slices) {
+    const HloInstruction* instr = kv.first.first;
+    const ShapeIndex& index = kv.first.second;
+    const BufferAllocation::Slice& slice = kv.second.first;
+    const ShapeIndex& gte_index = kv.second.second;
+
+    VLOG(3) << "Buffer for " << instr->ToString() << " at " << index.ToString()
+            << " is found in slice " << slice.ToString() << " at GTE index "
+            << gte_index.ToString();
+
+    llvm::Value* loc =
+        ir_builder_.CreateInBoundsGEP(kernel_args.at(slice.allocation()),
+                                      {ir_builder_.getInt64(slice.offset())});
+
+    // If gte_index is nonempty, we have to dereference `loc` to get to the
+    // value we're ultimately interested in.
+    llvm::Type* int8_double_pointer =
+        llvm::PointerType::get(ir_builder_.getInt8PtrTy(), /*AddressSpace=*/0);
+    for (int64 idx : gte_index) {
+      loc = ir_builder_.CreateBitCast(loc, int8_double_pointer);
+      loc = ir_builder_.CreateLoad(
+          ir_builder_.CreateInBoundsGEP(loc, {ir_builder_.getInt64(idx)}));
+    }
+
+    bindings_.BindHloToIrValue(*instr, loc, index);
+  }
+
+  // Bind the temp buffer so that nested subcomputations can find it if they
+  // need.
+  if (temp_buffer.has_value()) {
+    bindings_.SetTempBufferBase(kernel_args.at(*temp_buffer));
+  } else {
+    bindings_.SetTempBufferBase(
+        llvm::ConstantPointerNull::get(ir_builder_.getInt8PtrTy()));
+  }
+
+  return MakeUnique<KernelThunk>(buffers, llvm_ir::AsString(kernel->getName()),
+                                 inst);
 }
 
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildHostToDeviceCopyThunk(

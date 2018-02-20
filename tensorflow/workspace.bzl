@@ -179,11 +179,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "gemmlowp",
       urls = [
-          "https://mirror.bazel.build/github.com/google/gemmlowp/archive/d4d1e29a62192d8defdc057b913ef36ca582ac98.zip",
-          "https://github.com/google/gemmlowp/archive/d4d1e29a62192d8defdc057b913ef36ca582ac98.zip",
+          "https://mirror.bazel.build/github.com/google/gemmlowp/archive/7c7c744640ddc3d0af18fb245b4d23228813a71b.zip",
+          "https://github.com/google/gemmlowp/archive/7c7c744640ddc3d0af18fb245b4d23228813a71b.zip",
       ],
-      sha256 = "e2bee7afd3c43028f23dd0d7f85ddd8b21aaf79c572b658e56164ef502b2b9c7",
-      strip_prefix = "gemmlowp-d4d1e29a62192d8defdc057b913ef36ca582ac98",
+      sha256 = "b852cc90259a7357c8a323f108f2cec6e85979fc3b18b5590b99e0130044b2cf",
+      strip_prefix = "gemmlowp-7c7c744640ddc3d0af18fb245b4d23228813a71b",
   )
 
   tf_http_archive(
@@ -473,11 +473,11 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
   tf_http_archive(
       name = "llvm",
       urls = [
-          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/14498370e4dd4de99369b6129328ffcff737fc97.tar.gz",
-          "https://github.com/llvm-mirror/llvm/archive/14498370e4dd4de99369b6129328ffcff737fc97.tar.gz",
+          "https://mirror.bazel.build/github.com/llvm-mirror/llvm/archive/11b0e47b5b79bab22d27b6b2952b1f7582848063.tar.gz",
+          "https://github.com/llvm-mirror/llvm/archive/11b0e47b5b79bab22d27b6b2952b1f7582848063.tar.gz",
       ],
-      sha256 = "ac8033652d5813f5454bcd32b9530169c1a8a523366e1e76315b319c99a91c83",
-      strip_prefix = "llvm-14498370e4dd4de99369b6129328ffcff737fc97",
+      sha256 = "b870b6f5df94c4c0cf7c6957046fca354c37d7641e838e905279a7509b0705e9",
+      strip_prefix = "llvm-11b0e47b5b79bab22d27b6b2952b1f7582848063",
       build_file = str(Label("//third_party/llvm:llvm.BUILD")),
   )
 

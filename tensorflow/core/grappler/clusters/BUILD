@@ -114,7 +114,10 @@ tf_cc_test(
     name = "single_machine_test",
     srcs = ["single_machine_test.cc"],
     args = ["--heap_check=local"],  # The GPU tracer leaks memory
-    tags = ["no_gpu"],
+    tags = [
+        "no_cuda_on_cpu_tap",
+        "no_gpu",
+    ],
     deps = [
         ":single_machine",
         "//tensorflow/cc:cc_ops",

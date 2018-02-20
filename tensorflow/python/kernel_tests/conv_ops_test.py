@@ -305,25 +305,20 @@ class Conv2DTest(test.TestCase):
                                padding, dilations):
     expected_results = []
     computed_results = []
-    default_dilations = (dilations[0] == 1 and dilations[1] == 1)
     for data_format, use_gpu in GetTestConfigs():
-      # If any dilation rate is larger than 1, only do test on the GPU
-      # because we currently do not have a CPU implementation for arbitrary
-      # dilation rates.
-      if default_dilations or use_gpu:
-        expected, computed = self._ComputeReferenceDilatedConv(
-            tensor_in_sizes, filter_in_sizes, strides, dilations, padding,
-            data_format, use_gpu)
-        expected_results.append(expected)
-        computed_results.append(computed)
-        tolerance = 1e-2 if use_gpu else 1e-5
-        expected_values = self.evaluate(expected_results)
-        computed_values = self.evaluate(computed_results)
-        for e_value, c_value in zip(expected_values, computed_values):
-          print("expected = ", e_value)
-          print("actual = ", c_value)
-          self.assertAllClose(
-              e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-4)
+      expected, computed = self._ComputeReferenceDilatedConv(
+          tensor_in_sizes, filter_in_sizes, strides, dilations, padding,
+          data_format, use_gpu)
+      expected_results.append(expected)
+      computed_results.append(computed)
+      tolerance = 1e-2 if use_gpu else 1e-5
+      expected_values = self.evaluate(expected_results)
+      computed_values = self.evaluate(computed_results)
+      for e_value, c_value in zip(expected_values, computed_values):
+        print("expected = ", e_value)
+        print("actual = ", c_value)
+        self.assertAllClose(
+            e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-4)
 
   def _VerifyValues(self, tensor_in_sizes, filter_in_sizes, strides, padding,
                     expected):
@@ -368,13 +363,12 @@ class Conv2DTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Filter2x1Dilation(self):
-    if test.is_gpu_available(cuda_only=True):
-      self._VerifyDilatedConvValues(
-          tensor_in_sizes=[1, 4, 4, 1],
-          filter_in_sizes=[2, 2, 1, 1],
-          strides=[1, 1],
-          dilations=[2, 1],
-          padding="VALID")
+    self._VerifyDilatedConvValues(
+        tensor_in_sizes=[1, 4, 4, 1],
+        filter_in_sizes=[2, 2, 1, 1],
+        strides=[1, 1],
+        dilations=[2, 1],
+        padding="VALID")
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2DEmpty(self):
@@ -388,13 +382,12 @@ class Conv2DTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2DEmptyDilation(self):
-    if test.is_gpu_available(cuda_only=True):
-      self._VerifyDilatedConvValues(
-          tensor_in_sizes=[0, 2, 3, 3],
-          filter_in_sizes=[1, 1, 3, 3],
-          strides=[1, 1],
-          dilations=[2, 1],
-          padding="VALID")
+    self._VerifyDilatedConvValues(
+        tensor_in_sizes=[0, 2, 3, 3],
+        filter_in_sizes=[1, 1, 3, 3],
+        strides=[1, 1],
+        dilations=[2, 1],
+        padding="VALID")
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2Filter(self):
@@ -409,13 +402,12 @@ class Conv2DTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2FilterDilation(self):
-    if test.is_gpu_available(cuda_only=True):
-      self._VerifyDilatedConvValues(
-          tensor_in_sizes=[1, 2, 3, 3],
-          filter_in_sizes=[2, 2, 3, 3],
-          strides=[1, 1],
-          dilations=[1, 2],
-          padding="VALID")
+    self._VerifyDilatedConvValues(
+        tensor_in_sizes=[1, 2, 3, 3],
+        filter_in_sizes=[2, 2, 3, 3],
+        strides=[1, 1],
+        dilations=[1, 2],
+        padding="VALID")
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D1x2Filter(self):
@@ -433,13 +425,12 @@ class Conv2DTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D1x2FilterDilation(self):
-    if test.is_gpu_available(cuda_only=True):
-      self._VerifyDilatedConvValues(
-          tensor_in_sizes=[1, 2, 3, 3],
-          filter_in_sizes=[1, 2, 3, 3],
-          strides=[1, 1],
-          dilations=[2, 1],
-          padding="VALID")
+    self._VerifyDilatedConvValues(
+        tensor_in_sizes=[1, 2, 3, 3],
+        filter_in_sizes=[1, 2, 3, 3],
+        strides=[1, 1],
+        dilations=[2, 1],
+        padding="VALID")
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2D2x2FilterStride2(self):
@@ -515,13 +506,12 @@ class Conv2DTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testConv2DKernelSizeMatchesInputSizeDilation(self):
-    if test.is_gpu_available(cuda_only=True):
-      self._VerifyDilatedConvValues(
-          tensor_in_sizes=[1, 3, 3, 1],
-          filter_in_sizes=[2, 2, 1, 2],
-          strides=[1, 1],
-          dilations=[2, 2],
-          padding="VALID")
+    self._VerifyDilatedConvValues(
+        tensor_in_sizes=[1, 3, 3, 1],
+        filter_in_sizes=[2, 2, 1, 2],
+        strides=[1, 1],
+        dilations=[2, 2],
+        padding="VALID")
 
   # TODO(yzhwang): this currently fails.
   # self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
@@ -1542,22 +1532,6 @@ class Conv2DTest(test.TestCase):
               use_gpu=False)
           self.evaluate(conv)
 
-  def testCPUConv2DDilatedUnimplemented(self):
-    if not is_mkl_available:  
-      with self.test_session(use_gpu=False):
-        with self.assertRaisesRegexp(errors_impl.UnimplementedError,
-                                     "dilated rate of 1 for now"):
-          conv = self._SetupValuesForDevice(
-              tensor_in_sizes=[1, 4, 4, 1],
-              filter_in_sizes=[2, 2, 1, 1],
-              dilations=[2, 1],
-              strides=[1, 1],
-              padding="VALID",
-              data_format="NHWC",
-              dtype=dtypes.float32,
-              use_gpu=False)
-          self.evaluate(conv)
-
 
 class DepthwiseConv2DTest(test.TestCase):
 
@@ -1892,7 +1866,7 @@ def GetInceptionFwdTest(input_size, filter_size, stride, padding,
 def GetInceptionFwdDilatedConvTest(input_size, filter_size, stride, padding):
 
   def Test(self):
-    if test.is_gpu_available(cuda_only=True) and stride == 1:
+    if stride == 1:
       tf_logging.info("Testing InceptionFwd with dilations %s",
                       (input_size, filter_size, stride, padding))
       self._VerifyDilatedConvValues(

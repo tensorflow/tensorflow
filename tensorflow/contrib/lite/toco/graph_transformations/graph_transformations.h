@@ -174,6 +174,7 @@ DECLARE_GRAPH_TRANSFORMATION(ResolveConstantShapeOrRank)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantStack)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantStridedSlice)
 DECLARE_GRAPH_TRANSFORMATION(ResolveConstantFill)
+DECLARE_GRAPH_TRANSFORMATION(ResolveMultiplyByZero)
 DECLARE_GRAPH_TRANSFORMATION(Dequantize)
 
 class ResolveReshapeAttributes : public GraphTransformation {

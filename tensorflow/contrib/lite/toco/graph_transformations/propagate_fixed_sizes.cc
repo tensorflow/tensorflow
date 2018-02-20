@@ -650,15 +650,34 @@ void ProcessTensorFlowSplitOperator(Model* model, TensorFlowSplitOperator* op) {
   }
   const Shape& input_shape = input_array.shape();
 
-  // This code is slightly suspect.  The TensorFlow docs say that the axis
-  // selection defaults to 0, but we are splitting across the final axis.
-  const int input_dims_count = input_shape.dimensions_count();
-  const int input_depth = input_shape.dims(input_dims_count - 1);
-  CHECK_EQ(input_depth % op->num_split, 0);
-  const int split_depth = input_depth / op->num_split;
+  // Yield until axis is constant.
+  if (!IsConstantParameterArray(*model, op->inputs[0])) {
+    return;
+  }
+
+  const auto& axis_array = model->GetArray(op->inputs[0]);
+
+  // Yield until axis dims have been resolved.
+  if (!axis_array.has_shape()) {
+    return;
+  }
+
+  CHECK(axis_array.data_type == ArrayDataType::kInt32)
+      << "Axis array must be int32.";
+  CHECK_EQ(RequiredBufferSizeForShape(axis_array.shape()), 1)
+      << "Axis array must be scalar.";
+
+  int axis = axis_array.GetBuffer<ArrayDataType::kInt32>().data[0];
+  if (axis < 0) {
+    axis += input_shape.dimensions_count();
+  }
+
+  const int split_dim = input_shape.dims(axis);
+  CHECK_EQ(split_dim % op->num_split, 0);
+  const int split_depth = split_dim / op->num_split;
 
   Shape output_shape = input_shape;
-  (*output_shape.mutable_dims())[input_dims_count - 1] = split_depth;
+  (*output_shape.mutable_dims())[axis] = split_depth;
 
   CHECK_EQ(op->outputs.size(), op->num_split);
   for (const auto& output : op->outputs) {
@@ -960,6 +979,43 @@ void ProcessGatherOperator(Model* model, GatherOperator* op) {
   output_dims->push_back(indices_shape.dims(0));
   for (int dim = 1; dim < input_shape.dimensions_count(); dim++) {
     output_dims->push_back(input_shape.dims(dim));
+  }
+}
+
+void ProcessTopkV2Operator(Model* model, TopKV2Operator* op) {
+  const auto& input_values = model->GetArray(op->inputs[0]);
+  const auto& input_k = model->GetArray(op->inputs[1]);
+  auto& output_indexes = model->GetArray(op->outputs[0]);
+  auto& output_values = model->GetArray(op->outputs[1]);
+
+  // Bail if we already know the output shape.
+  if (output_indexes.has_shape()) {
+    QCHECK(output_values.has_shape());
+    return;
+  }
+
+  // Yield until input dims have been resolved.
+  if (!input_values.has_shape()) {
+    return;
+  }
+
+  const auto& input_values_shape = input_values.shape();
+  auto output_indexes_dims = output_indexes.mutable_shape()->mutable_dims();
+  auto output_values_dims = output_values.mutable_shape()->mutable_dims();
+  for (int dim = 0; dim < input_values_shape.dimensions_count() - 1; dim++) {
+    output_indexes_dims->push_back(input_values_shape.dims(dim));
+    output_values_dims->push_back(input_values_shape.dims(dim));
+  }
+  // If the value is initialized, we can specify the last dimension, otherwise
+  // unknown.
+  if (input_k.buffer) {
+    const int32_t k_value = input_k.GetBuffer<ArrayDataType::kInt32>().data[0];
+    output_indexes_dims->push_back(k_value);
+    output_values_dims->push_back(k_value);
+
+  } else {
+    output_indexes_dims->push_back(0);
+    output_values_dims->push_back(0);
   }
 }
 
@@ -1308,12 +1364,15 @@ bool PropagateFixedSizes::Run(Model* model, std::size_t op_index) {
     case OperatorType::kTensorFlowAssert:
     case OperatorType::kCast:
     case OperatorType::kFloor:
+    case OperatorType::kExp:
       ProcessSimpleOperator(model, op);
       break;
     case OperatorType::kGather:
       ProcessGatherOperator(model, static_cast<GatherOperator*>(op));
       break;
-
+    case OperatorType::kTopK_V2:
+      ProcessTopkV2Operator(model, static_cast<TopKV2Operator*>(op));
+      break;
     case OperatorType::kAdd:
     case OperatorType::kSub:
     case OperatorType::kMul:
