@@ -94,7 +94,7 @@ def sliding_window_batch(window_size, stride=1):
 
   Returns:
     A `Dataset` transformation function, which can be passed to
-    @{tf.contrib.data.Dataset.apply}.
+    @{tf.data.Dataset.apply}.
   """
   def _apply_fn(dataset):
     return _SlideDataset(dataset, window_size, stride)
