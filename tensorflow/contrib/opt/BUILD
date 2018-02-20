@@ -70,8 +70,8 @@ py_test(
     srcs = ["python/training/moving_average_optimizer_test.py"],
     srcs_version = "PY2AND3",
     tags = [
-        "notsan",  # b/31055119
         "no_oss",  # b/73507407
+        "notsan",  # b/31055119
     ],
     deps = [
         ":opt_py",
