@@ -36,10 +36,11 @@ DEFAULT_UNCOMPILED_MODULES = set((
 NO_SIDE_EFFECT_CONSTRUCTORS = set(('tensorflow',))
 
 # TODO(mdan): Also allow controlling the generated names (for testability).
-# TODO(mdan): Verify that these names are not hidden by generated code.
 # TODO(mdan): Make sure copybara renames the reference below.
 COMPILED_IMPORT_STATEMENTS = (
     'from __future__ import print_function',
     'import tensorflow as tf',
+    'from tensorflow.contrib.py2tf.impl import api as '
+    'py2tf_api',
     'from tensorflow.contrib.py2tf import utils as '
     'py2tf_utils')

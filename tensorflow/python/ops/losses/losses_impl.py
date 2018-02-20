@@ -731,7 +731,6 @@ def softmax_cross_entropy(
     losses = nn.softmax_cross_entropy_with_logits_v2(
         labels=onehot_labels, logits=logits, name="xentropy")
 
-
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
 
