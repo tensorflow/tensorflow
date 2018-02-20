@@ -288,7 +288,8 @@ class Estimator(object):
             hooks=None,
             steps=None,
             max_steps=None,
-            saving_listeners=None):
+            saving_listeners=None,
+            loss_logging_frequency=100):
     """Trains a model given training data input_fn.
 
     Args:
@@ -325,6 +326,8 @@ class Estimator(object):
         all 100 steps.
       saving_listeners: list of `CheckpointSaverListener` objects. Used for
         callbacks that run immediately before or after checkpoint savings.
+      loss_logging_frequency: int indicating the number of steps before
+        logging the training loss.
 
     Returns:
       `self`, for chaining.
@@ -351,7 +354,7 @@ class Estimator(object):
     hooks.extend(self._convert_train_steps_to_hooks(steps, max_steps))
 
     saving_listeners = _check_listeners_type(saving_listeners)
-    loss = self._train_model(input_fn, hooks, saving_listeners)
+    loss = self._train_model(input_fn, hooks, saving_listeners, loss_logging_frequency)
     logging.info('Loss for final step: %s.', loss)
     return self
 
@@ -809,7 +812,7 @@ class Estimator(object):
 
     return model_fn_results
 
-  def _train_model(self, input_fn, hooks, saving_listeners):
+  def _train_model(self, input_fn, hooks, saving_listeners, loss_logging_frequency):
     worker_hooks = []
     with ops.Graph().as_default() as g, g.device(self._device_fn):
       random_seed.set_random_seed(self._config.tf_random_seed)
@@ -844,7 +847,7 @@ class Estimator(object):
                   'loss': estimator_spec.loss,
                   'step': global_step_tensor
               },
-              every_n_iter=100)
+              every_n_iter=loss_logging_frequency)
       ])
       worker_hooks.extend(estimator_spec.training_hooks)
 
