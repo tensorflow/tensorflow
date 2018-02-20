@@ -31,6 +31,7 @@ namespace tensorflow {
 
 const char* const DEVICE_XLA_IPU = "IPU";
 const char* const DEVICE_IPU_XLA_JIT = "XLA_IPU_JIT";
+const char* const PLATFORM_NAME = "Poplar";
 
 constexpr std::array<DataType, 6> kIpuAllTypes =
         {{DT_INT32, DT_INT64, DT_FLOAT, DT_HALF, DT_BOOL, DT_RESOURCE}};
@@ -48,12 +49,21 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
       RegisterXlaDeviceKernels(DEVICE_XLA_IPU, DEVICE_IPU_XLA_JIT);
   (void)registrations;
 
-  std::unique_ptr<XlaDevice> device;
-  TF_RETURN_IF_ERROR(XlaDevice::Create("Poplar", DEVICE_XLA_IPU, 0,
-                                       DEVICE_IPU_XLA_JIT, options, name_prefix,
-                                       true, &device));
+  auto platform = se::MultiPlatformManager::PlatformWithName(PLATFORM_NAME);
+  if (!platform.ok()) {
+    return StreamExecutorUtil::ConvertStatus(platform.status());
+  }
 
-  devices->push_back(device.release());
+  int visible_devices = platform.ValueOrDie()->VisibleDeviceCount();
+  for (int ordinal=0; ordinal<visible_devices; ordinal++) {
+    std::unique_ptr<XlaDevice> device;
+    TF_RETURN_IF_ERROR(XlaDevice::Create(PLATFORM_NAME, DEVICE_XLA_IPU, ordinal,
+                                         DEVICE_IPU_XLA_JIT, options,
+                                         name_prefix, true, &device));
+
+    devices->push_back(device.release());
+  }
+
   return Status::OK();
 }
 
