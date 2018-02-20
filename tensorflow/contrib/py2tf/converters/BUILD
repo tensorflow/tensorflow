@@ -166,6 +166,11 @@ py_test(
     name = "side_effect_guards_test",
     srcs = ["side_effect_guards_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        # TODO(mdan): Fix.
+        "flaky",
+        "notap",
+    ],
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",
