@@ -35,17 +35,20 @@ from tensorflow.python.training import gradient_descent
 class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
   """The KFAC Optimizer (https://arxiv.org/abs/1503.05671)."""
 
-  def __init__(
-      self,
-      learning_rate,
-      cov_ema_decay,
-      damping,
-      layer_collection,
-      momentum=0.,
-      momentum_type="regular",
-      norm_constraint=None,
-      name="KFAC",
-      estimation_mode="gradients"):
+  def __init__(self,
+               learning_rate,
+               cov_ema_decay,
+               damping,
+               layer_collection,
+               var_list=None,
+               momentum=0.9,
+               momentum_type="regular",
+               norm_constraint=None,
+               name="KFAC",
+               estimation_mode="gradients",
+               colocate_gradients_with_ops=True,
+               cov_devices=None,
+               inv_devices=None):
     """Initializes the KFAC optimizer with the given settings.
 
     Args:
@@ -64,8 +67,11 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           blocks, kronecker factors, and losses associated with the
           graph.  The layer_collection cannot be modified after KfacOptimizer's
           initialization.
-      momentum: The momentum value for this optimizer. Only applies when
-          momentum_type is 'regular' or 'adam'. (Default: 0)
+      var_list: Optional list or tuple of variables to train. Defaults to the
+          list of variables collected in the graph under the key
+          `GraphKeys.TRAINABLE_VARIABLES`.
+      momentum: The momentum decay constant to use. Only applies when
+          momentum_type is 'regular' or 'adam'. (Default: 0.9)
       momentum_type: The type of momentum to use in this optimizer, one of
           'regular', 'adam', or 'qmodel'. (Default: 'regular')
       norm_constraint: float or Tensor. If specified, the update is scaled down
@@ -77,6 +83,15 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           'gradients', 'empirical', 'curvature_propagation', or 'exact'.
           (Default: 'gradients'). See the doc-string for FisherEstimator for
           more a more detailed description of these options.
+      colocate_gradients_with_ops: Whether we should request gradients we
+          compute in the estimator be colocated with their respective ops.
+          (Default: True)
+      cov_devices: Iterable of device strings (e.g. '/gpu:0'). Covariance
+          computations will be placed on these devices in a round-robin fashion.
+          Can be None, which means that no devices are specified.
+      inv_devices: Iterable of device strings (e.g. '/gpu:0'). Inversion
+          computations will be placed on these devices in a round-robin fashion.
+          Can be None, which means that no devices are specified.
 
     Raises:
       ValueError: If the momentum type is unsupported.
@@ -86,13 +101,19 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
           or 'adam'.
     """
 
-    # We may consider determining the set of variables some other way, but for
-    # now it's just all the trainable variables.
-    variables = tf_variables.trainable_variables()
+    variables = var_list
+    if variables is None:
+      variables = tf_variables.trainable_variables()
 
-    self._fisher_est = est.FisherEstimator(variables, cov_ema_decay, damping,
-                                           layer_collection,
-                                           estimation_mode=estimation_mode)
+    self._fisher_est = est.FisherEstimator(
+        variables,
+        cov_ema_decay,
+        damping,
+        layer_collection,
+        estimation_mode=estimation_mode,
+        colocate_gradients_with_ops=colocate_gradients_with_ops,
+        cov_devices=cov_devices,
+        inv_devices=inv_devices)
 
     momentum_type = momentum_type.lower()
     legal_momentum_types = ["regular", "adam", "qmodel"]
@@ -107,7 +128,7 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       raise ValueError("Momentum must be unspecified if using a momentum_type "
                        "other than 'regular' or 'adam'.")
 
-    self._momentum = ops.convert_to_tensor(momentum, name="momentum")
+    self._momentum = momentum
     self._momentum_type = momentum_type
     self._norm_constraint = norm_constraint
 
@@ -116,11 +137,31 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     self._batch_size = array_ops.shape(layer_collection.losses[0].inputs)[0]
     self._losses = layer_collection.losses
 
-    self.cov_update_op = self._fisher_est.cov_update_op
-    self.inv_update_op = self._fisher_est.inv_update_op
-    self.inv_updates_dict = self._fisher_est.inv_updates_dict
-
     super(KfacOptimizer, self).__init__(learning_rate, name=name)
+
+  @property
+  def cov_update_thunks(self):
+    return self._fisher_est.cov_update_thunks
+
+  @property
+  def cov_update_ops(self):
+    return self._fisher_est.cov_update_ops
+
+  @property
+  def cov_update_op(self):
+    return self._fisher_est.cov_update_op
+
+  @property
+  def inv_update_thunks(self):
+    return self._fisher_est.inv_update_thunks
+
+  @property
+  def inv_update_ops(self):
+    return self._fisher_est.inv_update_ops
+
+  @property
+  def inv_update_op(self):
+    return self._fisher_est.inv_update_op
 
   @property
   def variables(self):
@@ -131,15 +172,23 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
     return self._fisher_est.damping
 
   def minimize(self, *args, **kwargs):
-
-    if "var_list" not in kwargs:
-      kwargs["var_list"] = tf_variables.trainable_variables()
-
+    kwargs["var_list"] = kwargs.get("var_list") or self.variables
     if set(kwargs["var_list"]) != set(self.variables):
       raise ValueError("var_list doesn't match with set of Fisher-estimating "
                        "variables.")
-
     return super(KfacOptimizer, self).minimize(*args, **kwargs)
+
+  def compute_gradients(self, *args, **kwargs):
+    # args[1] could be our var_list
+    if len(args) > 1:
+      var_list = args[1]
+    else:
+      kwargs["var_list"] = kwargs.get("var_list") or self.variables
+      var_list = kwargs["var_list"]
+    if set(var_list) != set(self.variables):
+      raise ValueError("var_list doesn't match with set of Fisher-estimating "
+                       "variables.")
+    return super(KfacOptimizer, self).compute_gradients(*args, **kwargs)
 
   def apply_gradients(self, grads_and_vars, *args, **kwargs):
     """Applies gradients to variables.
@@ -297,14 +346,17 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
         self._batch_size, dtype=fft_precon_grads[0].dtype)
 
     # compute the entries of the 2x2 matrix
-    m_11 = (_inner_product_list(fft_precon_grads, fft_precon_grads) / batch_size
-            + self.damping * _inner_product_list(precon_grads, precon_grads))
+    m_11 = (
+        _inner_product_list(fft_precon_grads, fft_precon_grads) / batch_size +
+        self.damping * _inner_product_list(precon_grads, precon_grads))
 
-    m_21 = (_inner_product_list(fft_prev_updates, fft_precon_grads) / batch_size
-            + self.damping * _inner_product_list(prev_updates, precon_grads))
+    m_21 = (
+        _inner_product_list(fft_prev_updates, fft_precon_grads) / batch_size +
+        self.damping * _inner_product_list(prev_updates, precon_grads))
 
-    m_22 = (_inner_product_list(fft_prev_updates, fft_prev_updates) / batch_size
-            + self.damping * _inner_product_list(prev_updates, prev_updates))
+    m_22 = (
+        _inner_product_list(fft_prev_updates, fft_prev_updates) / batch_size +
+        self.damping * _inner_product_list(prev_updates, prev_updates))
 
     def non_zero_prevupd_case():
       r"""Computes optimal (alpha, mu) given non-zero previous update.
@@ -390,8 +442,8 @@ class KfacOptimizer(gradient_descent.GradientDescentOptimizer):
       grads = list(grad for (grad, _) in grads_and_vars)
       variables = list(var for (_, var) in grads_and_vars)
       # previous updates are the negative velocities (up to scaling by LR)
-      prev_updates = list(-self._zeros_slot(var, "velocity", self._name)
-                          for var in variables)
+      prev_updates = list(
+          -self._zeros_slot(var, "velocity", self._name) for var in variables)
 
       # Compute optimal velocity update parameters according to quadratic model
       alpha, mu, _ = self._compute_qmodel_hyperparams(

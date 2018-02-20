@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#ifndef TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#define TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
 
 #include "public/gemmlowp.h"
 #include "tensorflow/contrib/lite/kernels/internal/common.h"
@@ -311,6 +311,9 @@ struct FloatDepthwiseConvKernel<true, 0, 8> {
   }
 };
 
+// Note this implementation is very slow for input_depths < 8
+// (e.g. comparable to reference implementation) see, specializations for
+// input_depth=3 below.
 template <>
 struct FloatDepthwiseConvKernel<true, 0, 2> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
@@ -418,6 +421,74 @@ struct FloatDepthwiseConvKernel<true, 0, 2> {
 };
 
 template <>
+struct FloatDepthwiseConvKernel<true, 3, 2> {
+  static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
+                  const float* input_ptr, int input_ptr_increment,
+                  const float* filter_ptr, float* acc_buffer_ptr) {
+    // Load the filters
+    float32x2_t filter[3];
+    for (int i = 0; i < 3; i++) {
+      filter[i] = vld1_f32(filter_ptr + 2 * i);
+    }
+    // Handle one output pixel at a time.
+    for (int outp = 0; outp < num_output_pixels; outp++) {
+      const float32x2_t input01 = vld1_f32(input_ptr);
+      const float32x2_t input2 = vld1_dup_f32(input_ptr + 2);
+      // Load the accumulators from acc_buffer
+      float32x2_t acc[3];
+      for (int i = 0; i < 3; i++) {
+        acc[i] = vld1_f32(acc_buffer_ptr + 2 * i);
+      }
+      // Multiply-accumulate for each input channel there 2 outputs
+      acc[0] = vmla_lane_f32(acc[0], filter[0], input01, 0);
+      acc[1] = vmla_lane_f32(acc[1], filter[1], input01, 1);
+      acc[2] = vmla_lane_f32(acc[2], filter[2], input2, 0);
+      // Store the accumulators back to acc_buffer
+      for (int i = 0; i < 3; i++) {
+        vst1_f32(acc_buffer_ptr + 2 * i, acc[i]);
+      }
+      acc_buffer_ptr += 6;
+      input_ptr += input_ptr_increment;
+    }
+  }
+};
+
+template <>
+struct FloatDepthwiseConvKernel<true, 3, 4> {
+  static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
+                  const float* input_ptr, int input_ptr_increment,
+                  const float* filter_ptr, float* acc_buffer_ptr) {
+    // Load the filters
+    float32x4_t filter[3];
+    for (int i = 0; i < 3; i++) {
+      filter[i] = vld1q_f32(filter_ptr + 4 * i);
+    }
+    // Handle one output pixel at a time.
+    for (int outp = 0; outp < num_output_pixels; outp++) {
+      // NOTE: we only want 3 values, so we read it as two ops where
+      // the second op just duplicates the lane
+      const float32x2_t input01 = vld1_f32(input_ptr);
+      const float32x2_t input2 = vld1_dup_f32(input_ptr + 2);
+      // Load the accumulators from acc_buffer
+      float32x4_t acc[3];
+      for (int i = 0; i < 3; i++) {
+        acc[i] = vld1q_f32(acc_buffer_ptr + 4 * i);
+      }
+      // Multiply-accumulate all outputs.
+      acc[0] = vmlaq_lane_f32(acc[0], filter[0], input01, 0);
+      acc[1] = vmlaq_lane_f32(acc[1], filter[1], input01, 1);
+      acc[2] = vmlaq_lane_f32(acc[2], filter[2], input2, 0);
+      // Store the accumulators back to acc_buffer
+      for (int i = 0; i < 3; i++) {
+        vst1q_f32(acc_buffer_ptr + 4 * i, acc[i]);
+      }
+      acc_buffer_ptr += 12;
+      input_ptr += input_ptr_increment;
+    }
+  }
+};
+
+template <>
 struct FloatDepthwiseConvKernel<true, 1, 8> {
   static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
                   const float* input_ptr, int input_ptr_increment,
@@ -498,6 +569,46 @@ struct FloatDepthwiseConvKernel<true, 1, 32> {
       vst1q_f32(acc_buffer_ptr + 4 * 6, acc_6);
       vst1q_f32(acc_buffer_ptr + 4 * 7, acc_7);
       acc_buffer_ptr += 32;
+    }
+  }
+};
+
+template <>
+struct FloatDepthwiseConvKernel<true, 1, 20> {
+  static void Run(int num_output_pixels, int input_depth, int depth_multiplier,
+                  const float* input_ptr, int input_ptr_increment,
+                  const float* filter_ptr, float* acc_buffer_ptr) {
+    // Load the filters
+    float32x4_t filter_0 = vld1q_f32(filter_ptr + 4 * 0);
+    float32x4_t filter_1 = vld1q_f32(filter_ptr + 4 * 1);
+    float32x4_t filter_2 = vld1q_f32(filter_ptr + 4 * 2);
+    float32x4_t filter_3 = vld1q_f32(filter_ptr + 4 * 3);
+    float32x4_t filter_4 = vld1q_f32(filter_ptr + 4 * 4);
+
+    // Handle one output pixel at a time.
+    for (int outp = 0; outp < num_output_pixels; outp++) {
+      // Load the inputs
+      const float input_val = *input_ptr;
+      input_ptr += input_ptr_increment;
+      // Load the accumulators from acc_buffer
+      float32x4_t acc_0 = vld1q_f32(acc_buffer_ptr + 4 * 0);
+      float32x4_t acc_1 = vld1q_f32(acc_buffer_ptr + 4 * 1);
+      float32x4_t acc_2 = vld1q_f32(acc_buffer_ptr + 4 * 2);
+      float32x4_t acc_3 = vld1q_f32(acc_buffer_ptr + 4 * 3);
+      float32x4_t acc_4 = vld1q_f32(acc_buffer_ptr + 4 * 4);
+      // Multiply-accumulate
+      acc_0 = vmlaq_n_f32(acc_0, filter_0, input_val);
+      acc_1 = vmlaq_n_f32(acc_1, filter_1, input_val);
+      acc_2 = vmlaq_n_f32(acc_2, filter_2, input_val);
+      acc_3 = vmlaq_n_f32(acc_3, filter_3, input_val);
+      acc_4 = vmlaq_n_f32(acc_4, filter_4, input_val);
+      // Store the accumulators back to acc_buffer
+      vst1q_f32(acc_buffer_ptr + 4 * 0, acc_0);
+      vst1q_f32(acc_buffer_ptr + 4 * 1, acc_1);
+      vst1q_f32(acc_buffer_ptr + 4 * 2, acc_2);
+      vst1q_f32(acc_buffer_ptr + 4 * 3, acc_3);
+      vst1q_f32(acc_buffer_ptr + 4 * 4, acc_4);
+      acc_buffer_ptr += 20;
     }
   }
 };
@@ -855,8 +966,11 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
 
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 8, 1)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 8)
+  TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 20)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 1, 32)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 2, 1)
+  TFMINI_USE_DEPTHWISECONV_KERNEL(true, 3, 2)
+  TFMINI_USE_DEPTHWISECONV_KERNEL(true, 3, 4)
   TFMINI_USE_DEPTHWISECONV_KERNEL(true, 4, 1)
 
   // Finally, the kernels allowing a variable input depth,
@@ -919,11 +1033,11 @@ inline void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
           for (int k = 0; k < 4; k++) {
             acc[k] = vld1q_f32(acc_buffer + i + 4 * k);
           }
-            for (int k = 0; k < 4; k++) {
-              acc[k] = vmaxq_f32(
-                  vdupq_n_f32(output_activation_min),
-                  vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
-            }
+          for (int k = 0; k < 4; k++) {
+            acc[k] = vmaxq_f32(
+                vdupq_n_f32(output_activation_min),
+                vminq_f32(vdupq_n_f32(output_activation_max), acc[k]));
+          }
           for (int k = 0; k < 4; k++) {
             vst1q_f32(output_ptr + 4 * k, acc[k]);
           }
@@ -984,4 +1098,4 @@ void DepthwiseConv(const float* input_data, const Dims<4>& input_dims,
 }  // namespace optimized_ops
 }  // namespace tflite
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_
+#endif  // TENSORFLOW_CONTRIB_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_FLOAT_H_

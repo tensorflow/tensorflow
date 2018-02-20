@@ -48,12 +48,12 @@ class TocoFromProtosTest(googletest.TestCase):
     toco_flags = toco_flags_pb2.TocoFlags()
     toco_flags.input_format = toco_flags_pb2.TENSORFLOW_GRAPHDEF
     toco_flags.output_format = toco_flags_pb2.TFLITE
-    toco_flags.input_types.append(types_pb2.FLOAT)
+    toco_flags.inference_input_type = types_pb2.FLOAT
     toco_flags.inference_type = types_pb2.FLOAT
     model_flags = model_flags_pb2.ModelFlags()
     input_array = model_flags.input_arrays.add()
     input_array.name = TensorName(in_tensor)
-    input_array.shape.extend(map(int, in_tensor.get_shape()))
+    input_array.shape.dims.extend(map(int, in_tensor.get_shape()))
     model_flags.output_arrays.append(TensorName(out_tensor))
     # Shell out to run toco (in case it crashes)
     with tempfile.NamedTemporaryFile() as fp_toco, \

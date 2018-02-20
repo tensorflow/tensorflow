@@ -63,26 +63,32 @@ Status OpRegistry::LookUp(const string& op_type_name,
   const OpRegistrationData* res = nullptr;
 
   bool first_call = false;
+  bool first_unregistered = false;
   {  // Scope for lock.
     mutex_lock lock(mu_);
     first_call = MustCallDeferred();
     res = gtl::FindWithDefault(registry_, op_type_name, nullptr);
+
+    static bool unregistered_before = false;
+    first_unregistered = !unregistered_before && (res == nullptr);
+    if (first_unregistered) {
+      unregistered_before = true;
+    }
     // Note: Can't hold mu_ while calling Export() below.
   }
   if (first_call) {
     TF_QCHECK_OK(ValidateKernelRegistrations(*this));
   }
   if (res == nullptr) {
-    static bool first_unregistered = true;
     if (first_unregistered) {
       OpList op_list;
       Export(true, &op_list);
       if (VLOG_IS_ON(3)) {
-         LOG(INFO) << "All registered Ops:";
-         for (const auto& op : op_list.op())
-            LOG(INFO) << SummarizeOpDef(op);
+        LOG(INFO) << "All registered Ops:";
+        for (const auto& op : op_list.op()) {
+          LOG(INFO) << SummarizeOpDef(op);
+        }
       }
-      first_unregistered = false;
     }
     Status status =
         errors::NotFound("Op type not registered '", op_type_name,

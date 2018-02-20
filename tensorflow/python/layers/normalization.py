@@ -39,8 +39,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import moving_averages
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('layers.BatchNormalization')
 class BatchNormalization(base.Layer):
   """Batch Normalization layer from http://arxiv.org/abs/1502.03167.
 
@@ -92,8 +94,8 @@ class BatchNormalization(base.Layer):
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
-    fused: if `True`, use a faster, fused implementation if possible.
-      If `None`, use the system recommended implementation.
+    fused: if `None` or `True`, use a faster, fused implementation if possible.
+      If `False`, use the system recommended implementation.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
@@ -142,7 +144,10 @@ class BatchNormalization(base.Layer):
                **kwargs):
     super(BatchNormalization, self).__init__(
         name=name, trainable=trainable, **kwargs)
-    self.axis = axis
+    if isinstance(axis, list):
+      self.axis = axis[:]
+    else:
+      self.axis = axis
     self.momentum = momentum
     self.epsilon = epsilon
     self.center = center
@@ -238,7 +243,7 @@ class BatchNormalization(base.Layer):
                          'axis == [1] or axis == [3]')
 
     # Raise parameters of fp16 batch norm to fp32
-    if self.dtype == dtypes.float16:
+    if self.dtype == dtypes.float16 or self.dtype == dtypes.bfloat16:
       param_dtype = dtypes.float32
     else:
       param_dtype = self.dtype or dtypes.float32
@@ -264,34 +269,34 @@ class BatchNormalization(base.Layer):
           self.axis[idx] = x + 1      # Account for added dimension
 
     if self.scale:
-      self.gamma = self.add_variable(name='gamma',
-                                     shape=param_shape,
-                                     dtype=param_dtype,
-                                     initializer=self.gamma_initializer,
-                                     regularizer=self.gamma_regularizer,
-                                     constraint=self.gamma_constraint,
-                                     trainable=True)
+      self.gamma = self.add_variable(
+          name='gamma',
+          shape=param_shape,
+          dtype=param_dtype,
+          initializer=self.gamma_initializer,
+          regularizer=self.gamma_regularizer,
+          constraint=self.gamma_constraint,
+          trainable=True)
     else:
       self.gamma = None
       if self.fused:
-        self._gamma_const = array_ops.constant(1.0,
-                                               dtype=param_dtype,
-                                               shape=param_shape)
+        self._gamma_const = array_ops.constant(
+            1.0, dtype=param_dtype, shape=param_shape)
 
     if self.center:
-      self.beta = self.add_variable(name='beta',
-                                    shape=param_shape,
-                                    dtype=param_dtype,
-                                    initializer=self.beta_initializer,
-                                    regularizer=self.beta_regularizer,
-                                    constraint=self.beta_constraint,
-                                    trainable=True)
+      self.beta = self.add_variable(
+          name='beta',
+          shape=param_shape,
+          dtype=param_dtype,
+          initializer=self.beta_initializer,
+          regularizer=self.beta_regularizer,
+          constraint=self.beta_constraint,
+          trainable=True)
     else:
       self.beta = None
       if self.fused:
-        self._beta_const = array_ops.constant(0.0,
-                                              dtype=param_dtype,
-                                              shape=param_shape)
+        self._beta_const = array_ops.constant(
+            0.0, dtype=param_dtype, shape=param_shape)
 
     # Disable variable partitioning when creating the moving mean and variance
     try:
@@ -324,11 +329,12 @@ class BatchNormalization(base.Layer):
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
         def _renorm_variable(name, shape):
-          var = self.add_variable(name=name,
-                                  shape=shape,
-                                  dtype=param_dtype,
-                                  initializer=init_ops.zeros_initializer(),
-                                  trainable=False)
+          var = self.add_variable(
+              name=name,
+              shape=shape,
+              dtype=param_dtype,
+              initializer=init_ops.zeros_initializer(),
+              trainable=False)
           return var
 
         with ops.device(None):
@@ -487,6 +493,7 @@ class BatchNormalization(base.Layer):
     return (r, d, new_mean, new_variance)
 
   def call(self, inputs, training=False):
+    in_eager_mode = context.in_eager_mode()
     if self.virtual_batch_size is not None:
       # Virtual batches (aka ghost batches) can be simulated by reshaping the
       # Tensor and reusing the existing batch norm implementation
@@ -589,6 +596,9 @@ class BatchNormalization(base.Layer):
                                             axis=1, keep_dims=True)
 
       def _do_update(var, value):
+        if in_eager_mode and not self.trainable:
+          return
+
         return moving_averages.assign_moving_average(
             var, value, self.momentum, zero_debias=False)
 
@@ -621,7 +631,11 @@ class BatchNormalization(base.Layer):
 
     return outputs
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
+
+@tf_export('layers.batch_normalization')
 def batch_normalization(inputs,
                         axis=-1,
                         momentum=0.99,
@@ -715,8 +729,8 @@ def batch_normalization(inputs,
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
-    fused: if `True`, use a faster, fused implementation if possible.
-      If `None`, use the system recommended implementation.
+    fused: if `None` or `True`, use a faster, fused implementation if possible.
+      If `False`, use the system recommended implementation.
     virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
       which means batch normalization is performed across the whole batch. When
       `virtual_batch_size` is not `None`, instead perform "Ghost Batch

@@ -40,6 +40,11 @@ void BinaryOpShared::SetComputeError(OpKernelContext* ctx) {
   if ((op == "Div" || op == "Mod" || op == "FloorMod" || op == "FloorDiv") &&
       DataTypeIsInteger(ctx->op_kernel().input_type(0))) {
     ctx->CtxFailure(errors::InvalidArgument("Integer division by zero"));
+  } else if ((op == "Pow") &&
+             DataTypeIsInteger(ctx->op_kernel().input_type(0)) &&
+             DataTypeIsSigned(ctx->op_kernel().input_type(1))) {
+    ctx->CtxFailure(errors::InvalidArgument(
+        "Integers to negative integer powers are not allowed"));
   } else {
     ctx->CtxFailure(
         errors::Internal("Unexpected error in binary operator "
@@ -52,9 +57,9 @@ BinaryOpShared::BinaryOpState::BinaryOpState(OpKernelContext* ctx)
       in1(ctx->input(1)),
       bcast(BCast::FromShape(in0.shape()), BCast::FromShape(in1.shape())) {
   if (!bcast.IsValid()) {
-    ctx->SetStatus(errors::InvalidArgument("Incompatible shapes: ",
-                                           in0.shape().DebugString(), " vs. ",
-                                           in1.shape().DebugString()));
+    ctx->SetStatus(errors::InvalidArgument(
+        "Incompatible shapes: ", in0.shape().DebugString(), " vs. ",
+        in1.shape().DebugString()));
     return;
   }
   const TensorShape output_shape = BCast::ToShape(bcast.output_shape());

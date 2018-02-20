@@ -122,6 +122,38 @@ bool safe_strtof(const char* str, float* value);
 // Values may be rounded on over- and underflow.
 bool safe_strtod(const char* str, double* value);
 
+inline bool ProtoParseNumeric(StringPiece s, int32* value) {
+  return safe_strto32(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, uint32* value) {
+  return safe_strtou32(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, int64* value) {
+  return safe_strto64(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, uint64* value) {
+  return safe_strtou64(s, value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, float* value) {
+  return safe_strtof(s.ToString().c_str(), value);
+}
+
+inline bool ProtoParseNumeric(StringPiece s, double* value) {
+  return safe_strtod(s.ToString().c_str(), value);
+}
+
+// Convert strings to number of type T.
+// Leading and trailing spaces are allowed.
+// Values may be rounded on over- and underflow.
+template <typename T>
+bool SafeStringToNumeric(StringPiece s, T* value) {
+  return ProtoParseNumeric(s, value);
+}
+
 // Converts from an int64 to a human readable string representing the
 // same number, using decimal powers.  e.g. 1200000 -> "1.20M".
 string HumanReadableNum(int64 value);

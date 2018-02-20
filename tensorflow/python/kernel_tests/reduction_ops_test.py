@@ -50,7 +50,7 @@ def _powerset(iterable):
   """
   s = list(iterable)
   return itertools.chain.from_iterable(
-      itertools.combinations(s, r) for r in range(len(s)+1))
+      itertools.combinations(s, r) for r in range(len(s) + 1))
 
 
 class ReducedShapeTest(test.TestCase):
@@ -91,12 +91,29 @@ class ReducedShapeTest(test.TestCase):
       self._check([10, 10, 10], [-3], [1, 10, 10])
 
 
+class ReductionUnknownShape(test.TestCase):
+
+  def testBasic(self):
+    with self.test_session():
+      for dtype, reductions in [(dtypes.float32,
+                                 (math_ops.reduce_sum, math_ops.reduce_mean,
+                                  math_ops.reduce_prod, math_ops.reduce_max,
+                                  math_ops.reduce_min)),
+                                (dtypes.bool, (math_ops.reduce_all,
+                                               math_ops.reduce_any))]:
+        for reduction in reductions:
+          x = array_ops.placeholder(
+              dtype=dtype, shape=None)  # Some tensor w/ unknown shape.
+          y = reduction(x)
+          self.assertEqual(y.shape, ())
+
+
 class BaseReductionTest(test.TestCase):
 
-  def _tf_reduce(self, x, reduction_axes, keep_dims):
+  def _tf_reduce(self, x, reduction_axes, keepdims):
     raise NotImplementedError()
 
-  def _np_reduce(self, x, reduction_axes, keep_dims):
+  def _np_reduce(self, x, reduction_axes, keepdims):
     raise NotImplementedError()
 
   def _makeIncremental(self, shape, dtype):
@@ -111,10 +128,10 @@ class BaseReductionTest(test.TestCase):
       data -= 2j * data
     return data
 
-  def _compare(self, x, reduction_axes, keep_dims, feed_dict=None):
-    np_ans = self._np_reduce(x, reduction_axes, keep_dims)
+  def _compare(self, x, reduction_axes, keepdims, feed_dict=None):
+    np_ans = self._np_reduce(x, reduction_axes, keepdims)
     with self.test_session(use_gpu=True) as sess:
-      tf_ans = self._tf_reduce(x, reduction_axes, keep_dims)
+      tf_ans = self._tf_reduce(x, reduction_axes, keepdims)
       out = sess.run(tf_ans, feed_dict)
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
@@ -123,8 +140,8 @@ class BaseReductionTest(test.TestCase):
     if reduction_axes is not None and np.shape(reduction_axes) == (1,):
       # Test scalar reduction_axes argument
       self._compareAll(x, reduction_axes[0])
-    self._compare(x, reduction_axes, keep_dims=False, feed_dict=feed_dict)
-    self._compare(x, reduction_axes, keep_dims=True, feed_dict=feed_dict)
+    self._compare(x, reduction_axes, keepdims=False, feed_dict=feed_dict)
+    self._compare(x, reduction_axes, keepdims=True, feed_dict=feed_dict)
 
   def _compareAllAxes(self, x, feed_dict=None):
     self._compareAll(x, None)
@@ -154,14 +171,14 @@ class BaseReductionTest(test.TestCase):
 
 class SumReductionTest(BaseReductionTest):
 
-  def _tf_reduce(self, x, reduction_axes, keep_dims):
-    return math_ops.reduce_sum(x, reduction_axes, keep_dims)
+  def _tf_reduce(self, x, reduction_axes, keepdims):
+    return math_ops.reduce_sum(x, reduction_axes, keepdims)
 
-  def _np_reduce(self, x, reduction_axes, keep_dims):
+  def _np_reduce(self, x, reduction_axes, keepdims):
     if isinstance(reduction_axes, list) or isinstance(reduction_axes,
                                                       np.ndarray):
       reduction_axes = tuple(reduction_axes)
-    return np.sum(x, axis=reduction_axes, keepdims=keep_dims)
+    return np.sum(x, axis=reduction_axes, keepdims=keepdims)
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
@@ -199,7 +216,6 @@ class SumReductionTest(BaseReductionTest):
       tf_mean = math_ops.reduce_mean(tf_arr, 0, False)
       tf_out_mean = sess.run(tf_mean)
     self.assertAllClose(tf_out_mean, 1.)
-
 
   def testFloat32(self):
     for rank in range(1, _MAX_RANK + 1):
@@ -282,7 +298,7 @@ class SumReductionTest(BaseReductionTest):
     c_known_rank = array_ops.placeholder(dtypes.float32)
     c_known_rank.set_shape(tensor_shape.unknown_shape(ndims=3))
     s_known_rank = math_ops.reduce_sum(
-        c_known_rank, reduction_axes, keep_dims=True)
+        c_known_rank, reduction_axes, keepdims=True)
     self.assertEqual(3, s_known_rank.get_shape().ndims)
 
     np_input = np.random.randn(3, 3, 3)
@@ -292,11 +308,11 @@ class SumReductionTest(BaseReductionTest):
     unknown_indices = array_ops.placeholder(dtypes.int32)
     c_unknown_indices = constant_op.constant([[10.0], [20.0]])
     s_unknown_indices = math_ops.reduce_sum(
-        c_unknown_indices, unknown_indices, keep_dims=False)
+        c_unknown_indices, unknown_indices, keepdims=False)
     self.assertEqual(tensor_shape.unknown_shape(),
                      s_unknown_indices.get_shape())
     s_unknown_indices_keep = math_ops.reduce_sum(
-        c_unknown_indices, unknown_indices, keep_dims=True)
+        c_unknown_indices, unknown_indices, keepdims=True)
     self.assertEqual(2, s_unknown_indices_keep.get_shape().ndims)
 
   def testWrongShapeForReductionIndices(self):
@@ -309,8 +325,9 @@ class SumReductionTest(BaseReductionTest):
   # Int64??
 
   def testGradient(self):
-    for dtype in [dtypes.float32, dtypes.float64, dtypes.complex64,
-                  dtypes.complex128]:
+    for dtype in [
+        dtypes.float32, dtypes.float64, dtypes.complex64, dtypes.complex128
+    ]:
       x = self._makeIncremental([2, 3, 4, 2], dtype)
       self._compareGradientAxes(x)
 
@@ -355,10 +372,10 @@ class SumReductionTest(BaseReductionTest):
 
 class MeanReductionTest(BaseReductionTest):
 
-  def _tf_reduce(self, x, reduction_axes, keep_dims):
-    return math_ops.reduce_mean(x, reduction_axes, keep_dims)
+  def _tf_reduce(self, x, reduction_axes, keepdims):
+    return math_ops.reduce_mean(x, reduction_axes, keepdims)
 
-  def _np_reduce(self, x, reduction_axes, keep_dims):
+  def _np_reduce(self, x, reduction_axes, keepdims):
     if isinstance(reduction_axes, list) or isinstance(reduction_axes,
                                                       np.ndarray):
       reduction_axes = tuple(reduction_axes)
@@ -372,7 +389,7 @@ class MeanReductionTest(BaseReductionTest):
     # np.mean automatically converts integer inputs to float, while TensorFlow's
     # reduce_mean does not. For integer inputs, we emulate TensorFlow's behavior
     # using np.sum and truncating division.
-    np_sum = np.sum(x, axis=reduction_axes, keepdims=keep_dims)
+    np_sum = np.sum(x, axis=reduction_axes, keepdims=keepdims)
     if np.issubdtype(x.dtype, np.integer):
       return np_sum // count
     return np_sum / count
@@ -441,14 +458,14 @@ class MeanReductionTest(BaseReductionTest):
 
 class ProdReductionTest(BaseReductionTest):
 
-  def _tf_reduce(self, x, reduction_axes, keep_dims):
-    return math_ops.reduce_prod(x, reduction_axes, keep_dims)
+  def _tf_reduce(self, x, reduction_axes, keepdims):
+    return math_ops.reduce_prod(x, reduction_axes, keepdims)
 
-  def _np_reduce(self, x, reduction_axes, keep_dims):
+  def _np_reduce(self, x, reduction_axes, keepdims):
     if isinstance(reduction_axes, list) or isinstance(reduction_axes,
                                                       np.ndarray):
       reduction_axes = tuple(reduction_axes)
-    return np.prod(x, axis=reduction_axes, keepdims=keep_dims)
+    return np.prod(x, axis=reduction_axes, keepdims=keepdims)
 
   def testAxesType(self):
     for dtype in [dtypes.int64, dtypes.int32]:
@@ -532,17 +549,17 @@ class ProdReductionTest(BaseReductionTest):
 
 class MinReductionTest(test.TestCase):
 
-  def _compare(self, x, reduction_axes, keep_dims, use_gpu=False):
+  def _compare(self, x, reduction_axes, keepdims, use_gpu=False):
     np_ans = x
     if reduction_axes is None:
-      np_ans = np.amin(np_ans, keepdims=keep_dims)
+      np_ans = np.amin(np_ans, keepdims=keepdims)
     else:
       for ra in reduction_axes[::-1]:
-        np_ans = np.amin(np_ans, axis=ra, keepdims=keep_dims)
+        np_ans = np.amin(np_ans, axis=ra, keepdims=keepdims)
     with self.test_session(use_gpu=use_gpu):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
-      tf_ans = math_ops.reduce_min(x, reduction_axes, keep_dims)
+      tf_ans = math_ops.reduce_min(x, reduction_axes, keepdims)
       out = tf_ans.eval()
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
@@ -645,17 +662,17 @@ class MinReductionTest(test.TestCase):
 
 class MaxReductionTest(test.TestCase):
 
-  def _compare(self, x, reduction_axes, keep_dims, use_gpu=False):
+  def _compare(self, x, reduction_axes, keepdims, use_gpu=False):
     np_ans = x
     if reduction_axes is None:
-      np_ans = np.amax(np_ans, keepdims=keep_dims)
+      np_ans = np.amax(np_ans, keepdims=keepdims)
     else:
       for ra in reduction_axes[::-1]:
-        np_ans = np.amax(np_ans, axis=ra, keepdims=keep_dims)
+        np_ans = np.amax(np_ans, axis=ra, keepdims=keepdims)
     with self.test_session(use_gpu=use_gpu):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
-      tf_ans = math_ops.reduce_max(x, reduction_axes, keep_dims)
+      tf_ans = math_ops.reduce_max(x, reduction_axes, keepdims)
       out = tf_ans.eval()
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
@@ -772,17 +789,17 @@ class MaxReductionTest(test.TestCase):
 
 class AllReductionTest(test.TestCase):
 
-  def _compare(self, x, reduction_axes, keep_dims, use_gpu=False):
+  def _compare(self, x, reduction_axes, keepdims, use_gpu=False):
     np_ans = x
     if reduction_axes is None:
-      np_ans = np.all(np_ans, keepdims=keep_dims)
+      np_ans = np.all(np_ans, keepdims=keepdims)
     else:
       for ra in reduction_axes[::-1]:
-        np_ans = np.all(np_ans, axis=ra, keepdims=keep_dims)
+        np_ans = np.all(np_ans, axis=ra, keepdims=keepdims)
     with self.test_session(use_gpu=use_gpu):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
-      tf_ans = math_ops.reduce_all(x, reduction_axes, keep_dims)
+      tf_ans = math_ops.reduce_all(x, reduction_axes, keepdims)
       out = tf_ans.eval()
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
@@ -821,17 +838,17 @@ class AllReductionTest(test.TestCase):
 
 class AnyReductionTest(test.TestCase):
 
-  def _compare(self, x, reduction_axes, keep_dims, use_gpu=False):
+  def _compare(self, x, reduction_axes, keepdims, use_gpu=False):
     np_ans = x
     if reduction_axes is None:
-      np_ans = np.any(np_ans, keepdims=keep_dims)
+      np_ans = np.any(np_ans, keepdims=keepdims)
     else:
       for ra in reduction_axes[::-1]:
-        np_ans = np.any(np_ans, axis=ra, keepdims=keep_dims)
+        np_ans = np.any(np_ans, axis=ra, keepdims=keepdims)
     with self.test_session(use_gpu=use_gpu):
       if reduction_axes is not None:
         reduction_axes = np.array(reduction_axes).astype(np.int32)
-      tf_ans = math_ops.reduce_any(x, reduction_axes, keep_dims)
+      tf_ans = math_ops.reduce_any(x, reduction_axes, keepdims)
       out = tf_ans.eval()
     self.assertAllEqual(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
@@ -873,18 +890,18 @@ class CountNonzeroReductionTest(test.TestCase):
   def _compare(self,
                x,
                reduction_axes,
-               keep_dims,
+               keepdims,
                use_gpu=False,
                feed_dict=None):
     np_ans = (x != 0).astype(np.int32)
     if reduction_axes is None:
-      np_ans = np.sum(np_ans, keepdims=keep_dims)
+      np_ans = np.sum(np_ans, keepdims=keepdims)
     else:
       reduction_axes = np.array(reduction_axes).astype(np.int32)
       for ra in reduction_axes.ravel()[::-1]:
-        np_ans = np.sum(np_ans, axis=ra, keepdims=keep_dims)
+        np_ans = np.sum(np_ans, axis=ra, keepdims=keepdims)
     with self.test_session(use_gpu=use_gpu) as sess:
-      tf_ans = math_ops.count_nonzero(x, reduction_axes, keep_dims)
+      tf_ans = math_ops.count_nonzero(x, reduction_axes, keepdims)
       out = sess.run(tf_ans, feed_dict)
     self.assertAllClose(np_ans, out)
     self.assertShapeEqual(np_ans, tf_ans)
@@ -913,8 +930,9 @@ class CountNonzeroReductionTest(test.TestCase):
   def testFloatReduce4D(self):
     # Create a 4D array of floats and reduce across some
     # dimensions
-    np_arr = np.floor(np.arange(0.0, 210.0) / 100.0).reshape(
-        [2, 3, 5, 7]).astype(np.float32)
+    np_arr = np.floor(np.arange(0.0, 210.0) / 100.0).reshape([2, 3, 5,
+                                                              7]).astype(
+                                                                  np.float32)
     self._compareAll(np_arr, None)
     self._compareAll(np_arr, [])
     self._compareAll(np_arr, [0])

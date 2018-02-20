@@ -127,7 +127,7 @@ Status InferShapesForFunctionSubNode(const Node* node, ShapeRefiner* refiner,
 //
 // NOTE: Recursive user-defined functions are not supported.
 // Maybe we won't support recursive functions at all in TF, because of
-// other maintanabilty issues.
+// other maintainability issues.
 Status ShapeRefiner::InferShapesForFunction(
     const tensorflow::FunctionDef* function_def, bool keep_nested_shapes,
     ExtendedInferenceContext* outer_context) {
@@ -335,10 +335,14 @@ Status ShapeRefiner::UpdateNode(const Node* node, bool relax, bool* refined) {
     InferenceContext* c = iter->second->get_context();
     DCHECK_GE(dst_input, 0);
     ShapeHandle existing_input = node_context->input(dst_input);
-    if (!relax && node_context->MergeInput(dst_input, c->output(src_output)) &&
-        !existing_input.SameHandle(node_context->input(dst_input))) {
-      *refined = true;
-    } else if (relax) {
+    if (!relax) {
+      if (node_context->MergeInput(dst_input, c->output(src_output))) {
+        if (!SameDefinedShape(node_context, node_context->input(dst_input),
+                              existing_input)) {
+          *refined = true;
+        }
+      }
+    } else {
       if (node_context->RelaxInput(dst_input, c->output(src_output))) {
         if (!SameDefinedShape(node_context, node_context->input(dst_input),
                               existing_input)) {
@@ -554,6 +558,13 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     return Status::OK();
   }
 
+  if (target_node->type_string() == "PlaceholderWithDefault") {
+    return Status::OK();
+  }
+
+  // TODO(skyewm): more of the filtering applied in input nodes below should be
+  // applied to target_node here
+
   struct NodeAndRecursed {
     Node* new_node = nullptr;
     bool recursed = false;
@@ -600,6 +611,14 @@ Status ShapeRefiner::ExtractConstantSubgraph(
     // Don't constant fold enter/exit currently either, as it's easy to end
     // up with a partial frame.
     if (IsEnter(current_node) || IsExit(current_node)) {
+      *is_constant_graph = false;
+      return Status::OK();
+    }
+
+    // Placeholders should never be constant folded because their outputs are
+    // fed by the user. Note that "Placeholder" nodes have no inputs so are
+    // handled below.
+    if (current_node->type_string() == "PlaceholderWithDefault") {
       *is_constant_graph = false;
       return Status::OK();
     }
@@ -703,6 +722,8 @@ Status ShapeRefiner::ConstantPartialShape(InferenceContext* target_context,
     *result = target_context->Scalar();
   } else if (src_op == "Shape") {
     *result = src_context->input(0);
+  } else if (src_op == "ShapeN") {
+    *result = src_context->input(input_edge->src_output());
   } else if (src_op == "Pack") {
     std::vector<DimensionHandle> dims;
     // Pack is concatenating its input scalars to form the shape tensor vector.
@@ -865,15 +886,22 @@ Status ShapeRefiner::RunShapeFn(const Node* node,
 
 bool ShapeRefiner::SameDefinedShape(InferenceContext* c, ShapeHandle s0,
                                     ShapeHandle s1) {
-  if (!c->RankKnown(s0)) {
-    return !c->RankKnown(s1);
-  } else if (!c->RankKnown(s1) || c->Rank(s0) != c->Rank(s1)) {
+  if (s0.SameHandle(s1)) {
+    return true;
+  }
+  if (c->Rank(s0) != c->Rank(s1)) {
     return false;
   }
-
+  if (!c->RankKnown(s0) && !c->RankKnown(s1)) {
+    return false;
+  }
   for (int i = 0; i < c->Rank(s0); ++i) {
-    if (c->Value(c->Dim(s0, i)) != c->Value(c->Dim(s1, i))) {
-      return false;
+    if (!c->Dim(s0, i).SameHandle(c->Dim(s1, i))) {
+      int64 val0 = c->Value(c->Dim(s0, i));
+      int64 val1 = c->Value(c->Dim(s1, i));
+      if (val0 < 0 || val1 < 0 || val0 != val1) {
+        return false;
+      }
     }
   }
 

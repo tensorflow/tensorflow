@@ -42,6 +42,8 @@ namespace {
 
 const int kRightMargin = 78;
 
+constexpr char kEagerFallbackSuffix[] = "_eager_fallback";
+
 string AttrVarName(const string& attr_name,
                    std::unordered_map<string, string>* attr_expressions) {
   const string var = strings::StrCat("_attr_", attr_name);
@@ -49,11 +51,12 @@ string AttrVarName(const string& attr_name,
   return var;
 }
 
-void AddInferredAttr(const string& attr_name, const string& value_expression,
-                     string* result,
+void AddInferredAttr(const string& indentation, const string& attr_name,
+                     const string& value_expression, string* result,
                      std::unordered_map<string, string>* attr_expressions) {
-  strings::StrAppend(result, "  ", AttrVarName(attr_name, attr_expressions),
-                     " = ", value_expression, "\n");
+  strings::StrAppend(result, indentation,
+                     AttrVarName(attr_name, attr_expressions), " = ",
+                     value_expression, "\n");
 }
 
 string VectorToTuple(const std::vector<string>& l) {
@@ -99,6 +102,15 @@ string TensorPBString(const TensorProto& pb) {
   return strings::StrCat("\"\"\"", ProtoShortDebugString(pb), "\"\"\"");
 }
 
+const ApiDef::Arg* FindInputArg(StringPiece name, const ApiDef& api_def) {
+  for (int i = 0; i < api_def.in_arg_size(); ++i) {
+    if (api_def.in_arg(i).name() == name) {
+      return &api_def.in_arg(i);
+    }
+  }
+  return nullptr;
+}
+
 class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
  public:
   GenEagerPythonOp(const OpDef& op_def, const ApiDef& api_def,
@@ -112,11 +124,33 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   string Code() override;
 
  protected:
-  void ExpectListArg(const string& arg_name);
-  void AddEagerInferredAttrs();
-  void AddEagerInputCasts();
-  void AddEagerAttrs();
-  void AddEagerExecute(const string& num_outputs_expr);
+  void HandleGraphMode(const string& function_setup);
+
+  string GetEagerNotAllowedError();
+  void ExpectListArg(const string& indentation, const string& arg_name,
+                     string* output);
+  bool GetEagerFunctionSetup(const string& indentation, string* function_setup);
+  void GetOutputSizesAndNumOutputsExpr(std::vector<string>* output_sizes,
+                                       string* num_outputs_expr);
+
+  void AddEagerFunctionTeardown(const string& indentation,
+                                const std::vector<string>& output_sizes,
+                                bool execute_record_gradient);
+
+  bool AddEagerFastPathAndGraphCode(const string& parameters,
+                                    const std::vector<string>& output_sizes,
+                                    const string& eager_not_allowed_error);
+  bool AddEagerFallbackCode(const string& parameters,
+                            const std::vector<string>& output_sizes,
+                            const string& num_outputs_expr,
+                            const string& eager_not_allowed_error);
+  void AddEagerFastPathExecute();
+
+  void AddEagerInferredAttrs(const string& indentation);
+  void AddEagerInputCasts(const string& indentation);
+  void AddEagerAttrs(const string& indentation);
+  void AddEagerExecute(const string& indentation,
+                       const string& num_outputs_expr);
 
   void AddAttrForArg(const string& attr, int arg_index) {
     gtl::InsertIfNotPresent(&inferred_attrs_, attr,
@@ -139,6 +173,13 @@ class GenEagerPythonOp : public python_op_gen_internal::GenPythonOp {
   typedef std::unordered_map<string, std::vector<int>> AttrToArgMap;
   AttrToArgMap attr_to_args_;
   std::unordered_map<string, string> attr_expressions_;
+  // This has all the input args followed by those attrs that don't have
+  // defaults.
+  std::vector<python_op_gen_internal::ParamNames> params_no_default_;
+  // The parameters with defaults (these have to be listed after those without).
+  // No input args are included, just attrs.
+  std::vector<std::pair<python_op_gen_internal::ParamNames, string>>
+      params_with_default_;
 };
 
 string GetEagerPythonOp(const OpDef& op_def, const ApiDef& api_def,
@@ -164,14 +205,14 @@ string GenEagerPythonOp::FlattenInputs(
       } else if (inputs_state == WAS_LIST_INPUT) {
         strings::StrAppend(&inputs, " + ");
       }
-      strings::StrAppend(&inputs, "list(", param_names_[i], ")");
+      strings::StrAppend(&inputs, "list(", param_names_[i].GetRenameTo(), ")");
       inputs_state = WAS_LIST_INPUT;
       if (output_sizes != nullptr) {
         if (!arg.number_attr().empty()) {
           output_sizes->emplace_back(AttrVarName(arg.number_attr(), nullptr));
         } else {
           output_sizes->emplace_back(
-              strings::StrCat("len(", param_names_[i], ")"));
+              strings::StrCat("len(", param_names_[i].GetRenameTo(), ")"));
         }
       }
     } else {
@@ -182,7 +223,7 @@ string GenEagerPythonOp::FlattenInputs(
       } else {
         strings::StrAppend(&inputs, "[");
       }
-      strings::StrAppend(&inputs, param_names_[i]);
+      strings::StrAppend(&inputs, param_names_[i].GetRenameTo());
       inputs_state = WAS_SOLO_INPUT;
       if (output_sizes != nullptr) output_sizes->emplace_back();
     }
@@ -195,15 +236,15 @@ string GenEagerPythonOp::FlattenInputs(
 }
 
 string GenEagerPythonOp::Code() {
-  // This has all the input args followed by those attrs that don't have
-  // defaults.
-  std::vector<string> args_no_default;
-  // The parameters with defaults (these have to be listed after those without).
-  // No input args are included, just attrs.
-  std::vector<std::pair<string, string>> args_with_defaults;
-  for (int i = 0; i < op_def_.input_arg_size(); ++i) {
-    const auto& arg(op_def_.input_arg(i));
-    args_no_default.push_back(arg.name());
+  if (api_def_.visibility() == ApiDef::SKIP) {
+    return "";
+  }
+
+  for (int i = 0; i < api_def_.arg_order_size(); ++i) {
+    const auto& arg = *FindInputArg(api_def_.arg_order(i), op_def_);
+    const auto& api_def_arg = *FindInputArg(api_def_.arg_order(i), api_def_);
+    params_no_default_.emplace_back(api_def_arg.name(),
+                                    api_def_arg.rename_to());
     if (!arg.type_attr().empty()) {
       AddAttrForArg(arg.type_attr(), i);
     } else if (!arg.type_list_attr().empty()) {
@@ -215,31 +256,39 @@ string GenEagerPythonOp::Code() {
   }
   for (int i = 0; i < op_def_.attr_size(); ++i) {
     const auto& attr(op_def_.attr(i));
+    const auto& api_def_attr(api_def_.attr(i));
     // Do not add inferred attrs to the Python function signature.
     if (inferred_attrs_.find(attr.name()) == inferred_attrs_.end()) {
-      if (attr.has_default_value()) {
+      if (api_def_attr.has_default_value()) {
         if (attr.type() == "tensor") {
-          args_with_defaults.emplace_back(
-              attr.name(),
-              strings::StrCat("_execute.make_tensor(",
-                              TensorPBString(attr.default_value().tensor()),
-                              ", \"", attr.name(), "\")"));
+          params_with_default_.emplace_back(
+              python_op_gen_internal::ParamNames(api_def_attr.name(),
+                                                 api_def_attr.rename_to()),
+              strings::StrCat(
+                  "_execute.make_tensor(",
+                  TensorPBString(api_def_attr.default_value().tensor()), ", \"",
+                  api_def_attr.rename_to(), "\")"));
         } else if (attr.type() == "list(tensor)") {
           std::vector<string> pbtxt;
-          for (const auto& pb : attr.default_value().list().tensor()) {
+          for (const auto& pb : api_def_attr.default_value().list().tensor()) {
             pbtxt.emplace_back(TensorPBString(pb));
           }
-          args_with_defaults.emplace_back(
-              attr.name(),
-              strings::StrCat("[_execute.make_tensor(_pb, \"", attr.name(),
-                              "\") for _pb in ", VectorToTuple(pbtxt), "]"));
+          params_with_default_.emplace_back(
+              python_op_gen_internal::ParamNames(api_def_attr.name(),
+                                                 api_def_attr.rename_to()),
+              strings::StrCat("[_execute.make_tensor(_pb, \"",
+                              api_def_attr.rename_to(), "\") for _pb in ",
+                              VectorToTuple(pbtxt), "]"));
         } else {
-          args_with_defaults.emplace_back(
-              attr.name(), python_op_gen_internal::AttrValueToPython(
-                               attr.type(), attr.default_value(), "_dtypes."));
+          params_with_default_.emplace_back(
+              python_op_gen_internal::ParamNames(api_def_attr.name(),
+                                                 api_def_attr.rename_to()),
+              python_op_gen_internal::AttrValueToPython(
+                  attr.type(), api_def_attr.default_value(), "_dtypes."));
         }
       } else {
-        args_no_default.push_back(attr.name());
+        params_no_default_.emplace_back(api_def_attr.name(),
+                                        api_def_attr.rename_to());
       }
     }
   }
@@ -247,159 +296,79 @@ string GenEagerPythonOp::Code() {
   // Save the list of attr parameters (attrs that won't be inferred),
   // those with defaults go at the end.
   // Get the attrs in the order we want by taking the attrs without defaults
-  // from the end of args_no_default, and adding args_no_default.
-  attrs_.reserve(args_no_default.size() - op_def_.input_arg_size() +
-                 args_with_defaults.size());
-  attrs_.insert(attrs_.end(),
-                args_no_default.begin() + op_def_.input_arg_size(),
-                args_no_default.end());
-  for (const auto& a : args_with_defaults) {
-    attrs_.push_back(a.first);
+  // from the end of params_no_default_, and adding params_no_default_.
+  attrs_.reserve(params_no_default_.size() - op_def_.input_arg_size() +
+                 params_with_default_.size());
+  for (int i = op_def_.input_arg_size(); i < params_no_default_.size(); ++i) {
+    attrs_.push_back(params_no_default_[i].GetName());
+  }
+  for (const auto& p : params_with_default_) {
+    attrs_.push_back(p.first.GetName());
   }
 
-  param_names_.reserve(args_no_default.size() + args_with_defaults.size());
-  string parameters;
-  for (const string& name : args_no_default) {
-    if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
-    const string param = python_op_gen_internal::AvoidPythonReserved(name);
-    strings::StrAppend(&parameters, param);
-    param_names_.push_back(param);
+  param_names_.reserve(params_no_default_.size() + params_with_default_.size());
+  param_names_.insert(param_names_.begin(), params_no_default_.begin(),
+                      params_no_default_.end());
+  for (const auto& param_and_default : params_with_default_) {
+    param_names_.push_back(param_and_default.first);
   }
-  for (const auto& name_default : args_with_defaults) {
+
+  string parameters;
+  for (const auto& param : params_no_default_) {
     if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
-    const string param =
-        python_op_gen_internal::AvoidPythonReserved(name_default.first);
-    strings::StrAppend(&parameters, param, "=", name_default.second);
-    param_names_.push_back(param);
+    strings::StrAppend(&parameters, param.GetRenameTo());
+  }
+  for (const auto& param_and_default : params_with_default_) {
+    if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
+    strings::StrAppend(&parameters, param_and_default.first.GetRenameTo(), "=",
+                       param_and_default.second);
   }
   if (!parameters.empty()) strings::StrAppend(&parameters, ", ");
   strings::StrAppend(&parameters, "name=None");
 
-  AddDefLine(parameters);
-  AddDocStringDescription();
-  AddDocStringArgs();
-  AddDocStringInputs();
-  AddDocStringAttrs();
-  AddDocStringNameArg();
-  AddOutputGlobals();
-  AddDocStringOutputs();
-  strings::StrAppend(&result_, "  \"\"\"\n");
-
-  // Function body.
-
-  // Validate list inputs, infer length attrs.
+  // Add attr_expressions_ for attrs that are params.
+  for (int i = 0; i < attrs_.size(); ++i) {
+    const string& attr_name = attrs_[i];
+    const string& attr_api_name =
+        param_names_[i + op_def_.input_arg_size()].GetRenameTo();
+    attr_expressions_[attr_name] = attr_api_name;
+  }
+  // Add attr_expressions_ for attrs that are inferred.
   for (int i = 0; i < op_def_.attr_size(); ++i) {
     const auto& attr(op_def_.attr(i));
     if (attr.type() == "int") {
       auto arg_list = attr_to_args_.find(attr.name());
       if (arg_list != attr_to_args_.end()) {
-        // Inferred int attrs are the lengths of inputs. Validate those
-        // inputs are lists and have the same length.
-        for (auto iter = arg_list->second.begin();
-             iter != arg_list->second.end(); ++iter) {
-          const string& arg_name = param_names_[*iter];
-          ExpectListArg(arg_name);
-          if (iter == arg_list->second.begin()) {
-            AddInferredAttr(attr.name(), strings::StrCat("len(", arg_name, ")"),
-                            &result_, &attr_expressions_);
-          } else {
-            const auto& attr_var = attr_expressions_[attr.name()];
-            strings::StrAppend(&result_, "  if len(", arg_name,
-                               ") != ", attr_var,
-                               ":\n"
-                               "    raise ValueError(\n"
-                               "        \"List argument '",
-                               arg_name, "' to '", op_name_,
-                               "' Op with length %d \"\n"
-                               "        \"must match length %d of argument '",
-                               inferred_attrs_[attr.name()],
-                               "'.\" %\n"
-                               "        (len(",
-                               arg_name, "), ", attr_var, "))\n");
-          }
-        }
+        AttrVarName(attr.name(), &attr_expressions_);
       }
     }
   }
 
-  // Values for non-inferred attrs.
-  for (int i = 0; i < attrs_.size(); ++i) {
-    const string& attr_name = attrs_[i];
-    const string& param = param_names_[i + op_def_.input_arg_size()];
-    const auto& attr = *FindAttr(attr_name, op_def_);
-    StringPiece attr_type = attr.type();
-    attr_expressions_[attr_name] = param;
-    const int default_index = i - (attrs_.size() - args_with_defaults.size());
-    if (default_index >= 0) {
-      const string& default_value = args_with_defaults[default_index].second;
-      strings::StrAppend(&result_, "  if ", param, " is None:\n");
-      strings::StrAppend(&result_, "    ", param, " = ", default_value, "\n");
-    }
-    if (attr_type.starts_with("list(")) {
-      ExpectListArg(param);
-    }
+  string num_outputs_expr;
+  std::vector<string> output_sizes(num_outs_);
+  GetOutputSizesAndNumOutputsExpr(&output_sizes, &num_outputs_expr);
 
-    if (attr_type == "string") {
-      strings::StrAppend(&result_, "  ", param, " = _execute.make_str(", param,
-                         ", \"", param, "\")\n");
-    } else if (attr_type == "list(string)") {
-      strings::StrAppend(&result_, "  ", param, " = [_execute.make_str(_s, \"",
-                         param, "\") for _s in ", param, "]\n");
-    } else if (attr_type == "int") {
-      strings::StrAppend(&result_, "  ", param, " = _execute.make_int(", param,
-                         ", \"", param, "\")\n");
-    } else if (attr_type == "list(int)") {
-      strings::StrAppend(&result_, "  ", param, " = [_execute.make_int(_i, \"",
-                         param, "\") for _i in ", param, "]\n");
-    } else if (attr_type == "float") {
-      strings::StrAppend(&result_, "  ", param, " = _execute.make_float(",
-                         param, ", \"", param, "\")\n");
-    } else if (attr_type == "list(float)") {
-      strings::StrAppend(&result_, "  ", param,
-                         " = [_execute.make_float(_f, \"", param,
-                         "\") for _f in ", param, "]\n");
-    } else if (attr_type == "bool") {
-      strings::StrAppend(&result_, "  ", param, " = _execute.make_bool(", param,
-                         ", \"", param, "\")\n");
-    } else if (attr_type == "list(bool)") {
-      strings::StrAppend(&result_, "  ", param, " = [_execute.make_bool(_b, \"",
-                         param, "\") for _b in ", param, "]\n");
-    } else if (attr_type == "type") {
-      strings::StrAppend(&result_, "  ", param, " = _execute.make_type(", param,
-                         ", \"", param, "\")\n");
-    } else if (attr_type == "list(type)") {
-      strings::StrAppend(&result_, "  ", param, " = [_execute.make_type(_t, \"",
-                         param, "\") for _t in ", param, "]\n");
-    } else if (attr_type == "shape") {
-      strings::StrAppend(&result_, "  ", param, " = _execute.make_shape(",
-                         param, ", \"", param, "\")\n");
-    } else if (attr_type == "list(shape)") {
-      strings::StrAppend(&result_, "  ", param,
-                         " = [_execute.make_shape(_s, \"", param,
-                         "\") for _s in ", param, "]\n");
-    } else if (attr_type == "tensor") {
-      strings::StrAppend(&result_, "  ", param, " = _execute.make_tensor(",
-                         param, ", \"", param, "\")\n");
-    } else if (attr_type == "list(tensor)") {
-      strings::StrAppend(&result_, "  ", param,
-                         " = [_execute.make_tensor(_t, \"", param,
-                         "\") for _t in ", param, "]\n");
-    } else if (attr_type != "func") {
-      return strings::StrCat("# No definition for ", function_name_,
-                             " since we don't support attrs with type\n"
-                             "# '",
-                             attr_type, "' right now.\n\n");
-    }
+  string eager_not_allowed_error = GetEagerNotAllowedError();
+
+  if (!AddEagerFastPathAndGraphCode(parameters, output_sizes,
+                                    eager_not_allowed_error)) {
+    return result_;
   }
 
-  // Figure out the list of inputs.
-  const string inputs = FlattenInputs(nullptr, nullptr);
+  if (!AddEagerFallbackCode(parameters, output_sizes, num_outputs_expr,
+                            eager_not_allowed_error)) {
+    return result_;
+  }
 
+  return prelude_ + result_;
+}
+
+void GenEagerPythonOp::HandleGraphMode(const string& function_setup) {
   // Handle graph-mode case
   strings::StrAppend(&result_,
                      "  _ctx = _context.context()\n"
-
-                     "  if _ctx.in_graph_mode():\n"
+                     "  if _ctx.in_graph_mode():\n",
+                     function_setup,
                      "    _, _, _op = _op_def_lib._apply_op_helper(\n");
   AddBodyNoReturn("        ");
   if (num_outs_ > 0) {
@@ -436,123 +405,383 @@ string GenEagerPythonOp::Code() {
   } else {
     strings::StrAppend(&result_, "    return _op\n");
   }
+}
 
-  // Handle eager-mode case
-  strings::StrAppend(&result_, "  else:\n");
+string GenEagerPythonOp::GetEagerNotAllowedError() {
+  bool eager_allowed = true;
+  string ref_arg;
+  for (int i = 0; i < op_def_.input_arg_size(); ++i) {
+    const auto& arg = op_def_.input_arg(i);
+    if (arg.is_ref()) {
+      eager_allowed = false;
+      DCHECK_EQ(op_def_.input_arg(i).name(), api_def_.in_arg(i).name());
+      ref_arg = api_def_.in_arg(i).rename_to();
+    }
+  }
+  for (int i = 0; i < op_def_.output_arg_size(); ++i) {
+    const auto& arg = op_def_.output_arg(i);
+    if (arg.is_ref()) {
+      eager_allowed = false;
+      DCHECK_EQ(op_def_.output_arg(i).name(), api_def_.out_arg(i).name());
+      ref_arg = api_def_.out_arg(i).rename_to();
+    }
+  }
 
+  if (eager_allowed) return "";
+
+  return strings::StrCat("raise RuntimeError(\"", op_name_,
+                         " op does not support eager execution. ", "Arg '",
+                         ref_arg, "' is a ref.\")\n");
+}
+
+void GenEagerPythonOp::ExpectListArg(const string& indentation,
+                                     const string& arg_name, string* output) {
+  strings::StrAppend(output, indentation, "if not isinstance(", arg_name,
+                     ", (list, tuple)):\n", indentation, "  raise TypeError(\n",
+                     indentation, "      \"Expected list for '", arg_name,
+                     "' argument to \"\n", indentation, "      \"'", op_name_,
+                     "' Op, not %r.\" % ", arg_name, ")\n");
+}
+
+bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
+                                             string* function_setup) {
+  // Validate list inputs, infer length attrs.
+  for (int i = 0; i < op_def_.attr_size(); ++i) {
+    const auto& attr(op_def_.attr(i));
+    if (attr.type() == "int") {
+      auto arg_list = attr_to_args_.find(attr.name());
+      if (arg_list != attr_to_args_.end()) {
+        // Inferred int attrs are the lengths of inputs. Validate those
+        // inputs are lists and have the same length.
+        for (auto iter = arg_list->second.begin();
+             iter != arg_list->second.end(); ++iter) {
+          const string& arg_api_name = param_names_[*iter].GetRenameTo();
+          ExpectListArg(indentation, arg_api_name, function_setup);
+          if (iter == arg_list->second.begin()) {
+            AddInferredAttr(indentation, attr.name(),
+                            strings::StrCat("len(", arg_api_name, ")"),
+                            function_setup, &attr_expressions_);
+          } else {
+            const auto& attr_var = attr_expressions_[attr.name()];
+            strings::StrAppend(
+                function_setup, indentation, "if len(", arg_api_name,
+                ") != ", attr_var, ":\n", indentation, "  raise ValueError(\n",
+                indentation, "      \"List argument '", arg_api_name, "' to '",
+                op_name_, "' Op with length %d \"\n", indentation,
+                "      \"must match length %d of argument '",
+                inferred_attrs_[attr.name()], "'.\" %\n", indentation,
+                "      (len(", arg_api_name, "), ", attr_var, "))\n");
+          }
+        }
+      }
+    }
+  }
+
+  for (int i = 0; i < attrs_.size(); ++i) {
+    const string& attr_name = attrs_[i];
+    const auto& param = param_names_[i + op_def_.input_arg_size()];
+    const auto& attr = *FindAttr(attr_name, op_def_);
+    const string& attr_api_name = param.GetRenameTo();
+    StringPiece attr_type = attr.type();
+    attr_expressions_[attr_name] = attr_api_name;
+    const int default_index = i - (attrs_.size() - params_with_default_.size());
+    if (default_index >= 0) {
+      const string& default_value = params_with_default_[default_index].second;
+      strings::StrAppend(function_setup, indentation, "if ", attr_api_name,
+                         " is None:\n");
+      strings::StrAppend(function_setup, indentation, "  ", attr_api_name,
+                         " = ", default_value, "\n");
+    }
+    if (attr_type.starts_with("list(")) {
+      ExpectListArg(indentation, attr_api_name, function_setup);
+    }
+
+    if (attr_type == "string") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = _execute.make_str(", attr_api_name, ", \"",
+                         attr_api_name, "\")\n");
+    } else if (attr_type == "list(string)") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = [_execute.make_str(_s, \"", attr_api_name,
+                         "\") for _s in ", attr_api_name, "]\n");
+    } else if (attr_type == "int") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = _execute.make_int(", attr_api_name, ", \"",
+                         attr_api_name, "\")\n");
+    } else if (attr_type == "list(int)") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = [_execute.make_int(_i, \"", attr_api_name,
+                         "\") for _i in ", attr_api_name, "]\n");
+    } else if (attr_type == "float") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = _execute.make_float(", attr_api_name, ", \"",
+                         attr_api_name, "\")\n");
+    } else if (attr_type == "list(float)") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = [_execute.make_float(_f, \"", attr_api_name,
+                         "\") for _f in ", attr_api_name, "]\n");
+    } else if (attr_type == "bool") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = _execute.make_bool(", attr_api_name, ", \"",
+                         attr_api_name, "\")\n");
+    } else if (attr_type == "list(bool)") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = [_execute.make_bool(_b, \"", attr_api_name,
+                         "\") for _b in ", attr_api_name, "]\n");
+    } else if (attr_type == "type") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = _execute.make_type(", attr_api_name, ", \"",
+                         attr_api_name, "\")\n");
+    } else if (attr_type == "list(type)") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = [_execute.make_type(_t, \"", attr_api_name,
+                         "\") for _t in ", attr_api_name, "]\n");
+    } else if (attr_type == "shape") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = _execute.make_shape(", attr_api_name, ", \"",
+                         attr_api_name, "\")\n");
+    } else if (attr_type == "list(shape)") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = [_execute.make_shape(_s, \"", attr_api_name,
+                         "\") for _s in ", attr_api_name, "]\n");
+    } else if (attr_type == "tensor") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = _execute.make_tensor(", attr_api_name, ", \"",
+                         attr_api_name, "\")\n");
+    } else if (attr_type == "list(tensor)") {
+      strings::StrAppend(function_setup, indentation, attr_api_name,
+                         " = [_execute.make_tensor(_t, \"", attr_api_name,
+                         "\") for _t in ", attr_api_name, "]\n");
+    } else if (attr_type != "func") {
+      *function_setup =
+          strings::StrCat("# No definition for ", function_name_,
+                          " since we don't support attrs with type\n"
+                          "# '",
+                          attr_type, "' right now.\n\n");
+      return false;
+    }
+  }
+  return true;
+}
+
+// If output i is list output, output_sizes[i] will be set to a
+// string with the python expression that will evaluate to its
+// length. output_sizes[i] is empty for non-list outputs.
+void GenEagerPythonOp::GetOutputSizesAndNumOutputsExpr(
+    std::vector<string>* output_sizes, string* num_outputs_expr) {
   // Expression representing the number of outputs.
   int num_fixed_outputs = 0;
-  string num_outputs_expr;
-  // If output i is list output, output_sizes[i] will be set to a
-  // string with the python expression that will evaluate to its
-  // length. output_sizes[i] is empty for non-list outputs.
-  std::vector<string> output_sizes(num_outs_);
   for (int i = 0; i < num_outs_; ++i) {
     const auto& arg(op_def_.output_arg(i));
     if (!arg.number_attr().empty()) {
-      if (!num_outputs_expr.empty()) {
-        strings::StrAppend(&num_outputs_expr, " + ");
+      if (!num_outputs_expr->empty()) {
+        strings::StrAppend(num_outputs_expr, " + ");
       }
-      output_sizes[i] = attr_expressions_[arg.number_attr()];
-      strings::StrAppend(&num_outputs_expr, output_sizes[i]);
+      (*output_sizes)[i] = attr_expressions_[arg.number_attr()];
+      strings::StrAppend(num_outputs_expr, (*output_sizes)[i]);
     } else if (!arg.type_list_attr().empty()) {
-      if (!num_outputs_expr.empty()) {
-        strings::StrAppend(&num_outputs_expr, " + ");
+      if (!num_outputs_expr->empty()) {
+        strings::StrAppend(num_outputs_expr, " + ");
       }
       // Have to be careful to use an expression that works in both
       // graph and eager paths here.
       const auto iter = inferred_attrs_.find(arg.type_list_attr());
       if (iter == inferred_attrs_.end()) {
-        output_sizes[i] = strings::StrCat(
+        (*output_sizes)[i] = strings::StrCat(
             "len(", attr_expressions_[arg.type_list_attr()], ")");
       } else {
-        output_sizes[i] = strings::StrCat("len(", iter->second, ")");
+        (*output_sizes)[i] = strings::StrCat("len(", iter->second, ")");
       }
-      strings::StrAppend(&num_outputs_expr, output_sizes[i]);
+      strings::StrAppend(num_outputs_expr, (*output_sizes)[i]);
     } else {
       ++num_fixed_outputs;
     }
   }
   if (num_fixed_outputs > 0) {
-    if (!num_outputs_expr.empty()) {
-      strings::StrAppend(&num_outputs_expr, " + ");
+    if (!num_outputs_expr->empty()) {
+      strings::StrAppend(num_outputs_expr, " + ");
     }
-    strings::StrAppend(&num_outputs_expr, num_fixed_outputs);
-  } else if (num_outputs_expr.empty()) {
-    num_outputs_expr = "0";
+    strings::StrAppend(num_outputs_expr, num_fixed_outputs);
+  } else if (num_outputs_expr->empty()) {
+    *num_outputs_expr = "0";
   }
+}
 
-  bool eager_allowed = true;
-  string ref_arg;
-  for (const auto& arg : op_def_.input_arg()) {
-    if (arg.is_ref()) {
-      eager_allowed = false;
-      ref_arg = arg.name();
-    }
-  }
-  for (const auto& arg : op_def_.output_arg()) {
-    if (arg.is_ref()) {
-      eager_allowed = false;
-      ref_arg = arg.name();
-    }
-  }
-
-  if (eager_allowed) {
-    AddEagerInferredAttrs();
-    AddEagerInputCasts();
-    strings::StrAppend(&result_, "    _inputs_flat = ", inputs, "\n");
-    AddEagerAttrs();
-    AddEagerExecute(num_outputs_expr);
-  } else {
-    strings::StrAppend(&result_,
-                       "    raise RuntimeError(\n"
-                       "        \"",
-                       op_name_, " op does not support eager execution. ",
-                       "Arg '", ref_arg, "'' is a ref.\")\n");
-  }
-
+void GenEagerPythonOp::AddEagerFunctionTeardown(
+    const string& indentation, const std::vector<string>& output_sizes,
+    bool execute_record_gradient) {
   if (num_outs_ > 0) {
-    strings::StrAppend(&result_, "  _execute.record_gradient(\n", "      \"",
-                       op_def_.name(),
-                       "\", _inputs_flat, _attrs, _result, name)\n");
+    if (execute_record_gradient) {
+      strings::StrAppend(&result_, indentation, "_execute.record_gradient(\n",
+                         "      \"", op_def_.name(),
+                         "\", _inputs_flat, _attrs, _result, name)\n");
+    }
     if (num_outs_ == 1 && !output_sizes[0].empty()) {
       // Single list result.
     } else if (num_outs_ == 1) {
       // Execute returns a single-element list which we need to destructure.
-      strings::StrAppend(&result_, "  _result, = _result\n");
+      strings::StrAppend(&result_, indentation, "_result, = _result\n");
     } else {
       // Have multiple outputs, so we will need to reformat the return
       // value of execute() to be a list with one entry per op output
       // (that entry will be a list of tensors if that output is of list
       // type).
       // For list outputs, convert the right subrange of _result into a list.
-      Unflatten("  ", output_sizes, "_result", &result_);
+      Unflatten(indentation, output_sizes, "_result", &result_);
       // Convert to a named tuple.
-      strings::StrAppend(&result_, "  _result = _", op_def_.name(),
+      strings::StrAppend(&result_, indentation, "_result = _", op_def_.name(),
                          "Output._make(_result)\n");
     }
   } else {
-    strings::StrAppend(&result_, "    _result = None\n");
+    strings::StrAppend(&result_, indentation, "_result = None\n");
   }
-  strings::StrAppend(&result_, "  return _result\n\n");
-  return prelude_ + result_;
+  strings::StrAppend(&result_, indentation, "return _result\n\n");
 }
 
-void GenEagerPythonOp::ExpectListArg(const string& arg_name) {
-  strings::StrAppend(&result_, "  if not isinstance(", arg_name,
-                     ", (list, tuple)):\n"
-                     "    raise TypeError(\n"
-                     "        \"Expected list for '",
-                     arg_name,
-                     "' argument to \"\n"
-                     "        \"'",
-                     op_name_, "' Op, not %r.\" % ", arg_name, ")\n");
+bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
+    const string& parameters, const std::vector<string>& output_sizes,
+    const string& eager_not_allowed_error) {
+  AddExport();
+  AddDefLine(function_name_, parameters);
+  AddDocStringDescription();
+  AddDocStringArgs();
+  AddDocStringInputs();
+  AddDocStringAttrs();
+  AddDocStringNameArg();
+  AddOutputGlobals();  // Added to prelude_
+  AddDocStringOutputs();
+  strings::StrAppend(&result_, "  \"\"\"\n");
+
+  // Handle graph-mode case
+  string function_setup;
+  if (!GetEagerFunctionSetup("    ", &function_setup)) {
+    result_ = function_setup;
+    return false;
+  }
+  HandleGraphMode(function_setup);
+  AddEagerFunctionTeardown("    ", output_sizes,
+                           true /* execute_record_gradient */);
+
+  // Handle eager-mode case
+  strings::StrAppend(&result_, "  else:\n");
+
+  if (eager_not_allowed_error.empty()) {
+    AddEagerFastPathExecute();
+  } else {
+    strings::StrAppend(&result_, "    ", eager_not_allowed_error);
+  }
+
+  strings::StrAppend(&result_, "\n\n");
+  return true;
 }
 
-void GenEagerPythonOp::AddEagerInferredAttrs() {
+bool GenEagerPythonOp::AddEagerFallbackCode(
+    const string& parameters, const std::vector<string>& output_sizes,
+    const string& num_outputs_expr, const string& eager_not_allowed_error) {
+  if (!eager_not_allowed_error.empty()) {
+    strings::StrAppend(&result_, "  ", eager_not_allowed_error);
+    return true;
+  }
+
+  AddDefLine(strings::StrCat(function_name_, kEagerFallbackSuffix), parameters);
+  strings::StrAppend(
+      &result_, "  r\"\"\"This is the slowpath function for Eager mode.\n");
+  strings::StrAppend(&result_, "  This is for function ", function_name_,
+                     "\n  \"\"\"\n");
+
+  strings::StrAppend(&result_, "  _ctx = _context.context()\n");
+
+  string function_setup;
+  if (!GetEagerFunctionSetup("  ", &function_setup)) {
+    result_ = function_setup;
+    return false;
+  }
+  strings::StrAppend(&result_, function_setup);
+
+  AddEagerInferredAttrs("  ");
+  AddEagerInputCasts("  ");
+  strings::StrAppend(
+      &result_, "  _inputs_flat = ", FlattenInputs(nullptr, nullptr), "\n");
+  AddEagerAttrs("  ");
+  AddEagerExecute("  ", num_outputs_expr);
+
+  AddEagerFunctionTeardown("  ", output_sizes,
+                           true /* execute_record_gradient */);
+
+  return true;
+}
+
+void GenEagerPythonOp::AddEagerFastPathExecute() {
+  string fastpath_execute_params = strings::StrCat(
+      "_ctx._handle, _ctx.device_name, \"", op_def_.name(), "\", ",
+      "_execute.record_gradient, name, _ctx._post_execution_callbacks");
+  string fallback_params;
+
+  for (int i = 0; i < api_def_.in_arg_size(); i++) {
+    const string param_name = param_names_[i].GetRenameTo();
+    strings::StrAppend(&fastpath_execute_params, ", ", param_name);
+    if (!fallback_params.empty()) strings::StrAppend(&fallback_params, ", ");
+    strings::StrAppend(&fallback_params, param_name);
+  }
+
+  for (const auto& attr : api_def_.attr()) {
+    if (inferred_attrs_.find(attr.name()) == inferred_attrs_.end()) {
+      strings::StrAppend(&fastpath_execute_params, ", \"", attr.name(), "\", ",
+                         attr.rename_to());
+
+      if (!fallback_params.empty()) strings::StrAppend(&fallback_params, ", ");
+      strings::StrAppend(&fallback_params, attr.rename_to(), "=",
+                         attr.rename_to());
+    }
+  }
+
+  if (!fallback_params.empty()) strings::StrAppend(&fallback_params, ", ");
+  strings::StrAppend(&fallback_params, "name=name");
+
+  strings::StrAppend(&result_, "    try:\n");
+  strings::StrAppend(
+      &result_, "      ",
+      "_result = _pywrap_tensorflow.TFE_Py_FastPathExecute(\n",
+      WordWrap(strings::StrCat("        "),
+               strings::StrCat(fastpath_execute_params, ")"), kRightMargin),
+      "\n");
+
+  if (op_def_.output_arg_size() > 1) {
+    const string output_tuple_name =
+        strings::StrCat("_", op_def_.name(), "Output");
+    strings::StrAppend(&result_, "      ", "_result = ", output_tuple_name,
+                       "._make(_result)\n");
+  }
+  strings::StrAppend(&result_, "      ", "return _result\n");
+
+  // Handle fallback.
+  strings::StrAppend(&result_, "    ", "except _core._FallbackException:\n");
+  strings::StrAppend(
+      &result_, "      ", "return ", function_name_, kEagerFallbackSuffix,
+      "(\n",
+      WordWrap(strings::StrCat("          "),
+               strings::StrCat(fallback_params, ")"), kRightMargin),
+      "\n");
+
+  // Any errors thrown from execute need to be unwrapped from
+  // _NotOkStatusException.
+  strings::StrAppend(&result_, "    ",
+                     "except _core._NotOkStatusException as e:\n");
+  strings::StrAppend(&result_, "      ", "if name is not None:\n");
+  strings::StrAppend(&result_, "        ",
+                     "message = e.message + \" name: \" + name\n");
+  strings::StrAppend(&result_, "      ", "else:\n");
+  strings::StrAppend(&result_, "        ", "message = e.message\n");
+  strings::StrAppend(
+      &result_, "      ",
+      "_six.raise_from(_core._status_to_exception(e.code, message), None)\n");
+}
+
+void GenEagerPythonOp::AddEagerInferredAttrs(const string& indentation) {
   // Figure out values for inferred attrs, and cast to eager tensors.
   for (int i = 0; i < op_def_.attr_size(); ++i) {
     const auto& attr(op_def_.attr(i));
+    const auto& api_def_attr(api_def_.attr(i));
     auto arg_list = attr_to_args_.find(attr.name());
     if (arg_list != attr_to_args_.end()) {
       if (attr.type() == "type") {
@@ -565,33 +794,34 @@ void GenEagerPythonOp::AddEagerInferredAttrs() {
           strings::StrAppend(
               &conversion, ", ",
               python_op_gen_internal::AttrValueToPython(
-                  attr.type(), attr.default_value(), "_dtypes."));
+                  attr.type(), api_def_attr.default_value(), "_dtypes."));
         }
         strings::StrAppend(&conversion, ")");
         const string var_name = AttrVarName(attr.name(), &attr_expressions_);
         if (output_sizes.size() == 1) {
           // Avoid creating a temporary variable in the case where
           // we can easily assign to the right value directly.
-          const string inputs_var = param_names_[arg_list->second.front()];
+          const string inputs_var =
+              param_names_[arg_list->second.front()].GetRenameTo();
           if (output_sizes.front().empty()) {
-            strings::StrAppend(&result_, "    ", var_name, ", (", inputs_var,
-                               ",) = ", conversion, "\n");
+            strings::StrAppend(&result_, indentation, var_name, ", (",
+                               inputs_var, ",) = ", conversion, "\n");
           } else {
-            strings::StrAppend(&result_, "    ", var_name, ", ", inputs_var,
-                               " = ", conversion, "\n");
+            strings::StrAppend(&result_, indentation, var_name, ", ",
+                               inputs_var, " = ", conversion, "\n");
           }
         } else {
           const string inputs_var = strings::StrCat("_inputs_", attr.name());
-          strings::StrAppend(&result_, "    ", var_name, ", ", inputs_var,
+          strings::StrAppend(&result_, indentation, var_name, ", ", inputs_var,
                              " = ", conversion, "\n");
           // Convert from a flat list of eager tensors back to the
           // parameter variables.
-          Unflatten("    ", output_sizes, inputs_var, &result_);
+          Unflatten(indentation, output_sizes, inputs_var, &result_);
           std::vector<string> p;
           for (int j : arg_list->second) {
-            p.emplace_back(param_names_[j]);
+            p.emplace_back(param_names_[j].GetRenameTo());
           }
-          strings::StrAppend(&result_, "    ", VectorToTuple(p), " = ",
+          strings::StrAppend(&result_, indentation, VectorToTuple(p), " = ",
                              inputs_var, "\n");
         }
       } else if (attr.type() == "list(type)") {
@@ -608,38 +838,38 @@ void GenEagerPythonOp::AddEagerInferredAttrs() {
           std::vector<string> lists;
           for (auto iter = arg_list->second.begin();
                iter != arg_list->second.end(); ++iter) {
-            lists.push_back(param_names_[*iter]);
+            lists.push_back(param_names_[*iter].GetRenameTo());
           }
           inputs_var = VectorToTuple(lists);
           conversion = "_execute.args_to_mixed_eager_tensors";
         } else {
           // For one list(tensor) argument, we just convert every
           // element of the list to an eager tensor.
-          inputs_var = param_names_[arg_list->second.front()];
+          inputs_var = param_names_[arg_list->second.front()].GetRenameTo();
           conversion = "_execute.convert_to_mixed_eager_tensors";
         }
-        strings::StrAppend(&result_, "    ", var_name, ", ", inputs_var, " = ",
-                           conversion, "(", inputs_var, ", _ctx)\n");
+        strings::StrAppend(&result_, indentation, var_name, ", ", inputs_var,
+                           " = ", conversion, "(", inputs_var, ", _ctx)\n");
       }
     }
   }
 }
 
-void GenEagerPythonOp::AddEagerInputCasts() {
+void GenEagerPythonOp::AddEagerInputCasts(const string& indentation) {
   // Cast remaining args to eager tensors
   for (int i = 0; i < op_def_.input_arg_size(); ++i) {
     const auto& arg(op_def_.input_arg(i));
     if (!arg.type_attr().empty() || !arg.type_list_attr().empty()) continue;
-    const string& param = param_names_[i];
+    const string& param = param_names_[i].GetRenameTo();
     const string fn = arg.number_attr().empty() ? "" : "n_";
     const string dtype =
         python_op_gen_internal::DataTypeToPython(arg.type(), "_dtypes.");
-    strings::StrAppend(&result_, "    ", param, " = _ops.convert_", fn,
+    strings::StrAppend(&result_, indentation, param, " = _ops.convert_", fn,
                        "to_tensor(", param, ", ", dtype, ")\n");
   }
 }
 
-void GenEagerPythonOp::AddEagerAttrs() {
+void GenEagerPythonOp::AddEagerAttrs(const string& indentation) {
   // Compute eager attrs
   if (op_def_.attr_size() > 0) {
     string attr_values;
@@ -651,14 +881,19 @@ void GenEagerPythonOp::AddEagerAttrs() {
     }
     strings::StrAppend(&attr_values, ")");
     strings::StrAppend(
-        &result_, WordWrap("    _attrs = (", attr_values, kRightMargin), "\n");
+        &result_,
+        WordWrap(indentation, strings::StrCat("_attrs = (", attr_values),
+                 kRightMargin),
+        "\n");
   } else {
-    strings::StrAppend(&result_, "    _attrs = None\n");
+    strings::StrAppend(&result_, indentation, "_attrs = None\n");
   }
 }
 
-void GenEagerPythonOp::AddEagerExecute(const string& num_outputs_expr) {
-  const string return_prefix = "    _result = _execute.execute(";
+void GenEagerPythonOp::AddEagerExecute(const string& indentation,
+                                       const string& num_outputs_expr) {
+  const string return_prefix =
+      strings::StrCat(indentation, "_result = _execute.execute(");
   const string return_args = strings::StrCat(
       "b\"", op_def_.name(), "\", ", num_outputs_expr,
       ", inputs=_inputs_flat, attrs=_attrs, ctx=_ctx, name=name)");
@@ -679,8 +914,8 @@ string GetEagerPythonOps(const OpList& ops, const ApiDefMap& api_defs,
 This file is MACHINE GENERATED! Do not edit.
 )");
 
-  // Mention the original source file so someone tracing back through generated
-  // Python code will know where to look next.
+  // Mention the original source file so someone tracing back through
+  // generated Python code will know where to look next.
   if (!source_file_name.empty()) {
     strings::StrAppend(&result, "Original C++ source file: ");
     strings::StrAppend(&result, source_file_name);
@@ -690,11 +925,14 @@ This file is MACHINE GENERATED! Do not edit.
   strings::StrAppend(&result, R"("""
 
 import collections as _collections
+import six as _six
 
-from tensorflow.python.eager import execute as _execute
+from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 from tensorflow.python.eager import context as _context
 from tensorflow.python.eager import core as _core
+from tensorflow.python.eager import execute as _execute
 from tensorflow.python.framework import dtypes as _dtypes
+from tensorflow.python.framework import errors as _errors
 from tensorflow.python.framework import tensor_shape as _tensor_shape
 
 from tensorflow.core.framework import op_def_pb2 as _op_def_pb2
@@ -712,11 +950,21 @@ from tensorflow.python.util.tf_export import tf_export
   auto out = cleaned_ops.mutable_op();
   out->Reserve(ops.op_size());
   for (const auto& op_def : ops.op()) {
-    bool is_hidden = false;
-    for (const string& hidden : hidden_ops) {
-      if (op_def.name() == hidden) {
-        is_hidden = true;
-        break;
+    const auto* api_def = api_defs.GetApiDef(op_def.name());
+
+    if (api_def->visibility() == ApiDef::SKIP) {
+      continue;
+    }
+
+    // An op is hidden if either its ApiDef visibility is HIDDEN
+    // or it is in the hidden_ops list.
+    bool is_hidden = api_def->visibility() == ApiDef::HIDDEN;
+    if (!is_hidden) {
+      for (const string& hidden : hidden_ops) {
+        if (op_def.name() == hidden) {
+          is_hidden = true;
+          break;
+        }
       }
     }
 
@@ -733,7 +981,6 @@ from tensorflow.python.util.tf_export import tf_export
       continue;
     }
 
-    const auto* api_def = api_defs.GetApiDef(op_def.name());
     strings::StrAppend(&result,
                        GetEagerPythonOp(op_def, *api_def, function_name));
 

@@ -45,8 +45,12 @@ if(WIN32)
       $<TARGET_FILE:tensorflow_static>
       $<TARGET_FILE:tf_protos_cc>
   )
-    
-  set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
+
+  if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+    set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/${CMAKE_BUILD_TYPE}/tensorflow.def")
+  else()
+    set(tensorflow_deffile "${CMAKE_CURRENT_BINARY_DIR}/tensorflow.def")
+  endif()
   set_source_files_properties(${tensorflow_deffile} PROPERTIES GENERATED TRUE)
 
   add_custom_command(TARGET tensorflow_static POST_BUILD

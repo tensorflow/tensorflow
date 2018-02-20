@@ -20,9 +20,8 @@
 #include <string>
 #include <vector>
 
-
-#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/core/threadpool.h"
+#include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/test.h"

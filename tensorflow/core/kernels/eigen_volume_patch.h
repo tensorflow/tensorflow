@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_VOLUME_PATCH_H_
-#define THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_VOLUME_PATCH_H_
+#ifndef TENSORFLOW_CORE_KERNELS_EIGEN_VOLUME_PATCH_H_
+#define TENSORFLOW_CORE_KERNELS_EIGEN_VOLUME_PATCH_H_
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
@@ -653,4 +653,4 @@ OVERRIDE_EVALUATOR(Eigen::DefaultDevice);
 
 };  // namespace Eigen
 
-#endif  // THIRD_PARTY_TENSORFLOW_CORE_KERNELS_EIGEN_VOLUME_PATCH_H_
+#endif  // TENSORFLOW_CORE_KERNELS_EIGEN_VOLUME_PATCH_H_

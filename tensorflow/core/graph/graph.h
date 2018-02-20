@@ -62,8 +62,8 @@ class Node;
 class VersionDef;
 class WhileContext;
 
-class NeighborIter;  // Declared below
-class NodeIter;      // Declared below
+class NeighborIter;    // Declared below
+class NodeIter;        // Declared below
 class NodeProperties;  // Defined in .cc
 
 class Node {
@@ -455,7 +455,6 @@ class Graph {
   // the corresponding NodeDef to reflect the change.
   // REQUIRES: The control edge must exist.
   void RemoveControlEdge(const Edge* e);
-  
   // Updates the input to a node.  The existing edge to `dst` is removed and an
   // edge from `new_src` to `dst` is created. The NodeDef associated with `dst`
   // is also updated.
@@ -494,6 +493,13 @@ class Graph {
 
   // Serialize to a GraphDef.
   void ToGraphDef(GraphDef* graph_def) const;
+
+  // This version can be called from debugger to inspect the graph content.
+  // Use the previous version outside debug context for efficiency reasons.
+  //
+  // Note: We do not expose a DebugString() API, since GraphDef.DebugString() is
+  // not defined in some TensorFlow builds.
+  GraphDef ToGraphDefDebug() const;
 
   // Generate new node name with the specified prefix that is unique
   // across this graph.

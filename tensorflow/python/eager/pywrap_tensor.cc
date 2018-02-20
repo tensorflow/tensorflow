@@ -332,7 +332,7 @@ void EagerTensor_dealloc(EagerTensor* self) {
   tensorflow::ClearDecrefCache();
   auto id = self->id;
   Py_TYPE(self)->tp_free(self);
-  TFE_Py_TapeStackDeleteTrace(id);
+  TFE_Py_TapeSetDeleteTrace(id);
 }
 
 // Getter for `_id`.

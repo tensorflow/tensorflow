@@ -23,6 +23,7 @@ import types as python_types
 
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras._impl.keras import activations
 from tensorflow.python.keras._impl.keras import backend as K
@@ -36,8 +37,10 @@ from tensorflow.python.keras._impl.keras.utils.generic_utils import func_dump
 from tensorflow.python.keras._impl.keras.utils.generic_utils import func_load
 from tensorflow.python.keras._impl.keras.utils.generic_utils import has_arg
 from tensorflow.python.layers import core as tf_core_layers
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export('keras.layers.Masking')
 class Masking(Layer):
   """Masks a sequence by using a mask value to skip timesteps.
 
@@ -79,12 +82,16 @@ class Masking(Layer):
         K.not_equal(inputs, self.mask_value), axis=-1, keepdims=True)
     return inputs * K.cast(boolean_mask, inputs.dtype)
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
   def get_config(self):
     config = {'mask_value': self.mask_value}
     base_config = super(Masking, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Dropout')
 class Dropout(tf_core_layers.Dropout, Layer):
   """Applies Dropout to the input.
 
@@ -104,19 +111,20 @@ class Dropout(tf_core_layers.Dropout, Layer):
   """
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
-    self.supports_masking = True
     # Inheritance call order:
     # 1) tf.layers.Dropout, 2) keras.layers.Layer, 3) tf.layers.Layer
     super(Dropout, self).__init__(rate=rate,
                                   noise_shape=noise_shape,
                                   seed=seed,
                                   **kwargs)
+    self.supports_masking = True
 
   def call(self, inputs, training=None):
     if training is None:
       training = K.learning_phase()
     output = super(Dropout, self).call(inputs, training=training)
-    if training is K.learning_phase():
+    # EagerTensor object has no attribute _uses_learning_phase
+    if not context.in_eager_mode() and training is K.learning_phase():
       output._uses_learning_phase = True  # pylint: disable=protected-access
     return output
 
@@ -130,6 +138,7 @@ class Dropout(tf_core_layers.Dropout, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.SpatialDropout1D')
 class SpatialDropout1D(Dropout):
   """Spatial 1D version of Dropout.
 
@@ -166,6 +175,7 @@ class SpatialDropout1D(Dropout):
     return noise_shape
 
 
+@tf_export('keras.layers.SpatialDropout2D')
 class SpatialDropout2D(Dropout):
   """Spatial 2D version of Dropout.
 
@@ -219,6 +229,7 @@ class SpatialDropout2D(Dropout):
       return (input_shape[0], 1, 1, input_shape[3])
 
 
+@tf_export('keras.layers.SpatialDropout3D')
 class SpatialDropout3D(Dropout):
   """Spatial 3D version of Dropout.
 
@@ -271,6 +282,7 @@ class SpatialDropout3D(Dropout):
       return (input_shape[0], 1, 1, 1, input_shape[4])
 
 
+@tf_export('keras.layers.Activation')
 class Activation(Layer):
   """Applies an activation function to an output.
 
@@ -295,12 +307,16 @@ class Activation(Layer):
   def call(self, inputs):
     return self.activation(inputs)
 
+  def compute_output_shape(self, input_shape):
+    return input_shape
+
   def get_config(self):
     config = {'activation': activations.serialize(self.activation)}
     base_config = super(Activation, self).get_config()
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Reshape')
 class Reshape(Layer):
   """Reshapes an output to a certain shape.
 
@@ -385,7 +401,7 @@ class Reshape(Layer):
       raise ValueError(msg)
     return output_shape
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     if None in input_shape[1:]:
       output_shape = [input_shape[0]]
@@ -406,6 +422,7 @@ class Reshape(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Permute')
 class Permute(Layer):
   """Permutes the dimensions of the input according to a given pattern.
 
@@ -441,7 +458,7 @@ class Permute(Layer):
     self.dims = tuple(dims)
     self.input_spec = InputSpec(ndim=len(self.dims) + 1)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     output_shape = copy.copy(input_shape)
     for i, dim in enumerate(self.dims):
@@ -458,6 +475,7 @@ class Permute(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Flatten')
 class Flatten(tf_core_layers.Flatten, Layer):
   """Flattens the input. Does not affect the batch size.
 
@@ -477,6 +495,7 @@ class Flatten(tf_core_layers.Flatten, Layer):
   pass
 
 
+@tf_export('keras.layers.RepeatVector')
 class RepeatVector(Layer):
   """Repeats the input n times.
 
@@ -507,7 +526,7 @@ class RepeatVector(Layer):
     self.n = n
     self.input_spec = InputSpec(ndim=2)
 
-  def _compute_output_shape(self, input_shape):
+  def compute_output_shape(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
     return tensor_shape.TensorShape([input_shape[0], self.n, input_shape[1]])
 
@@ -520,6 +539,7 @@ class RepeatVector(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.Lambda')
 class Lambda(Layer):
   """Wraps arbitrary expression as a `Layer` object.
 
@@ -547,8 +567,19 @@ class Lambda(Layer):
   Arguments:
       function: The function to be evaluated.
           Takes input tensor as first argument.
+      output_shape: Expected output shape from function.
+            This argument can be inferred if not explicitly provided.
+            Can be a tuple or function.
+            If a tuple, it only specifies the first dimension onward;
+                 sample dimension is assumed either the same as the input:
+                 `output_shape = (input_shape[0], ) + output_shape`
+                 or, the input is `None` and
+                 the sample dimension is also `None`:
+                 `output_shape = (None, ) + output_shape`
+            If a function, it specifies the entire shape as a function of the
+            input shape: `output_shape = f(input_shape)`
       arguments: optional dictionary of keyword arguments to be passed
-          to the function.
+            to the function.
 
   Input shape:
       Arbitrary. Use the keyword argument input_shape
@@ -557,16 +588,52 @@ class Lambda(Layer):
 
   Output shape:
       Specified by `output_shape` argument
-      (or auto-inferred when using TensorFlow).
   """
 
-  def __init__(self, function, mask=None, arguments=None, **kwargs):
+  def __init__(self, function, output_shape=None, mask=None, arguments=None,
+               **kwargs):
     super(Lambda, self).__init__(**kwargs)
     self.function = function
     self.arguments = arguments if arguments else {}
     if mask is not None:
       self.supports_masking = True
     self.mask = mask
+    if output_shape is None:
+      self._output_shape = None
+    elif isinstance(output_shape, (tuple, list)):
+      self._output_shape = tuple(output_shape)
+    else:
+      if not callable(output_shape):
+        raise TypeError('In Lambda, `output_shape` '
+                        'must be a list, a tuple, or a function.')
+      self._output_shape = output_shape
+
+  def _compute_output_shape(self, input_shape):
+    input_shape = tuple(tensor_shape.TensorShape(input_shape).as_list())
+
+    if self._output_shape is None:
+      x = K.placeholder(shape=input_shape)
+      x = self.call(x)
+      if isinstance(x, list):
+        return [tensor_shape.TensorShape(K.int_shape(x_elem)) for x_elem in x]
+      else:
+        return tensor_shape.TensorShape(K.int_shape(x))
+    elif isinstance(self._output_shape, (tuple, list)):
+      if isinstance(input_shape, list):
+        num_samples = input_shape[0][0]
+      else:
+        num_samples = input_shape[0] if input_shape else None
+      return tensor_shape.TensorShape((num_samples,) +
+                                      tuple(self._output_shape))
+    else:
+      shape = self._output_shape(input_shape)
+      if not isinstance(shape, (list, tuple)):
+        raise ValueError(
+            '`output_shape` function must return a tuple or a list of tuples.')
+      if isinstance(shape, list):
+        if isinstance(shape[0], int) or shape[0] is None:
+          shape = tuple(shape)
+      return tensor_shape.TensorShape(shape)
 
   def call(self, inputs, mask=None):
     arguments = self.arguments
@@ -587,9 +654,21 @@ class Lambda(Layer):
       function = self.function.__name__
       function_type = 'function'
 
+    if isinstance(self._output_shape, python_types.LambdaType):
+      output_shape = func_dump(self._output_shape)
+      output_shape_type = 'lambda'
+    elif callable(self._output_shape):
+      output_shape = self._output_shape.__name__
+      output_shape_type = 'function'
+    else:
+      output_shape = self._output_shape
+      output_shape_type = 'raw'
+
     config = {
         'function': function,
         'function_type': function_type,
+        'output_shape': output_shape,
+        'output_shape_type': output_shape_type,
         'arguments': self.arguments
     }
     base_config = super(Lambda, self).get_config()
@@ -614,6 +693,19 @@ class Lambda(Layer):
     else:
       raise TypeError('Unknown function type:', function_type)
 
+    output_shape_type = config.pop('output_shape_type')
+    if output_shape_type == 'function':
+      # Simple lookup in custom objects
+      output_shape = deserialize_keras_object(
+          config['output_shape'],
+          custom_objects=custom_objects,
+          printable_module_name='output_shape function in Lambda layer')
+    elif output_shape_type == 'lambda':
+      # Unsafe deserialization from bytecode
+      output_shape = func_load(config['output_shape'], globs=globs)
+    else:
+      output_shape = config['output_shape']
+
     # If arguments were numpy array, they have been saved as
     # list. We need to recover the ndarray
     if 'arguments' in config:
@@ -625,9 +717,11 @@ class Lambda(Layer):
             config['arguments'][key] = np.array(arg_dict['value'])
 
     config['function'] = function
+    config['output_shape'] = output_shape
     return cls(**config)
 
 
+@tf_export('keras.layers.Dense')
 class Dense(tf_core_layers.Dense, Layer):
   """Just your regular densely-connected NN layer.
 
@@ -732,6 +826,7 @@ class Dense(tf_core_layers.Dense, Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
+@tf_export('keras.layers.ActivityRegularization')
 class ActivityRegularization(Layer):
   """Layer that applies an update to the cost function based input activity.
 
@@ -754,6 +849,9 @@ class ActivityRegularization(Layer):
     self.supports_masking = True
     self.l1 = l1
     self.l2 = l2
+
+  def compute_output_shape(self, input_shape):
+    return input_shape
 
   def get_config(self):
     config = {'l1': self.l1, 'l2': self.l2}

@@ -25,7 +25,6 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.distributions import bernoulli
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.platform import test
@@ -290,12 +289,6 @@ class BernoulliTest(test.TestCase):
               [[np.sqrt(var(0.2)), np.sqrt(var(0.7))],
                [np.sqrt(var(0.5)), np.sqrt(var(0.4))]],
               dtype=np.float32))
-
-  def testBernoulliWithSigmoidProbs(self):
-    p = np.array([8.3, 4.2])
-    dist = bernoulli.BernoulliWithSigmoidProbs(logits=p)
-    with self.test_session():
-      self.assertAllClose(math_ops.sigmoid(p).eval(), dist.probs.eval())
 
   def testBernoulliBernoulliKL(self):
     with self.test_session() as sess:

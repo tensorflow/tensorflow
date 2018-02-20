@@ -19,6 +19,7 @@ from __future__ import print_function
 import gc
 
 from tensorflow.contrib.eager.python import network
+from tensorflow.contrib.layers.python.layers import regularizers
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
@@ -43,6 +44,22 @@ class MyNetwork(network.Network):
 
   def call(self, x):
     return self.l1(x)
+
+
+class RegularizedNetwork(network.Network):
+
+  def __init__(self):
+    super(RegularizedNetwork, self).__init__()
+    self.l1 = self.track_layer(core.Dense(
+        1,
+        bias_regularizer=regularizers.l1_regularizer(2.0),
+        kernel_regularizer=regularizers.l1_regularizer(2.0)))
+    self.l2 = self.track_layer(core.Dense(
+        1,
+        bias_regularizer=regularizers.l1_regularizer(2.0)))
+
+  def call(self, values):
+    return self.l2(self.l1(values))
 
 
 class NetworkTest(test.TestCase):
@@ -88,15 +105,13 @@ class NetworkTest(test.TestCase):
     result = net(constant_op.constant([[2.0]]))
     self.assertEqual(34.0, self.evaluate(result))
 
-  # TODO(akshayka): This test should be changed once an API for compiling
-  # `call` into a defun is implemented.
   def testReplacingNetworkCallWithDefun(self):
     net = MyNetwork(name="abcd")
+    net.call = function.defun(net.call)
     x = constant_op.constant([[2.0]])
     net(x)  # Force variables to be created.
     self.evaluate(net.trainable_variables[0].assign([[17.0]]))
 
-    net.call = function.defun(net.call)
     result = net(x)  # Build and execute the TensorFlow function
     self.assertEqual(34.0, self.evaluate(result))
 
@@ -485,6 +500,18 @@ class NetworkTest(test.TestCase):
                          checked_ops=checked_ops)
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
+  def testVariableRegularizers(self):
+    net = RegularizedNetwork()
+    net(constant_op.constant([[1.]]))
+    self.evaluate(net.variables[0].assign([[2.]]))
+    self.evaluate(net.variables[1].assign([3.]))
+    self.evaluate(net.variables[2].assign([[-2.]]))
+    self.evaluate(net.variables[3].assign([4.]))
+    self.assertAllEqual([4., 6., 8.], self.evaluate(net.losses))
+    self.evaluate(net.variables[3].assign([5.]))
+    self.assertAllEqual([4., 6., 10.], self.evaluate(net.losses))
+
+  @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testDuplicateNameError(self):
     one = constant_op.constant([[1.]])
     net = MyNetwork(name="foo")
@@ -512,7 +539,7 @@ class NetworkTest(test.TestCase):
         # No issue here since the name is unique within its scope.
         name_conflict3 = MyNetwork(name="name_conflict")
       net2 = MyNetwork()  # name=outside_scope/my_network_2 to avoid the
-                          # variable_scope my_network_1 below.
+      # variable_scope my_network_1 below.
       vs_name_conflict = MyNetwork(name="vs_name_conflict")  # conflict below
     with variable_scope.variable_scope("intervening_scope"):
       with variable_scope.variable_scope(captured_scope):
@@ -661,7 +688,7 @@ class NetworkTest(test.TestCase):
     net2(one)
     # Layer names typically are globally unique rather than being unique within
     # the scope of their first use. However, within a Network they must be named
-    # locally so that previous Layer consutrciton does not interfere with
+    # locally so that previous Layer construction does not interfere with
     # variable naming (e.g. add a Layer construction before the Network,
     # suddenly your previously saved checkpoint is incompatible).
     self.assertEqual("dense", net1.l1.name)

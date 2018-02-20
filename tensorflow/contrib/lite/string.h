@@ -17,11 +17,10 @@ limitations under the License.
 #define _THIRD_PARTY_TENSORFLOW_CONTRIB_LITE_STRING_H_
 
 #include <string>
-#include "tensorflow/core/platform/platform.h"
 
 namespace tflite {
 
-#ifndef PLATFORM_GOOGLE
+#ifndef HAS_GLOBAL_STRING
 using std::string;
 #endif
 

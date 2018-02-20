@@ -104,7 +104,8 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
-              ContainsRegex("expects parameter 0"));
+              ContainsRegex(
+                  "Argument does not match shape of computation parameter 0"));
 
   // Shape mismatch in parameter 1 (rank)
   status = client_->Execute(computation, {f32_data.get(), f32_data.get()},
@@ -112,7 +113,8 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
-              ContainsRegex("expects parameter 1"));
+              ContainsRegex(
+                  "Argument does not match shape of computation parameter 1"));
 
   // Shape mismatch in parameter 1 (element type)
   status = client_->Execute(computation, {f32_data.get(), u8_4_data.get()},
@@ -120,7 +122,8 @@ XLA_TEST_F(CheckExecutionArityTest, CheckArgumentShapes) {
   ASSERT_FALSE(status.ok());
   ASSERT_EQ(status.status().code(), tensorflow::error::INVALID_ARGUMENT);
   ASSERT_THAT(status.status().error_message(),
-              ContainsRegex("expects parameter 1"));
+              ContainsRegex(
+                  "Argument does not match shape of computation parameter 1"));
 }
 
 }  // namespace

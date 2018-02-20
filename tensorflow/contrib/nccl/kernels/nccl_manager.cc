@@ -258,9 +258,37 @@ NcclManager::Communicator* NcclManager::GetCommunicator(
     devices[i] = collective->participants[i]->gpu_device_id;
   }
 
+  int device_count = num_devices;
+#if NCCL_MAJOR >= 2
+  // NCCL2 prevents InitAll for more communicators than devices (but doesn't
+  // check that device ids are unique). Work around it by initializing each
+  // rank individually.
+  cudaGetDeviceCount(&device_count);
+#endif
   std::vector<ncclComm_t> nccl_comms(num_devices);
-  auto result = ncclCommInitAll(nccl_comms.data(), num_devices, devices.data());
-  CHECK_EQ(result, ncclSuccess) << ncclGetErrorString(result);
+  if (num_devices <= device_count) {
+    auto result =
+        ncclCommInitAll(nccl_comms.data(), num_devices, devices.data());
+    CHECK_EQ(result, ncclSuccess) << ncclGetErrorString(result);
+  } else {
+    int savedDevice = 0;
+    CHECK_EQ(cudaGetDevice(&savedDevice), cudaSuccess);
+    ncclUniqueId commId;
+    ncclGetUniqueId(&commId);
+#if NCCL_MAJOR >= 2
+    CHECK_EQ(ncclGroupStart(), ncclSuccess);
+#endif
+    for (int rank = 0; rank < num_devices; ++rank) {
+      cudaSetDevice(devices[rank]);
+      auto result =
+          ncclCommInitRank(nccl_comms.data() + rank, num_devices, commId, rank);
+      CHECK_EQ(result, ncclSuccess) << ncclGetErrorString(result);
+    }
+#if NCCL_MAJOR >= 2
+    CHECK_EQ(ncclGroupEnd(), ncclSuccess);
+#endif
+    cudaSetDevice(savedDevice);
+  }
   for (int rank = 0; rank < num_devices; ++rank) {
     members[rank].nccl_comm = nccl_comms[rank];
   }
@@ -370,7 +398,7 @@ void NcclManager::AddParticipant(int num_devices, const string& key,
 }
 
 void NcclManager::RunCollective(const string& key, Collective* collective) {
-  static mutex collective_mu;
+  static mutex collective_mu(LINKER_INITIALIZED);
 
   auto* communicator = GetCommunicator(collective);
   collective->communicator = communicator;

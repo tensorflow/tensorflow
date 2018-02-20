@@ -45,6 +45,26 @@ def getargspec(object):  # pylint: disable=redefined-builtin
                if d.decorator_argspec is not None), _inspect.getargspec(target))
 
 
+def getfullargspec(obj):  # pylint: disable=redefined-builtin
+  """TFDecorator-aware replacement for inspect.getfullargspec and fallback to
+  inspect.getargspec in Python 2.
+
+  Args:
+    obj: A callable, possibly decorated.
+
+  Returns:
+    The `FullArgSpec` (`ArgSpec` in Python 2) that describes the signature of
+    the outermost decorator that changes the callable's signature. If the
+    callable is not decorated, `inspect.getfullargspec()`
+    (`inspect.getargspec()` in Python 2) will be called directly on the
+    callable.
+  """
+  spec_fn = getattr(_inspect, 'getfullargspec', getattr(_inspect, 'getargspec'))
+  decorators, target = tf_decorator.unwrap(obj)
+  return next((d.decorator_argspec for d in decorators
+               if d.decorator_argspec is not None), spec_fn(target))
+
+
 def getcallargs(func, *positional, **named):
   """TFDecorator-aware replacement for inspect.getcallargs.
 
@@ -97,7 +117,16 @@ def getdoc(object):  # pylint: disable=redefined-builtin
 
 def getfile(object):  # pylint: disable=redefined-builtin
   """TFDecorator-aware replacement for inspect.getfile."""
-  return _inspect.getfile(tf_decorator.unwrap(object)[1])
+  unwrapped_object = tf_decorator.unwrap(object)[1]
+
+  # Work around for the case when object is a stack frame
+  # and only .pyc files are used. In this case, getfile
+  # might return incorrect path. So, we get the path from f_globals
+  # instead.
+  if (hasattr(unwrapped_object, 'f_globals') and
+      '__file__' in unwrapped_object.f_globals):
+    return unwrapped_object.f_globals['__file__']
+  return _inspect.getfile(unwrapped_object)
 
 
 def getmembers(object, predicate=None):  # pylint: disable=redefined-builtin

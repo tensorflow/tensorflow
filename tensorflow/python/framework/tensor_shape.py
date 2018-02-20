@@ -19,8 +19,10 @@ from __future__ import print_function
 
 from tensorflow.core.framework import tensor_shape_pb2
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
+@tf_export("Dimension")
 class Dimension(object):
   """Represents the value of one dimension in a TensorShape."""
 
@@ -397,6 +399,7 @@ def as_dimension(value):
     return Dimension(value)
 
 
+@tf_export("TensorShape")
 class TensorShape(object):
   """Represents the shape of a `Tensor`.
 

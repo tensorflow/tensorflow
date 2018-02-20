@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
@@ -86,7 +87,7 @@ class NestTest(test.TestCase):
         ordered_reconstruction)
     self.assertEqual({"d": 3, "b": 1, "a": 0, "c": 2}, plain_reconstruction)
 
-  def testFlattenAndPack_withDicts(self):
+  def testFlattenAndPackWithDicts(self):
     # A nice messy mix of tuples, lists, dicts, and `OrderedDict`s.
     named_tuple = collections.namedtuple("A", ("b", "c"))
     mess = (
@@ -132,6 +133,17 @@ class NestTest(test.TestCase):
     self.assertIsInstance(unflattened_ordered_dict, collections.OrderedDict)
     self.assertEqual(list(unflattened_ordered_dict.keys()), ["b", "a"])
 
+  def testFlattenSparseValue(self):
+    st = sparse_tensor.SparseTensorValue([[0]], [0], [1])
+    single_value = st
+    list_of_values = [st, st, st]
+    nest_of_values = ((st), ((st), (st)))
+    dict_of_values = {"foo": st, "bar": st, "baz": st}
+    self.assertEqual([st], nest.flatten(single_value))
+    self.assertEqual([[st, st, st]], nest.flatten(list_of_values))
+    self.assertEqual([st, st, st], nest.flatten(nest_of_values))
+    self.assertEqual([st, st, st], nest.flatten(dict_of_values))
+
   def testIsSequence(self):
     self.assertFalse(nest.is_sequence("1234"))
     self.assertFalse(nest.is_sequence([1, 3, [4, 5]]))
@@ -143,6 +155,8 @@ class NestTest(test.TestCase):
     self.assertFalse(nest.is_sequence(math_ops.tanh(ones)))
     self.assertFalse(nest.is_sequence(np.ones((4, 5))))
     self.assertTrue(nest.is_sequence({"foo": 1, "bar": 2}))
+    self.assertFalse(
+        nest.is_sequence(sparse_tensor.SparseTensorValue([[0]], [0], [1])))
 
   def testAssertSameStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
@@ -257,10 +271,15 @@ class NestTest(test.TestCase):
     inp_ab1 = {"a": (1, 1), "b": {"c": (2, 2)}}
     inp_ab2 = {"a": (1, 1), "b": {"d": (2, 2)}}
     expected_message = (
-        "The two structures don't have the same keys. Input "
-        "structure has keys \['c'\], while shallow structure has keys \['d'\].")
+        r"The two structures don't have the same keys. Input "
+        r"structure has keys \['c'\], while shallow structure has "
+        r"keys \['d'\].")
     with self.assertRaisesRegexp(ValueError, expected_message):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
+
+    inp_ab = collections.OrderedDict([("a", 1), ("b", (2, 3))])
+    inp_ba = collections.OrderedDict([("b", (2, 3)), ("a", 1)])
+    nest.assert_shallow_structure(inp_ab, inp_ba)
 
   def testFlattenUpTo(self):
     input_tree = (((2, 2), (3, 3)), ((4, 9), (5, 5)))

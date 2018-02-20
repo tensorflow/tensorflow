@@ -20,7 +20,11 @@ set(snappy_BUILD ${CMAKE_CURRENT_BINARY_DIR}/snappy/src/snappy)
 set(snappy_INCLUDE_DIR ${CMAKE_CURRENT_BINARY_DIR}/snappy/src/snappy)
 
 if(WIN32)
-    set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/$(Configuration)/snappy.lib)
+    if(${CMAKE_GENERATOR} MATCHES "Visual Studio.*")
+        set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/$(Configuration)/snappy.lib)
+    else()
+        set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/snappy.lib)
+    endif()
 else()
     set(snappy_STATIC_LIBRARIES ${snappy_BUILD}/libsnappy.a)
 endif()
@@ -35,16 +39,13 @@ ExternalProject_Add(snappy
     GIT_TAG ${snappy_TAG}
     DOWNLOAD_DIR "${DOWNLOAD_LOCATION}"
     BUILD_IN_SOURCE 1
+    BUILD_BYPRODUCTS ${snappy_STATIC_LIBRARIES}
     INSTALL_COMMAND ""
     LOG_DOWNLOAD ON
     LOG_CONFIGURE ON
     LOG_BUILD ON
     CMAKE_CACHE_ARGS
-		if(tensorflow_ENABLE_POSITION_INDEPENDENT_CODE)
-			-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=ON
-		else()
-			-DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=OFF
-		endif()
+        -DCMAKE_POSITION_INDEPENDENT_CODE:BOOL=${tensorflow_ENABLE_POSITION_INDEPENDENT_CODE}
         -DCMAKE_BUILD_TYPE:STRING=Release
         -DCMAKE_VERBOSE_MAKEFILE:BOOL=OFF
         -DSNAPPY_BUILD_TESTS:BOOL=OFF

@@ -47,6 +47,7 @@ using tensorflow::int64;
 %unignore tensorflow::tfprof::ProfilerFromFile;
 %unignore tensorflow::tfprof::DeleteProfiler;
 %unignore tensorflow::tfprof::AddStep;
+%unignore tensorflow::tfprof::SerializeToString;
 %unignore tensorflow::tfprof::WriteProfile;
 %unignore tensorflow::tfprof::Profile;
 

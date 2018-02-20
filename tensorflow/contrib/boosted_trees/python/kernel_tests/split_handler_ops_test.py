@@ -240,7 +240,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(0, split_node.split.feature_column)
     # Sparse is one dimensional.
-    self.assertEqual(0, split_node.split.feature_id)
+    self.assertEqual(0, split_node.split.dimension_id)
 
     self.assertAllClose(0.52, split_node.split.threshold)
 
@@ -263,7 +263,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(0, split_node.split.feature_column)
     # Sparse is one dimensional.
-    self.assertEqual(0, split_node.split.feature_id)
+    self.assertEqual(0, split_node.split.dimension_id)
 
     self.assertAllClose(0.52, split_node.split.threshold)
 
@@ -373,7 +373,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(0, split_node.split.feature_column)
     # Split happened on second dimension.
-    self.assertEqual(1, split_node.split.feature_id)
+    self.assertEqual(1, split_node.split.dimension_id)
 
     self.assertAllClose(0.58, split_node.split.threshold)
 
@@ -395,7 +395,7 @@ class SplitHandlerOpsTest(test_util.TensorFlowTestCase):
     self.assertAllClose([expected_right_weight], right_child.value)
 
     self.assertEqual(0, split_node.split.feature_column)
-    self.assertEqual(2, split_node.split.feature_id)
+    self.assertEqual(2, split_node.split.dimension_id)
 
     self.assertAllClose(0.6, split_node.split.threshold)
 

@@ -24,11 +24,13 @@ from __future__ import print_function
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.contrib.bayesflow.python.ops.sgld_optimizer import *
+from tensorflow.contrib.bayesflow.python.ops.variational_sgd_optimizer import *
 # pylint: enable=wildcard-import
 from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'SGLDOptimizer',
+    'VariationalSGDOptimizer',
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

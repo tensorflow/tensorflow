@@ -34,7 +34,7 @@ typedef Eigen::GpuDevice GPUDevice;
 
 #ifdef TENSORFLOW_USE_SYCL
 typedef Eigen::SyclDevice SYCLDevice;
-#endif // TENSORFLOW_USE_SYCL
+#endif  // TENSORFLOW_USE_SYCL
 
 template <typename Device, typename T>
 class UnpackOp : public OpKernel {
@@ -65,8 +65,9 @@ class UnpackOp : public OpKernel {
     output_shape.RemoveDim(axis);
     const int64 output_size = output_shape.num_elements();
     OP_REQUIRES(
-        context, FastBoundsCheck(output_size,
-                                 std::numeric_limits<Eigen::DenseIndex>::max()),
+        context,
+        FastBoundsCheck(output_size,
+                        std::numeric_limits<Eigen::DenseIndex>::max()),
         errors::InvalidArgument("output size must fit in Eigen DenseIndex"));
 
 // This optimization is currently not applicable for SYCL devices
@@ -142,6 +143,7 @@ TF_CALL_ALL_TYPES(REGISTER_UNPACK);
       UnpackOp<GPUDevice, type>)
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_GPU);
+TF_CALL_bfloat16(REGISTER_GPU);
 #undef REGISTER_GPU
 
 // A special GPU kernel for int32.
@@ -153,6 +155,12 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         UnpackOp<CPUDevice, int32>);
+REGISTER_KERNEL_BUILDER(Name("Unpack")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("value")
+                            .HostMemory("output")
+                            .TypeConstraint<int64>("T"),
+                        UnpackOp<CPUDevice, int64>);
 
 #endif  // GOOGLE_CUDA
 
@@ -170,6 +178,13 @@ REGISTER_KERNEL_BUILDER(Name("Unpack")
                             .HostMemory("output")
                             .TypeConstraint<int32>("T"),
                         UnpackOp<CPUDevice, int32>);
+
+REGISTER_KERNEL_BUILDER(Name("Unpack")
+                            .Device(DEVICE_SYCL)
+                            .HostMemory("value")
+                            .HostMemory("output")
+                            .TypeConstraint<int64>("T"),
+                        UnpackOp<CPUDevice, int64>);
 #undef REGISTER_SYCL
 #endif  // TENSORFLOW_USE_SYCL
 

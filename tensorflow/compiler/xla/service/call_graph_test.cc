@@ -34,12 +34,13 @@ using ::testing::UnorderedElementsAre;
 class CallGraphTest : public HloTestBase {
  protected:
   // Build and return a trivial computation taking and returning a scalar.
-  std::unique_ptr<HloComputation> MakeScalarComputation() {
+  std::unique_ptr<HloComputation> MakeScalarComputation(
+      HloOpcode opcode = HloOpcode::kNegate) {
     HloComputation::Builder builder(TestName() + ".ScalarComputation");
     HloInstruction* param0 = builder.AddInstruction(
         HloInstruction::CreateParameter(0, kScalarShape, "param0"));
     builder.AddInstruction(
-        HloInstruction::CreateUnary(kScalarShape, HloOpcode::kNegate, param0));
+        HloInstruction::CreateUnary(kScalarShape, opcode, param0));
     return builder.Build();
   }
 
@@ -234,6 +235,54 @@ TEST_F(CallGraphTest, ContextBothComputations) {
 
   const CallGraphNode& sub_node = call_graph->GetNode(subcomputation);
   EXPECT_EQ(CallContext::kBoth, sub_node.context());
+}
+
+TEST_F(CallGraphTest, ComputationWithConditional) {
+  // Test a call graph of a module with a conditional.
+  auto module = CreateNewModule();
+  HloComputation* true_computation =
+      module->AddEmbeddedComputation(MakeScalarComputation(HloOpcode::kCeil));
+  HloComputation* false_computation =
+      module->AddEmbeddedComputation(MakeScalarComputation(HloOpcode::kFloor));
+
+  HloComputation::Builder builder(TestName());
+  HloInstruction* pred = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(false)));
+  HloInstruction* const1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(56.4f)));
+  HloInstruction* const2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<float>(12.6f)));
+  HloInstruction* conditional =
+      builder.AddInstruction(HloInstruction::CreateConditional(
+          kScalarShape, pred, const1, true_computation, const2,
+          false_computation));
+  HloComputation* entry_computation =
+      module->AddEntryComputation(builder.Build());
+
+  std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
+
+  EXPECT_EQ(3, call_graph->nodes().size());
+
+  const CallGraphNode& entry_node = call_graph->GetNode(entry_computation);
+  EXPECT_EQ(entry_computation, entry_node.computation());
+  EXPECT_EQ(1, entry_node.callsites().size());
+
+  const CallSite& conditional_callsite = entry_node.callsites()[0];
+  EXPECT_EQ(conditional, conditional_callsite.instruction());
+  EXPECT_THAT(conditional_callsite.called_computations(),
+              UnorderedElementsAre(true_computation, false_computation));
+  EXPECT_EQ(CallContext::kSequential, conditional_callsite.context());
+  EXPECT_EQ(entry_node.GetCallSite(conditional), &conditional_callsite);
+
+  const CallGraphNode& true_node = call_graph->GetNode(true_computation);
+  EXPECT_TRUE(true_node.callees().empty());
+  EXPECT_EQ(1, true_node.callers().size());
+  EXPECT_EQ(entry_computation, true_node.callers()[0]);
+
+  const CallGraphNode& false_node = call_graph->GetNode(false_computation);
+  EXPECT_TRUE(false_node.callees().empty());
+  EXPECT_EQ(1, false_node.callers().size());
+  EXPECT_EQ(entry_computation, false_node.callers()[0]);
 }
 
 TEST_F(CallGraphTest, ComplexGraph) {

@@ -168,7 +168,7 @@ Status InferenceContext::Run(
 
 Status InferenceContext::set_output(StringPiece output_name,
                                     const std::vector<ShapeHandle>& shapes) {
-  const auto result = output_name_map_.find(output_name.ToString());
+  auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
   } else {
@@ -187,7 +187,7 @@ Status InferenceContext::set_output(StringPiece output_name,
 
 Status InferenceContext::input(StringPiece input_name,
                                std::vector<ShapeHandle>* output) const {
-  const auto result = input_name_map_.find(input_name.ToString());
+  const auto result = input_name_map_.find(input_name);
   if (result == input_name_map_.end()) {
     return errors::InvalidArgument("Unknown input name: ", input_name);
   } else {
@@ -201,7 +201,7 @@ Status InferenceContext::input(StringPiece input_name,
 
 Status InferenceContext::output(StringPiece output_name,
                                 std::vector<ShapeHandle>* output) const {
-  const auto result = output_name_map_.find(output_name.ToString());
+  const auto result = output_name_map_.find(output_name);
   if (result == output_name_map_.end()) {
     return errors::InvalidArgument("Unknown output name: ", output_name);
   } else {
@@ -342,8 +342,8 @@ Status InferenceContext::WithRank(ShapeHandle shape, int64 rank,
     for (int i = 0; i < rank; ++i) {
       dims.push_back(UnknownDim());
     }
-    *out = shape_manager_.MakeShape(dims);
-    return Status::OK();
+    ShapeHandle shp = shape_manager_.MakeShape(dims);
+    return Merge(shape, shp, out);
   }
   *out = nullptr;
 
@@ -357,12 +357,9 @@ Status InferenceContext::WithRankAtLeast(ShapeHandle shape, int64 rank,
     return errors::InvalidArgument("Rank cannot exceed kint32max");
   }
   const int32 existing = Rank(shape);
-  if (existing >= rank) {
+  if (existing >= rank || existing == kUnknownRank) {
     *out = shape;
     return Status::OK();
-  }
-  if (existing == kUnknownRank) {
-    return ReturnUnknownShape(out);
   }
   *out = nullptr;
   return errors::InvalidArgument("Shape must be at least rank ", rank,
@@ -375,10 +372,7 @@ Status InferenceContext::WithRankAtMost(ShapeHandle shape, int64 rank,
     return errors::InvalidArgument("Rank cannot exceed kint32max");
   }
   const int32 existing = Rank(shape);
-  if (existing == kUnknownRank) {
-    return ReturnUnknownShape(out);
-  }
-  if (existing <= rank) {
+  if (existing <= rank || existing == kUnknownRank) {
     *out = shape;
     return Status::OK();
   }
@@ -395,23 +389,36 @@ Status InferenceContext::WithValue(DimensionHandle dim, int64 value,
     return Status::OK();
   }
   if (existing == kUnknownDim) {
-    *out = MakeDim(value);
-    return Status::OK();
+    DimensionHandle d = MakeDim(value);
+    return Merge(dim, d, out);
   }
   *out = nullptr;
   return errors::InvalidArgument("Dimension must be ", value, " but is ",
                                  existing);
 }
 
-void InferenceContext::Relax(DimensionHandle d0, DimensionHandle d1,
+void InferenceContext::Relax(DimensionHandle d_old, DimensionHandle d_new,
                              DimensionHandle* out) {
-  if (d0.SameHandle(d1)) {
-    *out = d0;
-  } else if (!ValueKnown(d0) || !ValueKnown(d1)) {
-    *out = UnknownDim();
-  } else if (Value(d0) == Value(d1)) {
-    *out = d0;
+  if (d_old.SameHandle(d_new)) {
+    *out = d_old;
+  } else if (!ValueKnown(d_old) && !ValueKnown(d_new)) {
+    // The node will be fed by the dimension d_new instead of d_old: any
+    // equality assertion between d_old and other input dimension on this node
+    // may not be true anymore, so forget them all.
+    ForgetMerges();
+    // Return the new shape handle to force the relaxation to propagate to the
+    // fanout of the context.
+    *out = d_new;
+  } else if (!ValueKnown(d_new)) {
+    ForgetMerges();
+    *out = d_new;
+  } else if (Value(d_old) == Value(d_new)) {
+    // Return the old shape handle. This will stop the relaxation in the fanout
+    // of the context.
+    *out = d_old;
   } else {
+    // Return a new handle that encodes a different unknown dim.
+    ForgetMerges();
     *out = UnknownDim();
   }
 }
@@ -463,45 +470,48 @@ Status InferenceContext::MergePrefix(ShapeHandle s, ShapeHandle prefix,
   return Status::OK();
 }
 
-void InferenceContext::Relax(ShapeHandle s0, ShapeHandle s1, ShapeHandle* out) {
-  if (s0.SameHandle(s1)) {
-    *out = s0;
+void InferenceContext::Relax(ShapeHandle s_old, ShapeHandle s_new,
+                             ShapeHandle* out) {
+  if (s_old.SameHandle(s_new)) {
+    *out = s_old;
     return;
-  } else if (!RankKnown(s0) || !RankKnown(s1)) {
+  } else if (!RankKnown(s_new) || !s_old.IsSet()) {
+    ForgetMerges();
+    *out = s_new;
+    return;
+  }
+
+  const int32 rank = Rank(s_old);
+  if (rank != Rank(s_new)) {
+    ForgetMerges();
     *out = UnknownShape();
     return;
   }
 
-  const int32 rank = Rank(s0);
-  if (rank != Rank(s1)) {
-    *out = UnknownShape();
-    return;
-  }
-
-  bool return_s0 = true;
+  bool return_s_old = true;
   for (int i = 0; i < rank; ++i) {
-    auto d0 = Dim(s0, i);
-    auto d1 = Dim(s1, i);
+    auto d0 = Dim(s_old, i);
+    auto d1 = Dim(s_new, i);
     if (d0.SameHandle(d1)) continue;
 
     auto v0 = Value(d0);
     auto v1 = Value(d1);
     if (v0 == kUnknownDim || v1 == kUnknownDim || v0 != v1) {
-      return_s0 = false;
+      return_s_old = false;
       break;
     }
   }
-  if (return_s0) {
-    *out = s0;
+  if (return_s_old) {
+    *out = s_old;
     return;
   }
 
   // Relax dims.
   std::vector<DimensionHandle> dims(rank);
   for (int i = 0; i < rank; ++i) {
-    // Invariant for relax was checked earlier, so CHECK is ok.
-    Relax(Dim(s0, i), Dim(s1, i), &dims[i]);
+    Relax(Dim(s_old, i), Dim(s_new, i), &dims[i]);
   }
+  ForgetMerges();
   *out = MakeShape(dims);
 }
 
@@ -905,7 +915,7 @@ Status InferenceContext::Add(DimensionHandle first, DimensionOrConstant second,
   if (first_value == 0) {
     *out = MakeDim(second);
   } else if (second_value == 0) {
-    *out = MakeDim(first);
+    *out = first;
   } else if (first_value == kUnknownDim || second_value == kUnknownDim) {
     *out = UnknownDim();
   } else {
@@ -930,7 +940,7 @@ Status InferenceContext::Subtract(DimensionHandle first,
   const int64 second_value = Value(second);
   // Special cases.
   if (second_value == 0) {
-    *out = MakeDim(first);
+    *out = first;
   } else if (first_value == kUnknownDim || second_value == kUnknownDim) {
     *out = UnknownDim();
   } else {

@@ -29,6 +29,7 @@ def xla_test(name,
              deps,
              xla_test_library_deps=[],
              backends=[],
+             blacklisted_backends=[],
              args=[],
              tags=[],
              copts=[],
@@ -92,16 +93,23 @@ def xla_test(name,
     backends: A list of backends to generate tests for. Supported
       values: "cpu", "cpu_parallel", "gpu". If this list is empty, the test will
       be generated for all supported backends.
+    blacklisted_backends: A list of backends to NOT generate tests for.
     args: Test arguments for the target.
     tags: Tags for the target.
-    backend_args: A dict mapping backend name to list of additional args to
-      use for that target.
+    copts: Additional copts to pass to the build.
+    data: Additional data to pass to the build.
     backend_tags: A dict mapping backend name to list of additional tags to
       use for that target.
+    backend_args: A dict mapping backend name to list of additional args to
+      use for that target.
+    **kwargs: Additional keyword arguments to pass to native.cc_test.
   """
   test_names = []
   if not backends:
     backends = all_backends
+
+  backends = [backend for backend in backends
+              if backend not in blacklisted_backends]
 
   native.cc_library(
       name="%s_lib" % name,

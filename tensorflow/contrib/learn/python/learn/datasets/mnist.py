@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-
 """Functions for downloading and reading MNIST data."""
 
 from __future__ import absolute_import
@@ -123,8 +122,8 @@ class DataSet(object):
     numpy.random.seed(seed1 if seed is None else seed2)
     dtype = dtypes.as_dtype(dtype).base_dtype
     if dtype not in (dtypes.uint8, dtypes.float32):
-      raise TypeError('Invalid image dtype %r, expected uint8 or float32' %
-                      dtype)
+      raise TypeError(
+          'Invalid image dtype %r, expected uint8 or float32' % dtype)
     if fake_data:
       self._num_examples = 10000
       self.one_hot = one_hot
@@ -202,7 +201,9 @@ class DataSet(object):
       end = self._index_in_epoch
       images_new_part = self._images[start:end]
       labels_new_part = self._labels[start:end]
-      return numpy.concatenate((images_rest_part, images_new_part), axis=0) , numpy.concatenate((labels_rest_part, labels_new_part), axis=0)
+      return numpy.concatenate(
+          (images_rest_part, images_new_part), axis=0), numpy.concatenate(
+              (labels_rest_part, labels_new_part), axis=0)
     else:
       self._index_in_epoch += batch_size
       end = self._index_in_epoch
@@ -257,15 +258,13 @@ def read_data_sets(train_dir,
     test_labels = extract_labels(f, one_hot=one_hot)
 
   if not 0 <= validation_size <= len(train_images):
-    raise ValueError(
-        'Validation size should be between 0 and {}. Received: {}.'
-        .format(len(train_images), validation_size))
+    raise ValueError('Validation size should be between 0 and {}. Received: {}.'
+                     .format(len(train_images), validation_size))
 
   validation_images = train_images[:validation_size]
   validation_labels = train_labels[:validation_size]
   train_images = train_images[validation_size:]
   train_labels = train_labels[validation_size:]
-
 
   options = dict(dtype=dtype, reshape=reshape, seed=seed)
 

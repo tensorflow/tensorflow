@@ -19,80 +19,35 @@ limitations under the License.
 // Usage: bazel run -c opt \
 // tensorflow/contrib/lite/nnapi:nnapi_example -- <filename>
 //
+#include <dirent.h>
 #include <cstdarg>
 #include <cstdio>
-#include "tensorflow/contrib/lite/builtin_op_data.h"
-#include "tensorflow/contrib/lite/interpreter.h"
-#include "tensorflow/contrib/lite/kernels/register.h"
-#include "tensorflow/contrib/lite/model.h"
+#include <fstream>
+#include <iostream>
+#include <sstream>
 #include "tensorflow/contrib/lite/nnapi/NeuralNetworksShim.h"
 #include "tensorflow/contrib/lite/testing/parse_testdata.h"
+#include "tensorflow/contrib/lite/testing/tflite_driver.h"
 
-// TODO(aselle): FATAL leaves resources hanging.
-void FATAL(const char* format, ...) {
-  va_list args;
-  va_start(args, format);
-  vfprintf(stderr, format, args);
-  va_end(args);
-  fflush(stderr);
-  exit(1);
-}
+string dirname(const string& s) { return s.substr(0, s.find_last_of("/")); }
 
-#define CHECK_TFLITE_SUCCESS(x)                       \
-  if (x != kTfLiteOk) {                               \
-    FATAL("Aborting since tflite returned failure."); \
+bool Interpret(const char* examples_filename, bool use_nnapi) {
+  std::ifstream tflite_stream(examples_filename);
+  if (!tflite_stream.is_open()) {
+    fprintf(stderr, "Can't open input file.");
+    return false;
   }
 
-void Interpret(const char* filename, const char* examples_filename,
-               bool use_nnapi) {
-  // TODO(aselle): Resize of input image should go here
-  // ...
-  // For now I am allocating all tensors. This means I am fixed size.
-  // So I am not using the variable size ability yet.
-  fprintf(stderr, "example file %s\n", examples_filename);
-  std::vector<tflite::testing::Example> examples;
-  CHECK_TFLITE_SUCCESS(
-      tflite::testing::ParseExamples(examples_filename, &examples));
+  printf("Use nnapi is set to: %d\n", use_nnapi);
+  tflite::testing::TfLiteDriver test_driver(use_nnapi);
 
-  for (const tflite::testing::Example& example : examples) {
-    auto model = tflite::FlatBufferModel::BuildFromFile(filename);
-    if (!model) FATAL("Cannot read file %s\n", filename);
-    std::unique_ptr<tflite::Interpreter> interpreter;
-    tflite::ops::builtin::BuiltinOpResolver builtins;
-
-    CHECK_TFLITE_SUCCESS(
-        tflite::InterpreterBuilder(*model, builtins)(&interpreter));
-
-    printf("Use nnapi is set to: %d\n", use_nnapi);
-    interpreter->UseNNAPI(use_nnapi);
-    CHECK_TFLITE_SUCCESS(
-        tflite::testing::FeedExample(interpreter.get(), example));
-
-    {
-      TfLiteTensor* tensor = interpreter->tensor(interpreter->outputs()[0]);
-      if (float* data =
-              interpreter->typed_tensor<float>(interpreter->outputs()[0])) {
-        size_t num = tensor->bytes / sizeof(float);
-        for (float* p = data; p < data + num; p++) {
-          *p = 0;
-        }
-      }
-    }
-    interpreter->Invoke();
-
-    CHECK_TFLITE_SUCCESS(
-        tflite::testing::CheckOutputs(interpreter.get(), example));
-
-    printf("Result:\n");
-    TfLiteTensor* tensor = interpreter->tensor(interpreter->outputs()[0]);
-    if (float* data =
-            interpreter->typed_tensor<float>(interpreter->outputs()[0])) {
-      size_t num = tensor->bytes / sizeof(float);
-      for (float* p = data; p < data + num; p++) {
-        printf(" %f", *p);
-      }
-    }
+  test_driver.SetModelBaseDir(dirname(examples_filename));
+  if (!tflite::testing::ParseAndRunTests(&tflite_stream, &test_driver)) {
+    fprintf(stderr, "Results from tflite don't match.");
+    return false;
   }
+
+  return true;
 }
 
 int main(int argc, char* argv[]) {
@@ -109,6 +64,25 @@ int main(int argc, char* argv[]) {
             argv[0]);
     return 1;
   }
-  Interpret(argv[1], argv[2], use_nnapi);
+
+  string base_dir = dirname(argv[1]);
+  DIR* dir = opendir(base_dir.c_str());
+  if (dir == nullptr) {
+    fprintf(stderr, "Can't open dir %s\n", base_dir.c_str());
+    return 1;
+  }
+  while (struct dirent* ent = readdir(dir)) {
+    string name = ent->d_name;
+    if (name.rfind(".txt") == name.length() - 4) {
+      printf("%s: ", name.c_str());
+      if (Interpret((base_dir + "/" + name).c_str(), use_nnapi)) {
+        printf(" %s\n", "OK");
+      } else {
+        printf(" %s\n", "FAIL");
+      }
+    }
+  }
+  closedir(dir);
+
   return 0;
 }

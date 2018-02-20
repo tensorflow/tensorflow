@@ -16,7 +16,11 @@ import "tensorflow/contrib/lite/toco/types.proto";
 
 package toco;
 
-// Next ID to USE: 5.
+message InputArrayShape {
+  repeated int32 dims = 2;
+}
+
+// Next ID to USE: 7.
 message InputArray {
   // Name of the input arrays, i.e. the arrays from which input activations
   // will be read.
@@ -28,7 +32,7 @@ message InputArray {
   //
   // The last dimension is typically called 'depth' or 'channels'. For example,
   // for an image model taking RGB images as input, this would have the value 3.
-  repeated int32 shape = 2;
+  optional InputArrayShape shape = 6;
 
   // mean_value and std_value parameters control the interpretation of raw input
   // activation values (elements of the input array) as real numbers. The
@@ -46,6 +50,57 @@ message InputArray {
   // (TensorFlow via LegacyFedInput).
   optional float mean_value = 3;
   optional float std_value = 4 [default = 1.];
+
+  // Data type of the input.
+  //
+  // In many graphs, the input arrays already have defined data types,
+  // e.g. Placeholder nodes in a TensorFlow GraphDef have a dtype attribute.
+  // In those cases, it is not needed to specify this data_type flag.
+  // The purpose of this flag is only to define the data type of input
+  // arrays whose type isn't defined in the input graph file. For example,
+  // when specifying an arbitrary (not Placeholder) --input_array into
+  // a TensorFlow GraphDef.
+  //
+  // When this data_type is quantized (e.g. QUANTIZED_UINT8), the
+  // corresponding quantization parameters are the mean_value, std_value
+  // fields.
+  //
+  // It is also important to understand the nuance between this data_type
+  // flag and the inference_input_type in TocoFlags. The basic difference
+  // is that this data_type (like all ModelFlags) describes a property
+  // of the input graph, while inference_input_type (like all TocoFlags)
+  // describes an aspect of the toco transformation process and thus of
+  // the output file. The types of input arrays may be different between
+  // the input and output files if quantization or dequantization occurred.
+  // Such differences can only occur for real-number data i.e. only
+  // between FLOAT and quantized types (e.g. QUANTIZED_UINT8).
+  optional IODataType data_type = 5;
+}
+
+message RnnState {
+  optional string state_array = 1;
+  optional string back_edge_source_array = 2;
+  optional bool discardable = 5;
+  // size allows to specify a 1-D shape for the RNN state array.
+  // Will be expanded with 1's to fit the model.
+  // TODO(benoitjacob): should allow a generic, explicit shape.
+  optional int32 size = 3;
+}
+
+// An ArraysExtraInfo message stores a collection of additional Information
+// about arrays in a model, complementing the information in the model itself.
+// It is intentionally a separate message so that it may be serialized and
+// passed separately from the model. See --arrays_extra_info_file.
+//
+// A typical use case is to manually specify MinMax for specific arrays in a
+// model that does not already contain such MinMax information.
+message ArraysExtraInfo {
+  message Entry {
+    optional string name = 1;
+    optional float min = 2;
+    optional float max = 3;
+  }
+  repeated Entry entries = 1;
 }
 
 // ModelFlags encodes properties of a model that, depending on the file
@@ -69,7 +124,7 @@ message InputArray {
 //   optional int32 input_dims = 11 [ default = 4];
 //   repeated int32 input_shape = 13;
 //
-// Next ID to USE: 16.
+// Next ID to USE: 19.
 message ModelFlags {
   // Information about the input arrays, i.e. the arrays from which input
   // activations will be read.
@@ -83,20 +138,6 @@ message ModelFlags {
   // the 'batch' field: at most one of these two fields can be set.
   optional bool variable_batch = 10;
 
-  message RnnState {
-    optional string state_array = 1;
-    optional string back_edge_source_array = 2;
-    optional int32 size = 3;
-    // TODO(benoitjacob): manually_create is a temporary hack:
-    // due to discrepancies between the current toco dims tracking and
-    // TensorFlow shapes, for some models we need to manually create RNN state
-    // arrays with a specified shape.
-    // Maybe we should actually implement back-edges as operators of their own,
-    // which would remove the need for much special-casing, including here,
-    // we could probably consistently let PropagateFixedSizes handle state
-    // arrays.
-    optional bool manually_create = 4;
-  }
   repeated RnnState rnn_states = 12;
 
   // Checks applied to the model, typically after toco's comprehensive
@@ -114,7 +155,20 @@ message ModelFlags {
   }
   repeated ModelCheck model_checks = 14;
 
-  // If true, ignore control dependency requirements in input TensorFlow
-  // GraphDef. Otherwise an error will be raised upon control dependency inputs.
-  optional bool drop_control_dependency = 15;
+  // If true, will allow passing inexistent arrays in --input_arrays
+  // and --output_arrays. This makes little sense, is only useful to
+  // more easily get graph visualizations.
+  optional bool allow_nonexistent_arrays = 16;
+
+  // If true, will allow passing non-ascii-printable characters in
+  // --input_arrays and --output_arrays. By default (if false), only
+  // ascii printable characters are allowed, i.e. character codes
+  // ranging from 32 to 127. This is disallowed by default so as to
+  // catch common copy-and-paste issues where invisible unicode
+  // characters are unwittingly added to these strings.
+  optional bool allow_nonascii_arrays = 17;
+
+  // If set, this ArraysExtraInfo allows to pass extra information about arrays
+  // not specified in the input model file, such as extra MinMax information.
+  optional ArraysExtraInfo arrays_extra_info = 18;
 }

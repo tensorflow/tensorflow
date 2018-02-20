@@ -23,7 +23,7 @@ limitations under the License.
 
 #include <algorithm>
 #include <map>
-#include "re2/re2.h"
+
 #include "tensorflow/contrib/lite/context.h"
 #include "tensorflow/contrib/lite/kernels/kernel_util.h"
 #include "tensorflow/contrib/lite/string_util.h"
@@ -81,7 +81,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* label = GetOutput(context, node, 0);
   TfLiteTensor* weight = GetOutput(context, node, 1);
 
-  std::map<int64, int> feature_id_counts;
+  std::map<int64_t, int> feature_id_counts;
   for (int i = 0; i < num_strings; i++) {
     // Use fingerprint of feature name as id.
     auto strref = tflite::GetString(input, i);
@@ -91,10 +91,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       continue;
     }
 
-    int64 feature_id =
+    int64_t feature_id =
         ::util::Fingerprint64(strref.str, strref.len) % kMaxDimension;
-
-    label->data.i32[i] = static_cast<int32>(feature_id);
+    label->data.i32[i] = static_cast<int32_t>(feature_id);
     weight->data.f[i] =
         std::count(strref.str, strref.str + strref.len, ' ') + 1;
   }

@@ -15,6 +15,7 @@ limitations under the License.
 
 
 %include "tensorflow/python/platform/base.i"
+%include "cluster.i"
 
 %typemap(in) const tensorflow::MetaGraphDef& (tensorflow::MetaGraphDef temp) {
   char* c_string;
@@ -62,6 +63,7 @@ limitations under the License.
   #include "tensorflow/core/framework/graph.pb.h"
   #include "tensorflow/core/grappler/grappler_item.h"
   #include "tensorflow/core/grappler/grappler_item_builder.h"
+  #include "tensorflow/core/grappler/clusters/cluster.h"
   #include "tensorflow/core/grappler/clusters/utils.h"
   #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
   #include "tensorflow/core/grappler/optimizers/meta_optimizer.h"
@@ -91,22 +93,28 @@ void DetectDevices(std::unordered_map<string, tensorflow::DeviceProperties>* dev
 }
 
 PyObject* TF_OptimizeGraph(
+      GCluster cluster,
       const tensorflow::RewriterConfig& rewriter_config,
       const tensorflow::MetaGraphDef& metagraph,
-      const string& graph_id, TF_Status* out_status) {
+      bool verbose, const string& graph_id, TF_Status* out_status) {
     tensorflow::grappler::ItemConfig item_config;
     item_config.inline_functions = false;
     item_config.apply_optimizations = false;
     std::unique_ptr<tensorflow::grappler::GrapplerItem> grappler_item =
         tensorflow::grappler::GrapplerItemFromMetaGraphDef(graph_id, metagraph, item_config);
-    std::unordered_map<string, tensorflow::DeviceProperties> device_map;
-    DetectDevices(&device_map);
+
+    if (!grappler_item) {
+      TF_SetStatus(out_status, TF_INVALID_ARGUMENT, "Failed to import metagraph, check error log for more info.");
+      return nullptr;
+    }
+
     tensorflow::DeviceBase* cpu_device = nullptr;
-    tensorflow::grappler::VirtualCluster cluster(device_map);
     tensorflow::GraphDef out_graph;
     tensorflow::grappler::MetaOptimizer optimizer(cpu_device, rewriter_config);
-    tensorflow::Status status = optimizer.Optimize(&cluster, *grappler_item, &out_graph);
-    optimizer.PrintResult();
+    tensorflow::Status status = optimizer.Optimize(cluster.get(), *grappler_item, &out_graph);
+    if (verbose) {
+      optimizer.PrintResult();
+    }
     tensorflow::Set_TF_Status_from_Status(out_status, status);
     string out_graph_str = out_graph.SerializeAsString();
     PyObject* ret = PyBytes_FromStringAndSize(out_graph_str.data(),
@@ -118,8 +126,9 @@ PyObject* TF_OptimizeGraph(
 
 // Wrap this function
 PyObject* TF_OptimizeGraph(
+    GCluster cluster,
     const tensorflow::RewriterConfig& rewriter_config,
-    const tensorflow::MetaGraphDef& metagraph,
+    const tensorflow::MetaGraphDef& metagraph, bool verbose,
     const string& graph_id, TF_Status* out_status);
 
 

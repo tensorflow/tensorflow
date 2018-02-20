@@ -54,10 +54,11 @@ class TestModelSaving(test.TestCase):
       model.train_on_batch(x, y)
 
       out = model.predict(x)
-      _, fname = tempfile.mkstemp('.h5')
+      fd, fname = tempfile.mkstemp('.h5')
       keras.models.save_model(model, fname)
 
       new_model = keras.models.load_model(fname)
+      os.close(fd)
       os.remove(fname)
 
       out2 = new_model.predict(x)
@@ -95,13 +96,14 @@ class TestModelSaving(test.TestCase):
       model.train_on_batch(x, y)
 
       out = model.predict(x)
-      _, fname = tempfile.mkstemp('.h5')
+      fd, fname = tempfile.mkstemp('.h5')
       keras.models.save_model(model, fname)
 
       model = keras.models.load_model(
           fname,
           custom_objects={'CustomOp': CustomOp,
                           'custom_loss': custom_loss})
+      os.close(fd)
       os.remove(fname)
 
       out2 = model.predict(x)
@@ -125,10 +127,11 @@ class TestModelSaving(test.TestCase):
       model.train_on_batch(x, y)
 
       out = model.predict(x)
-      _, fname = tempfile.mkstemp('.h5')
+      fd, fname = tempfile.mkstemp('.h5')
       keras.models.save_model(model, fname)
 
       model = keras.models.load_model(fname)
+      os.close(fd)
       os.remove(fname)
 
       out2 = model.predict(x)
@@ -144,9 +147,10 @@ class TestModelSaving(test.TestCase):
       model.add(keras.layers.Dense(3))
       model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
 
-      _, fname = tempfile.mkstemp('.h5')
+      fd, fname = tempfile.mkstemp('.h5')
       keras.models.save_model(model, fname)
       model = keras.models.load_model(fname)
+      os.close(fd)
       os.remove(fname)
 
   def test_saving_with_tf_optimizer(self):
@@ -161,9 +165,10 @@ class TestModelSaving(test.TestCase):
                     optimizer=training_module.AdadeltaOptimizer(0.1),
                     metrics=['acc'])
 
-      _, fname = tempfile.mkstemp('.h5')
+      fd, fname = tempfile.mkstemp('.h5')
       keras.models.save_model(model, fname)
       model = keras.models.load_model(fname)
+      os.close(fd)
       os.remove(fname)
 
   def test_saving_right_after_compilation(self):
@@ -177,9 +182,10 @@ class TestModelSaving(test.TestCase):
       model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
       model.model._make_train_function()
 
-      _, fname = tempfile.mkstemp('.h5')
+      fd, fname = tempfile.mkstemp('.h5')
       keras.models.save_model(model, fname)
       model = keras.models.load_model(fname)
+      os.close(fd)
       os.remove(fname)
 
   def test_saving_lambda_numpy_array_arguments(self):
@@ -194,10 +200,11 @@ class TestModelSaving(test.TestCase):
     model = keras.models.Model(inputs, output)
     model.compile(loss='mse', optimizer='sgd', metrics=['acc'])
 
-    _, fname = tempfile.mkstemp('.h5')
+    fd, fname = tempfile.mkstemp('.h5')
     keras.models.save_model(model, fname)
 
     model = keras.models.load_model(fname)
+    os.close(fd)
     os.remove(fname)
 
     self.assertAllClose(mean, model.layers[1].arguments['mu'])
@@ -299,7 +306,7 @@ class TestSequential(test.TestCase):
         def call(self, inputs):
           return [3 * inputs, 2 * inputs]
 
-        def _compute_output_shape(self, input_shape):
+        def compute_output_shape(self, input_shape):
           return [input_shape, input_shape]
 
       with self.assertRaises(ValueError):
@@ -332,6 +339,35 @@ class TestSequential(test.TestCase):
     self.assertEqual(len(model.trainable_weights), 2)
     inner_model.trainable = True
     self.assertEqual(len(model.trainable_weights), 4)
+
+  def test_sequential_update_disabling(self):
+    val_a = np.random.random((10, 4))
+    val_out = np.random.random((10, 4))
+
+    with self.test_session():
+      model = keras.models.Sequential()
+      model.add(keras.layers.BatchNormalization(input_shape=(4,)))
+
+      model.trainable = False
+      assert not model.updates
+
+      model.compile('sgd', 'mse')
+      assert not model.updates
+      assert not model.model.updates
+
+      x1 = model.predict(val_a)
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      self.assertAllClose(x1, x2, atol=1e-7)
+
+      model.trainable = True
+      model.compile('sgd', 'mse')
+      assert model.updates
+      assert model.model.updates
+
+      model.train_on_batch(val_a, val_out)
+      x2 = model.predict(val_a)
+      assert np.abs(np.sum(x1 - x2)) > 1e-5
 
 
 class TestModelCloning(test.TestCase):

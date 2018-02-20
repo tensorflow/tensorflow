@@ -128,8 +128,9 @@ class LayerCollectionTest(test.TestCase):
       key = array_ops.constant(1)
       lc.register_fully_connected(key, array_ops.constant(2),
                                   array_ops.constant(3))
-      with self.assertRaises(ValueError):
+      with self.assertRaises(ValueError) as cm:
         lc.register_generic(key, 16)
+      self.assertIn('already in LayerCollection', str(cm.exception))
 
   def testRegisterSingleParamNotRegistered(self):
     x = variable_scope.get_variable('x', initializer=array_ops.constant(1,))
@@ -144,16 +145,18 @@ class LayerCollectionTest(test.TestCase):
     x = variable_scope.get_variable('x', initializer=array_ops.constant(1,))
     lc = layer_collection.LayerCollection()
     lc.fisher_blocks = {x: '1'}
-    with self.assertRaises(ValueError):
+    with self.assertRaises(ValueError) as cm:
       lc.register_block(x, 'foo')
+    self.assertIn('already in LayerCollection', str(cm.exception))
 
   def testRegisterSingleParamRegisteredInTuple(self):
     x = variable_scope.get_variable('x', initializer=array_ops.constant(1,))
     y = variable_scope.get_variable('y', initializer=array_ops.constant(1,))
     lc = layer_collection.LayerCollection()
     lc.fisher_blocks = {(x, y): '1'}
-    lc.register_block(x, 'foo')
-    self.assertEqual(set(['1']), set(lc.get_blocks()))
+    with self.assertRaises(ValueError) as cm:
+      lc.register_block(x, 'foo')
+    self.assertIn('was already registered', str(cm.exception))
 
   def testRegisterTupleParamNotRegistered(self):
     x = variable_scope.get_variable('x', initializer=array_ops.constant(1,))
@@ -173,8 +176,9 @@ class LayerCollectionTest(test.TestCase):
     lc = layer_collection.LayerCollection()
     lc.fisher_blocks = {(x, y): '1'}
 
-    with self.assertRaises(ValueError):
+    with self.assertRaises(ValueError) as cm:
       lc.register_block((x, y), 'foo')
+    self.assertIn('already in LayerCollection', str(cm.exception))
 
   def testRegisterTupleParamRegisteredInSuperset(self):
     x = variable_scope.get_variable('x', initializer=array_ops.constant(1,))
@@ -183,8 +187,9 @@ class LayerCollectionTest(test.TestCase):
     lc = layer_collection.LayerCollection()
     lc.fisher_blocks = {(x, y, z): '1'}
 
-    lc.register_block((x, y), 'foo')
-    self.assertEqual(set(['1']), set(lc.get_blocks()))
+    with self.assertRaises(ValueError) as cm:
+      lc.register_block((x, y), 'foo')
+    self.assertIn('was already registered', str(cm.exception))
 
   def testRegisterTupleParamSomeRegistered(self):
     x = variable_scope.get_variable('x', initializer=array_ops.constant(1,))
@@ -193,10 +198,9 @@ class LayerCollectionTest(test.TestCase):
     lc = layer_collection.LayerCollection()
     lc.fisher_blocks = {x: MockFisherBlock('1'), z: MockFisherBlock('2')}
 
-    lc.register_block((x, y), MockFisherBlock('foo'))
-    self.assertEqual(
-        set([MockFisherBlock('2'), MockFisherBlock('foo')]), set(
-            lc.get_blocks()))
+    with self.assertRaises(ValueError) as cm:
+      lc.register_block((x, y), MockFisherBlock('foo'))
+    self.assertIn('was already registered', str(cm.exception))
 
   def testRegisterTupleVarSomeRegisteredInOtherTuples(self):
     x = variable_scope.get_variable('x', initializer=array_ops.constant(1,))
@@ -206,8 +210,9 @@ class LayerCollectionTest(test.TestCase):
     lc = layer_collection.LayerCollection()
     lc.fisher_blocks = {(x, z): '1', (z, w): '2'}
 
-    with self.assertRaises(ValueError):
+    with self.assertRaises(ValueError) as cm:
       lc.register_block((x, y), 'foo')
+    self.assertIn('was already registered', str(cm.exception))
 
   def testRegisterCategoricalPredictiveDistribution(self):
     with ops.Graph().as_default(), self.test_session() as sess:
@@ -426,6 +431,23 @@ class LayerCollectionTest(test.TestCase):
             **kwargs)
 
       self.ensureLayerReuseWorks(register_fn)
+
+  def testReuseWithInvalidRegistration(self):
+    """Invalid registrations shouldn't overwrite existing blocks."""
+    with ops.Graph().as_default():
+      inputs = array_ops.ones([2, 5, 5, 10])
+      outputs = array_ops.zeros([2, 5, 5, 3])
+      w = variable_scope.get_variable('w', [1, 1, 10, 3])
+      b = variable_scope.get_variable('b', [3])
+      lc = layer_collection.LayerCollection()
+      lc.register_fully_connected(w, inputs, outputs)
+      self.assertEqual(lc.fisher_blocks[w].num_registered_minibatches, 1)
+      with self.assertRaises(KeyError):
+        lc.register_fully_connected((w, b), inputs, outputs, reuse=True)
+      self.assertNotIn((w, b), lc.fisher_blocks)
+      self.assertEqual(lc.fisher_blocks[w].num_registered_minibatches, 1)
+      lc.register_fully_connected(w, inputs, outputs, reuse=True)
+      self.assertEqual(lc.fisher_blocks[w].num_registered_minibatches, 2)
 
   def testMakeOrGetFactor(self):
     with ops.Graph().as_default():

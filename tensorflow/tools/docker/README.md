@@ -41,7 +41,7 @@ Note: If you would have a problem running nvidia-docker you may try the old meth
 we have used. But it is not recommended. If you find a bug in nvidia-docker, please report
 it there and try using nvidia-docker as described above.
 
-    $ # The old, not recommended way to run docker with gpu support: 
+    $ # The old, not recommended way to run docker with gpu support:
     $ export CUDA_SO=$(\ls /usr/lib/x86_64-linux-gnu/libcuda.* | xargs -I{} echo '-v {}:{}')
     $ export DEVICES=$(\ls /dev/nvidia* | xargs -I{} echo '--device {}:{}')
     $ docker run -it -p 8888:8888 $CUDA_SO $DEVICES gcr.io/tensorflow/tensorflow:latest-gpu
@@ -65,8 +65,7 @@ from a binary docker image such as for example `tensorflow/tensorflow:latest` wi
 not work. One needs to execute the script from a developer docker image since by
 contrast with a binary docker image it contains not only the compiled solution but
 also the tensorflow source code. Please select the appropriate developer docker
-image of tensorflow at
-[tensorflow/tensorflow repository on dockerhub](https://hub.docker.com/r/tensorflow/tensorflow/tags/).
+image of tensorflow at `tensorflow/tensorflow:[.](https://hub.docker.com/r/tensorflow/tensorflow/tags/)`.
 
 The smallest command line to generate a docker image will then be:
 ```docker run -it tensorflow/tensorflow:"right_tag"```

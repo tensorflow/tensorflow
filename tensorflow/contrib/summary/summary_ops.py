@@ -38,14 +38,15 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import summary_op_util
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import training_util
 from tensorflow.python.util import tf_contextlib
+
 
 # Name for a collection which is expected to have at most a single boolean
 # Tensor. If this tensor is True the summary ops will record summaries.
 _SHOULD_RECORD_SUMMARIES_NAME = "ShouldRecordSummaries"
 
-_SUMMARY_COLLECTION_NAME = "_SUMMARY_V2"
 _SUMMARY_WRITER_INIT_COLLECTION_NAME = "_SUMMARY_WRITER_V2"
 
 _EXPERIMENT_NAME_PATTERNS = re.compile(r"^[^\x00-\x1F<>]{0,256}$")
@@ -70,7 +71,7 @@ def should_record_summaries():
 def record_summaries_every_n_global_steps(n, global_step=None):
   """Sets the should_record_summaries Tensor to true if global_step % n == 0."""
   if global_step is None:
-    global_step = training_util.get_global_step()
+    global_step = training_util.get_or_create_global_step()
   collection_ref = ops.get_collection_ref(_SHOULD_RECORD_SUMMARIES_NAME)
   old = collection_ref[:]
   with ops.device("cpu:0"):
@@ -103,13 +104,13 @@ class SummaryWriter(object):
   """Encapsulates a stateful summary writer resource.
 
   See also:
-  - @{tf.contrib.summary.create_summary_file_writer}
-  - @{tf.contrib.summary.create_summary_db_writer}
+  - @{tf.contrib.summary.create_file_writer}
+  - @{tf.contrib.summary.create_db_writer}
   """
 
   def  __init__(self, resource):
     self._resource = resource
-    if context.in_eager_mode():
+    if context.in_eager_mode() and self._resource is not None:
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device="cpu:0")
 
@@ -153,10 +154,12 @@ def initialize(
       to @{tf.get_default_session}.
 
   Raises:
-    RuntimeError: If in eager mode, or if the current thread has no
-      default @{tf.contrib.summary.SummaryWriter}.
+    RuntimeError: If  the current thread has no default
+      @{tf.contrib.summary.SummaryWriter}.
     ValueError: If session wasn't passed and no default session.
   """
+  if context.in_eager_mode():
+    return
   if context.context().summary_writer_resource is None:
     raise RuntimeError("No default tf.contrib.summary.SummaryWriter found")
   if session is None:
@@ -170,11 +173,11 @@ def initialize(
     session.run(_graph(x, 0), feed_dict={x: data})
 
 
-def create_summary_file_writer(logdir,
-                               max_queue=None,
-                               flush_millis=None,
-                               filename_suffix=None,
-                               name=None):
+def create_file_writer(logdir,
+                       max_queue=None,
+                       flush_millis=None,
+                       filename_suffix=None,
+                       name=None):
   """Creates a summary file writer in the current context.
 
   Args:
@@ -201,7 +204,7 @@ def create_summary_file_writer(logdir,
     if flush_millis is None:
       flush_millis = constant_op.constant(2 * 60 * 1000)
     if filename_suffix is None:
-      filename_suffix = constant_op.constant("")
+      filename_suffix = constant_op.constant(".v2")
     return _make_summary_writer(
         name,
         gen_summary_ops.create_summary_file_writer,
@@ -211,11 +214,11 @@ def create_summary_file_writer(logdir,
         filename_suffix=filename_suffix)
 
 
-def create_summary_db_writer(db_uri,
-                             experiment_name=None,
-                             run_name=None,
-                             user_name=None,
-                             name=None):
+def create_db_writer(db_uri,
+                     experiment_name=None,
+                     run_name=None,
+                     user_name=None,
+                     name=None):
   """Creates a summary database writer in the current context.
 
   This can be used to write tensors from the execution graph directly
@@ -291,14 +294,10 @@ def all_summary_ops():
 
   Returns:
     The summary ops.
-
-  Raises:
-    RuntimeError: If in Eager mode.
   """
   if context.in_eager_mode():
-    raise RuntimeError(
-        "tf.contrib.summary.all_summary_ops is only supported in graph mode.")
-  return ops.get_collection(_SUMMARY_COLLECTION_NAME)
+    return None
+  return ops.get_collection(ops.GraphKeys._SUMMARY_COLLECTION)  # pylint: disable=protected-access
 
 
 def summary_writer_initializer_op():
@@ -340,14 +339,13 @@ def summary_writer_function(name, tensor, function, family=None):
   with ops.device("cpu:0"):
     op = utils.smart_cond(
         should_record_summaries(), record, _nothing, name="")
-    ops.add_to_collection(_SUMMARY_COLLECTION_NAME, op)
+    ops.add_to_collection(ops.GraphKeys._SUMMARY_COLLECTION, op)  # pylint: disable=protected-access
   return op
 
 
-def generic(name, tensor, metadata=None, family=None, global_step=None):
+def generic(name, tensor, metadata=None, family=None, step=None):
   """Writes a tensor summary if possible."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
+
   def function(tag, scope):
     if metadata is None:
       serialized_metadata = constant_op.constant("")
@@ -358,67 +356,88 @@ def generic(name, tensor, metadata=None, family=None, global_step=None):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_summary(
         context.context().summary_writer_resource,
-        global_step, array_ops.identity(tensor),
-        tag, serialized_metadata, name=scope)
+        _choose_step(step),
+        array_ops.identity(tensor),
+        tag,
+        serialized_metadata,
+        name=scope)
   return summary_writer_function(name, tensor, function, family=family)
 
 
-def scalar(name, tensor, family=None, global_step=None):
-  """Writes a scalar summary if possible."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
+def scalar(name, tensor, family=None, step=None):
+  """Writes a scalar summary if possible.
+
+  Unlike @{tf.contrib.summary.generic} this op may change the dtype
+  depending on the writer, for both practical and efficiency concerns.
+
+  Args:
+    name: An arbitrary name for this summary.
+    tensor: A @{tf.Tensor} Must be one of the following types:
+      `float32`, `float64`, `int32`, `int64`, `uint8`, `int16`,
+      `int8`, `uint16`, `half`, `uint32`, `uint64`.
+    family: Optional, the summary's family.
+    step: The `int64` monotonic step variable, which defaults
+      to @{tf.train.get_global_step}.
+
+  Returns:
+    The created @{tf.Operation} or a @{tf.no_op} if summary writing has
+    not been enabled for this context.
+  """
+
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_scalar_summary(
         context.context().summary_writer_resource,
-        global_step, tag, array_ops.identity(tensor),
+        _choose_step(step),
+        tag,
+        array_ops.identity(tensor),
         name=scope)
 
   return summary_writer_function(name, tensor, function, family=family)
 
 
-def histogram(name, tensor, family=None, global_step=None):
+def histogram(name, tensor, family=None, step=None):
   """Writes a histogram summary if possible."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
+
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_histogram_summary(
         context.context().summary_writer_resource,
-        global_step, tag, array_ops.identity(tensor),
+        _choose_step(step),
+        tag,
+        array_ops.identity(tensor),
         name=scope)
 
   return summary_writer_function(name, tensor, function, family=family)
 
 
-def image(name, tensor, bad_color=None, max_images=3, family=None,
-          global_step=None):
+def image(name, tensor, bad_color=None, max_images=3, family=None, step=None):
   """Writes an image summary if possible."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
+
   def function(tag, scope):
     bad_color_ = (constant_op.constant([255, 0, 0, 255], dtype=dtypes.uint8)
                   if bad_color is None else bad_color)
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_image_summary(
         context.context().summary_writer_resource,
-        global_step, tag, array_ops.identity(tensor),
+        _choose_step(step),
+        tag,
+        array_ops.identity(tensor),
         bad_color_,
-        max_images, name=scope)
+        max_images,
+        name=scope)
 
   return summary_writer_function(name, tensor, function, family=family)
 
 
-def audio(name, tensor, sample_rate, max_outputs, family=None,
-          global_step=None):
+def audio(name, tensor, sample_rate, max_outputs, family=None, step=None):
   """Writes an audio summary if possible."""
-  if global_step is None:
-    global_step = training_util.get_global_step()
+
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_audio_summary(
         context.context().summary_writer_resource,
-        global_step,
+        _choose_step(step),
         tag,
         array_ops.identity(tensor),
         sample_rate=sample_rate,
@@ -465,15 +484,13 @@ def graph(param, step=None, name=None):
   if writer is None:
     return control_flow_ops.no_op()
   with ops.device("cpu:0"):
-    if step is None:
-      step = training_util.get_global_step()
-    else:
-      step = ops.convert_to_tensor(step, dtypes.int64)
     if isinstance(param, (ops.Graph, graph_pb2.GraphDef)):
       tensor = ops.convert_to_tensor(_serialize_graph(param), dtypes.string)
     else:
       tensor = array_ops.identity(param)
-    return gen_summary_ops.write_graph_summary(writer, step, tensor, name=name)
+    return gen_summary_ops.write_graph_summary(
+        writer, _choose_step(step), tensor, name=name)
+
 
 _graph = graph  # for functions with a graph parameter
 
@@ -481,7 +498,7 @@ _graph = graph  # for functions with a graph parameter
 def import_event(tensor, name=None):
   """Writes a @{tf.Event} binary proto.
 
-  When using create_summary_db_writer(), this can be used alongside
+  When using create_db_writer(), this can be used alongside
   @{tf.TFRecordReader} to load event logs into the database. Please
   note that this is lower level than the other summary functions and
   will ignore any conditions set by methods like
@@ -499,9 +516,37 @@ def import_event(tensor, name=None):
       context.context().summary_writer_resource, tensor, name=name)
 
 
+def flush(writer=None, name=None):
+  """Forces summary writer to send any buffered data to storage.
+
+  This operation blocks until that finishes.
+
+  Args:
+    writer: The @{tf.contrib.summary.SummaryWriter} resource to flush.
+      The thread default will be used if this parameter is None.
+      Otherwise a @{tf.no_op} is returned.
+    name: A name for the operation (optional).
+
+  Returns:
+    The created @{tf.Operation}.
+  """
+  if writer is None:
+    writer = context.context().summary_writer_resource
+    if writer is None:
+      return control_flow_ops.no_op()
+  return gen_summary_ops.flush_summary_writer(writer, name=name)
+
+
 def eval_dir(model_dir, name=None):
   """Construct a logdir for an eval summary writer."""
   return os.path.join(model_dir, "eval" if not name else "eval_" + name)
+
+
+def create_summary_file_writer(*args, **kwargs):
+  """Please use @{tf.contrib.summary.create_file_writer}."""
+  logging.warning("Deprecation Warning: create_summary_file_writer was renamed "
+                  "to create_file_writer")
+  return create_file_writer(*args, **kwargs)
 
 
 def _serialize_graph(arbitrary_graph):
@@ -509,3 +554,11 @@ def _serialize_graph(arbitrary_graph):
     return arbitrary_graph.as_graph_def(add_shapes=True).SerializeToString()
   else:
     return arbitrary_graph.SerializeToString()
+
+
+def _choose_step(step):
+  if step is None:
+    return training_util.get_or_create_global_step()
+  if not isinstance(step, ops.Tensor):
+    return ops.convert_to_tensor(step, dtypes.int64)
+  return step

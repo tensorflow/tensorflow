@@ -35,9 +35,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_data_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import tf_should_use
-
-# TODO(ebrevdo): Set to True in Dec. 4, 2017.
-_ENABLE_IDENTICAL_ELEMENT_SHAPES = False
+from tensorflow.python.util.tf_export import tf_export
 
 
 # _GraphTensorArray accesses many of the hidden generated ops, but is in
@@ -150,18 +148,15 @@ class _GraphTensorArray(object):
         # will retroactively set the device value of this op.
         def create():
           """Create the TensorArray op."""
-          ta_kwargs = {}
-          if _ENABLE_IDENTICAL_ELEMENT_SHAPES:
-            ta_kwargs["identical_element_shapes"] = infer_shape
           return gen_data_flow_ops._tensor_array_v3(
               dtype=dtype,
               size=size,
               element_shape=element_shape,
+              identical_element_shapes=infer_shape,
               dynamic_size=dynamic_size,
               clear_after_read=clear_after_read,
               tensor_array_name=tensor_array_name,
-              name=scope,
-              **ta_kwargs)
+              name=scope)
         if colocate_with_first_write_call:
           with ops.device(None), ops.colocate_with(None, ignore_existing=True):
             self._handle, self._flow = create()
@@ -658,7 +653,7 @@ class _EagerTensorArray(object):
     if len(tensors) > len(self._tensor_array) and not self._dynamic_size:
       raise ValueError(
           "Cannot unstack %d tensors into a TensorArray of static size %d" %
-          (len(tensors), len(self._tensors)))
+          (len(tensors), len(self._tensor_array)))
     ta = self._identity_without_array()
     ta._implementation._tensor_array = tensors  # pylint: disable=protected-access
     return ta
@@ -717,6 +712,7 @@ class _EagerTensorArray(object):
 # TensorArray is designed to hide an underlying implementation object
 # and as such accesses many of that object's hidden fields.
 # pylint: disable=protected-access
+@tf_export("TensorArray")
 class TensorArray(object):
   """Class wrapping dynamic-sized, per-time-step, write-once Tensor arrays.
 

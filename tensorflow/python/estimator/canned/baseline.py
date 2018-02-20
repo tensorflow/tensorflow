@@ -57,7 +57,9 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope
+from tensorflow.python.ops.losses import losses
 from tensorflow.python.training import training_util
+from tensorflow.python.util.tf_export import tf_export
 
 # The default learning rate of 0.3 is a historical artifact of the initial
 # implementation, but seems a reasonable choice.
@@ -172,6 +174,7 @@ def _baseline_model_fn(features, labels, mode, head, optimizer,
       train_op_fn=train_op_fn)
 
 
+@tf_export('estimator.BaselineClassifier')
 class BaselineClassifier(estimator.Estimator):
   """A classifier that can establish a simple baseline.
 
@@ -220,7 +223,8 @@ class BaselineClassifier(estimator.Estimator):
                weight_column=None,
                label_vocabulary=None,
                optimizer='Ftrl',
-               config=None):
+               config=None,
+               loss_reduction=losses.Reduction.SUM):
     """Initializes a BaselineClassifier instance.
 
     Args:
@@ -240,6 +244,8 @@ class BaselineClassifier(estimator.Estimator):
         optimizer to use for training. If not specified, will use
         `FtrlOptimizer` with a default learning rate of 0.3.
       config: `RunConfig` object to configure the runtime settings.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
     Returns:
       A `BaselineClassifier` estimator.
 
@@ -249,11 +255,13 @@ class BaselineClassifier(estimator.Estimator):
     if n_classes == 2:
       head = head_lib._binary_logistic_head_with_sigmoid_cross_entropy_loss(  # pylint: disable=protected-access
           weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
     else:
       head = head_lib._multi_class_head_with_softmax_cross_entropy_loss(  # pylint: disable=protected-access
           n_classes, weight_column=weight_column,
-          label_vocabulary=label_vocabulary)
+          label_vocabulary=label_vocabulary,
+          loss_reduction=loss_reduction)
     def _model_fn(features, labels, mode, config):
       return _baseline_model_fn(
           features=features,
@@ -269,6 +277,7 @@ class BaselineClassifier(estimator.Estimator):
         config=config)
 
 
+@tf_export('estimator.BaselineRegressor')
 class BaselineRegressor(estimator.Estimator):
   """A regressor that can establish a simple baseline.
 
@@ -311,7 +320,8 @@ class BaselineRegressor(estimator.Estimator):
                label_dimension=1,
                weight_column=None,
                optimizer='Ftrl',
-               config=None):
+               config=None,
+               loss_reduction=losses.Reduction.SUM):
     """Initializes a BaselineRegressor instance.
 
     Args:
@@ -328,13 +338,16 @@ class BaselineRegressor(estimator.Estimator):
         optimizer to use for training. If not specified, will use
         `FtrlOptimizer` with a default learning rate of 0.3.
       config: `RunConfig` object to configure the runtime settings.
+      loss_reduction: One of `tf.losses.Reduction` except `NONE`. Describes how
+        to reduce training loss over batch. Defaults to `SUM`.
     Returns:
       A `BaselineRegressor` estimator.
     """
 
     head = head_lib._regression_head_with_mean_squared_error_loss(  # pylint: disable=protected-access
         label_dimension=label_dimension,
-        weight_column=weight_column)
+        weight_column=weight_column,
+        loss_reduction=loss_reduction)
     def _model_fn(features, labels, mode, config):
       return _baseline_model_fn(
           features=features,

@@ -19,6 +19,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/compiler/xla/service/gpu/gpu_constants.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -48,6 +49,15 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
     // If buffer #i's address is already registered (e.g. external arguments or
     // result buffers), use that registered buffer.
     if (registered_buffers_.count(i)) {
+      se::DeviceMemoryBase address = FindOrDie(registered_buffers_, i);
+      if (reinterpret_cast<uintptr_t>(address.opaque()) %
+              kCudaMallocAlignBytes !=
+          0) {
+        return InternalError(
+            "Address of registered buffer %lld must be a multiple of %llx, but "
+            "was %p",
+            i, kCudaMallocAlignBytes, address.opaque());
+      }
       buffer_allocations->SetBuffer(i, FindOrDie(registered_buffers_, i));
       continue;
     }
@@ -67,6 +77,14 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
               tensorflow::strings::HumanReadableNumBytes(buffer_size).c_str(),
               i);
         }
+        if (reinterpret_cast<uintptr_t>(buffer_address.opaque()) %
+                kCudaMallocAlignBytes !=
+            0) {
+          return InternalError(
+              "Address returned by memory_allocator->Allocate must be a "
+              "multiple of %llx, but was %p",
+              kCudaMallocAlignBytes, buffer_address.opaque());
+        }
       }
       buffer_allocations->SetBuffer(i, buffer_address);
       if (allocation.IsPreallocatedTempBuffer()) {
@@ -77,6 +95,14 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
         seen_temp_buffer = true;
         buffer_allocations->temp_buffer_base_ = buffer_address;
       }
+    }
+  }
+
+  if (VLOG_IS_ON(2)) {
+    for (BufferAllocation::Index i = 0; i < num_buffers; ++i) {
+      const auto& buf = buffer_allocations->buffers_[i];
+      VLOG(2) << "Buffer " << i << " -> " << buf.opaque() << " (" << buf.size()
+              << "B)";
     }
   }
 

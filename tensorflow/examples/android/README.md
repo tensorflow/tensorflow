@@ -126,6 +126,10 @@ the Android NDK and SDK must be installed on your system.
 2.  The Android NDK is required to build the native (C/C++) TensorFlow code. The
     current recommended version is 14b, which may be found
     [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-14b-downloads).
+
+      * NDK 16, the revision released in November 2017, is **incompatible** with
+        Bazel. See [here](https://github.com/tensorflow/tensorflow/issues/14918).
+
 3.  The Android SDK and build tools may be obtained
     [here](https://developer.android.com/tools/revisions/build-tools.html), or
     alternatively as part of [Android
@@ -133,7 +137,15 @@ the Android NDK and SDK must be installed on your system.
     23 is required to build the TF Android demo (though it will run on API >= 21
     devices).
 
+      - The Android Studio SDK Manager's NDK installer will install the latest
+        revision of the NDK, which is **incompatible** with Bazel. You'll need
+        to download an older version manually, as (2) suggests.
+
 ##### Edit WORKSPACE
+
+NOTE: As long as you have the SDK and NDK installed, the `./configure` script
+will create these rules for you. Answer "Yes" when the script asks to
+automatically configure the `./WORKSPACE`.
 
 The Android entries in
 [`<workspace_root>/WORKSPACE`](../../../WORKSPACE#L19-L36) must be uncommented
@@ -156,7 +168,7 @@ download-models.gradle.
 
 **Optional**: If you wish to place the models in your assets manually, remove
 all of the `model_files` entries from the `assets` list in `tensorflow_demo`
-found in the `[BUILD](BUILD)` file. Then download and extract the archives
+found in the [`BUILD`](BUILD#L92) file. Then download and extract the archives
 yourself to the `assets` directory in the source tree:
 
 ```bash

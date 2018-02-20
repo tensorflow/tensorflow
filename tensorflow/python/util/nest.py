@@ -47,6 +47,30 @@ def _sorted(dict_):
     raise TypeError("nest only supports dicts with sortable keys.")
 
 
+def _is_namedtuple(instance, strict=False):
+  """Returns True iff `instance` is a `namedtuple`.
+
+  Args:
+    instance: An instance of a Python object.
+    strict: If True, `instance` is considered to be a `namedtuple` only if
+        it is a "plain" namedtuple. For instance, a class inheriting
+        from a `namedtuple` will be considered to be a `namedtuple`
+        iff `strict=False`.
+
+  Returns:
+    True if `instance` is a `namedtuple`.
+  """
+  # Attemp to limit the test to plain namedtuple (not stuff inheriting from it).
+  if not isinstance(instance, tuple):
+    return False
+  if strict and instance.__class__.__base__ != tuple:
+    return False
+  return (
+      hasattr(instance, "_fields") and
+      isinstance(instance._fields, _collections.Sequence) and
+      all(isinstance(f, _six.string_types) for f in instance._fields))
+
+
 def _sequence_like(instance, args):
   """Converts the sequence `args` to the same type as `instance`.
 
@@ -66,11 +90,7 @@ def _sequence_like(instance, args):
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
     return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
-  elif (isinstance(instance, tuple) and
-        hasattr(instance, "_fields") and
-        isinstance(instance._fields, _collections.Sequence) and
-        all(isinstance(f, _six.string_types) for f in instance._fields)):
-    # This is a namedtuple
+  elif _is_namedtuple(instance):
     return type(instance)(*args)
   else:
     # Not a namedtuple
@@ -116,7 +136,7 @@ def flatten(nest):
   used instead. The same convention is followed in `pack_sequence_as`. This
   correctly repacks dicts and `OrderedDict`s after they have been flattened,
   and also allows flattening an `OrderedDict` and then repacking it back using
-  a correponding plain dict, or vice-versa.
+  a corresponding plain dict, or vice-versa.
   Dictionaries with non-sortable keys cannot be flattened.
 
   Users must not modify any collections used in `nest` while this function is
@@ -135,8 +155,37 @@ def flatten(nest):
   return _pywrap_tensorflow.Flatten(nest)
 
 
+def _same_namedtuples(nest1, nest2):
+  """Returns True if the two namedtuples have the same name and fields."""
+  if nest1._fields != nest2._fields:
+    return False
+  if nest1.__class__.__name__ != nest2.__class__.__name__:
+    return False
+  return True
+
+
 def _recursive_assert_same_structure(nest1, nest2, check_types):
-  """Helper function for `assert_same_structure`."""
+  """Helper function for `assert_same_structure`.
+
+  See `assert_same_structure` for further information about namedtuples.
+
+  Args:
+    nest1: An arbitrarily nested structure.
+    nest2: An arbitrarily nested structure.
+    check_types: If `True` (default) types of sequences are checked as
+        well, including the keys of dictionaries. If set to `False`, for example
+        a list and a tuple of objects will look the same if they have the same
+        size. Note that namedtuples with identical name and fields are always
+        considered to have the same shallow structure.
+
+  Returns:
+    True if `nest1` and `nest2` have the same structure.
+
+  Raises:
+    ValueError: If the two structure don't have the same nested structre.
+    TypeError: If the two structure don't have the same sequence type.
+    ValueError: If the two dictionaries don't have the same set of keys.
+  """
   is_sequence_nest1 = is_sequence(nest1)
   if is_sequence_nest1 != is_sequence(nest2):
     raise ValueError(
@@ -149,11 +198,21 @@ def _recursive_assert_same_structure(nest1, nest2, check_types):
   if check_types:
     type_nest1 = type(nest1)
     type_nest2 = type(nest2)
-    if type_nest1 != type_nest2:
-      raise TypeError(
-          "The two structures don't have the same sequence type. First "
-          "structure has type %s, while second structure has type %s."
-          % (type_nest1, type_nest2))
+
+    # Duck-typing means that nest should be fine with two different namedtuples
+    # with identical name and fields.
+    if _is_namedtuple(nest1, True) and _is_namedtuple(nest2, True):
+      if not _same_namedtuples(nest1, nest2):
+        raise TypeError(
+            "The two namedtuples don't have the same sequence type. First "
+            "structure has type %s, while second structure has type %s."
+            % (type_nest1, type_nest2))
+    else:
+      if type_nest1 != type_nest2:
+        raise TypeError(
+            "The two structures don't have the same sequence type. First "
+            "structure has type %s, while second structure has type %s."
+            % (type_nest1, type_nest2))
 
     if isinstance(nest1, dict):
       keys1 = set(_six.iterkeys(nest1))
@@ -173,13 +232,24 @@ def _recursive_assert_same_structure(nest1, nest2, check_types):
 def assert_same_structure(nest1, nest2, check_types=True):
   """Asserts that two structures are nested in the same way.
 
+  Note that namedtuples with identical name and fields are always considered
+  to have the same shallow structure (even with `check_types=True`).
+  For intance, this code will print `True`:
+
+  ```python
+  def nt(a, b):
+    return collections.namedtuple('foo', 'a b')(a, b)
+  print(assert_same_structure(nt(0, 1), nt(2, 3)))
+  ```
+
   Args:
     nest1: an arbitrarily nested structure.
     nest2: an arbitrarily nested structure.
     check_types: if `True` (default) types of sequences are checked as
         well, including the keys of dictionaries. If set to `False`, for example
         a list and a tuple of objects will look the same if they have the same
-        size.
+        size. Note that namedtuples with identical name and fields are always
+        considered to have the same shallow structure.
 
   Raises:
     ValueError: If the two structures do not have the same number of elements or
@@ -293,10 +363,10 @@ def pack_sequence_as(structure, flat_sequence):
   If `structure` is or contains a dict instance, the keys will be sorted to
   pack the flat sequence in deterministic order. This is true also for
   `OrderedDict` instances: their sequence order is ignored, the sorting order of
-  keys is used instead. The same convention is followed in `pack_sequence_as`.
+  keys is used instead. The same convention is followed in `flatten`.
   This correctly repacks dicts and `OrderedDict`s after they have been
   flattened, and also allows flattening an `OrderedDict` and then repacking it
-  back using a correponding plain dict, or vice-versa.
+  back using a corresponding plain dict, or vice-versa.
   Dictionaries with non-sortable keys cannot be flattened.
 
   Args:
@@ -349,6 +419,8 @@ def map_structure(func, *structure, **check_types_dict):
       `True` (default) the types of iterables within the structures have to be
       same (e.g. `map_structure(func, [1], (1,))` raises a `TypeError`
       exception). To allow this set this argument to `False`.
+      Note that namedtuples with identical name and fields are always
+      considered to have the same shallow structure.
 
   Returns:
     A new structure with the same arity as `structure`, whose values correspond
@@ -425,7 +497,9 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
     shallow_tree: an arbitrarily nested structure.
     input_tree: an arbitrarily nested structure.
     check_types: if `True` (default) the sequence types of `shallow_tree` and
-      `input_tree` have to be the same.
+      `input_tree` have to be the same. Note that even with check_types==True,
+      this function will consider two different namedtuple classes with the same
+      name and _fields attribute to be the same class.
 
   Raises:
     TypeError: If `shallow_tree` is a sequence but `input_tree` is not.
@@ -441,10 +515,21 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
           "Input has type: %s." % type(input_tree))
 
     if check_types and not isinstance(input_tree, type(shallow_tree)):
-      raise TypeError(
-          "The two structures don't have the same sequence type. Input "
-          "structure has type %s, while shallow structure has type %s."
-          % (type(input_tree), type(shallow_tree)))
+      # Duck-typing means that nest should be fine with two different
+      # namedtuples with identical name and fields.
+      shallow_is_namedtuple = _is_namedtuple(shallow_tree, False)
+      input_is_namedtuple = _is_namedtuple(input_tree, False)
+      if shallow_is_namedtuple and input_is_namedtuple:
+        if not _same_namedtuples(shallow_tree, input_tree):
+          raise TypeError(
+              "The two namedtuples don't have the same sequence type. Input "
+              "structure has type %s, while shallow structure has type %s."
+              % (type(input_tree), type(shallow_tree)))
+      else:
+        raise TypeError(
+            "The two structures don't have the same sequence type. Input "
+            "structure has type %s, while shallow structure has type %s."
+            % (type(input_tree), type(shallow_tree)))
 
     if len(input_tree) != len(shallow_tree):
       raise ValueError(
@@ -456,12 +541,12 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
       if set(input_tree) != set(shallow_tree):
         raise ValueError(
             "The two structures don't have the same keys. Input "
-            "structure has keys %s, while shallow structure has keys %s."
-            % (list(_six.iterkeys(input_tree)),
-               list(_six.iterkeys(shallow_tree))))
+            "structure has keys %s, while shallow structure has keys %s." %
+            (list(_six.iterkeys(input_tree)),
+             list(_six.iterkeys(shallow_tree))))
 
-      input_tree = list(_six.iteritems(input_tree))
-      shallow_tree = list(_six.iteritems(shallow_tree))
+      input_tree = list(sorted(_six.iteritems(input_tree)))
+      shallow_tree = list(sorted(_six.iteritems(shallow_tree)))
 
     for shallow_branch, input_branch in zip(shallow_tree, input_tree):
       assert_shallow_structure(shallow_branch, input_branch,
@@ -677,6 +762,85 @@ def get_traverse_shallow_structure(traverse_fn, structure):
   return _sequence_like(structure, level_traverse)
 
 
+def yield_flat_paths(nest):
+  """Yields paths for some nested structure.
+
+  Paths are lists of objects which can be str-converted, which may include
+  integers or other types which are used as indices in a dict.
+
+  The flat list will be in the corresponding order as if you called
+  `snt.nest.flatten` on the structure. This is handy for naming Tensors such
+  the TF scope structure matches the tuple structure.
+
+  E.g. if we have a tuple `value = Foo(a=3, b=Bar(c=23, d=42))`
+
+  ```shell
+  >>> nest.flatten(value)
+  [3, 23, 42]
+  >>> list(nest.yield_flat_paths(value))
+  [('a',), ('b', 'c'), ('b', 'd')]
+  ```
+
+  ```shell
+  >>> list(nest.yield_flat_paths({'a': [3]}))
+  [('a', 0)]
+  >>> list(nest.yield_flat_paths({'a': 3}))
+  [('a',)]
+  ```
+
+  Args:
+    nest: the value to produce a flattened paths list for.
+
+  Yields:
+    Tuples containing index or key values which form the path to a specific
+      leaf value in the nested structure.
+  """
+
+  # The _maybe_add_final_path_element function is used below in order to avoid
+  # adding trailing slashes when the sub-element recursed into is a leaf.
+  if isinstance(nest, dict):
+    for key in _sorted(nest):
+      value = nest[key]
+      for sub_path in yield_flat_paths(value):
+        yield (key,) + sub_path
+  elif _is_namedtuple(nest):
+    for key in nest._fields:
+      value = getattr(nest, key)
+      for sub_path in yield_flat_paths(value):
+        yield (key,) + sub_path
+  elif isinstance(nest, _six.string_types):
+    yield ()
+  elif isinstance(nest, _collections.Sequence):
+    for idx, value in enumerate(nest):
+      for sub_path in yield_flat_paths(value):
+        yield (idx,) + sub_path
+  else:
+    yield ()
+
+
+def flatten_with_joined_string_paths(structure, separator="/"):
+  """Returns a list of (string path, data element) tuples.
+
+  The order of tuples produced matches that of `nest.flatten`. This allows you
+  to flatten a nested structure while keeping information about where in the
+  structure each data element was located. See `nest.yield_flat_paths`
+  for more information.
+
+  Args:
+    structure: the nested structure to flatten.
+    separator: string to separate levels of hierarchy in the results, defaults
+      to '/'.
+
+  Returns:
+    A list of (string, data element) tuples.
+  """
+  flat_paths = yield_flat_paths(structure)
+  def stringify_and_join(path_elements):
+    return separator.join(str(path_element) for path_element in path_elements)
+  flat_string_paths = [stringify_and_join(path) for path in flat_paths]
+  return list(zip(flat_string_paths, flatten(structure)))
+
+
 _pywrap_tensorflow.RegisterSequenceClass(_collections.Sequence)
 
 
@@ -691,6 +855,8 @@ _allowed_symbols = [
     "flatten_up_to",
     "map_structure_up_to",
     "get_traverse_shallow_structure",
+    "yield_flat_paths",
+    "flatten_with_joined_string_paths",
 ]
 
 remove_undocumented(__name__, _allowed_symbols)

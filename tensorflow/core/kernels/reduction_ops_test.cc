@@ -174,6 +174,11 @@ static void BM_Min2DToScalarGPU(int iters, int num_x, int num_y) {
 }
 BENCHMARK(BM_Min2DToScalarGPU)->RangePair(2048, 8192, 2048, 8192);
 
+static void BM_Min2DToScalarGPUHalf(int iters, int num_x, int num_y) {
+  ReduceToScalar<Eigen::half>(iters, "gpu", "Min", num_x, num_y);
+}
+BENCHMARK(BM_Min2DToScalarGPUHalf)->RangePair(2048, 8192, 2048, 8192);
+
 static void BM_Bool2DToScalarGPU(int iters, int num_x, int num_y) {
   ReduceToScalar<bool>(iters, "gpu", "All", num_x, num_y);
 }

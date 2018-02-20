@@ -57,7 +57,7 @@ get one inference every two seconds.
 
 Having this estimate helps you plan for what you’ll be able to realistically
 achieve on a device. If the model is using too many ops, then there are a lot of
-opportunities to optimize the architecture to reduce that number. 
+opportunities to optimize the architecture to reduce that number.
 
 Advanced techniques include [SqueezeNet](https://arxiv.org/abs/1602.07360)
 and [MobileNet](https://arxiv.org/abs/1704.04861), which are architectures
@@ -278,7 +278,7 @@ The run above was on your desktop, but the tool also works on Android, which is
 where it’s most useful for mobile development. Here’s an example command line to
 run it on a 64-bit ARM device:
 
-    bazel build -c opt --config=android_arm64 \ 
+    bazel build -c opt --config=android_arm64 \
     tensorflow/tools/benchmark:benchmark_model
     adb push bazel-bin/tensorflow/tools/benchmark/benchmark_model /data/local/tmp
     adb push /tmp/tensorflow_inception_graph.pb /data/local/tmp/

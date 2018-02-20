@@ -14,34 +14,59 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
 
+#include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
+namespace {
+const char kDeviceSuffixReplicatedCore[] = "REPLICATED_CORE";
+const char kShardingAttribute[] = "_XlaSharding";
+}  // namespace
 
-static const char DEVICE_SUFFIX_REPLICATED_CORE[] = "REPLICATED_CORE";
+namespace {
+xla::StatusOr<tensorflow::gtl::optional<xla::OpSharding>>
+GetShardingFromNodeDef(const NodeDef& node_def) {
+  if (!HasNodeAttr(node_def, kShardingAttribute)) {
+    return tensorflow::gtl::optional<xla::OpSharding>();
+  }
+  string value;
+  xla::OpSharding sharding;
+  TF_RETURN_IF_ERROR(GetNodeAttr(node_def, kShardingAttribute, &value));
+  if (!sharding.ParseFromString(value)) {
+    return xla::InvalidArgument(
+        "Experimental _XlaSharding attribute was not a valid encoded "
+        "xla::OpSharding proto.");
+  }
+  return tensorflow::gtl::optional<xla::OpSharding>(sharding);
+}
 
-static Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
+Status CoreOutOfRangeError(int core, int num_cores_per_replica) {
   return errors::InvalidArgument(
       "Invalid replicated core id: ", core,
       "; num_cores_per_replica=", num_cores_per_replica);
 }
+}  // namespace
 
 xla::StatusOr<tensorflow::gtl::optional<xla::OpSharding>>
-ParseShardingFromDevice(const string& device_name, int num_cores_per_replica) {
+ParseShardingFromDevice(
+    const string& device_name, int num_cores_per_replica,
+    tensorflow::gtl::optional<xla::OpSharding> explicit_sharding) {
   if (device_name.empty()) {
     return tensorflow::gtl::optional<xla::OpSharding>();
   }
-
   DeviceNameUtils::ParsedName parsed_device;
   if (!DeviceNameUtils::ParseFullName(device_name, &parsed_device)) {
     return errors::InvalidArgument("Malformed assigned device '", device_name,
                                    "'");
   }
-  if (!parsed_device.has_type ||
-      !StringPiece(parsed_device.type)
-           .ends_with(DEVICE_SUFFIX_REPLICATED_CORE)) {
+
+  if (explicit_sharding.has_value()) {
+    return explicit_sharding;
+  } else if (!parsed_device.has_type || !parsed_device.has_id ||
+             !StringPiece(parsed_device.type)
+                  .contains(kDeviceSuffixReplicatedCore)) {
     return tensorflow::gtl::optional<xla::OpSharding>();
   } else {
     const int core = parsed_device.id;
@@ -49,8 +74,16 @@ ParseShardingFromDevice(const string& device_name, int num_cores_per_replica) {
       return CoreOutOfRangeError(core, num_cores_per_replica);
     }
     return tensorflow::gtl::optional<xla::OpSharding>(
-        xla::ShardingBuilder::AssignDevice(core));
+        xla::sharding_builder::AssignDevice(core));
   }
+}
+
+xla::StatusOr<tensorflow::gtl::optional<xla::OpSharding>>
+ParseShardingFromDevice(const NodeDef& node_def, int num_cores_per_replica) {
+  const string& device_name = node_def.device();
+  TF_ASSIGN_OR_RETURN(tensorflow::gtl::optional<xla::OpSharding> sharding,
+                      GetShardingFromNodeDef(node_def));
+  return ParseShardingFromDevice(device_name, num_cores_per_replica, sharding);
 }
 
 xla::StatusOr<tensorflow::gtl::optional<xla::OpSharding>>
@@ -59,14 +92,20 @@ ParseShardingFromDevice(const Node& node, int num_cores_per_replica) {
   if (device_name.empty()) {
     device_name = node.requested_device();
   }
-  return ParseShardingFromDevice(device_name, num_cores_per_replica);
+  TF_ASSIGN_OR_RETURN(tensorflow::gtl::optional<xla::OpSharding> sharding,
+                      GetShardingFromNodeDef(node.def()));
+  return ParseShardingFromDevice(device_name, num_cores_per_replica, sharding);
 }
+
 void SetShardingDeviceAssignmentFromNode(const Node& src, Node* dst) {
   string device_name = src.assigned_device_name();
   if (device_name.empty()) {
     device_name = src.requested_device();
   }
   dst->set_assigned_device_name(device_name);
+  if (const AttrValue* attr = src.attrs().Find(kShardingAttribute)) {
+    dst->AddAttr(kShardingAttribute, *attr);
+  }
 }
 
 }  // namespace tensorflow

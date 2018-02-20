@@ -19,8 +19,8 @@ limitations under the License.
 
 namespace tensorflow {
 
-using shape_inference::ShapeHandle;
 using shape_inference::InferenceContext;
+using shape_inference::ShapeHandle;
 
 // --------------------------------------------------------------------------
 static Status ApplySdcaOptimizerShapeFn(InferenceContext* c) {
@@ -63,78 +63,14 @@ REGISTER_OP("SdcaOptimizer")
     .Output("out_example_state_data: float")
     .Output("out_delta_sparse_weights: num_sparse_features * float")
     .Output("out_delta_dense_weights: num_dense_features * float")
-    .SetShapeFn(ApplySdcaOptimizerShapeFn)
-    .Doc(R"doc(
-Distributed version of Stochastic Dual Coordinate Ascent (SDCA) optimizer for
-linear models with L1 + L2 regularization. As global optimization objective is
-strongly-convex, the optimizer optimizes the dual objective at each step. The
-optimizer applies each update one example at a time. Examples are sampled
-uniformly, and the optimizer is learning rate free and enjoys linear convergence
-rate.
-
-[Proximal Stochastic Dual Coordinate Ascent](http://arxiv.org/pdf/1211.2717v1.pdf).<br>
-Shai Shalev-Shwartz, Tong Zhang. 2012
-
-$$Loss Objective = \sum f_{i} (wx_{i}) + (l2 / 2) * |w|^2 + l1 * |w|$$
-
-[Adding vs. Averaging in Distributed Primal-Dual Optimization](http://arxiv.org/abs/1502.03508).<br>
-Chenxin Ma, Virginia Smith, Martin Jaggi, Michael I. Jordan,
-Peter Richtarik, Martin Takac. 2015
-
-[Stochastic Dual Coordinate Ascent with Adaptive Probabilities](https://arxiv.org/abs/1502.08053).<br>
-Dominik Csiba, Zheng Qu, Peter Richtarik. 2015
-
-loss_type: Type of the primal loss. Currently SdcaSolver supports logistic,
-  squared and hinge losses.
-adaptative: Whether to use Adapative SDCA for the inner loop.
-num_sparse_features: Number of sparse feature groups to train on.
-num_sparse_features_with_values: Number of sparse feature groups with values
-  associated with it, otherwise implicitly treats values as 1.0.
-num_dense_features: Number of dense feature groups to train on.
-l1: Symmetric l1 regularization strength.
-l2: Symmetric l2 regularization strength.
-num_loss_partitions: Number of partitions of the global loss function.
-num_inner_iterations: Number of iterations per mini-batch.
-sparse_example_indices: a list of vectors which contain example indices.
-sparse_feature_indices: a list of vectors which contain feature indices.
-sparse_feature_values: a list of vectors which contains feature value
-  associated with each feature group.
-dense_features: a list of matrices which contains the dense feature values.
-example_weights: a vector which contains the weight associated with each
-  example.
-example_labels: a vector which contains the label/target associated with each
-  example.
-sparse_indices: a list of vectors where each value is the indices which has
-  corresponding weights in sparse_weights. This field maybe omitted for the
-  dense approach.
-sparse_weights: a list of vectors where each value is the weight associated with
-  a sparse feature group.
-dense_weights: a list of vectors where the values are the weights associated
- with a dense feature group.
-example_state_data: a list of vectors containing the example state data.
-out_example_state_data: a list of vectors containing the updated example state
-  data.
-out_delta_sparse_weights: a list of vectors where each value is the delta
-  weights associated with a sparse feature group.
-out_delta_dense_weights: a list of vectors where the values are the delta
-  weights associated with a dense feature group.
-)doc");
+    .SetShapeFn(ApplySdcaOptimizerShapeFn);
 
 REGISTER_OP("SdcaShrinkL1")
     .Attr("num_features: int >= 0")
     .Attr("l1: float")
     .Attr("l2: float")
     .Input("weights: Ref(num_features * float)")
-    .SetShapeFn(shape_inference::UnknownShape)
-    .Doc(R"doc(
-Applies L1 regularization shrink step on the parameters.
-
-num_features: Number of feature groups to apply shrinking step.
-l1: Symmetric l1 regularization strength.
-l2: Symmetric l2 regularization strength. Should be a positive float.
-weights: a list of vectors where each value is the weight associated with a
-  feature group.
-)doc");
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("SdcaFprint")
     .Input("input: string")
@@ -146,13 +82,6 @@ REGISTER_OP("SdcaFprint")
       TF_RETURN_IF_ERROR(c->Concatenate(handle, c->Vector(2), &output_shape));
       c->set_output(0, output_shape);
       return Status::OK();
-    })
-    .Doc(R"doc(
-Computes fingerprints of the input strings.
-
-input: vector of strings to compute fingerprints on.
-output: a (N,2) shaped matrix where N is the number of elements in the input
-  vector. Each row contains the low and high parts of the fingerprint.
-)doc");
+    });
 
 }  // namespace tensorflow

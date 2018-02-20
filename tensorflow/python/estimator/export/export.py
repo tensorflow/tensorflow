@@ -36,12 +36,14 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 
 _SINGLE_FEATURE_DEFAULT_NAME = 'feature'
 _SINGLE_RECEIVER_DEFAULT_NAME = 'input'
 
 
+@tf_export('estimator.export.ServingInputReceiver')
 class ServingInputReceiver(collections.namedtuple(
     'ServingInputReceiver',
     ['features', 'receiver_tensors', 'receiver_tensors_alternatives'])):
@@ -57,7 +59,7 @@ class ServingInputReceiver(collections.namedtuple(
       groups of receiver tensors, each of which may be a `Tensor` or a dict of
       string to `Tensor`.  These named receiver tensor alternatives generate
       additional serving signatures, which may be used to feed inputs at
-      different points within the input reciever subgraph.  A typical usage is
+      different points within the input receiver subgraph.  A typical usage is
       to allow feeding raw feature `Tensor`s *downstream* of the
       tf.parse_example() op.  Defaults to None.
   """
@@ -118,6 +120,7 @@ class ServingInputReceiver(collections.namedtuple(
         receiver_tensors_alternatives=receiver_tensors_alternatives)
 
 
+@tf_export('estimator.export.build_parsing_serving_input_receiver_fn')
 def build_parsing_serving_input_receiver_fn(feature_spec,
                                             default_batch_size=None):
   """Build a serving_input_receiver_fn expecting fed tf.Examples.
@@ -146,6 +149,7 @@ def build_parsing_serving_input_receiver_fn(feature_spec,
   return serving_input_receiver_fn
 
 
+@tf_export('estimator.export.build_raw_serving_input_receiver_fn')
 def build_raw_serving_input_receiver_fn(features, default_batch_size=None):
   """Build a serving_input_receiver_fn expecting feature Tensors.
 
@@ -191,7 +195,8 @@ def build_all_signature_defs(receiver_tensors,
   if not isinstance(receiver_tensors, dict):
     receiver_tensors = {_SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
   if export_outputs is None or not isinstance(export_outputs, dict):
-    raise ValueError('export_outputs must be a dict.')
+    raise ValueError('export_outputs must be a dict and not'
+                     '{}'.format(type(export_outputs)))
 
   signature_def_map = {}
   excluded_signatures = {}

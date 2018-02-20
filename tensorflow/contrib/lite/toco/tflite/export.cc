@@ -26,6 +26,9 @@ namespace toco {
 
 namespace tflite {
 
+using flatbuffers::FlatBufferBuilder;
+using flatbuffers::Offset;
+using flatbuffers::Vector;
 using ::tflite::Buffer;
 using ::tflite::BuiltinOperator;
 using ::tflite::BuiltinOperator_CUSTOM;
@@ -39,9 +42,6 @@ using ::tflite::Operator;
 using ::tflite::OperatorCode;
 using ::tflite::SubGraph;
 using ::tflite::Tensor;
-using flatbuffers::FlatBufferBuilder;
-using flatbuffers::Offset;
-using flatbuffers::Vector;
 
 namespace {
 
@@ -62,7 +62,7 @@ namespace details {
 void LoadTensorsMap(const Model& model, TensorsMap* tensors_map) {
   // First find a list of unique array names.
   std::set<string> names;
-  for (const auto& array_pair : model.arrays) {
+  for (const auto& array_pair : model.GetArrayMap()) {
     names.insert(array_pair.first);
   }
 
@@ -96,7 +96,7 @@ Offset<Vector<Offset<Tensor>>> ExportTensors(
   // tensors in the tensors_map.
   std::map<int, Offset<Tensor>> ordered_tensors;
 
-  for (const auto& array_pair : model.arrays) {
+  for (const auto& array_pair : model.GetArrayMap()) {
     const string& tensor_name = array_pair.first;
     const toco::Array& array = *array_pair.second;
 
@@ -188,19 +188,26 @@ Offset<Vector<Offset<OperatorCode>>> ExportOperatorCodes(
     const details::OperatorKey operator_key = GetOperatorKey(*op);
     int op_index = operators_map.at(operator_key);
 
-    if (ops_by_type.count(op->type) == 0) {
-      LOG(FATAL) << "Unsupported operator: " << HelpfulOperatorTypeName(*op);
+    string name = HelpfulOperatorTypeName(*op);
+    bool is_builtin = false;
+    if (ops_by_type.count(op->type) != 0) {
+      name = ops_by_type.at(op->type)->name();
+      is_builtin = (builtin_ops.count(name) > 0);
     }
 
-    string name = ops_by_type.at(op->type)->name();
-    if (builtin_ops.count(name) > 0) {
+    if (is_builtin) {
       ordered_opcodes[op_index] =
           CreateOperatorCode(*builder, builtin_ops[name], 0);
     } else {
-      // If use the custom operation code if it's available in the OperatorKey.
+      // This could be a kTensorFlowUnsupported, in which case we should be
+      // able to retrieve the original Tensorflow name from the OperatorKey, or
+      // this could be a proper TOCO operator that is completely unknown to TF
+      // Lite.
       if (!operator_key.custom_code.empty()) {
         name = operator_key.custom_code;
       }
+      // Either way, this is an operator that is not supported by TF Lite,
+      // so we output it as a custom op and add it to the error summary.
       if (error_summary) {
         error_summary->insert(name);
       }
@@ -226,23 +233,26 @@ Offset<Vector<Offset<Operator>>> ExportOperators(
   // The operators are in execution order, so we just follow tf.mini order.
   std::vector<Offset<Operator>> op_vector;
   for (const auto& op : model.operators) {
-    if (ops_by_type.count(op->type) == 0) {
-      LOG(FATAL) << "Op type '" << OperatorTypeName(op->type)
-                 << "' not supported";
-    }
-
     std::vector<int32_t> inputs;
     for (const string& input : op->inputs) {
-      inputs.push_back(tensors_map.at(input));
+      // -1 is the ID for optional tensor in TFLite output
+      int id = model.IsOptionalArray(input) ? -1 : tensors_map.at(input);
+      inputs.push_back(id);
     }
-
     std::vector<int32_t> outputs;
     for (const string& output : op->outputs) {
       outputs.push_back(tensors_map.at(output));
     }
 
-    auto options = ops_by_type.at(op->type)->Serialize(*op, builder);
     int op_index = operators_map.at(GetOperatorKey(*op));
+
+    // This is a custom op unless we can find it in ops_by_type, and even then
+    // it could be a custom op (such as kTensorFlowUnsupported).
+
+    auto options = Options::Custom(0);
+    if (ops_by_type.count(op->type) != 0) {
+      options = ops_by_type.at(op->type)->Serialize(*op, builder);
+    }
     // The only supported CustomOptionFormat is FLEXBUFFERS now.
     op_vector.push_back(CreateOperator(
         *builder, op_index, builder->CreateVector(inputs),

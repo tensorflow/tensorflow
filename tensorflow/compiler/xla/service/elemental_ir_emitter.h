@@ -39,7 +39,7 @@ class ElementalIrEmitter {
         module_(module),
         hlo_module_config_(hlo_module_config) {}
 
-  virtual ~ElementalIrEmitter() {}
+  virtual ~ElementalIrEmitter() = default;
 
   virtual StatusOr<llvm::Value*> EmitUnaryOp(const HloInstruction* op,
                                              llvm::Value* operand_value) const;
@@ -86,11 +86,37 @@ class ElementalIrEmitter {
   virtual llvm::Value* EmitFloatMin(llvm::Value* lhs_value,
                                     llvm::Value* rhs_value) const;
 
+  llvm::Value* EmitIntegralMax(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                               bool is_signed) const;
+
+  llvm::Value* EmitIntegralMin(llvm::Value* lhs_value, llvm::Value* rhs_value,
+                               bool is_signed) const;
+
   virtual StatusOr<llvm::Value*> EmitErfInv(PrimitiveType prim_type,
                                             llvm::Value* value) const;
 
   virtual StatusOr<llvm::Value*> EmitErfcInv(PrimitiveType prim_type,
                                              llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitAtan2(PrimitiveType prim_type,
+                                           llvm::Value* lhs,
+                                           llvm::Value* rhs) const;
+
+  virtual StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
+                                         llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitSin(PrimitiveType prim_type,
+                                         llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitCos(PrimitiveType prim_type,
+                                         llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitExp(PrimitiveType prim_type,
+                                         llvm::Value* value) const;
+
+  virtual StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type,
+                                         llvm::Value* lhs,
+                                         llvm::Value* rhs) const;
 
   virtual StatusOr<llvm::Value*> EmitReducePrecision(const HloInstruction* hlo,
                                                      llvm::Value* x) const;

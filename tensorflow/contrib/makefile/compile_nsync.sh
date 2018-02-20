@@ -28,7 +28,7 @@ usage="usage: $prog [-t linux|ios|android|macos|native]
         [-a architecture] [-v android_api_version]
 
 A script to build nsync for tensorflow.
-This script can be run on Linux or MacOS host platforms, and can target 
+This script can be run on Linux or MacOS host platforms, and can target
 Linux, MacOS, iOS, or Android.
 
 Options:

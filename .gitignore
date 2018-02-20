@@ -6,7 +6,7 @@ node_modules
 /bazel-*
 /bazel_pip
 /tools/python_bin_path.sh
-/tools/git/gen
+/tensorflow/tools/git/gen
 /pip_test
 /_python_build
 *.pyc
@@ -27,3 +27,10 @@ Podfile.lock
 /tensorflow/contrib/lite/examples/ios/simple/data/*.txt
 /tensorflow/contrib/lite/examples/ios/simple/data/*.tflite
 xcuserdata/**
+
+# Android
+.gradle
+.idea
+*.iml
+local.properties
+gradleBuild

@@ -40,8 +40,8 @@ message TensorProto {
   // be set.  The values hold the flattened representation of the tensor in
   // row major order.
 
-  // DT_HALF. Note that since protobuf has no int16 type, we'll have some
-  // pointless zero padding for each value here.
+  // DT_HALF, DT_BFLOAT16. Note that since protobuf has no int16 type, we'll
+  // have some pointless zero padding for each value here.
   repeated int32 half_val = 13 [packed = true];
 
   // DT_FLOAT.

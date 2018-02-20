@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-#ifndef THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_
-#define THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_
+#ifndef TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_
+#define TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_
 
 #include <vector>
 #include "tensorflow/contrib/boosted_trees/lib/utils/examples_iterable.h"
@@ -56,7 +56,7 @@ class BatchFeatures {
     *num_sparse_int_features = sparse_int_feature_columns_.size();
     if (*num_dense_float_features == 0 && *num_sparse_float_features == 0 &&
         *num_sparse_int_features == 0) {
-      return errors::FailedPrecondition("Not intialized yet.");
+      return errors::FailedPrecondition("Not initialized yet.");
     }
     return Status::OK();
   }
@@ -92,4 +92,4 @@ class BatchFeatures {
 }  // namespace boosted_trees
 }  // namespace tensorflow
 
-#endif  // THIRD_PARTY_TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_
+#endif  // TENSORFLOW_CONTRIB_BOOSTED_TREES_LIB_UTILS_BATCH_FEATURES_H_

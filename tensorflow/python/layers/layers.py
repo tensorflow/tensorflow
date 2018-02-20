@@ -22,6 +22,7 @@
 @@Conv1D
 @@Conv2D
 @@Conv3D
+@@SeparableConv1D
 @@SeparableConv2D
 @@Conv2DTranspose
 @@Conv3DTranspose
@@ -43,6 +44,7 @@
 @@conv1d
 @@conv2d
 @@conv3d
+@@separable_conv1d
 @@separable_conv2d
 @@conv2d_transpose
 @@conv3d_transpose
@@ -78,6 +80,7 @@ from tensorflow.python.layers.core import dropout
 from tensorflow.python.layers.core import flatten
 
 # Convolutional layers.
+from tensorflow.python.layers.convolutional import SeparableConv1D
 from tensorflow.python.layers.convolutional import SeparableConv2D
 from tensorflow.python.layers.convolutional import SeparableConvolution2D
 from tensorflow.python.layers.convolutional import Conv2DTranspose
@@ -91,6 +94,7 @@ from tensorflow.python.layers.convolutional import Convolution2D
 from tensorflow.python.layers.convolutional import Conv3D
 from tensorflow.python.layers.convolutional import Convolution3D
 
+from tensorflow.python.layers.convolutional import separable_conv1d
 from tensorflow.python.layers.convolutional import separable_conv2d
 from tensorflow.python.layers.convolutional import conv2d_transpose
 from tensorflow.python.layers.convolutional import conv3d_transpose

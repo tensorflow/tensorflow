@@ -80,7 +80,7 @@ class NodeStepper(object):
   when they are required as data dependencies.
 
   The temporary directories are automatically clean when the NodeStepper
-  instance exits as a context mananger.
+  instance exits as a context manager.
 
   Once the tracing is complete, it will issue a run() call on the
   underlying session, using the aforementioned feed_dict prepared by the input

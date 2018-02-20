@@ -44,7 +44,9 @@ class XlaContext : public ResourceBase {
 
   // Creates a new XlaContext.
   XlaContext(XlaCompiler* compiler, xla::ComputationBuilder* builder,
-             bool allow_cpu_custom_calls, bool resolve_compile_time_constants);
+             bool allow_cpu_custom_calls, bool resolve_compile_time_constants,
+             const std::function<TensorShape(const TensorShape&, DataType)>*
+                 variable_representation_shape_fn);
 
   // Virtual method defined by ResourceBase.
   string DebugString() override;
@@ -56,14 +58,9 @@ class XlaContext : public ResourceBase {
   xla::ComputationBuilder* builder();
 
   bool allow_cpu_custom_calls() const { return allow_cpu_custom_calls_; }
-  bool has_context_parameter() const { return has_context_parameter_; }
 
   const std::vector<XlaExpression>& args() const { return args_; }
   void set_args(std::vector<XlaExpression> args);
-
-  // Get the runtime context parameter, adding one if it does not already exist.
-  // Dies if not compiling a local executable.
-  const xla::ComputationDataHandle& GetOrCreateRuntimeContextParameter();
 
   const std::vector<XlaExpression>& retvals() { return retvals_; }
 
@@ -76,16 +73,25 @@ class XlaContext : public ResourceBase {
   Status AddConstRetval(int retval_index, DataType dtype,
                         const xla::Literal& literal);
 
-  // Creates a resource with resource `kind` and initial type `type` and
-  // value `handle`. `name` is a descriptive name for use in error messages.
+  // Creates a resource with resource `kind` and initial value `handle`. `name`
+  // is a descriptive name for use in error messages. See the `XlaResource`
+  // constructor for a description of the remaining arguments.
   // Fails if the resource already exists.
   Status CreateResource(XlaResource::Kind kind, int arg_num, string name,
-                        DataType type, const xla::ComputationDataHandle& handle,
+                        DataType type, TensorShape shape,
+                        const xla::ComputationDataHandle& handle,
+                        int64 tensor_array_size,
+                        const std::set<string>& tensor_array_gradients,
                         XlaResource** resource);
 
   const std::vector<std::unique_ptr<XlaResource>>& resources() {
     return resources_;
   }
+
+  // Returns the XLA shape to be used to represent a variable of TF `shape`
+  // and `type`.
+  TensorShape VariableRepresentationShape(const TensorShape& shape,
+                                          DataType type) const;
 
   // Get an XLA lambda to compute Max. This is cached in the
   // XlaContext since it may be used by multiple Ops. There is a
@@ -102,6 +108,11 @@ class XlaContext : public ResourceBase {
   // separate specialization of the computation for each DataType.
   const xla::Computation* GetOrCreateAdd(const DataType type);
 
+  // Get an XLA lambda to compute Mul. This is cached in the
+  // XlaContext since it may be used by multiple Ops. There is a
+  // separate specialization of the computation for each DataType.
+  const xla::Computation* GetOrCreateMul(const DataType type);
+
   // The name of the XlaContext resource during symbolic graph execution.
   static const char kXlaContextResourceName[];
 
@@ -116,15 +127,8 @@ class XlaContext : public ResourceBase {
   const bool allow_cpu_custom_calls_;
 
   // If true, constant return values are returned as Tensors instead of
-  // run-time computation outptus.
+  // run-time computation outputs.
   const bool resolve_compile_time_constants_;
-
-  // When 'has_context_parameter_' is true, this is the computation handle
-  // for an additional final parameter to the computation, through which will be
-  // passed a XlaLocalRuntimeContext* at runtime. Created on demand by
-  // GetOrCreateRuntimeContextParameter().
-  bool has_context_parameter_ = false;
-  xla::ComputationDataHandle context_parameter_;
 
   // Arguments to the Tensorflow graph, indexed by _Arg index.
   // Includes both compile-time constant arguments and runtime parameters.
@@ -135,6 +139,11 @@ class XlaContext : public ResourceBase {
 
   // Holds ownership of resources. The resources are not ordered.
   std::vector<std::unique_ptr<XlaResource>> resources_;
+
+  // A function that describes how variable shapes should be represented
+  // in XLA. Variable values will be reshaped to this shape. Must be non-null.
+  const std::function<TensorShape(const TensorShape&, DataType)>*
+      variable_representation_shape_fn_;
 
   // Cache of prebuilt computations indexed by their type.
   using ComputationMap = std::map<DataType, xla::Computation>;
@@ -154,6 +163,9 @@ class XlaContext : public ResourceBase {
 
   // Cached computation to compute Sum of two elements, specialized by type.
   ComputationMap add_func_;
+
+  // Cached computation to compute Mul of two elements, specialized by type.
+  ComputationMap mul_func_;
 
   // Cached computation to compute Sigmoid of an element, specialized by type.
   ComputationMap sigmoid_func_;

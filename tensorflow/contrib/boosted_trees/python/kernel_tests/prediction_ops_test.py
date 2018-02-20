@@ -93,7 +93,7 @@ def _set_float_split(split, feat_col, thresh, l_id, r_id, feature_dim_id=None):
   split.left_id = l_id
   split.right_id = r_id
   if feature_dim_id is not None:
-    split.feature_id = feature_dim_id
+    split.dimension_id = feature_dim_id
 
 
 def _set_categorical_id_split(split, feat_col, feat_id, l_id, r_id):

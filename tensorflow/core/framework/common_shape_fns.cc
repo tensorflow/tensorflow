@@ -49,7 +49,11 @@ Status GetWindowedOutputSizeVerboseV2(int64 input_size, int64 filter_size,
       break;
   }
   if (*output_size < 0) {
-    return errors::InvalidArgument("computed output size would be negative");
+    return errors::InvalidArgument(
+        "Computed output size would be negative: ", *output_size,
+        " [input_size: ", input_size,
+        ", effective_filter_size: ", effective_filter_size,
+        ", stride: ", stride, "]");
   }
   return Status::OK();
 }
@@ -397,6 +401,15 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(
       CheckFormatConstraintsOnShape(data_format, filter_shape, "filter", c));
 
+  std::vector<int32> dilations;
+  TF_RETURN_IF_ERROR(c->GetAttr("dilations", &dilations));
+
+  if (dilations.size() != 4) {
+    return errors::InvalidArgument(
+        "Conv2D requires the dilation attribute to contain 4 values, but got: ",
+        dilations.size());
+  }
+
   std::vector<int32> strides;
   TF_RETURN_IF_ERROR(c->GetAttr("strides", &strides));
 
@@ -410,6 +423,8 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
 
   const int32 stride_rows = GetTensorDim(strides, data_format, 'H');
   const int32 stride_cols = GetTensorDim(strides, data_format, 'W');
+  const int32 dilation_rows = GetTensorDim(dilations, data_format, 'H');
+  const int32 dilation_cols = GetTensorDim(dilations, data_format, 'W');
 
   DimensionHandle batch_size_dim;
   DimensionHandle input_depth_dim;
@@ -447,12 +462,12 @@ Status Conv2DShape(shape_inference::InferenceContext* c) {
   TF_RETURN_IF_ERROR(c->GetAttr("padding", &padding));
 
   DimensionHandle output_rows, output_cols;
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(c, input_spatial_dims[0],
-                                                   filter_rows_dim, stride_rows,
-                                                   padding, &output_rows));
-  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDims(c, input_spatial_dims[1],
-                                                   filter_cols_dim, stride_cols,
-                                                   padding, &output_cols));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, input_spatial_dims[0], filter_rows_dim, dilation_rows, stride_rows,
+      padding, &output_rows));
+  TF_RETURN_IF_ERROR(GetWindowedOutputSizeFromDimsV2(
+      c, input_spatial_dims[1], filter_cols_dim, dilation_cols, stride_cols,
+      padding, &output_cols));
 
   ShapeHandle output_shape;
   TF_RETURN_IF_ERROR(
@@ -1114,16 +1129,20 @@ Status ConcatShapeHelper(InferenceContext* c, int start_value_index,
     for (int i = start_value_index; i < end_value_index; ++i) {
       if (rank == InferenceContext::kUnknownRank) rank = c->Rank(c->input(i));
       if (rank != InferenceContext::kUnknownRank) {
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
+        break;
       }
     }
     if (rank == InferenceContext::kUnknownRank) {
       c->set_output(0, c->UnknownShape());
       return Status::OK();
-    }
-    if (rank == 0) {
+    } else if (rank == 0) {
       return errors::InvalidArgument(
           "Can't concatenate scalars (use tf.stack instead)");
+    } else {
+      for (int i = start_value_index; i < end_value_index; ++i) {
+        // Check that all the inputs are of the correct rank.
+        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), rank, &unused));
+      }
     }
     // Build result of <rank> different unknown dims.
     std::vector<DimensionHandle> dims;
@@ -1307,6 +1326,9 @@ Status ValidateSparseTensor(InferenceContext* c, ShapeHandle indices_shape,
 
 Status ScatterNdUpdateShape(InferenceContext* c) {
   ShapeHandle input_shape = c->input(0);
+  if (c->input_handle_shapes_and_types(0) != nullptr) {
+    input_shape = (*c->input_handle_shapes_and_types(0))[0].shape;
+  }
   ShapeHandle indices_shape;
   TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 1, &indices_shape));
   ShapeHandle updates_shape;
@@ -1338,10 +1360,11 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", num_outer_dims, " dimensions of indices.shape=",
-            c->DebugString(indices_shape), " must match the outer ",
-            num_outer_dims, " dimensions of updates.shape=",
-            c->DebugString(updates_shape), ": ", s.error_message());
+            "The outer ", num_outer_dims,
+            " dimensions of indices.shape=", c->DebugString(indices_shape),
+            " must match the outer ", num_outer_dims,
+            " dimensions of updates.shape=", c->DebugString(updates_shape),
+            ": ", s.error_message());
       }
 
       ShapeHandle input_suffix;
@@ -1361,7 +1384,9 @@ Status ScatterNdUpdateShape(InferenceContext* c) {
     }
   }
 
-  c->set_output(0, input_shape);
+  if (c->input_handle_shapes_and_types(0) == nullptr) {
+    c->set_output(0, input_shape);
+  }
   return Status::OK();
 }
 

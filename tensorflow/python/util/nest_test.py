@@ -258,6 +258,36 @@ class NestTest(test.TestCase):
                                  "don't have the same set of keys"):
       nest.assert_same_structure({"a": 1}, {"b": 1})
 
+    same_name_type_0 = collections.namedtuple("same_name", ("a", "b"))
+    same_name_type_1 = collections.namedtuple("same_name", ("a", "b"))
+    nest.assert_same_structure(same_name_type_0(0, 1), same_name_type_1(2, 3))
+
+    # This assertion is expected to pass: two namedtuples with the same
+    # name and field names are considered to be identical.
+    same_name_type_2 = collections.namedtuple("same_name_1", ("x", "y"))
+    same_name_type_3 = collections.namedtuple("same_name_1", ("x", "y"))
+    nest.assert_same_structure(
+        same_name_type_0(same_name_type_2(0, 1), 2),
+        same_name_type_1(same_name_type_3(2, 3), 4))
+
+    expected_message = "The two structures don't have the same.*"
+    with self.assertRaisesRegexp(ValueError, expected_message):
+      nest.assert_same_structure(same_name_type_0(0, same_name_type_1(1, 2)),
+                                 same_name_type_1(same_name_type_0(0, 1), 2))
+
+    same_name_type_1 = collections.namedtuple("not_same_name", ("a", "b"))
+    self.assertRaises(TypeError, nest.assert_same_structure,
+                      same_name_type_0(0, 1), same_name_type_1(2, 3))
+
+    same_name_type_1 = collections.namedtuple("same_name", ("x", "y"))
+    self.assertRaises(TypeError, nest.assert_same_structure,
+                      same_name_type_0(0, 1), same_name_type_1(2, 3))
+
+    class SameNamedType1(collections.namedtuple("same_name", ("a", "b"))):
+      pass
+    self.assertRaises(TypeError, nest.assert_same_structure,
+                      same_name_type_0(0, 1), SameNamedType1(2, 3))
+
   def testMapStructure(self):
     structure1 = (((1, 2), 3), 4, (5, 6))
     structure2 = (((7, 8), 9), 10, (11, 12))
@@ -388,11 +418,25 @@ class NestTest(test.TestCase):
     inp_ab1 = {"a": (1, 1), "b": {"c": (2, 2)}}
     inp_ab2 = {"a": (1, 1), "b": {"d": (2, 2)}}
     expected_message = (
-        "The two structures don't have the same keys. Input "
-        "structure has keys \['c'\], while shallow structure has keys \['d'\].")
+        r"The two structures don't have the same keys. Input "
+        r"structure has keys \['c'\], while shallow structure has "
+        r"keys \['d'\].")
 
     with self.assertRaisesRegexp(ValueError, expected_message):
       nest.assert_shallow_structure(inp_ab2, inp_ab1)
+
+    inp_ab = collections.OrderedDict([("a", 1), ("b", (2, 3))])
+    inp_ba = collections.OrderedDict([("b", (2, 3)), ("a", 1)])
+    nest.assert_shallow_structure(inp_ab, inp_ba)
+
+    # This assertion is expected to pass: two namedtuples with the same
+    # name and field names are considered to be identical.
+    same_name_type_0 = collections.namedtuple("same_name", ("a", "b"))
+    same_name_type_1 = collections.namedtuple("same_name", ("a", "b"))
+    inp_shallow = same_name_type_0(1, 2)
+    inp_deep = same_name_type_1(1, [1, 2, 3])
+    nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=False)
+    nest.assert_shallow_structure(inp_shallow, inp_deep, check_types=True)
 
   def testFlattenUpTo(self):
     # Shallow tree ends at scalar.
@@ -438,8 +482,7 @@ class NestTest(test.TestCase):
     input_tree_flattened_as_shallow_tree = nest.flatten_up_to(shallow_tree,
                                                               input_tree)
     self.assertEqual(input_tree_flattened_as_shallow_tree, [0, 1, 2, 3, 4])
-    shallow_tree = collections.OrderedDict([("a", 0),
-                                            ("c", {"d": 3, "e": 1})])
+    shallow_tree = collections.OrderedDict([("a", 0), ("c", {"d": 3, "e": 1})])
     input_tree_flattened_as_shallow_tree = nest.flatten_up_to(shallow_tree,
                                                               input_tree)
     self.assertEqual(input_tree_flattened_as_shallow_tree,
@@ -583,6 +626,59 @@ class NestTest(test.TestCase):
     with self.assertRaisesRegexp(
         TypeError, "didn't return a depth=1 structure of bools"):
       nest.get_traverse_shallow_structure(lambda _: [1], [1])
+
+  def testYieldFlatStringPaths(self):
+    for inputs_expected in ({"inputs": [], "expected": []},
+                            {"inputs": 3, "expected": [()]},
+                            {"inputs": [3], "expected": [(0,)]},
+                            {"inputs": {"a": 3}, "expected": [("a",)]},
+                            {"inputs": {"a": {"b": 4}},
+                             "expected": [("a", "b")]},
+                            {"inputs": [{"a": 2}], "expected": [(0, "a")]},
+                            {"inputs": [{"a": [2]}], "expected": [(0, "a", 0)]},
+                            {"inputs": [{"a": [(23, 42)]}],
+                             "expected": [(0, "a", 0, 0), (0, "a", 0, 1)]},
+                            {"inputs": [{"a": ([23], 42)}],
+                             "expected": [(0, "a", 0, 0), (0, "a", 1)]},
+                            {"inputs": {"a": {"a": 2}, "c": [[[4]]]},
+                             "expected": [("a", "a"), ("c", 0, 0, 0)]},
+                            {"inputs": {"0": [{"1": 23}]},
+                             "expected": [("0", 0, "1")]}):
+      inputs = inputs_expected["inputs"]
+      expected = inputs_expected["expected"]
+      self.assertEqual(list(nest.yield_flat_paths(inputs)), expected)
+
+  def testFlattenWithStringPaths(self):
+    for inputs_expected in (
+        {"inputs": [], "expected": []},
+        {"inputs": [23, "42"], "expected": [("0", 23), ("1", "42")]},
+        {"inputs": [[[[108]]]], "expected": [("0/0/0/0", 108)]}):
+      inputs = inputs_expected["inputs"]
+      expected = inputs_expected["expected"]
+      self.assertEqual(
+          nest.flatten_with_joined_string_paths(inputs, separator="/"),
+          expected)
+
+  # Need a separate test for namedtuple as we can't declare tuple definitions
+  # in the @parameterized arguments.
+  def testFlattenNamedTuple(self):
+    # pylint: disable=invalid-name
+    Foo = collections.namedtuple("Foo", ["a", "b"])
+    Bar = collections.namedtuple("Bar", ["c", "d"])
+    # pylint: enable=invalid-name
+    test_cases = [
+        (Foo(a=3, b=Bar(c=23, d=42)),
+         [("a", 3), ("b/c", 23), ("b/d", 42)]),
+        (Foo(a=Bar(c=23, d=42), b=Bar(c=0, d="something")),
+         [("a/c", 23), ("a/d", 42), ("b/c", 0), ("b/d", "something")]),
+        (Bar(c=42, d=43),
+         [("c", 42), ("d", 43)]),
+        (Bar(c=[42], d=43),
+         [("c/0", 42), ("d", 43)]),
+    ]
+    for inputs, expected in test_cases:
+      self.assertEqual(
+          list(nest.flatten_with_joined_string_paths(inputs)), expected)
 
 
 if __name__ == "__main__":

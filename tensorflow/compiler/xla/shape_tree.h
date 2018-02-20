@@ -143,6 +143,18 @@ class ShapeTree {
   // Return the shape represented with this ShapeTree.
   const Shape& shape() const { return *shape_; }
 
+  // Replaces *only* the underlying shape of this ShapeTree. The caller must own
+  // the Shape object and hence shape_storage_ is not updated.
+  //
+  // Only safe to use this if the ShapeTree was constructed with 'explicit
+  // ShapeTree(const Shape* shape)' or is moved from one such ShapeTree. The
+  // caller must ensure that the input shape is consistent with the underlying
+  // tree.
+  void replace_shape_ptr(const Shape* shape) {
+    CHECK(shape_storage_.get() == nullptr);
+    shape_ = shape;
+  }
+
   // Returns true if the node at the given index is a leaf node (an array
   // shape).
   bool IsLeaf(const ShapeIndex& index) const {
@@ -238,7 +250,7 @@ class ShapeTree {
   //           (or compatible).
   //   index : the index of the element in the shape. See ShapeUtil::GetSubshape
   //           for definition of index.
-  //   data : The data value at this elemnt.
+  //   data : The data value at this element.
   template <typename Fn>
   void ForEachElement(const Fn& func) const;
 

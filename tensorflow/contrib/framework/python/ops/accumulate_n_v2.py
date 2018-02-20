@@ -22,6 +22,7 @@ from __future__ import print_function
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_math_ops
 from tensorflow.python.ops import math_ops
 
@@ -48,7 +49,7 @@ def accumulate_n_v2(inputs, shape=None, tensor_dtype=None, name=None):
   tf.accumulate_n_v2([a, b, a])  # [[7, 4], [6, 14]]
 
   # Explicitly pass shape and type
-  tf.accumulate_n_v2([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)  
+  tf.accumulate_n_v2([a, b, a], shape=[2, 2], tensor_dtype=tf.int32)
                                                                    # [[7,  4],
                                                                    #  [6, 14]]
   ```
@@ -93,7 +94,7 @@ def accumulate_n_v2(inputs, shape=None, tensor_dtype=None, name=None):
   elif len(inputs) == 1 and name is not None:
     return array_ops.identity(inputs[0], name=name)
   elif context.in_eager_mode():
-    # TemporaryVariable not currently supported in eager mode; fall back 
+    # TemporaryVariable not currently supported in eager mode; fall back
     # onto AddN for now.
     # TODO(frreiss) remove this once the lifetime of eager variables gets
     # addressed
@@ -101,11 +102,10 @@ def accumulate_n_v2(inputs, shape=None, tensor_dtype=None, name=None):
   else:
     return gen_math_ops._accumulate_nv2(inputs, name=name, shape=shape)
 
-# The following code should eventually be merged into 
+# The following code should eventually be merged into
 # tensorflow/python/ops/math_grad.py
 @ops.RegisterGradient("AccumulateNV2")
 def _AddNGrad(op, grad):
   """Same as gradient for AddN. Copies the gradient to all inputs."""
   # Not broadcasting.
   return [grad] * len(op.inputs)
-

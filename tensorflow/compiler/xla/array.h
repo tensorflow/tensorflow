@@ -22,6 +22,7 @@ limitations under the License.
 #include <initializer_list>
 #include <iterator>
 #include <memory>
+#include <numeric>
 #include <random>
 #include <type_traits>
 #include <vector>
@@ -120,6 +121,23 @@ class Array {
     CHECK(idx == num_elements());
   }
 
+  // Creates a 2D array of Eigen::half from the given nested initializer list of
+  // float values.
+  template <typename T2, typename = typename std::enable_if<
+                             std::is_same<T, Eigen::half>::value &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<std::initializer_list<T2>> values)
+      : Array(ToInt64Vector({values.size(), values.begin()->size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      for (const auto& it2 : it1) {
+        values_[idx] = static_cast<T>(it2);
+        ++idx;
+      }
+    }
+    CHECK(idx == num_elements());
+  }
+
   // Creates a 3D array from the given nested initializer list. The outer
   // initializer list is the first dimension, and so on.
   Array(InitializerList3D values)
@@ -130,6 +148,27 @@ class Array {
       for (const auto& it2 : it1) {
         for (const auto& it3 : it2) {
           values_[idx] = it3;
+          ++idx;
+        }
+      }
+    }
+    CHECK(idx == num_elements());
+  }
+
+  // Creates a 3D array of Eigen::half from the given nested initializer list of
+  // float values.
+  template <typename T2, typename = typename std::enable_if<
+                             std::is_same<T, Eigen::half>::value &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<std::initializer_list<std::initializer_list<T2>>>
+            values)
+      : Array(ToInt64Vector({values.size(), values.begin()->size(),
+                             values.begin()->begin()->size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      for (const auto& it2 : it1) {
+        for (const auto& it3 : it2) {
+          values_[idx] = static_cast<T>(it3);
           ++idx;
         }
       }
@@ -149,6 +188,31 @@ class Array {
         for (const auto& it3 : it2) {
           for (const auto& it4 : it3) {
             values_[idx] = it4;
+            ++idx;
+          }
+        }
+      }
+    }
+    CHECK(idx == num_elements());
+  }
+
+  // Creates a 4D array of Eigen::half from the given nested initializer list of
+  // float values.
+  template <typename T2, typename = typename std::enable_if<
+                             std::is_same<T, Eigen::half>::value &&
+                             std::is_same<T2, float>::value>::type>
+  Array(std::initializer_list<
+        std::initializer_list<std::initializer_list<std::initializer_list<T2>>>>
+            values)
+      : Array(ToInt64Vector({values.size(), values.begin()->size(),
+                             values.begin()->begin()->size(),
+                             values.begin()->begin()->begin()->size()})) {
+    int64 idx = 0;
+    for (const auto& it1 : values) {
+      for (const auto& it2 : it1) {
+        for (const auto& it3 : it2) {
+          for (const auto& it4 : it3) {
+            values_[idx] = static_cast<T>(it4);
             ++idx;
           }
         }
@@ -184,7 +248,7 @@ class Array {
   // Fills the array with the sequence i*multiplier for i=0,1,...
   void FillWithMultiples(const T& multiplier) {
     for (int64 i = 0; i < num_elements(); ++i) {
-      values_[i] = i * multiplier;
+      values_[i] = static_cast<T>(i) * multiplier;
     }
   }
 

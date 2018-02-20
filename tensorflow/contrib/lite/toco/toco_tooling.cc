@@ -51,74 +51,109 @@ void CheckUnsupportedOperations(const Model& model) {
 void MakeGeneralGraphTransformationsSet(
     GraphTransformationsSet* transformations) {
   CHECK(transformations->empty());
+  transformations->Add(new ConvertExpandDimsToReshape);
+  transformations->Add(new ConvertTrivialAddNToAdd);
+  transformations->Add(new ConvertTrivialStackToReshape);
+  transformations->Add(new ConvertTrivialTransposeToReshape);
+  transformations->Add(new ConvertReorderAxes);
   transformations->Add(new ResolveReshapeAttributes);
+  transformations->Add(new ResolveTransposeAttributes);
   transformations->Add(new PropagateArrayDataTypes);
   transformations->Add(new PropagateFixedSizes);
   transformations->Add(new RemoveTensorFlowAssert);
   transformations->Add(new RemoveTensorFlowIdentity);
   transformations->Add(new RemoveTrivialConcatenation);
   transformations->Add(new RemoveTrivialConcatenationInput);
+  transformations->Add(new RemoveTrivialSlice);
   transformations->Add(new RemoveUnusedOp);
   transformations->Add(new EnsureBiasVectors);
   transformations->Add(new ResolveReorderAxes);
+  transformations->Add(new UnrollBatchMatMul);
   transformations->Add(new ResolveTensorFlowMatMul);
   transformations->Add(new FuseBinaryIntoPrecedingAffine);
   transformations->Add(new FuseBinaryIntoFollowingAffine);
+  transformations->Add(new ReorderActivationFunctions);
   transformations->Add(new ResolveBatchNormalization);
   transformations->Add(new ResolveConstantBinaryOperator);
+  transformations->Add(new ResolveConstantFill);
+  transformations->Add(new ResolveConstantRange);
+  transformations->Add(new ResolveConstantStack);
+  transformations->Add(new ResolveConstantStridedSlice);
+  transformations->Add(new ResolveConstantTranspose);
   transformations->Add(new ResolveConstantUnaryOperator);
   transformations->Add(new ResolveTensorFlowMerge);
-  transformations->Add(new ResolveTensorFlowSqueeze);
+  transformations->Add(new ResolveSqueezeAttributes);
   transformations->Add(new ResolveTensorFlowSwitch);
   transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
+  transformations->Add(new ResolveMultiplyByZero);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
   transformations->Add(new RemoveTrivialBinaryOperator);
   transformations->Add(new ReadFakeQuantMinMax);
+  transformations->Add(new ResolveSpaceToBatchNDAttributes);
+  transformations->Add(new ResolveBatchToSpaceNDAttributes);
   transformations->Add(new ResolvePadAttributes);
   transformations->Add(new ResolveStridedSliceAttributes);
   transformations->Add(new ResolveSliceAttributes);
   transformations->Add(new ResolveMeanAttributes);
-  transformations->Add(new ResolveConstantTensorFlowShape);
+  transformations->Add(new ResolveConstantShapeOrRank);
   transformations->Add(new MakeInitialDequantizeOperator);
+  transformations->Add(new ResolveConstantFakeQuant);
 }
 
-void SetArrayFinalDataTypes(const TocoFlags& toco_flags, Model* model) {
-  const bool output_is_tflite = toco_flags.output_format() == TFLITE;
+bool SupportsQuantization(FileFormat format) {
+  return (format == GRAPHVIZ_DOT || format == TFLITE);
+}
 
-  if (output_is_tflite) {
-    if (!toco_flags.input_types().empty()) {
-      for (int i = 0; i < model->flags.input_arrays_size(); i++) {
-        int input_types_index = toco_flags.input_types_size() == 1 ? 0 : i;
-        const auto input_type = toco_flags.input_types(input_types_index);
-        ArrayDataType final_data_type = ArrayDataType::kNone;
-        switch (input_type) {
-          case FLOAT:
-            final_data_type = ArrayDataType::kFloat;
-            break;
-          case QUANTIZED_UINT8:
-            final_data_type = ArrayDataType::kUint8;
-            break;
-          case INT32:
-            final_data_type = ArrayDataType::kInt32;
-            break;
-          case INT64:
-            final_data_type = ArrayDataType::kInt64;
-            break;
-          default:
-            LOG(FATAL) << "Unknown data type";
-        }
-        model->arrays[model->flags.input_arrays(i).name()]->final_data_type =
-            final_data_type;
-      }
-    }
+bool SupportsFusedActivationFunction(FileFormat format) {
+  return (format == GRAPHVIZ_DOT || format == TFLITE);
+}
+
+bool SupportsLstmCell(FileFormat format) {
+  return (format == TENSORFLOW_GRAPHDEF || format == GRAPHVIZ_DOT ||
+          format == TFLITE);
+}
+
+bool SupportsPreallocatedWorkspace(FileFormat format) {
+  return (format == TFLITE);
+}
+
+bool IsRealValued(toco::ArrayDataType type) {
+  return static_cast<bool>(type == toco::ArrayDataType::kFloat ||
+                           type == toco::ArrayDataType::kUint8);
+}
+
+void SetFinalDataTypeOnInputs(const TocoFlags& toco_flags, Model* model) {
+  const FileFormat output_format = toco_flags.output_format();
+  ArrayDataType type;
+  if (toco_flags.has_inference_input_type()) {
+    type = ConvertIODataTypeToArrayDataType(toco_flags.inference_input_type());
+  } else if (toco_flags.has_inference_type()) {
+    type = ConvertIODataTypeToArrayDataType(toco_flags.inference_type());
+  } else if (!SupportsQuantization(output_format)) {
+    // Data type is implicitly float for non-quantized formats
+    type = ArrayDataType::kFloat;
   } else {
-    for (int i = 0; i < model->flags.input_arrays_size(); i++) {
-      model->arrays[model->flags.input_arrays(i).name()]->final_data_type =
-          ArrayDataType::kFloat;
+    // Nothing to do. Data types stay as-is.
+    return;
+  }
+
+  for (int i = 0; i < model->flags.input_arrays_size(); i++) {
+    string const& array_name = model->flags.input_arrays(i).name();
+    auto* array = &model->GetArray(array_name);
+    // Note that the notion of changing data types only applies to real-numbers
+    // arrays (see the documentation for inference_input_type).
+    // TODO(benoitjacob) this is assuming that uint8 arrays are quantized,
+    // i.e. represent real numbers by means of quantization parameters,
+    // and not plain integer uint8 input arrays.
+    if (!IsRealValued(array->data_type)) {
+      // Ignore non-real data types.
+      continue;
     }
+
+    array->final_data_type = type;
   }
 }
 
@@ -129,9 +164,16 @@ std::unique_ptr<Model> Import(const TocoFlags& toco_flags,
                               const string& input_file_contents) {
   std::unique_ptr<Model> model;
   switch (toco_flags.input_format()) {
-    case TENSORFLOW_GRAPHDEF:
-      model = ImportTensorFlowGraphDef(model_flags, input_file_contents);
+    case TENSORFLOW_GRAPHDEF: {
+      TensorFlowImportFlags tf_import_flags;
+      tf_import_flags.drop_control_dependency =
+          toco_flags.has_drop_control_dependency()
+              ? toco_flags.drop_control_dependency()
+              : (toco_flags.output_format() != TENSORFLOW_GRAPHDEF);
+      model = ImportTensorFlowGraphDef(model_flags, tf_import_flags,
+                                       input_file_contents);
       break;
+    }
     case TFLITE:
       model = toco::tflite::Import(model_flags, input_file_contents);
       ResolveModelFlags(model_flags, model.get());
@@ -150,37 +192,32 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   const FileFormat output_format = toco_flags.output_format();
   const IODataType inference_type = toco_flags.inference_type();
 
-  const bool output_is_tflite = output_format == TFLITE;
+  const bool quantize_output =
+      SupportsQuantization(output_format) && inference_type == QUANTIZED_UINT8;
 
-  const bool output_is_tflite_quantized =
-      output_is_tflite && inference_type == QUANTIZED_UINT8;
-
-  if (output_is_tflite) {
-    QCHECK(toco_flags.input_types_size() == 1 ||
-           toco_flags.input_types_size() == model->flags.input_arrays_size())
-        << "Mismatched numbers of input_arrays and input_types";
+  if (quantize_output) {
+    QCHECK_NE(toco_flags.inference_input_type(), FLOAT)
+        << "Quantized inference is not allowed with float inputs.";
   }
 
-  if (output_is_tflite_quantized) {
-    for (const auto& input_type : toco_flags.input_types()) {
-      QCHECK_NE(input_type, FLOAT)
-          << "Quantized inference is not allowed with float inputs.";
-    }
-  }
+  SetFinalDataTypeOnInputs(toco_flags, model);
+  UseArraysExtraInfo(model);
 
-  SetArrayFinalDataTypes(toco_flags, model);
+  // Remove unused ops before performing any other optimizations. This is to
+  // stop optimizations from crossing the input/output boundaries. For example
+  // this will stop BatchNorm fusing if the output node is in between a conv
+  // and BatchNorm layers.
+  RunGraphTransformations(model, "Removing unused ops",
+                          {new toco::RemoveUnusedOp});
 
   GraphTransformationsSet transformations;
   MakeGeneralGraphTransformationsSet(&transformations);
   auto* remove_trivial_reshape = new RemoveTrivialReshape;
   transformations.Add(remove_trivial_reshape);
-  if (output_format == TFLITE) {
+  if (SupportsFusedActivationFunction(output_format)) {
     transformations.Add(new FuseActivationFunctions);
   } else {
     transformations.Add(new UnfuseActivationFunctions);
-  }
-  if (output_format != TENSORFLOW_GRAPHDEF) {
-    transformations.Add(new ResolveConstantFakeQuant);
   }
   if (toco_flags.drop_fake_quant()) {
     transformations.Add(new DropFakeQuant);
@@ -188,34 +225,38 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     // See the doc for --reorder_across_fake_quant: that flag is needed to
     // support some existing models, e.g. WordLens, that have FakeQuant
     // nodes in the wrong places.
-    // We currently unconditionally enable that behavior when the output
-    // format is DarwiNN because the DarwiNN test code does not make it
-    // easy to pass a new toco flag. Once that is resolved on the DarwiNN
-    // tests side, the special-casing of DarwiNN here can go away.
-    // TODO(benoitjacob): so drop it when we can.
-    if ((output_is_tflite_quantized &&
-         toco_flags.reorder_across_fake_quant())) {
+    // TODO(benoitjacob): drop special casing when we can.
+    if ((quantize_output && toco_flags.reorder_across_fake_quant())) {
       transformations.Add(new DropFakeQuant);
     }
   }
   transformations.Add(new ConvertPureConvToDepthwise);
-  // TFLite export does not yet support fused LSTM cell.
-  if (output_format == TENSORFLOW_GRAPHDEF) {
+  if (SupportsLstmCell(output_format)) {
     transformations.Add(new IdentifyLstmCell);
+    if (output_format == TFLITE) {
+      transformations.Add(new toco::SplitLstmCellInputs);
+    } else {
+      transformations.Add(new toco::MergeLstmCellInputs);
+    }
   }
   transformations.Add(new ResolveConstantConcatenation);
   RunGraphTransformations(model, "general graph transformations",
                           transformations);
-  if (output_is_tflite_quantized) {
+
+  if (quantize_output) {
     RunGraphTransformations(model, "pre-quantization graph transformations",
                             {new HardcodeMinMax, new DropFakeQuant});
   }
 
-  if (output_is_tflite_quantized) {
+  if (quantize_output) {
     if (toco_flags.has_default_ranges_min() &&
         toco_flags.has_default_ranges_max()) {
       UseDefaultMinMaxRangeValues(model, toco_flags.default_ranges_min(),
                                   toco_flags.default_ranges_max());
+      // The new MinMax info may need to be propagated a bit.
+      RunGraphTransformations(
+          model, "default min-max range propagation graph transformations",
+          {new HardcodeMinMax});
     }
     CheckIsReadyForQuantization(*model);
     RunGraphTransformations(
@@ -234,6 +275,10 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
                             dequantization_transformations);
   }
 
+  if (output_format == TENSORFLOW_GRAPHDEF) {
+    EncodeConstantArraysMinMaxByWrappingThemInFakeQuantNodes(model);
+  }
+
   LogDump(kLogLevelModelChanged, "AFTER TRANSFORMATIONS", *model);
 
   if (output_format != GRAPHVIZ_DOT && output_format != TFLITE) {
@@ -242,7 +287,7 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
     CheckUnsupportedOperations(*model);
   }
 
-  if (output_is_tflite) {
+  if (SupportsPreallocatedWorkspace(output_format)) {
     AllocateTransientArrays(model, kDefaultTransientDataAlignment);
     LogDump(kLogLevelModelChanged, "AFTER ALLOCATION", *model);
   }

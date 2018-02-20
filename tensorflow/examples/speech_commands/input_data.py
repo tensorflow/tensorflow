@@ -417,8 +417,7 @@ class AudioProcessor(object):
       sess: TensorFlow session that was active when processor was created.
 
     Returns:
-      List of sample data for the transformed samples, and list of labels in
-      one-hot form.
+      List of sample data for the transformed samples, and list of label indexes
     """
     # Pick one of the partitions to choose samples from.
     candidates = self.data_index[mode]
@@ -428,7 +427,7 @@ class AudioProcessor(object):
       sample_count = max(0, min(how_many, len(candidates) - offset))
     # Data and labels will be populated and returned.
     data = np.zeros((sample_count, model_settings['fingerprint_size']))
-    labels = np.zeros((sample_count, model_settings['label_count']))
+    labels = np.zeros(sample_count)
     desired_samples = model_settings['desired_samples']
     use_background = self.background_data and (mode == 'training')
     pick_deterministically = (mode != 'training')
@@ -483,7 +482,7 @@ class AudioProcessor(object):
       # Run the graph to produce the output audio.
       data[i - offset, :] = sess.run(self.mfcc_, feed_dict=input_dict).flatten()
       label_index = self.word_to_index[sample['label']]
-      labels[i - offset, label_index] = 1
+      labels[i - offset] = label_index
     return data, labels
 
   def get_unprocessed_data(self, how_many, model_settings, mode):

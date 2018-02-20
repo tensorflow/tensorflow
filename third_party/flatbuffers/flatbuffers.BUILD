@@ -4,10 +4,21 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
+exports_files(["LICENSE.txt"])
+
+config_setting(
+    name = "freebsd",
+    values = {"cpu": "freebsd"},
+    visibility = ["//visibility:public"],
+)
+
 FLATBUFFERS_COPTS = [
     "-fexceptions",
-    "-Wno-implicit-fallthrough",
-]
+] + select({
+    "@bazel_tools//src:windows": [],
+    "@bazel_tools//src:windows_msvc": [],
+    "//conditions:default": ["-Wno-implicit-fallthrough"],
+})
 
 # Public flatc library to compile flatbuffer files at runtime.
 cc_library(
@@ -104,10 +115,15 @@ cc_binary(
         "grpc/",
         "include/",
     ],
-    linkopts = [
-        "-lm",
-        "-ldl",
-    ],
+    linkopts = select({
+        ":freebsd": [
+            "-lm",
+        ],
+        "//conditions:default": [
+            "-lm",
+            "-ldl",
+        ],
+    }),
     deps = [
         ":flatc_library",
     ],

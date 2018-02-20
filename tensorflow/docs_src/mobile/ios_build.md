@@ -24,7 +24,7 @@ If you'd like to add TensorFlow capabilities to your own app, do the following:
 
 - Open `YourProjectName.xcworkspace` and add your code.
 
-- In your app's **Build Settings**, make sure to add `$(inherited)` to the 
+- In your app's **Build Settings**, make sure to add `$(inherited)` to the
   **Other Linker Flags**, and **Header Search Paths** sections.
 
 ## Running the Samples

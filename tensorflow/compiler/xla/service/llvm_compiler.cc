@@ -18,8 +18,8 @@ limitations under the License.
 namespace xla {
 StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
     std::vector<std::unique_ptr<HloModule>> modules,
-    std::vector<std::vector<perftools::gputools::StreamExecutor*>>
-        stream_execs) {
+    std::vector<std::vector<perftools::gputools::StreamExecutor*>> stream_execs,
+    DeviceMemoryAllocator* device_allocator) {
   std::vector<std::unique_ptr<Executable>> result;
   for (size_t i = 0; i < modules.size(); i++) {
     if (stream_execs[i].size() != 1) {
@@ -27,8 +27,12 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> LLVMCompiler::Compile(
           "Model partitioning not implemented for the CPU/GPU compilers!");
     }
 
+    TF_ASSIGN_OR_RETURN(modules[i],
+                        RunHloPasses(std::move(modules[i]), stream_execs[i][0],
+                                     device_allocator));
     TF_ASSIGN_OR_RETURN(std::unique_ptr<Executable> executable,
-                        Compile(std::move(modules[i]), stream_execs[i][0]));
+                        RunBackend(std::move(modules[i]), stream_execs[i][0],
+                                   device_allocator));
     result.push_back(std::move(executable));
   }
 
