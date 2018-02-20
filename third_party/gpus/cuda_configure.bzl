@@ -368,9 +368,10 @@ def find_cuda_define(repository_ctx, header_dir, header_file, define):
     auto_configure_fail("Cannot find line containing '%s' in %s" %
                         (define, h_path))
   version = result.stdout
-  # Remove the new line and '\' character if any.
+  # Remove the new line, tab, and '\' character if any.
   version = version.replace("\\", " ")
   version = version.replace("\n", " ")
+  version = version.replace("\t", " ")
   version = version.replace(define, "").lstrip()
   # Remove the code after the version number.
   version_end = version.find(" ")
