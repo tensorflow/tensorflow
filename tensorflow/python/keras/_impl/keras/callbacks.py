@@ -164,7 +164,7 @@ class CallbackList(object):
 class Callback(object):
   """Abstract base class used to build new callbacks.
 
-  # Properties
+  Attributes:
       params: dict. Training parameters
           (eg. verbosity, batch size, number of epochs...).
       model: instance of `keras.models.Model`.
@@ -222,7 +222,17 @@ class BaseLogger(Callback):
   """Callback that accumulates epoch averages of metrics.
 
   This callback is automatically applied to every Keras model.
+
+  Arguments:
+      stateful_metrics: Iterable of string names of metrics that
+          should *not* be averaged over an epoch.
+          Metrics in this list will be logged as-is in `on_epoch_end`.
+          All others will be averaged in `on_epoch_end`.
   """
+
+  def __init__(self, stateful_metrics=None):
+    super(BaseLogger, self).__init__()
+    self.stateful_metrics = set(stateful_metrics or [])
 
   def on_epoch_begin(self, epoch, logs=None):
     self.seen = 0
@@ -234,17 +244,23 @@ class BaseLogger(Callback):
     self.seen += batch_size
 
     for k, v in logs.items():
-      if k in self.totals:
-        self.totals[k] += v * batch_size
+      if k in self.stateful_metrics:
+        self.totals[k] = v
       else:
-        self.totals[k] = v * batch_size
+        if k in self.totals:
+          self.totals[k] += v * batch_size
+        else:
+          self.totals[k] = v * batch_size
 
   def on_epoch_end(self, epoch, logs=None):
     if logs is not None:
       for k in self.params['metrics']:
         if k in self.totals:
           # Make value available to next callbacks.
-          logs[k] = self.totals[k] / self.seen
+          if k in self.stateful_metrics:
+            logs[k] = self.totals[k]
+          else:
+            logs[k] = self.totals[k] / self.seen
 
 
 @tf_export('keras.callbacks.TerminateOnNaN')
@@ -272,12 +288,16 @@ class ProgbarLogger(Callback):
       count_mode: One of "steps" or "samples".
           Whether the progress bar should
           count samples seen or steps (batches) seen.
+      stateful_metrics: Iterable of string names of metrics that
+          should *not* be averaged over an epoch.
+          Metrics in this list will be logged as-is.
+          All others will be averaged over time (e.g. loss, etc).
 
   Raises:
       ValueError: In case of invalid `count_mode`.
   """
 
-  def __init__(self, count_mode='samples'):
+  def __init__(self, count_mode='samples', stateful_metrics=None):
     super(ProgbarLogger, self).__init__()
     if count_mode == 'samples':
       self.use_steps = False
@@ -285,6 +305,7 @@ class ProgbarLogger(Callback):
       self.use_steps = True
     else:
       raise ValueError('Unknown `count_mode`: ' + str(count_mode))
+    self.stateful_metrics = set(stateful_metrics or [])
 
   def on_train_begin(self, logs=None):
     self.verbose = self.params['verbose']
@@ -298,7 +319,10 @@ class ProgbarLogger(Callback):
       else:
         target = self.params['samples']
       self.target = target
-      self.progbar = Progbar(target=self.target, verbose=self.verbose)
+      self.progbar = Progbar(
+          target=self.target,
+          verbose=self.verbose,
+          stateful_metrics=self.stateful_metrics)
     self.seen = 0
 
   def on_batch_begin(self, batch, logs=None):

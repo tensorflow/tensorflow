@@ -24,9 +24,9 @@ Installation instructions at https://www.tensorflow.org/install/
 
 The contents of this guide are compatible with TensorFlow 1.5.
 However, if you run into bugs that are fixed in source but not the
-release, you may want to either either [building from
+release, you may want to either [build from
 source](https://www.tensorflow.org/install/install_sources)
-or the try latest nightly builds. The nightly builds are available as:
+or try a nightly build. The nightly builds are available as:
 
 - [`pip` packages](https://github.com/tensorflow/tensorflow/blob/master/README.md#installation) and
 

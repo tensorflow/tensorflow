@@ -369,7 +369,7 @@ class SpinnTest(test_util.TensorFlowTestCase):
         inference_sentences=("( foo ( bar . ) )", "( bar ( foo . ) )"))
     logits = spinn.train_or_infer_spinn(
         embed, word2index, None, None, None, config)
-    self.assertEqual(np.float32, logits.dtype)
+    self.assertEqual(tf.float32, logits.dtype)
     self.assertEqual((3,), logits.shape)
 
   def testInferSpinnThrowsErrorIfOnlyOneSentenceIsSpecified(self):

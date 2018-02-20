@@ -34,6 +34,7 @@ from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
+from tensorflow.python.training import checkpointable
 from tensorflow.python.training import slot_creator
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -212,7 +213,7 @@ def _get_processor(v):
 
 
 @tf_export("train.Optimizer")
-class Optimizer(object):
+class Optimizer(checkpointable.Checkpointable):
   """Base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -924,3 +925,47 @@ class Optimizer(object):
     if _var_key(var) not in named_slots:
       named_slots[_var_key(var)] = slot_creator.create_zeros_slot(var, op_name)
     return named_slots[_var_key(var)]
+
+  def _process_slot_restoration(
+      self, slot_variable_position, slot_name, variable):
+    """Restore a slot variable's value (creating it if necessary).
+
+    Args:
+      slot_variable_position: A `checkpointable._CheckpointPosition` object
+        indicating the slot variable `Checkpointable` object to be restored.
+      slot_name: The name of this `Optimizer`'s slot to restore into.
+      variable: The variable object this slot is being created for.
+    """
+    named_slots = self._slot_dict(slot_name)
+    variable_key = _var_key(variable)
+    slot_variable = named_slots.get(variable_key, None)
+    if slot_variable is None:
+      if slot_variable_position.is_simple_variable():
+        initializer = checkpointable.CheckpointInitialValue(
+            checkpoint_position=slot_variable_position)
+        slot_variable = self._get_or_make_slot(
+            var=variable,
+            val=initializer,
+            slot_name=slot_name,
+            op_name=self._name)
+        if slot_variable._update_uid == slot_variable_position.restore_uid:  # pylint: disable=protected-access
+          # If our restoration was set (not given with custom getters), run
+          # it. Otherwise wait for the restore() call below to restore if
+          # necessary.
+          session = slot_variable_position.checkpoint.session
+          if session:
+            session.run(slot_variable.initializer)
+
+      else:
+        raise NotImplementedError(
+            "Currently only variables with no dependencies can be loaded as "
+            "slot variables. File a feature request if this limitation bothers "
+            "you. (Got %s)" % (slot_variable_position,))
+      # Slot variables are not owned by any one object (because we don't want to
+      # save the slot variable if the optimizer is saved without the non-slot
+      # variable, or if the non-slot variable is saved without the optimizer;
+      # it's a dependency hypergraph with edges of the form (optimizer, non-slot
+      # variable, variable)). So we don't _track_ slot variables anywhere, and
+      # instead special-case this dependency and otherwise pretend it's a normal
+      # graph.
+    slot_variable_position.restore(slot_variable)

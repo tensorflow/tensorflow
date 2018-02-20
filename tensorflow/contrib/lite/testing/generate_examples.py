@@ -103,6 +103,8 @@ KNOWN_BUGS = {
     r"div.*int32": "72051395",
     # TOCO require matching dimensions in strided_slice.
     r"strided_slice.*begin=\[0\].*end=\[1\].*": "73170889",
+    # No support for SplitV
+    r"split.*num_or_size_splits=\[2,2\]": "73377559",
 }
 
 
@@ -773,7 +775,8 @@ def make_exp_tests(zip_path):
 
   def build_inputs(parameters, sess, inputs, outputs):
     values = [
-        create_tensor_data(parameters["input_dtype"], parameters["input_shape"])
+        create_tensor_data(parameters["input_dtype"], parameters["input_shape"],
+                           min_value=-100, max_value=9)
     ]
     return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
 
@@ -1030,8 +1033,31 @@ def make_depthwiseconv_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_split_tests(zip_path):
+  """Make a set of tests to do tf.split."""
+
+  test_parameters = [{
+      "input_shape": [[1, 3, 4, 6], [2, 4, 1], [6, 4], [8]],
+      "num_or_size_splits": [1, 2, 3, 4, 5, [2, 2]],
+      "axis": [0, 1, 2, 3, -4, -3, -2, -1],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    out = tf.split(
+        input_tensor, parameters["num_or_size_splits"], parameters["axis"])
+    return [input_tensor], out
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    values = [create_tensor_data(np.float32, parameters["input_shape"])]
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_concatenation_tests(zip_path):
-  """Make a set of tests to do concatenatinon."""
+  """Make a set of tests to do concatenation."""
 
   test_parameters = [{
       "base_shape": [[1, 3, 4, 3], [3, 4]],
@@ -1786,6 +1812,7 @@ def main(unused_args):
         "softmax.zip": make_softmax_tests,
         "space_to_depth.zip": make_space_to_depth_tests,
         "topk.zip": make_topk_tests,
+        "split.zip": make_split_tests,
         "transpose.zip": make_transpose_tests,
         "mean.zip": make_mean_tests,
         "squeeze.zip": make_squeeze_tests,

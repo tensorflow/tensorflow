@@ -62,6 +62,14 @@ class Wrapper(Layer):
       return None
 
   @property
+  def trainable(self):
+    return self.layer.trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self.layer.trainable = value
+
+  @property
   def trainable_weights(self):
     return self.layer.trainable_weights
 
@@ -255,7 +263,6 @@ class Bidirectional(Wrapper):
   """
 
   def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
-    super(Bidirectional, self).__init__(layer, **kwargs)
     if merge_mode not in ['sum', 'mul', 'ave', 'concat', None]:
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
@@ -275,6 +282,19 @@ class Bidirectional(Wrapper):
     self.return_sequences = layer.return_sequences
     self.return_state = layer.return_state
     self.supports_masking = True
+    self._trainable = True
+    super(Bidirectional, self).__init__(layer, **kwargs)
+    self.input_spec = layer.input_spec
+
+  @property
+  def trainable(self):
+    return self._trainable
+
+  @trainable.setter
+  def trainable(self, value):
+    self._trainable = value
+    self.forward_layer.trainable = value
+    self.backward_layer.trainable = value
 
   def get_weights(self):
     return self.forward_layer.get_weights() + self.backward_layer.get_weights()
@@ -305,6 +325,61 @@ class Bidirectional(Wrapper):
       return [output_shape] + state_shape + copy.copy(state_shape)
     return output_shape
 
+  def __call__(self, inputs, initial_state=None, **kwargs):
+    if isinstance(inputs, list):
+      if len(inputs) > 1:
+        initial_state = inputs[1:]
+      inputs = inputs[0]
+
+    if initial_state is None:
+      return super(Bidirectional, self).__call__(inputs, **kwargs)
+
+    # Standardize `initial_state` into list
+    if isinstance(initial_state, tuple):
+      initial_state = list(initial_state)
+    elif not isinstance(initial_state, list):
+      initial_state = [initial_state]
+
+    # Check if `initial_state` can be splitted into half
+    num_states = len(initial_state)
+    if num_states % 2 > 0:
+      raise ValueError(
+          'When passing `initial_state` to a Bidirectional RNN, the state '
+          'should be a list containing the states of the underlying RNNs. '
+          'Found: ' + str(initial_state))
+
+    # Applies the same workaround as in `RNN.__call__`, without handling
+    # constants
+    kwargs['initial_state'] = initial_state
+    additional_inputs = initial_state
+    additional_specs = [InputSpec(shape=K.int_shape(state))
+                        for state in initial_state]
+    self.forward_layer.state_spec = additional_specs[:num_states // 2]
+    self.backward_layer.state_spec = additional_specs[num_states // 2:]
+
+    is_keras_tensor = K.is_keras_tensor(additional_inputs[0])
+    for tensor in additional_inputs:
+      if K.is_keras_tensor(tensor) != is_keras_tensor:
+        raise ValueError('The initial state of a Bidirectional'
+                         ' layer cannot be specified with a mix of'
+                         ' Keras tensors and non-Keras tensors'
+                         ' (a "Keras tensor" is a tensor that was'
+                         ' returned by a Keras layer, or by `Input`)')
+
+    if is_keras_tensor:
+      # Compute the full input spec, including state
+      full_input = [inputs] + additional_inputs
+      full_input_spec = self.input_spec + additional_specs
+
+      # Perform the call with temporarily replaced input_spec
+      original_input_spec = self.input_spec
+      self.input_spec = full_input_spec
+      output = super(Bidirectional, self).__call__(full_input, **kwargs)
+      self.input_spec = original_input_spec
+      return output
+    else:
+      return super(Bidirectional, self).__call__(inputs, **kwargs)
+
   def call(self, inputs, training=None, mask=None, initial_state=None):
     kwargs = {}
     if has_arg(self.layer.call, 'training'):
@@ -313,11 +388,6 @@ class Bidirectional(Wrapper):
       kwargs['mask'] = mask
 
     if initial_state is not None and has_arg(self.layer.call, 'initial_state'):
-      if not isinstance(initial_state, list):
-        raise ValueError(
-            'When passing `initial_state` to a Bidirectional RNN, the state '
-            'should be a list containing the states of the underlying RNNs. '
-            'Found: ' + str(initial_state))
       forward_state = initial_state[:len(initial_state) // 2]
       backward_state = initial_state[len(initial_state) // 2:]
       y = self.forward_layer.call(inputs, initial_state=forward_state, **kwargs)

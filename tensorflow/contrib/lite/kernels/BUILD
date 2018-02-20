@@ -129,6 +129,7 @@ cc_library(
         "skip_gram.cc",
         "space_to_batch_nd.cc",
         "space_to_depth.cc",
+        "split.cc",
         "squeeze.cc",
         "strided_slice.cc",
         "sub.cc",
@@ -566,6 +567,18 @@ tf_cc_test(
     name = "space_to_depth_test",
     size = "small",
     srcs = ["space_to_depth_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "split_test",
+    size = "small",
+    srcs = ["split_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",

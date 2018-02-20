@@ -39,7 +39,7 @@ class ConvRecurrent2D(Recurrent):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of n integers, specifying the
           dimensions of the convolution window.
       strides: An integer or tuple/list of n integers,
@@ -200,7 +200,7 @@ class ConvLSTM2D(ConvRecurrent2D):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of n integers, specifying the
           dimensions of the convolution window.
       strides: An integer or tuple/list of n integers,
