@@ -2448,4 +2448,197 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   return to_apply.result();
 }
 
+static Status ValidateGatherDimensionNumbers(
+    const Shape& input_shape,
+    tensorflow::gtl::ArraySlice<int64> gather_indices_shape,
+    const GatherDimensionNumbers& dim_numbers) {
+  if (!c_is_sorted(dim_numbers.output_window_dims())) {
+    return InvalidArgument(
+        "Output window dimensions in gather op must be ascending; got: %s",
+        Join(dim_numbers.output_window_dims(), ", ").c_str());
+  }
+
+  if (c_adjacent_find(dim_numbers.output_window_dims()) !=
+      dim_numbers.output_window_dims().end()) {
+    return InvalidArgument(
+        "Output window dimensions in gather op must not repeat; got: %s",
+        Join(dim_numbers.output_window_dims(), ", ").c_str());
+  }
+
+  const int64 output_window_dim_count = dim_numbers.output_window_dims_size();
+  const int64 output_shape_rank =
+      output_window_dim_count + gather_indices_shape.size();
+
+  for (int i = 0; i < dim_numbers.output_window_dims_size(); ++i) {
+    int64 window_index = dim_numbers.output_window_dims(i);
+    if (window_index < 0 || window_index >= output_shape_rank) {
+      return InvalidArgument(
+          "Window index %d in gather op is out of bounds; got %lld, but should "
+          "have been in"
+          "[0,%lld)",
+          i, window_index, output_shape_rank);
+    }
+  }
+
+  if (dim_numbers.gather_dims_to_operand_dims_size() !=
+      gather_indices_shape.back()) {
+    return InvalidArgument(
+        "There must be exactly as many elements in gather_dims_to_operand_dims "
+        "as there are elements in the last dimension of %%gather_indices; got: "
+        "%d, expected %lld",
+        dim_numbers.gather_dims_to_operand_dims_size(),
+        gather_indices_shape.back());
+  }
+
+  for (int i = 0; i < dim_numbers.gather_dims_to_operand_dims_size(); i++) {
+    int64 gather_dim_to_input_dim = dim_numbers.gather_dims_to_operand_dims(i);
+    if (gather_dim_to_input_dim < 0 ||
+        gather_dim_to_input_dim >= input_shape.dimensions_size()) {
+      return InvalidArgument(
+          "Invalid gather_dims_to_operand_dims mapping; domain is [0, %d), "
+          "got: %d->%lld",
+          input_shape.dimensions_size(), i, gather_dim_to_input_dim);
+    }
+  }
+
+  std::vector<int64> sorted_gather_dims_to_operand_dims(
+      dim_numbers.gather_dims_to_operand_dims().begin(),
+      dim_numbers.gather_dims_to_operand_dims().end());
+
+  c_sort(sorted_gather_dims_to_operand_dims);
+
+  if (c_adjacent_find(sorted_gather_dims_to_operand_dims) !=
+      sorted_gather_dims_to_operand_dims.end()) {
+    return InvalidArgument(
+        "Repeated dimensions are not allowed in gather_dims_to_operand_dims; "
+        "got: %s",
+        Join(dim_numbers.gather_dims_to_operand_dims(), ", ").c_str());
+  }
+
+  for (int64 elided_dim : dim_numbers.elided_window_dims()) {
+    if (elided_dim < 0 || elided_dim >= input_shape.dimensions_size()) {
+      return InvalidArgument(
+          "Invalid elided_window_dims set in gather op; valid range is [0, "
+          "%d), got: %lld",
+          input_shape.dimensions_size(), elided_dim);
+    }
+  }
+
+  if (!c_is_sorted(dim_numbers.elided_window_dims())) {
+    return InvalidArgument(
+        "elided_window_dims in gather op must be sorted; got: %s",
+        Join(dim_numbers.elided_window_dims(), ", ").c_str());
+  }
+
+  if (c_adjacent_find(dim_numbers.elided_window_dims()) !=
+      dim_numbers.elided_window_dims().end()) {
+    return InvalidArgument(
+        "Repeated dimensions not allowed in elided_window_dims in gather op; "
+        "got: %s",
+        Join(dim_numbers.elided_window_dims(), ", ").c_str());
+  }
+
+  return Status::OK();
+}
+
+/*static*/ StatusOr<Shape> ShapeInference::InferGatherShape(
+    const Shape& input_shape, const Shape& gather_indices_shape,
+    const GatherDimensionNumbers& gather_dim_numbers,
+    tensorflow::gtl::ArraySlice<int64> window_bounds) {
+  TF_RETURN_IF_ERROR(
+      ExpectNotTupleOrOpaque(input_shape, "input tensor operand gather op"));
+  TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(
+      gather_indices_shape, "gather indices operand of gather op"));
+
+  if (gather_indices_shape.dimensions_size() < 1) {
+    return InvalidArgument(
+        "Gather indices parameter must at least of rank 1; got %s",
+        ShapeUtil::HumanString(gather_indices_shape).c_str());
+  }
+
+  if (!ShapeUtil::ElementIsIntegral(gather_indices_shape)) {
+    return InvalidArgument(
+        "Gather indices parameter must be an integral tensor; got %s",
+        ShapeUtil::HumanString(gather_indices_shape).c_str());
+  }
+
+  std::vector<int64> expanded_gather_indices_shape;
+  // We implicitly reshape gather indices of shape P[N] to P[N,1].
+  expanded_gather_indices_shape.reserve(gather_indices_shape.dimensions_size());
+  c_copy(gather_indices_shape.dimensions(),
+         std::back_inserter(expanded_gather_indices_shape));
+  if (expanded_gather_indices_shape.size() == 1) {
+    expanded_gather_indices_shape.push_back(1);
+  }
+
+  TF_RETURN_IF_ERROR(ValidateGatherDimensionNumbers(
+      input_shape, expanded_gather_indices_shape, gather_dim_numbers));
+
+  if (window_bounds.size() != input_shape.dimensions_size()) {
+    return InvalidArgument(
+        "Gather op must have one window bound for every input dimension; got: "
+        "len(window_bounds)=%lu, input_shape.rank=%d",
+        window_bounds.size(), input_shape.dimensions_size());
+  }
+
+  if (window_bounds.size() !=
+      gather_dim_numbers.output_window_dims_size() +
+          gather_dim_numbers.elided_window_dims_size()) {
+    return InvalidArgument(
+        "All components of the window index in a gather op must either be a "
+        "output window index or explicitly elided; got len(window_bounds)=%lu, "
+        "output_window_bounds=%s, elided_window_bounds=%s",
+        window_bounds.size(),
+        Join(gather_dim_numbers.output_window_dims(), ",").c_str(),
+        Join(gather_dim_numbers.elided_window_dims(), ",").c_str());
+  }
+
+  for (int i = 0; i < window_bounds.size(); i++) {
+    int64 window_bound = window_bounds[i];
+    int64 corresponding_input_bound = input_shape.dimensions(i);
+    if (window_bound < 0 || window_bound > corresponding_input_bound) {
+      return InvalidArgument(
+          "Window bound at index %d in gather op is out of range, must be "
+          "within "
+          "[0, %lld), got %lld",
+          i, corresponding_input_bound + 1, window_bound);
+    }
+  }
+
+  for (int i = 0; i < gather_dim_numbers.elided_window_dims_size(); i++) {
+    if (window_bounds[gather_dim_numbers.elided_window_dims(i)] != 1) {
+      return InvalidArgument(
+          "Gather op can only elide window indices with bound 1, but bound is "
+          "%lld for index %lld at position %d",
+          window_bounds[gather_dim_numbers.elided_window_dims(i)],
+          gather_dim_numbers.elided_window_dims(i), i);
+    }
+  }
+
+  int64 result_rank = gather_dim_numbers.output_window_dims_size() +
+                      (expanded_gather_indices_shape.size() - 1);
+  int64 window_dims_seen = 0;
+  int64 gather_dims_seen = 0;
+  std::vector<int64> output_dim_bounds;
+  output_dim_bounds.reserve(result_rank);
+  for (int64 i = 0; i < result_rank; i++) {
+    int64 current_bound;
+    bool is_window_index =
+        c_binary_search(gather_dim_numbers.output_window_dims(), i);
+    if (is_window_index) {
+      while (c_binary_search(gather_dim_numbers.elided_window_dims(),
+                             window_dims_seen)) {
+        window_dims_seen++;
+      }
+      current_bound = window_bounds[window_dims_seen++];
+    } else {
+      current_bound = expanded_gather_indices_shape[gather_dims_seen++];
+    }
+
+    output_dim_bounds.push_back(current_bound);
+  }
+
+  return ShapeUtil::MakeShape(input_shape.element_type(), output_dim_bounds);
+}
+
 }  // namespace xla

@@ -2064,6 +2064,11 @@ GetHloBufferSlices(const HloInstruction* hlo,
   return slices;
 }
 
+Status IrEmitterUnnested::HandleGather(HloInstruction* gather) {
+  // TODO(b/72710576): Gather is not implemented on GPUs
+  return Unimplemented("Gather is not implemented on GPUs.");
+}
+
 std::unique_ptr<Thunk> IrEmitterUnnested::BuildKernelThunk(
     const HloInstruction* inst) {
   const BufferAssignment& buffer_assn =
