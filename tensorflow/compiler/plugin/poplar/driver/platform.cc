@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 
+#include <poplar/Device.hpp>
+
 namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::poplarplugin;
 
@@ -34,14 +36,24 @@ namespace perftools {
 namespace gputools {
 namespace poplarplugin {
 
-PoplarPlatform::PoplarPlatform() : name_("Poplar") {}
+PoplarPlatform::PoplarPlatform() : name_("Poplar"), num_devices_(1) {
+  /*
+  auto device_set = poplar::DeviceSet::getDeviceSet();
+  if (device_set.getDevices().size() > 0) {
+    num_devices_ = device_set.getDevices().size();
+    if (num_devices_ > 4) {
+      num_devices_ = 4;
+    }
+  }
+  */
+}
 
 PoplarPlatform::~PoplarPlatform() {}
 
 Platform::Id PoplarPlatform::id() const { return kPoplarPlatformId; }
 
 int PoplarPlatform::VisibleDeviceCount() const {
-  return 1;
+  return num_devices_;
 }
 
 const string& PoplarPlatform::Name() const { return name_; }
