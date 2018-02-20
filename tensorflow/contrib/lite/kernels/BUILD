@@ -514,6 +514,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "log_softmax_test",
+    size = "small",
+    srcs = ["log_softmax_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "//tensorflow/contrib/lite/kernels/internal:reference_base",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "lsh_projection_test",
     size = "small",
     srcs = ["lsh_projection_test.cc"],

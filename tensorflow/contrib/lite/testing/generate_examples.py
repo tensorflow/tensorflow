@@ -783,6 +783,37 @@ def make_exp_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_log_softmax_tests(zip_path):
+  """Make a set of tests to do log_softmax."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[1, 100], [4, 2], [5, 224]],
+  }]
+
+  def build_graph(parameters):
+    """Build the log_softmax op testing graph."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+
+    out = tf.nn.log_softmax(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    values = [
+        create_tensor_data(
+            parameters["input_dtype"],
+            parameters["input_shape"],
+            min_value=-100,
+            max_value=9)
+    ]
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_binary_op_tests_func(binary_operator):
   """Return a function that does a test on a binary operator."""
   return lambda zip_path: make_binary_op_tests(zip_path, binary_operator)
@@ -1818,6 +1849,7 @@ def main(unused_args):
         "squeeze.zip": make_squeeze_tests,
         "strided_slice.zip": make_strided_slice_tests,
         "exp.zip": make_exp_tests,
+        "log_softmax.zip": make_log_softmax_tests,
     }
     out = FLAGS.zip_to_output
     bin_path = FLAGS.toco
