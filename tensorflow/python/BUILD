@@ -4108,7 +4108,6 @@ py_library(
         "layers/convolutional.py",
         "layers/core.py",
         "layers/layers.py",
-        "layers/maxout.py",
         "layers/network.py",
         "layers/normalization.py",
         "layers/pooling.py",
@@ -4212,22 +4211,6 @@ py_test(
         ":client_testlib",
         ":framework_for_generated_wrappers",
         ":framework_test_lib",
-        ":layers",
-        ":math_ops",
-        ":nn_ops",
-        ":random_ops",
-    ],
-)
-
-py_test(
-    name = "layers_maxout_test",
-    size = "small",
-    srcs = ["layers/maxout_test.py"],
-    main = "layers/maxout_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
         ":layers",
         ":math_ops",
         ":nn_ops",
