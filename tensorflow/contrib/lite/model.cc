@@ -124,14 +124,20 @@ TfLiteStatus InterpreterBuilder::BuildLocalIndexToRegistrationMapping() {
   auto opcodes = model_->operator_codes();
   for (const OperatorCode* opcode : *opcodes) {
     TfLiteRegistration* registration = nullptr;
-
-    if (opcode->builtin_code() != BuiltinOperator_CUSTOM) {
-      auto x = opcode->builtin_code();
-      flatbuffer_op_index_to_registration_types_.push_back(x);
-      registration = op_resolver_.FindOp(x);
+    auto builtin_code = opcode->builtin_code();
+    if (builtin_code > BuiltinOperator_MAX ||
+        builtin_code < BuiltinOperator_MIN) {
+      error_reporter_->Report(
+          "Op builtin_code out or range: %d. Are you using old TFLite binary "
+          "with newer model?",
+          builtin_code);
+      status = kTfLiteError;
+    } else if (builtin_code != BuiltinOperator_CUSTOM) {
+      flatbuffer_op_index_to_registration_types_.push_back(builtin_code);
+      registration = op_resolver_.FindOp(builtin_code);
       if (registration == nullptr) {
         error_reporter_->Report("Didn't find op for builtin opcode '%s'\n",
-                                EnumNameBuiltinOperator(x));
+                                EnumNameBuiltinOperator(builtin_code));
         status = kTfLiteError;
       }
     } else if (!opcode->custom_code()) {
