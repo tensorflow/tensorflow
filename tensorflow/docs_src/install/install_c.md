@@ -15,7 +15,7 @@ instructions might also work on other variants, we have only tested
 following requirements:
 
   * Linux, 64-bit, x86
-  * macOS X, Version 10.11 (El Capitan) or higher
+  * macOS X, Version 10.12.6 (Sierra) or higher
 
 
 ## Installation
