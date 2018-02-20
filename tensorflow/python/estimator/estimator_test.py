@@ -945,6 +945,9 @@ class EstimatorGetVariablesTest(test.TestCase):
         set(['one', 'three', 'global_step']), set(est.get_variable_names()))
     self.assertEqual(1., est.get_variable_value('one'))
     self.assertEqual(3., est.get_variable_value('three'))
+    self.assertDictEqual({'one': 1., 'three': 3.}, est.get_variable_value(['one', 'three']))
+    with self.assertRaisesRegexp(ValueError, 'list of strings'):
+        est.get_variable_value(['one', 9])
 
 
 class EstimatorDatasetIntegrationTest(test.TestCase):
