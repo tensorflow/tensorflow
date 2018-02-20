@@ -331,7 +331,7 @@ def multiply(x, y, name=None):
   return gen_math_ops._mul(x, y, name)
 
 
-multiply.__doc__ = gen_math_ops._mul.__doc__.replace("`Mul`", "`tf.multiply`")
+multiply.__doc__ = gen_math_ops._mul.__doc__.replace("`Multiply`", "`tf.multiply`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
@@ -351,7 +351,7 @@ def subtract(x, y, name=None):
   return gen_math_ops._sub(x, y, name)
 
 
-subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Sub`", "`tf.subtract`")
+subtract.__doc__ = gen_math_ops._sub.__doc__.replace("`Subtract`", "`tf.subtract`")
 
 
 # TODO(aselle): put deprecation in after another round of global code changes
