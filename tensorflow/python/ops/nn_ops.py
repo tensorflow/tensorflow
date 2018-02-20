@@ -2123,6 +2123,25 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 data_format=data_format,
                                 name=name)
 
+def unpool(value, indices, unpool_shape, name=None):
+  """Performs unpooling on the input.
+
+  Args:
+    value: A 4-D `Tensor`.
+    indices: A 4-D int `Tensor` mapping the index of input values to their
+      index in the output.
+    unpool_shape: A 1-D `Tensor` of 4 elements specifying the size of the output.
+    name: Optional name for the operation.
+
+  Returns:
+    A 4-D `Tensor` of size unpool_shape.
+  """
+  with ops.name_scope(name, "Unpool", [value]) as name:
+    value = ops.convert_to_tensor(value, name="input")
+    indices = ops.convert_to_tensor(value, name="indices")
+    unpool_shape = ops.convert_to_tensor(value, name="unpool_shape")
+
+    return gen_nn_ops._unpool(value, indices, unpool_shape, name=name)
 
 @ops.RegisterStatistics("Conv2D", "flops")
 def _calc_conv_flops(graph, node):

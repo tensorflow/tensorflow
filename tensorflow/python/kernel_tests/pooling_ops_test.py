@@ -922,7 +922,7 @@ class PoolingTest(test.TestCase):
 				input_data,_,_,indices,unpooled_shape = GenerateUnpoolDataset()
 				with self.test_session(use_gpu=use_gpu):
 					pooled_data = constant_op.constant(input_data, dtype=dtypes.float32)
-					unpooled_data = nn_ops.unpool(pooled_data, indices, unpooled_shape).eval()
+          unpooled_data = gen_nn_ops._unpool(pooled_data, indices, unpooled_shape).eval()
 					self.assertAllCloseAccordingToType(input_data.ravel(), unpooled_data.ravel()[indices.ravel()])
 
   def testUnpoolGrad(self):
@@ -944,7 +944,7 @@ class PoolingTest(test.TestCase):
 					unpooled_gradient = np.random.random(unpooled_shape).astype(np.float32)
 
 					pooled_gradient_expected = unpooled_gradient.ravel()[indices.ravel()]
-					pooled_gradient = nn_ops.unpool_gradient(unpooled_gradient, indices).eval()
+          pooled_gradient = gen_nn_ops._unpool_gradient(unpooled_gradient, indices).eval()
 					self.assertAllCloseAccordingToType(pooled_gradient_expected, pooled_gradient.ravel())
 
   def _ConstructAndTestGradient(self,

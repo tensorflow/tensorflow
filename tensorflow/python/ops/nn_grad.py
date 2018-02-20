@@ -678,6 +678,17 @@ def _MaxPoolGradGradGrad(op, grad):
               padding=op.get_attr("padding"),
               data_format=op.get_attr("data_format")))
 
+@ops.RegisterGradient("Unpool"(
+def _UnpoolGrad(op, grad):
+  pooled_gradient = gen_nn_ops._unpool_gradient(grad, op.inputs[1])
+  indicies_gradient = array_ops.zeros(shape=array_ops.shape(op.inputs[1]), dtype=op.inputs[1].dtype)
+  pooled_shape_gradient = array_ops.zeros(shape=array_ops.shape(op.inputs[2]), dtype=op.inputs[2].dtype)
+
+  return (pooled_gradient, indices_gradient, pooled_shape_gradient)
+
+
+
+  )
 
 @ops.RegisterGradient("FractionalMaxPool")
 def _FractionalMaxPoolGrad(op, grad_0, unused_grad_1, unused_grad_2):
