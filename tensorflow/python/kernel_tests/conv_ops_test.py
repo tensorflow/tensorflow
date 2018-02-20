@@ -43,6 +43,9 @@ import tensorflow.python.ops.nn_grad  # pylint: disable=unused-import
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
+is_mkl_available = 0 # mkl is not available by default.
+if os.getenv("TF_MKL_TEST") is not None:
+  is_mkl_available = int(os.environ['TF_MKL_TEST'])
 
 def GetShrunkInceptionShapes(shrink=10):
   """Iterator for smaller versions of convolution shapes in 2015 Inception.
@@ -980,7 +983,7 @@ class Conv2DTest(test.TestCase):
       self.assertArrayNear(value_2.flatten(), value.flatten(), err)
 
   def testConv2D2x2Depth3ValidBackpropFilterStride1x1Dilation2x1(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropFilterDilation(
             input_sizes=[1, 3, 6, 1],
@@ -994,7 +997,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2D2x2Depth1ValidBackpropFilterDilation1x2(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropFilterDilation(
             input_sizes=[1, 2, 3, 1],
@@ -1008,7 +1011,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2DEmptyBackpropFilterDilation1x2(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropFilterDilation(
             input_sizes=[1, 2, 3, 1],
@@ -1022,7 +1025,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2D2x2Depth3ValidBackpropFilterDilation2x2(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropFilterDilation(
             input_sizes=[1, 3, 4, 3],
@@ -1036,7 +1039,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2DKernelSizeMatchesInputSizeBackpropFilterDilation2x2(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropFilterDilation(
             input_sizes=[1, 3, 3, 1],
@@ -1050,7 +1053,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2D2x2Depth3ValidBackpropInputStride1x1Dilation2x1(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropInputDilation(
             input_sizes=[1, 3, 6, 1],
@@ -1064,7 +1067,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2D2x2Depth1ValidBackpropInputDilation1x2(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropInputDilation(
             input_sizes=[1, 2, 3, 1],
@@ -1078,7 +1081,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2DEmptyBackpropInputDilation1x2(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropInputDilation(
             input_sizes=[0, 2, 3, 1],
@@ -1092,7 +1095,7 @@ class Conv2DTest(test.TestCase):
             err=1e-5)
 
   def testConv2D2x2Depth3ValidBackpropInputDilation2x1(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
       for (data_format, use_gpu) in GetTestConfigs():
         # The GPU version of this test is not very stable. So adjusting the
         # error threshold to 1e-4.
@@ -1108,7 +1111,7 @@ class Conv2DTest(test.TestCase):
             err=1e-4)
 
   def testConv2DKernelSizeMatchesInputSizeBackpropInputDilation2x2(self):
-    if test.is_gpu_available(cuda_only=True):
+    if test.is_gpu_available(cuda_only=True) or is_mkl_available:
       for (data_format, use_gpu) in GetTestConfigs():
         self._RunAndVerifyBackpropInputDilation(
             input_sizes=[1, 3, 3, 1],
@@ -1524,34 +1527,36 @@ class Conv2DTest(test.TestCase):
                 padding="VALID"))
 
   def testCPUConv2DNCHWUnimplemented(self):
-    with self.test_session(use_gpu=False):
-      with self.assertRaisesRegexp(errors_impl.UnimplementedError,
-                                   "NHWC tensor format for now"):
-        conv = self._SetupValuesForDevice(
-            tensor_in_sizes=[1, 4, 4, 1],
-            filter_in_sizes=[2, 2, 1, 1],
-            dilations=[1, 1],
-            strides=[1, 1],
-            padding="VALID",
-            data_format="NCHW",
-            dtype=dtypes.float32,
-            use_gpu=False)
-        self.evaluate(conv)
+    if not is_mkl_available:  
+      with self.test_session(use_gpu=False):
+        with self.assertRaisesRegexp(errors_impl.UnimplementedError,
+                                     "NHWC tensor format for now"):
+          conv = self._SetupValuesForDevice(
+              tensor_in_sizes=[1, 4, 4, 1],
+              filter_in_sizes=[2, 2, 1, 1],
+              dilations=[1, 1],
+              strides=[1, 1],
+              padding="VALID",
+              data_format="NCHW",
+              dtype=dtypes.float32,
+              use_gpu=False)
+          self.evaluate(conv)
 
   def testCPUConv2DDilatedUnimplemented(self):
-    with self.test_session(use_gpu=False):
-      with self.assertRaisesRegexp(errors_impl.UnimplementedError,
-                                   "dilated rate of 1 for now"):
-        conv = self._SetupValuesForDevice(
-            tensor_in_sizes=[1, 4, 4, 1],
-            filter_in_sizes=[2, 2, 1, 1],
-            dilations=[2, 1],
-            strides=[1, 1],
-            padding="VALID",
-            data_format="NHWC",
-            dtype=dtypes.float32,
-            use_gpu=False)
-        self.evaluate(conv)
+    if not is_mkl_available:  
+      with self.test_session(use_gpu=False):
+        with self.assertRaisesRegexp(errors_impl.UnimplementedError,
+                                     "dilated rate of 1 for now"):
+          conv = self._SetupValuesForDevice(
+              tensor_in_sizes=[1, 4, 4, 1],
+              filter_in_sizes=[2, 2, 1, 1],
+              dilations=[2, 1],
+              strides=[1, 1],
+              padding="VALID",
+              data_format="NHWC",
+              dtype=dtypes.float32,
+              use_gpu=False)
+          self.evaluate(conv)
 
 
 class DepthwiseConv2DTest(test.TestCase):
