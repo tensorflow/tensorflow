@@ -340,6 +340,7 @@ void AddOpsAndParams(tflite::Interpreter* interpreter,
       case tflite::BuiltinOperator_MEAN:
       case tflite::BuiltinOperator_DIV:
       case tflite::BuiltinOperator_SUB:
+      case tflite::BuiltinOperator_SPLIT:
       case tflite::BuiltinOperator_SQUEEZE:
       case tflite::BuiltinOperator_STRIDED_SLICE:
       case tflite::BuiltinOperator_EXP:

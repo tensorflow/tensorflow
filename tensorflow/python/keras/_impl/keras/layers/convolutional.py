@@ -60,7 +60,7 @@ class Conv1D(tf_convolutional_layers.Conv1D, Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of a single integer,
           specifying the length of the 1D convolution window.
       strides: An integer or tuple/list of a single integer,
@@ -173,7 +173,7 @@ class Conv2D(tf_convolutional_layers.Conv2D, Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the
           width and height of the 2D convolution window.
           Can be a single integer to specify the same value for
@@ -308,7 +308,7 @@ class Conv3D(tf_convolutional_layers.Conv3D, Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 3 integers, specifying the
           depth, height and width of the 3D convolution window.
           Can be a single integer to specify the same value for
@@ -877,7 +877,7 @@ class SeparableConv2D(tf_convolutional_layers.SeparableConv2D, Layer):
 
   Arguments:
       filters: Integer, the dimensionality of the output space
-          (i.e. the number output of filters in the convolution).
+          (i.e. the number of output filters in the convolution).
       kernel_size: An integer or tuple/list of 2 integers, specifying the
           width and height of the 2D convolution window.
           Can be a single integer to specify the same value for

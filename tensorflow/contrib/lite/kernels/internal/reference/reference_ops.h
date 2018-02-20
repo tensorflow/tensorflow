@@ -1590,6 +1590,33 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
   }
 }
 
+template <typename Scalar>
+void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
+                     int axis, int outputs_count, Scalar* const* output_data,
+                     const Dims<4>* const* output_dims) {
+  const int batches = ArraySize(*output_dims[0], 3);
+  const int height = ArraySize(*output_dims[0], 2);
+  const int width = ArraySize(*output_dims[0], 1);
+  const int depth = ArraySize(*output_dims[0], 0);
+
+  const int slice_size = ArraySize(*output_dims[0], axis);
+
+  for (int i = 0; i < outputs_count; ++i) {
+    int offset = i * slice_size * input_dims.strides[axis];
+    for (int b = 0; b < batches; ++b) {
+      for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+          for (int c = 0; c < depth; ++c) {
+            auto out = Offset(*output_dims[i], c, x, y, b);
+            auto in = Offset(input_dims, c, x, y, b);
+            output_data[i][out] = input_data[offset + in];
+          }
+        }
+      }
+    }
+  }
+}
+
 template <FusedActivationFunctionType Ac, typename Scalar>
 void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
                      int outputs_count, Scalar* const* output_data,
@@ -1600,28 +1627,12 @@ void TensorFlowSplit(const Scalar* input_data, const Dims<4>& input_dims,
     /* height = */ MatchingArraySize(*output_dims[i], 2, input_dims, 2);
     /* width = */ MatchingArraySize(*output_dims[i], 1, input_dims, 1);
   }
-  const int batches = MatchingArraySize(*output_dims[0], 3, input_dims, 3);
-  const int height = MatchingArraySize(*output_dims[0], 2, input_dims, 2);
-  const int width = MatchingArraySize(*output_dims[0], 1, input_dims, 1);
   // for now we dont have a model with a TensorFlowSplit
   // with fused activation function.
   TFLITE_DCHECK(Ac == FusedActivationFunctionType::kNone);
-  for (int b = 0; b < batches; ++b) {
-    for (int y = 0; y < height; ++y) {
-      for (int x = 0; x < width; ++x) {
-        int in_c = 0;
-        for (int i = 0; i < outputs_count; ++i) {
-          const int depth = ArraySize(*output_dims[i], 0);
-          for (int c = 0; c < depth; ++c) {
-            output_data[i][Offset(*output_dims[i], c, x, y, b)] =
-                input_data[Offset(input_dims, in_c, x, y, b)];
-            in_c++;
-          }
-        }
-        TFLITE_DCHECK(in_c == ArraySize(input_dims, 0));
-      }
-    }
-  }
+
+  TensorFlowSplit(input_data, input_dims, /*axis=*/0, outputs_count,
+                  output_data, output_dims);
 }
 
 // TODO(benoitjacob) make this a proper reference impl without Eigen!

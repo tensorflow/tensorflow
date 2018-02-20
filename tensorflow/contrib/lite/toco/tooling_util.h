@@ -299,6 +299,23 @@ void CheckFinalDataTypesSatisfied(const Model& model);
 
 ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type);
 
+// The process of building models varies according to the import format.
+//
+// (a) In some cases, such as model-proto format, the model should be fully
+// specified. In these cases, no extra action should be taken by this function.
+// (b) In other cases, such as TF graphdef format, the desired types of RNN
+// arrays are not specified directly in the model, neither can they be inferred.
+// However, we can set the types of RNN destination arrays to float. This breaks
+// any cycles such as when resolution of the type of an RNN source array depends
+// on the type of its destination array.
+//
+// This function is applied after the main import, after resolution of flags and
+// after application of ArraysExtraInfo. It only defaults destination RNN arrays
+// to float. If the model is subsequently quantized, it is assumed that the
+// model contains sufficient information for that to be completed. If it is
+// already quantized, then case (a) should hold.
+void FinishBuildingRNNStates(Model* model);
+
 void UseArraysExtraInfo(Model* model);
 
 }  // namespace toco
