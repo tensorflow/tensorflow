@@ -278,6 +278,12 @@ const Computation& LocalComputation::computation() const {
   return computation_;
 }
 
+StatusOr<Shape> LocalComputation::GetReturnValueShape() const {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape,
+                      computation_.GetProgramShape());
+  return std::move(*program_shape.mutable_result());
+}
+
 LocalComputationBuilder::LocalComputationBuilder(const string& computation_name)
     : builder_(GetOrCreateLocalClient(), computation_name) {}
 
@@ -301,6 +307,11 @@ ComputationDataHandle LocalComputationBuilder::Parameter(int64 parameter_number,
 std::unique_ptr<Shape> LocalComputationBuilder::GetShape(
     const ComputationDataHandle& operand) {
   return builder_.GetShape(operand).ConsumeValueOrDie();
+}
+
+StatusOr<Shape> LocalComputationBuilder::GetReturnValueShape() {
+  TF_ASSIGN_OR_RETURN(ProgramShape program_shape, builder_.GetProgramShape());
+  return program_shape.result();
 }
 
 ComputationDataHandle LocalComputationBuilder::Infeed(const Shape& shape) {

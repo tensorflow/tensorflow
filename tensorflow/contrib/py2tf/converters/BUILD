@@ -18,13 +18,14 @@ py_library(
     name = "converters",
     srcs = [
         "asserts.py",
-        "break_canonicalization.py",
+        "break_statements.py",
         "builtin_functions.py",
         "call_trees.py",
-        "continue_canonicalization.py",
+        "continue_statements.py",
         "control_flow.py",
         "decorators.py",
-        "for_canonicalization.py",
+        "for_loops.py",
+        "list_comprehension.py",
         "logical_expressions.py",
         "side_effect_guards.py",
     ],
@@ -63,8 +64,8 @@ py_test(
 )
 
 py_test(
-    name = "break_canonicalization_test",
-    srcs = ["break_canonicalization_test.py"],
+    name = "break_statements_test",
+    srcs = ["break_statements_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
@@ -96,8 +97,8 @@ py_test(
 )
 
 py_test(
-    name = "continue_canonicalization_test",
-    srcs = ["continue_canonicalization_test.py"],
+    name = "continue_statements_test",
+    srcs = ["continue_statements_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
@@ -129,8 +130,18 @@ py_test(
 )
 
 py_test(
-    name = "for_canonicalization_test",
-    srcs = ["for_canonicalization_test.py"],
+    name = "for_loops_test",
+    srcs = ["for_loops_test.py"],
+    deps = [
+        ":test_lib",
+        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
+    name = "list_comprehension_test",
+    srcs = ["list_comprehension_test.py"],
     srcs_version = "PY2AND3",
     deps = [
         ":test_lib",

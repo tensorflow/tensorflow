@@ -2518,6 +2518,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":array_ops",
+        ":checkpointable",
         ":control_flow_ops",
         ":dtypes",
         ":framework_ops",
@@ -2848,6 +2849,30 @@ py_library(
         "//tensorflow/python/eager:backprop",
         "//third_party/py/numpy",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "checkpointable",
+    srcs = ["training/checkpointable.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":io_ops_gen",
+        ":ops",
+        ":pywrap_tensorflow",
+        ":util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_test(
+    name = "checkpointable_test",
+    srcs = ["training/checkpointable_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":checkpointable",
+        ":client_testlib",
     ],
 )
 

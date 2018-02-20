@@ -28,9 +28,6 @@ limitations under the License.
 #include "llvm/Support/Host.h"
 #include "tensorflow/compiler/xla/ptr_util.h"
 #include "tensorflow/compiler/xla/service/cpu/cpu_runtime.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_neon.h"
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
 #include "tensorflow/compiler/xla/service/cpu/orc_jit_memory_mapper.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_conv2d.h"
@@ -101,27 +98,6 @@ llvm::StringRef GetHostCpuName() {
   cpu_name.consume_back("-avx512");
   return cpu_name;
 }
-
-CompilerFunctor::VectorIntrinsics GetAvailableIntrinsics() {
-  CompilerFunctor::VectorIntrinsics intrinsics;
-#ifdef TF_XLA_HAS_SSE4_1
-  intrinsics.sse_intrinsics = true;
-#else
-  intrinsics.sse_intrinsics = false;
-#endif
-#ifdef TF_XLA_HAS_AVX
-  intrinsics.avx_intrinsics = true;
-#else
-  intrinsics.avx_intrinsics = false;
-#endif
-#ifdef TF_XLA_HAS_NEON
-  intrinsics.neon_intrinsics = true;
-#else
-  intrinsics.neon_intrinsics = false;
-#endif
-  return intrinsics;
-}
-
 }  // namespace
 
 SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
@@ -162,20 +138,21 @@ SimpleOrcJIT::SimpleOrcJIT(const llvm::TargetOptions& target_options,
           [](llvm::Error Err) {
             cantFail(std::move(Err), "lookupFlags failed");
           })),
-      object_layer_(
-          execution_session_,
-          [](llvm::orc::VModuleKey) {
-            return std::make_shared<llvm::SectionMemoryManager>(
-                orc_jit_memory_mapper::GetInstance());
-          },
-          [this](llvm::orc::VModuleKey K) { return symbol_resolver_; }),
-      compile_layer_(
-          object_layer_,
-          CompilerFunctor(target_machine_.get(), &disassembler_, opt_level,
-                          optimize_for_size, enable_fast_math,
-                          disable_expensive_passes, GetAvailableIntrinsics(),
-                          std::move(pre_optimization_hook),
-                          std::move(post_optimization_hook))) {
+      object_layer_(execution_session_,
+                    [this](llvm::orc::VModuleKey) {
+                      llvm::orc::RTDyldObjectLinkingLayer::Resources result;
+                      result.MemMgr =
+                          std::make_shared<llvm::SectionMemoryManager>(
+                              orc_jit_memory_mapper::GetInstance());
+                      result.Resolver = symbol_resolver_;
+                      return result;
+                    }),
+      compile_layer_(object_layer_,
+                     CompilerFunctor(target_machine_.get(), &disassembler_,
+                                     opt_level, optimize_for_size,
+                                     enable_fast_math, disable_expensive_passes,
+                                     std::move(pre_optimization_hook),
+                                     std::move(post_optimization_hook))) {
   VLOG(1) << "CPU target: " << target_machine_->getTargetCPU().str()
           << " features: " << target_machine_->getTargetFeatureString().str();
 }
@@ -233,22 +210,15 @@ bool RegisterKnownJITSymbols() {
 
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireInfeedBufferForDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(AcquireOutfeedBufferForPopulation);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenFft);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenMatMulF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF16);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedConvF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF32);
   REGISTER_CPU_RUNTIME_SYMBOL(EigenSingleThreadedMatMulF64);
-#ifdef TF_XLA_HAS_NEON
-  REGISTER_CPU_RUNTIME_SYMBOL(LogV4F32NEON);
-#endif
-#ifdef TF_XLA_HAS_SSE4_1
-  REGISTER_CPU_RUNTIME_SYMBOL(LogV4F32SSE);
-#endif
-#ifdef TF_XLA_HAS_AVX
-  REGISTER_CPU_RUNTIME_SYMBOL(LogV8F32AVX);
-#endif
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);

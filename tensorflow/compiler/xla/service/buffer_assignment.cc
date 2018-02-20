@@ -45,6 +45,8 @@ using ::tensorflow::gtl::FlatMap;
 using ::tensorflow::gtl::FlatSet;
 using ::tensorflow::strings::Appendf;
 using ::tensorflow::strings::HumanReadableNumBytes;
+using ::tensorflow::strings::Printf;
+using ::tensorflow::strings::StrAppend;
 
 size_t BufferAllocation::Slice::Hasher::operator()(Slice s) const {
   uint64 h = std::hash<int64>()(s.index());
@@ -93,6 +95,9 @@ BufferAllocationProto BufferAllocation::ToProto() const {
   proto.set_color(color_.value());
   if (is_entry_computation_parameter_) {
     proto.set_is_entry_computation_parameter(true);
+    for (int64 idx : param_shape_index()) {
+      proto.add_parameter_shape_index(idx);
+    }
     proto.set_parameter_number(parameter_number_);
   }
   proto.set_maybe_live_out(maybe_live_out_);
@@ -112,25 +117,24 @@ BufferAllocationProto BufferAllocation::ToProto() const {
 
 string BufferAllocation::ToString() const {
   string output;
-  tensorflow::strings::StrAppend(
-      &output, tensorflow::strings::Printf("allocation %lld: %p, size %lld",
-                                           index_, this, size()));
+  Appendf(&output, "allocation %lld: %p, size %lld", index_, this, size());
   if (color().value() != 0) {
-    tensorflow::strings::StrAppend(&output, ", color ", color().value());
+    StrAppend(&output, ", color ", color().value());
   }
   if (is_entry_computation_parameter()) {
-    tensorflow::strings::StrAppend(&output, ", parameter ", parameter_number());
+    StrAppend(&output, ", parameter ", parameter_number(), " at ShapeIndex ",
+              param_shape_index().ToString());
   }
   if (is_thread_local()) {
-    tensorflow::strings::StrAppend(&output, ", thread-local");
+    StrAppend(&output, ", thread-local");
   }
   if (maybe_live_out()) {
-    tensorflow::strings::StrAppend(&output, ", maybe-live-out");
+    StrAppend(&output, ", maybe-live-out");
   }
   if (IsPreallocatedTempBuffer()) {
-    tensorflow::strings::StrAppend(&output, ", preallocated-temp");
+    StrAppend(&output, ", preallocated-temp");
   }
-  tensorflow::strings::StrAppend(&output, ":\n");
+  StrAppend(&output, ":\n");
   // Dump the assigned buffers ordered by id.
   std::vector<const LogicalBuffer*> sorted_buffers;
   for (const auto& buffer_offset_size : assigned_buffers_) {
@@ -142,12 +146,11 @@ string BufferAllocation::ToString() const {
             });
   for (const LogicalBuffer* buffer : sorted_buffers) {
     const OffsetSize& offset_size = FindOrDie(assigned_buffers_, buffer);
-    tensorflow::strings::StrAppend(
-        &output,
-        tensorflow::strings::Printf(
-            "  %s [%lld,%lld]: %s\n", buffer->ToString().c_str(),
-            offset_size.offset, offset_size.size,
-            ShapeUtil::HumanStringWithLayout(buffer->shape()).c_str()));
+    StrAppend(&output,
+              tensorflow::strings::Printf(
+                  "  %s [%lld,%lld]: %s\n", buffer->ToString().c_str(),
+                  offset_size.offset, offset_size.size,
+                  ShapeUtil::HumanStringWithLayout(buffer->shape()).c_str()));
   }
   return output;
 }
@@ -840,7 +843,7 @@ Status BufferAssigner::AssignBuffersForComputation(
                                     /*is_thread_local=*/false,
                                     /*is_reusable=*/false);
       allocation->set_entry_computation_parameter(
-          instruction->parameter_number());
+          instruction->parameter_number(), buffer->index());
       VLOG(3) << "New allocation #" << allocation->index()
               << " for entry computation parameter: " << *buffer;
       continue;
@@ -1411,14 +1414,17 @@ void BufferAssigner::AssignColocatedBufferSets(
     FlatSet<BufferAllocation::Index>* colocated_allocations) {
   for (const ColocatedBufferSet& colocated_buffer_set : colocated_buffer_sets) {
     BufferAllocation* allocation = nullptr;
-    // Set 'entry_parameter_number' if entry param in 'colocated_buffer_set'.
+    // Set 'entry_parameter_number' and 'entry_parameter_shape_idx' if entry
+    // param in 'colocated_buffer_set'.
     int64 entry_parameter_number = -1;
+    const ShapeIndex* entry_parameter_shape_idx = nullptr;
     for (const LogicalBuffer* buffer : colocated_buffer_set) {
       const HloInstruction* instruction = buffer->instruction();
       const HloComputation* computation = instruction->parent();
       if (instruction->opcode() == HloOpcode::kParameter &&
           computation == computation->parent()->entry_computation()) {
         entry_parameter_number = instruction->parameter_number();
+        entry_parameter_shape_idx = &buffer->index();
         break;
       }
     }
@@ -1439,7 +1445,8 @@ void BufferAssigner::AssignColocatedBufferSets(
           // body computation (which updates in place).
           // Set 'entry_computation_parameter' to indicate that it contains
           // an entry parameter, and to prevent reuse in MaybeAssignBuffer.
-          allocation->set_entry_computation_parameter(entry_parameter_number);
+          allocation->set_entry_computation_parameter(
+              entry_parameter_number, *entry_parameter_shape_idx);
         }
         colocated_allocations->insert(allocation->index());
       } else {

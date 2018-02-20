@@ -209,7 +209,8 @@ tensorflow::Status VerifyReducerShape(const ProgramShape& reducer_shape,
   }
 
   // Check that init_value's shape is suitable for reducer_shape.
-  if (!ShapeUtil::Compatible(accumulator_shape, init_value_shape)) {
+  if (!ShapeUtil::CompatibleIgnoringFpPrecision(accumulator_shape,
+                                                init_value_shape)) {
     return InvalidArgument(
         "Reduction function's accumulator shape differs from the "
         "init_value shape: %s vs %s",
@@ -220,8 +221,8 @@ tensorflow::Status VerifyReducerShape(const ProgramShape& reducer_shape,
   // Check that the inputs can be passed in as the second argument.
   const Shape& input_element_shape =
       ShapeUtil::MakeShape(input_element_type, {});
-  if (!ShapeUtil::Compatible(input_element_shape,
-                             reducer_shape.parameters(1))) {
+  if (!ShapeUtil::CompatibleIgnoringFpPrecision(input_element_shape,
+                                                reducer_shape.parameters(1))) {
     return InvalidArgument(
         "Reduction function's second parameter shape differs from the "
         "input type element type: %s vs %s",
@@ -231,7 +232,8 @@ tensorflow::Status VerifyReducerShape(const ProgramShape& reducer_shape,
 
   // Currently the accumulator and inputs must be the same type,
   // though that restriction could be relaxed.
-  if (!ShapeUtil::Compatible(accumulator_shape, reducer_shape.parameters(1))) {
+  if (!ShapeUtil::CompatibleIgnoringFpPrecision(accumulator_shape,
+                                                reducer_shape.parameters(1))) {
     return InvalidArgument(
         "Reduction function's second parameter shape currently must "
         "match the result shape. Got %s vs %s",
@@ -394,11 +396,13 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                            dimension);
   }
   const Shape* arg_shape = nullptr;
+  PrimitiveType element_type = PRIMITIVE_TYPE_INVALID;
   for (const Shape* shape : arg_shapes) {
     TF_RETURN_IF_ERROR(
         ExpectNotTupleOrOpaque(*shape, "operand of concatenation"));
     if (!arg_shape) {
       arg_shape = shape;
+      element_type = arg_shape->element_type();
       continue;
     }
     if (ShapeUtil::Rank(*arg_shape) != ShapeUtil::Rank(*shape)) {
@@ -409,7 +413,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
           ShapeUtil::HumanString(*arg_shape).c_str(), ShapeUtil::Rank(*shape),
           ShapeUtil::HumanString(*shape).c_str());
     }
-    if (arg_shape->element_type() != shape->element_type()) {
+    if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(*arg_shape, *shape)) {
       return InvalidArgument(
           "cannot concatenate arrays with different element types: %s vs %s",
           PrimitiveType_Name(arg_shape->element_type()).c_str(),
@@ -431,6 +435,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
             ShapeUtil::HumanString(*shape).c_str(), dimension);
       }
     }
+    element_type = ShapeUtil::HigherPrecisionElementType(*shape, *arg_shape);
   }
 
   std::vector<int64> new_dimensions(arg_shape->dimensions().begin(),
@@ -438,7 +443,7 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
   for (size_t i = 1; i < arg_shapes.size(); ++i) {
     new_dimensions[dimension] += arg_shapes[i]->dimensions(dimension);
   }
-  return ShapeUtil::MakeShape(arg_shape->element_type(), new_dimensions);
+  return ShapeUtil::MakeShape(element_type, new_dimensions);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConvertShape(
@@ -536,7 +541,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
         ShapeUtil::HumanString(operand_shape).c_str(),
         padding_config.ShortDebugString().c_str());
   }
-  if (operand_shape.element_type() != padding_value_shape.element_type()) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(operand_shape,
+                                                     padding_value_shape)) {
     return InvalidArgument(
         "the element types of the operands to pad do not match");
   }
@@ -548,7 +554,9 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                     std::max<int64>(operand_shape.dimensions(i) - 1, 0LL) *
                         padding_config.dimensions(i).interior_padding();
   }
-  return ShapeUtil::MakeShape(operand_shape.element_type(), dimensions);
+  return ShapeUtil::MakeShape(
+      ShapeUtil::HigherPrecisionElementType(operand_shape, padding_value_shape),
+      dimensions);
 }
 
 // Current DotDimensionNumbers Requirements:
@@ -673,7 +681,7 @@ Status ValidateDotDimensionNumbers(
   };
 
   // Check if both element types are the same.
-  if (lhs.element_type() != rhs.element_type()) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return fail("element types do not match");
   }
 
@@ -736,7 +744,8 @@ Status ValidateDotDimensionNumbers(
       dimensions.push_back(rhs.dimensions(i));
     }
   }
-  Shape result = ShapeUtil::MakeShape(lhs.element_type(), dimensions);
+  Shape result = ShapeUtil::MakeShape(
+      ShapeUtil::HigherPrecisionElementType(lhs, rhs), dimensions);
 
   TF_DCHECK_OK(ShapeUtil::ValidateShapeWithOptionalLayout(result));
   VLOG(2) << "inferred dot shape: " << ShapeUtil::HumanString(result);
@@ -767,7 +776,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                              ShapeUtil::HumanString(rhs).c_str());
     }
   }
-  return ShapeUtil::MakeShape(lhs.element_type(), output_dimensions);
+  return ShapeUtil::MakeShape(ShapeUtil::HigherPrecisionElementType(lhs, rhs),
+                              output_dimensions);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferInDimBroadcastShape(
@@ -829,6 +839,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   // specified in broadcast_dimensions are then changed to match the
   // corresponding dimension size in smaller_shape.
   Shape output_shape(larger_shape);
+  output_shape.set_element_type(
+      ShapeUtil::HigherPrecisionElementType(larger_shape, smaller_shape));
 
   for (int i = 0; i < smaller_shape.dimensions_size(); ++i) {
     int64 dimension_to_match = broadcast_dimensions.at(i);
@@ -878,7 +890,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   TF_RETURN_IF_ERROR(
       ExpectNotTupleOrOpaque(rhs, "rhs of elementwise binary operation"));
 
-  if (!ShapeUtil::SameElementType(lhs, rhs)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
         "binary op %s with different element types: %s and %s",
         BinaryOperation_Name(operation).c_str(),
@@ -897,10 +909,11 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     }
   }
 
-  if (ShapeUtil::Compatible(lhs, rhs)) {
+  if (ShapeUtil::CompatibleIgnoringFpPrecision(lhs, rhs)) {
     // If the shapes are the same other than layout, the output shape is the
     // same (elementwise op).
-    return lhs;
+    return ShapeUtil::ChangeElementType(
+        lhs, ShapeUtil::HigherPrecisionElementType(lhs, rhs));
   }
 
   if (ShapeUtil::Rank(lhs) == ShapeUtil::Rank(rhs)) {
@@ -973,7 +986,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
       TF_ASSIGN_OR_RETURN(const Shape& shape,
                           InferElementwiseBinaryOpShape(operation, lhs, rhs,
                                                         broadcast_dimensions));
-      if (lhs.element_type() == F32) {
+      if (lhs.element_type() == F32 && rhs.element_type() == F32) {
         return ShapeUtil::ChangeElementType(shape, C64);
       } else {
         return Unimplemented("complex component type not supported");
@@ -1078,12 +1091,13 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     TF_RETURN_IF_ERROR(
         ExpectNotTupleOrOpaque(*arg_shapes[i], "operand of map"));
 
-    if (ShapeUtil::Compatible(*arg_shapes[i], *arg_shape)) {
+    if (ShapeUtil::CompatibleIgnoringFpPrecision(*arg_shapes[i], *arg_shape)) {
       continue;
     }
     if (!ShapeUtil::IsTuple(*arg_shapes[i]) &&
         !ShapeUtil::IsTuple(*arg_shape) &&
-        ShapeUtil::SameElementType(*arg_shapes[i], *arg_shape)) {
+        ShapeUtil::SameElementTypeIgnoringFpPrecision(*arg_shapes[i],
+                                                      *arg_shape)) {
       if (ShapeUtil::IsScalar(*arg_shapes[i])) {
         continue;
       }
@@ -1148,7 +1162,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
           i, ShapeUtil::HumanString(parameter_shape).c_str());
     }
 
-    if (parameter_shape.element_type() != arg_shape->element_type()) {
+    if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(parameter_shape,
+                                                       *arg_shape)) {
       return InvalidArgument(
           "mapped computation's parameter type has to match argument element "
           "type; got parameter %d shape: %s, argument shape: %s",
@@ -1221,7 +1236,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
-  if (!ShapeUtil::SameElementType(offset_shape, operand_shape)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(offset_shape,
+                                                     operand_shape)) {
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-training, "
         "but the shape of offset factor is %s "
@@ -1230,7 +1246,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
-  if (!ShapeUtil::SameElementType(scale_shape, operand_shape)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(scale_shape,
+                                                     operand_shape)) {
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-training, "
         "but the shape of scale factor is %s "
@@ -1329,7 +1346,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
-  if (!ShapeUtil::SameElementType(offset_shape, operand_shape)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(offset_shape,
+                                                     operand_shape)) {
     return InvalidArgument(
         "The inputs should have the same element type for "
         "batch-norm-inference, "
@@ -1339,7 +1357,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
-  if (!ShapeUtil::SameElementType(scale_shape, operand_shape)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(scale_shape,
+                                                     operand_shape)) {
     return InvalidArgument(
         "The inputs should have the same element type for "
         "batch-norm-inference, "
@@ -1349,7 +1368,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
-  if (!ShapeUtil::SameElementType(mean_shape, operand_shape)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(mean_shape,
+                                                     operand_shape)) {
     return InvalidArgument(
         "The inputs should have the same element type for "
         "batch-norm-inference, "
@@ -1359,7 +1379,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
-  if (!ShapeUtil::SameElementType(variance_shape, operand_shape)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(variance_shape,
+                                                     operand_shape)) {
     return InvalidArgument(
         "The inputs should have the same element type for "
         "batch-norm-inference, "
@@ -1481,7 +1502,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         PrimitiveType_Name(output_grad_shape.element_type()).c_str());
   }
 
-  if (!ShapeUtil::SameElementType(output_grad_shape, operand_shape)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(output_grad_shape,
+                                                     operand_shape)) {
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-grad, "
         "but the element type of output_grad is %s "
@@ -1490,7 +1512,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
-  if (!ShapeUtil::SameElementType(scale_shape, operand_shape)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(scale_shape,
+                                                     operand_shape)) {
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-grad, "
         "but the element type of scale factor is %s "
@@ -1499,7 +1522,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
-  if (!ShapeUtil::SameElementType(mean_shape, operand_shape)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(mean_shape,
+                                                     operand_shape)) {
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-grad, "
         "but the element type of mean is %s "
@@ -1508,7 +1532,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         PrimitiveType_Name(operand_shape.element_type()).c_str());
   }
 
-  if (!ShapeUtil::SameElementType(var_shape, operand_shape)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(var_shape,
+                                                     operand_shape)) {
     return InvalidArgument(
         "The inputs should have the same element type for batch-norm-grad, "
         "but the element type of mean is %s "
@@ -1569,7 +1594,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(lhs, "lhs of convolution"));
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(rhs, "rhs of convolution"));
 
-  if (!ShapeUtil::SameElementType(lhs, rhs)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(lhs, rhs)) {
     return InvalidArgument(
         "Convolution with different element types: %s and %s",
         ShapeUtil::HumanString(lhs).c_str(),
@@ -1714,8 +1739,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     dimensions[dnums.output_spatial_dimensions(i)] =
         window_output_shape.dimensions(i);
   }
-
-  return ShapeUtil::MakeShape(lhs.element_type(), dimensions);
+  return ShapeUtil::MakeShape(ShapeUtil::HigherPrecisionElementType(lhs, rhs),
+                              dimensions);
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferFftShape(
@@ -1877,16 +1902,16 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   }
   const Shape& operand_element_shape =
       ShapeUtil::MakeShape(operand_shape.element_type(), {});
-  if (!ShapeUtil::Compatible(operand_element_shape,
-                             select_shape.parameters(0))) {
+  if (!ShapeUtil::CompatibleIgnoringFpPrecision(operand_element_shape,
+                                                select_shape.parameters(0))) {
     return InvalidArgument(
         "select function's first parameter shape currently must "
         "match the operand element shape. Got %s vs %s",
         ShapeUtil::HumanString(select_shape.parameters(0)).c_str(),
         ShapeUtil::HumanString(operand_element_shape).c_str());
   }
-  if (!ShapeUtil::Compatible(operand_element_shape,
-                             select_shape.parameters(1))) {
+  if (!ShapeUtil::CompatibleIgnoringFpPrecision(operand_element_shape,
+                                                select_shape.parameters(1))) {
     return InvalidArgument(
         "select function's second parameter shape currently must "
         "match the operand element shape. Got %s vs %s",
@@ -1903,7 +1928,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
                       InferWindowOutputShape(operand_shape, window,
                                              operand_shape.element_type(),
                                              /*allow_negative_padding=*/false));
-  if (!ShapeUtil::Compatible(source_shape, window_result_shape)) {
+  if (!ShapeUtil::CompatibleIgnoringFpPrecision(source_shape,
+                                                window_result_shape)) {
     return InvalidArgument(
         "source shape does not match the shape of window-reduced operand: "
         "source(%s), window-reduced operand(%s)",
@@ -2086,7 +2112,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
         ShapeUtil::Rank(update_shape), ShapeUtil::Rank(operand_shape));
   }
 
-  if (operand_shape.element_type() != update_shape.element_type()) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(operand_shape,
+                                                     update_shape)) {
     return InvalidArgument(
         "dynamic update slice update element type does not match argument. "
         "operand.element_type: %s vs update.element_type: %s",
@@ -2322,24 +2349,26 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(min, "clamp min"));
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(operand, "clamp operand"));
   TF_RETURN_IF_ERROR(ExpectNotTupleOrOpaque(max, "clamp max"));
-  if (!ShapeUtil::SameElementType(min, operand) ||
-      !ShapeUtil::SameElementType(max, operand)) {
+  if (!ShapeUtil::SameElementTypeIgnoringFpPrecision(min, operand) ||
+      !ShapeUtil::SameElementTypeIgnoringFpPrecision(max, operand)) {
     return InvalidArgument("clamp op with different operand types: %s, %s, %s",
                            ShapeUtil::HumanString(min).c_str(),
                            ShapeUtil::HumanString(operand).c_str(),
                            ShapeUtil::HumanString(max).c_str());
   }
-  if (((ShapeUtil::Compatible(min, operand) || ShapeUtil::IsScalar(min)) &&
-       (ShapeUtil::Compatible(max, operand) || ShapeUtil::IsScalar(max)))) {
+  if (((ShapeUtil::CompatibleIgnoringFpPrecision(min, operand) ||
+        ShapeUtil::IsScalar(min)) &&
+       (ShapeUtil::CompatibleIgnoringFpPrecision(max, operand) ||
+        ShapeUtil::IsScalar(max)))) {
     return operand;
   }
   if (ShapeUtil::IsScalar(operand)) {
-    if (ShapeUtil::Compatible(min, max)) {
-      return min;
+    if (ShapeUtil::CompatibleIgnoringFpPrecision(min, max)) {
+      return ShapeUtil::ChangeElementType(min, operand.element_type());
     } else if (ShapeUtil::IsScalar(min)) {
-      return max;
+      return ShapeUtil::ChangeElementType(max, operand.element_type());
     } else if (ShapeUtil::IsScalar(max)) {
-      return min;
+      return ShapeUtil::ChangeElementType(min, operand.element_type());
     }
   }
   return Unimplemented(
@@ -2352,7 +2381,15 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
 // broadcast from all operands, not just the predicate.
 /* static */ StatusOr<Shape> ShapeInference::InferSelectShape(
     const Shape& pred, const Shape& on_true, const Shape& on_false) {
-  if (!ShapeUtil::Compatible(on_true, on_false)) {
+  bool compatible;
+  if (ShapeUtil::IsTuple(on_true)) {
+    // Select only defines the top-level buffer, so if it's a tuple, the two
+    // input must match exactly.
+    compatible = ShapeUtil::Compatible(on_true, on_false);
+  } else {
+    compatible = ShapeUtil::CompatibleIgnoringFpPrecision(on_true, on_false);
+  }
+  if (!compatible) {
     return InvalidArgument(
         "operands to select must be the same shape; got %s and %s",
         ShapeUtil::HumanString(on_true).c_str(),
@@ -2367,7 +2404,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(
     // By this stage we know that pred's element type is PRED. Therefore, this
     // check restricts pred to be a PRED scalar, or a PRED array with the same
     // dimensions as on_true and on_false.
-    return on_true;
+    return ShapeUtil::ChangeElementType(
+        on_true, ShapeUtil::HigherPrecisionElementType(on_true, on_false));
   } else {
     return Unimplemented(
         "select operation with non-scalar predicate with dimensionality "

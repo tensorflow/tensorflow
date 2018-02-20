@@ -80,18 +80,18 @@ def dummy_model_fn(features, labels, params):
   _, _, _ = features, labels, params
 
 
-def check_eventfile_for_keyword(keyword, est):
+def check_eventfile_for_keyword(keyword, dir_):
   """Checks event files for the keyword."""
 
   writer_cache.FileWriterCache.clear()
 
   # Get last Event written.
-  event_paths = glob.glob(os.path.join(est.model_dir, 'events*'))
+  event_paths = glob.glob(os.path.join(dir_, 'events*'))
   last_event = None
   for last_event in summary_iterator.summary_iterator(event_paths[-1]):
     if last_event.summary is not None:
-      if last_event.summary.value:
-        if keyword in last_event.summary.value[0].tag:
+      for value in last_event.summary.value:
+        if keyword in value.tag:
           return True
 
   return False
@@ -610,7 +610,7 @@ class EstimatorTrainTest(test.TestCase):
     # Make sure nothing is stuck in limbo.
     writer_cache.FileWriterCache.clear()
 
-    if check_eventfile_for_keyword('loss', est):
+    if check_eventfile_for_keyword('loss', est.model_dir):
       return
     self.fail('{} should be part of reported summaries.'.format('loss'))
 
@@ -1290,8 +1290,9 @@ class EstimatorEvaluateTest(test.TestCase):
     # Make sure nothing is stuck in limbo.
     writer_cache.FileWriterCache.clear()
 
-    # Get last Event written.
-    if check_eventfile_for_keyword('image', est):
+    # Get last evaluation Event written.
+    if check_eventfile_for_keyword('image', 
+                                   os.path.join(est.model_dir, 'eval')):
       return
     self.fail('{} should be part of reported summaries.'.format('image'))
 
@@ -1471,6 +1472,27 @@ class EstimatorPredictTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError,
                                  'Batch length of predictions should be same'):
       next(est.predict(dummy_input_fn))
+
+  def test_iterate_batches(self):
+
+    def _model_fn(features, labels, mode):
+      _, _ = features, labels
+      return model_fn_lib.EstimatorSpec(
+          mode,
+          loss=constant_op.constant(0.),
+          train_op=state_ops.assign_add(training.get_global_step(), 1),
+          predictions={
+              # First dim is different but the prediction should still work
+              'y1': array_ops.zeros(shape=[3]),
+              'y2': array_ops.zeros(shape=[5, 3])
+          })
+
+    est = estimator.Estimator(model_fn=_model_fn)
+    est.train(dummy_input_fn, steps=1)
+
+    predictions = next(est.predict(dummy_input_fn, yield_single_examples=False))
+    self.assertAllEqual(predictions['y1'].shape, [3])
+    self.assertAllEqual(predictions['y2'].shape, [5, 3])
 
   def test_predict_keys_defined_for_tensor(self):
 

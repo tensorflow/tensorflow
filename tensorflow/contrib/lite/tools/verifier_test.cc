@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/contrib/lite/error_reporter.h"
 #include "tensorflow/contrib/lite/schema/schema_generated.h"
 #include "tensorflow/contrib/lite/testing/util.h"
+#include "tensorflow/contrib/lite/tools/mutable_op_resolver.h"
 #include "tensorflow/contrib/lite/tools/verifier.h"
 #include "tensorflow/contrib/lite/version.h"
 #include "tensorflow/core/framework/numeric_types.h"
@@ -38,6 +39,19 @@ class TfLiteFlatbufferModelBuilder {
   TfLiteFlatbufferModelBuilder() {
     buffers_.push_back(
         CreateBuffer(builder_, builder_.CreateVector(std::vector<uint8_t>{})));
+  }
+
+  TfLiteFlatbufferModelBuilder(const std::vector<BuiltinOperator>& builtin_ops,
+                               const std::vector<string>& custom_ops) {
+    buffers_.push_back(
+        CreateBuffer(builder_, builder_.CreateVector(std::vector<uint8_t>{})));
+
+    for (const auto& iter : builtin_ops) {
+      resolver_.AddBuiltin(iter, &fake_op_);
+    }
+    for (const auto& iter : custom_ops) {
+      resolver_.AddCustom(iter.data(), &fake_op_);
+    }
   }
 
   void AddTensor(const std::vector<int>& shape, tflite::TensorType type,
@@ -79,11 +93,13 @@ class TfLiteFlatbufferModelBuilder {
 
   bool Verify() {
     return tflite::Verify(builder_.GetBufferPointer(), builder_.GetSize(),
-                          DefaultErrorReporter());
+                          resolver_, DefaultErrorReporter());
   }
 
  private:
   FlatBufferBuilder builder_;
+  MutableOpResolver resolver_;
+  TfLiteRegistration fake_op_;
   std::vector<Offset<Operator>> operators_;
   std::vector<Offset<OperatorCode>> operator_codes_;
   std::vector<Offset<Tensor>> tensors_;
@@ -98,11 +114,11 @@ TEST(VerifyModel, TestEmptyModel) {
   ::tflite::FinishModelBuffer(builder, model);
 
   ASSERT_TRUE(Verify(builder.GetBufferPointer(), builder.GetSize(),
-                     DefaultErrorReporter()));
+                     MutableOpResolver{}, DefaultErrorReporter()));
 }
 
 TEST(VerifyModel, TestSimpleModel) {
-  TfLiteFlatbufferModelBuilder builder;
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
   builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "test");
   builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
   builder.AddTensor(
@@ -116,7 +132,8 @@ TEST(VerifyModel, TestSimpleModel) {
 
 TEST(VerifyModel, TestCorruptedData) {
   std::string model = "123";
-  ASSERT_FALSE(Verify(model.data(), model.size(), /*error_reporter=*/nullptr));
+  ASSERT_FALSE(Verify(model.data(), model.size(), MutableOpResolver{},
+                      /*error_reporter=*/nullptr));
 }
 
 TEST(VerifyModel, TestUnsupportedVersion) {
@@ -125,7 +142,7 @@ TEST(VerifyModel, TestUnsupportedVersion) {
                            /*subgraphs=*/0, /*description=*/0, /*buffers=*/0);
   ::tflite::FinishModelBuffer(builder, model);
   ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(),
-                      DefaultErrorReporter()));
+                      MutableOpResolver{}, DefaultErrorReporter()));
 }
 
 TEST(VerifyModel, TestRandomModificationIsNotAllowed) {
@@ -140,7 +157,7 @@ TEST(VerifyModel, TestRandomModificationIsNotAllowed) {
   for (int i = 0; i < model_content.size(); i++) {
     model_content[i] = (model_content[i] + 137) % 255;
     EXPECT_FALSE(Verify(model_content.data(), model_content.size(),
-                        DefaultErrorReporter()))
+                        MutableOpResolver{}, DefaultErrorReporter()))
         << "Fail at position: " << i;
   }
 }
@@ -188,7 +205,7 @@ TEST(VerifyModel, TensorBufferIsNotValid) {
 
   ::tflite::FinishModelBuffer(builder, model);
   ASSERT_FALSE(Verify(builder.GetBufferPointer(), builder.GetSize(),
-                      DefaultErrorReporter()));
+                      MutableOpResolver{}, DefaultErrorReporter()));
 }
 
 TEST(VerifyModel, StringTensorHasInvalidNumString) {
@@ -225,6 +242,37 @@ TEST(VerifyModel, StringTensorIsLargerThanRequired) {
       {2}, TensorType_STRING,
       {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 18, 0, 0, 0, 'A', 'B', 'C'},
       "input");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+}
+
+TEST(VerifyModel, AllOpsAreSupported) {
+  TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"CustomOp"});
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {}, "output");
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_ADD, nullptr);
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "CustomOp");
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+}
+
+TEST(VerifyModel, UseUnsupportedBuiltinOps) {
+  TfLiteFlatbufferModelBuilder builder({BuiltinOperator_SUB}, {"CustomOp"});
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {}, "output");
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_ADD, nullptr);
+  builder.FinishModel({}, {});
+  ASSERT_FALSE(builder.Verify());
+}
+
+TEST(VerifyModel, UseUnsupportedCustomOps) {
+  TfLiteFlatbufferModelBuilder builder({BuiltinOperator_ADD}, {"NewOp"});
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4}, "input1");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4}, "input2");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {}, "output");
+  builder.AddOperator({0, 1}, {2}, BuiltinOperator_CUSTOM, "Not supported");
   builder.FinishModel({}, {});
   ASSERT_FALSE(builder.Verify());
 }

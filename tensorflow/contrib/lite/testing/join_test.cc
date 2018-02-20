@@ -12,29 +12,32 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/contrib/lite/testing/join.h"
 
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_sse4_1.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
 
-#define EIGEN_USE_THREADS
+namespace tflite {
+namespace testing {
+namespace {
 
-#include "third_party/eigen3/Eigen/Core"
-
-#ifdef TF_XLA_HAS_SSE4_1
-
-xla::cpu::runtime::V4F32SSE __xla_cpu_runtime_LogV4F32SSE(
-    xla::cpu::runtime::V4F32SSE x) {
-  Eigen::internal::Packet4f p = x;
-  return Eigen::internal::plog(p);
+TEST(JoinTest, JoinInt) {
+  std::vector<int> data = {1, 2, 3};
+  EXPECT_EQ(Join(data.data(), data.size(), ","), "1,2,3");
 }
 
-#endif  // TF_XLA_HAS_SSE4_1
+TEST(JoinTest, JoinFloat) {
+  float data[] = {1.0, -3, 2.3, 1e-5};
+  EXPECT_EQ(Join(data, 4, " "), "1 -3 2.3 1e-05");
+}
 
-namespace xla {
-namespace cpu {
-namespace runtime {
+TEST(JoinTest, JoinNullData) { EXPECT_THAT(Join<int>(nullptr, 3, ","), ""); }
 
-const char *const kLogV4F32SSESymbolName = "__xla_cpu_runtime_LogV4F32SSE";
+TEST(JoinTest, JoinZeroData) {
+  std::vector<int> data;
+  EXPECT_THAT(Join(data.data(), 0, ","), "");
+}
 
-}  // namespace runtime
-}  // namespace cpu
-}  // namespace xla
+}  // namespace
+}  // namespace testing
+}  // namespace tflite

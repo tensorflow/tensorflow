@@ -427,7 +427,8 @@ class Estimator(object):
               input_fn,
               predict_keys=None,
               hooks=None,
-              checkpoint_path=None):
+              checkpoint_path=None,
+              yield_single_examples=True):
     """Yields predictions for given features.
 
     Args:
@@ -453,13 +454,18 @@ class Estimator(object):
         inside the prediction call.
       checkpoint_path: Path of a specific checkpoint to predict. If `None`, the
         latest checkpoint in `model_dir` is used.
+      yield_single_examples: If False, yield the whole batch as returned by the
+        model_fn instead of decomposing the batch into individual elements. This
+        is useful if model_fn return some tensor with first dimension not
+        equal to the batch size
 
     Yields:
       Evaluated values of `predictions` tensors.
 
     Raises:
       ValueError: Could not find a trained model in model_dir.
-      ValueError: if batch length of predictions are not same.
+      ValueError: if batch length of predictions are not same and
+        yield_single_examples is True.
       ValueError: If there is a conflict between `predict_keys` and
         `predictions`. For example if `predict_keys` is not `None` but
         `EstimatorSpec.predictions` is not a `dict`.
@@ -492,7 +498,9 @@ class Estimator(object):
           hooks=all_hooks) as mon_sess:
         while not mon_sess.should_stop():
           preds_evaluated = mon_sess.run(predictions)
-          if not isinstance(predictions, dict):
+          if not yield_single_examples:
+            yield preds_evaluated
+          elif not isinstance(predictions, dict):
             for pred in preds_evaluated:
               yield pred
           else:
@@ -1106,7 +1114,7 @@ def _write_dict_to_summary(output_dir,
           isinstance(dictionary[key], np.int32) or
           isinstance(dictionary[key], int)):
       summary_proto.value.add(tag=key, simple_value=int(dictionary[key]))
-    elif isinstance(dictionary[key], six.string_types):
+    elif isinstance(dictionary[key], six.binary_type):
       try:
         summ = summary_pb2.Summary.FromString(dictionary[key])
         for i, _ in enumerate(summ.value):

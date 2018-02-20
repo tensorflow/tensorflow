@@ -105,8 +105,14 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   # test in functional API
   x = keras.layers.Input(shape=input_shape[1:], dtype=input_dtype)
   y = layer(x)
-  assert keras.backend.dtype(y) == expected_output_dtype
-
+  if keras.backend.dtype(y) != expected_output_dtype:
+    raise AssertionError('When testing layer %s, for input %s, found output '
+                         'dtype=%s but expected to find %s.\nFull kwargs: %s' %
+                         (layer_cls.__name__,
+                          x,
+                          keras.backend.dtype(y),
+                          expected_output_dtype,
+                          kwargs))
   # check shape inference
   model = keras.models.Model(x, y)
   expected_output_shape = tuple(
@@ -117,7 +123,15 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   for expected_dim, actual_dim in zip(expected_output_shape,
                                       actual_output_shape):
     if expected_dim is not None:
-      assert expected_dim == actual_dim
+      if expected_dim != actual_dim:
+        raise AssertionError(
+            'When testing layer %s, for input %s, found output_shape='
+            '%s but expected to find %s.\nFull kwargs: %s' %
+            (layer_cls.__name__,
+             x,
+             actual_output_shape,
+             expected_output_shape,
+             kwargs))
   if expected_output is not None:
     np.testing.assert_allclose(actual_output, expected_output, rtol=1e-3)
 
@@ -146,7 +160,15 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
   for expected_dim, actual_dim in zip(expected_output_shape,
                                       actual_output_shape):
     if expected_dim is not None:
-      assert expected_dim == actual_dim
+      if expected_dim != actual_dim:
+        raise AssertionError(
+            'When testing layer %s, for input %s, found output_shape='
+            '%s but expected to find %s.\nFull kwargs: %s' %
+            (layer_cls.__name__,
+             x,
+             actual_output_shape,
+             expected_output_shape,
+             kwargs))
   if expected_output is not None:
     np.testing.assert_allclose(actual_output, expected_output, rtol=1e-3)
 

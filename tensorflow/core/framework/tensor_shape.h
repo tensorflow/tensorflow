@@ -191,9 +191,6 @@ class TensorShapeBase : public TensorShapeRep {
   /// Appends all the dimensions from `shape`.
   void AppendShape(const TensorShapeBase& shape);
 
-  // Maximum number of dimensions in a tensor.
-  static constexpr int MaxDimensions() { return 254; }
-
   /// \brief Insert a dimension somewhere in the `TensorShape`.
   /// REQUIRES: `0 <= d <= dims()`
   /// REQUIRES: `size >= 0`

@@ -102,10 +102,15 @@ class CompiledLocalComputation {
 class LocalComputation {
  public:
   LocalComputation(Computation computation);
+
   StatusOr<CompiledLocalComputation*> Compile(
       const std::vector<Shape>& argument_shapes,
       const ExecutableBuildOptions* build_options);
+
   const Computation& computation() const;
+
+  // Returns the return-value shape for this computation.
+  StatusOr<Shape> GetReturnValueShape() const;
 
  private:
   Computation computation_;
@@ -132,6 +137,9 @@ class LocalComputationBuilder {
                                   const string& name);
 
   std::unique_ptr<Shape> GetShape(const ComputationDataHandle& operand);
+
+  // Returns the shape of the current return value for the computation.
+  StatusOr<Shape> GetReturnValueShape();
 
   ComputationDataHandle Infeed(const Shape& shape);
 

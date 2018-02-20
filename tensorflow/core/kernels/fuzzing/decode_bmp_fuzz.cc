@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2018 Google Inc. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,25 +13,17 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/service/cpu/cpu_runtime_avx.h"
+#include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/kernels/fuzzing/fuzz_session.h"
 
-#define EIGEN_USE_THREADS
+namespace tensorflow {
+namespace fuzzing {
 
-#include "third_party/eigen3/Eigen/Core"
+class FuzzDecodeBmp : public FuzzStringInputOp {
+  SINGLE_INPUT_OP_BUILDER(DT_STRING, DecodeBmp);
+};
 
-#ifdef TF_XLA_HAS_AVX
-xla::cpu::runtime::V8F32AVX __xla_cpu_runtime_LogV8F32AVX(
-    xla::cpu::runtime::V8F32AVX x) {
-  return Eigen::internal::plog(x);
-}
-#endif  // TF_XLA_HAS_AVX
+STANDARD_TF_FUZZ_FUNCTION(FuzzDecodeBmp);
 
-namespace xla {
-namespace cpu {
-namespace runtime {
-
-const char *const kLogV8F32AVXSymbolName = "__xla_cpu_runtime_LogV8F32AVX";
-
-}  // namespace runtime
-}  // namespace cpu
-}  // namespace xla
+}  // end namespace fuzzing
+}  // end namespace tensorflow
