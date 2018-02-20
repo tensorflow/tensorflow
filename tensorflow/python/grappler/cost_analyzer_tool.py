@@ -74,7 +74,8 @@ def main(_):
   optimized_graph = tf_optimizer.OptimizeGraph(rewriter_config, metagraph)
   metagraph.graph_def.CopyFrom(optimized_graph)
 
-  report = cost_analyzer.GenerateCostReport(metagraph, FLAGS.per_node_report)
+  report = cost_analyzer.GenerateCostReport(metagraph, FLAGS.per_node_report,
+                                            FLAGS.verbose)
   print(report)
   if FLAGS.memory_report:
     report = cost_analyzer.GenerateMemoryReport(metagraph)
@@ -117,5 +118,9 @@ if __name__ == "__main__":
       "--memory_report",
       action="store_true",
       help="Generate memory usage report.")
+  parser.add_argument(
+      "--verbose",
+      action="store_true",
+      help="Generate verbose reports. By default, succinct reports are used.")
   FLAGS, unparsed = parser.parse_known_args()
   app.run(main=main, argv=[sys.argv[0]] + unparsed)
