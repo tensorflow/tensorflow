@@ -988,22 +988,15 @@ filegroup(
 
 # Core sources for Android builds.
 filegroup(
-    name = "mobile_srcs",
+    name = "mobile_srcs_no_runtime",
     srcs = [
         ":proto_text_srcs_all",
-        "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
-        "//tensorflow/core/util/ctc:android_srcs",
-        "//tensorflow/core/util/tensor_bundle:android_srcs",
     ] + glob(
         [
             "client/**/*.cc",
-            "common_runtime/**/*.h",
-            "common_runtime/**/*.cc",
             "framework/**/*.h",
             "framework/**/*.cc",
-            "graph/**/*.h",
-            "graph/**/*.cc",
             "lib/**/*.h",
             "lib/**/*.cc",
             "platform/**/*.h",
@@ -1019,7 +1012,6 @@ filegroup(
             "**/*main.cc",
             "debug/**/*",
             "framework/op_gen_*",
-            "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "lib/gif/**/*",
@@ -1036,10 +1028,49 @@ filegroup(
             "platform/stream_executor.*",
             "platform/windows/**/*",
             "user_ops/**/*.cu.cc",
+            "util/ctc/*.h",
+            "util/ctc/*.cc",
+            "util/tensor_bundle/*.h",
+            "util/tensor_bundle/*.cc",
             "common_runtime/gpu/**/*",
             "common_runtime/gpu_device_factory.*",
         ],
     ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "//tensorflow/core/kernels:android_srcs",
+        "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/util/tensor_bundle:android_srcs",
+    ] + glob(
+        [
+            "common_runtime/**/*.h",
+            "common_runtime/**/*.cc",
+            "graph/**/*.h",
+            "graph/**/*.cc",
+        ],
+        exclude = [
+            "**/*test.*",
+            "**/*testutil*",
+            "**/*testlib*",
+            "**/*main.cc",
+            "common_runtime/gpu/**/*",
+            "common_runtime/gpu_device_factory.*",
+            "graph/dot.*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        ":mobile_srcs_no_runtime",
+        ":mobile_srcs_only_runtime",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -3640,6 +3671,18 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+alias(
+    name = "android_srcs_no_runtime",
+    actual = ":mobile_srcs_no_runtime",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "android_srcs_only_runtime",
+    actual = ":mobile_srcs_only_runtime",
+    visibility = ["//visibility:public"],
 )
 
 alias(
