@@ -1390,6 +1390,14 @@ def transpose(a, perm=None, name="transpose", conjugate=False):
   `a.dtype` is either `complex64` or `complex128` then the values of `a`
   are conjugated and transposed.
 
+  @compatibility(numpy)
+  In `numpy` transposes are memory-efficient constant time operations as they
+  simply return a new view of the same data with adjusted `strides`.
+
+  TensorFlow does not support strides, so `transpose` returns a new tensor with
+  the items permuted.
+  @end_compatibility
+
   For example:
 
   ```python
@@ -1489,6 +1497,14 @@ def matrix_transpose(a, name="matrix_transpose", conjugate=False):
   # Inefficient!
   tf.matmul(matrix, tf.matrix_transpose(b))
   ```
+
+  @compatibility(numpy)
+  In `numpy` transposes are memory-efficient constant time operations as they
+  simply return a new view of the same data with adjusted `strides`.
+
+  TensorFlow does not support strides, `matrix_transposes` return a new tensor
+  with the items permuted.
+  @end_compatibility
 
   Args:
     a: A `Tensor` with `rank >= 2`.
