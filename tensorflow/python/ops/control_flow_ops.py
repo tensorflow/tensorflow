@@ -44,6 +44,7 @@ See the @{$python/control_flow_ops} guide.
 @@add_check_numerics_ops
 @@Assert
 @@Print
+@@timestamp
 """
 # pylint: disable=g-bad-name
 from __future__ import absolute_import
