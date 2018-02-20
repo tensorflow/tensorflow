@@ -64,12 +64,6 @@ _VALID_MODEL_FN_ARGS = set(
     ['features', 'labels', 'mode', 'params', 'self', 'config'])
 
 
-def _check_string_or_not(name):
-    if isinstance(name, six.string_types):
-        return name
-    raise TypeError("Received {} and I was expecting string".format(type(name)))
-
-
 @tf_export('estimator.Estimator')
 class Estimator(object):
   """Estimator class to train and evaluate TensorFlow models.
@@ -252,7 +246,6 @@ class Estimator(object):
 
     return public_model_fn
 
-  # TODO(ispir): support a list of names
   def get_variable_value(self, name):
     """Returns value of the variable given by name.
 
@@ -265,11 +258,16 @@ class Estimator(object):
     Raises:
       ValueError: If the Estimator has not produced a checkpoint yet.
     """
+    def _check_string_or_not(name):
+        if isinstance(name, six.string_types):
+            return name
+        raise TypeError("Received type {} and I was expecting an input of type string".format(type(name)))
+
     _check_checkpoint_available(self.model_dir)
     if isinstance(name, six.string_types):
         return training.load_variable(self.model_dir, name)
     else:
-        return {k:traning.load_variable(self.model_dir, _check_string_or_not(v)) for v in name}
+        return {v:traning.load_variable(self.model_dir, _check_string_or_not(v)) for v in name}
 
   def get_variable_names(self):
     """Returns list of all variable names in this model.
