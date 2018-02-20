@@ -34,19 +34,19 @@ class _SlideDataset(dataset_ops.Dataset):
     super(_SlideDataset, self).__init__()
     self._input_dataset = input_dataset
     self._window_size = ops.convert_to_tensor(
-      window_size, dtype=dtypes.int64, name="window_size")
+        window_size, dtype=dtypes.int64, name="window_size")
     self._stride = ops.convert_to_tensor(
-      stride, dtype=dtypes.int64, name="stride")
+        stride, dtype=dtypes.int64, name="stride")
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.slide_dataset(
-      self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-      window_size=self._window_size,
-      stride=self._stride,
-      output_shapes=nest.flatten(
-        sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
-      output_types=nest.flatten(
-        sparse.as_dense_types(self.output_types, self.output_classes)))
+        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+        window_size=self._window_size,
+        stride=self._stride,
+        output_shapes=nest.flatten(
+            sparse.as_dense_shapes(self.output_shapes, self.output_classes)),
+        output_types=nest.flatten(
+            sparse.as_dense_types(self.output_types, self.output_classes)))
 
   @property
   def output_classes(self):
@@ -56,8 +56,8 @@ class _SlideDataset(dataset_ops.Dataset):
   def output_shapes(self):
     input_shapes = self._input_dataset.output_shapes
     return nest.pack_sequence_as(input_shapes, [
-      tensor_shape.vector(None).concatenate(s)
-      for s in nest.flatten(self._input_dataset.output_shapes)
+        tensor_shape.vector(None).concatenate(s)
+        for s in nest.flatten(self._input_dataset.output_shapes)
     ])
 
   @property

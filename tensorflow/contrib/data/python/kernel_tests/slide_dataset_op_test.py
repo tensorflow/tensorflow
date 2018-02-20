@@ -46,7 +46,8 @@ class SlideDatasetTest(test.TestCase):
 
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(count) -> _SlideDataset(window_size, stride).
-    iterator = (dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
+    iterator = (dataset_ops.Dataset.from_tensor_slices(components)
+                .map(_map_fn)
                 .repeat(count)
                 .apply(sliding.sliding_window_batch(window_size, stride))
                 .make_initializable_iterator())
@@ -121,10 +122,10 @@ class SlideDatasetTest(test.TestCase):
 
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
-        indices=[[0]], values=(i * [1]), dense_shape=[1])
+          indices=[[0]], values=(i * [1]), dense_shape=[1])
 
     iterator = dataset_ops.Dataset.range(10).map(_sparse).apply(
-      sliding.sliding_window_batch(5, 3)).make_initializable_iterator()
+        sliding.sliding_window_batch(5, 3)).make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -134,9 +135,9 @@ class SlideDatasetTest(test.TestCase):
       for i in range(num_batches):
         actual = sess.run(get_next)
         expected = sparse_tensor.SparseTensorValue(
-          indices=[[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
-          values=[i * 3, i * 3 + 1, i * 3 + 2, i * 3 + 3, i * 3 + 4],
-          dense_shape=[5, 1])
+            indices=[[0, 0], [1, 0], [2, 0], [3, 0], [4, 0]],
+            values=[i * 3, i * 3 + 1, i * 3 + 2, i * 3 + 3, i * 3 + 4],
+            dense_shape=[5, 1])
         self.assertTrue(sparse_tensor.is_sparse(actual))
         self.assertSparseValuesEqual(actual, expected)
       with self.assertRaises(errors.OutOfRangeError):
@@ -146,13 +147,13 @@ class SlideDatasetTest(test.TestCase):
 
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
-        indices=array_ops.expand_dims(
-          math_ops.range(i, dtype=dtypes.int64), 1),
-        values=array_ops.fill([math_ops.to_int32(i)], i),
-        dense_shape=[i])
+          indices=array_ops.expand_dims(
+              math_ops.range(i, dtype=dtypes.int64), 1),
+          values=array_ops.fill([math_ops.to_int32(i)], i),
+          dense_shape=[i])
 
     iterator = dataset_ops.Dataset.range(10).map(_sparse).apply(
-      sliding.sliding_window_batch(5, 3)).make_initializable_iterator()
+        sliding.sliding_window_batch(5, 3)).make_initializable_iterator()
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -168,9 +169,9 @@ class SlideDatasetTest(test.TestCase):
             expected_indices.append([j, k])
             expected_values.append(i * 3 + j)
         expected = sparse_tensor.SparseTensorValue(
-          indices=expected_indices,
-          values=expected_values,
-          dense_shape=[5, i * 3 + 5 - 1])
+            indices=expected_indices,
+            values=expected_values,
+            dense_shape=[5, i * 3 + 5 - 1])
         self.assertTrue(sparse_tensor.is_sparse(actual))
         self.assertSparseValuesEqual(actual, expected)
       with self.assertRaises(errors.OutOfRangeError):
@@ -180,11 +181,13 @@ class SlideDatasetTest(test.TestCase):
 
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
-        indices=[[0]], values=(i * [1]), dense_shape=[1])
+          indices=[[0]], values=(i * [1]), dense_shape=[1])
 
-    iterator = dataset_ops.Dataset.range(10).map(_sparse).apply(
-      sliding.sliding_window_batch(4, 2)).apply(
-      sliding.sliding_window_batch(3, 1)).make_initializable_iterator()
+    iterator = (dataset_ops.Dataset.range(10)
+                .map(_sparse)
+                .apply(sliding.sliding_window_batch(4, 2))
+                .apply(sliding.sliding_window_batch(3, 1))
+                .make_initializable_iterator())
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
@@ -193,21 +196,21 @@ class SlideDatasetTest(test.TestCase):
       # Slide: 1st batch.
       actual = sess.run(get_next)
       expected = sparse_tensor.SparseTensorValue(
-        indices=[[0, 0, 0], [0, 1, 0], [0, 2, 0], [0, 3, 0],
-                 [1, 0, 0], [1, 1, 0], [1, 2, 0], [1, 3, 0],
-                 [2, 0, 0], [2, 1, 0], [2, 2, 0], [2, 3, 0]],
-        values=[0, 1, 2, 3, 2, 3, 4, 5, 4, 5, 6, 7],
-        dense_shape=[3, 4, 1])
+          indices=[[0, 0, 0], [0, 1, 0], [0, 2, 0], [0, 3, 0],
+                   [1, 0, 0], [1, 1, 0], [1, 2, 0], [1, 3, 0],
+                   [2, 0, 0], [2, 1, 0], [2, 2, 0], [2, 3, 0]],
+          values=[0, 1, 2, 3, 2, 3, 4, 5, 4, 5, 6, 7],
+          dense_shape=[3, 4, 1])
       self.assertTrue(sparse_tensor.is_sparse(actual))
       self.assertSparseValuesEqual(actual, expected)
       # Slide: 2nd batch.
       actual = sess.run(get_next)
       expected = sparse_tensor.SparseTensorValue(
-        indices=[[0, 0, 0], [0, 1, 0], [0, 2, 0], [0, 3, 0],
-                 [1, 0, 0], [1, 1, 0], [1, 2, 0], [1, 3, 0],
-                 [2, 0, 0], [2, 1, 0], [2, 2, 0], [2, 3, 0]],
-        values=[2, 3, 4, 5, 4, 5, 6, 7, 6, 7, 8, 9],
-        dense_shape=[3, 4, 1])
+          indices=[[0, 0, 0], [0, 1, 0], [0, 2, 0], [0, 3, 0],
+                   [1, 0, 0], [1, 1, 0], [1, 2, 0], [1, 3, 0],
+                   [2, 0, 0], [2, 1, 0], [2, 2, 0], [2, 3, 0]],
+          values=[2, 3, 4, 5, 4, 5, 6, 7, 6, 7, 8, 9],
+          dense_shape=[3, 4, 1])
       self.assertTrue(sparse_tensor.is_sparse(actual))
       self.assertSparseValuesEqual(actual, expected)
       with self.assertRaises(errors.OutOfRangeError):
