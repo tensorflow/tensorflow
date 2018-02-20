@@ -142,14 +142,8 @@ NodeProperties GetPropertiesForArray(const Model& model,
 
   // Append array shape to the label.
   auto& array = model.GetArray(array_name);
-
-  if (array.data_type == ArrayDataType::kFloat) {
-    AppendF(&node_properties.label, "\\nType: float");
-  } else if (array.data_type == ArrayDataType::kInt32) {
-    AppendF(&node_properties.label, "\\nType: int32");
-  } else if (array.data_type == ArrayDataType::kUint8) {
-    AppendF(&node_properties.label, "\\nType: uint8");
-  }
+  AppendF(&node_properties.label, "\\nType: %s",
+          ArrayDataTypeName(array.data_type));
 
   if (array.has_shape()) {
     auto& array_shape = array.shape();
