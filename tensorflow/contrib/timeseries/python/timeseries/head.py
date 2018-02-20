@@ -144,7 +144,8 @@ class _TimeSeriesRegressionHead(head_lib._Head):  # pylint:disable=protected-acc
     with variable_scope.variable_scope("model"):
       prediction_outputs = self.model.predict(features=features)
     with variable_scope.variable_scope("model", reuse=True):
-      filtering_outputs = self.create_loss(features, estimator_lib.ModeKeys.EVAL)
+      filtering_outputs = self.create_loss(
+          features, estimator_lib.ModeKeys.EVAL)
     return estimator_lib.EstimatorSpec(
         mode=estimator_lib.ModeKeys.PREDICT,
         export_outputs={
