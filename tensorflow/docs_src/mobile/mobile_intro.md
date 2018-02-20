@@ -235,7 +235,7 @@ TensorFlow [on Github](https://github.com/tensorflow/models) that you can look
 through. Lean towards the simplest model you can find, and try to get started as
 soon as you have even a small amount of labelled data, since you’ll get the best
 results when you’re able to iterate quickly. The shorter the time it takes to
-try training a model and running it in s real application, the better overall
+try training a model and running it in its real application, the better overall
 results you’ll see. It’s common for an algorithm to get great training accuracy
 numbers but then fail to be useful within a real application because there’s a
 mismatch between the dataset and real usage. Prototype end-to-end usage as soon
