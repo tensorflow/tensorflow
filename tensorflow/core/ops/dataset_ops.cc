@@ -248,6 +248,7 @@ REGISTER_OP("BatchDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// TODO(mrry): move SlideDataset to contrib in the future.
 REGISTER_OP("SlideDataset")
     .Input("input_dataset: variant")
     .Input("window_size: int64")
@@ -255,15 +256,7 @@ REGISTER_OP("SlideDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetShapeFn(shape_inference::ScalarShape)
-    .Doc(R"doc(
-Creates a dataset that passes a sliding window over `input_dataset`.
-
-window_size: A scalar representing the number of elements in the
-  sliding window.
-stride: A scalar representing the steps moving the sliding window
-  forward in one iteration. It must be in `[1, window_size)`.
-)doc");
+    .SetShapeFn(shape_inference::ScalarShape);
 
 REGISTER_OP("PaddedBatchDataset")
     .Input("input_dataset: variant")
