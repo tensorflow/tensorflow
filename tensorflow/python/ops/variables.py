@@ -37,7 +37,7 @@ from tensorflow.python.util.tf_export import tf_export
 
 
 @tf_export("Variable")
-class Variable(checkpointable.Checkpointable):
+class Variable(checkpointable.CheckpointableBase):
   """See the @{$variables$Variables How To} for a high level overview.
 
   A variable maintains state in the graph across calls to `run()`. You add a

@@ -90,8 +90,7 @@ class SummariesTest(test.TestCase):
     self._test_add_gan_model_image_summaries_impl(get_gan_model, 2, False)
 
   def test_add_gan_model_image_summaries_for_cyclegan(self):
-    self._test_add_gan_model_image_summaries_impl(get_cyclegan_model, 10,
-                                                  True)
+    self._test_add_gan_model_image_summaries_impl(get_cyclegan_model, 10, True)
 
   def _test_add_gan_model_summaries_impl(self, get_model_fn,
                                          expected_num_summary_ops):

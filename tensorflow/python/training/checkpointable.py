@@ -99,9 +99,8 @@ class _CheckpointPosition(object):
       # This object's correspondence with a checkpointed object is new, so
       # process deferred restorations for it and its dependencies.
       restore_ops = checkpointable._restore_from_checkpoint_position(self)  # pylint: disable=protected-access
-      session = self._checkpoint.session
-      if session:
-        session.run(restore_ops)
+      if restore_ops:
+        self._checkpoint.restore_ops.extend(restore_ops)
 
   def bind_object(self, checkpointable):
     """Set a checkpoint<->object correspondence and process slot variables.
@@ -120,13 +119,13 @@ class _CheckpointPosition(object):
       checkpoint.object_by_proto_id[self._proto_id] = checkpointable
       for deferred_slot_restoration in (
           checkpoint.deferred_slot_restorations.pop(self._proto_id, ())):
-        checkpointable._process_slot_restoration(  # pylint: disable=protected-access
+        checkpointable._create_or_restore_slot_variable(  # pylint: disable=protected-access
             slot_variable_position=_CheckpointPosition(
                 checkpoint=checkpoint,
                 proto_id=deferred_slot_restoration.slot_variable_id),
             variable=deferred_slot_restoration.original_variable,
             slot_name=deferred_slot_restoration.slot_name)
-      for slot_restoration in checkpoint.slot_restorations.get(
+      for slot_restoration in checkpoint.slot_restorations.pop(
           self._proto_id, ()):
         optimizer_object = checkpoint.object_by_proto_id.get(
             slot_restoration.optimizer_id, None)
@@ -140,7 +139,7 @@ class _CheckpointPosition(object):
                       slot_variable_id=slot_restoration.slot_variable_id,
                       slot_name=slot_restoration.slot_name))
         else:
-          optimizer_object._process_slot_restoration(  # pylint: disable=protected-access
+          optimizer_object._create_or_restore_slot_variable(  # pylint: disable=protected-access
               slot_variable_position=_CheckpointPosition(
                   checkpoint=checkpoint,
                   proto_id=slot_restoration.slot_variable_id),
@@ -229,7 +228,7 @@ _SlotVariableRestoration = collections.namedtuple(
 class _Checkpoint(object):
   """Holds the status of an object-based checkpoint load."""
 
-  def __init__(self, object_graph_proto, save_path, session):
+  def __init__(self, object_graph_proto, save_path):
     """Specify the checkpoint being loaded.
 
     Args:
@@ -237,11 +236,6 @@ class _Checkpoint(object):
         associated with this checkpoint.
       save_path: The path to the checkpoint, as returned by
         `tf.train.latest_checkpoint`.
-      session: The session to evaluate assignment ops in. Should be None if
-        executing eagerly.
-
-    Raises:
-      ValueError: If `session` is not None and eager execution is enabled.
     """
     self.object_graph_proto = object_graph_proto
     self.restore_uid = ops.uid()
@@ -255,6 +249,9 @@ class _Checkpoint(object):
     self.save_path = save_path
     reader = pywrap_tensorflow.NewCheckpointReader(save_path)
     self.dtype_map = reader.get_variable_to_dtype_map()
+    # When graph building, contains a list of ops to run to restore objects from
+    # this checkpoint.
+    self.restore_ops = []
     # A mapping from optimizer proto ids to lists of slot variables to be
     # restored when the optimizer is tracked. Only includes slot variables whose
     # regular variables have already been created, and only for optimizer
@@ -274,39 +271,15 @@ class _Checkpoint(object):
                     optimizer_id=node_index,
                     slot_variable_id=slot_reference.slot_variable_node_id,
                     slot_name=slot_reference.slot_name))
-    if session is not None and context.in_eager_mode():
-      raise ValueError(
-          "Passed a session %s when executing eagerly." % (session,))
-    self.session = session
 
 
-class Checkpointable(object):
-  """Manages dependencies on other objects.
+class CheckpointableBase(object):
+  """Base class for `Checkpointable` objects without automatic dependencies.
 
-  `Checkpointable` objects may have dependencies: other `Checkpointable` objects
-  which should be saved if the object declaring the dependency is saved. A
-  correctly saveable program has a dependency graph such that if changing a
-  global variable affects an object (e.g. changes the behavior of any of its
-  methods) then there is a chain of dependencies from the influenced object to
-  the variable.
-
-  Dependency edges have names, and are created implicitly when a
-  `Checkpointable` object is assigned to an attribute of another
-  `Checkpointable` object. For example:
-
-  ```
-  obj = Checkpointable()
-  obj.v = ResourceVariable(0.)
-  ```
-
-  The `Checkpointable` object `obj` now has a dependency named "v" on a
-  variable.
-
-  `Checkpointable` objects may specify `Tensor`s to be saved and restored
-  directly (e.g. a `Variable` indicating how to save itself) rather than through
-  dependencies on other objects. See
-  `Checkpointable._scatter_tensors_from_checkpoint` and
-  `Checkpointable._gather_tensors_for_checkpoint` for details.
+  This class has no __setattr__ override for performance reasons. Dependencies
+  must be added explicitly. Unless attribute assignment is performance-critical,
+  use `Checkpointable` instead. Use `CheckpointableBase` for `isinstance`
+  checks.
   """
 
   def _maybe_initialize_checkpointable(self):
@@ -332,21 +305,6 @@ class Checkpointable(object):
           "Internal error: the object had an update UID set before its "
           "initialization code was run.")
     self._update_uid = -1
-
-  def __setattr__(self, name, value):
-    """Support self.foo = checkpointable syntax."""
-    # Perform the attribute assignment, and potentially call other __setattr__
-    # overrides such as that for tf.keras.Model.
-    super(Checkpointable, self).__setattr__(name, value)
-    if isinstance(value, Checkpointable):
-      self._track_checkpointable(
-          value, name=name,
-          # Allow the user to switch the Checkpointable which is tracked by this
-          # name, since assigning a new variable to an attribute has
-          # historically been fine (e.g. Adam did this).
-          # TODO(allenl): Should this be a warning once Checkpointable save/load
-          # is usable?
-          overwrite=True)
 
   def _add_variable_with_custom_getter(
       self, name, shape=None, dtype=dtypes.float32,
@@ -383,11 +341,15 @@ class Checkpointable(object):
            "Checkpointable._add_variable called to create another with "
            "that name. Variable names must be unique within a Checkpointable "
            "object.") % (name,))
-    # If this is a variable with a single Tensor stored in the checkpoint, we
-    # can set that value as an initializer rather than initializing and then
-    # assigning (when executing eagerly).
-    checkpoint_initializer = self._preload_simple_restoration(
-        name=name, shape=shape)
+    if context.in_eager_mode():
+      # If this is a variable with a single Tensor stored in the checkpoint, we
+      # can set that value as an initializer rather than initializing and then
+      # assigning (when executing eagerly). This call returns None if there is
+      # nothing to restore.
+      checkpoint_initializer = self._preload_simple_restoration(
+          name=name, shape=shape)
+    else:
+      checkpoint_initializer = None
     if (checkpoint_initializer is not None
         and not (
             isinstance(initializer, CheckpointInitialValue)
@@ -400,20 +362,11 @@ class Checkpointable(object):
       # effort" to set the initializer with the highest restore UID.
       initializer = checkpoint_initializer
       shape = None
-      checkpoint_position = checkpoint_initializer.checkpoint_position
-    else:
-      checkpoint_position = None
 
     new_variable = getter(
         name=name, shape=shape, dtype=dtype, initializer=initializer,
         **kwargs_for_getter)
 
-    if (checkpoint_position is not None
-        and hasattr(new_variable, "_update_uid")
-        and new_variable._update_uid == checkpoint_position.restore_uid):  # pylint: disable=protected-access
-      session = checkpoint_position.checkpoint.session
-      if session:
-        session.run(new_variable.initializer)
     # If we set an initializer and the variable processed it, tracking will not
     # assign again. It will add this variable to our dependencies, and if there
     # is a non-trivial restoration queued, it will handle that. This also
@@ -487,7 +440,7 @@ class Checkpointable(object):
       ValueError: If another object is already tracked by this name.
     """
     self._maybe_initialize_checkpointable()
-    if not isinstance(checkpointable, Checkpointable):
+    if not isinstance(checkpointable, CheckpointableBase):
       raise TypeError(
           ("Checkpointable._track_checkpointable() passed type %s, not a "
            "Checkpointable.") % (type(checkpointable),))
@@ -582,3 +535,48 @@ class Checkpointable(object):
   def _gather_tensors_for_checkpoint(self):
     """Returns a dictionary of Tensors to save with this object."""
     return {}
+
+
+class Checkpointable(CheckpointableBase):
+  """Manages dependencies on other objects.
+
+  `Checkpointable` objects may have dependencies: other `Checkpointable` objects
+  which should be saved if the object declaring the dependency is saved. A
+  correctly saveable program has a dependency graph such that if changing a
+  global variable affects an object (e.g. changes the behavior of any of its
+  methods) then there is a chain of dependencies from the influenced object to
+  the variable.
+
+  Dependency edges have names, and are created implicitly when a
+  `Checkpointable` object is assigned to an attribute of another
+  `Checkpointable` object. For example:
+
+  ```
+  obj = Checkpointable()
+  obj.v = ResourceVariable(0.)
+  ```
+
+  The `Checkpointable` object `obj` now has a dependency named "v" on a
+  variable.
+
+  `Checkpointable` objects may specify `Tensor`s to be saved and restored
+  directly (e.g. a `Variable` indicating how to save itself) rather than through
+  dependencies on other objects. See
+  `Checkpointable._scatter_tensors_from_checkpoint` and
+  `Checkpointable._gather_tensors_for_checkpoint` for details.
+  """
+
+  def __setattr__(self, name, value):
+    """Support self.foo = checkpointable syntax."""
+    # Perform the attribute assignment, and potentially call other __setattr__
+    # overrides such as that for tf.keras.Model.
+    super(Checkpointable, self).__setattr__(name, value)
+    if isinstance(value, CheckpointableBase):
+      self._track_checkpointable(
+          value, name=name,
+          # Allow the user to switch the Checkpointable which is tracked by this
+          # name, since assigning a new variable to an attribute has
+          # historically been fine (e.g. Adam did this).
+          # TODO(allenl): Should this be a warning once Checkpointable save/load
+          # is usable?
+          overwrite=True)

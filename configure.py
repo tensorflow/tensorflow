@@ -916,7 +916,7 @@ def set_tf_cudnn_version(environ_cp):
     tf_cudnn_version = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDNN_VERSION', ask_cudnn_version,
         _DEFAULT_CUDNN_VERSION)
-    tf_cudnn_version = reformat_version_sequence(str(tf_cudnn_version) ,1)
+    tf_cudnn_version = reformat_version_sequence(str(tf_cudnn_version), 1)
 
     default_cudnn_path = environ_cp.get('CUDA_TOOLKIT_PATH')
     ask_cudnn_path = (r'Please specify the location where cuDNN %s library is '
@@ -1433,8 +1433,10 @@ def main():
     if is_linux():
       set_tf_tensorrt_install_path(environ_cp)
     set_tf_cuda_compute_capabilities(environ_cp)
-    if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get('LD_LIBRARY_PATH') != '1':
-      write_action_env_to_bazelrc('LD_LIBRARY_PATH', environ_cp.get('LD_LIBRARY_PATH'))
+    if 'LD_LIBRARY_PATH' in environ_cp and environ_cp.get(
+        'LD_LIBRARY_PATH') != '1':
+      write_action_env_to_bazelrc('LD_LIBRARY_PATH',
+                                  environ_cp.get('LD_LIBRARY_PATH'))
 
     set_tf_cuda_clang(environ_cp)
     if environ_cp.get('TF_CUDA_CLANG') == '1':

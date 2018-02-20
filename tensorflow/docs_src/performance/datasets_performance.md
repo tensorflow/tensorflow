@@ -92,11 +92,11 @@ transform the data.
 
 Without pipelining, the CPU and the GPU/TPU sit idle much of the time:
 
-![without pipelining](https://www.tensorflow.org/images/datasets_without_pipelining.png)
+![without pipelining](/images/datasets_without_pipelining.png)
 
 With pipelining, idle time diminishes significantly:
 
-![with pipelining](https://www.tensorflow.org/images/datasets_with_pipelining.png)
+![with pipelining](/images/datasets_with_pipelining.png)
 
 The `tf.data` API provides a software pipelining mechanism through the
 @{tf.data.Dataset.prefetch} transformation, which can be used to decouple the
@@ -139,7 +139,7 @@ multiple CPU cores. To make this possible, the `map` transformation provides the
 the following diagram illustrates the effect of setting `num_parallel_calls=2`
 to the `map` transformation:
 
-![parallel map](https://www.tensorflow.org/images/datasets_parallel_map.png)
+![parallel map](/images/datasets_parallel_map.png)
 
 Choosing the best value for the `num_parallel_calls` argument depends on your
 hardware, characteristics of your training data (such as its size and shape),
@@ -213,7 +213,7 @@ number of datasets to overlap can be specified by the `cycle_length` argument.
 The following diagram illustrates the effect of supplying `cycle_length=2` to
 the `parallel_interleave` transformation:
 
-![parallel io](https://www.tensorflow.org/images/datasets_parallel_io.png)
+![parallel io](/images/datasets_parallel_io.png)
 
 To apply this change to our running example, change:
 
