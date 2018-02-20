@@ -119,6 +119,16 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "docstring_util_test",
+    size = "small",
+    srcs = ["python/kernel_tests/docstring_util_test.py"],
+    additional_deps = [
+        ":bayesflow_py",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+cuda_py_test(
     name = "layers_dense_variational_test",
     size = "small",
     srcs = ["python/kernel_tests/layers_dense_variational_test.py"],
