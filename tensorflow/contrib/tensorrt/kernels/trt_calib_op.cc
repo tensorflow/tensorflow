@@ -48,12 +48,10 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
   tensorflow::trt::TRTCalibrationResource* calibRes = nullptr;
   auto status = resmgr->Lookup(repo_name, repo_name, &calibRes);
   if (status.ok()) {
-    int batchSize = ctx->input(0).dim_size(0);
-    VLOG(2) << "SAMI Batchsize= " << batchSize;
     int numInputs = ctx->num_inputs();
-    VLOG(2) << "SAMI numInputs= " << numInputs;
-    dev_tensors_.resize(numInputs);
     if (calibRes->calibrator == nullptr) {
+      dev_tensors_.resize(numInputs);
+      int batchSize = ctx->input(0).dim_size(0);
       VLOG(1) << " Constructing calibrator";
       // first run
       for (int i = 0; i < numInputs; i++) {
@@ -65,19 +63,20 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
         const auto dTensor = dev_tensors_.at(i).AccessTensor(ctx);
         CHECK_EQ(t.TotalBytes(), dTensor->TotalBytes());
         void* devAddr = nullptr;
-        GET_TENSOR_ADDRESS(dTensor, devAddr)
+        GET_TENSOR_ADDRESS(dTensor, devAddr);
         device_buffers_.emplace(
             input_names_.at(i),
             std::pair<void*, size_t>(devAddr, dTensor->TotalBytes()));
       }
-      calibRes->calibrator = new TRTInt8Calibrator(device_buffers_, batchSize);
-      calibRes->thr = new std::thread([calibRes]() {
+      calibRes->calibrator = new TRTInt8Calibrator(device_buffers_, batchSize,repo_name);
+      string label(repo_name);
+      calibRes->thr = new std::thread([calibRes,label]() {
         VLOG(0)<<"Starting calibration thread, Calibration Resource @ "<<calibRes;
         calibRes->builder->setInt8Calibrator(calibRes->calibrator);
         calibRes->builder->setInt8Mode(true);
         calibRes->engine = calibRes->builder->buildCudaEngine(
             *calibRes->network);  // will loop until we terminate calibrator
-        VLOG(0) << "SAMI Calibration loop terminated";
+        VLOG(0) << "SAMI Calibration loop terminated "<<label;
       });
       VLOG(0) << "SAMI initialized calibrator resource";
     }
@@ -91,12 +90,19 @@ void TRTCalibOp::Compute(tensorflow::OpKernelContext* ctx) {
       const auto dTensor = dev_tensors_.at(i).AccessTensor(ctx);
       CHECK_EQ(t.TotalBytes(),
                dTensor->TotalBytes());  // use the tensor so FW keeps it
+      if(VLOG_IS_ON(1)){
+        void* devAddr = nullptr;
+        GET_TENSOR_ADDRESS(dTensor, devAddr);
+        if(devAddr!=device_buffers_.at(input_names_.at(i)).first){
+          LOG(WARNING)<<"Device address is different!";
+        }
+      }
       input_data.emplace(input_names_.at(i), data_address);
       ctx->set_output(i, t);
     }
-    VLOG(1) << "Filled map for sending";
+    VLOG(2) << "Filled map for sending";
     calibRes->calibrator->setBatch(input_data);
-    VLOG(1) << "Passed calibration data";
+    VLOG(2) << "Passed calibration data";
   } else {
     ctx->SetStatus(status);
     return;

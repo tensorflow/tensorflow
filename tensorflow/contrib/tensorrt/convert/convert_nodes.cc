@@ -45,7 +45,6 @@ limitations under the License.
 
 //#if GOOGLE_CUDA
 //#if GOOGLE_TENSORRT
-// #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorrt/include/NvInfer.h"
 
 //  Check if the types are equal. Cast to int first so that failure log message
@@ -395,9 +394,8 @@ class Converter {
   std::unordered_map<string, OpConverter> op_registry_;
   nvinfer1::INetworkDefinition* trt_network_;
   std::list<std::vector<uint8_t>> temp_bufs_;
-
+  tensorflow::trt::TRTWeightStore* weight_store_;
   void register_op_converters();
-
   std::vector<TRT_TensorOrWeights> get_inputs(
       const tensorflow::NodeDef& node_def) {
     std::vector<TRT_TensorOrWeights> inputs;
@@ -432,17 +430,19 @@ class Converter {
   }
 
  public:
-  explicit Converter(nvinfer1::INetworkDefinition* trt_network)
-      : trt_network_(trt_network) {
+  explicit Converter(nvinfer1::INetworkDefinition* trt_network,
+  tensorflow::trt::TRTWeightStore* ws)
+      : trt_network_(trt_network),weight_store_(ws) {
     this->register_op_converters();
   }
-
+  tensorflow::trt::TRTWeightStore* weight_store(){return weight_store_;}
   TRT_ShapedWeights get_temp_weights(tensorflow::DataType type,
                                      nvinfer1::Dims shape) {
     TRT_ShapedWeights weights(type, nullptr, shape);
     // TODO(jie): check weights size_bytes. 0 means type error
-    temp_bufs_.push_back(std::vector<uint8_t>(weights.size_bytes()));
-    weights.SetValues(temp_bufs_.back().data());
+    weight_store_->store_.push_back(std::vector<uint8_t>(weights.size_bytes()));
+    //temp_bufs_.push_back(std::vector<uint8_t>(weights.size_bytes()));
+    weights.SetValues(weight_store_->store_.back().data());
     return weights;
   }
 
@@ -1010,7 +1010,7 @@ tensorflow::Status ConvertConv2DHelper(
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
 
   auto dim_after = output_tensor->getDimensions();
-  VLOG(2) << "TENSOR out: " << dim_after.d[0] << ", " << dim_after.d[1]
+  VLOG(2) << "TENSOR out: " << dim_after.d[0] << ", " << dim_after.d[1]<<", "
           << dim_after.d[2] << ", " << dim_after.d[3];
 
   if (data_format == "NHWC") {
@@ -1319,7 +1319,14 @@ tensorflow::Status ConvertConst(Converter& ctx,
         scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
       }
     }
-    weights = TRT_ShapedWeights(dtype, weights_tensor.float_val().data(),
+    size_t lenData=tensorflow::DataTypeSize(dtype);
+    for(int i=0;i<scalar_shape.nbDims;i++)lenData*=scalar_shape.d[i];
+    ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
+    void* dst=static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
+    std::vector<float> tensor_data(weights_tensor.float_val().begin(),
+    weights_tensor.float_val().end());  //  make a local copy first to flatten
+    memcpy(dst,tensor_data.data(),lenData);// store into weight store
+    weights = TRT_ShapedWeights(dtype, dst,
                                 scalar_shape);
     // LOG(INFO) << " add: " << weights_tensor.float_val().data();
     // LOG(INFO) << " value: " << (*weights_tensor.float_val().data());
@@ -1356,8 +1363,17 @@ tensorflow::Status ConvertConst(Converter& ctx,
         scalar_shape.type[i] = nvinfer1::DimensionType::kSPATIAL;
       }
     }
-    weights =
-        TRT_ShapedWeights(dtype, weights_tensor.int_val().data(), scalar_shape);
+    size_t lenData=tensorflow::DataTypeSize(dtype);
+    for(int i=0;i<scalar_shape.nbDims;i++)lenData*=scalar_shape.d[i];
+    size_t lenTensor=weights_tensor.int_val_size()*sizeof(int32);
+    lenData=std::max(lenData,lenTensor);
+    ctx.weight_store()->store_.push_back(std::vector<uint8_t>(lenData));
+    void* dst=static_cast<void*>(&(ctx.weight_store()->store_.back()[0]));
+    std::vector<int32> tensor_data(weights_tensor.int_val().begin(),
+    weights_tensor.int_val().end());  //  make a local copy first to flatten doesn't have to be contigous
+    memcpy(dst,tensor_data.data(),lenTensor);// store into weight store
+    weights = TRT_ShapedWeights(dtype, dst,
+                                scalar_shape);
   } else if (!weights_tensor.tensor_content().empty()) {
     VLOG(2) << "TENSOR!!!" << node_def.name();
     const auto& content = weights_tensor.tensor_content();
@@ -1965,13 +1981,14 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph &graph,
   }
 
   calibRes->calibrator->setDone();
-  VLOG(1)<<"Waiting for calibration thread to join";
   calibRes->thr->join();
   delete calibRes->thr;
   if(!calibRes->engine){
     LOG(FATAL)<<"Calibration failed!, engine is nullptr";
   }
-  auto engine_plan_string=calibRes->engine->serialize();
+  auto weight_rmgr=trt_rm->getManager("WeightStore");
+  TF_CHECK_OK(weight_rmgr->Delete<tensorflow::trt::TRTWeightStore>(res_name,res_name));
+  auto engine_plan=calibRes->engine->serialize();
   calibRes->engine->destroy();
   calibRes->network->destroy();
   calibRes->builder->destroy();
@@ -1989,6 +2006,9 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph &graph,
       income_edges);
   op_builder.Input(input_list);
   tensorflow::NodeDef engine_node;
+  const char* engine_plan_data =
+        static_cast<const char*>(engine_plan->data());
+    string engine_plan_string(engine_plan_data, engine_plan_data + engine_plan->size());
   status = op_builder.Attr("serialized_engine", engine_plan_string)
                     .Attr("input_nodes", input_names)
                     .Attr("output_nodes", output_nodes)
@@ -2017,6 +2037,7 @@ tensorflow::Status ConvertCalibrationNodeToEngineNode(tensorflow::Graph &graph,
       graph.RemoveNode(it->second);
     }
   }
+  graph.RemoveNode(c_node);
   return tensorflow::Status::OK();
 }
 
@@ -2068,7 +2089,10 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   VLOG(2) << "BUILDING 4";
 
   // Build the network
-  Converter converter(op_res->network);
+  auto weight_rmgr=trt_rmgr->getManager("WeightStore");
+  auto ws=new tensorflow::trt::TRTWeightStore();
+  TF_CHECK_OK(weight_rmgr->Create(calib_op_name, calib_op_name, ws));
+  Converter converter(op_res->network,ws);
 
   VLOG(2) << "BUILDING 5";
   std::vector<string> input_names;
@@ -2259,9 +2283,15 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     return tensorflow::errors::Internal(
         "Failed to create TensorRT network object");
   }
-
+  static int static_id = 0;
+  string engine_name = tensorflow::strings::StrCat("my_trt_op", static_id++);
+  auto trt_rmgr = tensorflow::trt::TRTResourceManager::instance();
+  auto weight_rmgr=trt_rmgr->getManager("WeightStore");
+  auto ws=new tensorflow::trt::TRTWeightStore();
+  TF_CHECK_OK(weight_rmgr->Create(engine_name, engine_name, ws));
+  
   // Build the network
-  Converter converter(trt_network.get());
+  Converter converter(trt_network.get(),ws);
 
   std::vector<string> input_names;
   std::vector<tensorflow::DataType> input_dtypes;
@@ -2360,8 +2390,6 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   VLOG(2) << "Finished conversion";
 
   // TODO(sami,ben,jie): proper naming!
-  static int static_id = 0;
-  string engine_name = tensorflow::strings::StrCat("my_trt_op", static_id++);
 
   // Gather output metadata
   std::vector<string> output_names;
@@ -2409,8 +2437,10 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   // Build the engine
   trt_builder->setMaxBatchSize(s.max_batch_size);
   trt_builder->setMaxWorkspaceSize(s.max_workspace_size_bytes);
+  VLOG(0)<<"Max batch size= "<<s.max_batch_size<<" max workspace size= "<<s.max_workspace_size_bytes;
   if(s.precision_mode==1){
     trt_builder->setHalf2Mode(true);
+    VLOG(0)<<"Using FP16 precision mode";
   }
   LOG(INFO) << "starting build engine";
   // TODO(ben,jie): half2 and int8 mode support
@@ -2419,6 +2449,9 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     auto trt_engine =
         infer_object(trt_builder->buildCudaEngine(*converter.network()));
     VLOG(0) << "Built network";
+    if(trt_engine.get()==nullptr){
+      return tensorflow::errors::Internal("Engine building failure");
+    }
     auto engine_plan = infer_object(trt_engine->serialize());
     VLOG(0) << "Serialized engine";
     const char* engine_plan_data =
@@ -2426,7 +2459,7 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     engine_plan_string =
         string(engine_plan_data, engine_plan_data + engine_plan->size());
   }
-
+  weight_rmgr->Delete<tensorflow::trt::TRTWeightStore>(engine_name,engine_name);
   LOG(INFO) << "finished engine " << engine_name;
 
   // Build the TRT op

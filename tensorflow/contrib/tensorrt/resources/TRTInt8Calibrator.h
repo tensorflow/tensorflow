@@ -18,7 +18,8 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
  public:
   TRTInt8Calibrator(const std::unordered_map<
                         string, std::pair<void*, size_t>>& dev_buffers,
-                    int batch_size);
+                    int batch_size,
+                    string engineName);
   int getBatchSize() const;
   bool getBatch(void* bindings[], const char* names[], int nbBindings) override;
   bool setBatch(const std::unordered_map<string, void*> &data);
@@ -33,6 +34,7 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   bool done_;
   const std::unordered_map<string, std::pair<void*, size_t>> dev_buffers_;
   std::atomic_bool calib_running_;
+  string engine_name_;
 };
 }  // namespace trt
 }  // namespace tensorflow
