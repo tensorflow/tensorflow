@@ -116,6 +116,9 @@ TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
 
 TfLiteStatus Interpreter::ReplaceSubgraphsWithDelegateKernels(
     TfLiteRegistration registration, const TfLiteIntArray* nodes_to_replace) {
+  // Annotate the registration as DELEGATE op.
+  registration.builtin_code = BuiltinOperator_DELEGATE;
+
   // Analyze the graph to find all independent subgraphs that are either
   // fully not-this-delegate or this-delegate computation.
   InterpreterInfo info(this);

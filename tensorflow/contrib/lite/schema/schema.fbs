@@ -124,6 +124,10 @@ enum BuiltinOperator : byte {
   TOPK_V2 = 48,
   SPLIT = 49,
   LOG_SOFTMAX = 50,
+  // DELEGATE is a special op type for the operations which are delegated to
+  // other backends.
+  // WARNING: Experimental interface, subject to change
+  DELEGATE = 51,
 }
 
 // Options for the builtin operators.

@@ -23,6 +23,9 @@ limitations under the License.
 extern "C" {
 #endif  // __cplusplus
 
+// The enum for builtin operators.
+// Note: CUSTOM and DELEGATE are 2 special ops which are not real biultin
+// ops.
 typedef enum {
   kTfLiteBuiltinAdd = 0,
   kTfLiteBuiltinAveragePool2d = 1,
@@ -72,6 +75,7 @@ typedef enum {
   kTfLiteBuiltinTopkV2 = 48,
   kTfLiteBuiltinSplit = 49,
   kTfLiteBuiltinLogSoftmax = 50,
+  kTfLiteBuiltinDelegate = 51,
 } TfLiteBuiltinOperator;
 
 #ifdef __cplusplus
