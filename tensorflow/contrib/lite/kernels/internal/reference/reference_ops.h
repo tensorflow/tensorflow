@@ -1453,7 +1453,10 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
               const Dims<4>& output_activ_dims, uint8* concat_temp_data_uint8,
               const Dims<4>& concat_temp_dims, int16* activ_temp_data_int16,
               const Dims<4>& activ_temp_dims, int32 weights_zero_point,
-              int32 accum_multiplier, int accum_shift) {
+              int32 accum_multiplier, int accum_shift,
+              gemmlowp::GemmContext* gemm_context) {
+  (void)gemm_context;  // only used in optimized code.
+
   // Gather dimensions information, and perform consistency checks.
   const int batches =
       MatchingArraySize(input_dims, 3, prev_activ_dims, 3, prev_state_dims, 3,
@@ -1574,9 +1577,19 @@ void LstmCell(const uint8* input_data_uint8, const Dims<4>& input_dims,
       FS new_state = gemmlowp::SaturatingAdd(
           gemmlowp::Rescale<StateIntegerBits>(input_times_input_modulation),
           prev_state_times_forget_state);
-      // Implementation of last internal tanh node, still in fixed-point.
-      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state);
+      // Implementation of last internal Tanh node, still in fixed-point.
+      // Since a Tanh fixed-point implementation is specialized for a given
+      // number or integer bits, and each specialization can have a substantial
+      // code size, and we already used above a Tanh on an input with 3 integer
+      // bits, and per the table in the above function comment there is no
+      // significant accuracy to be lost by clamping to [-8, +8] for a
+      // 3-integer-bits representation, let us just do that. This helps people
+      // porting this to targets where code footprint must be minimized.
+      F3 new_state_f3 = gemmlowp::Rescale<3>(new_state);
+      F0 output_activ_int16 = output_gate_output * gemmlowp::tanh(new_state_f3);
       // Store the new internal state back to memory, as 16-bit integers.
+      // Note: here we store the original value with StateIntegerBits, not
+      // the rescaled 3-integer-bits value fed to tanh.
       output_state_data_int16[b * output_depth + c] = new_state.raw();
       // Down-scale the output activations to 8-bit integers, saturating,
       // and store back to memory.

@@ -334,9 +334,9 @@ def assert_equal(x, y, data=None, summarize=None, message=None, name=None):
     @compatibility{eager} returns None
 
   Raises:
-    InvalidArgumentError if the check can be performed immediately and
-    `x == y` is False. The check can be performed immediately during
-    eager execution or if `x` and `y` are statically known.
+    InvalidArgumentError: if the check can be performed immediately and
+      `x == y` is False. The check can be performed immediately during eager
+      execution or if `x` and `y` are statically known.
   """
   message = message or ''
   with ops.name_scope(name, 'assert_equal', [x, y, data]):

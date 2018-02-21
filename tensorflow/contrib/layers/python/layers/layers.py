@@ -2187,8 +2187,10 @@ def layer_norm(inputs,
 
 
 @add_arg_scope
-def images_to_sequence(inputs, data_format=DATA_FORMAT_NHWC,
-                       outputs_collections=None, scope=None):
+def images_to_sequence(inputs,
+                       data_format=DATA_FORMAT_NHWC,
+                       outputs_collections=None,
+                       scope=None):
   """Convert a batch of images into a batch of sequences.
   Args:
     inputs: a (num_images, height, width, depth) tensor
@@ -2694,8 +2696,11 @@ def separable_convolution2d(
 
 
 @add_arg_scope
-def sequence_to_images(inputs, height, output_data_format='channels_last',
-                       outputs_collections=None, scope=None):
+def sequence_to_images(inputs,
+                       height,
+                       output_data_format='channels_last',
+                       outputs_collections=None,
+                       scope=None):
   """Convert a batch of sequences into a batch of images.
   Args:
     inputs: (num_steps, num_batches, depth) sequence tensor

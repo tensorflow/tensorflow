@@ -475,7 +475,6 @@ class Dataset(dataset_ops.Dataset):
 
   @deprecation.deprecated_args(
       None,
-      "Replace `num_threads=T` with `num_parallel_calls=T`. Replace "
       "`output_buffer_size=N` with `ds.prefetch(N)` on the returned dataset.",
       "num_threads", "output_buffer_size")
   def map(self,

@@ -39,6 +39,7 @@ from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.layers import network as tf_network
 from tensorflow.python.layers import utils as tf_layers_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -263,7 +264,7 @@ class Layer(tf_base_layers.Layer):
 
     # Un-built subclassed network: build it
     if isinstance(self, Network) and not self.inputs:
-      self._set_inputs(inputs)
+      self._set_inputs(inputs, training=kwargs.get('training'))
 
     # Update learning phase info.
     output_tensors = _to_list(output)
@@ -702,6 +703,8 @@ class Network(tf_network.GraphNetwork, Layer):
     super(Network, self).__init__(inputs, outputs, name=name)
 
     self._is_compiled = False
+    self._expects_training_arg = False
+
     self.supports_masking = False
     self.optimizer = None
 
@@ -744,6 +747,11 @@ class Network(tf_network.GraphNetwork, Layer):
     self._layers = []
     self._is_graph_network = False
     self._is_compiled = False
+    if 'training' in tf_inspect.getargspec(self.call).args:
+      self._expects_training_arg = True
+    else:
+      self._expects_training_arg = False
+
     self.outputs = None
     self.inputs = None
     self.trainable = True
