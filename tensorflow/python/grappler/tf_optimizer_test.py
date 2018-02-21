@@ -52,7 +52,7 @@ class PyWrapOptimizeGraphTest(test.TestCase):
   def testKeepNodes(self):
     g = ops.Graph()
     with g.as_default():
-      variables.Variable(
+      a1 = variables.Variable(
           1.0)  # Must be preserved since it's in the collection 'variables'.
       a2 = constant_op.constant(0, shape=[50, 50], name='keep')
       ops.add_to_collection('a2', a2)  # Explicitly add to collection.
@@ -68,12 +68,11 @@ class PyWrapOptimizeGraphTest(test.TestCase):
 
     # Check that the nodes referenced in various collections have been preserved
     self.assertEqual(len(optimized_graph.node), 5)
-    # Disabled this part of the test until we figure out why it fails on MacOS
-    # self.assertEqual(a2.op.name, optimized_graph.node[0].name)
-    # self.assertEqual(a1.op.name, optimized_graph.node[1].name)
-    # self.assertEqual('Variable/initial_value', optimized_graph.node[2].name)
-    # self.assertEqual(d.op.name, optimized_graph.node[3].name)
-    # self.assertEqual('Variable/Assign', optimized_graph.node[4].name)
+    self.assertEqual(d.op.name, optimized_graph.node[0].name)
+    self.assertEqual(a1.op.name, optimized_graph.node[1].name)
+    self.assertEqual('Variable/initial_value', optimized_graph.node[2].name)
+    self.assertEqual(a2.op.name, optimized_graph.node[3].name)
+    self.assertEqual('Variable/Assign', optimized_graph.node[4].name)
 
 
 if __name__ == '__main__':
