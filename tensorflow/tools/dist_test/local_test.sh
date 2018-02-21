@@ -99,7 +99,7 @@ while true; do
     NUM_PARAMETER_SERVERS=$2
   elif [[ $1 == "--sync_replicas" ]]; then
     SYNC_REPLICAS_FLAG="--sync_replicas"
-  elif [[ $1 == "--WHL_FILE_LOCATION" ]]; then
+  elif [[ $1 == "--whl_file_location" ]]; then
     WHL_FILE_LOCATION=$2
   fi
 
