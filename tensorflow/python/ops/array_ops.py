@@ -386,6 +386,13 @@ def size_internal(input, name=None, optimize=True, out_type=dtypes.int32):
   Returns:
     A `Tensor` of type `out_type`. Defaults to `tf.int32`.
   """
+  if context.in_eager_mode() and not isinstance(
+      input, (sparse_tensor.SparseTensor,
+              sparse_tensor.SparseTensorValue)):
+    size_ = 1
+    for dim in ops.convert_to_tensor(input)._shape_tuple():  # pylint: disable=protected-access
+      size_ *= dim
+    return size_
   with ops.name_scope(name, "Size", [input]) as name:
     if isinstance(input, (sparse_tensor.SparseTensor,
                           sparse_tensor.SparseTensorValue)):
