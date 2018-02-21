@@ -551,7 +551,6 @@ Status BaseVisitor::HandleBatchNormInference(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
-
 Status BaseVisitor::HandleBatchNormTraining(HloInstruction* inst) {
   return Unimplemented(inst);
 }
@@ -561,6 +560,14 @@ Status BaseVisitor::HandleBatchNormGrad(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleFft(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status BaseVisitor::HandleHostCompute(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
+Status BaseVisitor::HandleGather(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 

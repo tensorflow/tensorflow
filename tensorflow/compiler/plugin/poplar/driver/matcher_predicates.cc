@@ -8,6 +8,10 @@
 namespace xla {
 namespace poplarplugin {
 
+bool IsFloatType(const HloInstruction *inst) {
+  return ShapeUtil::ElementIsFloating(inst->shape());
+}
+
 bool IsTruncatedNormalWhile(const HloInstruction *inst) {
   return inst->while_condition()->name().substr(0, 16) == "truncated_normal";
 }

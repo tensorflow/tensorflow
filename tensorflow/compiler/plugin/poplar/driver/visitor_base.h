@@ -129,6 +129,10 @@ public:
 
   Status HandleFft(HloInstruction* inst) override;
 
+  Status HandleHostCompute(HloInstruction* inst) override;
+
+  Status HandleGather(HloInstruction* inst) override;
+
   TensorMap tensor_map;
 
   poplar::program::Sequence sequence;

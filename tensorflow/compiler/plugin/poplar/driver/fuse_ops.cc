@@ -72,23 +72,23 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, nullptr, {}}},
 
   // Relu (implicit broadcast)
-  {{HloOpcode::kMaximum, true, nullptr, {-1, 1}},
+  {{HloOpcode::kMaximum, true, IsFloatType, {-1, 1}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
   // Relu (explicit broadcast)
-  {{HloOpcode::kMaximum, true, nullptr, {1, -1}},
+  {{HloOpcode::kMaximum, true, IsFloatType, {1, -1}},
    {HloOpcode::kBroadcast, true, nullptr, {2}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
 
   // Sigmoid
-  {{HloOpcode::kAdd, true, nullptr, {4, 1}},
+  {{HloOpcode::kAdd, true, IsFloatType, {4, 1}},
    {HloOpcode::kMultiply, true, nullptr, {4, 2}},
    {HloOpcode::kTanh, true, nullptr, {3}},
    {HloOpcode::kMultiply, true, nullptr, {4, -1}},
    {HloOpcode::kConstant, true, IsConstantHalf, {}}},
 
   // Sigmoid with broadcast
-  {{HloOpcode::kAdd, true, nullptr, {4, 1}},
+  {{HloOpcode::kAdd, true, IsFloatType, {4, 1}},
    {HloOpcode::kMultiply, true, nullptr, {5, 2}},
    {HloOpcode::kTanh, true, nullptr, {3}},
    {HloOpcode::kMultiply, true, nullptr, {6, -1}},
@@ -98,7 +98,7 @@ static const std::vector<HloMatcherPattern> patterns = {
    {HloOpcode::kConstant, true, IsConstantHalf, {}}},
 
   // ReluGrad
-  {{HloOpcode::kSelect, true, nullptr, {1, -1, 2}},
+  {{HloOpcode::kSelect, true, IsFloatType, {1, -1, 2}},
    {HloOpcode::kGt, true, nullptr, {-1, 2}},
    {HloOpcode::kBroadcast, true, nullptr, {3}},
    {HloOpcode::kConstant, true, IsConstantZero, {}}},
