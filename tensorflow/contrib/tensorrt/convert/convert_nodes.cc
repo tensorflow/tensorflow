@@ -2252,6 +2252,18 @@ tensorflow::Status InjectCalibrationNode(tensorrt::convert::SubGraphParams& s) {
   return tensorflow::Status::OK();
 }
 
+string GetCommonNameScope(const string& op_name_a, const string& op_name_b) {
+  size_t last_scope_separator = 0;
+  for (size_t i=0; i<std::min(op_name_a.size(), op_name_b.size()); ++i) {
+    if (op_name_a[i] != op_name_b[i]) {
+      break;
+    } else if (op_name_a[i] == '/') {
+      last_scope_separator = i + 1;
+    }
+  }
+  return op_name_a.substr(0, last_scope_separator);
+}
+
 tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     tensorrt::convert::SubGraphParams& s) {
   // Visit nodes in reverse topological order and construct the TRT network.
@@ -2283,13 +2295,25 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
     return tensorflow::errors::Internal(
         "Failed to create TensorRT network object");
   }
+
+  string subgraph_name_scope;
+  if (!order.empty() ) {
+    subgraph_name_scope = order.front()->name();
+  }
+  for (const tensorflow::Node* node : order) {
+    subgraph_name_scope = GetCommonNameScope(
+        subgraph_name_scope, node->name());
+  }
   static int static_id = 0;
-  string engine_name = tensorflow::strings::StrCat("my_trt_op", static_id++);
+  // TODO(sami,ben,jie): proper naming!
+  string engine_name =
+      tensorflow::strings::StrCat(subgraph_name_scope, "my_trt_op");
+  engine_name = tensorflow::strings::StrCat(engine_name, static_id++);
   auto trt_rmgr = tensorflow::trt::TRTResourceManager::instance();
   auto weight_rmgr=trt_rmgr->getManager("WeightStore");
   auto ws=new tensorflow::trt::TRTWeightStore();
   TF_CHECK_OK(weight_rmgr->Create(engine_name, engine_name, ws));
-  
+
   // Build the network
   Converter converter(trt_network.get(),ws);
 
@@ -2388,8 +2412,6 @@ tensorflow::Status ConvertSubGraphToTensorRTNodeDef(
   }
 
   VLOG(2) << "Finished conversion";
-
-  // TODO(sami,ben,jie): proper naming!
 
   // Gather output metadata
   std::vector<string> output_names;
