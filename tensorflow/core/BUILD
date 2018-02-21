@@ -3515,6 +3515,7 @@ tf_cc_tests(
         "ops/parsing_ops_test.cc",
         "ops/random_ops_test.cc",
         "ops/set_ops_test.cc",
+        "ops/shape_function_test.cc",
         "ops/sparse_ops_test.cc",
         "ops/spectral_ops_test.cc",
         "ops/state_ops_test.cc",
