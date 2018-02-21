@@ -19,8 +19,8 @@ limitations under the License.
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
 
-#if GOOGLE_CUDA
-#if GOOGLE_TENSORRT
+//#if GOOGLE_CUDA
+//#if GOOGLE_TENSORRT
 #include "cuda/include/cuda_runtime_api.h"
 
 namespace tensorflow {
@@ -84,7 +84,6 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
     }
     // int64 input_shape.dim_size(int d)
     // int input_shape.dims()
-    LOG(INFO) << "INPUT BINDING index: " << binding_index << " with name: " << input_nodes_[i];
     switch (trt_engine_ptr_->getBindingDataType(binding_index)) {
       case nvinfer1::DataType::kFLOAT:
         buffers[binding_index] = (void*)(input_tensor.flat<float>().data());
@@ -134,7 +133,6 @@ void TRTEngineOp::Compute(OpKernelContext* context) {
         break;
     }
   }
-  LOG(INFO) << "getting stream";
   // copied from cuda_kernel_helper since it seems only valid in *.cu.cc files
   const cudaStream_t* stream = CHECK_NOTNULL(
       reinterpret_cast<const cudaStream_t*>(context->op_device_context()
@@ -154,5 +152,5 @@ REGISTER_KERNEL_BUILDER(Name("TRTEngineOp").Device(DEVICE_GPU), TRTEngineOp);
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // GOOGLE_TENSORRT
-#endif  // GOOGLE_CUDA
+//#endif  // GOOGLE_TENSORRT
+//#endif  // GOOGLE_CUDA

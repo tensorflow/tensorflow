@@ -9,6 +9,8 @@
 #include <string>
 #include <sstream>
 #include "tensorrt/include/NvInfer.h"
+#include <vector>
+#include <list>
 #include <thread>
 #include "tensorflow/contrib/tensorrt/log/trt_logger.h"
 #include "tensorflow/contrib/tensorrt/resources/TRTInt8Calibrator.h"
@@ -16,7 +18,6 @@
 
 namespace tensorflow {
 namespace trt {
-
 struct TRTCalibrationResource : public tensorflow::ResourceBase {
   TRTCalibrationResource()
       : calibrator(nullptr),
@@ -24,7 +25,8 @@ struct TRTCalibrationResource : public tensorflow::ResourceBase {
         network(nullptr),
         engine(nullptr),
         logger(nullptr),
-        thr(nullptr) {}
+        thr(nullptr)
+        {}
   string DebugString() override {
     std::stringstream oss;
 #define VALID_OR_NULL(ptr) (!ptr ? "nullptr" : std::hex<<(void)ptr<<std::dec<<std::endl)
@@ -47,9 +49,28 @@ struct TRTCalibrationResource : public tensorflow::ResourceBase {
   tensorflow::tensorrt::Logger* logger;
   std::thread* thr;
 };
+struct TRTWeightStore : public tensorflow::ResourceBase{
+  TRTWeightStore(){}
+  std::list<std::vector<uint8_t>> store_;
+  string DebugString() override {
+    std::stringstream oss;
+    size_t lenBytes = 0;
+    for(const auto& v:store_){
+      lenBytes += v.size()*sizeof(uint8_t);
+    }
+    oss<<" Number of entries     = "<<store_.size()<<std::endl
+       <<" Total number of bytes = "<<store_.size()*sizeof(std::vector<uint8_t>)+lenBytes
+       <<std::endl;
+    return oss.str();
+  }
+  virtual ~TRTWeightStore(){
+    VLOG(1)<<"Destroying store"<<DebugString();
+  }
+};
 
 struct TRTEngineResource : public tensorflow::ResourceBase {
   TRTEngineResource() : runtime(nullptr), ctx(nullptr){};
+  string DebugString() override {return string("");}
   nvinfer1::IRuntime* runtime;
   nvinfer1::IExecutionContext* ctx;
 };

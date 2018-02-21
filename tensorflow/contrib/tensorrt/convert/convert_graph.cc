@@ -315,13 +315,14 @@ tensorflow::Status ConvertCalibGraphToInferGraph(
     TF_RETURN_IF_ERROR(
         tensorrt::convert::ConvertCalibrationNodeToEngineNode(graph, n));
   }
+  graph.ToGraphDef(infer_graph);
   return tensorflow::Status::OK();
 }
 
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,
     const std::vector<string>& output_names, size_t max_batch_size,
-    size_t max_workspace_size, tensorflow::GraphDef* new_graph_def,
+    size_t max_workspace_size_bytes, tensorflow::GraphDef* new_graph_def,
     int precision_mode = 0) {
   // optimization pass
   tensorflow::grappler::GrapplerItem item;
@@ -385,13 +386,22 @@ tensorflow::Status ConvertGraphDefToTensorRT(
   TF_RETURN_IF_ERROR(BuildNodeMap(graph, &node_map));
   std::unordered_map<string, std::pair<int, string>> output_edge_map;
   int count = 0;
+  float total_num_nodes_in_segments=0.;
+  for(auto s:segments){
+    total_num_nodes_in_segments+=s.size();
+  }
   for (const std::set<string>& subgraph_node_names : segments) {
     std::set<int> subgraph_node_ids;
+    size_t max_mem_per_engine=max_workspace_size_bytes*
+      ((float)subgraph_node_names.size()/total_num_nodes_in_segments);
+    std::stringstream oss;
     for (const string& node_name : subgraph_node_names) {
+      oss<<" "<<node_name;
       subgraph_node_ids.insert(node_map.at(node_name)->id());
     }
+    VLOG(2)<<"Subgraph nodes"<<oss.str();
     ConvertGraphParams p(graph, output_names, subgraph_node_ids, max_batch_size,
-                         max_workspace_size, static_graph_properties,
+                         max_mem_per_engine, static_graph_properties,
                          &output_edge_map, precision_mode);
     if (precision_mode == 2) {
       TF_RETURN_IF_ERROR(GetCalibNode(&p));
