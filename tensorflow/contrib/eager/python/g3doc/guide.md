@@ -570,8 +570,8 @@ for i in range(20001):
 print("Loss on test set: %f" % loss(model, data.test.images, data.test.labels).numpy())
 ```
 
-For a more complete example, see
-[`tensorflow/contrib/eager/python/examples/mnist.py`](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/mnist/mnist.py)
+For a more complete example, see [the example in the tensorflow/models
+repository](https://github.com/tensorflow/models/tree/master/official/mnist/mnist_eager.py).
 
 ### Checkpointing trained variables
 
@@ -860,11 +860,9 @@ eagerly or constructing graphs. This means that you can iteratively develop your
 model with eager execution enabled and later, if needed, use the same code to
 reap the benefits of representing models as computational graphs.
 
-For example,
-[`mnist.py`](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/mnist/mnist.py)
-defines a model that is eagerly executed. That same code is used to construct
-and execute a graph in
-[`mnist_graph_test.py`](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/mnist/mnist_graph_test.py).
+For example, the same model definition used to construct a graph in
+[mnist.py`](https://github.com/tensorflow/models/tree/master/official/mnist/mnist.py)
+can be trained with eager execution enabled as in [`mnist_eager.py`](https://github.com/tensorflow/models/tree/master/official/mnist/mnist_eager.py).
 
 Other models in the [examples
 directory](https://www.tensorflow.org/code/tensorflow/contrib/eager/python/examples/)
