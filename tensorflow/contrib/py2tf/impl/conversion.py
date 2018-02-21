@@ -56,6 +56,9 @@ class ConversionMap(object):
         off.
     dependency_cache: dict[object]: ast; maps original entities to their
         converted AST
+    additional_imports: set(object); additional entities which for any reason
+        cannot be attached after loading and need to be explicitly imported
+        in the generated code
     name_map: dict[string]: string; maps original entities to the name of
         their converted counterparts
     api_module: A reference to the api module. The reference needs to be passed
@@ -70,6 +73,7 @@ class ConversionMap(object):
     self.nocompile_decorators = nocompile_decorators
     self.partial_types = partial_types if partial_types else ()
     self.dependency_cache = {}
+    self.additional_imports = set()
     self.name_map = {}
     self.api_module = api_module
 
@@ -218,7 +222,7 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
       arg_values=arg_values,
       arg_types=arg_types,
       recursive=conversion_map.recursive)
-  node = node_to_graph(node, ctx, conversion_map.nocompile_decorators)
+  node, deps = node_to_graph(node, ctx, conversion_map.nocompile_decorators)
 
   # TODO(mdan): This somewhat duplicates the call rename logic in call_treest.py
   new_name, did_rename = namer.compiled_function_name(f.__name__, f, owner_type)
@@ -229,6 +233,9 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
 
   node.name = new_name
   conversion_map.update_name_map(namer)
+  # TODO(mdan): Use this at compilation.
+  conversion_map.additional_imports.update(deps)
+
   return node, new_name
 
 
@@ -271,7 +278,7 @@ def node_to_graph(node, ctx, nocompile_decorators):
   # source.
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   ctx.source_code = None
-  node = decorators.transform(node, nocompile_decorators)
+  node, deps = decorators.transform(node, nocompile_decorators)
   node = break_statements.transform(node, ctx)
   node = asserts.transform(node, ctx)
 
@@ -296,4 +303,4 @@ def node_to_graph(node, ctx, nocompile_decorators):
   node = logical_expressions.transform(node)
   node = side_effect_guards.transform(node, ctx)
 
-  return node
+  return node, deps
