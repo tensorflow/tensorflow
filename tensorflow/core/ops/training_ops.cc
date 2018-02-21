@@ -737,6 +737,43 @@ REGISTER_OP("ResourceApplyAdam")
       return ApplyAdamShapeFn(c, false /* sparse */);
     });
 
+REGISTER_OP("ApplyAdaMax")
+    .Input("var: Ref(T)")
+    .Input("m: Ref(T)")
+    .Input("v: Ref(T)")
+    .Input("beta1_power: T")
+    .Input("beta2_power: T")
+    .Input("lr: T")
+    .Input("beta1: T")
+    .Input("beta2: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Output("out: Ref(T)")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAdamShapeFn(c, false /* sparse */);
+    });
+
+REGISTER_OP("ResourceApplyAdaMax")
+    .Input("var: resource")
+    .Input("m: resource")
+    .Input("v: resource")
+    .Input("beta1_power: T")
+    .Input("beta2_power: T")
+    .Input("lr: T")
+    .Input("beta1: T")
+    .Input("beta2: T")
+    .Input("epsilon: T")
+    .Input("grad: T")
+    .Attr("T: numbertype")
+    .Attr("use_locking: bool = false")
+    .Attr("use_nesterov: bool = false")
+    .SetShapeFn([](InferenceContext* c) {
+      return ApplyAdamShapeFn(c, false /* sparse */);
+    });
+
 static Status ApplyRMSPropShapeFn(InferenceContext* c, bool sparse) {
   ShapeHandle unused;
   ShapeHandle s = ShapeOrHandleShape(c, 0);                       // var

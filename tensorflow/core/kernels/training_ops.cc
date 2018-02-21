@@ -328,6 +328,45 @@ struct ApplyAdamSYCL {
 template <typename T>
 struct ApplyAdam<CPUDevice, T> : ApplyAdamNonCuda<CPUDevice, T> {};
 
+template <typename Device, typename T>
+struct ApplyAdaMaxNonCuda {
+  void operator()(const Device& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
+                  typename TTypes<T>::ConstScalar beta1_power,
+                  typename TTypes<T>::ConstScalar beta2_power,
+                  typename TTypes<T>::ConstScalar lr,
+                  typename TTypes<T>::ConstScalar beta1,
+                  typename TTypes<T>::ConstScalar beta2,
+                  typename TTypes<T>::ConstScalar epsilon,
+                  typename TTypes<T>::ConstFlat grad, bool use_nesterov) {
+    if (use_nesterov) {
+      LOG(WARNING) << "AdaMax doesn't support use_nesterov yet, ignore it.";
+    }
+    m.device(d) += (grad - m) * (T(1) - beta1());
+    // v == u
+    v.device(d) = (beta2() * v).cwiseMax(grad.abs());
+    // var == θ
+    var.device(d) -= (lr * m) / ((T(1) - beta1_power()) * v);
+  }
+};
+
+#ifdef TENSORFLOW_USE_SYCL
+template <typename T>
+struct ApplyAdaMaxSYCL {
+  void operator()(const SYCLDevice& d, typename TTypes<T>::Flat var,
+                  typename TTypes<T>::Flat m, typename TTypes<T>::Flat v,
+                  T beta1_power, T beta2_power, T lr, T beta1, T beta2,
+                  T epsilon, typename TTypes<T>::ConstFlat grad) {
+    m.device(d) += (grad - m) * (T(1) - beta1);
+    v.device(d) = (beta2 * v).cwiseMax(grad.abs());
+    var.device(d) -= (lr * m) / ((T(1) - beta1_power) * v);
+  }
+};
+#endif  // TENSORFLOW_USE_SYCL
+
+template <typename T>
+struct ApplyAdaMax<CPUDevice, T> : ApplyAdaMaxNonCuda<CPUDevice, T> {};
+
 template <typename T>
 struct ApplyRMSProp<CPUDevice, T> {
   void operator()(const CPUDevice& d, typename TTypes<T>::Flat var,
@@ -2477,10 +2516,12 @@ TF_CALL_double(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
 #undef REGISTER_KERNELS
 
-template <typename Device, typename T>
-class ApplyAdamOp : public OpKernel {
+template <typename Device, typename T,
+          template <typename Device2, typename T2>
+          class Functor>
+class ApplyAdamBaseOp : public OpKernel {
  public:
-  explicit ApplyAdamOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit ApplyAdamBaseOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_nesterov", &use_nesterov_));
   }
@@ -2553,11 +2594,11 @@ class ApplyAdamOp : public OpKernel {
                                 grad.shape().DebugString()));
 
     const Device& device = ctx->template eigen_device<Device>();
-    functor::ApplyAdam<Device, T>()(
-        device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
-        beta1_power.scalar<T>(), beta2_power.scalar<T>(), lr.scalar<T>(),
-        beta1.scalar<T>(), beta2.scalar<T>(), epsilon.scalar<T>(),
-        grad.flat<T>(), use_nesterov_);
+    auto functor = Functor<Device, T>();
+    functor(device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
+            beta1_power.scalar<T>(), beta2_power.scalar<T>(), lr.scalar<T>(),
+            beta1.scalar<T>(), beta2.scalar<T>(), epsilon.scalar<T>(),
+            grad.flat<T>(), use_nesterov_);
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -2568,10 +2609,11 @@ class ApplyAdamOp : public OpKernel {
 };
 
 #ifdef TENSORFLOW_USE_SYCL
-template <typename T>
-class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
+template <typename T,
+          template <typename T2> class Functor>
+class ApplyAdamBaseOp<SYCLDevice, T, Functor> : public OpKernel {
  public:
-  explicit ApplyAdamOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+  explicit ApplyAdamBaseOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("use_locking", &use_exclusive_lock_));
   }
 
@@ -2672,9 +2714,10 @@ class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
                                 var.shape().DebugString(), " ",
                                 grad.shape().DebugString()));
 
-    functor::ApplyAdamSYCL<T>()(device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
-                                beta1_power, beta2_power, lr, beta1, beta2,
-                                epsilon, grad.flat<T>());
+    auto functor = Functor<T>();
+    functor(device, var.flat<T>(), m.flat<T>(), v.flat<T>(),
+            beta1_power, beta2_power, lr, beta1, beta2,
+            epsilon, grad.flat<T>());
 
     MaybeForwardRefInputToRefOutput(ctx, 0, 0);
   }
@@ -2684,28 +2727,28 @@ class ApplyAdamOp<SYCLDevice, T> : public OpKernel {
 };
 #endif  // TENSORFLOW_USE_SYCL
 
-#define REGISTER_KERNELS(D, T)                                     \
+#define REGISTER_KERNELS(D, T, F)                                  \
   REGISTER_KERNEL_BUILDER(                                         \
       Name("ApplyAdam").Device(DEVICE_##D).TypeConstraint<T>("T"), \
-      ApplyAdamOp<D##Device, T>);                                  \
+      ApplyAdamBaseOp<D##Device, T, F>);                           \
   REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdam")                \
                               .HostMemory("var")                   \
                               .HostMemory("m")                     \
                               .HostMemory("v")                     \
                               .Device(DEVICE_##D)                  \
                               .TypeConstraint<T>("T"),             \
-                          ApplyAdamOp<D##Device, T>);
-#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T);
-
+                          ApplyAdamBaseOp<D##Device, T, F>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T, functor::ApplyAdam);
 TF_CALL_half(REGISTER_CPU_KERNELS);
 TF_CALL_float(REGISTER_CPU_KERNELS);
 TF_CALL_double(REGISTER_CPU_KERNELS);
+#undef REGISTER_CPU_KERNELS
 
 #ifdef TENSORFLOW_USE_SYCL
-#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T);
-
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T, functor::ApplyAdamSYCL);
 TF_CALL_float(REGISTER_SYCL_KERNELS);
 TF_CALL_double(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
 #endif
 
 #if GOOGLE_CUDA
@@ -2730,11 +2773,66 @@ DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // namespace functor
 
-REGISTER_KERNELS(GPU, Eigen::half);
-REGISTER_KERNELS(GPU, float);
-REGISTER_KERNELS(GPU, double);
+#define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T, functor::ApplyAdam);
+REGISTER_GPU_KERNELS(Eigen::half);
+REGISTER_GPU_KERNELS(float);
+REGISTER_GPU_KERNELS(double);
+#undef REGISTER_GPU_KERNELS
 #endif
+#undef REGISTER_KERNELS
+
+#define REGISTER_KERNELS(D, T, F)                                    \
+  REGISTER_KERNEL_BUILDER(                                           \
+      Name("ApplyAdaMax").Device(DEVICE_##D).TypeConstraint<T>("T"), \
+      ApplyAdamBaseOp<D##Device, T, F>);                             \
+  REGISTER_KERNEL_BUILDER(Name("ResourceApplyAdaMax")                \
+                              .HostMemory("var")                     \
+                              .HostMemory("m")                       \
+                              .HostMemory("v")                       \
+                              .Device(DEVICE_##D)                    \
+                              .TypeConstraint<T>("T"),               \
+                          ApplyAdamBaseOp<D##Device, T, F>);
+#define REGISTER_CPU_KERNELS(T) REGISTER_KERNELS(CPU, T, functor::ApplyAdaMax);
+TF_CALL_half(REGISTER_CPU_KERNELS);
+TF_CALL_float(REGISTER_CPU_KERNELS);
+TF_CALL_double(REGISTER_CPU_KERNELS);
 #undef REGISTER_CPU_KERNELS
+
+#ifdef TENSORFLOW_USE_SYCL
+#define REGISTER_SYCL_KERNELS(T) REGISTER_KERNELS(SYCL, T, functor::ApplyAdaMaxSYCL);
+TF_CALL_float(REGISTER_SYCL_KERNELS);
+TF_CALL_double(REGISTER_SYCL_KERNELS);
+#undef REGISTER_SYCL_KERNELS
+#endif
+
+#if GOOGLE_CUDA
+// Forward declarations of the functor specializations for GPU.
+namespace functor {
+#define DECLARE_GPU_SPEC(T)                                   \
+  template <>                                                 \
+  void ApplyAdaMax<GPUDevice, T>::operator()(                 \
+      const GPUDevice& d, typename TTypes<T>::Flat var,       \
+      typename TTypes<T>::Flat m, typename TTypes<T>::Flat v, \
+      typename TTypes<T>::ConstScalar beta1_power,            \
+      typename TTypes<T>::ConstScalar beta2_power,            \
+      typename TTypes<T>::ConstScalar lr,                     \
+      typename TTypes<T>::ConstScalar beta1,                  \
+      typename TTypes<T>::ConstScalar beta2,                  \
+      typename TTypes<T>::ConstScalar epsilon,                \
+      typename TTypes<T>::ConstFlat grad, bool use_nesterov); \
+  extern template struct ApplyAdaMax<GPUDevice, T>;
+DECLARE_GPU_SPEC(Eigen::half);
+DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
+#undef DECLARE_GPU_SPEC
+}  // namespace functor
+
+#define REGISTER_GPU_KERNELS(T) REGISTER_KERNELS(GPU, T, functor::ApplyAdaMax);
+REGISTER_GPU_KERNELS(Eigen::half);
+REGISTER_GPU_KERNELS(float);
+REGISTER_GPU_KERNELS(double);
+#undef REGISTER_GPU_KERNELS
+#endif
 #undef REGISTER_KERNELS
 
 template <typename Device, typename T>
