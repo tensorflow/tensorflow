@@ -403,7 +403,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "poisson_lognormal_test",
-    size = "small",
+    size = "medium",
     srcs = ["python/kernel_tests/poisson_lognormal_test.py"],
     additional_deps = [
         ":distributions_py",
