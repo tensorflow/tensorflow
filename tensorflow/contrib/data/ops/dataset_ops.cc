@@ -27,6 +27,16 @@ REGISTER_OP("IgnoreErrorsDataset")
 Creates a dataset that contains the elements of `input_dataset` ignoring errors.
 )doc");
 
+REGISTER_OP("UniqueDataset")
+    .Input("input_dataset: variant")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn(shape_inference::ScalarShape)
+    .Doc(R"doc(
+Creates a dataset that contains the unique elements of `input_dataset`.
+)doc");
+
 REGISTER_OP("FunctionBufferingResource")
     .Input("string_arg: string")
     .Input("target_device: string")
