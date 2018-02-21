@@ -480,6 +480,7 @@ tf_cuda_library(
         "framework/type_index.h",
         "framework/type_traits.h",
         "framework/types.h",
+        "framework/visitable_allocator.h",
         "public/version.h",
         "util/activation_mode.h",
         "util/bcast.h",
@@ -1812,6 +1813,7 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
     "framework/variant.h",
+    "framework/visitable_allocator.h",
     "platform/variant_coding.h",
     "util/command_line_flags.h",
     "util/env_var.h",
@@ -2107,7 +2109,6 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/stats_publisher_interface.h",
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
-    "common_runtime/visitable_allocator.h",
     "graph/gradients.h",
     "graph/quantize_training.h",
 ] + if_mkl(["graph/mkl_graph_util.h"])
