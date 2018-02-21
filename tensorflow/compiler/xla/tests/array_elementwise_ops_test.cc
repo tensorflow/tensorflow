@@ -101,33 +101,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, NegConstantC64) {
       {}, error_spec_);
 }
 
-XLA_TEST_F(ArrayElementwiseOpTest, NegConstantS64) {
-  ComputationBuilder builder(client_, TestName());
-  auto a = builder.ConstantR1<int64>({
-      -1,
-      1,
-      0,
-      0x12345678,
-      static_cast<int64>(0xffffffff12345678l),
-      static_cast<int64>(0x8000000000000000LL),
-      static_cast<int64>(0x8000000000000001LL),
-  });
-  auto result = builder.Neg(a);
-  LOG(INFO) << -static_cast<int64>(0x7FFFFFFFFFFFFFFFLL);
-
-  ComputeAndCompareR1<int64>(&builder,
-                             {
-                                 1,
-                                 -1,
-                                 0,
-                                 -0x12345678,
-                                 0xedcba988,
-                                 static_cast<int64>(0x8000000000000000LL),
-                                 -static_cast<int64>(0x8000000000000001LL),
-                             },
-                             {});
-}
-
 XLA_TEST_F(ArrayElementwiseOpTest, IsFiniteZeroElementF32s) {
   ComputationBuilder builder(client_, TestName());
   auto a = builder.ConstantR1<float>({});
@@ -211,86 +184,6 @@ XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantZeroElementC64s) {
   auto add = builder.Add(a, b);
 
   ComputeAndCompareR1<complex64>(&builder, {}, {}, error_spec_);
-}
-
-XLA_TEST_F(ArrayElementwiseOpTest, AddTwoConstantU64s) {
-  ComputationBuilder b(client_, TestName());
-
-  std::vector<uint64> lhs{0xFFFFFFFF,
-                          static_cast<uint64>(-1),
-                          0,
-                          0,
-                          0x7FFFFFFFFFFFFFFFLL,
-                          0x7FFFFFFFFFFFFFFLL,
-                          0x8000000000000000LL,
-                          0x8000000000000000LL,
-                          1};
-  std::unique_ptr<Literal> lhs_literal = Literal::CreateR1<uint64>({lhs});
-  auto lhs_param = b.Parameter(0, lhs_literal->shape(), "lhs_param");
-  std::unique_ptr<GlobalData> lhs_data =
-      client_->TransferToServer(*lhs_literal).ConsumeValueOrDie();
-
-  std::vector<uint64> rhs{1,
-                          0x7FFFFFFFFFFFFFFLL,
-                          0x7FFFFFFFFFFFFFFFLL,
-                          0x8000000000000000LL,
-                          0,
-                          static_cast<uint64>(-1),
-                          0,
-                          1,
-                          0x8000000000000000LL};
-  std::unique_ptr<Literal> rhs_literal = Literal::CreateR1<uint64>({rhs});
-  auto rhs_param = b.Parameter(1, rhs_literal->shape(), "rhs_param");
-  std::unique_ptr<GlobalData> rhs_data =
-      client_->TransferToServer(*rhs_literal).ConsumeValueOrDie();
-
-  auto add = b.Add(lhs_param, rhs_param);
-
-  std::vector<uint64> expected(lhs.size());
-  for (int64 i = 0; i < lhs.size(); ++i) {
-    expected[i] = lhs[i] + rhs[i];
-  }
-
-  ComputeAndCompareR1<uint64>(&b, expected, {lhs_data.get(), rhs_data.get()});
-}
-
-XLA_TEST_F(ArrayElementwiseOpTest, SubTwoConstantS64s) {
-  ComputationBuilder b(client_, TestName());
-
-  std::vector<int64> lhs{static_cast<int64>(0x8000000000000000LL),
-                         static_cast<int64>(0x8000000000000000LL),
-                         -1,
-                         0x7FFFFFFFFFFFFFFLL,
-                         0x7FFFFFFFFFFFFFFFLL,
-                         1,
-                         0,
-                         -1};
-  std::unique_ptr<Literal> lhs_literal = Literal::CreateR1<int64>({lhs});
-  auto lhs_param = b.Parameter(0, lhs_literal->shape(), "lhs_param");
-  std::unique_ptr<GlobalData> lhs_data =
-      client_->TransferToServer(*lhs_literal).ConsumeValueOrDie();
-
-  std::vector<int64> rhs{-1,
-                         0,
-                         static_cast<int64>(0x8000000000000000LL),
-                         1,
-                         0,
-                         0x7FFFFFFFFFFFFFFLL,
-                         0x7FFFFFFFFFFFFFFFLL,
-                         0x7FFFFFFFFFFFFFFFLL};
-  std::unique_ptr<Literal> rhs_literal = Literal::CreateR1<int64>({rhs});
-  auto rhs_param = b.Parameter(1, rhs_literal->shape(), "rhs_param");
-  std::unique_ptr<GlobalData> rhs_data =
-      client_->TransferToServer(*rhs_literal).ConsumeValueOrDie();
-
-  auto sub = b.Sub(lhs_param, rhs_param);
-
-  std::vector<int64> expected(lhs.size());
-  for (int64 i = 0; i < lhs.size(); ++i) {
-    expected[i] = lhs[i] - rhs[i];
-  }
-
-  ComputeAndCompareR1<int64>(&b, expected, {lhs_data.get(), rhs_data.get()});
 }
 
 TEST_P(ArrayElementwiseOpTestParamCount, AddManyValues) {

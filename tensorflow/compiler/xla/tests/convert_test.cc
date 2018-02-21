@@ -107,73 +107,11 @@ TEST_F(ConvertTest, ConvertR1F32ToR1S32) {
 
 XLA_TEST_F(ConvertTest, ConvertR1S64ToR1F32) {
   ComputationBuilder builder(client_, TestName());
-  std::vector<int64> arg{
-      -9223371216516022272,
-      -2,
-      -1,
-      -0x7FFFFFFF,
-      -0x80000000,
-      0,
-      1,
-      2,
-      1073742145,
-      1073742656,
-      0x7FFFFFFF,
-      0x80000000,
-      826720496944058148,
-      4296062029846194332,
-      0x0007FB72E4000000LL,
-      0x0007FB72E4000001LL,
-      0x0007FB72E6000000LL,
-      0x0007FB72E7000000LL,
-      0x0007FB72E7FFFFFFLL,
-      0x0007FB72E8000000LL,
-      0x0007FB72E8000001LL,
-      0x0007FB72EA000000LL,
-      0x0007FB72EB000000LL,
-      0x0007FB72EBFFFFFFLL,
-      0x0007FB72EC000000LL,
-      0x7FFFFF0000000000LL,
-      0x7FFFFF8000000000LL,
-      0x7FFFFFFFFFFFFF00,
-      static_cast<int64>(0xFFFFFFFFFFFFFFFF),
-      static_cast<int64>(0x0000f234e67e0001LL),
-      static_cast<int64>(0x8000000000000000),
-      static_cast<int64>(0x8000000000000000LL),
-      static_cast<int64>(0x8000000000000001LL),
-      static_cast<int64>(0x8000008000000000LL),
-      static_cast<int64>(0x8000010000000000LL),
-  };
-  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<int64>({arg});
-  auto arg_param = builder.Parameter(0, arg_literal->shape(), "arg_param");
-  std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
+  auto a = builder.ConstantR1<int64>({32, 64});
+  builder.ConvertElementType(a, F32);
 
-  builder.ConvertElementType(arg_param, F32);
-
-  std::vector<float> expected(arg.size());
-  for (int64 i = 0; i < arg.size(); ++i) {
-    expected[i] = static_cast<float>(arg[i]);
-  }
-  ComputeAndCompareR1<float>(&builder, expected, {arg_data.get()});
-}
-
-XLA_TEST_F(ConvertTest, ConvertR1U32ToR1F32) {
-  ComputationBuilder builder(client_, TestName());
-  std::vector<uint32> arg{0,          1,          0x1000,     0x7fffffff,
-                          0x80000000, 0x80000001, 0x80000002, 0xFFFFFFFF};
-  std::unique_ptr<Literal> arg_literal = Literal::CreateR1<uint32>({arg});
-  auto arg_param = builder.Parameter(0, arg_literal->shape(), "arg_param");
-  std::unique_ptr<GlobalData> arg_data =
-      client_->TransferToServer(*arg_literal).ConsumeValueOrDie();
-
-  builder.ConvertElementType(arg_param, F32);
-
-  std::vector<float> expected(arg.size());
-  for (int64 i = 0; i < arg.size(); ++i) {
-    expected[i] = static_cast<float>(arg[i]);
-  }
-  ComputeAndCompareR1<float>(&builder, expected, {arg_data.get()});
+  std::vector<float> expected = {32.0, 64.0};
+  ComputeAndCompareR1<float>(&builder, expected, {});
 }
 
 XLA_TEST_F(ConvertTest, ConvertR1U8ToR1F32) {
