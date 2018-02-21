@@ -1789,12 +1789,18 @@ class ReduceProcessor : public AgnosticNodeProcessor {
     return Status::OK();
   }
 
-  Status AddLayoutTransposeToOutputs() override { return Status::OK(); }
+  Status AddLayoutTransposeToOutputs() override {
+    if ((IsAlongNHW() || IsAlongHW() || IsAlongC()) && KeepDims()) {
+      return AgnosticNodeProcessor::AddLayoutTransposeToOutputs();
+    } else {
+      return Status::OK();
+    }
+  }
 
  private:
   bool IsReduceAxisSupported() const {
     return IsAlongAllFourDims() || IsAlongHWC() ||
-           ((IsAlongNHW() || IsAlongHW() || IsAlongC()) && !KeepDims());
+           IsAlongNHW() || IsAlongHW() || IsAlongC();
   }
 
   bool IsAlongAxis(const std::vector<int>& axis) const {
