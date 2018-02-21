@@ -629,33 +629,29 @@ TEST_F(LayoutAssignmentTest, GTEInheritsLayoutFromOperand) {
       LayoutUtil::MakeLayout({2, 1, 0}));
   AssignLayouts(module.get(), &computation_layout);
 
-  HloComputation* fused_computation = *std::find_if(
-      module->computations().begin(), module->computations().end(),
-      [](const HloComputation* c) { return c->name() == "fused_computation"; });
-
-  auto fused_instr = [&](const string& name) {
-    auto it = std::find_if(
-        fused_computation->instructions().begin(),
-        fused_computation->instructions().end(),
-        [&](const HloInstruction* i) { return i->name() == name; });
-    CHECK(it != fused_computation->instructions().end());
-    return *it;
+  auto layout_of = [&](tensorflow::StringPiece name) {
+    return FindInstruction(module.get(), name)
+        ->shape()
+        .layout()
+        .minor_to_major();
   };
 
-  EXPECT_THAT(fused_instr("gte0")->shape().layout().minor_to_major(),
-              ElementsAre(0, 1, 2));
-  EXPECT_THAT(
-      fused_instr("gte1")->shape().tuple_shapes(0).layout().minor_to_major(),
-      ElementsAre(1, 2, 0));
-  EXPECT_THAT(
-      fused_instr("gte1")->shape().tuple_shapes(1).layout().minor_to_major(),
-      ElementsAre(2, 0, 1));
-  EXPECT_THAT(fused_instr("gte1a")->shape().layout().minor_to_major(),
+  EXPECT_THAT(layout_of("gte0"), ElementsAre(0, 1, 2));
+  EXPECT_THAT(layout_of("gte1a"), ElementsAre(1, 2, 0));
+  EXPECT_THAT(layout_of("gte1b"), ElementsAre(2, 0, 1));
+  EXPECT_THAT(layout_of("fresult"), ElementsAre(2, 1, 0));
+  EXPECT_THAT(FindInstruction(module.get(), "gte1")
+                  ->shape()
+                  .tuple_shapes(0)
+                  .layout()
+                  .minor_to_major(),
               ElementsAre(1, 2, 0));
-  EXPECT_THAT(fused_instr("gte1b")->shape().layout().minor_to_major(),
+  EXPECT_THAT(FindInstruction(module.get(), "gte1")
+                  ->shape()
+                  .tuple_shapes(1)
+                  .layout()
+                  .minor_to_major(),
               ElementsAre(2, 0, 1));
-  EXPECT_THAT(fused_instr("fresult")->shape().layout().minor_to_major(),
-              ElementsAre(2, 1, 0));
 }
 
 TEST_F(LayoutAssignmentTest, ConditionalAsymmetricLayout) {
