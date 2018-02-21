@@ -114,6 +114,13 @@ def configure(src_base_path, gen_path, debug=False):
   for target, src in link_map.items():
     if src is None:
       open(os.path.join(gen_path, target), "w").write("")
+    elif not os.path.exists(src):
+      # Git repo is configured in a way we don't support such as having
+      # packed refs. Even though in a git repo, tf.__git_version__ will not
+      # be accurate.
+      # TODO(mikecase): Support grabbing git info when using packed refs.
+      open(os.path.join(gen_path, target), "w").write("")
+      spec["git"] = False
     else:
       try:
         # In python 3.5, symlink function exists even on Windows. But requires
