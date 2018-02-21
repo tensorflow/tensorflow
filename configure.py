@@ -502,7 +502,8 @@ def set_cc_opt_flags(environ_cp):
   for opt in cc_opt_flags.split():
     write_to_bazelrc('build:opt --copt=%s' % opt)
   # It should be safe on the same build host.
-  write_to_bazelrc('build:opt --host_copt=-march=native')
+  if not is_ppc64le():
+    write_to_bazelrc('build:opt --host_copt=-march=native')
   write_to_bazelrc('build:opt --define with_default_optimizations=true')
   # TODO(mikecase): Remove these default defines once we are able to get
   # TF Lite targets building without them.
