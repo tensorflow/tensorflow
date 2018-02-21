@@ -15,7 +15,7 @@ limitations under the License.
 #include "tensorflow/core/util/padding.h"
 
 #if GOOGLE_CUDA
-#include "unpooling_op_gpu.h"
+#include "tensorflow/core/kernels/unpooling_op_gpu.h"
 #endif
 
 typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -79,10 +79,10 @@ struct LaunchUnpool<Eigen::GpuDevice,T>
 {
   static void launch(tensorflow::OpKernelContext* context, const tensorflow::Tensor& pooled_data, const tensorflow::Tensor& indices, tensorflow::Tensor* unpooled_data)
   {
-    bool status = UnpoolForwardWithIndex(pooled_data.flat<T>().data(), pooled_data.shape(), indices.flat<tensorflow::int64>().data(), unpooled_data->flat<T>().data(), context->eigen_gpu_device());
+    bool status = UnpoolForward(pooled_data.flat<T>().data(), pooled_data.shape(), indices.flat<tensorflow::int64>().data(), unpooled_data->flat<T>().data(), context->eigen_gpu_device());
 
     if (!status) {
-      context->SetStatus(tensorflow::errors::Internal("Failed launching maxUnpoolForwardWithIndex on GPU"));
+      context->SetStatus(tensorflow::errors::Internal("Failed launching maxUnpoolForward on GPU"));
     }
   }
 };
@@ -137,6 +137,23 @@ struct LaunchUnpoolGradient<CPUDevice,T>
     }
   }
 };
+
+#if GOOGLE_CUDA
+template <typename T>
+struct LaunchUnpoolGradient<Eigen::GpuDevice,T>
+{
+  static void launch(tensorflow::OpKernelContext* context, const tensorflow::Tensor& unpooledGradient, const tensorflow::Tensor& indices, tensorflow::Tensor* pooledGradient)
+  {
+    tensorflow::int64 numPooledPoints = pooledGradient->NumElements();
+
+    bool status = UnpoolBackward(unpooledGradient.flat<T>().data(), indices.flat<tensorflow::int64>().data(), pooledGradient->flat<T>().data(), numPooledPoints, context->eigen_gpu_device());
+
+    if (!status) {
+      context->SetStatus(tensorflow::errors::Internal("Failed launching MaxUnpool on GPU"));
+    }
+  }
+};
+#endif
 
 template <typename Device, typename T>
 struct UnpoolOp : public OpKernel

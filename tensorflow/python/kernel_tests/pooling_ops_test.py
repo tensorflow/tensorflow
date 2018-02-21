@@ -89,41 +89,41 @@ def GetShrunkInceptionMaxPoolShapes(shrink=30):
                               strides, paddings):
     yield n, i, f, o, s, p
 
-def GenerateUnpoolDataset(even_image_size=None, square_image=False, max_image_dimension=64, max_batch_size=10, max_depth=4):
-	batch_size = np.random.randint(1,max_batch_size+1)
-	depth = np.random.randint(1,max_depth+1)
-	if even_image_size==None:
-		np.random.choice([True,False])
-	if even_image_size:
-		max_image_dimension -= even_image_size%2 + 1
-	if square_image:
-		image_size = np.random.randint(2,max_image_dimension+1)
-		image_size = np.array([image_size]*2)
-	else:
-		image_size = np.random.randint(2,max_image_dimension+1,2)
-	if even_image_size:
-		image_size -= image_size%2
-	image_size = image_size.tolist()
-	image_size = [batch_size]+image_size+[depth]
-	#print('Image Size {}'.format(image_size))
+def GenerateUnpoolData(even_image_size=None, square_image=False, max_image_dimension=64, max_batch_size=10, max_depth=4):
+  batch_size = np.random.randint(1,max_batch_size+1)
+  depth = np.random.randint(1,max_depth+1)
+  if even_image_size==None:
+    np.random.choice([True,False])
+  if even_image_size:
+    max_image_dimension -= even_image_size%2 + 1
+  if square_image:
+    image_size = np.random.randint(2,max_image_dimension+1)
+    image_size = np.array([image_size]*2)
+  else:
+    image_size = np.random.randint(2,max_image_dimension+1,2)
+  if even_image_size:
+    image_size -= image_size%2
+  image_size = image_size.tolist()
+  image_size = [batch_size]+image_size+[depth]
+  #print('Image Size {}'.format(image_size))
 
-	kernel_size = [1]+[np.random.randint(2,4)]*2+[1]
-	#print('Kernel Size {}'.format(kernel_size))
-	strides = [1,2,2,1]
-	stride = np.prod(strides)
-	#print('Strides {}'.format(strides))
-	input_data = np.random.random(image_size).astype(np.float32)
+  kernel_size = [1]+[np.random.randint(2,4)]*2+[1]
+  #print('Kernel Size {}'.format(kernel_size))
+  strides = [1,2,2,1]
+  stride = np.prod(strides)
+  #print('Strides {}'.format(strides))
+  input_data = np.random.random(image_size).astype(np.float32)
 
-	unpooled_shape = list(np.array(input_data.shape)*strides)
-	num_unpooled_points_per_batch = np.prod(unpooled_shape[1:])
-	indices = []
-	for b in range(unpooled_shape[0]):
-		batch_offset = b*num_unpooled_points_per_batch
-		batch_indices = np.random.permutation(num_unpooled_points_per_batch)[::stride] + batch_offset
-		indices += batch_indices.tolist()
-	indices = np.reshape(indices, input_data.shape)
+  unpooled_shape = list(np.array(input_data.shape)*strides)
+  num_unpooled_points_per_batch = np.prod(unpooled_shape[1:])
+  indices = []
+  for b in range(unpooled_shape[0]):
+    batch_offset = b*num_unpooled_points_per_batch
+    batch_indices = np.random.permutation(num_unpooled_points_per_batch)[::stride] + batch_offset
+    indices += batch_indices.tolist()
+  indices = np.reshape(indices, input_data.shape)
 
-	return input_data, kernel_size, strides, indices, unpooled_shape
+  return input_data, kernel_size, strides, indices, unpooled_shape
 
 class PoolingTest(test.TestCase):
 
@@ -916,36 +916,36 @@ class PoolingTest(test.TestCase):
     if test.is_gpu_available(cuda_only=True):
       gpu_settings.append(True)
     for use_gpu in gpu_settings:
-			test_iterations = 10
-			for iteration in range(test_iterations):
-				print("unpool: iteration {}/{} GPU {}".format(iteration+1, test_iterations, use_gpu))
-				input_data,_,_,indices,unpooled_shape = GenerateUnpoolDataset()
-				with self.test_session(use_gpu=use_gpu):
-					pooled_data = constant_op.constant(input_data, dtype=dtypes.float32)
+      test_iterations = 10
+      for iteration in range(test_iterations):
+        print("unpool: iteration {}/{} GPU {}".format(iteration+1, test_iterations, use_gpu))
+        input_data,_,_,indices,unpooled_shape = GenerateUnpoolData()
+        with self.test_session(use_gpu=use_gpu):
+          pooled_data = constant_op.constant(input_data, dtype=dtypes.float32)
           unpooled_data = gen_nn_ops._unpool(pooled_data, indices, unpooled_shape).eval()
-					self.assertAllCloseAccordingToType(input_data.ravel(), unpooled_data.ravel()[indices.ravel()])
+          self.assertAllCloseAccordingToType(input_data.ravel(), unpooled_data.ravel()[indices.ravel()])
 
   def testUnpoolGrad(self):
     gpu_settings = [False]
     if test.is_gpu_available(cuda_only=True):
       gpu_settings.append(True)
     for use_gpu in gpu_settings:
-			test_iterations = 10
-			for iteration in range(test_iterations):
-				print("unpool gradient: iteration {}/{} GPU {}".format(iteration+1, test_iterations, use_gpu))
-				input_data,_,_,indices,unpooled_shape = GenerateUnpoolDataset()
-				with self.test_session(use_gpu=use_gpu):
-					unpooled_shape = list(np.array(input_data.shape)*[1,2,2,2])
+      test_iterations = 10
+      for iteration in range(test_iterations):
+        print("unpool gradient: iteration {}/{} GPU {}".format(iteration+1, test_iterations, use_gpu))
+        input_data,_,_,indices,unpooled_shape = GenerateUnpoolData()
+        with self.test_session(use_gpu=use_gpu):
+          unpooled_shape = list(np.array(input_data.shape)*[1,2,2,2])
 
-					unpooled_data = np.zeros(np.prod(unpooled_shape))
-					unpooled_data[indices.ravel()] = input_data.ravel()
-					unpooled_data = unpooled_data.reshape(unpooled_shape)
+          unpooled_data = np.zeros(np.prod(unpooled_shape))
+          unpooled_data[indices.ravel()] = input_data.ravel()
+          unpooled_data = unpooled_data.reshape(unpooled_shape)
 
-					unpooled_gradient = np.random.random(unpooled_shape).astype(np.float32)
+          unpooled_gradient = np.random.random(unpooled_shape).astype(np.float32)
 
-					pooled_gradient_expected = unpooled_gradient.ravel()[indices.ravel()]
+          pooled_gradient_expected = unpooled_gradient.ravel()[indices.ravel()]
           pooled_gradient = gen_nn_ops._unpool_gradient(unpooled_gradient, indices).eval()
-					self.assertAllCloseAccordingToType(pooled_gradient_expected, pooled_gradient.ravel())
+          self.assertAllCloseAccordingToType(pooled_gradient_expected, pooled_gradient.ravel())
 
   def _ConstructAndTestGradient(self,
                                 pool_func,

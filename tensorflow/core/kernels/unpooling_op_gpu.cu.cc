@@ -20,7 +20,7 @@ limitations under the License.
 namespace tensorflow {
 
 template <typename T>
-__global__ void UnpoolForwardWithIndexKernel(const int num_threads, const T* pooled_data, const int64* indices, T* unpooled_data)
+__global__ void UnpoolForwardKernel(const int num_threads, const T* pooled_data, const int64* indices, T* unpooled_data)
 {
   CUDA_1D_KERNEL_LOOP(index, num_threads)
   {
@@ -48,19 +48,19 @@ __global__ void SetToZero(const int num_threads, T* input)
   }
 }
 
-bool UnpoolForwardWithIndex(const float* input, TensorShape input_shape, const int64* indices, float* unpooled_data, const Eigen::GpuDevice& device)
+bool UnpoolForward(const float* input, TensorShape input_shape, const int64* indices, float* unpooled_data, const Eigen::GpuDevice& device)
 {
   const int threads_per_block = 1024;
 
   const int64 num_pooled_points = GetTensorDim(input_shape, FORMAT_NHWC, 'N')*GetTensorDim(input_shape, FORMAT_NHWC, 'H')*GetTensorDim(input_shape, FORMAT_NHWC, 'W')*GetTensorDim(input_shape, FORMAT_NHWC, 'C');
 
   int64 num_blocks = (num_pooled_points+threads_per_block-1)/threads_per_block;
-  UnpoolForwardWithIndexKernel<<<num_blocks, threads_per_block, 0, device.stream()>>>(num_pooled_points, input, indices, unpooled_data);
+  UnpoolForwardKernel<<<num_blocks, threads_per_block, 0, device.stream()>>>(num_pooled_points, input, indices, unpooled_data);
 
   return device.ok();
 }
 
-bool MaxUnpoolBackward(const float* unpooled_gradient, const int64* indices, float* pooled_gradient, const int64 num_pooled_points, const Eigen::GpuDevice& device)
+bool UnpoolBackward(const float* unpooled_gradient, const int64* indices, float* pooled_gradient, const int64 num_pooled_points, const Eigen::GpuDevice& device)
 {
  const int threads_per_block = 1024;
  int64 num_blocks = (num_pooled_points+threads_per_block-1)/threads_per_block;
