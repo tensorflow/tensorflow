@@ -1159,14 +1159,20 @@ Status ConstantFolding::FoldGraph(GraphDef* output) {
       continue;
     }
     // We need to record a copy of output nodes before FoldNode() modifies it.
-    std::set<NodeDef*> outputs = node_map_->GetOutputs(node->name());
+    // We also need to ensure that the fanout is sorted deterministically.
+    const std::set<NodeDef*>& outputs = node_map_->GetOutputs(node->name());
+    std::vector<NodeDef*> fanout(outputs.begin(), outputs.end());
+    std::sort(fanout.begin(), fanout.end(),
+              [](const NodeDef* n1, const NodeDef* n2) {
+                return n1->name() < n2->name();
+              });
 
     Status s = FoldNode(node, output);
     processed_nodes.insert(node->name());
     if (!s.ok()) {
       VLOG(1) << "Failed to fold node " << node->name() << ": " << s;
     } else {
-      for (auto& output : outputs) {
+      for (auto& output : fanout) {
         if (IsFoldable(*output)) {
           queue.push_back(output);
         }

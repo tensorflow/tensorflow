@@ -50,7 +50,7 @@ bool IsTrivialOp(const NodeDef& node, const GraphRewriter& rewriter) {
 
 Status ModelPruner::Optimize(Cluster* cluster, const GrapplerItem& item,
                              GraphDef* pruned_graph) {
-  const std::unordered_set<string>& nodes_to_preserve = item.NodesToPreserve();
+  const std::unordered_set<string> nodes_to_preserve = item.NodesToPreserve();
 
   // Prune all the nodes that won't be executed, ie all the nodes that aren't in
   // the fanin of a fetch node. If fetch nodes aren't specified, we'll assume
