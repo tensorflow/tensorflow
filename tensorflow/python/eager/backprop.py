@@ -137,110 +137,6 @@ _gradient_functions_lock = threading.Lock()
 _tracing = False
 
 
-# TODO(apassos) replace this with a mechanism which can happen at the op
-# gradient function registration site, to be less error-prone
-# TODO(apassos) add ops other than those in nn_grad and math_grad
-_ops_which_dont_need_outputs = set([
-    "Identity",
-    "MatMul",
-    "Conv2DBackpropInput",
-    "Conv2DBackpropFilter",
-    "Conv3D",
-    "Conv3DBackpropInputV2",
-    "AvgPool3D",
-    "AvgPool3DGrad",
-    "MaxPool3D",
-    "MaxPool3DGrad",
-    "MaxPool3DGradGrad",
-    "BiasAdd",
-    "BiasAddV1",
-    "BiasAddGrad",
-    "Relu6",
-    "Softplus",
-    "SoftplusGrad",
-    "Softsign",
-    "ReluGrad",
-    "Conv2D",
-    "DepthwiseConv2dNative",
-    "Dilation2D",
-    "AvgPool",
-    "AvgPoolGrad",
-    "BatchNormWithGlobalNormalization",
-    "L2Loss",
-    "Sum",
-    "Prod",
-    "SegmentSum",
-    "SegmentMean",
-    "SparseSegmentSum",
-    "SparseSegmentMean",
-    "SparseSegmentSqrtN",
-    "SegmentMin",
-    "SegmentMax",
-    "UnsortedSegmentSum",
-    "UnsortedSegmentMax",
-    "Abs",
-    "Neg",
-    "ReciprocalGrad",
-    "Square",
-    "Expm1",
-    "Log",
-    "Log1p",
-    "TanhGrad",
-    "SigmoidGrad",
-    "Sign",
-    "Sin",
-    "Cos",
-    "Tan",
-    "Add",
-    "Sub",
-    "Mul",
-    "Div",
-    "RealDiv",
-    "Maximum",
-    "Minimum",
-    "SquaredDifference",
-    "Select",
-    "SparseMatMul",
-    "BatchMatMul",
-    "Complex",
-    "Real",
-    "Imag",
-    "Angle",
-    "Conj",
-    "Cast",
-    "Cross",
-    "Cumsum",
-    "Cumprod",
-    "ReadVariableOp",
-    "VarHandleOp",
-    "Shape",
-])
-
-_ops_which_dont_need_inputs = set([
-    "Identity",
-    "Softmax",
-    "LogSoftmax",
-    "BiasAdd",
-    "Relu",
-    "Elu",
-    "Selu",
-    "SparseSoftmaxCrossEntropyWithLogits",
-    "Neg",
-    "Inv",
-    "Reciprocal",
-    "Sqrt",
-    "Exp",
-    "Tanh",
-    "Sigmoid",
-    "Real",
-    "Imag",
-    "Conj",
-    "ReadVariableOp",
-    "VarHandleOp",
-    "Shape",
-])
-
-
 # TODO(agarwal): use an automatic mechanism for handling None arguments to
 # gradient functions.
 # Some gradient functions can accept None arguments for gradients. The following
@@ -259,57 +155,25 @@ _grad_fn_accepts_none_for_indices = {
 }
 
 
-def _record_gradient(op_name, inputs, attrs, results, name):
-  """Records gradients for a TensorFlow operation.
-
-  Args:
-    op_name: Name of the TensorFlow operation (see REGISTER_OP in C++ code) to
-      execute.
-    inputs: A flat list of Tensor object inputs to the operation.
-    attrs: A tuple with alternating string attr names and attr values for this
-      operation.
-    results: The results of the operation (as a flat list).
-    name: Customized name for the operation.
-
-  Returns:
-    A list of maybe-wrapped results. Either Tensors or TensorNodes.
-
-  Raises:
-    An exception on error.
-  """
-  if not tape.could_possibly_record():
-    return
-
-  if op_name in _ops_which_dont_need_outputs:
-    op_outputs = None
-  else:
-    # TODO(apassos) this line creates a weak circular reference where the
-    # backprop function keeps an output alive which in turn keeps the tape entry
-    # alive which keeps the backprop function alive. Figure out how to break
-    # this up without breaking second derivatives of ops like Exp whose
-    # gradients depend only on the outputs.
-    op_outputs = results
-
-  if op_name in _ops_which_dont_need_inputs:
-    op_inputs = None
-  else:
-    op_inputs = inputs
-
-  num_inputs = len(inputs)
+def _get_backward_fn(op_name, attrs, num_inputs, op_inputs, op_outputs):
 
   def grad_fn(*orig_outputs):
-    """Generated gradient function."""
     result = _magic_gradient_function(op_name, attrs, num_inputs,
                                       op_inputs, op_outputs, orig_outputs)
     if _tracing:
-      print("Gradient for", (name if name else op_name), "inputs", op_inputs,
-            "output_grads", orig_outputs, "gradients", result)
+      print("Gradient for", op_name, "inputs", op_inputs, "output_grads",
+            orig_outputs, "gradients", result)
     return nest.flatten(result)
 
-  tape.record_operation(op_name, results, inputs, grad_fn)
-  if _tracing:
-    print("Computed op", (name if name else op_name), "inputs", inputs,
-          "outputs", results)
+  return grad_fn
+
+
+pywrap_tensorflow.TFE_Py_RegisterBackwardFunctionGetter(_get_backward_fn)
+
+
+def _record_gradient(op_name, inputs, attrs, results, name):
+  return pywrap_tensorflow.TFE_Py_RecordGradient(op_name, inputs, attrs,
+                                                 results, name)
 
 
 execute.record_gradient = _record_gradient
