@@ -4108,7 +4108,6 @@ py_library(
         "layers/convolutional.py",
         "layers/core.py",
         "layers/layers.py",
-        "layers/network.py",
         "layers/normalization.py",
         "layers/pooling.py",
     ],
@@ -4158,25 +4157,6 @@ py_test(
         ":random_ops",
         ":variable_scope",
         "//tensorflow/python/eager:context",
-    ],
-)
-
-py_test(
-    name = "layers_network_test",
-    size = "small",
-    srcs = ["layers/network_test.py"],
-    main = "layers/network_test.py",
-    srcs_version = "PY2AND3",
-    deps = [
-        ":array_ops",
-        ":client_testlib",
-        ":framework_for_generated_wrappers",
-        ":framework_test_lib",
-        ":layers",
-        ":layers_base",
-        ":sparse_ops",
-        "//tensorflow/python/eager:context",
-        "//third_party/py/numpy",
     ],
 )
 

@@ -1365,7 +1365,7 @@ def _clone_functional_model(model, input_tensors=None):
   else:
     # Make sure that all input tensors come from a Keras layer.
     # If tensor comes from an input layer: cache the input layer.
-    input_tensors = topology._to_list(input_tensors)
+    input_tensors = topology.to_list(input_tensors)
     input_tensors_ = []
     for i, x in enumerate(input_tensors):
       if not K.is_keras_tensor(x):
@@ -1427,8 +1427,8 @@ def _clone_functional_model(model, input_tensors=None):
           if has_arg(layer.call, 'mask'):
             if 'mask' not in kwargs:
               kwargs['mask'] = computed_mask
-          output_tensors = topology._to_list(layer(computed_tensor, **kwargs))
-          output_masks = topology._to_list(
+          output_tensors = topology.to_list(layer(computed_tensor, **kwargs))
+          output_masks = topology.to_list(
               layer.compute_mask(computed_tensor, computed_mask))
           computed_tensors = [computed_tensor]
           computed_masks = [computed_mask]
@@ -1438,8 +1438,8 @@ def _clone_functional_model(model, input_tensors=None):
           if has_arg(layer.call, 'mask'):
             if 'mask' not in kwargs:
               kwargs['mask'] = computed_masks
-          output_tensors = topology._to_list(layer(computed_tensors, **kwargs))
-          output_masks = topology._to_list(
+          output_tensors = topology.to_list(layer(computed_tensors, **kwargs))
+          output_masks = topology.to_list(
               layer.compute_mask(computed_tensors, computed_masks))
         # Update tensor_map.
         for x, y, mask in zip(reference_output_tensors, output_tensors,
@@ -1489,11 +1489,11 @@ def _clone_sequential_model(model, input_tensors=None):
   if input_tensors is None:
     return Sequential(layers=layers, name=model.name)
   else:
-    if len(topology._to_list(input_tensors)) != 1:
+    if len(topology.to_list(input_tensors)) != 1:
       raise ValueError('To clone a `Sequential` model, we expect '
                        ' at most one tensor '
                        'as part of `input_tensors`.')
-    x = topology._to_list(input_tensors)[0]
+    x = topology.to_list(input_tensors)[0]
     if K.is_keras_tensor(x):
       origin_layer = x._keras_history[0]
       if isinstance(origin_layer, topology.InputLayer):
