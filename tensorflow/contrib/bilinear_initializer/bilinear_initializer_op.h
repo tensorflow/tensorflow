@@ -16,6 +16,7 @@ namespace bilinear_initializer {
  * (4) N = number of output channels (number of filters)
  * Typical use case is weight initialization for deconvolution layer.
  */
+template<typename T>
 class BilinearInitializerOp : public OpKernel {
   public:
     explicit BilinearInitializerOp(OpKernelConstruction* context);
