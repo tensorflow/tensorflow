@@ -2770,6 +2770,10 @@ class Graph(object):
     # implementation
     if self._use_c_api_hack():
       self._scoped_c_graph = c_api_util.ScopedTFGraph()
+      # The C API requires all ops to have shape functions. Disable this
+      # requirement (many custom ops do not have shape functions, and we don't
+      # want to break these existing cases).
+      c_api.SetRequireShapeInferenceFns(self._c_graph, False)
     else:
       self._scoped_c_graph = None
     self._variable_creator_stack = []
