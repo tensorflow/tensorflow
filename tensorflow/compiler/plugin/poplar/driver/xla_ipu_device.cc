@@ -20,12 +20,14 @@ limitations under the License.
 #include "tensorflow/compiler/jit/xla_device_ops.h"
 #include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-
 #include "tensorflow/compiler/tf2xla/kernels/index_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 
 #include "tensorflow/core/kernels/no_op.h"
 
+
 namespace se = ::perftools::gputools;
+namespace sep = ::perftools::gputools::poplarplugin;
 
 namespace tensorflow {
 
@@ -54,7 +56,10 @@ Status XlaIpuDeviceFactory::CreateDevices(const SessionOptions& options,
     return StreamExecutorUtil::ConvertStatus(platform.status());
   }
 
-  int visible_devices = platform.ValueOrDie()->VisibleDeviceCount();
+  auto* p = static_cast<sep::PoplarPlatform*>(platform.ValueOrDie());
+  p->SetPoplarDeviceOptions(options.config.ipu_options());
+
+  int visible_devices = p->VisibleDeviceCount();
   for (int ordinal=0; ordinal<visible_devices; ordinal++) {
     std::unique_ptr<XlaDevice> device;
     TF_RETURN_IF_ERROR(XlaDevice::Create(PLATFORM_NAME, DEVICE_XLA_IPU, ordinal,

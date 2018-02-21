@@ -14,12 +14,12 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
-#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
+namespace se = ::perftools::gputools;
 namespace sep = ::perftools::gputools::poplarplugin;
 
 namespace xla {
@@ -56,14 +56,19 @@ TEST_F(GraphCompileIoMapTest, NoShared) {
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEntryComputation(std::move(computation));
 
+  auto* platform =
+      se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
+  auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
   PoplarCompiler compiler;
 
   hlo_module = compiler.RunHloPasses(std::move(hlo_module),
-                                     nullptr, nullptr).ConsumeValueOrDie();
+                                     stream_executor,
+                                     nullptr).ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
           compiler.RunBackend(std::move(hlo_module),
-                              nullptr, nullptr).ConsumeValueOrDie();
+                              stream_executor, nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(0, GetMap(e).size());
@@ -92,14 +97,19 @@ TEST_F(GraphCompileIoMapTest, Input1Shared) {
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEntryComputation(std::move(computation));
 
+  auto* platform =
+      se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
+  auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
   PoplarCompiler compiler;
 
   hlo_module = compiler.RunHloPasses(std::move(hlo_module),
-                                     nullptr, nullptr).ConsumeValueOrDie();
+                                     stream_executor,
+                                     nullptr).ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
         compiler.RunBackend(std::move(hlo_module),
-                            nullptr, nullptr).ConsumeValueOrDie();
+                            stream_executor, nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(1, GetMap(e).size());
@@ -129,14 +139,19 @@ TEST_F(GraphCompileIoMapTest, Input2Shared) {
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEntryComputation(std::move(computation));
 
+  auto* platform =
+      se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
+  auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
   PoplarCompiler compiler;
 
   hlo_module = compiler.RunHloPasses(std::move(hlo_module),
-                                     nullptr, nullptr).ConsumeValueOrDie();
+                                     stream_executor,
+                                     nullptr).ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
         compiler.RunBackend(std::move(hlo_module),
-                            nullptr, nullptr).ConsumeValueOrDie();
+                            stream_executor, nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   EXPECT_EQ(1, GetMap(e).size());
@@ -179,14 +194,19 @@ TEST_F(GraphCompileIoMapTest, TupleInTuple) {
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEntryComputation(std::move(computation));
 
+  auto* platform =
+      se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
+  auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
   PoplarCompiler compiler;
 
   hlo_module = compiler.RunHloPasses(std::move(hlo_module),
-                                     nullptr, nullptr).ConsumeValueOrDie();
+                                     stream_executor,
+                                     nullptr).ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
         compiler.RunBackend(std::move(hlo_module),
-                            nullptr, nullptr).ConsumeValueOrDie();
+                            stream_executor, nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   ASSERT_EQ(2, GetMap(e).size());
@@ -223,14 +243,19 @@ TEST_F(GraphCompileIoMapTest, GetTupleFromTuple) {
   auto hlo_module = MakeUnique<HloModule>("test_module");
   hlo_module->AddEntryComputation(std::move(computation));
 
+  auto* platform =
+      se::MultiPlatformManager::PlatformWithName("Poplar").ConsumeValueOrDie();
+  auto* stream_executor = platform->ExecutorForDevice(0).ConsumeValueOrDie();
+
   PoplarCompiler compiler;
 
   hlo_module = compiler.RunHloPasses(std::move(hlo_module),
-                                     nullptr, nullptr).ConsumeValueOrDie();
+                                     stream_executor,
+                                     nullptr).ConsumeValueOrDie();
 
   std::unique_ptr<Executable> executable =
         compiler.RunBackend(std::move(hlo_module),
-                            nullptr, nullptr).ConsumeValueOrDie();
+                            stream_executor, nullptr).ConsumeValueOrDie();
 
   PoplarExecutable* e = static_cast<PoplarExecutable*>(executable.get());
   ASSERT_EQ(1, GetMap(e).size());

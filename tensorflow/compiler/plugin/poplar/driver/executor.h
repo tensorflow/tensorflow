@@ -36,11 +36,14 @@ limitations under the License.
 #include "tensorflow/stream_executor/stream_executor.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
+#include "tensorflow/core/protobuf/config.pb.h"
+
 #include <list>
 #include <mutex>
 
 #include <poplar/Tensor.hpp>
 #include <poplar/Engine.hpp>
+#include <poplar/Device.hpp>
 
 namespace perftools {
 namespace gputools {
@@ -197,6 +200,12 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   // Poplar Interface
 
+  port::Status InitializePoplarDevice(
+      int ordinal,
+      const tensorflow::IPUOptions::DeviceConfig&);
+
+  const poplar::Device& GetPoplarDevice() const { return poplar_device_; }
+
   port::StatusOr<DeviceMemoryBase>
   ExecuteEngine(const std::shared_ptr<poplar::Engine>&,
                 xla::DeviceMemoryAllocator* allocator,
@@ -250,11 +259,11 @@ class PoplarExecutor : public internal::StreamExecutorInterface {
 
   port::Status MoveDeviceToHost(TensorControl* tc) const;
 
-  const PluginConfig plugin_config_;
-
   std::recursive_mutex mutex_;
 
   std::shared_ptr<poplar::Engine> current_engine_;
+
+  poplar::Device poplar_device_;
 
   std::list<TensorControl*> allocations_;
 

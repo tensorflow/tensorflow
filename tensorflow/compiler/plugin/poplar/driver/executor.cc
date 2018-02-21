@@ -28,6 +28,7 @@ limitations under the License.
 
 #include <string.h>
 
+#include <poplar/IPUModel.hpp>
 #include <poplar/Tensor.hpp>
 
 /*
@@ -105,8 +106,7 @@ host::HostStream *AsPoplarStream(Stream *stream) {
 }
 
 PoplarExecutor::PoplarExecutor(const PluginConfig &plugin_config)
-    : plugin_config_(plugin_config),
-      report_counter(0) {
+    : report_counter(0) {
 }
 
 PoplarExecutor::~PoplarExecutor() {}
@@ -234,6 +234,43 @@ DeviceDescription *PoplarExecutor::PopulateDeviceDescription() const {
 
   auto built = builder.Build();
   return built.release();
+}
+
+port::Status PoplarExecutor::InitializePoplarDevice(
+    int ordinal,
+    const tensorflow::IPUOptions::DeviceConfig& cfg) {
+
+  tensorflow::IPUOptions::DeviceConfig::Type type = cfg.type();
+
+  if (type == tensorflow::IPUOptions::DeviceConfig::DEFAULT) {
+    type = tensorflow::IPUOptions::DeviceConfig::CPU;
+  }
+
+  switch (type) {
+    case tensorflow::IPUOptions::DeviceConfig::IPU:
+      return port::Status{
+          port::error::INTERNAL,
+          tensorflow::strings::Printf(
+              "IPU device type not supported on ordinal %d", ordinal)};
+    case tensorflow::IPUOptions::DeviceConfig::IPU_MODEL:
+    {
+      poplar::IPUModel model;
+      model.IPUExchangeType =
+          poplar::IPUModel::ExchangeType::AGGRESSIVE_MULTICAST;
+      poplar_device_ = model.createDevice();
+      break;
+    }
+    case tensorflow::IPUOptions::DeviceConfig::CPU:
+      poplar_device_ = poplar::Device::createCPUDevice();
+      break;
+    default:
+      return port::Status{
+          port::error::INTERNAL,
+          tensorflow::strings::Printf(
+              "unrecognized poplar device type for ordinal %d: %d", ordinal,
+              type)};
+  }
+  return port::Status::OK();
 }
 
 void

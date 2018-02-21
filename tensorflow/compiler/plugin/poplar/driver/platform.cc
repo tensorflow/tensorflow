@@ -94,6 +94,16 @@ PoplarPlatform::GetUncachedExecutor(const StreamExecutorConfig& config) {
             config.ordinal, init_status.ToString().c_str())};
   }
 
+  auto* p = static_cast<PoplarExecutor*>(executor->implementation());
+  if (device_options_.device_config().size() > config.ordinal) {
+    TF_RETURN_IF_ERROR(
+        p->InitializePoplarDevice(config.ordinal,
+            device_options_.device_config(config.ordinal)));
+  } else {
+    tensorflow::IPUOptions::DeviceConfig default_config;
+    TF_RETURN_IF_ERROR(p->InitializePoplarDevice(config.ordinal,
+                                                 default_config));
+  }
   return std::move(executor);
 }
 
@@ -104,6 +114,11 @@ void PoplarPlatform::RegisterTraceListener(
 
 void PoplarPlatform::UnregisterTraceListener(TraceListener* listener) {
   LOG(FATAL) << "not yet implemented: unregister poplar trace listener";
+}
+
+void
+PoplarPlatform::SetPoplarDeviceOptions(const tensorflow::IPUOptions& opts) {
+  device_options_ = opts;
 }
 
 static void InitializePoplarPlatform() {

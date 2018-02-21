@@ -59,7 +59,6 @@ limitations under the License.
 
 #include <poplar/exceptions.hpp>
 #include <poputil/exceptions.hpp>
-#include <poplar/IPUModel.hpp>
 
 #include <popconv/codelets.hpp>
 #include <popnn/codelets.hpp>
@@ -243,14 +242,15 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
   VLOG(1) << "Begin compilation: " << module->name();
 
-  bool use_ipu_model = (getenv("TF_POPLAR_COMPILE_IPU_MODEL") != NULL);
+  if (stream_exec == nullptr) {
+    return port::Status(port::error::UNKNOWN,
+                        "NULL stream pointer in poplar compiler");
+  }
 
-  poplar::IPUModel model;
-  model.IPUExchangeType = poplar::IPUModel::ExchangeType::AGGRESSIVE_MULTICAST;
+  sep::PoplarExecutor* poplarExecutor(
+      static_cast<sep::PoplarExecutor*>(stream_exec->implementation()));
 
-  poplar::Device dev(use_ipu_model ?
-                     model.createDevice() :
-                     poplar::Device::createCPUDevice());
+  const poplar::Device& dev = poplarExecutor->GetPoplarDevice();
 
   poplar::Graph* graph = new poplar::Graph(dev);
   graph->addCodelets(GetPathToGraphProgFile());

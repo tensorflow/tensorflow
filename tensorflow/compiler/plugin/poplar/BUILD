@@ -235,6 +235,16 @@ py_test(
 )
 
 py_test(
+    name = "ipu_model_device_test",
+    size = "small",
+    srcs = ["tests/ipu_model_device_test.py"],
+    deps = [
+        "//tensorflow:tensorflow_py",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
     name = "simple_network_test",
     size = "small",
     srcs = ["tests/simple_network_test.py"],
@@ -358,6 +368,7 @@ test_suite(
     name = "all_tests",
     tests = [
         "device_test",
+        "ipu_model_device_test",
         "simple_network_test",
         "matmul_test",
         "multi_run_test",
@@ -384,6 +395,7 @@ test_suite(
     name = "all_ci_tests",
     tests = [
         "device_test",
+        "ipu_model_device_test",
         "simple_network_test",
         "matmul_test",
         "multi_run_test",
