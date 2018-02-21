@@ -21,11 +21,10 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#include <unistd.h>
 #include <cstdlib>
 #include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
-#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/common_runtime/visitable_allocator.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/mem.h"
@@ -161,7 +160,7 @@ class MklCPUAllocator : public VisitableAllocator {
   /// The alignment that we need for the allocations
   static const size_t kAlignment = 64;
 
-  Allocator* allocator_;  // owned by this class
+  VisitableAllocator* allocator_;  // owned by this class
 };
 
 }  // namespace tensorflow

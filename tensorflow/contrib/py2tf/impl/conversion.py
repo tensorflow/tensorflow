@@ -21,14 +21,15 @@ from __future__ import print_function
 import gast
 import six
 
+from tensorflow.contrib.py2tf import utils
 from tensorflow.contrib.py2tf.converters import asserts
-from tensorflow.contrib.py2tf.converters import break_canonicalization
+from tensorflow.contrib.py2tf.converters import break_statements
 from tensorflow.contrib.py2tf.converters import builtin_functions
 from tensorflow.contrib.py2tf.converters import call_trees
-from tensorflow.contrib.py2tf.converters import continue_canonicalization
+from tensorflow.contrib.py2tf.converters import continue_statements
 from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import decorators
-from tensorflow.contrib.py2tf.converters import for_canonicalization
+from tensorflow.contrib.py2tf.converters import for_loops
 from tensorflow.contrib.py2tf.converters import logical_expressions
 from tensorflow.contrib.py2tf.converters import side_effect_guards
 from tensorflow.contrib.py2tf.impl import config
@@ -57,16 +58,20 @@ class ConversionMap(object):
         converted AST
     name_map: dict[string]: string; maps original entities to the name of
         their converted counterparts
+    api_module: A reference to the api module. The reference needs to be passed
+        to avoid circular dependencies.
   """
 
   # TODO(mdan): Rename to ConversionContext, and pull in additional flags.
 
-  def __init__(self, recursive, nocompile_decorators, partial_types):
+  def __init__(self, recursive, nocompile_decorators, partial_types,
+               api_module):
     self.recursive = recursive
     self.nocompile_decorators = nocompile_decorators
     self.partial_types = partial_types if partial_types else ()
     self.dependency_cache = {}
     self.name_map = {}
+    self.api_module = api_module
 
   def new_namer(self, namespace):
     return naming.Namer(namespace, self.recursive, self.name_map,
@@ -169,6 +174,24 @@ def class_to_graph(c, conversion_map):
   return node, class_name
 
 
+def _add_self_references(namespace, api_module):
+  """Self refs are only required for analysis and are not used directly."""
+  # Manually add the utils namespace which may be used from generated code.
+  if 'py2tf_util' not in namespace:
+    namespace['py2tf_utils'] = utils
+  elif namespace['py2tf_utils'] != utils:
+    raise ValueError(
+        'The module name "py2tf_utils" is reserved and may not be used.')
+
+  # We also make reference to the api module for dynamic conversion, but
+  # to avoid circular references we don't import it here.
+  if 'py2tf_api' not in namespace:
+    namespace['py2tf_api'] = api_module
+  elif namespace['py2tf_api'] != api_module:
+    raise ValueError(
+        'The module name "py2tf_api" is reserved and may not be used.')
+
+
 def function_to_graph(f, conversion_map, arg_values, arg_types,
                       owner_type=None):
   """Specialization of `entity_to_graph` for callable functions."""
@@ -183,6 +206,8 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
       if callable(e.cell_contents):
         fn = e.cell_contents
         namespace[fn.__name__] = fn
+
+  _add_self_references(namespace, conversion_map.api_module)
 
   namer = conversion_map.new_namer(namespace)
   ctx = context.EntityContext(
@@ -247,21 +272,19 @@ def node_to_graph(node, ctx, nocompile_decorators):
   # TODO(mdan): Is it feasible to reconstruct intermediate source code?
   ctx.source_code = None
   node = decorators.transform(node, nocompile_decorators)
-  node = break_canonicalization.transform(node, ctx)
+  node = break_statements.transform(node, ctx)
   node = asserts.transform(node, ctx)
 
   # Note: sequencing continue canonicalization before for loop one avoids
   # dealing with the extra loop increment operation that the for
   # canonicalization creates.
-  node = continue_canonicalization.transform(node, ctx)
+  node = continue_statements.transform(node, ctx)
   ctx.namespace['len'] = len
 
   node = _static_analysis_pass(node, ctx)
-  node = for_canonicalization.transform(node, ctx)
-  # for_canonicalization may insert new global references.
+  node = for_loops.transform(node, ctx)
+  # for_loops may insert new global references.
   node = builtin_functions.transform(node, ctx)
-  # builtin_functions may insert new global references.
-  ctx.namespace['print'] = print
 
   node = _static_analysis_pass(node, ctx)
   node = call_trees.transform(node, ctx, config.DEFAULT_UNCOMPILED_MODULES,

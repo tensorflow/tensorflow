@@ -98,7 +98,7 @@ def _eager_metrics_fn(model, outputs, targets):
   return metric_names, metric_results
 
 
-def _model_loss(model, inputs, targets):
+def _model_loss(model, inputs, targets, training=False):
   """Calculates the loss for a given model.
 
   Arguments:
@@ -106,6 +106,7 @@ def _model_loss(model, inputs, targets):
      inputs: The inputs of the given model. This is typically the mini batch of
               data that is fed to the model.
      targets: The predictions or targets of the given model.
+     training: Whether the model should be run in inference or training mode.
 
   Returns:
      Returns the model output, total loss and loss value calculated using the
@@ -114,9 +115,15 @@ def _model_loss(model, inputs, targets):
   """
   total_loss = 0
   if len(inputs) == 1:
-    outs = model.call(inputs[0])
+    if model._expects_training_arg:
+      outs = model.call(inputs[0], training=training)
+    else:
+      outs = model.call(inputs[0])
   else:
-    outs = model.call(inputs)
+    if model._expects_training_arg:
+      outs = model.call(inputs, training=training)
+    else:
+      outs = model.call(inputs)
   if not isinstance(outs, list):
     outs = [outs]
 
@@ -172,7 +179,7 @@ def _model_loss(model, inputs, targets):
 
 
 def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
-                          training=True):
+                          training=False):
   """Calculate the loss and gradient for one input batch.
 
      The model weights are updated if training is set to True.
@@ -195,7 +202,8 @@ def _process_single_batch(eager_model_inputs, eager_model_outputs, model,
   K.set_learning_phase(training)
   with GradientTape() as tape:
     outs, loss, loss_metrics = _model_loss(model, eager_model_inputs,
-                                           eager_model_outputs)
+                                           eager_model_outputs,
+                                           training=training)
     if loss is None:
       raise ValueError('The model cannot be run '
                        'because it has no loss to optimize.')
@@ -230,7 +238,7 @@ def train_on_batch(model, ins):
   for i in range(len(model.inputs), len(ins_batch_converted)):
     eager_model_outputs.append(ins_batch_converted[i])
   outs, loss, _ = _process_single_batch(
-      eager_model_inputs, eager_model_outputs, model)
+      eager_model_inputs, eager_model_outputs, model, training=True)
   if not isinstance(outs, list):
     outs = [outs]
   _, metrics_results = _eager_metrics_fn(
@@ -415,7 +423,8 @@ def fit_loop(
 
       outs, loss, loss_metrics = _process_single_batch(eager_model_inputs,
                                                        eager_model_outputs,
-                                                       model)
+                                                       model,
+                                                       training=True)
 
       if not isinstance(outs, list):
         outs = [outs]
@@ -517,7 +526,8 @@ def test_loop(model, ins, batch_size=None, verbose=0, steps=None):
       eager_model_outputs.append(ins_batch_converted[i])
 
     loss_outs, loss, loss_metrics = _model_loss(model, eager_model_inputs,
-                                                eager_model_outputs)
+                                                eager_model_outputs,
+                                                training=False)
     _, metrics_results = _eager_metrics_fn(model, loss_outs,
                                            eager_model_outputs)
     batch_outs = []
@@ -590,9 +600,15 @@ def predict_loop(model, ins, batch_size=32, verbose=0, steps=None):
       eager_model_inputs.append(ins_batch_converted[i])
 
     if len(eager_model_inputs) == 1:
-      batch_outs = model.call(eager_model_inputs[0])
+      if model._expects_training_arg:
+        batch_outs = model.call(eager_model_inputs[0], training=False)
+      else:
+        batch_outs = model.call(eager_model_inputs[0])
     else:
-      batch_outs = model.call(eager_model_inputs)
+      if model._expects_training_arg:
+        batch_outs = model.call(eager_model_inputs, training=False)
+      else:
+        batch_outs = model.call(eager_model_inputs)
 
     if not isinstance(batch_outs, list):
       batch_outs = [batch_outs]

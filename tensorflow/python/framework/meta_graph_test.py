@@ -261,6 +261,29 @@ class SimpleMetaGraphTest(test.TestCase):
       self.assertEqual(node_def.attr["attr_1"].i, 1)
       self.assertTrue(meta_graph_def.meta_info_def.stripped_default_attrs)
 
+  def testVariableObjectsAreSharedAmongCollections(self):
+    with ops.Graph().as_default() as graph1:
+      v = variables.Variable(3.0)
+      # A single instance of Variable is shared among the collections:
+      global_vars = graph1.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      trainable_vars = graph1.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+      self.assertEqual(len(global_vars), 1)
+      self.assertEqual(len(trainable_vars), 1)
+      self.assertIs(global_vars[0], trainable_vars[0])
+      self.assertIs(v, global_vars[0])
+
+    orig_meta_graph, _ = meta_graph.export_scoped_meta_graph(graph=graph1)
+    del graph1  # To avoid accidental references in code involving graph2.
+
+    with ops.Graph().as_default() as graph2:
+      meta_graph.import_scoped_meta_graph(orig_meta_graph)
+      global_vars = graph2.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      trainable_vars = graph2.get_collection(ops.GraphKeys.TRAINABLE_VARIABLES)
+      self.assertEqual(len(global_vars), 1)
+      self.assertEqual(len(trainable_vars), 1)
+      # A single instance of Variable is shared among the collections:
+      self.assertIs(global_vars[0], trainable_vars[0])
+
 
 @test_util.with_c_api
 class ScopedMetaGraphTest(test.TestCase):
@@ -883,21 +906,25 @@ class ExportImportAcrossScopesTest(test.TestCase):
         graph_fn(use_resource=use_resource)
 
       if use_resource:
-        # Bringing in a collection that contains ResourceVariables adds ops
-        # to the graph, so mimic the same behavior.
+        # Bringing in collections that contain ResourceVariables will adds ops
+        # to the graph the first time a variable is encountered, so mimic the
+        # same behavior.
+        seen_variables = set()
         for collection_key in sorted([
             ops.GraphKeys.GLOBAL_VARIABLES,
             ops.GraphKeys.TRAINABLE_VARIABLES,
         ]):
           for var in expected_graph.get_collection(collection_key):
-            var._read_variable_op()
+            if var not in seen_variables:
+              var._read_variable_op()
+              seen_variables.add(var)
 
     result = meta_graph.export_scoped_meta_graph(graph=imported_graph)[0]
     expected = meta_graph.export_scoped_meta_graph(graph=expected_graph)[0]
 
     if use_resource:
       # Clear all shared_name attributes before comparing, since they are
-      # supposed to be orthogonal to scopes.
+      # orthogonal to scopes and are not updated on export/import.
       for meta_graph_def in [result, expected]:
         for node in meta_graph_def.graph_def.node:
           shared_name_attr = "shared_name"

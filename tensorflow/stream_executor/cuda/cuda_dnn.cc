@@ -577,11 +577,30 @@ class ScopedFilterDescriptor {
 // A helper function to decide whether to enable the TENSOR_OP_MATH math type
 static bool TensorOpMathEnabled() {
   static bool is_enabled = [] {
-    bool is_disabled;
+    bool is_disabled = false;
     TF_CHECK_OK(
         tensorflow::ReadBoolFromEnvVar("TF_DISABLE_CUDNN_TENSOR_OP_MATH",
                                        /*default_val=*/false, &is_disabled));
     return !is_disabled;
+  }();
+  return is_enabled;
+}
+
+// A helper function to decide whether to use CUDNN_BATCHNORM_SPATIAL_PERSISTENT
+// in batchnorm. This mode can be faster in some tasks because an optimized path
+// may be selected for CUDNN_DATA_FLOAT and CUDNN_DATA_HALF data types, compute
+// capability 6.0 or higher. The reason we set it to false by default is that
+// this mode may use scaled atomic integer reduction that may cause a numerical
+// overflow for certain input data range.
+// TODO(yangzihao): Use autotune to choose between this mode and
+// CUDNN_BATCHNORM_SPATIAL mode.
+static bool BatchnormSpatialPersistentEnabled() {
+  static bool is_enabled = [] {
+    bool is_enabled = false;
+    TF_CHECK_OK(tensorflow::ReadBoolFromEnvVar(
+        "TF_USE_CUDNN_BATCHNORM_SPATIAL_PERSISTENT",
+        /*default_val=*/false, &is_enabled));
+    return is_enabled;
   }();
   return is_enabled;
 }
@@ -2773,6 +2792,11 @@ bool CudnnSupport::DoBatchNormalizationForwardImpl(
   ScopedTensorDescriptor scale_offset_descriptor{
       parent_, scale_offset_desc, ToCudnnDataType(scale_data_type)};
   cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
+#if CUDNN_VERSION >= 7000
+  if (BatchnormSpatialPersistentEnabled()) {
+    mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
+  }
+#endif
   float one = 1.0;
   float zero = 0.0;
 
@@ -2874,6 +2898,11 @@ bool CudnnSupport::DoBatchNormalizationBackwardImpl(
       parent_, scale_offset_desc,
       static_cast<cudnnDataType_t>(cudnn_scale_type)};
   cudnnBatchNormMode_t mode = CUDNN_BATCHNORM_SPATIAL;
+#if CUDNN_VERSION >= 7000
+  if (BatchnormSpatialPersistentEnabled()) {
+    mode = CUDNN_BATCHNORM_SPATIAL_PERSISTENT;
+  }
+#endif
   float one = 1.0;
   float zero = 0.0;
 

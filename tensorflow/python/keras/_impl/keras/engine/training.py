@@ -31,6 +31,7 @@ from tensorflow.python.keras._impl.keras import losses
 from tensorflow.python.keras._impl.keras import metrics as metrics_module
 from tensorflow.python.keras._impl.keras import optimizers
 from tensorflow.python.keras._impl.keras.engine import training_eager
+from tensorflow.python.keras._impl.keras.engine.topology import Layer
 from tensorflow.python.keras._impl.keras.engine.topology import Network
 from tensorflow.python.keras._impl.keras.utils.data_utils import GeneratorEnqueuer
 from tensorflow.python.keras._impl.keras.utils.data_utils import OrderedEnqueuer
@@ -274,7 +275,7 @@ def _check_loss_and_target_compatibility(targets, loss_fns, output_shapes):
       losses.categorical_crossentropy
   }
   for y, loss, shape in zip(targets, loss_fns, output_shapes):
-    if loss is None:
+    if y is None or loss is None:
       continue
     if loss is losses.categorical_crossentropy:
       if y.shape[-1] == 1:
@@ -487,7 +488,7 @@ def _standardize_weights(y,
       raise ValueError('`class_weight` not supported for '
                        '3+ dimensional targets.')
     if y.shape[1] > 1:
-      y_classes = y.argmax(axis=1)
+      y_classes = np.argmax(y, axis=1)
     elif y.shape[1] == 1:
       y_classes = np.reshape(y, y.shape[0])
     else:
@@ -514,12 +515,70 @@ def _standardize_weights(y,
 
 @tf_export('keras.models.Model', 'keras.Model')
 class Model(Network):
-  """The `Model` class adds training & evaluation routines to a `Network`.
+  """`Model` groups layers into an object with training and inference features.
+
+  There are two ways to instantiate a `Model`:
+
+  1 - With the "functional API", where you start from `Input`,
+  you chain layer calls to specify the model's forward pass,
+  and finally you create your model from inputs and outputs:
+
+  ```python
+  import tensorflow as tf
+
+  inputs = tf.keras.Input(shape=(3,))
+  x = tf.keras.layers.Dense(4, activation=tf.nn.relu)(inputs)
+  outputs = tf.keras.layers.Dense(5, activation=tf.nn.softmax)(x)
+  model = tf.keras.Model(inputs=inputs, outputs=outputs)
+  ```
+
+  2 - By subclassing the `Model` class: in that case, you should define your
+  layers in `__init__` and you should implement the model's forward pass
+  in `call`.
+
+  ```python
+  import tensorflow as tf
+
+  class MyModel(tf.keras.Model):
+
+    def __init__(self):
+      self.dense1 = tf.keras.layers.Dense(4, activation=tf.nn.relu)
+      self.dense2 = tf.keras.layers.Dense(5, activation=tf.nn.softmax)
+
+    def call(self, inputs):
+      x = self.dense1(inputs)
+      return self.dense2(x)
+
+  model = MyModel()
+  ```
+
+  If you subclass `Model`, you can optionally have
+  a `training` argument (boolean) in `call`, which you can use to specify
+  a different behavior in training and inference:
+
+  ```python
+  import tensorflow as tf
+
+  class MyModel(tf.keras.Model):
+
+    def __init__(self):
+      self.dense1 = tf.keras.layers.Dense(4, activation=tf.nn.relu)
+      self.dense2 = tf.keras.layers.Dense(5, activation=tf.nn.softmax)
+      self.dropout = tf.keras.layers.Dropout(0.5)
+
+    def call(self, inputs, training=False):
+      x = self.dense1(inputs)
+      if training:
+        x = self.dropout(x, training=training)
+      return self.dense2(x)
+
+  model = MyModel()
+  ```
   """
 
   def compile(self,
               optimizer,
-              loss,
+              loss=None,
               metrics=None,
               loss_weights=None,
               sample_weight_mode=None,
@@ -581,7 +640,7 @@ class Model(Network):
 
     self.optimizer = optimizers.get(optimizer)
     self.loss = loss
-    self.metrics = metrics
+    self.metrics = metrics or []
     self.loss_weights = loss_weights
     if context.in_eager_mode() and sample_weight_mode is not None:
       raise ValueError('sample_weight_mode is not supported in Eager mode.')
@@ -817,7 +876,6 @@ class Model(Network):
         self._feed_sample_weight_modes.append(self.sample_weight_modes[i])
 
     # Prepare metrics.
-    self.metrics = metrics
     self.weighted_metrics = weighted_metrics
     self.metrics_names = ['loss']
     self.metrics_tensors = []
@@ -860,14 +918,8 @@ class Model(Network):
     nested_metrics = _collect_metrics(metrics, self.output_names)
     nested_weighted_metrics = _collect_metrics(weighted_metrics,
                                                self.output_names)
-
-    def append_metric(layer_index, metric_name, metric_tensor):
-      """Helper function used in loop below."""
-      if len(self.output_names) > 1:
-        metric_name = self.output_names[layer_index] + '_' + metric_name
-      self.metrics_names.append(metric_name)
-      self.metrics_tensors.append(metric_tensor)
-
+    self.metrics_updates = []
+    self.stateful_metric_names = []
     with K.name_scope('metrics'):
       for i in range(len(self.outputs)):
         if i in skip_target_indices:
@@ -886,42 +938,65 @@ class Model(Network):
             if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
               # custom handling of accuracy/crossentropy
               # (because of class mode duality)
-              output_shape = K.int_shape(self.outputs[i])
+              output_shape = self.outputs[i].get_shape().as_list()
               if (output_shape[-1] == 1 or
                   self.loss_functions[i] == losses.binary_crossentropy):
                 # case: binary accuracy/crossentropy
                 if metric in ('accuracy', 'acc'):
-                  acc_fn = metrics_module.binary_accuracy
+                  metric_fn = metrics_module.binary_accuracy
                 elif metric in ('crossentropy', 'ce'):
-                  acc_fn = metrics_module.binary_crossentropy
+                  metric_fn = metrics_module.binary_crossentropy
               elif self.loss_functions[
                   i] == losses.sparse_categorical_crossentropy:
                 # case: categorical accuracy/crossentropy with sparse targets
                 if metric in ('accuracy', 'acc'):
-                  acc_fn = metrics_module.sparse_categorical_accuracy
+                  metric_fn = metrics_module.sparse_categorical_accuracy
                 elif metric in ('crossentropy', 'ce'):
-                  acc_fn = metrics_module.sparse_categorical_crossentropy
+                  metric_fn = metrics_module.sparse_categorical_crossentropy
               else:
                 # case: categorical accuracy/crossentropy
                 if metric in ('accuracy', 'acc'):
-                  acc_fn = metrics_module.categorical_accuracy
+                  metric_fn = metrics_module.categorical_accuracy
                 elif metric in ('crossentropy', 'ce'):
-                  acc_fn = metrics_module.categorical_crossentropy
+                  metric_fn = metrics_module.categorical_crossentropy
               if metric in ('accuracy', 'acc'):
                 suffix = 'acc'
               elif metric in ('crossentropy', 'ce'):
                 suffix = 'ce'
-              weighted_metric_fn = _weighted_masked_objective(acc_fn)
+              weighted_metric_fn = _weighted_masked_objective(metric_fn)
               metric_name = metric_name_prefix + suffix
             else:
               metric_fn = metrics_module.get(metric)
               weighted_metric_fn = _weighted_masked_objective(metric_fn)
-              metric_name = metric_name_prefix + metric_fn.__name__
+              # Get metric name as string
+              if hasattr(metric_fn, 'name'):
+                metric_name = metric_fn.name
+              else:
+                metric_name = metric_fn.__name__
+              metric_name = metric_name_prefix + metric_name
 
             with K.name_scope(metric_name):
               metric_result = weighted_metric_fn(
                   y_true, y_pred, weights=weights, mask=masks[i])
-            append_metric(i, metric_name, metric_result)
+
+            # Append to self.metrics_names, self.metric_tensors,
+            # self.stateful_metric_names
+            if len(self.output_names) > 1:
+              metric_name = '%s_%s' % (self.output_names[i], metric_name)
+            # Dedupe name
+            j = 1
+            base_metric_name = metric_name
+            while metric_name in self.metrics_names:
+              metric_name = '%s_%d' % (base_metric_name, j)
+              j += 1
+            self.metrics_names.append(metric_name)
+            self.metrics_tensors.append(metric_result)
+
+            # Keep track of state updates created by
+            # stateful metrics (i.e. metrics layers).
+            if isinstance(metric_fn, Layer):
+              self.stateful_metric_names.append(metric_name)
+              self.metrics_updates += metric_fn.updates
 
         handle_metrics(output_metrics)
         handle_metrics(output_weighted_metrics, weights=weights)
@@ -986,6 +1061,8 @@ class Model(Network):
         updates += self.get_updates_for(None)
         # Conditional updates relevant to this model
         updates += self.get_updates_for(self._feed_inputs)
+        # Stateful metrics updates
+        updates += self.metrics_updates
         # Gets loss and metrics. Updates weights at each call.
         self.train_function = K.function(
             inputs, [self.total_loss] + self.metrics_tensors,
@@ -1006,7 +1083,7 @@ class Model(Network):
       # Does update the network states.
       self.test_function = K.function(
           inputs, [self.total_loss] + self.metrics_tensors,
-          updates=self.state_updates,
+          updates=self.state_updates + self.metrics_updates,
           name='test_function',
           **self._function_kwargs)
 
@@ -1145,14 +1222,18 @@ class Model(Network):
       index_array = np.arange(num_train_samples)
 
     self.history = cbks.History()
-    callbacks = [cbks.BaseLogger()] + (callbacks or []) + [self.history]
+    all_callbacks = [cbks.BaseLogger(
+        stateful_metrics=self.stateful_metric_names)]
     if verbose:
       if steps_per_epoch is not None:
         count_mode = 'steps'
       else:
         count_mode = 'samples'
-      callbacks += [cbks.ProgbarLogger(count_mode)]
-    callbacks = cbks.CallbackList(callbacks)
+      all_callbacks.append(
+          cbks.ProgbarLogger(
+              count_mode, stateful_metrics=self.stateful_metric_names))
+    all_callbacks += (callbacks or []) + [self.history]
+    callbacks = cbks.CallbackList(all_callbacks)
     out_labels = out_labels or []
 
     # it's possible to callback a different model than self
@@ -1186,6 +1267,11 @@ class Model(Network):
         indices_for_conversion_to_dense.append(i)
 
     for epoch in range(initial_epoch, epochs):
+      # Reset stateful metrics
+      for m in self.metrics:
+        if isinstance(m, Layer):
+          m.reset_states()
+      # Update callbacks
       callbacks.on_epoch_begin(epoch)
       epoch_logs = {}
       if steps_per_epoch is not None:
@@ -1286,12 +1372,19 @@ class Model(Network):
         or list of arrays of predictions
         (if the model has multiple outputs).
     """
+    if hasattr(self, 'metrics'):
+      for m in self.metrics:
+        if isinstance(m, Layer):
+          m.reset_states()
+
     num_samples = self._check_num_samples(ins, batch_size, steps, 'steps')
     if verbose == 1:
       if steps is not None:
-        progbar = Progbar(target=steps)
+        progbar = Progbar(target=steps,
+                          stateful_metrics=self.stateful_metric_names)
       else:
-        progbar = Progbar(target=num_samples)
+        progbar = Progbar(target=num_samples,
+                          stateful_metrics=self.stateful_metric_names)
 
     indices_for_conversion_to_dense = []
     for i in range(len(self._feed_inputs)):
@@ -1373,6 +1466,17 @@ class Model(Network):
         and/or metrics). The attribute `model.metrics_names` will give you
         the display labels for the scalar outputs.
     """
+    if hasattr(self, 'metrics'):
+      for m in self.metrics:
+        if isinstance(m, Layer):
+          m.reset_states()
+      stateful_metric_indices = [
+          i for i, name in enumerate(self.metrics_names)
+          if str(name) in self.stateful_metric_names
+      ]
+    else:
+      stateful_metric_indices = []
+
     num_samples = self._check_num_samples(ins, batch_size, steps, 'steps')
     outs = []
     if verbose == 1:
@@ -1396,7 +1500,10 @@ class Model(Network):
             for _ in enumerate(batch_outs):
               outs.append(0.)
           for i, batch_out in enumerate(batch_outs):
-            outs[i] += batch_out
+            if i in stateful_metric_indices:
+              outs[i] = batch_out
+            else:
+              outs[i] += batch_out
         else:
           if step == 0:
             outs.append(0.)
@@ -1404,7 +1511,8 @@ class Model(Network):
         if verbose == 1:
           progbar.update(step + 1)
       for i in range(len(outs)):
-        outs[i] /= steps
+        if i not in stateful_metric_indices:
+          outs[i] /= steps
     else:
       batches = make_batches(num_samples, batch_size)
       index_array = np.arange(num_samples)
@@ -1425,7 +1533,10 @@ class Model(Network):
             for batch_out in enumerate(batch_outs):
               outs.append(0.)
           for i, batch_out in enumerate(batch_outs):
-            outs[i] += batch_out * len(batch_ids)
+            if i in stateful_metric_indices:
+              outs[i] = batch_out
+            else:
+              outs[i] += batch_out * len(batch_ids)
         else:
           if batch_index == 0:
             outs.append(0.)
@@ -1433,7 +1544,8 @@ class Model(Network):
         if verbose == 1:
           progbar.update(batch_end)
       for i in range(len(outs)):
-        outs[i] /= num_samples
+        if i not in stateful_metric_indices:
+          outs[i] /= num_samples
     if len(outs) == 1:
       return outs[0]
     return outs
@@ -1655,21 +1767,7 @@ class Model(Network):
                          str(x[0].shape[0]) + ' samples')
     return x, y, sample_weights
 
-  def _get_deduped_metrics_names(self):
-    out_labels = self.metrics_names
-
-    # Rename duplicated metrics name
-    # (can happen with an output layer shared among multiple dataflows).
-    deduped_out_labels = []
-    for i, label in enumerate(out_labels):
-      new_label = label
-      if out_labels.count(label) > 1:
-        dup_idx = out_labels[:i].count(label)
-        new_label += '_' + str(dup_idx + 1)
-      deduped_out_labels.append(new_label)
-    return deduped_out_labels
-
-  def _set_inputs(self, inputs):
+  def _set_inputs(self, inputs, training=None):
     """Set model's input and output specs based on the input data received.
 
     This is to be used for Model subclasses, which do not know at instantiation
@@ -1685,11 +1783,14 @@ class Model(Network):
           when calling `fit`/etc.
         - if data tensors: the model is built on top of these tensors.
           We do not expect any Numpy data to be provided when calling `fit`/etc.
+      training: Boolean or None. Only relevant in symbolic mode. Specifies
+        whether to build the model's graph in inference mode (False), training
+        mode (True), or using the Keras learning phase (None).
     """
     if context.in_eager_mode():
       self._eager_set_inputs(inputs)
     else:
-      self._symbolic_set_inputs(inputs)
+      self._symbolic_set_inputs(inputs, training=training)
 
   def _eager_set_inputs(self, inputs):
     """Set model's input and output specs based on the input data received.
@@ -1735,7 +1836,7 @@ class Model(Network):
         'output_%d' % (i + 1) for i in range(len(dummy_output_values))]
     self.built = True
 
-  def _symbolic_set_inputs(self, inputs):
+  def _symbolic_set_inputs(self, inputs, training=None):
     """Set model's inputs based on the input data received from the user.
 
     This is to be used for Model subclasses, which do not know at instantiation
@@ -1743,6 +1844,9 @@ class Model(Network):
 
     Args:
       inputs: Argument `x` (input data) passed by the user upon first model use.
+      training: Boolean or None. Only relevant in symbolic mode. Specifies
+        whether to build the model's graph in inference mode (False), training
+        mode (True), or using the Keras learning phase (None).
 
     Raises:
       ValueError: If the model's inputs are already set.
@@ -1791,9 +1895,15 @@ class Model(Network):
 
     # Obtain symbolic outputs by calling the model.
     if len(self.inputs) == 1:
-      outputs = self.call(self.inputs[0])
+      if self._expects_training_arg:
+        outputs = self.call(self.inputs[0], training=training)
+      else:
+        outputs = self.call(self.inputs[0])
     else:
-      outputs = self.call(self.inputs)
+      if self._expects_training_arg:
+        outputs = self.call(self.inputs, training=training)
+      else:
+        outputs = self.call(self.inputs)
     if isinstance(outputs, (list, tuple)):
       outputs = list(outputs)
     else:
@@ -1992,7 +2102,7 @@ class Model(Network):
       ins = x + y + sample_weights
 
     # Prepare display labels.
-    out_labels = self._get_deduped_metrics_names()
+    out_labels = self.metrics_names
 
     if context.in_eager_mode():
       if do_validation:
@@ -2471,8 +2581,8 @@ class Model(Network):
                        ' the `keras.utils.Sequence` class.')
 
     # Prepare display labels.
-    out_labels = self._get_deduped_metrics_names()
-    callback_metrics = out_labels + ['val_' + n for n in out_labels]
+    out_labels = self.metrics_names
+    callback_metrics = out_labels + ['val_%s' % n for n in out_labels]
 
     # prepare callbacks
     self.history = cbks.History()

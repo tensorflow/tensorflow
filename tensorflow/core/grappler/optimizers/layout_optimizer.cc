@@ -1794,7 +1794,7 @@ class ReduceProcessor : public AgnosticNodeProcessor {
   }
 
   Status CustomizedProcessing() override {
-    if (IsAlongNHW() || IsAlongHW() || IsAlongC()) {
+    if (IsReduceAxisSupported()) {
       DataType dtype = node_->attr().at("Tidx").type();
       TF_RETURN_IF_ERROR(
           UpdateOrTransformParamInput(1, "DataFormatDimMap", dtype));

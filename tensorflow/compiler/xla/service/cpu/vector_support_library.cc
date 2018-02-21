@@ -103,11 +103,12 @@ llvm::Value* VectorSupportLibrary::Div(llvm::Value* lhs, llvm::Value* rhs) {
   }
 }
 
-llvm::Value* VectorSupportLibrary::Clamp(llvm::Value* a, float low,
-                                         float high) {
+llvm::Value* VectorSupportLibrary::Clamp(llvm::Value* a,
+                                         const llvm::APFloat& low,
+                                         const llvm::APFloat& high) {
   AssertCorrectTypes({a});
   llvm::Type* type = a->getType();
-  CHECK_LT(low, high);
+  CHECK(low.compare(high) == llvm::APFloat::cmpLessThan);
   CHECK(scalar_type_->isFloatingPointTy());
   return llvm_ir::EmitFloatMin(
       llvm_ir::EmitFloatMax(a, GetConstantFloat(type, low), ir_builder_),

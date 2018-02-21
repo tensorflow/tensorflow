@@ -37,6 +37,11 @@ namespace xla {
 // the expected result type for computations that are built up via the API --
 // the shape that results from an operation is inferred. Some methods have
 // overloads for inferring shape at the HLO level.
+//
+// TODO(b/73352135): Shape inference does not issue very good error messages, in
+// part because HloInstruction::ToString() is not available since shape
+// inference runs before the HloInstruction object is created. We need a
+// solution for this.
 class ShapeInference {
  public:
   // Infers the shape produced by applying the given unary operation to the
@@ -247,6 +252,14 @@ class ShapeInference {
   static StatusOr<Shape> InferDotOpShape(
       const Shape& lhs, const Shape& rhs,
       const DotDimensionNumbers& dimension_numbers);
+
+  // Helper that infers the shape of the tensor produced by a gather operation
+  // with the given input shape, gather indices shape and gather dimension
+  // numbers.
+  static StatusOr<Shape> InferGatherShape(
+      const Shape& input_shape, const Shape& gather_indices_shape,
+      const GatherDimensionNumbers& gather_dim_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
 
  private:
   // Helper that infers the shape produced by performing an element-wise binary

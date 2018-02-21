@@ -6,7 +6,7 @@ TensorFlow Lite uses many techniques for achieving low latency like optimizing t
 ![image](g3doc/TFLite-Architecture.jpg)
 # Getting Started with an Android Demo App
 
-This section contains an example application using TensorFlow Lite for Android devices. The demo is a sample camera app that classifies images continuously using a quantized Mobilenet model. A device running Android 5.0 ( API 21) or higher is required to run the demo.
+This section contains an example application using TensorFlow Lite for Android devices. The demo is a sample camera app that classifies images continuously using either a quantized Mobilenet model or a floating point Inception-v3 model. A device running Android 5.0 ( API 21) or higher is required to run the demo.
 
 There are 3 ways to get the demo app to your device
  - Download the prebuilt binary or
@@ -29,9 +29,16 @@ The simplest way to compile the demo app, and try out changes to the project cod
  - Make sure the Android SDK version is greater than 26 and NDK version is greater than 14 (in the Android Studio Settings).
  - Import the `tensorflow/contrib/lite/java/demo` directory as a new Android Studio project.
  - Click through installing all the Gradle extensions it requests.
- - Download the quantized Mobilenet TensorFlow Lite model from [here](https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip)
-     - unzip and copy mobilenet_quant_v1_224.tflite to the assets directory:
-       `tensorflow/contrib/lite/java/demo/app/src/main/assets/`
+ - Either
+     - Download the quantized Mobilenet TensorFlow Lite model from [here](https://storage.googleapis.com/download.tensorflow.org/models/tflite/mobilenet_v1_224_android_quant_2017_11_08.zip)
+         - unzip and copy mobilenet_quant_v1_224.tflite to the assets directory:
+           `tensorflow/contrib/lite/java/demo/app/src/main/assets/`
+     - Or download the floating point Inception-v3 model from [here](https://storage.googleapis.com/download.tensorflow.org/models/tflite/inception_v3_slim_2016_android_2017_11_10.zip)
+         - unzip and copy inceptionv3_non_slim_2015.tflite to the assets directory
+         - change the chosen classifier in [Camera2BasicFragment.java](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/java/demo/app/src/main/java/com/example/android/tflitecamerademo/Camera2BasicFragment.java) from
+         `classifier = new ImageClassifierQuantizedMobileNet(getActivity());`
+         to
+         `classifier = new ImageClassifierFloatInception(getActivity());`
  - Build and run the demo app
 
 ## Building TensorFlow Lite and the demo app from source
@@ -84,7 +91,7 @@ Currently, we only support building the Android demo app within a Python 2
 environment (due to a Bazel bug).
 
 ### More about the demo
-The demo is resizing each camera image frame to (224 width * 224 height) to match the  quantized Mobilenet model being used. The resized image is converted into a ByteBuffer row by row of size 1 * 224 * 224 * 3 bytes, where 1 is the number of images in a batch 224 * 224 is the width and height of the image 3 bytes represents three colors of a pixel. This demo uses the TensorFlow Lite Java inference API for models which take a single input and provide a single output. This outputs a two-dimensional array, with the first dimension being the category index and the second dimension being the confidence of classification. The Mobilenet model has 1001 unique categories and the app sorts the probabilities of all the categories and displays the top three. The Mobilenet quantized model is bundled within the assets directory of the app.
+The demo is resizing each camera image frame to (224 width * 224 height) to match the quantized Mobilenet model being used (229 * 229 for Inception-v3). The resized image is converted into a ByteBuffer row by row of size 1 * 224 * 224 * 3 bytes, where 1 is the number of images in a batch. 224 * 224 (299 * 299) is the width and height of the image. 3 bytes represents three colors of a pixel. This demo uses the TensorFlow Lite Java inference API for models which take a single input and provide a single output. This outputs a two-dimensional array, with the first dimension being the category index and the second dimension being the confidence of classification. Both models have 1001 unique categories and the app sorts the probabilities of all the categories and displays the top three. The model file must be downloaded and bundled within the assets directory of the app.
 
 # iOS Demo App
 

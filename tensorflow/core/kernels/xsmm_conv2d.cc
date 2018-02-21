@@ -27,9 +27,6 @@ void dummy_xsmm_conv2d_ensure_file_is_not_empty();
 
 #include <stdlib.h>
 #include <cstring>
-#if 0
-#include <omp.h>
-#endif
 
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/blocking_counter.h"
@@ -360,7 +357,6 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
   l_tick6 = libxsmm_timer_tick();
 #endif
 
-#if 1
   BlockingCounter counter(num_threads);
 
   for (int i = 0; i < num_threads; ++i) {
@@ -371,14 +367,6 @@ static bool CallLibxsmmConvGeneric(OpKernelContext* ctx,
     });
   }
   counter.Wait();
-#else
-#pragma omp parallel
-  {
-    chk_libxsmm_err(
-        libxsmm_dnn_execute_st(libxsmm_handle, kind, 0, omp_get_thread_num()),
-        "Worker");
-  }
-#endif
 
 #if defined(LIBXSMM_DETAILED_TIMING)
   l_tick7 = libxsmm_timer_tick();

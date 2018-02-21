@@ -1105,9 +1105,9 @@ class AUCTest(test.TestCase):
       auc, update_op = metrics.auc(labels, predictions, curve='PR')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.79166, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(0.54166, sess.run(update_op), delta=1e-3)
 
-      self.assertAlmostEqual(0.79166, auc.eval(), delta=1e-3)
+      self.assertAlmostEqual(0.54166, auc.eval(), delta=1e-3)
 
   def testAnotherAUCPRSpecialCase(self):
     with self.test_session() as sess:
@@ -1119,9 +1119,9 @@ class AUCTest(test.TestCase):
       auc, update_op = metrics.auc(labels, predictions, curve='PR')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.610317, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(0.44365042, sess.run(update_op), delta=1e-3)
 
-      self.assertAlmostEqual(0.610317, auc.eval(), delta=1e-3)
+      self.assertAlmostEqual(0.44365042, auc.eval(), delta=1e-3)
 
   def testThirdAUCPRSpecialCase(self):
     with self.test_session() as sess:
@@ -1133,9 +1133,26 @@ class AUCTest(test.TestCase):
       auc, update_op = metrics.auc(labels, predictions, curve='PR')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(0.90277, sess.run(update_op), delta=1e-3)
+      self.assertAlmostEqual(0.73611039, sess.run(update_op), delta=1e-3)
 
-      self.assertAlmostEqual(0.90277, auc.eval(), delta=1e-3)
+      self.assertAlmostEqual(0.73611039, auc.eval(), delta=1e-3)
+
+  def testFourthAUCPRSpecialCase(self):
+    # Create the labels and data.
+    labels = np.array([
+        0, 0, 0, 0, 0, 0, 0, 1, 0, 1])
+    predictions = np.array([
+        0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35, 0.35])
+
+    with self.test_session() as sess:
+      auc, _ = metrics.auc(
+          labels, predictions, curve='PR', num_thresholds=11)
+
+      sess.run(variables.local_variables_initializer())
+      # Since this is only approximate, we can't expect a 6 digits match.
+      # Although with higher number of samples/thresholds we should see the
+      # accuracy improving
+      self.assertAlmostEqual(0.0, auc.eval(), delta=0.001)
 
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
@@ -1161,16 +1178,16 @@ class AUCTest(test.TestCase):
 
       self.assertAlmostEqual(1, auc.eval(), 6)
 
-  def testRecallOneAndPrecisionOneGivesOnePRAUC(self):
+  def testRecallOneAndPrecisionOne(self):
     with self.test_session() as sess:
       predictions = array_ops.ones([4], dtype=dtypes_lib.float32)
       labels = array_ops.ones([4])
       auc, update_op = metrics.auc(labels, predictions, curve='PR')
 
       sess.run(variables.local_variables_initializer())
-      self.assertAlmostEqual(1, sess.run(update_op), 6)
+      self.assertAlmostEqual(0.5, sess.run(update_op), 6)
 
-      self.assertAlmostEqual(1, auc.eval(), 6)
+      self.assertAlmostEqual(0.5, auc.eval(), 6)
 
   def np_auc(self, predictions, labels, weights):
     """Computes the AUC explicitly using Numpy.

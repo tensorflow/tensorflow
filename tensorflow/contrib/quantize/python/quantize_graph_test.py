@@ -50,6 +50,14 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
     for fn in rewrite_fns:
       test_fn(fn)
 
+  def _RunTestOverEvalRewrites(self, test_fn):
+    rewrite_fns = [
+        quantize_graph.create_eval_graph,
+        quantize_graph.experimental_create_eval_graph,
+    ]
+    for fn in rewrite_fns:
+      test_fn(fn)
+
   def _RunTestOverExperimentalRewrites(self, test_fn):
     rewrite_fns = [
         quantize_graph.experimental_create_training_graph,
@@ -146,6 +154,62 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
         act_quant_found = True
         self.assertEqual(op.get_attr('num_bits'), activation_bits)
     self.assertTrue(act_quant_found)
+
+  def testTrainingQuantization(self):
+    self._RunTestOverTrainingRewrites(self._TestTrainingQuantization)
+
+  def _TestTrainingQuantization(self, rewrite_fn):
+    with ops.Graph().as_default() as g:
+      self._ConvLayer()
+      rewrite_fn()
+
+    # Ensure that FakeQuant and variable update nodes were found.
+    quant_found = False
+    assign_min_last_found = False
+    assign_min_ema_found = False
+    assign_max_last_found = False
+    assign_max_ema_found = False
+    for op in g.get_operations():
+      # Check that FakeQuant operations were added.
+      if op.type == 'FakeQuantWithMinMaxVars':
+        quant_found = True
+      # Check that update operations for the added min max variables exist in
+      # the graph.
+      if 'AssignMinLast' in op.name:
+        assign_min_last_found = True
+      elif 'AssignMinEma' in op.name:
+        assign_min_ema_found = True
+      elif 'AssignMaxLast' in op.name:
+        assign_max_last_found = True
+      elif 'AssignMaxEma' in op.name:
+        assign_max_ema_found = True
+    self.assertTrue(assign_min_last_found)
+    self.assertTrue(assign_min_ema_found)
+    self.assertTrue(assign_max_last_found)
+    self.assertTrue(assign_max_ema_found)
+    self.assertTrue(quant_found)
+
+  def testEvalQuantization(self):
+    self._RunTestOverEvalRewrites(self._TestEvalQuantization)
+
+  def _TestEvalQuantization(self, rewrite_fn):
+    with ops.Graph().as_default() as g:
+      self._ConvLayer()
+      rewrite_fn()
+
+    # Ensure that FakeQuant and variable update nodes were found.
+    quant_found = False
+    for op in g.get_operations():
+      # Check that FakeQuant operations were added.
+      if op.type == 'FakeQuantWithMinMaxVars':
+        quant_found = True
+      # Check that update operations for the added min max variables don't
+      # exist in the graph.
+      update_names = [
+          'AssignMinLast', 'AssignMinEma', 'AssignMaxLast', 'AssignMaxEma'
+      ]
+      self.assertFalse(any(s in op.name for s in update_names))
+    self.assertTrue(quant_found)
 
   def _ConvLayer(self):
     """Add a basic convolution layer to the default graph."""

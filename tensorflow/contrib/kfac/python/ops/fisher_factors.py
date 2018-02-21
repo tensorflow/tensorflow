@@ -25,13 +25,13 @@ import numpy as np
 import six
 
 from tensorflow.contrib.kfac.python.ops import utils
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops as tf_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import nn
 from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
@@ -110,54 +110,6 @@ def diagonal_covariance_initializer(shape, dtype, partition_info):  # pylint: di
   if INIT_COVARIANCES_AT_ZERO:
     return array_ops.zeros(shape, dtype)
   return array_ops.ones(shape, dtype)
-
-
-def extract_image_patches(image, ksizes, strides, padding, name=None):
-  """Extracts image patches for an N-dimensional convolution.
-
-  This function is a compatibility wrapper over tf.extract_image_patches(), as
-  ExtractImagePatches isn't yet implemented in XLA.
-
-  Args:
-    image: Tensor of shape [batch, in_x, in_y, ..., in_channels]. Input images.
-      All dimensions except 'batch' must be defined.
-    ksizes: [filter_x, filter_y, ...]. Spatial shape of filter in each
-      dimension.
-    strides: [stride_x, stride_y, ...]. Spatial stride for filter in each
-      dimension.
-    padding: str. "VALID" or "SAME".
-    name: str or None. name of Op.
-
-  Returns:
-    result: [batch, out_x, out_y, ..., filter_x, filter_y, ..., in_channels].
-      Contains image patches to which conv kernel would be applied for each
-      output location. [out_x, out_y, ...] depends on padding.
-  """
-  if not utils.on_tpu():
-    return array_ops.extract_image_patches(
-        image,
-        ksizes=([1] + list(ksizes) + [1]),
-        strides=([1] + list(strides) + [1]),
-        rates=[1, 1, 1, 1],
-        padding=padding,
-        name=name)
-
-  with tf_ops.name_scope(name, "extract_image_patches",
-                         [image, ksizes, strides, padding]):
-    batch = image.shape.as_list()[0]
-    in_channels = image.shape.as_list()[-1]
-
-    # Map each input feature to a location in the output.
-    out_channels = np.prod(ksizes) * in_channels
-    filters = linalg_ops.eye(out_channels),
-    filters = array_ops.reshape(filters, ksizes + [in_channels, out_channels])
-
-    result = nn.convolution(image, filters, padding, strides=strides)
-    out_spatial = result.shape.as_list()[1:-1]
-    result = array_ops.reshape(
-        result, [batch or -1] + out_spatial + ksizes + [in_channels])
-
-    return result
 
 
 def compute_cov(tensor, tensor_right=None, normalizer=None):
@@ -259,12 +211,21 @@ def scalar_or_tensor_to_string(val):
 class FisherFactor(object):
   """Base class for objects modeling factors of approximate Fisher blocks.
 
-     Note that for blocks that aren't based on approximations, a 'factor' can
-     be the entire block itself, as is the case for the diagonal and full
-     representations.
+  A FisherFactor represents part of an approximate Fisher Information matrix.
+  For example, one approximation to the Fisher uses the Kronecker product of two
+  FisherFactors A and B, F = kron(A, B). FisherFactors are composed with
+  FisherBlocks to construct a block-diagonal approximation to the full Fisher.
 
-     Subclasses must implement the _compute_new_cov method, and the _var_scope
-     and _cov_shape properties.
+  FisherFactors are backed by a single, non-trainable variable that is updated
+  by running FisherFactor.make_covariance_update_op(). The shape and type of
+  this variable is implementation specific.
+
+  Note that for blocks that aren't based on approximations, a 'factor' can
+  be the entire block itself, as is the case for the diagonal and full
+  representations.
+
+  Subclasses must implement the _compute_new_cov() method, and the _var_scope
+  and _cov_shape properties.
   """
 
   def __init__(self):
@@ -272,16 +233,21 @@ class FisherFactor(object):
 
   @abc.abstractproperty
   def _var_scope(self):
+    """Variable scope for this FisherFactor instance.
+
+    Returns:
+      string that unique identifies this FisherFactor instance.
+    """
     pass
 
   @abc.abstractproperty
   def _cov_shape(self):
-    """The shape of the cov matrix."""
+    """The shape of the variable backing this FisherFactor."""
     pass
 
   @abc.abstractproperty
   def _num_sources(self):
-    """The number of things to sum over when computing cov.
+    """The number of things to sum over when updating covariance variable.
 
     The default make_covariance_update_op function will call _compute_new_cov
     with indices ranging from 0 to _num_sources-1. The typical situation is
@@ -293,10 +259,12 @@ class FisherFactor(object):
 
   @abc.abstractproperty
   def _dtype(self):
+    """dtype for variable backing this factor."""
     pass
 
   @property
   def _cov_initializer(self):
+    """Function for initializing covariance variable."""
     return covariance_initializer
 
   def instantiate_covariance(self):
@@ -311,6 +279,15 @@ class FisherFactor(object):
 
   @abc.abstractmethod
   def _compute_new_cov(self, idx=0):
+    """Computes minibatch-estimated covariance for a single source.
+
+    Args:
+      idx: int in [0, self._num_sources). Which source to use when estimating
+        covariance.
+
+    Returns:
+      Tensor of same shape as self.get_cov_var().
+    """
     pass
 
   def make_covariance_update_op(self, ema_decay):
@@ -343,14 +320,101 @@ class FisherFactor(object):
     """Create and return update ops corresponding to registered computations."""
     pass
 
+  @abc.abstractmethod
   def get_cov(self):
+    """Get full covariance matrix.
+
+    Returns:
+      Tensor of shape [n, n]. Represents all parameter-parameter correlations
+      captured by this FisherFactor.
+    """
+    pass
+
+  def get_cov_var(self):
+    """Get variable backing this FisherFactor.
+
+    May or may not be the same as self.get_cov()
+
+    Returns:
+      Variable of shape self._cov_shape.
+    """
     return self._cov
+
+  @abc.abstractmethod
+  def left_multiply(self, x, damping):
+    """Multiplies 'x' by the damped covariance of this factor.
+
+    Let C be the covariance matrix this factor represents, and
+    D = C + damping * I be its damped variant. This method calculates
+    matmul(D, vec(x)).
+
+    Args:
+      x: Tensor. Represents a single vector. Shape depends on implementation.
+      damping: 0-D Tensor. Damping to add to C's diagonal.
+
+    Returns:
+      Tensor of same shape as 'x'.
+    """
+    pass
+
+  @abc.abstractmethod
+  def right_multiply(self, x, damping):
+    """Multiplies 'x' by the damped covariance of this factor.
+
+    Let C be the covariance matrix this factor represents, and
+    D = C + damping * I be its damped variant. This method calculates
+    matmul(vec(x), D).
+
+    Args:
+      x: Tensor. Represents a single vector. Shape depends on implementation.
+      damping: 0-D Tensor. Damping to add to C's diagonal.
+
+    Returns:
+      Tensor of same shape as 'x'.
+    """
+    pass
+
+  @abc.abstractmethod
+  def left_multiply_inverse(self, x, damping):
+    """Multiplies 'x' by damped inverse of this factor.
+
+    Let C be the covariance matrix this factor represents and
+    E = inv(C + damping * I) be its damped inverse. This method calculates
+    matmul(E, vec(x)).
+
+    Args:
+      x: Tensor. Represents a single vector. Shape depends on implementation.
+      damping: 0-D Tensor. Damping to add to C's diagonal.
+
+    Returns:
+      Tensor of same shape as 'x'.
+    """
+    pass
+
+  @abc.abstractmethod
+  def right_multiply_inverse(self, x, damping):
+    """Multiplies 'x' by damped inverse of this factor.
+
+    Let C be the covariance matrix this factor represents and
+    E = inv(C + damping * I) be its damped inverse. This method calculates
+    matmul(vec(x), E).
+
+    Args:
+      x: Tensor. Represents a single vector. Shape depends on implementation.
+      damping: 0-D Tensor. Damping to add to C's diagonal.
+
+    Returns:
+      Tensor of same shape as 'x'.
+    """
+    pass
 
 
 class InverseProvidingFactor(FisherFactor):
-  """Base class for FisherFactors that maintain inverses, powers, etc of _cov.
+  """Base class for FisherFactors that maintain inverses explicitly.
 
-  Assumes that the _cov property is a square PSD matrix.
+  This class explicitly calculates and stores inverses of covariance matrices
+  provided by the underlying FisherFactor implementation. It is assumed that
+  vectors can be represented as 2-D matrices.
 
   Subclasses must implement the _compute_new_cov method, and the _var_scope and
   _cov_shape properties.
@@ -485,6 +549,61 @@ class InverseProvidingFactor(FisherFactor):
   def reset_eigendecomp(self):
     self._eigendecomp = None
 
+  def get_cov(self):
+    # Variable contains full covariance matrix.
+    return self.get_cov_var()
+
+  def left_multiply(self, x, damping):
+    n = self.get_cov().shape[0]
+    damped_cov = self.get_cov() + damping * array_ops.eye(n)
+
+    if isinstance(x, tf_ops.IndexedSlices):
+      raise NotImplementedError(
+          "Left-multiply not yet supported for IndexedSlices.")
+
+    if len(x.shape) != 2:
+      raise ValueError(
+          "InverseProvidingFactors apply to matrix-shaped vectors. Found: %s."
+          % (x,))
+
+    return math_ops.matmul(damped_cov, x)
+
+  def right_multiply(self, x, damping):
+    n = self.get_cov().shape[0]
+    damped_cov = self.get_cov() + damping * array_ops.eye(n)
+
+    if isinstance(x, tf_ops.IndexedSlices):
+      return utils.matmul_sparse_dense(x, damped_cov)
+
+    if len(x.shape) != 2:
+      raise ValueError(
+          "InverseProvidingFactors apply to matrix-shaped vectors. Found: %s."
+          % (x,))
+
+    return math_ops.matmul(x, damped_cov)
+
+  def left_multiply_inverse(self, x, damping):
+    if isinstance(x, tf_ops.IndexedSlices):
+      raise ValueError("Left-multiply not yet supported for IndexedSlices.")
+
+    if x.shape.ndims != 2:
+      raise ValueError(
+          "InverseProvidingFactors apply to matrix-shaped vectors. Found: %s."
+          % (x,))
+
+    return math_ops.matmul(self.get_damped_inverse(damping), x)
+
+  def right_multiply_inverse(self, x, damping):
+    if isinstance(x, tf_ops.IndexedSlices):
+      return utils.matmul_sparse_dense(x, self.get_damped_inverse(damping))
+
+    if x.shape.ndims != 2:
+      raise ValueError(
+          "InverseProvidingFactors apply to matrix-shaped vectors. Found: %s."
+          % (x,))
+
+    return math_ops.matmul(x, self.get_damped_inverse(damping))
+
 
 class FullFactor(InverseProvidingFactor):
   """FisherFactor for a full matrix representation of the Fisher of a parameter.
@@ -530,7 +649,11 @@ class FullFactor(InverseProvidingFactor):
 
 
 class DiagonalFactor(FisherFactor):
-  """A base class for FisherFactors that use diagonal approximations."""
+  """A base class for FisherFactors that use diagonal approximations.
+
+  A DiagonalFactor's covariance variable can be of any shape, but must contain
+  exactly one entry per parameter.
+  """
 
   def __init__(self):
     super(DiagonalFactor, self).__init__()
@@ -541,6 +664,45 @@ class DiagonalFactor(FisherFactor):
 
   def make_inverse_update_ops(self):
     return []
+
+  def get_cov(self):
+    # self.get_cov() could be any shape, but it must have one entry per
+    # parameter. Flatten it into a vector.
+    cov_diag_vec = array_ops.reshape(self.get_cov_var(), [-1])
+    return array_ops.diag(cov_diag_vec)
+
+  def left_multiply(self, x, damping):
+    damped_cov = self.get_cov_var() + damping
+    if isinstance(x, tf_ops.IndexedSlices):
+      return utils.matmul_diag_sparse(array_ops.reshape(damped_cov, [-1]), x)
+
+    if x.shape != damped_cov.shape:
+      raise ValueError("x (%s) and cov (%s) must have same shape." %
+                       (x, damped_cov))
+
+    return damped_cov * x
+
+  def right_multiply(self, x, damping):
+    raise NotImplementedError("Only left-multiply is currently supported.")
+
+  def left_multiply_inverse(self, x, damping):
+    inverse = 1. / (self.get_cov_var() + damping)
+
+    if isinstance(x, tf_ops.IndexedSlices):
+      return utils.matmul_diag_sparse(array_ops.reshape(inverse, [-1]), x)
+
+    if x.shape != inverse.shape:
+      raise ValueError("x (%s) and cov (%s) must have same shape." %
+                       (x, inverse))
+
+    return inverse * x
+
+  def right_multiply_inverse(self, x, damping):
+    raise NotImplementedError("Only left-multiply is currently supported.")
+
+  def register_damped_inverse(self, damping):
+    # DiagonalFactors don't keep explicit inverses.
+    pass
 
 
 class NaiveDiagonalFactor(DiagonalFactor):
@@ -553,6 +715,14 @@ class NaiveDiagonalFactor(DiagonalFactor):
   def __init__(self,
                params_grads,
                batch_size):
+    """Initializes NaiveDiagonalFactor instance.
+
+    Args:
+      params_grads: Sequence of Tensors, each with same shape as parameters this
+        FisherFactor corresponds to. For example, the gradient of the loss with
+        respect to parameters.
+      batch_size: int or 0-D Tensor. Size
+    """
     self._params_grads = tuple(utils.ensure_sequence(params_grad)
                                for params_grad in params_grads)
     self._batch_size = batch_size
@@ -567,7 +737,7 @@ class NaiveDiagonalFactor(DiagonalFactor):
   def _cov_shape(self):
     size = sum(param_grad.shape.num_elements()
                for param_grad in self._params_grads[0])
-    return (size, 1)
+    return [size, 1]
 
   @property
   def _num_sources(self):
@@ -582,6 +752,84 @@ class NaiveDiagonalFactor(DiagonalFactor):
       params_grads_flat = utils.tensors_to_column(self._params_grads[idx])
       return (math_ops.square(params_grads_flat) / math_ops.cast(
           self._batch_size, params_grads_flat.dtype))
+
+
+class EmbeddingInputKroneckerFactor(DiagonalFactor):
+  r"""FisherFactor for input to an embedding layer.
+
+  Given input_ids = [batch_size, input_size] representing indices into an
+  [vocab_size, embedding_size] embedding matrix, approximate input covariance by
+  a diagonal matrix,
+
+    Cov(input_ids, input_ids) =
+        (1/batch_size) sum_{i} diag(n_hot(input[i]) ** 2).
+
+  where n_hot() constructs an n-hot binary vector and diag() constructs a
+  diagonal matrix of size [vocab_size, vocab_size].
+  """
+
+  def __init__(self, input_ids, vocab_size, dtype=None):
+    """Instantiate EmbeddingInputKroneckerFactor.
+
+    Args:
+      input_ids: Tuple of Tensors of shape [batch_size, input_size] and dtype
+        int32.  Indices into embedding matrix.
+      vocab_size: int or 0-D Tensor. Maximum value for entries in 'input_ids'.
+      dtype: dtype for covariance statistics. Must be a floating point type.
+        Defaults to float32.
+    """
+    self._input_ids = input_ids
+    self._vocab_size = vocab_size
+    self._cov_dtype = dtype or dtypes.float32
+
+    super(EmbeddingInputKroneckerFactor, self).__init__()
+
+  @property
+  def _var_scope(self):
+    return "ff_diag_embedding/" + scope_string_from_params(self._input_ids)
+
+  @property
+  def _cov_shape(self):
+    return [self._vocab_size]
+
+  @property
+  def _num_sources(self):
+    return len(self._input_ids)
+
+  @property
+  def _dtype(self):
+    return self._cov_dtype
+
+  def _compute_new_cov(self, idx=0):
+    with maybe_colocate_with(self._input_ids):
+      input_ids = self._input_ids[idx]
+      if len(input_ids.shape) > 2:
+        raise ValueError(
+            "Input to embeddings must have rank <= 2. Found rank %d." % len(
+                input_ids.shape))
+
+      batch_size = array_ops.shape(input_ids)[0]
+
+      # Transform indices into one-hot vectors.
+      #
+      # TODO(b/72714822): There must be a faster way to construct the diagonal
+      # covariance matrix! This operation is O(batch_size * vocab_size), where
+      # it should be O(batch_size * input_size).
+      flat_input_ids = array_ops.reshape(input_ids, [-1])
+      one_hots = array_ops.one_hot(flat_input_ids,
+                                   self._vocab_size)  # [?, vocab_size]
+
+      # Take average across examples. Note that, because all entries have
+      # magnitude zero or one, there's no need to square the entries.
+      #
+      # TODO(b/72714822): Support for SparseTensor, other kinds of aggregation
+      # within an example such as average.
+      #
+      # TODO(b/72714822): Support for partitioned embeddings.
+      new_cov = math_ops.reduce_sum(one_hots, axis=0)  # [vocab_size]
+      new_cov /= math_ops.cast(batch_size, new_cov.dtype)
+
+      return new_cov
 
 
 class FullyConnectedDiagonalFactor(DiagonalFactor):
@@ -623,8 +871,9 @@ class FullyConnectedDiagonalFactor(DiagonalFactor):
 
   @property
   def _cov_shape(self):
-    return [self._inputs.shape[1] + self._has_bias,
-            self._outputs_grads[0].shape[1]]
+    input_size = self._inputs.shape[1] + self._has_bias
+    output_size = self._outputs_grads[0].shape[1]
+    return [input_size, output_size]
 
   @property
   def _num_sources(self):
@@ -717,10 +966,11 @@ class ConvDiagonalFactor(DiagonalFactor):
 
       # TODO(b/64144716): there is potential here for a big savings in terms
       # of memory use.
-      patches = extract_image_patches(
+      patches = array_ops.extract_image_patches(
           self._inputs,
-          ksizes=[filter_height, filter_width],
-          strides=self._strides[1:-1],
+          ksizes=[1, filter_height, filter_width, 1],
+          strides=self._strides,
+          rates=[1, 1, 1, 1],
           padding=self._padding)
 
       if self._has_bias:
@@ -864,10 +1114,11 @@ class ConvInputKroneckerFactor(InverseProvidingFactor):
 
       # TODO(b/64144716): there is potential here for a big savings in terms of
       # memory use.
-      patches = extract_image_patches(
+      patches = array_ops.extract_image_patches(
           self._inputs,
-          ksizes=[filter_height, filter_width],
-          strides=self._strides[1:-1],
+          ksizes=[1, filter_height, filter_width, 1],
+          strides=self._strides,
+          rates=[1, 1, 1, 1],
           padding=self._padding)
 
       flatten_size = (filter_height * filter_width * in_channels)

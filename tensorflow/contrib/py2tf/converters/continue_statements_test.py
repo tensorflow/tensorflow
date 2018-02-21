@@ -12,13 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for continue_canonicalization module."""
+"""Tests for continue_statements module."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.py2tf.converters import continue_canonicalization
+from tensorflow.contrib.py2tf.converters import continue_statements
 from tensorflow.contrib.py2tf.converters import converter_test_base
 from tensorflow.python.platform import test
 
@@ -37,7 +37,7 @@ class ContinueCanonicalizationTest(converter_test_base.TestCase):
       return v
 
     node = self.parse_and_analyze(test_fn, {})
-    node = continue_canonicalization.transform(node, self.ctx)
+    node = continue_statements.transform(node, self.ctx)
 
     with self.compiled(node) as result:
       self.assertEqual(test_fn(0), result.test_fn(0))
@@ -58,7 +58,7 @@ class ContinueCanonicalizationTest(converter_test_base.TestCase):
       return v
 
     node = self.parse_and_analyze(test_fn, {})
-    node = continue_canonicalization.transform(node, self.ctx)
+    node = continue_statements.transform(node, self.ctx)
 
     with self.compiled(node) as result:
       self.assertEqual(test_fn([]), result.test_fn([]))
@@ -84,7 +84,7 @@ class ContinueCanonicalizationTest(converter_test_base.TestCase):
       return v, u, w
 
     node = self.parse_and_analyze(test_fn, {})
-    node = continue_canonicalization.transform(node, self.ctx)
+    node = continue_statements.transform(node, self.ctx)
 
     with self.compiled(node) as result:
       self.assertEqual(test_fn(0), result.test_fn(0))

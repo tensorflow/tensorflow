@@ -89,6 +89,21 @@ class FisherFactorTestingDummy(ff.FisherFactor):
   def make_inverse_update_ops(self):
     return []
 
+  def get_cov(self):
+    return NotImplementedError
+
+  def left_multiply(self, x, damping):
+    return NotImplementedError
+
+  def right_multiply(self, x, damping):
+    return NotImplementedError
+
+  def left_multiply_inverse(self, x, damping):
+    return NotImplementedError
+
+  def right_multiply_inverse(self, x, damping):
+    return NotImplementedError
+
 
 class InverseProvidingFactorTestingDummy(ff.InverseProvidingFactor):
   """Dummy class to test the non-abstract methods on ff.InverseProvidingFactor.
@@ -379,7 +394,7 @@ class NaiveDiagonalFactorTest(test.TestCase):
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3), name='a/b/c')
       factor = ff.NaiveDiagonalFactor((tensor,), 32)
-      self.assertEqual([6, 1], factor.get_cov().get_shape().as_list())
+      self.assertEqual([6, 1], factor.get_cov_var().get_shape().as_list())
 
   def testNaiveDiagonalFactorInitFloat64(self):
     with tf_ops.Graph().as_default():
@@ -387,7 +402,7 @@ class NaiveDiagonalFactorTest(test.TestCase):
       random_seed.set_random_seed(200)
       tensor = array_ops.ones((2, 3), dtype=dtype, name='a/b/c')
       factor = ff.NaiveDiagonalFactor((tensor,), 32)
-      cov = factor.get_cov()
+      cov = factor.get_cov_var()
       self.assertEqual(cov.dtype, dtype)
       self.assertEqual([6, 1], cov.get_shape().as_list())
 
@@ -400,6 +415,29 @@ class NaiveDiagonalFactorTest(test.TestCase):
       sess.run(tf_variables.global_variables_initializer())
       new_cov = sess.run(factor.make_covariance_update_op(.5))
       self.assertAllClose([[0.75], [1.5]], new_cov)
+
+
+class EmbeddingInputKroneckerFactorTest(test.TestCase):
+
+  def testInitialization(self):
+    with tf_ops.Graph().as_default():
+      input_ids = array_ops.constant([[0], [1], [4]])
+      vocab_size = 5
+      factor = ff.EmbeddingInputKroneckerFactor((input_ids,), vocab_size)
+      cov = factor.get_cov_var()
+      self.assertEqual(cov.shape.as_list(), [vocab_size])
+
+  def testCovarianceUpdateOp(self):
+    with tf_ops.Graph().as_default():
+      input_ids = array_ops.constant([[0], [1], [4]])
+      vocab_size = 5
+      factor = ff.EmbeddingInputKroneckerFactor((input_ids,), vocab_size)
+      cov_update_op = factor.make_covariance_update_op(0.0)
+
+      with self.test_session() as sess:
+        sess.run(tf_variables.global_variables_initializer())
+        new_cov = sess.run(cov_update_op)
+        self.assertAllClose(np.array([1., 1., 0., 0., 1.]) / 3., new_cov)
 
 
 class FullyConnectedKroneckerFactorTest(test.TestCase):

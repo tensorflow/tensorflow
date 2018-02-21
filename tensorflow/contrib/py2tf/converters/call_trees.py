@@ -28,10 +28,8 @@ import gast
 
 from tensorflow.contrib.py2tf.pyct import anno
 from tensorflow.contrib.py2tf.pyct import parser
-from tensorflow.contrib.py2tf.pyct import qual_names
 from tensorflow.contrib.py2tf.pyct import templates
 from tensorflow.contrib.py2tf.pyct import transformer
-from tensorflow.contrib.py2tf.pyct.static_analysis.annos import NodeAnno
 from tensorflow.python.util import tf_inspect
 
 
@@ -198,36 +196,11 @@ class CallTreeTransformer(transformer.Base):
     return node
 
   def _wrap_to_py_func_no_return(self, node):
-    func_qn = anno.getanno(node.func, anno.Basic.QN)
-    args_scope = anno.getanno(node, NodeAnno.ARGS_SCOPE)
-    wrapper_name = self.context.namer.new_symbol(func_qn.ssf(),
-                                                 args_scope.referenced)
-    wrapper_args = []
-    for arg in node.args:
-      if anno.hasanno(arg, anno.Basic.QN):
-        arg_qn = anno.getanno(arg, anno.Basic.QN)
-      else:
-        arg_qn = qual_names.QN('arg')
-      wrapper_args.append(
-          self.context.namer.new_symbol(arg_qn.ssf(), args_scope.referenced))
     # TODO(mdan): Properly handle varargs, kwargs, etc.
-    # TODO(mdan): This is best handled as a dynamic dispatch.
-    # That way we can separate tensors from non-tensor args.
     template = """
-      def wrapper(wrapper_args):
-        call(wrapper_args)
-        return 1
-      tf.py_func(wrapper, original_args, [tf.int64])
+      py2tf_utils.wrap_py_func(func, None, (original_args,), True)
     """
-    wrapper_def, call_expr = templates.replace(
-        template,
-        call=node.func,
-        wrapper=wrapper_name,
-        original_args=gast.List(elts=node.args, ctx=None),
-        wrapper_args=wrapper_args)
-    anno.setanno(wrapper_def, anno.Basic.SKIP_PROCESSING, True)
-
-    return (wrapper_def, call_expr)
+    return templates.replace(template, func=node.func, original_args=node.args)
 
   def _function_is_compilable(self, target_entity):
     # TODO(mdan): This is just a placeholder. Implement.

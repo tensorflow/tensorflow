@@ -70,39 +70,11 @@ class ScratchBufAllocator : public se::ScratchAllocator {
   bool allocated_ = false;
 };
 
-}  // anonymous namespace
-
-string CudnnConvKindToString(CudnnConvKind kind) {
-  switch (kind) {
-    case CudnnConvKind::kForward:
-      return "forward";
-    case CudnnConvKind::kBackwardFilter:
-      return "backward_filter";
-    case CudnnConvKind::kBackwardInput:
-      return "backward_input";
-  }
-}
-
-Status RunCudnnConvolution(CudnnConvKind kind, const Shape& input_shape,
-                           const Shape& filter_shape, const Shape& output_shape,
-                           DeviceMemory<float> input_buf,
-                           DeviceMemory<float> filter_buf,
-                           DeviceMemory<float> output_buf,
-                           DeviceMemoryBase scratch_buf, const Window& window,
-                           const ConvolutionDimensionNumbers& dnums,
-                           AlgorithmConfig algorithm, Stream* stream,
-                           ProfileResult* profile_result /*= nullptr*/) {
-  ScratchBufAllocator scratch_allocator(scratch_buf);
-  return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
-                             input_buf, filter_buf, output_buf,
-                             &scratch_allocator, window, dnums, algorithm,
-                             stream, profile_result);
-}
-
+template <typename T>
 Status RunCudnnConvolution(
     CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
-    const Shape& output_shape, DeviceMemory<float> input_buf,
-    DeviceMemory<float> filter_buf, DeviceMemory<float> output_buf,
+    const Shape& output_shape, DeviceMemory<T> input_buf,
+    DeviceMemory<T> filter_buf, DeviceMemory<T> output_buf,
     se::ScratchAllocator* scratch_allocator, const Window& window,
     const ConvolutionDimensionNumbers& dnums, AlgorithmConfig algorithm,
     Stream* stream, ProfileResult* profile_result /*= nullptr*/) {
@@ -124,8 +96,16 @@ Status RunCudnnConvolution(
   // tensorflow/python/ops/nn_ops.py).
   const int effective_num_dimensions = std::max(2, num_dimensions);
 
-  CHECK_EQ(F32, output_shape.element_type())
-      << ShapeUtil::HumanString(output_shape);
+  if (std::is_same<T, float>::value) {
+    CHECK_EQ(F32, output_shape.element_type())
+        << ShapeUtil::HumanString(output_shape);
+  } else if (std::is_same<T, Eigen::half>::value) {
+    CHECK_EQ(F16, output_shape.element_type())
+        << ShapeUtil::HumanString(output_shape);
+  } else {
+    LOG(FATAL) << ShapeUtil::HumanString(output_shape);
+  }
+
   CHECK_EQ(num_dimensions, dnums.input_spatial_dimensions_size());
   CHECK_EQ(num_dimensions, dnums.kernel_spatial_dimensions_size());
   CHECK_EQ(num_dimensions, dnums.output_spatial_dimensions_size());
@@ -218,6 +198,64 @@ Status RunCudnnConvolution(
         algorithm.algorithm_no_scratch().algo_id());
   }
   return Status::OK();
+}
+
+}  // anonymous namespace
+
+string CudnnConvKindToString(CudnnConvKind kind) {
+  switch (kind) {
+    case CudnnConvKind::kForward:
+      return "forward";
+    case CudnnConvKind::kBackwardFilter:
+      return "backward_filter";
+    case CudnnConvKind::kBackwardInput:
+      return "backward_input";
+  }
+}
+
+Status RunCudnnConvolution(
+    CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
+    const Shape& output_shape, perftools::gputools::DeviceMemoryBase input_buf,
+    perftools::gputools::DeviceMemoryBase filter_buf,
+    perftools::gputools::DeviceMemoryBase output_buf,
+    perftools::gputools::DeviceMemoryBase scratch_buf, const Window& window,
+    const ConvolutionDimensionNumbers& dnums,
+    perftools::gputools::dnn::AlgorithmConfig algorithm,
+    perftools::gputools::Stream* stream,
+    perftools::gputools::dnn::ProfileResult* profile_result) {
+  ScratchBufAllocator scratch_allocator(scratch_buf);
+  return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
+                             input_buf, filter_buf, output_buf,
+                             &scratch_allocator, window, dnums, algorithm,
+                             stream, profile_result);
+}
+
+Status RunCudnnConvolution(
+    CudnnConvKind kind, const Shape& input_shape, const Shape& filter_shape,
+    const Shape& output_shape, perftools::gputools::DeviceMemoryBase input_buf,
+    perftools::gputools::DeviceMemoryBase filter_buf,
+    perftools::gputools::DeviceMemoryBase output_buf,
+    perftools::gputools::ScratchAllocator* scratch_allocator,
+    const Window& window, const ConvolutionDimensionNumbers& dnums,
+    perftools::gputools::dnn::AlgorithmConfig algorithm,
+    perftools::gputools::Stream* stream,
+    perftools::gputools::dnn::ProfileResult* profile_result) {
+  PrimitiveType output_primitive_type = output_shape.element_type();
+  CHECK(output_primitive_type == F32 || output_primitive_type == F16)
+      << ShapeUtil::HumanString(output_shape);
+  if (output_primitive_type == F32) {
+    return RunCudnnConvolution(
+        kind, input_shape, filter_shape, output_shape,
+        se::DeviceMemory<float>(input_buf), se::DeviceMemory<float>(filter_buf),
+        se::DeviceMemory<float>(output_buf), scratch_allocator, window, dnums,
+        algorithm, stream, profile_result);
+  }
+  return RunCudnnConvolution(kind, input_shape, filter_shape, output_shape,
+                             se::DeviceMemory<Eigen::half>(input_buf),
+                             se::DeviceMemory<Eigen::half>(filter_buf),
+                             se::DeviceMemory<Eigen::half>(output_buf),
+                             scratch_allocator, window, dnums, algorithm,
+                             stream, profile_result);
 }
 
 }  // namespace gpu

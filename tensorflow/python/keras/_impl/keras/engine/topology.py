@@ -39,6 +39,7 @@ from tensorflow.python.layers import base as tf_base_layers
 from tensorflow.python.layers import network as tf_network
 from tensorflow.python.layers import utils as tf_layers_util
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -263,7 +264,7 @@ class Layer(tf_base_layers.Layer):
 
     # Un-built subclassed network: build it
     if isinstance(self, Network) and not self.inputs:
-      self._set_inputs(inputs)
+      self._set_inputs(inputs, training=kwargs.get('training'))
 
     # Update learning phase info.
     output_tensors = _to_list(output)
@@ -702,6 +703,8 @@ class Network(tf_network.GraphNetwork, Layer):
     super(Network, self).__init__(inputs, outputs, name=name)
 
     self._is_compiled = False
+    self._expects_training_arg = False
+
     self.supports_masking = False
     self.optimizer = None
 
@@ -744,6 +747,11 @@ class Network(tf_network.GraphNetwork, Layer):
     self._layers = []
     self._is_graph_network = False
     self._is_compiled = False
+    if 'training' in tf_inspect.getargspec(self.call).args:
+      self._expects_training_arg = True
+    else:
+      self._expects_training_arg = False
+
     self.outputs = None
     self.inputs = None
     self.trainable = True
@@ -1154,10 +1162,8 @@ class Network(tf_network.GraphNetwork, Layer):
       proceed = ask_to_proceed_with_overwrite(filepath)
       if not proceed:
         return
-    f = h5py.File(filepath, 'w')
-    save_weights_to_hdf5_group(f, self.layers)
-    f.flush()
-    f.close()
+    with h5py.File(filepath, 'w') as f:
+      save_weights_to_hdf5_group(f, self.layers)
 
   def load_weights(self, filepath, by_name=False):
     """Loads all layer weights from a HDF5 save file.
@@ -1184,16 +1190,13 @@ class Network(tf_network.GraphNetwork, Layer):
     """
     if h5py is None:
       raise ImportError('`load_weights` requires h5py.')
-    f = h5py.File(filepath, mode='r')
-    if 'layer_names' not in f.attrs and 'model_weights' in f:
-      f = f['model_weights']
-    if by_name:
-      load_weights_from_hdf5_group_by_name(f, self.layers)
-    else:
-      load_weights_from_hdf5_group(f, self.layers)
-
-    if hasattr(f, 'close'):
-      f.close()
+    with h5py.File(filepath, 'r') as f:
+      if 'layer_names' not in f.attrs and 'model_weights' in f:
+        f = f['model_weights']
+      if by_name:
+        load_weights_from_hdf5_group_by_name(f, self.layers)
+      else:
+        load_weights_from_hdf5_group(f, self.layers)
 
   def _updated_config(self):
     """Util hared between different serialization methods.

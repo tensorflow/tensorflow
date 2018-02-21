@@ -53,8 +53,7 @@ class LSTMLayerTest(test.TestCase):
     layer = keras.layers.LSTM(units, return_sequences=True)
     model.add(layer)
     outputs = model.layers[-1].output
-    self.assertEquals(outputs.get_shape().as_list(),
-                      [None, timesteps, units])
+    self.assertEquals(outputs.get_shape().as_list(), [None, timesteps, units])
 
   def test_dynamic_behavior_LSTM(self):
     num_samples = 2
