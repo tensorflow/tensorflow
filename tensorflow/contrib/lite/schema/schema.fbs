@@ -121,7 +121,8 @@ enum BuiltinOperator : byte {
   STRIDED_SLICE = 45,
   BIDIRECTIONAL_SEQUENCE_RNN = 46,
   EXP = 47,
-  TOPK_V2=48,
+  TOPK_V2 = 48,
+  SPLIT = 49,
 }
 
 // Options for the builtin operators.
@@ -160,6 +161,7 @@ union BuiltinOptions {
   StridedSliceOptions,
   ExpOptions,
   TopKV2Options,
+  SplitOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -348,6 +350,10 @@ table MeanOptions {
 
 table SqueezeOptions {
   squeeze_dims:[int];
+}
+
+table SplitOptions {
+  num_splits: int;
 }
 
 table StridedSliceOptions {

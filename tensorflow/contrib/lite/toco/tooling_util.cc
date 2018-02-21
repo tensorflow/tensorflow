@@ -25,6 +25,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_replace.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/contrib/lite/toco/dump_graphviz.h"
 #include "tensorflow/contrib/lite/toco/model_flags.pb.h"
 #include "tensorflow/contrib/lite/toco/toco_graphviz_dump_options.h"
@@ -633,6 +634,14 @@ bool IsConstantParameterArray(const Model& model, const string& name) {
 }
 
 namespace {
+// Take an array name, which may be something like "name:3_5" and make it
+// acceptable as a TF node name, say "name_3_5";
+string SanitizeNameForTFNode(const string& array_name) {
+  auto node_name = array_name;
+  std::replace(node_name.begin(), node_name.end(), ':', '_');
+  return node_name;
+}
+
 void CheckInputArraysAreNotOutputArrays(const ModelFlags& model_flags) {
   for (const auto& input_array : model_flags.input_arrays()) {
     for (const string& output_array : model_flags.output_arrays()) {
@@ -796,7 +805,10 @@ void FixNoOrphanedArray(Model* model) {
   }
 }
 
-void CheckArrayFieldsConsistent(const Model& model) {
+// Apply checks to arrays individually (for-each fashion).
+//
+// Check consistency of array fields, check name.
+void CheckEachArray(const Model& model) {
   for (const auto& array_entry : model.GetArrayMap()) {
     const auto& array = array_entry.second;
     if (array->has_shape()) {
@@ -811,6 +823,18 @@ void CheckArrayFieldsConsistent(const Model& model) {
     if (array->buffer) {
       CHECK(array->buffer->type == array->data_type);
     }
+
+    // Check name.  Either "name_with_suffix_8", "name_with_port:3", but not
+    // "name_with_both:3_8".
+    const string& name = array_entry.first;
+    auto colon_pos = name.find_first_of(":");
+    if (colon_pos != string::npos) {
+      CHECK_EQ(name.substr(colon_pos + 1).find_first_not_of("0123456789"),
+               string::npos)
+          << "Array name must only have digits after colon";
+    }
+    CHECK_GT(colon_pos, 0)
+        << "First character of array name must not be a colon.";
   }
 }
 
@@ -959,7 +983,7 @@ void CheckInvariants(const Model& model) {
   CheckNonAsciiIOArrays(model.flags);
   CheckNoMissingArray(model);
   CheckNoOrphanedArray(model);
-  CheckArrayFieldsConsistent(model);
+  CheckEachArray(model);
   CheckOperatorOrdering(model);
 }
 
@@ -1051,9 +1075,6 @@ void CreateOrCheckRnnStateArray(const string& name, int size, Model* model) {
   if (array.has_shape()) {
     num_dims = array.shape().dimensions_count();
   }
-  CHECK(array.data_type == ArrayDataType::kFloat ||
-        array.data_type == ArrayDataType::kNone);
-  array.data_type = ArrayDataType::kFloat;
   if (!array.has_shape() && num_dims >= 0) {
     Shape* shape = array.mutable_shape();
     std::vector<int> dims;
@@ -1077,7 +1098,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
       }
     }
     if (!dst_input_array) {
-      // specified_input_array from model_flags is not found in model->flags.
+      // Specified_input_array from model_flags is not found in model->flags.
       // Match a name-less specified input array when there can be no ambiguity
       // as there is only 1 input array.
       if (model->flags.input_arrays_size() == 1 &&
@@ -1384,19 +1405,23 @@ bool IsAllocatableTransientArray(const Model& model, const string& array_name) {
 }
 
 string AvailableArrayName(const Model& model, const string& name) {
-  if (!model.HasArray(name) && !model.IsOptionalArray(name)) {
-    return name;
+  string sanitized_name = SanitizeNameForTFNode(name);
+  if (!model.HasArray(sanitized_name) &&
+      !model.IsOptionalArray(sanitized_name)) {
+    return sanitized_name;
   }
   const int kNumSuffixesToTry = 1000;
   for (int i = 0; i < kNumSuffixesToTry; i++) {
-    const string& name_with_suffix = toco::port::StringF("%s_%d", name, i);
+    const string& name_with_suffix =
+        toco::port::StringF("%s_%d", sanitized_name, i);
     if (!model.HasArray(name_with_suffix) &&
         !model.IsOptionalArray(name_with_suffix)) {
       return name_with_suffix;
     }
   }
-  LOG(FATAL) << "Could not find an available array name starting with " << name
-             << ". Tried " << kNumSuffixesToTry << " suffixes, all were taken!";
+  LOG(FATAL) << "Could not find an available array name starting with "
+             << sanitized_name << ". Tried " << kNumSuffixesToTry
+             << " suffixes, all were taken!";
   return "";
 }
 
@@ -1792,6 +1817,23 @@ ArrayDataType ConvertIODataTypeToArrayDataType(IODataType type) {
       return ArrayDataType::kInt64;
     default:
       return ArrayDataType::kNone;
+  }
+}
+
+void FinishBuildingRNNStates(Model* model) {
+  for (const auto& rnn_state : model->flags.rnn_states()) {
+    if (!model->HasArray(rnn_state.back_edge_source_array()) ||
+        !model->HasArray(rnn_state.state_array())) {
+      CHECK(model->HasArray(rnn_state.back_edge_source_array()));
+      CHECK(model->HasArray(rnn_state.state_array()));
+      continue;
+    }
+    const auto& src_array = model->GetArray(rnn_state.back_edge_source_array());
+    auto& dst_array = model->GetArray(rnn_state.state_array());
+    if (src_array.data_type == ArrayDataType::kNone &&
+        dst_array.data_type == ArrayDataType::kNone) {
+      dst_array.data_type = ArrayDataType::kFloat;
+    }
   }
 }
 
