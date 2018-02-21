@@ -17,8 +17,8 @@ limitations under the License.
 #error This file must only be included when building with CUDA suppot
 #endif
 
-#ifndef UNPOOLING_OP_GPU_H
-#define UNPOOLING_OP_GPU_H
+#ifndef TENSORFLOW_KERNELS_UNPOOLING_OP_GPU_H
+#define TENSORFLOW_KERNELS_UNPOOLING_OP_GPU_H
 
 #include "tensorflow/core/framework/tensor_shape.h"
 

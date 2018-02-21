@@ -2123,6 +2123,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 data_format=data_format,
                                 name=name)
 
+@tf_export("nn.unpool")
 def unpool(value, indices, unpool_shape, name=None):
   """Performs unpooling on the input.
 
