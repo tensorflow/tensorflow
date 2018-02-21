@@ -319,8 +319,9 @@ class Reshape : public Message {
 // This is the top-level message in a test file.
 class TestData : public Message {
  public:
-  explicit TestData(TestRunner* test_runner) : test_runner_(test_runner) {}
-
+  explicit TestData(TestRunner* test_runner)
+      : test_runner_(test_runner), num_invocations_(0), max_invocations_(-1) {}
+  void SetMaxInvocations(int max) { max_invocations_ = max; }
   void SetField(const std::string& name, const std::string& value) override {
     if (name == "load_model") {
       test_runner_->LoadModel(value);
@@ -334,7 +335,12 @@ class TestData : public Message {
   Message* AddChild(const std::string& s) override {
     if (s == "invoke") {
       test_runner_->AllocateTensors();
-      return Store(new Invoke(test_runner_));
+      if (max_invocations_ == -1 || num_invocations_ < max_invocations_) {
+        ++num_invocations_;
+        return Store(new Invoke(test_runner_));
+      } else {
+        return nullptr;
+      }
     } else if (s == "reshape") {
       return Store(new Reshape(test_runner_));
     }
@@ -343,10 +349,14 @@ class TestData : public Message {
 
  private:
   TestRunner* test_runner_;
+  int num_invocations_;
+  int max_invocations_;
 };
 
-bool ParseAndRunTests(std::istream* input, TestRunner* test_runner) {
+bool ParseAndRunTests(std::istream* input, TestRunner* test_runner,
+                      int max_invocations) {
   TestData test_data(test_runner);
+  test_data.SetMaxInvocations(max_invocations);
   Message::Read(input, &test_data);
   return test_runner->IsValid() && test_runner->GetOverallSuccess();
 }
