@@ -877,8 +877,7 @@ xla_test(
     name = "half_test",
     srcs = ["half_test.cc"],
     backends = [
-        # TODO(b/72509305): Flaky (fails with SEGV) as of 2018-01-25
-        # "cpu",
+        "cpu",
         "gpu",
     ],
     deps = [
@@ -1367,6 +1366,7 @@ xla_test(
     srcs = ["convert_test.cc"],
     deps = [
         "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:types",
         "//tensorflow/compiler/xla:xla_data_proto",
         "//tensorflow/compiler/xla/client:computation_builder",
         "//tensorflow/compiler/xla/client:local_client",

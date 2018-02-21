@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/types.h"
@@ -208,5 +209,65 @@ TEST_F(ConvertTest, ConvertReshape) {
   ComputeAndCompareR0<float>(&builder, 42.0f, {}, ErrorSpec(0.0001));
 }
 
+std::vector<float> GetInterestingF16ConversionTestCases() {
+  float infinity = std::numeric_limits<float>::infinity();
+  float half_min_positive_normal =
+      tensorflow::bit_cast<float, uint32>(0x38800000);
+  float half_max_subnormal = tensorflow::bit_cast<float, uint32>(0x387fc000);
+  float half_min_positive_subnormal =
+      tensorflow::bit_cast<float, uint32>(0x33800000);
+  float half_max = 65504.0f;
+
+  std::vector<float> test_cases(
+      {-infinity, -(half_max * 2 + 1), -half_max, -42.0f, -1.0f,
+       -half_min_positive_subnormal, -half_max_subnormal,
+       -half_min_positive_normal, -0.0f, 0.0f, half_min_positive_subnormal,
+       half_max_subnormal, half_min_positive_normal, 1.0f, 42.0f, half_max,
+       (half_max * 2 + 1), infinity});
+  return test_cases;
+}
+
+XLA_TEST_F(ConvertTest, ConvertR1F16ToR1F32) {
+  std::vector<float> test_cases = GetInterestingF16ConversionTestCases();
+  std::vector<half> input;
+  c_transform(test_cases, std::back_inserter(input),
+              [](float f) { return Eigen::half(f); });
+  std::vector<float> expected_output;
+  c_transform(input, std::back_inserter(expected_output),
+              [](Eigen::half h) { return static_cast<float>(h); });
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> dot_lhs_handle,
+      client_->TransferToServer(*Literal::CreateR1<half>(input)));
+
+  ComputationBuilder builder(client_, TestName());
+  builder.ConvertElementType(
+      builder.Parameter(
+          0, ShapeUtil::MakeShape(F16, {static_cast<int64>(input.size())}),
+          "param"),
+      F32);
+
+  ComputeAndCompareR1<float>(&builder, expected_output, {dot_lhs_handle.get()});
+}
+
+XLA_TEST_F(ConvertTest, ConvertR1F32ToR1F16) {
+  std::vector<float> input = GetInterestingF16ConversionTestCases();
+  std::vector<half> expected_output;
+  c_transform(input, std::back_inserter(expected_output),
+              [](float f) { return Eigen::half(f); });
+
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<GlobalData> dot_lhs_handle,
+      client_->TransferToServer(*Literal::CreateR1<float>(input)));
+
+  ComputationBuilder builder(client_, TestName());
+  builder.ConvertElementType(
+      builder.Parameter(
+          0, ShapeUtil::MakeShape(F32, {static_cast<int64>(input.size())}),
+          "param"),
+      F16);
+
+  ComputeAndCompareR1<half>(&builder, expected_output, {dot_lhs_handle.get()});
+}
 }  // namespace
 }  // namespace xla
