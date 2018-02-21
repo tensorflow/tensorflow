@@ -368,8 +368,8 @@ class Tensor(_TensorLike):
       A `TensorShape` representing the shape of this tensor.
 
     """
-    if _USE_C_API:
-      graph = self._op._graph._c_graph  # pylint: disable=protected-access
+    graph = self._op._graph._c_graph # pylint: disable=protected-access
+    if graph:
       with errors.raise_exception_on_not_ok_status() as status:
         num_dims = c_api.TF_GraphGetTensorNumDims(graph, self._as_tf_output(),
                                                   status)
@@ -466,7 +466,7 @@ class Tensor(_TensorLike):
       ValueError: If `shape` is not compatible with the current shape of
         this tensor.
     """
-    if not _USE_C_API:
+    if not self._op._graph._c_graph:  # pylint: disable=protected-access # ASIM
       self._shape_val = self._shape_val.merge_with(shape)
       return
     if not isinstance(shape, tensor_shape.TensorShape):
@@ -2768,7 +2768,7 @@ class Graph(object):
 
     # TODO(skyewm): fold as much of the above as possible into the C
     # implementation
-    if _USE_C_API or self._use_c_api_hack():
+    if self._use_c_api_hack():
       self._scoped_c_graph = c_api_util.ScopedTFGraph()
     else:
       self._scoped_c_graph = None
@@ -2777,7 +2777,7 @@ class Graph(object):
   # TODO(apassos) remove once the C API is used by default.
   def _use_c_api_hack(self):
     """Temporary hack; can be overridden to force C API usage."""
-    return False
+    return _USE_C_API
 
   def _convert_stack(self, stack, include_func_start_lineno=False):
     """Converts a stack extracted using _extract_stack() to a traceback stack.
@@ -3037,7 +3037,7 @@ class Graph(object):
 
     """
     # pylint: enable=line-too-long
-    if _USE_C_API:
+    if self._c_graph:
       with self._lock:
         with c_api_util.tf_buffer() as buf:
           with errors.raise_exception_on_not_ok_status() as status:
