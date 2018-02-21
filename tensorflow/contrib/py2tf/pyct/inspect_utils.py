@@ -26,6 +26,26 @@ import six
 from tensorflow.python.util import tf_inspect
 
 
+def getcallargs(c, *args, **kwargs):
+  """Extension of getcallargs to non-function callables."""
+  if tf_inspect.isfunction(c):
+    # The traditional getcallargs
+    return tf_inspect.getcallargs(c, *args, **kwargs)
+
+  if tf_inspect.isclass(c):
+    # Constructors: pass a fake None for self, then remove it.
+    arg_map = tf_inspect.getcallargs(c.__init__, None, *args, **kwargs)
+    assert 'self' in arg_map, 'no "self" argument, is this not a constructor?'
+    del arg_map['self']
+    return arg_map
+
+  if hasattr(c, '__call__'):
+    # Callable objects: map self to the object itself
+    return tf_inspect.getcallargs(c.__call__, *args, **kwargs)
+
+  raise NotImplementedError('unknown callable "%s"' % type(c))
+
+
 def getmethodclass(m, namespace):
   """Resolves a function's owner, e.g. a method's class."""
 
