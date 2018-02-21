@@ -572,10 +572,10 @@ class Sequential(Model):
       self.build()
     return self.model.get_layer(name, index)
 
-  def call(self, inputs, mask=None):
+  def call(self, inputs, **kwargs):
     if not self.built:
       self.build()
-    return self.model.call(inputs, mask)
+    return self.model.call(inputs, **kwargs)
 
   def build(self, input_shape=None):
     if not self.inputs or not self.outputs:

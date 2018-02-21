@@ -852,6 +852,28 @@ class TopologyConstructionTest(test.TestCase):
       output_val_2 = m2.predict(x_val)
       self.assertAllClose(output_val, output_val_2, atol=1e-6)
 
+  def test_explicit_training_argument(self):
+    with self.test_session():
+      a = keras.layers.Input(shape=(2,))
+      b = keras.layers.Dropout(0.5)(a)
+      base_model = keras.models.Model(a, b)
+
+      a = keras.layers.Input(shape=(2,))
+      b = base_model(a, training=False)
+      model = keras.models.Model(a, b)
+
+      x = np.ones((100, 2))
+      y = np.ones((100, 2))
+      model.compile(optimizer='sgd', loss='mse')
+      loss = model.train_on_batch(x, y)
+      self.assertEqual(loss, 0)  # In inference mode, output is equal to input.
+
+      a = keras.layers.Input(shape=(2,))
+      b = base_model(a, training=True)
+      model = keras.models.Model(a, b)
+      preds = model.predict(x)
+      self.assertEqual(np.min(preds), 0.)  # At least one unit was dropped.
+
 
 class TestSaving(test.TestCase):
 
