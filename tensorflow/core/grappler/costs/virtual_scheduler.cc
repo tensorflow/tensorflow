@@ -366,8 +366,16 @@ Status VirtualScheduler::Init() {
     std::vector<string> inputs;
     if (IsRecv(*curr_node)) {
       const auto& attr = curr_node->attr();
-      const NodeDef* send = name_to_send[attr.at("tensor_name").s()];
-      inputs = {send->name()};
+      if (attr.count("tensor_name")) {
+        const auto& send_node_name = attr.at("tensor_name").s();
+        auto it = name_to_send.find(send_node_name);
+        // If there is a _Send associated with the curr_node (_Recv), add it as
+        // input.
+        if (it != name_to_send.end()) {
+          const NodeDef* send = it->second;
+          inputs = {send->name()};
+        }
+      }
     } else {
       for (const string& input : curr_node->input()) {
         inputs.push_back(input);
@@ -426,9 +434,11 @@ Status VirtualScheduler::Init() {
         feed_nodes.find(curr_node->name()) != feed_nodes.end();
 
     // Default case: node without inputs are ready at time 0.
-    const bool has_no_inputs = curr_node->input().empty();
+    // Note that we check inputs vector which may be different to
+    // curr_node->input(); e.g., we add Send as input to Recv.
+    const bool has_no_inputs = inputs.empty();
 
-    if (!IsRecv(*curr_node) && (given_as_feed || has_no_inputs)) {
+    if (given_as_feed || has_no_inputs) {
       curr_node_state.time_ready = Costs::Duration();
       ready_nodes_->AddNode(curr_node);
       VLOG(3) << "Added ready node: " << curr_node->name();

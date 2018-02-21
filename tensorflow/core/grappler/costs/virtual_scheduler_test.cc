@@ -394,6 +394,63 @@ versions {
     grappler_item_->fetch = {"Recv"};
   }
 
+  void CreateGrapplerItemWithRecvWithoutSend() {
+    const string gdef_ascii = R"EOF(
+node {
+  name: "Recv"
+  op: "_Recv"
+  device: "/job:localhost/replica:0/task:0/device:CPU:0"
+  attr {
+    key: "client_terminated"
+    value {
+      b: false
+    }
+  }
+  attr {
+    key: "recv_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device"
+    value {
+      s: "/job:localhost/replica:0/task:0/device:CPU:0"
+    }
+  }
+  attr {
+    key: "send_device_incarnation"
+    value {
+      i: 0
+    }
+  }
+  attr {
+    key: "tensor_name"
+    value {
+      s: "test"
+    }
+  }
+  attr {
+    key: "tensor_type"
+    value {
+      type: DT_FLOAT
+    }
+  }
+}
+library {
+}
+versions {
+  producer: 24
+}
+    )EOF";
+
+    grappler_item_.reset(new GrapplerItem);
+    CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii,
+                                                &grappler_item_->graph));
+    grappler_item_->id = "test_graph";
+    grappler_item_->fetch = {"Recv"};
+  }
+
   // A simple while loop
   void CreateGrapplerItemWithLoop() {
     // Test graph produced in python using:
@@ -2013,6 +2070,18 @@ TEST_F(VirtualSchedulerTest, GraphWithSendRecvDifferentDevice) {
   EXPECT_GT(ops_executed.count(
                 "Recv_Send_0_on_/job_localhost/replica_0/task_0/cpu_1"),
             0);
+  EXPECT_GT(ops_executed.count("Recv"), 0);
+}
+
+TEST_F(VirtualSchedulerTest, GraphWihtOnlyRecv) {
+  // Init.
+  CreateGrapplerItemWithRecvWithoutSend();
+  InitScheduler();
+
+  // Run the scheduler.
+  auto ops_executed = RunScheduler("");
+
+  // Recv without Send will be treated as initially ready node.
   EXPECT_GT(ops_executed.count("Recv"), 0);
 }
 }  // end namespace grappler
