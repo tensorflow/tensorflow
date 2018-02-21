@@ -346,7 +346,7 @@ struct ApplyAdaMaxNonCuda {
     // v == u
     v.device(d) = (beta2() * v).cwiseMax(grad.abs());
     // var == θ
-    var.device(d) -= (lr * m) / ((T(1) - beta1_power()) * v);
+    var.device(d) -= (lr() * m) / ((T(1) - beta1_power()) * v);
   }
 };
 
