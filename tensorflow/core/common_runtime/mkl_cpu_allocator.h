@@ -21,11 +21,6 @@ limitations under the License.
 
 #ifdef INTEL_MKL
 
-#ifdef _WIN32
-  #include <windows.h>
-#else
-  #include <unistd.h>
-#endif
 #include <cstdlib>
 #include <string>
 #include "tensorflow/core/common_runtime/bfc_allocator.h"
