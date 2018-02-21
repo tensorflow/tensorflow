@@ -1446,6 +1446,20 @@ Status ConstantFolding::SimplifyGraph(GraphDef* output,
   const bool is_aggressive = opt_level_ == RewriterConfig::AGGRESSIVE;
   for (int i = 0; i < output->node_size(); ++i) {
     NodeDef* node = output->mutable_node(i);
+    // Remove Shuffle or Reverse op over scalar values.
+    if (use_shape_info &&
+        (IsShuffle(*node) || IsReverse(*node) || IsTranspose(*node))) {
+      const auto& shape =
+          properties.GetInputProperties(node->name())[0].shape();
+      // The node is replaceable iff
+      // unknown_rank == false && (dim_size == 0 || all dims have size 1)
+      bool replaceable = !shape.unknown_rank();
+      for (int j = 0; j < shape.dim_size(); ++j) {
+        replaceable &= shape.dim(j).size() == 1;
+      }
+      if (replaceable) ReplaceOperationWithIdentity(0, node, output);
+    }
+
     if (IsSimplifiableReduction(*node)) {
       // Replace the reduction node with an identity node, that can be further
       // optimized by the model pruner.
@@ -1713,6 +1727,7 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   TF_RETURN_IF_ERROR(FoldGraph(output));
   node_map_.reset(new NodeMap(output));
   TF_RETURN_IF_ERROR(SimplifyGraph(output, properties, can_use_shape_info));
+
   return Status::OK();
 }
 
