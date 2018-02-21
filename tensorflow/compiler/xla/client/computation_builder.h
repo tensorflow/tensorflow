@@ -446,6 +446,16 @@ class ComputationBuilder {
       tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
       const Shape& shape);
 
+  // Enqueues a pseudo-op to represent host-side computation data-dependencies.
+  // During code generation, host send and receive operations will be generated
+  // to transfer |operands| to the host and a single result of |shape| back to
+  // the device.  Host send/recv operations are emitted using |channel_name|.
+  // Dataflow dependencies and the |cost_estimate_ns| field may be used in HLO
+  // instruction scheduling.
+  ComputationDataHandle HostCompute(
+      tensorflow::gtl::ArraySlice<ComputationDataHandle> operands,
+      const string& channel_name, int64 cost_estimate_ns, const Shape& shape);
+
   // The following methods enqueue element-wise binary arithmetic operations
   // onto the computation. The shapes of the operands have to match unless one
   // of the operands is a scalar, or an explicit broadcast dimension is given
@@ -707,6 +717,13 @@ class ComputationBuilder {
   ComputationDataHandle ReducePrecision(const ComputationDataHandle& operand,
                                         const int exponent_bits,
                                         const int mantissa_bits);
+
+  // Enqueues a Gather node onto the computation.
+  ComputationDataHandle Gather(
+      const ComputationDataHandle& input,
+      const ComputationDataHandle& gather_indices,
+      const GatherDimensionNumbers& dimension_numbers,
+      tensorflow::gtl::ArraySlice<int64> window_bounds);
 
   // Enqueues a Send node onto the computation, to send the given operand to
   // a Recv instruction that shares the same channel handle.

@@ -101,7 +101,8 @@ struct LaunchConv2DBackpropFilterOp<CPUDevice, T> {
     const CPUDevice& d = ctx->eigen_device<CPUDevice>();
     functor::SpatialConvolutionBackwardFilter<CPUDevice, T>()(
         d, filter_backprop->tensor<T, 4>(), input.tensor<T, 4>(),
-        out_backprop.tensor<T, 4>(), row_stride, col_stride);
+        out_backprop.tensor<T, 4>(), row_stride, col_stride,
+        /*row_dilation=*/1, /*col_dilation=*/1);
   }
 };
 

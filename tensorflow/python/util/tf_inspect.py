@@ -134,6 +134,11 @@ def getmembers(object, predicate=None):  # pylint: disable=redefined-builtin
   return _inspect.getmembers(object, predicate)
 
 
+def getmodule(object):  # pylint: disable=redefined-builtin
+  """TFDecorator-aware replacement for inspect.getmodule."""
+  return _inspect.getmodule(object)
+
+
 def getmro(cls):
   """TFDecorator-aware replacement for inspect.getmro."""
   return _inspect.getmro(cls)

@@ -132,6 +132,7 @@ py_test(
 py_test(
     name = "for_loops_test",
     srcs = ["for_loops_test.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",

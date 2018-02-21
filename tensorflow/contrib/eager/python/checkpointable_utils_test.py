@@ -398,36 +398,37 @@ class CheckpointingTests(test.TestCase):
     optimizer_variables = self.evaluate(optimizer.variables())
     self.evaluate(state_ops.assign(m_bias_slot, [-2.]))
     # Immediate restoration
-    root_checkpointable.restore(save_path=save_path).assert_consumed()
+    status = root_checkpointable.restore(save_path=save_path).assert_consumed()
+    self.evaluate(status.restore_ops)
     self.assertAllEqual([42.], self.evaluate(network._named_dense.variables[1]))
     self.assertAllEqual(1, self.evaluate(root_checkpointable.save_counter))
     self.assertAllEqual([1.5], self.evaluate(m_bias_slot))
-    with ops.Graph().as_default():
-      on_create_network = MyNetwork()
-      on_create_optimizer = CheckpointableAdam(0.001)
-      on_create_root = Checkpoint(
-          optimizer=on_create_optimizer, network=on_create_network)
-      with self.test_session(graph=ops.get_default_graph()):
-        # Deferred restoration
-        status = on_create_root.restore(save_path=save_path)
-        on_create_network(constant_op.constant([[3.]]))  # create variables
-        self.assertAllEqual(1, self.evaluate(on_create_root.save_counter))
-        self.assertAllEqual([42.],
-                            self.evaluate(
-                                on_create_network._named_dense.variables[1]))
-        on_create_m_bias_slot = on_create_optimizer.get_slot(
-            on_create_network._named_dense.variables[1], "m")
-        # Optimizer slot variables are created when the original variable is
-        # restored.
-        self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
-        self.assertAllEqual(optimizer_variables[2:],
-                            self.evaluate(on_create_optimizer.variables()))
-        on_create_optimizer._create_slots(
-            [resource_variable_ops.ResourceVariable([1.])])
-        status.assert_consumed()
-        beta1_power, beta2_power = on_create_optimizer._get_beta_accumulators()
-        self.assertAllEqual(optimizer_variables[0], self.evaluate(beta1_power))
-        self.assertAllEqual(optimizer_variables[1], self.evaluate(beta2_power))
+    if context.in_graph_mode():
+      return  # Restore-on-create is only supported when executing eagerly
+    on_create_network = MyNetwork()
+    on_create_optimizer = CheckpointableAdam(0.001)
+    on_create_root = Checkpoint(
+        optimizer=on_create_optimizer, network=on_create_network)
+    # Deferred restoration
+    status = on_create_root.restore(save_path=save_path)
+    on_create_network(constant_op.constant([[3.]]))  # create variables
+    self.assertAllEqual(1, self.evaluate(on_create_root.save_counter))
+    self.assertAllEqual([42.],
+                        self.evaluate(
+                            on_create_network._named_dense.variables[1]))
+    on_create_m_bias_slot = on_create_optimizer.get_slot(
+        on_create_network._named_dense.variables[1], "m")
+    # Optimizer slot variables are created when the original variable is
+    # restored.
+    self.assertAllEqual([1.5], self.evaluate(on_create_m_bias_slot))
+    self.assertAllEqual(optimizer_variables[2:],
+                        self.evaluate(on_create_optimizer.variables()))
+    on_create_optimizer._create_slots(
+        [resource_variable_ops.ResourceVariable([1.])])
+    status.assert_consumed()
+    beta1_power, beta2_power = on_create_optimizer._get_beta_accumulators()
+    self.assertAllEqual(optimizer_variables[0], self.evaluate(beta1_power))
+    self.assertAllEqual(optimizer_variables[1], self.evaluate(beta2_power))
 
   def testDeferredRestorationUsageEager(self):
     """An idiomatic eager execution example."""
@@ -479,10 +480,11 @@ class CheckpointingTests(test.TestCase):
               # if no checkpoint is being loaded. This would make deferred
               # loading a bit more useful with graph execution.
             else:
-              checkpointable_utils.restore(
+              status = checkpointable_utils.restore(
                   save_path=checkpoint_path,
                   root_checkpointable=root,
-                  session=session)
+                  session=session).assert_consumed()
+              session.run(status.restore_ops)
             for _ in range(num_training_steps):
               session.run(train_op)
             root.save(file_prefix=checkpoint_prefix,
@@ -560,6 +562,7 @@ class CheckpointingTests(test.TestCase):
       status.assert_consumed()
     load_into.add_dep()
     status.assert_consumed()
+    self.evaluate(status.restore_ops)
     self.assertEqual(123., self.evaluate(load_into.dep.var))
 
   @test_util.run_in_graph_and_eager_modes()
@@ -591,6 +594,7 @@ class CheckpointingTests(test.TestCase):
         save_path, loaded_dep_after_var)
     loaded_dep_after_var.add_dep()
     status.assert_consumed()
+    self.evaluate(status.restore_ops)
     self.assertEqual(-14., self.evaluate(loaded_dep_after_var.dep.var))
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
@@ -627,16 +631,28 @@ class CheckpointingTests(test.TestCase):
       no_slot_status.assert_consumed()
     new_root.var = checkpointable_utils.add_variable(
         new_root, name="var", shape=[])
-    self.assertEqual(12., self.evaluate(new_root.var))
     no_slot_status.assert_consumed()
+    self.evaluate(no_slot_status.restore_ops)
+    self.assertEqual(12., self.evaluate(new_root.var))
     new_root.optimizer = CheckpointableAdam(0.1)
     with self.assertRaisesRegexp(AssertionError, "beta1_power"):
       slot_status.assert_consumed()
     self.assertEqual(12., self.evaluate(new_root.var))
-    self.assertEqual(14., self.evaluate(
-        new_root.optimizer.get_slot(name="m", var=new_root.var)))
+    if context.in_eager_mode():
+      # Slot variables are only created with restoring initializers when
+      # executing eagerly.
+      self.assertEqual(14., self.evaluate(
+          new_root.optimizer.get_slot(name="m", var=new_root.var)))
+    else:
+      self.assertIs(new_root.optimizer.get_slot(name="m", var=new_root.var),
+                    None)
     if context.in_graph_mode():
       train_op = new_root.optimizer.minimize(new_root.var)
+      # The slot variable now exists; restore() didn't create it, but we should
+      # now have a restore op for it.
+      self.evaluate(slot_status.restore_ops)
+      self.assertEqual(14., self.evaluate(
+          new_root.optimizer.get_slot(name="m", var=new_root.var)))
       self.evaluate(train_op)
     else:
       new_root.optimizer.minimize(new_root.var.read_value)
@@ -667,9 +683,12 @@ class CheckpointingTests(test.TestCase):
         load_dep, name="var", shape=[])
     first_root.dep = load_dep
     first_status.assert_consumed()
+    self.evaluate(first_status.restore_ops)
+    self.assertEqual([], second_status.restore_ops)
     self.assertEqual(12., self.evaluate(load_dep.var))
     second_root.dep = load_dep
     second_status.assert_consumed()
+    self.evaluate(second_status.restore_ops)
     self.assertEqual(13., self.evaluate(load_dep.var))
 
     # Try again with the order of the restore() reversed. The last restore
@@ -685,9 +704,12 @@ class CheckpointingTests(test.TestCase):
         load_dep, name="var", shape=[])
     first_root.dep = load_dep
     first_status.assert_consumed()
+    self.assertEqual([], second_status.restore_ops)
+    self.evaluate(first_status.restore_ops)
     self.assertEqual(12., self.evaluate(load_dep.var))
     second_root.dep = load_dep
     second_status.assert_consumed()
+    self.evaluate(second_status.restore_ops)
     self.assertEqual(12., self.evaluate(load_dep.var))
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
@@ -734,7 +756,9 @@ class CheckpointingTests(test.TestCase):
         load_root.dep_one, name="var1", shape=[], dtype=dtypes.float64)
     v2 = checkpointable_utils.add_variable(
         load_root.dep_one, name="var2", shape=[], dtype=dtypes.float64)
-    checkpointable_utils.restore(save_path, load_root).assert_consumed()
+    status = checkpointable_utils.restore(
+        save_path, load_root).assert_consumed()
+    self.evaluate(status.restore_ops)
     self.assertEqual(32., self.evaluate(v1))
     self.assertEqual(64., self.evaluate(v2))
 
@@ -768,6 +792,7 @@ class CheckpointingTests(test.TestCase):
     second_load.v = checkpointable_utils.add_variable(
         second_load, "v2", shape=[4])
     status.assert_consumed()
+    self.evaluate(status.restore_ops)
     self.assertAllEqual([3., 1., 4.], self.evaluate(first_load.v))
     self.assertAllEqual([1., 1., 2., 3.], self.evaluate(second_load.v))
 
@@ -776,8 +801,9 @@ class CheckpointingTests(test.TestCase):
     self.assertAllEqual([2., 7., 1.], self.evaluate(first_load.v))
     self.evaluate(second_load.v.assign([2., 7., 1., 8.]))
     self.assertAllEqual([2., 7., 1., 8.], self.evaluate(second_load.v))
-    checkpointable_utils.restore(
+    status = checkpointable_utils.restore(
         save_path, first_load).assert_consumed()
+    self.evaluate(status.restore_ops)
     self.assertAllEqual([3., 1., 4.], self.evaluate(first_load.v))
     self.assertAllEqual([1., 1., 2., 3.], self.evaluate(second_load.v))
 
@@ -801,13 +827,16 @@ class CheckpointingTests(test.TestCase):
       second = checkpointable.Checkpointable()
       second.var2 = variable_scope.get_variable(
           name="blah", initializer=0.)
-      checkpointable_utils.restore(save_path, root_checkpointable=second)
+      status = checkpointable_utils.restore(
+          save_path, root_checkpointable=second)
       recreated_var1 = variable_scope.get_variable(
           name="outside_var", initializer=0.)
+      self.evaluate(status.restore_ops)
       self.assertEqual(8., self.evaluate(second.var2))
       self.evaluate(recreated_var1.assign(-2.))
       self.assertEqual(-2., self.evaluate(recreated_var1))
       second.var1 = recreated_var1
+      self.evaluate(status.restore_ops)
       self.assertEqual(4., self.evaluate(recreated_var1))
 
   # TODO(allenl): Saver class that doesn't pollute the graph with constants.

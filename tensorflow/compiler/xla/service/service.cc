@@ -44,6 +44,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
@@ -1447,6 +1448,9 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kFftRequest:
       handle_status = computation->AddFftInstruction(arg->fft_request());
       break;
+    case OpRequest::kGatherRequest:
+      handle_status = computation->AddGatherInstruction(arg->gather_request());
+      break;
     case OpRequest::kGetTupleElementRequest:
       handle_status = computation->AddGetTupleElementInstruction(
           arg->get_tuple_element_request());
@@ -1457,6 +1461,10 @@ tensorflow::Status Service::Op(const OpRequest* arg, OpResponse* result) {
     case OpRequest::kOutfeedRequest:
       handle_status =
           computation->AddOutfeedInstruction(arg->outfeed_request());
+      break;
+    case OpRequest::kHostComputeRequest:
+      handle_status =
+          computation->AddHostComputeInstruction(arg->host_compute_request());
       break;
     case OpRequest::kMapRequest: {
       TF_ASSIGN_OR_RETURN(

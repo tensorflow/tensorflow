@@ -329,6 +329,7 @@ def save(file_prefix, root_checkpointable, checkpoint_number=None,
 
 
 class CheckpointLoadStatus(object):
+  """Checks the status of checkpoint loading."""
 
   def __init__(self, checkpoint):
     self._checkpoint = checkpoint
@@ -338,11 +339,21 @@ class CheckpointLoadStatus(object):
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
       checkpointable = self._checkpoint.object_by_proto_id.get(node_id, None)
       if checkpointable is None:
-        raise AssertionError("Unresolved object in checkpoint: %s" % (node))
+        raise AssertionError("Unresolved object in checkpoint: %s" % (node,))
       if checkpointable._update_uid < self._checkpoint.restore_uid:  # pylint: disable=protected-access
         raise AssertionError(
-            "Object not assigned a value from checkpoint: %s" % (node))
+            "Object not assigned a value from checkpoint: %s" % (node,))
+    if self._checkpoint.slot_restorations:
+      # Sanity check; this collection should be clear if everything has been
+      # restored.
+      raise AssertionError("Unresolved slot restorations: %s" % (
+          self._checkpoint.slot_restorations,))
     return self
+
+  @property
+  def restore_ops(self):
+    """Operations to restore objects in the dependency graph."""
+    return self._checkpoint.restore_ops
 
 
 def restore(save_path, root_checkpointable, session=None):
@@ -355,8 +366,8 @@ def restore(save_path, root_checkpointable, session=None):
   `root_checkpointable` after this call will be matched if they have a
   corresponding object in the checkpoint.
 
-  When building a graph, restorations are executed in the default session if
-  `session` is `None`. Variable initializers read checkpointed values.
+  When building a graph, restorations are added to the graph but not run. A
+  session is required to retrieve checkpoint metadata.
 
   To disallow deferred loading, assert immediately that all checkpointed
   variables have been matched to variable objects:
@@ -368,21 +379,32 @@ def restore(save_path, root_checkpointable, session=None):
   An exception will be raised unless every object was matched and its variables
   already exist.
 
+  When graph building, `assert_consumed()` indicates that all of the restore ops
+  which will be created for this checkpoint have been created. They are
+  available in the `restore_ops` property of the status object:
+
+  ```python
+  session.run(restore(path, root).assert_consumed().restore_ops)
+  ```
+
+  If the checkpoint has not been consumed completely, then the list of
+  `restore_ops` will grow as more objects are added to the dependency graph.
+
   Args:
     save_path: The path to the checkpoint, as returned by `save` or
       `tf.train.latest_checkpoint`. If None (as when there is no latest
       checkpoint for `tf.train.latest_checkpoint` to return), does nothing.
     root_checkpointable: The root of the object graph to restore. Variables to
       restore need not have been created yet, but all dependencies on other
-      Checkpointable objects should already be declared. Objects in the
+      `Checkpointable` objects should already be declared. Objects in the
       dependency graph are matched to objects in the checkpointed graph, and
       matching objects have their variables restored (or the checkpointed values
       saved for eventual restoration when the variable is created).
-    session: The session to evaluate assignment ops in. Ignored when executing
+    session: The session to retrieve metadata with. Ignored when executing
       eagerly. If not provided when graph building, the default session is used.
   Returns:
-    A CheckpointLoadStatus object, which can be used to make assertions about
-    the status of checkpoint restoration.
+    A `CheckpointLoadStatus` object, which can be used to make assertions about
+    the status of checkpoint restoration and fetch restore ops.
   """
   if save_path is None:
     return
@@ -406,8 +428,8 @@ def restore(save_path, root_checkpointable, session=None):
   object_graph_proto.ParseFromString(object_graph_string)
   checkpoint = core_checkpointable._Checkpoint(  # pylint: disable=protected-access
       object_graph_proto=object_graph_proto,
-      save_path=save_path,
-      session=session)
+      save_path=save_path)
   core_checkpointable._CheckpointPosition(  # pylint: disable=protected-access
       checkpoint=checkpoint, proto_id=0).restore(root_checkpointable)
-  return CheckpointLoadStatus(checkpoint)
+  load_status = CheckpointLoadStatus(checkpoint)
+  return load_status
