@@ -245,11 +245,12 @@ enum BuiltinOperator {
   BuiltinOperator_SPLIT = 49,
   BuiltinOperator_LOG_SOFTMAX = 50,
   BuiltinOperator_DELEGATE = 51,
+  BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM = 52,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_DELEGATE
+  BuiltinOperator_MAX = BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM
 };
 
-inline BuiltinOperator (&EnumValuesBuiltinOperator())[49] {
+inline BuiltinOperator (&EnumValuesBuiltinOperator())[50] {
   static BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -299,7 +300,8 @@ inline BuiltinOperator (&EnumValuesBuiltinOperator())[49] {
     BuiltinOperator_TOPK_V2,
     BuiltinOperator_SPLIT,
     BuiltinOperator_LOG_SOFTMAX,
-    BuiltinOperator_DELEGATE
+    BuiltinOperator_DELEGATE,
+    BuiltinOperator_BIDIRECTIONAL_SEQUENCE_LSTM
   };
   return values;
 }
@@ -358,6 +360,7 @@ inline const char **EnumNamesBuiltinOperator() {
     "SPLIT",
     "LOG_SOFTMAX",
     "DELEGATE",
+    "BIDIRECTIONAL_SEQUENCE_LSTM",
     nullptr
   };
   return names;

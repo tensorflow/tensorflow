@@ -128,6 +128,7 @@ enum BuiltinOperator : byte {
   // other backends.
   // WARNING: Experimental interface, subject to change
   DELEGATE = 51,
+  BIDIRECTIONAL_SEQUENCE_LSTM = 52,
 }
 
 // Options for the builtin operators.

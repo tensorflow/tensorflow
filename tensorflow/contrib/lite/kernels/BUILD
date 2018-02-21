@@ -104,6 +104,7 @@ cc_library(
         "add.cc",
         "basic_rnn.cc",
         "batch_to_space_nd.cc",
+        "bidirectional_sequence_lstm.cc",
         "bidirectional_sequence_rnn.cc",
         "concatenation.cc",
         "conv.cc",
@@ -274,6 +275,18 @@ tf_cc_test(
     name = "basic_rnn_test",
     size = "small",
     srcs = ["basic_rnn_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/contrib/lite:framework",
+        "//tensorflow/contrib/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "bidirectional_sequence_lstm_test",
+    size = "small",
+    srcs = ["bidirectional_sequence_lstm_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/contrib/lite:framework",
