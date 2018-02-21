@@ -31,6 +31,7 @@ from tensorflow.contrib.py2tf.converters import control_flow
 from tensorflow.contrib.py2tf.converters import decorators
 from tensorflow.contrib.py2tf.converters import for_loops
 from tensorflow.contrib.py2tf.converters import logical_expressions
+from tensorflow.contrib.py2tf.converters import name_scopes
 from tensorflow.contrib.py2tf.converters import side_effect_guards
 from tensorflow.contrib.py2tf.impl import config
 from tensorflow.contrib.py2tf.impl import naming
@@ -221,6 +222,7 @@ def function_to_graph(f, conversion_map, arg_values, arg_types,
       namespace=namespace,
       arg_values=arg_values,
       arg_types=arg_types,
+      owner_type=owner_type,
       recursive=conversion_map.recursive)
   node, deps = node_to_graph(node, ctx, conversion_map.nocompile_decorators)
 
@@ -302,5 +304,6 @@ def node_to_graph(node, ctx, nocompile_decorators):
   node = _static_analysis_pass(node, ctx)
   node = logical_expressions.transform(node)
   node = side_effect_guards.transform(node, ctx)
+  node = name_scopes.transform(node, ctx)
 
   return node, deps

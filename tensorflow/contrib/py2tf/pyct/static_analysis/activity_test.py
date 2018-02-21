@@ -108,6 +108,7 @@ class ActivityAnalizerTest(test.TestCase):
         namespace={},
         arg_values=None,
         arg_types=None,
+        owner_type=None,
         recursive=True)
     node = qual_names.resolve(node)
     node = activity.resolve(node, ctx)
