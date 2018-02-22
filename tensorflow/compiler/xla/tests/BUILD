@@ -622,8 +622,10 @@ xla_test(
 xla_test(
     name = "dot_operation_test",
     srcs = ["dot_operation_test.cc"],
+    shard_count = 20,
     tags = [
         "enable_for_xla_interpreter",
+        "optonly",
     ],
     deps = [
         "//tensorflow/compiler/xla:array2d",
@@ -642,32 +644,7 @@ xla_test(
     ],
 )
 
-# Tests the dot operation in some cases that can be performed via a
-# runtime call on some backends - e.g. a runtime call to Eigen.
-xla_test(
-    name = "dot_operation_runtime_test",
-    srcs = ["dot_operation_test.cc"],
-    tags = [
-        "enable_for_xla_interpreter",
-    ],
-    deps = [
-        "//tensorflow/compiler/xla:array2d",
-        "//tensorflow/compiler/xla:array3d",
-        "//tensorflow/compiler/xla:reference_util",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/client:computation_builder",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/tests:client_library_test_base",
-        "//tensorflow/compiler/xla/tests:literal_test_util",
-        "//tensorflow/compiler/xla/tests:test_utils",
-        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
-        "//tensorflow/core:framework_internal",
-        "//tensorflow/core:lib",
-        "//tensorflow/core:test",
-    ],
-)
-
-# Repeat dot_operation_runtime_test with single-threded eigen.
+# Repeat dot_operation_runtime_test with single-threaded eigen.
 xla_test(
     name = "dot_operation_single_threaded_runtime_test",
     srcs = ["dot_operation_test.cc"],
@@ -679,6 +656,8 @@ xla_test(
             "--xla_cpu_multi_thread_eigen=false",
         ],
     },
+    shard_count = 20,
+    tags = ["optonly"],
     deps = [
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:array3d",
