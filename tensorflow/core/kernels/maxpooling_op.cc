@@ -56,7 +56,7 @@ template <typename Device, typename T>
 static void SpatialMaxPoolWithArgMaxHelper(
     OpKernelContext* context, Tensor* output, Tensor* output_arg_max,
     Tensor* input_backprop, const Tensor& tensor_in, const Tensor& out_backprop,
-    const PoolParameters& params, const Padding& padding) {
+    const PoolParameters& params) {
   typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
       ConstEigenMatrixMap;
   typedef Eigen::Map<Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>>
@@ -151,7 +151,7 @@ static void SpatialMaxPoolWithArgMaxHelper(
       }
     }
 
-    {
+    if (input_backprop != nullptr) {
       auto input_backprop_flat = input_backprop->flat<T>();
       auto out_arg_max_flat = output_arg_max->flat<int64>();
       auto out_backprop_flat = out_backprop.flat<T>();
@@ -293,7 +293,7 @@ class MaxPoolingGradOp : public OpKernel {
 
     SpatialMaxPoolWithArgMaxHelper<CPUDevice, T>(
         context, &tensor_out_dup, &tensor_out_arg_max, output, tensor_in,
-        out_backprop, params, padding_);
+        out_backprop, params);
   }
 
  private:
@@ -868,6 +868,14 @@ class MaxPoolingNoMaskV2Op : public OpKernel {
 
 template <typename Device, typename T>
 struct LaunchMaxPoolingWithArgmax;
+
+template <typename T>
+struct LaunchMaxPoolingWithArgmax<CPUDevice,T> {
+  static void launch(OpKernelContext* context, const PoolParameters& params, const Tensor& input, Tensor* output, Tensor* argmax, bool propogate_nans) {
+    Tensor unused;
+    SpatialMaxPoolWithArgMaxHelper<CPUDevice,T>(context, output, argmax, nullptr, input, unused, params);
+  }
+};
 
 template <typename Device, typename T>
 class MaxPoolingWithArgmaxOp : public OpKernel {
