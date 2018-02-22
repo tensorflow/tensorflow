@@ -154,6 +154,7 @@ sh_binary(
             "//tensorflow/contrib/eager/python:evaluator",
             "//tensorflow/contrib/gan:gan",
             "//tensorflow/contrib/graph_editor:graph_editor_pip",
+            "//tensorflow/contrib/ipu",
             "//tensorflow/contrib/keras:keras",
             "//tensorflow/contrib/labeled_tensor:labeled_tensor_pip",
             "//tensorflow/contrib/lite/toco:toco",

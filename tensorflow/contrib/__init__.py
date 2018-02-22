@@ -41,6 +41,7 @@ from tensorflow.contrib import grid_rnn
 from tensorflow.contrib import image
 from tensorflow.contrib import input_pipeline
 from tensorflow.contrib import integrate
+from tensorflow.contrib import ipu
 from tensorflow.contrib import keras
 from tensorflow.contrib import kernel_methods
 from tensorflow.contrib import kfac

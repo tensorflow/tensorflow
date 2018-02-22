@@ -4,6 +4,7 @@ package(default_visibility = ["//visibility:public"])
 
 load("@local_config_poplar//poplar:build_defs.bzl", "poplar_lib_directory")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_gen_op_wrapper_py")
 
 # Rule for creating the vertex program pre-compiled object
 genrule(
@@ -46,6 +47,30 @@ cc_library(
         "//tensorflow/core:framework_headers_lib",
         "//third_party/eigen3",
         "@protobuf_archive//:protobuf_headers",
+    ],
+)
+
+cc_library(
+    name = "ops",
+    srcs = [
+        "kernels/ipu_kernels.cc",
+        "ops/ipu_ops.cc",
+    ],
+    hdrs = [
+        "kernels/ipu_kernels.h",
+    ],
+    deps = [
+        "//tensorflow/core:framework_headers_lib",
+        "//third_party/eigen3",
+        "@protobuf_archive//:protobuf_headers",
+    ],
+    alwayslink = True,
+)
+
+tf_gen_op_wrapper_py(
+    name = "ipu_ops",
+    deps = [
+        ":ops",
     ],
 )
 
@@ -127,6 +152,7 @@ cc_library(
     hdrs = [],
     deps = [
         ":driver",
+        ":ops",
         "//tensorflow/compiler/jit:xla_jit_headers_lib",
         "//tensorflow/compiler/jit/kernels:xla_launch_op",
         "//tensorflow/compiler/tf2xla:xla_compiler",
