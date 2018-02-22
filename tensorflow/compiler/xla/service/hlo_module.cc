@@ -173,6 +173,19 @@ void HloModule::ReplaceComputations(
           }
           break;
         }
+        case HloOpcode::kConditional: {
+          HloComputation* new_true_body = tensorflow::gtl::FindWithDefault(
+              replacements, instruction->true_computation(), nullptr);
+          if (new_true_body != nullptr) {
+            instruction->set_true_computation(new_true_body);
+          }
+          HloComputation* new_false_body = tensorflow::gtl::FindWithDefault(
+              replacements, instruction->false_computation(), nullptr);
+          if (new_false_body != nullptr) {
+            instruction->set_false_computation(new_false_body);
+          }
+          break;
+        }
         default:
           break;
       }

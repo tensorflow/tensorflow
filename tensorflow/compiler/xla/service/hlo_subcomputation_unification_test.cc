@@ -205,4 +205,41 @@ TEST_F(HloSubcomputationUnificationTest, TwoIdenticalComputations) {
   EXPECT_EQ(*module->computations().begin(), module->entry_computation());
 }
 
+TEST_F(HloSubcomputationUnificationTest, UnifyConditionalComputations) {
+  auto module = CreateNewModule();
+  auto builder = HloComputation::Builder(TestName());
+
+  auto true_comp =
+      module->AddEmbeddedComputation(CreateR0S32AdditionComputation());
+  auto false_comp =
+      module->AddEmbeddedComputation(CreateR0S32AdditionComputation());
+
+  auto pred = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<bool>(true)));
+  auto constant1 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<int32>(5)));
+  auto constant2 = builder.AddInstruction(
+      HloInstruction::CreateConstant(Literal::CreateR0<int32>(3)));
+  auto cond = builder.AddInstruction(HloInstruction::CreateConditional(
+      r0s32_, pred, constant1, true_comp, constant2, false_comp));
+
+  module->AddEntryComputation(builder.Build());
+
+  EXPECT_EQ(3, module->computation_count());
+  EXPECT_NE(cond->true_computation(), cond->false_computation());
+  if (VLOG_IS_ON(1)) {
+    hlo_graph_dumper::DumpGraph(*module->entry_computation(),
+                                "before unification",
+                                module->config().debug_options());
+  }
+  EXPECT_TRUE(HloSubcomputationUnification().Run(module.get()).ValueOrDie());
+  if (VLOG_IS_ON(1)) {
+    hlo_graph_dumper::DumpGraph(*module->entry_computation(),
+                                "after unification",
+                                module->config().debug_options());
+  }
+  EXPECT_EQ(2, module->computation_count());
+  EXPECT_EQ(cond->true_computation(), cond->false_computation());
+}
+
 }  // namespace xla
