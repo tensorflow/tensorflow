@@ -718,6 +718,56 @@ int64 OpLevelCostEstimator::CountBatchMatMulOperations(
   return ops;
 }
 
+bool GetTensorShapeProtoFromTensorProto(const TensorProto& tensor_proto,
+                                        TensorShapeProto* tensor_shape_proto) {
+  tensor_shape_proto->Clear();
+  // First convert TensorProto into Tensor class so that it correctly parses
+  // data values within TensorProto (whether it's in int_val, int64_val,
+  // tensor_content, or anything.
+  Tensor tensor(tensor_proto.dtype());
+  if (!tensor.FromProto(tensor_proto)) {
+    LOG(WARNING) << "GetTensorShapeProtoFromTensorProto() -- "
+                 << "failed to parse TensorProto: "
+                 << tensor_proto.DebugString();
+    return false;
+  }
+  if (tensor.dims() != 1) {
+    LOG(WARNING) << "GetTensorShapeProtoFromTensorProto() -- "
+                 << "tensor is not 1D: " << tensor.dims();
+    return false;
+  }
+  // Then, convert it back to TensorProto using AsProtoField, which makes sure
+  // the data is in int_val, int64_val, or such repeated data fields, not in
+  // tensor_content.
+  TensorProto temp_tensor;
+  tensor.AsProtoField(&temp_tensor);
+
+#define TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO(type)        \
+  do {                                                   \
+    for (const auto& value : temp_tensor.type##_val()) { \
+      tensor_shape_proto->add_dim()->set_size(value);    \
+    }                                                    \
+  } while (0)
+
+  if (tensor.dtype() == DT_INT32 || tensor.dtype() == DT_INT16 ||
+      tensor.dtype() == DT_INT8 || tensor.dtype() == DT_UINT8) {
+    TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO(int);
+  } else if (tensor.dtype() == DT_INT64) {
+    TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO(int64);
+  } else if (tensor.dtype() == DT_UINT32) {
+    TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO(uint32);
+  } else if (tensor.dtype() == DT_UINT64) {
+    TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO(uint64);
+  } else {
+    LOG(WARNING) << "GetTensorShapeProtoFromTensorProto() -- "
+                 << "Unsupported dtype: " << tensor.dtype();
+    return false;
+  }
+#undef TENSOR_VALUES_TO_TENSOR_SHAPE_PROTO
+
+  return true;
+}
+
 // TODO(cliffy): Dedup this method and CountConv2DBackpropFilterOperations.
 int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
     const OpInfo& op_features, ConvolutionDimensions* returned_conv_dims,
@@ -732,20 +782,16 @@ int64 OpLevelCostEstimator::CountConv2DBackpropInputOperations(
   }
 
   TensorShapeProto input_shape;
+  bool shape_found = false;
   if (op_features.inputs(0).has_value()) {
     const TensorProto& value = op_features.inputs(0).value();
-    if (value.int64_val_size() > 0) {
-      for (int i = 0; i < value.int64_val_size(); ++i) {
-        input_shape.add_dim()->set_size(value.int64_val(i));
-      }
-    } else {
-      for (int i = 0; i < value.int_val_size(); ++i) {
-        input_shape.add_dim()->set_size(value.int_val(i));
-      }
-    }
-  } else if (op_features.outputs_size() == 1) {
+    shape_found = GetTensorShapeProtoFromTensorProto(value, &input_shape);
+  }
+  if (!shape_found && op_features.outputs_size() == 1) {
     input_shape = op_features.outputs(0).shape();
-  } else {
+    shape_found = true;
+  }
+  if (!shape_found) {
     // Set the minimum filter size that's feasible.
     for (int i = 0; i < 4; ++i) {
       input_shape.add_dim()->set_size(1);
@@ -778,20 +824,16 @@ int64 OpLevelCostEstimator::CountConv2DBackpropFilterOperations(
   DCHECK_EQ(kConv2dBackpropFilter, op_features.op());
 
   TensorShapeProto filter_shape;
+  bool shape_found = false;
   if (op_features.inputs_size() >= 2 && op_features.inputs(1).has_value()) {
     const TensorProto& value = op_features.inputs(1).value();
-    if (value.int64_val_size() > 0) {
-      for (int i = 0; i < value.int64_val_size(); ++i) {
-        filter_shape.add_dim()->set_size(value.int64_val(i));
-      }
-    } else {
-      for (int i = 0; i < value.int_val_size(); ++i) {
-        filter_shape.add_dim()->set_size(value.int_val(i));
-      }
-    }
-  } else if (op_features.outputs_size() == 1) {
+    shape_found = GetTensorShapeProtoFromTensorProto(value, &filter_shape);
+  }
+  if (!shape_found && op_features.outputs_size() == 1) {
     filter_shape = op_features.outputs(0).shape();
-  } else {
+    shape_found = true;
+  }
+  if (!shape_found) {
     // Set the minimum filter size that's feasible.
     for (int i = 0; i < 4; ++i) {
       filter_shape.add_dim()->set_size(1);

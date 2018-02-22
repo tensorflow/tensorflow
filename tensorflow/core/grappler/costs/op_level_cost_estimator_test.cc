@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/costs/op_level_cost_estimator.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/platform/test.h"
@@ -245,6 +247,109 @@ TEST_F(OpLevelCostEstimatorTest, BatchMatMul) {
                 DescribeBatchMatMul({2, 10, 2, 4}, {-1, 10, 4, 2}).op_info,
                 &batch_matmul_inaccurate));
   EXPECT_NE(matmul_inaccurate, batch_matmul_inaccurate);
+}
+
+// Helper functions for testing GetTensorShapeProtoFromTensorProto().
+void GetTensorProto(const DataType dtype, const std::vector<int64>& shape,
+                    const std::vector<int64> values, const bool tensor_content,
+                    TensorProto* tensor_proto) {
+  tensor_proto->Clear();
+  TensorProto temp_tensor_proto;
+  temp_tensor_proto.set_dtype(dtype);
+  for (const auto& x : shape) {
+    temp_tensor_proto.mutable_tensor_shape()->add_dim()->set_size(x);
+  }
+  for (const auto& x : values) {
+    if (dtype == DT_INT64) {
+      temp_tensor_proto.add_int64_val(x);
+    } else if (dtype == DT_INT32 || dtype == DT_INT16 || dtype == DT_INT8 ||
+               dtype == DT_UINT8) {
+      temp_tensor_proto.add_int_val(x);
+    } else if (dtype == DT_UINT32) {
+      temp_tensor_proto.add_uint32_val(x);
+    } else if (dtype == DT_UINT64) {
+      temp_tensor_proto.add_uint64_val(x);
+    } else {
+      CHECK(false) << "Unsupported dtype: " << dtype;
+    }
+  }
+  Tensor tensor(dtype);
+  CHECK(tensor.FromProto(temp_tensor_proto));
+  if (tensor_content) {
+    tensor.AsProtoTensorContent(tensor_proto);
+  } else {
+    tensor.AsProtoField(tensor_proto);
+  }
+}
+
+void ExpectTensorShape(const std::vector<int64>& expected,
+                       const TensorShapeProto& tensor_shape_proto) {
+  TensorShape tensor_shape_expected(expected);
+  TensorShape tensor_shape(tensor_shape_proto);
+
+  LOG(INFO) << "Expected: " << tensor_shape_expected.DebugString();
+  LOG(INFO) << "TensorShape: " << tensor_shape.DebugString();
+  EXPECT_TRUE(tensor_shape_expected == tensor_shape);
+}
+
+TEST_F(OpLevelCostEstimatorTest, GetTensorShapeProtoFromTensorProto) {
+  TensorProto tensor_proto;
+  TensorShapeProto tensor_shape_proto;
+
+  // Dimention larger than max value; should fail while converting to Tensor
+  // class.
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(255);
+  EXPECT_FALSE(
+      GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+
+  tensor_proto.Clear();
+  // Expect only 1D shape.
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(1);
+  tensor_proto.mutable_tensor_shape()->add_dim()->set_size(2);
+  EXPECT_FALSE(
+      GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+
+  // Expect only handle integer data types.
+  GetTensorProto(DT_FLOAT, {}, {}, /*tensor_content=*/false, &tensor_proto);
+  EXPECT_FALSE(
+      GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+
+  // Check GetTensorShapeProtoFromTensorProto() resturns correct values.
+  {
+    std::vector<int64> shape_expected = {10, 20, 30, 40};
+    GetTensorProto(DT_INT32, {4}, shape_expected, /*tensor_content=*/false,
+                   &tensor_proto);
+    EXPECT_TRUE(
+        GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+    ExpectTensorShape(shape_expected, tensor_shape_proto);
+  }
+
+  {
+    std::vector<int64> shape_expected = {40, 20, 90, 40};
+    GetTensorProto(DT_INT64, {4}, shape_expected, /*tensor_content=*/false,
+                   &tensor_proto);
+    EXPECT_TRUE(
+        GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+    ExpectTensorShape(shape_expected, tensor_shape_proto);
+  }
+
+  {
+    std::vector<int64> shape_expected = {10, 20, 30, 40};
+    GetTensorProto(DT_INT32, {4}, shape_expected, /*tensor_content=*/true,
+                   &tensor_proto);
+    EXPECT_TRUE(
+        GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+    ExpectTensorShape(shape_expected, tensor_shape_proto);
+  }
+
+  {
+    std::vector<int64> shape_expected = {40, 20, 90, 40};
+    GetTensorProto(DT_INT64, {4}, shape_expected, /*tensor_content=*/true,
+                   &tensor_proto);
+    EXPECT_TRUE(
+        GetTensorShapeProtoFromTensorProto(tensor_proto, &tensor_shape_proto));
+    ExpectTensorShape(shape_expected, tensor_shape_proto);
+  }
 }
 
 }  // end namespace grappler
