@@ -425,6 +425,7 @@ py_test(
     size = "medium",
     srcs = ["python/learn/estimators/kmeans_test.py"],
     srcs_version = "PY2AND3",
+    tags = ["nomac"],  # b/73741358
     deps = [
         ":learn",
         "//tensorflow/python:array_ops",
