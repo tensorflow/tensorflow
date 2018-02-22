@@ -39,7 +39,7 @@ struct LaunchUnpool<CPUDevice,T>
     auto shard = [&pooled_data, &indices, &unpooled_data](int64 start, int64 limit)
     {
       const int64 batch_size = GetTensorDim(pooled_data.shape(), FORMAT_NHWC, 'N');
-      const int64 numPooledPoints = pooled_data.shape().num_elements();
+      const int64 num_pooled_points = pooled_data.shape().num_elements();
       const int64 num_pooled_points_per_batch = pooled_data.shape().num_elements()/batch_size;
       const int64 num_unpooledpoints_per_batch = unpooled_data->shape().num_elements()/batch_size;
 
@@ -56,7 +56,7 @@ struct LaunchUnpool<CPUDevice,T>
           for (int64 index=0; index<num_pooled_points_per_batch; index++) {
             const int64 pooled_index = batch*num_pooled_points_per_batch+index;
             const int64 unpooled_index = indices_flat(pooled_index);
-            CHECK(pooled_index<numPooledPoints) << "Invalid pooled index: " << pooled_index << ", total pooled points: " << numPooledPoints;
+            CHECK(pooled_index<num_pooled_points) << "Invalid pooled index: " << pooled_index << ", total pooled points: " << num_pooled_points;
             unpooled_dataFlat(unpooled_index) = pooled_dataFlat(pooled_index);
           }
         }
@@ -142,11 +142,11 @@ struct LaunchUnpoolGradient<CPUDevice,T>
 template <typename T>
 struct LaunchUnpoolGradient<Eigen::GpuDevice,T>
 {
-  static void launch(tensorflow::OpKernelContext* context, const tensorflow::Tensor& unpooledGradient, const tensorflow::Tensor& indices, tensorflow::Tensor* pooledGradient)
+  static void launch(tensorflow::OpKernelContext* context, const tensorflow::Tensor& unpooled_gradient, const tensorflow::Tensor& indices, tensorflow::Tensor* pooled_gradient)
   {
-    tensorflow::int64 numPooledPoints = pooledGradient->NumElements();
+    tensorflow::int64 num_pooled_points = pooled_gradient->NumElements();
 
-    bool status = UnpoolBackward(unpooledGradient.flat<T>().data(), indices.flat<tensorflow::int64>().data(), pooledGradient->flat<T>().data(), numPooledPoints, context->eigen_gpu_device());
+    bool status = UnpoolBackward(unpooled_gradient.flat<T>().data(), indices.flat<tensorflow::int64>().data(), pooled_gradient->flat<T>().data(), num_pooled_points, context->eigen_gpu_device());
 
     if (!status) {
       context->SetStatus(tensorflow::errors::Internal("Failed launching MaxUnpool on GPU"));

@@ -2123,6 +2123,7 @@ def max_pool(value, ksize, strides, padding, data_format="NHWC", name=None):
                                 data_format=data_format,
                                 name=name)
 
+
 @ops.RegisterStatistics("Conv2D", "flops")
 def _calc_conv_flops(graph, node):
   """Calculates the compute resources needed for Conv2D."""
