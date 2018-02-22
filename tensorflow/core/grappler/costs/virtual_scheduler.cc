@@ -325,7 +325,7 @@ Status VirtualScheduler::Init() {
 
   // Get the nodes that would run to output fetch_nodes.
   bool ill_formed = false;
-  std::vector<const NodeDef*> nodes =
+  const std::vector<const NodeDef*> fetch_fanin_nodes =
       ComputeTransitiveFanin(graph, fetch_nodes, &ill_formed);
   if (ill_formed) {
     return errors::InvalidArgument(
@@ -339,7 +339,7 @@ Status VirtualScheduler::Init() {
   // exactly the same as those executed for real. One possible discrepancy could
   // be the control flow nodes, where tf only executes one path.
   std::unordered_map<string, const NodeDef*> name_to_node;
-  for (const auto& node : nodes) {
+  for (const auto& node : fetch_fanin_nodes) {
     name_to_node[node->name()] = node;
   }
 
@@ -360,7 +360,7 @@ Status VirtualScheduler::Init() {
 
   // Build node_map; for each node, create its NodeState and connect its inputs
   // and outputs.
-  for (const auto* curr_node : nodes) {
+  for (const auto* curr_node : fetch_fanin_nodes) {
     auto& curr_node_state = GetNodeStateOrCreateIt(curr_node);
     const string curr_node_device = DeviceName(curr_node);
     std::vector<string> inputs;
@@ -461,9 +461,11 @@ Status VirtualScheduler::Init() {
   }
 
   if (!feed_nodes.empty()) {
-    return errors::InvalidArgument(
-        strings::StrCat("Some feed nodes were not found in the graph: ",
-                        str_util::Join(feed_nodes, ",")));
+    // This isn't always a bug: when the caller hasn't specified the exact list
+    // of feed and fetch nodes, by default we consider all placeholders as feed
+    // nodes, but some of them may not be needed for the default fetch node.
+    VLOG(1) << "Some feed nodes were not consumed by the fetch fanin: "
+            << str_util::Join(feed_nodes, ",");
   }
   initialized_ = true;
   return Status::OK();
