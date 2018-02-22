@@ -17,17 +17,19 @@
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.python.ops.summary_ops import tensor_summary
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 
-@tf_export("summary.ipu_text")
-def ipu_compile_summary(name, tensor, collections=None):
+def ipu_compile_summary(name, collections=None):
+
+  report = gen_ipu_ops.ipu_summary()
 
   summary_metadata = summary_pb2.SummaryMetadata(
     plugin_data=summary_pb2.SummaryMetadata.PluginData(
       plugin_name="text"))
   t_summary = tensor_summary(
     name=name,
-    tensor=tensor,
+    tensor=report,
     summary_metadata=summary_metadata,
     collections=collections)
+
   return t_summary
