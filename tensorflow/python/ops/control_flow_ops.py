@@ -1836,8 +1836,6 @@ class CondContext(ControlFlowContext):
       # pylint: disable=protected-access
       op._add_control_input(self._pivot.op)
       # pylint: enable=protected-access
-      for x in op.outputs:
-        self._values.add(x.name)
     else:
       for index in range(len(op.inputs)):
         x = op.inputs[index]
@@ -1848,11 +1846,18 @@ class CondContext(ControlFlowContext):
           # pylint: enable=protected-access
       # Remove any external control dependency on this op.
       self._RemoveExternalControlEdges(op)
-      for x in op.outputs:
-        self._values.add(x.name)
       # pylint: disable=protected-access
       if op.graph._is_function(op.type) or op.type == "SymbolicGradient":
         op._add_control_input(self._pivot.op)
+      # pylint: enable=protected-access
+
+    # Mark op's outputs as seen by this context and any outer contexts.
+    output_names = [x.name for x in op.outputs]
+    ctxt = self
+    while ctxt is not None:
+      # pylint: disable=protected-access
+      ctxt._values.update(output_names)
+      ctxt = ctxt._outer_context
       # pylint: enable=protected-access
 
     if self._outer_context or not util.IsLoopExit(op):
