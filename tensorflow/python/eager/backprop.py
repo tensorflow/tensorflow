@@ -502,7 +502,7 @@ def val_and_grad_function(f, params=None):
   return decorated
 
 
-def make_vjp(f, params=None):
+def make_vjp(f, params=None, persistent=True):
   """Returns a function that computes f and is vjp w.r.t. params.
 
   The term "vjp" here is an abbreviation for vector-jacobian product.
@@ -511,6 +511,8 @@ def make_vjp(f, params=None):
     f: the function to be differentiated.
     params: the parameters (numbers or names) to differentiate with respect to.
        A value of None will differentiate with respect to all parameters.
+    persistent: Boolean controlling whether the VJP function can be re-used.
+      Must be True or False.
 
   Returns:
     A function, which when called, returns a tuple (value, vjp), where:
@@ -538,7 +540,7 @@ def make_vjp(f, params=None):
     """Computes the value and gradient of the decorated function."""
     parameter_positions = _get_arg_spec(f, params, args)
     assert not kwds, "The gradient function can't take keyword arguments."
-    this_tape = tape.push_new_tape()
+    this_tape = tape.push_new_tape(persistent=persistent)
     try:
       sources = []
       args = [
