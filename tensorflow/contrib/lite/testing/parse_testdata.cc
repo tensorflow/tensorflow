@@ -192,27 +192,25 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
   int model_outputs = interpreter->outputs().size();
   TF_LITE_ENSURE_EQ(context, model_outputs, example.outputs.size());
   for (size_t i = 0; i < interpreter->outputs().size(); i++) {
+    bool tensors_differ = false;
     int output_index = interpreter->outputs()[i];
     if (const float* data = interpreter->typed_tensor<float>(output_index)) {
       for (size_t idx = 0; idx < example.outputs[i].flat_data.size(); idx++) {
         float computed = data[idx];
         float reference = example.outputs[0].flat_data[idx];
         float diff = std::abs(computed - reference);
-        bool error_is_large = false;
         // For very small numbers, try absolute error, otherwise go with
         // relative.
-        if (std::abs(reference) < kRelativeThreshold) {
-          error_is_large = (diff > kAbsoluteThreshold);
-        } else {
-          error_is_large = (diff > kRelativeThreshold * std::abs(reference));
-        }
-        if (error_is_large) {
+        bool local_tensors_differ =
+            std::abs(reference) < kRelativeThreshold
+                ? diff > kAbsoluteThreshold
+                : diff > kRelativeThreshold * std::abs(reference);
+        if (local_tensors_differ) {
           fprintf(stdout, "output[%zu][%zu] did not match %f vs reference %f\n",
                   i, idx, data[idx], reference);
-          return kTfLiteError;
+          tensors_differ = local_tensors_differ;
         }
       }
-      fprintf(stderr, "\n");
     } else if (const int32_t* data =
                    interpreter->typed_tensor<int32_t>(output_index)) {
       for (size_t idx = 0; idx < example.outputs[i].flat_data.size(); idx++) {
@@ -221,10 +219,9 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
         if (std::abs(computed - reference) > 0) {
           fprintf(stderr, "output[%zu][%zu] did not match %d vs reference %d\n",
                   i, idx, computed, reference);
-          return kTfLiteError;
+          tensors_differ = true;
         }
       }
-      fprintf(stderr, "\n");
     } else if (const int64_t* data =
                    interpreter->typed_tensor<int64_t>(output_index)) {
       for (size_t idx = 0; idx < example.outputs[i].flat_data.size(); idx++) {
@@ -235,14 +232,15 @@ TfLiteStatus CheckOutputs(tflite::Interpreter* interpreter,
                   "output[%zu][%zu] did not match %" PRId64
                   " vs reference %" PRId64 "\n",
                   i, idx, computed, reference);
-          return kTfLiteError;
+          tensors_differ = true;
         }
       }
-      fprintf(stderr, "\n");
     } else {
       fprintf(stderr, "output[%zu] was not float or int data\n", i);
       return kTfLiteError;
     }
+    fprintf(stderr, "\n");
+    if (tensors_differ) return kTfLiteError;
   }
   return kTfLiteOk;
 }
