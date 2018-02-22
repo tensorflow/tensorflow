@@ -24,9 +24,12 @@ limitations under the License.
 
 namespace tensorflow {
 
-bool UnpoolForward(const float* input, TensorShape inputShape, const int64* indices, float* unpooledData, const Eigen::GpuDevice& device);
-bool UnpoolBackward(const float* unpooled_gradient, const int64* indices, float* pooled_gradient, const int64 num_pooled_points, const Eigen::GpuDevice& device);
-
+bool UnpoolForward(const float* input, TensorShape inputShape,
+                   const int64* indices, float* unpooledData,
+                   const Eigen::GpuDevice& device);
+bool UnpoolBackward(const float* unpooled_gradient, const int64* indices,
+                    float* pooled_gradient, const int64 num_pooled_points,
+                    const Eigen::GpuDevice& device);
 }
 
 #endif
