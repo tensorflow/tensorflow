@@ -234,7 +234,8 @@ Status Literal::CopySliceFromInternal(
       int64 src_index = linear_index(src_literal.shape(), src_indexes);
       int64 dest_index = linear_index(shape(), dest_indexes);
 
-      StridedCopy(data<NativeT>(), dest_index, stride_config.dest_stride,
+      // `this->` is needed to workaround MSVC bug: #16882
+      StridedCopy(this->data<NativeT>(), dest_index, stride_config.dest_stride,
                   src_literal.data<NativeT>(), src_index,
                   stride_config.source_stride, stride_config.minor_loop_size);
       return true;

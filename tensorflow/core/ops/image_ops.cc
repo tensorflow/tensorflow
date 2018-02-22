@@ -619,6 +619,10 @@ REGISTER_OP("NonMaxSuppression")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &max_output_size));
       // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
       DimensionHandle unused;
+      // The boxes[0] and scores[0] are both num_boxes.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
+      // The boxes[1] is 4.
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
 
       c->set_output(0, c->Vector(c->UnknownDim()));
@@ -643,6 +647,10 @@ REGISTER_OP("NonMaxSuppressionV2")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &iou_threshold));
       // The boxes is a 2-D float Tensor of shape [num_boxes, 4].
       DimensionHandle unused;
+      // The boxes[0] and scores[0] are both num_boxes.
+      TF_RETURN_IF_ERROR(
+          c->Merge(c->Dim(boxes, 0), c->Dim(scores, 0), &unused));
+      // The boxes[1] is 4.
       TF_RETURN_IF_ERROR(c->WithValue(c->Dim(boxes, 1), 4, &unused));
 
       c->set_output(0, c->Vector(c->UnknownDim()));

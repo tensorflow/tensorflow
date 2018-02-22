@@ -94,8 +94,8 @@ class BatchNormalization(base.Layer):
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
-    fused: if `True`, use a faster, fused implementation if possible.
-      If `None`, use the system recommended implementation.
+    fused: if `None` or `True`, use a faster, fused implementation if possible.
+      If `False`, use the system recommended implementation.
     trainable: Boolean, if `True` also add variables to the graph collection
       `GraphKeys.TRAINABLE_VARIABLES` (see tf.Variable).
     virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
@@ -729,8 +729,8 @@ def batch_normalization(inputs,
       and should be neither too small (which would add noise) nor too large
       (which would give stale estimates). Note that `momentum` is still applied
       to get the means and variances for inference.
-    fused: if `True`, use a faster, fused implementation if possible.
-      If `None`, use the system recommended implementation.
+    fused: if `None` or `True`, use a faster, fused implementation if possible.
+      If `False`, use the system recommended implementation.
     virtual_batch_size: An `int`. By default, `virtual_batch_size` is `None`,
       which means batch normalization is performed across the whole batch. When
       `virtual_batch_size` is not `None`, instead perform "Ghost Batch

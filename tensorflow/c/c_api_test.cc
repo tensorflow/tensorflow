@@ -2081,7 +2081,7 @@ TEST_F(CApiAttributesTest, Tensor) {
 }
 
 TEST_F(CApiAttributesTest, StringTensor) {
-  // Create the string-Tensor "atttribute" value.
+  // Create the string-Tensor "attribute" value.
   char encoded[] = {
       0,   0, 0, 0, 0, 0, 0, 0,  // array[uint64] offsets
       1,                         // varint encoded string length

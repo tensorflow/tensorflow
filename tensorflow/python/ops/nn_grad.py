@@ -863,27 +863,27 @@ def _BatchNormGrad(grad_y,
     grad_y = math_ops.cast(grad_y, dtypes.float32)
   if is_training:
     if data_format == b"NHWC":
-      keep_dims = False
+      keepdims = False
       reduce_axis = [0, 1, 2]
     else:
-      keep_dims = True
+      keepdims = True
       reduce_axis = [0, 2, 3]
       shape = [1, array_ops.size(scale), 1, 1]
       scale = array_ops.reshape(scale, shape)
-    mean_grad_y = math_ops.reduce_mean(grad_y, reduce_axis, keep_dims=keep_dims)
-    mean_x = math_ops.reduce_mean(x, reduce_axis, keep_dims=keep_dims)
+    mean_grad_y = math_ops.reduce_mean(grad_y, reduce_axis, keepdims=keepdims)
+    mean_x = math_ops.reduce_mean(x, reduce_axis, keepdims=keepdims)
     var_x = math_ops.reduce_mean(
         math_ops.squared_difference(x, array_ops.stop_gradient(mean_x)),
         reduce_axis,
-        keep_dims=keep_dims)
+        keepdims=keepdims)
     grad_y_offset = grad_y - mean_grad_y
     x_offset = x - mean_x
     mean = math_ops.reduce_mean(
-        grad_y * x_offset, axis=reduce_axis, keep_dims=keep_dims)
+        grad_y * x_offset, axis=reduce_axis, keepdims=keepdims)
     grad_x = scale * math_ops.rsqrt(var_x + epsilon) * (
         grad_y_offset - math_ops.reciprocal(var_x + epsilon) * mean * x_offset)
     grad_scale = math_ops.rsqrt(var_x + epsilon) * math_ops.reduce_sum(
-        grad_y * x_offset, axis=reduce_axis, keep_dims=keep_dims)
+        grad_y * x_offset, axis=reduce_axis, keepdims=keepdims)
     if data_format == b"NCHW":
       grad_scale = array_ops.squeeze(grad_scale)
     grad_offset = math_ops.reduce_sum(grad_y, axis=reduce_axis)

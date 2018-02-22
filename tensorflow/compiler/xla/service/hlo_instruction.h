@@ -589,12 +589,9 @@ class HloInstruction {
     if (opcode() != other.opcode()) {
       return false;
     }
-    auto eq_shapes = layout_sensitive
-                         ? [](const Shape& a,
-                              const Shape& b) { return ShapeUtil::Equal(a, b); }
-                         : [](const Shape& a, const Shape& b) {
-                             return ShapeUtil::Compatible(a, b);
-                           };
+    using EqShapeFuncType = bool (*)(const Shape&, const Shape&);
+    EqShapeFuncType eq_shapes =
+        layout_sensitive ? ShapeUtil::Equal : ShapeUtil::Compatible;
     if (!eq_shapes(shape(), other.shape())) {
       return false;
     }

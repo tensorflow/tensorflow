@@ -80,18 +80,18 @@ def dummy_model_fn(features, labels, params):
   _, _, _ = features, labels, params
 
 
-def check_eventfile_for_keyword(keyword, est):
+def check_eventfile_for_keyword(keyword, dir_):
   """Checks event files for the keyword."""
 
   writer_cache.FileWriterCache.clear()
 
   # Get last Event written.
-  event_paths = glob.glob(os.path.join(est.model_dir, 'events*'))
+  event_paths = glob.glob(os.path.join(dir_, 'events*'))
   last_event = None
   for last_event in summary_iterator.summary_iterator(event_paths[-1]):
     if last_event.summary is not None:
-      if last_event.summary.value:
-        if keyword in last_event.summary.value[0].tag:
+      for value in last_event.summary.value:
+        if keyword in value.tag:
           return True
 
   return False
@@ -610,7 +610,7 @@ class EstimatorTrainTest(test.TestCase):
     # Make sure nothing is stuck in limbo.
     writer_cache.FileWriterCache.clear()
 
-    if check_eventfile_for_keyword('loss', est):
+    if check_eventfile_for_keyword('loss', est.model_dir):
       return
     self.fail('{} should be part of reported summaries.'.format('loss'))
 
@@ -1290,8 +1290,9 @@ class EstimatorEvaluateTest(test.TestCase):
     # Make sure nothing is stuck in limbo.
     writer_cache.FileWriterCache.clear()
 
-    # Get last Event written.
-    if check_eventfile_for_keyword('image', est):
+    # Get last evaluation Event written.
+    if check_eventfile_for_keyword('image', os.path.join(est.model_dir,
+                                                         'eval')):
       return
     self.fail('{} should be part of reported summaries.'.format('image'))
 
