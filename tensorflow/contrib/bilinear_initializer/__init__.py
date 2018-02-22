@@ -14,10 +14,17 @@
 # ==============================================================================
 # pylint: disable=g-short-docstring-punctuation
 """Initializer using bilinear interpolation.
+
+@@bilinear_initializer
 """
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.bilinear_initializer import bilinear_initializer_op
+from tensorflow.contrib.bilinear_initializer.bilinear_initializer_op import bilinear_initializer
+
+from tensorflow.python.util.all_util import remove_undocumented
+
+_allowed_symbols = ['bilinear_initializer']
+remove_undocumented(__name__, _allowed_symbols)

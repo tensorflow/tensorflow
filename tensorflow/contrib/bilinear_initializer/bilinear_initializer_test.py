@@ -16,12 +16,13 @@
 
 import numpy as np
 import skimage.transform as sktr
-import tensorflow as tf
+from tensorflow.python.ops import nn_ops
+from tensorflow.python.platform import test
 from tensorflow.contrib.bilinear_initializer.bilinear_initializer_op import \
   bilinear_initializer
 
 
-class BilinearInitializerTest(tf.test.TestCase):
+class BilinearInitializerTest(test.TestCase):
 
   def testBilinearInitializer(self):
     with self.test_session() as sess:
@@ -38,19 +39,18 @@ class BilinearInitializerTest(tf.test.TestCase):
       img_benchmark = self.ski_upsample(factor, img)
 
       # Generate test image (tensorflow).
-      with tf.Session() as sess:
-        dims = [kernel_width, kernel_width, channel, num_output]
-        tf_filter = bilinear_initializer(dims).eval()
-        new_h = factor * height
-        new_w = factor * width
-        img_test = self.tf_upsample(sess,
-                                    tf_filter,
-                                    new_h,
-                                    new_w,
-                                    channel,
-                                    factor,
-                                    img)
-        self.assertTrue(np.allclose(img_benchmark, img_test))
+      dims = [kernel_width, kernel_width, channel, num_output]
+      tf_filter = bilinear_initializer(dims).eval()
+      new_h = factor * height
+      new_w = factor * width
+      img_test = self.tf_upsample(sess,
+                                  tf_filter,
+                                  new_h,
+                                  new_w,
+                                  channel,
+                                  factor,
+                                  img)
+      self.assertTrue(np.allclose(img_benchmark, img_test))
 
   def generate_input_img(self, height, width, channel):
     """Generate input image with a given height, width, and number of channels.
@@ -68,16 +68,14 @@ class BilinearInitializerTest(tf.test.TestCase):
   def tf_upsample(self, sess, tf_filter, new_h, new_w, channel, factor,
                   input_img):
     expanded_img = np.expand_dims(input_img, axis=0)
-    filt = tf.placeholder(tf.float32)
-    img_in = tf.placeholder(tf.float32)
-    res = tf.nn.conv2d_transpose(img_in,
-                                 filt,
-                                 output_shape=[1, new_h, new_w, channel],
-                                 strides=[1, factor, factor, 1])
-    final_result = sess.run(res,
-                            feed_dict={filt: tf_filter, img_in: expanded_img})
-    return final_result.squeeze()
+    res = nn_ops.conv2d_transpose(
+        expanded_img,
+        tf_filter,
+        output_shape=[1, new_h, new_w, channel],
+        strides=[1, factor, factor, 1])
+    result = sess.run(res)
+    return result.squeeze()
 
 
 if __name__ == "__main__":
-  tf.test.main()
+  test.main()

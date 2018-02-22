@@ -1,9 +1,16 @@
+# Initializer using bilinear interpolation.
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
+
 package(default_visibility = ["//tensorflow:__subpackages__"])
 
 load(
     "//tensorflow:tensorflow.bzl",
-    "tf_custom_op_library",
     "tf_copts",
+    "tf_custom_op_library",
+    "tf_gen_op_wrapper_py",
     "tf_py_test",
 )
 
@@ -46,15 +53,23 @@ tf_custom_op_library(
     ],
 )
 
+tf_gen_op_wrapper_py(
+    name = "bilinear_initializer_op_wrapper",
+    require_shape_functions = True,
+    visibility = ["//visibility:private"],
+    deps = [
+        ":bilinear_initializer_op_cc",
+    ],
+)
+
 tf_py_test(
     name = "bilinear_initializer_test",
     size = "small",
     srcs = ["bilinear_initializer_test.py"],
     additional_deps = [
-        "//tensorflow:tensorflow_py",
-    ],
-    data = [
-        ":bilinear_initializer.so",
+        ":bilinear_initializer_op_py",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform",
     ],
 )
 
@@ -67,8 +82,24 @@ py_library(
     data = [
         ":bilinear_initializer.so",
     ],
+    deps = [
+        ":bilinear_initializer_op_wrapper",
+        "//tensorflow/contrib/util:util_py",
+    ],
     srcs_version = "PY2AND3",
     visibility = [
         "//visibility:public",
     ],
+)
+
+filegroup(
+    name = "all_files",
+    srcs = glob(
+        ["**/*"],
+        exclude = [
+            "**/METADATA",
+            "**/OWNERS",
+        ],
+    ),
+    visibility = ["//tensorflow:__subpackages__"],
 )
