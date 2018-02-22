@@ -1217,7 +1217,7 @@ def set_host_c_compiler(environ_cp):
       environ_cp,
       var_name='HOST_C_COMPILER',
       var_default=default_c_host_compiler,
-      ask_for_var=('Please specify which C compiler should be used as the host'
+      ask_for_var=('Please specify which C compiler should be used as the host '
                    'C compiler.'),
       check_success=os.path.exists,
       error_msg='Invalid C compiler path. %s cannot be found.',
