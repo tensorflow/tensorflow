@@ -87,6 +87,7 @@ void MakeGeneralGraphTransformationsSet(
   transformations->Add(new ResolveTensorFlowTile);
   transformations->Add(new ResolveTensorFlowConcat);
   transformations->Add(new ResolveMultiplyByZero);
+  transformations->Add(new IdentifyDilatedConv);
   transformations->Add(new IdentifyL2Normalization);
   transformations->Add(new IdentifyL2Pool);
   transformations->Add(new IdentifyRelu1);
