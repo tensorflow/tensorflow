@@ -226,7 +226,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerUnaryOp(
       if (primitive_util::IsIntegralType(to_type)) {
         return ir_builder_->CreateIntCast(
             operand_value, llvm_ir::PrimitiveTypeToIrType(to_type, module_),
-            primitive_util::IsSignedIntegralType(to_type));
+            primitive_util::IsSignedIntegralType(from_type));
       }
       if (primitive_util::IsFloatingPointType(to_type)) {
         if (to_type == BF16) {
