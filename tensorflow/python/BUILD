@@ -2860,7 +2860,6 @@ py_library(
         ":dtypes",
         ":io_ops_gen",
         ":ops",
-        ":pywrap_tensorflow",
         ":util",
         "//tensorflow/python/eager:context",
     ],
