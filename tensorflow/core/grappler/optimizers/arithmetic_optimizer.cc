@@ -870,8 +870,13 @@ string ArithmeticOptimizer::TrySimplifyAndReplaceUses(
       }
       TensorValue value(&t);
       NodeDef* new_const_node = AddNode(*node, "const", /*copy_node=*/false);
-      *new_const_node =
-          ConstantFolding::CreateNodeDef(new_const_node->name(), value);
+      status = ConstantFolding::CreateNodeDef(new_const_node->name(), value,
+                                              new_const_node);
+      if (!status.ok()) {
+        LOG(WARNING) << "Failed to create const node: "
+                     << status.error_message();
+        return "";
+      }
       new_const_node->set_device(node->device());
       nodes_to_simplify->PushBack(new_const_node);
 
