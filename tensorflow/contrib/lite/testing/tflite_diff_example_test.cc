@@ -13,24 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/xla/array2d.h"
-#include "tensorflow/compiler/xla/ptr_util.h"
+#include "tensorflow/contrib/lite/testing/tflite_diff_flags.h"
+#include "tensorflow/contrib/lite/testing/tflite_diff_util.h"
 
-namespace xla {
-
-std::unique_ptr<Array2D<float>> MakeLinspaceArray2D(float from, float to,
-                                                    int64 n1, int64 n2) {
-  auto array = MakeUnique<Array2D<float>>(n1, n2);
-  int64 count = n1 * n2;
-  float step = (count > 1) ? (to - from) / (count - 1) : 0.0f;
-  auto set = [&array, n1, n2](int64 index, float value) {
-    (*array)(index / n2, index % n2) = value;
-  };
-  for (int64 i = 0; i < count - 1; ++i) {
-    set(i, from + i * step);
+int main(int argc, char** argv) {
+  ::tflite::testing::DiffOptions options =
+      ::tflite::testing::ParseTfliteDiffFlags(&argc, argv);
+  for (int i = 0; i < 100; i++) {
+    if (!tflite::testing::RunDiffTest(options)) {
+      return 1;
+    }
   }
-  set(count - 1, to);
-  return array;
+  return 0;
 }
-
-}  // namespace xla

@@ -45,6 +45,14 @@ class Var : public ResourceBase {
                            tensor_.shape().DebugString());
   }
 
+  // Only used in the resource variable path. In resource variables,
+  // tensor.IsInitialized() can be true (i.e. have memory allocated to it) while
+  // there is not a good value there due to a race condition, and it's possible
+  // to stumble upon this during variable.initialized_value(). So it's best to
+  // just store directly whether the variable is initialized.
+  bool is_initialized = false;  // GUARDED_BY(mu_) but annotalysis doesn't like
+                                // it.
+
  private:
   mutex mu_;
   Tensor tensor_;

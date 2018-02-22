@@ -51,7 +51,6 @@ from tensorflow.python.ops import standard_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training import moving_averages
-from tensorflow.python.layers.maxout import maxout
 
 # TODO(b/28426988): Replace legacy_* fns migrated from slim.
 # TODO(b/28426988): Remove legacy_* when all uses have migrated to new API.
@@ -2939,6 +2938,53 @@ def unit_norm(inputs, dim, epsilon=1e-7, scope=None):
       multiples.append(array_ops.ones([input_rank - 1 - dim], dtypes.int32))
     multiples = array_ops.concat(multiples, 0)
     return math_ops.div(inputs, array_ops.tile(lengths, multiples))
+
+
+@add_arg_scope
+def maxout(inputs, num_units, axis=-1, scope=None):
+  """Adds a maxout op from https://arxiv.org/abs/1302.4389
+
+  "Maxout Networks" Ian J. Goodfellow, David Warde-Farley, Mehdi Mirza, Aaron
+  Courville,
+   Yoshua Bengio
+
+  Usually the operation is performed in the filter/channel dimension. This can
+  also be
+  used after fully-connected layers to reduce number of features.
+
+  Arguments:
+    inputs: Tensor input
+    num_units: Specifies how many features will remain after maxout
+      in the `axis` dimension (usually channel).
+      This must be multiple of number of `axis`.
+    axis: The dimension where max pooling will be performed. Default is the
+    last dimension.
+    scope: Optional scope for variable_scope.
+
+  Returns:
+    A `Tensor` representing the results of the pooling operation.
+
+  Raises:
+    ValueError: if num_units is not multiple of number of features.
+  """
+  with variable_scope.variable_scope(scope, 'MaxOut', [inputs]):
+    inputs = ops.convert_to_tensor(inputs)
+    shape = inputs.get_shape().as_list()
+    num_channels = shape[axis]
+    if num_channels % num_units:
+      raise ValueError('number of features({}) is not '
+                       'a multiple of num_units({})'.format(
+                           num_channels, num_units))
+    shape[axis] = -1
+    shape += [num_channels // num_units]
+
+    # Dealing with batches with arbitrary sizes
+    for i in range(len(shape)):
+      if shape[i] is None:
+        shape[i] = array_ops.shape(inputs)[i]
+    outputs = math_ops.reduce_max(
+        array_ops.reshape(inputs, shape), -1, keepdims=False)
+    return outputs
 
 
 def poincare_normalize(x, axis=1, epsilon=1e-5, name=None):

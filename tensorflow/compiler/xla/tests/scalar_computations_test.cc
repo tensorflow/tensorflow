@@ -163,7 +163,7 @@ XLA_TEST_F(ScalarComputationsTest, CastS64ToF32) {
   auto a = builder.Parameter(0, ShapeUtil::MakeShape(S64, {}), "a");
   builder.ConvertElementType(a, F32);
 
-  int64 value = 3LL << 32;
+  int64 value = 3LL << 35;
   std::unique_ptr<Literal> a_literal = Literal::CreateR0<int64>(value);
   std::unique_ptr<GlobalData> a_data =
       client_->TransferToServer(*a_literal).ConsumeValueOrDie();

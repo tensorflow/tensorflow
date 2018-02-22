@@ -107,6 +107,8 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<LogisticOperator>("LOGISTIC", OperatorType::kLogistic);
   CheckSimpleOperator<TanhOperator>("TANH", OperatorType::kTanh);
   CheckSimpleOperator<ExpOperator>("EXP", OperatorType::kExp);
+  CheckSimpleOperator<LogSoftmaxOperator>("LOG_SOFTMAX",
+                                          OperatorType::kLogSoftmax);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

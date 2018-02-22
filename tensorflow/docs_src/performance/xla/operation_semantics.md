@@ -440,11 +440,13 @@ area and a computation is performed for each possible position of the window.
 | `lhs`            | `ComputationDataHandle` | rank n+2 array of inputs      |
 | `rhs`            | `ComputationDataHandle` | rank n+2 array of kernel      |
 :                  :                         : weights                       :
-| `window_strides` | `ArraySlice<int64>`     | n-d array of kernel strides   |
-| `padding`        | `ArraySlice<pair<int64, | n-d array of (low, high)      |
+| `window_strides` | `ArraySlice<int64>`     | size n array of kernel strides|
+| `padding`        | `ArraySlice<pair<int64, | size n array of (low, high)   |
 :                  : int64>>`                : padding                       :
-| `lhs_dilation`   | `ArraySlice<int64>`     | n-d lhs dilation factor array |
-| `rhs_dilation`   | `ArraySlice<int64>`     | n-d rhs dilation factor array |
+| `lhs_dilation`   | `ArraySlice<int64>`     | size n lhs dilation factor    |
+:                  :                         : array                         |
+| `rhs_dilation`   | `ArraySlice<int64>`     | size n rhs dilation factor
+:                  :                         : array                         |
 
 Let n be the number of spatial dimensions. The `lhs` argument is a rank n+2
 array describing the base area. This is called the input, even though of course

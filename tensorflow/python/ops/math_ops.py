@@ -1295,9 +1295,9 @@ def _ReductionDims(x, axis, reduction_indices):
     return axis
   else:
     # Fast path: avoid creating Rank and Range ops if ndims is known.
-    if isinstance(x, ops.Tensor) and x.get_shape().ndims is not None:
+    if isinstance(x, ops.Tensor) and x._rank() is not None:  # pylint: disable=protected-access
       return constant_op.constant(
-          np.arange(x.get_shape().ndims), dtype=dtypes.int32)
+          np.arange(x._rank()), dtype=dtypes.int32)  # pylint: disable=protected-access
     if (isinstance(x, sparse_tensor.SparseTensor) and
         x.dense_shape.get_shape().is_fully_defined()):
       rank = x.dense_shape.get_shape()[0].value  # sparse.dense_shape is 1-D.

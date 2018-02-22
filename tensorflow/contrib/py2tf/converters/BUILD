@@ -27,6 +27,7 @@ py_library(
         "for_loops.py",
         "list_comprehension.py",
         "logical_expressions.py",
+        "name_scopes.py",
         "side_effect_guards.py",
     ],
     srcs_version = "PY2AND3",
@@ -141,6 +142,16 @@ py_test(
 )
 
 py_test(
+    name = "name_scopes_test",
+    srcs = ["name_scopes_test.py"],
+    deps = [
+        ":test_lib",
+        "//tensorflow/contrib/py2tf/pyct",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+py_test(
     name = "list_comprehension_test",
     srcs = ["list_comprehension_test.py"],
     srcs_version = "PY2AND3",
@@ -166,6 +177,11 @@ py_test(
     name = "side_effect_guards_test",
     srcs = ["side_effect_guards_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        # TODO(mdan): Fix.
+        "flaky",
+        "notap",
+    ],
     deps = [
         ":test_lib",
         "//tensorflow/contrib/py2tf/pyct",

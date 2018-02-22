@@ -13,6 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/op.h"
 
 namespace tensorflow {
@@ -33,7 +34,8 @@ REGISTER_OP("Skipgram")
     .Attr("batch_size: int")
     .Attr("window_size: int = 5")
     .Attr("min_count: int = 5")
-    .Attr("subsample: float = 1e-3");
+    .Attr("subsample: float = 1e-3")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 REGISTER_OP("NegTrain")
     .Deprecated(19,
@@ -46,6 +48,7 @@ REGISTER_OP("NegTrain")
     .Input("lr: float")
     .SetIsStateful()
     .Attr("vocab_count: list(int)")
-    .Attr("num_negative_samples: int");
+    .Attr("num_negative_samples: int")
+    .SetShapeFn(shape_inference::UnknownShape);
 
 }  // end namespace tensorflow
