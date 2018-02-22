@@ -256,6 +256,11 @@ py_test(
     size = "small",
     srcs = ["_impl/keras/metrics_test.py"],
     srcs_version = "PY2AND3",
+    tags = [
+        "manual",
+        "no_oss",
+        "notap",
+    ],
     deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
