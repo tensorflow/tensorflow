@@ -922,7 +922,7 @@ class PoolingTest(test.TestCase):
         input_data,_,_,indices,unpooled_shape = GenerateUnpoolData()
         with self.test_session(use_gpu=use_gpu):
           pooled_data = constant_op.constant(input_data, dtype=dtypes.float32)
-          unpooled_data = gen_nn_ops._unpool(pooled_data, indices, unpooled_shape).eval()
+          unpooled_data = nn_ops.unpool(pooled_data, indices, unpooled_shape).eval()
           self.assertAllCloseAccordingToType(input_data.ravel(), unpooled_data.ravel()[indices.ravel()])
 
   def testUnpoolGrad(self):
