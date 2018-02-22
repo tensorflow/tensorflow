@@ -35,11 +35,14 @@ set OTHER_CMAKE_ARGS=-Dtensorflow_BUILD_PYTHON_BINDINGS=ON ^
                      -Dtensorflow_ENABLE_SNAPPY_SUPPORT=ON
 REM END OPTION LISTS
 set PARENT_DIR=%~dp0
-for /F "skip=2 tokens=1 delims=." %%i in ('msbuild /version') do set MSVC_VERSION=%%i
-if %errorlevel% neq 0 (
-  echo "msbuild is not in PATH, please use me in VS prompt"
+msbuild /version
+if errorlevel 9009 (
+  echo msbuild is not in PATH, please use me in VS prompt
   goto EXIT
-) else if %MSVC_VERSION%==15 (
+)
+REM take msbuild version, tested on VS2015 and VS2017
+for /F "skip=2 tokens=1 delims=." %%i in ('msbuild /version') do set MSVC_VERSION=%%i
+if %MSVC_VERSION%==15 (
   set CMAKE_GENERATOR="Visual Studio 15 2017 Win64"
 ) else if %MSVC_VERSION%==14 (
   set CMAKE_GENERATOR="Visual Studio 14 2015 Win64"
@@ -76,6 +79,7 @@ if /I "%GPU%"=="ON" (
       goto EXIT
     )
   )
+  set OTHER_CMAKE_ARGS=%OTHER_CMAKE_ARGS% -DCUDNN_HOME=%CUDA_HOME%
 )
 
 if not exist build mkdir build
@@ -85,7 +89,7 @@ if not "%1"=="" goto Build
 :Generate
 cmake .. -G %CMAKE_GENERATOR% -DCMAKE_BUILD_TYPE=Release ^
 -DSWIG_EXECUTABLE=%SWIG_EXECUTABLE% -DPYTHON_EXECUTABLE=%PYTHON_EXE% -DPYTHON_LIBRARIES=%PYTHON_LIB% ^
--Dtensorflow_ENABLE_GPU=%GPU% -DCUDNN_HOME=%CUDA_HOME% ^
+-Dtensorflow_ENABLE_GPU=%GPU% ^
 -Dtensorflow_BUILD_SHARED_LIB=%SHARED_LIB% ^
 -Dtensorflow_WIN_CPU_SIMD_OPTIONS=%WIN_CPU_SIMD% ^
 -Dtensorflow_ENABLE_MKL_SUPPORT=%MKL% ^
@@ -98,6 +102,7 @@ if errorlevel 1 (
 )
 
 :Build
+REM /m:8 is using 8 threads to compile, you can change this number to fit for your environment
 if not "%1"=="" (
   if exist %~nx1 MSBuild /p:Configuration=Release /m:8 %~nx1
 )
