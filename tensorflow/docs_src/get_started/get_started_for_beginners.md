@@ -36,6 +36,7 @@ the following three:
   alt="Petal geometry compared for three iris species: Iris setosa, Iris virginica, and Iris versicolor"
   src="../images/iris_three_species.jpg">
 </div>
+
 **From left to right,
 [*Iris setosa*](https://commons.wikimedia.org/w/index.php?curid=170298) (by
 [Radomil](https://commons.wikimedia.org/wiki/User:Radomil), CC BY-SA 3.0),
@@ -188,6 +189,7 @@ provides a programming stack consisting of multiple API layers:
 <div style="margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../images/tensorflow_programming_environment.png">
 </div>
+
 **The TensorFlow Programming Environment.**
 <p>&nbsp;</p>
 
@@ -380,6 +382,7 @@ fully connected neural network consisting of three hidden layers:
 <div style="margin:auto; margin-bottom:10px; margin-top:20px;">
 <img style="width:100%" src="../images/simple_dnn.svg">
 </div>
+
 **A neural network with three hidden layers.**
 <p>&nbsp;</p>
 
@@ -568,6 +571,7 @@ of 0.5.  The following suggests a more effective model:
   <tr> <td>5.5</td> <td>2.5</td> <td>4.0</td> <td>1.3</td> <td>1</td> 
           <td style="background-color:green">1</td></tr>
 </table>
+
 **A model that is 80% accurate.**
 <p>&nbsp;</p>
 
