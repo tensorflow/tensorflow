@@ -3361,9 +3361,9 @@ class Graph(object):
           if (op.device and pydev.canonical_name(op.device) !=
               pydev.canonical_name(colocation_op.device)):
             logging.warning("Tried to colocate %s with an op %s that had "
-                            "a different device: %s vs %s. "
-                            "Ignoring colocation property.", op.name,
-                            colocation_op.name, op.device,
+                            "a different device: %s vs %s. Postponing "
+                            "error-checking until all devices are assigned.",
+                            op.name, colocation_op.name, op.device,
                             colocation_op.device)
           else:
             op._set_device(colocation_op.device)  # pylint: disable=protected-access
