@@ -792,6 +792,8 @@ TfLiteStatus InterpreterBuilder::operator()(
     return cleanup_and_error();
   }
 
+  (**interpreter).set_model(model_);
+
   // Parse inputs/outputs
   (**interpreter).SetInputs(FlatBufferIntArrayToVector(subgraph->inputs()));
   (**interpreter).SetOutputs(FlatBufferIntArrayToVector(subgraph->outputs()));
