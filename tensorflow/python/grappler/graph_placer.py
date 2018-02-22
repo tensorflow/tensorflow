@@ -68,6 +68,16 @@ def PlaceGraph(metagraph,
 
   item = gitem.Item(optimized_metagraph)
 
+  # Measure the runtime achievable with the original placement.
+  try:
+    _, original_run_time, _ = cluster.MeasureCosts(item)
+    if verbose:
+      print("Runtime for original placement: " + str(original_run_time))
+  except errors.OpError as e:
+    if verbose:
+      print("Original placement isn't feasible: " + str(e))
+    original_run_time = hparams.failing_signal
+
   if hparams is None:
     hparams = hierarchical_controller.hierarchical_controller_hparams()
   # We run with a single child
@@ -98,7 +108,7 @@ def PlaceGraph(metagraph,
               print("Failed to run graph:" + str(e))
             run_time = hparams.failing_signal
           updated = model.update_reward(sess, run_time, verbose=verbose)
-          if updated:
+          if updated and run_time < original_run_time:
             if verbose:
               print("Found better placement, with runtime " + str(run_time))
             model.export_placement(metagraph)
