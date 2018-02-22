@@ -367,35 +367,34 @@ class Sequential(Model):
   Arguments:
       layers: list of layers to add to the model.
 
-  # Note
-      The first layer passed to a Sequential model
-      should have a defined input shape. What that
-      means is that it should have received an `input_shape`
-      or `batch_input_shape` argument,
-      or for some type of layers (recurrent, Dense...)
-      an `input_dim` argument.
+  Note: The first layer passed to a Sequential model
+  should have a defined input shape. What that
+  means is that it should have received an `input_shape`
+  or `batch_input_shape` argument,
+  or for some type of layers (recurrent, Dense...)
+  an `input_dim` argument.
 
   Example:
+  
+  ```python
+  model = Sequential()
+  # first layer must have a defined input shape
+  model.add(Dense(32, input_dim=500))
+  # afterwards, Keras does automatic shape inference
+  model.add(Dense(32))
 
-      ```python
-          model = Sequential()
-          # first layer must have a defined input shape
-          model.add(Dense(32, input_dim=500))
-          # afterwards, Keras does automatic shape inference
-          model.add(Dense(32))
+  # also possible (equivalent to the above):
+  model = Sequential()
+  model.add(Dense(32, input_shape=(500,)))
+  model.add(Dense(32))
 
-          # also possible (equivalent to the above):
-          model = Sequential()
-          model.add(Dense(32, input_shape=(500,)))
-          model.add(Dense(32))
-
-          # also possible (equivalent to the above):
-          model = Sequential()
-          # here the batch dimension is None,
-          # which means any batch size will be accepted by the model.
-          model.add(Dense(32, batch_input_shape=(None, 500)))
-          model.add(Dense(32))
-      ```
+  # also possible (equivalent to the above):
+  model = Sequential()
+  # here the batch dimension is None,
+  # which means any batch size will be accepted by the model.
+  model.add(Dense(32, batch_input_shape=(None, 500)))
+  model.add(Dense(32))
+  ```
   """
 
   def __init__(self, layers=None, name=None):
