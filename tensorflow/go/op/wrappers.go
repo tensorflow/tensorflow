@@ -278,6 +278,57 @@ func FakeQuantWithMinMaxVarsPerChannelGradient(scope *Scope, gradients tf.Output
 	return op.Output(0), op.Output(1), op.Output(2)
 }
 
+// FakeQuantWithMinMaxVarsPerChannelAttr is an optional argument to FakeQuantWithMinMaxVarsPerChannel.
+type FakeQuantWithMinMaxVarsPerChannelAttr func(optionalAttr)
+
+// FakeQuantWithMinMaxVarsPerChannelNumBits sets the optional num_bits attribute to value.
+// If not specified, defaults to 8
+func FakeQuantWithMinMaxVarsPerChannelNumBits(value int64) FakeQuantWithMinMaxVarsPerChannelAttr {
+	return func(m optionalAttr) {
+		m["num_bits"] = value
+	}
+}
+
+// FakeQuantWithMinMaxVarsPerChannelNarrowRange sets the optional narrow_range attribute to value.
+// If not specified, defaults to false
+func FakeQuantWithMinMaxVarsPerChannelNarrowRange(value bool) FakeQuantWithMinMaxVarsPerChannelAttr {
+	return func(m optionalAttr) {
+		m["narrow_range"] = value
+	}
+}
+
+// Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
+//
+// `[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
+// to 'outputs' tensor of same shape as `inputs`.
+//
+// `[min; max]` define the clamping range for the `inputs` data.
+// `inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
+// when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
+// then de-quantized and output as floats in `[min; max]` interval.
+// `num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.
+//
+// This operation has a gradient and thus allows for training `min` and `max`
+// values.
+func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelAttr) (outputs tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "FakeQuantWithMinMaxVarsPerChannel",
+		Input: []tf.Input{
+			inputs, min, max,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Partitions `data` into `num_partitions` tensors using indices from `partitions`.
 //
 // For each index tuple `js` of size `partitions.ndim`, the slice `data[js, ...]`
@@ -2423,26 +2474,6 @@ func ReaderNumWorkUnitsCompletedV2(scope *Scope, reader_handle tf.Output) (units
 		Type: "ReaderNumWorkUnitsCompletedV2",
 		Input: []tf.Input{
 			reader_handle,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns x / y element-wise for real types.
-//
-// If `x` and `y` are reals, this will return the floating-point division.
-//
-// *NOTE*: `Div` supports broadcasting. More about broadcasting
-// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
-func RealDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "RealDiv",
-		Input: []tf.Input{
-			x, y,
 		},
 	}
 	op := scope.AddOperation(opspec)
@@ -15312,57 +15343,6 @@ func TruncatedNormal(scope *Scope, shape tf.Output, dtype tf.DataType, optional 
 	return op.Output(0)
 }
 
-// FakeQuantWithMinMaxVarsPerChannelAttr is an optional argument to FakeQuantWithMinMaxVarsPerChannel.
-type FakeQuantWithMinMaxVarsPerChannelAttr func(optionalAttr)
-
-// FakeQuantWithMinMaxVarsPerChannelNumBits sets the optional num_bits attribute to value.
-// If not specified, defaults to 8
-func FakeQuantWithMinMaxVarsPerChannelNumBits(value int64) FakeQuantWithMinMaxVarsPerChannelAttr {
-	return func(m optionalAttr) {
-		m["num_bits"] = value
-	}
-}
-
-// FakeQuantWithMinMaxVarsPerChannelNarrowRange sets the optional narrow_range attribute to value.
-// If not specified, defaults to false
-func FakeQuantWithMinMaxVarsPerChannelNarrowRange(value bool) FakeQuantWithMinMaxVarsPerChannelAttr {
-	return func(m optionalAttr) {
-		m["narrow_range"] = value
-	}
-}
-
-// Fake-quantize the 'inputs' tensor of type float and one of the shapes: `[d]`,
-//
-// `[b, d]` `[b, h, w, d]` via per-channel floats `min` and `max` of shape `[d]`
-// to 'outputs' tensor of same shape as `inputs`.
-//
-// `[min; max]` define the clamping range for the `inputs` data.
-// `inputs` values are quantized into the quantization range (`[0; 2^num_bits - 1]`
-// when `narrow_range` is false and `[1; 2^num_bits - 1]` when it is true) and
-// then de-quantized and output as floats in `[min; max]` interval.
-// `num_bits` is the bitwidth of the quantization; between 2 and 8, inclusive.
-//
-// This operation has a gradient and thus allows for training `min` and `max`
-// values.
-func FakeQuantWithMinMaxVarsPerChannel(scope *Scope, inputs tf.Output, min tf.Output, max tf.Output, optional ...FakeQuantWithMinMaxVarsPerChannelAttr) (outputs tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "FakeQuantWithMinMaxVarsPerChannel",
-		Input: []tf.Input{
-			inputs, min, max,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // RandomShuffleAttr is an optional argument to RandomShuffle.
 type RandomShuffleAttr func(optionalAttr)
 
@@ -17760,23 +17740,6 @@ func SoftplusGrad(scope *Scope, gradients tf.Output, features tf.Output) (backpr
 	return op.Output(0)
 }
 
-// Creates a dataset that contains the unique elements of `input_dataset`.
-func UniqueDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "UniqueDataset",
-		Input: []tf.Input{
-			input_dataset,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // SelfAdjointEigV2Attr is an optional argument to SelfAdjointEigV2.
 type SelfAdjointEigV2Attr func(optionalAttr)
 
@@ -20015,6 +19978,26 @@ func SparseTensorSliceDataset(scope *Scope, indices tf.Output, values tf.Output,
 		Type: "SparseTensorSliceDataset",
 		Input: []tf.Input{
 			indices, values, dense_shape,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns x / y element-wise for real types.
+//
+// If `x` and `y` are reals, this will return the floating-point division.
+//
+// *NOTE*: `Div` supports broadcasting. More about broadcasting
+// [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+func RealDiv(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "RealDiv",
+		Input: []tf.Input{
+			x, y,
 		},
 	}
 	op := scope.AddOperation(opspec)

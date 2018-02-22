@@ -47,6 +47,8 @@ class BuiltinFunctionsTest(converter_test_base.TestCase):
                          sess.run(
                              result.test_fn(constant_op.constant([0, 0, 0]))))
 
+        self.assertEqual(3, result.test_fn([0, 0, 0]))
+
   def test_print_with_op(self):
 
     def test_fn(a):

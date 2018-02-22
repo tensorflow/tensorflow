@@ -419,6 +419,11 @@ def with_c_api(cls):
   Returns:
     cls with new test methods added
   """
+  # If the C API is already enabled, don't do anything. Some tests break if the
+  # same test is run twice, so this allows us to turn on the C API by default
+  # without breaking these tests.
+  if ops._USE_C_API: return cls
+
   for name, value in cls.__dict__.copy().items():
     if callable(value) and name.startswith("test"):
       setattr(cls, name + "WithCApi", enable_c_api(value))

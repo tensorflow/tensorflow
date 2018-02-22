@@ -36,7 +36,8 @@ enum FileFormat {
 // are not normally encoded in model files and in general may not be thought
 // of as properties of models, instead describing how models are to be
 // processed in the context of the present tooling job.
-// Next Id: 13
+//
+// Next ID to use: 14.
 message TocoFlags {
   // Input file format
   optional FileFormat input_format = 1;
@@ -136,4 +137,8 @@ message TocoFlags {
   //    - Default to false if the output format is TENSORFLOW_GRAPHDEF.
   //    - Default to true in all other cases.
   optional bool drop_control_dependency = 12;
+
+  // Disables transformations that fuse subgraphs such as known LSTMs (not all
+  // LSTMs are identified).
+  optional bool debug_disable_recurrent_cell_fusion = 13;
 }

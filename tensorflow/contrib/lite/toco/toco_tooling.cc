@@ -234,7 +234,9 @@ void Transform(const TocoFlags& toco_flags, Model* model) {
   }
   transformations.Add(new ConvertPureConvToDepthwise);
   if (SupportsLstmCell(output_format)) {
-    transformations.Add(new IdentifyLstmCell);
+    if (!toco_flags.debug_disable_recurrent_cell_fusion()) {
+      transformations.Add(new IdentifyLstmCell);
+    }
     if (output_format == TFLITE) {
       transformations.Add(new toco::SplitLstmCellInputs);
     } else {

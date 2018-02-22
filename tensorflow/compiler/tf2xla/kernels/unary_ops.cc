@@ -60,11 +60,13 @@ XLAJIT_MAKE_UNARY(
                     b->Add(XlaHelpers::One(b, input_type(0)), x))));
 
 // acosh(x) = log(x + sqrt(x^2 - 1))
+//          = log(x + sqrt((x+1)*(x-1)))
 XLAJIT_MAKE_UNARY(
     Acosh,
-    b->Log(b->Add(x, b->Pow(b->Sub(b->Mul(x, x),
-                                   XlaHelpers::One(b, input_type(0))),
-                            XlaHelpers::FloatLiteral(b, input_type(0), 0.5)))));
+    b->Log(b->Add(x,
+                  b->Pow(b->Mul(b->Add(x, XlaHelpers::One(b, input_type(0))),
+                                b->Sub(x, XlaHelpers::One(b, input_type(0)))),
+                         XlaHelpers::FloatLiteral(b, input_type(0), 0.5)))));
 
 // asin(x) = 2 * atan(x / (1 + sqrt(1 - x^2)))
 XLAJIT_MAKE_UNARY(

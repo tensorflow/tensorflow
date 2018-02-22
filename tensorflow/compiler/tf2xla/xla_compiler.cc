@@ -365,6 +365,13 @@ Status BuildComputation(
               return a->arg_num() < b->arg_num();
             });
 
+  // Attach a common operator name as metadata. This has no semantic effect — it
+  // merely makes the HLO graph more readable when visualized via TensorBoard,
+  // since TensorBoard forms groups out of operators with similar names.
+  xla::OpMetadata retval_metadata;
+  retval_metadata.set_op_name("XLA_Retvals");
+  builder->SetOpMetadata(retval_metadata);
+
   for (const XlaResource* resource : arg_resources) {
     const XlaCompiler::Argument& arg = args[resource->arg_num()];
     const int core = arg_cores[resource->arg_num()];
@@ -412,6 +419,8 @@ Status BuildComputation(
 
   // Builds the XLA computation.
   builder->Tuple(elems);
+  builder->ClearOpMetadata();
+
   xla::StatusOr<xla::Computation> computation_status = builder->Build();
   if (!computation_status.ok()) {
     return computation_status.status();
@@ -514,6 +523,13 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
+  // Attach a common operator name as metadata. This has no semantic effect — it
+  // merely makes the HLO graph more readable when visualized via TensorBoard,
+  // since TensorBoard forms groups out of operators with similar names.
+  xla::OpMetadata arg_metadata;
+  arg_metadata.set_op_name("XLA_Args");
+  builder->SetOpMetadata(arg_metadata);
+
   // Build parameter handles for non-constant arguments.
   std::vector<xla::ComputationDataHandle> arg_handles(input_mapping->size());
   if (use_tuple_arg) {
@@ -551,6 +567,8 @@ Status XlaCompiler::BuildArguments(
           builder->Parameter(i, (*input_shapes)[i], strings::StrCat("arg", i));
     }
   }
+
+  builder->ClearOpMetadata();
 
   // Fill in the handles in non-constant arguments.
   VLOG(2) << "XLA computation inputs:";

@@ -131,8 +131,8 @@ class ClusterTest(test.TestCase):
   def testAvailableOps(self):
     with cluster.Provision() as gcluster:
       op_names = gcluster.ListAvailableOps()
-      self.assertTrue(b'Add' in op_names)
-      self.assertTrue(b'MatMul' in op_names)
+      self.assertTrue('Add' in op_names)
+      self.assertTrue('MatMul' in op_names)
       self.assertEqual(op_names, sorted(op_names))
 
   def testSupportDevices(self):

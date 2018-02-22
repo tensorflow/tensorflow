@@ -206,7 +206,7 @@ static PyObject* TF_ListDevices(GCluster cluster) {
   return result;
 }
 
-static std::vector<string> TF_ListAvailableOps() {
+static PyObject* TF_ListAvailableOps() {
   tensorflow::OpRegistry* registry = tensorflow::OpRegistry::Global();
   std::vector<tensorflow::OpDef> ops;
   registry->GetRegisteredOps(&ops);
@@ -215,7 +215,14 @@ static std::vector<string> TF_ListAvailableOps() {
     op_names.push_back(op.name());
   }
   std::sort(op_names.begin(), op_names.end());
-  return op_names;
+
+  PyGILState_STATE gstate = PyGILState_Ensure();
+  PyObject* result = PyList_New(op_names.size());
+  for (int i = 0; i < op_names.size(); ++i) {
+    PyList_SetItem(result, i, PyString_FromString(op_names[i].c_str()));
+  }
+  PyGILState_Release(gstate);
+  return result;
 }
 
 static PyObject* TF_GetSupportedDevices(GCluster cluster, GItem item) {
@@ -432,7 +439,7 @@ static GCluster TF_NewVirtualCluster(
     TF_Status* out_status);
 static void TF_ShutdownCluster(GCluster cluster);
 static PyObject* TF_ListDevices(GCluster cluster);
-static std::vector<string> TF_ListAvailableOps();
+static PyObject* TF_ListAvailableOps();
 static PyObject* TF_GetSupportedDevices(GCluster cluster, GItem item);
 static float TF_EstimatePerformance(const tensorflow::NamedDevice& device);
 static PyObject* TF_MeasureCosts(

@@ -51,11 +51,13 @@ enum KernelType {
   kCblasOptimized,
 };
 
+const int kTensorNotAllocated = -1;
+
 struct OpData {
   // IDs are the arbitrary identifiers used by TF Lite to identify and access
   // memory buffers.
-  int im2col_id;
-  int hwcn_weights_id;
+  int im2col_id = kTensorNotAllocated;
+  int hwcn_weights_id = kTensorNotAllocated;
 
   TfLitePaddingValues padding;
   // The scaling factor from input to output (aka the 'real multiplier') can
@@ -80,8 +82,6 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   // Instead, we allocate a new object to use as scratch space for im2col, and
   // to carry information from Prepare() to Eval().
   auto* data = new OpData;
-  context->AddTensors(context, 1, &data->im2col_id);
-  context->AddTensors(context, 1, &data->hwcn_weights_id);
   gemm_support::IncrementUsageCounter(context);
   return data;
 }
@@ -107,9 +107,65 @@ void TransposeFloatTensor(TfLiteTensor* input, TfLiteTensor* output) {
   }
 }
 
+// Allocate temporary tensors (`im2col`, `hwcn_weights` if necessary).
+// Note: `context->AddTensors` might invalidate pointers to existing tensors.
+// Therefore the logic to add tensors are isolated into this function.
+static TfLiteStatus AllocateTemporaryTensorsIfRequired(TfLiteContext* context,
+                                                       TfLiteNode* node) {
+  auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
+  OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  TF_LITE_ENSURE(context, node->inputs->size >= 2);
+  TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
+  TfLiteTensor* filter = &context->tensors[node->inputs->data[1]];
+
+  int filter_width = filter->dims->data[2];
+  int filter_height = filter->dims->data[1];
+
+  // We don't always need to allocate im2col. It is only used in some versions
+  // of the optimized Conv. This test just mimics something that happens inside
+  // optimized_ops.h, in order to avoid a DCHECK(!im2col_data).
+  data->need_im2col =
+      (params->stride_width != 1 || params->stride_height != 1 ||
+       filter_width != 1 || filter_height != 1);
+  // If we're using the optimized multithreaded EigenTensor implementation of
+  // convolution, it expects the filter weights to be transposed compared to
+  // the normal TF Lite buffer format. Typical TF Lite weights are
+  // [filter_count, filter_height, filter_width, input_depth], but for the float
+  // implementation we need them as [filter_height, filter_width, input_depth,
+  // filter_count]. We get to that format by transposing, and create a temporary
+  // buffer to store the results.
+  // This path is only used for float processing, so only create the buffer if
+  // we're running with that data type.
+  data->need_hwcn_weights = (input->type == kTfLiteFloat32);
+
+  int temporaries_count = 0;
+  if (data->need_im2col) {
+    data->im2col_index = temporaries_count;
+    if (data->im2col_id == kTensorNotAllocated) {
+      context->AddTensors(context, 1, &data->im2col_id);
+    }
+    ++temporaries_count;
+  }
+  if (data->need_hwcn_weights) {
+    data->hwcn_weights_index = temporaries_count;
+    if (data->hwcn_weights_id == kTensorNotAllocated) {
+      context->AddTensors(context, 1, &data->hwcn_weights_id);
+    }
+    ++temporaries_count;
+  }
+
+  TfLiteIntArrayFree(node->temporaries);
+  node->temporaries = TfLiteIntArrayCreate(temporaries_count);
+
+  return kTfLiteOk;
+}
+
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params = reinterpret_cast<TfLiteConvParams*>(node->builtin_data);
   OpData* data = reinterpret_cast<OpData*>(node->user_data);
+
+  TF_LITE_ENSURE_STATUS(AllocateTemporaryTensorsIfRequired(context, node));
 
   bool hasBias = node->inputs->size == 3;
   // Check number of inputs/outputs
@@ -118,6 +174,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = &context->tensors[node->outputs->data[0]];
   TfLiteTensor* input = &context->tensors[node->inputs->data[0]];
   TfLiteTensor* filter = &context->tensors[node->inputs->data[1]];
+
   // Check dimensionality of input, filter
   TF_LITE_ENSURE_EQ(context, input->dims->size, 4);
   TF_LITE_ENSURE_EQ(context, filter->dims->size, 4);
@@ -198,36 +255,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto output_status = context->ResizeTensor(context, output, output_size);
 
   if (output_status != kTfLiteOk) return output_status;
-
-  // We don't always need to allocate im2col. It is only used in some versions
-  // of the optimized Conv. This test just mimics something that happens inside
-  // optimized_ops.h, in order to avoid a DCHECK(!im2col_data).
-  data->need_im2col =
-      (params->stride_width != 1 || params->stride_height != 1 ||
-       filter_width != 1 || filter_height != 1);
-  // If we're using the optimized multithreaded EigenTensor implementation of
-  // convolution, it expects the filter weights to be transposed compared to
-  // the normal TF Lite buffer format. Typical TF Lite weights are
-  // [filter_count, filter_height, filter_width, input_depth], but for the float
-  // implementation we need them as [filter_height, filter_width, input_depth,
-  // filter_count]. We get to that format by transposing, and create a temporary
-  // buffer to store the results.
-  // This path is only used for float processing, so only create the buffer if
-  // we're running with that data type.
-  data->need_hwcn_weights = (data_type == kTfLiteFloat32);
-
-  int temporaries_count = 0;
-  if (data->need_im2col) {
-    data->im2col_index = temporaries_count;
-    ++temporaries_count;
-  }
-  if (data->need_hwcn_weights) {
-    data->hwcn_weights_index = temporaries_count;
-    ++temporaries_count;
-  }
-
-  TfLiteIntArrayFree(node->temporaries);
-  node->temporaries = TfLiteIntArrayCreate(temporaries_count);
 
   if (data->need_im2col) {
     node->temporaries->data[data->im2col_index] = data->im2col_id;
@@ -344,7 +371,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
       reference_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
                           GetTensorData<float>(filter), GetTensorDims(filter),
                           GetTensorData<float>(bias), GetTensorDims(bias),
-                          params->stride_width, params->stride_height,
+                          params->stride_width, params->stride_height, 1, 1,
                           data->padding.width, data->padding.height,
                           output_activation_min, output_activation_max,
                           GetTensorData<float>(output), GetTensorDims(output),
@@ -355,7 +382,7 @@ void EvalFloat(TfLiteContext* context, TfLiteNode* node,
       optimized_ops::Conv(GetTensorData<float>(input), GetTensorDims(input),
                           GetTensorData<float>(filter), GetTensorDims(filter),
                           GetTensorData<float>(bias), GetTensorDims(bias),
-                          params->stride_width, params->stride_height,
+                          params->stride_width, params->stride_height, 1, 1,
                           data->padding.width, data->padding.height,
                           output_activation_min, output_activation_max,
                           GetTensorData<float>(output), GetTensorDims(output),

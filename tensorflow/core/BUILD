@@ -480,6 +480,7 @@ tf_cuda_library(
         "framework/type_index.h",
         "framework/type_traits.h",
         "framework/types.h",
+        "framework/visitable_allocator.h",
         "public/version.h",
         "util/activation_mode.h",
         "util/bcast.h",
@@ -988,22 +989,15 @@ filegroup(
 
 # Core sources for Android builds.
 filegroup(
-    name = "mobile_srcs",
+    name = "mobile_srcs_no_runtime",
     srcs = [
         ":proto_text_srcs_all",
-        "//tensorflow/core/kernels:android_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
-        "//tensorflow/core/util/ctc:android_srcs",
-        "//tensorflow/core/util/tensor_bundle:android_srcs",
     ] + glob(
         [
             "client/**/*.cc",
-            "common_runtime/**/*.h",
-            "common_runtime/**/*.cc",
             "framework/**/*.h",
             "framework/**/*.cc",
-            "graph/**/*.h",
-            "graph/**/*.cc",
             "lib/**/*.h",
             "lib/**/*.cc",
             "platform/**/*.h",
@@ -1019,7 +1013,6 @@ filegroup(
             "**/*main.cc",
             "debug/**/*",
             "framework/op_gen_*",
-            "graph/dot.*",
             "lib/jpeg/**/*",
             "lib/png/**/*",
             "lib/gif/**/*",
@@ -1036,10 +1029,49 @@ filegroup(
             "platform/stream_executor.*",
             "platform/windows/**/*",
             "user_ops/**/*.cu.cc",
+            "util/ctc/*.h",
+            "util/ctc/*.cc",
+            "util/tensor_bundle/*.h",
+            "util/tensor_bundle/*.cc",
             "common_runtime/gpu/**/*",
             "common_runtime/gpu_device_factory.*",
         ],
     ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_srcs_only_runtime",
+    srcs = [
+        "//tensorflow/core/kernels:android_srcs",
+        "//tensorflow/core/util/ctc:android_srcs",
+        "//tensorflow/core/util/tensor_bundle:android_srcs",
+    ] + glob(
+        [
+            "common_runtime/**/*.h",
+            "common_runtime/**/*.cc",
+            "graph/**/*.h",
+            "graph/**/*.cc",
+        ],
+        exclude = [
+            "**/*test.*",
+            "**/*testutil*",
+            "**/*testlib*",
+            "**/*main.cc",
+            "common_runtime/gpu/**/*",
+            "common_runtime/gpu_device_factory.*",
+            "graph/dot.*",
+        ],
+    ),
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "mobile_srcs",
+    srcs = [
+        ":mobile_srcs_no_runtime",
+        ":mobile_srcs_only_runtime",
+    ],
     visibility = ["//visibility:public"],
 )
 
@@ -1781,6 +1813,7 @@ FRAMEWORK_INTERNAL_PUBLIC_HEADERS = [
     "framework/tracking_allocator.h",  # only needed for tests
     "framework/unique_tensor_references.h",
     "framework/variant.h",
+    "framework/visitable_allocator.h",
     "platform/variant_coding.h",
     "util/command_line_flags.h",
     "util/env_var.h",
@@ -2076,7 +2109,6 @@ CORE_CPU_LIB_HEADERS = CORE_CPU_BASE_HDRS + [
     "common_runtime/stats_publisher_interface.h",
     "common_runtime/step_stats_collector.h",
     "common_runtime/threadpool_device.h",
-    "common_runtime/visitable_allocator.h",
     "graph/gradients.h",
     "graph/quantize_training.h",
 ] + if_mkl(["graph/mkl_graph_util.h"])
@@ -3484,6 +3516,7 @@ tf_cc_tests(
         "ops/parsing_ops_test.cc",
         "ops/random_ops_test.cc",
         "ops/set_ops_test.cc",
+        "ops/shape_function_test.cc",
         "ops/sparse_ops_test.cc",
         "ops/spectral_ops_test.cc",
         "ops/state_ops_test.cc",
@@ -3640,6 +3673,18 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+alias(
+    name = "android_srcs_no_runtime",
+    actual = ":mobile_srcs_no_runtime",
+    visibility = ["//visibility:public"],
+)
+
+alias(
+    name = "android_srcs_only_runtime",
+    actual = ":mobile_srcs_only_runtime",
+    visibility = ["//visibility:public"],
 )
 
 alias(

@@ -109,10 +109,13 @@ def sample_chain(
 
   Note: `target_log_prob_fn` is called exactly twice.
 
-  Only one out of every `num_steps_between_samples + 1` steps is included in the
-  returned results. This "thinning" comes at a cost of reduced statistical
-  power, while reducing memory requirements and autocorrelation. For more
-  discussion see [1].
+  Since HMC states are correlated, it is sometimes desirable to produce
+  additional intermediate states, and then discard them, ending up with a set of
+  states with decreased autocorrelation.  See [1].  Such "thinning" is made
+  possible by setting `num_steps_between_results > 0`.  The chain then takes
+  `num_steps_between_results` extra steps between the steps that make it into
+  the results.  The extra steps are never materialized (in calls to `sess.run`),
+  and thus do not increase memory requirements.
 
   [1]: "Statistically efficient thinning of a Markov chain sampler."
        Art B. Owen. April 2017.
@@ -225,10 +228,8 @@ def sample_chain(
       Default value: 0 (i.e., no burn-in).
     num_steps_between_results: Integer number of chain steps between collecting
       a result. Only one out of every `num_steps_between_samples + 1` steps is
-      included in the returned results. This "thinning" comes at a cost of
-      reduced statistical power, while reducing memory requirements and
-      autocorrelation. For more discussion see [1].
-      Default value: 0 (i.e., no subsampling).
+      included in the returned results.  The number of returned chain states is
+      still equal to `num_results`.  Default value: 0 (i.e., no thinning).
     seed: Python integer to seed the random number generator.
     current_target_log_prob: (Optional) `Tensor` representing the value of
       `target_log_prob_fn` at the `current_state`. The only reason to specify

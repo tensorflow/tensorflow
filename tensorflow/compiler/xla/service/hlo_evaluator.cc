@@ -740,7 +740,8 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[shl],
         ElementWiseBinaryOp(shl, [](NativeT lhs_elem, NativeT rhs_elem) {
-          return lhs_elem << rhs_elem;
+          return IsShiftOutOfBounds<NativeT>(rhs_elem) ? 0
+                                                       : (lhs_elem << rhs_elem);
         }));
     return Status::OK();
   }
@@ -765,8 +766,12 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[shr],
         ElementWiseBinaryOp(shr, [](NativeT lhs_elem, NativeT rhs_elem) {
-          return static_cast<NativeT>(static_cast<SignedT>(lhs_elem) >>
-                                      rhs_elem);
+          SignedT lhs_signed = static_cast<SignedT>(lhs_elem);
+          if (IsShiftOutOfBounds<NativeT>(rhs_elem)) {
+            return lhs_signed < 0 ? static_cast<SignedT>(-1) : 0;
+          } else {
+            return lhs_signed >> rhs_elem;
+          }
         }));
     return Status::OK();
   }
@@ -793,7 +798,7 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         parent_->evaluated_[shr],
         ElementWiseBinaryOp(shr, [](NativeT lhs_elem, NativeT rhs_elem) {
           // If shift amount is greater than the number of bits, then return 0.
-          if (rhs_elem >= sizeof(UnsignedT) * CHAR_BIT) {
+          if (IsShiftOutOfBounds<NativeT>(rhs_elem)) {
             return static_cast<NativeT>(0);
           }
           return static_cast<NativeT>(static_cast<UnsignedT>(lhs_elem) >>
@@ -2029,6 +2034,14 @@ class HloEvaluator::TypedVisitor : public DfsHloVisitorWithDefault {
         }));
 
     return std::move(result);
+  }
+
+  template <typename NativeT>
+  static bool IsShiftOutOfBounds(NativeT rhs) {
+    typedef typename std::make_unsigned<NativeT>::type UnsignedT;
+    UnsignedT lhs_size_unsigned = sizeof(NativeT) * CHAR_BIT;
+    UnsignedT rhs_unsigned = static_cast<UnsignedT>(rhs);
+    return rhs_unsigned >= lhs_size_unsigned;
   }
 
   HloEvaluator* parent_;

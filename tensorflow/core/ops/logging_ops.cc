@@ -111,4 +111,9 @@ REGISTER_OP("MergeSummary")
     .Attr("N : int >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+REGISTER_OP("Timestamp")
+    .Output("ts: float64")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::ScalarShape);
+
 }  // end namespace tensorflow
