@@ -196,6 +196,70 @@ Status MaxPoolGradV2Helper(const Scope& scope, const Operation& op,
 }
 REGISTER_GRADIENT_OP("MaxPoolV2", MaxPoolGradV2Helper);
 
+Status MaxPool3DGradHelper(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
+  std::vector<int32> ksize;
+  std::vector<int32> strides;
+  string padding;
+  string data_format;
+  auto attrs = op.output(0).node()->attrs();
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  MaxPool3DGrad::Attrs grad_attrs;
+  grad_attrs.DataFormat(data_format);
+  auto dx = MaxPool3DGrad(scope, op.input(0), op.output(0), grad_inputs[0],
+                          ksize, strides, padding, grad_attrs);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("MaxPool3D", MaxPool3DGradHelper);
+
+Status AvgPoolGradHelper(const Scope& scope, const Operation& op,
+                         const std::vector<Output>& grad_inputs,
+                         std::vector<Output>* grad_outputs) {
+  std::vector<int32> ksize;
+  std::vector<int32> strides;
+  string padding;
+  string data_format;
+  auto attrs = op.output(0).node()->attrs();
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  internal::AvgPoolGrad::Attrs grad_attrs;
+  grad_attrs.DataFormat(data_format);
+  auto dx =
+      internal::AvgPoolGrad(scope, Shape(scope, op.input(0)), grad_inputs[0],
+                            ksize, strides, padding, grad_attrs);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("AvgPool", AvgPoolGradHelper);
+
+Status AvgPool3DGradHelper(const Scope& scope, const Operation& op,
+                           const std::vector<Output>& grad_inputs,
+                           std::vector<Output>* grad_outputs) {
+  std::vector<int32> ksize;
+  std::vector<int32> strides;
+  string padding;
+  string data_format;
+  auto attrs = op.output(0).node()->attrs();
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "ksize", &ksize));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "strides", &strides));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "padding", &padding));
+  TF_RETURN_IF_ERROR(GetNodeAttr(attrs, "data_format", &data_format));
+  AvgPool3DGrad::Attrs grad_attrs;
+  grad_attrs.DataFormat(data_format);
+  auto dx = AvgPool3DGrad(scope, Shape(scope, op.input(0)), grad_inputs[0],
+                          ksize, strides, padding, grad_attrs);
+  grad_outputs->push_back(dx);
+  return scope.status();
+}
+REGISTER_GRADIENT_OP("AvgPool3D", AvgPool3DGradHelper);
+
 Status LRNGradHelper(const Scope& scope, const Operation& op,
                      const std::vector<Output>& grad_inputs,
                      std::vector<Output>* grad_outputs){
