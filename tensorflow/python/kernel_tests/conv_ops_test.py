@@ -1513,21 +1513,6 @@ class Conv2DTest(test.TestCase):
                 strides=[1, 1, 1, 1],
                 padding="VALID"))
 
-  def testCPUConv2DNCHWUnimplemented(self):
-    with self.test_session(use_gpu=False):
-      with self.assertRaisesRegexp(errors_impl.UnimplementedError,
-                                   "NHWC tensor format for now"):
-        conv = self._SetupValuesForDevice(
-            tensor_in_sizes=[1, 4, 4, 1],
-            filter_in_sizes=[2, 2, 1, 1],
-            dilations=[1, 1],
-            strides=[1, 1],
-            padding="VALID",
-            data_format="NCHW",
-            dtype=dtypes.float32,
-            use_gpu=False)
-        self.evaluate(conv)
-
 
 class DepthwiseConv2DTest(test.TestCase):
 
